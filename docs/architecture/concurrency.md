@@ -105,12 +105,12 @@ a name — or a sweeper that quietly went back to a bare spawn — is a failing 
 | accept loop (`accept_loop`) | `serve::listen` | the listener; the shared `Router` by clone | none shared mutable | `select!` over `token.cancelled()` and a genuinely blocked `accept()` → loop breaks → joined |
 | connection (one per socket) | the accept loop | one connection's request stream | none shared mutable; the router is cloned per connection | the same token: `select!` over `cancelled()` and the served connection |
 | SSE response body | HTTP handler | stream permit and hub subscription receivers | owned by the body; no dedicated operating-system thread | dropping the body releases its permit and receivers; hub closure ends a fleet tail |
-| outbound answer worker (`connector:outbound`) | `agentsfleetd::outbound::spawn` when its dedicated Redis connection opens | blocking stream reader and shared writers | one reader owns its socket; it cannot block the shared command connection | cancellation races the read; supervisor joins the worker |
+| outbound answer worker (`connector:outbound`) | `agentsfleetd::outbound::spawn` when its dedicated Dragonfly connection opens | blocking stream reader and shared writers | one reader owns its socket; it cannot block the shared command connection | cancellation races the read; supervisor joins the worker |
 | SSE hub pump (`hub_pump`) | `afd_dragonfly`'s `SubscriptionHub::start`; stopped by the supervised task `serve::spawn_background` registers | the one shared pub/sub connection + the `channels` map | it owns the socket outright — no lock; the map under its own mutex | the supervised task observes cancellation and calls `hub.shutdown()`, which clears the map so every reader is told; the pump returns when the last command sender drops |
 | liveness sweeper (`sweeper:liveness`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
-| reclaim sweeper (`sweeper:reclaim`) | `sweepers::spawn` | Postgres + Redis, and the sweep's own keyset cursor | `Mutex<Cursor>` (leaf) | as above |
+| reclaim sweeper (`sweeper:reclaim`) | `sweepers::spawn` | Postgres + Dragonfly, and the sweep's own keyset cursor | `Mutex<Cursor>` (leaf) | as above |
 | retention sweeper (`sweeper:retention`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | as above |
-| repair-verification dispatcher (`sweeper:repair-verification`) | `sweepers::spawn` | Postgres + Redis, and its own pacing value | `Mutex<Duration>` (leaf) | as above |
+| repair-verification dispatcher (`sweeper:repair-verification`) | `sweepers::spawn` | Postgres + Dragonfly, and its own pacing value | `Mutex<Duration>` (leaf) | as above |
 | telemetry flush (`otlp_export`) | `serve::open_telemetry`, and only where an OTLP endpoint is configured — a normal boot without one supervises eight tasks | the four SDK providers (tracer, cumulative and delta meters, logger); the exporting itself happens on the SDK's own batch threads and periodic readers, never on this task | the SDK's batch queues; spans and metric cycles it failed to deliver are counted on atomics | awaits cancellation, then `Exports::flush` force-flushes every provider before the pools they describe are dropped → joined |
 | analytics flush (`analytics_flush`) | `serve::open`, last | the product-analytics client's queued events | none shared mutable | awaits cancellation, then flushes before the client is dropped |
 
@@ -139,7 +139,7 @@ Rooted at `src/runner/main.zig`, isolated from datastore code (enforced by
 ## Channel inventory
 
 Cross-task and cross-process channels, with producer/consumer roles and payload
-ownership. Redis stream/channel **names** are canonical in
+ownership. Dragonfly stream/channel **names** are canonical in
 [`data_flow.md`](./data_flow.md) §"Two streams + one pub/sub channel"; the roles
 below are the concurrency view.
 
@@ -148,9 +148,9 @@ below are the concurrency view.
 | hub commands | unbounded `mpsc` | any subscriber or dropped `Subscription` → the one pump task | `Subscribe`/`Unsubscribe` moves to the pump; unbounded so the enqueue can happen under the channel map's lock without blocking |
 | channel fan-out | `broadcast`, 256 messages per channel | the pump (producer) → every reader subscribed to that channel | each reader receives its own clone; a reader that falls 256 behind is told the count it missed rather than losing them silently (C1) |
 | cancellation | `CancellationToken` | the supervisor → every supervised task and every live connection | edge-triggered; a task selects it against its own I/O, so it is interrupted mid-read |
-| `fleet:{id}:events` | Redis stream + consumer group `fleet_lease` | steer/webhook/cron/continuation `XADD` → `agentsfleetd` non-blocking `XREADGROUP` per lease | durable; `XACK`ed at report, idempotent on replay |
-| `connector:outbound` | Redis stream + consumer group | report producer → dedicated blocking outbound reader | durable queue; worker acknowledges delivered jobs |
-| `fleet:{id}:activity` | Redis pub/sub (ephemeral) | `agentsfleetd` `PUBLISH` (+ runner-forwarded frames) → the hub's one shared `SUBSCRIBE` connection, fanned out by copy | ephemeral; each SSE stream owns its copied frame |
+| `fleet:{id}:events` | Dragonfly stream + consumer group `fleet_lease` | steer/webhook/cron/continuation `XADD` → `agentsfleetd` non-blocking `XREADGROUP` per lease | durable; `XACK`ed at report, idempotent on replay |
+| `connector:outbound` | Dragonfly stream + consumer group | report producer → dedicated blocking outbound reader | durable queue; worker acknowledges delivered jobs |
+| `fleet:{id}:activity` | Dragonfly pub/sub (ephemeral) | `agentsfleetd` `PUBLISH` (+ runner-forwarded frames) → the hub's one shared `SUBSCRIBE` connection, fanned out by copy | ephemeral; each SSE stream owns its copied frame |
 | `fleet:control` | **removed at the M80 cutover** | — | — |
 
 The hub holds exactly **one** pub/sub connection for all viewers, refcounting
@@ -160,7 +160,7 @@ cross-boundary channels declare one producer and one consumer and say who owns
 the payload (C1); reshaping the existing ones is a separate judgment with this
 doc as input.
 
-SSE response bodies share the hub; they do not each open a Redis connection or reserve a thread.
+SSE response bodies share the hub; they do not each open a Dragonfly connection or reserve a thread.
 The daemon listener supports HTTP/1.1 and h2c independently of the browser-facing connection.
 [Data Flow, D. WATCH](./data_flow.md#d-watch--user-side-how-the-live-tail-surfaces) owns the Next.js proxy and per-hop protocol description.
 

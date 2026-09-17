@@ -1,6 +1,6 @@
 # Memory — scope, isolation, and durability
 
-> Parent: [`README.md`](./README.md) · Transport mechanics: [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity" · In-run tools + lifecycle: [`capabilities.md`](./capabilities.md) §4 · User-facing: `docs.agentsfleet.net` → Memory.
+> Parent: [`README.md`](./README.md) · Transport mechanics: [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity" · In-run tools + lifecycle: [`capabilities.md`](./capabilities.md) §4 · User-facing: [docs.agentsfleet.net/memory](https://docs.agentsfleet.net/memory).
 
 What a fleet *learned* from prior events, so it behaves like a teammate who's been here before. This file is the canonical answer to **"what is memory keyed by, what's isolated, and what survives"** — the facts other docs and specs cite. The deep hydrate/capture transport lives in `runner_fleet.md`; the categories/selection/tools live in `capabilities.md` and the user docs.
 
@@ -12,7 +12,7 @@ Every memory row belongs to **one fleet**, keyed by the column **`fleet_id`** (U
 
 | Fact | Where it's enforced |
 |---|---|
-| Store column is `fleet_id`; the upsert key is the unique index `(key, fleet_id)` | `schema/820_memory_entries.sql` (`fleet_id UUID NOT NULL REFERENCES core.fleets`; `idx_memory_entries_key_fleet_id`) |>>>>>>> origin/main
+| Store column is `fleet_id`; the upsert key is the unique index `(key, fleet_id)` | `schema/820_memory_entries.sql` (`fleet_id UUID NOT NULL REFERENCES core.fleets`; `idx_memory_entries_key_fleet_id`) |
 | Every read/write scopes `WHERE fleet_id = $1` (never a fetch-all + in-memory filter) | `rustd/crates/afd_fleet/src/memory/` — the only `INSERT`/cap/sweep/list path |
 | `fleet_id` is **server-derived from the lease**, never client-supplied (Insecure-Direct-Object-Reference guard) | `rustd/crates/afd_api_runner/src/handler/runner/memory.rs` (`lease.fleet_id == {fleet_id}`) |
 | Two fleets never share a namespace — Fleet A cannot read Fleet B's memory | role isolation (§2) + the `(key, fleet_id)` key |
@@ -22,7 +22,7 @@ Every memory row belongs to **one fleet**, keyed by the column **`fleet_id`** (U
 
 ## 2. Isolation — a Postgres role, not the workspace
 
-Memory lives in its own `memory` schema behind the **`memory_runtime`** Postgres role, which holds **zero grants on `core.*`** (RULE CTX). `api_runtime` does `SET ROLE memory_runtime` only inside a memory request, then `RESET`. `fleet_id` **REFERENCES `core.fleets` ON DELETE CASCADE** (`schema/820`), so memory is **erased with the fleet it belongs to** and an erased account keeps none of it. That edge does not weaken the isolation: PostgreSQL evaluates both the check and the cascade with the table owner's authority, so `memory_runtime` gains no `core` grant and still cannot name `core.fleets` at all. The role boundary remains the isolation, not a workspace column. The workspace is only the *authorization* boundary above this: a tenant must own the fleet to read its memory via `GET /v1/workspaces/{ws}/fleets/{id}/memories` (`fleet:read`) or forget one entry via `DELETE /v1/workspaces/{ws}/fleets/{id}/memories/{key}` (`fleet:write`). The item path decodes its URL segment before lookup, so reserved characters such as `/` round-trip through an encoded key. Forget deletes only the row matching both `fleet_id` and decoded `key`; an absent key returns 404.>>>>>>> origin/main
+Memory lives in its own `memory` schema behind the **`memory_runtime`** Postgres role, which holds **zero grants on `core.*`** (RULE CTX). `api_runtime` does `SET ROLE memory_runtime` only inside a memory request, then `RESET`. `fleet_id` **REFERENCES `core.fleets` ON DELETE CASCADE** (`schema/820`), so memory is **erased with the fleet it belongs to** and an erased account keeps none of it. That edge does not weaken the isolation: PostgreSQL evaluates both the check and the cascade with the table owner's authority, so `memory_runtime` gains no `core` grant and still cannot name `core.fleets` at all. The role boundary remains the isolation, not a workspace column. The workspace is only the *authorization* boundary above this: a tenant must own the fleet to read its memory via `GET /v1/workspaces/{ws}/fleets/{id}/memories` (`fleet:read`) or forget one entry via `DELETE /v1/workspaces/{ws}/fleets/{id}/memories/{key}` (`fleet:write`). The item path decodes its URL segment before lookup, so reserved characters such as `/` round-trip through an encoded key. Forget deletes only the row matching both `fleet_id` and decoded `key`; an absent key returns 404.
 
 ## 3. Durable store vs ephemeral compute — why "ephemeral fleets" lose memory
 
@@ -47,7 +47,7 @@ The four tools (`memory_store` / `memory_recall` / `memory_list` / `memory_forge
 
 | Concern | Path |
 |---|---|
-| Schema (table, `(key, fleet_id)` index, role grants, `fleet_id` foreign key + cascade) | `schema/820_memory_entries.sql` |>>>>>>> origin/main
+| Schema (table, `(key, fleet_id)` index, role grants, `fleet_id` foreign key + cascade) | `schema/820_memory_entries.sql` |
 | The only write/read adapter (`WHERE fleet_id = $1`, `ON CONFLICT (key, fleet_id)`) | `rustd/crates/afd_fleet/src/memory/` |
 | Runner hydrate/capture endpoints (lease-derived `fleet_id`, fencing) | `rustd/crates/afd_api_runner/src/handler/runner/memory.rs` |
 | Tenant read and forget (ownership-gated) | `rustd/crates/afd_api_tenant/src/handler/fleet/memory.rs` |

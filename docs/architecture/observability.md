@@ -45,7 +45,7 @@ semantic-convention names (each divergence is explained in §Metrics stay semant
 `docs/metrics.census.tsv` carries the full contract).
 The metric-family registry declares every exported name, and the namespace
 guard fails on any family outside it. `fleet_id`, log event names,
-`EventKind` tags, and the Redis consumer group keep their old spelling; the
+`EventKind` tags, and the Dragonfly consumer group keep their old spelling; the
 namespace rule covers only exported metric families.
 
 **One registry row is the whole family.** Beside its wire identity, each
@@ -56,7 +56,7 @@ generates everything downstream from that one table at build time: the flat atom
 typed writer whose label struct makes a wrong or missing dimension a compile
 error, snapshot reads, and the flush-time collect loop that emits every cell —
 zero values included — into the aggregator. Sources that cannot be storage
-cells (the Redis pool snapshot, the resident-set probe, flush-thread liveness)
+cells (the Dragonfly pool snapshot, the resident-set probe, flush-thread liveness)
 are `live_read` hooks the collect loop runs after the cells; their absence
 keeps the family out of the window rather than faking a zero. Labels are
 interned to build-time indices, so a sample is a fixed ≤128-byte value and the

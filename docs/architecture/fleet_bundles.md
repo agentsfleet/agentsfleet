@@ -1,6 +1,6 @@
 # Fleet Bundles — source, storage, and the bundle/fleet split
 
-> Parent: [`README.md`](./README.md) · Sibling: [`data_flow.md`](./data_flow.md) (the INSTALL sequence this storage backs).
+> Parent: [`README.md`](./README.md) · Sibling: [`data_flow.md`](./data_flow.md) (the INSTALL sequence this storage backs). · User-facing: [docs.agentsfleet.net/fleets/library](https://docs.agentsfleet.net/fleets/library) and [docs.agentsfleet.net/fleets/install](https://docs.agentsfleet.net/fleets/install).
 >
 > Scope: where a Fleet's `SKILL.md`, `TRIGGER.md`, and support files come from, how they are stored across Cloudflare R2 + Postgres, what is mutable, and what the runner reads at run time. Read this when you touch import, the bundle store, or the fleet-update path.
 

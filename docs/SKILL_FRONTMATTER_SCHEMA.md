@@ -2,7 +2,8 @@
 
 Canonical reference for the YAML frontmatter on the two files that make up a Fleet Bundle. The parser, integration tests, and `M49 install-skill` generator all derive from this document.
 
-> Audience: implementing fleets, parser authors, test writers. End-user docs live at `docs.agentsfleet.net/concepts/skill-frontmatter`.
+> Audience: implementing fleets, parser authors, test writers. The user-facing
+> authoring guide is [docs.agentsfleet.net/fleets/authoring](https://docs.agentsfleet.net/fleets/authoring).
 
 ---
 
@@ -34,7 +35,7 @@ You are Platform Ops Fleet. You diagnose problems in a small production
 platform...
 ```
 
-### Top-level keys
+### Top-level keys — `SKILL.md`
 
 | Key | Required | Type | Constraint |
 |---|---|---|---|
@@ -88,7 +89,7 @@ x-agentsfleet:
 # budget reasoning, firewall behavior. Not consumed by runtime.
 ```
 
-### Top-level keys
+### Top-level keys — `TRIGGER.md`
 
 | Key | Required | Type | Constraint |
 |---|---|---|---|
