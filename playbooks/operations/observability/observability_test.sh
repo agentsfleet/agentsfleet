@@ -560,6 +560,34 @@ test_should_cover_slo_in_the_playbook() {
   fi
 }
 
+test_should_match_the_alert_count_constant() {
+  local name="test_should_match_the_alert_count_constant"
+  local declared actual output status=0
+  declared="$(
+    sed -n 's/^EXPECTED_ALERTS=\([0-9]*\)$/\1/p' "$PROVIDER_DIR/assets_check.sh"
+  )"
+  actual="$(jq 'length' "$PROVIDER_DIR/assets/alerts.json")"
+  if [ -z "$declared" ]; then
+    bad "$name" "the grader carries no named alert-count constant"
+    return
+  fi
+  if [ "$declared" != "$actual" ]; then
+    bad "$name" "constant says $declared, alerts.json holds $actual"
+    return
+  fi
+  # And the constant must be load-bearing: a rule added without moving it fails.
+  local dir
+  dir="$(broken_assets)"
+  jq '. + [(.[0] | .name = "probe-extra-rule")]' "$dir/alerts.json" >"$dir/patched.json"
+  mv "$dir/patched.json" "$dir/alerts.json"
+  output="$(OBS_ASSETS_DIR="$dir" bash "$PROVIDER_DIR/assets_check.sh" 2>&1)" || status=$?
+  if [ "$status" -eq 0 ]; then
+    bad "$name" "a seventh rule passed a grader that declares $declared"
+  else
+    ok "$name"
+  fi
+}
+
 TEST_NAMES=(
   test_should_validate_assets
   test_should_verify_prometheus_without_exposing_token
@@ -584,6 +612,7 @@ TEST_NAMES=(
   test_should_warn_about_the_shared_tenant
   test_should_leave_the_census_untouched
   test_should_cover_slo_in_the_playbook
+  test_should_match_the_alert_count_constant
 )
 
 result_dir="$(mktemp -d)"
