@@ -37,7 +37,7 @@ Development vault `ZMB_CD_DEV`:
 | `e2e-fixtures-email` | `regular`, `admin` |
 | `agentsfleet-admin` | `username`, `credential` |
 | `encryption-master-key` | `credential` |
-| `auth-session-code-pepper`, `audit-log-pepper` | `credential` |
+| `auth-session-code-pepper` | `credential` |
 
 Production vault `ZMB_CD_PROD`:
 
@@ -50,7 +50,7 @@ Production vault `ZMB_CD_PROD`:
 | `e2e-fixtures-email` | `regular`, `admin` |
 | `agentsfleet-admin` | `username`, `credential` |
 | `encryption-master-key` | `credential` |
-| `auth-session-code-pepper`, `audit-log-pepper` | `credential` |
+| `auth-session-code-pepper` | `credential` |
 | `tailscale` | `oauth-client-id`, `oauth-secret` |
 
 Development deployment preflight also reads
