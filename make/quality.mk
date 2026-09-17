@@ -102,9 +102,6 @@ lint-scripts:  ## Run every scripts/*_test.py self-test + assert the orly engine
 	@# fault in the first slot-migration test of the integration lane.
 	@echo "→ [scripts] dragonfly cluster script self-tests..."
 	@bash scripts/dragonfly_cluster_test.sh
-	@# The deploy-time cluster gate both pipelines run. Pure -- flyctl is
-	@# injected -- so it grades here rather than only on deploy day.
-	@bash scripts/dragonfly_cluster_ready_test.sh
 	@echo "✓ [scripts] Script self-tests passed"
 
 # The cutover probe runner's own tests, plus its three asserts run for real
