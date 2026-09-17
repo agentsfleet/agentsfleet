@@ -309,7 +309,7 @@ impl Submitted {
             .series
             .insert(READY_DEPTH.to_owned(), self.depth.clone());
         report.datastores = DatastoreCosts {
-            redis: DatastoreCost {
+            dragonfly: DatastoreCost {
                 operations: self.dragonfly_calls,
                 time_ms: None,
             },

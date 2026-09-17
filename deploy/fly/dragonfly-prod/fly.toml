@@ -38,6 +38,13 @@ primary_region = "iad"
 [mounts]
   source = "dragonfly_data"
   destination = "/data"
+  # Pinned, because flyctl provisions a 1GB volume when this is absent and
+  # 1GB sits UNDER the 2.25GB of memory the four nodes are configured for.
+  # Dragonfly snapshots to /data, so the default would run out on a dataset
+  # the cluster is sized to hold in RAM. initial_size applies to volumes
+  # flyctl creates from here on; one already provisioned at the default needs
+  # `flyctl vol extend` to catch up.
+  initial_size = "10gb"
 
 [[restart]]
   policy = "always"

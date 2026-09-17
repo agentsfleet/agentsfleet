@@ -150,8 +150,9 @@ pub struct DatastoreCost {
 /// every lane renamed one on import.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct DatastoreCosts {
-    /// The Dragonfly half.
-    pub redis: DatastoreCost,
+    /// The Dragonfly half. The field name IS the JSON key every baseline in
+    /// bench/baselines/ is read by, so it moves with them or not at all.
+    pub dragonfly: DatastoreCost,
     /// The Postgres half.
     pub postgres: DatastoreCost,
 }
