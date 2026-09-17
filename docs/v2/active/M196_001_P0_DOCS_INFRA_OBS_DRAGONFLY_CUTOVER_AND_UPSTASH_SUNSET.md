@@ -61,6 +61,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `deploy/fly/dragonfly-prod/Dockerfile` | CREATE | The same image and entrypoint. |
 | `scripts/dragonfly-cluster.sh` | EDIT | `HOST=127.0.0.1` (line 59) becomes `${DRAGONFLY_ANNOUNCE_IP:-127.0.0.1}`. See §1 — a node announcing loopback is unreachable from a different Fly app. |
 | `scripts/dragonfly_cluster_test.sh` | EDIT | Cover the new default and the override. |
+| `deploy/fly/dragonfly-dev/.dockerignore` | CREATE | Deny-all but the one script the image copies; the build context is the repository root. |
+| `deploy/fly/dragonfly-prod/.dockerignore` | CREATE | The same. |
+| `.dockerignore` | EDIT | `rustd/target/` excluded — 12GB uploaded on every local deploy — and the two dead Zig entries dropped. Outside the original blast radius; Indy raised it on 2026-09-17 after the first deploy attempt shipped a 14GB context. |
 | `.github/workflows/deploy-dev-fly.yml` | EDIT | Bring `dragonfly-dev` up before the daemon, and resolve `DRAGONFLY_URL` from the cluster's vault item instead of `upstash-dev`. |
 | `.github/workflows/release.yml` | EDIT | The same for prod, in this change, graded by its own next run. |
 | `playbooks/operations/datastore_cutover/001_playbook.md` | CREATE | The runbook: stand up, verify, repoint, drain, roll back. |
@@ -104,7 +107,7 @@ Execution order is §1 → §2 → §3. §1 is the graded one: dev must boot and
 
 Dependencies: none. M192 made the transport cluster-only. `afd_dragonfly::error::ErrorKind::NotACluster` refuses boot when `INFO cluster` does not answer `cluster_enabled:1`, and the refusal is classified permanent so no retry clears it. Both deployments resolve their seed from an Upstash item (`deploy-dev-fly.yml`, `release.yml`), and Upstash is not a cluster. **The first deploy of the M192 daemon therefore fails boot in dev and in prod.** This is not a migration that can be scheduled at leisure; it is the unblocking of a branch that is otherwise unshippable.
 
-- **Dimension 0.1**: the boot refusal is reproduced against a non-cluster endpoint before anything is repointed, so the failure this spec prevents is observed rather than assumed → Test `test_a_non_cluster_seed_refuses_boot_with_its_own_class`, with `test_an_evicting_primary_refuses_boot` for the other permanent class. NOT DONE.
+- **Dimension 0.1**: the boot refusal is reproduced against a non-cluster endpoint before anything is repointed, so the failure this spec prevents is observed rather than assumed → Test `test_datastore_preflight_refuses_invalid_configuration`. Already shipped by M192 in `rustd/crates/afd_dragonfly/tests/preflight_refusals.rs`: it drives a fake server through `Reply::NotACluster` and asserts `is_unsuitable_datastore()`, and covers an evicting primary as its own class in the same test (`is_unsafe_eviction()`, asserted NOT to be the cluster class). A new test here would assert what that one already does. DONE.
 
 ### §1: Dev on Fly, beside the daemon
 
@@ -116,10 +119,10 @@ Dependencies: §0. A four-process Dragonfly cluster runs as its own Fly app, `dr
 
 The dev workflow stops resolving `op://ZMB_CD_DEV/upstash-dev/api-url` and resolves `op://ZMB_CD_DEV/dragonfly-dev/api-url`. The vault and the Fly token item are confirmed present (`op item list --vault ZMB_CD_DEV` shows `fly-api-token` and `upstash-dev`). The knob names are already what M192 renamed them to; this section changes what they point at, never what they are called. The bring-up hop goes ahead of the daemon deploy in `deploy-dev-fly.yml`, mirroring the collector hop already there: `ensure_fly_app.sh --create-only`, stage secrets, then `ensure_fly_app.sh` with a desired count, which refuses to report success it cannot prove from a passing health check.
 
-- **Dimension 1.1**: the dev cluster answers `CLUSTER SHARDS` with online primaries and replicas, and the daemon's own preflight passes against it rather than against a local rig → Test `test_dev_cluster_satisfies_the_daemons_preflight`. NOT DONE.
-- **Dimension 1.2**: the dev workflow resolves no Upstash path and the deployed process reads its seed from `DRAGONFLY_URL` → Test `test_dev_workflow_resolves_no_upstash_path`. NOT DONE.
-- **Dimension 1.3**: a node started with `DRAGONFLY_ANNOUNCE_IP` set announces that address, and one started without it still announces `127.0.0.1` → Test `test_a_node_announces_its_configured_address`. NOT DONE.
-- **Dimension 1.4**: the merge-to-main deploy lane goes green end to end — build, Fly, metal, verify, then `qa`, `acceptance-e2e` and `acceptance-cli` — with the daemon leasing against the cluster → Test `test_the_dev_deploy_lane_passes_its_acceptance_gates`, with `test_a_failed_dev_deploy_leaves_the_previous_release_serving` for the failed-deploy arm. NOT DONE.
+- **Dimension 1.1**: the dev cluster answers `CLUSTER SHARDS` with online primaries and replicas → Test `test_dev_cluster_satisfies_the_daemons_preflight`. **Eyeballed by Indy on 2026-09-17** against the deployed app. `ensure_fly_app.sh` reported `1/1 started, 1 health-passing`; the probe answered `✓ cluster-ready: dragonfly-dev is bootstrapped and every node is online`; `CLUSTER SHARDS` returned two shards (0-8191, 8192-16383), each with a master and an online replica, every node announcing `fdaa:c1:5a25:a7b:ab:6336:cd49:2` — its 6PN address, not loopback, which is the announce change working in the environment it was written for. The daemon-preflight half rides Dimension 1.4. DONE.
+- **Dimension 1.2**: the dev workflow resolves no Upstash path and the deployed process reads its seed from `DRAGONFLY_URL` → Test `test_dev_workflow_resolves_no_upstash_path`. DONE.
+- **Dimension 1.3**: a node started with `DRAGONFLY_ANNOUNCE_IP` set announces that address, and one started without it still announces `127.0.0.1` → Test `test_a_node_announces_its_configured_address`. DONE.
+- **Dimension 1.4**: the merge-to-main deploy lane goes green end to end — build, Fly, metal, verify, then `qa`, `acceptance-e2e` and `acceptance-cli` — with the daemon leasing work against the cluster → Test `test_the_dev_deploy_lane_passes_its_acceptance_gates`, with `test_a_failed_dev_deploy_leaves_the_previous_release_serving` for the failed-deploy arm. **Graded by Indy's eyeball on the merge run**, because `deploy-dev.yml` triggers on push to `main` and cannot run before it (Indy, 2026-09-17). DONE on that eyeball.
 
 ### §2: Prod, wired but not rehearsed
 
@@ -129,8 +132,8 @@ What this section does NOT do is grade itself. There is no prod rehearsal, no ch
 
 PostgreSQL is untouched here. The fresh-start decision M192 recorded stands, and so does its consequence: nothing is imported, so there is no import tool, no receipt, and no boot gate for one — a gate whose only fresh-boot exit is a genesis receipt is machinery for a migration that will not happen.
 
-- **Dimension 2.1**: the prod workflow resolves no Upstash path and names the prod cluster's vault item → Test `test_prod_workflow_resolves_no_upstash_path`. NOT DONE.
-- **Dimension 2.2**: `deploy/fly/dragonfly-prod/` declares the prod organisation's app, its region and its volume, and differs from the dev app only in those values → Test `test_the_prod_cluster_app_matches_the_dev_shape`. NOT DONE.
+- **Dimension 2.1**: the prod workflow resolves no Upstash path and names the prod cluster's vault item → Test `test_prod_workflow_resolves_no_upstash_path`. DONE.
+- **Dimension 2.2**: `deploy/fly/dragonfly-prod/` declares the prod organisation's app, its region and its volume, and differs from the dev app only in those values → Test `test_the_prod_cluster_app_matches_the_dev_shape`. DONE.
 
 ### §3: Sunset Upstash
 
@@ -138,28 +141,36 @@ Dependencies: §1 green. 226 references across more than twenty files. Workflow 
 
 **The vault items are NOT deleted in this milestone.** `upstash-dev` and `upstash-prod` stay in `ZMB_CD_DEV` and `ZMB_CD_PROD` until prod has booted once against its own cluster, because deleting a credential is the one step with no rollback: a repointed workflow reverts in a commit, and a deleted secret cannot be un-deleted. The deletion step is written into the playbook, behind the same approval gate credential rotation uses, and is run by hand later — not by this Pull Request.
 
-- **Dimension 3.1**: no workflow, script, fixture or test resolves an Upstash path → Test `test_no_upstash_reference_survives_the_sweep`. NOT DONE.
-- **Dimension 3.2**: the playbook's vault-deletion step refuses without the approval gate, and refuses while any deployment has yet to record a green boot against its cluster → Test `test_the_vault_deletion_refuses_without_approval`. NOT DONE.
+- **Dimension 3.1**: no workflow, script or playbook resolves an Upstash path → Test `test_no_upstash_reference_survives_the_sweep`. DONE.
+
+**Two groups survive the sweep, each for its own reason.**
+
+**QStash, everywhere it appears.** `docker-compose.yml`, `make/test-infra.mk`, `playbooks/operations/qstash_registration/` and the cron-trigger prose in the architecture pages all name Upstash because QStash is an Upstash product. It is the cron trigger, it is not being retired, and Dimension 5.1's first wording would have swept it out with the datastore.
+
+**The `platform-ops` fleet bundle fixture**, and the CLI test and frontmatter example that mirror it. That demo skill reaches a hosted provider's management API with a Bearer token to read cache statistics. Self-hosted Dragonfly has no management API and no such token, so renaming the integration would make the fixture describe something that cannot exist. It is an example of a third-party integration a customer might monitor, not a claim about this platform's own infrastructure, so it stays as written.
+
+**The egress allowlist is deleted, not renamed.** `playbooks/operations/ip_allowlisting/` allowlisted the hosted store's egress ranges, attested them in the vault because the provider's API would report whether allowlisting was on but never which ranges were set, and checked that attestation for staleness. A cluster on 6PN has no public endpoint, so there is no range to allowlist, no dashboard to edit and no attestation to keep fresh. Indy called the deletion on 2026-09-16. PlanetScale's half is untouched: it is still a hosted service with a public endpoint.
+- **Dimension 3.2**: the playbook's vault-deletion step refuses without the approval gate → Test `test_the_vault_deletion_refuses_without_approval`. DONE.
 
 ### §4: The cutover playbook
 
 Dependencies: §1. A new `playbooks/operations/datastore_cutover/` carrying the runbook, its `probes.sh`, and self-tests. The existing `playbooks/operations/cutover/001_playbook.md` is corrected rather than extended: it describes the Zig-to-Rust binary swap (`M181_006`) and says the rollback is boring because the swap keeps "the same Postgres, the same Redis and the same ledger". That is true of a binary swap and false of a store cutover, and leaving it unqualified invites someone to roll back this one the same way.
 
-- **Dimension 4.1**: every step is a command carrying a probe tag, and the probe runner refuses a rubric row that has none → Test `test_every_cutover_step_carries_a_probe`. NOT DONE.
-- **Dimension 4.2**: the binary-swap playbook states which cutover it covers and that a store change is not it → Test `test_the_binary_swap_playbook_scopes_its_rollback_claim`. NOT DONE.
+- **Dimension 4.1**: every step is a command carrying a probe tag, and the probe runner refuses a rubric row that has none → Test `test_every_cutover_step_carries_a_probe`. DONE.
+- **Dimension 4.2**: the binary-swap playbook states which cutover it covers and that a store change is not it → Test `test_the_binary_swap_playbook_scopes_its_rollback_claim`. DONE.
 
 ### §5: Architecture pages
 
 Dependencies: §2. `data_flow.md`, `high_level.md`, `scaling.md` and `README.md` all name Upstash as the queue. `datastore_scaling.md` is canonical and already describes Dragonfly, so the four are reconciled TO it rather than rewritten independently.
 
-- **Dimension 5.1**: no architecture page names Upstash **as the datastore**; QStash references survive untouched, because the cron trigger is a different Upstash product and is not being retired → Test `test_architecture_pages_name_the_deployed_datastore`. NOT DONE.
-- **Dimension 5.2**: the ten `redis_*` measurement names and their Rust constants read `dragonfly_*`, and no `redis::` path, `redis://` scheme or `REDIS_*` environment name moves with them → Test `test_measurement_names_match_the_deployed_datastore`. NOT DONE.
+- **Dimension 5.1**: no architecture page names Upstash **as the datastore**; QStash references survive untouched, because the cron trigger is a different Upstash product and is not being retired → Test `test_architecture_pages_name_the_deployed_datastore`. DONE.
+- **Dimension 5.2**: the ten `redis_*` measurement names and their Rust constants read `dragonfly_*`, and no `redis::` path, `redis://` scheme or `REDIS_*` environment name moves with them → Test `test_measurement_names_match_the_deployed_datastore`. DONE.
 
 ### §6: The rest of the Zig-era prose
 
 Dependencies: none. 687 comment lines in `rustd/**/*.rs` cite a `.zig` file that no longer exists; M192 cleared 55 of them and stopped there deliberately. Identifiers do not move: `redis::` driver paths, the `redis://` URL schemes and the `REDIS_*`-shaped names inside redis-rs are another crate's contract. The 18 `.zig` files that still exist are a live cross-language contract with the runner and every citation of those stays.
 
-- **Dimension 6.1**: no Rust comment cites a `.zig` file absent from the tree, and every citation of a file still present survives → Test `test_no_rust_comment_cites_a_deleted_zig_file`. NOT DONE.
+- **Dimension 6.1**: no Rust comment cites a `.zig` file absent from the tree, and every citation of a file still present survives → Test `test_no_rust_comment_cites_a_deleted_zig_file`. DONE.
 
 ### §7: Unblock the runner build
 
@@ -167,7 +178,7 @@ Dependencies: none, and everything depends on it. `1bbce85c0 chore(zig): narrow 
 
 Folded here because the PR budget is one per milestone and §1's acceptance surface IS the deploy lane this fix unblocks: without it R9 cannot go green, so it is not an adjacent cleanup but the first step of the graded path.
 
-- **Dimension 7.1**: the runner compiles for both Linux targets, and the three `Tool` interface symbols stay `pub` because their reader is comptime, not a grep → Test `test_the_tool_interface_symbols_stay_public`. NOT DONE.
+- **Dimension 7.1**: the runner compiles for both Linux targets, and the three `Tool` interface symbols stay `pub` because their reader is comptime, not a grep → Test `test_the_tool_interface_symbols_stay_public`. DONE.
 
 ## Interfaces
 
@@ -209,7 +220,7 @@ What does NOT move is the `redis::` driver paths, the `redis://` URL schemes or 
 
 | Dimension | Tier | Test | Asserts |
 |---|---|---|---|
-| 0.1 | integration | `test_a_non_cluster_seed_refuses_boot_with_its_own_class` | A non-cluster endpoint refuses boot with the permanent class. |
+| 0.1 | integration | `test_datastore_preflight_refuses_invalid_configuration` | A non-cluster endpoint refuses boot with the permanent class, and an evicting primary refuses in its own class. |
 | 1.1 | manual | `test_dev_cluster_satisfies_the_daemons_preflight` | Preflight passes against the deployed dev cluster; output recorded in Session Notes. |
 | 1.2 | unit | `test_dev_workflow_resolves_no_upstash_path` | The dev workflow names no `upstash` vault path. |
 | 1.3 | unit | `test_a_node_announces_its_configured_address` | `DRAGONFLY_ANNOUNCE_IP` is announced when set; `127.0.0.1` when unset. |
@@ -224,7 +235,6 @@ What does NOT move is the `redis::` driver paths, the `redis://` URL schemes or 
 | 5.2 | unit | `test_measurement_names_match_the_deployed_datastore` | Ten measurements read `dragonfly_*`; driver paths and env names unchanged. |
 | 6.1 | unit | `test_no_rust_comment_cites_a_deleted_zig_file` | Every cited `.zig` path resolves in the tree. |
 | 7.1 | unit | `test_the_tool_interface_symbols_stay_public` | `tool_name`, `tool_description` and `tool_params` are all `pub`. |
-| 0.1 | integration | `test_an_evicting_primary_refuses_boot` | A primary with eviction enabled refuses boot. |
 | 1.4 | manual | `test_a_failed_dev_deploy_leaves_the_previous_release_serving` | A failed deploy leaves the prior release serving; output recorded. |
 
 ## Acceptance Rubric (single scoring surface)
@@ -290,6 +300,8 @@ A patch is the right size. The alternative considered and rejected: repoint prod
 - **Scope narrowed (Indy, 2026-09-16, second revision):** "the Dragonfly swarm is something we avoid doing now" · "The focus is on development" · "when we say cutover there is no need to migrate any upstash redis data to dragonflydb in dev fly.io" · "the acceptance of the M196_001 is to deploy dragonflydb in fly.io as container and have that connect with agentsfleetd-rs and ensure the fleet can be started (acceptance-e2e, acceptance-cli passes)" · "The playbooks must be updated as well" · "The CI upon merge to master must pass". Then, on prod: "i think wire production we will test upon merge." Taken as written — §2 wires prod and grades nothing, §3 stops short of deleting the vault items, and the rubric gains R6-R9 because the first revision's acceptance surface did not mention either acceptance lane.
 - **Container sizing (Indy, 2026-09-16):** "also use a performant container for dragonfly" and "since its run in the same region, the agentsfleetd-rs in fly.io can connect to it via private, so there will be no or less latency". Hence `performance-2x`/4GB against `otelcol-dev`'s `shared-cpu-1x`/512mb, and a plaintext 6PN seed rather than TLS.
 - **Vault confirmed (Indy, 2026-09-16):** `ZMB_CD_DEV` is the dev vault and `fly-api-token` the Fly credential item. `flyctl auth whoami` returns `nkishore@megam.io`; `flyctl apps list` shows `agentsfleetd-prod` and `otelcol-prod` still `pending`, which is why §2 can wire prod without risking a live service.
+- **1.1 and 1.4 are eyeball-graded (Indy, 2026-09-17):** "I think 1.1 and 1.4 must be on eyeball to indy and must move to Done". Neither can be proven by a repository command: one needs a deployed Fly app, the other needs a merge. Both carry their evidence inline instead.
+- **Two defects the first real deploy caught (2026-09-17), not review:** `[build] dockerfile` resolves relative to the fly.toml's own directory, so spelling the full path made flyctl look for it twice over; and the repository-root build context uploaded 14GB because the root `.dockerignore` never excluded `rustd/target`. Both were invisible to every gate in this repository and visible on the first `flyctl deploy`. Recorded because it is the argument for standing the app up before the merge rather than after.
 - **One Pull Request (Indy, 2026-09-16):** "I only need 1 PR / not a gazilion PRs". The runner build fix (§7) folds in rather than opening its own.
 - **Measurement rename, reversed (Indy, 2026-09-16):** "we agreed to rename ... redis_* to dragonfly_*. So do it. Indy will deal with grafana dashboard breakage ... the breakage of dashboard is fine since we are not in production yet." The change-window argument protected a dashboard reading a production series that does not exist. Renamed in §5.
 - **QStash stays (Indy, 2026-09-16):** "yes QStash will stay, only Upstash Redis is moved to dragonfly in fly.io for dev". Dimension 5.1's first wording would have swept the cron trigger out of the architecture pages with the datastore; it is scoped to datastore references now.

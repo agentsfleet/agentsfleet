@@ -139,6 +139,17 @@ main() {
       return 1
     fi
     config_flag=(--config "$config")
+    # An app whose context is the repository root needs its own ignore file,
+    # and it lives beside its fly.toml rather than arriving as a fifth
+    # argument: a caller passing both paths separately will eventually pass a
+    # mismatched pair. flyctl otherwise reads the CONTEXT's .dockerignore,
+    # which for the repository root is the daemon image's and does not exclude
+    # rustd/target -- 12GB uploaded to the builder on every deploy.
+    local ignorefile="${config%/*}/.dockerignore"
+    if [ -f "$ignorefile" ]; then
+      config_flag+=(--ignorefile "$ignorefile")
+      printf 'using ignore file %s\n' "$ignorefile"
+    fi
   fi
 
   printf 'deploying %s from %s%s\n' "$app" "$context_dir" "${config:+ using $config}"

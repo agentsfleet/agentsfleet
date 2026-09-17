@@ -61,12 +61,12 @@ verify_redis() {
 exit_code=0
 
 if [ "$env_mode" = "dev" ]; then
-	dev_url=$(get_connection_string "op://$vault_dev/upstash-dev/url")
+	dev_url=$(get_connection_string "op://$vault_dev/dragonfly-dev/api-url")
 	[ -n "$dev_url" ] && { verify_redis "$dev_url" "DEVELOPMENT" || exit_code=1; }
 fi
 
 if [ "$env_mode" = "prod" ]; then
-	prod_url=$(get_connection_string "op://$vault_prod/upstash-prod/url")
+	prod_url=$(get_connection_string "op://$vault_prod/dragonfly-prod/api-url")
 	[ -n "$prod_url" ] && { verify_redis "$prod_url" "PRODUCTION" || exit_code=1; }
 fi
 

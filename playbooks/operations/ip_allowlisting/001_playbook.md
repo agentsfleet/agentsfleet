@@ -1,13 +1,21 @@
 # Data-Plane IP Allowlisting
 
-**Updated:** Jul 31, 2026
-**Owners:** 🤠 Indy approves cost and edits the Upstash dashboard; 🦉 Orly
-validates inventory, applies PlanetScale restrictions, and verifies both
-providers.
+**Updated:** Sep 17, 2026
+**Owners:** 🤠 Indy approves cost and provider writes; 🦉 Orly validates
+inventory, applies PlanetScale restrictions, and verifies them.
 
 Only Fly.io control-plane egress belongs in these allowlists. An
-`agentsfleet-runner` holds no Postgres or Redis credential and reaches only the
-agentsfleet API, so a runner-host address must not be added.
+`agentsfleet-runner` holds no Postgres or datastore credential and reaches only
+the agentsfleet API, so a runner-host address must not be added.
+
+**One provider, since M196.** The datastore used to be the second: a hosted
+service with a public endpoint, whose egress ranges had to be allowlisted in
+its dashboard and attested in the vault because its API would report whether
+allowlisting was on but not which ranges were set. Self-hosted Dragonfly has
+no public endpoint. It runs on a Fly machine reached over 6PN, a private
+network that admits nothing from outside it, so there is no range to allowlist,
+no dashboard to edit and no attestation to keep fresh. The control was not
+dropped — it was answered by where the datastore now runs.
 
 ## Prerequisites
 
@@ -36,8 +44,6 @@ Provider management fields:
 |---|---|---|
 | `ZMB_CD_DEV` | `planetscale-dev` | `organization`, `database`, `service-token` |
 | `ZMB_CD_PROD` | `planetscale-prod` | `organization`, `database`, `service-token` |
-| `ZMB_CD_DEV` | `upstash-dev` | `db-id`, `developer-api-email`, `developer-api-key`, `allowlist-cidrs`, `allowlist-verified-at` |
-| `ZMB_CD_PROD` | `upstash-prod` | `db-id`, `developer-api-email`, `developer-api-key`, `allowlist-cidrs`, `allowlist-verified-at` |
 
 The PlanetScale service token needs `read_database` and `write_database`.
 
@@ -49,14 +55,12 @@ The PlanetScale service token needs `read_database` and `write_database`.
 | 2 | 🤠 Indy | Review the exact development and production targets. |
 | 3 | 🤠 Indy | Approve provider writes by setting `ALLOW_PROVIDER_WRITES=1`. |
 | 4 | 🦉 Orly | Apply the idempotent PlanetScale restriction. |
-| 5 | 🤠 Indy | In each Upstash database, enable **IP Allowlisting** and set the exact `fly-egress-ips/cidrs` values. |
-| 6 | 🤠 Indy | Copy those exact ranges to `allowlist-cidrs` and record the current time in `allowlist-verified-at`. |
-| 7 | 🦉 Orly | Run provider verification. |
+| 5 | 🦉 Orly | Run provider verification. |
 
-Upstash’s documented Developer API exposes whether IP allowlisting is enabled,
-but not the exact configured ranges. The vault fields are therefore the
-explicit human attestation; verification requires an exact inventory match and
-a timestamp no older than seven days.
+Steps 5 through 7 of the previous revision were the datastore's half: enabling
+allowlisting in a provider dashboard, copying the ranges into the vault as a
+human attestation, and checking that attestation was no more than seven days
+old. All three are gone with the hosted store.
 
 ## Run
 
@@ -81,13 +85,10 @@ Use `ENV=dev` or `ENV=prod` to scope a run; the default checks both.
 - Development and production database identifiers differ.
 - PlanetScale has exactly one unrestricted role/schema entry whose ranges equal
   the current Fly.io IPv4 inventory.
-- Upstash reports `securityAddons.ipWhitelisting=true`.
-- The Upstash attestation exactly matches the current Fly.io inventory.
 - No provider credential appears in process arguments or output.
 
 Provider references:
 
 - [Fly.io app-scoped egress addresses](https://fly.io/docs/networking/egress-ips/)
 - [PlanetScale IP restriction API](https://planetscale.com/docs/api/reference/list_database_postgres_cidrs)
-- [Upstash IP allowlisting](https://upstash.com/docs/redis/features/security#ip-allowlisting)
-- [Upstash database inspection API](https://upstash.com/docs/devops/developer-api/redis/get_database)
+- [Fly.io private networking (6PN)](https://fly.io/docs/networking/private-networking/)
