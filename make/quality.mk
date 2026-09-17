@@ -108,22 +108,11 @@ lint-scripts:  ## Run every scripts/*_test.py self-test + assert the orly engine
 # against this repository. Hermetic — fixtures for the negatives, no daemon —
 # so the row-coverage claim is graded at every `lint-all` rather than only on
 # swap day, which is the one day nobody wants to discover it.
-check-cutover-probes:  ## Assert cutover probe row-coverage + run both probe runners' self-tests
+check-cutover-probes:  ## Assert binary-swap cutover probe row-coverage + run its self-tests
 	@echo "→ [cutover] Probe runner self-tests..."
 	@bash playbooks/operations/cutover/probes_test.sh
 	@echo "→ [cutover] Row-coverage, rollback and architecture asserts..."
 	@bash playbooks/operations/cutover/probes.sh --coverage
-	@# The DATASTORE cutover's probes ride this lane rather than taking a
-	@# target of their own: same job, same cadence, and a second near-duplicate
-	@# wrapper would be one more place for a future edit to unhook a gate.
-	@# Its last test reads 001_playbook.md back and fails a step row carrying
-	@# no probe tag, so the playbook's claim about itself is graded here.
-	@echo "→ [datastore cutover] Probe runner self-tests..."
-	@bash playbooks/operations/datastore_cutover/probes_test.sh
-	@echo "→ [datastore cutover] Both deploy workflows resolve no retired seed..."
-	@bash playbooks/operations/datastore_cutover/probes.sh seed-is-clean .github/workflows/deploy-dev-fly.yml
-	@bash playbooks/operations/datastore_cutover/probes.sh seed-is-clean .github/workflows/release.yml
-	@bash playbooks/operations/datastore_cutover/probes.sh zig-citations
 	@echo "✓ [cutover] Probe runners green"
 
 SHELLCHECK ?= shellcheck

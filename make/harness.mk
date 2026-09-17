@@ -56,7 +56,6 @@ ORLY_ROOT ?= $(CURDIR)
 C_CYAN   := \033[36m
 C_GREEN  := \033[32m
 C_RED    := \033[31m
-C_YELLOW := \033[33m
 C_GREY   := \033[2m
 C_BOLD   := \033[1m
 C_RESET  := \033[0m

@@ -238,6 +238,36 @@ Fault injection and saturation testing use isolated datastores and synthetic des
 
 The historical Redis baseline (closed PR #681) is a reference for the local rig only. Cloud evidence is required before the Dragonfly acceptance rows are complete; missing Cloud evidence leaves them incomplete.
 
+## Upstash retirement status
+
+The datastore cutover ran in M196_001. Its runbook and probe runner were
+deleted once it had served its purpose; this section is what survives it,
+because one half of the move is finished and the other has not started.
+
+**Development — retired.** `agentsfleetd-dev` has served on the `dragonfly-dev`
+cluster since Sep 17, 2026. The `upstash-dev` vault item was archived out of
+`ZMB_CD_DEV` the same day on Indy's named approval, and Indy deleted the hosted
+Upstash database itself from the provider console. The daemon proves the
+cluster on every boot regardless. `rustd/crates/afd_dragonfly/src/preflight.rs`
+issues `INFO CLUSTER` and refuses a seed that answers as a single server;
+`rustd/crates/agentsfleetd/src/serve/runtime.rs` calls it before the daemon
+serves anything, so a machine that reaches healthy has passed that check.
+
+**Production — not started, and `upstash-prod` stays until it is.** There is no
+`dragonfly-prod` app, and `agentsfleetd-prod` has never deployed. Deleting
+`upstash-prod` now would remove the only rollback for a move that has not
+happened. It becomes eligible when `dragonfly-prod` exists and is bootstrapped,
+`agentsfleetd-prod` deploys and serves against it, and `release.yml` resolves no
+Upstash seed — then on a fresh named approval, not before.
+
+Both deploy pipelines still gate on `scripts/dragonfly_cluster_ready.sh`, which
+asks the cluster whether it is bootstrapped rather than trusting Fly's TCP
+check. That is not cutover scaffolding and did not retire with it.
+
+**QStash is a different product and is NOT retired.** It remains the cron
+trigger. Mentions of Upstash in the cron sections of these pages are correct and
+`scripts/check_architecture_doc.sh` requires them.
+
 ## Related pages
 
 - [Scaling](./scaling.md) describes existing capacity assumptions that measurements must verify.
