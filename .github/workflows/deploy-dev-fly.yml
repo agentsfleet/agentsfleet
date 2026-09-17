@@ -131,7 +131,7 @@ jobs:
         # crash-looping daemon and a red acceptance lane that reads as a
         # product fault.
         run: |
-          bash playbooks/operations/datastore_cutover/probes.sh cluster-ready "$DRAGONFLY_APP"
+          bash scripts/dragonfly_cluster_ready.sh "$DRAGONFLY_APP"
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
