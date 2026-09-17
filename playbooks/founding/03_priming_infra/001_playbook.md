@@ -19,7 +19,7 @@ deploy application code or claim that the public domains are ready.
 | API domain | `api-dev.agentsfleet.net` | `api.agentsfleet.net` |
 | Dashboard domain | `app-dev.agentsfleet.net` | `app.agentsfleet.net` |
 | PlanetScale item | `planetscale-dev` | `planetscale-prod` |
-| Upstash item | `upstash-dev` | `upstash-prod` |
+| Dragonfly item | `dragonfly-dev` | `dragonfly-prod` |
 | Clerk item | `clerk-dev` | `clerk-prod` |
 | Cloudflare R2 item | `cloudflare-r2` | `cloudflare-r2` |
 
@@ -29,7 +29,7 @@ deploy application code or claim that the public domains are ready.
 |---|---|---|---|---|
 | 1 | Human | Confirm provider billing and account access. | Human | Named accounts and organizations recorded. |
 | 2 | Agent | Create six Fly.io apps. | Fly command-line query | All six app names resolve in the intended organization. |
-| 3 | Human | Create two PlanetScale and two Upstash resources; store role-separated values. | Deployment gate | Both environments pass and database roles differ. |
+| 3 | Human | Create two PlanetScale databases and store each Dragonfly cluster's seed. | Deployment gate | Both environments pass and database roles differ. |
 | 4 | Human | Create two Cloudflare tunnels, route API domains, and store tokens. | Agent | Tunnel identifiers and DNS routes recorded without token values. |
 | 5 | Human | Configure Clerk session claims. | Pipeline | Authenticated development acceptance passes after deployment. |
 | 6 | Human | Approve billed Fly.io static egress. | Human | Approval recorded before allocation. |
@@ -146,8 +146,7 @@ The Human creates separate development and production resources, then stores:
 ```text
 planetscale-{env}/api-connection-string
 planetscale-{env}/migrator-connection-string
-upstash-{env}/api-url
-upstash-{env}/url
+dragonfly-{env}/api-url
 ```
 
 Create each PlanetScale Postgres database in the `us-east` region (AWS
@@ -178,8 +177,11 @@ retries silently until its acquire budget runs out; the daemon reports that
 as a stall (`UZ-INTERNAL-001`, "the pool held N of M and could not open
 another") rather than an outage.
 
-The Upstash `api-url` is the restricted runtime connection. The root `url` is
-reserved for the explicitly approved Redis teardown runbook.
+The Dragonfly `api-url` is the cluster's seed, reached over Fly's private
+network: `redis://:<password>@dragonfly-{env}.internal:7001`. There is no
+second, root-level credential. The hosted store had one, and the teardown
+runbook that needed it applies to the store being retired, not to this one —
+a self-hosted cluster is torn down by deleting its Fly app.
 
 Do not apply schema files manually. The checked-in migration runner applies
 them in order during deployment and creates the current schemas:

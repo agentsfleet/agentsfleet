@@ -158,7 +158,7 @@ async fn test_lease_bench_reports_idle_poll_cost() {
     .await;
 
     assert!(
-        measurement(&report, "idle_redis_calls_per_poll") > 0.0,
+        measurement(&report, "idle_dragonfly_calls_per_poll") > 0.0,
         "an idle poll still peeks"
     );
     assert!(

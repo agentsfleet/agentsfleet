@@ -76,7 +76,7 @@ outputs:
 | `cloudflare-r2` | `account-id`, `access-key-id`, `secret-access-key`, `bucket` |
 | `cloudflare-tunnel-dev`, `cloudflare-tunnel-prod` | `credential` |
 | `planetscale-dev`, `planetscale-prod` | `api-connection-string`, `migrator-connection-string` |
-| `upstash-dev`, `upstash-prod` | `api-url`, `url` |
+| `dragonfly-dev`, `dragonfly-prod` | `api-url` |
 | `approval-signing-secret` | `credential` |
 | `grafana-dev`, `grafana-prod` | `otlp-endpoint`, `instance-id`, `api-key` |
 

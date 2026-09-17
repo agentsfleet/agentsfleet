@@ -26,6 +26,19 @@ jobs:
       OTLP_COLLECTOR_DIR: deploy/fly/otelcol-dev
       OTLP_COLLECTOR_MACHINES: "1"
       OTLP_COLLECTOR_ENDPOINT: http://otelcol-dev.internal:4318
+      # The datastore hop. Same reason the collector's names are at job scope:
+      # the app name is read by the bring-up step and the readiness probe, and
+      # the seed the daemon is handed is derived from the same hostname. One
+      # spelling updated and not the other would point the daemon at an app
+      # that is not serving.
+      #
+      # The build context is the REPOSITORY ROOT, not the app directory: the
+      # image copies scripts/dragonfly-cluster.sh, the same file the
+      # integration lane runs, so there is one cluster bootstrap and not two.
+      DRAGONFLY_APP: dragonfly-dev
+      DRAGONFLY_BUILD_CONTEXT: .
+      DRAGONFLY_CONFIG: deploy/fly/dragonfly-dev/fly.toml
+      DRAGONFLY_MACHINES: "1"
     steps:
       - uses: actions/checkout@v7
 
@@ -38,7 +51,7 @@ jobs:
           FLY_API_TOKEN: op://${{ vars.VAULT_DEV }}/fly-api-token/credential
           DATABASE_URL_API: op://${{ vars.VAULT_DEV }}/planetscale-dev/api-connection-string
           DATABASE_URL_MIGRATOR: op://${{ vars.VAULT_DEV }}/planetscale-dev/migrator-connection-string
-          DRAGONFLY_URL: op://${{ vars.VAULT_DEV }}/upstash-dev/api-url
+          DRAGONFLY_URL: op://${{ vars.VAULT_DEV }}/dragonfly-dev/api-url
           ENCRYPTION_MASTER_KEY: op://${{ vars.VAULT_DEV }}/encryption-master-key/credential
           AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_DEV }}/auth-session-code-pepper/credential
           APPROVAL_SIGNING_SECRET: op://${{ vars.VAULT_DEV }}/approval-signing-secret/credential
@@ -87,6 +100,41 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
           FLY_ORG: agentsfleet-dev
+
+      - name: Ensure the Dragonfly cluster is serving
+        # BEFORE the daemon deploys, for a harder reason than the collector's.
+        # A daemon that cannot reach its telemetry endpoint still serves; a
+        # daemon whose seed is not a cluster REFUSES TO BOOT, permanently
+        # classified, with no retry that clears it
+        # (afd_dragonfly::error::ErrorKind::NotACluster). Standing this up
+        # afterwards would mean a guaranteed crash-loop in between.
+        #
+        # No secrets are staged onto this app. Its password is the script's
+        # default and it has no public address -- only agentsfleetd-dev reaches
+        # it, over 6PN. What DOES have to exist is the vault item the seed is
+        # read from, which is dragonfly-dev/api-url in ZMB_CD_DEV.
+        run: |
+          bash scripts/ensure_fly_app.sh --create-only "$DRAGONFLY_APP"
+          bash scripts/ensure_fly_app.sh \
+            "$DRAGONFLY_APP" "$DRAGONFLY_BUILD_CONTEXT" "$DRAGONFLY_MACHINES" "$DRAGONFLY_CONFIG"
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+          FLY_ORG: agentsfleet-dev
+
+      - name: Prove the cluster is bootstrapped, not merely listening
+        # Fly's own check is TCP, which a node that has not been handed its
+        # DFLYCLUSTER CONFIG passes happily. The daemon's preflight demands
+        # more than a listening socket -- cluster_enabled, sharded pub/sub, and
+        # a primary that retains rather than evicts -- so the gate here is the
+        # script's own `healthy` verb: every node online in CLUSTER SHARDS.
+        #
+        # Failing HERE costs one red deploy step. Failing later costs a
+        # crash-looping daemon and a red acceptance lane that reads as a
+        # product fault.
+        run: |
+          bash playbooks/operations/datastore_cutover/probes.sh cluster-ready "$DRAGONFLY_APP"
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
       - name: Stage Fly secrets from vault (applied on next deploy)
         run: |

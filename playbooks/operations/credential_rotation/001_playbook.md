@@ -19,10 +19,13 @@ valid at the same time.
 ## 2. Rotate and store
 
 🤠 Indy replaces the provider value, then updates its existing 1Password field.
-For Upstash, keep both fields current:
+For the datastore, one field:
 
-- `upstash-{env}/url` — root connection, reserved for destructive teardown
-- `upstash-{env}/api-url` — restricted `agentsfleetd` runtime connection
+- `dragonfly-{env}/api-url` — the cluster's seed on Fly's private network
+
+There is no second, root-level connection to keep in step. The hosted store
+had one, reserved for destructive teardown; a self-hosted cluster has a single
+credential and is torn down by deleting its Fly app.
 
 There is no runner Redis credential.
 

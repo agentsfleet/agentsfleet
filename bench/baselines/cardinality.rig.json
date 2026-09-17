@@ -9,7 +9,7 @@
     "candidate_plan_ms": 2.049,
     "candidate_query_ms": 1.063,
     "postgres_fleets_table_bytes": 8282112.0,
-    "redis_bytes_total": 46466176.0
+    "dragonfly_bytes_total": 46466176.0
   },
   "series": {
     "ladder_fleets": [
@@ -24,7 +24,7 @@
       0.28650000000000003,
       0.358292
     ],
-    "redis_bytes_per_fleet": [
+    "dragonfly_bytes_per_fleet": [
       4616.0,
       4473.777777777777,
       4658.666666666667,
@@ -38,7 +38,7 @@
     ]
   },
   "datastores": {
-    "redis": {
+    "dragonfly": {
       "operations": 0
     },
     "postgres": {

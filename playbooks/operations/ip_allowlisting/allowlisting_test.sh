@@ -34,11 +34,7 @@ case "${1:-}" in
       */organization) printf 'agentsfleet\n' ;;
       */database) printf 'agentsfleet-dev\n' ;;
       */service-token) printf 'planet-secret\n' ;;
-      */db-id) printf 'redis-dev-id\n' ;;
-      */developer-api-email) printf 'operator@example.test\n' ;;
-      */developer-api-key) printf 'upstash-secret\n' ;;
       */allowlist-cidrs) printf '["203.0.113.10/32"]\n' ;;
-      */allowlist-verified-at) printf '2026-07-31T10:00:00Z\n' ;;
       *) exit 1 ;;
     esac
     ;;
@@ -80,10 +76,6 @@ case "$url" in
       *) exit 1 ;;
     esac
     ;;
-  *api.upstash.com/v2*)
-    printf '{"database_id":"redis-dev-id","securityAddons":{"ipWhitelisting":%s}}\n' \
-      "${UPSTASH_ENABLED:-true}"
-    ;;
   *) exit 1 ;;
 esac
 STUB
@@ -110,7 +102,7 @@ test_should_create_missing_planetscale_entry() {
     bad "$name" "$output"
   elif ! grep -q -- '--request POST' "$calls"; then
     bad "$name" "create request was not sent"
-  elif grep -Eq 'planet-secret|upstash-secret' "$calls"; then
+  elif grep -Eq 'planet-secret' "$calls"; then
     bad "$name" "a management credential appeared in process arguments"
   else
     ok "$name"
@@ -166,30 +158,19 @@ test_should_require_provider_write_approval() {
   fi
 }
 
-test_should_verify_both_providers() {
-  local name="test_should_verify_both_providers"
+# One provider, since M196. The datastore's half went with the hosted store:
+# a self-hosted cluster on 6PN has no public endpoint to allowlist and no
+# management API to attest against.
+test_should_verify_the_planetscale_provider() {
+  local name="test_should_verify_the_planetscale_provider"
   local output status=0
   output="$(run_script PLANETSCALE_LIST_MODE=verify bash "$VERIFY")" || status=$?
   if [ "$status" -ne 0 ]; then
     bad "$name" "$output"
-  elif [[ "$output" != *"PASS: development Upstash IP allowlisting"* ]]; then
+  elif [[ "$output" != *"PASS: development PlanetScale IP restrictions"* ]]; then
     bad "$name" "$output"
-  elif grep -Eq 'planet-secret|upstash-secret' "$calls"; then
+  elif grep -Eq 'planet-secret' "$calls"; then
     bad "$name" "a management credential appeared in process arguments"
-  else
-    ok "$name"
-  fi
-}
-
-test_should_reject_disabled_upstash_allowlisting() {
-  local name="test_should_reject_disabled_upstash_allowlisting"
-  local output status=0
-  output="$(run_script \
-    PLANETSCALE_LIST_MODE=verify \
-    UPSTASH_ENABLED=false \
-    bash "$VERIFY")" || status=$?
-  if [ "$status" -eq 0 ]; then
-    bad "$name" "disabled Upstash allowlisting passed"
   else
     ok "$name"
   fi
@@ -224,11 +205,9 @@ test_should_ignore_ambient_provider_endpoint_overrides() {
   output="$(run_script \
     PLANETSCALE_LIST_MODE=verify \
     PLANETSCALE_API_BASE=https://attacker.example \
-    UPSTASH_API_BASE=https://attacker.example \
     bash "$VERIFY")" || status=$?
   if [ "$status" -ne 0 ] || rg --quiet attacker.example "$calls" ||
-    ! rg --quiet api.planetscale.com "$calls" ||
-    ! rg --quiet api.upstash.com "$calls"; then
+    ! rg --quiet api.planetscale.com "$calls"; then
     bad "$name" "verify used the ambient endpoint: $output"
   else
     ok "$name"
@@ -239,8 +218,7 @@ test_should_create_missing_planetscale_entry
 test_should_update_drifted_planetscale_entry
 test_should_find_planetscale_entry_on_later_page
 test_should_require_provider_write_approval
-test_should_verify_both_providers
-test_should_reject_disabled_upstash_allowlisting
+test_should_verify_the_planetscale_provider
 test_should_reject_stale_egress_inventory
 test_should_ignore_ambient_provider_endpoint_overrides
 

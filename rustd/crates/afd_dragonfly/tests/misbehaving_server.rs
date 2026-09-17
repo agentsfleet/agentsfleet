@@ -54,11 +54,11 @@ fn assert_connection_pair(recorder: &Recorder) {
     assert_eq!(failed.level, tracing::Level::WARN);
     assert_eq!(
         started.fields.get("event").map(String::as_str),
-        Some("redis_connect_started")
+        Some("dragonfly_connect_started")
     );
     assert_eq!(
         failed.fields.get("event").map(String::as_str),
-        Some("redis_connect_failed")
+        Some("dragonfly_connect_failed")
     );
     assert_eq!(
         started.fields.get("attempt_id"),
@@ -71,7 +71,7 @@ fn assert_connection_pair(recorder: &Recorder) {
 /// bounded by the connection budget itself. The elapsed deadline is this
 /// crate's fact, so it has no invented driver source.
 #[tokio::test]
-async fn test_redis_connect_honours_its_deadline() {
+async fn test_dragonfly_connect_honours_its_deadline() {
     let recorder = Recorder::install();
     let server = FakeRedis::spawn(&[("PING", Reply::Silent)]).await;
     let budget = Duration::from_millis(100);

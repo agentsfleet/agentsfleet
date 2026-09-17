@@ -67,13 +67,13 @@ check_ref() {
 if [ "$env_mode" = "dev" ]; then
 	echo ""
 	echo "-- checking DEV vault: $vault_dev"
-	check_ref "op://$vault_dev/upstash-dev/url"
+	check_ref "op://$vault_dev/dragonfly-dev/api-url"
 fi
 
 if [ "$env_mode" = "prod" ]; then
 	echo ""
 	echo "-- checking PROD vault: $vault_prod"
-	check_ref "op://$vault_prod/upstash-prod/url"
+	check_ref "op://$vault_prod/dragonfly-prod/api-url"
 fi
 
 if [ "$missing" -gt 0 ]; then

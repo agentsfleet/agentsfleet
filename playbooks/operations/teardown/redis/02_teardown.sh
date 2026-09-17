@@ -90,7 +90,7 @@ teardown_redis() {
 exit_code=0
 
 if [ "$env_mode" = "dev" ]; then
-	dev_url=$(get_connection_string "op://$vault_dev/upstash-dev/url")
+	dev_url=$(get_connection_string "op://$vault_dev/dragonfly-dev/api-url")
 	if [ -n "$dev_url" ]; then
 		teardown_redis "$dev_url" "DEVELOPMENT" || exit_code=1
 	else
@@ -100,7 +100,7 @@ if [ "$env_mode" = "dev" ]; then
 fi
 
 if [ "$env_mode" = "prod" ]; then
-	prod_url=$(get_connection_string "op://$vault_prod/upstash-prod/url")
+	prod_url=$(get_connection_string "op://$vault_prod/dragonfly-prod/api-url")
 	if [ -n "$prod_url" ]; then
 		teardown_redis "$prod_url" "PRODUCTION" || exit_code=1
 	else

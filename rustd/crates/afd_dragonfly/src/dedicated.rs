@@ -102,7 +102,7 @@ impl Dedicated {
             transport::connect(config, longest_park + config.request_timeout()).await?;
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let park_ms = longest_park.as_millis();
-        tracing::debug!(role, park_ms, event = "redis_dedicated_connected");
+        tracing::debug!(role, park_ms, event = "dragonfly_dedicated_connected");
         Ok(Self {
             role: config.role(),
             connection,

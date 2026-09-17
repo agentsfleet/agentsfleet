@@ -62,7 +62,7 @@ const FAILURES: &str = "failures";
 const ERROR_RATE: &str = "error_rate";
 
 /// Measurement key: Dragonfly commands each accepted steer cost.
-const REDIS_CALLS_PER_STEER: &str = "redis_calls_per_steer";
+const DRAGONFLY_CALLS_PER_STEER: &str = "dragonfly_calls_per_steer";
 
 /// Measurement key: Postgres transactions each accepted steer cost.
 ///
@@ -298,7 +298,7 @@ impl Submitted {
         report.measurement(FAILURES, count(self.outcomes.failures));
         report.measurement(ERROR_RATE, self.outcomes.failure_fraction());
         report.measurement(
-            REDIS_CALLS_PER_STEER,
+            DRAGONFLY_CALLS_PER_STEER,
             ratio(self.dragonfly_calls, self.outcomes.successes),
         );
         report.measurement(
@@ -309,7 +309,7 @@ impl Submitted {
             .series
             .insert(READY_DEPTH.to_owned(), self.depth.clone());
         report.datastores = DatastoreCosts {
-            redis: DatastoreCost {
+            dragonfly: DatastoreCost {
                 operations: self.dragonfly_calls,
                 time_ms: None,
             },

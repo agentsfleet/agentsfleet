@@ -40,8 +40,7 @@ check_ref() {
   fi
 }
 
-check_ref "op://$runtime_vault/upstash-$runtime_suffix/url"
-check_ref "op://$runtime_vault/upstash-$runtime_suffix/api-url"
+check_ref "op://$runtime_vault/dragonfly-$runtime_suffix/api-url"
 check_ref "op://$runtime_vault/posthog-$runtime_suffix/credential"
 
 # Deployment-protection values are shared by the Vercel projects and live in

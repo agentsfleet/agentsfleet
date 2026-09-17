@@ -137,7 +137,7 @@ pub(super) fn record(
         });
     }
     report.datastores = DatastoreCosts {
-        redis: DatastoreCost {
+        dragonfly: DatastoreCost {
             operations: drained.dragonfly_calls,
             time_ms: None,
         },
