@@ -67,6 +67,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/operations/observability/observability_test.sh` | EDIT | new asset expectations get a self-test row. |
 | `playbooks/operations/observability/observability_verify_test.sh` | EDIT | the drift check's stub dashboard tracks the real asset shape. |
 | `playbooks/operations/observability/001_playbook.md` | EDIT | Acceptance gains the SLO rows and the shared-tenant warning an operator must read before applying to production. |
+| `docs/metrics.census.tsv` | EDIT | arrives with M197_002 merged into this branch: two produced families added, the never-incremented trigger counter retired. Not edited by this workstream's own commits. |
 | `docs/architecture/observability.md` | EDIT | new §Service Level Objectives section: the three SLIs, their expressions, their targets and the provenance of each target. |
 | `docs/v2/pending/M197_001_P0_DOCS_INFRA_OBS_SLO_DASHBOARD_AND_HEARTBEAT_REPAIR.md` | CREATE | this spec. |
 
@@ -132,11 +133,10 @@ The 3am screen. Saturation from `agentsfleet_api_in_flight_requests`, `agentsfle
 
 Twelve declared families have no producer, and two of them are exactly the self-observability signals an operator would reach for first. Rather than omit them, the dashboard carries one panel naming each impossible SLI, the family behind it, and the `UNPRODUCED` reason — so the gap is visible at 3am instead of discoverable by grep. The same panel carries the shared-tenant warning: development and production resolve to one Grafana stack, one namespace, one datasource and one ingest credential, and no series carries an environment attribute, so this dashboard is development-only by the accident that production runs no machines.
 
-- **Dimension 5.1** — a declared-gap panel names each impossible SLI and its `UNPRODUCED` reason → Test `test_should_reject_a_gap_panel_for_a_produced_family`
+- **Dimension 5.1** — the declared-gap panel names each still-impossible SLI and its `UNPRODUCED` reason; a gap the milestone closes leaves the panel in the same diff → Test `test_should_reject_a_gap_panel_for_a_produced_family`
 - **Dimension 5.2** — the shared-tenant warning names the missing resource attribute and the successor work → Test `test_should_warn_about_the_shared_tenant`
 - **Dimension 5.3** — the grader refuses a gap panel naming a family the `UNPRODUCED` ledger does not carry → Test `test_should_reject_a_gap_panel_for_a_produced_family`
 - **Dimension 5.4** — the nine shipped panels keep their identifiers and their families across the diff → Test `test_should_keep_the_shipped_panels`
-- **Dimension 5.5** — no census row changes, so the registry grading is untouched → Test `test_should_leave_the_census_untouched`
 - **Dimension 5.6** — the grader's alert-count constant equals the number of rules in `alerts.json`, so the set can grow without the grader going stale → Test `test_should_match_the_alert_count_constant`
 
 ### §6 — Applied, then verified as applied
@@ -211,7 +211,7 @@ Service Level Indicator expressions (good events / valid events):
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| not applicable — no new family | ops | this workstream adds no producer and no census row; it only reads families the registry already grades | none | no credential, tenant identifier or runner payload enters an asset or a log | `test_should_leave_the_census_untouched` |
+| not applicable — no new family | ops | this workstream adds no producer and no census row; it only reads families the registry already grades | none | no credential, tenant identifier or runner payload enters an asset or a log | `test_should_leave_the_bench_baselines_untouched` |
 
 ## Test Specification (tiered)
 
@@ -235,7 +235,6 @@ Service Level Indicator expressions (good events / valid events):
 | 6.2 | manual | `test_should_accept_matching_resources` | the verify arm exits 0 against the applied stack; evidence is the recorded run. |
 | 6.3 | unit | `test_should_cover_slo_in_the_playbook` | the playbook's Acceptance list names the SLO rows and the shared-tenant warning. |
 | 5.4 | unit | `test_should_keep_the_shipped_panels` | the nine shipped panels keep their identifiers and their families. |
-| 5.5 | unit | `test_should_leave_the_census_untouched` | `docs/metrics.census.tsv` is byte-identical across the diff. |
 | 5.6 | unit | `test_should_match_the_alert_count_constant` | the grader's named alert-count constant equals the rule count in `alerts.json`; a rule added without moving the constant fails. |
 | 6.4 | integration | `test_should_update_existing_resources_with_versions` | a second apply against unchanged assets reports the resources current and mutates nothing. |
 
@@ -246,11 +245,10 @@ Service Level Indicator expressions (good events / valid events):
 | R1 | No asset reads the heartbeat family as an age-free epoch (§1) | `grep -c 'agentsfleet_runner_last_seen_seconds' playbooks/operations/observability/providers/grafana/assets/*.json && ! grep -E 'agentsfleet_runner_last_seen_seconds[^)]*>' playbooks/operations/observability/providers/grafana/assets/alerts.json` | exit 0, no bare comparison | P0 | |
 | R2 | The asset grader passes on the edited assets (§2, §3, §4, §5) | `OBS_ENV=dev bash playbooks/operations/observability/providers/grafana/assets_check.sh` | exit 0, `PASS: Grafana assets are valid` | P0 | |
 | R3 | The observability self-tests pass (§1–§5) | `bash playbooks/operations/observability/observability_test.sh && bash playbooks/operations/observability/observability_verify_test.sh` | exit 0 both | P0 | |
-| R4 | The census is untouched (§5) | `git diff --name-only origin/main...HEAD -- docs/metrics.census.tsv` | no output | P0 | |
-| R5 | Bench baselines are untouched | `git diff --name-only origin/main...HEAD -- bench/baselines/` | no output | P0 | |
-| R6 | The dashboard is live in development (§6) | `ALLOW_VAULT_READS=1 ./playbooks/operations/observability/00_gate.sh verify dev grafana` | exit 0, `PASS: grafana observability verify completed for dev` | P0 | |
-| R7 | The SLO definitions are written where an operator finds them (§2, §6) | `grep -c 'Service Level Objective' docs/architecture/observability.md` | at least 1 | P0 | |
-| R8 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R4 | Bench baselines are untouched | `git diff --name-only origin/main...HEAD -- bench/baselines/` | no output | P0 | |
+| R5 | The dashboard is live in development (§6) | `ALLOW_VAULT_READS=1 ./playbooks/operations/observability/00_gate.sh verify dev grafana` | exit 0, `PASS: grafana observability verify completed for dev` | P0 | |
+| R6 | The SLO definitions are written where an operator finds them (§2, §6) | `grep -c 'Service Level Objective' docs/architecture/observability.md` | at least 1 | P0 | |
+| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Lint green | `make lint-all` | exit 0 | P0 | |
@@ -282,7 +280,8 @@ N/A — no files deleted.
 ## Out of Scope
 
 - **Emitting `deployment.environment`.** The daemon's resource carries service name, namespace, version and an optional instance identifier, and nothing else; separating development from production series needs a new resource attribute in `telemetry/resource.rs` plus staging in both deployment workflows. That is a daemon and Continuous Integration change and belongs to its own milestone. Named here as the blocker on production's first deploy.
-- **A fleet-start counter and an API request-duration histogram.** The availability SLI an operator actually wants — asked-for fleets that started — has no denominator (`agentsfleet_fleet_triggered_total` is declared and incremented nowhere) and no numerator (no family counts a start). There is no HTTP request-duration histogram in the census at all. Both are new families with new census rows.
+- **An API request-duration histogram.** The census declares three histograms and none measures an HTTP request, so requests per second, the 500 rate and a latency percentile are all unanswerable. A new family with a new census row, and the cheapest one left: `semconv.rs` already defines and bounds `ATTR_HTTP_ROUTE` and `ATTR_HTTP_RESPONSE_STATUS_CODE` for spans, so the cardinality guard is written.
+- **~~A fleet-start counter~~ — LANDED in M197_002.** The availability SLI an operator actually wants is panel 34. `agentsfleet_fleet_runs_started_total{kind="fresh"}` is the numerator this spec said did not exist; `agentsfleet_admissions_total{outcome="appended"}` was always the denominator. The trigger counter named here as the missing half was retired instead of produced — declared for years, incremented nowhere.
 - **Applying to production.** Deliberately not run: the same assets against the same stack and datasource would be one dashboard wearing two names until the environment attribute lands.
 - **Enabling the burn-rate alert rules.** Shipped with expressions reviewed and disabled; enabling waits for a distribution.
 

@@ -98,7 +98,7 @@ the workload.
 
 ## Service Level Objectives
 
-Three indicators, and the reason there are only three: an indicator needs a
+Four indicators, and the reason there are only four: an indicator needs a
 family with a producer behind it, and most of what an operator would want to
 promise here does not have one yet. Each row names the measurement its target
 came from, because a target nobody measured is a number, not an objective.
@@ -107,6 +107,7 @@ came from, because a target nobody measured is a number, not an objective.
 |---|---|---|---|
 | Admission availability | `agentsfleet_admissions_total{outcome=~"appended\|replayed"}` over the same family excluding `over_budget` | 99% | unproven. Measured Sep 17, 2026 on development: 13 `appended`, 1 `replayed`, nothing refused or deferred. Fourteen events set no objective. |
 | Runner success | `agentsfleet_runner_executions_total{outcome="processed"}` over the whole family | 95% | unproven. Measured the same day: 7 `processed`, 3 `fleet_error`, the failures split 2 `startup_posture` and 1 `runner_crash`. |
+| Admitted fleets that started | `agentsfleet_fleet_runs_started_total{kind="fresh"}` over `agentsfleet_admissions_total{outcome="appended"}` | 99% | unproven, and not for want of traffic: both families landed in M197_002 and the deployed daemon predates them, so there are zero series. The first reading worth having is the one after the next deploy. |
 | Work picked up inside the replay floor | samples where `agentsfleet_admission_backlog_oldest_age_seconds` is below the floor, over all samples | 99% | the floor is derived, the target is not. `MIN_AGE + INTERVAL` in `rustd/crates/afd_runner/src/sweep/replay.rs` is 60 seconds. |
 
 `over_budget` is excluded from valid events on purpose. It is the deployment
@@ -116,6 +117,12 @@ availability miss would make the indicator worse the better the budgets work.
 
 A `replayed` admission counts as good for the same reason: the first
 admission's identifier stands, so the producer got the answer it asked for.
+
+`reclaimed` lease grants are excluded from the fleet-start numerator on the
+mirror of that logic. A reclaim restarts work that was admitted once and
+already counted once, so counting the restart would let a flapping runner push
+the ratio above 1 — an availability figure that improves as the fleet gets less
+stable is not measuring availability.
 
 ### Error budget burn
 
@@ -136,11 +143,13 @@ rate; they do not produce an objective.
 `rustd/crates/afd_observability/src/metrics/produced.rs` is the ledger of
 families this build declares and does not feed. Three consequences matter here.
 
-**End-to-end fleet availability has neither half.** The obvious indicator —
-fleets asked for over fleets started — needs `agentsfleet_fleet_triggered_total`
-for the denominator, which the ledger excuses because the daemon this ports
-increments it nowhere, and needs a family counting a start for the numerator,
-which does not exist under any name.
+**End-to-end fleet availability now has both halves.** It was the headline gap
+here until M197_002 shipped `agentsfleet_fleet_runs_started_total{kind}`,
+incremented at the one lease grant point;
+`agentsfleet_admissions_total{outcome="appended"}` was always the denominator.
+The trigger counter this section used to name as the missing denominator was
+retired rather than produced — declared for years and incremented nowhere, so
+it left the census instead of gaining a caller.
 
 **Repair latency has no histogram.** Both
 `agentsfleet_repair_production_to_queue_seconds` and
