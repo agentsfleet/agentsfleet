@@ -421,7 +421,12 @@ done < <(
     # `awk` to reach the same answer; that needed interval expressions the
     # platform `awk` may not have and a CommonMark indentation rule, to classify
     # text this pattern never looks at.
-    grep -oE '\]\(https://docs\.agentsfleet\.net/[A-Za-z0-9/_-]+' "$f" 2>/dev/null \
+    # Every clickable destination Markdown offers, as one alternation rather than
+    # a parser: inline `](url`, an angle-bracket destination `](<url`, a
+    # reference definition `[tag]: url`, a bare autolink `<url>`, and an HTML
+    # `href=`. Only the inline form appears today, and the others are here so a
+    # link written tomorrow in a form nobody used before is read, not skipped.
+    grep -oE '(\]\(<?|\][[:space:]]*:[[:space:]]*|\]:[[:space:]]*|<|href=["'"'"'])https://docs\.agentsfleet\.net/[A-Za-z0-9/_-]+' "$f" 2>/dev/null \
       | while IFS= read -r hit; do
           printf '%s::%s\n' "$f" "${hit##*docs.agentsfleet.net/}"
         done || true
