@@ -6,6 +6,7 @@
 //! readiness and retention paths — each of which is one or two call sites.
 
 pub mod admission;
+pub mod census;
 pub mod repair;
 pub mod runner;
 
@@ -16,7 +17,7 @@ use std::sync::Arc;
 use crate::error::Result;
 use crate::metrics::declared::fleet as declared;
 use crate::metrics::instrument::{Instruments, Reading};
-use crate::metrics::label::fleet::SignupFailure;
+use crate::metrics::label::fleet::{RunStart, SignupFailure};
 use crate::metrics::observed::Observed;
 use crate::producers::installed;
 use crate::runner::RunnerMetrics;
@@ -83,6 +84,7 @@ pub struct Handles {
     lease_polls: Counter<u64>,
     lease_candidates: Counter<u64>,
     lease_roundtrips: Counter<u64>,
+    runs_started: Counter<u64>,
     ready_write_failures: Counter<u64>,
     retention_swept: Counter<u64>,
     retention_failures: Counter<u64>,
@@ -121,6 +123,7 @@ impl Handles {
             lease_candidates: instruments
                 .counter_u64(&declared::LEASE_POLL_CANDIDATES_SCANNED_TOTAL)?,
             lease_roundtrips: instruments.counter_u64(&declared::LEASE_POLL_DB_ROUNDTRIPS_TOTAL)?,
+            runs_started: instruments.counter_u64(&declared::FLEET_RUNS_STARTED_TOTAL)?,
             ready_write_failures: instruments
                 .counter_u64(&declared::FLEET_READY_WRITE_FAILURES_TOTAL)?,
             retention_swept: instruments.counter_u64(&declared::RUNNER_RETENTION_SWEPT_TOTAL)?,
@@ -136,6 +139,8 @@ impl Handles {
                 .counter_u64(&declared::RUNNER_FAILURES_OVERFLOW_TOTAL)?,
             runner_executions: instruments.counter_u64(&declared::RUNNER_EXECUTIONS_TOTAL)?,
         };
+
+        instruments.gauge_u64(&declared::FLEETS, census::fleet_census_readings)?;
 
         instruments.gauge_u64(&declared::FLEET_READY_DEPTH, || {
             READY_DEPTH
@@ -232,6 +237,19 @@ pub fn lease_polled(candidates_scanned: u64, database_roundtrips: u64) {
             .fleet
             .lease_roundtrips
             .add(database_roundtrips, &[]);
+    }
+}
+
+/// Records one run started: a lease granted, fresh or by reclaim.
+///
+/// Called at the one grant point, on the `Some` it returns. A poll that found
+/// nothing leasable records nothing, because nothing started.
+pub fn run_started(kind: RunStart) {
+    if let Some(producers) = installed() {
+        producers
+            .fleet
+            .runs_started
+            .add(1, &[KeyValue::new(semconv::LABEL_KIND, kind.as_str())]);
     }
 }
 

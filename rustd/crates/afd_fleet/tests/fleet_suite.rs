@@ -48,6 +48,8 @@ mod integration_lease_fairness;
 mod integration_lease_installed;
 #[path = "integration_lease_issue.rs"]
 mod integration_lease_issue;
+#[path = "integration_lease_started.rs"]
+mod integration_lease_started;
 #[path = "integration_memory_capture.rs"]
 mod integration_memory_capture;
 #[path = "integration_money_gates.rs"]
