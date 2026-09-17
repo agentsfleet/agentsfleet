@@ -43,6 +43,13 @@ runs each TypeScript package's own coverage gate. A package-scoped runner —
 `cargo test -p afd_wire`, `bun run test` inside a package — proves that package
 and nothing more; it never satisfies the repository claim.
 
+`make test-integration-rustd` is the only lane that needs live datastores.
+Docker compose brings up Postgres and Dragonfly and the schemas reset per run.
+Nothing else a developer runs needs either: `make test-unit-all` stays
+datastore-free, because every Rust test that needs one is `#[ignore]`d and runs
+only here. `KEEP_TEST_STATE=1` skips the reset for the inner loop; Continuous
+Integration (CI) never sets it.
+
 `make lint-all` is the lint claim: `lint-rustd` (`cargo fmt --check` plus
 `cargo clippy --workspace --all-targets -- -D warnings`), `lint-scripts` (every
 `scripts/*_test.py`), the TypeScript lints, the shell and OpenAPI checks, and the

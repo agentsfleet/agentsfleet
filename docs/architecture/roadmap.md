@@ -6,24 +6,22 @@
 
 ## Status index
 
-One row per item, so an agent can check a status without reading the ledger; each owner section carries the detail.
+Deferred items only. What shipped is recorded in `docs/v2/done/`, which is the
+ledger this page must not compete with — a second list of finished work is a
+second thing to keep true.
 
 | Item | Status | Owner section |
 |---|---|---|
-| Scope-based authorization | ✅ delivered (M104_001) | §v2.1 — authorization |
-| Fleet keys as first-class principal | deferred to v2.1 | §v2.1 — authorization |
-| Label-scoped sticky affinity | ✅ delivered (M85_001) | §v2.1+ — other deferred items |
-| Trust-scoped sticky affinity | deferred — its own security workstream | §v2.1+ — other deferred items |
-| Flow-1 active-MITM closure · dashboard token model · open fleet (mode C) | deferred | §v2.1+ — other deferred items |
-| GitHub App event routing | shipped in M102_005; `github-pr-reviewer` stays unproven until its repository-bound test passes | §GitHub App event routing |
-| Runner call deadlines + shared watchdog | ✅ delivered (M90_001 + M108_001) | §Runner resilience |
-| Operator plane + reassignment | ✅ delivered (M84_001 read, M84_002 mutation) | §Fleet operator plane |
-| Security Reviewer prebuilt fleet | forward-looking, unspecced | §Security Reviewer |
-| Slack consumption ladder | Rung 0 ✅ (M106_001); Rung 1 is direction, not a commitment | §Slack-resident surface |
-| Bastion | post-MVP shape, documented so specs don't foreclose it | §Bastion |
-| Payload offload + charge breakdown | specced, not started (M155_001, `docs/v2/pending/`) | §Payload offload and the durable stream |
-| Dashboard Backend-for-Frontend | deferred — build with the v3 capability tokens | §"Dashboard Backend-for-Frontend" |
-| Datastore scaling | in progress (M192_001), Dragonfly cluster-only | [Datastore scaling](#datastore-scaling) |
+| Fleet keys as first-class principal | deferred to v2.1 | §"v2.1+ — other deferred items" |
+| Trust-scoped sticky affinity | deferred — its own security workstream | §"v2.1+ — other deferred items" |
+| Flow-1 active-MITM closure · dashboard token model · open fleet (mode C) | deferred | §"v2.1+ — other deferred items" |
+| Operator-plane open questions | shipped surface, open policy | §"Fleet operator plane — the open policy questions" |
+| Security Reviewer prebuilt fleet | forward-looking, unspecced | §"Security Reviewer — prebuilt fleet (forward-looking)" |
+| Slack Rung 1 — hired durable teammates | direction, not a commitment | §"Slack-resident surface — Rung 1" |
+| Bastion | post-MVP shape | §Bastion |
+| Payload offload + charge breakdown | specced, not started | §"Payload offload and the durable stream" |
+| Dashboard Backend-for-Frontend | deferred — build with v3 capability tokens | §"Dashboard Backend-for-Frontend" |
+| Datastore scaling | in progress, Dragonfly cluster-only | §"Datastore scaling" |
 
 ## Datastore scaling
 
@@ -36,52 +34,34 @@ recovery result is claimed for it. Rollout status is canonical in
 [`datastore_scaling.md`](./datastore_scaling.md) §"Upstash retirement status".
 The parked SSE follow-up is not a prerequisite; streaming tests use the merged runtime's behavior.
 
-## v2.1 — authorization
-
-### Scope-based authorization — ✅ DELIVERED (M104_001)
-
-Authorization is now **scope-based**. Every capability is an explicit `resource:action` scope on the verified token's `scopes` claim, surfaced as `principal.scopes` and enforced by a single `require_scope` gate (`rustd/crates/afd_auth/src/gate.rs`) against a declarative route→scope table (`rustd/crates/afd_http/src/route/`). The resource/ownership axis (`afd_tenant`'s workspace authorization) is unchanged, plus an audited `workspace:any` cross-tenant override. Runner enrollment is gated by the discrete `runner:enroll` scope, independently grantable from `runner:{read,write}` because it is the one capability that exposes every tenant's secrets to a trusted-fleet runner. See [`../AUTH.md`](../AUTH.md) → *Scope catalogue* for the full vocabulary, hierarchy, and provisioning bundles.
-
 ## v2.1+ — other deferred items
 
 - **Flow-1 active-MITM closure** — URL-fragment public-key binding + HKDF transcript binding. See [`../AUTH.md`](../AUTH.md) *threats this flow does NOT close*.
-- **Dashboard token model** — the Backend-for-Frontend direction. Deferred; see §"Dashboard Backend-for-Frontend" below.
+- **Dashboard token model** — see §"Dashboard Backend-for-Frontend" below.
 - **Open fleet (mode C)** — self-enrolling runners. See [`runner_fleet.md`](./runner_fleet.md).
-- **Label-scoped sticky affinity — ✅ DELIVERED (M85_001).** The first eligibility gate shipped: `core.fleets.required_tags <@ runner.labels` filters the candidate set before `fleet.runner_affinity.last_runner_id` is applied as a sticky preference. A sticky runner that no longer satisfies a fleet's tags cannot win; the eligible runner wins instead. See `rustd/crates/afd_fleet/src/lease/assign.rs` and the candidate query it runs (`rustd/crates/afd_fleet/src/lease/sql/lease.rs`), where the label gate and the sticky ordering are both properties of one statement, plus the `sticky hint never overrides eligibility` / `unsatisfiable tags hold then schedule` cases its placement-eligibility coverage pins.
 - **Trust-scoped sticky affinity** — still deferred. Once runners can be local / low-trust (laptops, untrusted hosts), affinity selection must add **trust class + scope** (allowed tenants/workspaces) and sandbox-tier eligibility before the sticky preference — "prefer the last runner *among the eligible set*," never an override of eligibility. M85_001 intentionally shipped labels only; the trust/scope/tier funnel remains its own security workstream.
 
-## GitHub App event routing — active in M102_005
+- **Fleet keys as a first-class principal** — deferred to v2.1.
 
-M102_005 completes the inbound half of the existing GitHub App connector: the callback exchanges a one-time user-authorization code, verifies access to the claimed installation, refuses cross-workspace reassignment, and then persists both the encrypted installation handle and non-secret installation-to-workspace route. `/v1/ingress/github` verifies the platform App signature, derives replay identity from the authenticated body, and selects fleets by explicit repository, event, and approved-grant membership. The old fleet-addressed GitHub webhook remains a supported custom path. Slack keeps its specialized events ingress; Jira and Linear remain credential connectors without inbound event routing in this workstream.
+## Fleet operator plane — the open policy questions
 
-The `github-pr-reviewer` walkthrough remains a target, not a shipped proof, until its repository-bound Pull Request integration test passes. The workstream must update that status from test evidence, never from the presence of handler code alone.
-
-## Runner resilience — shipped in M90_001 (deadlines) + M108_001 (shared watchdog)
-
-- **Control-plane call deadlines — ✅ DELIVERED.** Every `/v1/runners/me/*` verb takes a required `deadline_ms`. `control_plane_client.zig` arms a per-client `CallWatchdog` around the pooled socket and shuts the in-flight call down at the bound. A hung control plane returns a retryable transport failure instead of wedging the worker. Deadlines are env-overridable via `RUNNER_CP_*_DEADLINE_MS`; renew is clamped under the renewal tick/window relation so a stuck renew cannot starve the child deadline kill. M108_001 promoted the watchdog into `src/lib/call_deadline/` for reuse. Residual window: name resolution and initial TCP connect inside `fetch` are still outside the watchdog.
-
-## Fleet operator plane + proactive reassignment — shipped in M84_001 (read) + M84_002 (mutation/reassignment)
-
-M80_006 shipped per-lease renewal (§3 — a *live* runner keeps its lease). The operator plane (§1: `GET`/`PATCH /v1/fleets/runners`, cordon/revoke) and heartbeat-lapse reassignment (§2: expire a *dead* runner's affinity so its work re-leases to a healthy host) were carved out after a design study. Both shipped: the **read** in **M84_001**, the **mutation + reassignment** in **M84_002**. What each surface does is canonical in [`runner_fleet.md`](./runner_fleet.md) §"Operator plane + reassignment"; this page records only that they are no longer deferred. The deeper points the study surfaced still hold:
+The surface shipped; what it should *do* in these four cases did not. The read and mutation endpoints are canonical in [`runner_fleet.md`](./runner_fleet.md) §"Operator plane + reassignment".
 
 - **All-runners-down.** If every healthy runner is gone, where does cordoned/lapsed work drain to? There is no eligible target — the work must **hold** (not thrash or fail) until capacity returns.
 - **Eligibility — which runner can take it?** A cordoned/lapsed runner's work can't route anywhere: the target must satisfy every shipped eligibility gate before sticky routing. Today that means the **M85_001 label gate** (`required_tags ⊆ labels`) plus admin-state/liveness checks; M84_002 reassignment composes with that filter. Trust class, tenant/workspace scope, sandbox-tier requirements, and capacity-aware placement remain future work: the runner has a local `worker_count`, but the control plane does not receive it yet, so `available = worker_count - active` is not enforceable server-side.
 - **Cordon rules.** When to cordon; partial vs full drain; the drain deadline; what happens if drain never completes (escalate cordon → revoke?).
 - **Drain rules.** How long to wait for in-flight work before reclaiming; how the heartbeat `drain` reply composes with renewal.
 
-Both shipped: the `GET /v1/fleets/runners` read + honest derived liveness landed in **M84_001**, and the `PATCH` mutation surface, `admin_state` (`cordoned`/`revoked`/`draining`/`drained`), `UZ-RUN-009`, event history, and sweeper shipped in **M84_002**. Heartbeat-lapse recovery is still bounded by the lease-expiry backstop + the pull-triggered reclaim that M80_002 already ships; the sweeper adds the audit event and the admin-driven reassignment path.
-
-## Security Reviewer — prebuilt fleet fleet (forward-looking)
+## Security Reviewer — prebuilt fleet (forward-looking)
 
 A customer-facing prebuilt fleet whose job is **security testing on the customer's own code and infrastructure** (authorized, defensive — not red-teaming the fleet runtime itself, which is the platform's internal sandbox concern). It fits the existing evidence-plus-approval loop. It wakes on a pull request or a schedule, scans the diff and dependencies for vulnerabilities and exposed secrets, and reproduces the finding as a scenario. Then it opens a remediation pull request with the evidence attached and **holds the fix at human approval** while flagging the team in Slack. Integrations: GitHub (code / pull requests) + Slack (alerts); no new credential class beyond what the review and incident fleets already use. Captured here because it surfaced as product direction (marketing showcase + customer ask) before any spec — so spec authors don't foreclose it. Not part of v2.0 scope.
 
-## Slack-resident surface — the consumption ladder (M106 + follow-on)
+## Slack-resident surface — Rung 1
 
 Where the human front door points after the CLI/dashboard wedge. Rung 0 shipped as `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`; the hired-teammate follow-on is not yet specced. **The follow-on is direction, not a commitment.**
 
-The product is reached through a two-rung ladder whose boundary is **agency, not memory**:
+The ladder's boundary is **agency, not memory**. Rung 0 shipped and is described in [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md).
 
-- **Rung 0 — channel-resident reactive bot — ✅ DELIVERED (M106_001).** A first-party multi-tenant `@agentsfleet` Slack app: one OAuth (Open Authorization) install per Slack workspace (`team_id → workspace`). In any channel it's invited to, an `@mention` is answered in-thread, read-only, mention-only — and the bot **learns that channel** over time. The memory namespace is a **per-channel resident fleet** (memory is keyed by `fleet_id`, not workspace), so memory persists across threads because the fleet, not the thread, owns it (reuses the [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity" verbatim). It never acts unattended.
 - **Rung 1 — hired durable teammates (follow-on).** From the same Slack surface, a recurring need converts into a durable teammate that subscribes to a real source (e.g. Zoho Desk), wakes unattended, and takes **gated** write actions with approval — the existing event-driven runtime. The Slack surface adds library-install + per-integration OAuth connectors + the Slack-user → `approval:resolve` allowlist. Depends on M103 (Fleet library) + M105 (schedules).
 
 **Why this is not "a chat UI over tools"** ([`high_level.md`](./high_level.md) §1): Rung 0 is the acquisition on-ramp, deliberately reactive — its job is to be useful enough to convert to the durable teammate. The durable runtime is still the product; agency (acting unattended) is what the operator hires and what a reactive channel bot structurally cannot do. Memory is free at both rungs.
