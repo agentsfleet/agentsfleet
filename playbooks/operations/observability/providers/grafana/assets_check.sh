@@ -174,6 +174,22 @@ check_every_produced_family_is_panelled() {
     fail "$missing produced census family(ies) reach no panel"
 }
 
+# A family in the `errors` roll-up whose label set includes a SUCCESS member
+# must exclude it, or the panel reports successes in red.
+#
+# `agentsfleet_library_read_outcome_total` counts every read by outcome, and
+# `ok` is one of them. The roll-up summed the family and put 44 successful
+# reads on a panel titled "Every error family". The census says what to read:
+# "non-`ok` outcomes per surface".
+check_error_rollup_excludes_successes() {
+  jq -e '
+    [.panels[] | select(.id == 30) | .targets[].expr
+     | select(contains("agentsfleet_library_read_outcome_total"))
+     | contains("outcome!=\"ok\"")] | all and length > 0
+  ' "$DASHBOARD" >/dev/null ||
+    fail "the error roll-up counts library reads that succeeded"
+}
+
 # Every metric an asset names must be one this repository owns.
 #
 # Checked against the census rather than by grepping the crates, because an
@@ -207,6 +223,7 @@ check_epoch_readers_subtract
 check_thresholds_are_derived
 check_gap_panel_cites_the_ledger
 check_every_produced_family_is_panelled
+check_error_rollup_excludes_successes
 check_metrics_are_source_owned
 
 echo "PASS: Grafana assets are valid and reference source-owned metrics"

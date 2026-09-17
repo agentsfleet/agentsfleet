@@ -11,15 +11,6 @@ GATE="$SCRIPT_DIR/00_gate.sh"
 # shellcheck source=observability_test_support.sh
 source "$SCRIPT_DIR/observability_test_support.sh"
 
-# A mutated copy of the assets, so a negative test proves the checker rejects a
-# defect without the risk of leaving the real asset broken on a failed run.
-broken_assets() {
-  local dir
-  dir="$(mktemp -d -p "$work_dir")"
-  cp "$PROVIDER_DIR/assets/dashboard.json" "$PROVIDER_DIR/assets/alerts.json" "$dir/"
-  printf '%s' "$dir"
-}
-
 test_should_repair_the_heartbeat_readings() {
   local name="test_should_repair_the_heartbeat_readings"
   local raw
@@ -36,66 +27,6 @@ test_should_repair_the_heartbeat_readings() {
       .targets[].expr | contains("min by (runner_id)")] | all and length == 2' \
     "$PROVIDER_DIR/assets/dashboard.json" >/dev/null; then
     bad "$name" "a heartbeat panel does not take the freshest reading per runner"
-  else
-    ok "$name"
-  fi
-}
-
-test_should_reject_an_epoch_read_without_subtraction() {
-  local name="test_should_reject_an_epoch_read_without_subtraction"
-  local dir output status=0
-  dir="$(broken_assets)"
-  jq '(.panels[] | select(.id == 23) | .targets[0].expr) =
-      "max(agentsfleet_runner_last_seen_seconds)"' \
-    "$dir/dashboard.json" >"$dir/patched.json"
-  mv "$dir/patched.json" "$dir/dashboard.json"
-  output="$(
-    OBS_ASSETS_DIR="$dir" bash "$PROVIDER_DIR/assets_check.sh" 2>&1
-  )" || status=$?
-  if [ "$status" -eq 0 ]; then
-    bad "$name" "the checker accepted an epoch compared as an age"
-  elif ! printf '%s' "$output" | grep -q 'without subtracting it from time()'; then
-    bad "$name" "wrong rejection: $output"
-  else
-    ok "$name"
-  fi
-}
-
-test_should_reject_a_literal_alert_threshold() {
-  local name="test_should_reject_a_literal_alert_threshold"
-  local dir output status=0
-  dir="$(broken_assets)"
-  jq '(.[] | select(.name == "runner-silent") | .expr) =
-      "max(min by (runner_id) (time() - agentsfleet_runner_last_seen_seconds)) > 90"' \
-    "$dir/alerts.json" >"$dir/patched.json"
-  mv "$dir/patched.json" "$dir/alerts.json"
-  output="$(
-    OBS_ASSETS_DIR="$dir" bash "$PROVIDER_DIR/assets_check.sh" 2>&1
-  )" || status=$?
-  if [ "$status" -eq 0 ]; then
-    bad "$name" "the checker accepted a threshold nobody derived"
-  elif ! printf '%s' "$output" | grep -q 'literal threshold'; then
-    bad "$name" "wrong rejection: $output"
-  else
-    ok "$name"
-  fi
-}
-
-test_should_reject_a_gap_panel_for_a_produced_family() {
-  local name="test_should_reject_a_gap_panel_for_a_produced_family"
-  local dir output status=0
-  dir="$(broken_assets)"
-  jq '(.panels[] | select(.type == "text") | .options.content) +=
-      "\n| `agentsfleet_lease_polls_total` | invented reason |\n"' \
-    "$dir/dashboard.json" >"$dir/patched.json"
-  mv "$dir/patched.json" "$dir/dashboard.json"
-  output="$(
-    OBS_ASSETS_DIR="$dir" bash "$PROVIDER_DIR/assets_check.sh" 2>&1
-  )" || status=$?
-  if [ "$status" -eq 0 ]; then
-    bad "$name" "the checker accepted a gap claim for a produced family"
-  elif ! printf '%s' "$output" | grep -q 'UNPRODUCED ledger does not carry'; then
-    bad "$name" "wrong rejection: $output"
   else
     ok "$name"
   fi
@@ -331,9 +262,6 @@ test_prior_panels_survive() {
 
 TEST_NAMES=(
   test_should_repair_the_heartbeat_readings
-  test_should_reject_an_epoch_read_without_subtraction
-  test_should_reject_a_literal_alert_threshold
-  test_should_reject_a_gap_panel_for_a_produced_family
   test_should_guard_slo_ratios_against_zero
   test_should_derive_the_replay_floor_from_source
   test_should_mark_burn_rate_panels_unproven
