@@ -18,4 +18,4 @@ COPY scripts/dragonfly-cluster.sh /usr/local/bin/dragonfly-cluster.sh
 #
 # The exec form would not expand either variable, so this is a shell entry
 # point on purpose.
-ENTRYPOINT ["/bin/bash", "-c", "export DRAGONFLY_ANNOUNCE_IP=\"$FLY_PRIVATE_IP\" DRAGONFLY_BIND=:: && exec /bin/bash /usr/local/bin/dragonfly-cluster.sh serve"]
+ENTRYPOINT ["/bin/bash", "-c", "export DRAGONFLY_ANNOUNCE_IP=\"${FLY_PRIVATE_IP:?FLY_PRIVATE_IP is empty — refusing to start, because the nodes would fall back to announcing 127.0.0.1 and no other app could reach them}\" DRAGONFLY_BIND=:: && exec /bin/bash /usr/local/bin/dragonfly-cluster.sh serve"]
