@@ -35,7 +35,6 @@ case "${1:-}" in
       */database) printf 'agentsfleet-dev\n' ;;
       */service-token) printf 'planet-secret\n' ;;
       */allowlist-cidrs) printf '["203.0.113.10/32"]\n' ;;
-      */allowlist-verified-at) printf '2026-07-31T10:00:00Z\n' ;;
       *) exit 1 ;;
     esac
     ;;
