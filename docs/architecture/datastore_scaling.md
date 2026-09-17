@@ -248,10 +248,10 @@ because one half of the move is finished and the other has not started.
 cluster since Sep 17, 2026. The `upstash-dev` vault item was archived out of
 `ZMB_CD_DEV` the same day on Indy's named approval, and Indy deleted the hosted
 Upstash database itself from the provider console. The daemon proves the
-cluster on every boot regardless: `refuse_unsuitable_datastore`
-(`rustd/crates/agentsfleetd/src/serve/runtime.rs`) issues `INFO CLUSTER` and
-refuses a seed that answers as a single server, so a machine that reaches
-healthy has passed that check.
+cluster on every boot regardless. `rustd/crates/afd_dragonfly/src/preflight.rs`
+issues `INFO CLUSTER` and refuses a seed that answers as a single server;
+`rustd/crates/agentsfleetd/src/serve/runtime.rs` calls it before the daemon
+serves anything, so a machine that reaches healthy has passed that check.
 
 **Production — not started, and `upstash-prod` stays until it is.** There is no
 `dragonfly-prod` app, and `agentsfleetd-prod` has never deployed. Deleting
