@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M197
 **Workstream:** 002
 **Date:** Sep 17, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing; the dashboard M197_001 ships cannot say how many fleets exist or how many runs started, because no family carries either.
 **Categories:** DOCS, OBS
 **Batch:** B2 — after M197_001, whose dashboard asset and grader this workstream extends.
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** `feat/m197-fleet-census`
+**Baseline revision:** `93b17ad445b686bf0809d9accbd19dc7049151ab`
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M197_001 — its grader requires every produced family to reach a panel, and its dashboard is the asset the two new panels land in.
 **Provenance:** LLM-drafted (claude-fable-5-1, Sep 17, 2026), grounded in source reads of `rustd/crates/afd_observability`, `afd_fleet`, `afd_runner` and `afd_fleet_lifecycle`
@@ -75,7 +75,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `docs/architecture/observability.md` | EDIT | the sentence naming the trigger family as declared-but-unemitted goes; the fleet census sweeper is named where the sweepers are. |
 | `playbooks/operations/observability/providers/grafana/assets/dashboard.json` | EDIT | a fleet row: fleets by status, runs started by kind, pickup ratio against appended admissions. |
 | `playbooks/operations/observability/observability_test.sh` | EDIT | the new panels get self-test rows. |
-| `docs/v2/pending/M197_002_P1_DOCS_OBS_FLEET_CENSUS_AND_RUN_START_FAMILIES.md` | CREATE | this spec. |
+| `docs/v2/active/M197_002_P1_DOCS_OBS_FLEET_CENSUS_AND_RUN_START_FAMILIES.md` | CREATE | this spec. |
 
 ## Applicable Rules
 
