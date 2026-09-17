@@ -33,9 +33,9 @@ This view points in the *opposite* direction from the temporal sequence below, b
 │                                       discards plaintext)          │
 │                              │                                     │
 │                              ▼                                     │
-│  API process (agentsfleetd) + Redis                                │
+│  API process (agentsfleetd) + Dragonfly                            │
 │   ┌─────────────────────────────────────────────────────────────┐  │
-│   │   Redis row stores:                                         │  │
+│   │   The session key stores:                                   │  │
 │   │     status, cli_public_key, dashboard_public_key,           │  │
 │   │     ciphertext, nonce,                                      │  │
 │   │     verification_code_hmac      ◄── HMAC-SHA256(            │  │
@@ -66,7 +66,7 @@ This view points in the *opposite* direction from the temporal sequence below, b
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-**Honest-server assumption.** An honest API server stores `cli_public_key` and `dashboard_public_key` as the CLI and dashboard sent them. Under that assumption the API never possesses decryption capability, and a Redis dump alone does not yield the JWT — the attacker would need (a) `cli_priv` from the CLI process, and (b) the matching plaintext verification code. **An *active malicious* API server (or a TLS-terminating intermediary acting maliciously rather than passively) can swap `cli_public_key` and execute a textbook unauthenticated-Diffie-Hellman key-substitution MITM.** v2.0 explicitly does not close this; see *Threats this flow does NOT close*.
+**Honest-server assumption.** An honest API server stores `cli_public_key` and `dashboard_public_key` as the CLI and dashboard sent them. Under that assumption the API never possesses decryption capability, and a Dragonfly dump alone does not yield the JWT — the attacker would need (a) `cli_priv` from the CLI process, and (b) the matching plaintext verification code. **An *active malicious* API server (or a TLS-terminating intermediary acting maliciously rather than passively) can swap `cli_public_key` and execute a textbook unauthenticated-Diffie-Hellman key-substitution MITM.** v2.0 explicitly does not close this; see *Threats this flow does NOT close*.
 
 ## Sequence — one-time login
 
@@ -141,7 +141,7 @@ Two facts the diagram pins:
 
 ```
 ┌─────────┐     PATCH /approve    ┌───────────────────────┐    POST /verify (correct,    ┌──────────┐
-│ pending ├──────────────────────►│ verification_pending  ├─── single Lua-EVAL atomic ──►│ consumed │
+│ pending ├──────────────────────►│ verification_pending  ├──── one atomic Lua script ──►│ consumed │
 └────┬────┘                       └───────────┬───────────┘    write; payload returned)  └──────────┘
      │                                        │                                            (terminal,
      │  5 min TTL                              │  5 failed verify attempts                  60s same-
@@ -163,6 +163,47 @@ Two facts the diagram pins:
 
 **Invariants.** The state machine is monotonic — no backward transitions. There is no codepath from `pending` directly to `consumed`; verification code presentation is mandatory. `verified` is not a stored state; the successful POST /verify writes `consumed` atomically.
 
+**`expired` is eviction, not a stored transition.** It is an enum variant with a
+branch in `verify_consume.lua`, and nothing in the tree ever writes it. What
+actually happens at the five-minute mark is that Dragonfly drops the key: the
+next script run finds no blob and returns `{"missing"}`. Read the `expired` row
+above as the shape the wire keeps room for, not as a state a session is ever
+found in.
+
+### How a session is stored
+
+One key, one string, one time-to-live.
+
+| Fact | Value | Source |
+|---|---|---|
+| Key | `auth:session:{session_id}` | `SESSION_KEY_PREFIX`, `rustd/crates/afd_dragonfly/src/session.rs` |
+| Value | the whole `SessionState` as one JSON blob | `put` serialises the struct |
+| Write | `SET <key> <blob> EX 300` | same function |
+| Time-to-live | five minutes, re-stamped on every transition | `SESSION_TTL`; `session/approve.lua` re-stamps `expires_at_ms` beside the `SET` |
+
+The five-minute time-to-live is the garbage collection. Nothing sweeps, nothing
+reaps, and an abandoned session is gone before anyone finds it. A transition
+re-stamps the expiry as well as the key's own time-to-live, because a stale
+`expires_at_ms` would let a session approved one second ago read as prunable.
+
+### The three atomic transitions
+
+Each state change is one Lua script over exactly one key, which is what keeps
+them cluster-safe: a script that touched two keys could not route by slot. The
+crate's only two-key script went when acceptance became a Postgres row.
+
+| Script | Endpoint | Transition |
+|---|---|---|
+| `session/approve.lua` | `PATCH /v1/auth/sessions/{id}/approve` | `pending` → `verification_pending` |
+| `session/verify_consume.lua` | `POST /v1/auth/sessions/{id}/verify` | `verification_pending` → `consumed` |
+| `session/abort.lua` | `DELETE /v1/auth/sessions/{id}` | either → `aborted` |
+
+They dispatch through `redis::Script`, which sends the 40-byte digest with
+`EVALSHA` and loads the body only when the server has never seen it — after the
+first call of a deployment, never. Raw `EVAL` would ship the whole program on
+every call, and these are the flow's hot path: one approval and one redemption
+per attempt, per user.
+
 ## Endpoint trust boundaries
 
 | Endpoint | Trusted actor | Auth |
@@ -183,7 +224,7 @@ The rules. Every line of code in Flow 1 must trace to one of these properties. A
 | TLS | server authenticity (cert chain to a trusted CA) + transport encryption | endpoint compromise on either side |
 | Clerk session | browser-user authentication (the human at the keyboard owns the Clerk identity) | hijacked browser session · shared workstation |
 | **Verification code** | **browser ↔ terminal authorization binding** — proves the human approving in the browser is the same human typing into the local terminal | user pasting attacker-supplied commands |
-| `HMAC-SHA256(AUTH_SESSION_CODE_PEPPER, session_id ‖ code)` | disclosure-resistance of the verification code against passive server-side compromise. The pepper lives in agentsfleetd process memory only (Vault-loaded at boot, never on disk) — a Redis dump alone cannot recover the code via offline brute-force | compromise of the dashboard JS process where the code is displayed · compromise of the CLI process where it is typed · compromise of agentsfleetd process memory |
+| `HMAC-SHA256(AUTH_SESSION_CODE_PEPPER, session_id ‖ code)` | disclosure-resistance of the verification code against passive server-side compromise. The pepper lives in agentsfleetd process memory only (Vault-loaded at boot, never on disk) — a Dragonfly dump alone cannot recover the code via offline brute-force | compromise of the dashboard JS process where the code is displayed · compromise of the CLI process where it is typed · compromise of agentsfleetd process memory |
 | ECDH P-256 | ciphertext-only session transport — no intermediate server, log, or DB row sees the JWT in plaintext | compromise of the dashboard or CLI endpoints |
 | AES-256-GCM | tamper detection — any ciphertext modification produces a hard `DecryptError`, not silent corruption | — |
 | Atomic `verified → consumed` | single-read ciphertext — captured response cannot be replayed against the same session | replay using a fresh session (closed by `verification_code` + rate limits) |
@@ -208,10 +249,10 @@ Each line is paired: the attack in one sentence, the mechanism that thwarts it i
 
 | # | Threat | How it's thwarted |
 |---|---|---|
-| 1 | **Session-row plaintext disclosure** — Redis dumps, logs, queue inspections, metrics blobs, memory snapshots. | ECDH ciphertext transport. The Redis row holds `{ ciphertext, nonce, public keys, verification_code_hmac }`; nothing in that set decrypts to the JWT. |
+| 1 | **Session-key plaintext disclosure** — Dragonfly dumps, logs, queue inspections, metrics blobs, memory snapshots. | ECDH ciphertext transport. The session key holds `{ ciphertext, nonce, public keys, verification_code_hmac }`; nothing in that set decrypts to the JWT. |
 | 2 | **Passive network observation of the JWT** — TLS-inspecting corporate proxies, captured HTTPS payload logs, intermediaries that terminate and re-issue TLS. | ECDH ciphertext transport. After this spec, intermediaries see ciphertext only — the JWT plaintext lives nowhere on the wire. |
 | 3 | **Session-id phishing without terminal access** — attacker has only the `session_id` (URL sniff, browser-history sync, shoulder surf). | The `verification_code` requirement + moving ciphertext release from GET to POST /verify. An attacker without terminal access cannot present the matching code and cannot trigger ciphertext release. |
-| 4 | **Verification-code disclosure via passive server compromise** — attacker reads the session row but only sees the keyed HMAC; tries to offline-brute-force the 1M-entry 6-digit space. | `HMAC-SHA256(AUTH_SESSION_CODE_PEPPER, …)` storage. The pepper lives in agentsfleetd process memory only — without it the attacker cannot compute candidate HMACs even if they own the Redis blob. |
+| 4 | **Verification-code disclosure via passive server compromise** — attacker reads the session row but only sees the keyed HMAC; tries to offline-brute-force the 1M-entry 6-digit space. | `HMAC-SHA256(AUTH_SESSION_CODE_PEPPER, …)` storage. The pepper lives in agentsfleetd process memory only — without it the attacker cannot compute candidate HMACs even if they own the Dragonfly blob. |
 | 5 | **Verification-code online brute force** — attacker with `session_id` tries the 1,000,000 6-digit code space against POST /verify. | ≤5 verify attempts per session, then the session transitions to `aborted` with `reason="rate_limit_exceeded"`. Attacker exhausts 0.0005% of the space before being locked out. |
 | 6 | **Ciphertext replay** — attacker captures a single POST /verify response and retries the same `session_id`. | Atomic transition `verification_pending → consumed` in the same Lua-EVAL write that returns the ciphertext. Subsequent verify calls return 410 `SessionConsumed` (with a 60-second same-fingerprint idempotency window for the legitimate "consume succeeded, response lost, client retried" failure mode). |
 | 7 | **Distributed brute force across many sessions** — attacker scripts 200,000 sessions × 5 codes each = 1M attempts. | Per-IP session-creation rate limit (10/min) and per-Clerk-user PATCH-approve rate limit (20/hr). Attacker cannot fan out fast enough. |
@@ -248,7 +289,7 @@ Six invariants. All are tested explicitly.
 | Key derivation | HKDF-SHA-256, output 32 bytes, `info = "m74-002-v1"`, empty salt | Versioned `info` lets a future protocol change rev without colliding. The ECDH shared secret is already high-entropy, so the salt adds nothing. |
 | Authenticated encryption | AES-256-GCM, 256-bit key, 96-bit random nonce per encryption, 128-bit auth tag | — |
 | Verification code | 6 random digits (CSPRNG) | Brute force closed by attempt cap, not code entropy. (Future improvement: 8 alphanumeric, ~37× entropy, segmented for human-typability.) |
-| Verification-code storage | `HMAC-SHA256(AUTH_SESSION_CODE_PEPPER, session_id ‖ code)`; pepper Vault-loaded at boot, process-memory-only | Defeats offline brute force from a Redis dump (attacker needs the pepper too). Constant-time comparison via `subtle`'s `ConstantTimeEq` on the comparison side. |
+| Verification-code storage | `HMAC-SHA256(AUTH_SESSION_CODE_PEPPER, session_id ‖ code)`; pepper Vault-loaded at boot, process-memory-only | Defeats offline brute force from a Dragonfly dump (attacker needs the pepper too). Constant-time comparison via `subtle`'s `ConstantTimeEq` on the comparison side. |
 | Crypto library | `crypto.subtle` on both sides (Node.js + browser Web Crypto) | Zero extra dependencies; identical API surface; avoids `tweetnacl` / `@noble/curves` drift. |
 
 ## Log and audit redaction — `session_id` is sensitive
@@ -296,7 +337,7 @@ Flow 1's protocol assumes the following deploy rules. Diverging from these turns
 | **HTTPS-only** for `/v1/auth/*` | Load balancer / reverse proxy enforces. HTTP requests promoted via HTTP 308 to HTTPS. `api.agentsfleet.net` already enforces this in prod. |
 | **HSTS** header on every API response | `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`. The load balancer is the only source; `agentsfleetd` sets no security headers of its own. |
 | **TLS ≥ 1.2** (1.3 preferred) | Load balancer config. |
-| **Redis required** | `DRAGONFLY_URL` env must resolve to a single-node Redis reachable from every API pod (acceptable for dev / single-region prod) OR a Redis Sentinel / Cluster with ≥1 reachable primary per pod. In-memory session storage is **not** acceptable under any multi-pod topology. agentsfleetd fails fast on boot if `DRAGONFLY_URL` is unset. |
+| **Dragonfly cluster required** | `DRAGONFLY_URL` (`rustd/crates/afd_dragonfly/src/config.rs`) must name a seed in a Dragonfly **cluster**. There is no standalone path, no topology selector, and no Sentinel option: every connection is a redis-rs `ClusterConnection` over RESP3, routing each command by its key's slot. A seed that answers as a single server refuses boot — `preflight` runs before the daemon serves anything (`rustd/crates/agentsfleetd/src/serve/runtime.rs`). In-memory session storage is not acceptable under any multi-pod topology. |
 | `maxmemory-policy allkeys-lfu` (recommended) | Under memory pressure, least-frequently-accessed session keys evict first. Deploy-time config, not enforced by code. |
 | Client-IP attribution | `rustd/crates/afd_http/src/client.rs` derives the client IP from two header signals — `X-Forwarded-For` (industry-standard, default attribution source) and `Fly-Client-IP` (Fly's authoritative single-value header, the trust anchor since Fly's proxy is the only path to agentsfleetd in any non-dev deploy and Fly strips client-supplied copies of its own header). When both are present we compare; agree → use XFF, disagree → flip to `Fly-Client-IP` + stamp `client_ip_divergent=true` in audit events (forgery signal). Local-dev / direct-internet → neither header → fall back to raw TCP peer. **No env / no allowlist** (Captain decision May 18 2026 — Q8 in spec). Per-IP rate-limit buckets and consume-idempotency fingerprints both consume the derived IP. |
 | **NTP-synced pod clocks** within ≤1s drift | Server-authoritative expiry uses a 30-second grace window over `expires_at_ms`; expiry surfaces to the CLI at `POST /verify` (410), since M74_003 the CLI no longer polls or shows a countdown. Cross-pod drift >1s is a deploy bug. |
