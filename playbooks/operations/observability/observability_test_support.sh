@@ -137,6 +137,15 @@ run_script() {
 # every test shadows them; kept only so run_script has something to name if a
 # future caller forgets to.
 
+# A mutated copy of the assets, so a negative test proves the checker rejects a
+# defect without the risk of leaving the real asset broken on a failed run.
+broken_assets() {
+  local dir
+  dir="$(mktemp -d -p "$work_dir")"
+  cp "$PROVIDER_DIR/assets/dashboard.json" "$PROVIDER_DIR/assets/alerts.json" "$dir/"
+  printf '%s' "$dir"
+}
+
 # Runs every name in TEST_NAMES, each in its own backgrounded subshell, and
 # reports. Shared because two suites grew out of one file and a second copy of
 # a parallel test runner is a second place for a race to hide.
