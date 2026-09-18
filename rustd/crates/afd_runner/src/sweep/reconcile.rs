@@ -33,7 +33,7 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
-use afd_admission::{Admissions, Reconciled};
+use afd_admission::{Admissions, Progress, Reconciled};
 use afd_core::clock;
 
 use crate::error::Result;
@@ -99,6 +99,14 @@ pub struct Reconcile {
     admissions: Admissions,
     /// What the last pass concluded about when to come back.
     pacing: Mutex<Duration>,
+    /// Where the next pass resumes — see [`Progress`].
+    ///
+    /// Held here rather than inside the ledger because it is this sweeper's
+    /// place in a rotation, not a fact about the table: a second driver over
+    /// the same `Admissions` keeps its own place, and two replicas rotating
+    /// independently is the behaviour that spreads the probes rather than the
+    /// one that duplicates them.
+    progress: Mutex<Progress>,
 }
 
 impl Reconcile {
@@ -108,7 +116,23 @@ impl Reconcile {
         Self {
             admissions,
             pacing: Mutex::new(INTERVAL),
+            progress: Mutex::new(Progress::default()),
         }
+    }
+
+    /// Takes the resume state out for the duration of a pass.
+    ///
+    /// Taken by value, never borrowed across the `await`. A synchronous
+    /// `MutexGuard` held over a suspension point blocks every other task on
+    /// this worker thread if the future is parked there, and Clippy refuses it
+    /// (`await_holding_lock`) for that reason. A pass that panics loses its
+    /// place in the rotation and starts over, which costs a slower pass and
+    /// never a missed fleet.
+    fn take_progress(&self) -> Progress {
+        self.progress.lock().map_or_else(
+            |_poisoned| Progress::default(),
+            |mut held| std::mem::take(&mut *held),
+        )
     }
 }
 
@@ -135,10 +159,20 @@ impl Sweep for Reconcile {
     }
 
     async fn sweep(&self) -> Result<Swept> {
+        let mut progress = self.take_progress();
+        // Put back before `?`, not after. A pass that fails partway has still
+        // walked fleets and filed their resume points, and dropping that on a
+        // transient database error would restart the rotation every time one
+        // happened — which on a deployment where they happen regularly is the
+        // starvation this cursor exists to end, reintroduced by the error path.
         let reconciled = self
             .admissions
-            .reconcile(clock::now(), FLEET_LIMIT, ROW_LIMIT)
-            .await?;
+            .reconcile(clock::now(), FLEET_LIMIT, ROW_LIMIT, &mut progress)
+            .await;
+        if let Ok(mut held) = self.progress.lock() {
+            *held = progress;
+        }
+        let reconciled = reconciled?;
 
         if let Ok(mut pacing) = self.pacing.lock() {
             *pacing = pacing_after(reconciled);

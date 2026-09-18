@@ -170,7 +170,6 @@ impl Fleets {
             .bind(FleetStatus::Installing.as_str())
             .bind(authored.required_tags())
             .bind(&authored.entry.content_hash)
-            .bind(snapshot_key(&authored.entry.content_hash))
             .bind(now.as_millis())
             .execute(connection.as_mut())
             .await
@@ -208,15 +207,6 @@ impl Naming {
     }
 }
 
-/// Where a bundle's snapshot is stored, derived from its content hash.
-///
-/// `importer.snapshotKey`'s layout, and derived rather than stored for the
-/// reason a documentation link is: a key built from the hash can never name a
-/// different bundle's snapshot.
-fn snapshot_key(content_hash: &str) -> String {
-    format!("fleet-bundles/{content_hash}.tar.zst")
-}
-
 /// Tells a lost name race apart from a broken statement.
 fn is_name_conflict(source: &sqlx::Error) -> bool {
     source.as_database_error().is_some_and(|failure| {
@@ -231,7 +221,7 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the restriction set is for the daemon"
     )]
-    use super::{NAME_ATTEMPTS, Naming, SUFFIX_SPACE, snapshot_key};
+    use super::{NAME_ATTEMPTS, Naming, SUFFIX_SPACE};
     use afd_crypto::entropy::Entropy;
 
     #[test]
@@ -283,12 +273,6 @@ mod tests {
         assert_eq!(base, "daily-digest");
         assert_eq!(tail.len(), 3, "three digits, so the slug stays in bounds");
         assert!(tail.parse::<u32>().is_ok_and(|value| value < SUFFIX_SPACE));
-    }
-
-    #[test]
-    fn a_snapshot_key_names_only_its_own_bundle() {
-        assert_ne!(snapshot_key("abc123"), snapshot_key("abc124"));
-        assert!(snapshot_key("abc123").contains("abc123"));
     }
 
     /// A statement that failed for any other reason is not a name race.

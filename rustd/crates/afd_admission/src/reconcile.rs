@@ -24,7 +24,7 @@
 //! it. Nothing else in this daemon deletes an entry. A receipt the stream
 //! cannot produce is therefore data loss, never housekeeping.
 //!
-//! # One question per fleet, and a walk only where it fails
+//! # One question per fleet, a walk where it fails, and a cursor under both
 //!
 //! A fleet with undelivered work is ordinarily just a fleet whose runner has
 //! not reached it. Asking the datastore about every such row every pass would
@@ -33,6 +33,15 @@
 //! — and walks row by row only where the answer is no. A rebuilt stream can
 //! already hold new, live entries, which is why the walk still asks per row
 //! instead of voiding the fleet wholesale.
+//!
+//! Both of those are bounded, and both bounds used to be permanent. More
+//! unfinished fleets than one pass examines meant the ones sorting last were
+//! never examined; more lost rows on a fleet than one walk repairs meant the
+//! rows past the batch hid behind the ones the repair had just made healthy.
+//! [`Progress`] carries the resume point for each, and its module note has both
+//! failures worked through. The pass is in two parts because of it: fleets
+//! already known to be losing rows are continued from where their walk stopped,
+//! and only then does the head-probe sweep rotate on.
 //!
 //! # A datastore that will not answer changes nothing
 //!
@@ -57,13 +66,18 @@
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_dragonfly::{EventId, FleetStreams};
-use sqlx::Row as _;
 
-use crate::error::{Result, query};
-use crate::{Admissions, sql};
+use crate::Admissions;
+use crate::error::Result;
+
+mod progress;
+mod scan;
+
+pub use self::progress::Progress;
+use self::progress::RowKey;
 
 /// Statement name, for the context a query failure carries.
-const CONTEXT_RECONCILE: &str = "reconcile an admission's receipt";
+pub(crate) const CONTEXT_RECONCILE: &str = "reconcile an admission's receipt";
 
 /// A fleet whose stream could not produce its oldest undelivered receipt.
 const EVENT_STREAM_LOST: &str = "admission_stream_data_lost";
@@ -74,15 +88,23 @@ const EVENT_RECEIPT_VOIDED: &str = "admission_receipt_voided";
 /// A datastore that would not answer a probe.
 const EVENT_PROBE_FAILED: &str = "admission_reconcile_probe_failed";
 
+/// A fleet with lost rows left that the resume set had no room to remember.
+const EVENT_REPAIR_DECLINED: &str = "admission_reconcile_repair_declined";
+
 /// What one reconcile pass did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Reconciled {
-    /// Fleets whose oldest undelivered receipt this pass asked about.
+    /// Fleets this pass asked the datastore about, head probes and continued
+    /// repairs together.
     pub probed: u64,
     /// Of those, fleets whose stream could not produce it.
     pub lost: u64,
     /// Rows whose receipt was forgotten, and which the replay sweeper now owes.
     pub voided: u64,
+    /// Whether a fleet is known to hold lost rows this pass did not reach.
+    pub resuming: bool,
+    /// Repairs this pass had to decline for want of room to remember them.
+    pub declined: u64,
 }
 
 impl Reconciled {
@@ -91,16 +113,20 @@ impl Reconciled {
     /// The pacing question a sweeper asks, and the answer on every pass of a
     /// healthy deployment: a pass that voided nothing can wait, and one that
     /// voided rows has handed the replay sweeper work worth coming back for.
+    ///
+    /// A pass that voided nothing and still left a fleet mid-repair is NOT
+    /// quiet. It found real loss and ran out of budget, so waiting the idle
+    /// interval would pace recovery at five minutes a batch.
     #[must_use]
     pub const fn is_quiet(self) -> bool {
-        self.voided == 0
+        self.voided == 0 && !self.resuming
     }
 }
 
 /// One fleet's oldest admission that is receipted and not delivered.
-struct Unfinished {
-    fleet_id: String,
-    receipt: EventId,
+pub(crate) struct Unfinished {
+    pub(crate) fleet_id: String,
+    pub(crate) receipt: EventId,
 }
 
 impl Admissions {
@@ -116,9 +142,64 @@ impl Admissions {
     /// Reports a database that would not answer. A DATASTORE that would not
     /// answer is not an error: the probe is logged, the row keeps its receipt,
     /// and the next pass asks again — see the module docs.
-    pub async fn reconcile(&self, now: UnixMillis, fleets: i64, rows: i64) -> Result<Reconciled> {
+    pub async fn reconcile(
+        &self,
+        now: UnixMillis,
+        fleets: i64,
+        rows: i64,
+        progress: &mut Progress,
+    ) -> Result<Reconciled> {
         let mut reconciled = Reconciled::default();
-        for unfinished in self.unfinished_fleets(fleets).await? {
+        self.continue_repairs(now, fleets, rows, progress, &mut reconciled)
+            .await?;
+        self.sweep_heads(now, fleets, rows, progress, &mut reconciled)
+            .await?;
+        reconciled.resuming = progress.is_resuming();
+        Ok(reconciled)
+    }
+
+    /// Walks on from where each mid-repair fleet's last batch stopped.
+    ///
+    /// Before the head probes and not after, because these fleets are the ones
+    /// the head probe would get WRONG: their oldest undelivered receipt is a
+    /// row the last pass voided and the replay sweeper has since re-appended,
+    /// so the stream holds it and the shortcut reports health over rows that
+    /// are still lost. Asking the stream about the fleet again would spend a
+    /// round trip to be told the wrong thing.
+    async fn continue_repairs(
+        &self,
+        now: UnixMillis,
+        fleets: i64,
+        rows: i64,
+        progress: &mut Progress,
+        reconciled: &mut Reconciled,
+    ) -> Result<()> {
+        for repair in progress.resume_repairs(fleets) {
+            reconciled.probed += 1;
+            let walked = self
+                .void_lost_on(&repair.fleet_id, now, rows, repair.after)
+                .await?;
+            reconciled.voided += walked.voided;
+            Self::remember(&repair.fleet_id, &walked, fleets, progress, reconciled);
+        }
+        Ok(())
+    }
+
+    /// Asks each fleet in the rotation's next slice about its oldest receipt.
+    async fn sweep_heads(
+        &self,
+        now: UnixMillis,
+        fleets: i64,
+        rows: i64,
+        progress: &mut Progress,
+        reconciled: &mut Reconciled,
+    ) -> Result<()> {
+        let heads = self
+            .unfinished_fleets(fleets, progress.resume_from())
+            .await?;
+        let budget_filled = i64::try_from(heads.len()).is_ok_and(|read| read >= fleets);
+        let last_seen = heads.last().map(|head| head.fleet_id.clone());
+        for unfinished in heads {
             reconciled.probed += 1;
             if self.stream_holds(&unfinished).await {
                 continue;
@@ -134,30 +215,39 @@ impl Admissions {
                 event = EVENT_STREAM_LOST,
                 "the queue no longer holds this fleet's oldest undelivered entry, so its accepted work is being re-appended from the ledger"
             );
-            reconciled.voided += self.void_lost_on(fleet_id, now, rows).await?;
+            let walked = self
+                .void_lost_on(fleet_id, now, rows, RowKey::FIRST)
+                .await?;
+            reconciled.voided += walked.voided;
+            Self::remember(fleet_id, &walked, fleets, progress, reconciled);
         }
-        Ok(reconciled)
+        progress.swept(last_seen, budget_filled);
+        Ok(())
     }
 
-    /// One row per fleet that holds undelivered work: its oldest such row.
-    async fn unfinished_fleets(&self, fleets: i64) -> Result<Vec<Unfinished>> {
-        let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::SELECT_UNDELIVERED_FLEETS)
-            .bind(fleets)
-            .fetch_all(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_RECONCILE))?;
-        rows.iter()
-            .map(|row| {
-                Ok(Unfinished {
-                    fleet_id: row.try_get(0).map_err(query(CONTEXT_RECONCILE))?,
-                    receipt: EventId::of(
-                        &row.try_get::<String, _>(1)
-                            .map_err(query(CONTEXT_RECONCILE))?,
-                    ),
-                })
-            })
-            .collect()
+    /// Files a walk's resume point, or records that there was no room for it.
+    ///
+    /// A declined repair is the one place this design trades coverage speed for
+    /// its memory bound, so it is logged rather than dropped silently: the
+    /// fleet is still reachable through the head probe once the rows this pass
+    /// restored are delivered, and an operator watching a large loss recover
+    /// can see which fleets are waiting on that.
+    fn remember(
+        fleet_id: &str,
+        walked: &Walked,
+        fleets: i64,
+        progress: &mut Progress,
+        reconciled: &mut Reconciled,
+    ) {
+        if progress.walked(fleet_id, walked.stopped_at, fleets) {
+            return;
+        }
+        reconciled.declined += 1;
+        tracing::info!(
+            fleet_id,
+            event = EVENT_REPAIR_DECLINED,
+            "this fleet has lost rows past the batch and the resume set is full, so its repair waits for a later pass"
+        );
     }
 
     /// Whether the fleet's stream still holds that entry.
@@ -190,33 +280,50 @@ impl Admissions {
     }
 
     /// Voids every undelivered receipt on one fleet that the stream cannot
-    /// produce, up to `rows`, and answers how many.
+    /// produce, starting after `after`, up to `rows`.
     ///
     /// No transaction, and the pool connection is never held across a probe:
     /// the candidates are read and the connection goes back, each probe runs
     /// with nothing held, and each void is its own short statement. A probe is
-    /// a round trip to the OTHER datastore, and the rows a lock here would
-    /// hold are the ones a live producer recording its own receipt waits
-    /// behind — the reason [`sql::SELECT_UNDELIVERED_FLEETS`] gives for not
-    /// locking, applied to the scan that probes per row.
+    /// a round trip to the OTHER datastore, and the rows a lock here would hold
+    /// are the ones a live producer recording its own receipt waits behind —
+    /// the reason [`sql::SELECT_UNDELIVERED_FLEETS`] gives for not locking,
+    /// applied to the scan that probes per row.
     ///
     /// [`sql::VOID_LOST_RECEIPT`] pins the receipt it was told about, so a row
     /// the replay sweeper moved between the probe and the write matches
     /// nothing. That is also what a second replica walking this fleet hits:
     /// both probe, one writes, and the other counts the repair it did not make
     /// as the zero it was.
-    async fn void_lost_on(&self, fleet_id: &str, now: UnixMillis, rows: i64) -> Result<u64> {
+    ///
+    /// Answers where the next walk resumes. A batch that filled its limit says
+    /// the last row it examined — LIVE rows included, because the point of the
+    /// cursor is to move past everything this walk has already asked about.
+    /// A short batch says nothing, which retires the fleet back to the head
+    /// probe.
+    async fn void_lost_on(
+        &self,
+        fleet_id: &str,
+        now: UnixMillis,
+        rows: i64,
+        after: RowKey,
+    ) -> Result<Walked> {
+        let candidates = self.undelivered_on(fleet_id, rows, after).await?;
+        let batch_filled = i64::try_from(candidates.len()).is_ok_and(|read| read >= rows);
+        let stopped_at = batch_filled
+            .then(|| candidates.last().map(|last| last.key))
+            .flatten();
         let mut voided = 0;
-        for (id, receipt) in self.undelivered_on(fleet_id, rows).await? {
+        for candidate in candidates {
             let still_held = Unfinished {
                 fleet_id: fleet_id.to_owned(),
-                receipt,
+                receipt: candidate.receipt,
             };
             if self.stream_holds(&still_held).await {
                 continue;
             }
             let receipt = still_held.receipt.as_str();
-            let forgotten = self.void(&id, receipt, now).await?;
+            let forgotten = self.void(&candidate.id, receipt, now).await?;
             voided += forgotten;
             if forgotten > 0 {
                 tracing::info!(
@@ -227,45 +334,14 @@ impl Admissions {
                 );
             }
         }
-        Ok(voided)
+        Ok(Walked { voided, stopped_at })
     }
+}
 
-    /// One fleet's receipted-but-undelivered rows, read and released.
-    ///
-    /// Collected rather than streamed so the connection is back in the pool
-    /// before the first probe, which is the whole point of the shape.
-    async fn undelivered_on(&self, fleet_id: &str, rows: i64) -> Result<Vec<(String, EventId)>> {
-        let mut connection = self.database.acquire().await?;
-        let unfinished = sqlx::query(sql::SELECT_UNDELIVERED_ON_FLEET)
-            .bind(fleet_id)
-            .bind(rows)
-            .fetch_all(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_RECONCILE))?;
-        unfinished
-            .iter()
-            .map(|row| {
-                let id: String = row.try_get(0).map_err(query(CONTEXT_RECONCILE))?;
-                let receipt: String = row.try_get(1).map_err(query(CONTEXT_RECONCILE))?;
-                Ok((id, EventId::of(&receipt)))
-            })
-            .collect()
-    }
-
-    /// Forgets one row's receipt, answering whether this statement did it.
-    ///
-    /// Zero is not a failure: it means the row no longer carries the receipt
-    /// this pass probed, so somebody else already repaired it or a delivery
-    /// landed first.
-    async fn void(&self, id: &str, receipt: &str, now: UnixMillis) -> Result<u64> {
-        let mut connection = self.database.acquire().await?;
-        let voided = sqlx::query(sql::VOID_LOST_RECEIPT)
-            .bind(id)
-            .bind(now.as_millis())
-            .bind(receipt)
-            .execute(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_RECONCILE))?;
-        Ok(voided.rows_affected())
-    }
+/// What one fleet's walk did, and where the next one carries on.
+struct Walked {
+    /// Receipts forgotten by this walk.
+    voided: u64,
+    /// The row a full batch stopped at, or `None` when it reached the end.
+    stopped_at: Option<RowKey>,
 }

@@ -58,6 +58,8 @@ mod integration_money_gates;
 mod integration_recovery_budget;
 #[path = "integration_recovery_outage.rs"]
 mod integration_recovery_outage;
+#[path = "integration_recovery_progress.rs"]
+mod integration_recovery_progress;
 #[path = "integration_renew_clamp.rs"]
 mod integration_renew_clamp;
 #[path = "integration_renew_coverage.rs"]

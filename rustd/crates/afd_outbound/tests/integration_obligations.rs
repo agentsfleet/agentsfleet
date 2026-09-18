@@ -319,7 +319,15 @@ async fn two_replicas_reporting_one_answer_owe_one_delivery() {
 /// The at-least-once edge: the poster delivered, the response never arrived, the
 /// caller retried and delivered again. `STAMP_DELIVERED` is guarded on
 /// `delivered_at IS NULL` so the retry cannot move the instant the destination
-/// FIRST took the answer, nor count a second attempt against it.
+/// FIRST took the answer.
+///
+/// The stamp does not touch `attempt_count` at all, which is why this test now
+/// asserts the counter is UNMOVED by two stampings rather than that it reads
+/// one. Counting here counted successes: the branch that reaches this statement
+/// is the delivered branch, so a destination that refused an answer nine times
+/// and took it on the tenth recorded one attempt, and one that never took it
+/// recorded none. The cycle-start counter is what records attempts now, and
+/// `integration_attempt_count.rs` grades it.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn a_destination_that_accepted_an_answer_is_stamped_once() {
@@ -360,7 +368,10 @@ async fn a_destination_that_accepted_an_answer_is_stamped_once() {
         delivered_at, accepted_at,
         "the instant the destination first took it, not the retry's"
     );
-    assert_eq!(attempts, 1, "one acceptance is one attempt");
+    assert_eq!(
+        attempts, 0,
+        "stamping a delivery counts no attempt — the cycle start does"
+    );
 }
 
 /// A worker replaced under a different hostname leaves its answer recoverable.

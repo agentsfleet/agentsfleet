@@ -19,12 +19,54 @@
 /// that already recorded when the destination first took the answer. The path
 /// is at-least-once, so this statement has to be idempotent in the same way the
 /// obligation's insert is.
+///
+/// It does NOT touch `attempt_count`. It used to, and the counter that produced
+/// was a count of successes wearing the name of a count of attempts: the only
+/// branch that reaches this statement is the delivered one, so a destination
+/// that refused an answer nine times and took it on the tenth recorded `1`, and
+/// one that refused it forever recorded `0` — the row an operator most needs to
+/// find looked exactly like a row nobody had tried. [`COUNT_ATTEMPT`] does the
+/// counting now, at the start of the cycle, where failure is still a possible
+/// ending.
 pub(crate) const STAMP_DELIVERED: &str = "\
 UPDATE core.fleet_obligations
-   SET delivered_at  = $3::bigint,
-       attempt_count = attempt_count + 1,
-       updated_at    = $3::bigint
+   SET delivered_at = $3::bigint,
+       updated_at   = $3::bigint
  WHERE fleet_id = $1::uuid AND event_id = $2::text AND delivered_at IS NULL";
+
+/// Record that a worker has taken this obligation for a delivery cycle.
+///
+/// One cycle is one `deliver_with_retry` call — the worker accepting the job
+/// and running it to a terminal verdict. The vendor retries INSIDE that call
+/// are not counted separately: they are one destination's backoff schedule, and
+/// a row per HTTP attempt would put a database write on every rate-limit sleep
+/// to record something the poster's own logs already say. What this counts is
+/// the thing that is otherwise invisible — how many times the queue has handed
+/// this answer to a worker and not got it delivered.
+///
+/// Guarded on `delivered_at IS NULL`, so redelivering an answer somebody
+/// already received counts nothing and matches no row. `RETURNING` therefore
+/// yields the new count only when this call is the one that took the job, which
+/// is what the caller puts on its telemetry.
+///
+/// `updated_at` moves with it, and that is a deliberate pacing change rather
+/// than a free-rider on the write. [`SELECT_UNDELIVERED`] re-offers answers
+/// whose rows have been untouched for
+/// [`LOST_AFTER`](crate::producer::LOST_AFTER); its question is "is anybody
+/// working on this", and a row a worker accepted a moment ago is a row somebody
+/// is working on. Without the bump, a cycle whose backoff outlasts that window
+/// gets a second entry appended underneath it and the destination sees the
+/// answer twice. A worker that DIES mid-cycle leaves `updated_at` at the start
+/// of the cycle, so the window still expires and the scan still re-offers it —
+/// which is the case the scan exists for.
+///
+/// `$1` fleet, `$2` event, `$3` now.
+pub(crate) const COUNT_ATTEMPT: &str = "\
+UPDATE core.fleet_obligations
+   SET attempt_count = attempt_count + 1,
+       updated_at    = $3::bigint
+ WHERE fleet_id = $1::uuid AND event_id = $2::text AND delivered_at IS NULL
+RETURNING attempt_count";
 
 /// Obligations the queue never confirmed, oldest first.
 ///
