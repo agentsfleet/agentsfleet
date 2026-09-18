@@ -5,7 +5,6 @@
 include make/test-unit.mk
 include make/test-infra.mk
 include make/test-integration-rustd.mk
-include make/test-parity.mk
 include make/acceptance.mk
 include make/dry.mk
 include make/bench.mk

@@ -9,8 +9,7 @@
 //! that, a 20% regression is as likely to be a different Dragonfly image as a
 //! different daemon, and the comparison is not weak, it is meaningless.
 //!
-//! So every field here REFUSES to be absent, the way
-//! `scripts/bench_cutover.sh` refuses an unset budget and for the same reason:
+//! So every field here REFUSES to be absent:
 //! a lane that grades nothing and a lane that grades green must never look
 //! alike. [`knobs::required`] raises `VariableUnset` naming the variable, and
 //! the run ends before it measures anything.
