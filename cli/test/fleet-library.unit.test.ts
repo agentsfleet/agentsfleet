@@ -72,8 +72,34 @@ const makeLayer = (
     }),
   );
 
+describe("libraryEffect — tier column", () => {
+  test("a platform row and a tenant row differ by tier", async () => {
+    // Two entries sharing a name — one from the platform catalogue, one the
+    // workspace's own copy — is the case the gallery actually serves, and the
+    // tier is the only cell that tells them apart.
+    const captured: string[] = [];
+    const tables: TableCapture[] = [];
+    const requests: HttpRequestInput[] = [];
+    await Effect.runPromiseExit(
+      libraryEffect.pipe(
+        Effect.provide(
+          makeLayer(captured, tables, false, requests, {
+            items: [
+              { id: "github-pr-reviewer", name: "same", visibility: "platform" },
+              { id: "01900000-0000-7000-8000-0000000aa001", name: "same", visibility: "tenant" },
+            ],
+          }),
+        ),
+      ),
+    );
+    const rows = tables[0]?.rows as Array<{ tier: string }>;
+    expect(rows[0]?.tier).toBe("platform");
+    expect(rows[1]?.tier).toBe("tenant");
+  });
+});
+
 describe("libraryEffect — table render", () => {
-  test("lists templates and joins credentials (and renders — for none)", async () => {
+  test("lists the workspace gallery, joining credentials and rendering — for none", async () => {
     const captured: string[] = [];
     const tables: TableCapture[] = [];
     const requests: HttpRequestInput[] = [];
@@ -103,17 +129,14 @@ describe("libraryEffect — table render", () => {
     expect(requests[0]?.path).toBe(`/v1/workspaces/${WS_ID}/fleet-libraries`);
     const rows = tables[0]?.rows as Array<{ id: string; credentials: string; tier: string }>;
     expect(rows[0]?.credentials).toBe("github");
-    // The tier is what tells a platform entry from a workspace's own copy when
-    // the two share a name — which they do, in practice.
-    expect(rows[0]?.tier).toBe("platform");
-    expect(rows[1]?.tier).toBe("tenant");
+
     // empty requirements.credentials renders the em dash, not "undefined"
     expect(rows[1]?.credentials).toBe("—");
   });
 });
 
 describe("libraryEffect — JSON mode", () => {
-  test("prints the raw response and skips the table", async () => {
+  test("the JSON branch carries the same entries the table renders", async () => {
     const captured: string[] = [];
     const tables: TableCapture[] = [];
     const requests: HttpRequestInput[] = [];
@@ -130,7 +153,7 @@ describe("libraryEffect — JSON mode", () => {
 });
 
 describe("libraryEffect — empty catalog", () => {
-  test("prints a message and skips the table when items is empty", async () => {
+  test("an empty gallery names library add as the next move", async () => {
     const captured: string[] = [];
     const tables: TableCapture[] = [];
     const requests: HttpRequestInput[] = [];
@@ -144,7 +167,7 @@ describe("libraryEffect — empty catalog", () => {
     expect(captured.join("\n")).toContain("No Fleet libraries in this workspace.");
   });
 
-  test("treats a missing items field as empty", async () => {
+  test("a missing items field is an empty gallery, not a crash", async () => {
     const captured: string[] = [];
     const tables: TableCapture[] = [];
     const requests: HttpRequestInput[] = [];
