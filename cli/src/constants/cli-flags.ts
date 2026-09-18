@@ -22,7 +22,6 @@ export const OPT_LIBRARY = "library";
 export const OPT_GITHUB = "github";
 export const OPT_TEMPLATE = "template";
 export const OPT_REF = "ref";
-export const OPT_REPLACE = "replace";
 
 /**
  * One spelling for the Fleet-library identifier, wherever it is shown to a

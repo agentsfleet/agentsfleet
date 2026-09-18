@@ -209,17 +209,30 @@ describe("steer — a parked run names the gate holding it", () => {
   // waits. The timeout is the SYMPTOM; the gate is the cause, and before this
   // the terminal carried only the symptom plus a suggestion pointing at
   // `agentsfleet events`, which showed the message stuck at `received`.
-  const parkedReply = (gates: unknown[]) => <T>(input: HttpRequestInput): T => {
+  // Narrows on `status` and `fleet_id` the way the route does. Without that a
+  // decided gate would still be offered as the explanation, and the test would
+  // pass while the CLI lied.
+  const parkedReply = (gates: Array<Record<string, unknown>>) => <T>(input: HttpRequestInput): T => {
     if (input.method === POST) return { event_id: EVENT_ID } as T;
-    if (input.path.endsWith("/approvals")) return { items: gates } as T;
+    if (input.path.includes("/approvals")) {
+      const query = new URLSearchParams(input.path.split("?")[1] ?? "");
+      const status = query.get("status");
+      const fleetId = query.get("fleet_id");
+      const items = gates.filter(
+        (row) =>
+          (status === null || row.status === status) &&
+          (fleetId === null || row.fleet_id === fleetId),
+      );
+      return { items, next_cursor: null } as T;
+    }
     return { items: [] } as T;
   };
 
-  const runParkedSteer = async (gates: unknown[]) => {
+  const runParkedSteer = async (gates: Array<Record<string, unknown>>) => {
     const rec = makeRecorder();
     let jumped = false;
     const httpReply = <T>(input: HttpRequestInput): T => {
-      if (input.method !== POST && !input.path.endsWith("/approvals") && !jumped) {
+      if (input.method !== POST && !input.path.includes("/approvals") && !jumped) {
         jumped = true;
         setSystemTime(Date.now() + 120_000); // push past the 60s poll deadline
       }

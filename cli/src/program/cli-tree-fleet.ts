@@ -48,7 +48,6 @@ export function buildFleetTree(
     .option(FLAG_FROM_BUNDLE, FROM_BUNDLE_DESC, parseStringOption)
     .option(FLAG_TEMPLATE, TEMPLATE_DESC, parseStringOption)
     .option(FLAG_REF, REF_DESC, parseStringOption)
-    .option(FLAG_REPLACE, REPLACE_DESC)
     .action(actionFor("fleet.library.add", (frame) => runHandler(state, frame, handlers.fleet.libraryAdd)));
 
   // The CLI peer of the dashboard's model picker. Both read GET /v1/models, so
@@ -214,8 +213,7 @@ const FLAG_TEMPLATE = "--template <id>" as const;
 const TEMPLATE_DESC = "First-party template id" as const;
 const FLAG_REF = "--ref <revision>" as const;
 const REF_DESC = "Branch, tag, or commit (--github only)" as const;
-const FLAG_REPLACE = "--replace" as const;
-const REPLACE_DESC = "Overwrite an entry another source owns" as const;
+
 const NAME_DESC =
   "Override the fleet name (install the same bundle more than once)" as const;
 const FLAG_LIMIT_N = "--limit <n>" as const;

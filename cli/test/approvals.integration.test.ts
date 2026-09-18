@@ -31,6 +31,21 @@ const gate = (overrides: Record<string, unknown> = {}) => ({
 const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_approvals" }, fn);
 
+/** A mock that narrows the way the daemon does, so a client that stopped
+ *  filtering server-side would fail here rather than quietly pass. */
+const daemonLike = (all: ReadonlyArray<Record<string, unknown>>): MockRoutes => ({
+  [`GET ${APPROVALS}`]: (_req, url) => {
+    const fleetId = url.searchParams.get("fleet_id");
+    const status = url.searchParams.get("status");
+    const items = all.filter(
+      (row) =>
+        (fleetId === null || row.fleet_id === fleetId) &&
+        (status === null || row.status === status),
+    );
+    return jsonResponse(200, { items, next_cursor: null });
+  },
+});
+
 describe("approvals commands", () => {
   test("approvals list renders every gate with its kind and status", async () => {
     await authedScope(async () => {
@@ -68,16 +83,14 @@ describe("approvals commands", () => {
 
   test("approvals list --fleet shows only that Fleet's gates", async () => {
     await authedScope(async () => {
-      const routes: MockRoutes = {
-        [`GET ${APPROVALS}`]: () =>
-          jsonResponse(200, {
-            items: [
-              gate(),
-              gate({ gate_id: OTHER_GATE_ID, fleet_id: OTHER_FLEET_ID, fleet_name: "other" }),
-            ],
-          }),
-      };
-      await withMockApi(routes, async (apiUrl) => {
+      // The daemon narrows, not the client: `fleet_id` is its own query
+      // parameter. A client-side filter would only ever see what the first
+      // page happened to carry.
+      const routes: MockRoutes = daemonLike([
+        gate(),
+        gate({ gate_id: OTHER_GATE_ID, fleet_id: OTHER_FLEET_ID, fleet_name: "other" }),
+      ]);
+      await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(["approvals", "list", "--fleet", FLEET_ID], {
@@ -89,6 +102,7 @@ describe("approvals commands", () => {
         const text = out.read();
         expect(text).toContain(GATE_ID);
         expect(text).not.toContain(OTHER_GATE_ID);
+        expect(calls[0]?.search).toContain(`fleet_id=${FLEET_ID}`);
       });
     });
   });
@@ -258,12 +272,10 @@ describe("approvals — machine surface", () => {
 
   test("approvals list --json --fleet narrows the emitted set", async () => {
     await authedScope(async () => {
-      const routes: MockRoutes = {
-        [`GET ${APPROVALS}`]: () =>
-          jsonResponse(200, {
-            items: [gate(), gate({ gate_id: OTHER_GATE_ID, fleet_id: OTHER_FLEET_ID })],
-          }),
-      };
+      const routes: MockRoutes = daemonLike([
+        gate(),
+        gate({ gate_id: OTHER_GATE_ID, fleet_id: OTHER_FLEET_ID }),
+      ]);
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
@@ -383,6 +395,42 @@ describe("approvals — degraded daemon answers", () => {
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         expect(out.read()).toContain(FLEET_ID);
+      });
+    });
+  });
+});
+
+describe("approvals — a gate past the first page", () => {
+  test("list follows next_cursor, so page two is not silently dropped", async () => {
+    await authedScope(async () => {
+      // The failure this prevents: a workspace with more gates than one page
+      // reports "nothing waiting" for a Fleet whose gate sits on page two,
+      // which reads exactly like a healthy Fleet.
+      const SECOND_PAGE_GATE = "01900000-0000-7000-8000-000000099b01";
+      const CURSOR = "cursor-page-2";
+      const routes: MockRoutes = {
+        [`GET ${APPROVALS}`]: (_req, url) =>
+          url.searchParams.get("cursor") === CURSOR
+            ? jsonResponse(200, {
+                items: [gate({ gate_id: SECOND_PAGE_GATE })],
+                next_cursor: null,
+              })
+            : jsonResponse(200, { items: [gate()], next_cursor: CURSOR }),
+      };
+      await withMockApi(routes, async (apiUrl, calls) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(["approvals", "list"], {
+          stdout: out.stream,
+          stderr: err.stream,
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
+        });
+        expect(code).toBe(0);
+        const text = out.read();
+        expect(text).toContain(GATE_ID);
+        expect(text).toContain(SECOND_PAGE_GATE);
+        expect(calls).toHaveLength(2);
+        expect(calls[1]?.search).toContain(`cursor=${CURSOR}`);
       });
     });
   });

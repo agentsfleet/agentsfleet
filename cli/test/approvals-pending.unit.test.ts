@@ -24,6 +24,8 @@ const gate = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+/** Narrows on `status` and `fleet_id` the way the route does, so a client that
+ *  stopped delegating the filter would fail here instead of quietly passing. */
 const httpLayer = (
   requests: HttpRequestInput[],
   response: unknown,
@@ -32,9 +34,19 @@ const httpLayer = (
   Layer.succeed(HttpClient, {
     request: <T>(input: HttpRequestInput) => {
       requests.push(input);
-      return fail
-        ? (Effect.die(new Error("inbox unreachable")) as Effect.Effect<T, never, never>)
-        : (Effect.sync(() => response as T) as Effect.Effect<T, never, never>);
+      if (fail) {
+        return Effect.die(new Error("inbox unreachable")) as Effect.Effect<T, never, never>;
+      }
+      const query = new URLSearchParams(input.path.split("?")[1] ?? "");
+      const status = query.get("status");
+      const fleetId = query.get("fleet_id");
+      const all = ((response as { items?: Array<Record<string, unknown>> } | null)?.items) ?? [];
+      const items = all.filter(
+        (row) =>
+          (status === null || row.status === status) &&
+          (fleetId === null || row.fleet_id === fleetId),
+      );
+      return Effect.sync(() => ({ items, next_cursor: null }) as T) as Effect.Effect<T, never, never>;
     },
   });
 
@@ -72,10 +84,15 @@ describe("parkedGateHint", () => {
     expect(await runHint({ items: [gate({ status: "approved" })] })).toBeNull();
   });
 
-  test("reads the workspace approvals inbox", async () => {
+  test("asks the daemon for pending gates rather than filtering a page itself", async () => {
+    // A client-side filter over one returned page reports "nothing waiting"
+    // for a workspace whose pending gate sits behind a page of decided ones.
     const requests: HttpRequestInput[] = [];
     await runHint({ items: [] }, requests);
-    expect(requests[0]?.path).toBe(`/v1/workspaces/${WS_ID}/approvals`);
+    const path = requests[0]?.path ?? "";
+    expect(path).toContain(`/v1/workspaces/${WS_ID}/approvals`);
+    expect(path).toContain("status=pending");
+    expect(path).toContain("limit=200");
   });
 
   test("an unreachable inbox yields no hint instead of a second failure", async () => {

@@ -33,14 +33,34 @@ export const GATE_COLUMN = {
   action: "ACTION",
 } as const;
 
+// The gate's lifecycle field. One spelling, because the daemon uses it twice:
+// as the row's own key and as the query parameter that narrows a listing.
+const FIELD_STATUS = "status" as const;
+
 export const GATE_FIELD = {
   gate: "gate",
   fleet: "fleet",
   kind: "kind",
-  status: "status",
+  status: FIELD_STATUS,
   action: "action",
 } as const;
 
 // One em dash stands in for an absent optional field, matching every other
 // table this CLI prints.
 export const EMPTY_CELL = "—" as const;
+
+// Query parameters the approvals route serves. The Fleet and status filters
+// are the daemon's own, so narrowing happens there rather than over a page this
+// client already truncated — a client-side filter over one page of 50 reports
+// "nothing waiting" for a workspace whose gate is on page two.
+export const GATE_QUERY = {
+  limit: "limit",
+  cursor: "cursor",
+  status: FIELD_STATUS,
+  fleetId: "fleet_id",
+} as const;
+
+// The daemon caps `limit` at 200 and defaults to 50; asking for the cap is
+// fewer round trips for the same answer.
+export const GATE_PAGE_LIMIT = 200;
+export const GATE_MAX_PAGES = 50;

@@ -126,7 +126,10 @@ describe("libraryEffect — table render", () => {
       ),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(requests[0]?.path).toBe(`/v1/workspaces/${WS_ID}/fleet-libraries`);
+    // Paged to exhaustion, like `install` — the two must agree about what
+    // exists, which is the whole point of the change.
+    expect(requests[0]?.path).toContain(`/v1/workspaces/${WS_ID}/fleet-libraries`);
+    expect(requests[0]?.path).toContain("limit=100");
     const rows = tables[0]?.rows as Array<{ id: string; credentials: string; tier: string }>;
     expect(rows[0]?.credentials).toBe("github");
 
@@ -178,5 +181,68 @@ describe("libraryEffect — empty catalog", () => {
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(captured.join("\n")).toContain("No Fleet libraries in this workspace.");
+  });
+});
+
+describe("libraryEffect — a gallery larger than one page", () => {
+  test("follows next_cursor, so install cannot resolve an entry library hid", async () => {
+    // `install --library` pages to exhaustion. A `library` that stopped at page
+    // one would put the two commands back into disagreement about what exists,
+    // which is the defect this command's whole change removes.
+    const CURSOR = "cursor-page-2";
+    const captured: string[] = [];
+    const tables: TableCapture[] = [];
+    const requests: HttpRequestInput[] = [];
+    let served = 0;
+    const layer = Layer.mergeAll(
+      Layer.succeed(CliConfig, {
+        apiUrl: "https://api.unit-test.local",
+        dashboardUrl: "https://dash.unit-test.local",
+        accessToken: Option.none(),
+        jsonMode: false,
+        noOpen: false,
+        telemetryPosthogKey: "phc_unit",
+        telemetryPosthogHost: "https://us.i.posthog.com",
+      }),
+      Layer.succeed(Credentials, {
+        getAccessToken: Effect.sync(() => Option.some(Redacted.make(TOKEN))),
+        snapshot: Effect.succeed({ accessToken: Option.none(), savedAt: null, sessionId: null, apiUrl: null, credentialId: null }),
+        saveAccessToken: () => Effect.void,
+        clearAccessToken: Effect.void,
+      }),
+      Layer.succeed(Workspaces, {
+        load: Effect.succeed({ current_workspace_id: WS_ID, items: [] }),
+        save: () => Effect.void,
+      }),
+      Layer.succeed(HttpClient, {
+        request: <T>(input: HttpRequestInput) =>
+          Effect.sync(() => {
+            requests.push(input);
+            served += 1;
+            return (served === 1
+              ? { items: [{ id: "page-one", name: "one", visibility: "platform" }], next_cursor: CURSOR }
+              : { items: [{ id: "page-two", name: "two", visibility: "tenant" }], next_cursor: null }) as T;
+          }),
+      }),
+      Layer.succeed(Output, {
+        intro: () => Effect.void,
+        info: (m) => Effect.sync(() => { captured.push(m); }),
+        success: () => Effect.void,
+        warn: () => Effect.void,
+        error: () => Effect.void,
+        outro: () => Effect.void,
+        printJson: () => Effect.void,
+        printJsonErr: () => Effect.void,
+        printKeyValue: () => Effect.void,
+        printSection: () => Effect.void,
+        printTable: (columns, rows) => Effect.sync(() => { tables.push({ columns, rows }); }),
+      }),
+    );
+    const exit = await Effect.runPromiseExit(libraryEffect.pipe(Effect.provide(layer)));
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.path).toContain(`starting_after=${CURSOR}`);
+    const rows = tables[0]?.rows as Array<{ id: string }>;
+    expect(rows.map((r) => r.id)).toEqual(["page-one", "page-two"]);
   });
 });
