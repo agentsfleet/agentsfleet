@@ -58,11 +58,30 @@ const APP_RUN_SUCCESS: &str =
 /// What an App sends to prove the endpoint answers.
 const PING: &str = include_str!("../../../../tests/fixtures/webhooks/github_ping.json");
 
+/// A terminal production deployment, as an App sends it.
+///
+/// Minimal on purpose: `octocrab` types `deployment` and `deployment_status` as
+/// free-form JSON, so what this fixture has to get right is the ENVELOPE — the
+/// installation this deployment's scripted lookup answers for, and a repository
+/// a subscriber could match. The payload is here to be classified, and the
+/// point of the test is that classification has nowhere to send it.
+const APP_DEPLOYMENT_STATUS: &str =
+    include_str!("../../../../tests/fixtures/webhooks/github_deployment_status_app.json");
+
 /// The delivery kind both run fixtures are.
 const EVENT_WORKFLOW_RUN: &str = "workflow_run";
 
 /// The kind a ping is.
 const EVENT_PING: &str = "ping";
+
+/// The kind a production deployment result is.
+///
+/// Named here because this build has no writer for what it carries — see the
+/// test at the bottom of this file.
+const EVENT_DEPLOYMENT_STATUS: &str = "deployment_status";
+
+/// The reason a delivery no rule classifies is answered with.
+const REASON_UNSUPPORTED: &str = "unsupported_event";
 
 /// The secret this DEPLOYMENT's App signs every installation's deliveries with.
 const APP_SECRET: &[u8] = b"fixture-github-app-secret";
@@ -398,4 +417,35 @@ async fn a_delivery_that_is_not_the_event_its_header_claims_is_malformed() {
         Some(code(error_code::WEBHOOK_MALFORMED))
     );
     assert!(ingress.deliveries().is_empty());
+}
+
+/// A `deployment_status` delivery is acknowledged and dropped, recording nothing.
+///
+/// The endpoint's generated description used to say this event "records the
+/// deployed commit and schedules eligible verification fleets". It does not:
+/// `github.zig` wrote repair evidence through writers that were never ported,
+/// so the delivery falls through classification and is dropped as unsupported.
+/// The description now says so, and this is the behaviour behind the sentence —
+/// prose and route graded together, because the sentence is the part an
+/// integrator acts on.
+///
+/// Dropped rather than refused, deliberately: a 4xx is what makes a provider
+/// retry, and there is nothing here for a retry to achieve.
+#[tokio::test]
+async fn a_deployment_status_delivery_is_acknowledged_and_records_nothing() {
+    let ingress = deployment(vec![subscriber(signed::FLEET)]);
+    let answered = deliver(
+        &ingress,
+        SHIPPED,
+        EVENT_DEPLOYMENT_STATUS,
+        APP_SECRET,
+        APP_DEPLOYMENT_STATUS,
+    )
+    .await;
+
+    assert_eq!(dropped_for(answered).await, REASON_UNSUPPORTED);
+    assert!(
+        ingress.deliveries().is_empty(),
+        "no run was started for an event this build cannot act on"
+    );
 }
