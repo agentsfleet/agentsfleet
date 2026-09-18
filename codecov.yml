@@ -61,7 +61,30 @@ coverage:
         # red lane green is the thing this comment exists to prevent.
         # Raised 96 -> 97 with `RUSTD_COVERAGE_FLOOR` on Indy's call
         # (2026-08-31). Both numbers move together, as the note above requires.
-        target: 97%
+        #
+        # Raised 97 -> 99 on Indy's call (2026-09-18), and this one moves ALONE
+        # — which the paragraph above forbids for the two PROJECT numbers and
+        # does not govern here, because this is the PATCH status. The two grade
+        # different things: `RUSTD_COVERAGE_FLOOR` grades the whole workspace,
+        # measured at 97.5079% (40,966 of 42,013 lines), and no single Pull
+        # Request moves that. This grades only the lines a diff adds, where a
+        # branch with no test is a branch the author can still reach.
+        #
+        # 99 is not an aspiration set ahead of the code — the mistake the
+        # 97 -> 98 -> 97 round trip above records. It is the measurement that
+        # motivated it: the diff raising this line covers 236 of 236 added
+        # lines. The one that resisted was the poisoned-lock fallback in
+        # `sweep/reconcile.rs`, reached by a test that poisons the lock on
+        # purpose rather than by an exception.
+        #
+        # Left at 99 rather than 100 for one reason, stated so the next author
+        # does not have to rediscover it: `tracing` field expressions that
+        # contain a call are reported dead by llvm-cov whatever runs them (see
+        # the `tracing` note in `rustd/Cargo.toml`). The workspace convention is
+        # to hoist them to a `let`, and a diff that forgets one loses a line it
+        # cannot win back with a test. One point of slack is that hoist, not
+        # absorbed failure.
+        target: 99%
         threshold: 0%
         informational: false
 
