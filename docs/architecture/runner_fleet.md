@@ -703,7 +703,8 @@ measurements by a different mechanism with a different failure mode.
 
 ```
 agentsfleet_runner_failures_total{runner_id,reason}     counter   reason ∈ FailureClass ∪ {unknown}
-agentsfleet_runner_executions_total{runner_id,outcome}  counter   outcome ∈ {processed, fleet_error}
+agentsfleet_runner_executions_total{runner_id,outcome,fault}  counter   outcome ∈ {processed, fleet_error};
+                                                              fault ∈ {platform, workload}, on fleet_error ONLY
 agentsfleet_runner_last_seen_seconds{runner_id}         gauge     render-time delta from last report/heartbeat
 agentsfleet_runner_active_leases{runner_id}             gauge     +1 on grant, −1 on terminal report
 ```

@@ -80,8 +80,11 @@ only `grafana`.
   runner success, work picked up inside the replay floor, and worst runner
   heartbeat age.
 - Both error-budget burn panels carry their unproven marker.
-- The declared-gap panel lists the families with no producer and repeats the
-  shared-tenant warning above.
+- The producer-gap list and the shared-tenant warning are NOT on the dashboard.
+  They were a text panel until Sep 18, 2026; the census and
+  `rustd/crates/afd_observability/src/metrics/produced.rs` are the source of
+  truth for what has no producer, and the warning above this list is where an
+  operator reads it. A dashboard panel was a second copy of both.
 - `runner-silent` is quiet while runners heartbeat. The family reports a Unix
   epoch, so the rule subtracts it from evaluation time and takes the freshest
   reading per runner; a rule missing either half alerts on a healthy fleet.
