@@ -38,10 +38,10 @@ ENV=prod ACTION=apply \
 
 ALLOW_VAULT_READS=1 \
   ALLOW_OBSERVABILITY_WRITES=1 \
-  ./playbooks/operations/observability/00_gate.sh apply prod grafana
+  ACTION=apply ENV=prod ./playbooks/operations/observability/00_gate.sh
 
 ALLOW_VAULT_READS=1 \
-  ./playbooks/operations/observability/00_gate.sh verify prod grafana
+  ACTION=verify ENV=prod ./playbooks/operations/observability/00_gate.sh
 ```
 
 Confirm package promotion:

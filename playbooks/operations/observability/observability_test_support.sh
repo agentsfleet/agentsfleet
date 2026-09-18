@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/test_search.sh
 source "$SCRIPT_DIR/../../lib/test_search.sh"
 GATE="$SCRIPT_DIR/00_gate.sh"
-PROVIDER_DIR="$SCRIPT_DIR/providers/grafana"
+PROVIDER_DIR="$SCRIPT_DIR"
 passed=0
 failed=0
 work_dir="$(mktemp -d)"
@@ -153,7 +153,16 @@ run_suite() {
   local result_dir name
   result_dir="$(mktemp -d)"
   local pids=()
+  # A declared name with no function is a FAILURE, not a pass. The tally below
+  # only looks for a FAIL line, so a test deleted or renamed out from under its
+  # entry logged "command not found" and counted green — which is how two
+  # refusal guards reported success for an edit that had removed their bodies.
   for name in "${TEST_NAMES[@]}"; do
+    if ! declare -F "$name" >/dev/null; then
+      echo "FAIL $name" >"$result_dir/$name.log"
+      echo "       declared in TEST_NAMES but no such function" >>"$result_dir/$name.log"
+      continue
+    fi
     ( "$name" ) >"$result_dir/$name.log" 2>&1 &
     pids+=("$!")
   done

@@ -3,9 +3,9 @@
 set -euo pipefail
 
 OBS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OBS_REPO_ROOT="$(cd "$OBS_DIR/../../../../.." && pwd)"
+OBS_REPO_ROOT="$(cd "$OBS_DIR/../../.." && pwd)"
 # shellcheck source=../../../../lib/common.sh
-source "$OBS_DIR/../../../../lib/common.sh"
+source "$OBS_DIR/../../lib/common.sh"
 
 obs_select_environment() {
   case "${OBS_ENV:-}" in
@@ -134,7 +134,14 @@ obs_write_json() {
 }
 
 obs_runner_offline_seconds() {
-  local constants="$OBS_REPO_ROOT/src/lib/common/constants.zig"
+  # `afd_core::timing`, not the Zig mirror it was ported from. The daemon that
+  # publishes the heartbeat family and derives a runner offline is Rust:
+  # `afd_runner/src/sweep/liveness.rs` tests `RUNNER_OFFLINE_AFTER_MS` from
+  # here. Both files carry 30_000 today because a cross-runtime test pins the
+  # Rust constants to the Zig ones, but that guard runs in the retired
+  # runtime's direction, and the day `constants.zig` goes this playbook would
+  # have derived its alert threshold from a deleted file.
+  local constants="$OBS_REPO_ROOT/rustd/crates/afd_core/src/timing.rs"
   local lease_ms multiplier
   lease_ms="$(
     sed -n \

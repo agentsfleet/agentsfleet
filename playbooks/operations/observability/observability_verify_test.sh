@@ -5,8 +5,8 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/test_search.sh
 source "$SCRIPT_DIR/../../lib/test_search.sh"
-PROVIDER_DIR="$SCRIPT_DIR/providers/grafana"
-VERIFY="$PROVIDER_DIR/resource_verify.sh"
+PROVIDER_DIR="$SCRIPT_DIR"
+VERIFY="$PROVIDER_DIR/04_verify.sh"
 passed=0
 failed=0
 work_dir="$(mktemp -d)"
@@ -60,8 +60,8 @@ case "$url" in
     # matched nothing, and the suite reported drift that did not exist.
     rendered="$(mktemp)"
     (
-      # shellcheck source=providers/grafana/common.sh
-      source "$PROVIDER_DIR/common.sh"
+      # shellcheck source=lib.sh
+      source "$PROVIDER_DIR/lib.sh"
       OBS_PROMETHEUS_UID=prometheus-main
       OBS_ENVIRONMENT=development
       OBS_DASHBOARD_NAME=agentsfleet-runtime-dev
