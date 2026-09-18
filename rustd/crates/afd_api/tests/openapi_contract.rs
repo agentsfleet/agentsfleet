@@ -27,6 +27,9 @@
 )]
 #![cfg(all(feature = "test-util", feature = "openapi"))]
 
+/// The operation this build must not over-promise for.
+const CONNECTOR_INGRESS: &str = "ingest_connector_webhook";
+
 /// The verbs a `PathItem` can carry, as the document spells them.
 const METHODS: [&str; 5] = ["get", "post", "put", "patch", "delete"];
 
@@ -306,5 +309,56 @@ fn test_every_write_names_the_body_it_reads() {
         "a write names no body, so a generated client cannot send one ({} of them):\n  {}",
         mute.len(),
         mute.join("\n  "),
+    );
+}
+
+/// The ingress description does not promise a writer this build has no home for.
+///
+/// `webhook/app_route.rs` says in its own module note that the repair-evidence
+/// writers are unported and that `deployment_status` is a documented gap. Its
+/// generated description said the opposite — that repair pull requests and
+/// workflow results update repair evidence, and that a terminal
+/// `deployment_status` records the deployed commit and schedules verification
+/// fleets. Both sentences shipped in `public/openapi.json`, which is the one an
+/// integrator reads and the only one they can act on.
+///
+/// Graded as the ABSENCE of the promise rather than the presence of a
+/// replacement, because what must not happen is a reader budgeting for evidence
+/// that never arrives. The wording is free to improve; the claim is not free to
+/// come back.
+#[test]
+fn test_the_ingress_description_promises_no_unported_writer() {
+    let document = document();
+    // Found by operation id, not by path: several routes live under
+    // `/v1/ingress/`, and the cron one matched a path filter first.
+    let described = document
+        .get("paths")
+        .and_then(serde_json::Value::as_object)
+        .expect("the document describes its paths")
+        .values()
+        .filter_map(|item| item.get("post"))
+        .find(|post| {
+            post.get("operationId")
+                .is_some_and(|id| id == CONNECTOR_INGRESS)
+        })
+        .and_then(|post| post.get("description"))
+        .and_then(serde_json::Value::as_str)
+        .expect("the connector ingress route describes its POST")
+        .to_owned();
+
+    for promise in [
+        "update repair evidence",
+        "records the deployed commit",
+        "schedules eligible verification",
+    ] {
+        assert!(
+            !described.contains(promise),
+            "the ingress description promises `{promise}`, which this build has \
+             no writer for: {described}"
+        );
+    }
+    assert!(
+        described.contains("repair-evidence writer"),
+        "the description must name the gap rather than leave it silent: {described}"
     );
 }

@@ -24,6 +24,8 @@ use afd_admission::{Admission, Admissions, Key, Producer};
 use afd_core::clock;
 use afd_wire::event::EventType;
 
+use afd_admission::Progress;
+
 use crate::integration_admission_recovery::{EVERY_FLEET, EVERY_ROW, NO_GRACE, RECOVERY_LANE};
 use crate::queue;
 use crate::seed::seeded_parts;
@@ -144,7 +146,12 @@ async fn a_reconcile_pass_that_cannot_probe_keeps_the_receipt() {
         .expect("a live append records its receipt");
 
     let reconciled = deferring(&fixtures)
-        .reconcile(clock::now(), EVERY_FLEET, EVERY_ROW)
+        .reconcile(
+            clock::now(),
+            EVERY_FLEET,
+            EVERY_ROW,
+            &mut Progress::default(),
+        )
         .await
         .expect("an unreachable fleet must not end a pass that has others to examine");
     assert_eq!(

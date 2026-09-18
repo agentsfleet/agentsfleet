@@ -178,11 +178,24 @@ WHERE fleet_id = $1::uuid AND created_at = $2 AND seq = $3
 /// under the same rule, for the same reason — it probes per row, so it would
 /// hold the lock across one round trip per row rather than one per pass.
 ///
-/// `$1` how many fleets one pass may examine.
+/// # The cursor is what makes the limit a pace instead of a ceiling
+///
+/// `fleet_id > $2` is a keyset bound on the same column the statement already
+/// orders by, so it costs an index position rather than a scan and a skip.
+/// Without it the limit reads the same lowest-sorting fleets on every pass, and
+/// a deployment with more unfinished fleets than the limit never examines the
+/// rest — the caller's note in
+/// [`Progress`](crate::reconcile::progress::Progress) has the failure in full.
+/// The bound is always present: a first pass binds
+/// [`FIRST_FLEET`](crate::reconcile::progress::FIRST_FLEET), which is a true
+/// lower bound on the column rather than a stand-in for its absence, so this
+/// statement has no second spelling to drift from.
+///
+/// `$1` how many fleets one pass may examine, `$2` the fleet to resume after.
 pub(crate) const SELECT_UNDELIVERED_FLEETS: &str = "\
 SELECT DISTINCT ON (fleet_id) fleet_id::text, receipt
 FROM core.fleet_admissions
-WHERE receipt IS NOT NULL AND delivered_at IS NULL
+WHERE receipt IS NOT NULL AND delivered_at IS NULL AND fleet_id > $2::uuid
 ORDER BY fleet_id, created_at, seq
 LIMIT $1";
 
@@ -205,11 +218,25 @@ LIMIT $1";
 /// Duplicated round trips, not a duplicated repair: the guard means one write
 /// lands and the other matches nothing.
 ///
-/// `$1` fleet, `$2` the batch limit.
+/// # Why this one needs a cursor too
+///
+/// The row comparison resumes a walk that filled its batch, and the alternative
+/// is not "recovery takes longer" — it is rows that are never reached. A repair
+/// VOIDS the receipts it read, the replay sweeper re-appends those rows with
+/// live receipts, and they keep their place in this order because `created_at`
+/// and `seq` belong to the admission rather than to the entry. So the next walk
+/// re-reads the rows it just fixed, finds them healthy, and fills its batch
+/// with them. `(created_at, seq) > ($3, $4)` is a row-wise comparison on the
+/// leading columns of the same index, so resuming is an index bound and not a
+/// scan. A first walk binds [`RowKey::FIRST`](crate::reconcile::progress::RowKey::FIRST),
+/// which every admission sorts above.
+///
+/// `$1` fleet, `$2` the batch limit, `$3` and `$4` the row to resume after.
 pub(crate) const SELECT_UNDELIVERED_ON_FLEET: &str = "\
-SELECT id::text, receipt
+SELECT id::text, receipt, created_at, seq
 FROM core.fleet_admissions
 WHERE fleet_id = $1::uuid AND receipt IS NOT NULL AND delivered_at IS NULL
+  AND (created_at, seq) > ($3::bigint, $4::bigint)
 ORDER BY created_at, seq
 LIMIT $2";
 

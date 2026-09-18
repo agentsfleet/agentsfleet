@@ -153,6 +153,42 @@ if [ -f "$ARCH_DIR/data_flow.md" ] && [ -f "$ARCH_DIR/user_flow.md" ] && [ -f "$
 fi
 
 # ---------------------------------------------------------------------------
+# 5. architecture_absent_mechanisms
+#
+# Two mechanisms the pages described for a year and the daemon has never had.
+# Both read as current, which is the whole problem: a reader budgets for a
+# guarantee that is not there.
+#
+#   Row-Level Security. `schema/` declares no `ROW LEVEL SECURITY` and no
+#   policy, and nothing reads a `current_setting('app.workspace_id')`. Workspace
+#   isolation is enforced in the application, by the ownership layer in front of
+#   every workspace route.
+#
+#   The session execution handle. `core.fleet_sessions.execution_id` has no
+#   writer and no reader in the Rust tree; `fleet.runner_leases` answers "which
+#   fleet is executing" with a fencing token and an expiry behind it.
+#
+# Asserted as ABSENCE of the claim rather than presence of a correction,
+# because there is no one sentence a page must carry — only a thing it must
+# stop saying. The `grep -v` skips the rows that name the absence on purpose.
+# ---------------------------------------------------------------------------
+if [ -f "$ARCH_DIR/data_flow.md" ]; then
+  rls_claims=$(grep -rn "Row-Level Security\|Row Level Security" "$ARCH_DIR" 2>/dev/null \
+    | grep -v "declares no" || true)
+  if [ -n "$rls_claims" ]; then
+    err "architecture_absent_mechanisms: this repository declares no row-level security policy:"
+    printf "%s\n" "$rls_claims" >&2
+  fi
+  handle_claims=$(grep -rn "execution_id" "$ARCH_DIR" 2>/dev/null \
+    | grep -v "nothing writes or reads either" || true)
+  if [ -n "$handle_claims" ]; then
+    err "architecture_absent_mechanisms: the session execution handle has no writer or reader:"
+    printf "%s\n" "$handle_claims" >&2
+  fi
+  [ "$FAIL" = 0 ] && ok "architecture_absent_mechanisms: no page claims a mechanism the daemon lacks"
+fi
+
+# ---------------------------------------------------------------------------
 # Citation assertions. The four checks above ask whether the docs
 # point at real specs and real pages. These four ask whether they describe a
 # real tree: a page naming a dropped table or a renumbered slot reads as current

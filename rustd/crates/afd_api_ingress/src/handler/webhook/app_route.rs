@@ -108,11 +108,10 @@ const ACTOR_APP_GITHUB: &str = "github-app";
     description = concat!(
         "Receives signed events from a connected provider. GitHub is the ",
         "supported provider. A matching event starts runs for subscribed ",
-        "fleets. Duplicate events do not start another run. Repair pull ",
-        "requests and workflow results update repair evidence without ",
-        "starting another run. A terminal production `deployment_status` ",
-        "records the deployed commit and schedules eligible verification ",
-        "fleets. ",
+        "fleets. Duplicate events do not start another run. This build has no ",
+        "repair-evidence writer. Repair pull requests, workflow results and ",
+        "`deployment_status` deliveries are acknowledged and dropped. They ",
+        "start no run and record no evidence. ",
     ),
     request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
     params(

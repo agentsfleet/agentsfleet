@@ -44,7 +44,7 @@
 use std::slice;
 use std::time::Duration;
 
-use afd_admission::{Admission, Admissions, Key, Producer};
+use afd_admission::{Admission, Admissions, Key, Producer, Progress};
 use afd_core::clock::{self, UnixMillis};
 use afd_core::id::Uuid7;
 use afd_dragonfly::{EventId, FleetStreams};
@@ -108,12 +108,16 @@ const REQUEST_JSON: &str = r#"{"delivery":"recovery"}"#;
 /// and then look for that id under this run's fleet (ISO-1).
 ///
 /// Minted off the fleet, which `seeded_parts` already minted.
-fn producer_key(fleet: &str, delivery: &str) -> String {
+pub(crate) fn producer_key(fleet: &str, delivery: &str) -> String {
     format!("{fleet}:{delivery}")
 }
 
 /// One webhook admission for `fleet`, keyed by `delivery`.
-fn admission<'a>(fleet: &'a str, workspace: &'a str, delivery: &'a str) -> Admission<'a> {
+pub(crate) fn admission<'a>(
+    fleet: &'a str,
+    workspace: &'a str,
+    delivery: &'a str,
+) -> Admission<'a> {
     Admission {
         producer: Producer::Webhook,
         key: Key::Repeated(delivery),
@@ -126,7 +130,7 @@ fn admission<'a>(fleet: &'a str, workspace: &'a str, delivery: &'a str) -> Admis
 }
 
 /// A ledger over the lane's database and the lane's real queue.
-fn ledger(fixtures: &Fixtures) -> Admissions {
+pub(crate) fn ledger(fixtures: &Fixtures) -> Admissions {
     Admissions::for_tests(fixtures.database.clone(), fixtures.queue().clone())
 }
 
@@ -136,7 +140,7 @@ fn ledger(fixtures: &Fixtures) -> Admissions {
 /// handle rather than a paused container: the lane's datastore is shared by
 /// every binary running in parallel, so a handle one test owns is the only way
 /// to fail one test's commands.
-fn deferring(fixtures: &Fixtures) -> Admissions {
+pub(crate) fn deferring(fixtures: &Fixtures) -> Admissions {
     Admissions::for_tests(fixtures.database.clone(), queue::unreachable())
 }
 
@@ -335,9 +339,14 @@ async fn queue_loss_replays_without_duplicate_settlement() {
     // ledger stamps `created_at` with `clock::now()`, so a replay cutoff built
     // from the fixture's instant scans nothing.
     let repairing_at = clock::now();
-    live.reconcile(repairing_at, EVERY_FLEET, EVERY_ROW)
-        .await
-        .expect("the reconcile pass runs against both live datastores");
+    live.reconcile(
+        repairing_at,
+        EVERY_FLEET,
+        EVERY_ROW,
+        &mut Progress::default(),
+    )
+    .await
+    .expect("the reconcile pass runs against both live datastores");
     live.replay(repairing_at, NO_GRACE, EVERY_ROW)
         .await
         .expect("the replay pass runs against both live datastores");

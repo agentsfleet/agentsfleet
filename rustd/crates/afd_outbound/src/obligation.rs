@@ -38,6 +38,9 @@ mod sql;
 /// Statement name, for the context a failure carries.
 const CONTEXT_STAMP: &str = "stamp delivered";
 
+/// Statement name, for the context a cycle-start failure carries.
+const CONTEXT_COUNT: &str = "count delivery attempt";
+
 /// Statement name, for the context a scan failure carries.
 const CONTEXT_SCAN: &str = "scan obligations";
 
@@ -236,6 +239,39 @@ async fn write_receipt(
         .await
         .map_err(crate::error::query(CONTEXT_RECEIPT))?;
     Ok(())
+}
+
+/// Record that a worker has taken this obligation for a delivery cycle.
+///
+/// Answers the count this call produced, or `None` when the row was already
+/// delivered and nothing was counted — which is what a duplicate queue entry
+/// for an answer somebody already received looks like from here.
+///
+/// Called at the START of the cycle, so the number survives the cycle failing.
+/// That makes it best-effort in one direction and only one: a process that dies
+/// between this write and the delivery has counted a cycle that produced
+/// nothing, and a process that dies before it has delivered a cycle it never
+/// counted. Neither can move `delivered_at`, which is the fact anything
+/// downstream acts on.
+///
+/// # Errors
+/// Reports a database that would not answer. A caller must log that and DELIVER
+/// ANYWAY: the answer is owed to a person and bookkeeping is not.
+pub async fn count_attempt(
+    database: &Db,
+    fleet_id: &str,
+    event_id: &str,
+    now: UnixMillis,
+) -> Result<Option<i64>> {
+    let mut connection = database.acquire().await?;
+    let counted: Option<(i64,)> = sqlx::query_as(sql::COUNT_ATTEMPT)
+        .bind(fleet_id)
+        .bind(event_id)
+        .bind(now.as_millis())
+        .fetch_optional(&mut *connection)
+        .await
+        .map_err(crate::error::query(CONTEXT_COUNT))?;
+    Ok(counted.map(|(count,)| count))
 }
 
 /// Record that a destination accepted this answer.
