@@ -1,0 +1,73 @@
+{
+  "action": "created",
+  "deployment": {
+    "id": 1234567890,
+    "sha": "9f4c1b2d3e4f5a60718293a4b5c6d7e8f9012345",
+    "ref": "main",
+    "task": "deploy",
+    "environment": "production",
+    "description": "Deploying main to production"
+  },
+  "deployment_status": {
+    "id": 9876543210,
+    "state": "success",
+    "environment": "production",
+    "description": "Deployment finished",
+    "target_url": "https://example.invalid/deploys/9876543210"
+  },
+  "repository": {
+    "id": 65432109,
+    "name": "platform",
+    "full_name": "example/platform",
+    "html_url": "https://github.com/example/platform",
+    "default_branch": "main",
+    "node_id": "R_kgDOA1b2zQ",
+    "url": "https://api.github.com/repos/example/platform",
+    "private": false,
+    "fork": false,
+    "owner": {
+      "login": "example",
+      "id": 4210001,
+      "node_id": "U_4210001",
+      "avatar_url": "https://avatars.githubusercontent.com/u/4210001?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/example",
+      "html_url": "https://github.com/example",
+      "followers_url": "https://api.github.com/users/example/followers",
+      "following_url": "https://api.github.com/users/example/following{/other_user}",
+      "gists_url": "https://api.github.com/users/example/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/example/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/example/subscriptions",
+      "organizations_url": "https://api.github.com/users/example/orgs",
+      "repos_url": "https://api.github.com/users/example/repos",
+      "events_url": "https://api.github.com/users/example/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/example/received_events",
+      "type": "User",
+      "site_admin": false
+    }
+  },
+  "sender": {
+    "login": "example-bot",
+    "id": 1234567,
+    "node_id": "U_1234567",
+    "avatar_url": "https://avatars.githubusercontent.com/u/1234567?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/example-bot",
+    "html_url": "https://github.com/example-bot",
+    "followers_url": "https://api.github.com/users/example-bot/followers",
+    "following_url": "https://api.github.com/users/example-bot/following{/other_user}",
+    "gists_url": "https://api.github.com/users/example-bot/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/example-bot/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/example-bot/subscriptions",
+    "organizations_url": "https://api.github.com/users/example-bot/orgs",
+    "repos_url": "https://api.github.com/users/example-bot/repos",
+    "events_url": "https://api.github.com/users/example-bot/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/example-bot/received_events",
+    "type": "User",
+    "site_admin": false
+  },
+  "installation": {
+    "id": 48765123,
+    "node_id": "MDIzOkludGVncmF0aW9uSW5zdGFsbGF0aW9uNDg3NjUxMjM="
+  }
+}

@@ -329,16 +329,20 @@ fn test_every_write_names_the_body_it_reads() {
 #[test]
 fn test_the_ingress_description_promises_no_unported_writer() {
     let document = document();
-    let paths = document["paths"]
-        .as_object()
-        .expect("the document describes its paths");
     // Found by operation id, not by path: several routes live under
     // `/v1/ingress/`, and the cron one matched a path filter first.
-    let described = paths
+    let described = document
+        .get("paths")
+        .and_then(serde_json::Value::as_object)
+        .expect("the document describes its paths")
         .values()
         .filter_map(|item| item.get("post"))
-        .find(|post| post["operationId"] == CONNECTOR_INGRESS)
-        .and_then(|post| post["description"].as_str())
+        .find(|post| {
+            post.get("operationId")
+                .is_some_and(|id| id == CONNECTOR_INGRESS)
+        })
+        .and_then(|post| post.get("description"))
+        .and_then(serde_json::Value::as_str)
         .expect("the connector ingress route describes its POST")
         .to_owned();
 
