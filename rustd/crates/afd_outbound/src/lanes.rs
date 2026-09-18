@@ -312,11 +312,9 @@ impl<S: Deliver + 'static> Inner<S> {
             crate::worker::report(EVENT_STAMP_FAILED, &failure);
             return;
         }
-        tracing::debug!(
-            provider = job.provider.as_str(),
-            fleet_id = job.fleet_id.as_str(),
-            attempts,
-            event = EVENT_DELIVERED
-        );
+        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+        let provider = job.provider.as_str();
+        let fleet_id = job.fleet_id.as_str();
+        tracing::debug!(provider, fleet_id, attempts, event = EVENT_DELIVERED);
     }
 }

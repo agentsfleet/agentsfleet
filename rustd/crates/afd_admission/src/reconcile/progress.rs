@@ -30,14 +30,36 @@
 //! Nothing is stored per row, nothing is stored per healthy fleet, and nothing
 //! is stored in Postgres: the whole structure is two fields on the sweeper.
 //!
-//! That makes it per-process, and a restart resets it. The cost of the reset is
-//! bounded and worth naming: every fleet returns to head-probe examination, so
-//! a fleet mid-repair falls back to the shortcut above until its restored rows
-//! drain. Recovery gets slower, never unreachable. A durable cursor would fix
-//! that and would put a write on the recovery path to buy it; the trade is
-//! recorded here rather than made silently.
+//! That makes it per-process, and a restart resets it. So does a set with no
+//! room left. Both have the same cost and it is worth stating exactly, because
+//! the obvious summary — "recovery gets slower" — is wrong: a fleet that falls
+//! out of this set goes back to being judged by the head probe, and the head
+//! probe asks about its OLDEST undelivered receipt, which a partial repair has
+//! just made live. Its remaining lost rows are invisible until the restored
+//! ones are DELIVERED and the head moves on. On a fleet a runner is consuming
+//! that is the next lease. On a fleet nobody is consuming it is indefinite.
+//!
+//! That is the price of a bounded memory, and the alternative the review ruled
+//! out was unbounded per-fleet state. A durable cursor would buy the guarantee
+//! back at the cost of a write on the recovery path; the trade is recorded here
+//! rather than made silently.
 
 use std::collections::VecDeque;
+
+/// How many fleets a resume set holds when nobody says otherwise.
+///
+/// The driver passes its own, and this is what a reset falls back to — see
+/// [`Progress::with_capacity`]. The two are pinned equal at compile time by the
+/// sweeper that owns the other one, so this default cannot quietly stop being
+/// the production number.
+///
+/// A CAPACITY and not a per-pass budget. Those were one value once, because a
+/// pass cannot put more fleets into repair than it examined, and the shortcut
+/// was wrong in a way a test found: the number of fleets one pass probes is a
+/// ROUND-TRIP budget, tunable against how long a pass may take, while this is a
+/// MEMORY bound on state that outlives the pass. Tying them made a deployment
+/// that lowered the round-trip budget silently shrink its repair memory.
+pub const DEFAULT_REPAIR_CAPACITY: usize = 128;
 
 /// The fleet id every real fleet sorts above.
 ///
@@ -85,15 +107,37 @@ pub(crate) struct Repair {
 }
 
 /// Where the next pass resumes, across fleets and inside them.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Progress {
     /// The fleet the next head-probe sweep starts after.
     after: Option<String>,
-    /// Fleets mid-repair, oldest first, capped at one pass's fleet budget.
+    /// Fleets mid-repair, oldest first, capped at [`Progress::with_capacity`].
     repairing: VecDeque<Repair>,
+    /// How many fleets this set will hold.
+    capacity: usize,
+}
+
+impl Default for Progress {
+    fn default() -> Self {
+        Self::with_capacity(DEFAULT_REPAIR_CAPACITY)
+    }
 }
 
 impl Progress {
+    /// Resume state holding at most `capacity` fleets mid-repair.
+    ///
+    /// The bound is the caller's because the caller is what knows how much
+    /// memory a sweeper may keep, and because a test needs a small one to reach
+    /// the branch where the set is full — which is the branch that decides
+    /// whether a declined repair is reported or dropped.
+    #[must_use]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            after: None,
+            repairing: VecDeque::new(),
+            capacity,
+        }
+    }
     /// Where the next head-probe sweep starts.
     pub(crate) fn resume_from(&self) -> &str {
         self.after.as_deref().unwrap_or(FIRST_FLEET)
@@ -127,21 +171,16 @@ impl Progress {
     /// Notes what one fleet's walk did, and whether it has further to go.
     ///
     /// Answers `false` only when there IS more to do and the set had no room
-    /// for it — the caller logs that, because a declined repair is the one case
-    /// where this structure trades coverage speed for its memory bound. The
-    /// fleet is not lost: the head probe still examines it on a later pass, once
-    /// the rows this pass restored have been delivered.
-    pub(crate) fn walked(
-        &mut self,
-        fleet_id: &str,
-        stopped_at: Option<RowKey>,
-        budget: i64,
-    ) -> bool {
+    /// for it. The caller logs that, because it is the one case where this
+    /// structure trades coverage for its memory bound, and the trade is not
+    /// merely a slower pass: the declined fleet's remaining lost rows wait
+    /// behind its own head probe until the rows this pass restored are
+    /// delivered — see the module note. Nothing is lost; something waits.
+    pub(crate) fn walked(&mut self, fleet_id: &str, stopped_at: Option<RowKey>) -> bool {
         let Some(after) = stopped_at else {
             return true;
         };
-        let capacity = usize::try_from(budget).unwrap_or(usize::MAX);
-        if self.repairing.len() >= capacity {
+        if self.repairing.len() >= self.capacity {
             return false;
         }
         self.repairing.push_back(Repair {
