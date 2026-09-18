@@ -28,10 +28,10 @@ ENV=dev ACTION=apply \
 
 ALLOW_VAULT_READS=1 \
   ALLOW_OBSERVABILITY_WRITES=1 \
-  ./playbooks/operations/observability/00_gate.sh apply dev grafana
+  ACTION=apply ENV=dev ./playbooks/operations/observability/00_gate.sh
 
 ALLOW_VAULT_READS=1 \
-  ./playbooks/operations/observability/00_gate.sh verify dev grafana
+  ACTION=verify ENV=dev ./playbooks/operations/observability/00_gate.sh
 ```
 
 The allowlisting playbook no longer pauses for a human dashboard confirmation.

@@ -48,7 +48,7 @@ Inspect without writes:
 
 ```bash
 ALLOW_VAULT_READS=1 \
-  ./playbooks/operations/observability/00_gate.sh check dev grafana
+  ACTION=check ENV=dev ./playbooks/operations/observability/00_gate.sh
 ```
 
 After Indy authorizes the Grafana changes:
@@ -56,14 +56,14 @@ After Indy authorizes the Grafana changes:
 ```bash
 ALLOW_VAULT_READS=1 \
 ALLOW_OBSERVABILITY_WRITES=1 \
-  ./playbooks/operations/observability/00_gate.sh apply dev grafana
+  ACTION=apply ENV=dev ./playbooks/operations/observability/00_gate.sh
 ```
 
 Run the read-only drift check after the apply:
 
 ```bash
 ALLOW_VAULT_READS=1 \
-  ./playbooks/operations/observability/00_gate.sh verify dev grafana
+  ACTION=verify ENV=dev ./playbooks/operations/observability/00_gate.sh
 ```
 
 Repeat the three commands with `prod`. The provider allowlist currently accepts
@@ -73,7 +73,7 @@ only `grafana`.
 
 - The environment folder and `agentsfleet-runtime-<env>` dashboard exist.
 - Every panel uses the pinned Prometheus datasource.
-- All six alert rules match the repository expressions.
+- All five alert rules match the repository expressions.
 - `agentsfleet_api_in_flight_requests` returns at least one series.
 - The Grafana token never appears in process arguments or logs.
 - The four Service Level Indicator panels render: admission availability,

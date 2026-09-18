@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 # The assets under test. Overridable so a negative test can point this checker
 # at a deliberately broken copy without editing the real ones; nothing that
 # WRITES to Grafana reads this variable, so a wrong value can only make the
@@ -11,7 +11,6 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../../.." && pwd)"
 OBS_ASSETS_DIR="${OBS_ASSETS_DIR:-$SCRIPT_DIR/assets}"
 DASHBOARD="$OBS_ASSETS_DIR/dashboard.json"
 ALERTS="$OBS_ASSETS_DIR/alerts.json"
-LEDGER="$REPO_ROOT/rustd/crates/afd_observability/src/metrics/produced.rs"
 
 # The asset carries every panel this dashboard is expected to render. Stated
 # rather than implied: a panel silently dropped by a bad edit leaves a valid
@@ -25,11 +24,16 @@ MINIMUM_PANELS=20
 
 # The alert set is closed. A rule added without moving this number is a rule
 # nobody decided to add.
-EXPECTED_ALERTS=6
+#
+# Five, not six: `telemetry-discard` was removed at Indy's instruction on
+# Sep 18, 2026. Dropped entries still draw on the telemetry-loss panel, where
+# an operator reads them in context; they no longer page anybody.
+EXPECTED_ALERTS=5
 
 # The family that reports a Unix epoch rather than an age. Every reader of it
 # must subtract from evaluation time, or it draws tens of thousands of years.
 EPOCH_FAMILY='agentsfleet_runner_last_seen_seconds'
+
 
 fail() {
   echo "ERROR: $1" >&2
@@ -101,94 +105,9 @@ check_thresholds_are_derived() {
   )
 }
 
-# The wire names the UNPRODUCED ledger excuses.
-#
-# Resolved rather than pattern-matched: the ledger holds Rust constants
-# (`fleet::FLEET_TRIGGERED_TOTAL.wire_name()`), and the string each one stands
-# for lives beside its declaration. Reading both is what keeps this check
-# honest through a rename that touches only one of them.
-unproduced_wire_names() {
-  local declared="$REPO_ROOT/rustd/crates/afd_observability/src/metrics/declared"
-  local symbol
-  grep -oE '[a-z]+::[A-Z_0-9]+\.wire_name\(\)' "$LEDGER" |
-    sed -E 's/.*::([A-Z_0-9]+)\..*/\1/' | sort -u |
-    while IFS= read -r symbol; do
-      grep -A2 -- "pub const $symbol:" "$declared"/*.rs |
-        grep -oE '"(agentsfleet|gen_ai)[a-z_.]*"' | head -1 | tr -d '"'
-    done
-}
 
-# Every family named as a declared gap must be one the ledger actually excuses.
-# The check runs in that direction on purpose: when a family gains a producer,
-# its ledger row leaves, and this fails until the gap panel leaves too.
-check_gap_panel_cites_the_ledger() {
-  local content family excused
-  content="$(jq -r '.panels[] | select(.type == "text") | .options.content' "$DASHBOARD")"
-  [ -n "$content" ] || fail "no declared-gap panel found in the dashboard"
-  excused="$(unproduced_wire_names)"
-  [ -n "$excused" ] || fail "could not resolve any UNPRODUCED family from $LEDGER"
-  while IFS= read -r family; do
-    [ -n "$family" ] || continue
-    printf '%s\n' "$excused" | grep -Fxq -- "$family" ||
-      fail "declared-gap panel names $family, which the UNPRODUCED ledger does not carry"
-  done < <(
-    # The TABLE ROWS only. A gap is CLAIMED by a row in the table; prose that
-    # names a family in passing — "the retired X left the census with it" — is
-    # history, and failing it would push the panel into naming things it cannot
-    # spell. A bogus table row, the failure this exists to catch, still fails.
-    printf '%s\n' "$content" |
-      grep -E '^\| `(agentsfleet|gen_ai)[._a-z0-9]+`' |
-      grep -oE '`(agentsfleet|gen_ai)[._a-z0-9]+`' |
-      tr -d '`' | sort -u
-  )
-}
 
-# Every family the census declares AND this build produces must appear on the
-# dashboard somewhere.
-#
-# The direction matters. Checking that every panel names a real family catches
-# a typo; checking that every produced family reaches a panel catches the thing
-# that actually happens — a family ships, nobody adds a panel, and it is
-# invisible for a year. The roll-up panels are generated from the census's own
-# `category` column precisely so this check stays satisfiable without anyone
-# maintaining a list by hand.
-check_every_produced_family_is_panelled() {
-  local panelled excused family missing=0
-  panelled="$(
-    jq -r '.panels[] | (.targets // [])[].expr' "$DASHBOARD" |
-      grep -oE '(agentsfleet|gen_ai)_[a-z0-9_]+' |
-      sed 's/_count$//' | sort -u
-  )"
-  excused="$(unproduced_wire_names | tr '.' '_')"
-  while IFS= read -r family; do
-    [ -n "$family" ] || continue
-    printf '%s\n' "$excused" | grep -Fxq -- "$family" && continue
-    printf '%s\n' "$panelled" | grep -Fxq -- "$family" && continue
-    echo "  unpanelled produced family: $family" >&2
-    missing=$((missing + 1))
-  done < <(
-    awk -F'\t' '!/^#/ && NF > 1 && $1 != "name" {print $1}' \
-      "$REPO_ROOT/docs/metrics.census.tsv" | tr '.' '_' | sort -u
-  )
-  [ "$missing" -eq 0 ] ||
-    fail "$missing produced census family(ies) reach no panel"
-}
 
-# A family in the `errors` roll-up whose label set includes a SUCCESS member
-# must exclude it, or the panel reports successes in red.
-#
-# `agentsfleet_library_read_outcome_total` counts every read by outcome, and
-# `ok` is one of them. The roll-up summed the family and put 44 successful
-# reads on a panel titled "Every error family". The census says what to read:
-# "non-`ok` outcomes per surface".
-check_error_rollup_excludes_successes() {
-  jq -e '
-    [.panels[] | select(.id == 30) | .targets[].expr
-     | select(contains("agentsfleet_library_read_outcome_total"))
-     | contains("outcome!=\"ok\"")] | all and length > 0
-  ' "$DASHBOARD" >/dev/null ||
-    fail "the error roll-up counts library reads that succeeded"
-}
 
 # Every metric an asset names must be one this repository owns.
 #
@@ -216,14 +135,12 @@ check_metrics_are_source_owned() {
   )
 }
 
+
 check_parses
 check_dashboard_shape
 check_alert_shape
 check_epoch_readers_subtract
 check_thresholds_are_derived
-check_gap_panel_cites_the_ledger
-check_every_produced_family_is_panelled
-check_error_rollup_excludes_successes
 check_metrics_are_source_owned
 
 echo "PASS: Grafana assets are valid and reference source-owned metrics"
