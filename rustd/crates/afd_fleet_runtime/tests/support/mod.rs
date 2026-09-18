@@ -40,11 +40,14 @@ pub(crate) const TOOL_HTTP_REQUEST: &str = "http_request";
 /// id the importer takes from that frontmatter. A bundle whose declared name
 /// drifts from its directory onboards as a second catalogue entry instead of
 /// filling the seeded one.
-pub(crate) const FIRST_PARTY: [&str; 4] = [
+pub(crate) const FIRST_PARTY: [&str; 7] = [
     "github-pr-reviewer",
     "security-reviewer",
     "zoho-sprint-daily-summarizer",
     "zoho-recruiter-daily-summarizer",
+    "incident-responder",
+    "incident-repairer",
+    "incident-verifier",
 ];
 
 /// One fixture's bytes, exactly as they sit on disk.

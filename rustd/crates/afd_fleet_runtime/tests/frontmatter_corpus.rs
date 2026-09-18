@@ -89,7 +89,7 @@ enum Kind {
 }
 
 /// Every purpose-built fixture, with the verdict its bytes must earn.
-const CORPUS_CASES: [(&str, Kind, Verdict); 9] = [
+const CORPUS_CASES: [(&str, Kind, Verdict); 15] = [
     ("skill/minimal.md", Kind::Skill, Verdict::Accepts),
     ("skill/full.md", Kind::Skill, Verdict::Accepts),
     // The fixture's own comment says it tests an absent `name`. It does not:
@@ -121,6 +121,28 @@ const CORPUS_CASES: [(&str, Kind, Verdict); 9] = [
         Verdict::UnknownRuntimeKey,
     ),
     ("steer-probe/SKILL.md", Kind::Skill, Verdict::Accepts),
+    // The three incident bundles, which shipped in a repository-root `library/`
+    // for three milestones with no parser reading them at all. They are here so
+    // the documents the platform would install are graded by the same table as
+    // everything else.
+    ("incident-responder/SKILL.md", Kind::Skill, Verdict::Accepts),
+    (
+        "incident-responder/TRIGGER.md",
+        Kind::Trigger,
+        Verdict::Accepts,
+    ),
+    ("incident-repairer/SKILL.md", Kind::Skill, Verdict::Accepts),
+    (
+        "incident-repairer/TRIGGER.md",
+        Kind::Trigger,
+        Verdict::Accepts,
+    ),
+    ("incident-verifier/SKILL.md", Kind::Skill, Verdict::Accepts),
+    (
+        "incident-verifier/TRIGGER.md",
+        Kind::Trigger,
+        Verdict::Accepts,
+    ),
 ];
 
 /// The verdict a document actually earns.
