@@ -9,6 +9,7 @@
 // detail + suggestion + (for ServerError) request_id.
 
 import { Effect } from "effect";
+import { LIBRARY_ID_PLACEHOLDER } from "../constants/cli-flags.ts";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
@@ -17,6 +18,8 @@ import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsFleetsPath, wsFleetPath } from "../lib/api-paths.ts";
 import { validateRequiredId } from "../program/validators.ts";
+import { ui } from "../output/index.ts";
+import { pendingGateCounts } from "./approvals_pending.ts";
 import {
   AGENTSFLEET_STATUS,
   type FleetMutationStatus,
@@ -44,6 +47,7 @@ interface FleetListItem {
   readonly status?: string;
   readonly events_processed?: number;
   readonly budget_used_nanos?: number | null;
+  readonly id?: string;
 }
 
 interface FleetListResponse {
@@ -96,19 +100,31 @@ export const statusEffect: Effect.Effect<
   const fleets = res.items ?? [];
   if (fleets.length === 0) {
     yield* output.info(
-      "No fleets running. List choices with: agentsfleet library. Install one with: agentsfleet install --library <library_id>",
+      NO_FLEETS_HINT,
     );
     return;
   }
 
+  // Counted from the approvals inbox, not from the Fleet row: the list endpoint
+  // does not carry a pending count, so a column sourced from the row would read
+  // 0 for a parked Fleet.
+  const waitingByFleet = yield* pendingGateCounts(wsId, token);
+
   yield* output.printSection("Fleets");
+  let anyParked = false;
   for (const z of fleets) {
+    const waiting = z.id ? (waitingByFleet.get(z.id) ?? 0) : 0;
+    if (waiting > 0) anyParked = true;
     yield* output.printKeyValue({
       Name: z.name ?? "",
       Status: z.status ?? "",
       Events: String(z.events_processed ?? 0),
       Budget: formatDollars(z.budget_used_nanos),
+      Waiting: String(waiting),
     });
+  }
+  if (anyParked) {
+    yield* output.info(ui.dim(PARKED_HINT));
   }
 });
 
@@ -194,3 +210,13 @@ export const deleteEffectFromId = (
       yield* output.success(`${id} deleted.`);
     }
   });
+
+// The status empty state names both halves of the next move: where the choices
+// are listed, and the command that installs one.
+const NO_FLEETS_HINT =
+  `No fleets running. List choices with: agentsfleet library. Install one with: agentsfleet install --library ${LIBRARY_ID_PLACEHOLDER}` as const;
+
+// A Fleet with a waiting gate does nothing until someone decides it, so the
+// status that reports the wait also names the command that ends it.
+const PARKED_HINT =
+  "Some fleets are waiting on approval. Review with: agentsfleet approvals list" as const;

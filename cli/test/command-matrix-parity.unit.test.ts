@@ -13,6 +13,7 @@ import type { Command } from "commander";
 
 import { buildProgram } from "../src/program/cli-tree.ts";
 import {
+  ACTION_GROUP_NODES,
   GROUP_NODES,
   REQUIRES_POSITIONAL_ARG,
 } from "./acceptance/fixtures/command-matrix.ts";
@@ -31,11 +32,12 @@ function makeStubHandlers(): Handlers {
     apiKey:    { create: noop, list: noop, revoke: noop, delete: noop },
     connector: { list: noop, status: noop },
     grant:     { list: noop, delete: noop },
+    approvals: { list: noop, show: noop, approve: noop, deny: noop },
     schedule:  { add: noop, list: noop, update: noop, rm: noop, status: noop, sync: noop },
     tenant:    { provider: { show: noop, create: noop, delete: noop } },
     billing:   { show: noop },
     fleet: {
-      library: noop, models: noop,
+      library: noop, libraryAdd: noop, models: noop,
       install: noop, update: noop, list: noop, status: noop, stop: noop, resume: noop,
       kill: noop, delete: noop, logs: noop, events: noop, steer: noop,
       secret: { create: noop, update: noop, show: noop, list: noop, delete: noop },
@@ -109,7 +111,11 @@ describe("command matrix parity — group nodes", () => {
         groups.push(pathOf(cmd).join(" "));
       }
     });
-    const covered = new Set(GROUP_NODES.map((g) => g.join(" ")));
+    // Either table covers a group: one asserts bare-invocation help, the other
+    // records that bare invocation runs the command instead.
+    const covered = new Set(
+      [...GROUP_NODES, ...ACTION_GROUP_NODES].map((g) => g.join(" ")),
+    );
     const missing = groups.filter((g) => !covered.has(g)).sort();
     expect(missing).toEqual([]);
   });

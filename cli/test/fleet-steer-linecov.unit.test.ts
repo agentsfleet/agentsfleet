@@ -92,9 +92,12 @@ describe("steer — sse_error never renders because the poll overwrites it", () 
         }).pipe(Effect.provide(makeLayer(rec, httpReply))),
       );
       // sse_error was overwritten by timeout; the timeout arm renders, the
-      // sse_error arm does not.
+      // sse_error arm does not. The stall is reported once, on the failure —
+      // it used to print through `output.error` AND fail, so one stall
+      // produced two glyph lines naming the same follow-up command.
       expect(Exit.isFailure(exit)).toBe(true);
-      expect(rec.stderr.some((m) => m.includes("still in flight"))).toBe(true);
+      expect(JSON.stringify(exit)).toContain("still in flight");
+      expect(rec.stderr.some((m) => m.includes("still in flight"))).toBe(false);
       expect(rec.stderr.join("\n")).not.toContain(SSE_ERROR_RENDER_PREFIX);
     } finally {
       setSystemTime();

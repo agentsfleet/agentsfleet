@@ -21,6 +21,7 @@ export const COMMAND_GROUPS: ReadonlyArray<string> = [
   "api-key",
   "connector",
   "grant",
+  "approvals",
   "tenant",
   "billing",
   "fleet",
@@ -144,6 +145,9 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["api-key", "revoke"], missingArgName: "api_key_id" },
   { args: ["api-key", "delete"], missingArgName: "api_key_id" },
   { args: ["grant", "delete"], missingArgName: "grant_id" },
+  { args: ["approvals", "show"], missingArgName: "gate_id" },
+  { args: ["approvals", "approve"], missingArgName: "gate_id" },
+  { args: ["approvals", "deny"], missingArgName: "gate_id" },
   { args: ["connector", "status"], missingArgName: "provider" },
   { args: ["kill"], missingArgName: "fleet_id" },
   { args: ["stop"], missingArgName: "fleet_id" },
@@ -165,16 +169,21 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["schedule", "sync"], missingArgName: "fleet_id" },
 ];
 
-// Every command node that owns subcommands. Invoked bare each must print its
-// help on STDOUT and exit 0 — the body has to survive a pipe, which it did
-// not before M171 (commander routes a group's bare invocation through
-// `help({ error: true })`, i.e. stderr).
+// Every command node that owns subcommands AND does nothing itself. Invoked
+// bare each must print its help on STDOUT and exit 0 — the body has to survive
+// a pipe, which it did not before M171 (commander routes a group's bare
+// invocation through `help({ error: true })`, i.e. stderr).
+//
+// A node that owns subcommands and ALSO runs is listed in ACTION_GROUP_NODES
+// instead: bare `agentsfleet library` lists the gallery, so asserting it prints
+// help would be asserting the opposite of what it is for.
 export const GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
   ["auth"],
   ["workspace"],
   ["api-key"],
   ["connector"],
   ["grant"],
+  ["approvals"],
   ["tenant"],
   ["tenant", "provider"],
   ["billing"],
@@ -182,6 +191,13 @@ export const GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
   ["secret"],
   ["schedule"],
   ["memory"],
+];
+
+// Nodes that own subcommands and carry their own action. Bare invocation runs
+// the command, so these are excluded from the print-help-and-exit-0 sweep and
+// covered by their own command's tests instead.
+export const ACTION_GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
+  ["library"],
 ];
 
 // A value-taking flag with its value omitted. commander raises

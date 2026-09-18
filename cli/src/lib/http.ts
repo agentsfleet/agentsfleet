@@ -21,6 +21,13 @@ export interface ApiErrorDetails {
 export interface ProblemDetails {
   readonly code?: string | undefined;
   readonly message?: string | undefined;
+  /**
+   * The daemon's own operator-facing sentence (`user_message`), written for a
+   * person rather than a log. `message` stays the machine-terse `detail`, so
+   * lower layers keep the wording they match on and only the rendered CliError
+   * prefers this one.
+   */
+  readonly userMessage?: string | undefined;
   readonly requestId?: string | undefined;
   readonly missingSecrets?: ReadonlyArray<string> | undefined;
 }
@@ -144,6 +151,7 @@ export function readProblemDetails(value: unknown): ProblemDetails {
   return {
     code: readString(nested?.code) ?? readString(body.error_code),
     message: readString(nested?.message) ?? readString(body.detail) ?? readString(body.title),
+    userMessage: readString(body.user_message),
     requestId: readString(nested?.request_id) ?? readString(body.request_id),
     missingSecrets: readStringArray(body.missing_secrets),
   };

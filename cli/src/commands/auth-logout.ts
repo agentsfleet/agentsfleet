@@ -112,14 +112,17 @@ const renderLogoutOutcome = (
     yield* output.success(`logout complete${tail}`);
   });
 
-// `--all` is rejected with prose pointing at the new behavior. Default
-// logout already revokes every active session on the account; the flag
-// is not needed.
+// `--all` is rejected with prose pointing at the actual behaviour. Logout
+// already does both server-side revokes it can do, so the flag would add
+// nothing — but it must not be refused with a sentence claiming more than the
+// daemon delivers. `DELETE /v1/auth/sessions/all` aborts sessions still in the
+// device-flow, and its own description says it does NOT revoke minted JWTs; the
+// credential revoke covers this machine. Other machines keep working.
 const rejectAllFlag: Effect.Effect<never, ValidationError, never> = Effect.fail(
   new ValidationError({
     detail: "`--all` is not accepted",
     suggestion:
-      "`agentsfleet logout` revokes every active session on this account by default — drop the flag",
+      "`agentsfleet logout` already revokes this machine's credential and aborts unfinished sign-ins — drop the flag",
   }),
 );
 

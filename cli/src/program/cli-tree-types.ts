@@ -79,6 +79,7 @@ export interface FleetSecretHandlers {
 
 export interface FleetHandlers {
   library: CommandHandlerFn;
+  libraryAdd: CommandHandlerFn;
   models: CommandHandlerFn;
   install: CommandHandlerFn;
   update: CommandHandlerFn;
@@ -92,6 +93,13 @@ export interface FleetHandlers {
   events: CommandHandlerFn;
   steer: CommandHandlerFn;
   secret: FleetSecretHandlers;
+}
+
+export interface ApprovalHandlers {
+  list: CommandHandlerFn;
+  show: CommandHandlerFn;
+  approve: CommandHandlerFn;
+  deny: CommandHandlerFn;
 }
 
 export interface MemoryHandlers {
@@ -108,6 +116,7 @@ export interface Handlers {
   apiKey: ApiKeyHandlers;
   connector: ConnectorHandlers;
   grant: GrantHandlers;
+  approvals: ApprovalHandlers;
   schedule: ScheduleHandlers;
   tenant: TenantHandlers;
   billing: BillingHandlers;

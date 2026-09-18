@@ -259,7 +259,10 @@ test("fleet list calls the paginated endpoint and prints rows", async () => {
     const text = out.read();
     assert.ok(text.includes("alpha"));
     assert.ok(text.includes("beta"));
-    assert.ok(text.includes("agentsfleet fleet list --starting-after"));
+    // The hint names a command that exists: `fleet` holds `update` alone, so
+    // `agentsfleet fleet list` was a copy-paste that errored.
+    assert.ok(text.includes("agentsfleet list --starting-after"));
+    assert.ok(!text.includes("agentsfleet fleet list"));
   });
 });
 

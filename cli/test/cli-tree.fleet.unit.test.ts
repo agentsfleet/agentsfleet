@@ -14,7 +14,7 @@ import {
 
 import { OPENAI_COMPATIBLE_PROVIDER } from "../src/constants/custom-endpoint.ts";
 
-test("install accepts --library <id> and --name <name>", async () => {
+test("install accepts --library <library_id> and --name <name>", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch(
     ["install", "--library", "github-pr-reviewer", "--name", "pr-frontend"],

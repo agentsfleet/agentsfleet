@@ -25,12 +25,12 @@ import {
   type ReplSignalSource,
 } from "../lib/repl.ts";
 import { exitToCliError, renderCliError } from "../lib/cli-error-render.ts";
+import { parkedGateHint } from "./approvals_pending.ts";
 import {
   openEventTail,
   pollEventTerminal,
   SSE_FALLBACK_TIMEOUT_SECONDS,
   STATUS_COMPLETE,
-  STATUS_TIMEOUT,
   TAIL_TIMED_OUT,
   type EventTailHandle,
   type PolledSteerOutcome,
@@ -137,7 +137,7 @@ const steerTurnWithTail = (
     if (signal?.aborted) {
       return yield* failSteerInterrupted();
     }
-    yield* renderOutcome(outcome, post.event_id, fleetId);
+    yield* renderOutcome(outcome, post.event_id, fleetId, wsId, token);
   });
 
 // A tail that never became ready may have missed the event's opening frames;
@@ -170,7 +170,9 @@ const renderOutcome = (
   outcome: RenderableSteerOutcome,
   eventId: string,
   fleetId: string,
-): Effect.Effect<void, CliError, CliConfig | Output> =>
+  wsId: string,
+  token: Redacted.Redacted<string>,
+): Effect.Effect<void, CliError, CliConfig | HttpClient | Output> =>
   Effect.gen(function* () {
     const config = yield* CliConfig;
     const output = yield* Output;
@@ -180,10 +182,6 @@ const renderOutcome = (
     } else if (outcome.kind === STATUS_COMPLETE) {
       yield* output.info("");
       yield* output.success(`event ${eventId} ${outcome.status}`);
-    } else if (outcome.kind === STATUS_TIMEOUT) {
-      yield* output.error(
-        `event ${eventId} still in flight after ${SSE_FALLBACK_TIMEOUT_SECONDS}s — check: agentsfleet events ${fleetId}`,
-      );
     }
 
     if (outcome.kind === STATUS_COMPLETE) {
@@ -197,10 +195,17 @@ const renderOutcome = (
       }
       return;
     }
+    // Only the timeout outcome reaches here — the complete branch above
+    // returns — so the stall is always a timeout and the message says so once.
+    //
+    // One failure line, not two. This used to print through `output.error` AND
+    // then fail, reporting the same stall twice under two glyph lines with the
+    // same follow-up command.
+    const parked = yield* parkedGateHint(wsId, fleetId, token);
     return yield* Effect.fail(
       new ConfigError({
-        detail: `event ${eventId} did not complete (${outcome.kind})`,
-        suggestion: `retry, or inspect: agentsfleet events ${fleetId}`,
+        detail: `event ${eventId} still in flight after ${SSE_FALLBACK_TIMEOUT_SECONDS}s`,
+        suggestion: parked ?? `retry, or inspect: agentsfleet events ${fleetId}`,
       }),
     );
   });
