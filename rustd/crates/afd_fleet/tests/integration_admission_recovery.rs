@@ -140,7 +140,7 @@ pub(crate) fn ledger(fixtures: &Fixtures) -> Admissions {
 /// handle rather than a paused container: the lane's datastore is shared by
 /// every binary running in parallel, so a handle one test owns is the only way
 /// to fail one test's commands.
-fn deferring(fixtures: &Fixtures) -> Admissions {
+pub(crate) fn deferring(fixtures: &Fixtures) -> Admissions {
     Admissions::for_tests(fixtures.database.clone(), queue::unreachable())
 }
 

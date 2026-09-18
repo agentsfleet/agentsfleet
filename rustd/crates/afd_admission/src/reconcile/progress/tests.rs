@@ -261,3 +261,32 @@ fn a_refile_respects_the_capacity() {
         "a full set turns a re-file away rather than growing past its bound"
     );
 }
+
+/// A cursor naming a fleet that no longer exists resumes at the next one.
+///
+/// The bound is a strict inequality on a VALUE, not a reference to a row, so a
+/// fleet deleted between two passes needs no handling at all — the scan simply
+/// begins at whatever sorts after where it was. Pinned because the obvious
+/// alternative, storing a row identifier and looking it up, would stall the
+/// rotation on exactly this case: a cursor pointing at nothing, and a scan with
+/// nowhere to resume from.
+#[test]
+fn a_cursor_survives_a_deleted_fleet() {
+    let mut progress = Progress::with_capacity(CAPACITY);
+    progress.swept(Some("fleet-c".to_owned()), true);
+
+    // `fleet-c` is gone; the deployment now holds only these.
+    let remaining = ["fleet-a", "fleet-b", "fleet-d", "fleet-e"];
+    let after = progress.resume_from().to_owned();
+    let next: Vec<&str> = remaining
+        .iter()
+        .copied()
+        .filter(|fleet| *fleet > after.as_str())
+        .collect();
+
+    assert_eq!(
+        next,
+        vec!["fleet-d", "fleet-e"],
+        "the scan carries on after where the deleted fleet sorted, not from the start"
+    );
+}

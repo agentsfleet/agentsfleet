@@ -72,10 +72,12 @@ coverage:
         #
         # 99 is not an aspiration set ahead of the code — the mistake the
         # 97 -> 98 -> 97 round trip above records. It is the measurement that
-        # motivated it: the diff raising this line covers 236 of 236 added
-        # lines. The one that resisted was the poisoned-lock fallback in
-        # `sweep/reconcile.rs`, reached by a test that poisons the lock on
-        # purpose rather than by an exception.
+        # motivated it: the diff raising this line covers 260 of 260 added
+        # lines. Two resisted and neither was excused. The poisoned-lock
+        # fallback in `sweep/reconcile.rs` is reached by a test that poisons the
+        # lock on purpose; the re-file arm in `afd_admission`'s reconcile pass
+        # is reached by running one pass against a database that will not
+        # answer. Both were written because this measurement named them.
         #
         # Left at 99 rather than 100 for one reason, stated so the next author
         # does not have to rediscover it: `tracing` field expressions that

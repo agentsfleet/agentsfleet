@@ -735,3 +735,104 @@ async fn a_failed_pass_keeps_the_repairs_it_drained() {
 
     fixtures.cleanup().await;
 }
+
+/// A restart loses the resume state, and the fleet still recovers afterwards.
+///
+/// The stated limit of keeping progress in memory, graded rather than asserted
+/// in a comment. A process that restarts mid-repair drops every resume point,
+/// so its fleets go back to being judged by the head probe — which, after a
+/// partial repair, reports a fleet healthy over rows that are still lost. What
+/// makes that a delay and not a loss is delivery: once the rows recovery
+/// restored are delivered, the head moves to a dead receipt and the probe sees
+/// it again.
+///
+/// The restart is played by dropping the resume state and building a fresh one,
+/// which is exactly what the sweeper holds across a process boundary.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_restart_resets_progress_without_losing_coverage() {
+    let _lane = RECOVERY_LANE.lock().await;
+    let fixtures = Fixtures::create_with_queue().await;
+    let (fleet, workspace, _tenant, _runners) = seeded_parts::<0>(&fixtures).await;
+    let live = ledger(&fixtures);
+    let streams = FleetStreams::new(fixtures.queue().clone());
+
+    let mut owed = Vec::new();
+    for which in 0..3 {
+        let key = producer_key(&fleet, &format!("restart-{which}"));
+        owed.push(
+            live.admit(admission(&fleet, &workspace, &key))
+                .await
+                .expect("a live queue admits and receipts")
+                .id,
+        );
+    }
+    streams
+        .forget(&fleet)
+        .await
+        .expect("destroying this fleet's stream data");
+
+    // One pass repairs the first row and files where it stopped.
+    let at = clock::now();
+    let mut before_restart = Progress::default();
+    live.reconcile(at, EVERY_FLEET, ONE_ROW, &mut before_restart)
+        .await
+        .expect("the first pass runs");
+    live.replay(at, NO_GRACE, EVERY_ROW)
+        .await
+        .expect("the replay pass runs");
+    assert!(
+        before_restart.is_resuming(),
+        "the pass stopped mid-fleet and filed where to carry on"
+    );
+
+    // ── The restart. Everything that pass remembered is gone.
+    drop(before_restart);
+    let mut after_restart = Progress::default();
+
+    // The runner does its half: the restored rows are delivered, so this
+    // fleet's oldest undelivered receipt is a dead one again.
+    for event_id in &owed {
+        let receipt = fixtures
+            .admission_receipt(&fleet, event_id)
+            .await
+            .expect("every row holds a receipt");
+        if streams
+            .holds_entry(&fleet, &EventId::of(&receipt))
+            .await
+            .expect("the stream answers")
+        {
+            deliver(&fixtures, &fleet, event_id).await;
+        }
+    }
+
+    for _pass in 0..6 {
+        let at = clock::now();
+        live.reconcile(at, EVERY_FLEET, ONE_ROW, &mut after_restart)
+            .await
+            .expect("a pass after the restart runs");
+        live.replay(at, NO_GRACE, EVERY_ROW)
+            .await
+            .expect("the replay pass runs");
+    }
+
+    for event_id in &owed {
+        let receipt = fixtures
+            .admission_receipt(&fleet, event_id)
+            .await
+            .unwrap_or_else(|| panic!("{event_id} is accepted work and must hold a receipt"));
+        let held = streams
+            .holds_entry(&fleet, &EventId::of(&receipt))
+            .await
+            .expect("the stream answers");
+        assert!(
+            held || fixtures
+                .admission_delivered_at(&fleet, event_id)
+                .await
+                .is_some(),
+            "{event_id} survived a restart mid-repair: it is queued again or delivered"
+        );
+    }
+
+    fixtures.cleanup().await;
+}
