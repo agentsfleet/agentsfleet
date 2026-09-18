@@ -2,7 +2,13 @@
 # lane all ran against — the same tag docker-compose.yml carries. A datastore
 # whose deployed version drifts from the tested one is a datastore nobody has
 # tested.
-FROM docker.dragonflydb.io/dragonflydb/dragonfly:v1.40.2
+# v2.0.0 on Sep 18, 2026, staged rather than shipped. `release.yml` fires only
+# on a `v*` tag, so this line changes nothing until someone cuts a release —
+# which is the point: prod takes the version dev has been running, not the
+# version that passed a lane once. Same evidence as the dev image: 986 tests,
+# 128 suites, 0 failures against this tag, 37 of them on the RESP3 and cluster
+# migration changes 2.0.0 made.
+FROM docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.0
 
 # The same four-process cluster the integration lane runs, from the same
 # script. Copied rather than mounted: compose can bind-mount from the
