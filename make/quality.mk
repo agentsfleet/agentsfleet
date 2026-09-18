@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs
+.PHONY: lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-runner-fmt lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs
 
 check-documentation-rules:  ## Check public API and command help text
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules_test.py
@@ -55,7 +55,7 @@ _model_allowlist_check:
 # becomes the place lint rules go to die.
 RUSTD_DIR := rustd
 
-lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors) + the Zig runner's formatting
+lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] rustfmt --check" -- cargo fmt --check
 	@# --all-features, not the default set: a crate's `test-util` feature gates
@@ -69,11 +69,22 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors) 
 	@# annotation broke the production build once without any lane noticing.
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] check --bin agentsfleetd (no features)" -- \
 	  cargo check -p agentsfleetd --bin agentsfleetd
-	@# `agentsfleet-runner` is still Zig and ships from `build_runner.zig`, so it
-	@# rides the Rust lane rather than a target of its own — the Zig tree is on
-	@# its way out, and a second target would be one more thing to delete. This
-	@# is formatting only: the discipline lint that used to check more went with
-	@# the Zig daemon, and `zig fmt --check` is what remains that costs nothing.
+
+# `agentsfleet-runner` is still Zig and ships from `build_runner.zig`, so its
+# formatting is still gated. This is formatting only: the discipline lint that
+# used to check more went with the Zig daemon, and `zig fmt --check` is what
+# remains that costs nothing.
+#
+# A target of its own rather than a rider on `lint-rustd`, which is where it
+# first landed. `.github/workflows/test.yml` runs `make lint-rustd` inside the
+# `test-unit-rustd` job, and that job is a plain `ubuntu-latest` with rustup and
+# nothing else — so the `command -v zig` guard below failed the Rust UNIT lane on
+# a missing Zig toolchain, and the failure read as a test regression. The two
+# toolchains want two runners: Rust rides the ubuntu image it already pins, and
+# this rides `ci-zig-alpine`, the same pre-baked image `release.yml` and
+# `deploy-dev-build.yml` build the runner with. Its caller is the `lint-runner-fmt`
+# job in `.github/workflows/lint.yml`.
+lint-runner-fmt:  ## Check the Zig runner's formatting (zig fmt --check)
 	@command -v zig >/dev/null 2>&1 || { echo "✗ zig not found. Install via: mise install zig"; exit 1; }
 	@$(WITH_PROGRESS) "[runner] zig fmt --check" -- zig fmt --check build_runner.zig build.zig src/
 
@@ -131,7 +142,7 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 
 
 
-lint-all: lint-rustd lint-scripts _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
+lint-all: lint-rustd lint-runner-fmt lint-scripts _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + action pins + make-target ref check
