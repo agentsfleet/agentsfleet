@@ -77,7 +77,9 @@ pub(crate) const FIRST_FLEET: &str = "00000000-0000-0000-0000-000000000000";
 /// The logical event id's two integers, which is the order
 /// [`crate::sql::SELECT_UNDELIVERED_ON_FLEET`] reads in and the order its index
 /// is built on, so resuming is an index bound rather than a scan and a skip.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Ordered by the columns in the order the statement reads them, so `min`
+/// below means "the lower row" in exactly the sense the scan resumes on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct RowKey {
     /// The admission's creation instant.
     pub(crate) created_at: i64,
@@ -190,6 +192,15 @@ impl Progress {
 
     /// Notes what one fleet's walk did, and whether it has further to go.
     ///
+    /// A fleet already queued keeps its one place and takes the LOWER of the two
+    /// resume points. Both halves of a pass can report the same fleet: the
+    /// continue-walk files where it stopped, and the head sweep that follows can
+    /// be handed the same fleet again, because the rows the first half voided are
+    /// no longer receipted and the oldest receipted undelivered row is now a
+    /// different one that can itself be dead. Resuming lower re-probes rows that
+    /// are already healthy; resuming higher steps over rows nothing has asked
+    /// about, which is the starvation this module exists to remove.
+    ///
     /// Answers `false` only when there IS more to do and the set had no room
     /// for it. The caller logs that, because it is the one case where this
     /// structure trades coverage for its memory bound, and the trade is not
@@ -200,6 +211,14 @@ impl Progress {
         let Some(after) = stopped_at else {
             return true;
         };
+        if let Some(queued) = self
+            .repairing
+            .iter_mut()
+            .find(|repair| repair.fleet_id == fleet_id)
+        {
+            queued.after = queued.after.min(after);
+            return true;
+        }
         if self.repairing.len() >= self.capacity {
             return false;
         }

@@ -133,10 +133,20 @@ impl Admissions {
     /// Forgets the receipt of every admitted row whose queue entry the
     /// datastore no longer holds, so the replay sweeper re-appends it.
     ///
-    /// `fleets` caps how many fleets one pass examines and `rows` how many of
-    /// one fleet's undelivered admissions it repairs, so a deployment that lost
+    /// `fleets` caps EACH HALF of the pass and `rows` how many of one fleet's
+    /// undelivered admissions a walk repairs, so a deployment that lost
     /// everything is recovered over several passes instead of in one
-    /// transaction holding every row.
+    /// transaction holding every row. A pass therefore examines at most
+    /// `2 * fleets` fleets: up to `fleets` continued repairs, then up to
+    /// `fleets` heads.
+    ///
+    /// Deliberately not one budget shared between them. Spending the head
+    /// sweep's budget on continued repairs is the starvation this module was
+    /// written to remove: a deployment holding `fleets` fleets mid-repair would
+    /// read no heads at all, so a fleet that lost work after them would never be
+    /// examined — not slowly, never. The two halves answer different questions
+    /// and are bounded separately, which is also why the resume set carries a
+    /// capacity of its own rather than this argument.
     ///
     /// # Errors
     /// Reports a database that would not answer. A DATASTORE that would not
