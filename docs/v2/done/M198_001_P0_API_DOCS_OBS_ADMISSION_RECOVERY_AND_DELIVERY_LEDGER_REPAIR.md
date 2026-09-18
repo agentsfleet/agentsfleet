@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — no concurrent workstream; the admission and outbound ledgers are edited by nothing else in flight.
 **Branch:** `fix/m198-admission-recovery-and-delivery-ledger`
 **Baseline revision:** `6813000c34cb0a7eff6f3d42ac7c96a1f62e9ff1` (`origin/main`; the branch was rebased onto it before the Pull Request, superseding the opening baseline at `eaa2b1956`)
-**Test Baseline:** Rust unit 2,610 passed / 0 failed; integration 493 passed (492 parallel + 1 exclusive) / 0 failed, measured on `6813000c3` in a detached worktree. TypeScript lanes unmeasured — this branch changes no `ui/**` file, and the baseline worktree lacks the per-package `bun install` that lane needs.
+**Test Baseline:** unit=2610 integration=493 — unit 2610 passed / 0 failed (`make test-unit-all`, Rust half; TypeScript unmeasured, the baseline worktree lacks the per-package `bun install` and this branch changes no `ui/**` file) · integration 493 passed / 0 failed, 492 parallel + 1 exclusive (`make test-integration-rustd`, live Postgres + Dragonfly v2.0.0) · lint exit 0 · version 0.48.0. Measured at `6813000c3` in a detached worktree.
 **Baseline evidence:** isolated worktree at the baseline revision, `make test-unit-rustd` and `make test-integration-rustd`, against its own compose Postgres and Dragonfly on a separate project and port range; logs `.baseline-unit.log` and `.baseline-integration.log` in that worktree. Local run, not Continuous Integration (CI).
 **Depends on:** none
 **Provenance:** LLM-drafted (claude-opus-5, Sep 18, 2026), grounded in `docs/v2/reviews/schema-usage-audit-2026-09-18.md`, `docs/v2/reviews/schema-fix-adversarial-review-2026-09-18.md`, and re-verified source reads at the commit recorded below
@@ -272,7 +272,7 @@ No product analytics event changes. No analytics or funnel playbook update is re
 
 **Command source rule:** every declared `conform` and `verify.*` invocation from `.oracle/orly.json` appears above verbatim with an Expected value. Baseline metadata is pending at opening and measured before the Pull Request; command timing is `dispatch/lifecycle.md`.
 
-**Grading protocol (VERIFY):** run each spec-specific Verify command verbatim; Graded = ✅/❌ plus one decisive output line. Repository-command rows point at the final `orly gate pr` results in Pull Request Session Notes. **Ship gate:** any ❌ or missing evidence returns to EXECUTE. A P1 ❌ requires an Indy-acked deferral quote in Discovery. A P0 whose scope moves whole into a named successor spec — carried there as that spec's own P0, mapped in both, with the owner's verbatim quote in Discovery — is marked `MOVED to M{N}_{NNN} R{n}` rather than ❌, and is never rendered ✅.
+**Grading protocol (VERIFY):** run each spec-specific Verify command verbatim; Graded = ✅/❌ plus one decisive output line. Repository-command rows point at the final `orly gate pr` results in Pull Request Session Notes. **Ship gate:** any ❌ or missing evidence returns to EXECUTE. A P0 whose scope moves whole into a named successor spec — carried there as that spec's own P0, mapped in both, with the owner's verbatim quote in Discovery — is marked `MOVED to M{N}_{NNN} R{n}` rather than ❌, and is never rendered ✅.
 
 ## Dead Code Sweep
 
@@ -304,7 +304,7 @@ No product analytics event changes. No analytics or funnel playbook update is re
 7. **Fit with existing features** — this compounds with the replay sweeper, which owns every re-append and gets the work this pass releases. The one thing it must not destabilise is the admission budget: voided rows re-enter the replay backlog, and a pass that voided more per interval than the sweeper drains would refuse new producers.
 8. **Surface order** — N/A — no user surface. The only externally visible change is a generated endpoint description that becomes accurate.
 9. **Dashboard restraint** — the attempt count rides existing structured events and gets no panel until an operator has asked a question it answers.
-10. **Confused-user next step** — an operator who sees repeated `admission_stream_data_lost` lines for one fleet now also sees whether repair is progressing, because the declined-repair event names a fleet that recovery is deferring.
+10. **Confused-user next step** — an operator who sees repeated `admission_stream_data_lost` lines for one fleet now also sees whether repair is progressing, because the declined-repair event names the fleet whose repair was postponed.
 
 ## Decomposition & alternatives (patch vs refactor)
 
