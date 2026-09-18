@@ -351,7 +351,7 @@
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
       },
-      "description": "Current count per lifecycle status. Not a rate \u2014 this is the standing population. Use it to tell 'nothing is happening because it is quiet' from 'nothing is happening because nothing exists'.",
+      "description": "Current count per lifecycle status, and a GAP when the census could not be read. The producer withdraws all five readings together when its query fails (`a_withdrawn_census_publishes_no_reading_at_all`), so absence here means the census, the exporter or the daemon is down \u2014 not that the fleet is empty. These queries carry no `or vector(0)` for exactly that reason: a zero would render an outage as five healthy zeroes. Not a rate; this is the standing population.",
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -390,27 +390,27 @@
       },
       "targets": [
         {
-          "expr": "max(agentsfleet_fleets{status=\"installing\"}) or vector(0)",
+          "expr": "max(agentsfleet_fleets{status=\"installing\"})",
           "legendFormat": "installing",
           "refId": "A"
         },
         {
-          "expr": "max(agentsfleet_fleets{status=\"active\"}) or vector(0)",
+          "expr": "max(agentsfleet_fleets{status=\"active\"})",
           "legendFormat": "active",
           "refId": "B"
         },
         {
-          "expr": "max(agentsfleet_fleets{status=\"paused\"}) or vector(0)",
+          "expr": "max(agentsfleet_fleets{status=\"paused\"})",
           "legendFormat": "paused",
           "refId": "C"
         },
         {
-          "expr": "max(agentsfleet_fleets{status=\"stopped\"}) or vector(0)",
+          "expr": "max(agentsfleet_fleets{status=\"stopped\"})",
           "legendFormat": "stopped",
           "refId": "D"
         },
         {
-          "expr": "max(agentsfleet_fleets{status=\"killed\"}) or vector(0)",
+          "expr": "max(agentsfleet_fleets{status=\"killed\"})",
           "legendFormat": "killed",
           "refId": "E"
         }
@@ -976,12 +976,12 @@
           "refId": "A"
         },
         {
-          "expr": "sum(rate(agentsfleet_repair_dispatch_retried_total[$__rate_interval])) or vector(0)",
+          "expr": "sum(rate(agentsfleet_repair_dispatch_retried_total[$__rate_interval]))",
           "legendFormat": "repair dispatch retried",
           "refId": "B"
         },
         {
-          "expr": "sum(rate(agentsfleet_sse_hub_reconnects_total[$__rate_interval])) or vector(0)",
+          "expr": "sum(rate(agentsfleet_sse_hub_reconnects_total[$__rate_interval]))",
           "legendFormat": "hub reconnects",
           "refId": "C"
         }
@@ -1067,22 +1067,22 @@
       },
       "targets": [
         {
-          "expr": "sum(agentsfleet_api_in_flight_requests) or vector(0)",
+          "expr": "sum(agentsfleet_api_in_flight_requests)",
           "legendFormat": "API in flight",
           "refId": "A"
         },
         {
-          "expr": "sum(agentsfleet_sse_in_flight_streams) or vector(0)",
+          "expr": "sum(agentsfleet_sse_in_flight_streams)",
           "legendFormat": "streams in flight",
           "refId": "B"
         },
         {
-          "expr": "max(agentsfleet_fleet_ready_depth) or vector(0)",
+          "expr": "max(agentsfleet_fleet_ready_depth)",
           "legendFormat": "ready fleet depth",
           "refId": "C"
         },
         {
-          "expr": "max(agentsfleet_admission_backlog) or vector(0)",
+          "expr": "max(agentsfleet_admission_backlog)",
           "legendFormat": "admission backlog",
           "refId": "D"
         }
@@ -1125,12 +1125,12 @@
       },
       "targets": [
         {
-          "expr": "max(agentsfleet_admission_backlog_oldest_age_seconds) or vector(0)",
+          "expr": "max(agentsfleet_admission_backlog_oldest_age_seconds)",
           "legendFormat": "oldest unconfirmed admission",
           "refId": "A"
         },
         {
-          "expr": "max(agentsfleet_repair_dispatch_oldest_age_seconds) or vector(0)",
+          "expr": "max(agentsfleet_repair_dispatch_oldest_age_seconds)",
           "legendFormat": "oldest due verifier intent",
           "refId": "B"
         },
