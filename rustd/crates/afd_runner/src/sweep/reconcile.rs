@@ -33,7 +33,7 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
-use afd_admission::{Admissions, Progress, Reconciled};
+use afd_admission::{Admissions, DEFAULT_REPAIR_CAPACITY, Progress, Reconciled};
 use afd_core::clock;
 
 use crate::error::Result;
@@ -52,6 +52,19 @@ const FLEET_LIMIT: i64 = 128;
 /// reason: the transaction holding these row locks is one a live producer
 /// recording its receipt waits behind.
 const ROW_LIMIT: i64 = 32;
+
+/// How many fleets this sweeper remembers as mid-repair at once.
+///
+/// Sized to [`FLEET_LIMIT`], because one pass cannot put more fleets into
+/// repair than it examined. Written as its own literal rather than cast from
+/// it: the two constants have different types for good reasons — one is bound
+/// into SQL, one indexes memory — and every cast between them needs a
+/// truncation exception that would say less than this sentence does.
+///
+/// A MEMORY bound, not a round-trip budget. They were one value until a test
+/// showed what that coupling did: lowering the per-pass fleet budget silently
+/// shrank how much repair progress the sweeper could remember.
+const REPAIR_CAPACITY: usize = 128;
 
 /// How long between passes that found nothing to repair.
 const INTERVAL: Duration = Duration::from_secs(300);
@@ -74,6 +87,13 @@ const _: () = {
         "a pass this wide spends its interval in round trips"
     );
     assert!(ROW_LIMIT > 0, "a pass that voids no row never recovers");
+    // A reset falls back to the ledger's default, so a default that is not this
+    // number would quietly shrink the set every time a lock was poisoned.
+    assert!(
+        REPAIR_CAPACITY == DEFAULT_REPAIR_CAPACITY,
+        "the resume set's fallback capacity must be the one this sweeper asks for"
+    );
+
     assert!(
         ROW_LIMIT <= 128,
         "a batch this large holds row locks a live producer waits behind"
@@ -116,7 +136,7 @@ impl Reconcile {
         Self {
             admissions,
             pacing: Mutex::new(INTERVAL),
-            progress: Mutex::new(Progress::default()),
+            progress: Mutex::new(Progress::with_capacity(REPAIR_CAPACITY)),
         }
     }
 

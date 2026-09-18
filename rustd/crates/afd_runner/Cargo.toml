@@ -63,6 +63,14 @@ test-util = [
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+# The reconcile sweeper's resume state is handed in and out of a mutex around
+# every pass, and that hand-off is the one part of it decidable without a
+# datastore. Reaching it needs a `Reconcile`, which needs an `Admissions`, which
+# needs a pool and a client handle — both of which these crates can build
+# lazily, without opening a socket.
+afd_admission = { workspace = true, features = ["test-util"] }
+afd_db.workspace = true
+afd_dragonfly.workspace = true
 
 [[test]]
 name = "runner_suite"

@@ -30,7 +30,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Cancel latency | ≤ one heartbeat interval | revocation rides the heartbeat reply | §KILL |
 | Lease ownership | at most one active lease per fleet | atomic `runner_affinity` claim + monotonic `fencing_seq` | §One active lease per fleet |
 | Provider `api_key` | never in `secrets_map` | rides `ExecutionPolicy.provider` + `.api_key`; injected for the inference call only | §"C. EXECUTE" step 4 |
-| Tenant isolation | RLS + namespacing | Postgres Row-Level Security by `workspace_id`; Dragonfly keys namespaced by unguessable fleet UUID | §Multi-tenancy boundary |
+| Tenant isolation | application-enforced + namespacing | every workspace route passes an ownership check before its handler runs; Dragonfly keys namespaced by unguessable fleet UUID. This repository declares no `ROW LEVEL SECURITY` policy | §Multi-tenancy boundary |
 
 ## Traps
 
@@ -101,7 +101,7 @@ Headings are stable — specs cite them by text; insert new sections, never rena
 | `fleet:{id}:activity` | `agentsfleetd` (sole publisher) — bracket frames directly, mid-run frames fed by the runner's `activity` stream | SSE streams in `agentsfleetd-api`, fanned out from the SubscriptionHub's one shared pub/sub connection (refcounted SUBSCRIBE per channel) |
 | `core.fleet_events` | `agentsfleetd` lease path (INSERT received) → report path (UPDATE terminal) | `agentsfleetd-api` `GET /events` endpoints, dashboard, `agentsfleet events` |
 | `core.fleets` | `agentsfleetd-api` only | Canonical Fleet runtime table; `agentsfleetd` reads it at lease so config resolves fresh per lease |
-| `core.fleet_sessions` | `agentsfleetd` lease path (mark busy) + report path (checkpoint) | `agentsfleetd` at lease + `agentsfleet status` |
+| `core.fleet_sessions` | `agentsfleetd` report path (checkpoint) | `agentsfleetd` at lease |
 | `fleet.runner_leases` / `fleet.runner_affinity` | `agentsfleetd` lease path (issue) + report/reclaim (flip / release) | `agentsfleetd` assignment + fencing + reclaim |
 | `vault.secrets` | `agentsfleetd-api` on `secret create` (upsert) | `agentsfleetd` resolves just-in-time at `lease`, ships inline in the lease reply |
 | `fleet:control` | — (removed at the cutover) | — (removed at the cutover) |
@@ -170,8 +170,8 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
            ║  3. balance gate, receive debit,       ║   [`capabilities.md`](./capabilities.md)
            ║     approval gate, run debit           ║   for each gate layer.
            ║  4. resolve secrets_map from vault     ║
-           ║  5. UPSERT core.fleet_sessions         ║   ← resume cursor:
-           ║     SET execution_id (busy)            ║     marks Fleet busy
+           ║  5. READ core.fleet_sessions           ║   ← resume cursor:
+           ║     context_json (resume point)        ║     where to carry on
            ║  6. issue fleet.runner_leases row      ║
            ║     (lease_expires_at, fencing)        ║
            ║  → 200 { event, ExecutionPolicy,       ║
@@ -223,8 +223,8 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
            ║   9. INSERT core.fleet_execution_      ║   ← billing/latency
            ║      telemetry (reconcile actuals)     ║     audit (UNIQUE event_id)
            ║  10. UPSERT core.fleet_sessions        ║   ← resume cursor:
-           ║      context_json, execution_id=NULL   ║     clears handle,
-           ║  11. XACK fleet:{id}:events            ║     advances bookmark
+           ║      context_json                      ║     advances the
+           ║  11. XACK fleet:{id}:events            ║     bookmark
            ║  12. release affinity (token-guard)    ║
            ║  13. INSERT core.fleet_obligations     ║   ← the answer is OWED
            ║      receipt=NULL delivered_at=NULL    ║     (in the transaction)
@@ -297,7 +297,7 @@ One event's life across all four:
       │   │                       │
       ├─▶ fleet_events       UPDATE  status='processed', response_text
       ├─▶ fleet_obligations  INSERT  "owed"              ← same transaction as the money
-      ├─▶ fleet_sessions     UPSERT  context_json        cursor moves, execution_id cleared
+      ├─▶ fleet_sessions     UPSERT  context_json        the resume cursor moves
       │
       └─▶ fleet_obligations  UPDATE  delivered_at        a person received it
 ```
@@ -312,7 +312,7 @@ That decides the direction of error, too. An uncertain admission is REFUSED, bec
 |---|---|---|---|
 | `core.fleet_admissions` | **One row per acceptance** | INSERT, then UPDATE `receipt` and `delivered_at` | "Did we accept this work, and has a runner taken it?" — committed before the producer is told yes, so a lost queue loses no accepted work. `UNIQUE (producer, producer_key)` is what makes a producer's retry one row rather than two runs. |
 | `core.fleet_obligations` | **One row per answer** | INSERT in the report's transaction, then UPDATE `receipt` and `delivered_at` | "Do we still owe somebody this answer?" — committed with the money and the result, so no window exists where a run is charged and its answer exists nowhere. `UNIQUE (fleet_id, event_id)` makes a replayed report owe one delivery, not two. |
-| `core.fleet_sessions` | **One row per Fleet** | UPSERT — mutated on every event boundary | "Where is this Fleet *right now*? Is it idle or executing? What was its last successful response?" — the resume bookmark + active-execution handle. `execution_id` is set at `lease` (busy) and cleared at `report` (idle). Read at `lease` and by `agentsfleet status`. |
+| `core.fleet_sessions` | **One row per Fleet** | UPSERT — replaced at each report | "Where did this Fleet leave off?" — the resume bookmark, and only that. The lease path reads `context_json`; the report path replaces it. The table still declares `execution_id` and `execution_started_at`, and **nothing writes or reads either**: "which fleet is executing right now" is `fleet.runner_leases`, which has the fencing token and the expiry that make the answer trustworthy, where a handle with no expiry could only go stale. The columns are left in place for deployments that still carry them. |
 | `core.fleet_events` | **One row per delivery** | INSERT (status=`received`) → UPDATE (status=`processed` \| `fleet_error` \| `gate_blocked`) | "What did this Fleet do for event X? Who triggered it, what did they ask, what did it answer, did the gates pass?" — the user's narrative log. The single source of truth for the Events tab and `agentsfleet events`. |
 | `billing.usage_ledger` | **Two rows per event** under the credit-pool model: one `charge_type='receive'` at the receive debit, one `charge_type='stage'` at the run debit (then UPDATEd with token counts after the report). UNIQUE `(event_id, charge_type)`. | INSERT at each debit, immutable for the `credit_deducted_nanos` column; the run row is reconciled once with actual token counts at report. | "How much did event X cost (split by receive vs run)? How fast was it? What posture was charged?" — billing + latency audit. Joinable to `fleet_events` via `event_id`. |
 
@@ -336,9 +336,10 @@ fleet_id            f4e3c2b1-...
 context_json         {"last_event_id": "1729873200000-0",
                       "last_response":  "All apps healthy at 07:30Z."}
 checkpoint_at        1729873208000
-execution_id         NULL          ← idle
-execution_started_at NULL
 ```
+
+Busy or idle is not a column here. `fleet.runner_leases` answers that, with a
+fencing token and an expiry behind it.
 
 **Step 1 — INSERT `fleet_events`** (status=`received`, at `lease`):
 
@@ -363,14 +364,14 @@ created_at     2026-04-25T08:00:00Z
 completed_at   NULL
 ```
 
-**Step 5 — UPSERT `fleet_sessions`** (mark busy, do *not* touch `fleet_events`):
+**Step 5 — read `fleet_sessions`** (the resume point; nothing is written here):
 
 ```
-core.fleet_sessions  (same row, mutated)
+core.fleet_sessions  (same row, read only)
 ─────────────────────────────────────────
-execution_id         exec-7af3c2b1-...   ← now busy
-execution_started_at 1729874001000
-(other fields unchanged from "before")
+context_json         → handed to the runner as the conversation so far
+(the row is unchanged from "before"; the lease row is what marks the
+ fleet busy, in fleet.runner_leases)
 ```
 
 The lease reply ships to the runner. NullClaw runs inside the runner's sandboxed child: fetches GH run logs via `${secrets.github.token}`, fetches Fly app logs, fetches Dragonfly cluster stats, posts a remediation message to Slack. GitHub is a **mintable integration**, so that placeholder does not resolve to a stored value. At the tool bridge the child asks its runner, which forwards to the daemon-side credential broker over the `agt_r` plane (`POST /v1/runners/me/credentials/mint`). The broker signs a GitHub App JWT (RS256, platform key, daemon-side) and exchanges it for a short-lived installation token, returned just for that call. The App private key never leaves the daemon. (Fly/Slack remain static custom secrets until the `oauth_refresh` integration lands.) The child returns `ExecutionResult{content, tokens=1840, wall_ms=8210, ttft_ms=320, outcome=ok}` over the stdout pipe; the runner POSTs it to `report`.
@@ -414,13 +415,11 @@ core.fleet_sessions  (same row, mutated)
 context_json         {"last_event_id": "1729874000000-0",
                       "last_response":  "Deploy failed: Fly.io OOM kill..."}
 checkpoint_at        1729874008210
-execution_id         NULL          ← idle again
-execution_started_at NULL
 ```
 
 ## Reading the three tables
 
-- `agentsfleet status {id}` reads **`fleet_sessions`** — answers "is the fleet executing right now, and where did it leave off?"
+- `fleet_sessions` answers "where did this fleet leave off?" — the lease path reads it to resume a conversation. "Is it executing right now" is a `fleet.runner_leases` question.
 - `agentsfleet events {id} [--actor=…]` reads **`core.fleet_events`** — answers "what has this fleet done, did any gate block it?" The **list** read stops there. It carries no request body and no agent answer.
 - Expanding one row reads **the same table by event id** — answers "what was asked, what did it reply?" One event, on its own request.
 - Billing rollups + p95 dashboards read **`billing.usage_ledger`** — answers "how many tokens this month, what's the latency tail?"
@@ -572,9 +571,9 @@ installed runtime. Runner remains the infrastructure vocabulary.
     │      generate default manual/API trigger config
     ├─► check required workspace secrets by key name only; never resolve
     │      raw secret values during install
-    ├─► [Postgres] INSERT core.fleets          (Row-Level Security (RLS): tenant boundary)
+    ├─► [Postgres] INSERT core.fleets          (tenant taken from the workspace row,
+    │                                          never from the caller)
     ├─► [Postgres] INSERT core.fleet_sessions  (checkpoint row:
-    │                                         execution_id=NULL,
     │                                         context_json={}, checkpoint_at=now)
     ├─► [Postgres] record nullable bundle snapshot metadata on the Fleet
     ├─► [Dragonfly] XGROUP CREATE MKSTREAM fleet:{id}:events fleet_lease 0
@@ -813,8 +812,8 @@ The deleted worker's single in-process `processEvent` loop is now split across t
         secrets_map and is never substituted into a tool placeholder. The
         runner injects it into the NullClaw child for the inference call only,
         and agentsfleetd keeps it live only through the synchronous lease write.
-     5. UPSERT core.fleet_sessions                ← marks busy
-          SET execution_id, execution_started_at = now()
+     5. READ core.fleet_sessions                  ← the resume point
+          context_json (the conversation so far)
      6. issue fleet.runner_leases row              ← durable ownership
           (lease_id, fencing_token, lease_expires_at = now + LEASE_TTL_MS)
      → 200 { event, ExecutionPolicy(config + secrets_map + network_policy
@@ -893,9 +892,9 @@ The deleted worker's single in-process `processEvent` loop is now split across t
      8. PUBLISH fleet:{id}:activity { kind:"event_complete", event_id, status }
      9. INSERT/reconcile billing.usage_ledger ← billing/latency,
           (event_id UNIQUE, token_count, ttft_ms, wall_seconds, ...)
-    10. UPSERT core.fleet_sessions                ← idle bookmark
+    10. UPSERT core.fleet_sessions                ← the bookmark
           SET context_json = { last_event_id, last_response },
-              execution_id = NULL, checkpoint_at = now()
+              checkpoint_at = now()
     11. XACK fleet:{id}:events                    ← consumer cursor advances
     12. release affinity (WHERE fencing_seq = $token)  ← token-guarded
 
@@ -1000,9 +999,10 @@ The deleted worker's single in-process `processEvent` loop is now split across t
              Dashboard /fleets/{id}/events
                → reads core.fleet_events (cursor-paginated).
 
-   STATUS    agentsfleet status {id}
-               → reads core.fleet_sessions
-                 ("busy or idle, last response").
+   RESUME    no user-facing command reads core.fleet_sessions. The lease
+             path reads it, to hand a runner the conversation so far.
+             "Busy or idle" is fleet.runner_leases, which has the fencing
+             token and the expiry that make the answer trustworthy.
 
    Both browser registries backfill durable event rows after reconnect.
    The workspace registry also backfills on catching_up; the per-fleet
@@ -1076,8 +1076,8 @@ and [`daemon connection builder`](../../rustd/crates/afd_api/src/server.rs).
 
 | Layer | Tenant isolation mechanism |
 |---|---|
-| PG (`core.fleets`, `core.fleet_events`, etc.) | Row-Level Security by `workspace_id`. The API enforces via `app.workspace_id` session var; the control-plane lease/report path uses the service role with explicit WHERE filtering. |
-| Dragonfly data plane (`fleet:{id}:events`) | Key namespaced by fleet UUID (globally unique); no cross-tenant collision possible. No RLS in Dragonfly — protected by `fleet_id` being unguessable + API gatekeeping. |
+| PG (`core.fleets`, `core.fleet_events`, etc.) | Enforced in the application, not by the database. `afd_tenant`'s `AUTHORIZE_WORKSPACE` resolves the caller's tenant and the workspace's owner in one statement, and `afd_api` mounts it as a layer in front of every route whose path carries a workspace — so no handler is in a position to forget it. Every control-plane statement filters by `workspace_id` or `fleet_id` explicitly. **No `ROW LEVEL SECURITY` policy is declared anywhere in `schema/`, and no `current_setting('app.workspace_id')` is read.** The Zig wrote such a session variable at three sites and read it at zero; the port dropped the write rather than keep a guard that guarded nothing. Re-adding database policies would need a transaction per request, because `sqlx` returns a connection to the pool between requests and a session-level setting would leak one tenant's identifier onto the next. |
+| Dragonfly data plane (`fleet:{id}:events`) | Key namespaced by fleet UUID (globally unique); no cross-tenant collision possible. Dragonfly has no per-row authorization of any kind, so the protection is the same shape as the row above it: the key is unguessable and every path to it goes through the ownership check. |
 | Runner ↔ control plane | The `agt_r` token authenticates the runner per call; `me` resolves from the token. The lease carries exactly one fleet's event + scoped secrets; a runner never sees another tenant's data plane. Enrollment is gated on the `runner:enroll` scope — only a token carrying it may add a host to the shared fleet, via the dashboard "Add runner". Trust-gated placement (don't put other-tenant work on a weak sandbox tier) is operator-assigned, deferred to a later milestone (M85_001 shipped label-matching placement only, not trust tiers; M80_007 shipped as the observability spec). |
 | Sandboxed child | Per-execution: secrets resolved at the lease, delivered via the child's stdin only, substituted at the tool bridge inside the sandbox, never flowing as raw strings into fleet context. |
 

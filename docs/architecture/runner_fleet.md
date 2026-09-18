@@ -752,5 +752,5 @@ The exact, restart-resilient form of the two gauges is a read-only background th
 
 - NullClaw's fleet loop, its tool inventory, and secret substitution at the tool bridge. It moved into the runner as a linked engine and a sandboxed child, but its behaviour is identical.
 - Event ingress: steer / webhook / cron / continuation still `XADD fleet:{id}:events`.
-- The user read path: `GET /events`, the SSE live tail, `agentsfleet status/events`.
+- The user read path: `GET /events`, the SSE live tail, `agentsfleet events`.
 - The five durable stores and their contracts (see `data_flow.md`), including row-for-row equivalence with the deleted direct path (Invariant 2 of the cutover spec).

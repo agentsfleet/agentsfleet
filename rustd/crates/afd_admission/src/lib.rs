@@ -64,7 +64,7 @@ use self::budget::Ceiling;
 pub use self::budget::{BudgetScope, Budgets};
 pub use self::cursor::LedgerBacklog;
 pub use self::error::{Error, Result};
-pub use self::reconcile::{Progress, Reconciled};
+pub use self::reconcile::{DEFAULT_REPAIR_CAPACITY, Progress, Reconciled};
 pub use self::replay::Replayed;
 
 /// Who is asking a fleet to run something.

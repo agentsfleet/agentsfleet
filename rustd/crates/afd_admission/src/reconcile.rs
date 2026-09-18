@@ -73,8 +73,8 @@ use crate::error::Result;
 mod progress;
 mod scan;
 
-pub use self::progress::Progress;
 use self::progress::RowKey;
+pub use self::progress::{DEFAULT_REPAIR_CAPACITY, Progress};
 
 /// Statement name, for the context a query failure carries.
 pub(crate) const CONTEXT_RECONCILE: &str = "reconcile an admission's receipt";
@@ -180,7 +180,7 @@ impl Admissions {
                 .void_lost_on(&repair.fleet_id, now, rows, repair.after)
                 .await?;
             reconciled.voided += walked.voided;
-            Self::remember(&repair.fleet_id, &walked, fleets, progress, reconciled);
+            Self::remember(&repair.fleet_id, &walked, progress, reconciled);
         }
         Ok(())
     }
@@ -219,7 +219,7 @@ impl Admissions {
                 .void_lost_on(fleet_id, now, rows, RowKey::FIRST)
                 .await?;
             reconciled.voided += walked.voided;
-            Self::remember(fleet_id, &walked, fleets, progress, reconciled);
+            Self::remember(fleet_id, &walked, progress, reconciled);
         }
         progress.swept(last_seen, budget_filled);
         Ok(())
@@ -227,19 +227,19 @@ impl Admissions {
 
     /// Files a walk's resume point, or records that there was no room for it.
     ///
-    /// A declined repair is the one place this design trades coverage speed for
-    /// its memory bound, so it is logged rather than dropped silently: the
-    /// fleet is still reachable through the head probe once the rows this pass
-    /// restored are delivered, and an operator watching a large loss recover
-    /// can see which fleets are waiting on that.
+    /// A declined repair is the one place this design trades coverage for its
+    /// memory bound, so it is logged rather than dropped silently. What the
+    /// operator is being told is not "this is slower": the fleet's remaining
+    /// lost rows are invisible to the head probe until the rows this pass
+    /// restored have been delivered, so on a fleet nothing is consuming they
+    /// wait indefinitely. [`Progress`] carries the full statement.
     fn remember(
         fleet_id: &str,
         walked: &Walked,
-        fleets: i64,
         progress: &mut Progress,
         reconciled: &mut Reconciled,
     ) {
-        if progress.walked(fleet_id, walked.stopped_at, fleets) {
+        if progress.walked(fleet_id, walked.stopped_at) {
             return;
         }
         reconciled.declined += 1;

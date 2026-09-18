@@ -66,6 +66,12 @@ const ONE_FLEET: i64 = 1;
 /// Two rows per walk, which is the smallest batch that can leave a remainder.
 const TWO_ROWS: i64 = 2;
 
+/// One row per walk, so every walk that finds anything files a resume point.
+const ONE_ROW: i64 = 1;
+
+/// A resume set that holds one fleet, so the second one to need it is refused.
+const ROOM_FOR_ONE: usize = 1;
+
 /// Passes to spend beyond the deployment's own unfinished fleets.
 ///
 /// Slack, not a guess at the answer: the rotation needs one pass per unfinished
@@ -259,4 +265,367 @@ async fn a_walk_resumes_past_the_rows_it_already_repaired() {
     }
 
     fixtures.cleanup().await;
+}
+
+/// Rows the stream still holds are walked past, never voided.
+///
+/// A rebuilt stream is not an empty one. After the loss this fleet takes new
+/// admissions, which append to a fresh stream and get LIVE receipts, and the
+/// walk meets both kinds in one batch: the old rows whose entries are gone and
+/// the new ones sitting right there. Voiding a fleet wholesale would re-append
+/// work that is already queued, so the walk asks per row and skips the ones
+/// that answer yes — which is the branch this grades.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn interleaved_live_admissions_survive_recovery() {
+    let _lane = RECOVERY_LANE.lock().await;
+    let fixtures = Fixtures::create_with_queue().await;
+    let (fleet, workspace, _tenant, _runners) = seeded_parts::<0>(&fixtures).await;
+    let live = ledger(&fixtures);
+    let streams = FleetStreams::new(fixtures.queue().clone());
+
+    let mut lost = Vec::new();
+    for which in 0..2 {
+        let key = producer_key(&fleet, &format!("interleaved-lost-{which}"));
+        lost.push(
+            live.admit(admission(&fleet, &workspace, &key))
+                .await
+                .expect("a live queue admits and receipts")
+                .id,
+        );
+    }
+    streams
+        .forget(&fleet)
+        .await
+        .expect("destroying this fleet's stream data");
+
+    // Admitted AFTER the loss, so the append rebuilds the stream and these
+    // receipts name entries that are really there.
+    let mut alive = Vec::new();
+    for which in 0..2 {
+        let key = producer_key(&fleet, &format!("interleaved-live-{which}"));
+        let event = live
+            .admit(admission(&fleet, &workspace, &key))
+            .await
+            .expect("a live queue admits and receipts");
+        let receipt = fixtures
+            .admission_receipt(&fleet, &event.id)
+            .await
+            .expect("an append after the loss records its receipt");
+        alive.push((event.id, receipt));
+    }
+
+    let mut progress = Progress::default();
+    for _pass in 0..4 {
+        let at = clock::now();
+        live.reconcile(at, EVERY_FLEET, EVERY_ROW, &mut progress)
+            .await
+            .expect("the reconcile pass runs against both live datastores");
+        live.replay(at, NO_GRACE, EVERY_ROW)
+            .await
+            .expect("the replay pass runs against both live datastores");
+    }
+
+    for (event_id, receipt) in &alive {
+        assert_eq!(
+            fixtures.admission_receipt(&fleet, event_id).await.as_ref(),
+            Some(receipt),
+            "{event_id} was queued and alive; recovery must not have touched it"
+        );
+        assert_eq!(
+            fixtures.admission_replays(&fleet, event_id).await,
+            0,
+            "{event_id} was never re-appended, because it was never lost"
+        );
+    }
+    for event_id in &lost {
+        let receipt = fixtures
+            .admission_receipt(&fleet, event_id)
+            .await
+            .unwrap_or_else(|| panic!("{event_id} is accepted work and must hold a receipt"));
+        assert!(
+            streams
+                .holds_entry(&fleet, &EventId::of(&receipt))
+                .await
+                .expect("the stream answers"),
+            "{event_id} was lost beside live work and was still recovered"
+        );
+    }
+
+    fixtures.cleanup().await;
+}
+
+/// Two reconcilers over one lost fleet repair each row once.
+///
+/// Both read the same candidates and both probe them; the repair is decided by
+/// `VOID_LOST_RECEIPT` pinning the receipt it was told about, so the second
+/// write matches nothing and reports the zero it did. The sum is what the
+/// assertion is on: duplicated round trips are the accepted cost, a duplicated
+/// repair is not.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn concurrent_reconcilers_repair_each_row_once() {
+    let _lane = RECOVERY_LANE.lock().await;
+    let fixtures = Fixtures::create_with_queue().await;
+    let (fleet, workspace, _tenant, _runners) = seeded_parts::<0>(&fixtures).await;
+    let live = ledger(&fixtures);
+    let streams = FleetStreams::new(fixtures.queue().clone());
+
+    let mut owed = Vec::new();
+    for which in 0..3 {
+        let key = producer_key(&fleet, &format!("concurrent-{which}"));
+        owed.push(
+            live.admit(admission(&fleet, &workspace, &key))
+                .await
+                .expect("a live queue admits and receipts")
+                .id,
+        );
+    }
+    streams
+        .forget(&fleet)
+        .await
+        .expect("destroying this fleet's stream data");
+
+    let at = clock::now();
+    let mut here = Progress::default();
+    let mut there = Progress::default();
+    let (left, right) = tokio::join!(
+        live.reconcile(at, EVERY_FLEET, EVERY_ROW, &mut here),
+        live.reconcile(at, EVERY_FLEET, EVERY_ROW, &mut there),
+    );
+    let left = left.expect("the first pass runs against both live datastores");
+    let right = right.expect("the second pass runs against both live datastores");
+
+    assert!(
+        left.voided + right.voided <= u64::try_from(owed.len()).expect("three fits a u64"),
+        "two passes voided more receipts than the fleet had rows: {left:?} {right:?}"
+    );
+    live.replay(clock::now(), NO_GRACE, EVERY_ROW)
+        .await
+        .expect("the replay pass runs against both live datastores");
+    for event_id in &owed {
+        assert_eq!(
+            fixtures.admission_replays(&fleet, event_id).await,
+            1,
+            "{event_id} was re-appended exactly once, by whichever pass won"
+        );
+    }
+
+    fixtures.cleanup().await;
+}
+
+/// A pass over a fleet nothing is wrong with voids nothing and reports quiet.
+///
+/// The idempotency claim, and the one that keeps the pacing honest: a pass that
+/// repeats itself must not keep voiding receipts the replay sweeper has already
+/// made good, or recovery would cycle a fleet forever at the recovering
+/// interval.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn replayed_reconcile_pass_is_idempotent() {
+    let _lane = RECOVERY_LANE.lock().await;
+    let fixtures = Fixtures::create_with_queue().await;
+    let (fleet, workspace, _tenant, _runners) = seeded_parts::<0>(&fixtures).await;
+    let live = ledger(&fixtures);
+    let streams = FleetStreams::new(fixtures.queue().clone());
+
+    let key = producer_key(&fleet, "idempotent");
+    let event = live
+        .admit(admission(&fleet, &workspace, &key))
+        .await
+        .expect("a live queue admits and receipts");
+    streams
+        .forget(&fleet)
+        .await
+        .expect("destroying this fleet's stream data");
+
+    let mut progress = Progress::default();
+    let at = clock::now();
+    live.reconcile(at, EVERY_FLEET, EVERY_ROW, &mut progress)
+        .await
+        .expect("the repairing pass runs");
+    live.replay(at, NO_GRACE, EVERY_ROW)
+        .await
+        .expect("the replay pass runs");
+    let recovered = fixtures
+        .admission_receipt(&fleet, &event.id)
+        .await
+        .expect("the row was repaired and re-appended");
+
+    // The fleet is whole again. A second pass must find nothing to do on it.
+    let settled = live
+        .reconcile(clock::now(), EVERY_FLEET, EVERY_ROW, &mut progress)
+        .await
+        .expect("the second pass runs");
+
+    assert_eq!(
+        fixtures.admission_receipt(&fleet, &event.id).await,
+        Some(recovered),
+        "the second pass left the repaired receipt alone"
+    );
+    assert_eq!(
+        fixtures.admission_replays(&fleet, &event.id).await,
+        1,
+        "one loss is one re-append, however many passes run"
+    );
+    assert!(
+        !settled.resuming || settled.voided == 0,
+        "a settled fleet is not carried as unfinished repair work: {settled:?}"
+    );
+
+    fixtures.cleanup().await;
+}
+
+/// A full resume set declines the next repair, says so, and recovers it later.
+///
+/// The memory bound's cost, paid where it is visible, and the cost is bigger
+/// than "slower". Two fleets lose more rows than one walk repairs while the set
+/// holds one fleet, so a pass turns one of them away. The turned-away fleet's
+/// FIRST lost row is repaired and re-appended; its second is then invisible,
+/// because the head probe asks about the oldest undelivered receipt and that is
+/// now the live one the repair just made. The fleet is not stranded forever —
+/// it is stranded until its restored rows are delivered and the head moves,
+/// which on a fleet a runner is consuming is the next lease and on a fleet
+/// nobody is consuming is indefinite.
+///
+/// So this grades three things: the refusal is REPORTED rather than dropped,
+/// the row behind it is still owed rather than lost, and delivering the
+/// restored rows is what lets the next pass find it.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_full_resume_set_declines_a_repair_and_still_recovers_it() {
+    let _lane = RECOVERY_LANE.lock().await;
+    let fixtures = Fixtures::create_with_queue().await;
+    let live = ledger(&fixtures);
+    let streams = FleetStreams::new(fixtures.queue().clone());
+
+    let mut lost = Vec::new();
+    for which in 0..2 {
+        let (fleet, workspace, _tenant, _runners) = seeded_parts::<0>(&fixtures).await;
+        let mut owed = Vec::new();
+        for nth in 0..2 {
+            let key = producer_key(&fleet, &format!("declined-{which}-{nth}"));
+            owed.push(
+                live.admit(admission(&fleet, &workspace, &key))
+                    .await
+                    .expect("a live queue admits and receipts")
+                    .id,
+            );
+        }
+        streams
+            .forget(&fleet)
+            .await
+            .expect("destroying this fleet's stream data");
+        lost.push((fleet, owed));
+    }
+
+    // Every fleet examined per pass, so this test does not wait its turn behind
+    // a sibling suite's unfinished fleets — the rotation is the other test's
+    // subject. One row per walk so both fleets file a resume point, and room
+    // for one so the second is refused.
+    let mut progress = Progress::with_capacity(ROOM_FOR_ONE);
+    let mut declined = 0;
+    for _pass in 0..4 {
+        let at = clock::now();
+        declined += live
+            .reconcile(at, EVERY_FLEET, ONE_ROW, &mut progress)
+            .await
+            .expect("the reconcile pass runs against both live datastores")
+            .declined;
+        live.replay(at, NO_GRACE, EVERY_ROW)
+            .await
+            .expect("the replay pass runs against both live datastores");
+    }
+
+    assert!(
+        declined > 0,
+        "a resume set of one, with two fleets losing rows, must have turned one away"
+    );
+
+    // Nothing was lost: every row still holds a receipt, live or dead, and a
+    // dead one is a row the replay sweeper still owes.
+    for (fleet, owed) in &lost {
+        for event_id in owed {
+            assert!(
+                fixtures.admission_receipt(fleet, event_id).await.is_some(),
+                "{event_id} is accepted work and must still hold a receipt"
+            );
+        }
+    }
+
+    // The runner does its half: the rows recovery restored are delivered, so
+    // each fleet's oldest undelivered receipt is a dead one again and the head
+    // probe can see what is still missing.
+    for (fleet, owed) in &lost {
+        for event_id in owed {
+            let receipt = fixtures
+                .admission_receipt(fleet, event_id)
+                .await
+                .expect("every row holds a receipt");
+            if streams
+                .holds_entry(fleet, &EventId::of(&receipt))
+                .await
+                .expect("the stream answers")
+            {
+                deliver(&fixtures, fleet, event_id).await;
+            }
+        }
+    }
+
+    for _pass in 0..4 {
+        let at = clock::now();
+        live.reconcile(at, EVERY_FLEET, ONE_ROW, &mut progress)
+            .await
+            .expect("the reconcile pass runs against both live datastores");
+        live.replay(at, NO_GRACE, EVERY_ROW)
+            .await
+            .expect("the replay pass runs against both live datastores");
+    }
+
+    for (fleet, owed) in &lost {
+        for event_id in owed {
+            let receipt = fixtures
+                .admission_receipt(fleet, event_id)
+                .await
+                .unwrap_or_else(|| panic!("{event_id} is accepted work and must hold a receipt"));
+            let held = streams
+                .holds_entry(fleet, &EventId::of(&receipt))
+                .await
+                .expect("the stream answers");
+            assert!(
+                held || fixtures
+                    .admission_delivered_at(fleet, event_id)
+                    .await
+                    .is_some(),
+                "{event_id} was on a declined repair and is neither delivered nor re-queued"
+            );
+        }
+    }
+
+    fixtures.cleanup().await;
+}
+
+/// Stamps one admission delivered, the way a lease does.
+///
+/// Bound here rather than driven through `Leases::record_received` because what
+/// this test needs from the runner is only the effect — the fleet's oldest
+/// undelivered row moving on — and standing a whole lease up to get it would
+/// make a test about recovery a test about leasing.
+async fn deliver(fixtures: &Fixtures, fleet: &str, event_id: &str) {
+    let mut connection = fixtures
+        .database
+        .acquire()
+        .await
+        .expect("the ledger answers");
+    let (created_at, seq) = event_id
+        .split_once('-')
+        .expect("a logical event id is `<created_at>-<seq>`");
+    sqlx::query(afd_admission::sql::MARK_DELIVERED)
+        .bind(fleet)
+        .bind(created_at.parse::<i64>().expect("the instant is numeric"))
+        .bind(seq.parse::<i64>().expect("the sequence is numeric"))
+        .bind(clock::now().as_millis())
+        .execute(&mut *connection)
+        .await
+        .expect("stamping the delivery");
 }

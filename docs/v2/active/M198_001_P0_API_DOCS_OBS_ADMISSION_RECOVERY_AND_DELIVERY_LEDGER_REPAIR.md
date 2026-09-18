@@ -66,11 +66,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet_lifecycle/src/{sql.rs,install/row.rs}` | EDIT | `INSERT_FLEET` stops writing the unread bundle pointer; the bind, the private key helper and its test go with it, and later parameters renumber. |
 | `rustd/crates/afd_outbound/src/obligation{,/sql}.rs` | EDIT | The success stamp stops incrementing; a delivery-cycle start statement and its wrapper are added. |
 | `rustd/crates/afd_outbound/src/lanes.rs` | EDIT | Records the cycle start on job acceptance; carries the count into the delivered and exhausted events. |
-| `rustd/crates/afd_outbound/tests/integration_obligations.rs` | EDIT | Replaces the assertion pinning the old meaning; adds failure, exhaustion and pacing coverage. |
+| `rustd/crates/afd_outbound/tests/{integration_obligations.rs,integration_attempt_count.rs}` | EDIT · CREATE | The old meaning's assertion is replaced; the new suite carries the counter's failure, retry, duplicate, shutdown and pacing cases. |
 | `rustd/crates/afd_fleet/tests/{integration_admission_recovery.rs,integration_recovery_outage.rs}` | EDIT | Helpers open to the new suite; both reconcile calls carry the resume state. |
 | `rustd/crates/afd_fleet/tests/integration_recovery_progress.rs` (+ `fleet_suite.rs`) | CREATE | The two batch-boundary reproductions, in their own file: the sibling is already at length. |
-| `rustd/crates/afd_outbound/tests/integration_attempt_count.rs` | CREATE | The delivery-cycle counter's failure, retry, duplicate and pacing cases. |
-| `rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs` | EDIT | The generated endpoint description stops claiming repair writers this daemon does not have. |
+| `rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs` (+ `public/openapi.json`) | EDIT | The generated endpoint description stops claiming repair writers this daemon does not have; the published artifact is regenerated from it. |
+| `rustd/crates/afd_api/tests/openapi_contract.rs` · `scripts/check_architecture_doc.sh` | EDIT | Each absent mechanism gains a gate, so the claim cannot come back silently. |
 | `docs/architecture/data_flow.md` | EDIT | Corrects the session execution-handle row and the multi-tenancy row. |
 | `docs/v2/{pending,active,done}/M198_001_P0_API_DOCS_OBS_ADMISSION_RECOVERY_AND_DELIVERY_LEDGER_REPAIR.md` | CREATE | This spec, at whichever lifecycle directory holds it: `active/` from CHORE(open), `done/` at CHORE(close). |
 
@@ -125,7 +125,7 @@ A fleet whose walk filled its row batch is remembered as under repair and resume
 
 The resume state is proven to cost a fixed maximum and to never block the pass. **Implementation default:** compile-time assertions in the block `sweep/reconcile.rs` already uses, because a runtime test over a constant reports a bad edit as a red suite instead of a build that does not link.
 
-- **Dimension 3.1** (DONE) — the resume set cannot exceed its declared cap whatever the pass observes, and a walk returning fewer rows than its cap retires its fleet back to head-probe examination → Test `test_repair_set_respects_its_cap`
+- **Dimension 3.1** (DONE) — the resume set holds at most its declared capacity — a bound of its own, not the pass's fleet budget — and a short walk retires its fleet → Test `the_resume_set_respects_its_capacity`
 - **Dimension 3.2** (DONE) — the sweeper takes its resume state out of the lock before the pass and puts it back after, so no synchronous guard is held across an await → Test `test_sweeper_does_not_hold_its_lock_across_a_pass`
 - **Dimension 3.3** (DONE) — two reconcilers walking one lost fleet produce one repair and no double settlement → Test `concurrent_reconcilers_repair_each_row_once`
 - **Dimension 3.4** (DONE) — an unanswerable probe leaves every receipt intact and advances no repair past unexamined rows → Test `probe_outage_retains_receipts_and_progress`
@@ -154,8 +154,8 @@ The outbound worker records a delivery-cycle start when it accepts a job for an 
 
 Three current claims are corrected and the gaps behind them are named rather than quietly dropped. **Implementation default:** each correction says what the daemon does and names the absent feature explicitly, because a page that simply deletes a claim reads as a feature that was never intended rather than one that is not here yet.
 
-- **Dimension 6.1** — the generated endpoint description no longer states that repair pull requests, workflow results and deployment status update repair evidence, and names the unported writers instead → Test `test_ingress_description_matches_the_routed_behaviour`
-- **Dimension 6.2** — the architecture page claims neither a live execution handle nor row-level security, pointing at the fenced lease and the daemon's explicit workspace filtering → Test `test_data_flow_claims_match_the_daemon`
+- **Dimension 6.1** (DONE) — the generated endpoint description no longer states that repair pull requests, workflow results and deployment status update repair evidence, and names the unported writer instead → Test `test_the_ingress_description_promises_no_unported_writer`
+- **Dimension 6.2** (DONE) — no architecture page claims a live execution handle or row-level security; both point at what the daemon does instead → Test `architecture_absent_mechanisms`
 
 ### §7 — Two definitions with no caller are removed
 
@@ -191,8 +191,8 @@ CREATE INDEX IF NOT EXISTS idx_fleet_admissions_delivery_lookup
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
 | Datastore will not answer a probe | Dragonfly unreachable or a command error | The probe answers "still held", the receipt survives, the fleet keeps its place in the resume set, and the existing probe-failure event fires. No row is voided on an unknown. |
-| Resume set full | More fleets entered repair in one pass than the cap allows | The pass declines to add and logs the declined fleet. That fleet is still examined by the head probe on a later pass once its restored rows drain, so coverage degrades in speed, never in reachability. |
-| Process restart mid-repair | Deploy, crash, failover | Resume state is per-process and resets. Every fleet returns to head-probe examination; rows hidden behind a healthy head are recovered once the restored rows are delivered. Documented as the stated limit of in-memory progress. |
+| Resume set full | More fleets entered repair in one pass than the capacity allows | The pass declines to add and logs the declined fleet. Its remaining lost rows then wait behind its own head probe until the rows already restored are DELIVERED — the next lease on a consuming fleet, indefinitely on one nothing consumes. Coverage degrades in reachability, not only in speed, and the tests and module docs say so. |
+| Process restart mid-repair | Deploy, crash, failover | Resume state is per-process and resets, with the same consequence as a full set: rows behind a head the last repair made healthy wait for that head to be delivered. Documented as the stated limit of in-memory progress. |
 | Two reconcilers on one fleet | More than one daemon replica | Both probe, one write lands, the other matches nothing because `VOID_LOST_RECEIPT` pins the receipt. Duplicated round trips, one repair, one settlement. |
 | Replay or delivery races the void | The replay sweeper re-appended the row, or a runner leased it, between probe and write | `VOID_LOST_RECEIPT` pins both the probed receipt and `delivered_at IS NULL`, so the void matches nothing and the pass counts the repair it did not make as zero. |
 | Migration lock contention | Slot 914 builds an index on a populated table | The build takes `SHARE` on the table and blocks writers for its duration. The rollout note states this; the deployment applies it in a maintenance window. `CONCURRENTLY` is not available inside the transactional runner. |
@@ -201,7 +201,7 @@ CREATE INDEX IF NOT EXISTS idx_fleet_admissions_delivery_lookup
 ## Invariants
 
 1. **A receipt is only forgotten for an entry the datastore was asked about and could not produce.** Enforced by `VOID_LOST_RECEIPT`'s compare-and-set on the probed receipt value plus `delivered_at IS NULL`; a row that moved reports zero rows affected.
-2. **Every receipted, undelivered admission is eventually probed.** Enforced by the fleet cursor's wrap on a short read and the resume set's bypass of the head shortcut for fleets under repair, under the stated stable-workload bound in the test specification.
+2. **Every receipted, undelivered admission is eventually probed, while its fleet holds a place in the resume set.** Enforced by the fleet cursor's wrap on a short read and the resume set's bypass of the head shortcut, under the stated stable-workload bound. A fleet that loses its place — a full set, a restart — regains reachability when its restored rows are delivered; the bound names that condition rather than hiding it.
 3. **Exactly one settlement and one debit per logical event survives recovery.** Enforced by `delivered_at` guarding the void and by the lease path's deduplication on logical event identity; proven by the existing settlement test and extended by the boundary reproductions.
 4. **No synchronous guard is held across an await in the sweep path, and the resume state is bounded.** Enforced by moving the resume state out of its mutex before the pass and back after, checked by `clippy::await_holding_lock`, and by a compile-time assertion on the cap in the block that already bounds `FLEET_LIMIT` and `ROW_LIMIT`.
 5. **`delivered_at` records the first successful acceptance and never moves.** Enforced by `STAMP_DELIVERED`'s `delivered_at IS NULL` guard, which this diff does not touch.
@@ -211,7 +211,7 @@ CREATE INDEX IF NOT EXISTS idx_fleet_admissions_delivery_lookup
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `admission_reconcile_repair_declined` | ops | A pass would put a fleet under repair and the bounded set is full | `fleet_id` | no payload, producer key or credential material | `test_repair_set_respects_its_cap` |
+| `admission_reconcile_repair_declined` | ops | A pass would put a fleet under repair and the bounded set is full | `fleet_id` | no payload, producer key or credential material | `a_full_resume_set_declines_a_repair_and_still_recovers_it` |
 | `outbound_delivery_exhausted` (existing, extended) | ops | A delivery cycle ends without the destination taking the answer | existing `provider`, `fleet_id`, `error_code` plus the recorded `attempt_count` | no answer body, no destination credential | `telemetry_carries_the_recorded_attempt_count` |
 | `outbound_obligation_attempt_failed` | ops | The cycle-start write could not be recorded | `provider`, `fleet_id`, `error_code` | no answer body | `bookkeeping_failure_does_not_discard_an_answer` |
 
@@ -229,7 +229,7 @@ No product analytics event changes. No analytics or funnel playbook update is re
 | 2.2 | integration | `test_repairing_fleet_skips_the_head_shortcut` | After a partial repair restores the oldest rows with live receipts, the next pass still probes the rows beyond the batch rather than reporting the fleet healthy. |
 | 2.4 | integration | `interleaved_live_admissions_survive_recovery` | Admissions accepted after the loss, carrying live receipts, are interleaved by creation order with lost ones; recovery voids every lost receipt and no live one. |
 | 2.5 | integration | `test_restart_resets_progress_without_losing_coverage` | A fresh resume state over a partially repaired fleet still recovers the remaining rows once the restored rows are stamped delivered. |
-| 3.1 | unit | `test_repair_set_respects_its_cap` | Offering more fleets than the cap leaves the set at exactly the cap and reports the declined ones; a short walk removes its fleet from the set. |
+| 3.1 | unit | `the_resume_set_respects_its_capacity` | Offering more fleets than the capacity leaves the set at exactly the capacity and reports the declined ones; a short walk removes its fleet from the set. |
 | 3.2 | unit | `test_sweeper_does_not_hold_its_lock_across_a_pass` | The sweep takes its state by value before awaiting; a second caller can read the sweeper's interval while a pass is in flight. |
 | 3.3 | integration | `concurrent_reconcilers_repair_each_row_once` | Two passes run against one lost fleet concurrently; voided rows sum to the row count, never more, and the wallet is debited once per logical event. |
 | 3.4 | integration | `probe_outage_retains_receipts_and_progress` | With the queue unreachable, a pass voids nothing, every receipt survives, and no fleet's resume key advances past unexamined rows. |
@@ -242,14 +242,14 @@ No product analytics event changes. No analytics or funnel playbook update is re
 | 5.5 | unit | `telemetry_carries_the_recorded_attempt_count` | The delivered and exhausted events carry the count field with the value the write returned. |
 | 5.6 | integration | `recovery_pacing_follows_the_cycle_start` | An obligation whose cycle just started is outside the recovery scan's age window; one whose cycle started before the window is inside it. |
 | 5.7 | integration | `shutdown_requeue_preserves_the_pending_entry` | A cancelled token during retry leaves the entry unacknowledged and logs the requeue, and the count still reflects the started cycle. |
-| 6.1 | unit | `test_ingress_description_matches_the_routed_behaviour` | The generated description contains no claim that repair evidence is updated, and names the unported writers. |
-| 6.2 | unit | `test_data_flow_claims_match_the_daemon` | The architecture page contains no claim that an execution handle is set at lease and cleared at report, and none that row-level security enforces workspace isolation — matching the zero policies the schema declares. |
+| 6.1 | unit | `test_the_ingress_description_promises_no_unported_writer` | The generated description contains none of the three repair-evidence promises, and names the gap. Keyed on the operation id, because several routes share the `/v1/ingress/` prefix. |
+| 6.2 | unit | `architecture_absent_mechanisms` | No page under `docs/architecture/` mentions row-level security or the session execution handle except to record that neither exists — matching the zero policies `schema/` declares and the zero readers the Rust tree has. |
 | 2.6 | integration | `queue_loss_replays_without_duplicate_settlement` | The existing recovery test keeps passing unchanged: one settlement, one debit, no re-queue of completed work. |
 | 3.5 | integration | `replayed_reconcile_pass_is_idempotent` | Running the same pass twice over an already-repaired fleet voids nothing the second time and reports quiet. |
 | 7.1 | unit | `test_connector_statements_have_callers` | The remaining connector statements are schema-qualified and each names a caller; the removed spelling appears nowhere in the crate. |
 | 7.2 | integration | `install_then_retrieve_returns_the_bundle` | A fleet created through the production install path has a NULL bundle pointer and correct values in every column after the removed bind, and its bundle retrieves correctly. |
 
-**Stable-workload bound for invariant 2:** with fleets holding undelivered work bounded by `F` and the largest single-fleet loss bounded by `R`, every lost receipt is probed within `ceil(F / FLEET_LIMIT) + ceil(R / ROW_LIMIT)` passes, absent a restart or a full resume set. Tests assert that bound, not unqualified eventual progress.
+**Stable-workload bound for invariant 2:** with fleets holding undelivered work bounded by `F`, the largest single-fleet loss bounded by `R`, and fewer than `REPAIR_CAPACITY` fleets mid-repair, every lost receipt is probed within `ceil(F / FLEET_LIMIT) + ceil(R / ROW_LIMIT)` passes, absent a restart. Past that capacity, or across a restart, a declined fleet's later rows are reached only after its restored rows are delivered. Tests assert both halves; neither is stated as unqualified eventual progress.
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -257,7 +257,7 @@ No product analytics event changes. No analytics or funnel playbook update is re
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Lost work beyond the fleet cap and beyond the row cap is recovered (§1, §2) | `cd rustd && cargo test -p afd_fleet --test integration_admission_recovery -- --ignored --nocapture` | exit 0; both boundary tests pass | P0 | |
 | R2 | The delivery stamp reaches the new index (§4) | `cd rustd && cargo test -p afd_fleet --test integration_admission_recovery delivery_stamp -- --ignored --nocapture` | exit 0; the `EXPLAIN` assertion names `idx_fleet_admissions_delivery_lookup` | P0 | |
-| R3 | Failed delivery cycles move the counter (§5) | `cd rustd && cargo test -p afd_outbound --test integration_obligations -- --ignored --nocapture` | exit 0 | P0 | |
+| R3 | Failed delivery cycles move the counter (§5) | `cd rustd && cargo test -p afd_outbound --test integration_attempt_count -- --include-ignored` | exit 0 | P0 | |
 | R4 | No document claims row-level security or a live execution handle (§6) | `grep -rn "Row-Level Security\|execution_id. is set at" docs/architecture/data_flow.md` | 0 matches | P0 | |
 | R5 | Nothing is dropped from the schema | `git diff origin/main...HEAD -- schema/ \| grep -E '^\+.*(DROP\|ALTER)'` | no output | P0 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |

@@ -18,8 +18,11 @@
 
 use super::{FIRST_FLEET, Progress, RowKey};
 
-/// One pass's fleet budget, in the tests that do not care which number it is.
+/// One pass's fleet budget, where a test drains repairs rather than files them.
 const BUDGET: i64 = 4;
+
+/// The resume-set capacity these tests bound, small enough to fill on purpose.
+const CAPACITY: usize = 4;
 
 /// A row key that is not the first, for the resume assertions.
 const SOMEWHERE: RowKey = RowKey {
@@ -33,7 +36,7 @@ const SOMEWHERE: RowKey = RowKey {
 /// value rather than an absence, and this is the value.
 #[test]
 fn a_first_pass_starts_below_every_fleet() {
-    let progress = Progress::default();
+    let progress = Progress::with_capacity(CAPACITY);
     assert_eq!(progress.resume_from(), FIRST_FLEET);
     assert!(!progress.is_resuming(), "nothing is mid-repair yet");
 }
@@ -45,7 +48,7 @@ fn a_first_pass_starts_below_every_fleet() {
 /// fleets than one pass examines never reaches the rest.
 #[test]
 fn a_full_sweep_resumes_after_its_last_fleet() {
-    let mut progress = Progress::default();
+    let mut progress = Progress::with_capacity(CAPACITY);
     progress.swept(Some("fleet-c".to_owned()), true);
     assert_eq!(progress.resume_from(), "fleet-c");
 }
@@ -57,7 +60,7 @@ fn a_full_sweep_resumes_after_its_last_fleet() {
 /// one sorting above it was before.
 #[test]
 fn a_short_sweep_wraps_to_the_start() {
-    let mut progress = Progress::default();
+    let mut progress = Progress::with_capacity(CAPACITY);
     progress.swept(Some("fleet-c".to_owned()), true);
     progress.swept(Some("fleet-e".to_owned()), false);
     assert_eq!(progress.resume_from(), FIRST_FLEET);
@@ -66,7 +69,7 @@ fn a_short_sweep_wraps_to_the_start() {
 /// An empty sweep wraps too, rather than holding a cursor nothing produced.
 #[test]
 fn a_sweep_that_read_nothing_wraps() {
-    let mut progress = Progress::default();
+    let mut progress = Progress::with_capacity(CAPACITY);
     progress.swept(Some("fleet-c".to_owned()), true);
     progress.swept(None, false);
     assert_eq!(progress.resume_from(), FIRST_FLEET);
@@ -81,7 +84,7 @@ fn a_sweep_that_read_nothing_wraps() {
 #[test]
 fn rotation_visits_every_unfinished_fleet() {
     let fleets = ["fleet-a", "fleet-b", "fleet-c", "fleet-d", "fleet-e"];
-    let mut progress = Progress::default();
+    let mut progress = Progress::with_capacity(CAPACITY);
     let mut seen: Vec<&str> = Vec::new();
 
     for _pass in 0..3 {
@@ -105,8 +108,8 @@ fn rotation_visits_every_unfinished_fleet() {
 /// A walk that reached the end of a fleet's rows files no resume point.
 #[test]
 fn a_short_walk_retires_its_fleet() {
-    let mut progress = Progress::default();
-    assert!(progress.walked("fleet-a", None, BUDGET));
+    let mut progress = Progress::with_capacity(CAPACITY);
+    assert!(progress.walked("fleet-a", None));
     assert!(!progress.is_resuming(), "nothing left to carry on");
     assert!(progress.resume_repairs(BUDGET).is_empty());
 }
@@ -119,8 +122,8 @@ fn a_short_walk_retires_its_fleet() {
 /// it did not.
 #[test]
 fn a_full_walk_resumes_where_it_stopped() {
-    let mut progress = Progress::default();
-    assert!(progress.walked("fleet-a", Some(SOMEWHERE), BUDGET));
+    let mut progress = Progress::with_capacity(CAPACITY);
+    assert!(progress.walked("fleet-a", Some(SOMEWHERE)));
     assert!(progress.is_resuming());
 
     let resumed = progress.resume_repairs(BUDGET);
@@ -132,8 +135,8 @@ fn a_full_walk_resumes_where_it_stopped() {
 /// Resuming a fleet takes it off the list, so one pass cannot walk it twice.
 #[test]
 fn a_resumed_fleet_is_taken_off_the_list() {
-    let mut progress = Progress::default();
-    progress.walked("fleet-a", Some(SOMEWHERE), BUDGET);
+    let mut progress = Progress::with_capacity(CAPACITY);
+    progress.walked("fleet-a", Some(SOMEWHERE));
     assert_eq!(progress.resume_repairs(BUDGET).len(), 1);
     assert!(
         progress.resume_repairs(BUDGET).is_empty(),
@@ -142,27 +145,28 @@ fn a_resumed_fleet_is_taken_off_the_list() {
     assert!(!progress.is_resuming());
 }
 
-/// The resume set never grows past one pass's fleet budget.
+/// The resume set never grows past its declared capacity.
 ///
 /// The memory bound, and the one place this design trades coverage SPEED for
 /// it: the declined fleet is still reachable through the head probe, which is
-/// why declining is safe and why the caller logs it.
+/// why declining is safe and why the caller logs it. A capacity of its own
+/// rather than the pass's fleet budget — those are a memory bound and a
+/// round-trip budget, and tying them made one silently move the other.
 #[test]
-fn the_resume_set_respects_its_budget() {
-    let mut progress = Progress::default();
-    let budget = usize::try_from(BUDGET).expect("a budget fits a usize");
+fn the_resume_set_respects_its_capacity() {
+    let mut progress = Progress::with_capacity(CAPACITY);
 
-    for fleet in 0..budget {
+    for fleet in 0..CAPACITY {
         assert!(
-            progress.walked(&format!("fleet-{fleet}"), Some(SOMEWHERE), BUDGET),
-            "fleet {fleet} fits inside the budget"
+            progress.walked(&format!("fleet-{fleet}"), Some(SOMEWHERE)),
+            "fleet {fleet} fits inside the capacity"
         );
     }
     assert!(
-        !progress.walked("one-too-many", Some(SOMEWHERE), BUDGET),
+        !progress.walked("one-too-many", Some(SOMEWHERE)),
         "a full set declines rather than evicting a fleet mid-repair"
     );
-    assert_eq!(progress.resume_repairs(BUDGET).len(), budget);
+    assert_eq!(progress.resume_repairs(BUDGET).len(), CAPACITY);
 }
 
 /// Resuming takes at most one pass's worth, oldest first.
@@ -172,9 +176,9 @@ fn the_resume_set_respects_its_budget() {
 /// fleet cursor for as long as the repairs lasted.
 #[test]
 fn resuming_takes_at_most_one_pass_worth() {
-    let mut progress = Progress::default();
+    let mut progress = Progress::with_capacity(CAPACITY);
     for fleet in 0..4 {
-        progress.walked(&format!("fleet-{fleet}"), Some(SOMEWHERE), BUDGET);
+        progress.walked(&format!("fleet-{fleet}"), Some(SOMEWHERE));
     }
 
     let resumed = progress.resume_repairs(2);
