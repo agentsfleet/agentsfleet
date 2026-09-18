@@ -39,7 +39,6 @@ help:  ## Show all available Makefile targets
 	@echo "  test-unit-all            Run all unit lanes (rustd + cli + app + website + design-system)"
 	@echo "  test-unit-website        Run website unit tests (vitest, no coverage)"
 	@echo "  test-unit-rustd          Run the Rust workspace unit tests (cargo)"
-	@echo "  wire-fixtures            Regenerate tests/fixtures/wire-v2 from src/lib/contract (Zig is the source of truth)"
 	@echo "  test-unit-cli      Run agentsfleet CLI unit tests (bun, no coverage)"
 	@echo "  test-coverage-all        Coverage gate: Zig + app + website + agentsfleet + design-system"
 	@echo ""

@@ -1,34 +1,24 @@
-//! What the wire layer refuses, and the one thing the round-trip cannot prove.
+//! What the wire layer refuses.
 #![expect(
     clippy::unwrap_used,
-    clippy::panic,
     clippy::indexing_slicing,
-    reason = "test target: a missing fixture is an unmet precondition, and \
-              failing loudly on it is the correct outcome"
+    reason = "test target: failing loudly on a malformed payload is the correct outcome"
 )]
-
-use std::path::PathBuf;
 
 use afd_wire::lease::{LeaseRequest, LeaseResponse};
 use afd_wire::report::{RenewRequest, ReportRequest, ReportTelemetry};
 use afd_wire::runner::AssignedPolicy;
 
-fn read_fixture(name: &str) -> Vec<u8> {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .unwrap()
-        .join("tests/fixtures/wire-v2")
-        .join(format!("{name}.json"));
-    std::fs::read(&path).unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()))
-}
+/// A complete, well-formed `LeaseResponse` — the truncation cases below cut it
+/// at several offsets and every cut must fail as a typed error.
+const WELL_FORMED_LEASE_RESPONSE: &str = r#"{"lease":{"lease_id":"lease_id","fencing_token":504,"lease_expires_at":931,"secret_delivery":"inline","event":{"event_id":"event_id","fleet_id":"fleet_id","workspace_id":"workspace_id","actor":"actor","event_type":"chat","request_json":"request_json","created_at":426},"policy":{"network_policy":{"allow":["allow"],"read_only":true,"read_post_paths":["read_post_paths"]},"tools":["tools"],"secrets_map":{"secrets_map":"secrets_map"},"mintable":[{"name":"name","integration":"integration"}],"provider":"provider","api_key":"api_key","inference_host":"inference_host","base_url":"base_url","repository_binding":{"repositories":["repositories"],"access":"read","base_branch":"base_branch"},"http_origin_policies":[{"host":"host","credential_names":["credential_names"],"requests":[{"method":"get","path":"path","path_match":"exact","json_fields":[{"name":"name","string_value":"string_value","boolean_value":true}]}]}],"context":{"tool_window":141,"memory_checkpoint_every":26,"stage_chunk_threshold":0.75,"model":"model","context_cap_tokens":499}},"instructions":"instructions","bundle":{"content_hash":"content_hash"}},"retry_after_ms":34}"#;
 
 /// A malformed payload must produce a typed error, never a panic and never a
 /// half-built value. Truncation is the realistic shape: a connection dropped
 /// mid-body yields valid JSON right up to the cut.
 #[test]
 fn test_wire_rejects_malformed() {
-    let full = read_fixture("protocol.LeaseResponse");
+    let full = WELL_FORMED_LEASE_RESPONSE.as_bytes();
 
     for cut in [1, full.len() / 4, full.len() / 2, full.len() - 1] {
         let err = serde_json::from_slice::<LeaseResponse<'_>>(&full[..cut]).unwrap_err();
