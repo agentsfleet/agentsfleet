@@ -1,16 +1,16 @@
 #!/bin/bash
-# redis-teardown - Redis Cache Teardown Playbook
+# dragonfly-teardown - Dragonfly Cache Teardown Playbook
 #
 # WARNING: DESTRUCTIVE OPERATION
 # This playbook permanently flushes all keys from the Dragonfly cluster.
 #
 # Required environment variables:
-#   ALLOW_REDIS_TEARDOWN=1 - Required to confirm destructive operation
+#   ALLOW_DRAGONFLY_TEARDOWN=1 - Required to confirm destructive operation
 #   ENV=dev|prod           - Target environment (must be explicit, no "all")
 #
 # Usage:
-#   ALLOW_REDIS_TEARDOWN=1 ENV=dev ./00_gate.sh
-#   ALLOW_REDIS_TEARDOWN=1 ENV=prod ./00_gate.sh
+#   ALLOW_DRAGONFLY_TEARDOWN=1 ENV=dev ./00_gate.sh
+#   ALLOW_DRAGONFLY_TEARDOWN=1 ENV=prod ./00_gate.sh
 #
 # ENV accepts exactly "dev" or "prod". This gate validates the value before
 # dispatching any step, so passing it means ENV is one of those two.
@@ -25,7 +25,7 @@ readonly ENV_DEV="dev"
 readonly ENV_PROD="prod"
 
 usage() {
-	echo "Usage: ALLOW_REDIS_TEARDOWN=1 ENV=$ENV_DEV|$ENV_PROD ./00_gate.sh" >&2
+	echo "Usage: ALLOW_DRAGONFLY_TEARDOWN=1 ENV=$ENV_DEV|$ENV_PROD ./00_gate.sh" >&2
 	echo "ENV accepts exactly '$ENV_DEV' or '$ENV_PROD' - no \"all\"" >&2
 }
 
@@ -67,4 +67,4 @@ run_step "$SCRIPT_DIR/01_credential_check.sh"
 run_step "$SCRIPT_DIR/02_teardown.sh"
 run_step "$SCRIPT_DIR/03_verify.sh"
 
-echo "✅ redis-teardown complete (env: $ENV)"
+echo "✅ dragonfly-teardown complete (env: $ENV)"

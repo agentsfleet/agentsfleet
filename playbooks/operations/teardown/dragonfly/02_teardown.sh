@@ -1,5 +1,5 @@
 #!/bin/bash
-# 02_teardown.sh - Execute Redis cache teardown via redis-cli container
+# 02_teardown.sh - Execute Dragonfly teardown via a redis-cli container
 
 set -euo pipefail
 
@@ -15,12 +15,12 @@ playbooks_require_vault_read_approval
 playbooks_require_op_auth
 
 echo ""
-echo "== redis-teardown Section 2: redis teardown execution =="
+echo "== dragonfly-teardown Section 2: dragonfly teardown execution =="
 echo ""
 
 # Require approval (double-check)
-if [ "${ALLOW_REDIS_TEARDOWN:-0}" != "1" ]; then
-	echo "ERROR: ALLOW_REDIS_TEARDOWN=1 required" >&2
+if [ "${ALLOW_DRAGONFLY_TEARDOWN:-0}" != "1" ]; then
+	echo "ERROR: ALLOW_DRAGONFLY_TEARDOWN=1 required" >&2
 	exit 1
 fi
 
@@ -48,7 +48,7 @@ get_connection_string() {
 
 # Confirm + FLUSHALL one cache. The URL is forwarded via env-name-only
 # (`-e DRAGONFLY_URL`, no value) so the password never appears in `ps aux`.
-teardown_redis() {
+teardown_dragonfly() {
 	local url="$1"
 	local env_label="$2"
 
@@ -92,7 +92,7 @@ exit_code=0
 if [ "$env_mode" = "dev" ]; then
 	dev_url=$(get_connection_string "op://$vault_dev/dragonfly-dev/api-url")
 	if [ -n "$dev_url" ]; then
-		teardown_redis "$dev_url" "DEVELOPMENT" || exit_code=1
+		teardown_dragonfly "$dev_url" "DEVELOPMENT" || exit_code=1
 	else
 		echo "❌ Failed to read DEV connection string"
 		exit_code=1
@@ -102,7 +102,7 @@ fi
 if [ "$env_mode" = "prod" ]; then
 	prod_url=$(get_connection_string "op://$vault_prod/dragonfly-prod/api-url")
 	if [ -n "$prod_url" ]; then
-		teardown_redis "$prod_url" "PRODUCTION" || exit_code=1
+		teardown_dragonfly "$prod_url" "PRODUCTION" || exit_code=1
 	else
 		echo "❌ Failed to read PROD connection string"
 		exit_code=1

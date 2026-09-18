@@ -144,6 +144,7 @@ async fn test_boot_to_ready_on_compose() {
             agentsfleetd::sweepers::LIVENESS,
             agentsfleetd::sweepers::RECLAIM,
             agentsfleetd::sweepers::RETENTION,
+            agentsfleetd::sweepers::FLEET_CENSUS,
             agentsfleetd::sweepers::REPAIR,
             agentsfleetd::sweepers::RECONCILE,
             agentsfleetd::sweepers::REPLAY,

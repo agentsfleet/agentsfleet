@@ -41,6 +41,14 @@ fn label_products() -> Vec<(&'static str, usize)> {
             fleet_labels::AdmissionOutcome::ALL.len(),
         ),
         (
+            fleet::FLEETS.wire_name(),
+            fleet_labels::FleetStatusLabel::ALL.len(),
+        ),
+        (
+            fleet::FLEET_RUNS_STARTED_TOTAL.wire_name(),
+            fleet_labels::RunStart::ALL.len(),
+        ),
+        (
             fleet::ADMISSION_REPLAYS_TOTAL.wire_name(),
             fleet_labels::ReplayOutcome::ALL.len(),
         ),
@@ -75,10 +83,6 @@ fn label_products() -> Vec<(&'static str, usize)> {
         (
             library::LIBRARY_POOL_RESULT_TOTAL.wire_name(),
             library_labels::PoolResult::ALL.len(),
-        ),
-        (
-            library::LIBRARY_CACHE_OUTCOME_TOTAL.wire_name(),
-            library_labels::CacheOutcome::ALL.len(),
         ),
         (
             library::LIBRARY_PAYLOAD_BYTES_TOTAL.wire_name(),
@@ -167,7 +171,6 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
         set!(crate::metrics::label::library::Stage),
         set!(crate::metrics::label::library::ReadOutcome),
         set!(crate::metrics::label::library::PoolResult),
-        set!(crate::metrics::label::library::CacheOutcome),
     ]
 }
 

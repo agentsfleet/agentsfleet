@@ -187,6 +187,18 @@ pub enum FleetStatus {
 }
 
 impl FleetStatus {
+    /// Every status, in lifecycle order.
+    ///
+    /// What [`FleetStatus::parse`] searches and what the census label set is
+    /// held equal to; a member added here without its label fails that test.
+    pub const ALL: [Self; 5] = [
+        Self::Installing,
+        Self::Active,
+        Self::Paused,
+        Self::Stopped,
+        Self::Killed,
+    ];
+
     /// The stored spelling — the bytes in the column, and on the wire.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -217,33 +229,44 @@ impl FleetStatus {
     /// newer daemon's state read as `installing` here and be flipped out of it.
     #[must_use]
     pub fn parse(raw: &str) -> Option<Self> {
-        [
-            Self::Installing,
-            Self::Active,
-            Self::Paused,
-            Self::Stopped,
-            Self::Killed,
-        ]
-        .into_iter()
-        .find(|status| status.as_str() == raw)
+        Self::ALL.into_iter().find(|status| status.as_str() == raw)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use afd_observability::metrics::label::fleet::FleetStatusLabel;
+
     use super::FleetStatus;
 
     #[test]
     fn every_status_round_trips_through_its_stored_spelling() {
-        for status in [
-            FleetStatus::Installing,
-            FleetStatus::Active,
-            FleetStatus::Paused,
-            FleetStatus::Stopped,
-            FleetStatus::Killed,
-        ] {
+        for status in FleetStatus::ALL {
             assert_eq!(FleetStatus::parse(status.as_str()), Some(status));
         }
+    }
+
+    /// The census label set and this enum agree member for member.
+    ///
+    /// They cannot share a type — this crate depends on the observability
+    /// crate, not the reverse — so the agreement is asserted. Compared as
+    /// ORDERED spellings: a status added to one side, renamed on one side, or
+    /// reordered on one side all fail here, and each is a census row about to
+    /// be wrong.
+    #[test]
+    fn the_census_label_set_mirrors_the_lifecycle() {
+        let lifecycle: Vec<&str> = FleetStatus::ALL
+            .iter()
+            .map(|status| status.as_str())
+            .collect();
+        let census: Vec<&str> = FleetStatusLabel::ALL
+            .iter()
+            .map(|status| status.as_str())
+            .collect();
+        assert_eq!(
+            lifecycle, census,
+            "a fleet status the census cannot spell is a fleet the dashboard cannot count"
+        );
     }
 
     #[test]

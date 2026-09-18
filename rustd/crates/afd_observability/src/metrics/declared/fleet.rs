@@ -15,10 +15,6 @@ pub const REPAIR_PRODUCTION_TO_QUEUE_SECONDS: Declared<HistogramKind> =
 pub const REPAIR_QUEUE_TO_COMPLETION_SECONDS: Declared<HistogramKind> =
     Declared::new("agentsfleet_repair_queue_to_completion_seconds");
 
-/// Trigger volume.
-pub const FLEET_TRIGGERED_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_fleet_triggered_total");
-
 /// Signup funnel: fresh accounts.
 pub const SIGNUP_BOOTSTRAPPED_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_signup_bootstrapped_total");
@@ -44,12 +40,24 @@ pub const LEASE_POLL_CANDIDATES_SCANNED_TOTAL: Declared<CounterKind> =
 pub const LEASE_POLL_DB_ROUNDTRIPS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_lease_poll_db_roundtrips_total");
 
+/// Leases granted; fresh ÷ appended admissions is pickup, a rising reclaimed
+/// share is runners dying mid-run.
+///
+/// Labels: `kind`.
+pub const FLEET_RUNS_STARTED_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_fleet_runs_started_total");
+
 /// Readiness backlog (not summable across replicas).
 pub const FLEET_READY_DEPTH: Declared<GaugeKind> = Declared::new("agentsfleet_fleet_ready_depth");
 
 /// Dragonfly index writes failing.
 pub const FLEET_READY_WRITE_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_fleet_ready_write_failures_total");
+
+/// Installed fleets by lifecycle status, as the last census pass counted them.
+///
+/// Labels: `status`.
+pub const FLEETS: Declared<GaugeKind> = Declared::new("agentsfleet_fleets");
 
 /// Retention pruning throughput.
 pub const RUNNER_RETENTION_SWEPT_TOTAL: Declared<CounterKind> =
@@ -58,10 +66,6 @@ pub const RUNNER_RETENTION_SWEPT_TOTAL: Declared<CounterKind> =
 /// Retention sweeps failing.
 pub const RUNNER_RETENTION_SWEEP_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_retention_sweep_failures_total");
-
-/// Teardown purges failing to unregister.
-pub const ACCOUNT_TEARDOWN_UNREGISTER_FAILURES_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_account_teardown_unregister_failures_total");
 
 /// Accepted, replayed, or refused production evidence.
 ///
@@ -134,7 +138,7 @@ pub const RUNNER_FAILURES_OVERFLOW_TOTAL: Declared<CounterKind> =
 
 /// Run volume per runner.
 ///
-/// Labels: `runner_id,outcome`.
+/// Labels: `runner_id,outcome`, plus `fault` on the failing half.
 pub const RUNNER_EXECUTIONS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_executions_total");
 

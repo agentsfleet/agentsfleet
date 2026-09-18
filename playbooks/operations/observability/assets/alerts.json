@@ -3,10 +3,10 @@
     "name": "metrics-exporter-dead",
     "title": "Runtime metrics absent from the store",
     "severity": "critical",
-    "for": "2m",
+    "for": "0s",
     "noDataState": "Alerting",
     "execErrState": "Alerting",
-    "expr": "absent(agentsfleet_api_in_flight_requests)",
+    "expr": "absent_over_time(agentsfleet_api_in_flight_requests[3m])",
     "summary": "The daemon's OTLP metrics exporter has stopped delivering runtime series; this store-side absence check is deliberately independent of the exporter it watches.",
     "panelId": 1
   },
@@ -39,8 +39,8 @@
     "for": "2m",
     "noDataState": "Ok",
     "execErrState": "Error",
-    "expr": "agentsfleet_runner_last_seen_seconds > __RUNNER_OFFLINE_SECONDS__",
-    "summary": "A runner exceeded the source-defined offline threshold.",
+    "expr": "min by (runner_id) (clamp_min(time() - agentsfleet_runner_last_seen_seconds, 0)) > __RUNNER_OFFLINE_SECONDS__",
+    "summary": "A runner has not been heard from by ANY daemon replica for longer than the source-derived offline threshold. Two repairs live in this expression: the family reports a Unix epoch, so the age is computed here rather than compared raw; and the per-replica table is never evicted, so the freshest observation per runner is taken before the worst runner is. Either omission makes this rule fire for a healthy fleet.",
     "panelId": 6
   },
   {
@@ -53,16 +53,5 @@
     "expr": "sum by (reason) (increase(agentsfleet_runner_failures_total[10m])) > 0",
     "summary": "A runner reported an execution failure.",
     "panelId": 7
-  },
-  {
-    "name": "telemetry-discard",
-    "title": "Telemetry entries discarded",
-    "severity": "warning",
-    "for": "0s",
-    "noDataState": "Ok",
-    "execErrState": "Error",
-    "expr": "sum by (signal, reason) (increase(agentsfleet_otlp_entries_discarded_total[5m])) > 0",
-    "summary": "The local OpenTelemetry exporter discarded entries.",
-    "panelId": 8
   }
 ]

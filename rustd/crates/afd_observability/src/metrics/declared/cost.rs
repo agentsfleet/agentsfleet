@@ -36,7 +36,3 @@ pub const INVOKE_AGENT_CACHE_READ_TOKEN_USAGE: Declared<HistogramKind> =
 /// Labels: `gen_ai.request.model`.
 pub const BILLING_CREDIT_CONSUMED: Declared<CounterKind> =
     Declared::new("agentsfleet.billing.credit.consumed");
-
-/// Exporter self-observability: ring + aggregation loss.
-pub const TELEMETRY_SAMPLES_DROPPED: Declared<CounterKind> =
-    Declared::new("agentsfleet.telemetry.samples_dropped");
