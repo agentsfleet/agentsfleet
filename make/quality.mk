@@ -69,6 +69,13 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 	@# annotation broke the production build once without any lane noticing.
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] check --bin agentsfleetd (no features)" -- \
 	  cargo check -p agentsfleetd --bin agentsfleetd
+	@# `agentsfleet-runner` is still Zig and ships from `build_runner.zig`, so it
+	@# rides the Rust lane rather than a target of its own — the Zig tree is on
+	@# its way out, and a second target would be one more thing to delete. This
+	@# is formatting only: the discipline lint that used to check more went with
+	@# the Zig daemon, and `zig fmt --check` is what remains that costs nothing.
+	@command -v zig >/dev/null 2>&1 || { echo "✗ zig not found. Install via: mise install zig"; exit 1; }
+	@$(WITH_PROGRESS) "[runner] zig fmt --check" -- zig fmt --check build_runner.zig build.zig src/
 
 # Every scripts/*_test.py, discovered rather than listed.
 #
