@@ -38,18 +38,6 @@ Capture its output in Pull Request Session Notes, including the Test Delta.
 Unit growth alone does not prove coverage; explain removals and changes in test
 selection. Zero or negative growth on code-adding work requires justification.
 
-## Wire fixtures
-
-`make wire-fixtures` regenerates `samples/fixtures/wire-v2/` from
-`src/lib/contract` — the Zig module that still defines the `/v1/runners` wire.
-Run it whenever a wire type changes, and commit the regenerated fixtures in the
-same commit as the type change.
-
-The fixtures are the parity oracle for the Rust port: Zig generates, Rust
-conforms, and the suite compares BYTES. Never hand-edit one. A fixture diff with
-no type change beside it means someone edited generated output; a type change
-with no fixture diff means the emitter never ran.
-
 ## Coverage
 
 One bar, everywhere: **100%**, project-wide and per flag.
