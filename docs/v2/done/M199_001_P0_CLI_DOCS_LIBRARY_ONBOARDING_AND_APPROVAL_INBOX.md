@@ -26,7 +26,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Baseline evidence:** `playbooks/operations/acceptance/baselines/M199_001-4079743cb.md`
 **Depends on:** none
 **Provenance:** agent-generated (pre-spec, live probe of https://api-dev.agentsfleet.net on Sep 18, 2026)
-**Canonical architecture:** `docs/architecture/fleet_library.md` §1
+**Canonical architecture:** `docs/architecture/fleet_bundles.md` §Catalog tiers
 
 ---
 
