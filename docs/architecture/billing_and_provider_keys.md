@@ -474,7 +474,7 @@ core.tenant_model_entries (id, tenant_id, model_id, secret_ref, created_at, upda
 
 ## 9. Provider routing — what makes Fireworks + Kimi K3 work today
 
-NullClaw already speaks the OpenAI-compatible wire format, and it dials **103 provider names**. The enumeration lives in `scripts/model-library-allowlist.json`, which is generated from `nullclaw/src/providers/factory.zig` by `scripts/gen-provider-skeleton.mjs`. This section names the shapes those 103 fall into; it deliberately does not re-list them, because a hand-copied table is wrong the moment NullClaw is bumped — which is how the eight rows that used to sit here came to describe a fraction of what the platform could dial.
+NullClaw already speaks the OpenAI-compatible wire format, and it dials **103 provider names**. The enumeration lives in `scripts/model-library-allowlist.json`, hand-maintained against `nullclaw/src/providers/factory.zig`. This section names the shapes those 103 fall into; it deliberately does not re-list them, because a hand-copied table is wrong the moment NullClaw is bumped — which is how the eight rows that used to sit here came to describe a fraction of what the platform could dial.
 
 | Shape | Wire format | Examples |
 |---|---|---|
