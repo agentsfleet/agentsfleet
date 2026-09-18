@@ -89,7 +89,6 @@ Auto-memory is **disabled** (`autoMemoryEnabled: false` + `CLAUDE_CODE_DISABLE_A
 - No new `make` targets without a distinct caller (CI job, spec-mandated gate, or a workflow existing targets can't express) — check `make/*.mk` first; extend over near-duplicate wrappers.
 - `*.zig` → read `dispatch/write_zig.md`; ZIG GATE fires.
 - Auth-flow (token-minting handlers, credential-typed spec dimensions, the repository's auth directories) → read the repository's `docs/AUTH.md` first, where it exists.
-- `conn.query()` requires `.drain()` in same fn before `deinit()`. Verify `make lint-governance`. Use `conn.exec()` for no-rows.
 - **Indy's reference checkouts** (the machine-local half of the rule above): TypeScript → `oss/supabase/apps/studio` + `oss/supabase/packages/{ui,ui-patterns}` + `oss/cli`; Zig → `oss/ghostty/src/`; Rust → `oss/bun/src/` + `oss/exonum` + `oss/core_api-develop`. Missing checkout → ask, then clone into `~/Projects/oss/`.
 
 **Forge detection:** `github.com` → `gh`; `gitlab.com` → `glab`. Check `git remote -v`.

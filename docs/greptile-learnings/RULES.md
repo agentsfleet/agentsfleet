@@ -523,7 +523,7 @@ This is intentionally manual — the structural diversity of "function body" acr
 
 ## RULE EMB — @embedFile cannot cross src/ boundary
 
-**Rule:** Never use `@embedFile` to reach files outside `src/`. For external files (OpenAPI specs, config fixtures), write a Python/shell validator and wire it into a `make` target under `lint-zig`.
+**Rule:** Never use `@embedFile` to reach files outside `src/`. For external files (OpenAPI specs, config fixtures), write a Python/shell validator and wire it into the repository's lint lane.
 **Why:** Zig's embed security model restricts `@embedFile` to the package directory. `@embedFile("../../public/openapi.json")` is a hard compile error, not a runtime failure. There is no workaround except an external script.
 **Tags:** zig, comptime, testing
 **Example:** — OpenAPI ErrorBody validation moved to audits/check_openapi_errors.py + make check-openapi-errors.
@@ -988,7 +988,7 @@ const handleConfirm = useCallback(async () => {
 2. `docs/v*/done/` — merged spec decisions.
 3. `docs/v*/pending/` — in-flight specs that may already lock the surface.
 4. `docs/architecture/` — canonical concept reference (TOC + topic files).
-5. `schema/*.sql`, `src/http/handlers/`, `src/state/`, `samples/fixtures/` — code-level contracts when prose claims persist or surface them.
+5. `schema/*.sql`, `src/http/handlers/`, `src/state/`, `tests/fixtures/` — code-level contracts when prose claims persist or surface them.
 
 Cite the most-specific source of truth by **file path** in the new doc (in the spec's `Implementing agent — read these first` list, the architecture doc's `Canonical architecture` pointer block, or inline). Do not invent a framing that contradicts the locked decision. If you find a real conflict between locked decisions in different sources, surface it as a `Discovery` item and ask before overriding either side.
 
