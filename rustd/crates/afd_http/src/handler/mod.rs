@@ -169,6 +169,10 @@ pub fn library_outcome(refusal: &Refusal) -> ReadOutcome {
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
+    )]
     use super::{ReadOutcome, library_outcome, read_body};
     use crate::handler::refusal::Refusal;
     use afd_core::error_code;
