@@ -32,7 +32,7 @@ const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_approvals" }, fn);
 
 describe("approvals commands", () => {
-  test("`approvals list` renders every gate with its kind and status", async () => {
+  test("approvals list renders every gate with its kind and status", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`GET ${APPROVALS}`]: () =>
@@ -66,7 +66,7 @@ describe("approvals commands", () => {
     });
   });
 
-  test("`approvals list --fleet <id>` shows only that Fleet's gates", async () => {
+  test("approvals list --fleet shows only that Fleet's gates", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`GET ${APPROVALS}`]: () =>
@@ -93,7 +93,7 @@ describe("approvals commands", () => {
     });
   });
 
-  test("`approvals list` on an empty inbox says so and prints no table", async () => {
+  test("approvals list on an empty inbox says so and prints no table", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`GET ${APPROVALS}`]: () => jsonResponse(200, { items: [] }),
@@ -114,7 +114,7 @@ describe("approvals commands", () => {
     });
   });
 
-  test("`approvals show <gate_id>` prints the blast radius in full", async () => {
+  test("approvals show prints the blast radius in full", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`GET ${APPROVALS}/${GATE_ID}`]: () => jsonResponse(200, gate()),
@@ -138,7 +138,7 @@ describe("approvals commands", () => {
     });
   });
 
-  test("`approvals approve <gate_id>` POSTs to the approve segment", async () => {
+  test("approvals approve POSTs to the approve segment", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`POST ${APPROVALS}/${GATE_ID}/approve`]: () =>
@@ -161,7 +161,7 @@ describe("approvals commands", () => {
     });
   });
 
-  test("`approvals deny <gate_id>` POSTs to the deny segment", async () => {
+  test("approvals deny POSTs to the deny segment", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`POST ${APPROVALS}/${GATE_ID}/deny`]: () =>
@@ -184,7 +184,7 @@ describe("approvals commands", () => {
     });
   });
 
-  test("a second decision reports the outcome that stands, not the verb typed", async () => {
+  test("a second decision reports the outcome that stands", async () => {
     await authedScope(async () => {
       // The gate was denied by someone else first. Approving it again must not
       // print "approved" — the daemon answers with the decision in force, and
@@ -236,7 +236,7 @@ describe("approvals commands", () => {
 });
 
 describe("approvals — machine surface", () => {
-  test("`approvals list --json` emits the gates under `items`", async () => {
+  test("approvals list --json emits the gates under items", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`GET ${APPROVALS}`]: () => jsonResponse(200, { items: [gate()] }),
@@ -256,7 +256,7 @@ describe("approvals — machine surface", () => {
     });
   });
 
-  test("`approvals list --json --fleet <id>` narrows the emitted set", async () => {
+  test("approvals list --json --fleet narrows the emitted set", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`GET ${APPROVALS}`]: () =>
@@ -278,7 +278,7 @@ describe("approvals — machine surface", () => {
     });
   });
 
-  test("`approvals show --json` emits the gate verbatim", async () => {
+  test("approvals show --json emits the gate verbatim", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`GET ${APPROVALS}/${GATE_ID}`]: () => jsonResponse(200, gate()),
@@ -298,7 +298,7 @@ describe("approvals — machine surface", () => {
     });
   });
 
-  test("`approvals approve --json` emits the resolution the daemon returned", async () => {
+  test("approvals approve --json emits the resolution the daemon returned", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`POST ${APPROVALS}/${GATE_ID}/approve`]: () =>

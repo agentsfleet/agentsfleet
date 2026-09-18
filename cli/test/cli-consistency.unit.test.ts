@@ -8,7 +8,7 @@ import { describe, test, expect } from "bun:test";
 
 import { LIBRARY_ID_PLACEHOLDER } from "../src/constants/cli-flags.ts";
 import { USAGE_INSTALL } from "../src/commands/fleet_install_source.ts";
-import { buildSilent, makeSpyTree } from "./helpers-cli-tree.ts";
+import { VALID_ID, buildSilent, dispatch, makeSpyTree } from "./helpers-cli-tree.ts";
 
 const buildTestProgram = () => buildSilent({ handlers: makeSpyTree().handlers });
 
@@ -77,5 +77,36 @@ describe("logout — the help states only what the daemon does", () => {
     // "Does NOT revoke already-minted JWTs". Other machines keep working.
     expect(help).not.toContain("revoke every active session on this account");
     expect(help).toContain("other machines stay signed in");
+  });
+});
+
+describe("new commands route to a bound handler", () => {
+  // Every handler is built through `wrapE` / `wrapEFn` in handlers-bind.ts,
+  // which is the single seam `withCommandInstrumentation` is applied at. So a
+  // command that reaches its handler is instrumented by construction, and the
+  // thing that can actually go wrong is a command registered in the tree with
+  // nothing bound behind it. That is what these assert.
+  const cases: ReadonlyArray<{ argv: string[]; handler: string }> = [
+    { argv: ["library", "add", "--github", "owner/repo"], handler: "fleet.library.add" },
+    { argv: ["approvals", "list"], handler: "approvals.list" },
+    { argv: ["approvals", "show", VALID_ID], handler: "approvals.show" },
+    { argv: ["approvals", "approve", VALID_ID], handler: "approvals.approve" },
+    { argv: ["approvals", "deny", VALID_ID], handler: "approvals.deny" },
+  ];
+
+  for (const { argv, handler } of cases) {
+    test(`\`${argv.join(" ")}\` reaches ${handler}`, async () => {
+      const { handlers, calls } = makeSpyTree();
+      await dispatch(argv, handlers);
+      expect(calls.map((c) => c.name)).toContain(handler);
+    });
+  }
+
+  test("bare `library` still reaches the gallery handler, not the add handler", async () => {
+    const { handlers, calls } = makeSpyTree();
+    await dispatch(["library"], handlers);
+    const names = calls.map((c) => c.name);
+    expect(names).toContain("fleet.library");
+    expect(names).not.toContain("fleet.library.add");
   });
 });

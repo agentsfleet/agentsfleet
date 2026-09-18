@@ -119,52 +119,52 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 `agentsfleet library` reads the workspace gallery, so the identifier a user copies is one `install` accepts, and a tenant library stops being invisible. Non-obvious choice → **Implementation default:** `read the workspace gallery only` because a union of two endpoints would have to reconcile two row shapes and could disagree with `install`, which is the bug being fixed.
 
-- **Dimension 1.1** — `library` requests the workspace gallery path and renders one row per returned entry → Test `test_library_lists_workspace_gallery` — DONE
-- **Dimension 1.2** — each row shows its tier, so a platform entry and a tenant entry sharing a name are distinguishable → Test `test_library_row_shows_tier` — DONE
-- **Dimension 1.3** — the empty state names `library add` as the next move rather than only `install` → Test `test_library_empty_state_names_add` — DONE
-- **Dimension 1.4** — the JSON branch emits the same entries the table renders → Test `test_library_json_matches_table` — DONE
-- **Dimension 1.5** — `install --library` keeps resolving a platform entry exactly as before → Test `test_install_library_flag_unchanged` — DONE
+- **Dimension 1.1** — `library` requests the workspace gallery path and renders one row per returned entry → Test `lists the workspace gallery, joining credentials` — DONE
+- **Dimension 1.2** — each row shows its tier, so a platform entry and a tenant entry sharing a name are distinguishable → Test `a platform row and a tenant row differ by tier` — DONE
+- **Dimension 1.3** — the empty state names `library add` as the next move rather than only `install` → Test `an empty gallery names library add as the next move` — DONE
+- **Dimension 1.4** — the JSON branch emits the same entries the table renders → Test `the JSON branch carries the same entries the table renders` — DONE
+- **Dimension 1.5** — `install --library` keeps resolving a platform entry exactly as before → Test `GETs the gallery, then creates with platform_template_id` — DONE
 
 ### §2 — `library add` onboards a bundle
 
 A workspace gains a Fleet library from a public repository, a local bundle directory, or a first-party template, using the onboarding body the daemon already parses. Non-obvious choice → **Implementation default:** `exactly one of --github / --from / --template is required` because the daemon's parse refuses mixed shapes and a client-side refusal costs no request.
 
-- **Dimension 2.1** — `--github <owner/repo>` posts a github source and reports the created identifier → Test `test_library_add_github_posts_source` — DONE
-- **Dimension 2.2** — `--ref <revision>` rides the github source and is refused on the other two kinds → Test `test_library_add_ref_rejected_off_github` — DONE
-- **Dimension 2.3** — `--from <path>` reads the bundle's skill and trigger documents and posts an upload source → Test `test_library_add_upload_reads_bundle` — DONE
-- **Dimension 2.4** — `--template <id>` posts a template source → Test `test_library_add_template_posts_source` — DONE
-- **Dimension 2.5** — zero or more than one source flag is refused before any request leaves the process → Test `test_library_add_requires_exactly_one_source` — DONE
-- **Dimension 2.6** — a daemon refusal renders its `user_message` and its documentation link rather than a bare status code → Test `test_library_add_renders_server_refusal` — DONE
+- **Dimension 2.1** — `--github <owner/repo>` posts a github source and reports the created identifier → Test `--github posts a github source carrying the repository` — DONE
+- **Dimension 2.2** — `--ref <revision>` rides the github source and is refused on the other two kinds → Test `refuses --ref on a source that has no repository` — DONE
+- **Dimension 2.3** — `--from <path>` reads the bundle's skill and trigger documents and posts an upload source → Test `--from posts an upload carrying both bundle documents` — DONE
+- **Dimension 2.4** — `--template <id>` posts a template source → Test `--template posts a template source` — DONE
+- **Dimension 2.5** — zero or more than one source flag is refused before any request leaves the process → Test `refuses a bare invocation before any request leaves the process` — DONE
+- **Dimension 2.6** — a daemon refusal renders its `user_message` and its documentation link rather than a bare status code → Test `a refused bundle renders the daemon's own sentence` — DONE
 
 ### §3 — The approvals inbox
 
 A gate is visible, inspectable, and decidable from the terminal. Non-obvious choice → **Implementation default:** `approve and deny are separate subcommands, not a --decision flag` because the daemon models the decision as a path segment with its own capability, and mirroring that keeps the two audit-distinguishable.
 
-- **Dimension 3.1** — `approvals list` renders every gate with its kind, status, and the Fleet it belongs to → Test `test_approvals_list_renders_gates` — DONE
-- **Dimension 3.2** — `--fleet <id>` narrows the list to one Fleet → Test `test_approvals_list_filters_by_fleet` — DONE
-- **Dimension 3.3** — `approvals show <gate_id>` renders the proposed action and the blast radius in full → Test `test_approvals_show_renders_blast_radius` — DONE
-- **Dimension 3.4** — `approvals approve <gate_id>` posts the approve decision and reports the outcome → Test `test_approvals_approve_posts_decision` — DONE
-- **Dimension 3.5** — `approvals deny <gate_id>` posts the deny decision → Test `test_approvals_deny_posts_decision` — DONE
-- **Dimension 3.6** — an already-resolved gate reports its existing outcome rather than a generic failure → Test `test_approvals_resolved_gate_reports_outcome` — DONE
-- **Dimension 3.7** — a second decision on a decided gate is not reported as a fresh one → Test `test_approve_twice_is_not_a_second_decision` — DONE
+- **Dimension 3.1** — `approvals list` renders every gate with its kind, status, and the Fleet it belongs to → Test `approvals list renders every gate with its kind and status` — DONE
+- **Dimension 3.2** — `--fleet <id>` narrows the list to one Fleet → Test `approvals list --fleet shows only that Fleet's gates` — DONE
+- **Dimension 3.3** — `approvals show <gate_id>` renders the proposed action and the blast radius in full → Test `approvals show prints the blast radius in full` — DONE
+- **Dimension 3.4** — `approvals approve <gate_id>` posts the approve decision and reports the outcome → Test `approvals approve POSTs to the approve segment` — DONE
+- **Dimension 3.5** — `approvals deny <gate_id>` posts the deny decision → Test `approvals deny POSTs to the deny segment` — DONE
+- **Dimension 3.6** — an already-resolved gate reports its existing outcome rather than a generic failure → Test `a second decision reports the outcome that stands` — DONE
+- **Dimension 3.7** — a second decision on a decided gate is not reported as a fresh one → Test `a refused decision renders the daemon's own sentence and exits 3` — DONE
 
 ### §4 — A parked Fleet says it is parked
 
 `steer` and `status` name the gate that is holding a Fleet, so the sixty-second timeout stops being the only signal. Non-obvious choice → **Implementation default:** `read the pending count from the Fleet detail already fetched` because it needs no extra request on the happy path.
 
-- **Dimension 4.1** — `status` shows the pending-approval count for a Fleet that has one → Test `test_status_shows_pending_approvals` — DONE
-- **Dimension 4.2** — a `steer` that times out with a pending gate names the gate and the command that clears it → Test `test_steer_timeout_names_pending_gate` — DONE
-- **Dimension 4.3** — a `steer` that times out with no pending gate keeps its current wording → Test `test_steer_timeout_without_gate_unchanged` — DONE
-- **Dimension 4.4** — the timeout failure prints one failure line, not two → Test `test_steer_timeout_prints_single_failure` — DONE
+- **Dimension 4.1** — `status` shows the pending-approval count for a Fleet that has one → Test `renders the waiting count and names the command that clears it` — DONE
+- **Dimension 4.2** — a `steer` that times out with a pending gate names the gate and the command that clears it → Test `a pending gate for this fleet replaces the generic retry suggestion` — DONE
+- **Dimension 4.3** — a `steer` that times out with no pending gate keeps its current wording → Test `a gate belonging to another fleet does not explain this one's stall` — DONE
+- **Dimension 4.4** — the timeout failure prints one failure line, not two → Test `poll timeout fails once, carrying 'still in flight' on the failure` — DONE
 
 ### §5 — Consistency pass
 
 The surface stops contradicting itself where the contradiction is text or rendering rather than a flag rename. Non-obvious choice → **Implementation default:** `rename no flag and change no JSON key in this spec` because both break a scripted caller and deserve a diff whose only subject is that breakage.
 
-- **Dimension 5.1** — one spelling per concept: the library identifier placeholder reads the same in the option, the epilogue, and the empty state, and every paging option sharing a concept carries one description → Test `test_option_text_spelling_agrees` — DONE
-- **Dimension 5.2** — `secret list` renders a header and aligned columns like every other list → Test `test_secret_list_renders_table` — DONE
-- **Dimension 5.3** — `secret list` renders its timestamp in ISO 8601, matching `api-key list` → Test `test_secret_list_timestamp_is_iso` — DONE
-- **Dimension 5.5** — the `secret list --json` key set is unchanged → Test `test_secret_list_json_keys_unchanged` — DONE
+- **Dimension 5.1** — one spelling per concept: the library identifier placeholder reads the same in the option, the epilogue, and the empty state, and every paging option sharing a concept carries one description → Test `no help text spells the library identifier any other way` — DONE
+- **Dimension 5.2** — `secret list` renders a header and aligned columns like every other list → Test `prints a header row and the kind the daemon already sent` — DONE
+- **Dimension 5.3** — `secret list` renders its timestamp in ISO 8601, matching `api-key list` → Test `renders timestamps in ISO 8601, never a bare epoch integer` — DONE
+- **Dimension 5.5** — the `secret list --json` key set is unchanged → Test `secret list --json keeps the key set unchanged` — DONE
 
 ## Interfaces
 
@@ -211,42 +211,42 @@ Command surface added:
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `cli_command_invoked` | product | Any new subcommand runs, through the existing command-invocation telemetry | command path, exit class, duration | No bundle content, no gate blast-radius text, no secret name or value | `test_new_commands_emit_invocation_event` |
+| `cli_command_executed` | product | Any new subcommand runs. Every handler is built through the one `wrapE`/`wrapEFn` seam that applies `withCommandInstrumentation`, so a command that reaches its handler is instrumented by construction | command path, exit code, duration | No bundle content, no gate blast-radius text, no secret name or value | `approvals approve reaches approvals.approve` |
 
-The repository's existing analytics already records command invocation; this spec adds command paths to that stream and renames nothing. No funnel changes, so no analytics playbook update is required.
+The repository's existing analytics already records command execution; this spec adds command paths to that stream and renames nothing. No funnel changes, so no analytics playbook update is required. Test titles below are the sentences the tests carry — this repository's TypeScript convention (`dispatch/write_ts_adhere_bun.md` §8), not the template's `test_` identifier shape — so each one greps.
 
 ## Test Specification (tiered)
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `test_library_lists_workspace_gallery` | A stubbed gallery of two entries renders two rows; the requested path is the workspace gallery, not the platform catalogue. |
-| 1.2 | unit | `test_library_row_shows_tier` | Two entries named alike, one platform and one tenant, render distinguishable rows. |
-| 1.3 | unit | `test_library_empty_state_names_add` | An empty gallery prints a line containing `library add`. |
-| 1.4 | unit | `test_library_json_matches_table` | The JSON branch and the table branch carry the same identifiers for one stubbed response. |
-| 2.1 | integration | `test_library_add_github_posts_source` | `--github owner/repo` posts `source_kind: "github"` and `source_ref: "owner/repo"`; the created identifier is printed. |
-| 2.2 | unit | `test_library_add_ref_rejected_off_github` | `--ref v1 --template x` exits 4 without a request; `--ref v1 --github o/r` posts `ref: "v1"`. |
-| 2.3 | integration | `test_library_add_upload_reads_bundle` | A fixture directory posts `source_kind: "upload"` carrying both documents' bytes. |
-| 2.4 | integration | `test_library_add_template_posts_source` | `--template github-pr-reviewer` posts `source_kind: "template"`. |
-| 2.5 | unit | `test_library_add_requires_exactly_one_source` | Bare invocation and two-flag invocation both exit 4 with no request issued. |
-| 2.6 | integration | `test_library_add_renders_server_refusal` | A stubbed 400 carrying `user_message` prints that sentence and the documentation link; exit 3. |
-| 3.1 | unit | `test_approvals_list_renders_gates` | Two stubbed gates render two rows carrying kind and status. |
-| 3.2 | integration | `test_approvals_list_filters_by_fleet` | `--fleet <id>` renders only that Fleet's gates. |
-| 3.3 | unit | `test_approvals_show_renders_blast_radius` | The full blast-radius sentence is printed untruncated. |
-| 3.4 | integration | `test_approvals_approve_posts_decision` | The request path ends in `/approve`; the printed outcome is the response's `outcome`. |
-| 3.5 | integration | `test_approvals_deny_posts_decision` | The request path ends in `/deny`. |
-| 3.6 | integration | `test_approvals_resolved_gate_reports_outcome` | A stubbed conflict refusal prints the existing outcome; exit 3. |
-| 4.1 | unit | `test_status_shows_pending_approvals` | A Fleet detail carrying a non-zero pending count renders that count. |
-| 4.2 | unit | `test_steer_timeout_names_pending_gate` | A timeout with a pending gate prints a line containing `approvals`. |
-| 4.3 | unit | `test_steer_timeout_without_gate_unchanged` | A timeout with no pending gate prints the existing sentence. |
-| 4.4 | unit | `test_steer_timeout_prints_single_failure` | Exactly one line begins with the failure glyph. |
-| 5.1 | unit | `test_option_text_spelling_agrees` | The option metavar, epilogue, and empty state carry one library-identifier spelling; paging options sharing a concept carry one description. |
-| 5.2 | unit | `test_secret_list_renders_table` | Output carries a header row and a rule line, like `api-key list`. |
-| 5.3 | unit | `test_secret_list_timestamp_is_iso` | No bare epoch-millisecond integer appears; timestamps match the ISO 8601 shape. |
+| 1.1 | unit | `lists the workspace gallery, joining credentials` | A stubbed gallery of two entries renders two rows; the requested path is the workspace gallery, not the platform catalogue. |
+| 1.2 | unit | `a platform row and a tenant row differ by tier` | Two entries named alike, one platform and one tenant, render distinguishable rows. |
+| 1.3 | unit | `an empty gallery names library add as the next move` | An empty gallery prints a line containing `library add`. |
+| 1.4 | unit | `the JSON branch carries the same entries the table renders` | The JSON branch and the table branch carry the same identifiers for one stubbed response. |
+| 2.1 | integration | `--github posts a github source carrying the repository` | `--github owner/repo` posts `source_kind: "github"` and `source_ref: "owner/repo"`; the created identifier is printed. |
+| 2.2 | unit | `refuses --ref on a source that has no repository` | `--ref v1 --template x` exits 4 without a request; `--ref v1 --github o/r` posts `ref: "v1"`. |
+| 2.3 | integration | `--from posts an upload carrying both bundle documents` | A fixture directory posts `source_kind: "upload"` carrying both documents' bytes. |
+| 2.4 | integration | `--template posts a template source` | `--template github-pr-reviewer` posts `source_kind: "template"`. |
+| 2.5 | unit | `refuses a bare invocation before any request leaves the process` | Bare invocation and two-flag invocation both exit 4 with no request issued. |
+| 2.6 | integration | `a refused bundle renders the daemon's own sentence` | A stubbed 400 carrying `user_message` prints that sentence and the documentation link; exit 3. |
+| 3.1 | unit | `approvals list renders every gate with its kind and status` | Two stubbed gates render two rows carrying kind and status. |
+| 3.2 | integration | `approvals list --fleet shows only that Fleet's gates` | `--fleet <id>` renders only that Fleet's gates. |
+| 3.3 | unit | `approvals show prints the blast radius in full` | The full blast-radius sentence is printed untruncated. |
+| 3.4 | integration | `approvals approve POSTs to the approve segment` | The request path ends in `/approve`; the printed outcome is the response's `outcome`. |
+| 3.5 | integration | `approvals deny POSTs to the deny segment` | The request path ends in `/deny`. |
+| 3.6 | integration | `a second decision reports the outcome that stands` | A stubbed conflict refusal prints the existing outcome; exit 3. |
+| 4.1 | unit | `renders the waiting count and names the command that clears it` | A Fleet detail carrying a non-zero pending count renders that count. |
+| 4.2 | unit | `a pending gate for this fleet replaces the generic retry suggestion` | A timeout with a pending gate prints a line containing `approvals`. |
+| 4.3 | unit | `a gate belonging to another fleet does not explain this one's stall` | A timeout with no pending gate prints the existing sentence. |
+| 4.4 | unit | `poll timeout fails once, carrying 'still in flight' on the failure` | Exactly one line begins with the failure glyph. |
+| 5.1 | unit | `no help text spells the library identifier any other way` | The option metavar, epilogue, and empty state carry one library-identifier spelling; paging options sharing a concept carry one description. |
+| 5.2 | unit | `prints a header row and the kind the daemon already sent` | Output carries a header row and a rule line, like `api-key list`. |
+| 5.3 | unit | `renders timestamps in ISO 8601, never a bare epoch integer` | No bare epoch-millisecond integer appears; timestamps match the ISO 8601 shape. |
 | 2.1 | e2e | `library-onboard-live` | Through the built binary against a live daemon: `library add --github`, then `library` lists the created entry. |
 | 3.4 | e2e | `approvals-live` | Through the built binary: `approvals list` shows a pending gate, `approvals approve` clears it, and the Fleet's pending count falls. |
-| 1.5 | unit | `test_install_library_flag_unchanged` | `install --library <id>` still resolves and installs a platform entry exactly as before. |
-| 5.5 | unit | `test_secret_list_json_keys_unchanged` | The `secret list --json` key set is byte-identical to the current output. |
-| 3.7 | integration | `test_approve_twice_is_not_a_second_decision` | A second approve on the same gate does not report a fresh decision. |
+| 1.5 | unit | `GETs the gallery, then creates with platform_template_id` | `install --library <id>` still resolves and installs a platform entry exactly as before. |
+| 5.5 | unit | `secret list --json keeps the key set unchanged` | The `secret list --json` key set is byte-identical to the current output. |
+| 3.7 | integration | `a refused decision renders the daemon's own sentence and exits 3` | A second approve on the same gate does not report a fresh decision. |
 
 ## Acceptance Rubric (single scoring surface)
 

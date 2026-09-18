@@ -119,7 +119,7 @@ describe("secret list rendering", () => {
     });
   });
 
-  test("--json keeps the key set unchanged", async () => {
+  test("secret list --json keeps the key set unchanged", async () => {
     await authedScope(async () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
