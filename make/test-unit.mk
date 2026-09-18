@@ -18,12 +18,12 @@ test-unit-rustd:  ## Run the Rust workspace unit tests (cargo)
 # build graph untouched.
 #
 # Committed output on purpose — a Zig wire change then lands as a RED DIFF in
-# samples/fixtures/wire-v2/ plus a red Rust round-trip, rather than as a silent
+# tests/fixtures/wire-v2/ plus a red Rust round-trip, rather than as a silent
 # skew nobody notices until a runner deserializes garbage.
-wire-fixtures:  ## Regenerate samples/fixtures/wire-v2/ from src/lib/contract (Zig is the source of truth)
+wire-fixtures:  ## Regenerate tests/fixtures/wire-v2/ from src/lib/contract (Zig is the source of truth)
 	@echo "→ [wire] Regenerating canonical fixtures from src/lib/contract..."
 	@zig run src/lib/contract/fixture_export.zig
-	@echo "✓ [wire] $$(ls samples/fixtures/wire-v2/*.json | wc -l | tr -d ' ') files written — review the diff before committing"
+	@echo "✓ [wire] $$(ls tests/fixtures/wire-v2/*.json | wc -l | tr -d ' ') files written — review the diff before committing"
 
 test-unit-cli:  ## Run agentsfleet CLI unit tests (bun)
 	@echo "→ [agentsfleet] Building dist/ (tests spawn dist/bin/agentsfleet.js)..."

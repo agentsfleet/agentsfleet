@@ -11,7 +11,7 @@ import { asFetchImpl, type ResponseLike } from "./helpers.ts";
 
 const MS_PER_SECOND = 1000;
 
-const FIXTURE_PATH = path.resolve(import.meta.dir, "..", "..", "samples", "fixtures", "retry-policy", "cases.json");
+const FIXTURE_PATH = path.resolve(import.meta.dir, "..", "..", "tests", "fixtures", "retry-policy", "cases.json");
 const URL = "https://api.example.test/v1/thing";
 const OK_BODY = '{"ok":true}';
 const ERROR_TIMEOUT = "timeout";

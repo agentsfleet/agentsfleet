@@ -26,7 +26,7 @@ fn fixture_dir() -> PathBuf {
         .ancestors()
         .nth(3)
         .unwrap()
-        .join("samples/fixtures/wire-v2")
+        .join("tests/fixtures/wire-v2")
 }
 
 fn read_fixture(name: &str) -> Vec<u8> {

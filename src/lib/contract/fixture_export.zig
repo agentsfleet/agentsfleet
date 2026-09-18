@@ -84,7 +84,7 @@ const LENIENT = [_][]const u8{
 /// the Rust suite reads that same path, and a generator that can be pointed
 /// somewhere else is a generator that can silently write fixtures nothing
 /// checks. `make wire-fixtures` runs this from the repository root.
-const OUTPUT_DIR = "samples/fixtures/wire-v2";
+const OUTPUT_DIR = "tests/fixtures/wire-v2";
 
 pub fn main() !void {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;

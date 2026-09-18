@@ -18,7 +18,7 @@ fn read_fixture(name: &str) -> Vec<u8> {
         .ancestors()
         .nth(3)
         .unwrap()
-        .join("samples/fixtures/wire-v2")
+        .join("tests/fixtures/wire-v2")
         .join(format!("{name}.json"));
     std::fs::read(&path).unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()))
 }

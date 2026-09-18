@@ -252,7 +252,7 @@ class GenerationBump(unittest.TestCase):
 
     def test_committed_fixture_matches_the_no_transaction_shape(self):
         """Regression guard tying the assertion above to the real artifact."""
-        path = os.path.join(REPO_ROOT, "samples", "fixtures", "model-library", "seed.sql")
+        path = os.path.join(REPO_ROOT, "tests", "fixtures", "model-library", "seed.sql")
         with open(path, encoding="utf-8") as handle:
             committed = handle.read()
         for construct in ("BEGIN;", "COMMIT;", "FOR UPDATE", "DO $$"):

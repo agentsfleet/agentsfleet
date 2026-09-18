@@ -14,7 +14,7 @@
 //! domain (`telemetry/`, `webhooks/`, `fleetbundle/`, `runner/`, …). Then add a
 //! `{ .name, .path }` row to RUNNER (`src/runner/**` tests) and consume via
 //! `@embedFile("<name>")` using the
-//! registered NAME — never a relative path, and never a repo-root `samples/…`
+//! registered NAME — never a relative path, and never a repo-root `tests/fixtures/…`
 //! path. Both are unreachable: `@embedFile` refuses files outside the importing
 //! module's root directory.
 
