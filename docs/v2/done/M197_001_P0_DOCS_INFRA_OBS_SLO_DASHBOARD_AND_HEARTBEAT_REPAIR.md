@@ -78,13 +78,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Punch List
 
-Parked by Indy on Sep 18, 2026; reasoning in the commit that added this section.
-
-- [ ] **P1 — the span budget is unported** while `observability.md` §Traces claims
-  it exists; `afd_api/src/router/trace.rs:58` spans every matched request. Own spec.
-- [ ] **P2 — the apply never prunes a removed alert rule**, as `M159_001` recorded;
-  `04_verify.sh` passes because it only asks whether declared rules exist.
-- [x] **P3 — `teardown/redis` said Redis.** Landed in this branch.
+- [ ] **P1 — the span budget is unported**, though `observability.md` §Traces says
+  otherwise: `router/trace.rs:58` spans every matched request. Own spec.
+- [ ] **P2 — the apply never prunes a removed alert rule**, as `M159_001` recorded.
+- [ ] **P3 — a runner ceiling is a TOTAL-series cap, not slots.** `view.rs:62` gives
+  the SDK 4096 while `{runner_id,reason}` writes 4096x11; two families were over
+  before this branch and `fault` took executions 2x to 3x. Own spec.
 
 ## Applicable Rules
 
