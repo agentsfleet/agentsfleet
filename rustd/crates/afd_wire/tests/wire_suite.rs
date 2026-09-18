@@ -40,3 +40,7 @@ mod strictness;
 mod tenant_provider_shapes;
 #[path = "unknown_fields.rs"]
 mod unknown_fields;
+// Declared bounds at their exact limits, and a seeded mutation corpus the
+// parser must survive without panicking.
+#[path = "validation.rs"]
+mod validation;
