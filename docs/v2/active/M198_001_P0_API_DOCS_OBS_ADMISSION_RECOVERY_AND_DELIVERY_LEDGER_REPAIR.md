@@ -62,15 +62,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_runner/src/sweep/reconcile.rs` (+ `reconcile/tests.rs`, `Cargo.toml`) | EDIT | The sweeper owns the resume state between passes and never holds its lock across an await; its pacing tests extend to the cursor hand-off, and reaching that hand-off adds three dev-dependencies. |
 | `schema/914_fleet_admissions_delivery_lookup.sql` | CREATE | The index the delivery stamp can use, as a new forward slot. |
 | `rustd/crates/afd_db/src/migration.rs` · `rustd/crates/afd_connector/src/sql.rs` | EDIT | Slot 914 is registered; the dead `SELECT_INSTALL_WORKSPACE` definition, its test entry and the doc link naming it are removed. |
-| `rustd/crates/afd_fleet_lifecycle/src/{sql.rs,install/row.rs}` | EDIT | `INSERT_FLEET` stops writing the unread bundle pointer; the bind, the private key helper and its test go with it, and later parameters renumber. |
+| `rustd/crates/afd_fleet_lifecycle/src/{sql.rs,install/row.rs}` (+ `tests/integration_install_rollback.rs`) | EDIT | `INSERT_FLEET` stops writing the unread bundle pointer; the bind, the private key helper and its test go with it, and later parameters renumber. The rollback suite gains the case proving the one parameter after the removed bind still lands in its own columns. |
 | `rustd/crates/afd_outbound/src/obligation{,/sql}.rs` | EDIT | The success stamp stops incrementing; a delivery-cycle start statement and its wrapper are added. |
 | `rustd/crates/afd_outbound/src/lanes.rs` | EDIT | Records the cycle start on job acceptance; carries the count into the delivered and exhausted events. |
 | `rustd/crates/afd_outbound/tests/{integration_obligations.rs,integration_attempt_count.rs}` | EDIT · CREATE | The old meaning's assertion is replaced; the new suite carries the counter's failure, retry, duplicate, shutdown and pacing cases. |
 | `rustd/crates/afd_fleet/tests/{integration_admission_recovery.rs,integration_recovery_outage.rs}` | EDIT | Helpers open to the new suite; both reconcile calls carry the resume state. |
-| `rustd/crates/afd_fleet/tests/integration_recovery_progress.rs` (+ `fleet_suite.rs`) | CREATE | The two batch-boundary reproductions, in their own file: the sibling is already at length. |
+| `rustd/crates/afd_fleet/tests/{integration_recovery_progress.rs,integration_delivery_lookup.rs}` (+ `fleet_suite.rs`) | CREATE | The two batch-boundary reproductions and the deleted-fleet cursor case in one file, the index definition and the stamp either side of a replayed receipt in the other: the sibling suite is already at length, and the second grades the ledger's shape rather than a loss. |
 | `rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs` (+ `public/openapi.json`) | EDIT | The generated endpoint description stops claiming repair writers this daemon does not have; the published artifact is regenerated from it. |
 | `rustd/crates/afd_api/tests/app_ingress_route.rs` (+ `tests/fixtures/webhooks/github_deployment_status_app.json`) | EDIT · CREATE | The dropped `deployment_status` the description now admits, proven against a real payload. |
 | `rustd/crates/afd_api/tests/openapi_contract.rs` · `scripts/check_architecture_doc.sh` | EDIT | Each absent mechanism gains a gate, so the claim cannot come back silently. |
+| `codecov.yml` | EDIT | The `rust-afd` patch target moves 97 -> 99. It moves alone, unlike the two project numbers, because it grades only added lines. |
 | `docs/architecture/{data_flow.md,runner_fleet.md}` | EDIT | Corrects the session execution-handle rows, the multi-tenancy row, and a command neither binary has. |
 | `docs/v2/{pending,active,done}/M198_001_P0_API_DOCS_OBS_ADMISSION_RECOVERY_AND_DELIVERY_LEDGER_REPAIR.md` (+ `docs/v2/reviews/schema-fix-adversarial-review-2026-09-18.md`) | CREATE | This spec, at whichever lifecycle directory holds it, beside the adversarial review whose dispositions it implements. |
 
@@ -109,7 +110,7 @@ The reconciliation pass rotates through fleets holding undelivered work instead 
 
 - **Dimension 1.1** (DONE) — a deployment with more fleets holding undelivered work than one pass examines visits every one across consecutive passes, and a pass reading fewer fleets than its cap wraps to the start so the rotation strands nobody → Test `rotation_visits_every_unfinished_fleet`
 - **Dimension 1.3** (DONE) — lost work on a fleet sorting after the cap is recovered within a bounded number of passes → Test `rotation_recovers_fleets_past_the_pass_budget`
-- **Dimension 1.4** (DONE) — a cursor naming a fleet whose row is gone resumes at the next fleet rather than stalling or restarting → Test `a_cursor_survives_a_deleted_fleet`
+- **Dimension 1.4** (DONE) — a cursor naming a fleet whose row is gone resumes at the next fleet rather than stalling or restarting, graded against the live scan and not only against the resume state's hand-back → Test `a_deleted_fleet_does_not_strand_the_ones_after_it`
 
 ### §2 — Recovery reaches every row on a lost fleet
 
@@ -162,7 +163,7 @@ Three current claims are corrected and the gaps behind them are named rather tha
 A statement constant nothing runs and a key helper whose only consumer is a column nothing reads both go. **Implementation default:** the connector's doc link that names the removed constant is reworded to describe the live ingress read in prose rather than re-pointed across crates, because an intra-crate documentation link to another crate's private detail is a dependency the comment does not otherwise have.
 
 - **Dimension 7.1** (DONE) — the connector crate's dead install-workspace statement is gone and the live ingress read and its caller are untouched → Test `every_statement_is_schema_qualified`
-- **Dimension 7.2** (DONE) — creating a fleet no longer writes the unread bundle pointer, every parameter after the removed bind lands in the right column, and retrieving that fleet's bundle through the production path still returns the correct bytes → Test `an_install_writes_no_bundle_pointer_and_renumbers_nothing_else`
+- **Dimension 7.2** (DONE) — creating a fleet no longer writes the unread bundle pointer, and every parameter after the removed bind lands in the right column → Test `an_install_writes_no_bundle_pointer_and_renumbers_nothing_else`. Retrieval is untouched by construction and is not re-graded here: `bundle_content_hash` binds at `$9`, before the removed `$10`, and the object key is derived from it at both preparation and retrieval.
 
 ## Interfaces
 
@@ -215,7 +216,6 @@ CREATE INDEX IF NOT EXISTS idx_fleet_admissions_delivery_lookup
 | `outbound_delivery_exhausted` (existing, extended) | ops | A delivery cycle ends without the destination taking the answer | existing `provider`, `fleet_id`, `error_code` plus the recorded `attempt_count` | no answer body, no destination credential | `an_exhausted_cycle_is_counted_and_reported` |
 | `outbound_obligation_attempt_failed` | ops | The cycle-start write could not be recorded | `provider`, `fleet_id`, `error_code` | no answer body | `bookkeeping_failure_does_not_discard_an_answer` |
 
-
 No product analytics event changes. No analytics or funnel playbook update is required; the signals here are operator-facing.
 
 ## Test Specification (tiered)
@@ -224,7 +224,7 @@ No product analytics event changes. No analytics or funnel playbook update is re
 |-----------|------|------|---------------------------------------------|
 | 1.1 | unit | `rotation_visits_every_unfinished_fleet` | A resume state driven over a fleet list longer than the cap yields every fleet across consecutive passes, none twice before all are seen once, and a short read leaves the cursor at its start sentinel. |
 | 1.3 | integration | `rotation_recovers_fleets_past_the_pass_budget` | Seed one more fleet holding undelivered work than the pass's fleet cap, lose the highest-sorting fleet's stream, run passes with the real cap, and assert its admissions are re-appended within the bounded pass count. |
-| 1.4 | unit | `a_cursor_survives_a_deleted_fleet` | A cursor naming a fleet absent from the next read advances to the following fleet, not to the start. |
+| 1.4 | integration | `a_deleted_fleet_does_not_strand_the_ones_after_it` | Delete the fleet the cursor was filed on against a live ledger, and the fleets sorting after it still recover. Every fleet stays unfinished after its repair, so a pass that restarted at the lowest-sorting row would never reach the last one. Its unit sibling `a_cursor_survives_a_deleted_fleet` grades the resume state's hand-back only — the comparison it asserts on is the test's own, which is why the live case exists. |
 | 2.1 | integration | `a_walk_resumes_past_the_rows_it_already_repaired` | Seed one more admission than the row cap on one fleet, destroy the stream, run reconcile and replay repeatedly at the real caps, and assert every admission names a live entry exactly once. |
 | 2.2 | integration | `a_walk_resumes_past_the_rows_it_already_repaired` | After a partial repair restores the oldest rows with live receipts, the next pass still probes the rows beyond the batch rather than reporting the fleet healthy. |
 | 2.4 | integration | `interleaved_live_admissions_survive_recovery` | Admissions accepted after the loss, carrying live receipts, are interleaved by creation order with lost ones; recovery voids every lost receipt and no live one. |
@@ -238,7 +238,7 @@ No product analytics event changes. No analytics or funnel playbook update is re
 | 4.4 | unit | `test_migration_list_matches_schema_directory` | The existing registry test fails on a `schema/*.sql` with no `migration!()` entry, and `integration_migrate` applies the whole list to a fresh database. Application to a POPULATED table is recorded evidence, not an assertion: the lane's own `_migrate-test-db` step applied 914 to a 400,600-row table and reported `applied [914], 55 already current`. |
 | 5.1 | integration | `failed_cycles_increase_the_attempt_count` | Two cycles that both fail leave the obligation undelivered with a count of two; a cycle whose poster retried several times internally adds one, not several. |
 | 5.3 | integration | `duplicate_delivery_preserves_the_first_stamp` | A second delivery of a stamped obligation leaves `delivered_at` and the count unchanged. |
-| 5.4 | integration | `bookkeeping_failure_does_not_discard_an_answer` | With the cycle-start write failing, the delivery still happens and the entry is still acknowledged; the failure is reported. |
+| 5.4 | unit | `bookkeeping_failure_does_not_discard_an_answer` | With the cycle-start write failing, the delivery still happens and the entry is still acknowledged; the failure is reported. |
 | 5.5 | unit | `an_exhausted_cycle_is_counted_and_reported` | The delivered and exhausted events carry the count field with the value the write returned. |
 | 5.6 | integration | `recovery_pacing_follows_the_cycle_start` | An obligation whose cycle just started is outside the recovery scan's age window; one whose cycle started before the window is inside it. |
 | 5.7 | integration | `shutdown_requeue_preserves_the_pending_entry` | A cancelled token during retry leaves the entry unacknowledged and logs the requeue, and the count still reflects the started cycle. |
@@ -255,16 +255,16 @@ No product analytics event changes. No analytics or funnel playbook update is re
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Lost work beyond the fleet cap and beyond the row cap is recovered (§1, §2) | `cd rustd && cargo test -p afd_fleet --test integration_admission_recovery -- --ignored --nocapture` | exit 0; both boundary tests pass | P0 |  ✅ 10 passed — `integration_recovery_progress` + the two outage tests |
-| R2 | The delivery stamp reaches the new index (§4) | `cd rustd && cargo test -p afd_fleet --test integration_admission_recovery delivery_stamp -- --ignored --nocapture` | exit 0; the `EXPLAIN` assertion names `idx_fleet_admissions_delivery_lookup` | P0 |  ✅ `Index Cond: (fleet_id = … AND created_at = … AND seq = …)`, 2 buffers |
-| R3 | Failed delivery cycles move the counter (§5) | `cd rustd && cargo test -p afd_outbound --test integration_attempt_count -- --include-ignored` | exit 0 | P0 |  ✅ 8 passed — `integration_attempt_count` |
+| R1 | Lost work beyond the fleet cap and beyond the row cap is recovered (§1, §2) | `make test-integration-rustd` | exit 0; `rotation_recovers_fleets_past_the_pass_budget`, `a_walk_resumes_past_the_rows_it_already_repaired` and `a_deleted_fleet_does_not_strand_the_ones_after_it` pass | P0 |  ✅ exit 0 — all three pass. Neutralising the cursor bound fails `a_deleted_fleet_does_not_strand_the_ones_after_it` and `rotation_recovers_fleets_past_the_pass_budget`, so both grade the bound rather than restating it |
+| R2 | The delivery stamp reaches the new index (§4) | `make test-integration-rustd` | exit 0; `the_delivery_lookup_index_implies_the_stamps_predicate` pins the index definition. The PLAN is a recorded measurement, not an assertion — see the Test Specification row | P0 |  ✅ exit 0 — `the_delivery_lookup_index_implies_the_stamps_predicate` passes; recorded plan `Index Cond: (fleet_id = … AND created_at = … AND seq = …)`, 72 buffers → 2 on 400,600 rows |
+| R3 | Failed delivery cycles move the counter (§5) | `make test-integration-rustd` | exit 0; seven `integration_attempt_count` cases pass here, and the datastore-free `bookkeeping_failure_does_not_discard_an_answer` rides the unit lane | P0 |  ✅ exit 0 — seven here, the eighth green in `make test-unit-all` |
 | R4 | No document claims row-level security or a live execution handle (§6) | `grep -rn "Row-Level Security\|execution_id. is set at" docs/architecture/data_flow.md` | 0 matches | P0 |  ✅ 0 matches |
 | R5 | Nothing is dropped from the schema | `git diff origin/main...HEAD -- schema/ \| grep -E '^\+.*(DROP\|ALTER)'` | no output | P0 |  ✅ no output — slot 914 is `CREATE INDEX IF NOT EXISTS` only |
-| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 |  ✅ 33 files changed, 0 missing from the table |
+| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 |  ✅ 38 files changed, 0 missing from the table |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 |  ✅ exit 0 — ALL GATES GREEN |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 |  ✅ exit 0 — 2,609 Rust unit passed; all package coverage gates passed |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 |  ✅ exit 0 — 2,610 Rust unit passed (+18 on the baseline's 2,592); all package coverage gates passed |
 | S3a | Lint green | `make lint-all` | exit 0 | P0 |  ✅ exit 0 — rustfmt, clippy -D warnings, no-feature build |
-| S3b | Integration suite green | `make test-integration-rustd` | exit 0 | P0 |  ✅ exit 0 — 503 passed + 1 exclusive |
+| S3b | Integration suite green | `make test-integration-rustd` | exit 0 | P0 |  ✅ exit 0 — 508 passed + 1 exclusive |
 | S3c | Version sync | `make check-version` | exit 0 | P0 |  ✅ exit 0 — all versions match 0.48.0 |
 | S4 | No secrets | `gitleaks detect` | exit 0 | P0 |  ✅ no leaks found |
 | S5 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 |  ✅ no output |
