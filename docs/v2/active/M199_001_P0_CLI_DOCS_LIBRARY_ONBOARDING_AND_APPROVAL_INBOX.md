@@ -175,6 +175,7 @@ GET  /v1/workspaces/{ws}/fleet-libraries
 POST /v1/workspaces/{ws}/fleet-libraries
      <- { source_kind: "github"|"upload"|"template", source_ref, ref?, replace,
           skill_markdown?, trigger_markdown?, support_files: [] }
+     note: `replace` is dropped by the workspace plane, so the client never sends it
      -> 201 { id, name, visibility, content_hash, requirements }
      -> 400 { error_code, title, detail, user_message, docs_uri, request_id }
 GET  /v1/workspaces/{ws}/approvals            (and /{gate_id} for one)
@@ -184,7 +185,7 @@ POST /v1/workspaces/{ws}/approvals/{gate_id}/{approve|deny}
      -> 200 { gate_id, action_id, outcome, resolved_at, resolved_by }
 
 Command surface added:
-  agentsfleet library add (--github <owner/repo> [--ref <rev>] | --from <path> | --template <id>) [--replace]
+  agentsfleet library add (--github <owner/repo> [--ref <rev>] | --from <path> | --template <id>)
   agentsfleet approvals list [--fleet <id>] | show <gate_id> | approve <gate_id> | deny <gate_id>
 ```
 
@@ -252,21 +253,21 @@ The repository's existing analytics already records command execution; this spec
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | `library` lists a tenant entry `install` accepts (§1) | `node cli/dist/bin/agentsfleet.js library --api https://api-dev.agentsfleet.net` | output contains a `tenant` tier row | P0 | |
-| R2 | `library add --github` creates an entry (§2) | `node cli/dist/bin/agentsfleet.js library add --github agentsfleet/github-pr-reviewer --api https://api-dev.agentsfleet.net` | exit 0 and an identifier is printed | P0 | |
-| R3 | `library add --from` uploads a local bundle (§2) | `node cli/dist/bin/agentsfleet.js library add --from tests/fixtures/fleetbundle/github-pr-reviewer --api https://api-dev.agentsfleet.net` | exit 0 and an identifier is printed | P0 | |
-| R4 | A gate is decidable from the terminal (§3) | `node cli/dist/bin/agentsfleet.js approvals list --api https://api-dev.agentsfleet.net` | exit 0; a pending gate renders with its kind | P0 | |
-| R5 | A parked steer names its gate (§4) | `node cli/dist/bin/agentsfleet.js steer <parked_fleet> "ping" --api https://api-dev.agentsfleet.net` | failure text contains `approvals` and exactly one failure glyph line | P0 | |
-| R6 | `secret list` renders like every other list (§5) | `node cli/dist/bin/agentsfleet.js secret list --api https://api-dev.agentsfleet.net` | output carries a header row; no bare epoch integer | P1 | |
-| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3a | Lint green | `make lint-all` | exit 0 | P0 | |
-| S3b | Integration lane green | `make test-integration-rustd` | exit 0 | P0 | |
-| S3c | Version sync green | `make check-version` | exit 0 | P0 | |
-| S4 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S5 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S6 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
+| R1 | `library` lists a tenant entry `install` accepts (§1) | `node cli/dist/bin/agentsfleet.js library --api https://api-dev.agentsfleet.net` | output contains a `tenant` tier row | P0 | ✅ five entries, four `tenant` and one `platform` |
+| R2 | `library add --github` creates an entry (§2) | `node cli/dist/bin/agentsfleet.js library add --github agentsfleet/github-pr-reviewer --api https://api-dev.agentsfleet.net` | exit 0 and an identifier is printed | P0 | ✅ `✓ github-pr-reviewer onboarded. Library ID: 01a0b5bd-b620-7538-a72e-73f58d67f42c` |
+| R3 | `library add --from` uploads a local bundle (§2) | `node cli/dist/bin/agentsfleet.js library add --from tests/fixtures/fleetbundle/github-pr-reviewer --api https://api-dev.agentsfleet.net` | exit 0 and an identifier is printed | P0 | ✅ `✓ incident-responder onboarded. Library ID: 01a0b601-d54a-76d3-8331-0844b187420c` |
+| R4 | A gate is decidable from the terminal (§3) | `node cli/dist/bin/agentsfleet.js approvals list --api https://api-dev.agentsfleet.net` | exit 0; a pending gate renders with its kind | P0 | ✅ six gates render; two `pending`, four decided |
+| R5 | A parked steer names its gate (§4) | `node cli/dist/bin/agentsfleet.js steer <parked_fleet> "ping" --api https://api-dev.agentsfleet.net` | failure text contains `approvals` and exactly one failure glyph line | P0 | ✅ `Suggestion: waiting on approval gate 01a0b5d1-343a-… — decide it with: agentsfleet approvals approve 01a0b5d1-343a-…`; one glyph line |
+| R6 | `secret list` renders like every other list (§5) | `node cli/dist/bin/agentsfleet.js secret list --api https://api-dev.agentsfleet.net` | output carries a header row; no bare epoch integer | P1 | ✅ `NAME KIND CREATED` with `2026-09-07T13:41:50.381Z`; no epoch integer |
+| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 51 paths, every one in the table |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ `ALL GATES GREEN` at every commit |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `All unit lanes passed`; Rust 2630 passed / 0 failed; CLI 1773 tests, line coverage 100.00% |
+| S3a | Lint green | `make lint-all` | exit 0 | P0 | ✅ `✓ All lint checks passed` |
+| S3b | Integration lane green | `make test-integration-rustd` | exit 0 | P0 | ⬜ runs in Continuous Integration (CI) — the lane needs docker compose Postgres and Dragonfly; this diff loads no file it compiles |
+| S3c | Version sync green | `make check-version` | exit 0 | P0 | ✅ `✓ all versions match 0.49.0` |
+| S4 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` at every commit |
+| S5 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no output |
+| S6 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | ✅ `FLEET_BUNDLES_PATH` has no reader left; `approveGate` and `APPROVE_DECISION` removed with their last caller |
 
 **Command source rule:** every declared `conform` and `verify.*` invocation from `.oracle/orly.json` appears above verbatim with an Expected value. Timing follows `dispatch/lifecycle.md`; baseline metadata is pending at opening and measured before the Pull Request.
 
@@ -285,8 +286,7 @@ The repository's existing analytics already records command execution; this spec
 ## Out of Scope
 
 - **Renaming `--workspace-id` to `--workspace`, and `--cursor` to `--starting-after`.** Both spellings ship today across different command groups. Renaming either breaks a scripted caller, and the repository forbids keeping an alias, so the break deserves a Pull Request whose only subject is that break and its migration note. Follow-up spec: M200_001.
-- **Changing `connector list --json` from a bare array to an `{ items: [...] }` envelope.** Same reason: a machine-surface break with its own blast radius.
-- **Renaming `schedule rm` to `schedule delete`.** Same class.
+- **Changing `connector list --json` to an `{ items: [...] }` envelope, and renaming `schedule rm` to `schedule delete`.** Same reason: machine-surface breaks with their own blast radius.
 - **Deduplicating provider aliases in `agentsfleet models`.** The duplicate rows come from the daemon's catalogue; a client-side filter would hide a real catalogue defect.
 - **Surfacing a precise refusal reason for an invalid bundle, and repairing `tests/fixtures/fleetbundle/platform-ops/TRIGGER.md` plus the `agentsfleet/platform-ops` repository, whose trigger frontmatter is not parseable YAML Ain't Markup Language (YAML).** Both are daemon-side or fixture-side; neither is read by any test this spec adds. Named in Discovery.
 
@@ -315,6 +315,6 @@ The repository's existing analytics already records command execution; this spec
 
 - **Consults** — Architecture: `docs/architecture/fleet_library.md` read for the tier model before naming the gallery columns; the platform-versus-tenant split is that document's, not this spec's. Live probe of `https://api-dev.agentsfleet.net` on Sep 18, 2026 established, with responses recorded in the Pull Request Session Notes: the workspace gallery returns both tiers while `agentsfleet library` renders one; onboarding succeeds for github and upload sources; a `repository_write` gate is created by a steer and blocks it until decided; the Fleet detail returns a non-zero pending-approval count while `status` renders `active`.
 - **Source findings not repaired here** — `tests/fixtures/fleetbundle/platform-ops/TRIGGER.md` line 12 carries `context_cap_tokens: {{context_cap_tokens}}` unquoted, which is not parseable YAML Ain't Markup Language (YAML); the same bytes ship in the `agentsfleet/platform-ops` repository, so onboarding that repository fails. The daemon refuses it with a sentence naming a missing skill document and oversized files, neither of which is the cause, because the precise reason is computed and discarded before the response. Both are named in Out of Scope.
-- **Metrics review** — pending `/review`.
-- **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/review`, `orly-babysit-prs`.
+- **Metrics review** — the Metrics table named `cli_command_invoked`, which does not exist; the CLI emits `cli_command_executed` from the single `wrapE`/`wrapEFn` seam. Corrected during REVIEW. No funnel changes, so no analytics playbook update is required.
+- **Skill-chain outcomes** — `/orly-write-unit-test`: ledger of 50 changed units, 50 resolved; seven ran inside other tests with nothing asserting their output and now carry their own. `/review`: three defects found by attacking the diff against the daemon's source — a `--replace` flag the workspace plane drops, two listings reading one page where `install` pages to exhaustion, and an upload sending its absolute path as provenance; all three fixed, none deferred. It also caught 27 of 27 spec-declared test names resolving to nothing, the drift a prior session recorded as a learning. `orly-babysit-prs`: pending the push.
 - **Deferrals** — none. Every item not built is scoped out at authoring with its reason, not deferred.
