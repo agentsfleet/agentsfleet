@@ -291,12 +291,20 @@ no shared map to keep consistent and no generation check to get wrong, and
 and a Python checker at the repository root once blocked, inside a roster
 prefix, on a freeing deinit that omitted its `self.* = undefined` poison (A5) or
 an owned-slice pub fn that omitted its ownership phrase (A5). Both retired with
-the Zig daemon, by which point no make target invoked either. What `lint-rustd`
-runs over the Zig tree today is a formatting check and nothing more, so A1-A6
-are review rules until something mechanises them again.
+the Zig daemon, by which point no make target invoked either. What
+`lint-runner-fmt` runs over the Zig tree today is `zig fmt --check` and nothing
+more, so A1-A6 are review rules until something mechanises them again.
 
-**Adding the next folder is one line.** Append its path prefix to the roster, run
-`make lint-all`, fix what the check surfaces, and commit — no code change is needed
-for the scope to grow, because enforcement scope is data, not logic. Until a
-folder joins the roster, RULE NLR (touch-it-fix-it) owns cleanup of its
-individual files.
+**There is no roster to append to.** Widening the scope used to be one line of
+data — a path prefix added to the roster, `make lint-all`, fix what the check
+surfaced — and that procedure is gone with the file it edited. Until something
+mechanises A1-A6 again, every folder is in scope and none of them is checked:
+the rules hold at review, and RULE NLR (touch-it-fix-it) owns cleanup of the
+individual files a change touches.
+
+**Restoring the mechanical half is a real piece of work, not a line of data.**
+It means a checker that reads today's tree, a make target that invokes it, and a
+Continuous Integration (CI) job that runs the target — the three things whose
+absence is what retired the old one. Write it against the Zig tree only if that
+tree is staying; the runner is the last of it, and a checker outliving its
+subject is how this section came to describe a file nobody could edit.
