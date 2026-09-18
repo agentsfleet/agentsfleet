@@ -22,8 +22,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — single stream; no parallel workstream depends on it.
 **Branch:** feat/m199-cli-library-approvals-consistency
 **Baseline revision:** 4079743cb7f760b2b4ae45c877efbf062c9a7618
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit=1673 — Command-Line Interface (CLI) 1673 passed / 14 skipped / 0 failed (`cd cli && bun test`) at `4079743cb`, measured in a detached worktree with `dist/` built. The diff is TypeScript under `cli/` alone, so the Rust half of `make test-unit-all` (2630 passed / 0 failed) and the integration lane are identical by construction and reported once, from the branch. Branch: 1748 passed / 16 skipped / 0 failed — delta +75.
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M199_001-4079743cb.md`
 **Depends on:** none
 **Provenance:** agent-generated (pre-spec, live probe of https://api-dev.agentsfleet.net on Sep 18, 2026)
 **Canonical architecture:** `docs/architecture/fleet_library.md` §1
@@ -76,18 +76,18 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/test/approvals-pending.unit.test.ts` | CREATE | The pending-gate lookup, including its defect-safety. |
 | `cli/test/library-add.integration.test.ts` | CREATE | Onboarding and every client-side refusal. |
 | `cli/test/secret-list-render.integration.test.ts` | CREATE | Vault rendering, secrecy, and the parked-Fleet status. |
-| `cli/test/cli-consistency.unit.test.ts` | CREATE | One spelling per concept; every hint names a real command. |
+| `cli/test/cli-consistency.unit.test.ts`, `cli/test/error-rendering.unit.test.ts` | CREATE | One spelling per concept; every hint names a real command; which refusal string reaches the terminal. |
 | `cli/test/acceptance/library-onboard-live.spec.ts` | CREATE | End-to-end onboarding and listing through the built binary. |
 | `cli/test/acceptance/approvals-live.spec.ts` | CREATE | End-to-end gate decision through the built binary. |
+| `cli/test/acceptance/grant-approval-live.spec.ts`, `cli/test/acceptance/fixtures/grant-ops.ts`, `cli/test/acceptance/run-lane.ts` | EDIT | The card is answered through the CLI; the HTTP helper it replaced goes with it; the lane registers the two new specs. |
 | `cli/test/fleet-library.unit.test.ts` | EDIT | Gallery path, tier column, and the new empty state. |
 | `cli/test/fleet-steer-errors.integration.test.ts`, `cli/test/fleet-steer-linecov.unit.test.ts` | EDIT | The stall is reported once, on the failure. |
-| `cli/test/fleet.integration.test.ts` | EDIT | Status now also reads the approvals inbox. |
-| `cli/test/cli-alignment.unit.test.ts` | EDIT | The corrected next-page hint. |
+| `cli/test/fleet.integration.test.ts`, `cli/test/cli-alignment.unit.test.ts` | EDIT | Status now also reads the approvals inbox; the corrected next-page hint. |
 | `cli/test/fleet-install-unit.test.ts`, `cli/test/cli-tree.fleet.unit.test.ts`, `cli/test/acceptance/options-metavar.spec.ts`, `cli/test/golden/help-no-color.txt` | EDIT | The corrected library placeholder and help bodies. |
 | `cli/test/fleet-secret-errors.unit.test.ts` | EDIT | Imports the relocated vault list. |
 | `cli/test/command-matrix-parity.unit.test.ts`, `cli/test/acceptance/fixtures/command-matrix.ts` | EDIT | Approvals rows, and a group that owns subcommands and also runs. |
 | `cli/test/helpers-cli-tree.ts`, `cli/test/json-contract.test.ts` | EDIT | Handler stubs for the new commands. |
-| `docs/v2/active/M199_001_P0_CLI_DOCS_LIBRARY_ONBOARDING_AND_APPROVAL_INBOX.md` | CREATE | This spec. |
+| `docs/v2/active/M199_001_P0_CLI_DOCS_LIBRARY_ONBOARDING_AND_APPROVAL_INBOX.md`, `playbooks/operations/acceptance/baselines/M199_001-4079743cb.md` | CREATE | This spec and the baseline evidence its header names. |
 
 ## Applicable Rules
 

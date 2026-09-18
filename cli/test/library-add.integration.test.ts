@@ -310,3 +310,49 @@ describe("library add — machine surface", () => {
     });
   });
 });
+
+describe("library add — degraded daemon answers", () => {
+  test("a creation carrying no name falls back to the source reference", async () => {
+    await authedScope(async () => {
+      const routes: MockRoutes = {
+        [`POST ${LIBRARIES}`]: () => jsonResponse(201, { id: LIBRARY_ID }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(["library", "add", "--github", "owner/repo"], {
+          stdout: out.stream,
+          stderr: err.stream,
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
+        });
+        expect(code).toBe(0);
+        const text = out.read();
+        expect(text).toContain("owner/repo");
+        expect(text).not.toContain("undefined");
+      });
+    });
+  });
+
+  test("a creation carrying no identifier still prints a runnable install line", async () => {
+    await authedScope(async () => {
+      // Without the placeholder the hint would read "install --library
+      // undefined", which is worse than useless: it looks like a command.
+      const routes: MockRoutes = {
+        [`POST ${LIBRARIES}`]: () => jsonResponse(201, { name: "probe" }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(["library", "add", "--github", "owner/repo"], {
+          stdout: out.stream,
+          stderr: err.stream,
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
+        });
+        expect(code).toBe(0);
+        const text = out.read();
+        expect(text).toContain("<library_id>");
+        expect(text).not.toContain("undefined");
+      });
+    });
+  });
+});
