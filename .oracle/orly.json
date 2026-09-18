@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "orly_version": "0.10.10",
+  "orly_version": "0.10.11",
   "packs": [
     "language.rust",
     "persona.indy",
@@ -127,7 +127,7 @@
     ".opencode/skills/orly-spec-new/SKILL.md": "sha256:46ad13c03a8d06c679b7a991d36e88513a5dca97cd3ad58a7e7639781b804944",
     ".opencode/skills/orly-write-integration-test/SKILL.md": "sha256:c1a043392eed089ba5f1ef9b2a966115add265887260794bdd0d1323db1154ba",
     ".opencode/skills/orly-write-unit-test/SKILL.md": "sha256:2bea9f79b381cd4256950bc2d43577e27bea18ea6f1ffbf323fc9493401c8db8",
-    "AGENTS.orly.md": "sha256:49762cbb885f415f09675a9d165aa8bd6ccff45b86d3d42b8d7fe17e4f04580c",
+    "AGENTS.orly.md": "sha256:cd267ce98addb43f90acbf2ae1bd0e8ed38ae9cb9d37ef60fde0b0d79f5c5c32",
     "audits/deinit-pairs.sh": "sha256:83274ebdbc714d5668343ac34e6380e70fc9b4d666960d771291146e50650c6c",
     "audits/design-tokens.sh": "sha256:725808d70448eb4fef5f4587ff52540e7638829552e6b7603eb25df20b554b20",
     "audits/doc-read.sh": "sha256:8177610ec3f513c17d09e30b1977a06c1662984ba03af75da93b7ed1098ce8c0",
@@ -143,7 +143,7 @@
     "dispatch/lib.sh": "sha256:a85348befc7dc1dd6d5c31e5269fd7ac323cb4b8605526950eb1d5f4922cefdf",
     "dispatch/lifecycle.md": "sha256:1abc4cea3ef27be1d3d447da818f735034657a9d012682856c1da3635b616b9a",
     "dispatch/name_architecture.md": "sha256:44777bbd6b869cc4820968d5a035eab557b02f805523fc132815b861d893e6c8",
-    "dispatch/verify.md": "sha256:888faa8d9f0cbdda77a03eb9c5efcaeeed8e860f7de22b46660f740acf0d803d",
+    "dispatch/verify.md": "sha256:b12d8390508a7f076d3a8257b10059fa036e635c1bab8318868886f161117aef",
     "dispatch/write_any.md": "sha256:721e5408a639624360dc0fbb58810856045839476073bd732d60ddf23132e6b8",
     "dispatch/write_any.sh": "sha256:92ad9b8ea25a5f0e5e12be0a13cf3dab4a628e6fbf23bfd34f79dc3bf527a4f4",
     "dispatch/write_auth.md": "sha256:49e60ef4e89d1020a6062fe5aa9ba939d7cdf6589c3d93a58f2fb1a87095cc2f",
@@ -160,19 +160,19 @@
     "dispatch/write_sql.sh": "sha256:e86b4f3ba8ee3d4522277cbc327df5f667d00405e0f11ff3c09958ed7170d272",
     "dispatch/write_ts_adhere_bun.md": "sha256:d389aeeed8abe9badccaf5ac6f3b27b967dbf0c6c6fbc5897bbf8c2d04d927bb",
     "dispatch/write_ts_adhere_bun.sh": "sha256:3244892292500a18f5a053c9f1e954ef0ff51cb79b7ae83883aa3350289d1fa2",
-    "dispatch/write_zig.md": "sha256:931d598ce3272651e5ce8ebc4297a96091b019bacd5faa883d34aaa7cc5ed57d",
-    "dispatch/write_zig.sh": "sha256:3b196f70a55c07a8409b5900474bd10eddb9bdfd8a591ac55fb9b13b0c220b61",
+    "dispatch/write_zig.md": "sha256:3e34650a6d9cd3516ad801e1affa97758f5c97e606b9cd8cbd43029549683687",
+    "dispatch/write_zig.sh": "sha256:3dd999cb85fe7410cf1a0d15ba4a11b90b0c86cabd41c5ec4ab24533dfd93055",
     "docs/CHANGELOG_VOICE.md": "sha256:42176c9db6ed526831c1591b8658eca6b314cb015b79cfd01e4a654a72393056",
     "docs/DOCUMENTATION_RULES.md": "sha256:35fac7a008e173bb97f93c88a44f49af49d58d9e9b13784d0f1f189cd8efa16a",
     "docs/EXECUTE_DOC_READS.md": "sha256:fe8817faa34383c6c1035c01060b4fefd1f10241c2c8f9fd9dd71e10c32f8b07",
-    "docs/greptile-learnings/RULES.md": "sha256:b6de6de9dbf191fbec971bebfbc0c1e7d2f8f213e7155f83241cae2b70aabcd1",
+    "docs/greptile-learnings/RULES.md": "sha256:de2c12044a4806d33eda3d2812efeac32c9d9407027f7c2ea3230917bf005e93",
     "docs/HARNESS_VERIFY_OUTPUT.md": "sha256:5ec70e579266f547c27487b55b2947140ee91204493c7a83679e7862202136e8",
     "docs/LIFECYCLE_PATTERNS.md": "sha256:6247da49fda426801c770eb144cc6c169227c6bcc27005575d968dcdaef7df38",
     "docs/LOGGING_STANDARD.md": "sha256:76044e10cd5063bb3e09fcdf0c21568980954020e49bea186edc299de0038863",
     "docs/RELEASE_TEMPLATE.md": "sha256:25c181f0cce43216447e4d19b9ba7bacf5fe0098a6bdbd698b2939afa2bf682d",
     "docs/REST_API_DESIGN_GUIDELINES.md": "sha256:114e8a1c1968bae539812ceec417690abf99c761b4bb83c541bb24cdd9095ee5",
     "docs/SCHEMA_CONVENTIONS.md": "sha256:5a5b5b2a5d4a34c9a727ef663dbc97d0d9a39cc26989406cb0ecd3b0c220e056",
-    "docs/TEMPLATE.md": "sha256:3b38d8cff71f31748a08a4ab42177ac55884807ce1dee472ecebe2a229511283",
-    "docs/VERIFY_TIERS.md": "sha256:299348bc1ddae3e1d889d2d731dfba7dd306ab8e0583ab86ced625ce3cd56459"
+    "docs/TEMPLATE.md": "sha256:687b144617e948409a12f1e1713fac3aa45a0a03a972de6d9007f24d6144797e",
+    "docs/VERIFY_TIERS.md": "sha256:07b1a153a6c3937ca3f8c2532dbdd32c74931f163d00f3bfb972a282f540f991"
   }
 }

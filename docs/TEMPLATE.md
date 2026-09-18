@@ -343,7 +343,7 @@ For state replacement, include concurrency, ambiguous commit, expiry/deletion,
 identity collisions and fresh/populated upgrade where relevant. N/A applies
 only to demonstrably unnecessary assertions, never an unrun base behavior.
 Non-self-evident input shape → point at a fixture
-(samples/fixtures/m{{fill:N}}-fixtures/{{fill:name}}.json); don't inline JSON. Hard-to-
+(tests/fixtures/m{{fill:N}}-fixtures/{{fill:name}}.json); don't inline JSON. Hard-to-
 describe behaviour in prose ⇒ the Goal is fuzzy — fix the Goal, not this
 table. -->
 
@@ -387,7 +387,7 @@ grading. Authoring fills every column except Graded; VERIFY fills Graded. -->
 ### Behaviour evals
 
 - **Grounding rule:** {{fill:one sentence the output must never violate}}
-- **Golden set:** `samples/fixtures/{{fill:path}}` — {{fill:N}} cases across {{fill:3–5 coverage axes, incl. the nightmare case}}. A failure found in the wild becomes a new case; the set only grows.
+- **Golden set:** `tests/fixtures/{{fill:path}}` — {{fill:N}} cases across {{fill:3–5 coverage axes, incl. the nightmare case}}. A failure found in the wild becomes a new case; the set only grows.
 - **Ship threshold:** grounding 100% · task pass ≥{{fill:N}}% · 0 critical failures on {{fill:nightmare case}}. Each threshold is one rubric row with the command that computes it.
 - **Fallback:** below threshold or low confidence → {{fill:named recoverable behaviour}}; fabricated output is a P0 ❌.
 

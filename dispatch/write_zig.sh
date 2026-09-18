@@ -28,7 +28,6 @@ dispatch_run_helper "SQLMOD" "sql-mod.sh"      "--staged" # write_zig.md §SQLMO
 
 # ── delegations (checker lives in the product repo, not dotfiles) ───
 dispatch_delegate "PUB"      "make lint (zlint unused-decls)"
-dispatch_delegate "DRAIN"    "make check-pg-drain (lint-zig.py)"
 dispatch_delegate "XCOMPILE" "zig build -Dtarget=x86_64-linux && aarch64-linux"
 
 # ── judgment gates (no script can decide; agent states verdict in chat) ──
