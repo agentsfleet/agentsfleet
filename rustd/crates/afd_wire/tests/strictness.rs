@@ -129,7 +129,7 @@ fn should_reject_a_payload_missing_a_required_field() {
 /// moment to ask whether anything will read it.
 #[test]
 fn a_lease_request_is_an_empty_body() {
-    assert_eq!(serde_json::to_string(&LeaseRequest).unwrap(), "{}");
+    assert_eq!(serde_json::to_string(&LeaseRequest {}).unwrap(), "{}");
     let _ = serde_json::from_str::<LeaseRequest>("{}").unwrap();
     let _ = serde_json::from_str::<LeaseRequest>(r#"{"wire_version":2}"#).unwrap_err();
 }

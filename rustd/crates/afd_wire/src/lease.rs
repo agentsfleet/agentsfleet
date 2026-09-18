@@ -28,10 +28,15 @@ pub enum SecretDelivery {
 /// extractor — so the runner spent a field on every poll to tell the daemon
 /// something the daemon did not look at. Identity is the Bearer token and the
 /// shape is the only shape, which leaves a lease request with nothing to say.
+///
+/// Braces, not a unit struct. `struct LeaseRequest;` serializes to `null`,
+/// and the runner posts `{}` — `protocol.LEASE_REQUEST_JSON`. An empty braced
+/// struct is the shape that round-trips what is actually on the wire, and it is
+/// the one `deny_unknown_fields` can refuse a key against.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct LeaseRequest;
+pub struct LeaseRequest {}
 
 /// Content-addressed reference to an installed Fleet Bundle's snapshot.
 ///

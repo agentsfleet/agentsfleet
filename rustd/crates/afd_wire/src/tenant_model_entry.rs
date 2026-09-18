@@ -265,15 +265,35 @@ mod tests {
         );
     }
 
+    /// A key this build does not carry is refused, not quietly dropped.
+    ///
+    /// This asserted the opposite until Sep 2026, on a parity argument that no
+    /// longer holds: the Zig client set `.ignore_unknown_fields = true`, so the
+    /// absence of `deny_unknown_fields` here was the matching leniency. The
+    /// direction has since flipped — `afd_wire` DEFINES this request and the
+    /// runner conforms to the published document — so leniency here is not
+    /// parity with anything, it is a typo silently changing what was asked for.
     #[test]
-    fn a_create_body_ignores_fields_this_daemon_does_not_know() {
-        // `.ignore_unknown_fields = true` in the Zig, and the parity is the
-        // ABSENCE of `deny_unknown_fields` here — a dashboard sending a field a
-        // newer build understands must not be refused by an older one.
-        let parsed: super::CreateModelEntryRequest = serde_json::from_str(
+    fn a_create_body_refuses_a_field_this_daemon_does_not_know() {
+        let refused = serde_json::from_str::<super::CreateModelEntryRequest>(
             r#"{"model_id":"claude-opus-5","secret_ref":"anthropic-prod","nickname":"prod"}"#,
         )
-        .expect("an unknown field is ignored");
+        .expect_err("a closed request refuses a key it does not carry");
+
+        assert!(
+            refused.to_string().starts_with("unknown field `nickname`"),
+            "and names the key, which is what reaches the operator's log: {refused}"
+        );
+    }
+
+    /// The same body without the stray key still parses, so the refusal above
+    /// is the unknown field and not the shape.
+    #[test]
+    fn a_create_body_this_daemon_does_carry_still_parses() {
+        let parsed: super::CreateModelEntryRequest = serde_json::from_str(
+            r#"{"model_id":"claude-opus-5","secret_ref":"anthropic-prod"}"#,
+        )
+        .expect("every field is one this build carries");
 
         assert_eq!(parsed.model_id, "claude-opus-5");
         assert_eq!(parsed.secret_ref, "anthropic-prod");
