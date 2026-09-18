@@ -193,7 +193,7 @@ ready stream, not removing the guard.
 so it is verified against that module rather than against itself.
 
 `src/lib/contract/fixture_export.zig` writes one canonical JSON document per
-exported wire type into `samples/fixtures/wire-v2/`, plus a machine-readable
+exported wire type into `tests/fixtures/wire-v2/`, plus a machine-readable
 `manifest.json`. `make wire-fixtures` regenerates them. The Rust suite parses each
 fixture, re-serializes it, and compares **bytes**.
 

@@ -3,7 +3,7 @@
 //! The Zig module `src/lib/contract` is the source of truth for this wire. These
 //! types conform to it and never the other way round: `src/lib/contract/fixture_export.zig`
 //! emits one canonical JSON document per exported type into
-//! `samples/fixtures/wire-v2/`, and the round-trip suite parses each one,
+//! `tests/fixtures/wire-v2/`, and the round-trip suite parses each one,
 //! re-serializes it, and compares BYTES. A field renamed, reordered, retyped or
 //! dropped on either side turns that comparison red.
 //!
