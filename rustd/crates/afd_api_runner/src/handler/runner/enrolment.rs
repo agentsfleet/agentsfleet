@@ -79,7 +79,7 @@ pub(crate) async fn handle<D: Services>(State(services): State<Arc<D>>, body: By
     // whatever its build sends. `RegisterRequest` carries
     // `deny_unknown_fields`, so a misspelled key is refused here rather than
     // silently assigning a policy nobody asked for.
-    let Ok(request) = afd_core::json::object_from_slice::<RegisterRequest<'_>>(&body) else {
+    let Ok(request) = afd_http::handler::read_body::<RegisterRequest<'_>>(&body) else {
         return reject(DETAIL_MALFORMED_BODY);
     };
 

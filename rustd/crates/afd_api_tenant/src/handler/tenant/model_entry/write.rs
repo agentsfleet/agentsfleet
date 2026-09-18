@@ -70,7 +70,7 @@ pub(crate) async fn create<D: Services>(
     identity: PersonIdentity,
     body: Bytes,
 ) -> Result<Response, Refusal> {
-    let request: CreateModelEntryRequest = afd_core::json::object_from_slice(&body)
+    let request: CreateModelEntryRequest = afd_http::handler::read_body(&body)
         .map_err(|_shape| Refusal::malformed(DETAIL_MALFORMED_BODY))?;
     request
         .validate()
@@ -143,7 +143,7 @@ pub(crate) async fn update<D: Services>(
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let entry = parse_entry_id(&entry_id)?;
-    let request: UpdateModelEntryRequest = afd_core::json::object_from_slice(&body)
+    let request: UpdateModelEntryRequest = afd_http::handler::read_body(&body)
         .map_err(|_shape| Refusal::malformed(DETAIL_MALFORMED_BODY))?;
     request
         .validate()

@@ -126,7 +126,7 @@ pub(crate) async fn apply<D: Services>(
     identity: PersonIdentity,
     body: Bytes,
 ) -> Result<Response, Refusal> {
-    let request: TenantProviderRequest = afd_core::json::object_from_slice(&body)
+    let request: TenantProviderRequest = afd_http::handler::read_body(&body)
         .map_err(|_shape| Refusal::malformed(DETAIL_MALFORMED_BODY))?;
 
     if request.mode == ProviderMode::Platform {

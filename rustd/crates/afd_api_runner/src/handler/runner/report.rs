@@ -91,7 +91,7 @@ pub(crate) async fn handle<D: Services>(
     // the checkpoint are the two largest values on this path and both are
     // written straight into columns, so owning them here would copy a run's
     // whole output for nothing.
-    let Ok(request) = afd_core::json::object_from_slice::<ReportRequest<'_>>(&body) else {
+    let Ok(request) = afd_http::handler::read_body::<ReportRequest<'_>>(&body) else {
         return crate::envelope::ProblemResponse::new(
             afd_core::error_code::INVALID_REQUEST,
             DETAIL_MALFORMED,

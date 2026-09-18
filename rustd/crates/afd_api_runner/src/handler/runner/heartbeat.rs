@@ -95,7 +95,7 @@ fn read(body: &[u8]) -> HeartbeatRequest<'_> {
     if body.is_empty() {
         return NO_REPORT;
     }
-    afd_core::json::object_from_slice(body).unwrap_or(NO_REPORT)
+    afd_http::handler::read_body(body).unwrap_or(NO_REPORT)
 }
 
 /// The beat as the wire shape, borrowing the assignment from the row.

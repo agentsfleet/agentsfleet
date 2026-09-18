@@ -93,7 +93,7 @@ pub fn deinit(self: *LoopbackClient) void {
 /// (a use-after-free the worker pool surfaces when its allocator reuses the
 /// buffer). Matches `getSelf`/`memoryHydrate`, which copy for the same reason.
 pub fn lease(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, deadline_ms: u31) !std.json.Parsed(protocol.LeaseResponse) {
-    const res = try self.post(alloc, protocol.PATH_RUNNER_LEASES, runner_token, protocol.LEASE_REQUEST_CURRENT_JSON, deadline_ms);
+    const res = try self.post(alloc, protocol.PATH_RUNNER_LEASES, runner_token, protocol.LEASE_REQUEST_JSON, deadline_ms);
     defer alloc.free(res.body);
     try checkStatus(res.status);
     return parseLeaseResponse(alloc, res.body) catch ClientError.MalformedResponse;

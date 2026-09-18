@@ -68,7 +68,7 @@ pub(crate) async fn approve<D: Services>(
     Path(session_id): Path<String>,
     body: Bytes,
 ) -> Response {
-    let Ok(request) = afd_core::json::object_from_slice::<ApproveSessionRequest<'_>>(&body) else {
+    let Ok(request) = afd_http::handler::read_body::<ApproveSessionRequest<'_>>(&body) else {
         return malformed(DETAIL_APPROVE_BODY);
     };
     let approval = match Approval::parse(
@@ -148,7 +148,7 @@ pub(crate) async fn verify<D: Services>(
     Path(session_id): Path<String>,
     body: Bytes,
 ) -> Response {
-    let Ok(request) = afd_core::json::object_from_slice::<VerifySessionRequest<'_>>(&body) else {
+    let Ok(request) = afd_http::handler::read_body::<VerifySessionRequest<'_>>(&body) else {
         return malformed(DETAIL_VERIFY_BODY);
     };
     // Shape first, before anything is computed over it: a code that cannot be

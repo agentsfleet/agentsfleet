@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct AdminLibraryImport<'a> {
     /// `upload`, `github`, or first-party `template`.
     #[serde(borrow)]
@@ -167,6 +168,7 @@ pub struct FleetBundlesResponse<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Validate)]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct AdminLibraryPatch<'a> {
     /// Replacement display name.
     #[serde(borrow)]

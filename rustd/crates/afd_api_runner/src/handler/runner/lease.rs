@@ -8,12 +8,19 @@
 //!
 //! # The body is not read
 //!
-//! `LeaseRequest` carries a `wire_version`, and this port serves exactly one
-//! shape — the version-two fields apply unconditionally, with no negotiation,
-//! no downgrade and no "unsupported version" refusal. So the request has no
-//! extractor for its body at all, which is the strongest way to say the body
-//! changes nothing: there is no code path a future edit could make read it by
-//! accident.
+//! The runner posts `{}` and this port does not look at it. One shape is served
+//! unconditionally, with no negotiation, no downgrade and no "unsupported
+//! version" refusal. The request has no extractor for its body at all, which is
+//! the strongest way to say the body changes nothing: there is no code path a
+//! future edit could make read it by accident.
+//!
+//! There is no `LeaseRequest` type either, and that is deliberate. It existed
+//! to carry a `wire_version` from M157 until Sep 2026 that nothing ever read;
+//! with the field gone the type described an empty body nobody parsed, was
+//! absent from `public/openapi.json` because this route declares no
+//! `requestBody`, and had no consumer left but tests asserting its own shape.
+//! A wire type the daemon does not deserialize and the document does not
+//! publish is decoration, so it was deleted rather than kept building.
 //!
 //! # Always 200, and never 204
 //!

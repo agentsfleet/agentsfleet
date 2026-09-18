@@ -43,6 +43,13 @@ runs each TypeScript package's own coverage gate. A package-scoped runner —
 `cargo test -p afd_wire`, `bun run test` inside a package — proves that package
 and nothing more; it never satisfies the repository claim.
 
+`make test-integration-rustd` is the only lane that needs live datastores.
+Docker compose brings up Postgres and Dragonfly and the schemas reset per run.
+Nothing else a developer runs needs either: `make test-unit-all` stays
+datastore-free, because every Rust test that needs one is `#[ignore]`d and runs
+only here. `KEEP_TEST_STATE=1` skips the reset for the inner loop; Continuous
+Integration (CI) never sets it.
+
 `make lint-all` is the lint claim: `lint-rustd` (`cargo fmt --check` plus
 `cargo clippy --workspace --all-targets -- -D warnings`), `lint-scripts` (every
 `scripts/*_test.py`), the TypeScript lints, the shell and OpenAPI checks, and the
@@ -64,7 +71,7 @@ Three shapes, and the tier is readable without opening the file.
 
 | Shape | Needs a live datastore | Lane | `#[ignore]` |
 |---|---|---|---|
-| `integration_<subject>.rs` | yes — Postgres, Redis, or a booted daemon | `make test-integration-rustd` | on every test in the file |
+| `integration_<subject>.rs` | yes — Postgres, Dragonfly, or a booted daemon | `make test-integration-rustd` | on every test in the file |
 | `<subject>.rs` | no | `make test-unit-rustd` | on nothing in the file |
 | `<crate>_suite.rs` | — | — | declares `#[path]` modules only, holds no test of its own |
 
@@ -135,7 +142,7 @@ rename fourteen tests into a convention the repository had already left.
 
 ## Test isolation on a shared datastore (rules ISO-1 to ISO-3)
 
-One lane, one Postgres, one Redis, and tests that run concurrently inside every
+One lane, one Postgres, one Dragonfly, and tests that run concurrently inside every
 test binary. Cargo serialises BINARIES and libtest parallelises the tests within
 one, so splitting files apart changes nothing about two tests in the same file —
 file layout is not an isolation mechanism, and no rule below is satisfied by it.
@@ -158,7 +165,7 @@ statements; it removes the whole row-collision class.
 **ISO-2 — ISO-1 does not reach a key the product spells globally.** `fleet:ready` is
 one hash for the whole deployment and `HRANDFIELD` hands a poller somebody's
 fleet at random — competing consumers, which is the design. Minted row ids do
-not touch it. Isolation here means a keyspace of the test's own (a Redis logical
+not touch it. Isolation here means a keyspace of the test's own (a Dragonfly logical
 database in the connection URL, or a key prefix), and until one exists, ISO-3.
 
 **ISO-3 — Exclude what is global BY DESIGN.** `Inbox::expire` is
@@ -180,41 +187,15 @@ lane measured `tests_s` 110-123 with the guard against 71 for the concurrent
 runs that were producing wrong answers. Recovering that time means ISO-2 for the
 ready stream, not removing the guard.
 
-## The wire parity proof
+## The wire
 
-`afd_wire` is a port of a wire the Zig `src/lib/contract` module still defines,
-so it is verified against that module rather than against itself.
-
-`src/lib/contract/fixture_export.zig` writes one canonical JSON document per
-exported wire type into `samples/fixtures/wire-v2/`, plus a machine-readable
-`manifest.json`. `make wire-fixtures` regenerates them. The Rust suite parses each
-fixture, re-serializes it, and compares **bytes**.
-
-Three properties make that comparison mean something:
-
-- **Zig generates, Rust conforms.** If Rust produced the fixtures, a Rust bug
-  would be baked into the expected bytes and the suite would pass forever. The
-  generator has to be the other implementation or the oracle is circular.
-- **Bytes, not fields.** Field equality would miss field ORDER,
-  optional-emission policy, number spelling and enum spelling — every way two
-  encoders agree on a value and disagree on its encoding.
-- **The roster is reflection, not a list.** The emitter walks what the contract
-  modules actually export. A hand-written list is one someone forgets to update,
-  and a forgotten wire type is the drift the fixtures exist to catch.
-
-Two things stay hand-maintained, being what reflection cannot know: the excluded
-modules, and the per-type unknown-field policy. That policy is genuinely mixed —
-the Zig daemon passes `ignore_unknown_fields` at some parse sites and not others —
-so the manifest records it per type and the Rust serde attributes mirror it,
-with a generated probe per type asserting the observed leniency matches.
-
-What the round-trip **cannot** prove is integer width in the widening direction:
-any value Zig emits fits a wider Rust type and re-serializes identically. That
-gap is named in the tests and closed by a separate assertion that a value one past
-each declared width is refused.
-
-Fixtures are generated output. Never hand-edit one; regenerate and review the
-diff.
+`afd_wire` defines the `/v1/runners` protocol. `agentsfleetd` serves it and
+publishes the shapes through `public/openapi.json` (`openapi_contract.rs`,
+`openapi_coverage.rs` and their siblings in `afd_api/tests/` grade that
+document against the routes). `agentsfleet-runner` is a client: its Zig
+structs in `src/lib/contract` conform to what is published, never the
+reverse. The runner has no test lane of its own against the daemon yet; the
+Zig structs are hand-maintained against the OpenAPI document until one exists.
 
 ## Coverage
 
@@ -230,7 +211,7 @@ only the lines a diff touched, so on a small diff one unhit line reds the build 
 intentionally. The answer is a test, never absorbed slack.
 
 The Rust target measures the unit tier and the ignored live-datastore tier in
-one `cargo llvm-cov` invocation. Postgres, Redis, HTTP and runtime code are part
+one `cargo llvm-cov` invocation. Postgres, Dragonfly, HTTP and runtime code are part
 of the denominator, so `make test-coverage-rustd` resets the lane, applies the
 schema through the instrumented daemon, then runs both tiers once with
 `--include-ignored`. The target writes `rustd/lcov.info` and enforces the same

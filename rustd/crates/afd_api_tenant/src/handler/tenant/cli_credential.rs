@@ -82,7 +82,7 @@ pub(crate) async fn mint<D: Services>(
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let person = identity.person();
-    let request = afd_core::json::object_from_slice::<MintCliCredentialRequest<'_>>(&body)
+    let request = afd_http::handler::read_body::<MintCliCredentialRequest<'_>>(&body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MINT_BODY))?;
     let machine = MachineName::parse(&request.machine_name).map_err(Refusal::at(EVENT_MINT))?;
 

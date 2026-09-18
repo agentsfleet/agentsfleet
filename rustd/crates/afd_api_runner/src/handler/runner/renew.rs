@@ -91,7 +91,7 @@ fn counts(body: &[u8]) -> RenewRequest {
     if body.is_empty() {
         return RenewRequest::default();
     }
-    afd_core::json::object_from_slice(body).unwrap_or_else(|_unreadable| {
+    afd_http::handler::read_body(body).unwrap_or_else(|_unreadable| {
         tracing::warn!(
             event = EVENT_BODY_INVALID,
             "the renew body could not be read; this slice meters runtime only"

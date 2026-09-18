@@ -36,6 +36,7 @@ use serde_json::value::RawValue;
 /// request.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StoreSecretRequest<'a> {
     /// The name a fleet interpolates as `${secrets.<name>.<field>}`.
     #[serde(borrow)]
@@ -61,6 +62,7 @@ pub struct StoreSecretRequest<'a> {
 // live credential stale, and answered 200.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ReplaceSecretRequest<'a> {
     /// The complete replacement body.
     ///
@@ -186,19 +188,41 @@ mod tests {
         );
     }
 
+    /// The envelope is closed; the secret payload inside it is not.
+    ///
+    /// Both halves matter and they pull opposite ways. A stray key BESIDE
+    /// `data` is a caller mistake and is refused. Keys INSIDE `data` are the
+    /// secret itself — arbitrary, provider-shaped, and stored verbatim — so
+    /// `deny_unknown_fields` on the envelope must not reach into them. This
+    /// asserted leniency on the envelope too until Sep 2026, on a parity
+    /// argument with the Zig client's `ignore_unknown_fields = true` that no
+    /// longer holds now `afd_wire` defines the request.
     #[test]
-    fn a_create_body_keeps_its_data_verbatim_and_ignores_unknown_fields() {
-        // `ignore_unknown_fields = true` on the Zig side, and the parity is the
-        // absence of `deny_unknown_fields` here.
-        let request: StoreSecretRequest<'_> = serde_json::from_str(
+    fn a_create_body_refuses_a_stray_key_beside_its_verbatim_data() {
+        let refused = serde_json::from_str::<StoreSecretRequest<'_>>(
             r#"{"name":"openai","data":{"provider":"openai","api_key":"sk"},"extra":1}"#,
+        )
+        .expect_err("a closed envelope refuses a key it does not carry");
+
+        assert!(
+            refused.to_string().starts_with("unknown field `extra`"),
+            "and names it: {refused}"
+        );
+    }
+
+    #[test]
+    fn a_create_body_keeps_its_data_verbatim() {
+        let request: StoreSecretRequest<'_> = serde_json::from_str(
+            r#"{"name":"openai","data":{"provider":"openai","api_key":"sk"}}"#,
         )
         .expect("the request parses");
 
         assert_eq!(request.name, "openai");
         assert_eq!(
             request.data.get(),
-            r#"{"provider":"openai","api_key":"sk"}"#
+            r#"{"provider":"openai","api_key":"sk"}"#,
+            "the payload's own keys are the secret, not fields this type declares — \
+             closing the envelope must not reach inside it"
         );
     }
 }

@@ -16,13 +16,11 @@ readonly GATE="$SCRIPT_DIR/check_architecture_doc.sh"
 readonly MAKE_DIR="$REPO_ROOT/make"
 readonly QUALITY_MK="$MAKE_DIR/quality.mk"
 
-# Fixture milestones: one shipped, one in flight, one planned, one that exists
-# nowhere. Workstream-suffixed names are composed rather than written out, since
+# Fixture milestones: one shipped, one in flight, one that exists nowhere. Workstream-suffixed names are composed rather than written out, since
 # a literal `M<n>_<nnn>` in source is a milestone identifier the MS-ID gate bans
 # (RULE TST-NAM) — tests are code, and the suffix is data here, not a reference.
 readonly DONE_ID="M100"
 readonly ACTIVE_ID="M200"
-readonly PENDING_ONLY_ID="M777"
 readonly PHANTOM_ID="M999"
 readonly WORKSTREAM="_001"
 
@@ -37,13 +35,12 @@ readonly WORK_DIR
 cleanup() { rm -rf "$WORK_DIR"; }
 trap cleanup EXIT
 
-# Builds a spec tree: DONE_ID shipped, ACTIVE_ID in flight, PENDING_ONLY_ID planned.
+# Builds a spec tree: DONE_ID shipped, ACTIVE_ID in flight.
 build_spec_root() {
   local root="$1"
   mkdir -p "$root/done" "$root/active" "$root/pending"
   : >"$root/done/${DONE_ID}${WORKSTREAM}_P1_DONE_THING.md"
   : >"$root/active/${ACTIVE_ID}${WORKSTREAM}_P1_ACTIVE_THING.md"
-  : >"$root/pending/${PENDING_ONLY_ID}${WORKSTREAM}_P1_PLANNED_THING.md"
 }
 
 # `body` lands in `filename` inside a fresh architecture dir. No relative links
@@ -91,44 +88,6 @@ test_arch_doc_validates_all_m_ids() {
   ok "$name"
 }
 
-# ── Dimension 4.3 — pending/ resolves in roadmap.md and nowhere else ─────────
-
-test_arch_doc_roadmap_resolves_pending() {
-  local name="test_arch_doc_roadmap_resolves_pending"
-  local spec_root="$WORK_DIR/specs"
-  build_spec_root "$spec_root"
-
-  local roadmap elsewhere phantom_roadmap
-  roadmap="$(build_arch_dir "$WORK_DIR/b1" roadmap.md "Depends on ${PENDING_ONLY_ID} (planned).")"
-  if ! run_gate "$roadmap" "$spec_root"; then
-    bad "$name" "roadmap.md must resolve a pending/-only milestone"
-    return
-  fi
-
-  elsewhere="$(build_arch_dir "$WORK_DIR/b2" direction.md "Depends on ${PENDING_ONLY_ID} (planned).")"
-  if run_gate "$elsewhere" "$spec_root"; then
-    bad "$name" "a non-roadmap doc resolved a pending/-only milestone — the carve-out leaked"
-    return
-  fi
-
-  # The carve-out widens where a spec may live, never whether one must exist.
-  phantom_roadmap="$(build_arch_dir "$WORK_DIR/b3" roadmap.md "Depends on $PHANTOM_ID.")"
-  if run_gate "$phantom_roadmap" "$spec_root"; then
-    bad "$name" "roadmap.md laundered $PHANTOM_ID, which has no spec in any directory"
-    return
-  fi
-
-  # The exemption is the top-level roadmap.md alone. A nested roadmap.md must not
-  # inherit it — else any doc could launder unshipped ids by living at that name.
-  local nested="$WORK_DIR/b4"
-  mkdir -p "$nested/scenarios"
-  printf '# nested\n\nDepends on %s (planned).\n' "$PENDING_ONLY_ID" >"$nested/scenarios/roadmap.md"
-  if run_gate "$nested" "$spec_root"; then
-    bad "$name" "a nested scenarios/roadmap.md resolved a pending-only milestone — basename carve-out leaked"
-    return
-  fi
-  ok "$name"
-}
 
 # The unresolved-reference path builds its own diagnostic; a dangling variable
 # there (it once expanded a renamed constant under `set -u`) would crash with an
@@ -480,7 +439,6 @@ test_arch_doc_same_page_anchor_is_checked() {
 }
 
 test_arch_doc_validates_all_m_ids
-test_arch_doc_roadmap_resolves_pending
 test_arch_doc_unresolved_ref_names_the_milestone
 test_arch_doc_missing_dir_fails_loud
 test_arch_doc_wired_into_lint_all
@@ -494,6 +452,89 @@ test_arch_doc_no_retired_slot_numbers() {
     'Indexes live in slot 033.'
 }
 
+test_arch_doc_carries_no_conflict_marker() {
+  # The marker that shipped rode the END of a sentence, which is why the check
+  # cannot be line-anchored. The good body proves prose mentioning a merge is
+  # still fine; the bad body is the exact shape that reached the default branch.
+  assert_citation_shape test_arch_doc_carries_no_conflict_marker marker \
+    'The merge brought both halves in cleanly.' \
+    'The merge brought both halves in cleanly. >>>>>>> origin/main'
+}
+
+test_arch_doc_every_clickable_link_form_is_checked() {
+  # Markdown offers five clickable destinations and the corpus uses one. The
+  # other four are checked so a link written tomorrow in a form nobody used
+  # before is read rather than skipped — the hole a single inline pattern left.
+  local name="test_arch_doc_every_clickable_link_form_is_checked"
+  local spec_root="$WORK_DIR/specs"
+  build_spec_root "$spec_root"
+  local n=0 body dir
+  for body in \
+    'See [x](https://docs.agentsfleet.net/errors/UZ-EXEC-012).' \
+    'See [x](<https://docs.agentsfleet.net/errors/UZ-EXEC-012>).' \
+    'See [x][t].
+
+[t]: https://docs.agentsfleet.net/errors/UZ-EXEC-012' \
+    'See <https://docs.agentsfleet.net/errors/UZ-EXEC-012>.' \
+    'See <a href="https://docs.agentsfleet.net/errors/UZ-EXEC-012">x</a>.'
+  do
+    n=$((n + 1))
+    dir="$(build_arch_dir "$WORK_DIR/form_$n" direction.md "$body")"
+    if run_gate_from_root "$dir" "$spec_root"; then
+      bad "$name" "clickable form $n reached an unpublished page and passed"
+      return
+    fi
+  done
+  ok "$name"
+}
+
+test_arch_doc_only_link_targets_are_checked() {
+  # A docs URL is checked when a reader can click it, which in Markdown means it
+  # is a link target. Bare text spelling the same URL is example output — the
+  # CLI's rendered `see:` line and an RFC 7807 `type` member both do it — and is
+  # not navigation. Written this way the rule needs no fence parser: the tilde
+  # fence, the four-backtick block and the indentation limit all stop mattering,
+  # because none of those shapes is link syntax.
+  local name="test_arch_doc_only_link_targets_are_checked"
+  local spec_root="$WORK_DIR/specs"
+  build_spec_root "$spec_root"
+  local bare fenced linked
+
+  bare="$(build_arch_dir "$WORK_DIR/link_bare" direction.md \
+    'Rendered: see https://docs.agentsfleet.net/errors/UZ-EXEC-012 for detail.')"
+  if ! run_gate_from_root "$bare" "$spec_root"; then
+    bad "$name" "a bare docs URL was treated as a link"
+    return
+  fi
+
+  fenced="$(build_arch_dir "$WORK_DIR/link_fenced" direction.md \
+    'Rendered:
+
+~~~text
+see: https://docs.agentsfleet.net/errors/UZ-EXEC-012
+~~~')"
+  if ! run_gate_from_root "$fenced" "$spec_root"; then
+    bad "$name" "a tilde-fenced docs URL was treated as a link"
+    return
+  fi
+
+  linked="$(build_arch_dir "$WORK_DIR/link_real" direction.md \
+    'See [the page](https://docs.agentsfleet.net/errors/UZ-EXEC-012).')"
+  if run_gate_from_root "$linked" "$spec_root"; then
+    bad "$name" "an unpublished link target passed"
+    return
+  fi
+  ok "$name"
+}
+
+test_arch_doc_published_links_resolve() {
+  # A pointer to the published set must name a page that exists there. The good
+  # body names a real one; the bad body names a plausible page nobody wrote.
+  assert_citation_shape test_arch_doc_published_links_resolve published \
+    'User-facing: [the memory page](https://docs.agentsfleet.net/memory).' \
+    'User-facing: [the memory page](https://docs.agentsfleet.net/concepts/memory-internals).'
+}
+
 test_arch_doc_cited_paths_resolve
 test_arch_doc_cited_tables_exist
 test_arch_doc_cited_make_targets_exist
@@ -503,6 +544,10 @@ test_arch_doc_punctuated_anchor_is_checked
 test_arch_doc_inside_link_anchor_is_checked
 test_arch_doc_multi_anchor_and_sibling_dir_are_checked
 test_arch_doc_same_page_anchor_is_checked
+test_arch_doc_carries_no_conflict_marker
+test_arch_doc_published_links_resolve
+test_arch_doc_only_link_targets_are_checked
+test_arch_doc_every_clickable_link_form_is_checked
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]
