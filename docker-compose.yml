@@ -69,7 +69,7 @@ services:
     # Pinned to the release the probe and the prototype proofs ran against.
     # Bumping it is a deliberate act that re-runs `make test-integration-rustd`
     # on both backends, not a drive-by.
-    image: docker.dragonflydb.io/dragonflydb/dragonfly:v1.40.2
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.0
     entrypoint: ["bash", "/scripts/dragonfly-cluster.sh"]
     command: ["serve"]
     environment:
