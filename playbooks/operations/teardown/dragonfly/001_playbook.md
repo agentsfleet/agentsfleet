@@ -1,10 +1,10 @@
-# Redis Teardown
+# Dragonfly Teardown
 
 **Owners:** 🤠 Indy authorizes and types the target; 🦉 Orly executes and
 verifies.
 **Scope:** exactly one of development or production per run.
 
-This permanently executes Redis `FLUSHALL`. It removes every stored key,
+This permanently executes `FLUSHALL` against the Dragonfly cluster. It removes every stored key,
 including:
 
 - `fleet:{fleet_id}:events` streams and their `fleet_lease` consumer groups
@@ -30,22 +30,22 @@ Development:
 
 ```bash
 ALLOW_VAULT_READS=1 \
-ALLOW_REDIS_TEARDOWN=1 \
+ALLOW_DRAGONFLY_TEARDOWN=1 \
 ENV=dev \
-  ./playbooks/operations/teardown/redis/00_gate.sh
+  ./playbooks/operations/teardown/dragonfly/00_gate.sh
 ```
 
 Production:
 
 ```bash
 ALLOW_VAULT_READS=1 \
-ALLOW_REDIS_TEARDOWN=1 \
+ALLOW_DRAGONFLY_TEARDOWN=1 \
 ENV=prod \
-  ./playbooks/operations/teardown/redis/00_gate.sh
+  ./playbooks/operations/teardown/dragonfly/00_gate.sh
 ```
 
 The gate rejects `ENV=all` and prompts for the full environment name before
-flushing. It forwards the Redis URL to the container by environment name, so
+flushing. It forwards the Dragonfly URL to the container by environment name, so
 the credential does not appear in the process arguments.
 
 ## After the empty-cache check

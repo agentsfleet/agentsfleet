@@ -258,7 +258,7 @@ test_existing_teardown_gates_still_reject_unknown_env() {
   # milestone. Their pre-existing ENV validation must be untouched.
   for gate in \
     "$root/playbooks/operations/teardown/database/00_gate.sh" \
-    "$root/playbooks/operations/teardown/redis/00_gate.sh"; do
+    "$root/playbooks/operations/teardown/dragonfly/00_gate.sh"; do
     if ENV=staging ALLOW_VAULT_READS=1 bash "$gate" >/dev/null 2>&1; then
       failed="$failed $gate"
     fi
