@@ -229,7 +229,9 @@ mod tests {
         let refused = read_body::<Closed>(br#"{"api_key":"sk-live-secret","wire_version":2}"#)
             .expect_err("a closed type refuses a key it does not carry");
         assert!(
-            refused.to_string().starts_with("unknown field `wire_version`"),
+            refused
+                .to_string()
+                .starts_with("unknown field `wire_version`"),
             "the caller receives serde's own error, not a rewritten one: {refused}"
         );
     }
