@@ -22,8 +22,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B2 — after M197_001, whose dashboard asset and grader this workstream extends.
 **Branch:** `feat/m197-fleet-census`
 **Baseline revision:** `93b17ad445b686bf0809d9accbd19dc7049151ab`
-**Test Baseline:** unit=6744 integration=1300 — unit 6744 passed / 0 failed / 513 ignored · integration 1300 passed / 0 failed. Measured on the merged branch at `90f4034e4`, which carries this workstream and M197_001 together.
-**Baseline evidence:** recorded in the M197_001 Pull Request Session Notes; both lanes run on the merged tree with live Postgres and Dragonfly via `make test-integration-rustd`.
+**Test Baseline:** unit=2720 integration=493 — unit 2720 passed / 0 failed / 513 ignored · integration 493 passed / 0 failed. Measured on the merged branch at `90f4034e4`, which carries this workstream and M197_001 together.
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M197_001-a31d3bc36.md`
 **Depends on:** M197_001 — its grader requires every produced family to reach a panel, and its dashboard is the asset the two new panels land in.
 **Provenance:** LLM-drafted (claude-fable-5-1, Sep 17, 2026), grounded in source reads of `rustd/crates/afd_observability`, `afd_fleet`, `afd_runner` and `afd_fleet_lifecycle`
 **Canonical architecture:** `docs/architecture/observability.md` §Metric family census
