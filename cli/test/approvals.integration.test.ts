@@ -320,3 +320,70 @@ describe("approvals — machine surface", () => {
     });
   });
 });
+
+describe("approvals — degraded daemon answers", () => {
+  test("a resolution carrying no outcome still reports the decision that was asked for", async () => {
+    await authedScope(async () => {
+      // An older daemon answers 200 with no `outcome` field. The command must
+      // still say something true rather than printing "undefined".
+      const routes: MockRoutes = {
+        [`POST ${APPROVALS}/${GATE_ID}/approve`]: () => jsonResponse(200, { gate_id: GATE_ID }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(["approvals", "approve", GATE_ID], {
+          stdout: out.stream,
+          stderr: err.stream,
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
+        });
+        expect(code).toBe(0);
+        const text = out.read();
+        expect(text).toContain("approve");
+        expect(text).not.toContain("undefined");
+      });
+    });
+  });
+
+  test("a gate missing optional fields renders placeholders, never 'undefined'", async () => {
+    await authedScope(async () => {
+      const routes: MockRoutes = {
+        [`GET ${APPROVALS}/${GATE_ID}`]: () =>
+          jsonResponse(200, { gate_id: GATE_ID, status: "pending" }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(["approvals", "show", GATE_ID], {
+          stdout: out.stream,
+          stderr: err.stream,
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
+        });
+        expect(code).toBe(0);
+        const text = out.read();
+        expect(text).toContain("—");
+        expect(text).not.toContain("undefined");
+        expect(text).not.toContain("null");
+      });
+    });
+  });
+
+  test("a list row missing a fleet name falls back to its identifier", async () => {
+    await authedScope(async () => {
+      const routes: MockRoutes = {
+        [`GET ${APPROVALS}`]: () =>
+          jsonResponse(200, { items: [gate({ fleet_name: null })] }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        await runCli(["approvals", "list"], {
+          stdout: out.stream,
+          stderr: err.stream,
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
+        });
+        expect(out.read()).toContain(FLEET_ID);
+      });
+    });
+  });
+});
