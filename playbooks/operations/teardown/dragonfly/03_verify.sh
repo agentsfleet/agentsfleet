@@ -1,5 +1,5 @@
 #!/bin/bash
-# 03_verify.sh - Verify Redis cache teardown completeness (DBSIZE should be 0)
+# 03_verify.sh - Verify Dragonfly teardown completeness (DBSIZE should be 0)
 
 set -euo pipefail
 
@@ -32,7 +32,7 @@ get_connection_string() {
 	playbooks_read_ref_or_empty "$ref"
 }
 
-verify_redis() {
+verify_dragonfly() {
 	local url="$1"
 	local env_label="$2"
 	local dbsize
@@ -62,12 +62,12 @@ exit_code=0
 
 if [ "$env_mode" = "dev" ]; then
 	dev_url=$(get_connection_string "op://$vault_dev/dragonfly-dev/api-url")
-	[ -n "$dev_url" ] && { verify_redis "$dev_url" "DEVELOPMENT" || exit_code=1; }
+	[ -n "$dev_url" ] && { verify_dragonfly "$dev_url" "DEVELOPMENT" || exit_code=1; }
 fi
 
 if [ "$env_mode" = "prod" ]; then
 	prod_url=$(get_connection_string "op://$vault_prod/dragonfly-prod/api-url")
-	[ -n "$prod_url" ] && { verify_redis "$prod_url" "PRODUCTION" || exit_code=1; }
+	[ -n "$prod_url" ] && { verify_dragonfly "$prod_url" "PRODUCTION" || exit_code=1; }
 fi
 
 echo ""

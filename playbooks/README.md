@@ -104,7 +104,7 @@ These routes deploy an installation that already passed the rebuild sequence.
 - `operations/runner_onboarding` — prepare and enroll a runner.
 - `operations/slack_app_registration` — register the platform Slack app.
 - `operations/teardown/database` — destructively empty a database.
-- `operations/teardown/redis` — destructively empty Redis.
+- `operations/teardown/dragonfly` — destructively empty the Dragonfly cluster.
 - `operations/teardown/user` — delete a development user and verify purge.
 - `operations/zoho_app_registration` — register the platform Zoho Desk app.
 <!-- playbook-inventory:end -->
