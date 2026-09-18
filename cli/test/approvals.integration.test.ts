@@ -435,3 +435,74 @@ describe("approvals — a gate past the first page", () => {
     });
   });
 });
+
+describe("approvals show — who decided it", () => {
+  test("falls back to the subject when the daemon has no display name", async () => {
+    await authedScope(async () => {
+      // api-dev answers `resolved_by_name: ""` with a populated `resolved_by`.
+      // Rendering only the display name showed `—` for a gate a person had
+      // demonstrably decided.
+      const routes: MockRoutes = {
+        [`GET ${APPROVALS}/${GATE_ID}`]: () =>
+          jsonResponse(200, gate({
+            status: "approved",
+            resolved_by_name: "",
+            resolved_by: "user_3HizL5hdEfQ9Gy4e6Qsuq9nkKCu",
+          })),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(["approvals", "show", GATE_ID], {
+          stdout: out.stream,
+          stderr: err.stream,
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
+        });
+        expect(code).toBe(0);
+        const text = out.read();
+        expect(text).toContain("user_3HizL5hdEfQ9Gy4e6Qsuq9nkKCu");
+        expect(text).not.toMatch(/resolved_by\s+·\s+—/);
+      });
+    });
+  });
+
+  test("prefers the display name when the daemon has one", async () => {
+    await authedScope(async () => {
+      const routes: MockRoutes = {
+        [`GET ${APPROVALS}/${GATE_ID}`]: () =>
+          jsonResponse(200, gate({ resolved_by_name: "Indy", resolved_by: "user_x" })),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        await runCli(["approvals", "show", GATE_ID], {
+          stdout: out.stream,
+          stderr: err.stream,
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
+        });
+        const text = out.read();
+        expect(text).toContain("Indy");
+        expect(text).not.toContain("user_x");
+      });
+    });
+  });
+
+  test("an undecided gate still shows the em dash, not an empty cell", async () => {
+    await authedScope(async () => {
+      const routes: MockRoutes = {
+        [`GET ${APPROVALS}/${GATE_ID}`]: () =>
+          jsonResponse(200, gate({ resolved_by_name: "", resolved_by: "" })),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        await runCli(["approvals", "show", GATE_ID], {
+          stdout: out.stream,
+          stderr: err.stream,
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
+        });
+        expect(out.read()).toContain("—");
+      });
+    });
+  });
+});

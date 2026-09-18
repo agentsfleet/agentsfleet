@@ -113,18 +113,28 @@ export const statusEffect: Effect.Effect<
   yield* output.printSection("Fleets");
   let anyParked = false;
   for (const z of fleets) {
-    const waiting = z.id ? (waitingByFleet.get(z.id) ?? 0) : 0;
-    if (waiting > 0) anyParked = true;
+    // An unreadable inbox renders the em dash, not 0. Reading it needs
+    // `approval:read`, which a credential holding `fleet:read` may not carry,
+    // and "0 waiting" for a parked Fleet is the answer this column exists to
+    // stop being given.
+    const waiting =
+      waitingByFleet === null
+        ? WAITING_UNKNOWN
+        : String(z.id ? (waitingByFleet.get(z.id) ?? 0) : 0);
+    if (waiting !== WAITING_UNKNOWN && waiting !== "0") anyParked = true;
     yield* output.printKeyValue({
       Name: z.name ?? "",
       Status: z.status ?? "",
       Events: String(z.events_processed ?? 0),
       Budget: formatDollars(z.budget_used_nanos),
-      Waiting: String(waiting),
+      Waiting: waiting,
     });
   }
   if (anyParked) {
     yield* output.info(ui.dim(PARKED_HINT));
+  }
+  if (waitingByFleet === null) {
+    yield* output.info(ui.dim(WAITING_UNREADABLE));
   }
 });
 
@@ -220,3 +230,8 @@ const NO_FLEETS_HINT =
 // status that reports the wait also names the command that ends it.
 const PARKED_HINT =
   "Some fleets are waiting on approval. Review with: agentsfleet approvals list" as const;
+
+// The waiting count when the approvals inbox could not be read at all.
+const WAITING_UNKNOWN = "—" as const;
+const WAITING_UNREADABLE =
+  "Waiting counts unavailable — this credential cannot read the approval inbox (needs approval:read)." as const;
