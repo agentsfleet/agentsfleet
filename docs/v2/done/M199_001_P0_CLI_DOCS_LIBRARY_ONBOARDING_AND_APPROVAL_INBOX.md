@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M199
 **Workstream:** 001
 **Date:** Sep 18, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — a fleet whose trigger declares `repository_access: write` parks on an approval gate the CLI cannot see, so `steer` can never complete from the terminal.
 **Categories:** CLI, DOCS
 **Batch:** B1 — single stream; no parallel workstream depends on it.
 **Branch:** feat/m199-cli-library-approvals-consistency
 **Baseline revision:** 4079743cb7f760b2b4ae45c877efbf062c9a7618
-**Test Baseline:** unit=1673 — Command-Line Interface (CLI) 1673 passed / 14 skipped / 0 failed (`cd cli && bun test`) at `4079743cb`, measured in a detached worktree with `dist/` built. The diff is TypeScript under `cli/` alone, so the Rust half of `make test-unit-all` (2630 passed / 0 failed) and the integration lane are identical by construction and reported once, from the branch. Branch: 1748 passed / 16 skipped / 0 failed — delta +75.
+**Test Baseline:** unit=1673 — Command-Line Interface (CLI) 1673 passed / 14 skipped / 0 failed (`cd cli && bun test`) at `4079743cb`, measured in a detached worktree with `dist/` built. The diff is TypeScript under `cli/` alone, so the Rust half of `make test-unit-all` (2630 passed / 0 failed) and the integration lane are identical by construction and reported once, from the branch. Branch: 1757 passed / 16 skipped / 0 failed — delta +84. Integration 512 passed / 0 failed.
 **Baseline evidence:** `playbooks/operations/acceptance/baselines/M199_001-4079743cb.md`
 **Depends on:** none
 **Provenance:** agent-generated (pre-spec, live probe of https://api-dev.agentsfleet.net on Sep 18, 2026)
@@ -263,7 +263,7 @@ The repository's existing analytics already records command execution; this spec
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ `ALL GATES GREEN` at every commit |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `All unit lanes passed`; Rust 2630 passed / 0 failed; CLI 1773 tests, line coverage 100.00% |
 | S3a | Lint green | `make lint-all` | exit 0 | P0 | ✅ `✓ All lint checks passed` |
-| S3b | Integration lane green | `make test-integration-rustd` | exit 0 | P0 | ⬜ runs in Continuous Integration (CI) — the lane needs docker compose Postgres and Dragonfly; this diff loads no file it compiles |
+| S3b | Integration lane green | `make test-integration-rustd` | exit 0 | P0 | ✅ 512 passed / 0 failed, local real stack (docker compose Postgres + Dragonfly) |
 | S3c | Version sync green | `make check-version` | exit 0 | P0 | ✅ `✓ all versions match 0.49.0` |
 | S4 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` at every commit |
 | S5 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no output |
