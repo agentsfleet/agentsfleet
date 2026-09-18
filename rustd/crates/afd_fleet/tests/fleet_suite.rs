@@ -34,6 +34,8 @@ mod integration_activity_publish;
 mod integration_admission_recovery;
 #[path = "integration_credential_mint.rs"]
 mod integration_credential_mint;
+#[path = "integration_delivery_lookup.rs"]
+mod integration_delivery_lookup;
 #[path = "integration_gate_grants.rs"]
 mod integration_gate_grants;
 #[path = "integration_lease_affinity.rs"]

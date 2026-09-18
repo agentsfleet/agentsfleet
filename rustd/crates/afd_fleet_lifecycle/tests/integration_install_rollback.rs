@@ -179,3 +179,53 @@ async fn a_rolled_back_install_can_be_retried_into_a_working_fleet() {
 
     lane.cleanup().await;
 }
+
+/// An install writes no bundle pointer, and every later column still lands.
+///
+/// `INSERT_FLEET` used to write `bundle_snapshot_key`, deriving
+/// `fleet-bundles/{hash}.tar.zst` — a layout the store stopped using when
+/// preparation began deriving keys from the content hash, and a column nothing
+/// has ever read. Removing the bind renumbered every parameter after it, which
+/// is the risk this test exists for: a transposition there writes a wrong value
+/// into a right column and compiles clean.
+///
+/// So the assertions are the pointer is NULL and the columns that moved are
+/// still themselves. The content hash is the one that matters — it is what
+/// retrieval derives the real object key from, and `afd_fleet::bundle` grades
+/// that derivation against the layout the store actually uses.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs the lane's Postgres and Dragonfly"]
+async fn an_install_writes_no_bundle_pointer_and_renumbers_nothing_else() {
+    let lane = Lane::create().await;
+
+    let installed = lane
+        .fleets
+        .install(&lane.workspace, &request(), Lane::now())
+        .await
+        .expect("a seeded library entry installs");
+
+    assert_eq!(
+        lane.fleet_column(&installed.id, "bundle_snapshot_key")
+            .await,
+        None,
+        "the unread pointer is not written; the column stays declared and NULL"
+    );
+    assert_eq!(
+        lane.fleet_column(&installed.id, "status").await.as_deref(),
+        Some("active"),
+        "the status after the removed bind is still the status"
+    );
+    assert!(
+        lane.fleet_column(&installed.id, "created_at")
+            .await
+            .is_some_and(|stamped| stamped == Lane::now().as_millis().to_string()),
+        "both timestamps take the instant, which is the parameter the removal moved"
+    );
+    assert_eq!(
+        lane.fleet_column(&installed.id, "updated_at").await,
+        lane.fleet_column(&installed.id, "created_at").await,
+        "one instant, stamped on both"
+    );
+
+    lane.cleanup().await;
+}

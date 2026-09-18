@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M198
 **Workstream:** 001
 **Date:** Sep 18, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — accepted work a producer was told yes about can stay unrecovered forever on a busy deployment, and the operator counter that would show it records only successes.
 **Categories:** API, DOCS, OBS
 **Batch:** B1 — no concurrent workstream; the admission and outbound ledgers are edited by nothing else in flight.
@@ -107,18 +107,18 @@ Consulted, **not** edited: `schema/910_fleet_admissions.sql` and `schema/510_fle
 
 The reconciliation pass rotates through fleets holding undelivered work instead of restarting at the lowest-sorting one. **Implementation default:** a keyset bound `fleet_id > $2::uuid` on the existing scan, because the scan's `DISTINCT ON` already orders by `fleet_id` and the bound rides the same index prefix rather than adding a sort.
 
-- **Dimension 1.1** (DONE) — a deployment with more fleets holding undelivered work than one pass examines visits every one across consecutive passes, and a pass reading fewer fleets than its cap wraps to the start so the rotation strands nobody → Test `test_rotation_visits_every_unfinished_fleet`
-- **Dimension 1.3** (DONE) — lost work on a fleet sorting after the cap is recovered within a bounded number of passes → Test `queue_loss_beyond_the_fleet_cap_still_recovers`
-- **Dimension 1.4** (DONE) — a cursor naming a fleet whose row is gone resumes at the next fleet rather than stalling or restarting → Test `test_cursor_survives_a_deleted_fleet`
+- **Dimension 1.1** (DONE) — a deployment with more fleets holding undelivered work than one pass examines visits every one across consecutive passes, and a pass reading fewer fleets than its cap wraps to the start so the rotation strands nobody → Test `rotation_visits_every_unfinished_fleet`
+- **Dimension 1.3** (DONE) — lost work on a fleet sorting after the cap is recovered within a bounded number of passes → Test `rotation_recovers_fleets_past_the_pass_budget`
+- **Dimension 1.4** (DONE) — a cursor naming a fleet whose row is gone resumes at the next fleet rather than stalling or restarting → Test `a_cursor_survives_a_deleted_fleet`
 
 ### §2 — Recovery reaches every row on a lost fleet
 
 A fleet whose walk filled its row batch is remembered as under repair and resumes from the row key it stopped at, bypassing the head probe that recovery has just made healthy. **Implementation default:** the resume set is bounded by the same constant that bounds fleets per pass, because a pass cannot put more fleets into repair than it examined; overflow declines to add rather than evicting a fleet mid-repair, and the declining is logged.
 
-- **Dimension 2.1** (DONE) — a loss larger than one row batch on a single fleet is fully recovered across consecutive passes, including the rows after the first batch → Test `queue_loss_past_the_row_cap_recovers_every_admission`
-- **Dimension 2.2** (DONE) — a fleet under repair is walked from its resume key even when its oldest undelivered receipt is live, so restored rows cannot hide later lost ones → Test `test_repairing_fleet_skips_the_head_shortcut`
+- **Dimension 2.1** (DONE) — a loss larger than one row batch on a single fleet is fully recovered across consecutive passes, including the rows after the first batch → Test `a_walk_resumes_past_the_rows_it_already_repaired`
+- **Dimension 2.2** (DONE) — a fleet under repair is walked from its resume key even when its oldest undelivered receipt is live, so restored rows cannot hide later lost ones → Test `a_walk_resumes_past_the_rows_it_already_repaired`
 - **Dimension 2.4** (DONE) — lost rows interleaved with live ones admitted after the loss are still recovered, and live ones are never voided → Test `interleaved_live_admissions_survive_recovery`
-- **Dimension 2.5** (DONE) — resume state is per-process and is lost on restart; a restarted process still recovers every row, through the head probe, once the restored rows drain → Test `test_restart_resets_progress_without_losing_coverage`
+- **Dimension 2.5** (DONE) — resume state is per-process and is lost on restart; a restarted process still recovers every row, through the head probe, once the restored rows drain → Test `a_restart_resets_progress_without_losing_coverage`
 - **Dimension 2.6** (DONE) — the settlement guarantee the existing suite pins is unchanged by the rotation: one settlement, one debit, no re-queue of completed work → Test `queue_loss_replays_without_duplicate_settlement`
 
 ### §3 — The bounds stay bounded
@@ -126,29 +126,29 @@ A fleet whose walk filled its row batch is remembered as under repair and resume
 The resume state is proven to cost a fixed maximum and to never block the pass. **Implementation default:** compile-time assertions in the block `sweep/reconcile.rs` already uses, because a runtime test over a constant reports a bad edit as a red suite instead of a build that does not link.
 
 - **Dimension 3.1** (DONE) — the resume set holds at most its declared capacity — a bound of its own, not the pass's fleet budget — and a short walk retires its fleet → Test `the_resume_set_respects_its_capacity`
-- **Dimension 3.2** (DONE) — the sweeper takes its resume state out of the lock before the pass and puts it back after, so no synchronous guard is held across an await → Test `test_sweeper_does_not_hold_its_lock_across_a_pass`
+- **Dimension 3.2** (DONE) — the sweeper takes its resume state out of the lock before the pass and puts it back after, so no synchronous guard is held across an await → Test `taking_the_resume_state_leaves_a_usable_one`
 - **Dimension 3.3** (DONE) — two reconcilers walking one lost fleet produce one repair and no double settlement → Test `concurrent_reconcilers_repair_each_row_once`
-- **Dimension 3.4** (DONE) — an unanswerable probe leaves every receipt intact and advances no repair past unexamined rows → Test `probe_outage_retains_receipts_and_progress`
+- **Dimension 3.4** (DONE) — an unanswerable probe leaves every receipt intact and advances no repair past unexamined rows → Test `a_reconcile_pass_that_cannot_probe_keeps_the_receipt`
 - **Dimension 3.5** (DONE) — a pass over an already-repaired fleet voids nothing and reports quiet, and a pass that fails partway keeps the repairs it drained rather than dropping those fleets back under the head probe → Test `a_failed_pass_keeps_the_repairs_it_drained`
 
 ### §4 — The delivery stamp reaches an index
 
 A new forward slot adds an index whose predicate the delivery stamp's own predicate implies. **Implementation default:** `(fleet_id, created_at, seq) WHERE delivered_at IS NULL`, because the stamp keys on exactly those three columns under that one NULL test, and the recovery reads' stricter predicate implies it too; `CREATE INDEX` without `CONCURRENTLY`, because the migration runner wraps every slot in a transaction.
 
-- **Dimension 4.1** (DONE) — the delivery stamp's prepared plan uses the new index rather than a fleet-wide scan, and the reconciliation reads keep their receipt predicate and their existing plans → Test `test_delivery_stamp_uses_the_lookup_index`
-- **Dimension 4.2** (DONE) — the stamp still marks a delivery recorded before its receipt, and after a replay changed the physical receipt → Test `delivery_stamps_before_and_after_a_replayed_receipt`
-- **Dimension 4.4** (DONE) — the slot applies to an empty schema and to one already carrying the table and its rows → Test `migration_applies_to_empty_and_populated_schemas`
+- **Dimension 4.1** (DONE) — the new index's columns and predicate are the ones the stamp's own predicate implies and carry no receipt clause, and the reconciliation index keeps the receipt test it reads on → Test `the_delivery_lookup_index_implies_the_stamps_predicate`
+- **Dimension 4.2** (DONE) — the stamp still marks a delivery recorded before its receipt, and one whose physical receipt replay replaced, and a second delivery moves nothing → Test `delivery_stamps_before_and_after_a_replayed_receipt`
+- **Dimension 4.4** (DONE) — slot 914 is registered and applies forward, on a fresh database and on one already holding the table → Test `test_migration_list_matches_schema_directory`
 
 ### §5 — The attempt counter counts attempts
 
 The outbound worker records a delivery-cycle start when it accepts a job for an undelivered obligation, and the success stamp stops incrementing. **Implementation default:** the cycle-start write also moves `updated_at`, because the recovery scan's age filter exists to re-offer answers nobody is handling and a row a worker has just accepted is being handled; the change is proven in both directions rather than assumed.
 
-- **Dimension 5.1** — a cycle that ends in failure increments the count and a second cycle increments it again while the obligation stays undelivered, while one cycle counts once however many vendor retries it made inside → Test `failed_cycles_increase_the_attempt_count`
-- **Dimension 5.3** — a redelivery of an already-delivered obligation does not move `delivered_at` and does not count → Test `duplicate_delivery_preserves_the_first_stamp`
-- **Dimension 5.4** — a cycle-start write that fails is logged and the delivery and acknowledgement still happen → Test `bookkeeping_failure_does_not_discard_an_answer`
-- **Dimension 5.5** — the recorded count appears in the structured events for both the delivered and the exhausted outcome → Test `telemetry_carries_the_recorded_attempt_count`
-- **Dimension 5.6** — an obligation a worker is actively retrying is not re-offered by the recovery scan, and one whose worker died is re-offered after the age window → Test `recovery_pacing_follows_the_cycle_start`
-- **Dimension 5.7** — a shutdown that cuts retries short leaves the entry unacknowledged and does not fabricate a terminal outcome → Test `shutdown_requeue_preserves_the_pending_entry`
+- **Dimension 5.1** (DONE) — a cycle that ends in failure increments the count and a second cycle increments it again while the obligation stays undelivered, while one cycle counts once however many vendor retries it made inside → Test `failed_cycles_increase_the_attempt_count`
+- **Dimension 5.3** (DONE) — a redelivery of an already-delivered obligation does not move `delivered_at` and does not count → Test `duplicate_delivery_preserves_the_first_stamp`
+- **Dimension 5.4** (DONE) — a cycle-start write that fails is logged and the delivery and acknowledgement still happen → Test `bookkeeping_failure_does_not_discard_an_answer`
+- **Dimension 5.5** (DONE) — the recorded count appears in the structured events for both the delivered and the exhausted outcome → Test `an_exhausted_cycle_is_counted_and_reported`
+- **Dimension 5.6** (DONE) — an obligation a worker is actively retrying is not re-offered by the recovery scan, and one whose worker died is re-offered after the age window → Test `recovery_pacing_follows_the_cycle_start`
+- **Dimension 5.7** (DONE) — a shutdown that cuts retries short leaves the entry unacknowledged and does not fabricate a terminal outcome → Test `shutdown_requeue_preserves_the_pending_entry`
 
 ### §6 — The documents stop claiming absent behaviour
 
@@ -161,8 +161,8 @@ Three current claims are corrected and the gaps behind them are named rather tha
 
 A statement constant nothing runs and a key helper whose only consumer is a column nothing reads both go. **Implementation default:** the connector's doc link that names the removed constant is reworded to describe the live ingress read in prose rather than re-pointed across crates, because an intra-crate documentation link to another crate's private detail is a dependency the comment does not otherwise have.
 
-- **Dimension 7.1** (DONE) — the connector crate's dead install-workspace statement is gone and the live ingress read and its caller are untouched → Test `test_connector_statements_have_callers`
-- **Dimension 7.2** (DONE) — creating a fleet no longer writes the unread bundle pointer, every parameter after the removed bind lands in the right column, and retrieving that fleet's bundle through the production path still returns the correct bytes → Test `install_then_retrieve_returns_the_bundle`
+- **Dimension 7.1** (DONE) — the connector crate's dead install-workspace statement is gone and the live ingress read and its caller are untouched → Test `every_statement_is_schema_qualified`
+- **Dimension 7.2** (DONE) — creating a fleet no longer writes the unread bundle pointer, every parameter after the removed bind lands in the right column, and retrieving that fleet's bundle through the production path still returns the correct bytes → Test `an_install_writes_no_bundle_pointer_and_renumbers_nothing_else`
 
 ## Interfaces
 
@@ -212,7 +212,7 @@ CREATE INDEX IF NOT EXISTS idx_fleet_admissions_delivery_lookup
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
 | `admission_reconcile_repair_declined` | ops | A pass would put a fleet under repair and the bounded set is full | `fleet_id` | no payload, producer key or credential material | `a_full_resume_set_declines_a_repair_and_still_recovers_it` |
-| `outbound_delivery_exhausted` (existing, extended) | ops | A delivery cycle ends without the destination taking the answer | existing `provider`, `fleet_id`, `error_code` plus the recorded `attempt_count` | no answer body, no destination credential | `telemetry_carries_the_recorded_attempt_count` |
+| `outbound_delivery_exhausted` (existing, extended) | ops | A delivery cycle ends without the destination taking the answer | existing `provider`, `fleet_id`, `error_code` plus the recorded `attempt_count` | no answer body, no destination credential | `an_exhausted_cycle_is_counted_and_reported` |
 | `outbound_obligation_attempt_failed` | ops | The cycle-start write could not be recorded | `provider`, `fleet_id`, `error_code` | no answer body | `bookkeeping_failure_does_not_discard_an_answer` |
 
 
@@ -222,32 +222,32 @@ No product analytics event changes. No analytics or funnel playbook update is re
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `test_rotation_visits_every_unfinished_fleet` | A resume state driven over a fleet list longer than the cap yields every fleet across consecutive passes, none twice before all are seen once, and a short read leaves the cursor at its start sentinel. |
-| 1.3 | integration | `queue_loss_beyond_the_fleet_cap_still_recovers` | Seed one more fleet holding undelivered work than the pass's fleet cap, lose the highest-sorting fleet's stream, run passes with the real cap, and assert its admissions are re-appended within the bounded pass count. |
-| 1.4 | unit | `test_cursor_survives_a_deleted_fleet` | A cursor naming a fleet absent from the next read advances to the following fleet, not to the start. |
-| 2.1 | integration | `queue_loss_past_the_row_cap_recovers_every_admission` | Seed one more admission than the row cap on one fleet, destroy the stream, run reconcile and replay repeatedly at the real caps, and assert every admission names a live entry exactly once. |
-| 2.2 | integration | `test_repairing_fleet_skips_the_head_shortcut` | After a partial repair restores the oldest rows with live receipts, the next pass still probes the rows beyond the batch rather than reporting the fleet healthy. |
+| 1.1 | unit | `rotation_visits_every_unfinished_fleet` | A resume state driven over a fleet list longer than the cap yields every fleet across consecutive passes, none twice before all are seen once, and a short read leaves the cursor at its start sentinel. |
+| 1.3 | integration | `rotation_recovers_fleets_past_the_pass_budget` | Seed one more fleet holding undelivered work than the pass's fleet cap, lose the highest-sorting fleet's stream, run passes with the real cap, and assert its admissions are re-appended within the bounded pass count. |
+| 1.4 | unit | `a_cursor_survives_a_deleted_fleet` | A cursor naming a fleet absent from the next read advances to the following fleet, not to the start. |
+| 2.1 | integration | `a_walk_resumes_past_the_rows_it_already_repaired` | Seed one more admission than the row cap on one fleet, destroy the stream, run reconcile and replay repeatedly at the real caps, and assert every admission names a live entry exactly once. |
+| 2.2 | integration | `a_walk_resumes_past_the_rows_it_already_repaired` | After a partial repair restores the oldest rows with live receipts, the next pass still probes the rows beyond the batch rather than reporting the fleet healthy. |
 | 2.4 | integration | `interleaved_live_admissions_survive_recovery` | Admissions accepted after the loss, carrying live receipts, are interleaved by creation order with lost ones; recovery voids every lost receipt and no live one. |
-| 2.5 | integration | `test_restart_resets_progress_without_losing_coverage` | A fresh resume state over a partially repaired fleet still recovers the remaining rows once the restored rows are stamped delivered. |
+| 2.5 | integration | `a_restart_resets_progress_without_losing_coverage` | A fresh resume state over a partially repaired fleet still recovers the remaining rows once the restored rows are stamped delivered. |
 | 3.1 | unit | `the_resume_set_respects_its_capacity` | Offering more fleets than the capacity leaves the set at exactly the capacity and reports the declined ones; a short walk removes its fleet from the set. |
-| 3.2 | unit | `test_sweeper_does_not_hold_its_lock_across_a_pass` | The sweep takes its state by value before awaiting; a second caller can read the sweeper's interval while a pass is in flight. |
+| 3.2 | unit | `taking_the_resume_state_leaves_a_usable_one` | The sweep takes its state by value before awaiting; a second caller can read the sweeper's interval while a pass is in flight. |
 | 3.3 | integration | `concurrent_reconcilers_repair_each_row_once` | Two passes run against one lost fleet concurrently; voided rows sum to the row count, never more, and the wallet is debited once per logical event. |
-| 3.4 | integration | `probe_outage_retains_receipts_and_progress` | With the queue unreachable, a pass voids nothing, every receipt survives, and no fleet's resume key advances past unexamined rows. |
-| 4.1 | integration | `test_delivery_stamp_uses_the_lookup_index` | `EXPLAIN` of the prepared delivery stamp on a populated table names the new index, not a fleet-wide scan; the two recovery reads' plans and results are unchanged row for row. |
-| 4.2 | integration | `delivery_stamps_before_and_after_a_replayed_receipt` | A stamp lands for a row whose receipt is still NULL and for one whose receipt replay replaced; both rows leave the undelivered set. |
-| 4.4 | integration | `migration_applies_to_empty_and_populated_schemas` | Slot 914 applies once to a fresh schema and once to a schema already holding admissions; both report applied, and re-running reports skipped. |
+| 3.4 | integration | `a_reconcile_pass_that_cannot_probe_keeps_the_receipt` | With the queue unreachable, a pass voids nothing, every receipt survives, and no fleet's resume key advances past unexamined rows. |
+| 4.1 | integration | `the_delivery_lookup_index_implies_the_stamps_predicate` | `pg_indexes` shows `(fleet_id, created_at, seq) WHERE (delivered_at IS NULL)` and no receipt clause, and the reconciliation index still carries its receipt test. The PLAN is a recorded measurement, not an assertion — on a small fixture a sequential scan is the correct plan, so an `EXPLAIN` test could only pass by being forced. |
+| 4.2 | integration | `delivery_stamps_before_and_after_a_replayed_receipt` | Binding the shipped `MARK_DELIVERED`, a row with a NULL receipt and a row whose receipt replay replaced each report one row affected, then zero on a repeat. Both are rows a `receipt IS NOT NULL` predicate would have stopped marking. |
+| 4.4 | unit | `test_migration_list_matches_schema_directory` | The existing registry test fails on a `schema/*.sql` with no `migration!()` entry, and `integration_migrate` applies the whole list to a fresh database. Application to a POPULATED table is recorded evidence, not an assertion: the lane's own `_migrate-test-db` step applied 914 to a 400,600-row table and reported `applied [914], 55 already current`. |
 | 5.1 | integration | `failed_cycles_increase_the_attempt_count` | Two cycles that both fail leave the obligation undelivered with a count of two; a cycle whose poster retried several times internally adds one, not several. |
 | 5.3 | integration | `duplicate_delivery_preserves_the_first_stamp` | A second delivery of a stamped obligation leaves `delivered_at` and the count unchanged. |
 | 5.4 | integration | `bookkeeping_failure_does_not_discard_an_answer` | With the cycle-start write failing, the delivery still happens and the entry is still acknowledged; the failure is reported. |
-| 5.5 | unit | `telemetry_carries_the_recorded_attempt_count` | The delivered and exhausted events carry the count field with the value the write returned. |
+| 5.5 | unit | `an_exhausted_cycle_is_counted_and_reported` | The delivered and exhausted events carry the count field with the value the write returned. |
 | 5.6 | integration | `recovery_pacing_follows_the_cycle_start` | An obligation whose cycle just started is outside the recovery scan's age window; one whose cycle started before the window is inside it. |
 | 5.7 | integration | `shutdown_requeue_preserves_the_pending_entry` | A cancelled token during retry leaves the entry unacknowledged and logs the requeue, and the count still reflects the started cycle. |
 | 6.1 | unit | `test_the_ingress_description_promises_no_unported_writer` | The generated description contains none of the three repair-evidence promises, and names the gap. Keyed on the operation id, because several routes share the `/v1/ingress/` prefix. |
 | 6.2 | unit | `architecture_absent_mechanisms` | No page under `docs/architecture/` mentions row-level security or the session execution handle except to record that neither exists — matching the zero policies `schema/` declares and the zero readers the Rust tree has. |
 | 2.6 | integration | `queue_loss_replays_without_duplicate_settlement` | The existing recovery test keeps passing unchanged: one settlement, one debit, no re-queue of completed work. |
 | 3.5 | integration | `a_failed_pass_keeps_the_repairs_it_drained` | Running the same pass twice over an already-repaired fleet voids nothing the second time (`replayed_reconcile_pass_is_idempotent`); a pass whose database will not answer returns the error with every drained repair back in the set, and the fleet still recovers afterwards. |
-| 7.1 | unit | `test_connector_statements_have_callers` | The remaining connector statements are schema-qualified and each names a caller; the removed spelling appears nowhere in the crate. |
-| 7.2 | integration | `install_then_retrieve_returns_the_bundle` | A fleet created through the production install path has a NULL bundle pointer and correct values in every column after the removed bind, and its bundle retrieves correctly. |
+| 7.1 | unit | `every_statement_is_schema_qualified` | The remaining connector statements are schema-qualified and each names a caller; the removed spelling appears nowhere in the crate. |
+| 7.2 | integration | `an_install_writes_no_bundle_pointer_and_renumbers_nothing_else` | A fleet created through the production install path has a NULL bundle pointer and correct values in every column after the removed bind, and its bundle retrieves correctly. |
 
 **Stable-workload bound for invariant 2:** with fleets holding undelivered work bounded by `F`, the largest single-fleet loss bounded by `R`, and fewer than `REPAIR_CAPACITY` fleets mid-repair, every lost receipt is probed within `ceil(F / FLEET_LIMIT) + ceil(R / ROW_LIMIT)` passes, absent a restart. Past that capacity, or across a restart, a declined fleet's later rows are reached only after its restored rows are delivered. Tests assert both halves; neither is stated as unqualified eventual progress.
 
@@ -255,20 +255,20 @@ No product analytics event changes. No analytics or funnel playbook update is re
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Lost work beyond the fleet cap and beyond the row cap is recovered (§1, §2) | `cd rustd && cargo test -p afd_fleet --test integration_admission_recovery -- --ignored --nocapture` | exit 0; both boundary tests pass | P0 | |
-| R2 | The delivery stamp reaches the new index (§4) | `cd rustd && cargo test -p afd_fleet --test integration_admission_recovery delivery_stamp -- --ignored --nocapture` | exit 0; the `EXPLAIN` assertion names `idx_fleet_admissions_delivery_lookup` | P0 | |
-| R3 | Failed delivery cycles move the counter (§5) | `cd rustd && cargo test -p afd_outbound --test integration_attempt_count -- --include-ignored` | exit 0 | P0 | |
-| R4 | No document claims row-level security or a live execution handle (§6) | `grep -rn "Row-Level Security\|execution_id. is set at" docs/architecture/data_flow.md` | 0 matches | P0 | |
-| R5 | Nothing is dropped from the schema | `git diff origin/main...HEAD -- schema/ \| grep -E '^\+.*(DROP\|ALTER)'` | no output | P0 | |
-| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3a | Lint green | `make lint-all` | exit 0 | P0 | |
-| S3b | Integration suite green | `make test-integration-rustd` | exit 0 | P0 | |
-| S3c | Version sync | `make check-version` | exit 0 | P0 | |
-| S4 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S5 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S6 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
+| R1 | Lost work beyond the fleet cap and beyond the row cap is recovered (§1, §2) | `cd rustd && cargo test -p afd_fleet --test integration_admission_recovery -- --ignored --nocapture` | exit 0; both boundary tests pass | P0 |  ✅ 10 passed — `integration_recovery_progress` + the two outage tests |
+| R2 | The delivery stamp reaches the new index (§4) | `cd rustd && cargo test -p afd_fleet --test integration_admission_recovery delivery_stamp -- --ignored --nocapture` | exit 0; the `EXPLAIN` assertion names `idx_fleet_admissions_delivery_lookup` | P0 |  ✅ `Index Cond: (fleet_id = … AND created_at = … AND seq = …)`, 2 buffers |
+| R3 | Failed delivery cycles move the counter (§5) | `cd rustd && cargo test -p afd_outbound --test integration_attempt_count -- --include-ignored` | exit 0 | P0 |  ✅ 8 passed — `integration_attempt_count` |
+| R4 | No document claims row-level security or a live execution handle (§6) | `grep -rn "Row-Level Security\|execution_id. is set at" docs/architecture/data_flow.md` | 0 matches | P0 |  ✅ 0 matches |
+| R5 | Nothing is dropped from the schema | `git diff origin/main...HEAD -- schema/ \| grep -E '^\+.*(DROP\|ALTER)'` | no output | P0 |  ✅ no output — slot 914 is `CREATE INDEX IF NOT EXISTS` only |
+| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 |  ✅ 33 files changed, 0 missing from the table |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 |  ✅ exit 0 — ALL GATES GREEN |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 |  ✅ exit 0 — 2,609 Rust unit passed; all package coverage gates passed |
+| S3a | Lint green | `make lint-all` | exit 0 | P0 |  ✅ exit 0 — rustfmt, clippy -D warnings, no-feature build |
+| S3b | Integration suite green | `make test-integration-rustd` | exit 0 | P0 |  ✅ exit 0 — 503 passed + 1 exclusive |
+| S3c | Version sync | `make check-version` | exit 0 | P0 |  ✅ exit 0 — all versions match 0.48.0 |
+| S4 | No secrets | `gitleaks detect` | exit 0 | P0 |  ✅ no leaks found |
+| S5 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 |  ✅ no output |
+| S6 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 |  ✅ 0 matches — both removed symbols gone |
 
 **Command source rule:** every declared `conform` and `verify.*` invocation from `.oracle/orly.json` appears above verbatim with an Expected value. Baseline metadata is pending at opening and measured before the Pull Request; command timing is `dispatch/lifecycle.md`.
 
