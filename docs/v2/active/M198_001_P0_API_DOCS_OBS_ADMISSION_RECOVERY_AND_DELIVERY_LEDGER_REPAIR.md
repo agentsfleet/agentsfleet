@@ -22,8 +22,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — no concurrent workstream; the admission and outbound ledgers are edited by nothing else in flight.
 **Branch:** `fix/m198-admission-recovery-and-delivery-ledger`
 **Baseline revision:** `eaa2b19563cf4b46866c261c778ae88466683980` (last pushed `origin/main`; the intervening spec commit adds markdown only)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** Rust unit 2,592 passed / 0 failed; integration 490 passed (489 parallel + 1 exclusive) / 0 failed. TypeScript lanes unmeasured and unchanged — this branch touches no `ui/**` or `cli/**` file.
+**Baseline evidence:** isolated worktree at the baseline revision, `make test-unit-rustd` and `make test-integration-rustd`, against its own compose Postgres and Dragonfly on a separate project and port range; logs `.baseline-unit.log` and `.baseline-integration.log` in that worktree. Local run, not Continuous Integration (CI).
 **Depends on:** none
 **Provenance:** LLM-drafted (claude-opus-5, Sep 18, 2026), grounded in `docs/v2/reviews/schema-usage-audit-2026-09-18.md`, `docs/v2/reviews/schema-fix-adversarial-review-2026-09-18.md`, and re-verified source reads at the commit recorded below
 **Canonical architecture:** `docs/architecture/data_flow.md` §The durable ledgers

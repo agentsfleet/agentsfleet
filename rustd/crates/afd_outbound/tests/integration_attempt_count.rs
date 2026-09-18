@@ -131,7 +131,19 @@ fn delivery(event_id: &str) -> Delivery<'_> {
 }
 
 /// A fixture in the state each test starts from: parents seeded, nothing owed.
+///
+/// Installs the capturing subscriber BEFORE the harness, and that order is the
+/// whole reason this wrapper exists rather than calling `reset` directly.
+/// `OutboundHarness::reset` installs a subscriber of its own that writes to a
+/// sink, both are global, and `set_global_default` takes the first caller and
+/// silently refuses the rest. Tests run in parallel, so whichever ran first
+/// decided whether this file could read its own events — the ledger-half tests
+/// here never ask for the capture, and when one of them reached the harness
+/// first the worker-half tests found an empty log and failed. Going through
+/// `capture()` on every path makes the first global subscriber in this binary
+/// the capturing one, whatever order the tests start in.
 async fn ready() -> OutboundHarness {
+    capture();
     let harness = OutboundHarness::reset().await;
     seed_parents(&harness.database).await;
     clear_obligations(&harness.database).await;
@@ -488,9 +500,11 @@ impl<S: tracing::Subscriber> Layer<S> for Capture {
 ///
 /// A global, because `tracing::warn!` asks its callsite whether it is enabled
 /// before evaluating fields, and the events under test live in library code
-/// that knows nothing about a test-scoped subscriber. One binary, one global,
-/// one capture shared by every test in it — which is why every worker-half
-/// test here filters by the event id it dispatched rather than by position.
+/// that knows nothing about a test-scoped subscriber — the lanes deliver on
+/// spawned tasks, so a thread-local scoped subscriber would miss them anyway.
+/// One binary, one global, one capture shared by every test in it, which is why
+/// every worker-half test filters by the event id it dispatched rather than by
+/// position. Every path into the harness calls this FIRST; see [`ready`].
 fn capture() -> Capture {
     static CAPTURE: std::sync::OnceLock<Capture> = std::sync::OnceLock::new();
     CAPTURE
