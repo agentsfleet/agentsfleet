@@ -11,12 +11,14 @@
 //! runner's and it heartbeats against a window the daemon will not honour. No
 //! compiler sees either, because neither language can read the other's source.
 //!
-//! A third reader makes it worse: the Grafana alerting playbook derives the
-//! runner-offline threshold by running `sed` over the ZIG file
-//! (`playbooks/operations/observability/providers/grafana/common.sh`), so an
-//! alert threshold is computed from the runner's copy while the behaviour it
-//! alerts on is the daemon's. With this test the copies cannot disagree, so it
-//! no longer matters which one anything reads.
+//! A third reader used to make it worse: the Grafana alerting playbook derived
+//! the runner-offline threshold by running `sed` over the ZIG file, so an alert
+//! threshold was computed from the runner's copy while the behaviour it alerts
+//! on is the daemon's. That reader now reads THIS file instead
+//! (`playbooks/operations/observability/lib.sh`), which is the right direction:
+//! the daemon decides a runner is offline, so the daemon's constant is the one
+//! an alert should quote. This test keeps the two copies equal meanwhile, so
+//! the retired runtime cannot drift out from under the one still running.
 //!
 //! The shape is `afd_billing`'s `cross_runtime_rates.rs`, which pins the money
 //! constants across the app and the Command-Line Interface (CLI) mirrors for

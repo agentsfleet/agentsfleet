@@ -50,12 +50,16 @@ pub const rss = @import("rss.zig");
 /// scan over `last_seen_at`), not a function of shrinking this — so it stays
 /// short as the silent-death backstop.
 ///
-/// `pub` for a reader no Zig analysis can see: the Grafana alerting playbook
-/// derives the runner-offline threshold from this file with `sed`, matching
-/// `^pub const LEASE_TTL_MS`
-/// (`playbooks/operations/observability/providers/grafana/common.sh`). Dropping
-/// the keyword compiles and fails that playbook's tests with "cannot derive
-/// runner offline threshold", which is how it came back.
+/// `pub` for a reader no Zig analysis can see, though no longer the one this
+/// comment used to name. The Grafana alerting playbook derived its
+/// runner-offline threshold from THIS file until Sep 18, 2026; it now reads
+/// `afd_core::timing`, which is the right direction — the daemon decides a
+/// runner is offline, so the daemon's constant is the one an alert quotes.
+///
+/// The keyword is still load-bearing for a different reader:
+/// `rustd/crates/afd_core/tests/cross_runtime_timing.rs` parses this file on
+/// the literal `"pub const "` to prove the Rust copies have not drifted from
+/// these. Dropping it compiles and fails that test instead.
 pub const LEASE_TTL_MS: i64 = 30_000;
 
 /// The runner auto-renews a lease once fewer than this many ms remain before

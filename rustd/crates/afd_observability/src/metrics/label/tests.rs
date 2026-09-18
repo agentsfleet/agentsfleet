@@ -85,10 +85,6 @@ fn label_products() -> Vec<(&'static str, usize)> {
             library_labels::PoolResult::ALL.len(),
         ),
         (
-            library::LIBRARY_CACHE_OUTCOME_TOTAL.wire_name(),
-            library_labels::CacheOutcome::ALL.len(),
-        ),
-        (
             library::LIBRARY_PAYLOAD_BYTES_TOTAL.wire_name(),
             library_labels::Surface::ALL.len(),
         ),
@@ -175,7 +171,6 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
         set!(crate::metrics::label::library::Stage),
         set!(crate::metrics::label::library::ReadOutcome),
         set!(crate::metrics::label::library::PoolResult),
-        set!(crate::metrics::label::library::CacheOutcome),
     ]
 }
 

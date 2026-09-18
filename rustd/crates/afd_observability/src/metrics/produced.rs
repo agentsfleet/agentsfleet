@@ -33,7 +33,7 @@
 //! Excusing those forever would have made this ledger a list of two different
 //! things, and a to-do list that also holds never-do items stops being read.
 
-use crate::metrics::declared::{cost, fleet, http, library};
+use crate::metrics::declared::{fleet, http, library};
 
 /// One family this build declines to produce, and the reason.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,11 +58,6 @@ const NO_REPAIR_INGRESS: &str = "the repair-result ingress has no Rust home yet,
 /// In census order, so a reader can hold it beside the contract.
 pub const UNPRODUCED: &[Unproduced] = &[
     Unproduced {
-        family: fleet::ACCOUNT_TEARDOWN_UNREGISTER_FAILURES_TOTAL.wire_name(),
-        why: "account teardown is declared unported — the identity route answers \
-              `user.deleted` as an event this daemon serves no rule for",
-    },
-    Unproduced {
         family: fleet::REPAIR_PROVIDER_RESULTS_TOTAL.wire_name(),
         why: NO_REPAIR_INGRESS,
     },
@@ -83,11 +78,6 @@ pub const UNPRODUCED: &[Unproduced] = &[
         why: NO_REPAIR_INGRESS,
     },
     Unproduced {
-        family: library::LIBRARY_CACHE_OUTCOME_TOTAL.wire_name(),
-        why: "the revision-keyed response cache is a declared non-port, so no \
-              read here consults one and there is no decision to record",
-    },
-    Unproduced {
         family: library::LIBRARY_POOL_RESULT_TOTAL.wire_name(),
         why: "the connection acquire happens inside the store, where the read \
               path cannot see how it ended",
@@ -101,11 +91,5 @@ pub const UNPRODUCED: &[Unproduced] = &[
         family: http::HTTP_TRACE_SUPPRESSED_TOTAL.wire_name(),
         why: "this daemon traces every matched request: there is no head sampler \
               and no per-class span budget, so nothing is suppressed to count",
-    },
-    Unproduced {
-        family: cost::TELEMETRY_SAMPLES_DROPPED.wire_name(),
-        why: "the ring this counted belongs to the daemon being replaced; the loss \
-              this build can see is the SDK's, already counted per signal and \
-              reason by `agentsfleet_otlp_entries_discarded_total`",
     },
 ];

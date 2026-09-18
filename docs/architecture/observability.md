@@ -67,7 +67,7 @@ declaration, so there is no second copy to drift.
 
 Runtime deployment carries no dashboard files. Grafana dashboard and alert
 definitions live under
-`playbooks/operations/observability/providers/grafana/assets/`, where the
+`playbooks/operations/observability/assets/`, where the
 operator playbook checks, applies, and verifies them against source-owned
 metrics.
 
@@ -106,7 +106,7 @@ came from, because a target nobody measured is a number, not an objective.
 | Indicator | Good events over valid events | Target | Where the target came from |
 |---|---|---|---|
 | Admission availability | `agentsfleet_admissions_total{outcome=~"appended\|replayed"}` over the same family excluding `over_budget` | 99% | unproven. Measured Sep 17, 2026 on development: 13 `appended`, 1 `replayed`, nothing refused or deferred. Fourteen events set no objective. |
-| Runner success | `agentsfleet_runner_executions_total{outcome="processed"}` over the whole family | 95% | unproven. Measured the same day: 7 `processed`, 3 `fleet_error`, the failures split 2 `startup_posture` and 1 `runner_crash`. |
+| Runner success | `agentsfleet_runner_executions_total{outcome="processed"}` over the same family excluding `fault="workload"` | 95% | unproven. Measured the same day: 7 `processed`, 3 `fleet_error`, the failures split 2 `startup_posture` and 1 `runner_crash` — both platform classes, so the blame split leaves the measured 70% unchanged. |
 | Admitted fleets that started | `agentsfleet_fleet_runs_started_total{kind="fresh"}` over `agentsfleet_admissions_total{outcome="appended"}` | 99% | unproven, and not for want of traffic: both families landed in M197_002 and the deployed daemon predates them, so there are zero series. The first reading worth having is the one after the next deploy. |
 | Work picked up inside the replay floor | samples where `agentsfleet_admission_backlog_oldest_age_seconds` is below the floor, over all samples | 99% | the floor is derived, the target is not. `MIN_AGE + INTERVAL` in `rustd/crates/afd_runner/src/sweep/replay.rs` is 60 seconds. |
 
@@ -114,6 +114,35 @@ came from, because a target nobody measured is a number, not an objective.
 refusing work because a budget is spent, which is the system doing what its
 budgets say rather than failing to do it. Counting a deliberate refusal as an
 availability miss would make the indicator worse the better the budgets work.
+
+#### Why the runner objective excludes workload faults
+
+An error budget is a promise about what this control plane controls. `FailureClass` carries eleven
+members and only five of them are ours: `startup_posture`, `runner_crash`, `transport_loss`,
+`lease_expired` and `renewal_terminate`. The other six — `policy_deny`, `landlock_deny`, `oom_kill`,
+`resource_kill`, `budget_breach` and `timeout_kill` — are the workload failing at something the
+platform delivered correctly.
+
+The daemon classifies them at the point of record: `fault_of` in
+`afd_observability/src/producers/fleet/runner.rs` maps the class to a two-member `Fault` set, and the
+executions counter carries it as `fault` on the failing half only. A success has no `fault` label at
+all, which is what makes `{fault!="workload"}` read as "everything the platform was accountable for"
+— an absent label satisfies a not-equal matcher.
+
+Workload faults leave the denominator rather than counting as successes. Counting them good would let
+a noisy tenant dilute the ratio and hide real platform failures behind volume; counting them bad would
+let one tenant's broken code spend everybody's budget. Neither is a measurement, so they are not
+measured. An unclassified failure (`None`) is charged to the platform: a cause nobody could name is
+not evidence against the tenant.
+
+`fault_of` is an exhaustive match with no default arm, so a twelfth `FailureClass` fails the build
+until somebody decides which side it belongs on, and
+`every_failure_class_is_assigned_the_side_we_decided` records the decision where a reviewer can argue
+with it one line at a time.
+
+The all-cause rate stays on the dashboard beside the objective as a plain reading. "Did my run work"
+is a fair question with a real answer; it just is not a promise.
+
 
 A `replayed` admission counts as good for the same reason: the first
 admission's identifier stands, so the producer got the answer it asked for.
