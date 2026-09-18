@@ -176,7 +176,7 @@ pub(crate) async fn install<D: Services>(
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let body = if body.is_empty() { EMPTY_OBJECT } else { &body };
-    let request = afd_core::json::object_from_slice::<InstallFleetRequest<'_>>(body)
+    let request = afd_http::handler::read_body::<InstallFleetRequest<'_>>(body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
 
     let source = library_source(&request)?;

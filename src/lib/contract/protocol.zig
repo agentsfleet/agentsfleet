@@ -27,15 +27,10 @@ const reports = @import("protocol_report.zig");
 const memory = @import("protocol_memory.zig");
 const credentials = @import("protocol_credentials.zig");
 
-const LEASE_WIRE_VERSION_V1: u16 = 1;
-pub const LEASE_WIRE_VERSION_CURRENT: u16 = 2;
-pub const LEASE_REQUEST_CURRENT_JSON = "{\"wire_version\":2}";
-
-/// Empty or malformed bodies are treated as version one by the handler. New
-/// runners advertise the current version so newer enforcement may be issued.
-pub const LeaseRequest = struct {
-    wire_version: u16 = LEASE_WIRE_VERSION_V1,
-};
+/// The lease request body, which is empty.
+///
+/// It carried a `wire_version` until Sep 2026 and the daemon never read it.
+pub const LEASE_REQUEST_JSON = "{}";
 
 // ── Wire paths ──────────────────────────────────────────────────────────────
 // Single-sourced (RULE UFS) so the router and the future TS client share them

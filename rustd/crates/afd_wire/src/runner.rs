@@ -68,6 +68,7 @@ pub enum BindMode {
 /// sandbox depends on.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExtraBind<'a> {
     /// Host path to bind.
     #[serde(borrow)]
@@ -85,6 +86,7 @@ pub struct ExtraBind<'a> {
 // its identity. The host never declares policy.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AssignedPolicy<'a> {
     /// Isolation strength to apply.
     pub sandbox_tier: SandboxTier,
@@ -115,6 +117,7 @@ pub struct AssignedPolicy<'a> {
     reason = "wire shape fixed by the peer; each flag is a separately reported mechanism"
 )]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CapabilityReport<'a> {
     /// Filesystem isolation is available.
     pub landlock: bool,
@@ -135,6 +138,7 @@ pub struct CapabilityReport<'a> {
 /// whitespace-free cause reads to an operator as a leaked internal identifier.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct SelftestCheck<'a> {
     /// What was checked.
     #[serde(borrow)]
@@ -173,6 +177,7 @@ pub const SELFTEST_POLICY_MAX_BYTES: usize = 64;
 /// runner's current values to tell a stale result from a live one.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct SelftestReport<'a> {
     /// Every check the probe ran.
     // `dive` runs each check's own bounds and reports the INDEX that broke
@@ -270,6 +275,7 @@ pub struct RegisterResponse<'a> {
 /// still parses.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct HeartbeatRequest<'a> {
     /// What this host can enforce, when the probe result is being reported.
     #[serde(borrow)]

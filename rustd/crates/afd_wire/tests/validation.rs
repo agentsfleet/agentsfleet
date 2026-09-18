@@ -294,7 +294,7 @@ const SEED_CORPUS: [&str; 4] = [
     r#"{"message":"restart","operation_id":"op_1"}"#,
     r#"{"name":"landlock","ok":true,"detail":"applied"}"#,
     r#"{"checks":[{"name":"a","ok":true,"detail":"d"}],"all_ok":true,"sandbox_tier":"t","network_policy":"n"}"#,
-    r#"{"wire_version":2}"#,
+    r#"{"input_tokens":1,"cached_input_tokens":0,"output_tokens":0}"#,
 ];
 
 /// One mutation of `source`, chosen by `rng`.

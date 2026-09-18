@@ -122,14 +122,26 @@ async fn test_the_model_bound_holds_on_both_verbs_that_take_one() {
     // One rule and two call sites, which is exactly how `model_id` ended up
     // bounded on the catalogue route and unbounded on this one. A blank name
     // and an oversized one earn different sentences because the repairs differ.
-    const BLANK: &str = r#"{"model_id":"","secret_ref":"anthropic-prod"}"#;
+    // One body per verb, because the two shapes differ: the create carries a
+    // `secret_ref` and the change does not, and since every wire type closed an
+    // extra key is refused before any bound is read.
+    const BLANK_CREATE: &str = r#"{"model_id":"","secret_ref":"anthropic-prod"}"#;
+    const BLANK_CHANGE: &str = r#"{"model_id":""}"#;
     // Read from the type that DECLARES the bound rather than spelled again: a
     // local 257 would let the cap move on the request type while this case
     // asserted the old edge and still passed.
     let oversized = "m".repeat(MODEL_ID_MAX_BYTES + 1);
     let at_the_cap = "m".repeat(MODEL_ID_MAX_BYTES);
-    for (method, path) in [(Method::POST, ENTRIES), (Method::PATCH, ENTRY)] {
-        let refused = send(ENTRIES_WRITE, method.clone(), path, Some(TENANT_KEY), BLANK).await;
+    for (method, path, blank, credential) in [
+        (
+            Method::POST,
+            ENTRIES,
+            BLANK_CREATE,
+            r#","secret_ref":"anthropic-prod""#,
+        ),
+        (Method::PATCH, ENTRY, BLANK_CHANGE, ""),
+    ] {
+        let refused = send(ENTRIES_WRITE, method.clone(), path, Some(TENANT_KEY), blank).await;
         assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
         assert_eq!(
             detail_of(refused).await,
@@ -137,7 +149,7 @@ async fn test_the_model_bound_holds_on_both_verbs_that_take_one() {
             "{method} {path}: a blank model names the field that is missing"
         );
 
-        let long = format!(r#"{{"model_id":"{oversized}","secret_ref":"anthropic-prod"}}"#);
+        let long = format!(r#"{{"model_id":"{oversized}"{credential}}}"#);
         let refused = send(ENTRIES_WRITE, method.clone(), path, Some(TENANT_KEY), &long).await;
         assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
         assert_eq!(
@@ -149,7 +161,7 @@ async fn test_the_model_bound_holds_on_both_verbs_that_take_one() {
         // The cap is INCLUSIVE, and this is the edge a derive is most likely to
         // move by one: a name exactly at it is carried past this layer, which
         // the 503 is the proof of — the refusals above never reach a store.
-        let at_cap = format!(r#"{{"model_id":"{at_the_cap}","secret_ref":"anthropic-prod"}}"#);
+        let at_cap = format!(r#"{{"model_id":"{at_the_cap}"{credential}}}"#);
         let reached = send(
             ENTRIES_WRITE,
             method.clone(),
@@ -185,9 +197,12 @@ async fn test_a_create_naming_no_credential_is_refused_before_the_store() {
 async fn test_the_change_verb_cannot_be_asked_to_move_a_credential() {
     // `secret_ref` is not a field on the change body, and the create's presence
     // of one is what makes that worth pinning: a client sending both must not
-    // silently retarget the credential. The extra key is IGNORED, matching the
-    // Zig's `ignore_unknown_fields`, so the request proceeds on the model alone.
-    let reached = send(
+    // silently retarget the credential. Until Sep 2026 the key was IGNORED and
+    // the request proceeded on the model alone, which answered the safety
+    // question the quiet way — the credential did not move, but the caller was
+    // never told their instruction was dropped. The closed type answers it
+    // loudly instead.
+    let refused = send(
         ENTRIES_WRITE,
         Method::PATCH,
         ENTRY,
@@ -197,9 +212,9 @@ async fn test_the_change_verb_cannot_be_asked_to_move_a_credential() {
     .await;
 
     assert_eq!(
-        reached.status(),
-        StatusCode::SERVICE_UNAVAILABLE,
-        "the unknown field is ignored rather than refused"
+        refused.status(),
+        StatusCode::BAD_REQUEST,
+        "asking the change verb to move a credential is refused, not ignored"
     );
 }
 

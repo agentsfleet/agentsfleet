@@ -49,6 +49,7 @@ pub struct MemoryDelta<'a> {
 // retried push is idempotent.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MemoryPushRequest<'a> {
     /// The lease authorizing this write.
     #[serde(borrow)]

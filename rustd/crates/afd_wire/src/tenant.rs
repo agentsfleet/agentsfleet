@@ -51,6 +51,7 @@ pub struct MintedApiKeyResponse<'a> {
 // written down.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MintCliCredentialRequest<'a> {
     /// The terminal's own label, as an operator will read it back.
     #[serde(borrow)]

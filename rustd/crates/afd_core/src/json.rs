@@ -115,6 +115,53 @@ where
     Ok(value)
 }
 
+/// The field name from an `unknown field` refusal, when that is what failed.
+///
+/// # Why a whitelist rather than logging the error
+///
+/// `serde_json::Error` renders two very different things through one `Display`.
+/// An unknown-field refusal names only NAMES — it renders the offending key and
+/// the ones it expected, nothing else — and is safe to log. A type
+/// refusal embeds the VALUE it rejected — `invalid type: string "sk-live-…",
+/// expected u32` — and these bodies carry api keys, minted tokens and secret
+/// maps, so logging one raw would put a credential in the log.
+///
+/// So the error text is never logged. This reads the one shape that is safe,
+/// returns the bare field name, and answers `None` for everything else, which
+/// keeps the caller's generic refusal for every other failure.
+///
+/// # Why the message is parsed at all
+///
+/// `serde` exposes no structured accessor for the offending field —
+/// `Error::classify` answers `Data` for both refusals above and the field lives
+/// only in the rendered string. The prefix and the backtick delimiters are
+/// `serde`'s own and stable across the 1.x line; a render this does not
+/// recognise answers `None` rather than guessing, so a future change degrades
+/// to today's behaviour instead of logging something unexpected.
+///
+/// The name is bounded because it is attacker-chosen: a caller controls the
+/// keys it sends, and an unbounded one would put a megabyte in a log line the
+/// standard caps at 300 characters.
+#[must_use]
+pub fn unknown_field_of(error: &serde_json::Error) -> Option<String> {
+    /// Longest field name reported. Past this the caller chose the name to fill
+    /// a log, not to name a field.
+    const NAME_MAX_CHARS: usize = 64;
+    /// What `serde` opens an unknown-field refusal with.
+    const PREFIX: &str = "unknown field `";
+
+    if error.classify() != serde_json::error::Category::Data {
+        return None;
+    }
+    let rendered = error.to_string();
+    let after = rendered.strip_prefix(PREFIX)?;
+    let name = after.split('`').next()?;
+    if name.is_empty() || name.chars().count() > NAME_MAX_CHARS {
+        return None;
+    }
+    Some(name.to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     #![expect(
@@ -130,6 +177,75 @@ mod tests {
     struct Pair {
         provider: String,
         api_key: String,
+    }
+
+    /// A closed struct, so an unknown key is a refusal rather than ignored.
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Closed {
+        // Deserialized but never read: the refusal is the subject, not the value.
+        #[expect(
+            dead_code,
+            reason = "the field exists so an unknown SIBLING is refusable"
+        )]
+        provider: String,
+    }
+
+    /// The field name comes back, so a log can say WHICH key was refused.
+    #[test]
+    fn an_unknown_field_refusal_yields_its_field_name() {
+        let error = object_from_slice::<Closed>(br#"{"provider":"a","extra":1}"#)
+            .expect_err("a closed struct refuses an unknown key");
+
+        assert_eq!(super::unknown_field_of(&error).as_deref(), Some("extra"));
+    }
+
+    /// A type refusal yields NOTHING, because its rendering embeds the value it
+    /// rejected — here an api key — and these bodies carry credentials.
+    #[test]
+    fn a_type_refusal_yields_nothing_so_no_value_can_reach_a_log() {
+        let error = object_from_slice::<Pair>(br#"{"provider":1,"api_key":"sk-live-secret"}"#)
+            .expect_err("a number is not a string");
+
+        assert!(
+            error.to_string().contains('1'),
+            "precondition: serde embeds the rejected value"
+        );
+        assert_eq!(super::unknown_field_of(&error), None);
+    }
+
+    /// Syntax and EOF refusals are not `Data`, so they answer `None` too.
+    #[test]
+    fn a_malformed_body_yields_nothing() {
+        let syntax = object_from_slice::<Pair>(b"{").expect_err("truncated");
+
+        assert_eq!(super::unknown_field_of(&syntax), None);
+    }
+
+    /// An attacker-chosen name is bounded, because the log line that carries it
+    /// is bounded and the sender picks the key.
+    #[test]
+    fn an_absurdly_long_field_name_is_refused_rather_than_logged() {
+        let name = "z".repeat(4096);
+        let body = format!(r#"{{"provider":"a","{name}":1}}"#);
+        let error =
+            object_from_slice::<Closed>(body.as_bytes()).expect_err("a closed struct refuses it");
+
+        assert_eq!(super::unknown_field_of(&error), None);
+    }
+
+    /// The empty key is refused too, so a log line never carries a bare name.
+    ///
+    /// `serde` renders this one as ``unknown field ` ` `` with nothing between
+    /// the delimiters, which parses cleanly and yields a name that says nothing.
+    /// Answering `None` keeps the caller's generic refusal rather than logging
+    /// `field=""`, which reads as a bug in the daemon rather than a bad request.
+    #[test]
+    fn the_empty_field_name_is_refused_rather_than_logged() {
+        let error = object_from_slice::<Closed>(br#"{"provider":"a","":1}"#)
+            .expect_err("a closed struct refuses the empty key like any other");
+
+        assert_eq!(super::unknown_field_of(&error), None);
     }
 
     /// A borrowing shape, so the lifetime the request handlers need is proven

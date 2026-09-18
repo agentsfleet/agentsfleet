@@ -260,9 +260,13 @@ async fn a_chosen_name_reaches_the_verb() {
 }
 
 #[tokio::test]
-async fn an_unknown_body_field_is_ignored_not_refused() {
-    // `lifecycle.zig` parses with `ignore_unknown_fields = true`; a client
-    // sending a field this daemon does not read must not start getting 400s.
+async fn an_unknown_body_field_is_refused_rather_than_ignored() {
+    // This asserted the opposite until Sep 2026, when every wire type closed.
+    // The old contract came from the Zig daemon parsing with
+    // `ignore_unknown_fields = true`, which meant a client could misspell a key
+    // and watch the request succeed while the value went nowhere. A closed type
+    // makes that a 400 the caller can act on, and `read_body` logs the field
+    // name so the operator can see which key it was.
     let response = send(
         WORKSPACE_ADMIN,
         Method::POST,
@@ -271,7 +275,11 @@ async fn an_unknown_body_field_is_ignored_not_refused() {
         r#"{"name":"deploy bots","color":"teal"}"#,
     )
     .await;
-    assert_reached_the_verb(response, "unknown field").await;
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "a field this daemon does not carry is refused, not dropped"
+    );
 }
 
 #[tokio::test]

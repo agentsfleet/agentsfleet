@@ -59,10 +59,14 @@ fn test_wire_rejects_malformed() {
 /// A field carrying the wrong JSON type is rejected rather than coerced.
 #[test]
 fn should_reject_a_field_of_the_wrong_type() {
-    let _ = serde_json::from_str::<LeaseRequest>(r#"{"wire_version":"2"}"#).unwrap_err();
-    let _ = serde_json::from_str::<LeaseRequest>(r#"{"wire_version":null}"#).unwrap_err();
-    let _ = serde_json::from_str::<LeaseRequest>(r#"{"wire_version":2.5}"#).unwrap_err();
-    let _ = serde_json::from_str::<LeaseRequest>(r#"{"wire_version":2}"#).unwrap();
+    let ok = r#"{"input_tokens":1,"cached_input_tokens":0,"output_tokens":0}"#;
+    let string = r#"{"input_tokens":"1","cached_input_tokens":0,"output_tokens":0}"#;
+    let null = r#"{"input_tokens":null,"cached_input_tokens":0,"output_tokens":0}"#;
+    let fractional = r#"{"input_tokens":1.5,"cached_input_tokens":0,"output_tokens":0}"#;
+    let _ = serde_json::from_str::<RenewRequest>(string).unwrap_err();
+    let _ = serde_json::from_str::<RenewRequest>(null).unwrap_err();
+    let _ = serde_json::from_str::<RenewRequest>(fractional).unwrap_err();
+    let _ = serde_json::from_str::<RenewRequest>(ok).unwrap();
 }
 
 /// An unknown ENUM value is refused rather than silently defaulting, which is
@@ -87,10 +91,6 @@ fn should_reject_an_unknown_enum_value() {
 /// must be refused, which fails the moment a field is widened.
 #[test]
 fn should_refuse_values_past_each_declared_integer_width() {
-    // u16 — the lease wire version.
-    let _ = serde_json::from_str::<LeaseRequest>(r#"{"wire_version":65535}"#).unwrap();
-    let _ = serde_json::from_str::<LeaseRequest>(r#"{"wire_version":65536}"#).unwrap_err();
-
     // u32 — the cumulative token counters on renewal.
     let at_max = r#"{"input_tokens":4294967295,"cached_input_tokens":0,"output_tokens":0}"#;
     let past = r#"{"input_tokens":4294967296,"cached_input_tokens":0,"output_tokens":0}"#;
@@ -105,7 +105,8 @@ fn should_refuse_values_past_each_declared_integer_width() {
     let _ = serde_json::from_str::<ReportTelemetry>(wide_neighbour).unwrap();
 
     // A negative value in an unsigned field is refused, not wrapped.
-    let _ = serde_json::from_str::<LeaseRequest>(r#"{"wire_version":-1}"#).unwrap_err();
+    let negative = r#"{"input_tokens":-1,"cached_input_tokens":0,"output_tokens":0}"#;
+    let _ = serde_json::from_str::<RenewRequest>(negative).unwrap_err();
 }
 
 /// A required field left out is an error, not a default. Zig's wire structs
@@ -120,21 +121,15 @@ fn should_reject_a_payload_missing_a_required_field() {
 
 /// The default lease request must ask for the CURRENT wire version.
 ///
-/// Not cosmetic: a default of `1` would have this port asking for the
-/// superseded shape it deliberately does not implement, and the daemon would
-/// answer with a payload no type here can parse. The Zig struct defaults its
-/// field to the version-one constant precisely because its handler treats an
-/// empty body as version one — this port has no such path, so its default has
-/// to be the current version and a test has to say so.
+/// An empty body is what a lease request IS, and it round-trips as `{}`.
+///
+/// The type carried a `wire_version` until Sep 2026 that no handler ever read.
+/// With the field gone the struct has nothing to serialize, and this pins that:
+/// a future edit adding a field back has to change this line, which is the
+/// moment to ask whether anything will read it.
 #[test]
-fn should_default_a_lease_request_to_the_current_wire_version() {
-    let request = LeaseRequest::default();
-    assert_eq!(
-        request.wire_version,
-        afd_wire::paths::LEASE_WIRE_VERSION_CURRENT
-    );
-    assert_eq!(
-        serde_json::to_string(&request).unwrap(),
-        r#"{"wire_version":2}"#
-    );
+fn a_lease_request_is_an_empty_body() {
+    assert_eq!(serde_json::to_string(&LeaseRequest).unwrap(), "{}");
+    let _ = serde_json::from_str::<LeaseRequest>("{}").unwrap();
+    let _ = serde_json::from_str::<LeaseRequest>(r#"{"wire_version":2}"#).unwrap_err();
 }

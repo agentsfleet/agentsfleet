@@ -68,7 +68,7 @@ const DETAIL_VERIFY_BODY: &str = "Malformed verify payload";
     ),
 ))]
 pub(crate) async fn open<D: Services>(State(services): State<Arc<D>>, body: Bytes) -> Response {
-    let Ok(request) = afd_core::json::object_from_slice::<OpenSessionRequest<'_>>(&body) else {
+    let Ok(request) = afd_http::handler::read_body::<OpenSessionRequest<'_>>(&body) else {
         return malformed(DETAIL_OPEN_BODY);
     };
     let opening = match Opening::parse(&request.public_key, &request.token_name) {

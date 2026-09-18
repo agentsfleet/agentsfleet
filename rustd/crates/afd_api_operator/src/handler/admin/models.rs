@@ -241,7 +241,7 @@ fn create_request(body: &[u8]) -> Result<AdminModelCreate<'_>, &'static str> {
     if body.is_empty() {
         return Err(DETAIL_BODY_REQUIRED);
     }
-    let request = afd_core::json::object_from_slice::<AdminModelCreate<'_>>(body)
+    let request = afd_http::handler::read_body::<AdminModelCreate<'_>>(body)
         .map_err(|_error| DETAIL_MALFORMED_JSON)?;
     request.validate().map_err(|report| detail_for(&report))?;
     Ok(request)
@@ -251,8 +251,8 @@ fn rates_request(body: &[u8]) -> Result<afd_admin::ModelRates, &'static str> {
     if body.is_empty() {
         return Err(DETAIL_BODY_REQUIRED);
     }
-    let rates = afd_core::json::object_from_slice::<ModelRates>(body)
-        .map_err(|_error| DETAIL_MALFORMED_JSON)?;
+    let rates =
+        afd_http::handler::read_body::<ModelRates>(body).map_err(|_error| DETAIL_MALFORMED_JSON)?;
     rates.validate().map_err(|report| detail_for(&report))?;
     Ok(store_rates(rates))
 }

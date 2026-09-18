@@ -8,12 +8,12 @@
 //!
 //! # The body is not read
 //!
-//! `LeaseRequest` carries a `wire_version`, and this port serves exactly one
-//! shape — the version-two fields apply unconditionally, with no negotiation,
-//! no downgrade and no "unsupported version" refusal. So the request has no
-//! extractor for its body at all, which is the strongest way to say the body
-//! changes nothing: there is no code path a future edit could make read it by
-//! accident.
+//! `LeaseRequest` is empty. It carried a `wire_version` until Sep 2026 that
+//! this port never read — one shape is served unconditionally, with no
+//! negotiation, no downgrade and no "unsupported version" refusal. The request
+//! has no extractor for its body at all, which is the strongest way to say the
+//! body changes nothing: there is no code path a future edit could make read it
+//! by accident.
 //!
 //! # Always 200, and never 204
 //!

@@ -34,12 +34,8 @@ mod schema;
 mod schema_literals;
 #[path = "strictness.rs"]
 mod strictness;
-// The per-type unknown-field policy, which the deleted wire corpus used to
-// grade as a second case per roster entry.
 #[path = "tenant_provider_shapes.rs"]
 mod tenant_provider_shapes;
-#[path = "unknown_fields.rs"]
-mod unknown_fields;
 // Declared bounds at their exact limits, and a seeded mutation corpus the
 // parser must survive without panicking.
 #[path = "validation.rs"]
