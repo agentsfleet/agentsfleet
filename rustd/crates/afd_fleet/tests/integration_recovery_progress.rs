@@ -679,9 +679,14 @@ async fn a_failed_pass_keeps_the_repairs_it_drained() {
         .await
         .expect("destroying this fleet's stream data");
 
-    // One row per walk, so the first pass fills its batch and files where it
-    // stopped rather than reaching the end of the fleet.
-    let mut progress = Progress::with_capacity(ROOM_FOR_ONE);
+    // A full-size resume set, NOT the one-slot set the declined-repair test
+    // uses. These scans carry no fleet predicate, so a sibling suite's lost
+    // fleet is walked by this pass too — and with room for one, whichever fleet
+    // sorted first would take the slot and this fixture's repair would be the
+    // one turned away. That failed in the full workspace run and passed
+    // serially, which is the signature of exactly this. One row per walk still,
+    // so the first pass fills its batch and files where it stopped.
+    let mut progress = Progress::default();
     live.reconcile(clock::now(), EVERY_FLEET, ONE_ROW, &mut progress)
         .await
         .expect("the first pass runs against both live datastores");
