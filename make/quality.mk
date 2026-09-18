@@ -33,7 +33,7 @@ lint-cli: check-documentation-rules  ## Lint agentsfleet CLI and its public text
 	@echo "✓ [agentsfleet] Lint passed"
 
 # Governance gates: the script-driven checks that enforce repository CONVENTIONS
-# rather than compile correctness. Grouped under one target so `lint-zig` names a
+# rather than compile correctness. Grouped so this target names a
 # policy set instead of a growing list, and so a new rule extends this line
 # rather than adding another near-duplicate wrapper.
 #
@@ -55,7 +55,7 @@ _model_allowlist_check:
 # becomes the place lint rules go to die.
 RUSTD_DIR := rustd
 
-lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
+lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors) + the Zig runner's formatting
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] rustfmt --check" -- cargo fmt --check
 	@# --all-features, not the default set: a crate's `test-util` feature gates

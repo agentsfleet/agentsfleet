@@ -79,8 +79,8 @@ pub struct MemoryHydrateResponse<'a> {
 //
 // Declared here rather than assembled inline at the handler, which is where it
 // used to live. What the inline version claimed was that a response body could
-// be spelled somewhere other than this crate, and
-// two keys written by hand at a call site are two keys nothing type-checks.
+// be spelled somewhere other than this crate, and two keys written by hand at a
+// call site are two keys nothing type-checks.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

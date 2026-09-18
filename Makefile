@@ -26,7 +26,7 @@ help:  ## Show all available Makefile targets
 	@echo ""
 	@echo "Static Analysis:"
 	@echo "  lint-all                 Run every linter + quality gate (umbrella for all checks below)"
-	@echo "  lint-rustd               Lint the Rust workspace (rustfmt + Clippy, warnings are errors)"
+	@echo "  lint-rustd               Lint the Rust workspace (rustfmt + Clippy) + zig fmt --check"
 	@echo "  lint-scripts             Run every scripts/*_test.py self-test"
 	@echo "  lint-website             Lint website (Oxlint + tsc)"
 	@echo "  lint-apps-designsystem-cli  Lint app + design-system + agentsfleet"

@@ -7,7 +7,7 @@
 //!
 //! # Mapping
 //!
-//! | Zig test (`frontmatter_fixtures_test.zig`) | Rust test here |
+//! | What is pinned | Test |
 //! |---|---|
 //! | `trigger/minimal.md` field values | [`the_minimal_trigger_carries_its_authored_values`] |
 //! | `trigger/full.md` field values | [`the_full_trigger_carries_every_authored_block`] |
