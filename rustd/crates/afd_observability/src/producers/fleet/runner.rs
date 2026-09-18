@@ -11,6 +11,10 @@ use opentelemetry::KeyValue;
 
 use crate::producers::fleet::UNMODELLED_REASON;
 use crate::producers::{Producers, installed};
+#[cfg(test)]
+mod tests;
+
+use crate::metrics::label::fleet::Fault;
 use crate::semconv;
 
 /// Records one runner's failed run.
@@ -24,6 +28,9 @@ pub fn failed(runner_id: &str, reason: Option<FailureClass>) {
         return;
     };
     let label = producers.fleet.runners.admit(runner_id);
+    // Classified before `reason` is shadowed by its wire spelling: the blame
+    // split reads the typed class, not the string it renders to.
+    let fault = fault_of(reason);
     let reason = reason.map_or(UNMODELLED_REASON, class_label);
     producers.fleet.runner_failures.add(
         1,
@@ -32,7 +39,7 @@ pub fn failed(runner_id: &str, reason: Option<FailureClass>) {
             KeyValue::new(semconv::LABEL_REASON, reason),
         ],
     );
-    executed(producers, label, Outcome::FleetError);
+    executed(producers, label, Outcome::FleetError, Some(fault));
     if label == crate::runner::OVERFLOW_RUNNER {
         producers.fleet.runner_failures_overflow.add(1, &[]);
     }
@@ -42,7 +49,7 @@ pub fn failed(runner_id: &str, reason: Option<FailureClass>) {
 pub fn processed(runner_id: &str) {
     if let Some(producers) = installed() {
         let label = producers.fleet.runners.admit(runner_id);
-        executed(producers, label, Outcome::Processed);
+        executed(producers, label, Outcome::Processed, None);
     }
 }
 
@@ -71,15 +78,51 @@ pub fn lease_released(runner_id: &str) {
     }
 }
 
+/// Which side of the platform boundary a failure falls on.
+///
+/// A match with no default arm, deliberately: a twelfth [`FailureClass`] must
+/// not compile until somebody decides whose fault it is. A default would pick
+/// a side silently, and the side it picked would be wrong half the time.
+///
+/// An unclassified failure is the PLATFORM's. The runner reports `None` when it
+/// could not say why a run died, and a cause nobody could name is not evidence
+/// against the tenant — failing toward our own accountability is the only
+/// direction that cannot quietly flatter the objective.
+const fn fault_of(reason: Option<FailureClass>) -> Fault {
+    match reason {
+        Some(
+            FailureClass::PolicyDeny
+            | FailureClass::LandlockDeny
+            | FailureClass::OomKill
+            | FailureClass::ResourceKill
+            | FailureClass::BudgetBreach
+            | FailureClass::TimeoutKill,
+        ) => Fault::Workload,
+        Some(
+            FailureClass::StartupPosture
+            | FailureClass::RunnerCrash
+            | FailureClass::TransportLoss
+            | FailureClass::LeaseExpired
+            | FailureClass::RenewalTerminate,
+        )
+        | None => Fault::Platform,
+    }
+}
+
 /// Records one finished run under an already-decided label.
-fn executed(producers: &Producers, label: &str, outcome: Outcome) {
-    producers.fleet.runner_executions.add(
-        1,
-        &[
-            KeyValue::new(semconv::LABEL_RUNNER_ID, label.to_owned()),
-            KeyValue::new(semconv::LABEL_OUTCOME, outcome.as_str()),
-        ],
-    );
+///
+/// A success carries no fault label at all rather than a third "none" value, so
+/// `{fault!="workload"}` reads as "everything the platform was accountable
+/// for" — an absent label satisfies a not-equal matcher.
+fn executed(producers: &Producers, label: &str, outcome: Outcome, fault: Option<Fault>) {
+    let mut labels = vec![
+        KeyValue::new(semconv::LABEL_RUNNER_ID, label.to_owned()),
+        KeyValue::new(semconv::LABEL_OUTCOME, outcome.as_str()),
+    ];
+    if let Some(fault) = fault {
+        labels.push(KeyValue::new(semconv::LABEL_FAULT, fault.as_str()));
+    }
+    producers.fleet.runner_executions.add(1, &labels);
 }
 
 /// The wire spelling of a failure class.

@@ -14,7 +14,7 @@
 #
 # Each case runs a COPY of the gate beside stub steps, so a pass proves the
 # gate dispatched and proves nothing about any real database or cache. No case
-# sets ALLOW_DATABASE_TEARDOWN or ALLOW_REDIS_TEARDOWN, and no case executes
+# sets ALLOW_DATABASE_TEARDOWN or ALLOW_DRAGONFLY_TEARDOWN, and no case executes
 # the real 02_teardown.sh.
 #
 # The negatives assert BOTH a non-zero exit AND that no step ran. A non-zero
@@ -24,7 +24,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GATE_DIRS=(database redis)
+GATE_DIRS=(database dragonfly)
 STEPS=(01_credential_check.sh 02_teardown.sh 03_verify.sh)
 
 passed=0

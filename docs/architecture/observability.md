@@ -67,7 +67,7 @@ declaration, so there is no second copy to drift.
 
 Runtime deployment carries no dashboard files. Grafana dashboard and alert
 definitions live under
-`playbooks/operations/observability/providers/grafana/assets/`, where the
+`playbooks/operations/observability/assets/`, where the
 operator playbook checks, applies, and verifies them against source-owned
 metrics.
 
@@ -95,6 +95,142 @@ Category legend: **latency** (how slow), **traffic** (how much), **errors**
 working). Improve latency by finding the slow stage; errors by rate per cause;
 saturation by capacity or shedding; health by fixing the exporter or pool, not
 the workload.
+
+## Service Level Objectives
+
+Four indicators, and the reason there are only four: an indicator needs a
+family with a producer behind it, and most of what an operator would want to
+promise here does not have one yet. Each row names the measurement its target
+came from, because a target nobody measured is a number, not an objective.
+
+| Indicator | Good events over valid events | Target | Where the target came from |
+|---|---|---|---|
+| Admission availability | `agentsfleet_admissions_total{outcome=~"appended\|replayed"}` over the same family excluding `over_budget` | 99% | unproven. Measured Sep 17, 2026 on development: 13 `appended`, 1 `replayed`, nothing refused or deferred. Fourteen events set no objective. |
+| Runner success | `agentsfleet_runner_executions_total{outcome="processed"}` over the same family excluding `fault="workload"` | 95% | unproven. Measured the same day: 7 `processed`, 3 `fleet_error`, the failures split 2 `startup_posture` and 1 `runner_crash` — both platform classes, so the blame split leaves the measured 70% unchanged. |
+| Admitted fleets that started | `agentsfleet_fleet_runs_started_total{kind="fresh"}` over `agentsfleet_admissions_total{outcome="appended"}` | 99% | unproven, and not for want of traffic: both families landed in M197_002 and the deployed daemon predates them, so there are zero series. The first reading worth having is the one after the next deploy. |
+| Work picked up inside the replay floor | samples where `agentsfleet_admission_backlog_oldest_age_seconds` is below the floor, over all samples | 99% | the floor is derived, the target is not. `MIN_AGE + INTERVAL` in `rustd/crates/afd_runner/src/sweep/replay.rs` is 60 seconds. |
+
+`over_budget` is excluded from valid events on purpose. It is the deployment
+refusing work because a budget is spent, which is the system doing what its
+budgets say rather than failing to do it. Counting a deliberate refusal as an
+availability miss would make the indicator worse the better the budgets work.
+
+#### Why the runner objective excludes workload faults
+
+An error budget is a promise about what this control plane controls. `FailureClass` carries eleven
+members and only five of them are ours: `startup_posture`, `runner_crash`, `transport_loss`,
+`lease_expired` and `renewal_terminate`. The other six — `policy_deny`, `landlock_deny`, `oom_kill`,
+`resource_kill`, `budget_breach` and `timeout_kill` — are the workload failing at something the
+platform delivered correctly.
+
+The daemon classifies them at the point of record: `fault_of` in
+`afd_observability/src/producers/fleet/runner.rs` maps the class to a two-member `Fault` set, and the
+executions counter carries it as `fault` on the failing half only. A success has no `fault` label at
+all, which is what makes `{fault!="workload"}` read as "everything the platform was accountable for"
+— an absent label satisfies a not-equal matcher.
+
+Workload faults leave the denominator rather than counting as successes. Counting them good would let
+a noisy tenant dilute the ratio and hide real platform failures behind volume; counting them bad would
+let one tenant's broken code spend everybody's budget. Neither is a measurement, so they are not
+measured. An unclassified failure (`None`) is charged to the platform: a cause nobody could name is
+not evidence against the tenant.
+
+`fault_of` is an exhaustive match with no default arm, so a twelfth `FailureClass` fails the build
+until somebody decides which side it belongs on, and
+`every_failure_class_is_assigned_the_side_we_decided` records the decision where a reviewer can argue
+with it one line at a time.
+
+The all-cause rate stays on the dashboard beside the objective as a plain reading. "Did my run work"
+is a fair question with a real answer; it just is not a promise.
+
+
+A `replayed` admission counts as good for the same reason: the first
+admission's identifier stands, so the producer got the answer it asked for.
+
+`reclaimed` lease grants are excluded from the fleet-start numerator on the
+mirror of that logic. A reclaim restarts work that was admitted once and
+already counted once, so counting the restart would let a flapping runner push
+the ratio above 1 — an availability figure that improves as the fleet gets less
+stable is not measuring availability.
+
+### Error budget burn
+
+Burn rate is the error ratio divided by the error budget, so a burn of 1 spends
+the budget exactly over the window and a burn of 14.4 spends 2% of a 30-day
+budget in an hour. The dashboard draws two windows per severity, the long one
+making the budget claim and the short one resetting it, so a burn that has
+already stopped does not keep paging. Page at 14.4 over 1h and 5m; open a
+ticket at 6 over 6h and 30m.
+
+None of it is enabled. The windows are drawn and the expressions are reviewed,
+and every burn panel carries an unproven marker until the deployment has served
+enough events to set a target against. Ten runner executions produce a burn
+rate; they do not produce an objective.
+
+### What has no indicator, and what would have to exist
+
+`rustd/crates/afd_observability/src/metrics/produced.rs` is the ledger of
+families this build declares and does not feed. Three consequences matter here.
+
+**End-to-end fleet availability now has both halves.** It was the headline gap
+here until M197_002 shipped `agentsfleet_fleet_runs_started_total{kind}`,
+incremented at the one lease grant point;
+`agentsfleet_admissions_total{outcome="appended"}` was always the denominator.
+The trigger counter this section used to name as the missing denominator was
+retired rather than produced — declared for years and incremented nowhere, so
+it left the census instead of gaining a caller.
+
+**Repair latency has no histogram.** Both
+`agentsfleet_repair_production_to_queue_seconds` and
+`agentsfleet_repair_queue_to_completion_seconds` sit in the ledger behind the
+repair-result ingress, which has no Rust home yet.
+
+**API latency has no family at all.** The census declares three histograms and
+none of them measures an HTTP request. Requests per second, the 500 rate and a
+latency percentile are all unanswerable from this export.
+
+Each of those is a new family with a new census row, which makes it a milestone
+rather than a dashboard edit.
+
+### The two environments share one tenant
+
+Development and production resolve to the same Grafana stack, the same
+namespace, the same Prometheus datasource and the same ingest credential — the
+vault items differ in name only. No series carries a `deployment.environment`
+attribute either: `rustd/crates/agentsfleetd/src/telemetry/resource.rs` builds
+the resource from service name, namespace, version and an optional instance
+identifier, and stops there.
+
+Today every series in the store is development, because the production Fly
+application runs no machines. That makes the development dashboard correct by
+accident rather than by construction, and it stops being correct on the day
+production first deploys: every panel would sum both environments with no query
+able to separate them. Emitting `deployment.environment` is the blocker on that
+deploy, and it is daemon and deployment work rather than a dashboard change.
+
+### Nothing watches the infrastructure
+
+The store holds 37 metric names: the 36 runtime families and `target_info`.
+There are no collector, host, container or datastore families, so the
+dashboards answer questions about the daemon's own work and nothing else.
+
+The collector does not report on itself. `deploy/fly/otelcol-{dev,prod}/config.yml`
+configures `service.telemetry` for logs only, so `otelcol_exporter_send_failed_*`
+and the queue-size families are never read. The consequence is written into
+that file already: the `sending_queue` is in-memory, an outage overlapping a
+restart loses what was queued, and the daemon counts an export successful once
+the collector returns 2xx, which means enqueued rather than accepted. The
+daemon's `agentsfleet_otlp_entries_discarded_total` counts loss before the
+collector and cannot see loss inside it.
+
+There is also no `hostmetrics` receiver, so `agentsfleetd`, `otelcol` and
+Dragonfly report no processor, memory, disk or network usage — the single
+resource reading anywhere in the system is
+`agentsfleet_process_resident_memory_bytes`, which the daemon takes from its own
+`/proc/self/statm`.
+
+Closing that is collector configuration rather than a census change, which
+makes it much smaller than the three missing families above.
 
 ## `agentsfleet-runner` — deliberately bare
 

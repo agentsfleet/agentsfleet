@@ -69,3 +69,13 @@ workspace = true
 [[test]]
 name = "observability_suite"
 path = "tests/observability_suite.rs"
+
+# Its own binary, and it has to be. `producers_drive` inside the suite above
+# installs a plain provider; `Capture::install` installs a capturing one, and
+# both write process-wide `OnceLock`s — `test_util` says a suite needing both
+# is two binaries. Declared explicitly because `autotests = false` means a file
+# in `tests/` that no target names does not run, does not fail, and appears in
+# no count.
+[[test]]
+name = "runner_fault_label"
+path = "tests/runner_fault_label.rs"

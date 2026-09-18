@@ -1,5 +1,5 @@
 #!/bin/bash
-# 01_credential_check.sh - Verify credentials and approvals before Redis teardown
+# 01_credential_check.sh - Verify credentials and approvals before Dragonfly teardown
 
 set -euo pipefail
 
@@ -15,7 +15,7 @@ playbooks_require_vault_read_approval
 playbooks_require_op_auth
 
 echo ""
-echo "== redis-teardown Section 1: credential and approval check =="
+echo "== dragonfly-teardown Section 1: credential and approval check =="
 echo ""
 
 # Check required tools
@@ -23,14 +23,14 @@ playbooks_require_tool op
 playbooks_require_tool docker
 
 # Check approval
-if [ "${ALLOW_REDIS_TEARDOWN:-0}" != "1" ]; then
-	echo "❌ MISSING APPROVAL: ALLOW_REDIS_TEARDOWN=1 required for destructive operation" >&2
-	echo "   WARNING: This will PERMANENTLY FLUSH all keys from the Redis cache!" >&2
+if [ "${ALLOW_DRAGONFLY_TEARDOWN:-0}" != "1" ]; then
+	echo "❌ MISSING APPROVAL: ALLOW_DRAGONFLY_TEARDOWN=1 required for destructive operation" >&2
+	echo "   WARNING: This will PERMANENTLY FLUSH all keys from the Dragonfly cluster!" >&2
 	echo "   Set this environment variable to proceed with teardown" >&2
 	exit 1
 fi
 
-echo "✓ ALLOW_REDIS_TEARDOWN=1 approved"
+echo "✓ ALLOW_DRAGONFLY_TEARDOWN=1 approved"
 
 # Verify vault items exist. The root `url` field may flush the database;
 # the restricted runtime `api-url` may not.

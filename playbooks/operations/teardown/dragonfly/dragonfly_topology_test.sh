@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Guards the two things in the Redis teardown that a human acts on.
+# Guards the two things in the Dragonfly teardown that a human acts on.
 #
-# It deliberately does NOT pin Redis key names against the Zig constants. The
+# It deliberately does NOT pin Dragonfly key names against the Zig constants. The
 # teardown is `FLUSHALL` (02_teardown.sh) and the verification is `DBSIZE == 0`
 # (03_verify.sh) — both name-blind, so no key name is load-bearing for either
 # step. Ten assertions used to pin `fleet:ready`, `connector:outbound` and the
@@ -49,7 +49,7 @@ test_retired_agent_topology_is_absent() {
   local name="retired_agent_topology_is_absent"
   if grep -Eq 'agent:\{agent_id\}:events|agent_lease|/agents' \
     "$PLAYBOOK" "$VERIFY"; then
-    bad "$name" "Redis teardown still names the retired agent topology"
+    bad "$name" "Dragonfly teardown still names the retired agent topology"
   else
     ok "$name"
   fi

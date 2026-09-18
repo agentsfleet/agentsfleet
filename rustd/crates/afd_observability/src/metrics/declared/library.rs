@@ -37,12 +37,6 @@ pub const LIBRARY_READ_OUTCOME_TOTAL: Declared<CounterKind> =
 pub const LIBRARY_POOL_RESULT_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_library_pool_result_total");
 
-/// Hit ratio of the global catalogue cache.
-///
-/// Labels: `cache`.
-pub const LIBRARY_CACHE_OUTCOME_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_library_cache_outcome_total");
-
 /// Response bytes per surface.
 ///
 /// Labels: `surface`.

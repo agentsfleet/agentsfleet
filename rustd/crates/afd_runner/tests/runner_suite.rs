@@ -1,5 +1,7 @@
 //! Live runner sweep regression suite.
 
+#[path = "integration_census.rs"]
+mod integration_census;
 #[path = "integration_reclaim.rs"]
 mod integration_reclaim;
 #[path = "integration_repair_dispatch.rs"]

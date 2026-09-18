@@ -1,7 +1,7 @@
 //! The background sweepers, spawned here and nowhere else.
 //!
 //! `afd_runner::sweep` knows what each pass DOES and how the loop around it
-//! behaves; this file knows which four this daemon runs and what they are built
+//! behaves; this file knows which ones this daemon runs and what they are built
 //! over. The split is [`crate::plane`]'s: the service crate stays unaware that
 //! a daemon process exists, and the process decides what it starts.
 //!
@@ -25,8 +25,8 @@ use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_dragonfly::Dragonfly;
 use afd_runner::sweep::{
-    self, liveness::Liveness, reclaim::Reclaim, reconcile::Reconcile, repair::Repairs,
-    replay::Replay, retention::Retention,
+    self, census::Census, liveness::Liveness, reclaim::Reclaim, reconcile::Reconcile,
+    repair::Repairs, replay::Replay, retention::Retention,
 };
 
 use crate::supervisor::Supervisor;
@@ -44,6 +44,9 @@ pub const RECLAIM: &str = "sweeper:reclaim";
 
 /// The supervised name of the retention sweeper.
 pub const RETENTION: &str = "sweeper:retention";
+
+/// The supervised name of the fleet census sweeper.
+pub const FLEET_CENSUS: &str = "sweeper:fleet-census";
 
 /// The supervised name of the repair-verification dispatcher.
 pub const REPAIR: &str = "sweeper:repair-verification";
@@ -80,6 +83,11 @@ pub fn spawn(supervisor: &mut Supervisor, database: &Db, queue: &Dragonfly) {
 
     let retention = Retention::new(database.clone());
     supervisor.spawn(RETENTION, move |token| sweep::run(retention, token));
+
+    // Reads only: the fleet count the dashboard draws, sampled from the table
+    // that owns it rather than moved on every transition.
+    let census = Census::new(database.clone());
+    supervisor.spawn(FLEET_CENSUS, move |token| sweep::run(census, token));
 
     let repairs = Repairs::new(database.clone(), admissions.clone(), Entropy::new());
     supervisor.spawn(REPAIR, move |token| sweep::run(repairs, token));

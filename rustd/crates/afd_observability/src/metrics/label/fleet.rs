@@ -18,6 +18,27 @@ const REPLAYED: &str = "replayed";
 const APPENDED: &str = "appended";
 
 closed_set! {
+    /// Which side of the platform boundary a failed run fell on.
+    ///
+    /// An error budget is a promise about what this control plane controls. A
+    /// run that died because its workload asked for something policy refuses,
+    /// outgrew a ceiling, or ran out of money is a run this platform DELIVERED
+    /// correctly, and counting it against the objective lets one tenant's bad
+    /// code spend everybody's budget.
+    ///
+    /// Two members and not eleven: the eleven are `FailureClass`, which stays
+    /// the operator's diagnostic on `agentsfleet_runner_failures_total`. This
+    /// set answers the only question the objective asks, and keeps the series
+    /// count on the executions family at three rather than twelve.
+    Fault {
+        /// Ours. It spends the error budget.
+        Platform => "platform",
+        /// The workload's. The platform delivered; what it ran did not.
+        Workload => "workload",
+    }
+}
+
+closed_set! {
     /// Why opening an account from a signup delivery did not happen.
     ///
     /// Six, and the count is the point: the first three are the delivery being
@@ -139,5 +160,54 @@ closed_set! {
         Queued => "queued",
         /// Recorded as having produced its event.
         Completed => "completed",
+    }
+}
+
+closed_set! {
+    /// Where a fleet stands in its life, as the census counts it.
+    ///
+    /// The spellings are `core.fleets.status`'s, byte for byte, and the set
+    /// mirrors the lifecycle crate's own status enum — that crate depends on
+    /// this one, so the two cannot share a type, and a test over there holds
+    /// them equal member for member instead.
+    FleetStatusLabel {
+        /// The row exists; its stream may not yet.
+        Installing => "installing",
+        /// Leasable. The only status the runner's candidate query admits.
+        Active => "active",
+        /// Held by the platform's anomaly gate.
+        Paused => "paused",
+        /// Stopped by an operator, and resumable.
+        Stopped => "stopped",
+        /// Terminal.
+        Killed => "killed",
+    }
+}
+
+impl FleetStatusLabel {
+    /// The member a stored spelling names, if this build models it.
+    ///
+    /// `None` rather than a default: a row holding a status this build does
+    /// not know is dropped from the census and reported, never counted under
+    /// a member it is not.
+    #[must_use]
+    pub fn from_spelling(raw: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|status| status.as_str() == raw)
+    }
+}
+
+closed_set! {
+    /// How a run came to start.
+    ///
+    /// Two rather than two families: an operator reads them as one line split
+    /// by cause, and `sum()` over one family stays the count of runs begun.
+    RunStart {
+        /// A new entry read off the stream.
+        Fresh => "fresh",
+        /// A lapsed holder's event, re-leased under a higher fence.
+        Reclaimed => "reclaimed",
     }
 }
