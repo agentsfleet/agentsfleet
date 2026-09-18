@@ -12,7 +12,6 @@ import {
   OPT_FROM,
   OPT_GITHUB,
   OPT_REF,
-  OPT_REPLACE,
   OPT_TEMPLATE,
   OPT_TTY,
 } from "../constants/cli-flags.ts";
@@ -65,7 +64,6 @@ export const buildFleetHandlers = (
         from: optString(frame.parsed.options, OPT_FROM),
         template: optString(frame.parsed.options, OPT_TEMPLATE),
         revision: optString(frame.parsed.options, OPT_REF),
-        replace: frame.parsed.options[OPT_REPLACE] === true,
       }),
   ),
   models: wrapEFn(

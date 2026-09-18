@@ -11,36 +11,32 @@
 
 import { Effect, Exit, type Redacted } from "effect";
 import { HttpClient } from "../services/http-client.ts";
-import { wsApprovalsPath } from "../lib/api-paths.ts";
 import { GATE_STATUS } from "../constants/approvals.ts";
-import type { ApprovalGate } from "./approvals.ts";
-
-interface ApprovalListResponse {
-  readonly items?: ReadonlyArray<ApprovalGate>;
-}
+import { fetchGates, type ApprovalGate } from "./approvals.ts";
 
 const ONE_GATE = 1;
 
 /** Every pending gate in the workspace, or an empty list when the inbox cannot
- *  be read. A failed diagnosis must never replace the thing being diagnosed,
- *  so the read is best-effort at both call sites. */
+ *  be read.
+ *
+ *  The daemon does the narrowing: `status=pending` is its own query parameter,
+ *  and the read pages to exhaustion. Filtering a single returned page here
+ *  would report "nothing waiting" for a workspace whose pending gate sits
+ *  behind a page of decided ones — a confident wrong answer, which is the
+ *  failure this whole diagnosis replaces.
+ *
+ *  Best-effort at both call sites: a failed diagnosis must never replace the
+ *  thing being diagnosed, and `Effect.exit` survives a defect (a thrown
+ *  TypeError in the transport) as well as a typed refusal. */
 const pendingGates = (
   wsId: string,
   token: Redacted.Redacted<string>,
 ): Effect.Effect<ReadonlyArray<ApprovalGate>, never, HttpClient> =>
   Effect.gen(function* () {
-    const http = yield* HttpClient;
-    // `Effect.exit` rather than an error-channel fallback: this runs on a path
-    // that has ALREADY failed, so it must survive a defect (a thrown TypeError
-    // in the transport, say) as well as a typed refusal. A diagnosis that can
-    // itself crash is worse than no diagnosis.
     const exit = yield* Effect.exit(
-      http.request<ApprovalListResponse>({ path: wsApprovalsPath(wsId), token }),
+      fetchGates(wsId, token, { status: GATE_STATUS.pending }),
     );
-    const res = Exit.isSuccess(exit) ? exit.value : ({} as ApprovalListResponse);
-    return (res.items ?? []).filter(
-      (gate) => gate.status === GATE_STATUS.pending,
-    );
+    return Exit.isSuccess(exit) ? exit.value : [];
   });
 
 /**

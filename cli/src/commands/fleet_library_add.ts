@@ -30,13 +30,14 @@ const METHOD_POST = "POST" as const;
  *  separator. The daemon refuses the same shapes; refusing here costs no
  *  request. */
 const REPOSITORY_PATTERN = /^[^/\s]+\/[^/\s]+$/u;
+const PATH_SEPARATOR = "/" as const;
+const TRAILING_SEPARATORS = /\/+$/u;
 
 export interface LibraryAddFlags {
   readonly github?: string | undefined;
   readonly from?: string | undefined;
   readonly template?: string | undefined;
   readonly revision?: string | undefined;
-  readonly replace?: boolean | undefined;
 }
 
 /** The onboarding body, shaped per source kind. `support_files` is always sent
@@ -45,7 +46,6 @@ export interface LibraryAddFlags {
 interface LibraryImportBody {
   readonly source_kind: string;
   readonly source_ref: string;
-  readonly replace: boolean;
   readonly ref?: string;
   readonly skill_markdown?: string;
   readonly trigger_markdown?: string;
@@ -67,6 +67,19 @@ const REVISION_NEEDS_GITHUB =
   "--ref names a branch, tag, or commit, so it rides --github only" as const;
 const REPOSITORY_SHAPE =
   "--github takes owner/repo, for example agentsfleet/github-pr-reviewer" as const;
+
+/** What an upload records as its origin.
+ *
+ *  The daemon stores `source_ref` as provenance and the gallery prints it to
+ *  every workspace member, so sending the absolute path would put an operator's
+ *  home directory — and their username — on a row their colleagues read. The
+ *  bundle's own directory name says where it came from without that.
+ */
+const uploadProvenance = (path: string): string => {
+  const trimmed = path.replace(TRAILING_SEPARATORS, "");
+  const name = trimmed.split(PATH_SEPARATOR).pop();
+  return name && name.length > 0 ? name : trimmed;
+};
 
 const reject = (detail: string, suggestion: string) =>
   Effect.fail(new ValidationError({ detail, suggestion }));
@@ -111,12 +124,10 @@ const bodyForSource = (
   flags: LibraryAddFlags,
 ): Effect.Effect<LibraryImportBody, CliError> =>
   Effect.gen(function* () {
-    const replace = flags.replace === true;
     if (source.kind !== LIBRARY_SOURCE_KIND.upload) {
       return {
         source_kind: source.kind,
         source_ref: source.ref,
-        replace,
         ...(flags.revision ? { ref: flags.revision } : {}),
         support_files: [],
       };
@@ -127,8 +138,7 @@ const bodyForSource = (
       // The path is provenance, not a fetch instruction: the daemon stores it
       // so a row says where its bytes came from, and reads the documents from
       // the body.
-      source_ref: source.ref,
-      replace,
+      source_ref: uploadProvenance(source.ref),
       skill_markdown: bundle.skill_md,
       ...(bundle.trigger_md ? { trigger_markdown: bundle.trigger_md } : {}),
       support_files: [],

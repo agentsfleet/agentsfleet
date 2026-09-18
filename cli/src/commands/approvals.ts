@@ -9,7 +9,7 @@
 // server-side (`ApprovalRead` / `ApprovalResolve`); the decide half lives in
 // approvals_decide.ts.
 
-import { Effect } from "effect";
+import { Effect, type Redacted } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
@@ -23,6 +23,9 @@ import {
   EMPTY_CELL,
   GATE_COLUMN,
   GATE_FIELD,
+  GATE_MAX_PAGES,
+  GATE_PAGE_LIMIT,
+  GATE_QUERY,
   GATE_STATUS,
 } from "../constants/approvals.ts";
 
@@ -43,9 +46,52 @@ export interface ApprovalGate {
   readonly resolved_by_name?: string | null;
 }
 
-interface ApprovalListResponse {
+export interface ApprovalListResponse {
   readonly items?: ReadonlyArray<ApprovalGate>;
+  readonly next_cursor?: string | null;
 }
+
+/** One approvals page, with the daemon doing the narrowing.
+ *
+ *  `status` and `fleet_id` are the route's own query parameters. Filtering
+ *  here rather than over a returned page is not a style choice: a client-side
+ *  filter sees only what the first page happened to contain, so a workspace
+ *  whose pending gate sits behind fifty decided ones reads as "nothing
+ *  waiting" — the confident wrong answer this command exists to replace.
+ */
+export const approvalsQuery = (filters: {
+  readonly fleetId?: string | undefined;
+  readonly status?: string | undefined;
+  readonly cursor?: string | undefined;
+}): string => {
+  const params = new URLSearchParams({ [GATE_QUERY.limit]: String(GATE_PAGE_LIMIT) });
+  if (filters.fleetId) params.set(GATE_QUERY.fleetId, filters.fleetId);
+  if (filters.status) params.set(GATE_QUERY.status, filters.status);
+  if (filters.cursor) params.set(GATE_QUERY.cursor, filters.cursor);
+  return params.toString();
+};
+
+/** Every gate the filters match, following `next_cursor` to exhaustion. */
+export const fetchGates = (
+  wsId: string,
+  token: Redacted.Redacted<string>,
+  filters: { readonly fleetId?: string | undefined; readonly status?: string | undefined },
+): Effect.Effect<ReadonlyArray<ApprovalGate>, CliError, HttpClient> =>
+  Effect.gen(function* () {
+    const http = yield* HttpClient;
+    const gates: ApprovalGate[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < GATE_MAX_PAGES; page += 1) {
+      const res: ApprovalListResponse = yield* http.request<ApprovalListResponse>({
+        path: `${wsApprovalsPath(wsId)}?${approvalsQuery({ ...filters, cursor })}`,
+        token,
+      });
+      gates.push(...(res.items ?? []));
+      if (!res.next_cursor) break;
+      cursor = res.next_cursor;
+    }
+    return gates;
+  });
 
 const EMPTY_INBOX = "No approval gates in this workspace." as const;
 const SECTION_TITLE = "Approval gate" as const;
@@ -79,21 +125,10 @@ export const approvalsListEffectFromArgs = (
   Effect.gen(function* () {
     const config = yield* CliConfig;
     const output = yield* Output;
-    const http = yield* HttpClient;
     const workspaceId = yield* requireWorkspaceId;
     const token = yield* resolveAuthToken;
 
-    const res = yield* http.request<ApprovalListResponse>({
-      path: wsApprovalsPath(workspaceId),
-      token,
-    });
-    // Filtering client-side: the daemon serves the inbox per workspace, and a
-    // page is small enough that a second round trip to narrow it would cost
-    // more than it saves.
-    const all = res.items ?? [];
-    const gates = fleetFilter
-      ? all.filter((g) => g.fleet_id === fleetFilter)
-      : all;
+    const gates = yield* fetchGates(workspaceId, token, { fleetId: fleetFilter });
 
     if (config.jsonMode) {
       yield* output.printJson({ items: gates });

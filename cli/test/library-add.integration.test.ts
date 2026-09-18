@@ -144,7 +144,6 @@ describe("library add — request shaping", () => {
         expect(body.source_kind).toBe("github");
         expect(body.source_ref).toBe("agentsfleet/github-pr-reviewer");
         expect(body.ref).toBeUndefined();
-        expect(body.replace).toBe(false);
         const text = out.read();
         expect(text).toContain(LIBRARY_ID);
         // The identifier is printed with the command that consumes it.
@@ -188,6 +187,10 @@ describe("library add — request shaping", () => {
           expect(code).toBe(0);
           const body = parseBody(calls[0]?.body ?? null);
           expect(body.source_kind).toBe("upload");
+          // Provenance is the bundle's directory name, not the absolute path:
+          // the gallery prints source_ref to every workspace member, and an
+          // absolute path carries the operator's home directory with it.
+          expect(String(body.source_ref)).not.toContain("/");
           expect(body.skill_markdown).toBe(SKILL_MD);
           expect(body.trigger_markdown).toBe(TRIGGER_MD);
           // The daemon refuses an upload carrying attachments.
@@ -241,20 +244,22 @@ describe("library add — request shaping", () => {
     });
   });
 
-  test("--replace sets the overwrite flag the daemon reads", async () => {
+  test("--replace is not offered, because the workspace plane drops it", async () => {
     await authedScope(async () => {
-      const routes: MockRoutes = {
-        [`POST ${LIBRARIES}`]: () => jsonResponse(201, created()),
-      };
-      await withMockApi(routes, async (apiUrl, calls) => {
+      // `Destination::Workspace` carries no replace field and the handler
+      // states the flag is "deliberately dropped" on this plane. A flag that
+      // reaches the daemon and changes nothing is worse than no flag: it reads
+      // as a guarantee.
+      await withMockApi({}, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
           ["library", "add", "--github", "owner/repo", "--replace"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
-        expect(code).toBe(0);
-        expect(parseBody(calls[0]?.body ?? null).replace).toBe(true);
+        expect(code).toBe(4);
+        expect(err.read()).toContain("unknown option");
+        expect(calls).toEqual([]);
       });
     });
   });
