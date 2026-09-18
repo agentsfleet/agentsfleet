@@ -45,7 +45,7 @@
               which of several fleets or rows it was"
 )]
 
-use afd_admission::Progress;
+use afd_admission::{Admissions, Progress};
 use afd_core::clock;
 use afd_dragonfly::{EventId, FleetStreams};
 
@@ -628,4 +628,105 @@ async fn deliver(fixtures: &Fixtures, fleet: &str, event_id: &str) {
         .execute(&mut *connection)
         .await
         .expect("stamping the delivery");
+}
+
+/// A ledger whose database will not answer, over the lane's real queue.
+///
+/// `Db::unreachable` builds the pool lazily and opens no socket, so the failure
+/// arrives on the first statement rather than at construction — which is what
+/// makes it a mid-pass failure rather than a setup error.
+fn dead_ledger(fixtures: &Fixtures) -> Admissions {
+    let environment = afd_core::env::MapEnv::from_pairs([(
+        afd_db::config::DbRole::Api.url_knob(),
+        "postgres://nowhere/agentsfleet",
+    )]);
+    let pool = afd_db::config::PoolConfig::resolve(&environment, afd_db::config::DbRole::Api)
+        .expect("a lazy pool config resolves");
+    Admissions::for_tests(afd_db::Db::unreachable(&pool), fixtures.queue().clone())
+}
+
+/// A pass that fails partway keeps the repairs it drained but never walked.
+///
+/// `resume_repairs` drains rather than borrows, so a pass holding resume points
+/// holds the only copy of them. Returning the database error straight through
+/// dropped every fleet the pass had not reached — and a dropped resume point is
+/// not a slower repair, it is a fleet back under the head probe, which after a
+/// partial repair cannot see the rows that are still lost.
+///
+/// Staged with two ledgers over ONE resume state: the first files a repair
+/// against the live lane, the second meets a database that will not answer.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_failed_pass_keeps_the_repairs_it_drained() {
+    let _lane = RECOVERY_LANE.lock().await;
+    let fixtures = Fixtures::create_with_queue().await;
+    let (fleet, workspace, _tenant, _runners) = seeded_parts::<0>(&fixtures).await;
+    let live = ledger(&fixtures);
+    let streams = FleetStreams::new(fixtures.queue().clone());
+
+    let mut owed = Vec::new();
+    for which in 0..3 {
+        let key = producer_key(&fleet, &format!("drained-{which}"));
+        owed.push(
+            live.admit(admission(&fleet, &workspace, &key))
+                .await
+                .expect("a live queue admits and receipts")
+                .id,
+        );
+    }
+    streams
+        .forget(&fleet)
+        .await
+        .expect("destroying this fleet's stream data");
+
+    // One row per walk, so the first pass fills its batch and files where it
+    // stopped rather than reaching the end of the fleet.
+    let mut progress = Progress::with_capacity(ROOM_FOR_ONE);
+    live.reconcile(clock::now(), EVERY_FLEET, ONE_ROW, &mut progress)
+        .await
+        .expect("the first pass runs against both live datastores");
+    assert!(
+        progress.is_resuming(),
+        "the first pass stopped mid-fleet and filed where to carry on"
+    );
+
+    // The second pass takes that repair out of the set and then cannot walk it.
+    let failed = dead_ledger(&fixtures)
+        .reconcile(clock::now(), EVERY_FLEET, ONE_ROW, &mut progress)
+        .await;
+    assert!(
+        failed.is_err(),
+        "a database that will not answer fails the pass: {failed:?}"
+    );
+    assert!(
+        progress.is_resuming(),
+        "the drained repair went back; losing it would put this fleet under the \
+         head probe, which cannot see what it has left to recover"
+    );
+
+    // And the repair really does carry on, against a ledger that answers again.
+    for _pass in 0..4 {
+        let at = clock::now();
+        live.reconcile(at, EVERY_FLEET, ONE_ROW, &mut progress)
+            .await
+            .expect("the recovering pass runs");
+        live.replay(at, NO_GRACE, EVERY_ROW)
+            .await
+            .expect("the replay pass runs");
+    }
+    for event_id in &owed {
+        let receipt = fixtures
+            .admission_receipt(&fleet, event_id)
+            .await
+            .unwrap_or_else(|| panic!("{event_id} is accepted work and must hold a receipt"));
+        assert!(
+            streams
+                .holds_entry(&fleet, &EventId::of(&receipt))
+                .await
+                .expect("the stream answers"),
+            "{event_id} recovered after the pass that failed mid-walk"
+        );
+    }
+
+    fixtures.cleanup().await;
 }
