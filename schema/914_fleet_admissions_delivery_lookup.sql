@@ -1,0 +1,50 @@
+-- The index the delivery stamp can actually use.
+--
+-- `idx_fleet_admissions_undelivered` in slot 910 was declared for two readers:
+-- the reconciliation pass, and the lease path's delivery stamp. It serves the
+-- first and cannot serve the second. Its predicate is
+-- `receipt IS NOT NULL AND delivered_at IS NULL`; the stamp's own predicate is
+-- `fleet_id = $1 AND created_at = $2 AND seq = $3 AND delivered_at IS NULL`,
+-- which says nothing about the receipt, so the planner cannot prove the query
+-- implies the index and will not read it. The stamp fell instead to
+-- `idx_fleet_admissions_fleet_id` and re-read the fleet's whole admission
+-- history to find one row — measured on 200 fleets carrying 2,000 delivered
+-- admissions each (400,600 rows, 137 MB): 72 shared buffers and 2,003 rows
+-- removed by filter, per lease, growing with the fleet's age rather than with
+-- its in-flight work. With this index the same statement is a three-column
+-- point lookup: 2 buffers, nothing filtered, and a cost that no longer moves
+-- when the fleet gets older.
+--
+-- What it costs: an admission is INSERTed with `delivered_at` NULL, so every
+-- one of them enters this index. Measured on the same table, 2,000 inserts in
+-- one statement went from 21,261 to 25,059 shared buffers and 35.1 ms to
+-- 37.5 ms — about two buffers per admission, paid once, against seventy saved
+-- on the stamp that follows it.
+--
+-- The stamp's predicate is NOT tightened to match the old index instead, and
+-- that direction is the tempting one. Adding `receipt IS NOT NULL` would make
+-- the update qualify — and would stop it stamping a delivery recorded before
+-- the receipt was written back, which is a window the append path genuinely
+-- has. The index moves to the query; the query does not move to the index.
+--
+-- Partial on `delivered_at IS NULL` alone, which is the widest predicate both
+-- readers imply: the reconciliation reads add `receipt IS NOT NULL` on top, so
+-- they can ride this index too, while the stamp implies only this much. The
+-- predicate is a NULL test rather than a value literal, so no application
+-- constant is mirrored here (RULE STS). Partial also keeps it to the work in
+-- flight: 600 rows of the 400,600 above.
+--
+-- Built without `CONCURRENTLY`, because it cannot be otherwise here:
+-- `afd_db::migrate::apply_one` runs every slot inside a transaction so that the
+-- schema change and the ledger row saying it happened commit together, and
+-- `CREATE INDEX CONCURRENTLY` is not allowed in one. The build therefore holds
+-- `SHARE` on `core.fleet_admissions` for its duration, which blocks admission
+-- INSERTs and receipt UPDATEs but not reads. On the measured 400,600-row table
+-- that build is well under a second; a deployment whose table is orders larger
+-- applies this slot in a window rather than behind live producer traffic.
+--
+-- RULE SGR does not apply: an index is not a grantable object, and access runs
+-- through the table grants in schema/910_fleet_admissions.sql.
+CREATE INDEX IF NOT EXISTS idx_fleet_admissions_delivery_lookup
+    ON core.fleet_admissions (fleet_id, created_at, seq)
+    WHERE delivered_at IS NULL;

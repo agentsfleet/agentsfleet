@@ -113,7 +113,14 @@ WHERE f.id = $1::uuid AND f.workspace_id = $2::uuid";
 ///
 /// `$1` fleet · `$2` workspace · `$3` name · `$4` source · `$5` trigger ·
 /// `$6` config · `$7` status · `$8` required tags · `$9` bundle hash ·
-/// `$10` snapshot key · `$11` the instant, stamped on both timestamps.
+/// `$10` the instant, stamped on both timestamps.
+///
+/// No `bundle_snapshot_key`. The column is nullable and nothing has ever read
+/// it: the live object key is derived from `bundle_content_hash` at
+/// preparation and again at retrieval, so the stored copy was a second spelling
+/// of the same fact that could only drift from it — and had, naming a
+/// `.tar.zst` under a prefix the store does not use. The column stays declared
+/// for the deployments that still carry it; this statement stops writing it.
 ///
 /// `INSERT … SELECT FROM core.workspaces` and not `VALUES`: the tenant column
 /// is READ from the workspace being installed into, so a request cannot name a
@@ -123,9 +130,9 @@ pub(crate) const INSERT_FLEET: &str = "\
 INSERT INTO core.fleets \
   (id, workspace_id, tenant_id, name, source_markdown, trigger_markdown, \
    config_json, status, required_tags, bundle_content_hash, \
-   bundle_snapshot_key, created_at, updated_at) \
+   created_at, updated_at) \
 SELECT $1::uuid, w.id, w.tenant_id, $3, $4, $5, $6::jsonb, $7, $8::text[], \
-       $9, $10, $11, $11 \
+       $9, $10, $10 \
 FROM core.workspaces w WHERE w.id = $2::uuid";
 
 /// Moves a fleet between two statuses, and only from the one named.

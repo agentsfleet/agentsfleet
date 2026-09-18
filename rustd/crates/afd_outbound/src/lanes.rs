@@ -65,6 +65,14 @@ pub const IN_FLIGHT_DELIVERIES: usize = 8;
 /// How many jobs one lane holds before a dispatch to it waits.
 pub const LANE_DEPTH: usize = 32;
 
+/// The structured events this module emits, named once each (RULE UFS).
+const EVENT_REQUEUED_AT_SHUTDOWN: &str = "outbound_delivery_requeued_at_shutdown";
+const EVENT_DELIVERY_EXHAUSTED: &str = "outbound_delivery_exhausted";
+const EVENT_DELIVERED: &str = "outbound_delivery_delivered";
+const EVENT_STAMP_FAILED: &str = "outbound_obligation_stamp_failed";
+const EVENT_ATTEMPT_COUNT_FAILED: &str = "outbound_obligation_attempt_failed";
+const EVENT_ACK_FAILED: &str = "outbound_ack_failed";
+
 /// Where an answer goes: one provider's workspace.
 ///
 /// The unit of ordering and of isolation. Two answers to one workspace must
@@ -204,28 +212,19 @@ impl<S: Deliver + 'static> Inner<S> {
     /// stop every answer to that workspace behind it. The durable stream's
     /// job is to survive a CRASH, and a crash is precisely the case where the
     /// ack never runs.
+    ///
+    /// # The cycle is counted before it is run
+    ///
+    /// The count is recorded first, while failure is still one of the endings.
+    /// Counting after a verdict would mean counting only the verdicts that
+    /// reached the counter, which is how `attempt_count` came to hold a tally
+    /// of successes: the destination that refuses an answer forever is the row
+    /// worth finding, and it is the one a success counter never records.
     async fn deliver_and_ack(&self, job: &OutboundDelivery) {
+        let attempts = self.count_cycle(job).await;
         let verdict = deliver_with_retry(&self.posters, job, &self.token).await;
         if verdict == Verdict::Delivered {
-            // Stamped BEFORE the acknowledgement, because the two record
-            // different facts and only this one says a person received
-            // anything. The ack below fires for an EXHAUSTED job too, so an
-            // ack-time stamp would mark undeliverable answers delivered.
-            //
-            // A failure here leaves the row receipted and unstamped, which the
-            // recovery scan reads as "queued and never received" and re-offers.
-            // That costs a duplicate message in a thread; the opposite error —
-            // marking delivered what was not — loses the answer silently.
-            if let Err(failure) = crate::obligation::stamp_delivered(
-                &self.database,
-                job.fleet_id.as_str(),
-                job.event_id.as_str(),
-                afd_core::clock::now(),
-            )
-            .await
-            {
-                crate::worker::report("outbound_obligation_stamp_failed", &failure);
-            }
+            self.stamp_delivered(job, attempts).await;
         }
         if verdict == Verdict::Retryable {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.
@@ -241,7 +240,8 @@ impl<S: Deliver + 'static> Inner<S> {
                 tracing::info!(
                     provider,
                     fleet_id,
-                    event = "outbound_delivery_requeued_at_shutdown"
+                    attempts,
+                    event = EVENT_REQUEUED_AT_SHUTDOWN
                 );
                 return;
             }
@@ -249,7 +249,8 @@ impl<S: Deliver + 'static> Inner<S> {
                 error_code,
                 provider,
                 fleet_id,
-                event = "outbound_delivery_exhausted"
+                attempts,
+                event = EVENT_DELIVERY_EXHAUSTED
             );
         }
         if let Err(failure) = self.queue.ack(&job.id).await {
@@ -257,7 +258,63 @@ impl<S: Deliver + 'static> Inner<S> {
             // job stays pending and will be delivered a second time — which is
             // why the whole path is at-least-once and the destination's own
             // thread is what a person reads.
-            crate::worker::report("outbound_ack_failed", &failure.into());
+            crate::worker::report(EVENT_ACK_FAILED, &failure.into());
         }
+    }
+
+    /// Records this delivery cycle against its obligation, and answers the
+    /// count the write produced.
+    ///
+    /// `None` covers both of the ways there is no number to report: a row that
+    /// was already delivered, so a duplicate queue entry counts nothing; and a
+    /// database that would not answer. The second is logged and the delivery
+    /// goes ahead regardless — the answer is owed to a person, and losing it
+    /// because the bookkeeping failed is the one outcome worth nothing to
+    /// anybody. The telemetry then under-reports, which it says by carrying no
+    /// count rather than by carrying a wrong one.
+    async fn count_cycle(&self, job: &OutboundDelivery) -> Option<i64> {
+        match crate::obligation::count_attempt(
+            &self.database,
+            job.fleet_id.as_str(),
+            job.event_id.as_str(),
+            afd_core::clock::now(),
+        )
+        .await
+        {
+            Ok(counted) => counted,
+            Err(failure) => {
+                crate::worker::report(EVENT_ATTEMPT_COUNT_FAILED, &failure);
+                None
+            }
+        }
+    }
+
+    /// Records that a destination took this answer.
+    ///
+    /// Stamped BEFORE the acknowledgement, because the two record different
+    /// facts and only this one says a person received anything. The ack fires
+    /// for an EXHAUSTED job too, so an ack-time stamp would mark undeliverable
+    /// answers delivered.
+    ///
+    /// A failure here leaves the row receipted and unstamped, which the
+    /// recovery scan reads as "queued and never received" and re-offers. That
+    /// costs a duplicate message in a thread; the opposite error — marking
+    /// delivered what was not — loses the answer silently.
+    async fn stamp_delivered(&self, job: &OutboundDelivery, attempts: Option<i64>) {
+        if let Err(failure) = crate::obligation::stamp_delivered(
+            &self.database,
+            job.fleet_id.as_str(),
+            job.event_id.as_str(),
+            afd_core::clock::now(),
+        )
+        .await
+        {
+            crate::worker::report(EVENT_STAMP_FAILED, &failure);
+            return;
+        }
+        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+        let provider = job.provider.as_str();
+        let fleet_id = job.fleet_id.as_str();
+        tracing::debug!(provider, fleet_id, attempts, event = EVENT_DELIVERED);
     }
 }

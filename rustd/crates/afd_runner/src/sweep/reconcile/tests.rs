@@ -7,6 +7,13 @@
 //! it probably left more behind — and the caps' relationship to the replay
 //! dispatcher that inherits the voided rows.
 
+#![expect(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "a test asserts by panicking, and one below panics deliberately to \
+              poison a lock; the restriction set is for the daemon"
+)]
+
 use afd_admission::Reconciled;
 
 use super::{FLEET_LIMIT, INTERVAL, RECOVERING_INTERVAL, ROW_LIMIT, pacing_after};
@@ -17,6 +24,16 @@ const fn pass(probed: u64, lost: u64, voided: u64) -> Reconciled {
         probed,
         lost,
         voided,
+        resuming: false,
+        declined: 0,
+    }
+}
+
+/// The same pass, having left a fleet mid-repair.
+const fn resuming(probed: u64, lost: u64, voided: u64) -> Reconciled {
+    Reconciled {
+        resuming: true,
+        ..pass(probed, lost, voided)
     }
 }
 
@@ -36,6 +53,18 @@ fn a_pass_that_probed_healthy_fleets_waits_the_ordinary_interval() {
 #[test]
 fn a_pass_that_voided_rows_comes_back_sooner() {
     assert_eq!(pacing_after(pass(4, 1, 1)), RECOVERING_INTERVAL);
+}
+
+/// A pass mid-repair comes back sooner even having voided nothing.
+///
+/// The case the pacing missed before the resume state existed: a walk that
+/// probed its whole batch and found every row alive voids zero, and if that
+/// read as quiet, the fleet's remaining lost rows would be repaired one batch
+/// per IDLE interval — five minutes a batch on work a producer was told yes
+/// about.
+#[test]
+fn a_pass_that_left_a_repair_unfinished_comes_back_sooner() {
+    assert_eq!(pacing_after(resuming(4, 1, 0)), RECOVERING_INTERVAL);
 }
 
 #[test]
@@ -67,4 +96,92 @@ fn a_lost_fleets_batch_matches_what_the_replay_dispatcher_takes() {
     // is how a lost fleet is FOUND, and a deployment can hold many more fleets
     // with work in flight than one pass will ever need to repair.
     const { assert!(FLEET_LIMIT > ROW_LIMIT) };
+}
+
+/// A reconciler over handles that resolve and never answer.
+///
+/// Nothing here makes a request: the pass is never run, only its resume state
+/// is taken and put back, which is the part that has no datastore in it.
+fn reconciler() -> super::Reconcile {
+    let environment = afd_core::env::MapEnv::from_pairs([(
+        afd_db::config::DbRole::Api.url_knob(),
+        "postgres://nowhere/agentsfleet",
+    )]);
+    let pool = afd_db::config::PoolConfig::resolve(&environment, afd_db::config::DbRole::Api)
+        .expect("a lazy pool config resolves");
+    let queue = afd_dragonfly::config::DragonflyConfig::from_url(
+        afd_dragonfly::config::DragonflyRole::Default,
+        "redis://127.0.0.1:1/".to_owned(),
+    );
+    super::Reconcile::new(afd_admission::Admissions::for_tests(
+        afd_db::Db::unreachable(&pool),
+        afd_dragonfly::Dragonfly::unreachable(&queue).expect("a well-formed URL builds a handle"),
+    ))
+}
+
+/// The resume state is taken by value and leaves a usable one behind.
+///
+/// The shape is the whole point: a synchronous guard held across the pass's
+/// `await` would park every other task on this worker thread, so the state
+/// comes OUT before the pass and goes back after. What must not happen is the
+/// take leaving something unusable behind — a sweeper whose next pass found a
+/// set with no capacity would decline every repair forever.
+/// Inside a runtime because `sqlx` registers even a LAZY pool with the reactor
+/// the moment it is built, and panics when there is none.
+#[tokio::test]
+async fn taking_the_resume_state_leaves_a_usable_one() {
+    let reconcile = reconciler();
+
+    let taken = reconcile.take_progress();
+    assert!(
+        !taken.is_resuming(),
+        "a fresh reconciler carries no unfinished repair"
+    );
+
+    let again = reconcile.take_progress();
+    assert!(
+        !again.is_resuming(),
+        "the take left a usable set behind, not a hole"
+    );
+}
+
+/// A poisoned resume state falls back to a usable one rather than a stuck pass.
+///
+/// The arm exists because the alternative is worse than it looks. A panic while
+/// the resume state is held would leave every later `lock()` returning `Err`,
+/// and a sweeper that read that as "no progress to make" would stop rotating
+/// for the life of the process — the starvation this state was added to end,
+/// reintroduced by its own error path. Falling back costs the rotation its
+/// place, which is one slower pass.
+///
+/// The hook is swapped out around the deliberate panic so a passing test does
+/// not print a backtrace a reader would take for a failure.
+#[tokio::test]
+async fn a_poisoned_resume_state_falls_back_to_a_usable_default() {
+    let reconcile = reconciler();
+
+    let hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_panic| {}));
+    let poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _held = reconcile
+            .progress
+            .lock()
+            .expect("a fresh lock is not poisoned");
+        panic!("poisoning the resume state on purpose");
+    }));
+    std::panic::set_hook(hook);
+    assert!(
+        poisoned.is_err(),
+        "the panic happened while the lock was held"
+    );
+    assert!(
+        reconcile.progress.lock().is_err(),
+        "the lock is poisoned, which is the state this test is about"
+    );
+
+    let taken = reconcile.take_progress();
+    assert!(
+        !taken.is_resuming(),
+        "a poisoned set answers a usable empty one, not a refusal"
+    );
 }

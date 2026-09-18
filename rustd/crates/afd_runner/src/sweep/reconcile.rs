@@ -33,7 +33,7 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
-use afd_admission::{Admissions, Reconciled};
+use afd_admission::{Admissions, DEFAULT_REPAIR_CAPACITY, Progress, Reconciled};
 use afd_core::clock;
 
 use crate::error::Result;
@@ -52,6 +52,19 @@ const FLEET_LIMIT: i64 = 128;
 /// reason: the transaction holding these row locks is one a live producer
 /// recording its receipt waits behind.
 const ROW_LIMIT: i64 = 32;
+
+/// How many fleets this sweeper remembers as mid-repair at once.
+///
+/// Sized to [`FLEET_LIMIT`], because one pass cannot put more fleets into
+/// repair than it examined. Written as its own literal rather than cast from
+/// it: the two constants have different types for good reasons — one is bound
+/// into SQL, one indexes memory — and every cast between them needs a
+/// truncation exception that would say less than this sentence does.
+///
+/// A MEMORY bound, not a round-trip budget. They were one value until a test
+/// showed what that coupling did: lowering the per-pass fleet budget silently
+/// shrank how much repair progress the sweeper could remember.
+const REPAIR_CAPACITY: usize = 128;
 
 /// How long between passes that found nothing to repair.
 const INTERVAL: Duration = Duration::from_secs(300);
@@ -74,6 +87,13 @@ const _: () = {
         "a pass this wide spends its interval in round trips"
     );
     assert!(ROW_LIMIT > 0, "a pass that voids no row never recovers");
+    // A reset falls back to the ledger's default, so a default that is not this
+    // number would quietly shrink the set every time a lock was poisoned.
+    assert!(
+        REPAIR_CAPACITY == DEFAULT_REPAIR_CAPACITY,
+        "the resume set's fallback capacity must be the one this sweeper asks for"
+    );
+
     assert!(
         ROW_LIMIT <= 128,
         "a batch this large holds row locks a live producer waits behind"
@@ -99,6 +119,14 @@ pub struct Reconcile {
     admissions: Admissions,
     /// What the last pass concluded about when to come back.
     pacing: Mutex<Duration>,
+    /// Where the next pass resumes — see [`Progress`].
+    ///
+    /// Held here rather than inside the ledger because it is this sweeper's
+    /// place in a rotation, not a fact about the table: a second driver over
+    /// the same `Admissions` keeps its own place, and two replicas rotating
+    /// independently is the behaviour that spreads the probes rather than the
+    /// one that duplicates them.
+    progress: Mutex<Progress>,
 }
 
 impl Reconcile {
@@ -108,7 +136,23 @@ impl Reconcile {
         Self {
             admissions,
             pacing: Mutex::new(INTERVAL),
+            progress: Mutex::new(Progress::with_capacity(REPAIR_CAPACITY)),
         }
+    }
+
+    /// Takes the resume state out for the duration of a pass.
+    ///
+    /// Taken by value, never borrowed across the `await`. A synchronous
+    /// `MutexGuard` held over a suspension point blocks every other task on
+    /// this worker thread if the future is parked there, and Clippy refuses it
+    /// (`await_holding_lock`) for that reason. A pass that panics loses its
+    /// place in the rotation and starts over, which costs a slower pass and
+    /// never a missed fleet.
+    fn take_progress(&self) -> Progress {
+        self.progress.lock().map_or_else(
+            |_poisoned| Progress::default(),
+            |mut held| std::mem::take(&mut *held),
+        )
     }
 }
 
@@ -135,10 +179,20 @@ impl Sweep for Reconcile {
     }
 
     async fn sweep(&self) -> Result<Swept> {
+        let mut progress = self.take_progress();
+        // Put back before `?`, not after. A pass that fails partway has still
+        // walked fleets and filed their resume points, and dropping that on a
+        // transient database error would restart the rotation every time one
+        // happened — which on a deployment where they happen regularly is the
+        // starvation this cursor exists to end, reintroduced by the error path.
         let reconciled = self
             .admissions
-            .reconcile(clock::now(), FLEET_LIMIT, ROW_LIMIT)
-            .await?;
+            .reconcile(clock::now(), FLEET_LIMIT, ROW_LIMIT, &mut progress)
+            .await;
+        if let Ok(mut held) = self.progress.lock() {
+            *held = progress;
+        }
+        let reconciled = reconciled?;
 
         if let Ok(mut pacing) = self.pacing.lock() {
             *pacing = pacing_after(reconciled);
