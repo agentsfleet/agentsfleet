@@ -49,7 +49,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 1. `rustd/crates/afd_observability/src/metrics/produced.rs` — the `UNPRODUCED` ledger names every declared family this build has no producer for, with a sentence each. It is the authority on which panels are impossible, and it is why a family absent from Mimir is not automatically a gap.
 2. `docs/metrics.census.tsv` — the single source of truth for the export; the `category` and `watch_for` columns already carry the RED/USE taxonomy and one line of operator meaning per family. Panels express the `watch_for` line, never the raw series.
 3. `rustd/crates/afd_observability/src/runner.rs` — `last_seen_readings()` returns `last_seen_ms / MILLIS_PER_SECOND`, a Unix epoch in seconds. This is the source claim the heartbeat repair rests on.
-4. `playbooks/operations/observability/providers/grafana/assets_check.sh` — the asset grader: minimum panel count, unique panel identifiers, every target expression containing `agentsfleet_`, pinned datasource, exactly the alert count its named constant declares, and every `agentsfleet_*` token greppable in `rustd/crates`.
+4. `playbooks/operations/observability/01_assets_check.sh` — the asset grader: minimum panel count, unique panel identifiers, every target expression containing `agentsfleet_`, pinned datasource, exactly the alert count its named constant declares, and every `agentsfleet_*` token greppable in `rustd/crates`.
 5. `docs/architecture/observability.md` §Metric family census — canonical for the export path; the SLO definitions land beside the census legend they extend.
 
 ## Files Changed (blast radius)
@@ -58,7 +58,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `playbooks/operations/observability/providers/grafana/assets/dashboard.json` | EDIT | gains the SLI, burn-rate, operator and producer-gap panels; panel 6 stops rendering an epoch as an age. |
 | `playbooks/operations/observability/providers/grafana/assets/alerts.json` | EDIT | `runner-silent` becomes an age comparison; the set grows by the burn-rate rules. |
-| `playbooks/operations/observability/providers/grafana/assets_check.sh` | EDIT | the minimum panel count moves with the new scope and four invariants become checks; the grader stays a grader. |
+| `playbooks/operations/observability/01_assets_check.sh` | EDIT | the minimum panel count moves with the new scope and four invariants become checks; the grader stays a grader. |
 | `playbooks/operations/observability/providers/grafana/common.sh` | EDIT | gains the replay-floor derivation and the ONE dashboard/alert renderer the apply and the drift check now share. |
 | `playbooks/operations/observability/providers/grafana/resources.sh` | EDIT | renders through the shared function instead of its own substitution copy. |
 | `playbooks/operations/observability/providers/grafana/resource_verify.sh` | EDIT | same renderer; reads dashboard identity from `metadata.name`, and tolerates a panel that queries nothing. |
@@ -75,6 +75,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `docs/metrics.census.tsv` | EDIT | arrives with M197_002 merged into this branch: two produced families added, the never-incremented trigger counter retired. Not edited by this workstream's own commits. |
 | `docs/architecture/observability.md` | EDIT | new §Service Level Objectives section: the three SLIs, their expressions, their targets and the provenance of each target. |
 | `docs/v2/pending/M197_001_P0_DOCS_INFRA_OBS_SLO_DASHBOARD_AND_HEARTBEAT_REPAIR.md` | CREATE | this spec. |
+
+## Punch List
+
+Parked by Indy on Sep 18, 2026; reasoning in the commit that added this section.
+
+- [ ] **P1 — the span budget is unported** while `observability.md` §Traces claims
+  it exists; `afd_api/src/router/trace.rs:58` spans every matched request. Own spec.
+- [ ] **P2 — the apply never prunes a removed alert rule**, as `M159_001` recorded;
+  `04_verify.sh` passes because it only asks whether declared rules exist.
+- [x] **P3 — `teardown/redis` said Redis.** Landed in this branch.
 
 ## Applicable Rules
 
@@ -248,7 +258,7 @@ Service Level Indicator expressions (good events / valid events):
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | No asset reads the heartbeat family as an age-free epoch (§1) | `grep -c 'agentsfleet_runner_last_seen_seconds' playbooks/operations/observability/providers/grafana/assets/*.json && ! grep -E 'agentsfleet_runner_last_seen_seconds[^)]*>' playbooks/operations/observability/providers/grafana/assets/alerts.json` | exit 0, no bare comparison | P0 | ✅ no expression reads the family without `time() -`; the grader enforces it and `test_should_repair_the_heartbeat_readings` proves it |
-| R2 | The asset grader passes on the edited assets (§2, §3, §4, §5) | `OBS_ENV=dev bash playbooks/operations/observability/providers/grafana/assets_check.sh` | exit 0, `PASS: Grafana assets are valid` | P0 | ✅ `PASS: Grafana assets are valid and reference source-owned metrics` |
+| R2 | The asset grader passes on the edited assets (§2, §3, §4, §5) | `OBS_ENV=dev bash playbooks/operations/observability/01_assets_check.sh` | exit 0, `PASS: Grafana assets are valid` | P0 | ✅ `PASS: Grafana assets are valid and reference source-owned metrics` |
 | R3 | The observability self-tests pass (§1–§5) | `bash playbooks/operations/observability/observability_test.sh && bash playbooks/operations/observability/observability_verify_test.sh` | exit 0 both | P0 | ✅ four suites in the gate run: 11 + 13 + 4 + 2, 0 failed |
 | R4 | Bench baselines are untouched | `git diff --name-only origin/main...HEAD -- bench/baselines/` | no output | P0 | ✅ `git diff --name-only origin/main...HEAD -- bench/baselines` → no output |
 | R5 | The dashboard is live in development (§6) | `ALLOW_VAULT_READS=1 ./playbooks/operations/observability/00_gate.sh verify dev grafana` | exit 0, `PASS: grafana observability verify completed for dev` | P0 | ✅ `PASS: development Grafana resources match the repository` — folder, 26-panel dashboard and 6 alert rules read back from the stack |
