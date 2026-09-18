@@ -123,8 +123,8 @@ describe("pendingGateCounts", () => {
         ),
       ),
     );
-    expect(counts.get(FLEET_ID)).toBe(2);
-    expect(counts.get(OTHER_FLEET_ID)).toBe(1);
+    expect(counts?.get(FLEET_ID)).toBe(2);
+    expect(counts?.get(OTHER_FLEET_ID)).toBe(1);
   });
 
   test("a gate with no Fleet identifier is not counted against one", async () => {
@@ -133,16 +133,18 @@ describe("pendingGateCounts", () => {
         Effect.provide(httpLayer([], { items: [gate({ fleet_id: null })] })),
       ),
     );
-    expect(counts.size).toBe(0);
+    expect(counts?.size).toBe(0);
   });
 
-  test("an unreachable inbox yields no counts rather than failing status", async () => {
+  test("an unreachable inbox is unknown, not zero", async () => {
+    // Collapsing an unreadable inbox into an empty map renders `Waiting: 0`
+    // for a parked Fleet — the confident wrong answer this column replaces.
     const counts = await Effect.runPromise(
       pendingGateCounts(WS_ID, TOKEN).pipe(
         Effect.provide(httpLayer([], null, true)),
       ),
     );
-    expect(counts.size).toBe(0);
+    expect(counts).toBeNull();
   });
 });
 
@@ -158,5 +160,18 @@ describe("requireGateId", () => {
     const exit = await Effect.runPromiseExit(requireGateId(undefined));
     expect(Exit.isFailure(exit)).toBe(true);
     expect(JSON.stringify(exit)).toContain("agentsfleet approvals show");
+  });
+});
+
+describe("parkedGateHint — an inbox that cannot be read", () => {
+  test("returns null rather than claiming nothing is waiting", async () => {
+    // The steer keeps the timeout it already has and its ordinary suggestion.
+    // Silence is honest; "nothing is holding this Fleet" would not be.
+    const hint = await Effect.runPromise(
+      parkedGateHint(WS_ID, FLEET_ID, TOKEN).pipe(
+        Effect.provide(httpLayer([], null, true)),
+      ),
+    );
+    expect(hint).toBeNull();
   });
 });

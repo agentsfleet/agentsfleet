@@ -27,16 +27,23 @@ const ONE_GATE = 1;
  *
  *  Best-effort at both call sites: a failed diagnosis must never replace the
  *  thing being diagnosed, and `Effect.exit` survives a defect (a thrown
- *  TypeError in the transport) as well as a typed refusal. */
+ *  TypeError in the transport) as well as a typed refusal.
+ *
+ *  `null` when the inbox could not be read, and that distinction is the point.
+ *  Collapsing a failed read into an empty list renders `Waiting: 0` for a
+ *  parked Fleet — which is the exact failure this whole diagnosis exists to
+ *  remove, arriving through the error path instead of the happy one. Reading
+ *  the inbox needs `approval:read`, which a credential holding `fleet:read`
+ *  may not carry, so the failure is ordinary rather than exotic. */
 const pendingGates = (
   wsId: string,
   token: Redacted.Redacted<string>,
-): Effect.Effect<ReadonlyArray<ApprovalGate>, never, HttpClient> =>
+): Effect.Effect<ReadonlyArray<ApprovalGate> | null, never, HttpClient> =>
   Effect.gen(function* () {
     const exit = yield* Effect.exit(
       fetchGates(wsId, token, { status: GATE_STATUS.pending }),
     );
-    return Exit.isSuccess(exit) ? exit.value : [];
+    return Exit.isSuccess(exit) ? exit.value : null;
   });
 
 /**
@@ -50,9 +57,10 @@ const pendingGates = (
 export const pendingGateCounts = (
   wsId: string,
   token: Redacted.Redacted<string>,
-): Effect.Effect<ReadonlyMap<string, number>, never, HttpClient> =>
+): Effect.Effect<ReadonlyMap<string, number> | null, never, HttpClient> =>
   Effect.gen(function* () {
     const gates = yield* pendingGates(wsId, token);
+    if (gates === null) return null;
     const counts = new Map<string, number>();
     for (const gate of gates) {
       const fleetId = gate.fleet_id;
@@ -70,6 +78,9 @@ export const parkedGateHint = (
 ): Effect.Effect<string | null, never, HttpClient> =>
   Effect.gen(function* () {
     const all = yield* pendingGates(wsId, token);
+    // Unreadable inbox: the caller keeps the failure it already has and its
+    // ordinary suggestion. Silence is honest here; "nothing is waiting" is not.
+    if (all === null) return null;
     const pending = all.filter((gate) => gate.fleet_id === fleetId);
     const first = pending[0];
     if (first === undefined) return null;

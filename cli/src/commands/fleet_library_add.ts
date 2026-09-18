@@ -10,6 +10,8 @@
 // carries its documents because the variant holds them, and a github source
 // carries its repository because the variant holds it.
 
+import { readdirSync } from "node:fs";
+
 import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
@@ -20,7 +22,11 @@ import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsFleetLibrariesPath } from "../lib/api-paths.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
 import { loadBundle } from "./fleet_install.ts";
-import { LIBRARY_SOURCE_KIND } from "../constants/library-source.ts";
+import {
+  BUNDLE_SKILL_FILE,
+  BUNDLE_TRIGGER_FILE,
+  LIBRARY_SOURCE_KIND,
+} from "../constants/library-source.ts";
 import { LIBRARY_ID_PLACEHOLDER } from "../constants/cli-flags.ts";
 import { printRequirements, type BundleRequirements } from "./fleet_install_source.ts";
 
@@ -30,8 +36,11 @@ const METHOD_POST = "POST" as const;
  *  separator. The daemon refuses the same shapes; refusing here costs no
  *  request. */
 const REPOSITORY_PATTERN = /^[^/\s]+\/[^/\s]+$/u;
-const PATH_SEPARATOR = "/" as const;
-const TRAILING_SEPARATORS = /\/+$/u;
+// Both separators: a Windows bundle path reduced by a slash-only splitter is
+// not reduced at all, and the whole point of reducing it is to keep an
+// operator's home directory off a row their colleagues read.
+const PATH_SEPARATORS = /[\\/]/u;
+const TRAILING_SEPARATORS = /[\\/]+$/u;
 
 export interface LibraryAddFlags {
   readonly github?: string | undefined;
@@ -67,6 +76,12 @@ const REVISION_NEEDS_GITHUB =
   "--ref names a branch, tag, or commit, so it rides --github only" as const;
 const REPOSITORY_SHAPE =
   "--github takes owner/repo, for example agentsfleet/github-pr-reviewer" as const;
+const UPLOAD_DROPS_FILES =
+  "an upload carries SKILL.md and TRIGGER.md only, and this bundle has more" as const;
+const UPLOAD_DROPS_SUGGESTION =
+  "onboard it with --github <owner/repo>, which fetches support files server-side, or remove them from the directory" as const;
+const UNREADABLE_BUNDLE = "the bundle directory could not be listed" as const;
+const DOTFILE_PREFIX = "." as const;
 
 /** What an upload records as its origin.
  *
@@ -77,8 +92,32 @@ const REPOSITORY_SHAPE =
  */
 const uploadProvenance = (path: string): string => {
   const trimmed = path.replace(TRAILING_SEPARATORS, "");
-  const name = trimmed.split(PATH_SEPARATOR).pop();
+  const name = trimmed.split(PATH_SEPARATORS).pop();
   return name && name.length > 0 ? name : trimmed;
+};
+
+/**
+ * The bundle files an upload cannot carry.
+ *
+ * The daemon refuses an upload with attachments outright, so sending them is
+ * not an option — but reading only the two root documents and reporting
+ * success is worse: the Fleet installs, and the instructions reference files
+ * that were never uploaded. `tests/fixtures/fleetbundle/security-reviewer`
+ * ships a `checklists/` directory, so this is the ordinary shape, not a corner.
+ *
+ * A github source fetches attachments server-side, which is why the refusal
+ * names it.
+ */
+const supportFilesIn = (dir: string): ReadonlyArray<string> => {
+  const entries = readdirSync(dir, { withFileTypes: true });
+  return entries
+    .filter(
+      (entry) =>
+        !entry.name.startsWith(DOTFILE_PREFIX) &&
+        entry.name !== BUNDLE_SKILL_FILE &&
+        entry.name !== BUNDLE_TRIGGER_FILE,
+    )
+    .map((entry) => (entry.isDirectory() ? `${entry.name}/` : entry.name));
 };
 
 const reject = (detail: string, suggestion: string) =>
@@ -133,6 +172,18 @@ const bodyForSource = (
       };
     }
     const bundle = yield* loadBundle(source.ref);
+    const extras = yield* Effect.try({
+      try: () => supportFilesIn(source.ref),
+      // A directory that cannot be listed is the bundle loader's problem, and
+      // it already failed above if the path is unusable.
+      catch: () => new ValidationError({ detail: UNREADABLE_BUNDLE, suggestion: ADD_USAGE }),
+    });
+    if (extras.length > 0) {
+      return yield* reject(
+        `${UPLOAD_DROPS_FILES}: ${extras.join(", ")}`,
+        UPLOAD_DROPS_SUGGESTION,
+      );
+    }
     return {
       source_kind: LIBRARY_SOURCE_KIND.upload,
       // The path is provenance, not a fetch instruction: the daemon stores it

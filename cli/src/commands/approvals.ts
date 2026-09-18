@@ -43,6 +43,10 @@ export interface ApprovalGate {
   readonly blast_radius?: string | null;
   readonly created_at?: number | string | null;
   readonly timeout_at?: number | string | null;
+  /** Who decided it. `resolved_by_name` is a display name the daemon may not
+   *  have, and answers `""` when it does not; `resolved_by` is the subject and
+   *  is the one that is always there. api-dev returns exactly that pair. */
+  readonly resolved_by?: string | null;
   readonly resolved_by_name?: string | null;
 }
 
@@ -196,6 +200,6 @@ export const approvalsShowEffectFromArgs = (
       blast_radius: cell(gate.blast_radius),
       created_at: isoOrDash(gate.created_at),
       timeout_at: isoOrDash(gate.timeout_at),
-      resolved_by: cell(gate.resolved_by_name),
+      resolved_by: cell(gate.resolved_by_name || gate.resolved_by),
     });
   });

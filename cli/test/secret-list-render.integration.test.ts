@@ -243,3 +243,52 @@ describe("status — a Fleet row the daemon sent without an identifier", () => {
     });
   });
 });
+
+describe("status — an inbox this credential cannot read", () => {
+  const FLEETS_PATH = `/v1/workspaces/${WS_ID}/fleets`;
+  const APPROVALS_PATH = `/v1/workspaces/${WS_ID}/approvals`;
+
+  test("renders the waiting count as unknown, never as zero", async () => {
+    await authedScope(async () => {
+      // Reading the inbox needs `approval:read`, which a credential holding
+      // `fleet:read` may not carry. Collapsing that refusal into 0 reports a
+      // parked Fleet as healthy — the exact answer this column exists to stop.
+      const routes: MockRoutes = {
+        [`GET ${FLEETS_PATH}`]: () =>
+          jsonResponse(200, {
+            items: [{
+              id: "01900000-0000-7000-8000-0000007670f7",
+              name: "pr-reviewer",
+              status: "active",
+              events_processed: 3,
+              budget_used_nanos: 0,
+            }],
+          }),
+        [`GET ${APPROVALS_PATH}`]: () =>
+          jsonResponse(403, {
+            error_code: "UZ-AUTH-004",
+            detail: "insufficient scope",
+            user_message: "This credential cannot read the approval inbox.",
+          }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(["status"], {
+          stdout: out.stream,
+          stderr: err.stream,
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
+        });
+        // `status` still succeeds — the Fleet rows are readable and useful.
+        expect(code).toBe(0);
+        const text = out.read();
+        expect(text).toContain("pr-reviewer");
+        expect(text).toMatch(/Waiting\s+·\s+—/);
+        expect(text).not.toMatch(/Waiting\s+·\s+0/);
+        expect(text).toContain("approval:read");
+        // No parked-fleet hint: nothing is known to be waiting.
+        expect(text).not.toContain("Review with: agentsfleet approvals list");
+      });
+    });
+  });
+});
