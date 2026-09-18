@@ -13,12 +13,12 @@
  *   - `steer` then completes, and `billing show` reports a lower balance than
  *     it did before the run
  *
- * # The one step the CLI cannot take
+ * # Every step is the CLI's
  *
- * `agentsfleet grant` ships `list` and `delete`. There is no verb that answers
- * a pending card, so the approval below goes over HTTP (see `grant-ops.ts`).
- * The walk still grades the CLI on both sides of that decision, which is what
- * makes the gap legible rather than papered over.
+ * The card is answered by `agentsfleet approvals approve`. It used to go over
+ * HTTP, because `agentsfleet grant` shipped `list` and `delete` and no verb
+ * that answered a pending card — so the one decision the journey turns on was
+ * the one step this walk could not take through the published surface.
  *
  * # Why the balance is compared as an integer
  *
@@ -52,7 +52,6 @@ import { installConnectorProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import { readAuthContext, type AuthContext } from "./fixtures/template-ops.ts";
 import {
-  approveGate,
   CONNECTOR_SERVICE_GITHUB,
   ensureConnectorHandle,
   GATE_STATUS,
@@ -184,11 +183,30 @@ if (!isLive) {
         `the headline must name the service: ${card.proposed_action}`);
     });
 
-    it("answering the card moves the same grant to approved", async () => {
-      assert.ok(card && ctx, "no card to answer");
-      const decided = await approveGate(ctx, card.gate_id);
-      assert.equal(decided.status ?? GATE_STATUS.approved, GATE_STATUS.approved,
-        `the resolve did not answer approved: ${JSON.stringify(decided)}`);
+    it("`approvals list` shows the card before it is answered", async () => {
+      assert.ok(card, "no card to find");
+      const pending = card;
+      const listed = await runFleetctl(
+        ["approvals", "list", "--fleet", fleetId, "--json"],
+        { env },
+      );
+      assert.equal(listed.code, 0, `approvals list failed: ${listed.stderr}`);
+      const gates = (trailingJsonObject(listed.stdout) as { items?: Array<{ gate_id?: string }> }).items ?? [];
+      assert.ok(gates.some((row) => row.gate_id === pending.gate_id),
+        `the pending card is not in the inbox the CLI reads: ${listed.stdout}`);
+    });
+
+    it("answering the card through the CLI moves the same grant to approved", async () => {
+      assert.ok(card, "no card to answer");
+      const answering = card;
+      const answered = await runFleetctl(
+        ["approvals", "approve", answering.gate_id, "--json"],
+        { env },
+      );
+      assert.equal(answered.code, 0, `approvals approve failed: ${answered.stderr}`);
+      const decided = trailingJsonObject(answered.stdout) as { outcome?: string };
+      assert.equal(decided.outcome, GATE_STATUS.approved,
+        `the resolve did not answer approved: ${answered.stdout}`);
 
       const grants = await listGrants(env, fleetId);
       const mine = grants.filter((row) => row.service === CONNECTOR_SERVICE_GITHUB);
