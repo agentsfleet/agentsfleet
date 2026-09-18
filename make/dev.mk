@@ -61,7 +61,7 @@ LOCAL_DAEMON_READY_TIMEOUT_SEC := 90
 # carries no healthcheck to wait on (it is distroless — see docker-compose.yml),
 # so a lane that ran straight after it would probe a socket nothing is listening
 # on yet and report the daemon missing. This is the wait that makes
-# `make test-parity LOCAL=1` a single command.
+# `make dry-app-rustd` a single command.
 _ensure-local-daemon:
 	@FOLLOW_LOGS=0 $(MAKE) --no-print-directory up
 	@echo "→ [dev] Waiting for $(LOCAL_DAEMON_URL)/healthz (up to $(LOCAL_DAEMON_READY_TIMEOUT_SEC)s)..."

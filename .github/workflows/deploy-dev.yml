@@ -34,7 +34,6 @@ name: deploy (dev)
 #
 # `workflow_dispatch` stays beside it, unchanged and load-bearing: redeploying
 # an older digest by hand is the rollback path, and `The one-move rollback` in
-# playbooks/operations/cutover/001_playbook.md is written against it.
 on:
   push:
     branches:
