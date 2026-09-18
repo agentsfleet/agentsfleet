@@ -293,7 +293,7 @@ fn read_steer(body: &Bytes) -> Result<SteerRequest<'_>, Refusal> {
     if body.is_empty() {
         return Err(Refusal::malformed(DETAIL_BODY_REQUIRED));
     }
-    let request: SteerRequest<'_> = afd_core::json::object_from_slice(body)
+    let request: SteerRequest<'_> = afd_http::handler::read_body(body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
     // One bound, two sentences: an empty message and an oversized one are
     // different mistakes to whoever has to fix them, and the wording is a

@@ -49,6 +49,7 @@ pub struct MemoryDelta<'a> {
 // retried push is idempotent.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MemoryPushRequest<'a> {
     /// The lease authorizing this write.
     #[serde(borrow)]
@@ -78,13 +79,9 @@ pub struct MemoryHydrateResponse<'a> {
 // they are the daemon's housekeeping, not a fact about this request.
 //
 // Declared here rather than assembled inline at the handler, which is where it
-// used to live. The argument for inline was that no `wire-v2` fixture pins
-// this shape, so a type would claim a frozen contract the corpus does not
-// carry. That confuses two things: `tests/roundtrip.rs` generates its cases
-// from an explicit fixture ROSTER, so a type absent from that roster is
-// pinned by nothing and claims nothing. What the inline version did claim was
-// that a response body could be spelled somewhere other than this crate, and
-// two keys written by hand at a call site are two keys nothing type-checks.
+// used to live. What the inline version claimed was that a response body could
+// be spelled somewhere other than this crate, and two keys written by hand at a
+// call site are two keys nothing type-checks.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

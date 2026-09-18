@@ -120,7 +120,7 @@ const acceptedProviders = (
 /**
  * Names NullClaw dials by spawning a local coding-agent binary. They carry no
  * API key, so they are deliberately absent from the catalogue and always will
- * be — `gen-provider-skeleton.mjs` drops them when it derives the allowlist.
+ * be — the allowlist does not carry them.
  *
  * This is NOT a provider list and never widens or narrows what is accepted: it
  * only replaces "not in this server's catalogue" with the actual reason for the

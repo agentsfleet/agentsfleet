@@ -116,6 +116,7 @@ pub struct ApprovalsResponse<'a> {
 /// one.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct ResolveApprovalRequest<'a> {
     /// The operator's note, stored as the gate's `detail`.
     #[serde(borrow, default)]

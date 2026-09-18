@@ -48,9 +48,3 @@ pub const LEASE_ACTIVITY_SUFFIX: &str = "activity";
 /// Trailing segment of the per-lease renewal sub-resource. See
 /// [`LEASE_ACTIVITY_SUFFIX`] for why it is a bare segment.
 pub const LEASE_RENEW_SUFFIX: &str = "renew";
-
-/// The lease wire version this port speaks, and the only one it implements.
-///
-/// Asserted against the fixture manifest, so the number cannot drift from what
-/// the Zig emitter recorded.
-pub const LEASE_WIRE_VERSION_CURRENT: u16 = 2;

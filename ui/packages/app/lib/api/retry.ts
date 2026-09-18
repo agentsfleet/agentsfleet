@@ -32,7 +32,7 @@ export { RETRY_DEFAULTS, type AttemptInfo, type RetryInfo, type RetryOptions, ty
  * Policy only: this module never imports the transport. `client.ts` owns the
  * single attempt and wraps it with `runWithRetry`, so the dependency points
  * one way and neither side can retry the other's retry. The CLI keeps its own
- * loop (`cli/src/lib/http-retry.ts`); `samples/fixtures/retry-policy/` is the
+ * loop (`cli/src/lib/http-retry.ts`); `tests/fixtures/retry-policy/` is the
  * table both runtimes are proven against.
  */
 

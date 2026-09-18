@@ -164,7 +164,7 @@ pub(crate) async fn create<D: Services>(
 ) -> Result<Response, Refusal> {
     let person = identity.person();
     let body = if body.is_empty() { EMPTY_OBJECT } else { &body };
-    let request = afd_core::json::object_from_slice::<CreateWorkspaceRequest<'_>>(body)
+    let request = afd_http::handler::read_body::<CreateWorkspaceRequest<'_>>(body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_CREATE_BODY))?;
     let chosen = match request.name.as_deref() {
         None => None,

@@ -153,6 +153,7 @@ pub struct RenewResponse {
 /// same totals charges nothing new.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct RenewRequest {
     /// Cumulative prompt tokens.
     pub input_tokens: u32,

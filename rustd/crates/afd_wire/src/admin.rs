@@ -201,35 +201,6 @@ pub struct RunnerEventsResponse<'a> {
     pub next_cursor: Option<Cow<'a, str>>,
 }
 
-/// One live Server-Sent Events connection visible to platform operators.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct FleetStreamItem<'a> {
-    /// Workspace whose events the connection may observe.
-    #[serde(borrow)]
-    pub workspace_id: Cow<'a, str>,
-    /// Fleet whose events the connection may observe.
-    #[serde(borrow)]
-    pub fleet_id: Cow<'a, str>,
-    /// Connection start instant in epoch milliseconds.
-    pub started_ms: i64,
-}
-
-/// The instance-local live stream overview.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct FleetStreamsResponse<'a> {
-    /// Every live stream on this daemon instance.
-    #[serde(borrow)]
-    pub items: Vec<FleetStreamItem<'a>>,
-    /// Current number of live streams.
-    pub total: usize,
-    /// Instance-wide admission ceiling.
-    pub max_streams: u32,
-}
-
 #[cfg(test)]
 #[path = "admin/tests.rs"]
 mod tests;
