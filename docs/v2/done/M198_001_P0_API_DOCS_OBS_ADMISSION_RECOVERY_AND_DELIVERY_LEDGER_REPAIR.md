@@ -21,9 +21,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Categories:** API, DOCS, OBS
 **Batch:** B1 — no concurrent workstream; the admission and outbound ledgers are edited by nothing else in flight.
 **Branch:** `fix/m198-admission-recovery-and-delivery-ledger`
-**Baseline revision:** `6813000c3e26258e3b918b655bf85399e8e1910f` (`origin/main`; the branch was rebased onto it before the Pull Request, superseding the opening baseline at `eaa2b1956`)
+**Baseline revision:** `6813000c3e26258e3b918b655bf85399e8e1910f`
 **Test Baseline:** unit=2610 integration=493 — unit 2610 passed / 0 failed (`make test-unit-all`, Rust half; TypeScript unmeasured, the baseline worktree lacks the per-package `bun install` and this branch changes no `ui/**` file) · integration 493 passed / 0 failed, 492 parallel + 1 exclusive (`make test-integration-rustd`, live Postgres + Dragonfly v2.0.0) · lint exit 0 · version 0.48.0. Measured at `6813000c3` in a detached worktree.
-**Baseline evidence:** isolated worktree at the baseline revision, `make test-unit-rustd` and `make test-integration-rustd`, against its own compose Postgres and Dragonfly on a separate project and port range; logs `.baseline-unit.log` and `.baseline-integration.log` in that worktree. Local run, not Continuous Integration (CI).
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M198_001-6813000c3.md`
 **Depends on:** none
 **Provenance:** LLM-drafted (claude-opus-5, Sep 18, 2026), grounded in `docs/v2/reviews/schema-usage-audit-2026-09-18.md`, `docs/v2/reviews/schema-fix-adversarial-review-2026-09-18.md`, and re-verified source reads at the commit recorded below
 **Canonical architecture:** `docs/architecture/data_flow.md` §The durable ledgers
@@ -73,7 +73,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_api/tests/openapi_contract.rs` · `scripts/check_architecture_doc.sh` | EDIT | Each absent mechanism gains a gate, so the claim cannot come back silently. |
 | `codecov.yml` · `VERSION` · `build.zig.zon` · `cli/package.json` · `rustd/{Cargo.toml,Cargo.lock}` | EDIT | Two unrelated numbers. The `rust-afd` patch target moves 97 -> 99, alone among the three because it grades only added lines. The version moves 0.48.0 -> 0.49.0 on Indy's instruction in a dedicated `chore(release)` commit: the first four are what `make check-version` compares, and the lock renumbers because member crates inherit `version.workspace = true`. |
 | `docs/architecture/{data_flow.md,runner_fleet.md}` | EDIT | Corrects the session execution-handle rows, the multi-tenancy row, and a command neither binary has. |
-| `docs/v2/{pending,active,done}/M198_001_P0_API_DOCS_OBS_ADMISSION_RECOVERY_AND_DELIVERY_LEDGER_REPAIR.md` (+ `docs/v2/reviews/schema-fix-adversarial-review-2026-09-18.md`) | CREATE | This spec, at whichever lifecycle directory holds it, beside the adversarial review whose dispositions it implements. |
+| `docs/v2/{pending,active,done}/M198_001_P0_API_DOCS_OBS_ADMISSION_RECOVERY_AND_DELIVERY_LEDGER_REPAIR.md` (+ `docs/v2/reviews/schema-fix-adversarial-review-2026-09-18.md`, `playbooks/operations/acceptance/baselines/M198_001-6813000c3.md`) | CREATE | This spec, at whichever lifecycle directory holds it, beside the adversarial review whose dispositions it implements and the baseline evidence the header names. |
 
 Consulted, **not** edited: `schema/910_fleet_admissions.sql` and `schema/510_fleet_sessions.sql` are shipped slots and stay frozen; `afd_ingress`'s `sql.rs` and `app.rs` carry the live install read; `afd_library/src/prepare.rs` and `afd_fleet/src/bundle/mod.rs` define the live bundle layout.
 
