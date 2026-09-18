@@ -172,11 +172,16 @@ pub const LABEL_STAGE: &str = "stage";
 /// add them up.
 pub const LABEL_POOL_RESULT: &str = "pool_result";
 
-/// What the catalogue cache did for a read.
-pub const LABEL_CACHE: &str = "cache";
-
 /// Which lifecycle status a fleet count is about.
 pub const LABEL_STATUS: &str = "status";
+
+/// Which side of the platform boundary a failed run fell on.
+///
+/// Carried only by the failing half of a family: a successful run has no fault,
+/// so the label is absent rather than written with a third "none" value. A
+/// `{fault!="workload"}` matcher therefore selects successes and platform
+/// failures together, which is exactly the objective's valid-event set.
+pub const LABEL_FAULT: &str = "fault";
 
 /// Which kind of thing a count is split by, where one family counts two
 /// causes of the same event — a run started fresh or by reclaim.
@@ -199,7 +204,7 @@ pub const CENSUS_LABEL_KEYS: &[&str] = &[
     LABEL_SURFACE,
     LABEL_STAGE,
     LABEL_POOL_RESULT,
-    LABEL_CACHE,
     LABEL_STATUS,
     LABEL_KIND,
+    LABEL_FAULT,
 ];

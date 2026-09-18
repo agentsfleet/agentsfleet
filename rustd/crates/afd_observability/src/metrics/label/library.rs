@@ -117,25 +117,3 @@ closed_set! {
         Error => "error",
     }
 }
-
-closed_set! {
-    /// What the catalogue cache did for a read that consulted one.
-    ///
-    /// Four members where the Zig has five: its `not_applicable` is absence,
-    /// and absence is spelled `None` here rather than occupying a series that
-    /// counts every read that never asked a cache anything.
-    ///
-    /// Nothing in this daemon writes it either — the revision-keyed response
-    /// cache is a declared non-port — and the set stays for the reason
-    /// [`PoolResult`]'s does.
-    CacheOutcome {
-        /// Served from the cache.
-        Hit => "hit",
-        /// Not cached; the read went on.
-        Miss => "miss",
-        /// The caller asked for the cache to be skipped.
-        Bypass => "bypass",
-        /// Cached under a revision that is no longer current.
-        Stale => "stale",
-    }
-}

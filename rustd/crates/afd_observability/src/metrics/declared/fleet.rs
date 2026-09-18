@@ -67,10 +67,6 @@ pub const RUNNER_RETENTION_SWEPT_TOTAL: Declared<CounterKind> =
 pub const RUNNER_RETENTION_SWEEP_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_retention_sweep_failures_total");
 
-/// Teardown purges failing to unregister.
-pub const ACCOUNT_TEARDOWN_UNREGISTER_FAILURES_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_account_teardown_unregister_failures_total");
-
 /// Accepted, replayed, or refused production evidence.
 ///
 /// Labels: `outcome`.
@@ -142,7 +138,7 @@ pub const RUNNER_FAILURES_OVERFLOW_TOTAL: Declared<CounterKind> =
 
 /// Run volume per runner.
 ///
-/// Labels: `runner_id,outcome`.
+/// Labels: `runner_id,outcome`, plus `fault` on the failing half.
 pub const RUNNER_EXECUTIONS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_executions_total");
 

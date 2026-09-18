@@ -18,6 +18,27 @@ const REPLAYED: &str = "replayed";
 const APPENDED: &str = "appended";
 
 closed_set! {
+    /// Which side of the platform boundary a failed run fell on.
+    ///
+    /// An error budget is a promise about what this control plane controls. A
+    /// run that died because its workload asked for something policy refuses,
+    /// outgrew a ceiling, or ran out of money is a run this platform DELIVERED
+    /// correctly, and counting it against the objective lets one tenant's bad
+    /// code spend everybody's budget.
+    ///
+    /// Two members and not eleven: the eleven are `FailureClass`, which stays
+    /// the operator's diagnostic on `agentsfleet_runner_failures_total`. This
+    /// set answers the only question the objective asks, and keeps the series
+    /// count on the executions family at three rather than twelve.
+    Fault {
+        /// Ours. It spends the error budget.
+        Platform => "platform",
+        /// The workload's. The platform delivered; what it ran did not.
+        Workload => "workload",
+    }
+}
+
+closed_set! {
     /// Why opening an account from a signup delivery did not happen.
     ///
     /// Six, and the count is the point: the first three are the delivery being
