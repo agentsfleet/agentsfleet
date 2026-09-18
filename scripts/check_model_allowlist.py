@@ -33,7 +33,7 @@ import sys
 from pathlib import Path
 
 ALLOWLIST = Path("scripts/model-library-allowlist.json")
-FIXTURE_DIR = Path("samples/fixtures/model-library")
+FIXTURE_DIR = Path("tests/fixtures/model-library")
 
 RATE_FIELDS = ("input", "cached_input", "output")
 

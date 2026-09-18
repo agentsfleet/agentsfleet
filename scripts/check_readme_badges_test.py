@@ -5,16 +5,14 @@ A coverage badge is the one number a stranger reads before the code, and it has
 two ways to lie. It renders `unknown` when the README names a flag no workflow
 uploads — worse than no badge, because it looks like a broken project rather
 than a missing step. And it renders a number the gate never enforced when the
-upload hands Codecov the per-component kcov reports instead of the merged union:
-Codecov would build its own union over its own denominator, counting the harness
-files and the inline `test {}` blocks `check_zig_coverage.py` excludes, and the
-badge would read roughly two points above the figure that gated the branch.
+upload hands Codecov per-component reports instead of the merged union:
+Codecov would build its own union over its own denominator and the badge would
+read above the figure that gated the branch.
 
 So the README, the upload steps, and the merged report path are checked against
-each other here. The package flags upload from `.github/workflows/test.yml`,
-the zig flags from `.github/workflows/test-integration.yml` — where the grade
-job and the merged report live — and the paths from `make/test.mk`; this module
-owns no numbers of its own.
+each other here. The flags upload from `.github/workflows/test.yml` and
+`.github/workflows/test-integration-rustd.yml`, and the paths come from
+`make/test.mk`; this module owns no numbers of its own.
 
 Run: python3 -m unittest discover -s scripts -t scripts -p '*_test.py'
 """
@@ -43,9 +41,8 @@ CODECOV_ACTION = "codecov/codecov-action@"
 # The merged report is the only Zig artefact Codecov may see. Every Zig flag is
 # enumerated, so a new one cannot inherit the assertion by accident — it has to
 # be added here, which is the moment to ask whether it names the union too.
-# The three publish the SAME union scoped by the `paths` filters in
+# The flags publish the SAME union scoped by the `paths` filters in
 # codecov.yml, matching the per-folder floors in make/test.mk.
-ZIG_FLAG_PREFIX = "zig"
 
 # `[![zig coverage](https://img.shields.io/codecov/...)](https://codecov.io/...)`
 README_CODECOV_BADGE = re.compile(

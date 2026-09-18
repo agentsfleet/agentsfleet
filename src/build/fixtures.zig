@@ -13,10 +13,10 @@
 //! CONVENTION: place new fixtures under `tests/fixtures/<category>/`, grouped by
 //! domain (`telemetry/`, `webhooks/`, `fleetbundle/`, `runner/`, …). Then add a
 //! `{ .name, .path }` row to RUNNER (`src/runner/**` tests) and consume via
-//! `@embedFile("<name>")` using the
-//! registered NAME — never a relative path, and never a repo-root `samples/…`
-//! path. Both are unreachable: `@embedFile` refuses files outside the importing
-//! module's root directory.
+//! `@embedFile("<name>")` using the registered NAME — never a path of any kind,
+//! relative or repo-root. Both are unreachable: `@embedFile` refuses files
+//! outside the importing module's root directory, which is why the registry
+//! exists.
 
 const std = @import("std");
 

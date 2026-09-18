@@ -1,15 +1,14 @@
-//! The committed frontmatter corpus, re-run against the Rust parser.
+//! The committed frontmatter corpus, and the verdict each document earns.
 //!
-//! `frontmatter_fixtures_test.zig` loads every document under
-//! `tests/fixtures/fleetbundle/` and pins the verdict its parser reaches. This
-//! file loads the SAME files from the SAME place and pins the same verdicts, so
-//! the corpus is one oracle two daemons answer to rather than two corpora that
-//! can drift. Nothing here compiles Zig; the parity claim is carried by both
-//! suites agreeing about the same bytes on disk.
+//! Every document under `tests/fixtures/fleetbundle/` is loaded here and pinned
+//! to the verdict this parser reaches. The corpus was once a two-parser oracle,
+//! a Zig suite reading the same bytes and pinning the same verdicts; that suite
+//! retired with the Zig daemon, so this file is now the only reader and the
+//! table below is the whole claim.
 //!
 //! # Mapping
 //!
-//! | Zig test (`frontmatter_fixtures_test.zig`) | Rust test here |
+//! | What is pinned | Test |
 //! |---|---|
 //! | every `skill/` and `trigger/` fixture verdict | [`test_fleet_frontmatter_corpus_parity`] |
 //! | the `platform-ops` / `steer-probe` template substitution | [`the_templated_bundles_parse_once_their_placeholders_are_filled`] |
@@ -89,7 +88,7 @@ enum Kind {
 }
 
 /// Every purpose-built fixture, with the verdict its bytes must earn.
-const CORPUS_CASES: [(&str, Kind, Verdict); 9] = [
+const CORPUS_CASES: [(&str, Kind, Verdict); 15] = [
     ("skill/minimal.md", Kind::Skill, Verdict::Accepts),
     ("skill/full.md", Kind::Skill, Verdict::Accepts),
     // The fixture's own comment says it tests an absent `name`. It does not:
@@ -121,6 +120,28 @@ const CORPUS_CASES: [(&str, Kind, Verdict); 9] = [
         Verdict::UnknownRuntimeKey,
     ),
     ("steer-probe/SKILL.md", Kind::Skill, Verdict::Accepts),
+    // The three incident bundles, which shipped in a repository-root `library/`
+    // for three milestones with no parser reading them at all. They are here so
+    // the documents the platform would install are graded by the same table as
+    // everything else.
+    ("incident-responder/SKILL.md", Kind::Skill, Verdict::Accepts),
+    (
+        "incident-responder/TRIGGER.md",
+        Kind::Trigger,
+        Verdict::Accepts,
+    ),
+    ("incident-repairer/SKILL.md", Kind::Skill, Verdict::Accepts),
+    (
+        "incident-repairer/TRIGGER.md",
+        Kind::Trigger,
+        Verdict::Accepts,
+    ),
+    ("incident-verifier/SKILL.md", Kind::Skill, Verdict::Accepts),
+    (
+        "incident-verifier/TRIGGER.md",
+        Kind::Trigger,
+        Verdict::Accepts,
+    ),
 ];
 
 /// The verdict a document actually earns.

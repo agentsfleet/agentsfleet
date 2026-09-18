@@ -41,7 +41,7 @@ facts.
   unit → `make test-unit-all` (cargo workspace + every TypeScript coverage
   gate) · integration → `make test-integration-rustd` (live Postgres + Dragonfly) ·
   version → `make check-version` · dry lanes → `make dry-app` /
-  `make dry` · wire fixtures → `make wire-fixtures`. A package-scoped runner
+  `make dry`. A package-scoped runner
   (`cd ui/packages/app && bun run test`, `cargo test -p afd_wire`, …) is
   inner-loop iteration; it proves a package, not the repository, and never
   satisfies a VERIFY row or a "tests pass" claim.
@@ -56,13 +56,14 @@ facts.
   means run `provision-env-1password` (dotfiles) first. The app throws on
   an unset `NEXT_PUBLIC_API_URL` instead of guessing a backend.
 - **Rust errors follow [`docs/RUST_ERROR_STANDARD.md`](docs/RUST_ERROR_STANDARD.md)** —
-  read it before adding or changing a fallible signature under `rustd/`. One
-  error type per crate with a `pub type Result<T, E = Error>` beside it;
-  compose with `#[from]` so `?` lifts; `map_err` only to ADD context the call
-  site alone knows, never `.map_err(|e| Mine(e.to_string()))` — that destroys
-  the `source()` chain; and `source()` returns what caused you, never your own
-  kind. Not every error has a cause, so a test demanding one for every variant
-  is wrong. The shape is `core_api`'s, bun's and habitat's, not invented here.
+  read it before adding or changing a fallible signature under `rustd/`. The
+  four rules and their examples are in `dispatch/write_rust.md`, which fires on
+  every `*.rs` edit; the standard is what this repository does differently.
+  Carry one fact in: **a crate never hand-writes its error type.** Declare a
+  private `ErrorKind`, then `afd_core::error_shell!` generates the boxed
+  `Error`, its backtrace, its `[CODE]` `Display` and its self-skipping
+  `source()`, and `error_lifts!` generates the `From` impls. Only the `Result`
+  alias is written by hand, so a reader can see it without expanding a macro.
 - Public endpoint, command, flag, or behavior changes require a matching branch
   in `~/Projects/docs`; never edit that repository through this worktree.
 

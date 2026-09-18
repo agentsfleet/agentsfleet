@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::event::EventEnvelope;
 use crate::memory::MemoryDelta;
-use crate::paths::LEASE_WIRE_VERSION_CURRENT;
 use crate::policy::ExecutionPolicy;
 
 /// How tenant secrets reach the runner.
@@ -20,24 +19,6 @@ pub enum SecretDelivery {
     Scoped,
     /// Zero-trust proxied delivery.
     Proxy,
-}
-
-/// `POST /v1/runners/me/leases` request body.
-///
-/// Defaults to the current version, which is the only version this port serves.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LeaseRequest {
-    /// The wire version the caller speaks.
-    pub wire_version: u16,
-}
-
-impl Default for LeaseRequest {
-    fn default() -> Self {
-        Self {
-            wire_version: LEASE_WIRE_VERSION_CURRENT,
-        }
-    }
 }
 
 /// Content-addressed reference to an installed Fleet Bundle's snapshot.
@@ -60,6 +41,7 @@ pub struct BundleManifest<'a> {
 /// under lease reclaim, beyond plain idempotency by event id.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LeasePayload<'a> {
     /// Identifier for this lease.
     #[serde(borrow)]
@@ -92,6 +74,7 @@ pub struct LeasePayload<'a> {
 /// a backoff hint rather than a `204`.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LeaseResponse<'a> {
     /// The work, when there is any.
     #[serde(borrow)]

@@ -17,8 +17,8 @@ here, so the test asserts the shipping code and not a Python copy of it.
 seed-models.mjs guards its main block behind `import.meta.main`, which is what
 makes importing it free of side effects (no allowlist read, no network, no psql).
 
-That runtime is not universally present. `make lint-zig` runs this suite inside
-`ci-zig-ubuntu`, which carries neither node nor bun — the same reason the
+That runtime is not universally present. Continuous Integration (CI) has run
+this suite in containers carrying neither node nor bun — the same reason the
 integration lane seeds `model_library` from committed SQL instead of shelling out
 to the generator. Rather than error 20 times there, the JS-backed cases SKIP with
 the runtime named, so the gap is visible in the lane output instead of silent.
@@ -252,7 +252,7 @@ class GenerationBump(unittest.TestCase):
 
     def test_committed_fixture_matches_the_no_transaction_shape(self):
         """Regression guard tying the assertion above to the real artifact."""
-        path = os.path.join(REPO_ROOT, "samples", "fixtures", "model-library", "seed.sql")
+        path = os.path.join(REPO_ROOT, "tests", "fixtures", "model-library", "seed.sql")
         with open(path, encoding="utf-8") as handle:
             committed = handle.read()
         for construct in ("BEGIN;", "COMMIT;", "FOR UPDATE", "DO $$"):

@@ -1,6 +1,6 @@
 # Billing and self-managed provider key
 
-> Parent: [`README.md`](./README.md)
+> Parent: [`README.md`](./README.md) · User-facing: [docs.agentsfleet.net/billing/budgets](https://docs.agentsfleet.net/billing/budgets) (spend caps) and [docs.agentsfleet.net/fleets/model-providers](https://docs.agentsfleet.net/fleets/model-providers) (bringing your own key).
 
 How users pay for what they run, and how the runtime stays neutral between two cost realities: us paying the language-model provider, or the user paying the language-model provider directly.
 
@@ -175,7 +175,7 @@ Why two debit points and not one:
 
 **Ledger rows (M80_010).** `billing.usage_ledger` is keyed `(event_id, charge_type)`: one `receive` row, and **one `stage` row that M80_010 accumulates** across the run's renewals. The `UNIQUE (event_id, charge_type)` constraint updates the `stage` row in place, never multiplies it; the run is billed under `charge_type = stage`. So one event → exactly 2 ledger rows, whether the run renewed once or forty times.
 
-A per-renewal breakdown table used to sit beside them, one row per `/renew`/settle. M154 §4 deleted it: at a renewal roughly every twenty seconds it was the fastest-growing table in the schema, and its only reader was the budget gate, which the span columns now serve directly. Revenue-by-charge-type is still a one-line query here. The slice-by-slice accrual detail is no longer answerable from Postgres — it is a durable-stream concern, recorded in [`roadmap.md`](./roadmap.md) under *Payload offload and the durable stream*.
+A per-renewal breakdown table used to sit beside them, one row per `/renew`/settle. M154 §4 deleted it: at a renewal roughly every twenty seconds it was the fastest-growing table in the schema, and its only reader was the budget gate, which the span columns now serve directly. Revenue-by-charge-type is still a one-line query here. The slice-by-slice accrual detail is no longer answerable from Postgres — it is a durable-stream concern, recorded in `M155_001` under *Payload offload and the durable stream*.
 
 **Run metering — three layers.** The run debit follows the real run, not a one-shot estimate.
 
@@ -352,7 +352,7 @@ The balance gate above bounds what a **tenant** may spend: one credit pool, one 
 
 The first fix stored per-slice rows in `fleet.metering_periods` and summed them by each slice's own `created_at`. That table is gone: it wrote a row roughly every twenty seconds of every run, which is the growth the schema rebuild removed. The property survives without it. `billing.usage_ledger` carries `last_charged_at` alongside `created_at`, so the accumulated total describes a *span* rather than an instant, and the gate apportions it across `[created_at, last_charged_at]` by overlap with the window being enforced. A run straddling the window boundary contributes the fraction that actually fell inside it.
 
-The slice-by-slice audit trail is a separate concern from enforcement, and it is not in Postgres — see [`roadmap.md`](./roadmap.md) under *Payload offload and the durable stream*, which records where it goes instead.
+The slice-by-slice audit trail is a separate concern from enforcement, and it is not in Postgres — the charge-slice breakdown shipped as `M155_001` and that spec is its record.
 
 **Overshoot is bounded, not zero.** The ceiling is a floor-check: a run is admitted while `spend < cap`. An already-running run may exceed its cap by at most one renewal window's worth of tokens before its next `/renew` refuses it. Enforcing a *predicted* end-of-run cost would refuse runs that would have finished under budget.
 
@@ -474,7 +474,7 @@ core.tenant_model_entries (id, tenant_id, model_id, secret_ref, created_at, upda
 
 ## 9. Provider routing — what makes Fireworks + Kimi K3 work today
 
-NullClaw already speaks the OpenAI-compatible wire format, and it dials **103 provider names**. The enumeration lives in `scripts/model-library-allowlist.json`, which is generated from `nullclaw/src/providers/factory.zig` by `scripts/gen-provider-skeleton.mjs`. This section names the shapes those 103 fall into; it deliberately does not re-list them, because a hand-copied table is wrong the moment NullClaw is bumped — which is how the eight rows that used to sit here came to describe a fraction of what the platform could dial.
+NullClaw already speaks the OpenAI-compatible wire format, and it dials **103 provider names**. The enumeration lives in `scripts/model-library-allowlist.json`, hand-maintained against `nullclaw/src/providers/factory.zig`. This section names the shapes those 103 fall into; it deliberately does not re-list them, because a hand-copied table is wrong the moment NullClaw is bumped — which is how the eight rows that used to sit here came to describe a fraction of what the platform could dial.
 
 | Shape | Wire format | Examples |
 |---|---|---|

@@ -11964,7 +11964,8 @@
             "description": "Optional inline trigger document for uploads.",
             "default": null
           }
-        }
+        },
+        "additionalProperties": false
       },
       "AdminLibraryItem": {
         "type": "object",
@@ -12079,7 +12080,8 @@
             "description": "Replacement GitHub owner/repository.",
             "default": null
           }
-        }
+        },
+        "additionalProperties": false
       },
       "AdminLibraryRequirements": {
         "type": "object",
@@ -12521,7 +12523,8 @@
             "description": "Concurrent workers the runner may start. Clamped on both sides.",
             "minimum": 0
           }
-        }
+        },
+        "additionalProperties": false
       },
       "BillingResponse": {
         "type": "object",
@@ -12617,7 +12620,8 @@
             "type": "boolean",
             "description": "System-call filtering is available."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "CatalogueEntry": {
         "type": "object",
@@ -12944,7 +12948,8 @@
             "type": "string",
             "description": "The credential to back it with. Immutable once the entry exists."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "CreateWorkspaceRequest": {
         "type": "object",
@@ -12957,7 +12962,8 @@
             ],
             "description": "What the workspace will be called, when the caller cares."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "CreatedWorkspaceResponse": {
         "type": "object",
@@ -13121,7 +13127,8 @@
             "type": "string",
             "description": "The workspace the fleet belongs to."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "EventEnvelope": {
         "type": "object",
@@ -13165,7 +13172,8 @@
             "type": "string",
             "description": "The workspace the fleet belongs to."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "EventSummary": {
         "type": "object",
@@ -13267,7 +13275,8 @@
             "type": "string",
             "description": "The workspace the fleet belongs to."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "EventType": {
         "type": "string",
@@ -13311,7 +13320,8 @@
             ],
             "description": "Where the next page resumes, or `null` on the last one."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "ExecutionPolicy": {
         "type": "object",
@@ -13413,7 +13423,8 @@
             "type": "string",
             "description": "Host path to bind."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "FailureClass": {
         "type": "string",
@@ -13895,7 +13906,8 @@
               }
             ]
           }
-        }
+        },
+        "additionalProperties": false
       },
       "HeartbeatResponse": {
         "type": "object",
@@ -14106,7 +14118,8 @@
             ],
             "description": "This workspace's own entry, by identifier."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "InstalledFleetResponse": {
         "type": "object",
@@ -14213,7 +14226,8 @@
             "$ref": "#/components/schemas/SecretDelivery",
             "description": "How secrets reached this run."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "LeaseResponse": {
         "type": "object",
@@ -14239,7 +14253,8 @@
             "description": "How long to wait before asking again, when there is none.",
             "minimum": 0
           }
-        }
+        },
+        "additionalProperties": false
       },
       "Liveness": {
         "type": "object",
@@ -14417,7 +14432,8 @@
             },
             "description": "The items to remember."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "MintApiKeyRequest": {
         "type": "object",
@@ -14451,7 +14467,8 @@
             "type": "string",
             "description": "The terminal's own label, as an operator will read it back."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "MintCredentialRequest": {
         "type": "object",
@@ -15008,7 +15025,8 @@
             ],
             "description": "An authored `TRIGGER.md`, reparsed into the configuration and the name."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "PatchedFleetResponse": {
         "oneOf": [
@@ -15550,7 +15568,8 @@
             "description": "Cumulative completion tokens.",
             "minimum": 0
           }
-        }
+        },
+        "additionalProperties": false
       },
       "RenewResponse": {
         "type": "object",
@@ -15578,7 +15597,8 @@
             "type": "object",
             "description": "The complete replacement body.\n\nOpaque for the same reason create's is: an unparsed slice in Rust, an\nobject on the wire. `value_type` names the difference."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "ReportCheckpoint": {
         "type": "object",
@@ -15772,7 +15792,8 @@
             ],
             "description": "The operator's note, stored as the gate's `detail`."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "Resolved": {
         "type": "object",
@@ -16610,7 +16631,8 @@
             "type": "boolean",
             "description": "Whether it passed."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "SelftestReport": {
         "type": "object",
@@ -16641,7 +16663,8 @@
             "type": "string",
             "description": "The tier in force when the probe ran."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "SteerAccepted": {
         "type": "object",
@@ -16659,7 +16682,8 @@
             "type": "string",
             "description": "Always `accepted`. A field rather than an implied 202, because that is\nwhat the daemon this ports writes."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "SteerRequest": {
         "type": "object",
@@ -16679,7 +16703,8 @@
             ],
             "description": "The caller's own name for this operation, repeated across its retries.\n\nDimension 7.5. A timeout does not prove an operation failed. A client\nthat never saw a response must be able to ask again, and asking again\nmust not risk a second run.\n\nThis value is what tells the two apart, and only the CALLER can supply\nit. A server cannot tell a retried POST from a person pressing send\ntwice, because the bytes are identical.\n\nPresent, it becomes the admission ledger's `producer_key`. The retry\nconflicts on `UNIQUE (producer, producer_key)` and is answered with the\nfirst admission's event — one run, one charge.\n\nAbsent, the ledger mints a key. Two identical messages stay two\noperations, which is the behaviour a person pressing send twice expects.\n\nOptional on purpose rather than required. A human typing in a terminal\nhas no operation to identify. Forcing one would make every caller\ninvent a value whose only job is to be unique."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "StoreSecretRequest": {
         "type": "object",
@@ -16697,7 +16722,8 @@
             "type": "string",
             "description": "The name a fleet interpolates as `${secrets.<name>.<field>}`."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "StoredModelEntry": {
         "type": "object",
@@ -16841,7 +16867,8 @@
             "description": "How many turns the thread holds in total. Never populated.",
             "minimum": 0
           }
-        }
+        },
+        "additionalProperties": false
       },
       "ToolCallCompleted": {
         "type": "object",
@@ -16913,7 +16940,8 @@
             "type": "string",
             "description": "The model to point at."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "VerifySessionRequest": {
         "type": "object",

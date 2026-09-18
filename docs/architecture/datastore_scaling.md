@@ -20,13 +20,11 @@ executable: false
 
 This page records the approved requirements for datastore scaling and the target design the implementation builds toward. It does not claim that Dragonfly support or million-fleet capacity has shipped; the sections below marked *target* describe what the active spec builds, and the runtime pages (`data_flow.md`, `runner_fleet.md`) describe what runs today until a Section lands and updates them in the same commit.
 
-The [datastore scaling roadmap](./roadmap.md#datastore-scaling) links the implementation spec.
-
 ## Why it exists
 
-Redis carries event streams, readiness hints, authentication state, and outbound delivery. Those uses require different retention and failure rules. Treating all of them as disposable cached values would weaken accepted-work recovery.
+The datastore carries event streams, readiness hints, authentication state, and outbound delivery. Those uses require different retention and failure rules. Treating all of them as disposable cached values would weaken accepted-work recovery.
 
-Four self-hosted Dragonfly processes in one region are the near-term destination; Dragonfly Cloud Swarm is where this moves when operational risk justifies its control plane. There is no Dragonfly single-shard migration stage. Changing that destination requires an explicit user decision — this one was made on 2026-09-14 and is recorded below. Redis support remains part of the acceptance requirements.
+Four self-hosted Dragonfly processes in one region are the near-term destination; Dragonfly Cloud Swarm is where this moves when operational risk justifies its control plane. There is no Dragonfly single-shard migration stage. Changing that destination requires an explicit user decision — this one was made on 2026-09-14 and is recorded below.
 
 ## Destination: self-hosted first, Swarm later (Indy, 2026-09-14)
 
@@ -198,7 +196,7 @@ A four-node Dragonfly v1.40.2 cluster (two primaries, one replica each, one netw
 
 ## Target design
 
-**One boundary, one transport.** `afd_dragonfly` (renamed from `afd_redis`; the `REDIS_*` environment names are unchanged) keeps its surfaces — `Redis`, `Dedicated`, `FleetStreams`, `ReadyIndex`, `SessionStore`, `SubscriptionHub` — over one `ClusterConnection` per process for ordinary commands. There is no `REDIS_TOPOLOGY` and no standalone backend: a seed that is not a cluster refuses boot. A blocking consumer (`Dedicated`) holds its OWN `ClusterConnection`, never a borrowed one, because the driver keeps exactly one socket per node and applies one reply deadline to every command on a connection — a parked read on a shared handle would stall the owning node's only socket and impose the park-sized deadline on every other caller. Business crates never learn the topology, and no business code branches on it. Correctness-sensitive commands go to primaries; `read_from_replicas` is never enabled.
+**One boundary, one transport.** `afd_dragonfly` (renamed from `afd_redis`; the `REDIS_*` environment names are unchanged) keeps its surfaces — `Dragonfly`, `Dedicated`, `FleetStreams`, `ReadyIndex`, `SessionStore`, `SubscriptionHub` — over one `ClusterConnection` per process for ordinary commands. There is no `REDIS_TOPOLOGY` and no standalone backend: a seed that is not a cluster refuses boot. A blocking consumer (`Dedicated`) holds its OWN `ClusterConnection`, never a borrowed one, because the driver keeps exactly one socket per node and applies one reply deadline to every command on a connection — a parked read on a shared handle would stall the owning node's only socket and impose the park-sized deadline on every other caller. Business crates never learn the topology, and no business code branches on it. Correctness-sensitive commands go to primaries; `read_from_replicas` is never enabled.
 
 **Acceptance is a PostgreSQL row, the queue is a receipt.** Every producer (steer, webhook, schedule fire, gate continuation, install, outbound answer) commits an admission row carrying its producer identity before any success response. The single-key `XADD` follows and is recorded back as the physical receipt; a replay dispatcher re-appends admitted rows that never got one. Duplicate producer identity is a unique-index conflict, which is what the Redis dedup claim used to be. Settlement and billing key on the admission row, so a replayed receipt cannot debit twice. Losing the in-memory datastore loses no accepted work while PostgreSQL survives, and that takes two recovery passes rather than one: the two paragraphs below are the second.
 
@@ -234,7 +232,7 @@ The cutover to the cluster is a fresh start: PostgreSQL is rebuilt and Dragonfly
 
 One million stored fleets, active fleets, concurrent runs, and runner processes are separate workload dimensions. Reports must state all four, together with offered load, completion rate, queue age, memory, and database cost. Small deployment probes prove behavior at their tested load; they do not prove the million-fleet target.
 
-Fault injection and saturation testing use isolated datastores and synthetic destinations. Shared deployments use bounded fixture traffic and cleanup that only removes the run's own records. No shared Redis flush, database reset, failover exercise, or provider switch follows from spec approval alone.
+Fault injection and saturation testing use isolated datastores and synthetic destinations. Shared deployments use bounded fixture traffic and cleanup that only removes the run's own records. No shared Dragonfly flush, database reset, failover exercise, or provider switch follows from spec approval alone.
 
 The historical Redis baseline (closed PR #681) is a reference for the local rig only. Cloud evidence is required before the Dragonfly acceptance rows are complete; missing Cloud evidence leaves them incomplete.
 

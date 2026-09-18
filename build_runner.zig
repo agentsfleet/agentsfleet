@@ -151,7 +151,6 @@ pub fn build(b: *std.Build) void {
     buildpkg.fixtures.addRunner(b, runner_tests.root_module);
     b.step("test", "Run agentsfleet-runner unit tests (daemon + engine + cmd)").dependOn(&b.addRunArtifact(runner_tests).step);
 
-
     // `list-tests` is defined per build graph; the daemon graph has its own in build.zig.
     const list_step = b.step(buildpkg.test_list.STEP_NAME, buildpkg.test_list.STEP_DESC);
     buildpkg.test_list.addLane(b, list_step, S_RUNNER_TESTS, runner_tests.root_module, S_RUNNER_ROOT_DIR);

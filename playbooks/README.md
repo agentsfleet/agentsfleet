@@ -88,7 +88,6 @@ These routes deploy an installation that already passed the rebuild sequence.
 <!-- playbook-inventory:start -->
 - `operations/acceptance` — the human visual pass over a deployed build, and the verdict file the milestone's Pull Request carries.
 - `operations/admin_bootstrap` — provision the platform administrator.
-- `operations/cutover` — the Rust daemon cutover runbook, its declared-divergence register, and the probe runner that asserts rubric-row coverage.
 - `operations/ci_rust_images` — build the one pinned Rust base image for Continuous Integration (CI): the musl toolchain for the static daemon build, and the components the lint and unit lanes need.
 - `operations/ci_zig_images` — build pinned Zig images for Continuous Integration (CI).
 - `operations/credential_rotation` — rotate an exposed development credential.

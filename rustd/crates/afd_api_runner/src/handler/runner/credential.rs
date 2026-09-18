@@ -70,7 +70,7 @@ pub(crate) async fn handle<D: Services>(
 ) -> Response {
     // Borrowed out of `body`: the lease id and the integration name both go
     // straight into a statement's parameters, so neither needs owning.
-    let Ok(request) = afd_core::json::object_from_slice::<MintCredentialRequest<'_>>(&body) else {
+    let Ok(request) = afd_http::handler::read_body::<MintCredentialRequest<'_>>(&body) else {
         return malformed(DETAIL_MALFORMED);
     };
 

@@ -43,7 +43,7 @@ verification. A keyword hit or repeated test fixture is not itself a defect.
 | Calendar dates | Jiff replaces local Gregorian arithmetic. Nonpositive times display the epoch date. Positive times outside Jiff's supported range display the original millisecond value as text. |
 | UUIDs | The existing `uuid` implementation and `afd_core::id::Uuid7` remain. Repeated audit-ID adapters share `Entropy::uuid_randomness`; callers retain their original error conversion and injected clock. |
 | Generic and Svix delivery | One authenticated-delivery helper owns pause acknowledgement, JSON parsing and dispatch. Each route retains its signature verification and event-ID selection. Specialized GitHub and approval routing stays separate. |
-| RBAC and Redis | Keep domain scope, tenant-confinement and authorization policy. Redis connections and commands already use `redis`; atomic Lua scripts encode application transitions and are not replaced merely because they are custom. |
+| RBAC and the datastore | Keep domain scope, tenant-confinement and authorization policy. Datastore connections and commands already use `redis`; atomic Lua scripts encode application transitions and are not replaced merely because they are custom. |
 | Svix | Keep the documented vendored verification fork and its compatibility tests. The audit found no basis for an unreviewed dependency switch. |
 
 The principal regression proofs cover repeated provider failures, 100 concurrent

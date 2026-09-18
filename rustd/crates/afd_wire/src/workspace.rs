@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 // optional twice over — absent, `null`, or blank all mean "name it for me".
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CreateWorkspaceRequest<'a> {
     /// What the workspace will be called, when the caller cares.
     #[serde(borrow, default)]

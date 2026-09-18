@@ -1,9 +1,6 @@
-//! The memory verbs' response shapes, which no `wire-v2` fixture pins.
-//!
-//! `roundtrip` grades the frozen corpus. These types are not in that roster, so
-//! nothing else would notice a renamed or reordered field — and a response body
-//! that no fixture and no test pins is exactly the shape a handler used to
-//! spell inline with `json!`.
+//! The memory verbs' response shapes, pinned here because nothing else would
+//! notice a renamed or reordered field — and a response body no test pins is
+//! exactly the shape a handler used to spell inline with `json!`.
 #![expect(
     clippy::unwrap_used,
     reason = "test target: a shape that will not serialize is an unmet precondition"

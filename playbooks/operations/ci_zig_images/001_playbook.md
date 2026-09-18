@@ -12,8 +12,8 @@ The three images this playbook publishes are:
 
 | Image                                         | Arch              | Replaces in CI                                                                                       |
 | --------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------- |
-| `ghcr.io/agentsfleet/ci-zig-alpine`             | amd64 + arm64     | `cross-compile.yml` (both lanes), `release.yml` (Alpine job), `deploy-dev.yml` (Alpine job), `make/test-integration.mk` (`RUNNER_CI_IMAGE`, the local macOS kernel lane) |
-| `ghcr.io/agentsfleet/ci-zig-ubuntu`             | amd64             | `test.yml`, `bench.yml`, `lint.yml` (lint-zig), `qa.yml`, `qa-smoke.yml`, `test-integration.yml`     |
+| `ghcr.io/agentsfleet/ci-zig-alpine`             | amd64 + arm64     | `release.yml` (both runner build jobs), `deploy-dev-build.yml` |
+| `ghcr.io/agentsfleet/ci-zig-ubuntu`             | amd64             | `bench.yml` |
 
 **Current revision: `r4`** — both images carry `bubblewrap`. The runner spawns
 every sandboxed lease through `bwrap`, so an image without it makes each
