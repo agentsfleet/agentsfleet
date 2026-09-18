@@ -220,6 +220,10 @@ test_should_refuse_to_invent_health_from_absent_data() {
       all and length >= 4' \
     "$PROVIDER_DIR/assets/dashboard.json" >/dev/null; then
     bad "$name" "an indicator still invents a passing value when its denominator is absent"
+  elif ! jq -e '[.panels[] | (.targets // [])[].expr |
+      contains("or vector(0)") | not] | all' \
+    "$PROVIDER_DIR/assets/dashboard.json" >/dev/null; then
+    bad "$name" "a panel still reads an absent series as zero"
   else
     ok "$name"
   fi
