@@ -475,6 +475,35 @@ test_should_reject_a_literal_alert_threshold() {
   fi
 }
 
+test_should_fail_a_declared_name_with_no_function() {
+  local name="test_should_fail_a_declared_name_with_no_function"
+  local output
+  # A fresh bash, because `run_suite` is already running in this one and is not
+  # re-entrant. The phantom name is the whole fixture: before the guard, a name
+  # in TEST_NAMES with no function behind it logged "command not found", which
+  # carries no FAIL line, so the tally counted it GREEN. Two refusal guards
+  # reported success that way for an edit that had deleted their bodies.
+  output="$(
+    bash -c '
+      source "$1/observability_test_support.sh"
+      TEST_NAMES=(a_name_nothing_defines)
+      passed=0
+      failed=0
+      run_suite
+    ' _ "$SCRIPT_DIR" 2>&1
+  )" || true
+  if ! printf '%s' "$output" | grep -q '^FAIL a_name_nothing_defines'; then
+    bad "$name" "a declared name with no function did not fail: $output"
+  elif ! printf '%s' "$output" | grep -q 'no such function'; then
+    bad "$name" "the failure did not say why: $output"
+  elif ! printf '%s' "$output" | grep -q '0 passed, 1 failed'; then
+    bad "$name" "the tally still counted the phantom as passing: $output"
+  else
+    ok "$name"
+  fi
+}
+
+
 TEST_NAMES=(
   test_should_validate_assets
   test_should_verify_prometheus_without_exposing_token
@@ -484,6 +513,7 @@ TEST_NAMES=(
   test_should_update_every_resource_with_its_version
   test_should_require_write_approval
   test_should_reject_invalid_gate_inputs
+  test_should_fail_a_declared_name_with_no_function
   test_should_repair_the_heartbeat_readings
   test_should_refuse_to_invent_health_from_absent_data
   test_should_derive_the_replay_floor_from_source
