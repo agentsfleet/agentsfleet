@@ -113,10 +113,8 @@ export const statusEffect: Effect.Effect<
   yield* output.printSection("Fleets");
   let anyParked = false;
   for (const z of fleets) {
-    // An unreadable inbox renders the em dash, not 0. Reading it needs
-    // `approval:read`, which a credential holding `fleet:read` may not carry,
-    // and "0 waiting" for a parked Fleet is the answer this column exists to
-    // stop being given.
+    // An unreadable inbox renders the em dash, not 0: "0 waiting" for a parked
+    // Fleet is the answer this column exists to stop being given.
     const waiting =
       waitingByFleet === null
         ? WAITING_UNKNOWN
@@ -233,5 +231,11 @@ const PARKED_HINT =
 
 // The waiting count when the approvals inbox could not be read at all.
 const WAITING_UNKNOWN = "—" as const;
+// Names what happened, never why. The read fails the same way for a missing
+// `approval:read` scope, a timeout, and a daemon that is down, and this line
+// cannot tell them apart — blaming scopes would send an operator to re-auth
+// while the service is simply unavailable. `approvals list` fails loudly with
+// the daemon's own sentence, so pointing there hands over the real cause
+// instead of guessing at it.
 const WAITING_UNREADABLE =
-  "Waiting counts unavailable — this credential cannot read the approval inbox (needs approval:read)." as const;
+  "Waiting counts unavailable — the approval inbox could not be read. See why with: agentsfleet approvals list" as const;
