@@ -192,7 +192,7 @@ pub fn buildTools(
     for (spec.array.items) |item| {
         // TWO shapes reach here, and only one of them was ever handled. The
         // lease wire carries `tools: []const []const u8` — bare strings
-        // (`protocol_lease_v1.ExecutionPolicy`), and `child_exec_input` emits
+        // (`execution_policy.zig:134`), and `child_exec_input` emits
         // them as `.string`. This loop required `.object` and skipped anything
         // else, so in production EVERY declared tool was dropped before any
         // refusal arm ran. The suite never saw it because its `specOf` helper

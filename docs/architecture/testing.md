@@ -187,41 +187,15 @@ lane measured `tests_s` 110-123 with the guard against 71 for the concurrent
 runs that were producing wrong answers. Recovering that time means ISO-2 for the
 ready stream, not removing the guard.
 
-## The wire parity proof
+## The wire
 
-`afd_wire` is a port of a wire the Zig `src/lib/contract` module still defines,
-so it is verified against that module rather than against itself.
-
-`src/lib/contract/fixture_export.zig` writes one canonical JSON document per
-exported wire type into `tests/fixtures/wire-v2/`, plus a machine-readable
-`manifest.json`. `make wire-fixtures` regenerates them. The Rust suite parses each
-fixture, re-serializes it, and compares **bytes**.
-
-Three properties make that comparison mean something:
-
-- **Zig generates, Rust conforms.** If Rust produced the fixtures, a Rust bug
-  would be baked into the expected bytes and the suite would pass forever. The
-  generator has to be the other implementation or the oracle is circular.
-- **Bytes, not fields.** Field equality would miss field ORDER,
-  optional-emission policy, number spelling and enum spelling — every way two
-  encoders agree on a value and disagree on its encoding.
-- **The roster is reflection, not a list.** The emitter walks what the contract
-  modules actually export. A hand-written list is one someone forgets to update,
-  and a forgotten wire type is the drift the fixtures exist to catch.
-
-Two things stay hand-maintained, being what reflection cannot know: the excluded
-modules, and the per-type unknown-field policy. That policy is genuinely mixed —
-the Zig daemon passes `ignore_unknown_fields` at some parse sites and not others —
-so the manifest records it per type and the Rust serde attributes mirror it,
-with a generated probe per type asserting the observed leniency matches.
-
-What the round-trip **cannot** prove is integer width in the widening direction:
-any value Zig emits fits a wider Rust type and re-serializes identically. That
-gap is named in the tests and closed by a separate assertion that a value one past
-each declared width is refused.
-
-Fixtures are generated output. Never hand-edit one; regenerate and review the
-diff.
+`afd_wire` defines the `/v1/runners` protocol. `agentsfleetd` serves it and
+publishes the shapes through `public/openapi.json` (`openapi_contract.rs`,
+`openapi_coverage.rs` and their siblings in `afd_api/tests/` grade that
+document against the routes). `agentsfleet-runner` is a client: its Zig
+structs in `src/lib/contract` conform to what is published, never the
+reverse. The runner has no test lane of its own against the daemon yet; the
+Zig structs are hand-maintained against the OpenAPI document until one exists.
 
 ## Coverage
 

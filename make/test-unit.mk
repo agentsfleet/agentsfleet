@@ -2,7 +2,7 @@
 # TEST-UNIT — agentsfleetd, agentsfleet, website, app + multi-package coverage gate
 # =============================================================================
 
-.PHONY: test-unit-rustd wire-fixtures test-unit-cli test-unit-website test-unit-app test-unit-design-system test-coverage-all
+.PHONY: test-unit-rustd test-unit-cli test-unit-website test-unit-app test-unit-design-system test-coverage-all
 
 test-unit-rustd:  ## Run the Rust workspace unit tests (cargo)
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
@@ -11,19 +11,6 @@ test-unit-rustd:  ## Run the Rust workspace unit tests (cargo)
 	@# demand get reached at all, and a default-feature run silently skips them.
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] cargo test --workspace" -- \
 	  cargo test --workspace --all-features
-
-# Regenerates the committed wire fixtures from the Zig source of truth. Runs as
-# `zig run`, not through build.zig: every src/lib/contract import is a sibling
-# path, so the emitter compiles standalone and this milestone leaves the Zig
-# build graph untouched.
-#
-# Committed output on purpose — a Zig wire change then lands as a RED DIFF in
-# tests/fixtures/wire-v2/ plus a red Rust round-trip, rather than as a silent
-# skew nobody notices until a runner deserializes garbage.
-wire-fixtures:  ## Regenerate tests/fixtures/wire-v2/ from src/lib/contract (Zig is the source of truth)
-	@echo "→ [wire] Regenerating canonical fixtures from src/lib/contract..."
-	@zig run src/lib/contract/fixture_export.zig
-	@echo "✓ [wire] $$(ls tests/fixtures/wire-v2/*.json | wc -l | tr -d ' ') files written — review the diff before committing"
 
 test-unit-cli:  ## Run agentsfleet CLI unit tests (bun)
 	@echo "→ [agentsfleet] Building dist/ (tests spawn dist/bin/agentsfleet.js)..."

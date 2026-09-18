@@ -41,7 +41,7 @@ facts.
   unit → `make test-unit-all` (cargo workspace + every TypeScript coverage
   gate) · integration → `make test-integration-rustd` (live Postgres + Dragonfly) ·
   version → `make check-version` · dry lanes → `make dry-app` /
-  `make dry` · wire fixtures → `make wire-fixtures`. A package-scoped runner
+  `make dry`. A package-scoped runner
   (`cd ui/packages/app && bun run test`, `cargo test -p afd_wire`, …) is
   inner-loop iteration; it proves a package, not the repository, and never
   satisfies a VERIFY row or a "tests pass" claim.
