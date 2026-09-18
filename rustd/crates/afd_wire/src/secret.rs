@@ -36,6 +36,7 @@ use serde_json::value::RawValue;
 /// request.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StoreSecretRequest<'a> {
     /// The name a fleet interpolates as `${secrets.<name>.<field>}`.
     #[serde(borrow)]
@@ -61,6 +62,7 @@ pub struct StoreSecretRequest<'a> {
 // live credential stale, and answered 200.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ReplaceSecretRequest<'a> {
     /// The complete replacement body.
     ///

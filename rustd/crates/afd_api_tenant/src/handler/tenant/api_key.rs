@@ -81,7 +81,7 @@ pub(crate) async fn mint<D: Services>(
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let person = identity.person();
-    let request = afd_core::json::object_from_slice::<MintApiKeyRequest<'_>>(&body)
+    let request = afd_http::handler::read_body::<MintApiKeyRequest<'_>>(&body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MINT_BODY))?;
     let (name, description) = KeyName::parse(&request.key_name)
         .and_then(|name| {
@@ -192,7 +192,7 @@ pub(crate) async fn revoke<D: Services>(
 ) -> Result<Response, Refusal> {
     let person = identity.person();
     let key = Uuid7::parse(&key_id).map_err(|_unparseable| Refusal::malformed(DETAIL_KEY_ID))?;
-    let request = afd_core::json::object_from_slice::<PatchApiKeyRequest>(&body)
+    let request = afd_http::handler::read_body::<PatchApiKeyRequest>(&body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_PATCH_BODY))?;
     // The intent is PARSED, not checked: `revoke` takes a `Deactivation`, so
     // there is no path to it that skipped this refusal.

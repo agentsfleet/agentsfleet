@@ -153,6 +153,7 @@ pub struct StoredModelEntry<'a> {
 /// request.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct CreateModelEntryRequest {
     /// The model to register.
     #[garde(length(bytes, min = 1, max = MODEL_ID_MAX_BYTES))]
@@ -172,6 +173,7 @@ pub struct CreateModelEntryRequest {
 // table's domain key says.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateModelEntryRequest {
     /// The model to point at.
     #[garde(length(bytes, min = 1, max = MODEL_ID_MAX_BYTES))]

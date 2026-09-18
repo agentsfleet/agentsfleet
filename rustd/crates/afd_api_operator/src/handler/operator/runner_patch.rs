@@ -83,8 +83,7 @@ pub(crate) async fn handle<D: Services>(
         Ok(runner) => runner,
         Err(detail) => return malformed(detail),
     };
-    let Ok(request) = afd_core::json::object_from_slice::<RunnerAdminPatchRequest<'_>>(&body)
-    else {
+    let Ok(request) = afd_http::handler::read_body::<RunnerAdminPatchRequest<'_>>(&body) else {
         return malformed(DETAIL_PATCH_BODY);
     };
     let Some(mutation) = mutation(&request) else {

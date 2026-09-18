@@ -118,7 +118,7 @@ pub(crate) async fn capture<D: Services>(
         return malformed(DETAIL_FLEET_ID);
     };
     // Borrowed out of `body`: every delta's content goes straight into a column.
-    let Ok(request) = afd_core::json::object_from_slice::<MemoryPushRequest<'_>>(&body) else {
+    let Ok(request) = afd_http::handler::read_body::<MemoryPushRequest<'_>>(&body) else {
         return malformed(DETAIL_MALFORMED);
     };
 

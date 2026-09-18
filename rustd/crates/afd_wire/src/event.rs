@@ -184,6 +184,7 @@ impl<'a> Entry<'a> {
 /// the event, and the read endpoints return it unchanged.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EventEnvelope<'a> {
     /// The canonical event identifier, the same on every surface that shows
     /// the event.
@@ -222,6 +223,7 @@ pub struct EventEnvelope<'a> {
 // so a dropped key would be a byte mismatch against the daemon still serving.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EventSummary<'a> {
     /// The fleet this event belongs to.
     #[serde(borrow)]
@@ -273,6 +275,7 @@ pub struct EventSummary<'a> {
 /// A page of event history.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EventsResponse<'a> {
     /// The events on this page, newest first.
     pub items: Vec<EventSummary<'a>>,
@@ -300,6 +303,7 @@ pub struct EventsResponse<'a> {
 // contract already in production.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EventDetail<'a> {
     /// The fleet this event belongs to.
     #[serde(borrow)]
@@ -370,6 +374,7 @@ pub struct EventDetail<'a> {
 // the daemon still serving, so it stays, typed as the count it would hold.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ThreadResponse<'a> {
     /// The turns on this page, newest first.
     pub items: Vec<EventDetail<'a>>,
@@ -388,6 +393,7 @@ pub struct ThreadResponse<'a> {
 /// about.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct SteerRequest<'a> {
     /// What to say to the fleet.
     ///
@@ -445,6 +451,7 @@ pub const STEER_MESSAGE_MAX_BYTES: usize = 8192;
 /// tail on `event_id` to follow the message you just sent.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SteerAccepted<'a> {
     /// Always `accepted`. A field rather than an implied 202, because that is
     /// what the daemon this ports writes.

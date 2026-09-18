@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::event::EventEnvelope;
 use crate::memory::MemoryDelta;
-use crate::paths::LEASE_WIRE_VERSION_CURRENT;
 use crate::policy::ExecutionPolicy;
 
 /// How tenant secrets reach the runner.
@@ -22,23 +21,17 @@ pub enum SecretDelivery {
     Proxy,
 }
 
-/// `POST /v1/runners/me/leases` request body.
+/// `POST /v1/runners/me/leases` request body: empty.
 ///
-/// Defaults to the current version, which is the only version this port serves.
+/// It carried a `wire_version` from M157 until Sep 2026. Nothing ever read it —
+/// the handler serves one shape unconditionally and never built a body
+/// extractor — so the runner spent a field on every poll to tell the daemon
+/// something the daemon did not look at. Identity is the Bearer token and the
+/// shape is the only shape, which leaves a lease request with nothing to say.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LeaseRequest {
-    /// The wire version the caller speaks.
-    pub wire_version: u16,
-}
-
-impl Default for LeaseRequest {
-    fn default() -> Self {
-        Self {
-            wire_version: LEASE_WIRE_VERSION_CURRENT,
-        }
-    }
-}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LeaseRequest;
 
 /// Content-addressed reference to an installed Fleet Bundle's snapshot.
 ///
@@ -60,6 +53,7 @@ pub struct BundleManifest<'a> {
 /// under lease reclaim, beyond plain idempotency by event id.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LeasePayload<'a> {
     /// Identifier for this lease.
     #[serde(borrow)]
@@ -92,6 +86,7 @@ pub struct LeasePayload<'a> {
 /// a backoff hint rather than a `204`.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LeaseResponse<'a> {
     /// The work, when there is any.
     #[serde(borrow)]

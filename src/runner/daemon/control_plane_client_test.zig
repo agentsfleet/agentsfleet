@@ -400,7 +400,7 @@ test "new runner sends the current lease wire version" {
     const response = try control.lease(alloc, "agt_rtest", DEADLINE_PROBE_MS);
     defer response.deinit();
     responder.join();
-    try testing.expectEqualStrings(@import("contract").protocol.LEASE_REQUEST_CURRENT_JSON, stub.body_buf[0..stub.body_len]);
+    try testing.expectEqualStrings(@import("contract").protocol.LEASE_REQUEST_JSON, stub.body_buf[0..stub.body_len]);
 }
 
 // §4 / Dimension 4.1 — post()/get() build an Allocating response writer

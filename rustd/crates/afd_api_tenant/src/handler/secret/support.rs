@@ -44,7 +44,7 @@ pub(super) fn read_body<'b, T: serde::Deserialize<'b>>(body: &'b Bytes) -> Resul
     if body.is_empty() {
         return Err(Refusal::malformed(DETAIL_BODY_REQUIRED));
     }
-    afd_core::json::object_from_slice::<T>(body)
+    afd_http::handler::read_body::<T>(body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))
 }
 
