@@ -59,10 +59,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_admission/src/sql.rs` | EDIT | The fleet scan gains a cursor bound; the per-fleet scan gains a row cursor bound. |
 | `rustd/crates/afd_admission/src/{reconcile.rs,lib.rs}` | EDIT | The pass iterates from a caller-held resume point; the crate exports it. |
 | `rustd/crates/afd_admission/src/reconcile/{progress.rs,progress/tests.rs,scan.rs}` | CREATE | The resume state with its wrap and overflow rules and their datastore-free proof, and the pass's reads split out so each cursor binding reads beside its decoding. |
-| `rustd/crates/afd_runner/src/sweep/reconcile.rs` (+ `reconcile/tests.rs`) | EDIT | The sweeper owns the resume state between passes and never holds its lock across an await; its pacing tests extend to the cursor hand-off. |
+| `rustd/crates/afd_runner/src/sweep/reconcile.rs` (+ `reconcile/tests.rs`, `Cargo.toml`) | EDIT | The sweeper owns the resume state between passes and never holds its lock across an await; its pacing tests extend to the cursor hand-off, and reaching that hand-off adds three dev-dependencies. |
 | `schema/914_fleet_admissions_delivery_lookup.sql` | CREATE | The index the delivery stamp can use, as a new forward slot. |
-| `rustd/crates/afd_db/src/migration.rs` | EDIT | Registers slot 914. |
-| `rustd/crates/afd_connector/src/sql.rs` | EDIT | Removes the dead `SELECT_INSTALL_WORKSPACE` definition, its test entry and the doc link naming it. |
+| `rustd/crates/afd_db/src/migration.rs` · `rustd/crates/afd_connector/src/sql.rs` | EDIT | Slot 914 is registered; the dead `SELECT_INSTALL_WORKSPACE` definition, its test entry and the doc link naming it are removed. |
 | `rustd/crates/afd_fleet_lifecycle/src/{sql.rs,install/row.rs}` | EDIT | `INSERT_FLEET` stops writing the unread bundle pointer; the bind, the private key helper and its test go with it, and later parameters renumber. |
 | `rustd/crates/afd_outbound/src/obligation{,/sql}.rs` | EDIT | The success stamp stops incrementing; a delivery-cycle start statement and its wrapper are added. |
 | `rustd/crates/afd_outbound/src/lanes.rs` | EDIT | Records the cycle start on job acceptance; carries the count into the delivered and exhausted events. |
@@ -70,9 +69,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/tests/{integration_admission_recovery.rs,integration_recovery_outage.rs}` | EDIT | Helpers open to the new suite; both reconcile calls carry the resume state. |
 | `rustd/crates/afd_fleet/tests/integration_recovery_progress.rs` (+ `fleet_suite.rs`) | CREATE | The two batch-boundary reproductions, in their own file: the sibling is already at length. |
 | `rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs` (+ `public/openapi.json`) | EDIT | The generated endpoint description stops claiming repair writers this daemon does not have; the published artifact is regenerated from it. |
+| `rustd/crates/afd_api/tests/app_ingress_route.rs` (+ `tests/fixtures/webhooks/github_deployment_status_app.json`) | EDIT · CREATE | The dropped `deployment_status` the description now admits, proven against a real payload. |
 | `rustd/crates/afd_api/tests/openapi_contract.rs` · `scripts/check_architecture_doc.sh` | EDIT | Each absent mechanism gains a gate, so the claim cannot come back silently. |
-| `docs/architecture/data_flow.md` | EDIT | Corrects the session execution-handle row and the multi-tenancy row. |
-| `docs/v2/{pending,active,done}/M198_001_P0_API_DOCS_OBS_ADMISSION_RECOVERY_AND_DELIVERY_LEDGER_REPAIR.md` | CREATE | This spec, at whichever lifecycle directory holds it: `active/` from CHORE(open), `done/` at CHORE(close). |
+| `docs/architecture/{data_flow.md,runner_fleet.md}` | EDIT | Corrects the session execution-handle rows, the multi-tenancy row, and a command neither binary has. |
+| `docs/v2/{pending,active,done}/M198_001_P0_API_DOCS_OBS_ADMISSION_RECOVERY_AND_DELIVERY_LEDGER_REPAIR.md` (+ `docs/v2/reviews/schema-fix-adversarial-review-2026-09-18.md`) | CREATE | This spec, at whichever lifecycle directory holds it, beside the adversarial review whose dispositions it implements. |
 
 Consulted, **not** edited: `schema/910_fleet_admissions.sql` and `schema/510_fleet_sessions.sql` are shipped slots and stay frozen; `afd_ingress`'s `sql.rs` and `app.rs` carry the live install read; `afd_library/src/prepare.rs` and `afd_fleet/src/bundle/mod.rs` define the live bundle layout.
 

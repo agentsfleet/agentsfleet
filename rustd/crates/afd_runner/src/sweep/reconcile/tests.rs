@@ -9,7 +9,9 @@
 
 #![expect(
     clippy::expect_used,
-    reason = "a test asserts by panicking; the restriction set is for the daemon"
+    clippy::panic,
+    reason = "a test asserts by panicking, and one below panics deliberately to \
+              poison a lock; the restriction set is for the daemon"
 )]
 
 use afd_admission::Reconciled;
@@ -140,5 +142,46 @@ async fn taking_the_resume_state_leaves_a_usable_one() {
     assert!(
         !again.is_resuming(),
         "the take left a usable set behind, not a hole"
+    );
+}
+
+/// A poisoned resume state falls back to a usable one rather than a stuck pass.
+///
+/// The arm exists because the alternative is worse than it looks. A panic while
+/// the resume state is held would leave every later `lock()` returning `Err`,
+/// and a sweeper that read that as "no progress to make" would stop rotating
+/// for the life of the process — the starvation this state was added to end,
+/// reintroduced by its own error path. Falling back costs the rotation its
+/// place, which is one slower pass.
+///
+/// The hook is swapped out around the deliberate panic so a passing test does
+/// not print a backtrace a reader would take for a failure.
+#[tokio::test]
+async fn a_poisoned_resume_state_falls_back_to_a_usable_default() {
+    let reconcile = reconciler();
+
+    let hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_panic| {}));
+    let poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _held = reconcile
+            .progress
+            .lock()
+            .expect("a fresh lock is not poisoned");
+        panic!("poisoning the resume state on purpose");
+    }));
+    std::panic::set_hook(hook);
+    assert!(
+        poisoned.is_err(),
+        "the panic happened while the lock was held"
+    );
+    assert!(
+        reconcile.progress.lock().is_err(),
+        "the lock is poisoned, which is the state this test is about"
+    );
+
+    let taken = reconcile.take_progress();
+    assert!(
+        !taken.is_resuming(),
+        "a poisoned set answers a usable empty one, not a refusal"
     );
 }

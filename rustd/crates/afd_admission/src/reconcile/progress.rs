@@ -168,6 +168,26 @@ impl Progress {
         self.repairing.drain(..taken).collect()
     }
 
+    /// Puts a repair back, unwalked, at the end of the queue.
+    ///
+    /// The other half of [`Self::resume_repairs`] draining rather than
+    /// borrowing. Draining is what stops a fleet being walked twice in one
+    /// pass; it also means a pass that fails partway is holding resume points
+    /// that are no longer anywhere else, and dropping them would put those
+    /// fleets back under the head probe — which after a partial repair is the
+    /// shortcut that cannot see their remaining lost rows. A database that
+    /// would not answer must not cost coverage.
+    ///
+    /// Bounded like every other way in: a set already full declines, and the
+    /// caller reports that the same way it reports a declined walk.
+    pub(crate) fn refile(&mut self, repair: Repair) -> bool {
+        if self.repairing.len() >= self.capacity {
+            return false;
+        }
+        self.repairing.push_back(repair);
+        true
+    }
+
     /// Notes what one fleet's walk did, and whether it has further to go.
     ///
     /// Answers `false` only when there IS more to do and the set had no room

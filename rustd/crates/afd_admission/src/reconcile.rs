@@ -174,11 +174,29 @@ impl Admissions {
         progress: &mut Progress,
         reconciled: &mut Reconciled,
     ) -> Result<()> {
-        for repair in progress.resume_repairs(fleets) {
+        let mut queued = progress.resume_repairs(fleets).into_iter();
+        while let Some(repair) = queued.next() {
             reconciled.probed += 1;
-            let walked = self
+            let walked = match self
                 .void_lost_on(&repair.fleet_id, now, rows, repair.after)
-                .await?;
+                .await
+            {
+                Ok(walked) => walked,
+                Err(unanswered) => {
+                    // These were DRAINED out of the set to be walked, and this
+                    // pass is not going to walk them. Putting them back is what
+                    // keeps a database blip from costing every queued fleet its
+                    // resume point — see `Progress::refile`.
+                    for unwalked in std::iter::once(repair).chain(queued) {
+                        Self::note_declined(
+                            &unwalked.fleet_id,
+                            progress.refile(unwalked.clone()),
+                            reconciled,
+                        );
+                    }
+                    return Err(unanswered);
+                }
+            };
             reconciled.voided += walked.voided;
             Self::remember(&repair.fleet_id, &walked, progress, reconciled);
         }
@@ -239,7 +257,16 @@ impl Admissions {
         progress: &mut Progress,
         reconciled: &mut Reconciled,
     ) {
-        if progress.walked(fleet_id, walked.stopped_at) {
+        Self::note_declined(
+            fleet_id,
+            progress.walked(fleet_id, walked.stopped_at),
+            reconciled,
+        );
+    }
+
+    /// Counts and logs a repair the resume set had no room for.
+    fn note_declined(fleet_id: &str, filed: bool, reconciled: &mut Reconciled) {
+        if filed {
             return;
         }
         reconciled.declined += 1;

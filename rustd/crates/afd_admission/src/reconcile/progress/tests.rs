@@ -16,7 +16,7 @@
               None along; the restriction set is for the daemon"
 )]
 
-use super::{FIRST_FLEET, Progress, RowKey};
+use super::{FIRST_FLEET, Progress, Repair, RowKey};
 
 /// One pass's fleet budget, where a test drains repairs rather than files them.
 const BUDGET: i64 = 4;
@@ -207,3 +207,57 @@ const _: () = {
         "a real row sorts above the floor a first walk binds"
     );
 };
+
+/// A repair put back after a failed walk keeps its place in the queue.
+///
+/// `resume_repairs` DRAINS, so a pass that fails partway is holding resume
+/// points that exist nowhere else. Dropping them would return those fleets to
+/// the head probe, which after a partial repair is exactly the shortcut that
+/// cannot see their remaining lost rows — a database blip would cost the
+/// coverage this whole structure exists to give.
+#[test]
+fn a_refiled_repair_is_walked_again() {
+    let mut progress = Progress::with_capacity(CAPACITY);
+    progress.walked("fleet-a", Some(SOMEWHERE));
+    progress.walked("fleet-b", Some(SOMEWHERE));
+
+    let drained = progress.resume_repairs(BUDGET);
+    assert_eq!(drained.len(), 2);
+    assert!(!progress.is_resuming(), "draining empties the set");
+
+    for repair in drained {
+        assert!(
+            progress.refile(repair),
+            "the set has room for what it drained"
+        );
+    }
+
+    let again = progress.resume_repairs(BUDGET);
+    assert_eq!(again.len(), 2, "both fleets are walked again");
+    assert_eq!(
+        again[0].fleet_id, "fleet-a",
+        "and in the order they were filed"
+    );
+    assert_eq!(
+        again[1].after, SOMEWHERE,
+        "carrying the row key they stopped at"
+    );
+}
+
+/// Re-filing into a full set declines, the same as any other way in.
+#[test]
+fn a_refile_respects_the_capacity() {
+    let mut progress = Progress::with_capacity(CAPACITY);
+    let spare = Repair {
+        fleet_id: "fleet-spare".to_owned(),
+        after: SOMEWHERE,
+    };
+    for fleet in 0..CAPACITY {
+        progress.walked(&format!("fleet-{fleet}"), Some(SOMEWHERE));
+    }
+
+    assert!(
+        !progress.refile(spare),
+        "a full set turns a re-file away rather than growing past its bound"
+    );
+}
