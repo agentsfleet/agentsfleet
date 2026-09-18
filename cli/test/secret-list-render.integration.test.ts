@@ -140,6 +140,7 @@ describe("secret list rendering", () => {
       });
     });
   });
+
 });
 
 describe("status — a parked Fleet says so", () => {
@@ -200,6 +201,7 @@ describe("status — a parked Fleet says so", () => {
       });
     });
   });
+
 });
 
 describe("status — a Fleet row the daemon sent without an identifier", () => {
@@ -242,6 +244,7 @@ describe("status — a Fleet row the daemon sent without an identifier", () => {
       });
     });
   });
+
 });
 
 describe("status — an inbox this credential cannot read", () => {
@@ -250,9 +253,9 @@ describe("status — an inbox this credential cannot read", () => {
 
   test("renders the waiting count as unknown, never as zero", async () => {
     await authedScope(async () => {
-      // Reading the inbox needs `approval:read`, which a credential holding
-      // `fleet:read` may not carry. Collapsing that refusal into 0 reports a
-      // parked Fleet as healthy — the exact answer this column exists to stop.
+      // Collapsing a failed read into 0 reports a parked Fleet as healthy —
+      // the exact answer this column exists to stop. A 403 stands in for the
+      // whole class; a timeout or a 500 reaches the same branch.
       const routes: MockRoutes = {
         [`GET ${FLEETS_PATH}`]: () =>
           jsonResponse(200, {
@@ -285,10 +288,50 @@ describe("status — an inbox this credential cannot read", () => {
         expect(text).toContain("pr-reviewer");
         expect(text).toMatch(/Waiting\s+·\s+—/);
         expect(text).not.toMatch(/Waiting\s+·\s+0/);
-        expect(text).toContain("approval:read");
+        expect(text).toContain("agentsfleet approvals list");
+        // States what happened, not why — a timeout and a scope refusal arrive
+        // here identically, so naming a cause would be a guess.
+        expect(text).not.toContain("approval:read");
         // No parked-fleet hint: nothing is known to be waiting.
         expect(text).not.toContain("Review with: agentsfleet approvals list");
       });
     });
   });
+
+  test("a daemon outage reads the same, with no claim about credentials", async () => {
+    await authedScope(async () => {
+      // A timeout, a 500, and a scope refusal all reach the same branch, so the
+      // line must name what happened and not why. Sending an operator to
+      // re-authenticate while the service is down is the wrong direction.
+      const routes: MockRoutes = {
+        [`GET ${FLEETS_PATH}`]: () =>
+          jsonResponse(200, {
+            items: [{
+              id: "01900000-0000-7000-8000-0000007670f7",
+              name: "pr-reviewer",
+              status: "active",
+              events_processed: 3,
+              budget_used_nanos: 0,
+            }],
+          }),
+        [`GET ${APPROVALS_PATH}`]: () =>
+          jsonResponse(503, { error_code: "UZ-UNAVAILABLE-001", detail: "upstream unavailable" }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(["status"], {
+          stdout: out.stream,
+          stderr: err.stream,
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
+        });
+        expect(code).toBe(0);
+        const text = out.read();
+        expect(text).toMatch(/Waiting\s+·\s+—/);
+        expect(text).not.toContain("credential");
+        expect(text).not.toContain("approval:read");
+      });
+    });
+  });
+
 });
