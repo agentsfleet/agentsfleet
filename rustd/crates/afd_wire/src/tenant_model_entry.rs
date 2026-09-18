@@ -290,10 +290,9 @@ mod tests {
     /// is the unknown field and not the shape.
     #[test]
     fn a_create_body_this_daemon_does_carry_still_parses() {
-        let parsed: super::CreateModelEntryRequest = serde_json::from_str(
-            r#"{"model_id":"claude-opus-5","secret_ref":"anthropic-prod"}"#,
-        )
-        .expect("every field is one this build carries");
+        let parsed: super::CreateModelEntryRequest =
+            serde_json::from_str(r#"{"model_id":"claude-opus-5","secret_ref":"anthropic-prod"}"#)
+                .expect("every field is one this build carries");
 
         assert_eq!(parsed.model_id, "claude-opus-5");
         assert_eq!(parsed.secret_ref, "anthropic-prod");
