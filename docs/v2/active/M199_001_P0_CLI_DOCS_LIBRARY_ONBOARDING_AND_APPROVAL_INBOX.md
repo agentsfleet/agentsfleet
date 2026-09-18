@@ -56,32 +56,38 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `cli/src/commands/fleet_library.ts` | EDIT | Reads the workspace gallery instead of the platform catalogue; gains tier and source columns. |
-| `cli/src/commands/fleet_library_add.ts` | CREATE | Builds and posts the onboarding body for the three source kinds. |
-| `cli/src/commands/approvals.ts` | CREATE | Lists and shows approval gates. |
-| `cli/src/commands/approvals_decide.ts` | CREATE | Posts the approve and deny decisions. |
-| `cli/src/commands/fleet_steer.ts` | EDIT | Names the blocking gate instead of reporting a bare timeout; drops the duplicated failure line. |
-| `cli/src/commands/fleet_list.ts` | EDIT | Surfaces the pending-approval count in status output. |
-| `cli/src/commands/fleet_secret.ts` | EDIT | Renders the vault as a table with an ISO 8601 timestamp, matching every other list. |
-| `cli/src/lib/api-paths.ts` | EDIT | Adds the approvals paths; the gallery path already exists. |
-| `cli/src/constants/approvals.ts` | CREATE | Decision literals, gate kinds, and status strings as named constants. |
-| `cli/src/constants/library-source.ts` | CREATE | Source-kind literals shared by `library add` and its tests. |
-| `cli/src/program/cli-tree-fleet.ts` | EDIT | Registers `library add`; corrects the library placeholder spelling. |
-| `cli/src/program/cli-tree-access.ts` | EDIT | Registers the `approvals` group. |
-| `cli/src/program/cli-tree.ts` | EDIT | Mounts the new group on the root program. |
-| `cli/src/program/handlers-bind-fleet.ts` | EDIT | Binds the library-add handler. |
-| `cli/src/program/handlers-bind-access.ts` | EDIT | Binds the approvals handlers. |
-| `cli/src/program/cli-tree-types.ts` | EDIT | Extends the handler record with the new entries. |
-| `cli/test/fleet-library.unit.test.ts` | EDIT | Covers the gallery union, the tier column, and the empty state. |
-| `cli/test/library-add.unit.test.ts` | CREATE | Source-kind selection, mutual exclusion, and body shaping. |
-| `cli/test/approvals.unit.test.ts` | CREATE | Rendering, decision parsing, and the not-found path. |
+| `cli/src/commands/fleet_library.ts` | EDIT | Reads the workspace gallery; gains tier and source columns. |
+| `cli/src/commands/fleet_library_add.ts` | CREATE | Shapes and posts the onboarding body for the three source kinds. |
+| `cli/src/commands/approvals.ts`, `cli/src/commands/approvals_decide.ts` | CREATE | List and show gates; post the approve and deny decisions. |
+| `cli/src/commands/approvals_pending.ts` | CREATE | The pending-gate lookup `steer` and `status` both read. |
+| `cli/src/commands/fleet_steer.ts` | EDIT | One failure line; names the gate holding a parked run. |
+| `cli/src/commands/fleet.ts` | EDIT | Status renders the waiting count and the command that clears it. |
+| `cli/src/commands/fleet_list.ts` | EDIT | The next-page hint named a command that does not exist. |
+| `cli/src/commands/fleet_secret.ts` → `cli/src/commands/fleet_secret_list.ts` | EDIT, CREATE | The vault list moves out to stay inside the length cap, and becomes a table with ISO 8601 timestamps. |
+| `cli/src/commands/fleet_install_source.ts` | EDIT | Reads the shared library-identifier placeholder. |
+| `cli/src/commands/auth-logout.ts`, `cli/src/program/cli-tree.ts` | EDIT | Logout stops claiming a revocation scope the daemon does not deliver. |
+| `cli/src/lib/api-paths.ts` | EDIT | Adds the approvals paths. |
+| `cli/src/lib/http.ts`, `cli/src/services/http-client.ts` | EDIT | Parse and render the daemon's `user_message` instead of its log-shaped `detail`. |
+| `cli/src/constants/approvals.ts`, `cli/src/constants/library-source.ts` | CREATE | Decision, status, column, source-kind, bundle-file, and tier literals. |
+| `cli/src/constants/cli-flags.ts` | EDIT | One spelling for the library identifier and the new option keys. |
+| `cli/src/program/cli-tree-fleet.ts`, `cli/src/program/cli-tree-access.ts` | EDIT | Register `library add` and the `approvals` group; correct the library placeholder. |
+| `cli/src/program/cli-tree-types.ts`, `cli/src/program/handlers-bind-fleet.ts`, `cli/src/program/handlers-bind-access.ts` | EDIT | Extend the handler record and bind the new commands. |
 | `cli/test/approvals.integration.test.ts` | CREATE | Approvals against the mock Application Programming Interface (API) layer. |
-| `cli/test/library-add.integration.test.ts` | CREATE | Onboarding against the mock API layer, including every refusal. |
-| `cli/test/fleet-steer-parked.unit.test.ts` | CREATE | The parked-fleet message replaces the bare timeout. |
+| `cli/test/approvals-pending.unit.test.ts` | CREATE | The pending-gate lookup, including its defect-safety. |
+| `cli/test/library-add.integration.test.ts` | CREATE | Onboarding and every client-side refusal. |
+| `cli/test/secret-list-render.integration.test.ts` | CREATE | Vault rendering, secrecy, and the parked-Fleet status. |
+| `cli/test/cli-consistency.unit.test.ts` | CREATE | One spelling per concept; every hint names a real command. |
 | `cli/test/acceptance/library-onboard-live.spec.ts` | CREATE | End-to-end onboarding and listing through the built binary. |
 | `cli/test/acceptance/approvals-live.spec.ts` | CREATE | End-to-end gate decision through the built binary. |
-| `cli/test/acceptance/help-and-errors.spec.ts` | EDIT | Asserts the corrected placeholder spelling and the single steer failure line. |
-| `docs/v2/pending/M199_001_P0_CLI_DOCS_LIBRARY_ONBOARDING_AND_APPROVAL_INBOX.md` | CREATE | This spec. |
+| `cli/test/fleet-library.unit.test.ts` | EDIT | Gallery path, tier column, and the new empty state. |
+| `cli/test/fleet-steer-errors.integration.test.ts`, `cli/test/fleet-steer-linecov.unit.test.ts` | EDIT | The stall is reported once, on the failure. |
+| `cli/test/fleet.integration.test.ts` | EDIT | Status now also reads the approvals inbox. |
+| `cli/test/cli-alignment.unit.test.ts` | EDIT | The corrected next-page hint. |
+| `cli/test/fleet-install-unit.test.ts`, `cli/test/cli-tree.fleet.unit.test.ts`, `cli/test/acceptance/options-metavar.spec.ts`, `cli/test/golden/help-no-color.txt` | EDIT | The corrected library placeholder and help bodies. |
+| `cli/test/fleet-secret-errors.unit.test.ts` | EDIT | Imports the relocated vault list. |
+| `cli/test/command-matrix-parity.unit.test.ts`, `cli/test/acceptance/fixtures/command-matrix.ts` | EDIT | Approvals rows, and a group that owns subcommands and also runs. |
+| `cli/test/helpers-cli-tree.ts`, `cli/test/json-contract.test.ts` | EDIT | Handler stubs for the new commands. |
+| `docs/v2/active/M199_001_P0_CLI_DOCS_LIBRARY_ONBOARDING_AND_APPROVAL_INBOX.md` | CREATE | This spec. |
 
 ## Applicable Rules
 
@@ -98,8 +104,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | UFS GATE | yes — new literals for decisions, source kinds, and columns | Each set lands in `cli/src/constants/`, imported by both the command and its test. |
 | LENGTH GATE | yes — `fleet_library.ts` and `cli-tree-fleet.ts` both grow | The add path lands in its own module; the approvals group splits list/show from decide. |
 | MILESTONE-ID GATE | yes — every source file is in scope | No milestone identifier appears in `cli/src/**`; the spec carries the identity. |
-| LOGGING GATE | yes — new failure paths | Failures ride the existing `CliError` taxonomy; no bare `console` call in a handler. |
-| GREPTILE GATE | yes — end-of-turn read | Rule identifiers named above are obeyed by construction. |
+| LOGGING GATE, GREPTILE GATE | yes | Failures ride the existing `CliError` taxonomy, no bare `console` in a handler; the rule identifiers named above are obeyed by construction. |
 | File & Function Length (≤350/≤50/≤70) | yes | Command modules stay single-purpose; rendering splits from request building. |
 
 ## Prior-Art / Reference Implementations
@@ -114,71 +119,68 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 `agentsfleet library` reads the workspace gallery, so the identifier a user copies is one `install` accepts, and a tenant library stops being invisible. Non-obvious choice → **Implementation default:** `read the workspace gallery only` because a union of two endpoints would have to reconcile two row shapes and could disagree with `install`, which is the bug being fixed.
 
-- **Dimension 1.1** — `library` requests the workspace gallery path and renders one row per returned entry → Test `test_library_lists_workspace_gallery`
-- **Dimension 1.2** — each row shows its tier, so a platform entry and a tenant entry sharing a name are distinguishable → Test `test_library_row_shows_tier`
-- **Dimension 1.3** — the empty state names `library add` as the next move rather than only `install` → Test `test_library_empty_state_names_add`
-- **Dimension 1.4** — the JSON branch emits the same entries the table renders → Test `test_library_json_matches_table`
-- **Dimension 1.5** — `install --library` keeps resolving a platform entry exactly as before → Test `test_install_library_flag_unchanged`
+- **Dimension 1.1** — `library` requests the workspace gallery path and renders one row per returned entry → Test `test_library_lists_workspace_gallery` — DONE
+- **Dimension 1.2** — each row shows its tier, so a platform entry and a tenant entry sharing a name are distinguishable → Test `test_library_row_shows_tier` — DONE
+- **Dimension 1.3** — the empty state names `library add` as the next move rather than only `install` → Test `test_library_empty_state_names_add` — DONE
+- **Dimension 1.4** — the JSON branch emits the same entries the table renders → Test `test_library_json_matches_table` — DONE
+- **Dimension 1.5** — `install --library` keeps resolving a platform entry exactly as before → Test `test_install_library_flag_unchanged` — DONE
 
 ### §2 — `library add` onboards a bundle
 
 A workspace gains a Fleet library from a public repository, a local bundle directory, or a first-party template, using the onboarding body the daemon already parses. Non-obvious choice → **Implementation default:** `exactly one of --github / --from / --template is required` because the daemon's parse refuses mixed shapes and a client-side refusal costs no request.
 
-- **Dimension 2.1** — `--github <owner/repo>` posts a github source and reports the created identifier → Test `test_library_add_github_posts_source`
-- **Dimension 2.2** — `--ref <revision>` rides the github source and is refused on the other two kinds → Test `test_library_add_ref_rejected_off_github`
-- **Dimension 2.3** — `--from <path>` reads the bundle's skill and trigger documents and posts an upload source → Test `test_library_add_upload_reads_bundle`
-- **Dimension 2.4** — `--template <id>` posts a template source → Test `test_library_add_template_posts_source`
-- **Dimension 2.5** — zero or more than one source flag is refused before any request leaves the process → Test `test_library_add_requires_exactly_one_source`
-- **Dimension 2.6** — a daemon refusal renders its `user_message` and its documentation link rather than a bare status code → Test `test_library_add_renders_server_refusal`
+- **Dimension 2.1** — `--github <owner/repo>` posts a github source and reports the created identifier → Test `test_library_add_github_posts_source` — DONE
+- **Dimension 2.2** — `--ref <revision>` rides the github source and is refused on the other two kinds → Test `test_library_add_ref_rejected_off_github` — DONE
+- **Dimension 2.3** — `--from <path>` reads the bundle's skill and trigger documents and posts an upload source → Test `test_library_add_upload_reads_bundle` — DONE
+- **Dimension 2.4** — `--template <id>` posts a template source → Test `test_library_add_template_posts_source` — DONE
+- **Dimension 2.5** — zero or more than one source flag is refused before any request leaves the process → Test `test_library_add_requires_exactly_one_source` — DONE
+- **Dimension 2.6** — a daemon refusal renders its `user_message` and its documentation link rather than a bare status code → Test `test_library_add_renders_server_refusal` — DONE
 
 ### §3 — The approvals inbox
 
 A gate is visible, inspectable, and decidable from the terminal. Non-obvious choice → **Implementation default:** `approve and deny are separate subcommands, not a --decision flag` because the daemon models the decision as a path segment with its own capability, and mirroring that keeps the two audit-distinguishable.
 
-- **Dimension 3.1** — `approvals list` renders every gate with its kind, status, and the Fleet it belongs to → Test `test_approvals_list_renders_gates`
-- **Dimension 3.2** — `--fleet <id>` narrows the list to one Fleet → Test `test_approvals_list_filters_by_fleet`
-- **Dimension 3.3** — `approvals show <gate_id>` renders the proposed action and the blast radius in full → Test `test_approvals_show_renders_blast_radius`
-- **Dimension 3.4** — `approvals approve <gate_id>` posts the approve decision and reports the outcome → Test `test_approvals_approve_posts_decision`
-- **Dimension 3.5** — `approvals deny <gate_id>` posts the deny decision → Test `test_approvals_deny_posts_decision`
-- **Dimension 3.6** — an already-resolved gate reports its existing outcome rather than a generic failure → Test `test_approvals_resolved_gate_reports_outcome`
-- **Dimension 3.7** — a second decision on a decided gate is not reported as a fresh one → Test `test_approve_twice_is_not_a_second_decision`
+- **Dimension 3.1** — `approvals list` renders every gate with its kind, status, and the Fleet it belongs to → Test `test_approvals_list_renders_gates` — DONE
+- **Dimension 3.2** — `--fleet <id>` narrows the list to one Fleet → Test `test_approvals_list_filters_by_fleet` — DONE
+- **Dimension 3.3** — `approvals show <gate_id>` renders the proposed action and the blast radius in full → Test `test_approvals_show_renders_blast_radius` — DONE
+- **Dimension 3.4** — `approvals approve <gate_id>` posts the approve decision and reports the outcome → Test `test_approvals_approve_posts_decision` — DONE
+- **Dimension 3.5** — `approvals deny <gate_id>` posts the deny decision → Test `test_approvals_deny_posts_decision` — DONE
+- **Dimension 3.6** — an already-resolved gate reports its existing outcome rather than a generic failure → Test `test_approvals_resolved_gate_reports_outcome` — DONE
+- **Dimension 3.7** — a second decision on a decided gate is not reported as a fresh one → Test `test_approve_twice_is_not_a_second_decision` — DONE
 
 ### §4 — A parked Fleet says it is parked
 
 `steer` and `status` name the gate that is holding a Fleet, so the sixty-second timeout stops being the only signal. Non-obvious choice → **Implementation default:** `read the pending count from the Fleet detail already fetched` because it needs no extra request on the happy path.
 
-- **Dimension 4.1** — `status` shows the pending-approval count for a Fleet that has one → Test `test_status_shows_pending_approvals`
-- **Dimension 4.2** — a `steer` that times out with a pending gate names the gate and the command that clears it → Test `test_steer_timeout_names_pending_gate`
-- **Dimension 4.3** — a `steer` that times out with no pending gate keeps its current wording → Test `test_steer_timeout_without_gate_unchanged`
-- **Dimension 4.4** — the timeout failure prints one failure line, not two → Test `test_steer_timeout_prints_single_failure`
+- **Dimension 4.1** — `status` shows the pending-approval count for a Fleet that has one → Test `test_status_shows_pending_approvals` — DONE
+- **Dimension 4.2** — a `steer` that times out with a pending gate names the gate and the command that clears it → Test `test_steer_timeout_names_pending_gate` — DONE
+- **Dimension 4.3** — a `steer` that times out with no pending gate keeps its current wording → Test `test_steer_timeout_without_gate_unchanged` — DONE
+- **Dimension 4.4** — the timeout failure prints one failure line, not two → Test `test_steer_timeout_prints_single_failure` — DONE
 
 ### §5 — Consistency pass
 
 The surface stops contradicting itself where the contradiction is text or rendering rather than a flag rename. Non-obvious choice → **Implementation default:** `rename no flag and change no JSON key in this spec` because both break a scripted caller and deserve a diff whose only subject is that breakage.
 
-- **Dimension 5.1** — one spelling per concept: the library identifier placeholder reads the same in the option, the epilogue, and the empty state, and every paging option sharing a concept carries one description → Test `test_option_text_spelling_agrees`
-- **Dimension 5.2** — `secret list` renders a header and aligned columns like every other list → Test `test_secret_list_renders_table`
-- **Dimension 5.3** — `secret list` renders its timestamp in ISO 8601, matching `api-key list` → Test `test_secret_list_timestamp_is_iso`
-- **Dimension 5.5** — the `secret list --json` key set is unchanged → Test `test_secret_list_json_keys_unchanged`
+- **Dimension 5.1** — one spelling per concept: the library identifier placeholder reads the same in the option, the epilogue, and the empty state, and every paging option sharing a concept carries one description → Test `test_option_text_spelling_agrees` — DONE
+- **Dimension 5.2** — `secret list` renders a header and aligned columns like every other list → Test `test_secret_list_renders_table` — DONE
+- **Dimension 5.3** — `secret list` renders its timestamp in ISO 8601, matching `api-key list` → Test `test_secret_list_timestamp_is_iso` — DONE
+- **Dimension 5.5** — the `secret list --json` key set is unchanged → Test `test_secret_list_json_keys_unchanged` — DONE
 
 ## Interfaces
 
 ```
-GET  /v1/workspaces/{workspace_id}/fleet-libraries
+GET  /v1/workspaces/{ws}/fleet-libraries
      -> { items: [ { id, name, description, visibility, source_ref, created_at,
-           requirements: { credentials[], tools[], network_hosts[], trigger_present } } ], next_cursor }
-
-POST /v1/workspaces/{workspace_id}/fleet-libraries
+           requirements: { credentials[], tools[], network_hosts[], trigger_present } } ] }
+POST /v1/workspaces/{ws}/fleet-libraries
      <- { source_kind: "github"|"upload"|"template", source_ref, ref?, replace,
           skill_markdown?, trigger_markdown?, support_files: [] }
      -> 201 { id, name, visibility, content_hash, requirements }
      -> 400 { error_code, title, detail, user_message, docs_uri, request_id }
-
-GET  /v1/workspaces/{workspace_id}/approvals            (and /{gate_id} for one)
-     -> { items: [ { gate_id, fleet_id, fleet_name, action_id, tool_name, gate_kind,
-           proposed_action, blast_radius, status, created_at, timeout_at, resolved_by } ] }
-
-POST /v1/workspaces/{workspace_id}/approvals/{gate_id}/{approve|deny}
+GET  /v1/workspaces/{ws}/approvals            (and /{gate_id} for one)
+     -> { items: [ { gate_id, fleet_id, fleet_name, gate_kind, tool_name, status,
+           proposed_action, blast_radius, created_at, timeout_at, resolved_by } ] }
+POST /v1/workspaces/{ws}/approvals/{gate_id}/{approve|deny}
      -> 200 { gate_id, action_id, outcome, resolved_at, resolved_by }
 
 Command surface added:
@@ -190,13 +192,11 @@ Command surface added:
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
-| No source flag | `library add` invoked bare | Refused before any request; exit 4; the suggestion names the three source flags. |
-| Two source flags | `--github` with `--from` | Refused before any request; exit 4; the suggestion names the mutual exclusion. |
+| Wrong source-flag count | `library add` bare, or `--github` with `--from` | Refused before any request; exit 4; the suggestion names the three flags and the exclusion. |
 | Revision off github | `--ref` with `--from` or `--template` | Refused before any request; exit 4; the suggestion says a revision belongs to a github source. |
 | Daemon refuses the bundle | Unparseable trigger frontmatter, oversized file, embedded credential | The daemon's `user_message` and documentation link are rendered; exit 3. |
 | Unknown library identifier | `install --library` names an entry the gallery lacks | Existing behaviour retained; the suggestion now names `library` alone, because the gallery is the one place identifiers come from. |
-| Gate already resolved | `approvals approve` on a decided gate | The existing outcome and who resolved it are reported; exit 3. |
-| Unknown gate identifier | `approvals show` on an unknown gate | The daemon's not-found refusal is rendered; exit 3. |
+| Gate already resolved, or unknown | `approvals approve` on a decided gate; `approvals show` on an unknown one | The daemon's own refusal sentence is rendered; a decided gate reports the outcome that stands; exit 3. |
 | Steer parked behind a gate | Fleet has a pending gate when the message times out | One failure line naming the gate count and `agentsfleet approvals list`; exit 3. |
 
 ## Invariants

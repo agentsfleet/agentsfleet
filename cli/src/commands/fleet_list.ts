@@ -112,7 +112,7 @@ export const listEffectFromFlags = (
     );
     if (res.next_cursor) {
       yield* output.info(
-        ui.dim(`More available. Next: agentsfleet fleet list --starting-after ${res.next_cursor}`),
+        ui.dim(`More available. Next: agentsfleet list --starting-after ${res.next_cursor}`),
       );
     }
   });

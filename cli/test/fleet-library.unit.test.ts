@@ -1,6 +1,8 @@
-// Unit coverage for src/commands/fleet_library.ts — the `agentsfleet
-// library` catalog list. Exercises the table render, JSON mode, the empty
-// catalog, and both joinNames branches (credentials present vs none).
+// Unit coverage for src/commands/fleet_library.ts — the `agentsfleet library`
+// gallery list. Exercises the table render, JSON mode, the empty gallery, both
+// joinNames branches (credentials present vs none), and the invariant that
+// matters most: the path it requests is the workspace gallery, which is what
+// `install --library` resolves against.
 
 import { describe, test, expect } from "bun:test";
 import { Effect, Exit, Layer, Option, Redacted } from "effect";
@@ -10,8 +12,10 @@ import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
 import { Output } from "../src/services/output.ts";
+import { Workspaces } from "../src/services/workspaces.ts";
 
 const TOKEN = "test.jwt.templates";
+const WS_ID = "019febb0-272b-78aa-aa3a-03f92e543014";
 
 interface TableCapture {
   columns: unknown;
@@ -48,6 +52,10 @@ const makeLayer = (
           return response as T;
         }),
     }),
+    Layer.succeed(Workspaces, {
+      load: Effect.succeed({ current_workspace_id: WS_ID, items: [] }),
+      save: () => Effect.void,
+    }),
     Layer.succeed(Output, {
       intro: (m) => Effect.sync(() => { captured.push(m); }),
       info: (m) => Effect.sync(() => { captured.push(m); }),
@@ -77,19 +85,29 @@ describe("libraryEffect — table render", () => {
               {
                 id: "github-pr-reviewer",
                 name: "GitHub Pull Request reviewer",
-                required_credentials: ["github"],
+                visibility: "platform",
+                requirements: { credentials: ["github"] },
               },
-              { id: "no-creds", name: "No creds", required_credentials: [] },
+              {
+                id: "no-creds",
+                name: "No creds",
+                visibility: "tenant",
+                requirements: { credentials: [] },
+              },
             ],
           }),
         ),
       ),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(requests[0]?.path).toBe("/v1/fleets/bundles");
-    const rows = tables[0]?.rows as Array<{ id: string; credentials: string }>;
+    expect(requests[0]?.path).toBe(`/v1/workspaces/${WS_ID}/fleet-libraries`);
+    const rows = tables[0]?.rows as Array<{ id: string; credentials: string; tier: string }>;
     expect(rows[0]?.credentials).toBe("github");
-    // empty required_credentials renders the em dash, not "undefined"
+    // The tier is what tells a platform entry from a workspace's own copy when
+    // the two share a name — which they do, in practice.
+    expect(rows[0]?.tier).toBe("platform");
+    expect(rows[1]?.tier).toBe("tenant");
+    // empty requirements.credentials renders the em dash, not "undefined"
     expect(rows[1]?.credentials).toBe("—");
   });
 });
@@ -123,7 +141,7 @@ describe("libraryEffect — empty catalog", () => {
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(tables).toHaveLength(0);
-    expect(captured.join("\n")).toContain("No prebuilt fleet library found.");
+    expect(captured.join("\n")).toContain("No Fleet libraries in this workspace.");
   });
 
   test("treats a missing items field as empty", async () => {
@@ -136,6 +154,6 @@ describe("libraryEffect — empty catalog", () => {
       ),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(captured.join("\n")).toContain("No prebuilt fleet library found.");
+    expect(captured.join("\n")).toContain("No Fleet libraries in this workspace.");
   });
 });

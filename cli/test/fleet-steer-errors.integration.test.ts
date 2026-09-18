@@ -202,8 +202,8 @@ describe("steer — poll terminal match (lines 213, 216)", () => {
 // Uses setSystemTime to advance Date.now() past the 60s deadline after one
 // poll iteration, making pollEventTerminal return "timeout" without waiting.
 
-describe("steer — renderOutcome timeout path (lines 235-238, 255-261)", () => {
-  test("poll timeout prints 'still in flight' error and fails with ConfigError", async () => {
+describe("steer — renderOutcome timeout path", () => {
+  test("poll timeout fails once, carrying 'still in flight' on the failure", async () => {
     const rec = makeRecorder();
     let firstPoll = true;
     const httpReply = <T>(input: HttpRequestInput): T => {
@@ -223,7 +223,12 @@ describe("steer — renderOutcome timeout path (lines 235-238, 255-261)", () => 
         }).pipe(Effect.provide(makeLayer(rec, httpReply))),
       );
       expect(Exit.isFailure(exit)).toBe(true);
-      expect(rec.stderr.some((m) => m.includes("still in flight"))).toBe(true);
+      // One report of the stall, not two: the message rides the failure, and
+      // nothing is written to standard error ahead of it.
+      expect(JSON.stringify(exit)).toContain("still in flight");
+      expect(rec.stderr.some((m) => m.includes("still in flight"))).toBe(false);
+      // No pending gate in this scenario, so the ordinary suggestion stands.
+      expect(JSON.stringify(exit)).toContain("agentsfleet events");
     } finally {
       setSystemTime(); // restore real clock
     }
