@@ -21,8 +21,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Categories:** API, DOCS, OBS
 **Batch:** B1 — no concurrent workstream; the admission and outbound ledgers are edited by nothing else in flight.
 **Branch:** `fix/m198-admission-recovery-and-delivery-ledger`
-**Baseline revision:** `eaa2b19563cf4b46866c261c778ae88466683980` (last pushed `origin/main`; the intervening spec commit adds markdown only)
-**Test Baseline:** Rust unit 2,592 passed / 0 failed; integration 490 passed (489 parallel + 1 exclusive) / 0 failed. TypeScript lanes unmeasured and unchanged — this branch touches no `ui/**` or `cli/**` file.
+**Baseline revision:** `6813000c34cb0a7eff6f3d42ac7c96a1f62e9ff1` (`origin/main`; the branch was rebased onto it before the Pull Request, superseding the opening baseline at `eaa2b1956`)
+**Test Baseline:** Rust unit 2,610 passed / 0 failed; integration 493 passed (492 parallel + 1 exclusive) / 0 failed, measured on `6813000c3` in a detached worktree. TypeScript lanes unmeasured — this branch changes no `ui/**` file, and the baseline worktree lacks the per-package `bun install` that lane needs.
 **Baseline evidence:** isolated worktree at the baseline revision, `make test-unit-rustd` and `make test-integration-rustd`, against its own compose Postgres and Dragonfly on a separate project and port range; logs `.baseline-unit.log` and `.baseline-integration.log` in that worktree. Local run, not Continuous Integration (CI).
 **Depends on:** none
 **Provenance:** LLM-drafted (claude-opus-5, Sep 18, 2026), grounded in `docs/v2/reviews/schema-usage-audit-2026-09-18.md`, `docs/v2/reviews/schema-fix-adversarial-review-2026-09-18.md`, and re-verified source reads at the commit recorded below
@@ -71,7 +71,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs` (+ `public/openapi.json`) | EDIT | The generated endpoint description stops claiming repair writers this daemon does not have; the published artifact is regenerated from it. |
 | `rustd/crates/afd_api/tests/app_ingress_route.rs` (+ `tests/fixtures/webhooks/github_deployment_status_app.json`) | EDIT · CREATE | The dropped `deployment_status` the description now admits, proven against a real payload. |
 | `rustd/crates/afd_api/tests/openapi_contract.rs` · `scripts/check_architecture_doc.sh` | EDIT | Each absent mechanism gains a gate, so the claim cannot come back silently. |
-| `codecov.yml` | EDIT | The `rust-afd` patch target moves 97 -> 99. It moves alone, unlike the two project numbers, because it grades only added lines. |
+| `codecov.yml` · `VERSION` · `build.zig.zon` · `cli/package.json` · `rustd/{Cargo.toml,Cargo.lock}` | EDIT | Two unrelated numbers. The `rust-afd` patch target moves 97 -> 99, alone among the three because it grades only added lines. The version moves 0.48.0 -> 0.49.0 on Indy's instruction in a dedicated `chore(release)` commit: the first four are what `make check-version` compares, and the lock renumbers because member crates inherit `version.workspace = true`. |
 | `docs/architecture/{data_flow.md,runner_fleet.md}` | EDIT | Corrects the session execution-handle rows, the multi-tenancy row, and a command neither binary has. |
 | `docs/v2/{pending,active,done}/M198_001_P0_API_DOCS_OBS_ADMISSION_RECOVERY_AND_DELIVERY_LEDGER_REPAIR.md` (+ `docs/v2/reviews/schema-fix-adversarial-review-2026-09-18.md`) | CREATE | This spec, at whichever lifecycle directory holds it, beside the adversarial review whose dispositions it implements. |
 
@@ -260,12 +260,12 @@ No product analytics event changes. No analytics or funnel playbook update is re
 | R3 | Failed delivery cycles move the counter (§5) | `make test-integration-rustd` | exit 0; seven `integration_attempt_count` cases pass here, and the datastore-free `bookkeeping_failure_does_not_discard_an_answer` rides the unit lane | P0 |  ✅ exit 0 — seven here, the eighth green in `make test-unit-all` |
 | R4 | No document claims row-level security or a live execution handle (§6) | `grep -rn "Row-Level Security\|execution_id. is set at" docs/architecture/data_flow.md` | 0 matches | P0 |  ✅ 0 matches |
 | R5 | Nothing is dropped from the schema | `git diff origin/main...HEAD -- schema/ \| grep -E '^\+.*(DROP\|ALTER)'` | no output | P0 |  ✅ no output — slot 914 is `CREATE INDEX IF NOT EXISTS` only |
-| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 |  ✅ 38 files changed, 0 missing from the table |
+| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 |  ✅ 41 files changed, 0 missing from the table |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 |  ✅ exit 0 — ALL GATES GREEN |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 |  ✅ exit 0 — 2,610 Rust unit passed (+18 on the baseline's 2,592); all package coverage gates passed |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 |  ✅ exit 0 — 2,628 Rust unit + 1,673 TypeScript passed (+18 on the baseline's 2,610); all package coverage gates passed |
 | S3a | Lint green | `make lint-all` | exit 0 | P0 |  ✅ exit 0 — rustfmt, clippy -D warnings, no-feature build |
-| S3b | Integration suite green | `make test-integration-rustd` | exit 0 | P0 |  ✅ exit 0 — 508 passed + 1 exclusive |
-| S3c | Version sync | `make check-version` | exit 0 | P0 |  ✅ exit 0 — all versions match 0.48.0 |
+| S3b | Integration suite green | `make test-integration-rustd` | exit 0 | P0 |  ✅ exit 0 — 511 passed + 1 exclusive = 512 (+19 on the baseline's 493) |
+| S3c | Version sync | `make check-version` | exit 0 | P0 |  ✅ exit 0 — all versions match 0.49.0, bumped from 0.48.0 on Indy's instruction |
 | S4 | No secrets | `gitleaks detect` | exit 0 | P0 |  ✅ no leaks found |
 | S5 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 |  ✅ no output |
 | S6 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 |  ✅ 0 matches — both removed symbols gone |
