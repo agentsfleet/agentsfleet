@@ -7,7 +7,7 @@
 //!
 //! # Mapping
 //!
-//! | Zig test (`frontmatter_fixtures_test.zig`) | Rust test here |
+//! | What is pinned | Test |
 //! |---|---|
 //! | `trigger/minimal.md` field values | [`the_minimal_trigger_carries_its_authored_values`] |
 //! | `trigger/full.md` field values | [`the_full_trigger_carries_every_authored_block`] |
@@ -99,7 +99,16 @@ fn the_full_skill_carries_every_optional_field() {
 }
 
 /// Every first-party bundle's two documents agree with each other and with the
-/// directory that holds them, and each declares the one supported tool.
+/// directory that holds them, and each reaches its APIs through `http_request`.
+///
+/// The tool list is not asserted to have length one. It did until the three
+/// incident bundles joined the roster, and that held only because the four
+/// bundles before them happened to declare a single tool each — an accident of
+/// the roster, not a property of a first-party bundle. `incident-responder`
+/// declares `memory_store` and `memory_recall` beside `http_request`, both of
+/// which the runner builds (`src/runner/engine/tool_builders.zig`). What the
+/// roster actually shares is the reach: every one of them talks to its service
+/// over `http_request` rather than a bespoke tool.
 #[test]
 fn every_first_party_bundle_agrees_with_its_directory_name() {
     for slug in FIRST_PARTY {
@@ -112,8 +121,10 @@ fn every_first_party_bundle_agrees_with_its_directory_name() {
         assert_eq!(parsed.config().name().as_str(), slug, "{slug} TRIGGER name");
 
         let tools = parsed.config().tools();
-        assert_eq!(tools.len(), 1, "{slug} declares one tool");
-        assert_eq!(&*tools[0], TOOL_HTTP_REQUEST, "{slug} tool");
+        assert!(
+            tools.iter().any(|tool| &**tool == TOOL_HTTP_REQUEST),
+            "{slug} declares {TOOL_HTTP_REQUEST}, found {tools:?}"
+        );
     }
 }
 

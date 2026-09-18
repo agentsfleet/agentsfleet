@@ -198,7 +198,7 @@ class SeededRates(unittest.TestCase):
     not returning the wrong number — and the emitted row is what bills someone.
     """
 
-    SEED = os.path.join(REPO_ROOT, "samples", "fixtures", "model-library", "seed.sql")
+    SEED = os.path.join(REPO_ROOT, "tests", "fixtures", "model-library", "seed.sql")
 
     @classmethod
     def setUpClass(cls):

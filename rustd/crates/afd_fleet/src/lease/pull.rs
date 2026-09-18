@@ -29,11 +29,10 @@
 //!
 //! # What is deliberately not read
 //!
-//! The request body. `LeaseRequest` carries a `wire_version` and this port
-//! serves exactly one shape, so there is no negotiation, no downgrade, and no
-//! "unsupported version" refusal — that last would need a new registry code,
-//! and the registry is single-sourced in Zig. A body naming any version, or no
-//! body at all, gets the current shape.
+//! The request body, which is empty. This port serves exactly one shape, so
+//! there is no negotiation, no downgrade, and no "unsupported version" refusal
+//! — that last would need a new registry code. Any body, or none, gets that
+//! shape.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;

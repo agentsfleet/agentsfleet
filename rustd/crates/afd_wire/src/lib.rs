@@ -1,11 +1,9 @@
-//! Serde port of the frozen `/v1/runners` protocol the daemon and runner exchange.
+//! The `/v1/runners` protocol the daemon serves and the runner consumes.
 //!
-//! The Zig module `src/lib/contract` is the source of truth for this wire. These
-//! types conform to it and never the other way round: `src/lib/contract/fixture_export.zig`
-//! emits one canonical JSON document per exported type into
-//! `samples/fixtures/wire-v2/`, and the round-trip suite parses each one,
-//! re-serializes it, and compares BYTES. A field renamed, reordered, retyped or
-//! dropped on either side turns that comparison red.
+//! These types ARE the wire. `agentsfleetd` publishes them through
+//! `public/openapi.json` (the `openapi` feature derives the schemas), and
+//! `agentsfleet-runner` is a client of that document: its Zig structs in
+//! `src/lib/contract` conform to what is published here, never the reverse.
 //!
 //! # Borrowed, not owned
 //!

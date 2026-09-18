@@ -43,7 +43,7 @@ pub(super) fn read_patch(body: &Bytes, if_match: Option<String>) -> Result<Patch
             ..Patch::default()
         });
     }
-    let sent = afd_core::json::object_from_slice::<PatchFleetRequest<'_>>(body)
+    let sent = afd_http::handler::read_body::<PatchFleetRequest<'_>>(body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
 
     // Which SOURCES were named is settled before how long they are. Both

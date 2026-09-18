@@ -329,9 +329,7 @@ unreachable. The gap was never zero; the collector does not widen it.
 **There is no pull endpoint, and there will not be one.** Nothing scrapes this
 daemon: no `/metrics` route is served, and no scrape is configured in either
 environment. A pull endpoint would be a second export path exporting the same
-measurements by a different mechanism with a different failure mode, and
-`playbooks/operations/cutover/probes.sh` asserts that the architecture documents and the
-deployed configuration agree on its absence rather than leaving it to a reader.
+measurements by a different mechanism with a different failure mode.
 
 The vendor-named knobs are accepted as ALIASES through cutover so a rollback to
 the Zig binary keeps exporting, and they retire with that daemon. Where both a

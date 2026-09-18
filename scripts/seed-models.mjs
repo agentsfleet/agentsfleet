@@ -42,7 +42,7 @@ const PSQL_TAKES_URL = !PSQL;
 // exercises the field mapping, the per-token conversion, and the real SQL path,
 // without going red because Pioneer had a bad afternoon.
 const FIXTURES = process.argv.includes("--fixtures")
-  ? join(ROOT, "samples", "fixtures", "model-library")
+  ? join(ROOT, "tests", "fixtures", "model-library")
   : null;
 // Regenerate the committed SQL fixture the Zig integration tests self-seed from.
 // CI's zig container has neither node nor psql, so the tests cannot run this
@@ -404,7 +404,7 @@ if (import.meta.main) {
     const { writeFileSync } = await import("node:fs");
     const fixed_ms = Date.parse(allowlist.verified_at);
     const fixture_stamp = Object.assign(allowlist.verified_at, { ms: fixed_ms });
-    const out = join(ROOT, "samples", "fixtures", "model-library", "seed.sql");
+    const out = join(ROOT, "tests", "fixtures", "model-library", "seed.sql");
     // No BEGIN/COMMIT: the Zig tests exec one statement at a time.
     writeFileSync(out, emit(wanted, allowlist, fixture_stamp, { no_transaction: true }) + "\n");
     console.log(`→ wrote ${out} (${wanted.length} rows, stamp ${allowlist.verified_at})`);

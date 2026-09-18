@@ -227,7 +227,7 @@ fn request(body: &[u8]) -> Result<Validated<'_>, (error_code::ErrorCode, &'stati
     if body.is_empty() {
         return Err((error_code::INVALID_REQUEST, DETAIL_BODY_REQUIRED));
     }
-    let request = afd_core::json::object_from_slice::<PlatformKeyPut<'_>>(body)
+    let request = afd_http::handler::read_body::<PlatformKeyPut<'_>>(body)
         .map_err(|_error| (error_code::INVALID_REQUEST, DETAIL_MALFORMED_JSON))?;
     request
         .validate()

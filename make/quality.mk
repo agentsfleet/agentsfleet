@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: check-cutover-probes lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs
+.PHONY: lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-runner-fmt lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs
 
 check-documentation-rules:  ## Check public API and command help text
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules_test.py
@@ -33,7 +33,7 @@ lint-cli: check-documentation-rules  ## Lint agentsfleet CLI and its public text
 	@echo "✓ [agentsfleet] Lint passed"
 
 # Governance gates: the script-driven checks that enforce repository CONVENTIONS
-# rather than compile correctness. Grouped under one target so `lint-zig` names a
+# rather than compile correctness. Grouped so this target names a
 # policy set instead of a growing list, and so a new rule extends this line
 # rather than adding another near-duplicate wrapper.
 #
@@ -70,6 +70,24 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] check --bin agentsfleetd (no features)" -- \
 	  cargo check -p agentsfleetd --bin agentsfleetd
 
+# `agentsfleet-runner` is still Zig and ships from `build_runner.zig`, so its
+# formatting is still gated. This is formatting only: the discipline lint that
+# used to check more went with the Zig daemon, and `zig fmt --check` is what
+# remains that costs nothing.
+#
+# A target of its own rather than a rider on `lint-rustd`, which is where it
+# first landed. `.github/workflows/test.yml` runs `make lint-rustd` inside the
+# `test-unit-rustd` job, and that job is a plain `ubuntu-latest` with rustup and
+# nothing else — so the `command -v zig` guard below failed the Rust UNIT lane on
+# a missing Zig toolchain, and the failure read as a test regression. The two
+# toolchains want two runners: Rust rides the ubuntu image it already pins, and
+# this rides `ci-zig-alpine`, the same pre-baked image `release.yml` and
+# `deploy-dev-build.yml` build the runner with. Its caller is the `lint-runner-fmt`
+# job in `.github/workflows/lint.yml`.
+lint-runner-fmt:  ## Check the Zig runner's formatting (zig fmt --check)
+	@command -v zig >/dev/null 2>&1 || { echo "✗ zig not found. Install via: mise install zig"; exit 1; }
+	@$(WITH_PROGRESS) "[runner] zig fmt --check" -- zig fmt --check build_runner.zig build.zig src/
+
 # Every scripts/*_test.py, discovered rather than listed.
 #
 # A checker whose own tests never run is enforcement in appearance only, so the
@@ -104,17 +122,6 @@ lint-scripts:  ## Run every scripts/*_test.py self-test + assert the orly engine
 	@bash scripts/dragonfly_cluster_test.sh
 	@echo "✓ [scripts] Script self-tests passed"
 
-# The cutover probe runner's own tests, plus its three asserts run for real
-# against this repository. Hermetic — fixtures for the negatives, no daemon —
-# so the row-coverage claim is graded at every `lint-all` rather than only on
-# swap day, which is the one day nobody wants to discover it.
-check-cutover-probes:  ## Assert binary-swap cutover probe row-coverage + run its self-tests
-	@echo "→ [cutover] Probe runner self-tests..."
-	@bash playbooks/operations/cutover/probes_test.sh
-	@echo "→ [cutover] Row-coverage, rollback and architecture asserts..."
-	@bash playbooks/operations/cutover/probes.sh --coverage
-	@echo "✓ [cutover] Probe runners green"
-
 SHELLCHECK ?= shellcheck
 
 lint-shell:  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
@@ -135,7 +142,7 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 
 
 
-lint-all: lint-rustd lint-scripts _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-architecture-doc check-deploy-safety test-parity-self-test bench-cutover-self-test check-cutover-probes  ## Run all linters + quality gates
+lint-all: lint-rustd lint-runner-fmt lint-scripts _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + action pins + make-target ref check

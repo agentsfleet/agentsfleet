@@ -92,17 +92,20 @@ async fn prove_runner_ready(http: &reqwest::Client, run: &Scenario) {
 }
 
 async fn claim_seeded_lease(http: &reqwest::Client, run: &Scenario) -> (String, u64) {
-    let leased = post(http, run, "/v1/runners/me/leases", &json!({})).await;
-    assert_eq!(
-        leased.status().as_u16(),
-        200,
-        "work and no-work are the same status on this verb"
-    );
-    // That first request proved the STATUS. Which event comes back is a
-    // separate question and needs a rotation to answer: see
-    // `poll_for_seeded_lease` on why one poll reaches a given fleet about one
-    // time in sixteen. If the request above already carried this scenario's
-    // event, the helper's first poll finds the lease it issued.
+    // One caller, one poller. There used to be a bare POST here to prove the
+    // STATUS before the loop proved the EVENT, on the reading that a poll which
+    // misses this fleet's partition costs nothing — and about fifteen times in
+    // sixteen that is true. The sixteenth is the bug: that throwaway request
+    // WINS the lease, its body is dropped on the floor, and the lease is now
+    // held. `fleet.runner_affinity` then refuses to re-issue it while
+    // `leased_until` is in the future, so every one of the 128 polls below
+    // correctly answers `lease: null` and the test panics saying the event was
+    // never offered. Measured at 2 failures in 15 local runs, and it is the red
+    // `test-integration-rustd` lane on Pull Request #693.
+    //
+    // `poll_for_lease` already asserts the status on EVERY turn and its doc
+    // comment names this exact caller as the hazard, so the separate request
+    // proved nothing the loop does not prove and cost a lease to do it.
     poll_for_seeded_lease(http, run).await
 }
 

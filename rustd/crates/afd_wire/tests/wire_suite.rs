@@ -25,8 +25,6 @@ mod names;
 mod redaction;
 // Gated with the feature it grades: without `openapi` there are no schemas to
 // assert, and the module would name types whose derives were never expanded.
-#[path = "roundtrip.rs"]
-mod roundtrip;
 #[cfg(feature = "openapi")]
 #[path = "schema.rs"]
 mod schema;
@@ -38,3 +36,7 @@ mod schema_literals;
 mod strictness;
 #[path = "tenant_provider_shapes.rs"]
 mod tenant_provider_shapes;
+// Declared bounds at their exact limits, and a seeded mutation corpus the
+// parser must survive without panicking.
+#[path = "validation.rs"]
+mod validation;

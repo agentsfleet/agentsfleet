@@ -11,7 +11,7 @@ import { PRE_SEND_CODES } from "./retry-classify";
 // exists to catch.
 
 // Resolved from this file, so the suite reads the same table wherever vitest is run from.
-const FIXTURE_PATH = path.resolve(__dirname, "../../../../../samples/fixtures/retry-policy/cases.json");
+const FIXTURE_PATH = path.resolve(__dirname, "../../../../../tests/fixtures/retry-policy/cases.json");
 const TOKEN = "tok";
 const PATH = "/v1/thing";
 const MS_PER_SECOND = 1000;

@@ -50,6 +50,7 @@ pub type Triggers = Option<Box<RawValue>>;
 // the caller could not act on.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct InstallFleetRequest<'a> {
     /// A published platform entry, by slug.
     #[serde(borrow, default)]
@@ -186,6 +187,7 @@ pub struct FleetDetailResponse<'a> {
 /// because there is no answer to which one wins.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct PatchFleetRequest<'a> {
     /// A configuration document, replacing the stored one directly.
     #[serde(borrow, default)]

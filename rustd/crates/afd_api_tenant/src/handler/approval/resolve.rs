@@ -143,7 +143,7 @@ fn read_reason(body: &Bytes) -> Result<Cow<'_, str>, Refusal> {
     if body.is_empty() {
         return Ok(Cow::Borrowed(""));
     }
-    let request: ResolveApprovalRequest<'_> = afd_core::json::object_from_slice(body)
+    let request: ResolveApprovalRequest<'_> = afd_http::handler::read_body(body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
 
     // Plain JSON strings borrow from `body`; escaped strings necessarily own

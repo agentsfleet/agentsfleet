@@ -71,7 +71,7 @@ pub(crate) async fn handle<D: Services>(
     // Borrowed out of `body`: every frame's text and arguments are re-emitted
     // into the published payload unchanged, so owning them would copy a run's
     // entire output stream one chunk at a time.
-    let Ok(request) = afd_core::json::object_from_slice::<ActivityRequest<'_>>(&body) else {
+    let Ok(request) = afd_http::handler::read_body::<ActivityRequest<'_>>(&body) else {
         return crate::envelope::ProblemResponse::new(
             afd_core::error_code::INVALID_REQUEST,
             DETAIL_MALFORMED,

@@ -53,7 +53,7 @@ For every commit that touches `*.zig`, the agent runs the workflow below — no 
 
 ## Must
 
-> [DETERMINISTIC → DRAIN]
+> [DETERMINISTIC → TODO-CHECK]
 
 - Run `make lint`, `make test`, and `gitleaks detect` before any commit that includes Zig changes.
 - Run the repository's database-backed integration lane, with `TEST_DATABASE_URL` pointed at its test database, when touching DB-backed handlers, proposal flows, or temp-table-based Zig tests.
@@ -72,7 +72,7 @@ For every commit that touches `*.zig`, the agent runs the workflow below — no 
 
 ## Must Not
 
-> [DETERMINISTIC → DRAIN]
+> [DETERMINISTIC → TODO-CHECK]
 
 - Do not write on a `pg.Conn` while a read result is still open.
 - Do not keep borrowed row data after drain/deinit.
@@ -277,7 +277,7 @@ Canonical source: `src/http/test_harness.zig`. Every `*_http_integration_test.zi
 
 ## Commands
 
-> [DETERMINISTIC → DRAIN]
+> [DETERMINISTIC → TODO-CHECK]
 
 - `make lint`
 - `make test`
@@ -350,7 +350,7 @@ Canonical source: `src/http/test_harness.zig`. Every `*_http_integration_test.zi
 > [DETERMINISTIC → XCOMPILE]
 
 - Comptime loops over large tables (e.g. 130 codes × 131 TABLE entries × `std.mem.eql`) need `@setEvalBranchQuota(N)` as the first line. Default is 1000. Formula: `N ≈ code_count × table_size × avg_string_len`. Round to next power-of-ten; comment the math.
-- `@embedFile` is sandboxed to `src/`. Any path escaping it (`../../public/openapi.json`) is a compile error. For files outside `src/`, write a Python/shell validator invoked via a `make` target wired into `lint-zig`.
+- `@embedFile` is sandboxed to `src/`. Any path escaping it (`../../public/openapi.json`) is a compile error. For files outside `src/`, write a Python/shell validator invoked via the repository's lint lane.
 
 ## Sentinel Values Must Not Collide With Real Registry Codes (M11_001)
 
@@ -448,7 +448,7 @@ When a raw pointer field DOES need a comment (rare — borrowed from a peer, not
 
 ## Pg Query Wrapper: use PgQuery, not anytype (M10_004)
 
-> [DETERMINISTIC → DRAIN]
+> [DETERMINISTIC → TODO-CHECK]
 
 **Do not pass `pg.Result` via `anytype` to helper functions.** The `anytype` pattern requires callers to remember `q.*.next()` vs `q.next()` depending on how the value was passed — a compile-silent footgun.
 
@@ -472,7 +472,6 @@ Rules:
 - Use `defer q.deinit()` in the owner. `deinit()` auto-drains idempotently.
 - Helpers take `*PgQuery`, never `anytype` — `q.next()` always works, no `q.*.next()`.
 - On early exit (parse failure, missing row), just `return` — the `defer` handles drain + deinit.
-- `check-pg-drain` lint still runs but now targets only `PgQuery.from()` call sites.
 
 ## SQL Statement Modules
 
@@ -690,8 +689,7 @@ Every allocating public fn states ownership in one of the fixed phrases **"calle
 or **"takes ownership"** — grepable, uniform, no synonyms. Every `deinit` poisons with
 `self.* = undefined` after freeing, so a use-after-deinit traps instead of reading stale
 fields. Callers own their arguments; a callee clones only what it keeps. The phrase and poison
-checks are mechanized by the roster-scoped repo lint (blocking inside the discipline roster,
-advisory outside) in `lint-zig.py`.
+checks are review checks; no repository lint mechanizes them.
 **Exemplar:** ghostty ownership phrases on every allocating pub fn (`App.zig:135-137`,
 caller-owns-arguments), `self.* = undefined` poisoning in every deinit.
 

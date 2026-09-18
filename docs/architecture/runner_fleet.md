@@ -695,9 +695,7 @@ nor `deploy/fly/agentsfleetd-prod/fly.toml`, and no port 9091 is declared
 anywhere under `deploy/`. An earlier revision of this section described a
 four-line Fly metrics block and a platform Prometheus pulling a metrics endpoint
 on port 9091 over the private 6PN network. No such block has existed in either
-environment, so that passage described an architecture the deployment never ran —
-`playbooks/operations/cutover/probes.sh` now asserts the agreement mechanically rather than
-leaving it to a reader to notice.
+environment, so that passage described an architecture the deployment never ran.
 
 The daemon is a **pure OTLP pusher to one configured endpoint**, addressed by
 the OpenTelemetry specification's own environment names. Which backend the

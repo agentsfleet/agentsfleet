@@ -6,7 +6,7 @@
 // running it. Split out of http.ts so transport and retry concerns stay
 // separable and each module stays under the line cap. The dashboard's
 // policy (ui/packages/app/lib/api/retry.ts) makes the same decisions;
-// samples/fixtures/retry-policy/cases.json is the table both are proven
+// tests/fixtures/retry-policy/cases.json is the table both are proven
 // against.
 
 import { ApiError, apiRequest, type ApiRequestOptions } from "./http.ts";

@@ -52,6 +52,26 @@ jobs:
           shellcheck -s bash ui/agentsfleet.dev/dist/install.sh ui/agentsfleet.dev/install_test.sh
           bash ui/agentsfleet.dev/install_test.sh
 
+  # The Zig runner's formatting. A job of its own because it needs a Zig
+  # toolchain and nothing else here does: this check used to ride `make
+  # lint-rustd` inside `test.yml`'s `test-unit-rustd` job, where the runner is a
+  # plain `ubuntu-latest` with rustup — so `zig fmt --check` failed on a missing
+  # binary and turned the Rust UNIT lane red over a formatting gate.
+  #
+  # `ci-zig-alpine` rather than installing Zig here: it is the pre-baked image
+  # `release.yml` and `deploy-dev-build.yml` already build `agentsfleet-runner`
+  # with, so the formatter is the same version that compiles the shipped binary,
+  # pinned in one place. The image carries `make` and `git`, which is all the
+  # target needs.
+  lint-runner-fmt:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r4
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check the Zig runner's formatting
+        run: make lint-runner-fmt
+
   check-gh-actions-valid:
     runs-on: ubuntu-latest
     env:

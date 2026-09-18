@@ -60,13 +60,6 @@ Section evidence only, never a substitute for the full declared boundary.
 When a diff crosses a module boundary with real input/output, apply
 `orly-write-integration-test`; otherwise record why it does not apply.
 
-## Wire-fixture evidence rule
-
-A diff that regenerates `samples/fixtures/wire-v2/` carries the regenerated
-fixtures in the same commit as the type change, and the PR Session Notes say what
-moved. A fixture diff with no type change beside it means someone hand-edited
-generated output; a type change with no fixture diff means the emitter never ran.
-
 ## Coverage discipline
 
 - **Branch coverage is the goal; line coverage is the floor.** One input "covers" a multi-clause condition while leaving its logic untested (`trimmed === "" || === "y" || === "yes"` passes line coverage with a single `"y"`). Feed varied inputs across the equivalence classes — each OR clause independently, success-retry AND fail-retry paths, every early-return guard, empty/casing/whitespace/garbage for normalizers. bun's lcov emits no branch records, so this is test-design discipline, not a number to chase.
