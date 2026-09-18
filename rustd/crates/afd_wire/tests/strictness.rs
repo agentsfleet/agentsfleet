@@ -20,6 +20,18 @@ const WELL_FORMED_LEASE_RESPONSE: &str = r#"{"lease":{"lease_id":"lease_id","fen
 fn test_wire_rejects_malformed() {
     let full = WELL_FORMED_LEASE_RESPONSE.as_bytes();
 
+    // Parse it whole FIRST. Without this the truncation loop below asserts
+    // `is_err()` on every cut and passes identically if the constant were the
+    // string "garbage" — the premise it rests on ("valid JSON right up to the
+    // cut") would be an unasserted claim. This line is also the only surviving
+    // check that every field name and enum spelling of a full nested
+    // `LeaseResponse` still deserializes, which the deleted wire corpus used to
+    // own.
+    assert!(
+        serde_json::from_slice::<LeaseResponse<'_>>(full).is_ok(),
+        "the literal above must be a well-formed LeaseResponse"
+    );
+
     for cut in [1, full.len() / 4, full.len() / 2, full.len() - 1] {
         let err = serde_json::from_slice::<LeaseResponse<'_>>(&full[..cut]).unwrap_err();
         assert!(

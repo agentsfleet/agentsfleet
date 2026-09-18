@@ -86,7 +86,8 @@ coverage:
 # own floors per-folder in make/test.mk. Each flag filters the ONE merged union
 # report by path, so every badge and every patch status above reads the exact
 # denominator `check_zig_coverage.py` graded, split three ways rather than
-# re-measured.
+# re-measured. `scripts/check_readme_badges_test.py` holds these flags, the
+# README badges, and the workflow uploads to each other.
 flags:
   rust-afd:
     paths:

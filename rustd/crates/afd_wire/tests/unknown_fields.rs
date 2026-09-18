@@ -35,8 +35,12 @@
 
 use std::borrow::Cow;
 
-use afd_wire::lease::{BundleManifest, LeaseRequest};
+use afd_wire::activity::ActivityAccepted;
+use afd_wire::credentials::MintCredentialRequest;
+use afd_wire::event::{EventEnvelope, EventType};
+use afd_wire::lease::{BundleManifest, LeasePayload, LeaseRequest, LeaseResponse, SecretDelivery};
 use afd_wire::memory::{MemoryDelta, MemoryPushRequest};
+use afd_wire::policy::{ContextBudget, ExecutionPolicy, NetworkPolicy as EgressPolicy};
 use afd_wire::report::{RenewRequest, RenewResponse, ReportTelemetry};
 use afd_wire::runner::{
     AssignedPolicy, BindMode, CapabilityReport, ExtraBind, HeartbeatRequest, HeartbeatResponse,
@@ -163,6 +167,51 @@ fn memory_delta() -> MemoryDelta<'static> {
     }
 }
 
+fn lease_payload() -> LeasePayload<'static> {
+    LeasePayload {
+        lease_id: Cow::Borrowed("lease_7"),
+        fencing_token: 504,
+        lease_expires_at: 931,
+        secret_delivery: SecretDelivery::Inline,
+        event: EventEnvelope {
+            event_id: Cow::Borrowed("event_1"),
+            fleet_id: Cow::Borrowed("fleet_1"),
+            workspace_id: Cow::Borrowed("workspace_1"),
+            actor: Cow::Borrowed("actor"),
+            event_type: EventType::Chat,
+            request_json: Cow::Borrowed("{}"),
+            created_at: 426,
+        },
+        policy: ExecutionPolicy {
+            network_policy: EgressPolicy {
+                allow: vec![Cow::Borrowed("api.github.com")],
+                read_only: true,
+                read_post_paths: vec![],
+            },
+            tools: vec![Cow::Borrowed("http_request")],
+            secrets_map: None,
+            mintable: vec![],
+            provider: Cow::Borrowed("provider"),
+            api_key: Cow::Borrowed("api_key"),
+            inference_host: Cow::Borrowed("inference_host"),
+            base_url: None,
+            repository_binding: None,
+            http_origin_policies: vec![],
+            context: ContextBudget {
+                tool_window: 141,
+                memory_checkpoint_every: 26,
+                stage_chunk_threshold: 0.75,
+                model: Cow::Borrowed("model"),
+                context_cap_tokens: 499,
+            },
+        },
+        instructions: Cow::Borrowed("do the thing"),
+        bundle: Some(BundleManifest {
+            content_hash: Cow::Borrowed("cafebabe"),
+        }),
+    }
+}
+
 /// Everything a runner SENDS UP tolerates an unknown field.
 ///
 /// These are the types a host one release ahead of the control plane puts on
@@ -204,6 +253,22 @@ fn every_report_from_a_runner_tolerates_a_field_the_daemon_does_not_know() {
             lease_id: Cow::Borrowed("lease_7"),
             fencing_token: 91,
             memory: vec![memory_delta()],
+        },
+        Policy::Tolerates,
+    );
+
+    // The lease the daemon hands DOWN, which is the reverse direction from the
+    // rest of this test and tolerant for the mirror-image reason: the daemon
+    // may learn a field before the runner does, and a runner that refused one
+    // would stop taking work the moment the control plane shipped ahead of it.
+    // Both were on the retired corpus's lenient roster and neither carried a
+    // replacement row until an adversarial pass named them.
+    assert_policy!(LeasePayload, lease_payload(), Policy::Tolerates);
+    assert_policy!(
+        LeaseResponse,
+        LeaseResponse {
+            lease: Some(lease_payload()),
+            retry_after_ms: Some(34),
         },
         Policy::Tolerates,
     );
@@ -266,6 +331,25 @@ fn the_types_that_refuse_an_unknown_field_still_refuse_it() {
             degraded: false,
             degraded_reason: None,
             selftest_requested: false,
+        },
+        Policy::Refuses,
+    );
+
+    // One row each from `activity` and `credentials`, which had no
+    // representation here at all — every type in both modules is strict, so a
+    // single row per module is enough to catch the attribute being dropped
+    // wholesale from either.
+    assert_policy!(
+        ActivityAccepted,
+        ActivityAccepted { ok: true },
+        Policy::Refuses
+    );
+    assert_policy!(
+        MintCredentialRequest,
+        MintCredentialRequest {
+            lease_id: Cow::Borrowed("lease_7"),
+            integration: Cow::Borrowed("github"),
+            scope: None,
         },
         Policy::Refuses,
     );

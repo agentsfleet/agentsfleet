@@ -33,7 +33,7 @@ name: deploy (dev)
 # spent, so the trigger comes back.
 #
 # `workflow_dispatch` stays beside it, unchanged and load-bearing: redeploying
-# an older digest by hand is the rollback path, and `The one-move rollback` in
+# an older digest by hand is the rollback path.
 on:
   push:
     branches:

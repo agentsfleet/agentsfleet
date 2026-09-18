@@ -52,8 +52,6 @@ up: $(LOCAL_DAEMON_BINARY) ## Start all services and tail app logs
 # Where a locally-composed daemon answers, and the container whose resident set
 # is its own. Named here because dev.mk is what stands the stack up; the lanes
 # that measure it read these rather than each spelling out a port.
-LOCAL_DAEMON_URL := http://127.0.0.1:3000
-LOCAL_DAEMON_CONTAINER := agentsfleetd-api
 LOCAL_DAEMON_READY_TIMEOUT_SEC := 90
 
 # Boot the stack and do not return until it answers. `up` alone is not enough:
