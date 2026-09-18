@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M198
 **Workstream:** 001
 **Date:** Sep 18, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — accepted work a producer was told yes about can stay unrecovered forever on a busy deployment, and the operator counter that would show it records only successes.
 **Categories:** API, DOCS, OBS
 **Batch:** B1 — no concurrent workstream; the admission and outbound ledgers are edited by nothing else in flight.
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
+**Branch:** `fix/m198-admission-recovery-and-delivery-ledger`
+**Baseline revision:** `eaa2b19563cf4b46866c261c778ae88466683980` (last pushed `origin/main`; the intervening spec commit adds markdown only)
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** none
@@ -72,7 +72,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/tests/integration_admission_recovery.rs` | EDIT | Adds the two batch-boundary reproductions and the mixed, restart and install cases. |
 | `rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs` | EDIT | The generated endpoint description stops claiming repair writers this daemon does not have. |
 | `docs/architecture/data_flow.md` | EDIT | Corrects the session execution-handle row and the multi-tenancy row. |
-| `docs/v2/pending/M198_001_P0_API_DOCS_OBS_ADMISSION_RECOVERY_AND_DELIVERY_LEDGER_REPAIR.md` | CREATE | This spec; moves to `active/` at CHORE(open) and `done/` at CHORE(close). |
+| `docs/v2/{pending,active,done}/M198_001_P0_API_DOCS_OBS_ADMISSION_RECOVERY_AND_DELIVERY_LEDGER_REPAIR.md` | CREATE | This spec, at whichever lifecycle directory holds it: `active/` from CHORE(open), `done/` at CHORE(close). |
 
 Consulted, **not** edited: `schema/910_fleet_admissions.sql` and `schema/510_fleet_sessions.sql` are shipped slots and stay frozen; `afd_ingress`'s `sql.rs` and `app.rs` carry the live install read; `afd_library/src/prepare.rs` and `afd_fleet/src/bundle/mod.rs` define the live bundle layout.
 
