@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — no concurrent workstream; the observability assets are edited by nothing else.
 **Branch:** `feat/m197-slo-dashboard`
 **Baseline revision:** `d229f568abb48724ac77425c6f45c119d16243ea`
-**Test Baseline:** unit 2713 passed / 0 failed / 513 ignored (`make test-unit-all`) · integration 493 passed / 0 failed (`make test-integration-rustd`, live Postgres + Dragonfly) · lint exit 0 · version 0.48.0. Measured on this branch at `0145ebbac` via `orly gate pr`.
+**Test Baseline:** unit=6744 integration=1300 — unit 6744 passed / 0 failed / 513 ignored (`make test-unit-all`) · integration 1300 passed / 0 failed (`make test-integration-rustd`, live Postgres + Dragonfly v2.0.0) · lint exit 0 · version 0.48.0. Measured on this branch at `90f4034e4` via `orly gate pr`. The `lane=count` tokens are what orly 0.10.11 parses; prose alone read as no count at all.
 **Baseline evidence:** `orly gate pr` on `feat/m197-slo-dashboard`; its `cmd.verify.*` rows all exit 0. Comparison revision `d229f568a` carried no observability change, so the delta is the whole of this branch's test growth: +11 unit tests.
 **Depends on:** none
 **Provenance:** LLM-drafted (claude-opus-5, Sep 17, 2026), grounded in live reads of the development Grafana stack and `rustd/crates/afd_observability` source
