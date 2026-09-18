@@ -5,7 +5,7 @@
     reason = "test target: failing loudly on a malformed payload is the correct outcome"
 )]
 
-use afd_wire::lease::{LeaseRequest, LeaseResponse};
+use afd_wire::lease::LeaseResponse;
 use afd_wire::report::{RenewRequest, ReportRequest, ReportTelemetry};
 use afd_wire::runner::AssignedPolicy;
 
@@ -117,19 +117,4 @@ fn should_reject_a_payload_missing_a_required_field() {
     let err = serde_json::from_str::<ReportRequest<'_>>(r#"{"lease_id":"a"}"#).unwrap_err();
     assert!(err.is_data(), "{err}");
     assert!(err.to_string().contains("missing field"), "{err}");
-}
-
-/// The default lease request must ask for the CURRENT wire version.
-///
-/// An empty body is what a lease request IS, and it round-trips as `{}`.
-///
-/// The type carried a `wire_version` until Sep 2026 that no handler ever read.
-/// With the field gone the struct has nothing to serialize, and this pins that:
-/// a future edit adding a field back has to change this line, which is the
-/// moment to ask whether anything will read it.
-#[test]
-fn a_lease_request_is_an_empty_body() {
-    assert_eq!(serde_json::to_string(&LeaseRequest {}).unwrap(), "{}");
-    let _ = serde_json::from_str::<LeaseRequest>("{}").unwrap();
-    let _ = serde_json::from_str::<LeaseRequest>(r#"{"wire_version":2}"#).unwrap_err();
 }

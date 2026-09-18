@@ -381,9 +381,6 @@ fn no_mutation_of_a_valid_document_panics_the_parser() {
         if serde_json::from_slice::<SelftestReport<'_>>(&probe).is_ok() {
             parsed_anyway += 1;
         }
-        if serde_json::from_slice::<afd_wire::lease::LeaseRequest>(&probe).is_ok() {
-            parsed_anyway += 1;
-        }
     }
 
     // Not a bound on correctness — a guard on the corpus. If every mutation
