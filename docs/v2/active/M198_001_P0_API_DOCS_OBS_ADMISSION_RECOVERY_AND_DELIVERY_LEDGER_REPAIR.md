@@ -129,7 +129,7 @@ The resume state is proven to cost a fixed maximum and to never block the pass. 
 - **Dimension 3.2** (DONE) — the sweeper takes its resume state out of the lock before the pass and puts it back after, so no synchronous guard is held across an await → Test `test_sweeper_does_not_hold_its_lock_across_a_pass`
 - **Dimension 3.3** (DONE) — two reconcilers walking one lost fleet produce one repair and no double settlement → Test `concurrent_reconcilers_repair_each_row_once`
 - **Dimension 3.4** (DONE) — an unanswerable probe leaves every receipt intact and advances no repair past unexamined rows → Test `probe_outage_retains_receipts_and_progress`
-- **Dimension 3.5** (DONE) — a pass over an already-repaired fleet voids nothing and reports quiet, so repeated passes are idempotent → Test `replayed_reconcile_pass_is_idempotent`
+- **Dimension 3.5** (DONE) — a pass over an already-repaired fleet voids nothing and reports quiet, and a pass that fails partway keeps the repairs it drained rather than dropping those fleets back under the head probe → Test `a_failed_pass_keeps_the_repairs_it_drained`
 
 ### §4 — The delivery stamp reaches an index
 
@@ -245,7 +245,7 @@ No product analytics event changes. No analytics or funnel playbook update is re
 | 6.1 | unit | `test_the_ingress_description_promises_no_unported_writer` | The generated description contains none of the three repair-evidence promises, and names the gap. Keyed on the operation id, because several routes share the `/v1/ingress/` prefix. |
 | 6.2 | unit | `architecture_absent_mechanisms` | No page under `docs/architecture/` mentions row-level security or the session execution handle except to record that neither exists — matching the zero policies `schema/` declares and the zero readers the Rust tree has. |
 | 2.6 | integration | `queue_loss_replays_without_duplicate_settlement` | The existing recovery test keeps passing unchanged: one settlement, one debit, no re-queue of completed work. |
-| 3.5 | integration | `replayed_reconcile_pass_is_idempotent` | Running the same pass twice over an already-repaired fleet voids nothing the second time and reports quiet. |
+| 3.5 | integration | `a_failed_pass_keeps_the_repairs_it_drained` | Running the same pass twice over an already-repaired fleet voids nothing the second time (`replayed_reconcile_pass_is_idempotent`); a pass whose database will not answer returns the error with every drained repair back in the set, and the fleet still recovers afterwards. |
 | 7.1 | unit | `test_connector_statements_have_callers` | The remaining connector statements are schema-qualified and each names a caller; the removed spelling appears nowhere in the crate. |
 | 7.2 | integration | `install_then_retrieve_returns_the_bundle` | A fleet created through the production install path has a NULL bundle pointer and correct values in every column after the removed bind, and its bundle retrieves correctly. |
 
