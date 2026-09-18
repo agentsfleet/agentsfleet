@@ -50,25 +50,17 @@ WHERE core.connector_installs.workspace_id = EXCLUDED.workspace_id";
 /// both rows name this workspace.
 ///
 /// What survives that is the state [`Grants::land`]'s note calls the silent
-/// one: the old account's deliveries still resolve here through
-/// [`SELECT_INSTALL_WORKSPACE`], and outbound answers them with a credential
-/// minted for the new one. Nothing reads as broken; the runs just fail at the
-/// vendor. So a connect releases the rows it is about to stop being able to
-/// serve, in the same transaction that claims the new one.
+/// one: the old account's deliveries still resolve here — the ingress crate
+/// owns the routing read — and outbound answers them with a credential minted
+/// for the new one. Nothing reads as broken; the runs just fail at the vendor.
+/// So a connect releases the rows it is about to stop being able to serve, in
+/// the same transaction that claims the new one.
 ///
 /// [`Provider::grant_key`]: crate::provider::Provider::grant_key
 /// [`Grants::land`]: crate::grant::Grants::land
 pub const RELEASE_OTHER_INSTALLS: &str = "\
 DELETE FROM core.connector_installs \
 WHERE provider = $1 AND workspace_id = $2::uuid AND external_account_id <> $3";
-
-/// Which workspace a provider account's inbound events belong to.
-///
-/// The read half of [`UPSERT_INSTALL`], and the first statement the Slack
-/// events ingress runs once a delivery has proven itself.
-pub const SELECT_INSTALL_WORKSPACE: &str = "\
-SELECT workspace_id::text FROM core.connector_installs \
-WHERE provider = $1 AND external_account_id = $2";
 
 /// Forgets an account's routing rows when a workspace disconnects a provider.
 ///
@@ -81,10 +73,7 @@ WHERE provider = $1 AND workspace_id = $2::uuid";
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        CLAIM_INSTALL, DELETE_WORKSPACE_INSTALLS, RELEASE_OTHER_INSTALLS, SELECT_INSTALL_WORKSPACE,
-        UPSERT_INSTALL,
-    };
+    use super::{CLAIM_INSTALL, DELETE_WORKSPACE_INSTALLS, RELEASE_OTHER_INSTALLS, UPSERT_INSTALL};
 
     /// Every statement names its schema, so none of them depends on a
     /// `search_path` a pooled connection could have been handed.
@@ -94,7 +83,6 @@ mod tests {
             UPSERT_INSTALL,
             CLAIM_INSTALL,
             RELEASE_OTHER_INSTALLS,
-            SELECT_INSTALL_WORKSPACE,
             DELETE_WORKSPACE_INSTALLS,
         ] {
             assert!(

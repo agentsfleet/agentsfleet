@@ -17,6 +17,16 @@ const fn pass(probed: u64, lost: u64, voided: u64) -> Reconciled {
         probed,
         lost,
         voided,
+        resuming: false,
+        declined: 0,
+    }
+}
+
+/// The same pass, having left a fleet mid-repair.
+const fn resuming(probed: u64, lost: u64, voided: u64) -> Reconciled {
+    Reconciled {
+        resuming: true,
+        ..pass(probed, lost, voided)
     }
 }
 
@@ -36,6 +46,18 @@ fn a_pass_that_probed_healthy_fleets_waits_the_ordinary_interval() {
 #[test]
 fn a_pass_that_voided_rows_comes_back_sooner() {
     assert_eq!(pacing_after(pass(4, 1, 1)), RECOVERING_INTERVAL);
+}
+
+/// A pass mid-repair comes back sooner even having voided nothing.
+///
+/// The case the pacing missed before the resume state existed: a walk that
+/// probed its whole batch and found every row alive voids zero, and if that
+/// read as quiet, the fleet's remaining lost rows would be repaired one batch
+/// per IDLE interval — five minutes a batch on work a producer was told yes
+/// about.
+#[test]
+fn a_pass_that_left_a_repair_unfinished_comes_back_sooner() {
+    assert_eq!(pacing_after(resuming(4, 1, 0)), RECOVERING_INTERVAL);
 }
 
 #[test]
