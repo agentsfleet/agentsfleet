@@ -5,12 +5,6 @@ use super::*;
 
 use afd_core::event::label;
 
-/// The status a refused event's row is left in.
-const STATUS_GATE_BLOCKED: &str = "gate_blocked";
-
-/// The status an event that is merely waiting is left in.
-const STATUS_RECEIVED: &str = "received";
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_fleet_paused_after_its_event_was_claimed_issues_no_lease() {

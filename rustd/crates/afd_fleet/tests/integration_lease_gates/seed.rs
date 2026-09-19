@@ -13,7 +13,8 @@ use afd_gate::gate::GateRef;
 
 use super::{
     CACHED_INPUT_NANOS_PER_MTOK, CONTEXT_CAP_TOKENS, GATE_WINDOW_MS, INPUT_NANOS_PER_MTOK,
-    KIND_EVENT, OUTPUT_NANOS_PER_MTOK, PROVIDER_KEY_BODY, Ready,
+    KIND_EVENT, KIND_REPOSITORY_WRITE, OUTPUT_NANOS_PER_MTOK, PROVIDER_KEY_BODY,
+    REPOSITORY_WRITE_SPEND_CEILING, Ready, STATUS_APPROVED,
 };
 use crate::report_seed::FIXTURE_KEK_HEX;
 use crate::requests::ENROLLED_AT;
@@ -254,4 +255,66 @@ fn fixture_id() -> String {
         .expect("a v7 identifier encodes")
         .as_str()
         .to_owned()
+}
+
+/// Raises one APPROVED `repository_write` gate over `ready`'s event.
+///
+/// A different table read from [`seed_gate`]'s, despite the shared row: that
+/// one is answered through `Gates::check`, which reads a Dragonfly reference
+/// first, so a durable row alone is invisible to it. This one is read by
+/// `approved_write_gate` in plain SQL off `core.fleet_approval_gates`, so no
+/// reference is written here — and the absence is deliberate, because a
+/// reference would also put an EVENT gate in the verb's way and the case under
+/// test would stop on that instead.
+///
+/// Every clause the statement filters on is set rather than defaulted:
+/// `updated_at <= timeout_at`, a non-null `stated_binding`, a non-null
+/// `spend_count`, and a `spend_ceiling` equal to the one the reader binds. A
+/// row missing any of them comes back as no row, which is indistinguishable
+/// from an unapproved gate and would make this fixture prove nothing.
+///
+/// Returns the gate's identifier, which is what the repair branch is named
+/// from — so the caller can assert the branch the delivery locked is THIS
+/// gate's and not merely well-formed.
+pub(super) async fn seed_write_gate(
+    fixtures: &Fixtures,
+    ready: &Ready,
+    stated_binding: &str,
+) -> Uuid7 {
+    let workspace = workspace_of(fixtures, &ready.fleet).await;
+    let gate_id = fixture_id();
+    let deadline = afd_core::clock::now().as_millis() + GATE_WINDOW_MS;
+
+    let mut connection = fixtures
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    sqlx::query(
+        "INSERT INTO core.fleet_approval_gates \
+           (id, fleet_id, workspace_id, action_id, tool_name, action_name, \
+            gate_kind, proposed_action, evidence, blast_radius, timeout_at, \
+            resolved_by, status, detail, created_at, updated_at, event_id, \
+            stated_binding, spend_count, spend_ceiling) \
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'chat', 'author', \
+                 $5, 'author a branch', '{}'::jsonb, 'one repository', \
+                 $6, 'fixture:human', $7, '', $8, $8, $9, \
+                 $10::jsonb, 0, $11)",
+    )
+    .bind(&gate_id)
+    .bind(&ready.fleet)
+    .bind(&workspace)
+    .bind(fixture_id())
+    .bind(KIND_REPOSITORY_WRITE)
+    .bind(deadline)
+    .bind(STATUS_APPROVED)
+    .bind(ENROLLED_AT)
+    .bind(&ready.event_id)
+    .bind(stated_binding)
+    .bind(REPOSITORY_WRITE_SPEND_CEILING)
+    .execute(&mut *connection)
+    .await
+    .expect("the write gate row must insert");
+
+    Uuid7::parse(&gate_id).expect("the fixture gate id is a v7 spelling")
 }
