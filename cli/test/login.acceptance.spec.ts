@@ -33,7 +33,7 @@ import {
   telemetryRuntimeFromValuesLayer,
 } from "../src/services/telemetry/runtime.service.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
-import { CLI_CREDENTIALS_PATH } from "../src/lib/api-paths.ts";
+import { CLI_CREDENTIALS_PATH, USERS_ME_PATH } from "../src/lib/api-paths.ts";
 import {
   CLI_CREDENTIAL_BODY_LEN,
   CLI_CREDENTIAL_PREFIX,
@@ -45,6 +45,18 @@ import {
   ServerError,
   type CliError,
 } from "../src/errors/index.ts";
+
+// The person the identity read answers with, so the success line has a name to
+// print. Its `email` is what a missing display name falls back to.
+const IDENTITY = {
+  user_id: "0193c5e1-0000-7000-8000-00000000abcd",
+  email: "ada@example.com",
+  display_name: "Ada Lovelace",
+  tenant_id: "0193c5e0-0000-7000-8000-000000001234",
+  tenant_name: "Ada's Workshop",
+  credential: "cli_credential",
+  scopes: ["fleet:read"],
+} as const;
 
 const SESSION_ID = "sess_acceptance_e2e";
 const VERIFICATION_CODE = "424242";
@@ -117,7 +129,8 @@ interface DeviceFlowFixture {
 const httpLayer = (
   fixture: DeviceFlowFixture,
   opts: {
-    billingFails?: boolean;
+    identityFails?: boolean;
+    identity?: Record<string, unknown>;
     firstVerifyFails?: boolean;
     mintFails?: boolean;
   } = {},
@@ -208,11 +221,12 @@ const httpLayer = (
           next_cursor: null,
         } as T);
       }
-      if (method === "GET" && path === "/v1/tenants/me/billing") {
-        // Stand-in for the post-login token-validation ping (`pingMe`
-        // in `src/lib/me-ping.ts`). Body shape is irrelevant — the only
-        // signal pingMe consumes is success vs 401/403.
-        if (opts.billingFails) {
+      if (method === "GET" && path === USERS_ME_PATH) {
+        // The post-login identity read (`readIdentity` in
+        // `src/lib/me-ping.ts`). Unlike the billing probe it replaced, the
+        // BODY matters: login reports the person it signed in, so the shape
+        // has to decode or the success line falls back.
+        if (opts.identityFails) {
           return Effect.fail(
             new ServerError({
               detail: "token rejected",
@@ -223,7 +237,7 @@ const httpLayer = (
             }),
           );
         }
-        return Effect.succeed({ balance_nanos: 0, updated_at: 0 } as T);
+        return Effect.succeed((opts.identity ?? IDENTITY) as T);
       }
       return Effect.fail(
         new ServerError({
@@ -378,7 +392,15 @@ describe("login acceptance — full device flow end-to-end", () => {
     expect(rec.savedSessionId).toBe(SESSION_ID);
     expect(rec.promptsAsked).toBe(1);
     expect(fixture.verifyCalls.count).toBe(1);
-    expect(rec.stdout.some((line) => line.includes("login complete"))).toBe(true);
+    // The success line NAMES the person, which is the whole point of the
+    // identity read: a terminal that reported "login complete" left the
+    // operator with no way to tell which account it had just signed into.
+    expect(
+      rec.stdout.some(
+        (line) =>
+          line.includes(IDENTITY.display_name) && line.includes(IDENTITY.tenant_name),
+      ),
+    ).toBe(true);
     // Analytics capture asserted separately in the unit-test suite — the
     // captureLoginCompleted helper writes to a real config-dir path
     // before emitting, which would require staging a real tmp tree just
@@ -394,7 +416,8 @@ const runLogin = (
   fixture: DeviceFlowFixture,
   opts: {
     jsonMode?: boolean;
-    billingFails?: boolean;
+    identityFails?: boolean;
+    identity?: Record<string, unknown>;
     firstVerifyFails?: boolean;
     mintFails?: boolean;
   } = {},
@@ -407,7 +430,8 @@ const runLogin = (
   }).pipe(
     Effect.provide(
       httpLayer(fixture, {
-        billingFails: opts.billingFails ?? false,
+        identityFails: opts.identityFails ?? false,
+        ...(opts.identity !== undefined ? { identity: opts.identity } : {}),
         firstVerifyFails: opts.firstVerifyFails ?? false,
         mintFails: opts.mintFails ?? false,
       }),
@@ -430,6 +454,25 @@ const freshFixture = (): DeviceFlowFixture => ({
 });
 
 describe("login acceptance — jsonMode rendering + rollback", () => {
+  test("an identity carrying no name and no address still completes the login", async () => {
+    const rec = makeRecorder();
+    // A server answering a 200 with neither a display name nor an address is
+    // broken, and the login is not: the credential was minted, it
+    // authenticated, and it is on disk. So the line falls back to reporting
+    // what happened rather than naming a person it was not told about. A
+    // rendering gap must never fail work that completed.
+    const exit = await Effect.runPromiseExit(
+      runLogin(rec, freshFixture(), {
+        identity: { ...IDENTITY, display_name: undefined, email: "" },
+      }),
+    );
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(rec.savedToken).toBe(MINTED_CREDENTIAL);
+    expect(rec.stdout.some((line) => line.includes("login complete"))).toBe(true);
+    expect(rec.stdout.some((line) => line.includes("signed in as"))).toBe(false);
+  });
+
   test("jsonMode prints the machine-readable complete payload (no human prose)", async () => {
     const rec = makeRecorder();
     const exit = await Effect.runPromiseExit(runLogin(rec, freshFixture(), { jsonMode: true }));
@@ -445,7 +488,7 @@ describe("login acceptance — jsonMode rendering + rollback", () => {
 
   test("post-login /me ping failure rolls back the persisted credential", async () => {
     const rec = makeRecorder();
-    const exit = await Effect.runPromiseExit(runLogin(rec, freshFixture(), { billingFails: true }));
+    const exit = await Effect.runPromiseExit(runLogin(rec, freshFixture(), { identityFails: true }));
     expect(Exit.isFailure(exit)).toBe(true);
     const err = Exit.isFailure(exit)
       ? Option.getOrNull(Cause.findErrorOption(exit.cause))
