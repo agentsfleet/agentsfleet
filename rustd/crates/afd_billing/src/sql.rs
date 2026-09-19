@@ -114,15 +114,25 @@ WHERE l.workspace_id = $1::uuid AND l.fleet_id = $2::uuid
 /// `$1` row id, `$2` tenant, `$3` workspace, `$4` fleet, `$5` event, `$6` charge
 /// type, `$7` posture, `$8` model, `$9` nanos, `$10`–`$13` token counts and wall
 /// time, `$14` event instant, `$15` row instant, `$16` last-charged instant.
+///
+/// # `fleet_name` is read, never bound
+///
+/// It takes no parameter of its own — the subselect reads it from the fleet
+/// `$4` already names. That is the difference between a snapshot and a claim: a
+/// caller cannot pass a name that disagrees with the identifier beside it, and
+/// no request field reaches this column. A fleet row that cannot be read yields
+/// NULL and the charge is still written, because a missing name must never cost
+/// a charge (schema/915 says the same thing from the column's side).
 pub const INSERT_USAGE_LEDGER: &str = "\
 INSERT INTO billing.usage_ledger
   (id, tenant_id, workspace_id, fleet_id, event_id,
    charge_type, posture, model,
    credit_deducted_nanos,
    token_count_input, token_count_cached_input, token_count_output, wall_ms,
-   event_created_at, created_at, last_charged_at)
+   event_created_at, created_at, last_charged_at, fleet_name)
 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16)
+        $11, $12, $13, $14, $15, $16,
+        (SELECT f.name FROM core.fleets f WHERE f.id = $4::uuid))
 ON CONFLICT (event_id, charge_type) DO NOTHING";
 
 /// A model's rates, and the catalogue generation they were read at.
@@ -180,4 +190,34 @@ pub mod posture {
     /// The tenant supplies their own key; tokens land on their provider bill
     /// and only the run fee is charged.
     pub const SELF_MANAGED: &str = "self_managed";
+}
+
+#[cfg(test)]
+mod tests {
+    use super::INSERT_USAGE_LEDGER;
+
+    /// The third charging statement captures the name the same way the two in
+    /// `afd_fleet` do — read from the fleet the row already names, never bound.
+    ///
+    /// Its siblings are asserted in `afd_fleet::lease::sql`; this one lives
+    /// here because a crate cannot reach across to test another's constants,
+    /// and a charge written by this path is as unattributable as one written
+    /// by theirs if the column is missed.
+    #[test]
+    fn test_m201_the_ledger_insert_captures_the_fleet_name() {
+        assert!(
+            INSERT_USAGE_LEDGER.contains("fleet_name"),
+            "the ledger insert writes a charge without capturing fleet_name"
+        );
+        assert!(
+            INSERT_USAGE_LEDGER.contains("SELECT f.name FROM core.fleets f WHERE f.id = $4::uuid"),
+            "fleet_name must be read from the fleet $4 already names, so a \
+             caller cannot pass a name disagreeing with the identifier"
+        );
+        assert!(
+            !INSERT_USAGE_LEDGER.contains("$17"),
+            "fleet_name must not become a bind parameter — that would let a \
+             request supply the name and break the server-captured invariant"
+        );
+    }
 }
