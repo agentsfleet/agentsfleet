@@ -29,7 +29,7 @@
 //! layer. Whether the FLEET is in that workspace is decided here, because this
 //! is the crate that can enforce it rather than trust it — and the revoke's own
 //! statement re-answers it a second time in its join. See
-//! [`sql::REVOKE_GRANT`] for why the redundancy stays.
+//! [`grant_sql::REVOKE_GRANT`] for why the redundancy stays.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -38,7 +38,7 @@ use afd_db::Db;
 use afd_wire::grant::status;
 use sqlx::Row as _;
 
-use crate::sql;
+use crate::grant_sql;
 use crate::{Result, error};
 
 /// Statement names, for the context a query failure carries.
@@ -138,7 +138,7 @@ impl IntegrationGrants {
             return Ok(None);
         }
 
-        let rows = sqlx::query(sql::SELECT_FLEET_GRANTS)
+        let rows = sqlx::query(grant_sql::SELECT_FLEET_GRANTS)
             .bind(fleet.as_str())
             .fetch_all(&mut *connection)
             .await
@@ -175,7 +175,7 @@ impl IntegrationGrants {
             return Ok(Revocation::FleetAbsent);
         }
 
-        let revoked = sqlx::query(sql::REVOKE_GRANT)
+        let revoked = sqlx::query(grant_sql::REVOKE_GRANT)
             .bind(status::REVOKED)
             .bind(now.as_millis())
             .bind(grant.as_str())
@@ -208,7 +208,7 @@ async fn holds(
     workspace: &Uuid7,
     fleet: &Uuid7,
 ) -> Result<bool> {
-    sqlx::query(sql::SELECT_FLEET_IN_WORKSPACE)
+    sqlx::query(grant_sql::SELECT_FLEET_IN_WORKSPACE)
         .bind(fleet.as_str())
         .bind(workspace.as_str())
         .fetch_optional(connection)

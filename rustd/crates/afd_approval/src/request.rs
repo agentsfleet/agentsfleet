@@ -34,7 +34,7 @@ use afd_wire::grant::status;
 use sqlx::{Acquire as _, Row as _};
 
 use crate::grant::IntegrationGrants;
-use crate::{Result, error, sql};
+use crate::{Result, error, grant_sql};
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_REQUEST: &str = "grant.request";
@@ -187,7 +187,7 @@ impl IntegrationGrants {
     /// # Preconditions
     /// `fleet` MUST belong to `workspace`. Unlike this crate's two
     /// tenant-facing grant verbs, the statement does not re-derive that —
-    /// `sql::SELECT_FLEET_IN_WORKSPACE` says why — so a caller holding an
+    /// `grant_sql::SELECT_FLEET_IN_WORKSPACE` says why — so a caller holding an
     /// untrusted pair must check it before asking. Today's two callers each
     /// take both identifiers from a single trusted row, so no endpoint can
     /// route a caller-supplied pair here; the card would otherwise land in a
@@ -214,7 +214,7 @@ impl IntegrationGrants {
             .begin()
             .await
             .map_err(error::query(CONTEXT_REQUEST))?;
-        sqlx::query(sql::ENSURE_GRANT)
+        sqlx::query(grant_sql::ENSURE_GRANT)
             .bind(grant_id.as_str())
             .bind(fleet.as_str())
             .bind(wanted.service)
@@ -224,7 +224,7 @@ impl IntegrationGrants {
             .execute(&mut *transaction)
             .await
             .map_err(error::query(CONTEXT_REQUEST))?;
-        let row = sqlx::query(sql::REQUEST_GRANT)
+        let row = sqlx::query(grant_sql::REQUEST_GRANT)
             .bind(fleet.as_str())
             .bind(wanted.service)
             .bind(status::PENDING)
@@ -321,6 +321,8 @@ fn report(outcome: Requested, fleet: &Uuid7, wanted: &Wanted<'_>) {
         Requested::Approved | Requested::Denied => (),
     }
 }
+
+mod install;
 
 #[cfg(test)]
 mod tests;

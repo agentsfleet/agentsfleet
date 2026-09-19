@@ -56,6 +56,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
+| `rustd/crates/afd_approval/src/request/install.rs` | NEW | The install verb: an approved grant, no card. Its own file — `request.rs` sat at 326 of the 350 cap. |
+| `rustd/crates/afd_approval/src/grant_sql.rs` | NEW | The grant half of `sql.rs`, split out to make room, mirroring `afd_gate`'s `grant_sql`/`sql` pair. |
+| `rustd/crates/afd_approval/src/{sql,grant,lib}.rs` | EDIT | `sql.rs` loses the grant statements to `grant_sql.rs`; `grant.rs` reads them there; `lib.rs` declares the module. |
+| `rustd/crates/afd_fleet_lifecycle/src/install/grants.rs` | EDIT | Calls `grant_at_install`, not `request`; its note stops promising a card. |
 | `rustd/crates/afd_approval/src/request.rs` | EDIT | A declared credential lands an approved grant instead of a pending one and a card. |
 | `rustd/crates/afd_approval/src/inbox.rs` | EDIT | No install-time `integration_grant` card is raised, so none reaches the inbox. |
 | `rustd/crates/afd_gate/src/gate/first.rs` | EDIT | Delete `park_write_kind` and `writes_to_a_repository`; the rules walk becomes the only first-encounter path. |
@@ -154,6 +158,12 @@ Mint (internal, runner ↔ broker)
 
 RETIRED — gate_kind "repository_write" is never written again.
   Existing rows stay readable; the inbox renders them as history.
+
+Repair branch identity  (owner decision, Sep 19, 2026 — see Discovery)
+  was := agentsfleet-repair/base64url(gate id)   the gate §2 deletes
+  now := agentsfleet-repair/base64url(event id)  v7, afd_admission::admit
+  The grant cannot name it: one row per fleet lifetime collides every event
+  onto one branch. Encoding, width and the egress lock are unchanged.
 ```
 
 ## Failure Modes
@@ -299,6 +309,11 @@ A MOVED row is never rendered ✅. The criterion has not been met; it has change
   > Indy (2026-09-19): "But instead how about do the integration_grant on a repo level as well, once Priya has connected their github repo, and the PR #42 is triggered is part of the repo list, the fleet repsonsible for it must start? meaning an auto approved grant with option to deny, or the regular what revoke/approve pattern we have." — context: the shape of the fix.
   > Indy (2026-09-19): "I want an auto approve, and i dont want a repository_grants table, as this is an integration_grant ..." — context: overrides the agent's recommendation to ask once at bind time and to add a table.
   > Indy (2026-09-19): "budet is the brake, i dont this we must cap on 32. the cap is already there. and the if priya revokes is a gate too (manual)" — context: retires `REPOSITORY_WRITE_SPEND_CEILING`; `budget.daily_dollars` and `grant revoke` are the brakes.
+- **Owner decision during implementation (Sep 19, 2026)** — `repair::branch_for`
+  names the branch after the APPROVED gate and `policy::egress::write` locks that
+  string as the only ref a run may create, so §2 leaves the write lease refused at
+  `Misconfigured::NoRepairBranch`. Offered four sources; Indy selected **the event**,
+  rejecting the grant on evidence that its unique constraint collides every event.
 - **Agent recommendation not taken, recorded for the record** — the agent recommended asking once at bind time rather than auto-approving, on the grounds that the declared repository list is editable under the same scope that wakes the fleet, so auto-approval trusts a list no person confirmed. The owner weighed it and chose auto-approve. The residual risk is bounded by the App installation, `budget.daily_dollars` and `grant revoke`, and is stated in Product Clarity item 3.
 - **Metrics review** — pending; no analytics/funnel playbook update is expected, because the retired card has no funnel defined over it. Confirm at `/review`.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test` per Section and at the boundary, `/orly-write-integration-test` at the boundary, gstack `/review`, `orly-babysit-prs` after each push.
