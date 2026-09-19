@@ -34,6 +34,8 @@ mod fleet_memories_input;
 mod fleet_messages;
 #[path = "fleet_messages_input.rs"]
 mod fleet_messages_input;
+#[path = "fleet_messages_steer.rs"]
+mod fleet_messages_steer;
 #[path = "fleet_streams.rs"]
 mod fleet_streams;
 #[path = "integration_auth_sessions.rs"]
