@@ -183,7 +183,33 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 # whose remainder is untaken-branch bodies and Err paths, one live-datastore
 # fixture apiece. The 100% contract in the header remains authoritative and
 # unchanged; this line is the ratchet, not the goal.
-RUSTD_COVERAGE_FLOOR ?= 97
+#
+# Raised 97 -> 97.5 on Indy's call (2026-09-19), and it is the first number in
+# this list that is not an integer. The lane reads it through
+# `cargo llvm-cov report --fail-under-lines`, which parses a float and decides
+# the verdict by exit code — the shell below only formats the sentence — so the
+# half point is enforced rather than rounded. Verified both ways before the
+# move: 97.5 exits 0 against this measurement and 99.9 exits 1.
+#
+# The measurement is 97.6994% — 41,362 of 42,336 lines, 974 missed — which is
+# what makes this a ratchet onto ground already held rather than a second
+# attempt at the 98 the paragraph above records failing twice. The margin is
+# deliberate and small: 0.1994%, about 84 lines. A floor set at the
+# measurement goes red on the next commit that touches an uncovered path, and a
+# floor nobody can commit against is a floor someone switches off.
+#
+# What it concedes is the same thing 97 conceded, now with the remainder named.
+# The gap to 98 is 128 lines, and the cheap seams really are spent: what is
+# left is dominated by FAIL-OPEN arms — the branch a gate takes when the
+# datastore will not answer, which by construction needs a datastore that will
+# not answer — and by defensive arms over cases the types already exclude.
+# `lease/coverage.rs` is the shape: all nine of its missed lines are
+# `admit_unreadable`, reached only by breaking a read mid-question. Those are
+# reachable, but not from the shared lane — a test that breaks the database
+# breaks every suite running beside it. `Fixtures::create_isolated` is the seam
+# that would do it honestly, on a private migrated database, and it is unused.
+# 98 remains available behind that work; it is a milestone, not a knob.
+RUSTD_COVERAGE_FLOOR ?= 97.5
 
 # Test scaffolding leaves the DENOMINATOR, on Indy's call (2026-09-02).
 #
