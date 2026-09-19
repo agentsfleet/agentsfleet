@@ -70,17 +70,21 @@ const STOPPED_STATES: ReadonlyArray<string> = [
   AGENTSFLEET_STATUS.stopped,
 ];
 
-// An illegal lifecycle transition must be REFUSED. Verified live against
-// api-dev (2026-06-19), the server signals the refusal by HTTP status, not
-// a UZ-AGT-* error code: delete-before-kill and stop-already-stopped →
-// HTTP_409 Conflict; resume-of-killed → HTTP_404 Not Found (the killed
-// fleet is no longer addressable). We accept those signals plus the
-// documented UZ-AGT-010 / human stems so the assertion tracks the real
-// contract and would still pass if the API later attaches the UZ code.
-// (Observation for follow-up: these refusals carry no UZ-AGT-* code in the
-// body — a minor error-registry gap, surfaced in the PR session notes.)
+// An illegal lifecycle transition must be REFUSED, and the daemon answers
+// TWO codes for that one idea. `edit.rs`'s `explain` re-reads the row a
+// zero-row UPDATE left behind: a killed row is a tombstone and earns
+// UZ-AGT-009, and everything else the status machine turned down earns
+// UZ-AGT-010. So resume-of-killed and kill-of-killed are 009, while
+// delete-before-kill and stop-already-stopped are 010.
+//
+// The sentence is matched as well as the code because it is the half a
+// person reads, and it is the half that moved: the CLI now renders the
+// daemon's `user_message` ("We couldn't find that Fleet") where it used to
+// print the log-side `detail` ("fleet not found"). A regex that knew only
+// the old wording went red on a rendering change and named nothing about
+// the product.
 const TRANSITION_REJECTION =
-  /UZ-AGT-010|transition not allowed|already.*terminal|must be killed|HTTP_409|HTTP_404|Conflict|Not Found/i;
+  /UZ-AGT-009|UZ-AGT-010|transition not allowed|already.*terminal|must be killed|couldn't find that Fleet|HTTP_409|HTTP_404|Conflict|Not Found/i;
 const INSTALL_TIMEOUT_MS = 90_000;
 const SETUP_TIMEOUT_MS = 120_000;
 
@@ -161,9 +165,9 @@ if (!isLive) {
       });
 
       it("delete before kill is refused (must be killed first)", async () => {
-        // Server contract (delete.zig#not_killed → UZ-AGT-010): a live
-        // fleet cannot be hard-deleted. Proves the guard rather than
-        // assuming kill-then-delete is the only path.
+        // `purge.rs` refuses a fleet nobody killed first, and the daemon
+        // answers UZ-AGT-010. Proves the guard rather than assuming
+        // kill-then-delete is the only path.
         const result = await runWithEnv(["delete", fleetId, "--json"]);
         assert.notEqual(result.code, 0, `expected non-zero deleting a live fleet; stdout=${result.stdout}`);
         assert.match(result.stderr + result.stdout, TRANSITION_REJECTION);
@@ -202,11 +206,11 @@ if (!isLive) {
         await expectStatus(env, fleetId, TERMINAL_STATUSES);
       }, SETUP_TIMEOUT_MS);
 
-      it("resume <killed-id> exits non-zero with UZ-AGT-010", async () => {
+      it("resume <killed-id> is refused — a killed row is a tombstone", async () => {
         const result = await runWithEnv(["resume", fleetId, "--json"]);
         assert.notEqual(result.code, 0, `expected non-zero resuming a killed fleet; stdout=${result.stdout}`);
         assert.match(result.stderr + result.stdout, TRANSITION_REJECTION,
-          `expected ALREADY_TERMINAL stem; stdout=${result.stdout} stderr=${result.stderr}`);
+          `expected a tombstone or already-terminal stem; stdout=${result.stdout} stderr=${result.stderr}`);
       });
 
       it("status stays terminal after the rejected resume", async () => {

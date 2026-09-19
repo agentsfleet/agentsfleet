@@ -236,11 +236,18 @@ if (!isLive) {
       it("kill is idempotent on a terminal fleet", async () => {
         const result = await runWithEnv(["kill", fleetId, "--json"]);
         // Either succeed silently, surface an already-terminal stem, or report
-        // not-found after the terminal transition hides the fleet from writes.
+        // the tombstone: `edit.rs`'s `explain` answers UZ-AGT-009 for a killed
+        // row, so a second kill reads as not-found rather than as a refused
+        // transition. The sentence alternatives track what a person SEES — the
+        // CLI renders the daemon's `user_message`, not its log-side `detail`.
         // What's not acceptable is re-emitting `status: active` later. The
         // status assertion below catches that.
         if (result.code !== 0) {
-          assert.match(result.stderr + result.stdout, /UZ-AGT-010|already.*terminal|killed|terminated|HTTP_404|not found/i);
+          assert.match(
+            result.stderr + result.stdout,
+            /UZ-AGT-009|UZ-AGT-010|already.*terminal|killed|terminated|couldn't find that Fleet|HTTP_404|not found/i,
+            `a non-zero kill must name the refusal: ${result.stdout}${result.stderr}`,
+          );
         }
         await expectStatus(env, fleetId, ["killed", "errored", "terminated"]);
       });
