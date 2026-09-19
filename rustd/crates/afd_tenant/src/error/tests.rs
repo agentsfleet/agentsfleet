@@ -48,7 +48,7 @@ fn data_only_kinds() -> Vec<(&'static str, Error)> {
         ),
         (
             "cli subject missing",
-            super::cli_credential_unknown_subject(),
+            super::unknown_subject(),
         ),
         ("workspace name invalid", super::workspace_name_invalid()),
         ("workspace name long", super::workspace_name_too_long()),

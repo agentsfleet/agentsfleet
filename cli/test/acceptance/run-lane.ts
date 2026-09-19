@@ -44,6 +44,7 @@ export const DETERMINISTIC_ACCEPTANCE_FILES: ReadonlyArray<string> = [
   "test/acceptance/options-metavar.spec.ts",
   "test/acceptance/retry-policy.spec.ts",
   "test/acceptance/streaming-follow.spec.ts",
+  "test/acceptance/whoami.spec.ts",
 ];
 
 export const LIVE_ACCEPTANCE_FILES: ReadonlyArray<string> = [

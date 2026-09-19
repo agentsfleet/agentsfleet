@@ -109,8 +109,12 @@ pub const DETAIL_CLI_CREDENTIAL_MACHINE_NAME: &str =
 /// would confirm another person's credential to whoever guessed its identifier.
 pub const DETAIL_CLI_CREDENTIAL_NOT_FOUND: &str = "Command-line credential not found";
 
-/// Its refusal for a proven subject with no `core.users` row behind it.
-pub const DETAIL_CLI_CREDENTIAL_UNKNOWN_SUBJECT: &str = "Authenticated subject has no user record";
+/// The refusal any verb answers a proven subject with no `core.users` row with.
+///
+/// Family-neutral on purpose: the credential mint, the credential revoke and the
+/// caller-identity read all reach it, because "this credential is good and names
+/// nobody here" is one fact whoever asked.
+pub const DETAIL_UNKNOWN_SUBJECT: &str = "Authenticated subject has no user record";
 
 /// The create verb's refusal for a name carrying a character it will not store.
 ///

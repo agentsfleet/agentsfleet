@@ -56,40 +56,43 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/crates/afd_http/src/route/tenant.rs` | EDIT | Adds the `CurrentUser` variant, its `ALL` entry, its verb and its `RouteMeta` — the row the router mounts from |
-| `rustd/crates/afd_http/src/openapi.rs` | EDIT | Adds the `Users` tag the new operation is filed under, one tag per resource |
-| `rustd/crates/afd_http/src/services/tenant.rs` | EDIT | Declares the `CallerProfiles` seam and implements it for the new store |
-| `rustd/crates/afd_http/src/services/tenant_surface.rs` | EDIT | Adds the associated type and accessor the handler reaches the store through |
-| `rustd/crates/afd_http/src/services/mod.rs` | EDIT | Re-exports the new trait beside its siblings |
-| `rustd/crates/afd_wire/src/identity.rs` | CREATE | The response shape, separate from `tenant.rs` because that module is the api-key and credential payloads |
 | `rustd/crates/afd_tenant/src/identity.rs` | CREATE | The store: one subject, one profile, one read |
 | `rustd/crates/afd_tenant/src/sql/identity.rs` | CREATE | The `core.users` × `core.tenants` join the profile comes from |
-| `rustd/crates/afd_wire/src/lib.rs`, `rustd/crates/afd_tenant/src/lib.rs`, `rustd/crates/afd_tenant/src/sql/mod.rs` | EDIT | Declare the three new modules |
-| `rustd/crates/afd_tenant/src/error/{kind,detail,mod,raise}.rs` | EDIT | Renames `CliCredentialUnknownSubject` and its detail constant and constructor to the family-neutral `UnknownSubject` — one fact now read by two families; the wire sentence and code do not change |
-| `rustd/crates/afd_api_tenant/src/handler/tenant/identity.rs` | CREATE | The handler: extractor in, one service call, render |
-| `rustd/crates/afd_api_tenant/src/handler/tenant/mod.rs`, `.../afd_api_tenant/src/lib.rs`, `.../afd_api_tenant/src/openapi.rs` | EDIT | Declare and re-export the handler, return it from `tenant_handler_for`, and add it to this plane's document roster |
-| `rustd/crates/agentsfleetd/src/plane/services.rs` | EDIT | Constructs the store and answers the new accessor |
-| `rustd/crates/afd_api/tests/harness/services.rs` | EDIT | The router suite's stub answers the new accessor |
-| `rustd/crates/afd_tenant/tests/integration_identity.rs` | CREATE | The read against live Postgres, including the unknown-subject refusal |
-| `rustd/crates/afd_api/tests/router_identity.rs` | CREATE | The route is mounted, answers its declared verb, and refuses every credential class the policy excludes |
+| `rustd/crates/afd_wire/src/identity.rs` | CREATE | The response shape and the credential-class wire words |
+| `rustd/crates/afd_http/src/services/identity.rs` | CREATE | The `CallerProfiles` seam the handler reaches the store through |
+| `rustd/crates/afd_api_tenant/src/handler/tenant/identity.rs` | CREATE | The handler: extractor in, one service call, render — plus its class-rendering unit tests |
+| `rustd/crates/afd_http/src/route/tenant.rs` | EDIT | The `CurrentUser` variant, its `ALL` entry, its verb and its `RouteMeta` |
+| `rustd/crates/afd_http/src/openapi.rs` | EDIT | The `Users` tag the operation is filed under, one tag per resource |
+| `rustd/crates/afd_http/src/services/{mod,tenant_surface}.rs` | EDIT | Declare and re-export the seam; add the `Profiles` associated type and accessor |
+| `rustd/crates/afd_wire/src/lib.rs`, `.../afd_tenant/src/{lib.rs,sql/mod.rs}` | EDIT | Declare the three new modules |
+| `rustd/crates/afd_auth/src/principal.rs` | EDIT | `Person::scopes()` — the accessor the family was missing, which `Principal::scopes` now reads through |
+| `rustd/crates/afd_tenant/src/error/{kind,detail,mod,raise,tests}.rs` | EDIT | Rename `CliCredentialUnknownSubject` and its detail constant and constructor to the family-neutral `UnknownSubject`; the wire code and sentence do not change |
+| `rustd/crates/afd_tenant/src/cli_credential/mod.rs` | EDIT | Follows the renamed constructor at its one call site |
+| `rustd/crates/afd_api_tenant/src/{lib.rs,openapi.rs}`, `.../handler/tenant/mod.rs` | EDIT | Declare and re-export the handler, return it from `tenant_handler_for`, add it to the document roster |
+| `rustd/crates/agentsfleetd/src/plane.rs`, `.../src/plane/services.rs` | EDIT | Construct the store and answer the new accessor |
+| `rustd/crates/afd_api/tests/harness/{mod,fleet,instance,services}.rs` | EDIT | The router suite's own plane answers the new accessor, at each construction site |
+| `rustd/crates/afd_api/tests/{route_inventory,route_meta_total,router}.rs` | EDIT | The three route rosters that enumerate the table by hand: the inventory, the pinned count (a `POST_PORT_ADDITIONS` term), and the mount matcher |
+| `rustd/crates/afd_api/tests/tenant_current_user.rs` | CREATE | The route is mounted, answers GET only, admits every person class, needs no capability, refuses a runner and an anonymous caller |
+| `rustd/crates/afd_tenant/tests/integration_identity.rs` | CREATE | The read against live Postgres: the join, the NULL display name, the unknown-subject refusal, and that nothing is written |
+| `rustd/crates/afd_api/tests/tenant_plane_suite.rs`, `.../afd_tenant/tests/tenant_suite.rs` | EDIT | Register the two new suites in their binaries |
 | `public/openapi.json` | EDIT | Regenerated from the build; never hand-edited |
-| `cli/src/lib/api-paths.ts` | EDIT | Adds `USERS_ME_PATH`, the CLI's one spelling of the route |
-| `cli/src/lib/me-ping.ts` | EDIT | The post-login probe becomes the identity read it was always meant to be, and stops needing a billing capability |
-| `cli/src/commands/whoami.ts` | CREATE | The command Effect: read, render human or JSON, refuse when nothing is signed in |
-| `cli/src/commands/login.ts` | EDIT | The success line names the person, from the identity the probe already fetched |
-| `cli/src/commands/auth.ts` | EDIT | The reachability probe moves to the scope-free route, so a person without billing capability is no longer reported as rejected |
-| `cli/src/program/{cli-tree,cli-tree-types,handlers-bind}.ts` | EDIT | Registers `agentsfleet whoami`, adds its handler slot, and binds the command Effect through the dispatcher |
-| `cli/test/whoami.unit.test.ts` | CREATE | The command's behaviour, failure and rendering cases |
-| `cli/test/me-ping.unit.test.ts` | CREATE | The probe's decode boundary and its failure mapping |
-| `cli/test/acceptance/whoami.spec.ts` | CREATE | The end-to-end walk: a real subprocess, a stubbed server, both output modes |
+| `cli/src/lib/api-paths.ts` | EDIT | `USERS_ME_PATH`, the CLI's one spelling of the route |
+| `cli/src/lib/me-ping.ts` | EDIT | The probe becomes the identity read, and stops needing a billing capability |
+| `cli/src/commands/whoami.ts` | CREATE | The command Effect: read, render human or JSON, refuse when nothing loads |
+| `cli/src/commands/login.ts` | EDIT | The success line names the person; the rollback owns the sentence that is true only there |
+| `cli/src/commands/auth.ts` | EDIT | The reachability probe moves to the scope-free route |
+| `cli/src/program/{cli-tree,cli-tree-types,handlers-bind}.ts` | EDIT | Register `agentsfleet whoami`, add its handler slot, bind the Effect through the dispatcher |
+| `cli/test/{whoami,me-ping}.unit.test.ts` | CREATE / EDIT | The command's render, refusal and failure cases; the probe's decode boundary and failure mapping |
+| `cli/test/acceptance/whoami.spec.ts` | CREATE | The subprocess walk: help, the logged-out and stale-credential refusals, both output streams |
+| `cli/test/acceptance/run-lane.ts`, `.../fixtures/command-matrix.ts` | EDIT | Register the deterministic spec, and add the `whoami --json` row the live read-only sweep picks up |
+| `cli/test/{command-matrix-parity.unit.test.ts,helpers-cli-tree.ts,json-contract.test.ts}` | EDIT | The three stub handler tables that must answer every registered command |
 
 ## Applicable Rules
 
 - **`docs/greptile-learnings/RULES.md`** — **UFS** (one spelling per fact: the route template, the credential-class wire words and the refusal sentence each exist once, and the CLI mirrors the path by constant rather than by literal) · **NDC** (no field, column or trait method written for a reader this diff does not add — `last_used_at` and a credential list stay absent) · **NLR** (the `CliCredentialUnknownSubject` rename is the touch-it-fix-it on a name this diff proves is family-neutral) · **NSQ** (the subject is a bound parameter, never interpolated) · **ORP** (the orphan sweep on every renamed symbol) · **CTM** is NOT engaged — nothing here compares a secret.
 - **`docs/REST_API_DESIGN_GUIDELINES.md`** — §1 Uniform Resource Locator design and field naming, §4 response shape, §6 document regeneration, §7 route registration, §8 handler signature. The endpoint checklist at the head of that file is run at CHORE(close).
-- **`docs/RUST_ERROR_STANDARD.md`** + `dispatch/write_rust.md` — every new fallible signature in `afd_tenant` and `afd_api_tenant`; the crate's `ErrorKind` is private and its `Error` is macro-generated, so the rename lands in `kind.rs` and its maps, never in a hand-written error type.
-- **`dispatch/write_ts_adhere_bun.md`** — the TypeScript File Shape Decision at PLAN for `cli/src/commands/whoami.ts`, `const` and import discipline, and the Output service as the only rendering path (no `console.log` in a handler).
-- **`docs/LOGGING_STANDARD.md`** — the handler's refusal event names, and the rule that an identity read logs no email.
+- **`docs/RUST_ERROR_STANDARD.md`** + `dispatch/write_rust.md` — every new fallible signature in `afd_tenant` and `afd_api_tenant`; the crate's `ErrorKind` is private and its `Error` macro-generated, so the rename lands in `kind.rs` and its maps, never in a hand-written type.
+- **`dispatch/write_ts_adhere_bun.md`** + **`docs/LOGGING_STANDARD.md`** — the TypeScript File Shape Decision at PLAN for `whoami.ts`, `const` and import discipline, the Output service as the only rendering path; and the handler's refusal event names, with the rule that an identity read logs no email.
 - **`docs/DOCUMENTATION_RULES.md`** + `docs/CHANGELOG_VOICE.md` — the `~/Projects/docs` pages and the changelog `<Update>` this surface change requires.
 - `docs/SCHEMA_CONVENTIONS.md` does NOT apply: no schema file is touched. The read uses `core.users`, `core.tenants` and the `uq_users_oidc_subject` index exactly as they already exist.
 
@@ -99,7 +102,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----------------------|
 | UFS GATE | yes — a route template, three credential-class words and one path spelling cross a language boundary | The template lives once in `route/tenant.rs`; the CLI names it once in `api-paths.ts`; the class words are rendered from `PersonCredential` by one match and asserted against that match in the router suite |
 | LENGTH GATE (≤350 file / ≤50 function / ≤70) | yes — `route/tenant.rs`, `handler/tenant/mod.rs` and `services/tenant.rs` all grow | Each new concern is its own file (`identity.rs` in three crates); the three edited files gain a variant, a re-export and one trait respectively, and each is measured against the cap before commit |
-| MILESTONE-ID GATE | yes — new files under `rustd/` and `cli/src/` | Each new module's header carries `M200_001` where the repository's convention places it |
+| MILESTONE-ID GATE | yes — new files under `rustd/` and `cli/src/` | No module header, comment or test name carries `M200_001`, a `§x.y` reference or a dimension token: the gate bans spec lineage in source, so each new module's header states what the code does |
 | LOGGING GATE | yes — the handler logs refusals | Scoped event names beside the existing `cli_credential_*` events; no email, no subject, no credential in any field |
 | ERROR REGISTRY | yes — a refusal reaches a caller | No new code is minted: the unknown-subject refusal reuses `AUTH_FORBIDDEN` with the sentence already registered, and the rename touches only internal spellings |
 | SCHEMA GUARD · ZIG GATE · UI GATE · DESIGN TOKEN GATE | no — no `schema/*.sql`, `*.zig` or `ui/packages/*` file is touched; the read uses `core.users`, `core.tenants` and `uq_users_oidc_subject` exactly as they exist | N/A |
@@ -111,7 +114,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **Reference (API):** `rustd/crates/afd_api_tenant/src/handler/tenant/cli_credential.rs` — same plane, same subject resolution, same person-class extractor discipline, same `utoipa::path` block shape. The divergence is the extractor: this route takes `PersonIdentity` (`AnyClass`) where the mint takes `FreshSession`, because asking who you are is the one thing every person credential may do.
 - **Reference (route row and statement):** `TenantRoute::CliCredentials` in `rustd/crates/afd_http/src/route/tenant.rs` already carries `Scopes::Always(NONE)` and argues in its doc comment why no capability scope can express a principal-mode rule; `SELECT_USER_IDENTITY_BY_SUBJECT` in `rustd/crates/afd_tenant/src/sql/cli_credential.rs` is the narrow subject lookup the new statement extends with a tenant join and two profile columns — a second statement rather than a widened first one, because the mint path must not pay a join for columns it never reads.
-- **Reference (CLI):** the 7 Pillars, as `cli/src/commands/auth.ts` already applies them. This spec aligns with **command → handler → errors split** (`cli-tree.ts` registers, `commands/whoami.ts` is the pure Effect, `errors/` carries the refusal), **handler purity** (no `console.log`, no `process.exit` — the Output service renders and the dispatcher maps the exit code), **output as a service** (one Effect, two renderings chosen by `CliConfig.jsonMode`), **structured errors with a suggestion field** (`AuthError` carries `suggestion` and `code`), **the 3-tier pyramid** (unit / in-process integration / subprocess acceptance) and **auto-JSON when piped** (inherited from the bind site's `stdoutIsTtyFromCtx`). No pillar is diverged from.
+- **Reference (CLI):** the 7 Pillars, as `cli/src/commands/auth.ts` already applies them — command → handler → errors split, handler purity (the Output service renders, the dispatcher maps the exit code), output as a service (one Effect, two renderings chosen by `jsonMode`), structured errors carrying `suggestion` and `code`, the 3-tier pyramid, and auto-JSON when piped from the bind site's `stdoutIsTtyFromCtx`. No pillar is diverged from.
 - **External convention:** GitHub's `GET /user` and Stripe's `GET /v1/account` are the shape this mirrors — the caller's own record under a plural collection with a `me` alias, which is also what `/v1/tenants/me/*` already does here. The stale `GET /v1/me` spelling recorded in `cli/src/lib/me-ping.ts` is NOT adopted: it is neither a plural noun nor a resource, and §1 of the Representational State Transfer (REST) guidelines forbids it.
 
 ## Sections (implementation slices)
@@ -161,8 +164,8 @@ The documentation half, on its own branch in `~/Projects/docs`. A new endpoint a
 
 ```
 GET /v1/users/me
-  Guard:  Bearer — a session token, an agt_t tenant api-key, or an afc_ command-line
-          credential. A runner token (agt_r) is refused. No capability scope required.
+  Guard:  Bearer — a session token, an agt_t key, or an afc_ credential; a runner
+          token (agt_r) is refused. No capability scope required.
   200 →  { "user_id": "<uuidv7>", "email": "person@example.com",
            "display_name": "Ada Lovelace",        // omitted when the column is NULL
            "tenant_id": "<uuidv7>", "tenant_name": "Ada's Workshop",
@@ -180,7 +183,6 @@ afd_tenant::identity
 
 afd_http::services::CallerProfiles      // new member on TenantSurface: profiles()
   profile(&self, subject: &str) -> impl Future<Output = afd_tenant::Result<Profile>> + Send
-
 cli/src/commands/whoami.ts
   whoamiEffect: Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output>
 cli/src/lib/me-ping.ts
@@ -192,8 +194,7 @@ cli/src/lib/me-ping.ts
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
 | Unknown subject | A live credential whose identity-provider subject has no `core.users` row — an erased account, or a credential minted against another deployment's directory | 403 `UZ-AUTH-001`, detail "Authenticated subject has no user record". Nothing is inserted. The CLI prints the sentence and the re-authentication suggestion, and exits non-zero |
-| No credential at all | `agentsfleet whoami` on a machine that never logged in, or after `logout` | The command refuses locally, names `agentsfleet login`, and makes NO request — the same shape `auth status` uses today |
-| Runner token presented | An `agt_r` credential on a person route | Refused by the plane rule before the handler runs; the caller sees the guard's own code, not an identity error |
+| No credential, or one that no longer loads | `whoami` on a machine that never logged in, after `logout`, or holding a stale token the credential service refuses | Refused locally, naming `agentsfleet login`, with NO request sent. An `agt_r` runner token is a separate case: the plane rule refuses it in front of the handler, so the caller sees the guard's code rather than an identity error |
 | Malformed response body | A proxy or a version skew answers 200 with something that is not a profile | The CLI's decode boundary fails typed, names the field that was missing, and renders nothing partial |
 | Datastore unreachable | Postgres down or the pool exhausted during the read | 503 with the standard envelope; the CLI reports unreachable rather than unauthenticated, so an operator does not delete a working credential over an outage. A principal whose claim resolved to no capabilities is NOT a failure: the route needs none and answers 200 with `scopes: []` |
 | Identity read fails after a successful mint | The post-login probe cannot reach the route, or is refused | The credential file is cleared before the error propagates — the behaviour `rollbackOnMeFailure` already guarantees, preserved verbatim |
@@ -205,8 +206,8 @@ cli/src/lib/me-ping.ts
 2. **The credential class comes from the proven principal, never from the request** — enforced by a total match over `PersonCredential` inside the handler; a new credential class does not compile until the match names it.
 3. **A proven subject is never provisioned on the read path, and resolves to at most one user** — enforced by the statement: the identity module issues one `SELECT` and holds no writer (rubric row R6), the integration suite asserts the row count is unchanged after a refused read, and `uq_users_oidc_subject` makes a second match unrepresentable.
 4. **No identity material reaches a log line** — enforced by the handler's hoisted log fields, which carry an event name and a request identifier and no profile value, and by a unit case that captures the emitted fields and asserts the set.
-5. **One spelling of the route** — enforced by `cli/src/lib/api-paths.ts` holding the only CLI literal and every CLI call site importing it; the existing const-name audit (`cli/scripts/audit-const-names.mjs`) runs over the new file.
-6. **The published document is the build's output** — enforced by `test_openapi_build_is_the_source`, which fails on a hand-edited `public/openapi.json`.
+5. **One spelling of the route** — `cli/src/lib/api-paths.ts` holds the only CLI literal and every call site imports it (rubric row R7); `cli/scripts/audit-const-names.mjs` runs over the new file.
+6. **The published document is the build's output** — `test_openapi_build_is_the_source` fails on a hand-edited `public/openapi.json`.
 
 ## Metrics & Observability
 
@@ -287,10 +288,9 @@ Idempotency and replay rows are N/A: the endpoint is a `GET` with no side effect
 
 ## Out of Scope
 
-- **A credential list** — "which terminals hold a live credential for me" is a real question and a different endpoint (`GET /v1/cli-credentials`, documented-and-unserved since the port). Adding it here would put a second resource behind one command.
-- **Dashboard identity, and `auth status` growing identity fields** — the web app resolves the signed-in person from the identity provider directly and needs nothing here; the two commands keep separate jobs, which is where the credential came from and whether the target answers, versus who the credential belongs to.
-- **A `--tenant` or account switcher** — one account per credential today; switching is a login, and a selector implies multi-tenant membership that `core.memberships` does not yet serve.
-- **Any alias spelling** — no `auth whoami`, no `/v1/me` compatibility route. The repository's no-compatibility-aliases rule holds, and nothing shipped under either spelling.
+- **A credential list** — "which terminals hold a live credential for me" is a real question and a different endpoint (`GET /v1/cli-credentials`, documented-and-unserved since the port); adding it here would put a second resource behind one command.
+- **Dashboard identity, and `auth status` growing identity fields** — the web app resolves the signed-in person from the identity provider and needs nothing here; the two commands keep separate jobs, which is where the credential came from and whether the target answers, versus whose it is.
+- **A `--tenant` switcher, and any alias spelling** — one account per credential today, so switching is a login and a selector implies membership `core.memberships` does not yet serve; and no `auth whoami` or `/v1/me` compatibility route, because the no-aliases rule holds and nothing shipped under either spelling.
 
 ---
 
@@ -298,11 +298,11 @@ Idempotency and replay rows are N/A: the endpoint is a `GET` with no side effect
 
 1. **Successful user moment** — An operator comes back to a terminal they left open on Friday, types `agentsfleet whoami`, and reads their own email and tenant name back. They stop wondering whether the next command will run against the right account.
 2. **Preserved user behaviour** — `agentsfleet login`, `logout` and `auth status` all keep their current exit codes, JSON shapes and human output, except that `login`'s success line gains a name and `auth status` stops falsely reporting rejection for a person who holds no billing capability. Every existing script that parses `auth status --json` keeps working: no field is removed or renamed.
-3. **Optimal-way check** — This is the direct route. The unconstrained-optimal shape would have the credential itself carry the identity, so the terminal could answer offline; that is rejected on purpose, because a readable credential is a credential whose claims drift from the record behind it, and the repository's whole authentication design resolves capability server-side. Asking the server is the correct cost.
+3. **Optimal-way check** — The direct route. The unconstrained-optimal shape would have the credential carry the identity so the terminal could answer offline; rejected on purpose, because a readable credential's claims drift from the record behind it and this repository resolves capability server-side. Asking the server is the correct cost.
 4. **Rebuild-vs-iterate** — Iterate. Nothing legacy to unwind: the endpoint was specified once, never built, and the client already carries the seam that was waiting for it. Unifying subject-to-user resolution across its three current sites is the only refactor available, and it does not block this moment.
 5. **What we build** — One `GET` endpoint, one domain read, one CLI command, one line added to `login`, one probe path corrected, and the three published pages.
 6. **What we do NOT build** — A credential list (a second resource behind one verb), a tenant switcher (implies membership the schema does not yet serve), an offline identity cache (drifts from the record), and any alias spelling of the command or route (the no-aliases rule).
-7. **Fit with existing features** — It compounds with `login`, `logout` and `auth status`, and it is what `doctor` should eventually cite when it reports connectivity. The one feature it must not destabilise is the login flow itself: the post-login probe is load-bearing — it is what deletes a credential that does not authenticate — so the rollback path is preserved verbatim and tested as a regression.
+7. **Fit with existing features** — Compounds with `login`, `logout` and `auth status`, and is what `doctor` should eventually cite for connectivity. The one thing it must not destabilise is the login flow: the post-login probe is what deletes a credential that does not authenticate, so the rollback is preserved and tested as a regression.
 8. **Surface order** — CLI-first, the repository default. The dashboard has no gap here: it already knows who is signed in.
 9. **Dashboard restraint** — N/A — no user interface surface changes. Nothing is added to the dashboard, so there is no control to hide.
 10. **Confused-user next step** — `agentsfleet whoami` IS the self-serve move for "which account am I on". When it refuses, it names `agentsfleet login`; when the server refuses, it names re-authentication and the target Uniform Resource Locator that may be wrong.

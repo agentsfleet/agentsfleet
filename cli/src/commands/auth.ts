@@ -7,7 +7,7 @@ import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
-import { TENANT_BILLING_PATH } from "../lib/api-paths.ts";
+import { USERS_ME_PATH } from "../lib/api-paths.ts";
 import {
   AuthError,
   FAILURE_REASON,
@@ -69,12 +69,22 @@ const classifyProbeError = (err: ServerError): ProbeResult => {
   return { status: "unreachable", error: err.code };
 };
 
+// The identity route, because it is the only one on the tenant plane that
+// requires no capability. This probe used to read the billing snapshot, which
+// needs `billing:read` — so a signed-in person who holds no billing capability
+// was told the server had rejected their credential, when the server had
+// refused the ROUTE and accepted them. What is being asked here is "does this
+// credential authenticate", and only a scope-free route can answer it.
+//
+// The body is discarded. `whoami` is where identity is rendered; this command
+// reports the source, the target and the verdict, and reading a name it does
+// not print would be fetching to throw away.
 const probe = (
   token: Redacted.Redacted<string>,
 ): Effect.Effect<ProbeResult, never, HttpClient> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
-    return yield* http.request({ path: TENANT_BILLING_PATH, token }).pipe(
+    return yield* http.request({ path: USERS_ME_PATH, token }).pipe(
       Effect.match({
         onSuccess: (): ProbeResult => ({ status: "valid", error: null }),
         onFailure: (err): ProbeResult =>

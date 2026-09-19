@@ -35,6 +35,7 @@ export function makeSpyTree(): SpyTree {
   const handlers: Handlers = {
     login: spy("login"),
     logout: spy("logout"),
+    whoami: spy("whoami"),
     auth: {
       status: spy("auth.status"),
     },

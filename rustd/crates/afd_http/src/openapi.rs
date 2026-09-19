@@ -118,6 +118,8 @@ pub mod tag {
     pub const WORKSPACES: &str = "Workspaces";
     /// The tenant's own surface.
     pub const TENANT: &str = "Tenant";
+    /// The person behind a credential.
+    pub const USERS: &str = "Users";
     /// A fleet's lifecycle and its thread.
     pub const FLEETS: &str = "Fleets";
     /// The runner plane and enrolment.

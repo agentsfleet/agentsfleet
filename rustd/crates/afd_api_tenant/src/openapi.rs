@@ -76,6 +76,7 @@ use utoipa::OpenApi as _;
     crate::handler::tenant::billing::charges,
     crate::handler::tenant::billing::snapshot,
     crate::handler::tenant::cli_credential::mint,
+    crate::handler::tenant::identity::current,
     crate::handler::tenant::cli_credential::revoke,
     crate::handler::tenant::model_entry::list,
     crate::handler::tenant::model_entry::write::create,

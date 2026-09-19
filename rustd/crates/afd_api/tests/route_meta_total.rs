@@ -48,8 +48,23 @@ const DECLARED_DIVERGENCES: usize = 1;
 /// that union, and here it is `RunnerOpsRoute::Delete` with its own meta.
 const VERB_SPLITS: usize = 1;
 
+/// Routes this daemon serves that the Zig one never did.
+///
+/// One: `GET /v1/users/me`, which answers who a credential belongs to. The
+/// command-line client wanted it throughout the port — its post-login probe
+/// carried a comment saying the handler had not shipped and that it was hitting
+/// the billing snapshot instead — so this is a gap being closed rather than a
+/// surface being widened.
+///
+/// A term of its own rather than a smaller `ZIG_ROUTE_COUNT`: that number is
+/// what the retired daemon carried and is not ours to edit, and an addition
+/// hidden inside it would make the next one indistinguishable from a route the
+/// port dropped.
+const POST_PORT_ADDITIONS: usize = 1;
+
 /// What this daemon's union must carry.
-const RUST_ROUTE_COUNT: usize = ZIG_ROUTE_COUNT - DECLARED_DIVERGENCES + VERB_SPLITS;
+const RUST_ROUTE_COUNT: usize =
+    ZIG_ROUTE_COUNT - DECLARED_DIVERGENCES + VERB_SPLITS + POST_PORT_ADDITIONS;
 
 /// Every family's roster is reachable from `Route::all`, and nothing is
 /// counted twice.

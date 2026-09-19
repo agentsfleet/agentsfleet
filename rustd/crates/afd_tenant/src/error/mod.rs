@@ -176,7 +176,7 @@ impl Error {
             // SENTENCES are what separate them: a caller who does not own a
             // login session and a subject with no user row are both told they
             // may not proceed, and neither can fix it by re-authenticating.
-            ErrorKind::SessionNotOwner | ErrorKind::CliCredentialUnknownSubject => {
+            ErrorKind::SessionNotOwner | ErrorKind::UnknownSubject => {
                 error_code::AUTH_FORBIDDEN
             }
             ErrorKind::ApiKeyFieldInvalid { .. }
@@ -249,7 +249,7 @@ impl Error {
             ErrorKind::ApiKeyMustRevokeFirst => DETAIL_APIKEY_MUST_REVOKE_FIRST,
             ErrorKind::CliCredentialMachineNameInvalid => DETAIL_CLI_CREDENTIAL_MACHINE_NAME,
             ErrorKind::CliCredentialNotFound => DETAIL_CLI_CREDENTIAL_NOT_FOUND,
-            ErrorKind::CliCredentialUnknownSubject => DETAIL_CLI_CREDENTIAL_UNKNOWN_SUBJECT,
+            ErrorKind::UnknownSubject => DETAIL_UNKNOWN_SUBJECT,
             ErrorKind::WorkspaceNameInvalid => DETAIL_WORKSPACE_NAME_INVALID,
             ErrorKind::WorkspaceNameTooLong => DETAIL_WORKSPACE_NAME_TOO_LONG,
             ErrorKind::WorkspaceNameExists => DETAIL_WORKSPACE_NAME_EXISTS,
