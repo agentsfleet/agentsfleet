@@ -165,7 +165,7 @@ describe("installEffectFromFlags — missing --library", () => {
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      expect(JSON.stringify(exit.cause)).toContain("--library <id> is required");
+      expect(JSON.stringify(exit.cause)).toContain("--library <library_id> is required");
     }
     // The required-flag guard fires before any API call.
     expect(requests.length).toBe(0);

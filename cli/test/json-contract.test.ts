@@ -39,11 +39,12 @@ function makeStubHandlers(): Handlers {
     apiKey:    { create: noop, list: noop, revoke: noop, delete: noop },
     connector: { list: noop, status: noop },
     grant:     { list: noop, delete: noop },
+    approvals: { list: noop, show: noop, approve: noop, deny: noop },
     schedule:  { add: noop, list: noop, update: noop, rm: noop, status: noop, sync: noop },
     tenant:    { provider: { show: noop, create: noop, delete: noop } },
     billing:   { show: noop },
     fleet: {
-      library: noop, models: noop,
+      library: noop, libraryAdd: noop, models: noop,
       install: noop, update: noop, list: noop, status: noop, stop: noop, resume: noop,
       kill: noop, delete: noop, logs: noop, events: noop, steer: noop,
       secret: { create: noop, update: noop, show: noop, list: noop, delete: noop },

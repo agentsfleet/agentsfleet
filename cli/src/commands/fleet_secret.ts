@@ -77,6 +77,9 @@ const isNameTaken = (err: CliError): boolean =>
 interface SecretRow {
   readonly name?: string;
   readonly created_at?: string | number | null;
+  /** What the vault stores under this name — a provider credential or a custom
+   *  object. The daemon has always sent it; the list never read it. */
+  readonly kind?: string | null;
 }
 
 interface SecretsListResponse {
@@ -262,38 +265,6 @@ export const secretShowEffectFromName = (
       yield* output.info(ui.dim(`  created_at: ${found.created_at}`));
     }
   });
-
-export const secretListEffect: Effect.Effect<
-  void,
-  CliError,
-  CliConfig | Credentials | HttpClient | Output | Workspaces
-> = Effect.gen(function* () {
-  const config = yield* CliConfig;
-  const output = yield* Output;
-  const http = yield* HttpClient;
-
-  const wsId = yield* requireWorkspaceId;
-  const token = yield* resolveAuthToken;
-  const res = yield* http.request<SecretsListResponse>({
-    path: wsSecretsPath(wsId),
-    token,
-  });
-
-  if (config.jsonMode) {
-    yield* output.printJson(res);
-    return;
-  }
-  const secrets = res.secrets ?? [];
-  if (secrets.length === 0) {
-    yield* output.info(
-      "No secrets stored. Create one with: agentsfleet secret create <name> --data=@- (pipe JSON on stdin)",
-    );
-    return;
-  }
-  for (const c of secrets) {
-    yield* output.info(`  ${c.name ?? ""}  ${ui.dim(String(c.created_at ?? ""))}`);
-  }
-});
 
 export const secretDeleteEffectFromName = (
   rawName: string | undefined,

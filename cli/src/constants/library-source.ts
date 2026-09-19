@@ -1,0 +1,31 @@
+// Fleet-library onboarding source kinds.
+//
+// The daemon parses `source_kind` into a closed set of three and refuses
+// anything else, so the client carries the same three and refuses locally
+// rather than spending a request to be told (RULE UFS: one spelling, shared
+// with the tests).
+
+export const LIBRARY_SOURCE_KIND = {
+  github: "github",
+  upload: "upload",
+  template: "template",
+} as const;
+
+export type LibrarySourceKind =
+  (typeof LIBRARY_SOURCE_KIND)[keyof typeof LIBRARY_SOURCE_KIND];
+
+// The bundle documents an upload carries. The daemon reads `SKILL.md` as the
+// root document and treats `TRIGGER.md` as optional; a directory without the
+// former is not a bundle.
+export const BUNDLE_SKILL_FILE = "SKILL.md" as const;
+export const BUNDLE_TRIGGER_FILE = "TRIGGER.md" as const;
+
+// Library tiers a gallery row reports. `install` keys its create body off this,
+// and `library` prints it so two entries sharing a name stay distinguishable.
+export const LIBRARY_VISIBILITY = {
+  platform: "platform",
+  tenant: "tenant",
+} as const;
+
+export type LibraryVisibility =
+  (typeof LIBRARY_VISIBILITY)[keyof typeof LIBRARY_VISIBILITY];

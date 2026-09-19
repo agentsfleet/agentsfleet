@@ -8,7 +8,13 @@ import type { ActionFrame, CommandHandlerFn, Handlers } from "./cli-tree-types.t
 import type { MainLayerServices } from "../lib/run-effect.ts";
 import type { CliError } from "../errors/index.ts";
 import { readStringOpt as optString } from "../commands/types.ts";
-import { OPT_TTY } from "../constants/cli-flags.ts";
+import {
+  OPT_FROM,
+  OPT_GITHUB,
+  OPT_REF,
+  OPT_TEMPLATE,
+  OPT_TTY,
+} from "../constants/cli-flags.ts";
 import {
   statusEffect,
   stopEffectFromId,
@@ -21,6 +27,8 @@ import {
   updateEffectFromArgs,
 } from "../commands/fleet_install.ts";
 import { libraryEffect } from "../commands/fleet_library.ts";
+import { libraryAddEffectFromFlags } from "../commands/fleet_library_add.ts";
+import { secretListEffect } from "../commands/fleet_secret_list.ts";
 import { modelsEffectFromFlags } from "../commands/models.ts";
 import { listEffectFromFlags } from "../commands/fleet_list.ts";
 import { logsEffectFromFlags } from "../commands/fleet_logs.ts";
@@ -30,7 +38,6 @@ import {
   secretAddEffectFromFlags,
   secretUpdateEffectFromFlags,
   secretShowEffectFromName,
-  secretListEffect,
   secretDeleteEffectFromName,
 } from "../commands/fleet_secret.ts";
 
@@ -49,6 +56,16 @@ export const buildFleetHandlers = (
   wrapEFn: WrapEFn,
 ): Handlers[typeof AGENT] => ({
   library: wrapE("fleet.library", libraryEffect),
+  libraryAdd: wrapEFn(
+    "fleet.library.add",
+    (frame) =>
+      libraryAddEffectFromFlags({
+        github: optString(frame.parsed.options, OPT_GITHUB),
+        from: optString(frame.parsed.options, OPT_FROM),
+        template: optString(frame.parsed.options, OPT_TEMPLATE),
+        revision: optString(frame.parsed.options, OPT_REF),
+      }),
+  ),
   models: wrapEFn(
     "fleet.models",
     (frame) =>

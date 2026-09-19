@@ -202,8 +202,94 @@ describe("steer — poll terminal match (lines 213, 216)", () => {
 // Uses setSystemTime to advance Date.now() past the 60s deadline after one
 // poll iteration, making pollEventTerminal return "timeout" without waiting.
 
-describe("steer — renderOutcome timeout path (lines 235-238, 255-261)", () => {
-  test("poll timeout prints 'still in flight' error and fails with ConfigError", async () => {
+describe("steer — a parked run names the gate holding it", () => {
+  const GATE_ID = "01900000-0000-7000-8000-000000099a01";
+
+  // A Fleet whose trigger declares a write capability opens a gate per run and
+  // waits. The timeout is the SYMPTOM; the gate is the cause, and before this
+  // the terminal carried only the symptom plus a suggestion pointing at
+  // `agentsfleet events`, which showed the message stuck at `received`.
+  // Narrows on `status` and `fleet_id` the way the route does. Without that a
+  // decided gate would still be offered as the explanation, and the test would
+  // pass while the CLI lied.
+  const parkedReply = (gates: Array<Record<string, unknown>>) => <T>(input: HttpRequestInput): T => {
+    if (input.method === POST) return { event_id: EVENT_ID } as T;
+    if (input.path.includes("/approvals")) {
+      const query = new URLSearchParams(input.path.split("?")[1] ?? "");
+      const status = query.get("status");
+      const fleetId = query.get("fleet_id");
+      const items = gates.filter(
+        (row) =>
+          (status === null || row.status === status) &&
+          (fleetId === null || row.fleet_id === fleetId),
+      );
+      return { items, next_cursor: null } as T;
+    }
+    return { items: [] } as T;
+  };
+
+  const runParkedSteer = async (gates: Array<Record<string, unknown>>) => {
+    const rec = makeRecorder();
+    let jumped = false;
+    const httpReply = <T>(input: HttpRequestInput): T => {
+      if (input.method !== POST && !input.path.includes("/approvals") && !jumped) {
+        jumped = true;
+        setSystemTime(Date.now() + 120_000); // push past the 60s poll deadline
+      }
+      return parkedReply(gates)<T>(input);
+    };
+    try {
+      return await Effect.runPromiseExit(
+        steerEffectFromArgs(FLEET_ID, "go", {}, {
+          stdin: streamFrom([], false),
+          stdout: nullOutput(),
+          streamGet: silentStream,
+        }).pipe(Effect.provide(makeLayer(rec, httpReply))),
+      );
+    } finally {
+      setSystemTime();
+    }
+  };
+
+  test("a pending gate for this fleet replaces the generic retry suggestion", async () => {
+    const exit = await runParkedSteer([
+      { gate_id: GATE_ID, fleet_id: FLEET_ID, status: "pending" },
+    ]);
+    expect(Exit.isFailure(exit)).toBe(true);
+    const rendered = JSON.stringify(exit);
+    expect(rendered).toContain("agentsfleet approvals approve");
+    expect(rendered).toContain(GATE_ID);
+    // The dead end it replaces.
+    expect(rendered).not.toContain("retry, or inspect");
+  }, 10_000);
+
+  test("several pending gates point at the list instead of one identifier", async () => {
+    const exit = await runParkedSteer([
+      { gate_id: GATE_ID, fleet_id: FLEET_ID, status: "pending" },
+      { gate_id: "01900000-0000-7000-8000-000000099a02", fleet_id: FLEET_ID, status: "pending" },
+    ]);
+    expect(JSON.stringify(exit)).toContain("agentsfleet approvals list --fleet");
+  }, 10_000);
+
+  test("a gate belonging to another fleet does not explain this one's stall", async () => {
+    const exit = await runParkedSteer([
+      { gate_id: GATE_ID, fleet_id: "01900000-0000-7000-8000-0000007670ff", status: "pending" },
+    ]);
+    const rendered = JSON.stringify(exit);
+    expect(rendered).toContain("retry, or inspect");
+    expect(rendered).not.toContain("approvals approve");
+  }, 10_000);
+
+  test("an already-decided gate is not offered as the explanation", async () => {
+    const exit = await runParkedSteer([
+      { gate_id: GATE_ID, fleet_id: FLEET_ID, status: "approved" },
+    ]);
+    expect(JSON.stringify(exit)).toContain("retry, or inspect");
+  }, 10_000);
+});
+
+describe("steer — renderOutcome timeout path", () => {
+  test("poll timeout fails once, carrying 'still in flight' on the failure", async () => {
     const rec = makeRecorder();
     let firstPoll = true;
     const httpReply = <T>(input: HttpRequestInput): T => {
@@ -223,7 +309,12 @@ describe("steer — renderOutcome timeout path (lines 235-238, 255-261)", () => 
         }).pipe(Effect.provide(makeLayer(rec, httpReply))),
       );
       expect(Exit.isFailure(exit)).toBe(true);
-      expect(rec.stderr.some((m) => m.includes("still in flight"))).toBe(true);
+      // One report of the stall, not two: the message rides the failure, and
+      // nothing is written to standard error ahead of it.
+      expect(JSON.stringify(exit)).toContain("still in flight");
+      expect(rec.stderr.some((m) => m.includes("still in flight"))).toBe(false);
+      // No pending gate in this scenario, so the ordinary suggestion stands.
+      expect(JSON.stringify(exit)).toContain("agentsfleet events");
     } finally {
       setSystemTime(); // restore real clock
     }

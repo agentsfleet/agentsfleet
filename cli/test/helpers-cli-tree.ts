@@ -61,6 +61,12 @@ export function makeSpyTree(): SpyTree {
       list: spy("grant.list"),
       delete: spy("grant.delete"),
     },
+    approvals: {
+      list: spy("approvals.list"),
+      show: spy("approvals.show"),
+      approve: spy("approvals.approve"),
+      deny: spy("approvals.deny"),
+    },
     schedule: {
       add: spy("schedule.add"),
       list: spy("schedule.list"),
@@ -81,6 +87,7 @@ export function makeSpyTree(): SpyTree {
     },
     fleet: {
       library: spy("fleet.library"),
+      libraryAdd: spy("fleet.library.add"),
       models: spy("fleet.models"),
       install: spy("fleet.install"),
       update: spy("fleet.update"),

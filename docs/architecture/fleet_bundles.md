@@ -72,9 +72,9 @@ The re-pack is deliberate: the runner untars the result **without re-validating*
 Fleet library entries onboard into one of two catalog tiers, each its own table:
 
 - **Platform tier — `core.fleet_library`** (slug id, e.g. `github-pr-reviewer`). The global shop-window; a platform operator holding the `platform-library:write` scope owns its whole lifecycle from `/admin/fleet-libraries`. **Runtime-owned since M128: no migration seeds it.** A row is born when an operator adds a repository, and the bundle's `SKILL.md` frontmatter supplies its id, name, description, credentials, tools, and hosts.
-- **Tenant tier — `core.tenant_fleet_library`** (UUIDv7 id + `workspace_id` FK CASCADE). A workspace's own library entries; a tenant admin holding `library:write` onboards via `POST /v1/workspaces/{ws}/fleet-libraries`, deduped on `(workspace_id, content_hash)`.
+- **Tenant tier — `core.tenant_fleet_library`** (UUIDv7 id + `workspace_id` FK CASCADE). A workspace's own library entries; a tenant admin holding `library:write` onboards via `POST /v1/workspaces/{ws}/fleet-libraries`, deduped on `(workspace_id, content_hash)`. Reachable from the Command-Line Interface (CLI) since M199 — `agentsfleet library add` posts that body in all three source kinds. Before it, the route was served but only the dashboard called it, so a tenant entry's identifier could not be produced from a terminal and `agentsfleet library` (which read the platform catalogue alone) could not list one.
 
-The workspace gallery `GET /v1/workspaces/{ws}/fleet-libraries` returns the union of all **published** platform rows and that workspace's tenant rows, and nothing from another workspace.
+The workspace gallery `GET /v1/workspaces/{ws}/fleet-libraries` returns the union of all **published** platform rows and that workspace's tenant rows, and nothing from another workspace. It is the one list a client should read: `agentsfleet library` and `agentsfleet install --library` both resolve against it, and both page it to exhaustion, so what a caller can see and what it can install stay the same set.
 
 ## The publish gate (M128)
 

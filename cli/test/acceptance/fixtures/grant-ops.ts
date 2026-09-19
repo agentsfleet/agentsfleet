@@ -63,7 +63,6 @@ export const GATE_STATUS = {
   approved: "approved",
 } as const;
 
-const APPROVE_DECISION = "approve";
 const SECRET_CREATE_TIMEOUT_MS = 30_000;
 const HTTP_TIMEOUT_MS = 30_000;
 
@@ -154,24 +153,4 @@ export async function pendingGateFor(
   return items[0] ?? null;
 }
 
-/** Answer a card yes, and hand back what the daemon recorded. */
-export async function approveGate(ctx: AuthContext, gateId: string): Promise<GateRow> {
-  const res = await fetch(
-    `${ctx.apiUrl}/v1/workspaces/${encodeURIComponent(ctx.workspaceId)}/approvals/` +
-      `${encodeURIComponent(gateId)}/${APPROVE_DECISION}`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${ctx.token}`,
-        "Content-Type": "application/json",
-      },
-      body: "{}",
-      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
-    },
-  );
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`approve ${gateId} → ${res.status}: ${detail.slice(0, 200)}`);
-  }
-  return (await res.json()) as GateRow;
-}
+

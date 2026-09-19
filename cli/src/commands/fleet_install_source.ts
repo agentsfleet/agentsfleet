@@ -5,6 +5,7 @@
 // create-body shaping stay unit-testable in isolation.
 
 import { Effect } from "effect";
+import { LIBRARY_ID_PLACEHOLDER } from "../constants/cli-flags.ts";
 import { Output } from "../services/output.ts";
 import { ValidationError } from "../errors/index.ts";
 import type { LoadedSkill } from "../lib/load-skill-from-path.ts";
@@ -74,7 +75,7 @@ const TYPE_STRING = "string" as const;
 // the call site — typeof-narrowing only fires on the string literal, not a const.
 export const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
-export const USAGE_INSTALL = "agentsfleet install --library <id>";
+export const USAGE_INSTALL = `agentsfleet install --library ${LIBRARY_ID_PLACEHOLDER}`;
 export const USAGE_UPDATE = "agentsfleet fleet update <fleet_id> --from <path>";
 
 export const bodyFromBundle = (
@@ -114,7 +115,7 @@ export const requireLibraryId = (
   if (!isString(libraryId) || libraryId.length === 0) {
     return Effect.fail(
       new ValidationError({
-        detail: "--library <id> is required",
+        detail: `--library ${LIBRARY_ID_PLACEHOLDER} is required`,
         suggestion: `usage: ${USAGE_INSTALL}`,
       }),
     );
