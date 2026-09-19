@@ -69,6 +69,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/types.ts` | EDIT | The charge type gains `fleet_name`. Corrected from `lib/api/tenant_billing.ts`, which authors the request and not the shape. |
 | `rustd/crates/afd_wire/src/tenant.rs` | EDIT | `ChargeSummary` gains the field — this struct carries `utoipa::ToSchema`, so it IS the public OpenAPI shape. `fleet_id`'s doc corrected: it no longer shares the workspace's deletion rule. |
 | `rustd/crates/afd_api_tenant/src/handler/tenant/billing.rs` | EDIT | `summary()` maps the new field onto the wire. |
+| `public/openapi.json` | EDIT | Regenerated — it is `agentsfleetd --no-banner openapi` redirected, and `ChargeSummary` changing makes the checked-in document stale. |
 | `ui/packages/app/app/(dashboard)/settings/billing/lib/charges.ts` | EDIT | `chargeAgentLabel` passes both fields, so the sort key and the rendered cell stay the same string. |
 | `ui/packages/app/lib/fleets/agent-label.ts` | EDIT | `agentDisplayName` takes the stored name and uses it instead of `DELETED_AGENT_LABEL` when the identifier is gone. |
 | `ui/packages/app/components/domain/AgentLabel.tsx` | EDIT | Optional `fleetName` prop, forwarded to the composer. Absent prop preserves today's rendering for the approvals and events callers. |
