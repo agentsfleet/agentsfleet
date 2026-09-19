@@ -42,9 +42,14 @@ export function formatChargeAmount(nanos: number): string {
  * Keep historical charges legible after their fleet has been deleted. The
  * same composition every other agent column renders, so a charge sorts and
  * reads under the name the operator knows the agent by.
+ *
+ * Both fields are passed, and that is what keeps the sort key and the rendered
+ * cell the same string. They are produced by one function for exactly that
+ * reason: a sort key composed from fewer fields than the cell would order the
+ * table by something the operator cannot see.
  */
 export function chargeAgentLabel(row: ChargeRow): string {
-  return agentDisplayName(row.fleet_id);
+  return agentDisplayName(row.fleet_id, row.fleet_name);
 }
 
 /** Strip the provider namespace and separators without changing model casing. */

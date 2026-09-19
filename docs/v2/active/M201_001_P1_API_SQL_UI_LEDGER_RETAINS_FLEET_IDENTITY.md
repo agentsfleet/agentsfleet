@@ -66,12 +66,17 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/src/lease/sql/mod.rs` | EDIT | Holds the invariant both charging statements share: each captures the name, and neither accumulate path re-stamps it. Here because the rule is about the pair, and because `report.rs` sits within fifty lines of the length cap. |
 | `rustd/crates/afd_billing/src/tenant_sql.rs` | EDIT | Both charge-list statements select the new column. |
 | `rustd/crates/afd_billing/src/tenant/mod.rs` | EDIT | Charge row struct gains `fleet_name: Option<String>` and its decode. |
-| `ui/packages/app/lib/api/tenant_billing.ts` | EDIT | The charge type gains the nullable field. |
+| `ui/packages/app/lib/types.ts` | EDIT | The charge type gains `fleet_name`. Corrected from `lib/api/tenant_billing.ts`, which authors the request and not the shape. |
+| `rustd/crates/afd_wire/src/tenant.rs` | EDIT | `ChargeSummary` gains the field — this struct carries `utoipa::ToSchema`, so it IS the public OpenAPI shape. `fleet_id`'s doc corrected: it no longer shares the workspace's deletion rule. |
+| `rustd/crates/afd_api_tenant/src/handler/tenant/billing.rs` | EDIT | `summary()` maps the new field onto the wire. |
+| `ui/packages/app/app/(dashboard)/settings/billing/lib/charges.ts` | EDIT | `chargeAgentLabel` passes both fields, so the sort key and the rendered cell stay the same string. |
 | `ui/packages/app/lib/fleets/agent-label.ts` | EDIT | `agentDisplayName` takes the stored name and uses it instead of `DELETED_AGENT_LABEL` when the identifier is gone. |
 | `ui/packages/app/components/domain/AgentLabel.tsx` | EDIT | Optional `fleetName` prop, forwarded to the composer. Absent prop preserves today's rendering for the approvals and events callers. |
 | `ui/packages/app/app/(dashboard)/settings/billing/components/BillingUsageTab.tsx` | EDIT | The only caller that passes the new prop. |
 | `rustd/crates/afd_billing/src/tenant/mod.rs` tests | EDIT | Decode coverage for a null and a populated `fleet_name`. |
-| `ui/packages/app/tests/billing-charge-cell.test.tsx` | EDIT | The label's three states: live, purged-with-name, purged-without-name. |
+| `ui/packages/app/tests/billing-charges.test.ts` | EDIT | The four label states, including that no combination renders blank. |
+| `ui/packages/app/tests/billing-charge-cell.test.tsx` | EDIT | Fixture gains the field; `tsc` catches its absence where vitest does not. |
+| `ui/packages/app/tests/billing-usage-tab.test.ts` | EDIT | Same fixture addition. |
 | `ui/packages/app/tests/identity-and-controls.test.tsx` | EDIT | Regression: the approvals and events callers still render the callsign with no prop passed. |
 | `rustd/crates/afd_fleet_lifecycle/tests/` | EDIT | Integration proof that a purge leaves the ledger row addressable and destroys everything else. |
 | `docs/AUTH.md` | EDIT | The `AUTH_SESSION_CODE_PEPPER` row barred disk outright while local development requires the value in a file for `docker-compose` to boot. Records the single permitted path, its mode, and why a real file inside a checkout is a defect. Folded in at the owner's direction — see Discovery. |
@@ -132,8 +137,8 @@ The charge list carries the field; the label composer prefers the stored name wh
 
 - **Dimension 3.1** — Both charge-list statements select `fleet_name` and the row struct decodes it → Test `test_m201_charge_row_decodes_fleet_name`
 - **Dimension 3.2** — The billing table renders callsign and name together for a purged fleet that has both → Test `test_m201_billing_renders_callsign_and_name`
-- **Dimension 3.3** — A pre-migration row with neither identifier nor name still renders the deleted label rather than an empty cell → Test `test_m201_legacy_row_renders_deleted_label`
-- **Dimension 3.4** — Approvals and events tables render unchanged with no prop passed → Test `test_m201_other_label_callers_unchanged`
+- **Dimension 3.3** — DONE — A pre-migration row with neither identifier nor name still renders the deleted label rather than an empty cell → Test `test_m201_legacy_row_renders_deleted_label`
+- **Dimension 3.4** — DONE — Approvals and events tables render unchanged with no prop passed → Test `test_m201_other_label_callers_unchanged`
 
 ## Interfaces
 
