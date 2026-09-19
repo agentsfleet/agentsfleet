@@ -22,8 +22,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — schema precedes the writers, the writers precede the readers; one stream, no parallel context.
 **Branch:** `feat/m201-ledger-fleet-identity`
 **Baseline revision:** e9bd5c2b2dfbb654647ea37b3720936d878a3ee3
-**Test Baseline:** pending — measured before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit 6654 passed / 0 failed / 532 ignored · integration 511 passed + 1 exclusive / 0 failed. Branch at `6b19cc9d1`: unit 6665 / 0 / 542 · integration 521 + 1 exclusive / 0 failed. Delta +11 unit passed, +10 unit ignored, +10 integration passed — the ten new integration tests are `#[ignore]`d, so they are compiled and counted by the unit lane and executed by the integration lane.
+**Baseline evidence:** `make test-unit-all` and `make test-integration-rustd`, both exit 0 on both revisions. Baseline measured in the `agentsfleet-m200-baseline` worktree at `e9bd5c2b2`; branch in `agentsfleet-m201-ledger-identity` at `6b19cc9d1`. Environment: macOS, docker compose `postgres:18-alpine` and a four-node `dragonfly:v2.0.0` cluster per worktree on worktree-derived ports, schemas reset per run (`KEEP_TEST_STATE` unset). A first branch measurement read 2210 passed and was discarded: the `afd_outbound` flake below aborted cargo at exit 2 before the remaining crates and the TypeScript lanes ran, and a partial run's count is not a count.
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Opus 5, Sep 19, 2026)
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` §1
@@ -306,6 +306,8 @@ N/A — no files deleted.
   > Indy (2026-09-19): "yes go" — in answer to the tier question and the docs-repo branch, both named as open decisions in the message immediately preceding.
 
 - **Docs-repo branch opened on the owner's approval (Sep 19, 2026)** — the quote above authorises it. `chore/m201-ledger-fleet-identity-changelog` is a worktree at `~/Projects/docs-m201-ledger-identity`, branched from `origin/main` rather than checked out in `~/Projects/docs`, because that checkout sits on `chore/m200-whoami-changelog` holding two unpushed commits that are not this workstream's to move. The changelog `<Update>` is the only page owed: the docs site renders its API reference straight from `public/openapi.json` on `main` (`docs.json:109`), which this branch already regenerated, so the new field documents itself. Commit `5944c97`, `make test` green, `gitleaks` clean.
+
+- **A pre-existing flake in `afd_outbound`, reported and not fixed (Sep 19, 2026)** — `lanes::a_job_rescued_from_a_retiring_lane_is_not_overtaken` fails at `crates/afd_outbound/tests/lanes.rs:113` with "timed out waiting for the pair to be acknowledged". It failed 2 of 4 full unit-lane runs on a loaded machine and passed 3 of 3 run alone, so it is a deadline that does not survive contention rather than a defect this workstream introduced — nothing in this diff touches that crate. Left alone deliberately: widening a timeout to make a lane green is the shape of change the gate-flag rules forbid, and the fix belongs to whoever owns that suite. It costs this workstream one re-run and will cost Continuous Integration (CI) an intermittent red.
 
 - **Metrics review** — No analytics or funnel playbook update required: this spec adds, renames and removes no product or operator event. The one new wire field is an operator-chosen fleet name already returned by `/fleets` to the same authenticated reader.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test` at each Section and again at the boundary, `/review` before DOCUMENT, `orly-babysit-prs` after every push.
