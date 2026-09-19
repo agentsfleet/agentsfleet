@@ -52,6 +52,8 @@ use afd_credential::secrets::Registry;
 use afd_credential::vault::Vault;
 use afd_gate::gate::{Check, Gates};
 
+#[cfg(feature = "test-util")]
+mod claimed;
 mod refuse;
 mod step;
 
@@ -160,6 +162,23 @@ impl Plane {
         let Some(acquired) = self.leases.select(runner_id, now).await? else {
             return Ok(Step::Stop(no_work(runner_id, "no leasable work")?));
         };
+        self.admit_claimed(acquired, runner_id, now).await
+    }
+
+    /// Every gate over one already-claimed event.
+    ///
+    /// Split from the selection above it because the two fail for different
+    /// reasons and are proven differently: WHICH event a poll gets is the
+    /// readiness index's decision, and what then happens to it is this chain's.
+    /// The suite enters here through [`Self::lease_claimed`], naming its own
+    /// fleet, instead of polling a process-global partition cursor until that
+    /// fleet comes up.
+    async fn admit_claimed(
+        &self,
+        acquired: Acquired,
+        runner_id: &Uuid7,
+        now: UnixMillis,
+    ) -> Result<Step<Admission2>> {
         let installed = match self.resolve_installed(&acquired, runner_id, now).await? {
             Step::Go(installed) => installed,
             Step::Stop(answer) => return Ok(Step::Stop(answer)),
