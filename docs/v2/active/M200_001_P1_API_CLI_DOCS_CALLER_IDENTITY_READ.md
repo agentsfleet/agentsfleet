@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M200
 **Workstream:** 001
 **Date:** Sep 19, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — a signed-in terminal cannot name who it is signed in as, and the credential on disk is opaque by design
 **Categories:** API, CLI, DOCS
 **Batch:** B1 — single stream; the endpoint and its one client land together
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** `feat/m200-caller-identity-read`
+**Baseline revision:** `e9bd5c2b2dfbb654647ea37b3720936d878a3ee3`
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** none
 **Provenance:** LLM-drafted (claude-opus-5, Sep 19, 2026)
