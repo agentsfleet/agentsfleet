@@ -119,9 +119,10 @@ async fn a_person_with_no_display_name_omits_the_field(router: &axum::Router, fi
 
     let body: Value = json_body(response).await;
     assert_eq!(
-        field(&body, "display_name"),
-        &Value::Null,
-        "a person who never set a display name has none, not an empty one"
+        body.get("display_name"),
+        None,
+        "a person who never set one has NO display_name key — not a null, and \
+         not an empty string a client would render as a name"
     );
     assert_eq!(
         field(&body, "email"),
@@ -225,10 +226,13 @@ impl Fixture {
 
 /// One field of the response, named rather than indexed.
 ///
-/// `clippy::indexing_slicing` is denied across this workspace, and the lint is
-/// right here for a reason beyond the panic: a missing field indexed with `[]`
-/// reads as `null`, which is exactly what the absent-display-name act asserts.
-/// Indexing would let a field that VANISHED pass that assertion.
+/// `clippy::indexing_slicing` is denied across this workspace, and the lint
+/// earned its keep here. Indexing a missing key yields `null`, so the first
+/// version of the absent-display-name act asserted `body["display_name"] ==
+/// null` and passed — against a response that omits the key ENTIRELY. It would
+/// have passed just as happily if the field had vanished from the wire. The
+/// act now reads `get` directly and asserts `None`; everything else reads
+/// through here, where a missing field is a failure and not a null.
 fn field<'a>(body: &'a Value, name: &str) -> &'a Value {
     body.get(name)
         .expect("the identity response carries every field it declares")
