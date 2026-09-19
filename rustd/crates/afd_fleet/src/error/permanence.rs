@@ -120,9 +120,6 @@ impl Error {
             | ErrorKind::ConnectorReconnectRequired
             | ErrorKind::ConnectorMintFailed
             | ErrorKind::GrantRequired
-            | ErrorKind::WriteUnapproved
-            | ErrorKind::BindingDrift
-            | ErrorKind::WriteSpendExhausted
             // The three memory operator refusals cannot reach the admission
             // pass either: they are raised on the tenant plane, where a person
             // is reading or forgetting what a fleet already learned, and no
