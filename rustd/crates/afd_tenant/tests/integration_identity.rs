@@ -1,4 +1,4 @@
-//! The caller-identity read against the migrated schema.
+//! `user_of` against the migrated schema — the read `GET /v1/users/me` renders.
 //!
 //! What only a real Postgres can prove here is the JOIN and the NULL. A stub
 //! answering a `Profile` would be asserting the struct's field names; the
@@ -15,9 +15,10 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+use afd_crypto::entropy::Entropy;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
-use afd_tenant::identity::Identities;
+use afd_tenant::cli_credential::CliCredentials;
 
 /// The subject the named person answers to.
 const SUBJECT: &str = "user_identity_named";
@@ -38,10 +39,10 @@ const TENANT_NAME: &str = "Ada's Workshop";
 async fn profile_answers_the_joined_person_and_refuses_an_unknown_subject() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let identities = Identities::new(fixture.database.clone());
+    let identities = CliCredentials::new(fixture.database.clone(), Entropy::new());
 
     let named = identities
-        .profile(SUBJECT)
+        .user_of(SUBJECT)
         .await
         .expect("a seeded subject resolves");
     assert_eq!(named.email, EMAIL);
@@ -51,7 +52,7 @@ async fn profile_answers_the_joined_person_and_refuses_an_unknown_subject() {
         "the display name comes back as stored"
     );
     assert_eq!(
-        named.user.as_str(),
+        named.id.as_str(),
         fixture.user,
         "the user id is the core.users row, not the provider subject"
     );
@@ -69,7 +70,7 @@ async fn profile_answers_the_joined_person_and_refuses_an_unknown_subject() {
     // wire omits the key on `None`, and an empty string would publish a display
     // name nobody typed.
     let unnamed = identities
-        .profile(SUBJECT_ANONYMOUS)
+        .user_of(SUBJECT_ANONYMOUS)
         .await
         .expect("a subject with no display name still resolves");
     assert_eq!(unnamed.display_name, None);
@@ -82,7 +83,7 @@ async fn profile_answers_the_joined_person_and_refuses_an_unknown_subject() {
     // Refused rather than provisioned, and the refusal is the shared one the
     // credential family already raises — same code, same sentence.
     let refused = identities
-        .profile(SUBJECT_ABSENT)
+        .user_of(SUBJECT_ABSENT)
         .await
         .expect_err("a subject with no row is refused");
     assert_eq!(

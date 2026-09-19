@@ -29,7 +29,6 @@
 pub mod apikey;
 pub mod cli_credential;
 pub mod error;
-pub mod identity;
 pub mod models;
 pub mod preference;
 pub mod session;

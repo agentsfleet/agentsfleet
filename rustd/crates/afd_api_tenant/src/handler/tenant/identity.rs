@@ -33,7 +33,7 @@ use axum::response::{IntoResponse as _, Response};
 
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
-use crate::services::{CallerProfiles as _, Services};
+use crate::services::{Services, TerminalCredentials as _};
 
 /// The scoped event this read's failures are logged under.
 const EVENT_PROFILE: &str = "caller_profile_unresolved";
@@ -70,13 +70,13 @@ pub(crate) async fn current<D: Services>(
 ) -> Result<Response, Refusal> {
     let person = identity.person();
     let profile = services
-        .profiles()
-        .profile(person.subject().as_str())
+        .cli_credentials()
+        .user_of(person.subject().as_str())
         .await
         .map_err(Refusal::at(EVENT_PROFILE))?;
 
     Ok(Json(CurrentUserResponse {
-        user_id: Cow::Borrowed(profile.user.as_str()),
+        user_id: Cow::Borrowed(profile.id.as_str()),
         email: Cow::Borrowed(&profile.email),
         display_name: profile.display_name.as_deref().map(Cow::Borrowed),
         tenant_id: Cow::Borrowed(profile.tenant.as_str()),

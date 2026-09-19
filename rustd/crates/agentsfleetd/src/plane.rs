@@ -53,7 +53,6 @@ use afd_sse::Live;
 use afd_state::Credentials;
 use afd_tenant::apikey::ApiKeys;
 use afd_tenant::cli_credential::CliCredentials;
-use afd_tenant::identity::Identities;
 use afd_tenant::models::Models;
 use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
@@ -92,7 +91,6 @@ pub struct ServingPlane {
     fleets: Fleets,
     api_keys: ApiKeys,
     cli_credentials: CliCredentials,
-    profiles: Identities,
     billing: Billing,
     models: Models,
     providers: Providers,
@@ -209,7 +207,6 @@ impl ServingPlane {
             ),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
-            profiles: Identities::new(database.clone()),
             billing: Billing::new(database.clone()),
             models: Models::new(database.clone()),
             providers: providers.clone(),

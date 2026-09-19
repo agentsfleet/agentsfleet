@@ -108,16 +108,21 @@ impl CliCredentials {
     /// answer.
     pub async fn user_of(&self, subject: &str) -> Result<UserIdentity> {
         let mut connection = self.database.acquire().await?;
-        let row: Option<(String, String)> = sqlx::query_as(sql::SELECT_USER_IDENTITY_BY_SUBJECT)
-            .bind(subject)
-            .fetch_optional(connection.as_mut())
-            .await
-            .map_err(error::query(CONTEXT_SUBJECT))?;
+        let row: Option<(String, String, String, Option<String>, String)> =
+            sqlx::query_as(sql::SELECT_USER_IDENTITY_BY_SUBJECT)
+                .bind(subject)
+                .fetch_optional(connection.as_mut())
+                .await
+                .map_err(error::query(CONTEXT_SUBJECT))?;
 
-        let (id, tenant) = row.ok_or_else(error::unknown_subject)?;
+        let (id, tenant, email, display_name, tenant_name) =
+            row.ok_or_else(error::unknown_subject)?;
         Ok(UserIdentity {
             id: Uuid7::parse(&id)?,
             tenant: Uuid7::parse(&tenant)?,
+            email,
+            display_name,
+            tenant_name,
         })
     }
 
@@ -286,17 +291,29 @@ fn display_prefix(credential: &str) -> &str {
     credential.get(..shown).unwrap_or(credential)
 }
 
-/// The user row a command-line credential belongs to.
+/// The person a proven subject names.
 ///
-/// Both halves come from ONE read. The tenant is the joined user row's, which
+/// Every field comes from ONE read. The tenant is the joined user row's, which
 /// is the authoritative one — the copy stamped on a credential row at mint is
 /// provenance, never authority.
+///
+/// The mint and revoke paths read `id` and `tenant` and ignore the rest;
+/// `GET /v1/users/me` renders all five. One record rather than a narrow one for
+/// the writes and a wide one for the read: the question both ask is "who is this
+/// subject", and two answers to it would be two things to keep true.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserIdentity {
     /// `core.users.id`, which the credential's foreign key points at.
     pub id: Uuid7,
     /// The tenant that user belongs to.
     pub tenant: Uuid7,
+    /// The address the account was opened with.
+    pub email: String,
+    /// What they asked to be called, when they said. `NULL` in the column when
+    /// the identity provider sent no name, and absent from the wire in turn.
+    pub display_name: Option<String>,
+    /// That tenant's name, which is what a person recognises.
+    pub tenant_name: String,
 }
 
 /// What minting one credential needs.

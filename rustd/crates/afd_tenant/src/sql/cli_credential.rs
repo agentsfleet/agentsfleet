@@ -56,8 +56,54 @@ WHERE id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL";
 /// collaborator satisfies neither and would resolve nothing. A collaborator
 /// minting a credential for their own terminal is precisely the case the
 /// resolved-capability model exists to keep working.
+/// The tenant is JOINED because a person recognises "Ada's Workshop" and not a
+/// version-7 Universally Unique Identifier (UUID). `GET /v1/users/me` renders
+/// both, and the mint and revoke paths pay one extra index lookup per login for
+/// it — cheaper than a second statement that says almost the same thing.
+///
+/// The `::text` casts are load-bearing: both identifier columns are `UUID`, and
+/// a driver reading one as text without the cast hands back raw bytes.
 pub const SELECT_USER_IDENTITY_BY_SUBJECT: &str = "\
-SELECT id::text, tenant_id::text \
-FROM core.users \
-WHERE oidc_subject = $1 \
+SELECT users.id::text, users.tenant_id::text, users.email, \
+users.display_name, tenants.name \
+FROM core.users AS users \
+JOIN core.tenants AS tenants ON tenants.id = users.tenant_id \
+WHERE users.oidc_subject = $1 \
 LIMIT 1";
+
+#[cfg(test)]
+mod tests {
+    use super::SELECT_USER_IDENTITY_BY_SUBJECT;
+
+    /// One statement serves three callers, so it carries what the widest needs.
+    ///
+    /// The mint and the revoke read the identifier pair; `GET /v1/users/me`
+    /// renders the address and both names. A second statement for the read would
+    /// have been two spellings of "who is this subject" — this is the test that
+    /// notices if somebody narrows this one back and breaks the render.
+    #[test]
+    fn the_subject_lookup_carries_every_field_its_callers_render() {
+        for column in [
+            "users.id::text",
+            "users.tenant_id::text",
+            "users.email",
+            "users.display_name",
+            "tenants.name",
+        ] {
+            assert!(
+                SELECT_USER_IDENTITY_BY_SUBJECT.contains(column),
+                "the subject lookup must select {column}"
+            );
+        }
+        assert!(
+            SELECT_USER_IDENTITY_BY_SUBJECT.contains("JOIN core.tenants"),
+            "the tenant NAME comes from the join, not from a second round trip"
+        );
+    }
+
+    /// It keys on the indexed subject column, so it never scans.
+    #[test]
+    fn the_subject_lookup_keys_on_the_unique_index() {
+        assert!(SELECT_USER_IDENTITY_BY_SUBJECT.contains("oidc_subject = $1"));
+    }
+}

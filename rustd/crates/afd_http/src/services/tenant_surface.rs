@@ -2,8 +2,8 @@
 //!
 //! A supertrait of [`Services`](super::Services) rather than more members on
 //! it, taken when that file crossed the length cap. The line is the scope each
-//! accessor is keyed by: a workspace directory, the caller's own identity, the
-//! tenant's own api-keys and terminal credentials, its billing account, the catalogue it is priced
+//! accessor is keyed by: a workspace directory, the tenant's own api-keys and
+//! terminal credentials, its billing account, the catalogue it is priced
 //! against, its provider selection and the signup that created it are all
 //! per-TENANT, while fleets, secrets, approvals and events are per-workspace
 //! and stay next door.
@@ -13,8 +13,8 @@
 //! implementor writes two `impl` blocks instead of one.
 
 use crate::services::{
-    CallerProfiles, ModelCatalogue, Signups, TenantBilling, TenantKeys, TenantModelEntries,
-    TenantProviders, TenantWorkspaces, TerminalCredentials,
+    ModelCatalogue, Signups, TenantBilling, TenantKeys, TenantModelEntries, TenantProviders,
+    TenantWorkspaces, TerminalCredentials,
 };
 
 /// The tenant-scoped half of [`Services`](super::Services).
@@ -40,16 +40,6 @@ pub trait TenantSurface {
 
     /// The tenant api-key store.
     fn api_keys(&self) -> &Self::ApiKeys;
-
-    /// The person a proven subject names.
-    ///
-    /// A concrete type for the reason [`Self::ApiKeys`] is one: it holds a
-    /// Postgres pool and nothing else, and `afd_db::Db::unreachable` is the
-    /// seam a suite drives it through.
-    type Profiles: CallerProfiles;
-
-    /// The directory the caller-identity read acts through.
-    fn profiles(&self) -> &Self::Profiles;
 
     /// A person's own command-line credentials.
     ///
