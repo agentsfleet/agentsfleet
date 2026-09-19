@@ -52,11 +52,21 @@ const NOW_MS: i64 = 1_900_000_000_000;
 /// How long the fixture leases stay live.
 const LEASE_WINDOW_MS: i64 = 30_000;
 
-/// The key the fixture vault rows are sealed under.
+/// The key every fixture in this lane seals and opens under.
 ///
-/// All zeroes, and that is the point: nothing here is secret, so a plausible
-/// key would only invite somebody to wonder whether it mattered.
-const FIXTURE_KEK_HEX: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+/// The same value `agentsfleetd`'s end-to-end suite uses, and that is the whole
+/// point of it. `core.platform_provider_defaults` has `provider` as its PRIMARY
+/// KEY, so the row is a fact about the deployment rather than about a test, and
+/// both suites seed it with `ON CONFLICT DO NOTHING` — whichever runs first
+/// owns it, and the secret it names is opened by the other. Under two different
+/// keys that resolution fails with `OpenFailed`, which is what kept every gate
+/// below the provider resolution unreachable from this crate.
+///
+/// It was thirty-two zero bytes while nothing here opened an envelope. The
+/// comment that recorded that said the gates "refuse before any credential is
+/// resolved", which stopped being true the moment a test drove the lease verb
+/// past the event type.
+const FIXTURE_KEK_HEX: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 /// The connector every case mints through — see the module note.
 const CONNECTOR_STATIC: &str = "static";

@@ -185,13 +185,22 @@ pub(crate) async fn held() -> Held {
     }
 }
 
-/// A key-encryption key nothing real is sealed under.
+/// The key every fixture in this lane seals and opens under.
 ///
-/// Thirty-two zero bytes as hex. The coverage suite never opens an envelope —
-/// its gates refuse before any credential is resolved — so what this needs to
-/// be is CONSTRUCTIBLE, not secret. A fixture key that looked plausible would
-/// be worse: someone would eventually wonder whether it mattered.
-const FIXTURE_KEK_HEX: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+/// The same value `agentsfleetd`'s end-to-end suite uses, and that is the whole
+/// point of it. `core.platform_provider_defaults` has `provider` as its PRIMARY
+/// KEY, so the row is a fact about the deployment rather than about a test, and
+/// both suites seed it with `ON CONFLICT DO NOTHING` — whichever runs first
+/// owns it, and the secret it names is opened by the other. Under two different
+/// keys that resolution fails with `OpenFailed`, which is what kept every gate
+/// below the provider resolution unreachable from this crate.
+///
+/// It was thirty-two zero bytes while nothing here opened an envelope. The
+/// comment that recorded that said the gates "refuse before any credential is
+/// resolved", which stopped being true the moment a test drove the lease verb
+/// past the event type.
+pub(crate) const FIXTURE_KEK_HEX: &str =
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 impl Fixtures {
     /// Runs the claim-and-settle statement by itself, on its own connection.

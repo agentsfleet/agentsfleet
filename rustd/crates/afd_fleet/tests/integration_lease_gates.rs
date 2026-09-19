@@ -38,6 +38,8 @@
 
 #[path = "integration_lease_gates/cases.rs"]
 mod cases;
+#[path = "integration_lease_gates/seed.rs"]
+mod seed;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -61,6 +63,28 @@ const BUDGETED_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[{"
 /// The status an operator's pause leaves on the fleet row.
 const FLEET_STATUS_STOPPED: &str = "stopped";
 
+/// The gate kind a fixture raises over a whole event.
+const KIND_EVENT: &str = "tool_call";
+
+/// How long a fixture gate stays unexpired.
+const GATE_WINDOW_MS: i64 = 600_000;
+
+/// A settled spend past [`BUDGETED_CONFIG`]'s ceiling, in nanodollars.
+const OVERSPENT_NANOS: i64 = 2_000_000_000;
+
+/// The context ceiling the fixture model is catalogued with.
+const CONTEXT_CAP_TOKENS: i32 = 200_000;
+
+/// The fixture model's prices, which the money pass needs to quote a charge.
+const INPUT_NANOS_PER_MTOK: i64 = 3_000_000_000;
+/// As [`INPUT_NANOS_PER_MTOK`], for cached input.
+const CACHED_INPUT_NANOS_PER_MTOK: i64 = 300_000_000;
+/// As [`INPUT_NANOS_PER_MTOK`], for output.
+const OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000_000;
+
+/// A provider credential body shaped like the real one and worth nothing.
+const PROVIDER_KEY_BODY: &str = r#"{"api_key":"sk-fixture-not-a-credential"}"#;
+
 /// A fleet with one runner and one `chat` event waiting on its stream.
 struct Ready {
     /// The runner that will claim the event.
@@ -69,11 +93,13 @@ struct Ready {
     fleet: String,
     /// The logical event id, which the event row addresses.
     event_id: String,
+    /// Its billing tenant.
+    tenant: String,
 }
 
 /// Seeds [`Ready`], enqueuing a `chat` rather than `seed`'s `steer`.
 async fn ready(fixtures: &Fixtures) -> Ready {
-    let (fleet, workspace, _tenant, [runner]) = seeded_parts::<1>(fixtures).await;
+    let (fleet, workspace, tenant, [runner]) = seeded_parts::<1>(fixtures).await;
     let event_id = crate::queue::enqueue(
         fixtures.queue(),
         &fleet,
@@ -88,6 +114,7 @@ async fn ready(fixtures: &Fixtures) -> Ready {
         runner,
         fleet,
         event_id,
+        tenant,
     }
 }
 
