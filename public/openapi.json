@@ -12766,7 +12766,14 @@
               "string",
               "null"
             ],
-            "description": "The fleet it was incurred by, under the same deletion rule."
+            "description": "The fleet it was incurred by — and unlike `workspace_id`, this one\nSURVIVES that fleet's deletion.\n\nThe two stopped sharing a rule at slot 915. A workspace is still nulled\non deletion; a fleet is not, because the dashboard derives the fleet's\ncallsign from this value and nulling it left a real charge unable to say\nwhat it paid for. `null` here now means a charge written before that\nslot, not a fleet that has since gone."
+          },
+          "fleet_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "That fleet's name as it stood when the charge was written.\n\nA snapshot, not a live lookup: renaming a fleet does not reach charges\nalready written, because a ledger records what was true when the money\nmoved. `null` for a charge written before slot 915, or one whose fleet\nrow could not be read at the time."
           },
           "id": {
             "type": "string",
