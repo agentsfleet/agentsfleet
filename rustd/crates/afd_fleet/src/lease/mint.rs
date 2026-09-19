@@ -36,14 +36,13 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_fleet_runtime::config::Access;
 use afd_wire::credentials::MintCredentialRequest;
 use serde_json::Value;
 
 use crate::error::{
-    Result, binding_drift, connector_mint_failed, connector_reconnect_required, github_mint_failed,
+    Result, connector_mint_failed, connector_reconnect_required, github_mint_failed,
     github_reconnect_required, grant_required, integration_not_connected, lease_not_found,
-    mint_unconfigured, vault_data_invalid, write_spend_exhausted, write_unapproved,
+    mint_unconfigured, vault_data_invalid,
 };
 use crate::lease::pull::Plane;
 use crate::lease::scope::MintScope;
@@ -51,15 +50,6 @@ use afd_credential::credential::broker::Ask;
 use afd_credential::credential::outcome::{Minted, Outcome};
 use afd_credential::secrets::connector::{Connector, Connectors as _, Exchange, Supply};
 use afd_credential::vault::KeyRef;
-use afd_gate::gate::WriteApproval;
-
-/// The connector whose write mints are gated on a human's answer.
-///
-/// Only one, and it is not an oversight: a repository write is the single
-/// capability this product lets a run acquire that can change something outside
-/// itself. The refresh connectors mint read-shaped API tokens, and there is no
-/// per-repository reach for a card to state about them.
-const GATED_WRITE_CONNECTOR: &str = "github";
 
 /// The event a rotation write-back is logged under.
 const EVENT_REFRESH_ROTATED: &str = "refresh_rotated";
@@ -114,9 +104,14 @@ impl Plane {
 
     /// Whether this fleet may mint this integration at all.
     ///
-    /// Both gates, in the order that keeps credential bytes untouched until a
-    /// human has said yes twice: once standing, for the integration, and once
-    /// per event, for a repository write.
+    /// ONE question, and the grant is it: an approved, unrevoked standing
+    /// decision for this fleet and this service. The per-event repository-write
+    /// gate that used to sit above this read asked a person again on every
+    /// model turn, which bought nothing the grant did not already carry — the
+    /// grant names the fleet, the fleet's binding names the repositories and
+    /// the access level, and `ScopedRequest::for_binding` narrows the token to
+    /// exactly those. What bounds the damage is the App installation, the
+    /// fleet's `budget.daily_dollars`, and `agentsfleet grant revoke`.
     async fn admit_mint(
         &self,
         scope: &MintScope,
@@ -138,26 +133,7 @@ impl Plane {
             return Err(grant_required());
         }
 
-        // A write binding spends a human's answer, and only GitHub has a
-        // repository write to hold. A read binding, or none, needs no card.
-        let gated_write = scope
-            .binding
-            .as_ref()
-            .filter(|binding| binding.access() == Access::Write)
-            .filter(|_| integration == GATED_WRITE_CONNECTOR);
-        let Some(binding) = gated_write else {
-            return Ok(());
-        };
-        match self
-            .gates
-            .reserve_write_approval(&scope.fleet_id, &scope.event_id, binding)
-            .await?
-        {
-            WriteApproval::Approved => Ok(()),
-            WriteApproval::Unapproved => Err(write_unapproved()),
-            WriteApproval::BindingDrift => Err(binding_drift()),
-            WriteApproval::Exhausted => Err(write_spend_exhausted()),
-        }
+        Ok(())
     }
 
     /// The stored handle this mint exchanges.

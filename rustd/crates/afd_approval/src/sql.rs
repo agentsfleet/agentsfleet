@@ -122,10 +122,9 @@ WHERE g.id = $1::uuid AND g.workspace_id = $2::uuid";
 /// "integration_grant"` on any benign tool, emit an event carrying
 /// `{"evidence":{"service":"github"}}`, and have the ordinary-looking card that
 /// raises flip its own standing permission to mint that service's credentials —
-/// granted by an operator who was answering a different question. `repository_write`
-/// is defended twice over (`Stated::write_kind` overwrites an authored kind, and
-/// [`SELECT_APPROVED_WRITE_GATE`] demands a `stated_binding` and this build's
-/// ceiling); this kind had nothing.
+/// granted by an operator who was answering a different question. The retired
+/// `repository_write` kind was defended twice over by the daemon path that
+/// raised it; this kind had nothing.
 ///
 /// The event column is the discriminator because it is the one thing on this row
 /// a fleet cannot reach. [`REQUEST_GRANT`] writes NULL there by construction

@@ -87,11 +87,16 @@ pub(super) fn is_branch_name(base: &String, (): &()) -> garde::Result {
 
 /// The gate kinds only the daemon may raise.
 ///
-/// Spelled here rather than imported because this crate sits UNDER the two that
-/// own them — `afd_gate` holds `KIND_REPOSITORY_WRITE` and `afd_approval` holds
-/// `KIND_INTEGRATION_GRANT`, and both depend on this one. Each owner pins its
-/// constant against this list in its own test, which is the same shape the
-/// repository already uses where a literal cannot be imported.
+/// `integration_grant` is spelled here rather than imported because this crate
+/// sits UNDER `afd_approval`, which owns `KIND_INTEGRATION_GRANT` and pins its
+/// constant against this list in its own test.
+///
+/// `repository_write` is RESERVED rather than owned: no daemon path raises that
+/// kind any longer — the standing integration grant authorises a repository
+/// write, and nobody is asked per event. The spelling stays on this list
+/// because rows raised before that change are still in the table and the inbox
+/// still renders them, so a workspace that could author the kind could author a
+/// card an operator already recognises as the daemon's own.
 pub(super) const DAEMON_OWNED_GATE_KINDS: [&str; 2] = ["integration_grant", "repository_write"];
 
 /// Refuses a gate kind the daemon reserves for its own cards.
@@ -140,14 +145,13 @@ mod reserved_kind_tests {
         }
     }
 
-    /// Pins the spelling, because the owners cannot import it.
+    /// Pins the spelling, because the owner cannot import it.
     ///
-    /// `afd_gate::gate::detail::KIND_REPOSITORY_WRITE` and
-    /// `afd_approval::KIND_INTEGRATION_GRANT` are the constants these strings
-    /// stand in for, and both crates sit ABOVE this one so neither can be
-    /// imported here. Each owner pins the same literal from its own side; a
-    /// rename on either side fails a test rather than silently retiring the
-    /// guard.
+    /// `afd_approval::KIND_INTEGRATION_GRANT` is the constant the first string
+    /// stands in for, and that crate sits ABOVE this one so it cannot be
+    /// imported here. It pins the same literal from its own side; a rename
+    /// there fails a test rather than silently retiring the guard. The second
+    /// string has no owning constant left — see the list's own note.
     #[test]
     fn the_reserved_set_is_exactly_the_two_kinds_the_daemon_raises() {
         assert_eq!(

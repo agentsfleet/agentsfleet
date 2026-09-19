@@ -110,18 +110,3 @@ pub(crate) fn connector_mint_failed() -> Error {
 pub(crate) fn grant_required() -> Error {
     Error::new(ErrorKind::GrantRequired)
 }
-
-/// Refuses a write mint with no approved gate for the lease's event.
-pub(crate) fn write_unapproved() -> Error {
-    Error::new(ErrorKind::WriteUnapproved)
-}
-
-/// Refuses a write mint whose approval no longer matches the fleet's reach.
-pub(crate) fn binding_drift() -> Error {
-    Error::new(ErrorKind::BindingDrift)
-}
-
-/// Refuses a write mint against a spent allowance.
-pub(crate) fn write_spend_exhausted() -> Error {
-    Error::new(ErrorKind::WriteSpendExhausted)
-}
