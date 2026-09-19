@@ -16,7 +16,11 @@ import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
-import { readIdentity, type CallerIdentity } from "../lib/me-ping.ts";
+import {
+  readIdentity,
+  IDENTITY_ROUTE_ABSENT_STATUS,
+  type CallerIdentity,
+} from "../lib/me-ping.ts";
 import { AuthError, CLI_ERROR_TAG, ServerError, type CliError } from "../errors/index.ts";
 
 // A server refusal and a network failure travel out UNMAPPED, so the dispatcher
@@ -48,7 +52,6 @@ const NOT_AUTHENTICATED =
 // answers an unmatched path before any guard runs. The generic 404 sentence
 // ("verify the request payload and retry") sends the reader after a body this
 // command does not send, so the real cause is named instead.
-const STATUS_NOT_FOUND = 404;
 const ROUTE_ABSENT =
   "this deployment does not answer who you are — it is older than this client" as const;
 const ROUTE_ABSENT_FIX =
@@ -126,7 +129,7 @@ export const whoamiEffect: Effect.Effect<
 
   const identity = yield* readIdentity(token.value as Redacted.Redacted<string>).pipe(
     Effect.mapError((err) =>
-      err._tag === CLI_ERROR_TAG.server && err.status === STATUS_NOT_FOUND
+      err._tag === CLI_ERROR_TAG.server && err.status === IDENTITY_ROUTE_ABSENT_STATUS
         ? new ServerError({
             detail: ROUTE_ABSENT,
             suggestion: ROUTE_ABSENT_FIX,

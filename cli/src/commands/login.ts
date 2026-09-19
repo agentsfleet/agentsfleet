@@ -60,7 +60,11 @@ import {
   exchangeForCredential,
   type MintedCredential,
 } from "./login-exchange.ts";
-import { readIdentity, type CallerIdentity } from "../lib/me-ping.ts";
+import {
+  readIdentity,
+  IDENTITY_ROUTE_ABSENT_STATUS,
+  type CallerIdentity,
+} from "../lib/me-ping.ts";
 
 export interface LoginFlags {
   readonly noOpen: boolean;
@@ -192,7 +196,7 @@ const rollbackOnIdentityFailure = Effect.fnUntraced(function* (
   err: ServerError | NetworkError | UnexpectedError,
 ) {
   const output = yield* Output;
-  if (err._tag === CLI_ERROR_TAG.server && err.status === STATUS_NOT_FOUND) {
+  if (err._tag === CLI_ERROR_TAG.server && err.status === IDENTITY_ROUTE_ABSENT_STATUS) {
     yield* output.warn(IDENTITY_ROUTE_ABSENT);
     return null;
   }
@@ -340,8 +344,5 @@ const LOGIN_COMPLETE = "login complete" as const;
 // (the login did not take) rather than the mechanism (a read was refused).
 const CREDENTIAL_UNCONFIRMED = "credential saved but failed validation" as const;
 const SIGN_IN_AGAIN = "try `agentsfleet login` again" as const;
-// The status a deployment older than this client answers the identity route
-// with. Named because three call sites branch on it.
-const STATUS_NOT_FOUND = 404;
 const IDENTITY_ROUTE_ABSENT =
   "this deployment does not serve the identity read, so `agentsfleet whoami` will not work against it — the credential is saved and every other command works" as const;
