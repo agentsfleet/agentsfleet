@@ -59,6 +59,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `schema/915_usage_ledger_retains_fleet_identity.sql` | CREATE | The forward slot: drops the `fleet_id` foreign key, adds `fleet_name TEXT`. |
 | `schema/720_usage_ledger_indexes.sql` | EDIT | Comment only. The fleet index loses Reader 2 and keeps Reader 1; the rationale has to say so or it documents a constraint that no longer exists. |
 | `rustd/crates/afd_db/src/migration.rs` | EDIT | Registers slot 915 in the forward array. |
+| `rustd/crates/afd_db/tests/migrations.rs` | EDIT | Pins the two claims slot 915 makes about itself: that `720`'s rationale stops citing the reader it lost, and that the constraint is dropped by catalogue lookup rather than by a guessed name. |
 | `rustd/crates/afd_billing/src/sql.rs` | EDIT | `INSERT_USAGE_LEDGER` gains the `fleet_name` column and its bind. |
 | `rustd/crates/afd_fleet/src/lease/sql/report.rs` | EDIT | The report path's ledger insert gains `fleet_name`, sourced by join. |
 | `rustd/crates/afd_fleet/src/lease/sql/renew.rs` | EDIT | The renewal path's ledger insert, same change. |
@@ -112,7 +113,7 @@ The purge nulls `fleet_id` because a foreign key says it must. Dropping the cons
 
 - **Dimension 1.1** — Slot 915 drops the `fleet_id` foreign key and the column survives a fleet purge with its value intact → Test `test_m201_ledger_retains_fleet_id_across_purge`
 - **Dimension 1.2** — `idx_usage_ledger_fleet_id_workspace_id_last_charged_at` still serves the budget drain after the constraint is gone, with no plan regression → Test `test_m201_budget_drain_plan_unchanged`
-- **Dimension 1.3** — The `720` rationale names one reader, not two, and no longer cites a referential action that does not exist → Test `test_m201_index_comment_names_surviving_reader`
+- **Dimension 1.3** — DONE — The `720` rationale names one reader, not two, and no longer cites a referential action that does not exist → Test `test_m201_index_comment_names_surviving_reader`
 - **Dimension 1.4** — The purge destroys memory, approval gates, integration grants and sessions exactly as before → Test `test_m201_purge_destroys_no_less_than_before`
 
 ### §2 — The ledger captures the name
