@@ -81,6 +81,10 @@ The runner executes the **fleet's** SKILL.md (which reflects any PATCH), not the
 3. **Fleet subscription.** The installed fleet declares `source: github`, `events: [pull_request]`, and `repositories: [acme/payments]` in `TRIGGER.md`. The App installation is the maximum repository set; this fleet list is the smaller event subscription. Omission receives no App traffic.
 4. **A PR is opened.** GitHub signs and posts the event to `/v1/ingress/github`. The receiver verifies before reading routing fields, resolves the installation, selects only active and approved fleets matching `acme/payments` plus `pull_request`, claims an authenticated-body-digest/fleet replay slot, and appends the normalized event.
 
+5. **The authorisation, once, at install.** Installing the fleet writes an approved `core.integration_grants` row for `(fleet_id, "github")` and raises no approval card. Installing IS the answer: John chose the fleet, the bundle names the integration, and `TRIGGER.md` names the repositories and the access level — so a second question adds no fact he could act on. The mint reads that grant and nothing else; `ScopedRequest::for_binding` still narrows the token to the declared repositories, and `Granted::verify` still refuses a response that widened. What bounds the run is the App installation, the fleet's `budget.daily_dollars`, and `agentsfleet grant revoke`, which takes effect on the next event with no provider call.
+
+   There is no per-event approval. A repository-write gate was raised on every first-encounter event until M202: a continuation carries a fresh event identifier, so each model turn re-parked, and one steer produced three cards and zero review comments. The grant replaced it because the grant already carried everything the card asked about.
+
 The manual `/v1/webhooks/{fleet_id}/github` route remains available for an operator-managed per-fleet hook. It uses the workspace webhook secret and does not require `repositories`; it is not the default App path.
 
 ## 4. The run — SKILL.md drives the review

@@ -195,15 +195,14 @@ async fn resolving_a_gate_does_not_reopen_the_event_it_blocked() {
 /// whether an unanswered approval should lapse — not a parity chore — and it
 /// fails here first.
 ///
-/// # The one place a late answer is still refused, and it is not this one
+/// # The late-answer inconsistency this used to name is gone
 ///
-/// `KIND_REPOSITORY_WRITE` alone carries a second predicate at the point of
-/// USE: `sql::SELECT_APPROVED_WRITE_GATE` requires
-/// `updated_at <= timeout_at`, so a late approval of a repository-write gate
-/// flips the row and continues the run, and the branch write is then declined.
-/// Every other gate kind honours the answer end to end. That inconsistency is
-/// inherited from `fleet_runtime/sql.zig` and is recorded in the spec rather
-/// than silently changed here.
+/// `repository_write` alone once carried a second predicate at the point of
+/// USE, so a late approval of one flipped the row and continued the run while
+/// the branch write was then declined. That kind is retired — the standing
+/// integration grant authorises a repository write and no card is raised per
+/// event — so every gate kind now honours its answer end to end, which is the
+/// behaviour this test pins.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_gate_answered_long_after_its_window_still_resumes_the_run() {

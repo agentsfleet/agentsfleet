@@ -13,10 +13,10 @@
 //! that raised would — on approval — hand that fleet the credential grant. The
 //! operator answering it was told they were approving a tool call.
 //!
-//! `repository_write`, the daemon's other privileged kind, was already defended
-//! twice: `Stated::write_kind` overwrites an authored kind on that path, and
-//! `SELECT_APPROVED_WRITE_GATE` demands a recorded binding and this build's
-//! ceiling, neither of which a rules-path card carries. `integration_grant` had
+//! `repository_write`, the daemon's other privileged kind, was defended twice
+//! over by the daemon path that raised it — and that path is now retired, the
+//! standing grant having taken over the authorisation it asked for.
+//! `integration_grant` had
 //! nothing, and was harmless only because no grant row existed for the arm to
 //! move — which is exactly what M194 changed.
 //!
