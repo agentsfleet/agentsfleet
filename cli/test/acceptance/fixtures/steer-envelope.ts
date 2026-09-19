@@ -18,8 +18,16 @@ const CLOSE_BRACE = "}" as const;
 const QUOTE = '"' as const;
 const BACKSLASH = "\\" as const;
 
-/** The trailing balanced `{…}` object in a stream the CLI also wrote prose to. */
-export function trailingJsonObject(stdout: string): string {
+/** The trailing balanced `{…}` object in a stream the CLI also wrote prose to,
+ *  as TEXT.
+ *
+ *  Named for what it returns. `trailingJsonObject` returned this same string,
+ *  and a caller writing `trailingJsonObject(out) as { items?: … }` got a
+ *  string wearing an object's type — TypeScript admits that cast, because a
+ *  target whose properties are all optional is comparable to anything, so
+ *  every field read back `undefined` and the assertion failed against output
+ *  that was in fact correct. */
+export function trailingJsonText(stdout: string): string {
   const end = stdout.lastIndexOf(CLOSE_BRACE);
   assert.ok(end >= 0, `steer --json produced no JSON object: ${stdout}`);
   let depth = 0;
@@ -41,4 +49,12 @@ export function trailingJsonObject(stdout: string): string {
     }
   }
   throw new assert.AssertionError({ message: `unbalanced JSON in steer stdout: ${stdout}` });
+}
+
+/** The same trailing object, PARSED.
+ *
+ *  Returns `unknown` so a caller's `as` is a narrowing of a parsed value
+ *  rather than a reinterpretation of a string. */
+export function trailingJson(stdout: string): unknown {
+  return JSON.parse(trailingJsonText(stdout));
 }
