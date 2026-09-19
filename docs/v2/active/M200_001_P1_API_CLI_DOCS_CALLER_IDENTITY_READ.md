@@ -22,8 +22,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — single stream; the endpoint and its one client land together
 **Branch:** `feat/m200-caller-identity-read`
 **Baseline revision:** `e9bd5c2b2dfbb654647ea37b3720936d878a3ee3`
-**Test Baseline:** pending — measured before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** `unit=2630 integration=512` — `make test-unit-all` (cargo workspace 2630 passed / 0 failed / 532 ignored, plus the Command-Line Interface (CLI) suite at 1766 passed / 16 skipped and every TypeScript package gate green) and `make test-integration-rustd` (511 + 1 exclusive = 512 passed / 0 failed), both exit 0 on the comparison revision in an isolated worktree
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M200_001-e9bd5c2b2.md`
 **Depends on:** none
 **Provenance:** LLM-drafted (claude-opus-5, Sep 19, 2026)
 **Canonical architecture:** `docs/architecture/user_flow.md` §8.0

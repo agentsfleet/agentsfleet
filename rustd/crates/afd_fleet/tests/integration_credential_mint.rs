@@ -29,6 +29,8 @@
 // to THIS file's directory, which the aggregator does not change.
 #[path = "integration_credential_mint/cases.rs"]
 mod cases;
+#[path = "integration_credential_mint/write_gate.rs"]
+mod write_gate;
 use crate::seed;
 use crate::support;
 use afd_core::clock::UnixMillis;
