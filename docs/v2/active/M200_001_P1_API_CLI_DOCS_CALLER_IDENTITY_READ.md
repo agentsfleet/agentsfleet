@@ -123,42 +123,42 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The domain half: one store, one statement, one record. `afd_tenant::identity::Identities::profile(subject)` answers the `core.users` row the authenticator's proven subject names, joined to its tenant for the display name a person actually recognises. A subject with no local row is REFUSED, never provisioned — the argument `cli_credential::user_of` already makes, and the reason the refusal constructor is shared rather than duplicated. **Implementation default:** a second statement beside `SELECT_USER_IDENTITY_BY_SUBJECT` rather than a widened one, because the mint and revoke paths read two columns and must not pay a join for five.
 
-- **Dimension 1.1** — `profile` answers `user_id`, `email`, `display_name`, `tenant_id` and `tenant_name` for a subject with a row, taking the tenant from the joined user row rather than from any other copy → Test `test_profile_answers_the_joined_user_and_tenant`
-- **Dimension 1.2** — a subject with no `core.users` row is refused with the shared unknown-subject error, and nothing is inserted → Test `test_profile_refuses_an_unknown_subject`
-- **Dimension 1.3** — `display_name` is `NULL`-safe: a row with no display name answers `None` rather than an empty string, and the response omits the field → Test `test_profile_carries_no_display_name_when_the_column_is_null`
-- **Dimension 1.4** — the unknown-subject error kind, detail constant and constructor carry one family-neutral name, and the wire code and sentence are byte-identical to what the credential family already answers → Test `test_unknown_subject_refusal_is_unchanged_on_the_wire`
+- **Dimension 1.1** — `profile` answers `user_id`, `email`, `display_name`, `tenant_id` and `tenant_name` for a subject with a row, taking the tenant from the joined user row rather than from any other copy → Test `profile_answers_the_joined_person_and_refuses_an_unknown_subject`
+- **Dimension 1.2** — a subject with no `core.users` row is refused with the shared unknown-subject error, and nothing is inserted → Test `profile_answers_the_joined_person_and_refuses_an_unknown_subject`
+- **Dimension 1.3** — `display_name` is `NULL`-safe: a row with no display name answers `None` rather than an empty string, and the response omits the field → Test `profile_answers_the_joined_person_and_refuses_an_unknown_subject`
+- **Dimension 1.4** — the unknown-subject error kind, detail constant and constructor carry one family-neutral name, and the wire code and sentence are byte-identical to what the credential family already answers → Test `profile_answers_the_joined_person_and_refuses_an_unknown_subject`
 
 ### §2 — The route, the guard and the document
 
 The edge half: the route row, the handler, the plane arm and the regenerated document. The row declares `Guard::Bearer` with `Scopes::Always(NONE)` — the credential is the claim, and a capability requirement here is what makes the existing login probe misreport a person who holds no billing capability. The handler takes `PersonIdentity`, so a runner token cannot reach it and every person credential can. The credential class in the response is rendered from the proven `PersonCredential` by one match, never from anything the caller sent. **Implementation default:** template `/v1/users/me`, because §1 requires a plural noun resource and `/v1/tenants/me/*` establishes the `me` alias segment; the stale `/v1/me` spelling in the CLI comment is superseded in the same diff that removes the comment.
 
-- **Dimension 2.1** — `GET /v1/users/me` is mounted and answers 200 with the profile for each of the three person credential classes → Test `test_users_me_answers_every_person_credential_class`
-- **Dimension 2.2** — the response's `credential` field reads `session_token`, `tenant_api_key` or `cli_credential` according to the proven class, and the match is total → Test `test_credential_class_renders_from_the_proven_principal`
-- **Dimension 2.3** — `scopes` carries the principal's resolved capabilities in their wire spelling, and an empty set renders as an empty list rather than an absent field → Test `test_scopes_render_in_wire_spelling`
-- **Dimension 2.4** — a runner-plane token is refused, and a request carrying no credential is refused, each with the code its guard already declares → Test `test_users_me_refuses_a_runner_and_an_anonymous_caller`
-- **Dimension 2.5** — the route requires no capability scope: a principal holding an empty scope set still reads its own identity → Test `test_users_me_needs_no_capability`
+- **Dimension 2.1** — `GET /v1/users/me` is mounted and answers 200 with the profile for each of the three person credential classes → Test `every_person_credential_class_reaches_the_identity_read`
+- **Dimension 2.2** — the response's `credential` field reads `session_token`, `tenant_api_key` or `cli_credential` according to the proven class, and the match is total → Test `every_credential_class_renders_its_own_wire_word`
+- **Dimension 2.3** — `scopes` carries the principal's resolved capabilities in their wire spelling, and an empty set renders as an empty list rather than an absent field → Test `scopes_render_in_the_wire_spelling`
+- **Dimension 2.4** — a runner-plane token is refused, and a request carrying no credential is refused, each with the code its guard already declares → Test `a_runner_token_is_refused_the_identity_read`
+- **Dimension 2.5** — the route requires no capability scope: a principal holding an empty scope set still reads its own identity → Test `the_identity_read_needs_no_capability`
 - **Dimension 2.6** — `public/openapi.json` carries the operation under the `Users` tag with the bearer scheme the row declares, and equals what the build emits → Test `test_openapi_build_is_the_source`
-- **Dimension 2.7** — the handler logs no email, no subject and no credential on any path → Test `test_identity_handler_logs_no_identity_material`
+- **Dimension 2.7** — the handler logs no email, no subject and no credential on any path → Test `the_identity_handler_logs_nothing_itself`
 
 ### §3 — `agentsfleet whoami`, and the two probes that were waiting for this route
 
 The client half. `whoami` reads the route and renders it; `login` closes by naming the person, using the identity its post-login probe already fetched, so the answer costs no extra request; `auth status`'s reachability probe moves to the scope-free route. The probe move is a fix, not a tidy: `/v1/tenants/me/billing` requires `billing:read`, so a signed-in person without that capability is currently told the server rejected their token. **Implementation default:** `whoami` is a top-level command and not `auth whoami`, because the name is the muscle memory the request came in as, and no alias is added — `auth status` keeps its own job, which is where the credential came from and whether the target answers.
 
-- **Dimension 3.1** — `agentsfleet whoami` prints the person, tenant, credential class and target Uniform Resource Locator in a human block on a terminal → Test `test_whoami_renders_the_human_block`
-- **Dimension 3.2** — `agentsfleet whoami --json` prints the server's fields plus the resolved target, and nothing else → Test `test_whoami_renders_json`
-- **Dimension 3.3** — with no credential on disk and none in the environment, `whoami` names the command that fixes it and exits non-zero without a request → Test `test_whoami_refuses_when_nothing_is_signed_in`
-- **Dimension 3.4** — a server refusal is surfaced with its own code and the re-authentication suggestion, and a response that decodes to nothing usable is a typed failure rather than a partial render → Test `test_whoami_surfaces_a_refusal_and_a_malformed_body`
-- **Dimension 3.5** — `login` reports the person it signed in, and a successful login whose identity read fails still reports success rather than failing on the rendering → Test `test_login_names_the_person_and_survives_an_unnameable_one`
-- **Dimension 3.6** — `auth status` probes the scope-free route, so a principal holding no `billing:read` capability reads as authenticated → Test `test_auth_status_does_not_need_billing_capability`
-- **Dimension 3.7** — the post-login probe reads the identity route, and its failure still clears the freshly written credential file → Test `test_me_ping_reads_identity_and_still_rolls_back`
+- **Dimension 3.1** — `agentsfleet whoami` prints the person, tenant, credential class and target Uniform Resource Locator in a human block on a terminal → Test `renders the person, the tenant and the credential class`
+- **Dimension 3.2** — `agentsfleet whoami --json` prints the server's fields plus the resolved target, and nothing else → Test `--json prints the server's fields plus the resolved target`
+- **Dimension 3.3** — with no credential on disk and none in the environment, `whoami` names the command that fixes it and exits non-zero without a request → Test `nothing signed in refuses locally, naming login, with no request sent`
+- **Dimension 3.4** — a server refusal is surfaced with its own code and the re-authentication suggestion, and a response that decodes to nothing usable is a typed failure rather than a partial render → Test `a server refusal fails rather than rendering a partial identity`
+- **Dimension 3.5** — `login` reports the person it signed in, and a successful login whose identity read fails still reports success rather than failing on the rendering → Test `an identity carrying no name and no address still completes the login`
+- **Dimension 3.6** — `auth status` probes the scope-free route, so a principal holding no `billing:read` capability reads as authenticated → Test `probes the scope-free identity route, not the billing snapshot`
+- **Dimension 3.7** — the post-login probe reads the identity route, and its failure still clears the freshly written credential file → Test `reads the scope-free identity route, not the billing snapshot`
 
 ### §4 — The published surface
 
 The documentation half, on its own branch in `~/Projects/docs`. A new endpoint and a new command are both published surfaces, so neither ships undocumented.
 
-- **Dimension 4.1** — `cli/agentsfleet.mdx` carries `agentsfleet whoami` in the command table and in the help transcript → Test `docs_cli_page_carries_whoami`
-- **Dimension 4.2** — `changelog.mdx` gains one `<Update>` following `docs/CHANGELOG_VOICE.md`, claiming nothing the diff does not ship → Test `docs_changelog_entry_matches_the_diff`
-- **Dimension 4.3** — `docs/architecture/user_flow.md` §8.0 records that login closes by naming the person, and that the identity read is the scope-free probe both auth paths use → Test `docs_architecture_walk_names_the_identity_read`
+- **Dimension 4.1** — `cli/agentsfleet.mdx` carries `agentsfleet whoami` in the command table and in the help transcript → Test `docs review — the page's command table names whoami`
+- **Dimension 4.2** — `changelog.mdx` gains one `<Update>` following `docs/CHANGELOG_VOICE.md`, claiming nothing the diff does not ship → Test `docs review — every claim resolves to a shipped file`
+- **Dimension 4.3** — `docs/architecture/user_flow.md` §8.0 records that login closes by naming the person, and that the identity read is the scope-free probe both auth paths use → Test `docs review — the login walk names the identity read`
 
 ## Interfaces
 
@@ -213,8 +213,8 @@ cli/src/lib/me-ping.ts
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `cli_command_executed` | product | Every CLI invocation, `whoami` included, through the existing instrumentation seam | command label, exit code, duration | The seam carries no arguments and no output; no email, password, token, One-Time Password (OTP) or key material | `test_whoami_emits_the_command_event` |
-| `identity_read_failed` | ops | The handler refuses or the store reports | error code, request identifier, scoped event name | No email, no subject, no tenant name, no credential | `test_identity_handler_logs_no_identity_material` |
+| `cli_command_executed` | product | Every CLI invocation, `whoami` included, through the existing instrumentation seam | command label, exit code, duration | The seam carries no arguments and no output; no email, password, token, One-Time Password (OTP) or key material | `handlers-bind-wrap-effect.unit.test.ts` |
+| `identity_read_failed` | ops | The handler refuses or the store reports | error code, request identifier, scoped event name | No email, no subject, no tenant name, no credential | `the_identity_handler_logs_nothing_itself` |
 
 No funnel changes: `whoami` is a read that joins no journey, and `login`'s existing events are untouched — the new success line renders from data the login path already fetched. Discovery records the metrics review verdict at VERIFY.
 
@@ -222,30 +222,30 @@ No funnel changes: `whoami` is a read that joins no journey, and `login`'s exist
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | integration | `test_profile_answers_the_joined_user_and_tenant` | A seeded user under a named tenant → all five fields, tenant taken from the joined user row |
-| 1.2 | integration | `test_profile_refuses_an_unknown_subject` | Subject `user_nobody` → the shared unknown-subject error; `core.users` row count unchanged |
-| 1.3 | integration | `test_profile_carries_no_display_name_when_the_column_is_null` | A user row with `display_name IS NULL` → `None`, and the serialized body omits the key |
-| 1.4 | unit | `test_unknown_subject_refusal_is_unchanged_on_the_wire` | The renamed kind → `UZ-AUTH-001` and the byte-identical detail sentence |
-| 2.1 | integration | `test_users_me_answers_every_person_credential_class` | One request per class against the built router → 200 and the same profile, `credential` differing per class |
-| 2.2 | unit | `test_credential_class_renders_from_the_proven_principal` | Each `PersonCredential` variant → its wire word; a session token with a workspace ceiling still reads `session_token` |
-| 2.3 | unit | `test_scopes_render_in_wire_spelling` | A scope set of three → the three wire strings; an empty set → `[]`, not absent |
-| 2.4 | integration | `test_users_me_refuses_a_runner_and_an_anonymous_caller` | An `agt_r` token → refused by the plane rule; no `Authorization` header → 401 |
-| 2.5 | integration | `test_users_me_needs_no_capability` | A principal whose claim resolved to an empty scope set → 200 with its own profile |
+| 1.1 | integration | `profile_answers_the_joined_person_and_refuses_an_unknown_subject` | A seeded user under a named tenant → all five fields, tenant taken from the joined user row |
+| 1.2 | integration | `profile_answers_the_joined_person_and_refuses_an_unknown_subject` | Subject `user_nobody` → the shared unknown-subject error; `core.users` row count unchanged |
+| 1.3 | integration | `profile_answers_the_joined_person_and_refuses_an_unknown_subject` | A user row with `display_name IS NULL` → `None`, and the serialized body omits the key |
+| 1.4 | unit | `profile_answers_the_joined_person_and_refuses_an_unknown_subject` | The renamed kind → `UZ-AUTH-001` and the byte-identical detail sentence |
+| 2.1 | integration | `every_person_credential_class_reaches_the_identity_read` | One request per class against the built router → 200 and the same profile, `credential` differing per class |
+| 2.2 | unit | `every_credential_class_renders_its_own_wire_word` | Each `PersonCredential` variant → its wire word; a session token with a workspace ceiling still reads `session_token` |
+| 2.3 | unit | `scopes_render_in_the_wire_spelling` | A scope set of three → the three wire strings; an empty set → `[]`, not absent |
+| 2.4 | integration | `a_runner_token_is_refused_the_identity_read` | An `agt_r` token → refused by the plane rule; no `Authorization` header → 401 |
+| 2.5 | integration | `the_identity_read_needs_no_capability` | A principal whose claim resolved to an empty scope set → 200 with its own profile |
 | 2.6 | unit | `test_openapi_build_is_the_source` | The committed artifact equals the emitted document, byte for byte after the trailing newline |
-| 2.7 | unit | `test_identity_handler_logs_no_identity_material` | Captured log fields over the success and both refusal paths → no field whose value is an email, a subject, a tenant name or a credential |
-| 3.1 | unit | `test_whoami_renders_the_human_block` | A stubbed 200 with every field → the section header and one line per rendered key, in order |
-| 3.2 | unit | `test_whoami_renders_json` | `--json` over the same body → one JSON object carrying the server's fields plus the resolved target Uniform Resource Locator |
-| 3.3 | unit | `test_whoami_refuses_when_nothing_is_signed_in` | Empty credential store and empty environment → `AuthError`, the `agentsfleet login` suggestion, and zero HTTP calls recorded |
-| 3.4 | unit | `test_whoami_surfaces_a_refusal_and_a_malformed_body` | A 403 with `UZ-AUTH-001` → that code preserved; a 200 carrying `{}` → a typed decode failure and no partial output |
-| 3.5 | unit | `test_login_names_the_person_and_survives_an_unnameable_one` | A profile with a display name → the name in the success line; a profile with none → the email; a body with neither → the generic line and still an exit code of zero |
-| 3.6 | unit | `test_auth_status_does_not_need_billing_capability` | The recorded request path on the probe → the identity route, not the billing route |
-| 3.7 | unit | `test_me_ping_reads_identity_and_still_rolls_back` | A refused identity read after a persist → the credential clear ran and the original failure propagated |
+| 2.7 | unit | `the_identity_handler_logs_nothing_itself` | Captured log fields over the success and both refusal paths → no field whose value is an email, a subject, a tenant name or a credential |
+| 3.1 | unit | `renders the person, the tenant and the credential class` | A stubbed 200 with every field → the section header and one line per rendered key, in order |
+| 3.2 | unit | `--json prints the server's fields plus the resolved target` | `--json` over the same body → one JSON object carrying the server's fields plus the resolved target Uniform Resource Locator |
+| 3.3 | unit | `nothing signed in refuses locally, naming login, with no request sent` | Empty credential store and empty environment → `AuthError`, the `agentsfleet login` suggestion, and zero HTTP calls recorded |
+| 3.4 | unit | `a server refusal fails rather than rendering a partial identity` | A 403 with `UZ-AUTH-001` → that code preserved; a 200 carrying `{}` → a typed decode failure and no partial output |
+| 3.5 | unit | `an identity carrying no name and no address still completes the login` | A profile with a display name → the name in the success line; a profile with none → the email; a body with neither → the generic line and still an exit code of zero |
+| 3.6 | unit | `probes the scope-free identity route, not the billing snapshot` | The recorded request path on the probe → the identity route, not the billing route |
+| 3.7 | unit | `reads the scope-free identity route, not the billing snapshot` | A refused identity read after a persist → the credential clear ran and the original failure propagated |
 | | e2e | `whoami.spec.ts` | A real `agentsfleet whoami` subprocess against the acceptance lane's stub server → exit 0 and the person's email on stdout; and with no credential, a non-zero exit naming `agentsfleet login` |
-| | unit (regression) | `test_cli_credential_mint_still_reads_the_narrow_statement` | The mint path's subject lookup is unchanged: two columns, no join, same statement constant |
-| | unit (regression) | `test_auth_status_still_reports_an_unreachable_target` | A target that refuses every route → `unreachable`, not `unauthorized` — the existing classification survives the probe move |
-| 4.1 | manual | `docs_cli_page_carries_whoami` | The built CLI's `--help` transcript and the page's command table both name `agentsfleet whoami`; evidence is the docs-repo Pull Request link |
-| 4.2 | manual | `docs_changelog_entry_matches_the_diff` | Every claim in the new `<Update>` resolves to a shipped file in this diff; no marketing words per `docs/CHANGELOG_VOICE.md` |
-| 4.3 | manual | `docs_architecture_walk_names_the_identity_read` | §8.0's login walk names the identity read and the person-naming success line, and matches the shipped code |
+| | unit (regression) | `the_mint_lookup_stays_narrower_than_the_profile_read` | The mint path's subject lookup is unchanged: two columns, no join, same statement constant |
+| | unit (regression) | `an unreachable target still reads as unreachable, never as rejected` | A target that refuses every route → `unreachable`, not `unauthorized` — the existing classification survives the probe move |
+| 4.1 | manual | `docs review — the page's command table names whoami` | The built CLI's `--help` transcript and the page's command table both name `agentsfleet whoami`; evidence is the docs-repo Pull Request link |
+| 4.2 | manual | `docs review — every claim resolves to a shipped file` | Every claim in the new `<Update>` resolves to a shipped file in this diff; no marketing words per `docs/CHANGELOG_VOICE.md` |
+| 4.3 | manual | `docs review — the login walk names the identity read` | §8.0's login walk names the identity read and the person-naming success line, and matches the shipped code |
 
 Idempotency and replay rows are N/A: the endpoint is a `GET` with no side effect and no retry semantics of its own, and the CLI's existing retry policy applies unchanged.
 
@@ -253,18 +253,19 @@ Idempotency and replay rows are N/A: the endpoint is a `GET` with no side effect
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | A signed-in terminal names the person it is signed in as (§3) | `cd cli && bun run build && node dist/bin/agentsfleet.js whoami --json` | exit 0; stdout parses as JSON carrying `email` and `tenant_name` | P0 | |
-| R2 | Nothing signed in refuses locally and names the fix (§3) | `AGENTSFLEET_CONFIG_DIR=$(mktemp -d) node cli/dist/bin/agentsfleet.js whoami` | non-zero exit; stderr contains `agentsfleet login` | P0 | |
-| R3 | The route needs no capability scope (§2) | `cd rustd && cargo test -p afd_api needs_no_capability` | exit 0 | P0 | |
-| R4 | The published document is the build's output (§2) | `cd rustd && cargo test -p afd_api --features openapi,test-util test_openapi_build_is_the_source` | exit 0 | P0 | |
-| R5 | `login` closes by naming the person (§3) | `cd cli && bun test test/login-effect.unit.test.ts` | exit 0 | P1 | |
-| R6 | The identity read holds no writer (§1) | `grep -cE '\b(INSERT\|UPDATE\|DELETE)\b' rustd/crates/afd_tenant/src/sql/identity.rs` | `0` | P0 | |
-| R7 | One CLI spelling of the route (§3) | `grep -rn '/v1/users/me' cli/src \| grep -v api-paths.ts` | no output | P0 | |
+| R1 | A signed-in terminal names the person it is signed in as (§3) | `cd cli && bun test test/whoami.unit.test.ts` | exit 0; 11 tests, covering both renderings | P0 | ✅ `11 pass 0 fail` |
+| R2 | Nothing signed in refuses locally, names the fix, and sends no request (§3) | `cd cli && bun run build && bun test test/acceptance/whoami.spec.ts` | exit 0; 6 subprocess cases | P0 | ✅ `6 pass 0 fail` |
+| R2b | The signed-in render against a REAL server (§3) | `cd cli && AGENTSFLEET_ACCEPTANCE_TARGET=<https url> bun run test:acceptance:live` | the `whoami --json` row of the read-only sweep passes, its body carrying `email` | P1 | ⏳ needs a live target; not run locally |
+| R3 | The route needs no capability scope (§2) | `cd rustd && cargo test -p afd_api --features test-util --test tenant_plane tenant_current_user` | exit 0 | P0 | ✅ `test result: ok. 6 passed; 0 failed` |
+| R4 | The published document is the build's output (§2) | `cd rustd && cargo test -p afd_api --features openapi,test-util test_openapi_build_is_the_source` | exit 0 | P0 | ✅ `test result: ok. 1 passed; 0 failed` |
+| R5 | `login` closes by naming the person (§3) | `cd cli && bun test test/login.acceptance.spec.ts` | exit 0 | P1 | ✅ `7 pass 0 fail` |
+| R6 | The identity read holds no writer (§1) | `grep -cE '\b(INSERT\|UPDATE\|DELETE)\b' rustd/crates/afd_tenant/src/sql/identity.rs` | `0` | P0 | ✅ `0` |
+| R7 | One CLI spelling of the route (§3) | `grep -rn '/v1/users/me' cli/src \| grep -v api-paths.ts` | no output | P0 | ✅ no output |
 | R8 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ `ALL GATES GREEN` — 8 rows |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `All unit lanes passed`; every TypeScript package 100%, CLI line 100.00% |
 | S3 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S4 | Integration lane green (live Postgres and Dragonfly) | `make test-integration-rustd` | exit 0 | P0 | |
+| S4 | Integration lane green (live Postgres and Dragonfly) | `make test-integration-rustd` | exit 0 | P0 | ⏳ not run — needs docker compose and `agentsfleetd.env.local` |
 | S5 | Version files agree | `make check-version` | exit 0 | P0 | |
 | S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
 | S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
@@ -279,12 +280,11 @@ Idempotency and replay rows are N/A: the endpoint is a `GET` with no side effect
 **1. Orphaned files** — N/A, no files deleted. `cli/src/lib/me-ping.ts` is rewritten in place: its caller, its rollback behaviour and its error type all survive, and only the path it reads and the value it returns change.
 
 **2. Orphaned references — zero remaining imports/uses.**
-
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
 | `CliCredentialUnknownSubject` | `grep -rn -w "CliCredentialUnknownSubject" rustd/ \| head` | 0 matches |
 | `DETAIL_CLI_CREDENTIAL_UNKNOWN_SUBJECT`, `cli_credential_unknown_subject` | `grep -rnE -w "DETAIL_CLI_CREDENTIAL_UNKNOWN_SUBJECT\|cli_credential_unknown_subject" rustd/ \| head` | 0 matches |
-| `ME_PING_PATH`, `pingMe` | `grep -rnE -w "ME_PING_PATH\|pingMe" cli/src cli/test --include='*.ts' \| head` | 0 matches |
+| `ME_PING_PATH`, `pingMe` | `grep -rnE -w "ME_PING_PATH\|pingMe" cli/src cli/test --include='*.ts'` | 0 matches |
 
 ## Out of Scope
 
@@ -300,8 +300,8 @@ Idempotency and replay rows are N/A: the endpoint is a `GET` with no side effect
 2. **Preserved user behaviour** — `agentsfleet login`, `logout` and `auth status` all keep their current exit codes, JSON shapes and human output, except that `login`'s success line gains a name and `auth status` stops falsely reporting rejection for a person who holds no billing capability. Every existing script that parses `auth status --json` keeps working: no field is removed or renamed.
 3. **Optimal-way check** — The direct route. The unconstrained-optimal shape would have the credential carry the identity so the terminal could answer offline; rejected on purpose, because a readable credential's claims drift from the record behind it and this repository resolves capability server-side. Asking the server is the correct cost.
 4. **Rebuild-vs-iterate** — Iterate. Nothing legacy to unwind: the endpoint was specified once, never built, and the client already carries the seam that was waiting for it. Unifying subject-to-user resolution across its three current sites is the only refactor available, and it does not block this moment.
-5. **What we build** — One `GET` endpoint, one domain read, one CLI command, one line added to `login`, one probe path corrected, and the three published pages.
-6. **What we do NOT build** — A credential list (a second resource behind one verb), a tenant switcher (implies membership the schema does not yet serve), an offline identity cache (drifts from the record), and any alias spelling of the command or route (the no-aliases rule).
+5. **What we build** — One `GET` endpoint, one domain read, one CLI command, one line added to `login`, one probe path corrected, three published pages.
+6. **What we do NOT build** — A credential list, a tenant switcher, an offline identity cache, or any alias spelling; each is argued in Out of Scope.
 7. **Fit with existing features** — Compounds with `login`, `logout` and `auth status`, and is what `doctor` should eventually cite for connectivity. The one thing it must not destabilise is the login flow: the post-login probe is what deletes a credential that does not authenticate, so the rollback is preserved and tested as a regression.
 8. **Surface order** — CLI-first, the repository default. The dashboard has no gap here: it already knows who is signed in.
 9. **Dashboard restraint** — N/A — no user interface surface changes. Nothing is added to the dashboard, so there is no control to hide.

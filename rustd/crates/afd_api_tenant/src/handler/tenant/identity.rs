@@ -25,7 +25,7 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_auth::principal::PersonCredential;
+use afd_auth::principal::{Person, PersonCredential};
 use afd_wire::identity::{CurrentUserResponse, credential_class};
 use axum::Json;
 use axum::extract::State;
@@ -82,13 +82,22 @@ pub(crate) async fn current<D: Services>(
         tenant_id: Cow::Borrowed(profile.tenant.as_str()),
         tenant_name: Cow::Borrowed(&profile.tenant_name),
         credential: Cow::Borrowed(class_of(person.credential())),
-        scopes: person
-            .scopes()
-            .iter()
-            .map(|scope| Cow::Borrowed(scope.wire()))
-            .collect(),
+        scopes: scopes_of(person),
     })
     .into_response())
+}
+
+/// What this caller may do, in the spelling scopes are claimed under.
+///
+/// Beside [`class_of`] because the two are the response's only DERIVED fields —
+/// everything else is a column — and both are worth a test that does not need a
+/// datastore to reach them.
+fn scopes_of(person: &Person) -> Vec<Cow<'static, str>> {
+    person
+        .scopes()
+        .iter()
+        .map(|scope| Cow::Borrowed(scope.wire()))
+        .collect()
 }
 
 /// The wire word for the class that proved this caller.
@@ -106,9 +115,62 @@ const fn class_of(credential: &PersonCredential) -> &'static str {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "test module: an unmet precondition should fail the test loudly"
+)]
 mod tests {
-    use super::{class_of, credential_class};
-    use afd_auth::principal::PersonCredential;
+    use super::{class_of, credential_class, scopes_of};
+    use afd_auth::principal::{Person, PersonCredential, Subject};
+    use afd_auth::scope::{Scope, ScopeSet};
+    use afd_core::id::Uuid7;
+
+    /// A fixture identifier, well formed and otherwise meaningless.
+    const TENANT: &str = "0193c5e0-0000-7000-8000-000000001234";
+
+    /// A person holding exactly `scopes`.
+    fn person_holding(scopes: ScopeSet) -> Person {
+        Person::new(
+            PersonCredential::CliCredential,
+            Uuid7::parse(TENANT).expect("the fixture identifier is well formed"),
+            Subject::new("user_fixture").expect("the fixture subject is not blank"),
+            scopes,
+        )
+    }
+
+    /// Capabilities render in the spelling a claim carries them in.
+    ///
+    /// Against `Scope::wire` rather than a literal, because that spelling is what
+    /// a claim is parsed from and what a client branches on — two ends of one
+    /// fact, and re-spelling it here is how the two drift (RULE UFS).
+    #[test]
+    fn scopes_render_in_the_wire_spelling() {
+        let held = ScopeSet::from_scopes(&[Scope::FleetRead, Scope::SecretRead]);
+
+        let rendered = scopes_of(&person_holding(held));
+
+        assert!(
+            rendered
+                .iter()
+                .any(|scope| scope == Scope::FleetRead.wire())
+        );
+        assert!(
+            rendered
+                .iter()
+                .any(|scope| scope == Scope::SecretRead.wire())
+        );
+        assert_eq!(rendered.len(), 2, "no scope is rendered twice");
+    }
+
+    /// A person who holds nothing renders an empty list, never a missing key.
+    ///
+    /// The distinction a reader depends on: "you hold no capabilities" and "this
+    /// answer does not say" are different facts, and an omitted key collapses
+    /// them.
+    #[test]
+    fn a_person_holding_nothing_renders_an_empty_list() {
+        assert!(scopes_of(&person_holding(ScopeSet::from_scopes(&[]))).is_empty());
+    }
 
     /// Each class renders its own wire word, taken from the shared constants.
     ///
@@ -135,6 +197,34 @@ mod tests {
         );
     }
 
+    /// This handler emits no log line of its own, so none can carry a person.
+    ///
+    /// A source assertion, because that is where the invariant lives. The
+    /// refusal path logs through [`Refusal::at`], which carries an error code, a
+    /// request identifier and an event name and has no field a profile could
+    /// reach; the success path logs nothing at all. What would break the rule is
+    /// somebody adding `tracing::info!(email = …)` here, and this is what fails
+    /// when they do — a runtime capture could not, because the fields it would
+    /// look for do not exist yet.
+    #[test]
+    fn the_identity_handler_logs_nothing_itself() {
+        let source = include_str!("identity.rs");
+        // Everything before the test module: the tests below legitimately name
+        // these things while asserting about them.
+        let production = source
+            .split_once("#[cfg(test)]")
+            .map_or(source, |(before, _tests)| before);
+
+        for emitter in ["tracing::", "println!", "eprintln!", "dbg!"] {
+            assert!(
+                !production.contains(emitter),
+                "the identity read must emit no `{emitter}` of its own: a log here \
+                 is one field away from publishing an address to an operator's \
+                 aggregator"
+            );
+        }
+    }
+
     /// A session narrowed to one workspace is still a session.
     ///
     /// The field names the CLASS, not its reach. A `==` against a value rather
@@ -143,10 +233,10 @@ mod tests {
     #[test]
     fn a_workspace_scoped_session_still_renders_as_a_session() {
         let ceiling = PersonCredential::SessionToken {
-            workspace_scope: Some(afd_core::id::Uuid7::parse(
-                "0193c5e0-0000-7000-8000-000000001234",
-            )
-            .expect("the fixture identifier is well formed")),
+            workspace_scope: Some(
+                afd_core::id::Uuid7::parse("0193c5e0-0000-7000-8000-000000001234")
+                    .expect("the fixture identifier is well formed"),
+            ),
         };
 
         assert_eq!(class_of(&ceiling), credential_class::SESSION_TOKEN);

@@ -82,12 +82,16 @@ async fn every_person_credential_class_reaches_the_identity_read() {
     for (label, router, token) in [
         (
             "a tenant api-key",
-            Fleet::new().with_person(TENANT_KEY, SUBJECT, NO_SCOPES).router(),
+            Fleet::new()
+                .with_person(TENANT_KEY, SUBJECT, NO_SCOPES)
+                .router(),
             TENANT_KEY,
         ),
         (
             "a command-line credential",
-            Fleet::new().with_terminal(TERMINAL, SUBJECT, NO_SCOPES).router(),
+            Fleet::new()
+                .with_terminal(TERMINAL, SUBJECT, NO_SCOPES)
+                .router(),
             TERMINAL,
         ),
     ] {
@@ -129,8 +133,13 @@ async fn a_browser_session_reaches_the_identity_read() {
 /// told their credential had been rejected.
 #[tokio::test]
 async fn the_identity_read_needs_no_capability() {
-    for (label, scopes) in [("no capabilities", NO_SCOPES), ("one capability", SOME_SCOPES)] {
-        let router = Fleet::new().with_terminal(TERMINAL, SUBJECT, scopes).router();
+    for (label, scopes) in [
+        ("no capabilities", NO_SCOPES),
+        ("one capability", SOME_SCOPES),
+    ] {
+        let router = Fleet::new()
+            .with_terminal(TERMINAL, SUBJECT, scopes)
+            .router();
 
         let response = harness::send(&router, Method::GET, CURRENT_USER, Some(TERMINAL), "").await;
 
@@ -157,8 +166,7 @@ async fn a_runner_token_is_refused_the_identity_read() {
         "a machine must not reach a read that answers with a person"
     );
     assert!(
-        response.status() == StatusCode::UNAUTHORIZED
-            || response.status() == StatusCode::FORBIDDEN,
+        response.status() == StatusCode::UNAUTHORIZED || response.status() == StatusCode::FORBIDDEN,
         "a runner is turned away in front of the handler, not by the store"
     );
 }
@@ -184,7 +192,9 @@ async fn an_anonymous_caller_is_refused_the_identity_read() {
 /// The route answers GET and nothing else.
 #[tokio::test]
 async fn the_identity_read_is_read_only() {
-    let router = Fleet::new().with_terminal(TERMINAL, SUBJECT, NO_SCOPES).router();
+    let router = Fleet::new()
+        .with_terminal(TERMINAL, SUBJECT, NO_SCOPES)
+        .router();
 
     for method in [Method::POST, Method::PATCH, Method::DELETE, Method::PUT] {
         let response =
