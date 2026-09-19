@@ -46,7 +46,13 @@ describe("status", () => {
         expect(text).toContain("$1.23");
         expect(text).toContain("idle-bot");
         expect(text).toContain("$0.00");
-        expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([`GET /v1/workspaces/${WS_ID}/fleets`]);
+        // `status` also reads the approvals inbox: the Fleet list carries no
+        // pending count, so a Waiting column sourced from the row would print
+        // 0 for a parked Fleet.
+        expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+          `GET /v1/workspaces/${WS_ID}/fleets`,
+          `GET /v1/workspaces/${WS_ID}/approvals`,
+        ]);
       });
     });
   });

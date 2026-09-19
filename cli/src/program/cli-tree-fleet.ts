@@ -10,6 +10,7 @@
 // update-in-place verbs and the `secret` group for the vault.
 
 import type { Command } from "commander";
+import { LIBRARY_ID_PLACEHOLDER } from "../constants/cli-flags.ts";
 import {
   parseIntOption,
   parseIdOption,
@@ -33,10 +34,21 @@ export function buildFleetTree(
   state: ProgramState,
   { actionFor, runHandler }: ActionDispatch,
 ): void {
-  program
+  // `library` runs the gallery itself and also hosts `add`, so browsing stays a
+  // bare verb while onboarding gets a subcommand of its own.
+  const library = program
     .command("library")
-    .description("Browse the first-party Fleet library gallery")
+    .description("Browse this workspace's Fleet library gallery")
     .action(actionFor("fleet.library", (frame) => runHandler(state, frame, handlers.fleet.library)));
+
+  library
+    .command("add")
+    .description("Onboard a Fleet library into this workspace")
+    .option(FLAG_GITHUB, GITHUB_DESC, parseStringOption)
+    .option(FLAG_FROM_BUNDLE, FROM_BUNDLE_DESC, parseStringOption)
+    .option(FLAG_TEMPLATE, TEMPLATE_DESC, parseStringOption)
+    .option(FLAG_REF, REF_DESC, parseStringOption)
+    .action(actionFor("fleet.library.add", (frame) => runHandler(state, frame, handlers.fleet.libraryAdd)));
 
   // The CLI peer of the dashboard's model picker. Both read GET /v1/models, so
   // `--provider` and `--model` have a discoverable source instead of being two
@@ -49,7 +61,7 @@ export function buildFleetTree(
 
   program
     .command("install")
-    .description("Install a Fleet from an onboarded library (--library <id>)")
+    .description(INSTALL_DESCRIPTION)
     .option(FLAG_LIBRARY_ID, LIBRARY_ID_DESC, parseStringOption)
     .option(FLAG_NAME, NAME_DESC, parseStringOption)
     .action(actionFor("fleet.install", (frame) => runHandler(state, frame, handlers.fleet.install)));
@@ -188,9 +200,20 @@ export function buildFleetTree(
 const FLAG_STARTING_AFTER = "--starting-after <id>" as const;
 const FLAG_CURSOR_TOKEN = "--cursor <token>" as const;
 const FLAG_FROM_PATH = "--from <path>" as const;
-const FLAG_LIBRARY_ID = "--library <id>" as const;
+const FLAG_LIBRARY_ID = `--library ${LIBRARY_ID_PLACEHOLDER}` as const;
+const INSTALL_DESCRIPTION =
+  `Install a Fleet from a library entry (--library ${LIBRARY_ID_PLACEHOLDER})` as const;
 const FLAG_NAME = "--name <name>" as const;
 const LIBRARY_ID_DESC = "Library id from `agentsfleet library`" as const;
+const FLAG_GITHUB = "--github <owner/repo>" as const;
+const GITHUB_DESC = "Public GitHub repository carrying SKILL.md at its root" as const;
+const FLAG_FROM_BUNDLE = "--from <path>" as const;
+const FROM_BUNDLE_DESC = "Local bundle directory to upload" as const;
+const FLAG_TEMPLATE = "--template <id>" as const;
+const TEMPLATE_DESC = "First-party template id" as const;
+const FLAG_REF = "--ref <revision>" as const;
+const REF_DESC = "Branch, tag, or commit (--github only)" as const;
+
 const NAME_DESC =
   "Override the fleet name (install the same bundle more than once)" as const;
 const FLAG_LIMIT_N = "--limit <n>" as const;

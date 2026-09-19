@@ -80,6 +80,17 @@ async function runHandler(
   state.exitCode = typeof code === "number" ? code : 0;
 }
 
+// What logout actually does, stated at its true scope. It revoked THIS
+// machine's credential and aborted unfinished sign-ins, while the help promised
+// "every active session on this account" — a claim the daemon's own
+// `/v1/auth/sessions/all` description contradicts ("Does NOT revoke
+// already-minted JWTs"). A person reading the old sentence believed a laptop
+// they had lost was signed out, and it was not.
+const LOGOUT_ALL_DESCRIPTION =
+  "rejected — logout already revokes what it can; passing this flag exits with a validation error" as const;
+const LOGOUT_DESCRIPTION =
+  "Sign out — revoke this machine's credential, abort unfinished sign-ins, and clear local state (other machines stay signed in)" as const;
+
 export function buildProgram({ handlers, version, state, helpFactory }: BuildProgramOptions): Command {
   const program = new Command();
 
@@ -117,10 +128,10 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
 
   program
     .command(COMMAND_LOGOUT)
-    .description("Sign out — revoke every active session on this account and clear local credentials")
+    .description(LOGOUT_DESCRIPTION)
     .option(
       "--all",
-      "rejected — revocation of every active session is the default; passing this flag exits with a validation error",
+      LOGOUT_ALL_DESCRIPTION,
     )
     .action(actionFor(COMMAND_LOGOUT, (frame) => runHandler(state, frame, handlers.logout)));
 

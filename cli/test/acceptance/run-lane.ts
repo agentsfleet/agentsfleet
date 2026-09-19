@@ -47,11 +47,13 @@ export const DETERMINISTIC_ACCEPTANCE_FILES: ReadonlyArray<string> = [
 ];
 
 export const LIVE_ACCEPTANCE_FILES: ReadonlyArray<string> = [
+  "test/acceptance/approvals-live.spec.ts",
   "test/acceptance/concurrency.spec.ts",
   "test/acceptance/fleet-update-delete.spec.ts",
   "test/acceptance/grant-approval-live.spec.ts",
   "test/acceptance/install-negatives.spec.ts",
   "test/acceptance/lifecycle-after-login.spec.ts",
+  "test/acceptance/library-onboard-live.spec.ts",
   "test/acceptance/lifecycle-with-token.spec.ts",
   "test/acceptance/login-negatives.spec.ts",
   "test/acceptance/logs-events-live.spec.ts",

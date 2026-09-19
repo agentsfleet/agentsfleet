@@ -11,12 +11,21 @@ import {
   connectorListEffectFromArgs,
   connectorStatusEffectFromArgs,
 } from "../commands/connector.ts";
+import {
+  approvalsListEffectFromArgs,
+  approvalsShowEffectFromArgs,
+} from "../commands/approvals.ts";
+import {
+  approvalsApproveEffectFromArgs,
+  approvalsDenyEffectFromArgs,
+} from "../commands/approvals_decide.ts";
+import { OPT_AGENT } from "../constants/cli-flags.ts";
 
 const OPTION_WORKSPACE = "workspace" as const;
 
 export const buildAccessHandlers = (
   wrapEFn: WrapEFn,
-): Pick<Handlers, "apiKey" | "connector"> => ({
+): Pick<Handlers, "apiKey" | "connector" | "approvals"> => ({
   apiKey: {
     create: wrapEFn(
       "api-key.create",
@@ -40,6 +49,24 @@ export const buildAccessHandlers = (
     delete: wrapEFn(
       "api-key.delete",
       (frame) => apiKeyDeleteEffectFromId(frame.parsed.positionals[0]),
+    ),
+  },
+  approvals: {
+    list: wrapEFn(
+      "approvals.list",
+      (frame) => approvalsListEffectFromArgs(optString(frame.parsed.options, OPT_AGENT)),
+    ),
+    show: wrapEFn(
+      "approvals.show",
+      (frame) => approvalsShowEffectFromArgs(frame.parsed.positionals[0]),
+    ),
+    approve: wrapEFn(
+      "approvals.approve",
+      (frame) => approvalsApproveEffectFromArgs(frame.parsed.positionals[0]),
+    ),
+    deny: wrapEFn(
+      "approvals.deny",
+      (frame) => approvalsDenyEffectFromArgs(frame.parsed.positionals[0]),
     ),
   },
   connector: {

@@ -18,3 +18,16 @@ export const OPT_NAME = "name";
 export const OPT_DESCRIPTION = "description";
 export const OPT_FROM = "from";
 export const OPT_TTY = "tty";
+export const OPT_LIBRARY = "library";
+export const OPT_GITHUB = "github";
+export const OPT_TEMPLATE = "template";
+export const OPT_REF = "ref";
+
+/**
+ * One spelling for the Fleet-library identifier, wherever it is shown to a
+ * person: the option metavar, the install hint, and the empty-state line. It
+ * read three different ways before this constant existed — `<library>` in the
+ * gallery hint, `<library_id>` in the status empty state, and `<id>` in the
+ * option — for one value.
+ */
+export const LIBRARY_ID_PLACEHOLDER = "<library_id>";

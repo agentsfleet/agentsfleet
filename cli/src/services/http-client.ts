@@ -70,6 +70,13 @@ const apiErrorSuggestion = (cause: ApiError, status: number): string => {
     : "verify the request payload and retry";
 };
 
+// The daemon writes a `user_message` for a person and a `detail` for a log.
+// The CLI rendered the log one under the ✕ glyph, so an operator read
+// "Fleet Bundle is invalid" where the daemon had already written the sentence
+// naming what to fix. Prefer the human one wherever it was sent.
+const renderedDetail = (cause: ApiError): string =>
+  readProblemDetails(cause.body).userMessage ?? cause.message;
+
 const toCliError = (
   url: string,
   cause: unknown,
@@ -78,7 +85,7 @@ const toCliError = (
     const status = cause.status ?? 0;
     if (status >= 500 || status === 0) {
       return new ServerError({
-        detail: cause.message,
+        detail: renderedDetail(cause),
         suggestion:
           "retry; if the error persists, capture the request_id and contact support",
         code: cause.code ?? `HTTP_${status}`,
@@ -87,7 +94,7 @@ const toCliError = (
       });
     }
     return new ServerError({
-      detail: cause.message,
+      detail: renderedDetail(cause),
       suggestion: apiErrorSuggestion(cause, status),
       code: cause.code ?? `HTTP_${status}`,
       status,

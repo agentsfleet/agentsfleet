@@ -114,6 +114,22 @@ export const wsConnectorsPath = (wsId: string): string =>
 export const wsConnectorPath = (wsId: string, provider: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/connectors/${enc(provider)}`;
 
+// Workspace-scoped approval gates. The decision rides its own path segment
+// rather than a colon suffix on the identifier: the daemon's router binds one
+// parameter per segment, and reading a gate and deciding one carry different
+// capabilities (`WorkspaceRoute::ApprovalRead` / `ApprovalResolve`).
+export const wsApprovalsPath = (wsId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/approvals`;
+
+export const wsApprovalPath = (wsId: string, gateId: string): string =>
+  `${wsApprovalsPath(wsId)}/${enc(gateId)}`;
+
+export const wsApprovalDecisionPath = (
+  wsId: string,
+  gateId: string,
+  decision: string,
+): string => `${wsApprovalPath(wsId, gateId)}/${enc(decision)}`;
+
 // Workspace-scoped integration grant routes (per fleet).
 export const wsGrantsListPath = (wsId: string, fleetId: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/integration-grants`;
