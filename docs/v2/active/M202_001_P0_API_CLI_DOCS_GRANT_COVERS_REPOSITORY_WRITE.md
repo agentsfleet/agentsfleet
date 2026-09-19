@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M202
 **Workstream:** 001
 **Date:** Sep 19, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — the `github-pr-reviewer` golden path cannot complete a single review today; every model turn raises its own approval card.
 **Categories:** API, CLI, DOCS
 **Batch:** B1 — standalone; no other workstream touches the gate crates.
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
+**Branch:** `docs/m202-grant-covers-repository-write`
+**Baseline revision:** `5eb6f388535b11cbb6df6e15cf61f13ece2aedd9` (`origin/main` at CHORE(open))
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** none
