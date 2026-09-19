@@ -32,3 +32,45 @@ FROM core.users AS users \
 JOIN core.tenants AS tenants ON tenants.id = users.tenant_id \
 WHERE users.oidc_subject = $1 \
 LIMIT 1";
+
+#[cfg(test)]
+mod tests {
+    use super::SELECT_CALLER_PROFILE_BY_SUBJECT;
+    use crate::sql::cli_credential::SELECT_USER_IDENTITY_BY_SUBJECT;
+
+    /// The mint path's lookup stays narrow: two columns, one table, no join.
+    ///
+    /// The regression this file could cause. Widening that statement instead of
+    /// writing this one would have been fewer lines and would have put a join on
+    /// every login, for a display name the mint never reads. A future edit that
+    /// "unifies" the two fails here.
+    #[test]
+    fn the_mint_lookup_stays_narrower_than_the_profile_read() {
+        assert!(
+            !SELECT_USER_IDENTITY_BY_SUBJECT.contains("JOIN"),
+            "the mint resolves a subject with no join; a join here is paid on every login"
+        );
+        assert!(
+            !SELECT_USER_IDENTITY_BY_SUBJECT.contains("email"),
+            "the mint reads the identifier pair and nothing about the person"
+        );
+        assert!(
+            SELECT_CALLER_PROFILE_BY_SUBJECT.contains("JOIN core.tenants"),
+            "the profile read is the one that joins, because it renders the tenant's name"
+        );
+    }
+
+    /// Both statements key on the indexed subject column, and neither scans.
+    #[test]
+    fn both_lookups_key_on_the_unique_subject_index() {
+        for statement in [
+            SELECT_USER_IDENTITY_BY_SUBJECT,
+            SELECT_CALLER_PROFILE_BY_SUBJECT,
+        ] {
+            assert!(
+                statement.contains("oidc_subject = $1"),
+                "a subject lookup binds the parameter `uq_users_oidc_subject` serves"
+            );
+        }
+    }
+}

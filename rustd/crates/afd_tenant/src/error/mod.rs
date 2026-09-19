@@ -176,9 +176,7 @@ impl Error {
             // SENTENCES are what separate them: a caller who does not own a
             // login session and a subject with no user row are both told they
             // may not proceed, and neither can fix it by re-authenticating.
-            ErrorKind::SessionNotOwner | ErrorKind::UnknownSubject => {
-                error_code::AUTH_FORBIDDEN
-            }
+            ErrorKind::SessionNotOwner | ErrorKind::UnknownSubject => error_code::AUTH_FORBIDDEN,
             ErrorKind::ApiKeyFieldInvalid { .. }
             | ErrorKind::CliCredentialMachineNameInvalid
             | ErrorKind::WorkspaceNameInvalid

@@ -46,10 +46,7 @@ fn data_only_kinds() -> Vec<(&'static str, Error)> {
             "cli machine collision",
             super::cli_credential_machine_collision(),
         ),
-        (
-            "cli subject missing",
-            super::unknown_subject(),
-        ),
+        ("cli subject missing", super::unknown_subject()),
         ("workspace name invalid", super::workspace_name_invalid()),
         ("workspace name long", super::workspace_name_too_long()),
         ("workspace name exists", super::workspace_name_exists()),
