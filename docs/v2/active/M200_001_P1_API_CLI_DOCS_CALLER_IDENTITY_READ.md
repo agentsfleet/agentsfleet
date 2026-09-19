@@ -56,24 +56,19 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/crates/afd_tenant/src/identity.rs` | CREATE | The store: one subject, one profile, one read |
-| `rustd/crates/afd_tenant/src/sql/identity.rs` | CREATE | The `core.users` × `core.tenants` join the profile comes from |
+| `rustd/crates/afd_tenant/src/sql/cli_credential.rs` | EDIT | `SELECT_USER_IDENTITY_BY_SUBJECT` gains the `core.tenants` join and three columns, plus the test pinning what its callers render |
+| `rustd/crates/afd_tenant/src/cli_credential/mod.rs` | EDIT | `UserIdentity` gains `email`, `display_name` and `tenant_name`; `user_of` reads them, and the renamed refusal constructor follows |
 | `rustd/crates/afd_wire/src/identity.rs` | CREATE | The response shape and the credential-class wire words |
-| `rustd/crates/afd_http/src/services/identity.rs` | CREATE | The `CallerProfiles` seam the handler reaches the store through |
 | `rustd/crates/afd_api_tenant/src/handler/tenant/identity.rs` | CREATE | The handler: extractor in, one service call, render — plus its class-rendering unit tests |
 | `rustd/crates/afd_http/src/route/tenant.rs` | EDIT | The `CurrentUser` variant, its `ALL` entry, its verb and its `RouteMeta` |
 | `rustd/crates/afd_http/src/openapi.rs` | EDIT | The `Users` tag the operation is filed under, one tag per resource |
-| `rustd/crates/afd_http/src/services/{mod,tenant_surface}.rs` | EDIT | Declare and re-export the seam; add the `Profiles` associated type and accessor |
-| `rustd/crates/afd_wire/src/lib.rs`, `.../afd_tenant/src/{lib.rs,sql/mod.rs}` | EDIT | Declare the three new modules |
+| `rustd/crates/afd_wire/src/lib.rs` | EDIT | Declares the response module |
 | `rustd/crates/afd_auth/src/principal.rs` | EDIT | `Person::scopes()` — the accessor the family was missing, which `Principal::scopes` now reads through |
 | `rustd/crates/afd_tenant/src/error/{kind,detail,mod,raise,tests}.rs` | EDIT | Rename `CliCredentialUnknownSubject` and its detail constant and constructor to the family-neutral `UnknownSubject`; the wire code and sentence do not change |
-| `rustd/crates/afd_tenant/src/cli_credential/mod.rs` | EDIT | Follows the renamed constructor at its one call site |
 | `rustd/crates/afd_api_tenant/src/{lib.rs,openapi.rs}`, `.../handler/tenant/mod.rs` | EDIT | Declare and re-export the handler, return it from `tenant_handler_for`, add it to the document roster |
-| `rustd/crates/agentsfleetd/src/plane.rs`, `.../src/plane/services.rs` | EDIT | Construct the store and answer the new accessor |
-| `rustd/crates/afd_api/tests/harness/{mod,fleet,instance,services}.rs` | EDIT | The router suite's own plane answers the new accessor, at each construction site |
 | `rustd/crates/afd_api/tests/{route_inventory,route_meta_total,router}.rs` | EDIT | The three route rosters that enumerate the table by hand: the inventory, the pinned count (a `POST_PORT_ADDITIONS` term), and the mount matcher |
 | `rustd/crates/afd_api/tests/tenant_current_user.rs` | CREATE | The route is mounted, answers GET only, admits every person class, needs no capability, refuses a runner and an anonymous caller |
-| `rustd/crates/afd_tenant/tests/integration_identity.rs` | CREATE | The read against live Postgres: the join, the NULL display name, the unknown-subject refusal, and that nothing is written |
+| `rustd/crates/afd_tenant/tests/integration_identity.rs` | CREATE | `user_of` against live Postgres: the join, the NULL display name, the unknown-subject refusal, and that nothing is written |
 | `rustd/crates/afd_api/tests/tenant_plane_suite.rs`, `.../afd_tenant/tests/tenant_suite.rs` | EDIT | Register the two new suites in their binaries |
 | `public/openapi.json` | EDIT | Regenerated from the build; never hand-edited |
 | `cli/src/lib/api-paths.ts` | EDIT | `USERS_ME_PATH`, the CLI's one spelling of the route |
@@ -119,11 +114,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — The identity read, from subject to profile
+### §1 — The identity read, on the resolver that already existed
 
-The domain half: one store, one statement, one record. `afd_tenant::identity::Identities::profile(subject)` answers the `core.users` row the authenticator's proven subject names, joined to its tenant for the display name a person actually recognises. A subject with no local row is REFUSED, never provisioned — the argument `cli_credential::user_of` already makes, and the reason the refusal constructor is shared rather than duplicated. **Implementation default:** a second statement beside `SELECT_USER_IDENTITY_BY_SUBJECT` rather than a widened one, because the mint and revoke paths read two columns and must not pay a join for five.
+`cli_credential::user_of(subject)` has resolved a proven subject to its `core.users` row since the port, behind a service seam both implementors already answer. This read wants the same answer with three more columns, so the statement gains a `core.tenants` join and `UserIdentity` gains `email`, `display_name` and `tenant_name`. A subject with no local row is REFUSED, never provisioned. **Implementation default:** widen the one resolver rather than add a store, a statement and a seam beside it — the mint and revoke pay one extra index lookup per login, which is cheaper than two spellings of "who is this subject".
 
-- **Dimension 1.1** (IN_PROGRESS — test written, awaits the integration lane) — `profile` answers `user_id`, `email`, `display_name`, `tenant_id` and `tenant_name` for a subject with a row, taking the tenant from the joined user row rather than from any other copy → Test `profile_answers_the_joined_person_and_refuses_an_unknown_subject`
+- **Dimension 1.1** (IN_PROGRESS — test written, awaits the integration lane) — `user_of` answers `user_id`, `email`, `display_name`, `tenant_id` and `tenant_name` for a subject with a row, taking the tenant from the joined user row rather than from any other copy → Test `profile_answers_the_joined_person_and_refuses_an_unknown_subject`
 - **Dimension 1.2** (IN_PROGRESS — test written, awaits the integration lane) — a subject with no `core.users` row is refused with the shared unknown-subject error, and nothing is inserted → Test `profile_answers_the_joined_person_and_refuses_an_unknown_subject`
 - **Dimension 1.3** (IN_PROGRESS — test written, awaits the integration lane) — `display_name` is `NULL`-safe: a row with no display name answers `None` rather than an empty string, and the response omits the field → Test `profile_answers_the_joined_person_and_refuses_an_unknown_subject`
 - **Dimension 1.4** (IN_PROGRESS — test written, awaits the integration lane) — the unknown-subject error kind, detail constant and constructor carry one family-neutral name, and the wire code and sentence are byte-identical to what the credential family already answers → Test `profile_answers_the_joined_person_and_refuses_an_unknown_subject`
@@ -175,14 +170,12 @@ GET /v1/users/me
   403 →  UZ-AUTH-001, detail "Authenticated subject has no user record"
   429 / 500 / 503 → the standard envelope
 
-afd_tenant::identity
-  Identities::new(database: Db) -> Self
-  Identities::profile(&self, subject: &str) -> Result<Profile>
-  Profile { user: Uuid7, email: String, display_name: Option<String>,
-            tenant: Uuid7, tenant_name: String }
-
-afd_http::services::CallerProfiles      // new member on TenantSurface: profiles()
-  profile(&self, subject: &str) -> impl Future<Output = afd_tenant::Result<Profile>> + Send
+afd_tenant::cli_credential            // widened, not replaced
+  CliCredentials::user_of(&self, subject: &str) -> Result<UserIdentity>
+  UserIdentity { id: Uuid7, tenant: Uuid7, email: String,
+                 display_name: Option<String>, tenant_name: String }
+  // Reached through the existing afd_http::services::TerminalCredentials seam;
+  // no new trait, associated type or accessor.
 cli/src/commands/whoami.ts
   whoamiEffect: Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output>
 cli/src/lib/me-ping.ts

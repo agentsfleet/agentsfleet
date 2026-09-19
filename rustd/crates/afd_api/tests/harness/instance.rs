@@ -41,7 +41,6 @@ use afd_sse::{Ceiling, Live};
 use afd_state::Credentials;
 use afd_tenant::apikey::ApiKeys;
 use afd_tenant::cli_credential::CliCredentials;
-use afd_tenant::identity::Identities;
 use afd_tenant::models::Models;
 use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
@@ -133,7 +132,6 @@ impl Fleet {
             workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
-            profiles: Identities::new(database.clone()),
             logins: Logins::new(
                 afd_dragonfly::SessionStore::new(queue.clone()),
                 SecretBytes::new(FIXTURE_PEPPER.to_vec()),
@@ -248,7 +246,6 @@ impl Fleet {
             workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
-            profiles: Identities::new(database.clone()),
             logins: Logins::new(
                 afd_dragonfly::SessionStore::new(queue.clone()),
                 SecretBytes::new(FIXTURE_PEPPER.to_vec()),

@@ -20,19 +20,6 @@ pub(crate) fn admissions(database: &Db, queue: &Dragonfly) -> afd_admission::Adm
     afd_admission::Admissions::for_tests(database.clone(), queue.clone())
 }
 
-/// The device-flow session store, wired the way both constructors wire it.
-///
-/// A helper for [`fleet_store`]'s reason: the four arguments are the same in
-/// both, so spelling them twice is two places for one fixture to drift.
-fn login_store(queue: &Dragonfly) -> Logins {
-    Logins::new(
-        afd_dragonfly::SessionStore::new(queue.clone()),
-        SecretBytes::new(FIXTURE_PEPPER.to_vec()),
-        Entropy::new(),
-        FIXTURE_APP_URL,
-    )
-}
-
 fn fleet_store(database: &Db, queue: &Dragonfly, kek: &Arc<Kek>) -> Fleets {
     Fleets::new(
         database.clone(),
@@ -108,8 +95,12 @@ impl Fleet {
             workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
-            profiles: Identities::new(database.clone()),
-            logins: login_store(&queue),
+            logins: Logins::new(
+                afd_dragonfly::SessionStore::new(queue.clone()),
+                SecretBytes::new(FIXTURE_PEPPER.to_vec()),
+                Entropy::new(),
+                FIXTURE_APP_URL,
+            ),
             fleets: fleet_store(&database, &queue, &kek),
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
             // The production connect flow, over stores that are not there and a
@@ -237,8 +228,12 @@ impl Fleet {
             workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
-            profiles: Identities::new(database.clone()),
-            logins: login_store(&queue),
+            logins: Logins::new(
+                afd_dragonfly::SessionStore::new(queue.clone()),
+                SecretBytes::new(FIXTURE_PEPPER.to_vec()),
+                Entropy::new(),
+                FIXTURE_APP_URL,
+            ),
             fleets: fleet_store(&database, &queue, &kek),
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
             // The production connect flow, over stores that are not there and a
