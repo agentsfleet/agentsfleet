@@ -158,21 +158,21 @@ pub struct ChargeSummary<'a> {
     /// The workspace it was incurred in — `null` once that workspace is
     /// deleted, because a charge outlives what it was incurred on.
     pub workspace_id: Option<Cow<'a, str>>,
-    /// The fleet it was incurred by — and unlike `workspace_id`, this one
-    /// SURVIVES that fleet's deletion.
+    /// The fleet it was incurred by. Unlike `workspace_id`, this one SURVIVES
+    /// that fleet's deletion.
     ///
     /// The two stopped sharing a rule at slot 915. A workspace is still nulled
-    /// on deletion; a fleet is not, because the dashboard derives the fleet's
-    /// callsign from this value and nulling it left a real charge unable to say
-    /// what it paid for. `null` here now means a charge written before that
-    /// slot, not a fleet that has since gone.
+    /// on deletion. A fleet is not. The dashboard derives the fleet's callsign
+    /// from this value, and nulling it left a real charge unable to say what it
+    /// paid for. `null` here now means a charge written before that slot, not a
+    /// fleet that has since gone.
     pub fleet_id: Option<Cow<'a, str>>,
     /// That fleet's name as it stood when the charge was written.
     ///
-    /// A snapshot, not a live lookup: renaming a fleet does not reach charges
-    /// already written, because a ledger records what was true when the money
-    /// moved. `null` for a charge written before slot 915, or one whose fleet
-    /// row could not be read at the time.
+    /// A snapshot rather than a live lookup. Renaming a fleet does not reach
+    /// charges already written, because a ledger records what was true when the
+    /// money moved. `null` for a charge written before slot 915, or one whose
+    /// fleet row could not be read at the time.
     pub fleet_name: Option<Cow<'a, str>>,
     /// The event that triggered the work.
     pub event_id: Cow<'a, str>,
