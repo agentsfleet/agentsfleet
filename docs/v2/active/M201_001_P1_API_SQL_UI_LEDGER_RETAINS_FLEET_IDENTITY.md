@@ -118,26 +118,26 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The purge nulls `fleet_id` because a foreign key says it must. Dropping the constraint keeps the UUID, which is all the web app's callsign derivation needs — `AGENT NOVA` becomes derivable on a purged row without any new data at all. This slice alone removes `DELETED AGENT` from every row charged after it lands. **Implementation default:** `DROP CONSTRAINT` and keep the column typed `UUID` rather than converting to `TEXT`, because every reader already binds it as a UUID and the budget drain's index depends on the type.
 
-- **Dimension 1.1** — Slot 915 drops the `fleet_id` foreign key and the column survives a fleet purge with its value intact → Test `test_m201_ledger_retains_fleet_id_across_purge`
-- **Dimension 1.2** — `idx_usage_ledger_fleet_id_workspace_id_last_charged_at` still serves the budget drain after the constraint is gone, with no plan regression → Test `test_m201_budget_drain_plan_unchanged`
+- **Dimension 1.1** — DONE — Slot 915 drops the `fleet_id` foreign key and the column survives a fleet purge with its value intact → Test `test_m201_ledger_retains_fleet_id_across_purge`
+- **Dimension 1.2** — DONE — `idx_usage_ledger_fleet_id_workspace_id_last_charged_at` still serves the budget drain after the constraint is gone, with no plan regression → Test `test_m201_budget_drain_plan_unchanged`
 - **Dimension 1.3** — DONE — The `720` rationale names one reader, not two, and no longer cites a referential action that does not exist → Test `test_m201_index_comment_names_surviving_reader`
-- **Dimension 1.4** — The purge destroys memory, approval gates, integration grants and sessions exactly as before → Test `test_m201_purge_destroys_no_less_than_before`
+- **Dimension 1.4** — DONE — The purge destroys memory, approval gates, integration grants and sessions exactly as before → Test `test_m201_purge_destroys_no_less_than_before`
 
 ### §2 — The ledger captures the name
 
 The identifier gives a callsign; it does not give the name the operator typed. `fleet_name` is captured at charge time from `core.fleets.name`, which makes it a snapshot rather than a lookup — a fleet renamed after a charge leaves the old charge reading the old name, and that is correct for a ledger. **Implementation default:** capture on insert via the join already available in each statement's driving CTE, rather than backfilling at read time, because a read-time join cannot resolve a row whose fleet is gone — which is the entire problem.
 
-- **Dimension 2.1** — Slot 915 adds `fleet_name TEXT`, nullable, with no default → Test `test_m201_ledger_carries_fleet_name_column`
-- **Dimension 2.2** — All three insert sites write the name at charge time from the fleet row → Test `test_m201_all_insert_sites_capture_fleet_name`
+- **Dimension 2.1** — DONE — Slot 915 adds `fleet_name TEXT`, nullable, with no default → Test `test_m201_ledger_carries_fleet_name_column`
+- **Dimension 2.2** — DONE — All three insert sites write the name at charge time from the fleet row → Test `test_m201_all_insert_sites_capture_fleet_name`
 - **Dimension 2.3** — DONE — The `ON CONFLICT` accumulate path leaves an already-written `fleet_name` intact rather than overwriting it on every renewal → Test `test_m201_accumulate_preserves_captured_name`
-- **Dimension 2.4** — A fleet renamed after a charge does not retroactively change that charge's stored name → Test `test_m201_rename_does_not_rewrite_history`
+- **Dimension 2.4** — DONE — A fleet renamed after a charge does not retroactively change that charge's stored name → Test `test_m201_rename_does_not_rewrite_history`
 
 ### §3 — The surfaces read it
 
 The charge list carries the field; the label composer prefers the stored name when the callsign cannot be derived. Every other `AgentLabel` caller is untouched and keeps rendering callsigns. **Implementation default:** an optional prop with today's behaviour as the default, rather than a required one, because the approvals and events tables have no name to pass and changing them is not this spec's job.
 
-- **Dimension 3.1** — Both charge-list statements select `fleet_name` and the row struct decodes it → Test `test_m201_charge_row_decodes_fleet_name`
-- **Dimension 3.2** — The billing table renders callsign and name together for a purged fleet that has both → Test `test_m201_billing_renders_callsign_and_name`
+- **Dimension 3.1** — DONE — Both charge-list statements select `fleet_name` and the row struct decodes it → Test `test_m201_charge_row_decodes_fleet_name`
+- **Dimension 3.2** — DONE — The billing table renders callsign and name together for a purged fleet that has both → Test `test_m201_billing_renders_callsign_and_name` (component tier; see Discovery)
 - **Dimension 3.3** — DONE — A pre-migration row with neither identifier nor name still renders the deleted label rather than an empty cell → Test `test_m201_legacy_row_renders_deleted_label`
 - **Dimension 3.4** — DONE — Approvals and events tables render unchanged with no prop passed → Test `test_m201_other_label_callers_unchanged`
 
@@ -208,7 +208,7 @@ Internal signature change, TypeScript:
 | 2.3 | integration | `test_m201_accumulate_preserves_captured_name` | Charge, rename the fleet, renew the same `event_id` → the row still reads the original name. |
 | 2.4 | integration | `test_m201_rename_does_not_rewrite_history` | Charge under name A, rename to B, read the charge list → the historical row reads A, a fresh charge reads B. |
 | 3.1 | unit | `test_m201_charge_row_decodes_fleet_name` | Row with `fleet_name` null and row with it set → decodes to `None` and `Some("deploy-bot")`; neither errors. |
-| 3.2 | e2e | `test_m201_billing_renders_callsign_and_name` | Settings → Billing with a purged fleet's charge → the cell shows the callsign and the stored name; `DELETED AGENT` appears zero times. |
+| 3.2 | component | `test_m201_billing_renders_callsign_and_name` | `BillingUsageTab` rendered with a purged fleet's charge → the cell shows the callsign and the stored name; `DELETED AGENT` appears zero times across the whole tab. Tier lowered from `e2e`; see Discovery. |
 | 3.3 | unit | `test_m201_legacy_row_renders_deleted_label` | `agentDisplayName(null, null)` and `agentDisplayName(null, undefined)` → `DELETED AGENT` both times, never an empty string. |
 | 3.4 | unit | `test_m201_other_label_callers_unchanged` | Approvals and events tables rendered with no `fleetName` prop → identical output to the pre-change snapshot. |
 | 3.3 | unit | `test_m201_display_name_rejects_blank_name` | `agentDisplayName(null, "")` and `agentDisplayName(null, "   ")` → `DELETED AGENT`, not a blank cell. |
@@ -300,6 +300,12 @@ N/A — no files deleted.
   > Indy (2026-09-19): "AUTH.md must in this PR" — context: the `AUTH_SESSION_CODE_PEPPER` row listed `disk` as forbidden while local development requires the value in a file for `docker-compose`'s `env_file` to boot. Found while diagnosing why `.env.agentsfleetd.local` was not symlinked into new worktrees.
 
   Two findings from that diagnosis are recorded here because they have no other home. **One:** the file was a real file rather than a symlink in the base checkout, at mode 0644 — a catastrophic-if-disclosed value world-readable on the machine. Hardened to 0600, and the AUTH.md note now names that shape as a defect. **Two:** `provision-env-1password` (dotfiles) writes only `ui.env.local` and `runner.env.local`, so the `agentsfleetd.env.local` source the hook links was never created; every knob in `preflight/knobs.rs` was audited and all are live, while `AUDIT_LOG_PEPPER` — retired in M196_001 and carried by the local file alone — was stripped with the owner's approval. The provisioner change itself lands in the dotfiles repository, not here.
+
+- **Dimension 3.2 tier lowered, e2e → component (Sep 19, 2026)** — the spec asked for a Playwright acceptance test. Written instead as a component test over `BillingUsageTab` in `ui/packages/app/tests/billing-charge-cell.test.tsx`. The acceptance lane needs Clerk credentials, a running app and a live daemon, and it is the lane `fix/m200-acceptance-cli-lane` exists to repair — a spec asserted only by a suite this workstream cannot run is not asserted. The component test makes the same three claims the row named, and the round trip the browser would have added is covered from the server side by Dimension 3.1, which reads the field back through `Billing::charges`. Surfaced to Indy with the cost of each option before it was written.
+
+  > Indy (2026-09-19): "yes go" — in answer to the tier question and the docs-repo branch, both named as open decisions in the message immediately preceding.
+
+- **Docs-repo branch opened on the owner's approval (Sep 19, 2026)** — the quote above authorises it. `chore/m201-ledger-fleet-identity-changelog` is a worktree at `~/Projects/docs-m201-ledger-identity`, branched from `origin/main` rather than checked out in `~/Projects/docs`, because that checkout sits on `chore/m200-whoami-changelog` holding two unpushed commits that are not this workstream's to move. The changelog `<Update>` is the only page owed: the docs site renders its API reference straight from `public/openapi.json` on `main` (`docs.json:109`), which this branch already regenerated, so the new field documents itself. Commit `5944c97`, `make test` green, `gitleaks` clean.
 
 - **Metrics review** — No analytics or funnel playbook update required: this spec adds, renames and removes no product or operator event. The one new wire field is an operator-chosen fleet name already returned by `/fleets` to the same authenticated reader.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test` at each Section and again at the boundary, `/review` before DOCUMENT, `orly-babysit-prs` after every push.

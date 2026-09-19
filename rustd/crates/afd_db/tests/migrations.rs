@@ -253,3 +253,43 @@ fn test_m201_slot_915_drops_the_constraint_by_lookup() {
         "slot 915 must not use the IF EXISTS form, which hides a name miss"
     );
 }
+
+/// Slot 915 is in the shipped list exactly once, and it follows 914.
+///
+/// The list is hand-written (see this file's module note), so a slot whose
+/// `.sql` landed without its `migration!()` entry is the failure mode this
+/// crate's other tests already catch. What they do NOT catch is the pair of
+/// mistakes that are specific to appending: a duplicated entry, which applies
+/// the same file twice and makes the ledger disagree with the directory, and an
+/// entry inserted ABOVE an already-shipped slot, which would renumber nothing
+/// but would run this file before the table it alters exists on a fresh
+/// database while leaving an upgraded one untouched — a divergence that only
+/// shows up on the next clean install.
+#[test]
+fn test_m201_migration_slot_registered() {
+    const LEDGER_IDENTITY: &str = "915_usage_ledger_retains_fleet_identity.sql";
+
+    let listed: Vec<&Migration> = MIGRATIONS
+        .iter()
+        .filter(|migration| migration.name() == LEDGER_IDENTITY)
+        .collect();
+    assert_eq!(
+        listed.len(),
+        1,
+        "{LEDGER_IDENTITY} must be registered exactly once"
+    );
+
+    let position = MIGRATIONS
+        .iter()
+        .position(|migration| migration.name() == LEDGER_IDENTITY)
+        .expect("the slot was just found by name");
+    let predecessor = MIGRATIONS
+        .get(position.wrapping_sub(1))
+        .expect("slot 915 is never the first entry");
+    assert_eq!(
+        predecessor.version(),
+        914,
+        "slot 915 must follow 914 — an entry placed above a shipped slot runs \
+         in a different order on a fresh database than on an upgraded one"
+    );
+}
