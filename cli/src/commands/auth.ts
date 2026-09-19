@@ -8,6 +8,7 @@ import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import { USERS_ME_PATH } from "../lib/api-paths.ts";
+import { IDENTITY_ROUTE_ABSENT_STATUS } from "../lib/me-ping.ts";
 import {
   AuthError,
   FAILURE_REASON,
@@ -56,14 +57,9 @@ const formatTs = (ms: number | null | undefined): string =>
     ? new Date(ms).toISOString()
     : DASH;
 
-// The status a deployment older than this client answers the identity route
-// with. A router matches a path before any guard runs, so a 404 judged no
-// credential: neither `valid` nor `unauthorized` would be true, and
-// `unreachable` would blame a server that answered.
-const STATUS_NOT_FOUND = 404;
 
 const classifyProbeError = (err: ServerError): ProbeResult => {
-  if (err.status === STATUS_NOT_FOUND) {
+  if (err.status === IDENTITY_ROUTE_ABSENT_STATUS) {
     return { status: "unverified", error: err.code };
   }
   if (
