@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M201
 **Workstream:** 001
 **Date:** Sep 19, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — an operator reconciling a bill cannot tell which fleet spent what once that fleet is deleted, and no other surface answers it.
 **Categories:** API, SQL, UI
 **Batch:** B1 — schema precedes the writers, the writers precede the readers; one stream, no parallel context.
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** `feat/m201-ledger-fleet-identity`
+**Baseline revision:** e9bd5c2b2dfbb654647ea37b3720936d878a3ee3
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Opus 5, Sep 19, 2026)
