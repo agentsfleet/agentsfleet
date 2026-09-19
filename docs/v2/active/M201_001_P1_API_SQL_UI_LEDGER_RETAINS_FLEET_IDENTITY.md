@@ -60,9 +60,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `schema/720_usage_ledger_indexes.sql` | EDIT | Comment only. The fleet index loses Reader 2 and keeps Reader 1; the rationale has to say so or it documents a constraint that no longer exists. |
 | `rustd/crates/afd_db/src/migration.rs` | EDIT | Registers slot 915 in the forward array. |
 | `rustd/crates/afd_db/tests/migrations.rs` | EDIT | Pins the two claims slot 915 makes about itself: that `720`'s rationale stops citing the reader it lost, and that the constraint is dropped by catalogue lookup rather than by a guessed name. |
-| `rustd/crates/afd_billing/src/sql.rs` | EDIT | `INSERT_USAGE_LEDGER` gains the `fleet_name` column and its bind. |
-| `rustd/crates/afd_fleet/src/lease/sql/report.rs` | EDIT | The report path's ledger insert gains `fleet_name`, sourced by join. |
-| `rustd/crates/afd_fleet/src/lease/sql/renew.rs` | EDIT | The renewal path's ledger insert, same change. |
+| `rustd/crates/afd_billing/src/sql.rs` | EDIT | `INSERT_USAGE_LEDGER` captures `fleet_name` by subselect from the fleet `$4` already names — no new bind, so no caller can supply it. Carries its own statement-shape test. |
+| `rustd/crates/afd_fleet/src/lease/sql/report.rs` | EDIT | The report path's ledger insert gains `fleet_name` by scalar subselect, not a join — `probe` takes `FOR UPDATE OF l, a` and a lock-taking statement in the money path is the wrong thing to perturb. |
+| `rustd/crates/afd_fleet/src/lease/sql/renew.rs` | EDIT | The renewal path's ledger insert, same change — and the accumulate clause that must not list the column. |
+| `rustd/crates/afd_fleet/src/lease/sql/mod.rs` | EDIT | Holds the invariant both charging statements share: each captures the name, and neither accumulate path re-stamps it. Here because the rule is about the pair, and because `report.rs` sits within fifty lines of the length cap. |
 | `rustd/crates/afd_billing/src/tenant_sql.rs` | EDIT | Both charge-list statements select the new column. |
 | `rustd/crates/afd_billing/src/tenant/mod.rs` | EDIT | Charge row struct gains `fleet_name: Option<String>` and its decode. |
 | `ui/packages/app/lib/api/tenant_billing.ts` | EDIT | The charge type gains the nullable field. |
@@ -122,7 +123,7 @@ The identifier gives a callsign; it does not give the name the operator typed. `
 
 - **Dimension 2.1** — Slot 915 adds `fleet_name TEXT`, nullable, with no default → Test `test_m201_ledger_carries_fleet_name_column`
 - **Dimension 2.2** — All three insert sites write the name at charge time from the fleet row → Test `test_m201_all_insert_sites_capture_fleet_name`
-- **Dimension 2.3** — The `ON CONFLICT` accumulate path leaves an already-written `fleet_name` intact rather than overwriting it on every renewal → Test `test_m201_accumulate_preserves_captured_name`
+- **Dimension 2.3** — DONE — The `ON CONFLICT` accumulate path leaves an already-written `fleet_name` intact rather than overwriting it on every renewal → Test `test_m201_accumulate_preserves_captured_name`
 - **Dimension 2.4** — A fleet renamed after a charge does not retroactively change that charge's stored name → Test `test_m201_rename_does_not_rewrite_history`
 
 ### §3 — The surfaces read it
