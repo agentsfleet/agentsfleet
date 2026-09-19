@@ -123,7 +123,7 @@ const maybeOpenBrowser = Effect.fnUntraced(function* (
 // neither — a rendering gap must never fail a login that completed.
 const renderSuccess = Effect.fnUntraced(function* (
   sessionId: string,
-  identity: CallerIdentity,
+  identity: CallerIdentity | null,
 ) {
   const config = yield* CliConfig;
   const output = yield* Output;
@@ -133,14 +133,16 @@ const renderSuccess = Effect.fnUntraced(function* (
       session_id: sessionId,
       token_saved: true,
       api_url: config.apiUrl,
-      email: identity.email,
-      tenant_name: identity.tenantName,
+      // Null when the deployment does not serve the identity read. Emitted
+      // either way, so a script reads one shape and tests the value.
+      email: identity?.email ?? null,
+      tenant_name: identity?.tenantName ?? null,
     });
     return;
   }
-  const who = identity.displayName ?? identity.email;
+  const who = identity === null ? "" : identity.displayName ?? identity.email;
   yield* output.success(
-    who.length > 0
+    identity !== null && who.length > 0
       ? `signed in as ${who} — ${identity.tenantName}`
       : LOGIN_COMPLETE,
   );
@@ -161,22 +163,39 @@ const persistSuccess = Effect.fnUntraced(function* (
   return minted.credential;
 });
 
-// Identity-read failure → wipe credentials.json before propagating.
+// Identity-read failure → wipe credentials.json before propagating, EXCEPT
+// when the route is simply not there.
 //
-// The credential was persisted moments ago and does not authenticate, so
-// leaving it on disk would route every later command at the same
-// dead-on-arrival value. The clear's own UnexpectedError is swallowed: the
-// read's failure is the signal the operator needs, and a report about the file
-// would bury it.
+// The credential was persisted moments ago and did not verify, so leaving it on
+// disk would route every later command at the same dead-on-arrival value. The
+// clear's own UnexpectedError is swallowed: the read's failure is the signal the
+// operator needs, and a report about the file would bury it.
 //
 // The sentence is written HERE and not in the read, because it is true only
 // here — `whoami` reaches the same endpoint having saved nothing, and inherited
-// this wording until the acceptance lane caught it. What the operator is told
-// is that the login did not take, whatever the transport said; the transport's
-// own request id is carried through for whoever has to chase it.
+// this wording until the acceptance lane caught it.
+//
+// # Why a 404 keeps the credential
+//
+// The probe this replaced read the billing snapshot, which every deployment
+// serves. This one reads an identity route a deployment older than this client
+// does not have, and a router answers an unmatched path before any guard runs —
+// so a 404 says nothing about the credential and everything about the
+// deployment. Clearing on it would delete a working credential and leave the
+// operator in a login loop no retry escapes, on a condition that never clears.
+// Keeping it is the recoverable side: if the credential really is bad, the next
+// command says so in terms the operator can act on.
+//
+// A refusal, an outage and a body that would not parse still clear, which is the
+// policy this path arrived with.
 const rollbackOnIdentityFailure = Effect.fnUntraced(function* (
   err: ServerError | NetworkError | UnexpectedError,
 ) {
+  const output = yield* Output;
+  if (err._tag === CLI_ERROR_TAG.server && err.status === STATUS_NOT_FOUND) {
+    yield* output.warn(IDENTITY_ROUTE_ABSENT);
+    return null;
+  }
   const credentials = yield* Credentials;
   yield* credentials.clearAccessToken.pipe(Effect.ignore);
   return yield* Effect.fail(
@@ -321,3 +340,8 @@ const LOGIN_COMPLETE = "login complete" as const;
 // (the login did not take) rather than the mechanism (a read was refused).
 const CREDENTIAL_UNCONFIRMED = "credential saved but failed validation" as const;
 const SIGN_IN_AGAIN = "try `agentsfleet login` again" as const;
+// The status a deployment older than this client answers the identity route
+// with. Named because three call sites branch on it.
+const STATUS_NOT_FOUND = 404;
+const IDENTITY_ROUTE_ABSENT =
+  "this deployment does not serve the identity read, so `agentsfleet whoami` will not work against it — the credential is saved and every other command works" as const;

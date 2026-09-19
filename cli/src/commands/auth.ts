@@ -24,7 +24,7 @@ const ERR_FORBIDDEN = "UZ-AUTH-001";
 const ERR_TOKEN_EXPIRED = "UZ-AUTH-003";
 
 type TokenSource = "file" | "env" | "none";
-type ProbeStatus = "valid" | "unauthorized" | "unreachable";
+type ProbeStatus = "valid" | "unauthorized" | "unreachable" | "unverified";
 
 const DASH = "—";
 // Both credential classes the CLI can hold — the minted afc_ file credential
@@ -56,7 +56,16 @@ const formatTs = (ms: number | null | undefined): string =>
     ? new Date(ms).toISOString()
     : DASH;
 
+// The status a deployment older than this client answers the identity route
+// with. A router matches a path before any guard runs, so a 404 judged no
+// credential: neither `valid` nor `unauthorized` would be true, and
+// `unreachable` would blame a server that answered.
+const STATUS_NOT_FOUND = 404;
+
 const classifyProbeError = (err: ServerError): ProbeResult => {
+  if (err.status === STATUS_NOT_FOUND) {
+    return { status: "unverified", error: err.code };
+  }
   if (
     err.code === ERR_FORBIDDEN ||
     err.code === ERR_UNAUTHORIZED ||
@@ -110,6 +119,12 @@ const renderHuman = (
         ? `${result.server_check.status} (${result.server_check.error})`
         : result.server_check.status,
     });
+    if (result.server_check.status === "unverified") {
+      yield* output.warn(
+        "this deployment does not serve the credential check — it is older than this client, so the credential could not be confirmed either way",
+      );
+      return;
+    }
     if (result.server_check.status === "unauthorized") {
       yield* output.info(ART_REJECTED);
       yield* output.error(

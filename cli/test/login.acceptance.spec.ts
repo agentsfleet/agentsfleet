@@ -54,6 +54,24 @@ describe("login acceptance — full device flow end-to-end", () => {
 
 
 describe("login acceptance — jsonMode rendering + rollback", () => {
+  test("a deployment without the identity route keeps the credential it just minted", async () => {
+    const rec = makeRecorder();
+    // The regression this guards. The probe used to read the billing snapshot,
+    // which every deployment serves; it now reads an identity route a deployment
+    // older than this client does not have. A 404 there means the credential
+    // reached the server and was NOT rejected — the route is missing, not the
+    // caller. Clearing on it would delete a working credential and leave the
+    // operator in a login loop no retry escapes.
+    const exit = await Effect.runPromiseExit(
+      runLogin(rec, freshFixture(), { identityAbsent: true }),
+    );
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(rec.savedToken).toBe(MINTED_CREDENTIAL);
+    expect(rec.cleared).toBe(false);
+    expect(rec.stdout.some((line) => line.includes("login complete"))).toBe(true);
+  });
+
   test("an identity carrying no name and no address still completes the login", async () => {
     const rec = makeRecorder();
     // A server answering a 200 with neither a display name nor an address is
