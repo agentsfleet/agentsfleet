@@ -1,17 +1,32 @@
 //! The gate chain over a claimed event, entered where a suite can steer it.
 //!
 //! Every gate below the claim is proven on its own elsewhere — `installed()`
-//! against a paused fleet, `money_gates` against a drained ledger. What those
-//! suites never reach is the ORDER above them: which of `Plane::lease`'s
-//! answers each verdict becomes, and whether the terminal row is written on the
-//! way. That chain runs only inside the verb, and the verb begins by asking the
-//! readiness index for work — one partition per call, against a cursor the
-//! whole process shares.
+//! against a paused fleet, `money_gates` against a drained ledger,
+//! `Gates::check` against a recorded decision. What no suite reached is the
+//! ORDER above them: which of `Plane::lease`'s endings each verdict becomes,
+//! and what the event row is left holding on the way out.
 //!
-//! So the claim is made here, naming this suite's own fleet, and the verb is
-//! entered at `Plane::lease_claimed`. It runs the identical chain in the
-//! identical order and returns the identical bytes; the only step it does not
-//! take is choosing which event to run over.
+//! # Three things stand between a test and that chain
+//!
+//! **The claim.** `Plane::lease` opens by asking the readiness index for work,
+//! and that call peeks ONE partition per invocation against a cursor the whole
+//! process shares. Everything below the claim is deterministic, so the claim is
+//! made here and the verb entered at `Plane::lease_claimed`.
+//!
+//! **The event type.** `seed::EVENT_TYPE` is `"steer"`, and `EventType::parse`
+//! accepts `chat`, `webhook`, `cron` and `continuation` — nothing else. So
+//! every event `seeded()` puts on a stream refuses at `event_type_unsupported`
+//! BEFORE the money gates and the approval gate. These enqueue `chat`.
+//!
+//! **The platform provider, which is still in the way.** Past the event type,
+//! `admit` resolves the payer's provider before the money gates, and that
+//! resolution opens a secret named by `core.platform_provider_defaults` — a
+//! table whose PRIMARY KEY is `provider`, so the row is platform-wide and the
+//! first suite to seed it owns it. `agentsfleetd`'s end-to-end seed writes it
+//! and seals the secret under its own `GOOD_KEK`, while this crate's fixture
+//! plane opens with `FIXTURE_KEK_HEX`, so the open fails with `OpenFailed`.
+//! Until those two keys are one, only the endings ABOVE that resolution are
+//! reachable from here — which is the single case below.
 //!
 //! Marked `#[ignore]` so the unit lane compiles and lints these without
 //! datastores; `make test-integration-rustd` is the only lane that runs them.
@@ -21,302 +36,146 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
+#[path = "integration_lease_gates/cases.rs"]
+mod cases;
 
-use afd_crypto::entropy::Entropy;
+use afd_core::clock::UnixMillis;
+use afd_core::id::Uuid7;
+use afd_fleet::lease::Acquired;
+use sqlx::Row as _;
 
 use crate::requests::ENROLLED_AT;
-use crate::seed::{MODEL, Seeded, seeded};
+use crate::seed::{ACTOR, REQUEST_JSON, seeded_parts};
 use crate::support::Fixtures;
 
-/// The answer every stop on this path renders.
+/// The answer every stop on this path renders — identical for all of them,
+/// which is why these tests assert on the event row instead.
 const NO_LEASE: &str = "\"lease\":null";
+
+/// An event type `EventType::parse` accepts. See the module note.
+const EVENT_TYPE_CHAT: &str = "chat";
 
 /// A stored document the runtime parser accepts, with a one-dollar ceiling.
 const BUDGETED_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":1.0}}}"#;
 
-/// A settled spend past [`BUDGETED_CONFIG`]'s ceiling, in nanodollars.
-const OVERSPENT_NANOS: i64 = 2_000_000_000;
-
-/// The status an operator's pause leaves on the row.
+/// The status an operator's pause leaves on the fleet row.
 const FLEET_STATUS_STOPPED: &str = "stopped";
 
-/// The gate kind a fixture raises over a whole event.
-const KIND_EVENT: &str = "tool_call";
-
-/// How long a fixture gate stays unexpired.
-const GATE_WINDOW_MS: i64 = 600_000;
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_fleet_paused_after_its_event_was_claimed_issues_no_lease() {
-    // The window `installed()` documents and no suite had entered: the
-    // selection pass filters on status, so a fleet reaching the claim and then
-    // stopping is an operator pausing it in between. The claim must lapse on
-    // its own rather than run under a fleet nobody wants running.
-    crate::support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
-    let Seeded {
-        runners: [runner],
-        fleet,
-        ..
-    } = seeded::<1>(&fixtures).await;
-    let now = UnixMillis::from_millis(ENROLLED_AT);
-
-    let claimed =
-        crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, now, &fleet)
-            .await
-            .expect("the fleet is leasable");
-    set_status(&fixtures, &fleet, FLEET_STATUS_STOPPED).await;
-
-    let answer = fixtures
-        .plane()
-        .lease_claimed(claimed, &runner, now)
-        .await
-        .expect("a paused fleet is a decision, not a fault");
-    assert!(
-        answer.contains(NO_LEASE),
-        "a fleet paused mid-claim issued a lease: {answer}"
-    );
-
-    fixtures.cleanup().await;
+/// A fleet with one runner and one `chat` event waiting on its stream.
+struct Ready {
+    /// The runner that will claim the event.
+    runner: Uuid7,
+    /// The fleet holding it.
+    fleet: String,
+    /// The logical event id, which the event row addresses.
+    event_id: String,
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_fleet_past_its_ceiling_is_refused_through_the_whole_verb() {
-    // `money_gates` is proven against a drained ledger next door. What runs
-    // only here is what the verb DOES with that refusal: end the event, write
-    // the terminal row, acknowledge the entry, and answer no-work — rather
-    // than leave a delivery leasable that every poll would re-read forever.
-    crate::support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
-    let Seeded {
-        runners: [runner],
-        fleet,
-        tenant,
-        ..
-    } = seeded::<1>(&fixtures).await;
-    let workspace = workspace_of(&fixtures, &fleet).await;
-    set_config(&fixtures, &fleet, BUDGETED_CONFIG).await;
-    seed_spend(&fixtures, &tenant, &workspace, &fleet, OVERSPENT_NANOS).await;
-    let now = UnixMillis::from_millis(ENROLLED_AT);
-
-    let claimed =
-        crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, now, &fleet)
-            .await
-            .expect("the fleet is leasable");
-
-    let answer = fixtures
-        .plane()
-        .lease_claimed(claimed, &runner, now)
-        .await
-        .expect("a drained budget is a decision, not a fault");
-    assert!(
-        answer.contains(NO_LEASE),
-        "a fleet past its ceiling was issued a lease: {answer}"
-    );
-
-    fixtures.cleanup().await;
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_denied_gate_ends_the_event_rather_than_parking_it() {
-    // `of_gate` maps a denial to `Admission::Refuse`, and the verb must then
-    // END the event: a human said no, so waiting would offer the same event
-    // back on every poll forever. The pairing with the test below is the
-    // claim — denial and pending are one `Verdict` enum at the gate and two
-    // different endings here.
-    crate::support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
-    let Seeded {
-        runners: [runner],
+/// Seeds [`Ready`], enqueuing a `chat` rather than `seed`'s `steer`.
+async fn ready(fixtures: &Fixtures) -> Ready {
+    let (fleet, workspace, _tenant, [runner]) = seeded_parts::<1>(fixtures).await;
+    let event_id = crate::queue::enqueue(
+        fixtures.queue(),
+        &fleet,
+        &workspace,
+        ACTOR,
+        EVENT_TYPE_CHAT,
+        REQUEST_JSON,
+        ENROLLED_AT,
+    )
+    .await;
+    Ready {
+        runner,
         fleet,
         event_id,
-        ..
-    } = seeded::<1>(&fixtures).await;
-    set_config(&fixtures, &fleet, BUDGETED_CONFIG).await;
-    seed_gate(&fixtures, &fleet, &event_id, "denied").await;
-    let now = UnixMillis::from_millis(ENROLLED_AT);
-
-    let claimed =
-        crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, now, &fleet)
-            .await
-            .expect("the fleet is leasable");
-
-    let answer = fixtures
-        .plane()
-        .lease_claimed(claimed, &runner, now)
-        .await
-        .expect("a denied gate is a decision, not a fault");
-    assert!(
-        answer.contains(NO_LEASE),
-        "a denied gate issued a lease: {answer}"
-    );
-
-    fixtures.cleanup().await;
+    }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_an_unanswered_gate_parks_the_event_without_ending_it() {
-    // The mirror of the denial above: nobody has answered yet, so the event
-    // must be left alone. Ending it here would throw away work a human is
-    // still deciding about, and the runner is told to wait exactly as it is
-    // told to wait for an empty queue.
-    crate::support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
-    let Seeded {
-        runners: [runner],
-        fleet,
-        event_id,
-        ..
-    } = seeded::<1>(&fixtures).await;
-    set_config(&fixtures, &fleet, BUDGETED_CONFIG).await;
-    seed_gate(&fixtures, &fleet, &event_id, "pending").await;
-    let now = UnixMillis::from_millis(ENROLLED_AT);
-
-    let claimed =
-        crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, now, &fleet)
-            .await
-            .expect("the fleet is leasable");
-
-    let answer = fixtures
-        .plane()
-        .lease_claimed(claimed, &runner, now)
-        .await
-        .expect("an unanswered gate is a decision, not a fault");
-    assert!(
-        answer.contains(NO_LEASE),
-        "an unanswered gate issued a lease: {answer}"
-    );
-
-    fixtures.cleanup().await;
-}
-
-/// Writes one gate over `event`, in whatever state `status` names.
+/// Claims `ready`'s event, leaving the verb un-entered.
 ///
-/// The column list mirrors `integration_credential_mint.rs`'s write-gate seed,
-/// because `core.fleet_approval_gates` carries several NOT NULL columns a
-/// shorter insert discovers one round trip at a time — `resolved_by` among
-/// them, which is required even on a row nobody has resolved.
-async fn seed_gate(fixtures: &Fixtures, fleet: &str, event: &str, status: &str) {
-    let workspace = workspace_of(fixtures, fleet).await;
+/// Split from [`drive`] because the case below has to act BETWEEN the two: a
+/// fleet paused after its event was claimed is a window that exists only here.
+async fn claim(fixtures: &Fixtures, ready: &Ready) -> Acquired {
+    crate::seed::select_fleet_within_rotations(
+        &fixtures.leases(),
+        &ready.runner,
+        UnixMillis::from_millis(ENROLLED_AT),
+        &ready.fleet,
+    )
+    .await
+    .expect("the fleet is leasable")
+}
+
+/// Runs the gate chain over an already-claimed event.
+async fn drive(fixtures: &Fixtures, ready: &Ready, claimed: Acquired) -> String {
+    fixtures
+        .plane()
+        .lease_claimed(claimed, &ready.runner, UnixMillis::from_millis(ENROLLED_AT))
+        .await
+        .expect("every gate verdict is a decision, not a fault")
+}
+
+/// The status and failure label one `core.fleet_events` row carries, if the
+/// pass got far enough to open one.
+///
+/// Every stop answers identical bytes — `pull.rs`'s module note says so — so
+/// the ANSWER cannot tell one ending from another. The row can.
+async fn terminal_of(fixtures: &Fixtures, fleet: &str, event: &str) -> Option<(String, String)> {
     let mut connection = fixtures
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query(
-        "INSERT INTO core.fleet_approval_gates \
-           (id, fleet_id, workspace_id, action_id, tool_name, action_name, \
-            gate_kind, proposed_action, evidence, blast_radius, timeout_at, \
-            resolved_by, status, detail, created_at, updated_at, event_id) \
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'chat', 'run', \
-                 $5, 'run the event', '{}'::jsonb, 'one fleet', \
-                 $6, 'fixture:human', $7, '', $8, $8, $9)",
+    let row = sqlx::query(
+        "SELECT status, COALESCE(failure_label, '') \
+           FROM core.fleet_events WHERE fleet_id = $1::uuid AND event_id = $2",
     )
-    .bind(ledger_id())
     .bind(fleet)
-    .bind(&workspace)
-    .bind(ledger_id())
-    .bind(KIND_EVENT)
-    .bind(ENROLLED_AT + GATE_WINDOW_MS)
-    .bind(status)
-    .bind(ENROLLED_AT)
     .bind(event)
-    .execute(&mut *connection)
+    .fetch_optional(&mut *connection)
     .await
-    .expect("the gate row must insert");
+    .expect("the event row must be readable");
+    row.map(|row| {
+        (
+            row.try_get(0).expect("status is text"),
+            row.try_get(1).expect("failure_label is text"),
+        )
+    })
 }
 
 /// Replaces a seeded fleet's status.
 async fn set_status(fixtures: &Fixtures, fleet: &str, status: &str) {
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query("UPDATE core.fleets SET status = $2 WHERE id = $1::uuid")
-        .bind(fleet)
-        .bind(status)
-        .execute(&mut *connection)
-        .await
-        .expect("the status must update");
+    execute(
+        fixtures,
+        "UPDATE core.fleets SET status = $2 WHERE id = $1::uuid",
+        fleet,
+        status,
+    )
+    .await;
 }
 
 /// Replaces a seeded fleet's stored configuration.
 async fn set_config(fixtures: &Fixtures, fleet: &str, config_json: &str) {
+    execute(
+        fixtures,
+        "UPDATE core.fleets SET config_json = $2::jsonb WHERE id = $1::uuid",
+        fleet,
+        config_json,
+    )
+    .await;
+}
+
+/// One two-parameter statement against the fixture database.
+async fn execute(fixtures: &Fixtures, statement: &'static str, first: &str, second: &str) {
     let mut connection = fixtures
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("UPDATE core.fleets SET config_json = $2::jsonb WHERE id = $1::uuid")
-        .bind(fleet)
-        .bind(config_json)
+    sqlx::query(statement)
+        .bind(first)
+        .bind(second)
         .execute(&mut *connection)
         .await
-        .expect("the config must update");
-}
-
-/// The workspace a seeded fleet belongs to.
-async fn workspace_of(fixtures: &Fixtures, fleet: &str) -> String {
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query_scalar::<_, String>(
-        "SELECT workspace_id::text FROM core.fleets WHERE id = $1::uuid",
-    )
-    .bind(fleet)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("a seeded fleet has a workspace")
-}
-
-/// Seeds one settled ledger row draining `nanos` for `fleet`.
-async fn seed_spend(fixtures: &Fixtures, tenant: &str, workspace: &str, fleet: &str, nanos: i64) {
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query(
-        "INSERT INTO billing.usage_ledger \
-           (id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture, model, \
-            credit_deducted_nanos, event_created_at, created_at, last_charged_at) \
-         VALUES ($8::uuid, $1::uuid, $2::uuid, $3::uuid, $4, 'receive', 'platform', $5, \
-                 $6, $7, $7, $7)",
-    )
-    .bind(tenant)
-    .bind(workspace)
-    .bind(fleet)
-    .bind(format!("event-lease-gates-spent-{fleet}"))
-    .bind(MODEL)
-    .bind(nanos)
-    .bind(ENROLLED_AT)
-    .bind(ledger_id())
-    .execute(&mut *connection)
-    .await
-    .expect("the spend seeds");
-}
-
-/// A fresh version-7 identifier for a ledger row.
-///
-/// `billing.usage_ledger` constrains its primary key to the v7 spelling
-/// (`ck_usage_ledger_id_uuidv7`), so a `gen_random_uuid()` default is refused.
-/// Drawn through the workspace's own entropy surface, as the sibling suites do,
-/// rather than through a random crate.
-fn ledger_id() -> String {
-    let mut bytes = [0u8; afd_core::id::ENTROPY_LEN];
-    Entropy::new()
-        .fill(&mut bytes)
-        .expect("the host provides entropy");
-    afd_core::id::Uuid7::encode(UnixMillis::from_millis(ENROLLED_AT), bytes)
-        .expect("a v7 identifier encodes")
-        .as_str()
-        .to_owned()
+        .expect("the fixture statement must apply");
 }
