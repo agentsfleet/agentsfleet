@@ -36,6 +36,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+#[path = "integration_lease_gates/bindings.rs"]
+mod bindings;
 #[path = "integration_lease_gates/cases.rs"]
 mod cases;
 #[path = "integration_lease_gates/seed.rs"]
@@ -60,11 +62,54 @@ const EVENT_TYPE_CHAT: &str = "chat";
 /// A stored document the runtime parser accepts, with a one-dollar ceiling.
 const BUDGETED_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":1.0}}}"#;
 
+/// [`BUDGETED_CONFIG`] with a WRITE reach over one repository.
+///
+/// Exactly one repository and a declared base, so the only thing left that can
+/// refuse the egress build is the repair branch — which is the subject.
+const WRITE_BOUND_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":1.0},"repositories":["agentsfleet/probe"],"repository_access":"write","repository_base":"main"}}"#;
+
+/// [`WRITE_BOUND_CONFIG`] differing in one word: the reach is READ.
+///
+/// A read binding carries no base — the parser refuses one that does — so the
+/// pair is as close as the config language allows two bindings to be.
+const READ_BOUND_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":1.0},"repositories":["agentsfleet/probe"],"repository_access":"read"}}"#;
+
+/// [`WRITE_BOUND_CONFIG`]'s binding in the shape a gate row records it.
+///
+/// Must describe the config EXACTLY: `matches_recorded` compares the sets both
+/// ways and the access and base by value, so a recorded copy that drifted is
+/// read as no approval at all and the delivery refuses instead of proceeding.
+const STATED_WRITE_BINDING: &str =
+    r#"{"repositories":["agentsfleet/probe"],"access":"write","base":"main"}"#;
+
+/// The status a refused event's row is left in.
+const STATUS_GATE_BLOCKED: &str = "gate_blocked";
+
+/// The status an event that is delivered, or merely waiting, is left in.
+const STATUS_RECEIVED: &str = "received";
+
 /// The status an operator's pause leaves on the fleet row.
 const FLEET_STATUS_STOPPED: &str = "stopped";
 
 /// The gate kind a fixture raises over a whole event.
 const KIND_EVENT: &str = "tool_call";
+
+/// The gate kind that answers "may this lease author a branch".
+///
+/// Mirrored from `afd_gate::gate::KIND_REPOSITORY_WRITE` rather than imported,
+/// which is this suite's habit for anything the DAEMON reads back: a fixture
+/// that imported it would keep matching a kind that moved, and a kind the
+/// reader no longer selects on is the one failure this fixture exists to catch.
+const KIND_REPOSITORY_WRITE: &str = "repository_write";
+
+/// The stored spelling of a gate a human said yes to.
+const STATUS_APPROVED: &str = "approved";
+
+/// The allowance a write gate is opened with, mirrored for the reason above.
+///
+/// `approved_write_gate` selects on equality, not on a range, so a fixture that
+/// wrote any other number is read as no gate at all.
+const REPOSITORY_WRITE_SPEND_CEILING: i64 = 32;
 
 /// How long a fixture gate stays unexpired.
 const GATE_WINDOW_MS: i64 = 600_000;
