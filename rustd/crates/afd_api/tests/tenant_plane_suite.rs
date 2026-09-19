@@ -54,6 +54,8 @@ mod integration_tenant_cli;
 mod integration_tenant_models;
 #[path = "integration_tenant_money.rs"]
 mod integration_tenant_money;
+#[path = "integration_tenant_provider.rs"]
+mod integration_tenant_provider;
 #[path = "integration_workspace_approvals.rs"]
 mod integration_workspace_approvals;
 #[path = "integration_workspace_approvals_listing.rs"]
