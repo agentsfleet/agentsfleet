@@ -20,7 +20,7 @@
 )]
 
 use afd_billing::sql::{SELECT_BUDGET_DRAIN, charge};
-use afd_billing::tenant::{Billing, CHARGES_LIMIT_DEFAULT};
+use afd_billing::tenant::{Billing, CHARGES_LIMIT_DEFAULT, cursor};
 use afd_core::id::Uuid7;
 use sqlx::Row as _;
 
@@ -211,6 +211,58 @@ async fn test_m201_charge_row_decodes_fleet_name() {
         legacy.fleet_name, None,
         "a charge with no captured name must decode to None rather than erroring \
          — every row written before slot 915 is in that state"
+    );
+
+    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
+    held.fixtures.cleanup().await;
+}
+
+/// Dimension 3.1. The second page reads the new column too.
+///
+/// `Billing::charges` runs one of TWO statements depending on whether the
+/// caller is resuming, and both gained `fleet_name` at slot 915. Every other
+/// test here takes the first page, which leaves the resumed one — a separate
+/// `SELECT` list, maintained by hand beside its twin — proven by nothing.
+///
+/// The failure it guards is invisible until a tenant has more charges than one
+/// page holds: `ChargeRow::read` calls `try_get("fleet_name")` by name, so a
+/// projection missing the column fails at RUNTIME, on page two, for the
+/// heaviest users only. No compiler checks a column name against a struct.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_m201_charge_row_decodes_fleet_name_when_resuming() {
+    let held = held().await;
+    let tenant = Uuid7::parse(&held.tenant).expect("the fixture tenant is a v7 spelling");
+    seed_nameless_charge(&held).await;
+
+    let billing = Billing::new(held.fixtures.database.clone());
+    // One row, so the fixture's own charges are guaranteed to sit beyond it.
+    let first = billing
+        .charges(&tenant, 1, None)
+        .await
+        .expect("the first page must read");
+    let boundary = first
+        .first()
+        .map(|row| cursor::Boundary {
+            recorded_at: row.recorded_at,
+            id: row.id.clone(),
+        })
+        .expect("the tenant has charges, so the first page is not empty");
+
+    let resumed = billing
+        .charges(&tenant, CHARGES_LIMIT_DEFAULT, Some(&boundary))
+        .await
+        .expect("the resumed page must read — a projection missing fleet_name fails here");
+
+    assert!(
+        !resumed.is_empty(),
+        "the fixture writes more than one charge, so resuming past the first \
+         must still return rows — otherwise this proves nothing about the \
+         statement it is meant to exercise"
+    );
+    assert!(
+        resumed.iter().all(|row| row.id != boundary.id),
+        "a resumed page must not repeat the row it resumed from"
     );
 
     queue::clear_ready(held.fixtures.queue(), &held.fleet).await;

@@ -21,6 +21,17 @@ use self::harness::{Fleet, json_body, send, send_with_headers};
 const SUBJECT: &str = "user_live_money_catalogue";
 const BALANCE: i64 = 42_000;
 
+/// The fleet the seeded charges name, and the name they captured.
+///
+/// Neither row has a `core.fleets` row behind it, which is the state slot 915
+/// made writable: `fleet_id` stopped being a foreign key, so a charge may name
+/// a fleet that is gone. Distinct from each other on purpose — a handler that
+/// mapped the identifier into the name field would pass an equality check
+/// against a single value.
+const CHARGED_FLEET: &str = "01990000-0000-7000-8000-0000000000f1";
+/// That fleet's name as the charge captured it.
+const CHARGED_FLEET_NAME: &str = "deploy-bot";
+
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn catalogue_and_billing_reads_page_real_rows() {
@@ -117,6 +128,7 @@ async fn exercise_billing(router: &axum::Router, fixture: &Fixture) {
     assert_eq!(first.status(), StatusCode::OK);
     let first = json_body(first).await;
     assert_eq!(items(&first).len(), 1);
+    assert_charge_names_its_fleet(&items(&first)[0]);
     let cursor = text(&first, "next_cursor").to_owned();
 
     let next = send(
@@ -128,7 +140,11 @@ async fn exercise_billing(router: &axum::Router, fixture: &Fixture) {
     )
     .await;
     assert_eq!(next.status(), StatusCode::OK);
-    assert_eq!(items(&json_body(next).await).len(), 1);
+    let next = json_body(next).await;
+    assert_eq!(items(&next).len(), 1);
+    // The resumed page runs a SECOND select list, maintained by hand beside
+    // its twin. Asserting only the first page leaves that one unproven.
+    assert_charge_names_its_fleet(&items(&next)[0]);
 
     fixture.remove_wallet().await;
     let missing = send(
@@ -140,6 +156,27 @@ async fn exercise_billing(router: &axum::Router, fixture: &Fixture) {
     )
     .await;
     assert_eq!(missing.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+/// One charge on the wire still names the fleet it was incurred by.
+///
+/// Both fields, and they are checked against DIFFERENT expected values because
+/// the handler assembles them on adjacent lines from adjacent struct fields —
+/// `fleet_name: row.fleet_id` is the slip this shape catches and a single
+/// presence check does not. Omitting the field outright is already a compile
+/// error, since `ChargeSummary` has no `Default`.
+fn assert_charge_names_its_fleet(charge: &Value) {
+    assert_eq!(
+        charge.get("fleet_id").and_then(Value::as_str),
+        Some(CHARGED_FLEET),
+        "a charge must carry the fleet it was incurred by, whether or not that \
+         fleet still exists"
+    );
+    assert_eq!(
+        charge.get("fleet_name").and_then(Value::as_str),
+        Some(CHARGED_FLEET_NAME),
+        "a charge must carry the name captured when it was written"
+    );
 }
 
 fn items(document: &Value) -> &[Value] {
@@ -236,15 +273,18 @@ impl Fixture {
                 "INSERT INTO billing.usage_ledger \
                    (id, tenant_id, event_id, charge_type, posture, model, \
                     credit_deducted_nanos, token_count_input, token_count_cached_input, \
-                    token_count_output, wall_ms, event_created_at, created_at, last_charged_at) \
+                    token_count_output, wall_ms, event_created_at, created_at, last_charged_at, \
+                    fleet_id, fleet_name) \
                  VALUES ($1::uuid, $2::uuid, $3, 'stage', 'platform', $4, \
-                         7, 11, 2, 13, 17, $5, $5, $5)",
+                         7, 11, 2, 13, 17, $5, $5, $5, $6::uuid, $7)",
             )
             .bind(id)
             .bind(&self.tenant)
             .bind(format!("live-charge-{}-{index}", self.tenant))
             .bind(format!("model-{index}"))
             .bind(instant)
+            .bind(CHARGED_FLEET)
+            .bind(CHARGED_FLEET_NAME)
             .execute(&mut *connection)
             .await
             .expect("the charge row seeds");
