@@ -138,8 +138,9 @@ impl<'a> PendingRow<'a> {
             .bind(self.stated_binding)
             // Both NULL, always. No gate funds credential requests any more:
             // the standing grant authorises the mint and `budget.daily_dollars`
-            // bounds the money. The columns stay because the rows raised before
-            // this still carry their counts, and the inbox renders them.
+            // bounds the money. The columns stay because they are NOT NULL-free
+            // history on rows raised before this — no read selects them, so
+            // dropping them is a schema change this milestone does not need.
             .bind(None::<i64>)
             .bind(None::<i64>)
     }

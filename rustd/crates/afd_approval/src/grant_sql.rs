@@ -121,10 +121,17 @@ SELECT (SELECT COUNT(*) FROM raised), requested.status FROM requested";
 /// `pending` and is approved a moment later has a window in which a delivery is
 /// refused for a grant nobody was going to be asked about.
 ///
-/// `DO NOTHING` rather than an upsert, because a re-install must not un-revoke
-/// a grant a person revoked — [`REVOKE_GRANT`] is meant to outlive the next
-/// install. The `UNION ALL` arm reports whichever status survived, so a caller
-/// can tell the grant it just wrote from the one that was already there.
+/// `DO UPDATE` that writes the status back UNCHANGED, which is how a conflict
+/// still returns its row. `DO NOTHING` does not: the insert skips, and the
+/// statement's snapshot predates a row a concurrent installer committed a
+/// moment ago, so a `SELECT` beside it finds nothing either and the caller gets
+/// zero rows where it expected one. The no-op update takes the row lock instead
+/// and returns what stands.
+///
+/// It must stay a no-op. `status = core.integration_grants.status` re-writes the
+/// value already there, so a re-install cannot un-revoke a grant a person
+/// revoked — [`REVOKE_GRANT`] is meant to outlive the next install, and an
+/// upsert that set `status = EXCLUDED.status` would quietly undo it.
 ///
 /// `approved_at` and `created_at` take the same instant deliberately: nobody
 /// was asked, so the moment the row was written IS the moment it was answered.
@@ -132,15 +139,9 @@ SELECT (SELECT COUNT(*) FROM raised), requested.status FROM requested";
 /// `$1` grant, `$2` fleet, `$3` service, `$4` approved status, `$5` reason,
 /// `$6` now.
 pub(crate) const GRANT_AT_INSTALL: &str = "\
-WITH written AS (
-  INSERT INTO core.integration_grants
-    (id, fleet_id, service, status, requested_reason, approved_at, created_at)
-  VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $6)
-  ON CONFLICT (fleet_id, service) DO NOTHING
-  RETURNING status
-)
-SELECT status FROM written
-UNION ALL
-SELECT g.status FROM core.integration_grants g
-WHERE g.fleet_id = $2::uuid AND g.service = $3
-  AND NOT EXISTS (SELECT 1 FROM written)";
+INSERT INTO core.integration_grants
+  (id, fleet_id, service, status, requested_reason, approved_at, created_at)
+VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $6)
+ON CONFLICT (fleet_id, service)
+DO UPDATE SET status = core.integration_grants.status
+RETURNING status";

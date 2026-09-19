@@ -195,6 +195,11 @@ async fn test_m202_001_reinstall_keeps_one_grant() {
 /// stop button is `grant revoke`; if reinstalling the fleet undid it, the stop
 /// button would have a timer on it. The park path raises the card, a person
 /// denies it, and the install that follows must find the no still standing.
+///
+/// This is also what pins `GRANT_AT_INSTALL`'s conflict arm as a NO-OP update.
+/// The statement writes `status = core.integration_grants.status` so a conflict
+/// still returns its row; an author who changed that to `EXCLUDED.status` to
+/// "fix" a re-install would un-revoke every grant, and this test is what fails.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_m202_001_reinstall_never_undoes_a_revoke() {
