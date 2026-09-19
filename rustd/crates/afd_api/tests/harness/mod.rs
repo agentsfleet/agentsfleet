@@ -77,6 +77,7 @@ use afd_sse::{Ceiling, Live};
 use afd_state::Credentials;
 use afd_tenant::apikey::ApiKeys;
 use afd_tenant::cli_credential::CliCredentials;
+use afd_tenant::identity::Identities;
 use afd_tenant::models::Models;
 use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
@@ -210,6 +211,7 @@ pub(crate) struct Fleet {
     workspace_directory: Workspaces,
     api_keys: ApiKeys,
     cli_credentials: CliCredentials,
+    profiles: Identities,
     logins: Logins,
     fleets: Fleets,
     secrets: SecretVault,

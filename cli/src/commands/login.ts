@@ -35,9 +35,13 @@ import { Stdin } from "../services/stdin.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import {
   AuthError,
+  CLI_ERROR_TAG,
   InterruptedError,
   MeValidationError,
   type CliError,
+  type NetworkError,
+  type ServerError,
+  type UnexpectedError,
 } from "../errors/index.ts";
 import {
   buildLoginUrl,
@@ -56,7 +60,7 @@ import {
   exchangeForCredential,
   type MintedCredential,
 } from "./login-exchange.ts";
-import { pingMe } from "../lib/me-ping.ts";
+import { readIdentity, type CallerIdentity } from "../lib/me-ping.ts";
 
 export interface LoginFlags {
   readonly noOpen: boolean;
@@ -109,7 +113,18 @@ const maybeOpenBrowser = Effect.fnUntraced(function* (
 // Success rendering. Every non-success path is an Effect failure routed
 // through the dispatcher's exit-code map, so this only handles "complete".
 // The device flow is the only login path, so a session id always exists.
-const renderSuccess = Effect.fnUntraced(function* (sessionId: string) {
+//
+// The line NAMES the person, because the complaint this answers is that a
+// terminal reported "login complete" and left the operator with no way to tell
+// which account it had just signed into. The identity costs no extra request:
+// the validation probe that has always run here now answers with it.
+//
+// Display name first, email second, and the bare word if a server answered
+// neither — a rendering gap must never fail a login that completed.
+const renderSuccess = Effect.fnUntraced(function* (
+  sessionId: string,
+  identity: CallerIdentity,
+) {
   const config = yield* CliConfig;
   const output = yield* Output;
   if (config.jsonMode) {
@@ -118,10 +133,17 @@ const renderSuccess = Effect.fnUntraced(function* (sessionId: string) {
       session_id: sessionId,
       token_saved: true,
       api_url: config.apiUrl,
+      email: identity.email,
+      tenant_name: identity.tenantName,
     });
-  } else {
-    yield* output.success("login complete");
+    return;
   }
+  const who = identity.displayName ?? identity.email;
+  yield* output.success(
+    who.length > 0
+      ? `signed in as ${who} — ${identity.tenantName}`
+      : LOGIN_COMPLETE,
+  );
 });
 
 const persistSuccess = Effect.fnUntraced(function* (
@@ -139,15 +161,31 @@ const persistSuccess = Effect.fnUntraced(function* (
   return minted.credential;
 });
 
-// /me ping failure → wipe credentials.json before propagating the error.
-// The token was persisted moments ago but failed validation; leaving it
-// on disk would route subsequent commands to the same dead-on-arrival
-// token. Swallow the clear's own UnexpectedError — the validation
-// failure is the load-bearing signal the operator needs to see.
-const rollbackOnMeFailure = Effect.fnUntraced(function* (err: InstanceType<typeof MeValidationError>) {
+// Identity-read failure → wipe credentials.json before propagating.
+//
+// The credential was persisted moments ago and does not authenticate, so
+// leaving it on disk would route every later command at the same
+// dead-on-arrival value. The clear's own UnexpectedError is swallowed: the
+// read's failure is the signal the operator needs, and a report about the file
+// would bury it.
+//
+// The sentence is written HERE and not in the read, because it is true only
+// here — `whoami` reaches the same endpoint having saved nothing, and inherited
+// this wording until the acceptance lane caught it. What the operator is told
+// is that the login did not take, whatever the transport said; the transport's
+// own request id is carried through for whoever has to chase it.
+const rollbackOnIdentityFailure = Effect.fnUntraced(function* (
+  err: ServerError | NetworkError | UnexpectedError,
+) {
   const credentials = yield* Credentials;
   yield* credentials.clearAccessToken.pipe(Effect.ignore);
-  return yield* Effect.fail(err);
+  return yield* Effect.fail(
+    new MeValidationError({
+      detail: CREDENTIAL_UNCONFIRMED,
+      suggestion: SIGN_IN_AGAIN,
+      requestId: err._tag === CLI_ERROR_TAG.server ? err.requestId : null,
+    }),
+  );
 });
 
 // Verify branch: prompt → /verify → decrypt → persist → /me ping → hydrate
@@ -166,9 +204,14 @@ const completeVerificationBranch = Effect.fnUntraced(function* (
   // failed login never leaves a dead-on-arrival value on disk.
   const minted = yield* exchangeForCredential(Redacted.make(token));
   const redacted = yield* persistSuccess(sessionId, minted);
-  yield* pingMe(redacted).pipe(Effect.catchTag("MeValidationError", rollbackOnMeFailure));
+  // The one call that proves the credential authenticates, and the one that
+  // knows whose it is. A refusal here still clears the file just written.
+  const identity = yield* readIdentity(redacted).pipe(
+    Effect.catch(rollbackOnIdentityFailure),
+  );
   yield* hydrateWorkspacesAfterLogin(redacted);
   yield* captureLoginCompleted(sessionId, token);
+  return identity;
 });
 
 // Login surface rule: every failure exits 1. Transport / server
@@ -216,17 +259,17 @@ const loginCore = Effect.fnUntraced(function* (flags: LoginFlags) {
   // Prompt for the code immediately — possessing it implies the dashboard
   // approved, so there's no poll-gate to wait through. SIGINT/EOF at the
   // prompt aborts cleanly (exit 130) with nothing persisted.
-  yield* withSigintAbort((signal) =>
+  const identity = yield* withSigintAbort((signal) =>
     completeVerificationBranch(created.session_id, keypair, flags.noInput, signal),
   );
-  yield* renderSuccess(created.session_id);
+  yield* renderSuccess(created.session_id, identity);
 });
 
 // Re-map transport errors during create-session so every login failure
 // exits 1 (AuthError). VerificationFailed / DecryptError / SessionAborted /
 // SessionConsumed are already AuthError-typed.
 const remapTransportErrors = (err: CliError): CliError => {
-  if (err._tag === "ServerError") {
+  if (err._tag === CLI_ERROR_TAG.server) {
     return new AuthError({
       detail: err.detail,
       suggestion: "retry `agentsfleet login`",
@@ -234,7 +277,7 @@ const remapTransportErrors = (err: CliError): CliError => {
       requestId: err.requestId,
     });
   }
-  if (err._tag === "NetworkError") {
+  if (err._tag === CLI_ERROR_TAG.network) {
     return new AuthError({
       detail: err.detail,
       suggestion: "check network, then retry `agentsfleet login`",
@@ -271,3 +314,10 @@ export const loginEffectFromFlags = (
     tokenName: raw.tokenName,
   });
 const BROWSER_NOT_OPENED_MESSAGE = "browser: not opened (open URL manually)" as const;
+// The fallback line, for a server that answered an identity with neither a
+// display name nor an email. It reports what happened and claims no more.
+const LOGIN_COMPLETE = "login complete" as const;
+// What a failed post-mint identity read tells the operator. Names the outcome
+// (the login did not take) rather than the mechanism (a read was refused).
+const CREDENTIAL_UNCONFIRMED = "credential saved but failed validation" as const;
+const SIGN_IN_AGAIN = "try `agentsfleet login` again" as const;

@@ -47,6 +47,7 @@ export interface ReadOnlyCommandRow {
 //                length the §4b' / §5b' empty-list sweep inspects.
 export const READ_ONLY_COMMANDS: ReadonlyArray<ReadOnlyCommandRow> = [
   { args: ["doctor", "--json"], requiredKey: "checks" },
+  { args: ["whoami", "--json"], requiredKey: "email" },
   { args: ["workspace", "list", "--json"], isList: true, itemsKey: "workspaces" },
   { args: ["workspace", "show", "--json"], requiredKey: "workspace_id" },
   { args: ["api-key", "list", "--json"], isList: true, itemsKey: "items" },

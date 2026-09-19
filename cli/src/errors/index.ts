@@ -32,7 +32,9 @@ export {
   type AuthFlowError,
 };
 
-const CLI_ERROR_TAG = {
+// Exported so a caller branching on `_tag` names the tag rather than
+// re-spelling it: `login.ts` alone reads it at two sites (RULE UFS).
+export const CLI_ERROR_TAG = {
   auth: "AuthError",
   network: "NetworkError",
   server: "ServerError",

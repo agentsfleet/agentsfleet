@@ -162,6 +162,17 @@ impl Person {
         &self.subject
     }
 
+    /// What the provider resolved this person may do.
+    ///
+    /// The same set [`Principal::scopes`] answers for a person, reachable from
+    /// the narrowed value as well: a handler holding a `Person` proved its
+    /// credential class to get one, and having done so should not have to go
+    /// back to the request for the capabilities that came with it.
+    #[must_use]
+    pub const fn scopes(&self) -> ScopeSet {
+        self.scopes
+    }
+
     /// The single workspace this principal is confined to, when it is confined.
     ///
     /// Answers `None` for the credentials that cannot carry a ceiling, so a
@@ -231,7 +242,7 @@ impl Principal {
     #[must_use]
     pub const fn scopes(&self) -> ScopeSet {
         match self {
-            Self::Person(person) => person.scopes,
+            Self::Person(person) => person.scopes(),
             Self::Runner(_) => RUNNER_SCOPES,
         }
     }

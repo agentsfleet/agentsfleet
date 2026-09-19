@@ -16,6 +16,9 @@ mod integration_connector_refresh;
 #[path = "integration_connector_status.rs"]
 mod integration_connector_status;
 
+#[path = "tenant_current_user.rs"]
+mod tenant_current_user;
+
 #[path = "auth_sessions.rs"]
 mod auth_sessions;
 #[path = "fleet_grants.rs"]

@@ -95,6 +95,7 @@ impl Fleet {
             workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
+            profiles: Identities::new(database.clone()),
             logins: Logins::new(
                 afd_dragonfly::SessionStore::new(queue.clone()),
                 SecretBytes::new(FIXTURE_PEPPER.to_vec()),
@@ -228,6 +229,7 @@ impl Fleet {
             workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
+            profiles: Identities::new(database.clone()),
             logins: Logins::new(
                 afd_dragonfly::SessionStore::new(queue.clone()),
                 SecretBytes::new(FIXTURE_PEPPER.to_vec()),

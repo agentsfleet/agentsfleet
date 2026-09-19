@@ -10,6 +10,7 @@ import { mainLayerFor } from "../runtime/main-layer.ts";
 import { withCommandInstrumentation } from "../services/telemetry/command-instrumentation.ts";
 
 import { authStatusEffect } from "../commands/auth.ts";
+import { whoamiEffect } from "../commands/whoami.ts";
 import { logoutEffect } from "../commands/auth-logout.ts";
 import { loginEffectFromFlags } from "../commands/login.ts";
 import type { CliError } from "../errors/index.ts";
@@ -34,6 +35,8 @@ import type { ActionFrame, CommandHandlerFn, Handlers } from "./cli-tree-types.t
 import { readStringOpt as optString, type CommandCtx, type CommandDeps, type Workspaces } from "../commands/types.ts";
 
 const CTX = "ctx" as const;
+// The wrap-site label, which becomes the span name and the analytics command.
+const COMMAND_WHOAMI = "whoami" as const;
 
 export interface Lifecycle {
   ctx: CommandCtx;
@@ -196,6 +199,7 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
         }),
       lifecycle,
     ),
+    whoami: wrapE(COMMAND_WHOAMI, whoamiEffect),
     auth: {
       status: wrapE("auth.status", authStatusEffect),
     },

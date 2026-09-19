@@ -33,6 +33,7 @@ use afd_runner::Runners;
 use afd_sse::Live;
 use afd_tenant::apikey::ApiKeys;
 use afd_tenant::cli_credential::CliCredentials;
+use afd_tenant::identity::Identities;
 use afd_tenant::models::Models;
 use afd_tenant::preference::Preferences;
 use afd_tenant::session::Sessions as Logins;
@@ -214,6 +215,7 @@ impl TenantSurface for ServingPlane {
     type WorkspaceDirectory = Workspaces;
     type ApiKeys = ApiKeys;
     type CliCredentials = CliCredentials;
+    type Profiles = Identities;
     type Billing = Billing;
     type Catalogue = Models;
     type TenantProviders = Providers;
@@ -233,6 +235,10 @@ impl TenantSurface for ServingPlane {
 
     fn cli_credentials(&self) -> &CliCredentials {
         &self.cli_credentials
+    }
+
+    fn profiles(&self) -> &Identities {
+        &self.profiles
     }
 
     fn billing(&self) -> &Billing {

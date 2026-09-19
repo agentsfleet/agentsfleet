@@ -10,6 +10,7 @@
 
 pub mod apikey;
 pub mod cli_credential;
+pub mod identity;
 pub mod models;
 pub mod preference;
 pub mod signup;

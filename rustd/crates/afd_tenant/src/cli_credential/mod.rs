@@ -114,7 +114,7 @@ impl CliCredentials {
             .await
             .map_err(error::query(CONTEXT_SUBJECT))?;
 
-        let (id, tenant) = row.ok_or_else(error::cli_credential_unknown_subject)?;
+        let (id, tenant) = row.ok_or_else(error::unknown_subject)?;
         Ok(UserIdentity {
             id: Uuid7::parse(&id)?,
             tenant: Uuid7::parse(&tenant)?,
