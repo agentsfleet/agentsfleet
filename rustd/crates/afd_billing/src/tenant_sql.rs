@@ -38,7 +38,7 @@ LIMIT 1";
 /// The first charges page: newest first, no boundary. `$1` tenant, `$2` limit.
 pub(crate) const SELECT_TENANT_CHARGES_PAGE_FIRST: &str = "\
 SELECT id::text, tenant_id::text, workspace_id::text, fleet_id::text, event_id, \
-charge_type, posture, model, \
+charge_type, posture, model, fleet_name, \
 credit_deducted_nanos, \
 token_count_input, token_count_output, wall_ms, \
 created_at \
@@ -51,7 +51,7 @@ LIMIT $2";
 /// `$2` boundary instant, `$3` boundary id, `$4` limit.
 pub(crate) const SELECT_TENANT_CHARGES_PAGE_AFTER: &str = "\
 SELECT id::text, tenant_id::text, workspace_id::text, fleet_id::text, event_id, \
-charge_type, posture, model, \
+charge_type, posture, model, fleet_name, \
 credit_deducted_nanos, \
 token_count_input, token_count_output, wall_ms, \
 created_at \

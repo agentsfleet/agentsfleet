@@ -20,6 +20,7 @@ function charge(over: Partial<ChargeRow> = {}): ChargeRow {
     tenant_id: "t_1",
     workspace_id: "w_1",
     fleet_id: "z_1",
+    fleet_name: null,
     event_id: "evt_1",
     charge_type: CHARGE_TYPE.stage,
     posture: PROVIDER_MODE.platform,
@@ -91,6 +92,37 @@ describe("charge identity", () => {
 
   it("labels a historical charge whose fleet was deleted", () => {
     expect(chargeAgentLabel(charge({ fleet_id: null }))).toBe("DELETED AGENT");
+  });
+
+  // The four states slot 915 made reachable. The point of the set is that no
+  // combination renders blank: an empty cell against a real charge reads as a
+  // rendering bug, and the operator cannot tell it from a missing charge.
+  it("shows the callsign and the operator's own name once both survive", () => {
+    expect(chargeAgentLabel(charge({ fleet_name: "deploy-bot" }))).toMatch(
+      /^AGENT [A-Z]+-[0-9A-F]{4} · deploy-bot$/,
+    );
+  });
+
+  it("shows the stored name when the identifier is gone", () => {
+    expect(
+      chargeAgentLabel(charge({ fleet_id: null, fleet_name: "deploy-bot" })),
+    ).toBe("deploy-bot");
+  });
+
+  it("falls back to the deleted label, never a blank cell", () => {
+    for (const fleet_name of [null, undefined, "", "   "]) {
+      expect(
+        chargeAgentLabel(charge({ fleet_id: null, fleet_name })),
+      ).toBe("DELETED AGENT");
+    }
+  });
+
+  // A pre-slot-915 charge whose fleet is still alive: no stored name, but the
+  // identifier was never nulled, so it reads exactly as it did before.
+  it("is unchanged for a charge that predates the stored name", () => {
+    expect(chargeAgentLabel(charge({ fleet_name: null }))).toMatch(
+      /^AGENT [A-Z]+-[0-9A-F]{4}$/,
+    );
   });
 });
 

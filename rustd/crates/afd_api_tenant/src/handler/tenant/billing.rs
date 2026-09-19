@@ -175,6 +175,7 @@ fn summary(row: &ChargeRow) -> ChargeSummary<'_> {
         tenant_id: Cow::Borrowed(&row.tenant_id),
         workspace_id: row.workspace_id.as_deref().map(Cow::Borrowed),
         fleet_id: row.fleet_id.as_deref().map(Cow::Borrowed),
+        fleet_name: row.fleet_name.as_deref().map(Cow::Borrowed),
         event_id: Cow::Borrowed(&row.event_id),
         charge_type: Cow::Borrowed(&row.charge_type),
         posture: Cow::Borrowed(&row.posture),
