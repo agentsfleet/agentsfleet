@@ -56,21 +56,21 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/crates/afd_approval/src/request/install.rs` | NEW | The install verb: an approved grant, no card. Its own file — `request.rs` sat at 326 of the 350 cap. |
-| `rustd/crates/afd_approval/src/grant_sql.rs` | NEW | The grant half of `sql.rs`, split out to make room, mirroring `afd_gate`'s `grant_sql`/`sql` pair. |
-| `rustd/crates/afd_approval/src/{sql,grant,lib}.rs` | EDIT | `sql.rs` loses the grant statements to `grant_sql.rs`; `grant.rs` reads them there; `lib.rs` declares the module. |
-| `rustd/crates/afd_fleet_lifecycle/src/install/grants.rs` | EDIT | Calls `grant_at_install`, not `request`; its note stops promising a card. |
-| `rustd/crates/afd_approval/src/request.rs` | EDIT | A declared credential lands an approved grant instead of a pending one and a card. |
-| `rustd/crates/afd_approval/src/inbox.rs` | EDIT | No install-time `integration_grant` card is raised, so none reaches the inbox. |
+| `rustd/crates/afd_approval/src/request/install.rs` NEW · `grant_sql.rs` NEW | — | The install verb (approved grant, no card) and the grant half of `sql.rs`, split out because `request.rs` and `sql.rs` both sat at 326 of the 350 cap; mirrors `afd_gate`'s own pair. |
+| `afd_approval/src/{sql,grant,lib}.rs` · `afd_fleet_lifecycle/src/install/grants.rs` | EDIT | Statements move to `grant_sql`; the install calls `grant_at_install`, not `request`. |
+| `rustd/crates/afd_approval/src/request.rs` | EDIT | Declares the install module; keeps raising the card for `Origin::Park`, the backstop. |
 | `rustd/crates/afd_gate/src/gate/first.rs` | EDIT | Delete `park_write_kind` and `writes_to_a_repository`; the rules walk becomes the only first-encounter path. |
 | `rustd/crates/afd_gate/src/gate/detail.rs` | EDIT | Retire `KIND_REPOSITORY_WRITE`, `RADIUS_REPOSITORY_WRITE`, `REPOSITORY_WRITE_SPEND_CEILING` and `Stated::write_kind`. |
-| `rustd/crates/afd_gate/src/gate/spend.rs` | DELETE | The per-gate spend ledger has no gate to draw against once the park is gone. |
+| `rustd/crates/afd_gate/src/gate/spend.rs` + `spend/tests.rs` | DELETE | The per-gate spend ledger has no gate to draw against once the park is gone. |
+| `afd_gate/src/gate/{park,sql}.rs` · `policy/repair.rs` | EDIT | Spend bindings go and both columns write NULL; the branch names the event; `gate_of` deleted — no production caller. |
+| `afd_fleet/src/lease/{mint,deliver}.rs` · `error/*.rs` | EDIT | The second mint gate goes and `repair_branch` stops being async. Three refusals unreachable and gone: `UZ-REPAIR-010`, `UZ-REPAIR-011`, `REPAIR_SPEND_EXHAUSTED` — **public surface, needs a `~/Projects/docs` branch before release.** |
+| `afd_fleet_runtime/src/config/raw/predicate.rs` | EDIT | `DAEMON_OWNED_GATE_KINDS` keeps `repository_write` RESERVED, not owned. |
+| `afd_gate/tests/integration_gate_lifecycle.rs` + `support/gate_fixture.rs` · `afd_fleet/tests/integration_credential_mint{.rs,/cases.rs}` | EDIT | The lifecycle suite asserted the defect; replaced by §2's Dimensions. Three write-gate mint cases and their seeder leave; four mint cases stay. |
+| `cli/test/grant.integration.test.ts` EDIT · `cli/test/fleetbundle-pr-reviewer.unit.test.ts` NEW | — | Dimensions 4.1 and 4.3. |
 | `rustd/crates/afd_gate/src/gate/grants.rs` | EDIT | The write authority read becomes the grant read: approved and unrevoked, or refuse. |
-| `rustd/crates/afd_gate/src/gate/mod.rs` | EDIT | Drop the retired re-exports. |
-| `rustd/crates/afd_credential/src/credential/broker.rs` | EDIT | The mint consults the grant; the declared-repository scoping is unchanged. |
-| `cli/src/commands/grant.ts` | EDIT | `grant list` prints an approved-at-install row without implying a pending question. |
-| `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | §3 and §6 record one authorisation, not two. |
-| `docs/architecture/connectors.md` | EDIT | The trust anchors list gains the grant as the repository-write authority. |
+
+| `cli/src/commands/grant.ts` | NO CHANGE | Already status-agnostic: it renders `status` and `approved_at` generically and carries no copy implying a pending question. |
+| `docs/architecture/scenarios/github-pr-reviewer.md` · `connectors.md` | EDIT | §3 records one authorisation; trust anchor 6 names the grant. That section's count was already drifting — 4 claimed, 5 listed — and is now 6. |
 | `tests/fixtures/fleetbundle/github-pr-reviewer/SKILL.md` | EDIT | Reads owner and number from the event; the fixture matches the shipped bundle. |
 
 ## Applicable Rules
@@ -106,36 +106,36 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 A fleet declaring a mintable credential gets an approved grant at install and no card. **Implementation default:** `approved` is written by the same statement that writes the row, because a row that lands pending and is updated a moment later has a window where a delivery is refused for a grant nobody was going to be asked about.
 
-- **Dimension 1.1** — an install declaring `credentials: [github]` writes one grant row with status approved and a non-null `approved_at` → Test `test_m202_001_install_lands_an_approved_grant`
-- **Dimension 1.2** — no `integration_grant` card reaches the inbox for that install → Test `test_m202_001_install_raises_no_card`
-- **Dimension 1.3** — a re-install of the same fleet and service moves no second row, per `uq_integration_grants_fleet_id_service` → Test `test_m202_001_reinstall_keeps_one_grant`
+- **Dimension 1.1** DONE — an install declaring `credentials: [github]` writes one grant row with status approved and a non-null `approved_at` → Test `test_m202_001_install_lands_an_approved_grant`
+- **Dimension 1.2** DONE — no `integration_grant` card reaches the inbox for that install → Test `test_m202_001_install_raises_no_card`
+- **Dimension 1.3** DONE — a re-install of the same fleet and service moves no second row, per `uq_integration_grants_fleet_id_service` → Test `test_m202_001_reinstall_keeps_one_grant`
 
 ### §2 — The unconditional write park is deleted
 
 `writes_to_a_repository` and `park_write_kind` leave, with the kind, the radius and the ceiling they carried. **Implementation default:** delete rather than gate behind a flag, because a retired authorisation path that still compiles is a second answer to the question the grant now owns (RULE NDC, RULE NLG).
 
-- **Dimension 2.1** — a write-access fleet's first-encounter event with an approved grant reaches `Verdict::Pass` and raises no card → Test `test_m202_001_write_fleet_passes_without_a_card`
-- **Dimension 2.2** — a continuation event of that run also passes, raising no card → Test `test_m202_001_continuation_passes_without_a_card`
-- **Dimension 2.3** — a fleet declaring `gates.rules` still parks on a matching rule; the rules walk is untouched → Test `test_m202_001_rule_gated_fleet_still_parks`
-- **Dimension 2.4** — an event parked before this change still resolves from its recorded gate, so no in-flight run is stranded → Test `test_m202_001_parked_event_still_resolves`
+- **Dimension 2.1** DONE — a write-access fleet's first-encounter event with an approved grant reaches `Verdict::Pass` and raises no card → Test `test_m202_001_write_fleet_and_its_continuations_pass_without_a_card`
+- **Dimension 2.2** DONE — a continuation event of that run also passes, raising no card → Test `test_m202_001_write_fleet_and_its_continuations_pass_without_a_card`
+- **Dimension 2.3** DONE — a fleet declaring `gates.rules` still parks on a matching rule; the rules walk is untouched → Test `test_m202_001_rule_gated_fleet_still_parks`
+- **Dimension 2.4** DONE — an event parked before this change still resolves from its recorded gate, so no in-flight run is stranded → Test `test_m202_001_parked_event_still_resolves`
 
 ### §3 — The mint reads the grant
 
 The write authority becomes one question: is there an approved, unrevoked grant for this fleet and service? **Implementation default:** refuse closed on any read failure, matching the posture the retired path held for an unreadable gate lookup.
 
-- **Dimension 3.1** — a mint with an approved grant succeeds and the token names only the declared repositories → Test `test_m202_001_mint_scopes_to_declared_repositories`
-- **Dimension 3.2** — a mint with a revoked grant is refused and no token is issued → Test `test_m202_001_revoked_grant_refuses_the_mint`
-- **Dimension 3.3** — a mint with no grant row is refused → Test `test_m202_001_absent_grant_refuses_the_mint`
-- **Dimension 3.4** — a grant read that fails refuses rather than admitting → Test `test_m202_001_unreadable_grant_refuses_closed`
-- **Dimension 3.5** — a fleet at its `daily_dollars` is halted, proving the remaining money brake survived the ceiling's retirement → Test `test_m202_001_budget_still_halts_the_fleet`
+- **Dimension 3.1** DONE — a mint with an approved grant succeeds and the token names only the declared repositories → Test `test_m202_001_mint_scopes_to_declared_repositories`
+- **Dimension 3.2** DONE — a mint with a revoked grant is refused and no token is issued → Test `test_m202_001_revoked_grant_refuses_the_mint`
+- **Dimension 3.3** DONE — a mint with no grant row is refused → Test `test_m202_001_absent_grant_refuses_the_mint`
+- **Dimension 3.4** DONE — a grant read that fails refuses rather than admitting → Test `test_m202_001_unreadable_grant_refuses_closed`
+- **Dimension 3.5** DONE — a fleet at its `daily_dollars` is halted, proving the remaining money brake survived the ceiling's retirement → Test `test_m202_001_budget_still_halts_the_fleet`
 
 ### §4 — The surfaces tell the truth
 
 The Command-Line Interface (CLI), the architecture pages and the changelog stop describing an authorisation that no longer exists. **Implementation default:** the fixture bundle is updated in the same commit as the daemon, because a fixture describing a bundle nobody ships proves nothing.
 
-- **Dimension 4.1** — `grant list --json` reports the install-time grant as approved with its `approved_at` → Test `test_m202_001_grant_list_reports_approved_at_install`
+- **Dimension 4.1** DONE — `grant list --json` reports the install-time grant as approved with its `approved_at` → Test `test_m202_001_grant_list_reports_approved_at_install`
 - **Dimension 4.2** — the scenario page's §3 and §6 name one authorisation and the retired card appears nowhere → Test `test_m202_001_scenario_page_names_one_authorisation`
-- **Dimension 4.3** — the `github-pr-reviewer` fixture reads owner and number from the event payload → Test `test_m202_001_fixture_skill_reads_the_event`
+- **Dimension 4.3** DONE — the `github-pr-reviewer` fixture reads owner and number from the event payload → Test `test_m202_001_fixture_skill_reads_the_event`
 
 ## Interfaces
 
@@ -202,16 +202,16 @@ No product analytics event changes: the approval inbox loses a row type an opera
 | 1.1 | integration | `test_m202_001_install_lands_an_approved_grant` | Install a fleet declaring `credentials: [github]` → exactly one grant row, status approved, `approved_at` non-null. |
 | 1.2 | integration | `test_m202_001_install_raises_no_card` | Same install → zero rows in `core.fleet_approval_gates` for that fleet. |
 | 1.3 | integration | `test_m202_001_reinstall_keeps_one_grant` | Install the same bundle twice → one grant row; the unique constraint holds and no second row appears. |
-| 2.1 | unit | `test_m202_001_write_fleet_passes_without_a_card` | A config with `repository_access: write`, no gate rules, approved grant → `Verdict::Pass`, no park call. |
-| 2.2 | unit | `test_m202_001_continuation_passes_without_a_card` | A continuation event of the same fleet → `Verdict::Pass`; the treadmill this spec ends cannot reappear. |
-| 2.3 | unit | `test_m202_001_rule_gated_fleet_still_parks` | A config whose `gates.rules` match the event → the rules walk parks as before; deleting the write park did not delete the rules path. |
+| 2.1 | integration | `test_m202_001_write_fleet_and_its_continuations_pass_without_a_card` | Write binding, no gate rules → first encounter is `Verdict::Pass`. Tier corrected from `unit`: `judge_first_encounter` takes `&self` on a `Gates` holding a live pool, so no unit tier exists. |
+| 2.2 | integration | `test_m202_001_write_fleet_and_its_continuations_pass_without_a_card` | Three following turns also `Pass`, then `card_count() == 0`, unfiltered by kind: the claim is that NOTHING is raised. One test with 2.1 — the treadmill is the pair, and splitting it would let half pass. |
+| 2.3 | integration | `test_m202_001_rule_gated_fleet_still_parks` | A config whose `gates.rules` match the event → parks, holds, and passes once answered. Tier corrected, same reason. |
 | 3.1 | unit | `test_m202_001_mint_scopes_to_declared_repositories` | Binding names one repository → the scoped request carries that bare name and `contents`+`pull_requests` write, and nothing else. |
 | 3.2 | integration | `test_m202_001_revoked_grant_refuses_the_mint` | Approve then revoke, then mint → refused, no provider call recorded, no token returned. |
 | 3.3 | integration | `test_m202_001_absent_grant_refuses_the_mint` | No grant row → mint refused. |
 | 3.4 | unit | `test_m202_001_unreadable_grant_refuses_closed` | Injected read failure → refusal, never admission. |
 | 4.1 | e2e | `test_m202_001_grant_list_reports_approved_at_install` | Subprocess `agentsfleet grant list --fleet <id> --json` → one item, `status: "approved"`, non-null `approved_at`. |
-| 4.2 | unit | `test_m202_001_scenario_page_names_one_authorisation` | The scenario page contains no `repository_write` occurrence and §6 no longer lists the card as an open item. |
-| 4.3 | unit | `test_m202_001_fixture_skill_reads_the_event` | The fixture `SKILL.md` names `repository.full_name` and `pull_request.number`; zero hard-coded Pull Request numbers. |
+| 4.2 | unit | `test_m202_001_scenario_page_names_one_authorisation` | `scenarios/github-pr-reviewer.md` names the grant as the authorisation and carries no `repository_write`. Written because the SPEC TEMPLATE GATE requires a tiered test per Dimension; the agent had argued for review-only coverage and the gate overruled it. |
+| 4.3 | unit | `test_m202_001_fixture_skill_reads_the_event` | The fixture `SKILL.md` names `repository.full_name` and `pull_request.number`, carries no `/pulls/<digits>`, and still refuses to approve or merge. Asserted on the file: this fixture is prose a MODEL executes. |
 | 2.4 | integration | `test_m202_001_parked_event_still_resolves` | A pre-existing pending `repository_write` row → the event still resolves from the recorded gate; regression for in-flight runs. |
 | 3.5 | integration | `test_m202_001_budget_still_halts_the_fleet` | Fleet at its `daily_dollars` → halted; regression proving the remaining money brake survived the ceiling's retirement. |
 
@@ -258,20 +258,20 @@ A MOVED row is never rendered ✅. The criterion has not been met; it has change
 
 | File to delete | Verify |
 |----------------|--------|
-| `rustd/crates/afd_gate/src/gate/spend.rs` | `test ! -f rustd/crates/afd_gate/src/gate/spend.rs` |
-| `rustd/crates/afd_gate/src/gate/spend/` | `test ! -d rustd/crates/afd_gate/src/gate/spend` |
+| `rustd/crates/afd_gate/src/gate/spend.rs` and `spend/tests.rs` | `test ! -f rustd/crates/afd_gate/src/gate/spend.rs && test ! -d rustd/crates/afd_gate/src/gate/spend` |
 
 **2. Orphaned references — zero remaining imports/uses.**
 
-| Deleted symbol/import | Grep | Expected |
-|-----------------------|------|----------|
-| `REPOSITORY_WRITE_SPEND_CEILING` | `git grep -rn -w "REPOSITORY_WRITE_SPEND_CEILING" rustd/` | 0 matches |
-| `RADIUS_REPOSITORY_WRITE` | `git grep -rn -w "RADIUS_REPOSITORY_WRITE" rustd/` | 0 matches |
-| `KIND_REPOSITORY_WRITE` | `git grep -rn -w "KIND_REPOSITORY_WRITE" rustd/` | 0 matches |
-| `WriteApproval` | `git grep -rn -w "WriteApproval" rustd/` | 0 matches |
-| `park_write_kind` | `git grep -rn -w "park_write_kind" rustd/` | 0 matches |
-| `writes_to_a_repository` | `git grep -rn -w "writes_to_a_repository" rustd/` | 0 matches |
-| `write_kind` | `git grep -rn -w "write_kind" rustd/` | 0 matches |
+`git grep -rn -w "<symbol>" rustd/` → 0 matches outside test prose. The list grew during implementation: retiring the ceiling pulled its supply chain, and `cargo` refused to compile until every reader went too.
+
+| Deleted symbol | Was |
+|----------------|-----|
+| `REPOSITORY_WRITE_SPEND_CEILING`, `RADIUS_REPOSITORY_WRITE`, `KIND_REPOSITORY_WRITE`, `Stated::{write_kind,spend_ceiling}` | the card's kind, radius, ceiling and stamp |
+| `park_write_kind`, `writes_to_a_repository` | the unconditional park and its predicate |
+| `WriteApproval`, `reserve_write_approval`, `approved_write_gate` | the second authorisation layer |
+| `SELECT_APPROVED_WRITE_GATE`, `LOCK_WRITE_GATE_FOR_MINT`, `SPEND_WRITE_GATE_FOR_MINT`, `Bound::spend_count`, `SPEND_OPENS_AT` | statements and bindings with no readers left; both spend columns now NULL |
+| `repair::gate_of` | the branch→gate reverse; no production caller even before this |
+| `write_unapproved`, `binding_drift`, `write_spend_exhausted` + `ErrorKind`s and `DETAIL_*` | three refusals now unreachable |
 
 ## Out of Scope
 

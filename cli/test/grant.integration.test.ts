@@ -45,6 +45,45 @@ describe("grant (integration grant) commands", () => {
     });
   });
 
+  test("m202_001 `grant list --json` reports the install-time grant as approved", async () => {
+    // Dimension 4.1. Installing a fleet that declares a mintable credential
+    // writes an APPROVED grant and raises no card, so this is the row an
+    // operator sees the moment the install returns — not a pending question
+    // waiting for them. `approved_at` is what distinguishes the two, and a
+    // null there would read on the wire as a grant still owed an answer.
+    await authedScope(async () => {
+      const routes: MockRoutes = {
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/integration-grants`]:
+          () => jsonResponse(200, {
+            items: [
+              { id: "01900000-0000-7000-8000-000000067a01", service: "github", status: "approved",
+                created_at: 1700000000000, approved_at: 1700000000000 },
+            ],
+          }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          ["grant", "list", "--fleet", FLEET_ID, "--json"],
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
+        );
+        expect(code).toBe(0);
+        const payload = JSON.parse(out.read()) as {
+          items: ReadonlyArray<{ service: string; status: string; approved_at: number | null }>;
+        };
+        expect(payload.items).toHaveLength(1);
+        const [grant] = payload.items;
+        expect(grant?.service).toBe("github");
+        expect(grant?.status).toBe("approved");
+        expect(grant?.approved_at).not.toBeNull();
+        // Answered at the instant it was written: nobody was asked, so the
+        // moment the row landed IS the moment it was answered.
+        expect(grant?.approved_at).toBe(grant ? 1700000000000 : -1);
+      });
+    });
+  });
+
   test("`grant delete --fleet <id> <grant_id>` DELETEs the grant and prints the revocation note", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
