@@ -10,7 +10,7 @@
 //!
 //! # The cross-workspace claim is asserted as a caller sees it
 //!
-//! `sql::REVOKE_GRANT` carries a join to `core.fleets` that the scope read
+//! `grant_sql::REVOKE_GRANT` carries a join to `core.fleets` that the scope read
 //! before it has already made redundant, and that redundancy is deliberate. Its
 //! own half is proven where the statement text is reachable —
 //! `integration_grants/workspace.zig` runs exactly this text with a foreign
