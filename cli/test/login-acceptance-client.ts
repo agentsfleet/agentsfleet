@@ -129,6 +129,7 @@ export const runLogin = (
   opts: {
     jsonMode?: boolean;
     identityFails?: boolean;
+    identityAbsent?: boolean;
     identity?: Record<string, unknown>;
     firstVerifyFails?: boolean;
     mintFails?: boolean;
@@ -143,6 +144,7 @@ export const runLogin = (
     Effect.provide(
       httpLayer(fixture, {
         identityFails: opts.identityFails ?? false,
+        identityAbsent: opts.identityAbsent ?? false,
         ...(opts.identity !== undefined ? { identity: opts.identity } : {}),
         firstVerifyFails: opts.firstVerifyFails ?? false,
         mintFails: opts.mintFails ?? false,

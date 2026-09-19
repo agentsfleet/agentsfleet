@@ -118,10 +118,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 `cli_credential::user_of(subject)` has resolved a proven subject to its `core.users` row since the port, behind a service seam both implementors already answer. This read wants the same answer with three more columns, so the statement gains a `core.tenants` join and `UserIdentity` gains `email`, `display_name` and `tenant_name`. A subject with no local row is REFUSED, never provisioned. **Implementation default:** widen the one resolver rather than add a store, a statement and a seam beside it — the mint and revoke pay one extra index lookup per login, which is cheaper than two spellings of "who is this subject".
 
-- **Dimension 1.1** (IN_PROGRESS — test written, awaits the integration lane) — `user_of` answers `user_id`, `email`, `display_name`, `tenant_id` and `tenant_name` for a subject with a row, taking the tenant from the joined user row rather than from any other copy → Test `profile_answers_the_joined_person_and_refuses_an_unknown_subject`
-- **Dimension 1.2** (IN_PROGRESS — test written, awaits the integration lane) — a subject with no `core.users` row is refused with the shared unknown-subject error, and nothing is inserted → Test `profile_answers_the_joined_person_and_refuses_an_unknown_subject`
-- **Dimension 1.3** (IN_PROGRESS — test written, awaits the integration lane) — `display_name` is `NULL`-safe: a row with no display name answers `None` rather than an empty string, and the response omits the field → Test `profile_answers_the_joined_person_and_refuses_an_unknown_subject`
-- **Dimension 1.4** (IN_PROGRESS — test written, awaits the integration lane) — the unknown-subject error kind, detail constant and constructor carry one family-neutral name, and the wire code and sentence are byte-identical to what the credential family already answers → Test `profile_answers_the_joined_person_and_refuses_an_unknown_subject`
+- **Dimension 1.1** (DONE) — `user_of` answers `user_id`, `email`, `display_name`, `tenant_id` and `tenant_name` for a subject with a row, taking the tenant from the joined user row rather than from any other copy → Test `profile_answers_the_joined_person_and_refuses_an_unknown_subject`
+- **Dimension 1.2** (DONE) — a subject with no `core.users` row is refused with the shared unknown-subject error, and nothing is inserted → Test `profile_answers_the_joined_person_and_refuses_an_unknown_subject`
+- **Dimension 1.3** (DONE) — `display_name` is `NULL`-safe: a row with no display name answers `None` rather than an empty string, and the response omits the field → Test `profile_answers_the_joined_person_and_refuses_an_unknown_subject`
+- **Dimension 1.4** (DONE) — the unknown-subject error kind, detail constant and constructor carry one family-neutral name, and the wire code and sentence are byte-identical to what the credential family already answers → Test `profile_answers_the_joined_person_and_refuses_an_unknown_subject`
 
 ### §2 — The route, the guard and the document
 
@@ -190,7 +190,8 @@ cli/src/lib/me-ping.ts
 | No credential, or one that no longer loads | `whoami` on a machine that never logged in, after `logout`, or holding a stale token the credential service refuses | Refused locally, naming `agentsfleet login`, with NO request sent. An `agt_r` runner token is a separate case: the plane rule refuses it in front of the handler, so the caller sees the guard's code rather than an identity error |
 | Malformed response body | A proxy or a version skew answers 200 with something that is not a profile | The CLI's decode boundary fails typed, names the field that was missing, and renders nothing partial |
 | Datastore unreachable | Postgres down or the pool exhausted during the read | 503 with the standard envelope; the CLI reports unreachable rather than unauthenticated, so an operator does not delete a working credential over an outage. A principal whose claim resolved to no capabilities is NOT a failure: the route needs none and answers 200 with `scopes: []` |
-| Identity read fails after a successful mint | The post-login probe cannot reach the route, or is refused | The credential file is cleared before the error propagates — the behaviour `rollbackOnMeFailure` already guarantees, preserved verbatim |
+| Identity read fails after a successful mint | The post-login probe is refused, or the server errors | The credential file is cleared before the error propagates — the policy this path arrived with, preserved |
+| **The route is absent (404)** | A deployment older than this client; a router matches a path before any guard runs, so nothing judged the credential | The credential is KEPT, login reports success, and a warning names the deployment. Clearing would delete a working credential on a condition that never clears, stranding the operator in a login loop. `whoami` names the deployment instead of the generic "verify the request payload"; `auth status` reads `unverified`, since neither `valid` nor `unauthorized` is true and `unreachable` would blame a server that answered |
 | Identity unnameable at login | The mint succeeded, the probe succeeded, and the body carried no usable display name | `login` still reports success and falls back to the email, then to the generic line. A rendering gap never fails a completed login |
 
 ## Invariants
@@ -234,7 +235,7 @@ No funnel changes: `whoami` is a read that joins no journey, and `login`'s exist
 | 3.6 | unit | `probes the scope-free identity route, not the billing snapshot` | The recorded request path on the probe → the identity route, not the billing route |
 | 3.7 | unit | `reads the scope-free identity route, not the billing snapshot` | A refused identity read after a persist → the credential clear ran and the original failure propagated |
 | | e2e | `whoami.spec.ts` | A real `agentsfleet whoami` subprocess against the acceptance lane's stub server → exit 0 and the person's email on stdout; and with no credential, a non-zero exit naming `agentsfleet login` |
-| | unit (regression) | `the_mint_lookup_stays_narrower_than_the_profile_read` | The mint path's subject lookup is unchanged: two columns, no join, same statement constant |
+| | unit | `the_subject_lookup_carries_every_field_its_callers_render` | The one widened statement selects all five columns and joins `core.tenants`, because three callers now read it |
 | | unit (regression) | `an unreachable target still reads as unreachable, never as rejected` | A target that refuses every route → `unreachable`, not `unauthorized` — the existing classification survives the probe move |
 | 4.1 | manual | `docs review — the page's command table names whoami` | The built CLI's `--help` transcript and the page's command table both name `agentsfleet whoami`; evidence is the docs-repo Pull Request link |
 | 4.2 | manual | `docs review — every claim resolves to a shipped file` | Every claim in the new `<Update>` resolves to a shipped file in this diff; no marketing words per `docs/CHANGELOG_VOICE.md` |
@@ -248,7 +249,7 @@ Idempotency and replay rows are N/A: the endpoint is a `GET` with no side effect
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | A signed-in terminal names the person it is signed in as (§3) | `cd cli && bun test test/whoami.unit.test.ts` | exit 0; 11 tests, covering both renderings | P0 | ✅ `11 pass 0 fail` |
 | R2 | Nothing signed in refuses locally, names the fix, and sends no request (§3) | `cd cli && bun run build && bun test test/acceptance/whoami.spec.ts` | exit 0; 6 subprocess cases | P0 | ✅ `6 pass 0 fail` |
-| R2b | The signed-in render against a REAL server (§3) | `cd cli && AGENTSFLEET_ACCEPTANCE_TARGET=<https url> bun run test:acceptance:live` | the `whoami --json` row of the read-only sweep passes, its body carrying `email` | P1 | ⏳ needs a live target; not run locally |
+| R2b | Behaviour against a REAL deployment (§3) | `node cli/dist/bin/agentsfleet.js whoami` against `api-dev` | the deployment predates the route, so the 404 path is what runs | P1 | ✅ named the deployment and kept the credential; the signed-in render awaits the deploy |
 | R3 | The route needs no capability scope (§2) | `cd rustd && cargo test -p afd_api --features test-util --test tenant_plane tenant_current_user` | exit 0 | P0 | ✅ `test result: ok. 6 passed; 0 failed` |
 | R4 | The published document is the build's output (§2) | `cd rustd && cargo test -p afd_api --features openapi,test-util test_openapi_build_is_the_source` | exit 0 | P0 | ✅ `test result: ok. 1 passed; 0 failed` |
 | R5 | `login` closes by naming the person (§3) | `cd cli && bun test test/login.acceptance.spec.ts` | exit 0 | P1 | ✅ `7 pass 0 fail` |
@@ -258,7 +259,7 @@ Idempotency and replay rows are N/A: the endpoint is a `GET` with no side effect
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ `ALL GATES GREEN` — 8 rows |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `All unit lanes passed`; every TypeScript package 100%, CLI line 100.00% |
 | S3 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S4 | Integration lane green (live Postgres and Dragonfly) | `make test-integration-rustd` | exit 0 | P0 | ⏳ not run — needs docker compose and `agentsfleetd.env.local` |
+| S4 | Integration lane green (live Postgres and Dragonfly) | `make test-integration-rustd` | exit 0 | P0 | ✅ `513 passed; 0 failed` — `integration_identity` ran against live Postgres |
 | S5 | Version files agree | `make check-version` | exit 0 | P0 | |
 | S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
 | S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |

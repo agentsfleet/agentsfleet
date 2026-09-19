@@ -63,6 +63,7 @@ export const httpLayer = (
   fixture: DeviceFlowFixture,
   opts: {
     identityFails?: boolean;
+    identityAbsent?: boolean;
     identity?: Record<string, unknown>;
     firstVerifyFails?: boolean;
     mintFails?: boolean;
@@ -159,6 +160,19 @@ export const httpLayer = (
         // `src/lib/me-ping.ts`). Unlike the billing probe it replaced, the
         // BODY matters: login reports the person it signed in, so the shape
         // has to decode or the success line falls back.
+        // What a deployment older than this client answers: the credential is
+        // fine and the ROUTE is not there.
+        if (opts.identityAbsent) {
+          return Effect.fail(
+            new ServerError({
+              detail: "",
+              suggestion: "verify the request payload and retry",
+              code: "HTTP_404",
+              status: 404,
+              requestId: null,
+            }),
+          );
+        }
         if (opts.identityFails) {
           return Effect.fail(
             new ServerError({

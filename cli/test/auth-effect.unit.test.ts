@@ -231,6 +231,44 @@ describe("authStatusEffect", () => {
     expect(paths).not.toContain(TENANT_BILLING_PATH);
   });
 
+  test("a deployment without the check reads as unverified, not as rejected", async () => {
+    // A router matches a path before any guard runs, so a 404 judged no
+    // credential. Reporting `unauthorized` would tell somebody to delete a
+    // working credential; `unreachable` would blame a server that answered.
+    const rec = makeRecorder();
+    const fakeCreds: FakeCredsState = {
+      token: Option.some(Redacted.make("test-token")),
+      savedAt: 1700000000000,
+      sessionId: "sess-1",
+      apiUrl: "https://api.test.local",
+    };
+    const program = authStatusEffect.pipe(
+      Effect.provide(configLayer()),
+      Effect.provide(credentialsLayer(fakeCreds, rec)),
+      Effect.provide(
+        httpClientLayer(() =>
+          Effect.fail(
+            new ServerError({
+              detail: "",
+              suggestion: "verify the request payload and retry",
+              code: "HTTP_404",
+              status: 404,
+              requestId: null,
+            }),
+          ),
+        ),
+      ),
+      Effect.provide(outputLayer(rec)),
+    );
+
+    const exit = await runWith(program);
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(rec.stdout.some((line) => line.includes("unverified"))).toBe(true);
+    expect(rec.stderr.join("\n")).toContain("older than this client");
+    expect(rec.stdout.some((line) => line.includes("ok: authenticated"))).toBe(false);
+  });
+
   test("an unreachable target still reads as unreachable, never as rejected", async () => {
     // The classification that must survive the probe move: a server that
     // refuses for any reason other than the credential is an OUTAGE, and

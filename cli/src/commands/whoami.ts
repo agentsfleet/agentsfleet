@@ -17,7 +17,7 @@ import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import { readIdentity, type CallerIdentity } from "../lib/me-ping.ts";
-import { AuthError, type CliError } from "../errors/index.ts";
+import { AuthError, CLI_ERROR_TAG, ServerError, type CliError } from "../errors/index.ts";
 
 // A server refusal and a network failure travel out UNMAPPED, so the dispatcher
 // renders them the way it renders every other read's: the server's own code, its
@@ -43,6 +43,16 @@ const CREDENTIAL_PROSE: Readonly<Record<string, string>> = {
 
 const NOT_AUTHENTICATED =
   "not authenticated — run `agentsfleet login` to see who you are" as const;
+
+// A deployment older than this client has no identity route, and a router
+// answers an unmatched path before any guard runs. The generic 404 sentence
+// ("verify the request payload and retry") sends the reader after a body this
+// command does not send, so the real cause is named instead.
+const STATUS_NOT_FOUND = 404;
+const ROUTE_ABSENT =
+  "this deployment does not answer who you are — it is older than this client" as const;
+const ROUTE_ABSENT_FIX =
+  "check `--api` / AGENTSFLEET_API_URL, or wait for the deployment to catch up" as const;
 
 const SCOPE_SEPARATOR = ", " as const;
 const NO_SCOPES = "none" as const;
@@ -114,7 +124,19 @@ export const whoamiEffect: Effect.Effect<
     );
   }
 
-  const identity = yield* readIdentity(token.value as Redacted.Redacted<string>);
+  const identity = yield* readIdentity(token.value as Redacted.Redacted<string>).pipe(
+    Effect.mapError((err) =>
+      err._tag === CLI_ERROR_TAG.server && err.status === STATUS_NOT_FOUND
+        ? new ServerError({
+            detail: ROUTE_ABSENT,
+            suggestion: ROUTE_ABSENT_FIX,
+            code: err.code,
+            status: err.status,
+            requestId: err.requestId,
+          })
+        : err,
+    ),
+  );
 
   if (config.jsonMode) {
     yield* output.printJson({
