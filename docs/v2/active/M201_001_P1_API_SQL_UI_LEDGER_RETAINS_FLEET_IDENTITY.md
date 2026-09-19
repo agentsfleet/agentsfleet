@@ -72,6 +72,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/billing-charge-cell.test.tsx` | EDIT | The label's three states: live, purged-with-name, purged-without-name. |
 | `ui/packages/app/tests/identity-and-controls.test.tsx` | EDIT | Regression: the approvals and events callers still render the callsign with no prop passed. |
 | `rustd/crates/afd_fleet_lifecycle/tests/` | EDIT | Integration proof that a purge leaves the ledger row addressable and destroys everything else. |
+| `docs/AUTH.md` | EDIT | The `AUTH_SESSION_CODE_PEPPER` row barred disk outright while local development requires the value in a file for `docker-compose` to boot. Records the single permitted path, its mode, and why a real file inside a checkout is a defect. Folded in at the owner's direction — see Discovery. |
 
 ## Applicable Rules
 
@@ -285,6 +286,12 @@ N/A — no files deleted.
 
 - **Consults** — Architecture consult against `docs/architecture/memory.md` §1–§2 (Sep 19, 2026): memory is `fleet_id`-keyed with no workspace key, and cascade-erased with the fleet by design. Confirmed this spec must not decouple memory from fleet lifetime; the doc's shape stands and nothing here changes it. Source read of `schema/720_usage_ledger_indexes.sql` established that `idx_usage_ledger_fleet_id_workspace_id_last_charged_at` serves two readers, of which the fleet `SET NULL` is one — the comment states Reader 1 "is indifferent to the order of the two equality columns", which is why dropping the constraint leaves the index correct with a stale rationale rather than a wrong definition. Source read of `rustd/crates/afd_fleet_lifecycle/src/sql/purge.rs` and `purge.rs` confirmed `billing.usage_ledger` already survives the purge deliberately, so this spec extends a documented decision rather than reversing one.
 - **Legacy-brand flag (RULE NLG-adjacent, `AGENTS.orly.md` §Owner & Style)** — `AgentLabel`, `lib/fleets/agent-label.ts`, `agentDisplayName`, the `AGENT` display prefix and the `data-agent-name` attribute are stale legacy-brand spellings in a repository whose entities are `fleet`. Surfaced to Indy at authoring; not folded, because the rename crosses three render paths and an identity module carrying a "never reorder them" versioning constraint. Recorded in Out of Scope so it is neither lost nor silently absorbed.
+- **Scope folded in by the owner (Sep 19, 2026)** — `docs/AUTH.md` joined this workstream's Files Changed on the owner's instruction:
+
+  > Indy (2026-09-19): "AUTH.md must in this PR" — context: the `AUTH_SESSION_CODE_PEPPER` row listed `disk` as forbidden while local development requires the value in a file for `docker-compose`'s `env_file` to boot. Found while diagnosing why `.env.agentsfleetd.local` was not symlinked into new worktrees.
+
+  Two findings from that diagnosis are recorded here because they have no other home. **One:** the file was a real file rather than a symlink in the base checkout, at mode 0644 — a catastrophic-if-disclosed value world-readable on the machine. Hardened to 0600, and the AUTH.md note now names that shape as a defect. **Two:** `provision-env-1password` (dotfiles) writes only `ui.env.local` and `runner.env.local`, so the `agentsfleetd.env.local` source the hook links was never created; every knob in `preflight/knobs.rs` was audited and all are live, while `AUDIT_LOG_PEPPER` — retired in M196_001 and carried by the local file alone — was stripped with the owner's approval. The provisioner change itself lands in the dotfiles repository, not here.
+
 - **Metrics review** — No analytics or funnel playbook update required: this spec adds, renames and removes no product or operator event. The one new wire field is an operator-chosen fleet name already returned by `/fleets` to the same authenticated reader.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test` at each Section and again at the boundary, `/review` before DOCUMENT, `orly-babysit-prs` after every push.
 - **Deferrals** — none at authoring. Every item removed from scope sits in Out of Scope as work never started, not work abandoned midway.
