@@ -73,6 +73,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/identity-and-controls.test.tsx` | EDIT | Regression: the approvals and events callers still render the callsign with no prop passed. |
 | `rustd/crates/afd_fleet_lifecycle/tests/` | EDIT | Integration proof that a purge leaves the ledger row addressable and destroys everything else. |
 | `docs/AUTH.md` | EDIT | The `AUTH_SESSION_CODE_PEPPER` row barred disk outright while local development requires the value in a file for `docker-compose` to boot. Records the single permitted path, its mode, and why a real file inside a checkout is a defect. Folded in at the owner's direction — see Discovery. |
+| `docker-compose.yml` | EDIT | The daemon's `env_file` path becomes `${AGENTSFLEETD_ENV_FILE:-…}`, so an operator may point at the machine-level source directly instead of the per-worktree symlink. Default preserved, so an unset variable behaves as before. Folded in at the owner's direction — see Discovery. |
 
 ## Applicable Rules
 
