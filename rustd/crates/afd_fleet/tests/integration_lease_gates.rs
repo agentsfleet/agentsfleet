@@ -68,6 +68,16 @@ const BUDGETED_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[{"
 /// refuse the egress build is the repair branch — which is the subject.
 const WRITE_BOUND_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":1.0},"repositories":["agentsfleet/probe"],"repository_access":"write","repository_base":"main"}}"#;
 
+/// [`WRITE_BOUND_CONFIG`] with a second repository, which no write binding may
+/// carry.
+///
+/// `egress::write` locks its rules to ONE repository by construction: naming
+/// several would bind the first and leave the rest reachable. The parser admits
+/// the list, so the refusal lands at assembly — a fleet author's mistake, and
+/// the reachable trigger for `BINDING_UNENFORCEABLE` now that a write binding
+/// always resolves a branch.
+const MULTI_REPOSITORY_WRITE_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":1.0},"repositories":["agentsfleet/probe","agentsfleet/second"],"repository_access":"write","repository_base":"main"}}"#;
+
 /// [`WRITE_BOUND_CONFIG`] differing in one word: the reach is READ.
 ///
 /// A read binding carries no base — the parser refuses one that does — so the

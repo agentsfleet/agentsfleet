@@ -204,14 +204,19 @@ impl Plane {
     /// branch has to carry, because `policy::egress` locks whatever name comes
     /// back as the one ref the run may create.
     ///
-    /// Still no fleet and no workspace in the name: a v7 identifier read off a
+    /// Still no fleet and no workspace in the name: an identifier read off a
     /// public repository says when, never whose.
     fn repair_branch(event_id: &str, config: &FleetConfig) -> Option<String> {
         let binding = config.repository_binding()?;
         if binding.access() != Access::Write {
             return None;
         }
-        Uuid7::parse(event_id).ok().as_ref().map(repair::branch_for)
+        // The identifier is passed WHOLE. It used to be parsed as a `Uuid7`
+        // first, which could not succeed: `afd_admission::admit` is the only
+        // thing that mints one and it spells `<millis>-<sequence>`, so every
+        // write-bound delivery lost its branch and the assembly refused the
+        // event.
+        Some(repair::branch_for(event_id))
     }
 }
 
