@@ -22,12 +22,9 @@
 
 import { describe, it, beforeAll, afterAll } from "bun:test";
 import assert from "node:assert/strict";
-import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import url from "node:url";
-
 import {
   COMMAND_GROUPS,
   INVALID_ID_SAMPLES,
@@ -45,56 +42,13 @@ import {
   assertNoConnectionError,
   assertNoSecretLeak,
 } from "./fixtures/negatives.ts";
-import {
-  resolveAcceptanceEnv,
-  resolveClerkSecret,
-  resolveFixtureEmail,
-} from "./global-setup.ts";
+import { resolveAcceptanceEnv, resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { installPlatformOpsFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
-import {
-  killFleet,
-  resumeFleet,
-  stopFleet,
-  expectStatus,
-  TOMBSTONE_REFUSAL,
-} from "./fixtures/lifecycle.ts";
-
-const HERE = path.dirname(url.fileURLToPath(import.meta.url));
-const CLI_ROOT = path.resolve(HERE, "..", "..");
-
-const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
-const isLive = target.startsWith("https://");
-
-interface ValidateResult {
-  readonly ok: boolean;
-  readonly message: string;
-}
-
-interface ValidateModule {
-  validateRequiredId(value: string, label: string): ValidateResult;
-}
-
-// Random uuidv7 for the invalid-arg-value sweep — backend's `isUuidV7`
-// rejects v4, so `crypto.randomUUID()` would surface as a 400/validation
-// error instead of 404. Hand-roll a v7 with valid version+variant bits
-// and random payload so the server's not-found branch fires.
-function randomUuidv7(): string {
-  const bytes = crypto.randomBytes(16);
-  const tsMs = BigInt(Date.now());
-  bytes[0] = Number((tsMs >> 40n) & 0xffn);
-  bytes[1] = Number((tsMs >> 32n) & 0xffn);
-  bytes[2] = Number((tsMs >> 24n) & 0xffn);
-  bytes[3] = Number((tsMs >> 16n) & 0xffn);
-  bytes[4] = Number((tsMs >> 8n) & 0xffn);
-  bytes[5] = Number(tsMs & 0xffn);
-  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x70;
-  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
-  const hex = bytes.toString("hex");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
+import { killFleet, resumeFleet, stopFleet, expectStatus, TOMBSTONE_REFUSAL } from "./fixtures/lifecycle.ts";
+import { CLI_ROOT, isLive, type ValidateModule, randomUuidv7 } from "./helpers-lifecycle-with-token.ts";
 
 let validateModule: ValidateModule;
 

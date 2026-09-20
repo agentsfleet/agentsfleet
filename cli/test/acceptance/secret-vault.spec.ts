@@ -26,125 +26,49 @@
 
 import { describe, it, beforeAll, afterAll } from "bun:test";
 import assert from "node:assert/strict";
-import crypto from "node:crypto";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-
-import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV, UNROUTABLE_API_URL } from "./fixtures/constants.ts";
-import { composeEnv, runFleetctl } from "./fixtures/cli.js";
-import type { RunResult } from "./fixtures/cli.js";
-import { assertNoConnectionError, assertNoSecretLeak } from "./fixtures/negatives.ts";
-import {
-  resolveAcceptanceEnv,
-  resolveClerkSecret,
-  resolveFixtureEmail,
-} from "./global-setup.ts";
-import { attachJwt } from "./fixtures/clerk-admin.ts";
-import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { sweepSecrets } from "./fixtures/secret-ops.ts";
+import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
 import { OPENAI_COMPATIBLE_PROVIDER } from "../../src/constants/custom-endpoint.ts";
-
-const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
-const isLive = target.startsWith("https://");
-
-// --- command/flag/key constants (RULE UFS) ---------------------------------
-const CMD_SECRET = "secret" as const;
-const SUB_CREATE = "create" as const;
-const SUB_SHOW = "show" as const;
-const SUB_LIST = "list" as const;
-const SUB_DELETE = "delete" as const;
-const SUB_UPDATE = "update" as const;
-const FLAG_DATA = "--data" as const;
-const FLAG_FORCE = "--force" as const;
-const FLAG_JSON = "--json" as const;
-
-const KEY_SECRETS = "secrets" as const;
-const KEY_NAME = "name" as const;
-const KEY_STATUS = "status" as const;
-const KEY_EXISTS = "exists" as const;
-const KEY_REASON = "reason" as const;
-
-const STATUS_STORED = "stored" as const;
-const STATUS_SKIPPED = "skipped" as const;
-const STATUS_DELETED = "deleted" as const;
-const STATUS_UPDATED = "updated" as const;
-const REASON_ALREADY_EXISTS = "already_exists" as const;
-
-const ENV_API_URL = "AGENTSFLEET_API_URL" as const;
-const ENV_STATE_DIR = "AGENTSFLEET_STATE_DIR" as const;
-const ENV_NO_COLOR = "NO_COLOR" as const;
-const NO_COLOR_ON = "1" as const;
-
-const STATE_DIR_PREFIX = "agentsfleet-secretvault-" as const;
-const UNKNOWN_NAME_SUFFIX = "ghost" as const;
-
-// Custom-endpoint typed secret-create form.
-const FLAG_PROVIDER = "--provider" as const;
-const FLAG_BASE_URL = "--base-url" as const;
-const FLAG_API_KEY = "--api-key" as const;
-const FLAG_MODEL = "--model" as const;
-const CUSTOM_ENDPOINT_MODEL = "qwen2.5-acceptance" as const;
-const CUSTOM_BASE_URL = "https://vllm.acceptance.example/v1" as const;
-const NON_HTTPS_BASE_URL = "http://vllm.acceptance.example/v1" as const;
-
-// A quoted JSON scalar — valid JSON, but not the object `create` requires, so the
-// client-side payload guard must reject it before any network call.
-const SCALAR_PAYLOAD = '"just-a-string"' as const;
-
-const ENC_HEX = "hex" as const;
-const SECRET_ENTROPY_BYTES = 18 as const;
-
-// Secret values planted in the payload — every assertion below proves these
-// never reach a captured stream. Distinct, high-entropy, easy to grep for.
-const SECRET_TOKEN_VALUE = `sk-live-${crypto.randomBytes(SECRET_ENTROPY_BYTES).toString(ENC_HEX)}`;
-const SECRET_PASSWORD_VALUE = `pw-${crypto.randomBytes(SECRET_ENTROPY_BYTES).toString(ENC_HEX)}`;
-// The custom-endpoint secret's api_key is also a planted secret — every
-// leak assertion below proves it never reaches a captured stream (VLT).
-const CUSTOM_API_KEY_VALUE = `sk-custom-${crypto.randomBytes(SECRET_ENTROPY_BYTES).toString(ENC_HEX)}`;
-const SECRET_REPLACED_VALUE = `sk-replaced-${crypto.randomBytes(SECRET_ENTROPY_BYTES).toString(ENC_HEX)}`;
-const SECRET_VALUES: ReadonlyArray<string> = [
-  SECRET_TOKEN_VALUE,
-  SECRET_PASSWORD_VALUE,
+import { sweepSecrets } from "./fixtures/secret-ops.ts";
+import {
+  isLive,
+  CMD_SECRET,
+  SUB_CREATE,
+  SUB_SHOW,
+  SUB_LIST,
+  SUB_DELETE,
+  SUB_UPDATE,
+  FLAG_DATA,
+  FLAG_FORCE,
+  FLAG_JSON,
+  KEY_SECRETS,
+  KEY_NAME,
+  KEY_STATUS,
+  KEY_EXISTS,
+  KEY_REASON,
+  STATUS_STORED,
+  STATUS_SKIPPED,
+  STATUS_DELETED,
+  STATUS_UPDATED,
+  REASON_ALREADY_EXISTS,
+  UNKNOWN_NAME_SUFFIX,
+  FLAG_PROVIDER,
+  FLAG_BASE_URL,
+  FLAG_API_KEY,
+  FLAG_MODEL,
+  CUSTOM_ENDPOINT_MODEL,
+  CUSTOM_BASE_URL,
+  NON_HTTPS_BASE_URL,
+  SCALAR_PAYLOAD,
   CUSTOM_API_KEY_VALUE,
   SECRET_REPLACED_VALUE,
-];
-
-const secretName = (label: string): string => `${ACCEPTANCE_RUN_PREFIX}-${label}`;
-
-const secretPayload = (): string =>
-  JSON.stringify({ api_token: SECRET_TOKEN_VALUE, password: SECRET_PASSWORD_VALUE });
-
-interface SecretListEnvelope {
-  readonly secrets?: ReadonlyArray<{ readonly name?: string }>;
-}
-
-function parseJson<T>(stdout: string, label: string): T {
-  const trimmed = stdout.trim();
-  try {
-    return JSON.parse(trimmed) as T;
-  } catch {
-    throw new Error(`${label}: stdout was not parseable JSON: ${trimmed}`);
-  }
-}
-
-function listIncludesName(envelope: SecretListEnvelope, name: string): boolean {
-  const rows = Array.isArray(envelope.secrets) ? envelope.secrets : [];
-  return rows.some((row) => row.name === name);
-}
-
-/** No secret payload value (nor the JWT) may surface in any stream. */
-function assertNoSecretMaterialLeak(captured: RunResult, jwt: string): void {
-  assertNoSecretLeak(captured, jwt);
-  const merged = `${captured.stdout}\n${captured.stderr}`;
-  for (const secret of SECRET_VALUES) {
-    if (merged.includes(secret)) {
-      throw new Error(
-        `secret material leaked into captured stdout/stderr: ${captured.stdout}\n${captured.stderr}`,
-      );
-    }
-  }
-}
+  SECRET_VALUES,
+  secretName,
+  secretPayload,
+  type SecretListEnvelope,
+  parseJson,
+  listIncludesName,
+  vaultSession,
+} from "./helpers-secret-vault.ts";
 
 if (!isLive) {
   describe("secret-vault.spec.ts", () => {
@@ -152,66 +76,10 @@ if (!isLive) {
   });
 } else {
   describe("secret-vault — round-trip (seeded-credentials session)", () => {
-    let apiUrl = "";
-    let sessionJwt = "";
-    let stateDir = "";
-    let env: Record<string, string> = {};
-    let workspaceId = "";
-
+    const session = vaultSession();
+    const { run, runUnroutable } = session;
     const roundTripName = secretName("roundtrip");
 
-    async function run(
-      args: ReadonlyArray<string>,
-      extraEnv?: Record<string, string>,
-    ): Promise<RunResult> {
-      const composed = extraEnv ? { ...env, ...extraEnv } : env;
-      const result = await runFleetctl(args, { env: composed, stdin: "" });
-      assertNoSecretMaterialLeak(result, sessionJwt);
-      return result;
-    }
-
-    // Run against an unroutable API on the already-hydrated state dir: a
-    // client-side guard must reject the args before any network call, so an
-    // observed connection error would prove the guard was bypassed.
-    async function runUnroutable(args: ReadonlyArray<string>): Promise<RunResult> {
-      const unroutable = { ...env, [ENV_API_URL]: UNROUTABLE_API_URL };
-      const result = await runFleetctl(args, { env: unroutable, stdin: "" });
-      assert.notEqual(result.code, 0, `expected non-zero; stdout=${result.stdout}`);
-      assertNoConnectionError(result, args);
-      assertNoSecretMaterialLeak(result, sessionJwt);
-      return result;
-    }
-
-    beforeAll(async () => {
-      apiUrl = resolveAcceptanceEnv().apiUrl;
-      const clerkSecret = resolveClerkSecret();
-      const email = resolveFixtureEmail("regular");
-      const minted = await attachJwt(clerkSecret, { email });
-      sessionJwt = minted.sessionJwt;
-
-      stateDir = await fs.mkdtemp(path.join(os.tmpdir(), STATE_DIR_PREFIX));
-      env = composeEnv({
-        [ENV_API_URL]: apiUrl,
-        [ENV_STATE_DIR]: stateDir,
-        [ENV_NO_COLOR]: NO_COLOR_ON,
-      });
-      const hydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
-      workspaceId = hydrated.currentWorkspaceId;
-    });
-
-    afterAll(async () => {
-      if (apiUrl && sessionJwt && workspaceId) {
-        try {
-          await sweepSecrets(
-            { apiUrl, token: sessionJwt, workspaceId },
-            { runPrefix: ACCEPTANCE_RUN_PREFIX },
-          );
-        } catch {
-          /* best-effort teardown — never throw out of afterAll */
-        }
-      }
-      if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
-    });
 
     describe("happy-path round-trip", () => {
       it("create stores a named JSON secret", async () => {
@@ -410,7 +278,11 @@ if (!isLive) {
     describe("post-teardown emptiness (prefix-scoped)", () => {
       beforeAll(async () => {
         await sweepSecrets(
-          { apiUrl, token: sessionJwt, workspaceId },
+          {
+            apiUrl: session.apiUrl(),
+            token: session.token(),
+            workspaceId: session.workspaceId(),
+          },
           { runPrefix: ACCEPTANCE_RUN_PREFIX },
         );
       });

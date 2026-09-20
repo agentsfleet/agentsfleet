@@ -32,7 +32,7 @@ import {
   makeRecorder,
   makeLayer,
   eventStream,
-} from "./fleet-steer.integration.test.ts";
+} from "./helpers-fleet-steer.ts";
 
 // renderOutcome's dead arm would emit this prefix for an sse_error outcome.
 const SSE_ERROR_RENDER_PREFIX = "message failed: sse_error";
