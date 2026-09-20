@@ -65,7 +65,7 @@ fn assert_shape<T: Serialize>(value: &T, shape: &str, expected: &[&str]) {
     assert_eq!(
         keys_of(value),
         expected,
-        "{shape}: the emitted key set is the wire contract"
+        "{shape}: the emitted key set is what the wire promises"
     );
 }
 
@@ -186,6 +186,54 @@ fn the_billing_snapshot_carries_both_spellings_of_exhaustion() {
             "exhausted_at",
         ],
     );
+}
+
+/// A charge names its fleet as a string, and the fields that stayed optional
+/// still spell absence as null.
+///
+/// `assert_shape` pins the key SET, which cannot see this: re-widening
+/// `fleet_id` to `Option` emits the very same keys, and a fixture passing
+/// `Some(...)` would keep compiling. What changes is the VALUE — `"fixture"`
+/// becomes `null` the moment a row lacks one — so the type is pinned where the
+/// difference shows.
+///
+/// Slot 916 made `billing.usage_ledger.fleet_id` `NOT NULL` as part of the
+/// accumulate arbiter, so a charge that cannot say which fleet paid is a row
+/// the ledger will not hold. The two neighbours are the control: they are
+/// seeded absent and MUST still emit null, which is this suite's stated
+/// divergence and not something the narrowing was allowed to take with it.
+#[test]
+fn a_charge_names_its_fleet_and_spells_only_the_others_null() {
+    let emitted = serde_json::to_value(ChargeSummary {
+        id: Cow::Borrowed(TEXT),
+        tenant_id: Cow::Borrowed(TEXT),
+        workspace_id: None,
+        fleet_id: Cow::Borrowed(TEXT),
+        fleet_name: None,
+        event_id: Cow::Borrowed(TEXT),
+        charge_type: Cow::Borrowed(TEXT),
+        posture: Cow::Borrowed(TEXT),
+        model: Cow::Borrowed(TEXT),
+        credit_deducted_nanos: 0,
+        token_count_input: None,
+        token_count_output: None,
+        wall_ms: None,
+        recorded_at: WHEN,
+    })
+    .expect("a wire shape serialises");
+
+    assert_eq!(
+        emitted.get("fleet_id"),
+        Some(&Value::String(TEXT.to_owned())),
+        "a charge always names the fleet that paid for it"
+    );
+    for absent in ["workspace_id", "fleet_name"] {
+        assert_eq!(
+            emitted.get(absent),
+            Some(&Value::Null),
+            "{absent} is still optional, and absence is still spelled null"
+        );
+    }
 }
 
 #[test]
