@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M203
 **Workstream:** 001
 **Date:** Sep 20, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing history loses lineage today under a real interleaving; the ledger key is a money invariant held by an undocumented sequence
 **Categories:** API | CLI
 **Batch:** B1 — standalone; no other M203 workstream
