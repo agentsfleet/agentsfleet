@@ -135,6 +135,11 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
     )
     .action(actionFor(COMMAND_LOGOUT, (frame) => runHandler(state, frame, handlers.logout)));
 
+  program
+    .command(COMMAND_WHOAMI)
+    .description("Show who this terminal is signed in as")
+    .action(actionFor(COMMAND_WHOAMI, (frame) => runHandler(state, frame, handlers.whoami)));
+
   const auth = program.command("auth").description("Inspect authentication state");
   auth
     .command("status")
@@ -246,4 +251,5 @@ const COMMAND_DOCTOR = "doctor" as const;
 const COMMAND_LIST = "list" as const;
 const COMMAND_LOGIN = "login" as const;
 const COMMAND_LOGOUT = "logout" as const;
+const COMMAND_WHOAMI = "whoami" as const;
 const COMMAND_SHOW = "show" as const;

@@ -111,6 +111,7 @@ export interface Handlers {
   login: CommandHandlerFn;
   logout: CommandHandlerFn;
   auth: AuthHandlers;
+  whoami: CommandHandlerFn;
   doctor: CommandHandlerFn;
   workspace: WorkspaceHandlers;
   apiKey: ApiKeyHandlers;

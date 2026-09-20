@@ -16,6 +16,12 @@ mod integration_connector_refresh;
 #[path = "integration_connector_status.rs"]
 mod integration_connector_status;
 
+#[path = "integration_current_user.rs"]
+mod integration_current_user;
+
+#[path = "tenant_current_user.rs"]
+mod tenant_current_user;
+
 #[path = "auth_sessions.rs"]
 mod auth_sessions;
 #[path = "fleet_grants.rs"]
@@ -28,6 +34,8 @@ mod fleet_memories_input;
 mod fleet_messages;
 #[path = "fleet_messages_input.rs"]
 mod fleet_messages_input;
+#[path = "fleet_messages_steer.rs"]
+mod fleet_messages_steer;
 #[path = "fleet_streams.rs"]
 mod fleet_streams;
 #[path = "integration_auth_sessions.rs"]
@@ -48,6 +56,8 @@ mod integration_tenant_cli;
 mod integration_tenant_models;
 #[path = "integration_tenant_money.rs"]
 mod integration_tenant_money;
+#[path = "integration_tenant_provider.rs"]
+mod integration_tenant_provider;
 #[path = "integration_workspace_approvals.rs"]
 mod integration_workspace_approvals;
 #[path = "integration_workspace_approvals_listing.rs"]

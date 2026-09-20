@@ -7,7 +7,8 @@ import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
-import { TENANT_BILLING_PATH } from "../lib/api-paths.ts";
+import { USERS_ME_PATH } from "../lib/api-paths.ts";
+import { IDENTITY_ROUTE_ABSENT_STATUS } from "../lib/me-ping.ts";
 import {
   AuthError,
   FAILURE_REASON,
@@ -24,7 +25,7 @@ const ERR_FORBIDDEN = "UZ-AUTH-001";
 const ERR_TOKEN_EXPIRED = "UZ-AUTH-003";
 
 type TokenSource = "file" | "env" | "none";
-type ProbeStatus = "valid" | "unauthorized" | "unreachable";
+type ProbeStatus = "valid" | "unauthorized" | "unreachable" | "unverified";
 
 const DASH = "—";
 // Both credential classes the CLI can hold — the minted afc_ file credential
@@ -56,7 +57,11 @@ const formatTs = (ms: number | null | undefined): string =>
     ? new Date(ms).toISOString()
     : DASH;
 
+
 const classifyProbeError = (err: ServerError): ProbeResult => {
+  if (err.status === IDENTITY_ROUTE_ABSENT_STATUS) {
+    return { status: "unverified", error: err.code };
+  }
   if (
     err.code === ERR_FORBIDDEN ||
     err.code === ERR_UNAUTHORIZED ||
@@ -69,12 +74,22 @@ const classifyProbeError = (err: ServerError): ProbeResult => {
   return { status: "unreachable", error: err.code };
 };
 
+// The identity route, because it is the only one on the tenant plane that
+// requires no capability. This probe used to read the billing snapshot, which
+// needs `billing:read` — so a signed-in person who holds no billing capability
+// was told the server had rejected their credential, when the server had
+// refused the ROUTE and accepted them. What is being asked here is "does this
+// credential authenticate", and only a scope-free route can answer it.
+//
+// The body is discarded. `whoami` is where identity is rendered; this command
+// reports the source, the target and the verdict, and reading a name it does
+// not print would be fetching to throw away.
 const probe = (
   token: Redacted.Redacted<string>,
 ): Effect.Effect<ProbeResult, never, HttpClient> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
-    return yield* http.request({ path: TENANT_BILLING_PATH, token }).pipe(
+    return yield* http.request({ path: USERS_ME_PATH, token }).pipe(
       Effect.match({
         onSuccess: (): ProbeResult => ({ status: "valid", error: null }),
         onFailure: (err): ProbeResult =>
@@ -100,6 +115,12 @@ const renderHuman = (
         ? `${result.server_check.status} (${result.server_check.error})`
         : result.server_check.status,
     });
+    if (result.server_check.status === "unverified") {
+      yield* output.warn(
+        "this deployment does not serve the credential check — it is older than this client, so the credential could not be confirmed either way",
+      );
+      return;
+    }
     if (result.server_check.status === "unauthorized") {
       yield* output.info(ART_REJECTED);
       yield* output.error(

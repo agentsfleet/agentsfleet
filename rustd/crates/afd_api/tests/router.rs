@@ -338,6 +338,7 @@ const fn is_mounted(route: Route) -> bool {
                     | TenantRoute::Provider
                     | TenantRoute::ModelEntries
                     | TenantRoute::ModelEntry
+                    | TenantRoute::CurrentUser
             )
     )
 }

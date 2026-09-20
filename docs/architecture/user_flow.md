@@ -145,9 +145,19 @@ Or run the chain explicitly (skip any step already in place):
 
 ```bash
 npm install -g @agentsfleet/cli   # CLI binary
-agentsfleet login                  # Clerk OAuth → token in ~/.config/agentsfleet/credentials.json
+agentsfleet login                  # Clerk OAuth → credential in ~/.config/agentsfleet/credentials.json
+agentsfleet whoami                 # who that credential belongs to
 agentsfleet connector status github --json
 ```
+
+Login closes by naming the person it signed in. It costs no extra request: the
+credential it just minted is proven against `GET /v1/users/me`, and that read
+answers with the person, the tenant, the credential class and the scopes held.
+The same route backs `agentsfleet whoami` and the `auth status` reachability
+check. It is the one route on the tenant plane that requires no capability
+scope, which is what lets it answer "does this credential authenticate" for
+every signed-in person — the check previously read `GET /v1/tenants/me/billing`
+and so reported anyone without `billing:read` as rejected.
 
 `agentsfleet doctor --json` is the readiness gate (§8.2.2 step 2): on any miss it prints the explicit fix commands and stops. The commands are deliberately separate so a user with most of the chain already in place skips what they already have.
 

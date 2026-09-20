@@ -20,6 +20,7 @@ import {
   ServerError,
   type CliError,
 } from "../src/errors/index.ts";
+import { TENANT_BILLING_PATH, USERS_ME_PATH } from "../src/lib/api-paths.ts";
 
 interface Recorder {
   readonly stdout: string[];
@@ -195,6 +196,115 @@ describe("authStatusEffect", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(rec.stdout.some((line) => line.includes("# Authentication"))).toBe(true);
     expect(rec.stdout.some((line) => line.includes("ok: authenticated"))).toBe(true);
+  });
+
+  test("probes the scope-free identity route, not the billing snapshot", async () => {
+    // The defect this fixes: the probe read `/v1/tenants/me/billing`, which
+    // requires `billing:read`. A signed-in person holding no billing capability
+    // was told the server had rejected their credential, when the server had
+    // refused the ROUTE and accepted them. Asking "does this credential
+    // authenticate" only works against a route no capability gates.
+    const rec = makeRecorder();
+    const paths: string[] = [];
+    const fakeCreds: FakeCredsState = {
+      token: Option.some(Redacted.make("test-token")),
+      savedAt: 1700000000000,
+      sessionId: "sess-1",
+      apiUrl: "https://api.test.local",
+    };
+    const program = authStatusEffect.pipe(
+      Effect.provide(configLayer()),
+      Effect.provide(credentialsLayer(fakeCreds, rec)),
+      Effect.provide(
+        httpClientLayer((path) => {
+          paths.push(path);
+          return Effect.succeed({}) as Effect.Effect<unknown, ServerError>;
+        }),
+      ),
+      Effect.provide(outputLayer(rec)),
+    );
+
+    const exit = await runWith(program);
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(paths).toEqual([USERS_ME_PATH]);
+    expect(paths).not.toContain(TENANT_BILLING_PATH);
+  });
+
+  test("a deployment without the check reads as unverified, not as rejected", async () => {
+    // A router matches a path before any guard runs, so a 404 judged no
+    // credential. Reporting `unauthorized` would tell somebody to delete a
+    // working credential; `unreachable` would blame a server that answered.
+    const rec = makeRecorder();
+    const fakeCreds: FakeCredsState = {
+      token: Option.some(Redacted.make("test-token")),
+      savedAt: 1700000000000,
+      sessionId: "sess-1",
+      apiUrl: "https://api.test.local",
+    };
+    const program = authStatusEffect.pipe(
+      Effect.provide(configLayer()),
+      Effect.provide(credentialsLayer(fakeCreds, rec)),
+      Effect.provide(
+        httpClientLayer(() =>
+          Effect.fail(
+            new ServerError({
+              detail: "",
+              suggestion: "verify the request payload and retry",
+              code: "HTTP_404",
+              status: 404,
+              requestId: null,
+            }),
+          ),
+        ),
+      ),
+      Effect.provide(outputLayer(rec)),
+    );
+
+    const exit = await runWith(program);
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(rec.stdout.some((line) => line.includes("unverified"))).toBe(true);
+    expect(rec.stderr.join("\n")).toContain("older than this client");
+    expect(rec.stdout.some((line) => line.includes("ok: authenticated"))).toBe(false);
+  });
+
+  test("an unreachable target still reads as unreachable, never as rejected", async () => {
+    // The classification that must survive the probe move: a server that
+    // refuses for any reason other than the credential is an OUTAGE, and
+    // reporting it as a rejection would send somebody to delete a working
+    // credential over a blip (RULE ECL).
+    const rec = makeRecorder();
+    const fakeCreds: FakeCredsState = {
+      token: Option.some(Redacted.make("test-token")),
+      savedAt: 1700000000000,
+      sessionId: "sess-1",
+      apiUrl: "https://api.test.local",
+    };
+    const program = authStatusEffect.pipe(
+      Effect.provide(configLayer()),
+      Effect.provide(credentialsLayer(fakeCreds, rec)),
+      Effect.provide(
+        httpClientLayer(() =>
+          Effect.fail(
+            new ServerError({
+              detail: "gateway is down",
+              suggestion: "retry",
+              code: "UZ-INTERNAL-001",
+              status: 503,
+              requestId: null,
+            }),
+          ),
+        ),
+      ),
+      Effect.provide(outputLayer(rec)),
+    );
+
+    const exit = await runWith(program);
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(rec.stdout.some((line) => line.includes("unreachable"))).toBe(true);
+    expect(rec.stdout.some((line) => line.includes("unauthorized"))).toBe(false);
   });
 });
 

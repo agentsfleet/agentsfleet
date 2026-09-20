@@ -144,8 +144,17 @@ fn config(access: Option<&str>) -> FleetConfig {
         .expect("a stored document resolves")
 }
 
-/// An event identifier in the spelling the admission ledger mints.
-const MINTED_EVENT: &str = "0197a4ba-8d3a-7f13-8abc-123456789abc";
+/// An event identifier in the spelling the admission ledger mints: the
+/// admission instant and the sequence, which is what `core.fleet_events` stores
+/// in its TEXT key.
+///
+/// It read `0197a4ba-8d3a-7f13-8abc-123456789abc` — a canonical v7, and a shape
+/// the ledger has never produced. Every test below passed against it while the
+/// branch was dropped for every real delivery.
+const MINTED_EVENT: &str = "1900000000000-1";
+
+/// A second identifier from the same ledger, one sequence later.
+const NEXT_MINTED_EVENT: &str = "1900000000000-2";
 
 #[test]
 fn only_a_write_binding_is_given_a_branch() {
@@ -184,29 +193,27 @@ fn two_events_are_never_given_one_branch() {
     // is one row per fleet and service, so naming the branch after it would put
     // every event of a fleet's life on ONE branch, and the second run would
     // force-update the first run's head.
-    let second = "0197a4ba-8d3a-7f13-8abc-123456789abd";
-
     assert_ne!(
         Plane::repair_branch(MINTED_EVENT, &config(Some("write"))),
-        Plane::repair_branch(second, &config(Some("write")))
+        Plane::repair_branch(NEXT_MINTED_EVENT, &config(Some("write")))
     );
 }
 
 #[test]
-fn an_event_identifier_this_daemon_did_not_mint_is_given_no_branch() {
-    // The assembly refuses a write binding with no branch, which is the
-    // fail-safe direction: a branch guessed from an unparseable identifier
-    // would be a ref the egress rules lock and the run cannot push to.
-    for foreign in [
-        "",
-        "evt-cred-mint-fixture",
-        "not-a-uuid",
-        "0197a4ba-8d3a-4f13-8abc-123456789abc",
-    ] {
-        assert_eq!(
-            Plane::repair_branch(foreign, &config(Some("write"))),
-            None,
-            "{foreign:?}"
+fn test_m202_001_every_identifier_the_ledger_mints_is_given_a_branch() {
+    // This asserted the opposite — that a non-v7 identifier gets no branch —
+    // and called it the fail-safe. It was the defect written down as intent.
+    // `afd_admission::admit` is the only thing that mints an event id and it
+    // spells `<millis>-<sequence>`, so "not a v7" described every real event
+    // and the branch was dropped for all of them.
+    //
+    // Whether a branch is named turns on the BINDING, which the test above
+    // covers. Given a write binding, the identifier is encoded whatever its
+    // shape, and two identifiers never share a name.
+    for id in [MINTED_EVENT, NEXT_MINTED_EVENT, "evt-cred-mint-fixture"] {
+        assert!(
+            Plane::repair_branch(id, &config(Some("write"))).is_some(),
+            "{id:?}"
         );
     }
 }

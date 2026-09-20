@@ -147,6 +147,6 @@ pub(crate) fn cli_credential_machine_collision() -> Error {
 }
 
 /// Reports a proven subject with no `core.users` row behind it.
-pub(crate) fn cli_credential_unknown_subject() -> Error {
-    Error::new(ErrorKind::CliCredentialUnknownSubject)
+pub(crate) fn unknown_subject() -> Error {
+    Error::new(ErrorKind::UnknownSubject)
 }

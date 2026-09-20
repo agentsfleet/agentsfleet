@@ -31,6 +31,11 @@ export const TENANT_PROVIDER_PATH = "/v1/tenants/me/provider";
 // check — the CLI carries no provider list of its own.
 export const MODEL_LIBRARY_PATH = "/v1/models";
 export const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
+// Who this credential belongs to. Mirrors `TenantRoute::CurrentUser` in
+// rustd/crates/afd_http/src/route/tenant.rs, and the one route on the tenant
+// plane that requires no capability — which is why `login` and `auth status`
+// both probe it rather than the billing snapshot they used to reach for.
+export const USERS_ME_PATH = "/v1/users/me";
 
 // First-party Fleet library catalog — global (not workspace-scoped),
 // metadata only. Backs `agentsfleet library` (the platform shop-window).

@@ -1,8 +1,9 @@
 //! What the message thread accepts, and what it refuses before a statement.
 //!
 //! The sibling of `fleet_messages.rs`: that suite proves the guard, the two
-//! rungs and the ownership layer, and this one proves the VALUES — a page size,
-//! a continuation token, and the body a steer carries.
+//! rungs and the ownership layer, and this one proves the VALUES a READ is
+//! asked for — a page size and a continuation token. The body a steer carries
+//! moved to `fleet_messages_steer.rs` when this file reached the length cap.
 //!
 //! # Every case here ends in one of two answers
 //!
@@ -42,15 +43,12 @@ const FLEET: &str = "01924f4e-0000-7000-8000-00000000fee7";
 /// The rung the read takes.
 const FLEET_READ: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetRead]);
 
-/// The rung the steer takes.
+/// The rung the steer takes, for the one case below that drives both verbs.
 const FLEET_WRITE: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetWrite]);
 
-/// The longest message a steer may carry.
-///
-/// `MAX_MESSAGE_BYTES`, mirrored: the handler's constant is private, and a
-/// suite that imported it could not tell a bound that moved from a bound that
-/// was always this.
-const MAX_MESSAGE_BYTES: usize = 8192;
+/// A minimal well-formed steer, so the case that shares this file with the
+/// reads refuses on its PATH rather than on its body.
+const A_SOUND_STEER: &str = r#"{"message":"ship it"}"#;
 
 /// A page size past the top of the served band.
 const OVER_THE_BAND: i64 = 26;
@@ -83,16 +81,6 @@ async fn reading(path: &str) -> axum::response::Response {
     send(FLEET_READ, Method::GET, path, "").await
 }
 
-/// One fully authorised steer.
-async fn steering(body: &str) -> axum::response::Response {
-    send(FLEET_WRITE, Method::POST, &thread(), body).await
-}
-
-/// A steer body carrying `message`, already escaped by `serde`.
-fn steer_of(message: &str) -> String {
-    serde_json::json!({ "message": message }).to_string()
-}
-
 /// Reads a problem document's `error_code` back.
 async fn code_of(response: axum::response::Response) -> String {
     field_of(response, "error_code").await
@@ -121,7 +109,7 @@ async fn a_fleet_id_that_is_not_an_identifier_is_refused() {
     assert_eq!(read.status(), StatusCode::BAD_REQUEST);
     assert_eq!(code_of(read).await, error_code::INVALID_REQUEST.as_str());
 
-    let steered = send(FLEET_WRITE, Method::POST, &path, &steer_of("ship it")).await;
+    let steered = send(FLEET_WRITE, Method::POST, &path, A_SOUND_STEER).await;
     assert_eq!(steered.status(), StatusCode::BAD_REQUEST);
     assert_eq!(code_of(steered).await, error_code::INVALID_REQUEST.as_str());
 }
@@ -223,96 +211,6 @@ async fn a_well_formed_read_reaches_the_store_and_reports_the_outage() {
             code_of(response).await,
             error_code::INTERNAL_DB_UNAVAILABLE.as_str(),
             "{query}: the refusal is the datastore's"
-        );
-    }
-}
-
-/// A steer with nothing in it is refused before the parser runs.
-#[tokio::test]
-async fn a_steer_that_carries_no_body_is_refused() {
-    let response = steering("").await;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    assert_eq!(
-        field_of(response, "detail").await,
-        "request body required",
-        "an empty body is named as one, not as unreadable JSON"
-    );
-}
-
-/// A body this daemon cannot read as a message is refused.
-#[tokio::test]
-async fn a_body_that_is_not_a_message_is_refused() {
-    for body in ["{", "null", "[]", r#""ship it""#, "{}", r#"{"message":7}"#] {
-        let response = steering(body).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::BAD_REQUEST,
-            "{body} is not a steer this surface accepts"
-        );
-        assert_eq!(
-            code_of(response).await,
-            error_code::INVALID_REQUEST.as_str(),
-            "{body}: an unreadable body is a bad request"
-        );
-    }
-}
-
-/// An empty message is refused, and is told apart from an empty body.
-#[tokio::test]
-async fn an_empty_message_is_refused_and_named_as_one() {
-    let response = steering(&steer_of("")).await;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    assert_eq!(
-        field_of(response, "detail").await,
-        "message must not be empty"
-    );
-}
-
-/// A message past the bound is refused, and the bound is on DECODED bytes.
-///
-/// The pair is the claim: one byte past the ceiling is refused, and a message
-/// of newlines that DOUBLES in the escaped form is not — it is under the bound
-/// once decoded, and the decoded text is what the runner reads.
-#[tokio::test]
-async fn the_message_bound_is_measured_on_the_decoded_bytes() {
-    let over = steering(&steer_of(&"a".repeat(MAX_MESSAGE_BYTES + 1))).await;
-    assert_eq!(over.status(), StatusCode::BAD_REQUEST);
-    assert_eq!(
-        field_of(over, "detail").await,
-        "message must not exceed 8192 bytes"
-    );
-
-    let escaped = steering(&steer_of(&"\n".repeat(MAX_MESSAGE_BYTES))).await;
-    assert_ne!(
-        escaped.status(),
-        StatusCode::BAD_REQUEST,
-        "a message that doubles when escaped is bounded on what it decodes to"
-    );
-}
-
-/// A well-formed steer reaches the store, and the outage is a 503.
-///
-/// The ingress check runs first, so this proves the message got past the body
-/// reader and the status read is what refused — not that a steer was silently
-/// accepted into a queue nobody polls.
-#[tokio::test]
-async fn a_well_formed_steer_reaches_the_store_and_reports_the_outage() {
-    for message in [
-        "ship it",
-        "line one\nline \"two\"",
-        "an emoji lands here \u{2728}",
-        &"a".repeat(MAX_MESSAGE_BYTES),
-    ] {
-        let response = steering(&steer_of(message)).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::SERVICE_UNAVAILABLE,
-            "a steer must reach the ingress check"
-        );
-        assert_eq!(
-            code_of(response).await,
-            error_code::INTERNAL_DB_UNAVAILABLE.as_str(),
-            "the refusal is the datastore's"
         );
     }
 }

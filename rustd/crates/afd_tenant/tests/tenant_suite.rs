@@ -54,6 +54,8 @@ mod preference_lane;
 mod integration_api_key_paging;
 #[path = "integration_device_flow.rs"]
 mod integration_device_flow;
+#[path = "integration_identity.rs"]
+mod integration_identity;
 #[path = "integration_preferences.rs"]
 mod integration_preferences;
 #[path = "integration_signup.rs"]

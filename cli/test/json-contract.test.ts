@@ -33,7 +33,7 @@ function tryParseJson(str: string): unknown {
 function makeStubHandlers(): Handlers {
   const noop: CommandHandlerFn = async () => 0;
   return {
-    login: noop, logout: noop, doctor: noop,
+    login: noop, logout: noop, doctor: noop, whoami: noop,
     auth:      { status: noop },
     workspace: { create: noop, list: noop, use: noop, show: noop, secrets: noop, delete: noop },
     apiKey:    { create: noop, list: noop, revoke: noop, delete: noop },

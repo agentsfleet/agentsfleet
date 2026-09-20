@@ -46,6 +46,8 @@ mod integration_lease_assign;
 mod integration_lease_block;
 #[path = "integration_lease_fairness.rs"]
 mod integration_lease_fairness;
+#[path = "integration_lease_gates.rs"]
+mod integration_lease_gates;
 #[path = "integration_lease_installed.rs"]
 mod integration_lease_installed;
 #[path = "integration_lease_issue.rs"]
