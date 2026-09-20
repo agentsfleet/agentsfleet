@@ -75,6 +75,19 @@ Authoring assumptions, for the handshake to confirm: (1) not in production, sche
 | `cli/src/commands/billing.ts` | EDIT | charge summaries group by `(fleet_id, event_id)` |
 | `cli/test/billing-effect.unit.test.ts` | EDIT | grouping keeps two fleets' same-id charges apart |
 | `docs/architecture/data_flow.md` | EDIT | the ledger's uniqueness scope, in the durable-stores table and the partitioning note |
+| `rustd/crates/afd_approval/tests/integration_inbox_tail.rs` | EDIT | splits by concern at the 350-line cap; keeps the announcement proofs |
+| `rustd/crates/afd_approval/tests/integration_inbox_tail_continuation.rs` | CREATE | the continuation proofs, including the converged-announces-nothing one |
+| `rustd/crates/afd_approval/tests/integration_inbox_tail_runless.rs` | CREATE | the runless proofs |
+| `rustd/crates/afd_approval/tests/support/tail_watch.rs` | CREATE | the two reads and the spellings all three tail suites share |
+| `rustd/crates/afd_approval/src/inbox/resolve.rs` | CREATE | `inbox.rs` splits at the 350-line cap on the read-versus-move seam |
+| `rustd/crates/afd_wire/src/tenant.rs` | EDIT | `ChargeSummary.fleet_id` is not optional after slot 916 |
+| `rustd/crates/afd_billing/src/tenant/mod.rs` | EDIT | `ChargeRow.fleet_id` likewise |
+| `rustd/crates/afd_api_tenant/src/handler/tenant/billing.rs` | EDIT | the row-to-wire mapping loses its `map` |
+| `rustd/crates/afd_api/tests/tenant_shape_parity.rs` | EDIT | the charge fixture carries a bare fleet |
+| `rustd/crates/afd_fleet/tests/integration_ledger_reads.rs` | EDIT | the surviving-identifier assertion compares strings, not options |
+| `ui/packages/app/lib/types.ts` | EDIT | the charges response item's `fleet_id` is `string` |
+| `ui/packages/app/tests/billing-charges.test.ts` | EDIT | the three proofs of a charge with no fleet go |
+| `ui/packages/app/lib/fleets/agent-label.test.ts` | EDIT | the composer-equivalence proof needs no null charge |
 
 ## Applicable Rules
 
@@ -143,8 +156,12 @@ The events-page cost subselect binds both `fleet_id` and `event_id`, so the new 
 
 The command-line charge renderer groups a tenant's rows by `event_id` alone; after §2 two fleets may legitimately share an id, so the group key becomes `(fleet_id, event_id)`. Rendered output is unchanged for every input the daemon produces today. `docs/architecture/data_flow.md` states the ledger's key twice as `(event_id, charge_type)`; both lines change, and the partitioning note gains one sentence saying the key is fleet-scoped.
 
+Slot 916 also settles a type. `ChargeRow.fleet_id` and `ChargeSummary.fleet_id` were `Option`, documenting a charge written before slot 915 whose fleet the foreign key of the day had nulled. `NOT NULL` closes that state, and no database holds such a row — nothing is deployed and the schema rebuilds from empty — so the option described a row that cannot exist and the dashboard carried a `DELETED AGENT` cell no charge could render. The three types narrow together with the TypeScript response item. `agentDisplayName` KEEPS its absent-identifier arm: `AgentLabel` takes `fleetId: string | null` as its own prop, so leases, approvals and events still pass one.
+
 - **Dimension 3.1** DONE — two rows, same `event_id`, different `fleet_id` → two summaries → Test `two fleets sharing one event id render as two rows`
 - **Dimension 3.2** DONE — the architecture pages name the composite and no longer name the old key → Test `architecture_pages_name_the_composite_ledger_key`
+- **Dimension 3.3** DONE — a charge's fleet is not optional on the wire, because slot 916 made the column `NOT NULL` → Test `a_charge_row_carries_its_whole_provenance`
+- **Dimension 3.4** DONE — narrowing the charge keeps the shared label's absent-identifier arm, which leases and events still reach → Test `names a deleted fleet rather than deriving a callsign for it`
 
 ## Interfaces
 
@@ -217,6 +234,8 @@ The race's occurrence rate is not instrumented: the converge arm makes it harmle
 | 2.7 | unit | `every_ledger_conflict_target_carries_the_fleet` | every `ON CONFLICT` following `billing.usage_ledger` in `rustd/crates/*/src` names `(event_id, charge_type, fleet_id)`; count = 3; goes red when one is reverted |
 | 3.1 | unit | `two fleets sharing one event id render as two rows` | rows [(F1, X), (F2, X), (F1, X)] → two summaries; F1's carries two rows' totals |
 | 3.2 | unit | `architecture_pages_name_the_composite_ledger_key` | `data_flow.md` and `billing_and_provider_keys.md` each name the composite and hold no bare `(event_id, charge_type)` mention |
+| 3.3 | unit | `a_charge_row_carries_its_whole_provenance` | `ChargeSummary` is constructed with a bare `Cow` fleet and its field list is asserted unchanged; an `Option` spelling no longer compiles |
+| 3.4 | unit | `names a deleted fleet rather than deriving a callsign for it` | `agentDisplayName(null)` still returns the deleted label and `AgentLabel fleetId={null}` still renders it — the arm the charge no longer reaches is still proven where a lease does |
 
 ## Acceptance Rubric (single scoring surface)
 
