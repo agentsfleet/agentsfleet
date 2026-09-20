@@ -11,7 +11,7 @@ import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsFleetLibrariesPath } from "../lib/api-paths.ts";
@@ -31,6 +31,7 @@ const EMPTY_GALLERY =
   "No Fleet libraries in this workspace." as const;
 const EMPTY_HINT =
   "Add one with: agentsfleet library add --github <owner/repo>" as const;
+const LIBRARIES_LISTED = "Fleet libraries" as const;
 const INSTALL_HINT =
   `Install one with: agentsfleet install --library ${LIBRARY_ID_PLACEHOLDER}` as const;
 
@@ -42,7 +43,6 @@ export const libraryEffect: Effect.Effect<
   CliError,
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > = Effect.gen(function* () {
-  const config = yield* CliConfig;
   const output = yield* Output;
   const http = yield* HttpClient;
 
@@ -55,8 +55,8 @@ export const libraryEffect: Effect.Effect<
     token,
   );
 
-  if (config.jsonMode) {
-    yield* output.printJson({ items });
+  if (output.format !== OUTPUT_FORMAT.text) {
+    yield* output.success(LIBRARIES_LISTED, { items });
     return;
   }
 

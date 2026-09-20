@@ -6,7 +6,7 @@ import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
-import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import type { CliError, NetworkError, ServerError } from "../src/errors/index.ts";
@@ -32,12 +32,18 @@ export const configLayer = (jsonMode: boolean): Layer.Layer<CliConfig> =>
     telemetryPosthogHost: "https://us.i.posthog.com",
   });
 
-export const outputLayer = (cap: CapturedOutput): Layer.Layer<Output> =>
+export const outputLayer = (
+  cap: CapturedOutput,
+  format: OutputFormat = OUTPUT_FORMAT.text,
+): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    format: OUTPUT_FORMAT.text,
+    format,
     intro: () => Effect.void,
     info: (msg) => Effect.sync(() => { cap.infos.push(msg); }),
-    success: () => Effect.void,
+    success: (_msg, data) =>
+      Effect.sync(() => {
+        if (format === OUTPUT_FORMAT.json) cap.jsons.push(data);
+      }),
     warn: () => Effect.void,
     error: () => Effect.void,
     outro: () => Effect.void,
@@ -89,7 +95,12 @@ export const runWith = <E extends CliError>(
   Effect.runPromiseExit(
     effect.pipe(
       Effect.provide(configLayer(opts.jsonMode ?? false)),
-      Effect.provide(outputLayer(opts.cap)),
+      Effect.provide(
+        outputLayer(
+          opts.cap,
+          opts.jsonMode === true ? OUTPUT_FORMAT.json : OUTPUT_FORMAT.text,
+        ),
+      ),
       Effect.provide(opts.http),
       Effect.provide(opts.workspaces ?? workspacesLayer()),
       Effect.provide(credentialsLayer()),

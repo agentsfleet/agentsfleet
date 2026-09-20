@@ -10,7 +10,7 @@ import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 import { formatTimestamp, logsEffectFromFlags } from "../src/commands/fleet_logs.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient } from "../src/services/http-client.ts";
-import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { wsFleetEventsPath } from "../src/lib/api-paths.ts";
@@ -42,15 +42,21 @@ interface OutputSpy {
   readonly infoLines: string[];
 }
 
-const outputLayer = (spy: OutputSpy): Layer.Layer<Output> =>
+const outputLayer = (
+  spy: OutputSpy,
+  format: OutputFormat = OUTPUT_FORMAT.text,
+): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    format: OUTPUT_FORMAT.text,
+    format,
     intro: () => Effect.void,
     info: (line: string) =>
       Effect.sync(() => {
         spy.infoLines.push(line);
       }),
-    success: () => Effect.void,
+    success: (_msg, data) =>
+      Effect.sync(() => {
+        if (format === OUTPUT_FORMAT.json) spy.jsonPayloads.push(data);
+      }),
     warn: () => Effect.void,
     error: () => Effect.void,
     outro: () => Effect.void,
@@ -164,7 +170,7 @@ describe("logsEffectFromFlags — JSON mode", () => {
       logsEffectFromFlags({ fleetId: VALID_FLEET_ID }),
       {
         config: configLayer(true),
-        output: outputLayer(outSpy),
+        output: outputLayer(outSpy, OUTPUT_FORMAT.json),
         http: httpClientLayer(httpSpy, response),
       },
     );

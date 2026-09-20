@@ -8,7 +8,7 @@ import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { isNumber, isString } from "../lib/guards.ts";
@@ -20,6 +20,7 @@ import {
   type CliError,
 } from "../errors/index.ts";
 
+const EVENTS_LISTED = "Fleet events" as const;
 const DEFAULT_LIMIT = 50;
 const PREVIEW_MAX = 80;
 
@@ -91,7 +92,6 @@ export const eventsEffectFromFlags = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
@@ -110,8 +110,10 @@ export const eventsEffectFromFlags = (
     const path = `${wsFleetEventsPath(wsId, flags.fleetId)}?${buildQuery(flags)}`;
     const res = yield* http.request<EventsResponse>({ path, token });
 
-    if (config.jsonMode || flags.json === true) {
-      yield* output.printJson(res);
+    // `--json` on this command forces the register regardless of the global
+    // flag, so the per-command arm stays beside the service's own.
+    if (output.format !== OUTPUT_FORMAT.text || flags.json === true) {
+      yield* output.success(EVENTS_LISTED, { ...res });
       return;
     }
 

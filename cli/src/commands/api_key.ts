@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import {
   requireValidId,
   requireValue,
@@ -22,6 +22,9 @@ import {
   API_KEY_SORTS,
   API_KEY_SORT_CREATED_AT_DESC,
 } from "../constants/api-key.ts";
+
+const API_KEY_CREATED = "API key created" as const;
+const API_KEYS_LISTED = "API keys" as const;
 
 export interface ApiKeyCreateArgs {
   readonly name: string | undefined;
@@ -121,7 +124,6 @@ export const apiKeyCreateEffectFromArgs = (
   args: ApiKeyCreateArgs,
 ): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output> =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
@@ -138,8 +140,8 @@ export const apiKeyCreateEffectFromArgs = (
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson(res);
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(API_KEY_CREATED, { ...res });
       return;
     }
 
@@ -165,7 +167,6 @@ export const apiKeyListEffectFromArgs = (
   args: ApiKeyListArgs,
 ): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output> =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
@@ -198,8 +199,12 @@ export const apiKeyListEffectFromArgs = (
       );
     }
 
-    if (config.jsonMode) {
-      yield* output.printJson({ items: keys, total: total ?? keys.length, next_cursor: null });
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(API_KEYS_LISTED, {
+        items: keys,
+        total: total ?? keys.length,
+        next_cursor: null,
+      });
       return;
     }
     if (keys.length === 0) {
@@ -213,7 +218,6 @@ export const apiKeyRevokeEffectFromId = (
   rawId: string | undefined,
 ): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output> =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
@@ -226,18 +230,16 @@ export const apiKeyRevokeEffectFromId = (
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson(res);
-      return;
-    }
-    yield* output.success(`API key ${res.id ?? id} revoked. It can no longer authenticate.`);
+    yield* output.success(
+      `API key ${res.id ?? id} revoked. It can no longer authenticate.`,
+      { ...res },
+    );
   });
 
 export const apiKeyDeleteEffectFromId = (
   rawId: string | undefined,
 ): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output> =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
@@ -249,9 +251,5 @@ export const apiKeyDeleteEffectFromId = (
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson({ deleted: true, id });
-      return;
-    }
-    yield* output.success(`API key ${id} deleted.`);
+    yield* output.success(`API key ${id} deleted.`, { deleted: true, id });
   });

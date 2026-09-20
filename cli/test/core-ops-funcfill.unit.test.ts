@@ -14,7 +14,7 @@ import { doctorEffect } from "../src/commands/core-ops.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
-import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { DOCTOR_CHECK } from "../src/constants/doctor-checks.ts";
 
@@ -29,12 +29,22 @@ interface Recorder {
 
 const makeRecorder = (): Recorder => ({ stdout: [], stderr: [], httpCalls: [] });
 
-const outputLayer = (rec: Recorder): Layer.Layer<Output> =>
+const outputLayer = (
+  rec: Recorder,
+  format: OutputFormat = OUTPUT_FORMAT.text,
+): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    format: OUTPUT_FORMAT.text,
+    format,
     intro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     info: (msg) => Effect.sync(() => rec.stdout.push(msg)),
-    success: (msg) => Effect.sync(() => rec.stdout.push(`ok: ${msg}`)),
+    success: (msg, data) =>
+      Effect.sync(() =>
+        rec.stdout.push(
+          format === OUTPUT_FORMAT.json
+            ? JSON.stringify(data ?? { message: msg })
+            : `ok: ${msg}`,
+        ),
+      ),
     warn: (msg) => Effect.sync(() => rec.stderr.push(`warn: ${msg}`)),
     error: (msg) => Effect.sync(() => rec.stderr.push(`error: ${msg}`)),
     outro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
@@ -95,7 +105,7 @@ describe("doctorEffect — binding check token-failure branch", () => {
       Effect.provide(configLayer(true)),
       Effect.provide(noTokenCredentialsLayer()),
       Effect.provide(healthzOkHttpLayer(rec)),
-      Effect.provide(outputLayer(rec)),
+      Effect.provide(outputLayer(rec, OUTPUT_FORMAT.json)),
       Effect.provide(workspaceSelectedLayer()),
     );
     const exit = await Effect.runPromiseExit(program);

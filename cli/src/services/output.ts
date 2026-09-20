@@ -41,6 +41,15 @@ export const OUTPUT_FORMAT = {
 
 export type OutputFormat = (typeof OUTPUT_FORMAT)[keyof typeof OUTPUT_FORMAT];
 
+/**
+ * A machine payload, as the wire already carries it.
+ *
+ * An array arm because some commands answer with a bare list — `connector
+ * list` has always emitted one — and re-keying it into `{ items }` to fit a
+ * record would silently break every script indexing position zero.
+ */
+export type OutputData = Record<string, unknown> | ReadonlyArray<unknown>;
+
 export interface OutputShape {
   /**
    * Which register this invocation writes in.
@@ -63,10 +72,7 @@ export interface OutputShape {
    * it never told a person, or the reverse — both registers are supplied at
    * one call site.
    */
-  readonly success: (
-    msg: string,
-    data?: Record<string, unknown>,
-  ) => Effect.Effect<void>;
+  readonly success: (msg: string, data?: OutputData) => Effect.Effect<void>;
   readonly warn: (msg: string) => Effect.Effect<void>;
   readonly error: (
     msg: string,

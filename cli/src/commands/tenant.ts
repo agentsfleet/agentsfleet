@@ -10,7 +10,7 @@ import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { resolveAuthToken } from "./workspace-guards.ts";
 import { isNumber, isString } from "../lib/guards.ts";
 import {
@@ -26,6 +26,10 @@ import { ValidationError, type CliError } from "../errors/index.ts";
 import { EMPTY_CELL } from "../output/index.ts";
 
 // <$1 left → warn on reset.
+const PROVIDER_SHOWN = "Tenant provider" as const;
+const PROVIDER_ADDED = "Tenant provider added" as const;
+const PROVIDER_REMOVED = "Tenant provider removed" as const;
+
 const LOW_BALANCE_THRESHOLD_NANOS = NANOS_PER_USD;
 
 
@@ -80,7 +84,6 @@ export const tenantProviderShowEffect: Effect.Effect<
   CliError,
   CliConfig | Credentials | HttpClient | Output
 > = Effect.gen(function* () {
-  const config = yield* CliConfig;
   const output = yield* Output;
   const http = yield* HttpClient;
   const token = yield* resolveAuthToken;
@@ -90,8 +93,8 @@ export const tenantProviderShowEffect: Effect.Effect<
     token,
   });
 
-  if (config.jsonMode) {
-    yield* output.printJson(res);
+  if (output.format !== OUTPUT_FORMAT.text) {
+    yield* output.success(PROVIDER_SHOWN, { ...res });
     return;
   }
 
@@ -123,7 +126,6 @@ export const tenantProviderAddEffectFromArgs = (
   CliConfig | Credentials | HttpClient | Output
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
@@ -156,8 +158,8 @@ export const tenantProviderAddEffectFromArgs = (
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson(res);
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(PROVIDER_ADDED, { ...res });
       return;
     }
     yield* output.success(
@@ -203,7 +205,6 @@ export const tenantProviderDeleteEffect: Effect.Effect<
   CliError,
   CliConfig | Credentials | HttpClient | Output
 > = Effect.gen(function* () {
-  const config = yield* CliConfig;
   const output = yield* Output;
   const http = yield* HttpClient;
   const token = yield* resolveAuthToken;
@@ -214,8 +215,8 @@ export const tenantProviderDeleteEffect: Effect.Effect<
     token,
   });
 
-  if (config.jsonMode) {
-    yield* output.printJson(res);
+  if (output.format !== OUTPUT_FORMAT.text) {
+    yield* output.success(PROVIDER_REMOVED, { ...res });
     return;
   }
   yield* output.success(

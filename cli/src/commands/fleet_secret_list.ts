@@ -9,7 +9,7 @@ import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsSecretsPath } from "../lib/api-paths.ts";
@@ -31,6 +31,7 @@ interface SecretsListResponse {
 const FIELD_NAME = "name" as const;
 const FIELD_KIND = "kind" as const;
 const FIELD_CREATED = "created" as const;
+const SECRETS_LISTED = "Workspace secrets" as const;
 const EMPTY_VAULT =
   "No secrets stored. Create one with: agentsfleet secret create <name> --data=@- (pipe JSON on stdin)" as const;
 
@@ -39,7 +40,6 @@ export const secretListEffect: Effect.Effect<
   CliError,
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > = Effect.gen(function* () {
-  const config = yield* CliConfig;
   const output = yield* Output;
   const http = yield* HttpClient;
 
@@ -50,8 +50,10 @@ export const secretListEffect: Effect.Effect<
     token,
   });
 
-  if (config.jsonMode) {
-    yield* output.printJson(res);
+  if (output.format !== OUTPUT_FORMAT.text) {
+    // Names, kinds and stamps only — the same rows the table shows. The stored
+    // bytes never reach this module in either register.
+    yield* output.success(SECRETS_LISTED, { ...res });
     return;
   }
   const secrets = res.secrets ?? [];

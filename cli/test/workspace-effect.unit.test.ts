@@ -21,7 +21,7 @@ import {
   HttpClient,
   type HttpRequestInput,
 } from "../src/services/http-client.ts";
-import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output.ts";
 import {
   Workspaces,
   type WorkspacesValue,
@@ -53,12 +53,25 @@ interface Recorder {
 
 const makeRecorder = (): Recorder => ({ stdout: [], stderr: [], events: [] });
 
-const outputLayer = (rec: Recorder): Layer.Layer<Output> =>
+// The register is the double's now, not CliConfig's, so a test that exercises
+// the json branch says so here. `success` answers in whichever one it is given,
+// the way the real service does.
+const outputLayer = (
+  rec: Recorder,
+  format: OutputFormat = OUTPUT_FORMAT.text,
+): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    format: OUTPUT_FORMAT.text,
+    format,
     intro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     info: (msg) => Effect.sync(() => rec.stdout.push(msg)),
-    success: (msg) => Effect.sync(() => rec.stdout.push(`ok: ${msg}`)),
+    success: (msg, data) =>
+      Effect.sync(() =>
+        rec.stdout.push(
+          format === OUTPUT_FORMAT.json
+            ? JSON.stringify(data ?? { message: msg })
+            : `ok: ${msg}`,
+        ),
+      ),
     warn: (msg) => Effect.sync(() => rec.stderr.push(`warn: ${msg}`)),
     error: (msg) => Effect.sync(() => rec.stderr.push(`error: ${msg}`)),
     outro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
@@ -353,7 +366,7 @@ describe("workspaceAddEffect", () => {
         ),
       ),
       Effect.provide(workspacesLayer(workspacesState)),
-      Effect.provide(outputLayer(rec)),
+      Effect.provide(outputLayer(rec, OUTPUT_FORMAT.json)),
       Effect.provide(analyticsLayer(rec)),
     );
     await runWith(program);
@@ -988,7 +1001,7 @@ describe("workspaceListEffect", () => {
     const program = workspaceListEffect.pipe(
       Effect.provide(configLayer({ jsonMode: true })),
       Effect.provide(workspacesLayer(workspacesState)),
-      Effect.provide(outputLayer(rec)),
+      Effect.provide(outputLayer(rec, OUTPUT_FORMAT.json)),
       Effect.provide(analyticsLayer(rec)),
     );
     await runWith(program);
@@ -1078,7 +1091,7 @@ describe("workspaceUseEffectFromArgs", () => {
     const program = workspaceUseEffectFromArgs(undefined, WS_ID).pipe(
       Effect.provide(configLayer({ jsonMode: true })),
       Effect.provide(workspacesLayer(workspacesState)),
-      Effect.provide(outputLayer(rec)),
+      Effect.provide(outputLayer(rec, OUTPUT_FORMAT.json)),
       Effect.provide(analyticsLayer(rec)),
     );
     await runWith(program);
@@ -1101,7 +1114,7 @@ describe("workspaceShowEffectFromArgs", () => {
     const program = workspaceShowEffectFromArgs(undefined, undefined).pipe(
       Effect.provide(configLayer({ jsonMode: true })),
       Effect.provide(workspacesLayer(workspacesState)),
-      Effect.provide(outputLayer(rec)),
+      Effect.provide(outputLayer(rec, OUTPUT_FORMAT.json)),
     );
     await runWith(program);
     expect(
@@ -1152,7 +1165,7 @@ describe("workspaceSecretsEffect", () => {
     const rec = makeRecorder();
     const program = workspaceSecretsEffect.pipe(
       Effect.provide(configLayer({ jsonMode: true })),
-      Effect.provide(outputLayer(rec)),
+      Effect.provide(outputLayer(rec, OUTPUT_FORMAT.json)),
     );
     await runWith(program);
     expect(
@@ -1181,7 +1194,7 @@ describe("workspaceSecretsEffect", () => {
     const rec = makeRecorder();
     const program = workspaceSecretsEffect.pipe(
       Effect.provide(configLayer({ jsonMode: true })),
-      Effect.provide(outputLayer(rec)),
+      Effect.provide(outputLayer(rec, OUTPUT_FORMAT.json)),
     );
     await runWith(program);
     expect(rec.stdout.some((line) => line.includes(REAL_COMMAND))).toBe(true);
@@ -1280,7 +1293,7 @@ describe("workspaceDeleteEffectFromArgs", () => {
     const program = workspaceDeleteEffectFromArgs(WS_ID, undefined).pipe(
       Effect.provide(configLayer({ jsonMode: true })),
       Effect.provide(workspacesLayer(workspacesState)),
-      Effect.provide(outputLayer(rec)),
+      Effect.provide(outputLayer(rec, OUTPUT_FORMAT.json)),
       Effect.provide(analyticsLayer(rec)),
     );
     await runWith(program);

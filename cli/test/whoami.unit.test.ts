@@ -11,7 +11,7 @@ import { USERS_ME_PATH } from "../src/lib/api-paths.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
-import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output.ts";
 import { AuthError, ServerError, type CliError } from "../src/errors/index.ts";
 
 const API_URL = "https://api.test.local";
@@ -37,12 +37,22 @@ interface Recorder {
 
 const makeRecorder = (): Recorder => ({ stdout: [], stderr: [], paths: [], tokens: [] });
 
-const outputLayer = (rec: Recorder): Layer.Layer<Output> =>
+const outputLayer = (
+  rec: Recorder,
+  format: OutputFormat = OUTPUT_FORMAT.text,
+): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    format: OUTPUT_FORMAT.text,
+    format,
     intro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     info: (msg) => Effect.sync(() => rec.stdout.push(msg)),
-    success: (msg) => Effect.sync(() => rec.stdout.push(`ok: ${msg}`)),
+    success: (msg, data) =>
+      Effect.sync(() =>
+        rec.stdout.push(
+          format === OUTPUT_FORMAT.json
+            ? JSON.stringify(data ?? { message: msg })
+            : `ok: ${msg}`,
+        ),
+      ),
     warn: (msg) => Effect.sync(() => rec.stderr.push(`warn: ${msg}`)),
     error: (msg) => Effect.sync(() => rec.stderr.push(`error: ${msg}`)),
     outro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
@@ -117,7 +127,10 @@ const run = async (
     whoamiEffect.pipe(
       Effect.provide(
         Layer.mergeAll(
-          outputLayer(rec),
+          outputLayer(
+            rec,
+            input.jsonMode === true ? OUTPUT_FORMAT.json : OUTPUT_FORMAT.text,
+          ),
           credentialsLayer(input.fileToken === undefined ? FILE_TOKEN : input.fileToken),
           httpLayer(rec, responder),
           configLayer(input.jsonMode ?? false, input.envToken ?? null),

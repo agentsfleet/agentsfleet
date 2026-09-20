@@ -6,7 +6,7 @@ import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { isString } from "../lib/guards.ts";
@@ -18,6 +18,7 @@ import {
   type CliError,
 } from "../errors/index.ts";
 
+const LOGS_LISTED = "Fleet event log" as const;
 const DEFAULT_LOGS_LIMIT = "20";
 // The detail says what is wrong; the suggestion says what to run. Before
 // M171 both carried the same sentence, so the rendered failure repeated
@@ -82,7 +83,6 @@ export const logsEffectFromFlags = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
@@ -103,8 +103,8 @@ export const logsEffectFromFlags = (
     const token = yield* resolveAuthToken;
     const res = yield* http.request<LogsResponse>({ path, token });
 
-    if (config.jsonMode) {
-      yield* output.printJson(res);
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(LOGS_LISTED, { ...res });
       return;
     }
 

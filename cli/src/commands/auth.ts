@@ -6,7 +6,7 @@ import { Effect, Option, Redacted } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { USERS_ME_PATH } from "../lib/api-paths.ts";
 import { IDENTITY_ROUTE_ABSENT_STATUS } from "../lib/me-ping.ts";
 import {
@@ -158,7 +158,7 @@ export const authStatusEffect: Effect.Effect<
       : "none";
 
   if (source === "none") {
-    if (config.jsonMode) {
+    if (output.format !== OUTPUT_FORMAT.text) {
       yield* output.printJson({
         authenticated: false,
         source: "none",
@@ -192,7 +192,7 @@ export const authStatusEffect: Effect.Effect<
     server_check: probeResult,
   };
 
-  if (config.jsonMode) {
+  if (output.format !== OUTPUT_FORMAT.text) {
     yield* output.printJson(result);
   } else {
     yield* renderHuman(result);

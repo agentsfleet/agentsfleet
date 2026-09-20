@@ -13,7 +13,7 @@ import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import {
   resolveAuthToken,
@@ -190,7 +190,7 @@ export const doctorEffect: Effect.Effect<
   const ok = checks.every((c) => c.ok);
   const report = { ok, api_url: config.apiUrl, checks };
 
-  if (config.jsonMode) {
+  if (output.format !== OUTPUT_FORMAT.text) {
     yield* output.printJson(report);
   } else {
     yield* renderHuman(checks, ok);

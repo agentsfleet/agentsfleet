@@ -15,7 +15,7 @@ import { Effect, Redacted } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import {
@@ -81,6 +81,9 @@ export const loadBundle = (
       }),
   });
 
+const FLEET_INSTALLED = "Fleet installed" as const;
+const FLEET_UPDATED = "Fleet updated" as const;
+
 // POST the create + render the install result. Shared by both sources so the
 // Rows per request, and the ceiling on how many requests one lookup will make.
 // Find one gallery entry by id, following `next_cursor` to exhaustion.
@@ -115,7 +118,6 @@ const createAndRender = (
   fallbackName: string,
 ): Effect.Effect<void, CliError, CliConfig | HttpClient | Output> =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
@@ -128,8 +130,8 @@ const createAndRender = (
 
     const displayName = res.name || fallbackName;
 
-    if (config.jsonMode) {
-      yield* output.printJson({
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(FLEET_INSTALLED, {
         status: "installed",
         fleet_id: res.fleet_id,
         webhook_urls: res.webhook_urls ?? [],
@@ -161,7 +163,7 @@ export const installEffectFromFlags = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
+    const output = yield* Output;
 
     const libraryId = yield* requireLibraryId(flags.libraryId);
     const wsId = yield* requireWorkspaceId;
@@ -180,7 +182,11 @@ export const installEffectFromFlags = (
         }),
       );
     }
-    if (!config.jsonMode) yield* printRequirements(entry.requirements);
+    // The requirement preview is prose for a person; a script gets the same
+    // facts in the payload below and would only have to skip these lines.
+    if (output.format === OUTPUT_FORMAT.text) {
+      yield* printRequirements(entry.requirements);
+    }
     // Key the create body off the resolved tier. Fail loud on an unrecognized
     // visibility rather than silently posting a platform slug as a tenant id.
     if (entry.visibility !== VISIBILITY_PLATFORM && entry.visibility !== VISIBILITY_TENANT) {
@@ -210,7 +216,6 @@ export const updateEffectFromArgs = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
@@ -244,8 +249,8 @@ export const updateEffectFromArgs = (
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson({
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(FLEET_UPDATED, {
         status: "updated",
         fleet_id: fleetId,
         config_revision: res.config_revision,

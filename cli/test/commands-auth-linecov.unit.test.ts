@@ -10,7 +10,7 @@ import { authStatusEffect } from "../src/commands/auth.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
-import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output.ts";
 
 const API_URL = "https://api.test.local";
 const FIXED_SAVED_AT = 1700000000000;
@@ -36,12 +36,22 @@ interface Recorder {
 
 const makeRecorder = (): Recorder => ({ stdout: [], stderr: [] });
 
-const outputLayer = (rec: Recorder): Layer.Layer<Output> =>
+const outputLayer = (
+  rec: Recorder,
+  format: OutputFormat = OUTPUT_FORMAT.text,
+): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    format: OUTPUT_FORMAT.text,
+    format,
     intro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     info: (msg) => Effect.sync(() => rec.stdout.push(msg)),
-    success: (msg) => Effect.sync(() => rec.stdout.push(`ok: ${msg}`)),
+    success: (msg, data) =>
+      Effect.sync(() =>
+        rec.stdout.push(
+          format === OUTPUT_FORMAT.json
+            ? JSON.stringify(data ?? { message: msg })
+            : `ok: ${msg}`,
+        ),
+      ),
     warn: (msg) => Effect.sync(() => rec.stderr.push(`warn: ${msg}`)),
     error: (msg) => Effect.sync(() => rec.stderr.push(`error: ${msg}`)),
     outro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
@@ -106,7 +116,7 @@ const runJson = async (
       Effect.provide(configLayer(true)),
       Effect.provide(credentialsLayer(Option.some(Redacted.make(jwt)))),
       Effect.provide(okHttpLayer),
-      Effect.provide(outputLayer(rec)),
+      Effect.provide(outputLayer(rec, OUTPUT_FORMAT.json)),
     ),
   );
   const line = rec.stdout.find((l) => l.startsWith("{")) ?? "{}";

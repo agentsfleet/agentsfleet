@@ -14,7 +14,7 @@ import { Analytics } from "../src/services/telemetry/analytics.service.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
-import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output.ts";
 import {
   AuthError,
   ServerError,
@@ -36,12 +36,22 @@ const makeRecorder = (): Recorder => ({
   credentialOps: [],
 });
 
-const outputLayer = (rec: Recorder): Layer.Layer<Output> =>
+const outputLayer = (
+  rec: Recorder,
+  format: OutputFormat = OUTPUT_FORMAT.text,
+): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    format: OUTPUT_FORMAT.text,
+    format,
     intro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     info: (msg) => Effect.sync(() => rec.stdout.push(msg)),
-    success: (msg) => Effect.sync(() => rec.stdout.push(`ok: ${msg}`)),
+    success: (msg, data) =>
+      Effect.sync(() =>
+        rec.stdout.push(
+          format === OUTPUT_FORMAT.json
+            ? JSON.stringify(data ?? { message: msg })
+            : `ok: ${msg}`,
+        ),
+      ),
     warn: (msg) => Effect.sync(() => rec.stderr.push(`warn: ${msg}`)),
     error: (msg) => Effect.sync(() => rec.stderr.push(`error: ${msg}`)),
     outro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
@@ -172,7 +182,7 @@ describe("authStatusEffect", () => {
       Effect.provide(configLayer({ jsonMode: true })),
       Effect.provide(credentialsLayer(fakeCreds, rec)),
       Effect.provide(httpClientLayer(() => Effect.void as Effect.Effect<unknown, ServerError>)),
-      Effect.provide(outputLayer(rec)),
+      Effect.provide(outputLayer(rec, OUTPUT_FORMAT.json)),
     );
     await runWith(program);
     expect(rec.stdout.some((line) => line.includes("\"source\":\"none\""))).toBe(true);
@@ -345,7 +355,7 @@ describe("logoutEffect", () => {
       Effect.provide(configLayer({ jsonMode: true })),
       Effect.provide(credentialsLayer(fakeCreds, rec)),
       Effect.provide(httpClientLayer(() => Effect.succeed({ aborted_count: 0 }) as Effect.Effect<unknown, ServerError>)),
-      Effect.provide(outputLayer(rec)),
+      Effect.provide(outputLayer(rec, OUTPUT_FORMAT.json)),
       Effect.provide(analyticsLayer(rec)),
     );
     await runWith(program);
