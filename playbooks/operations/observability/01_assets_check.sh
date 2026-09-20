@@ -125,10 +125,22 @@ check_metrics_are_source_owned() {
     awk -F'\t' '!/^#/ && NF > 1 && $1 != "name" {print $1}' \
       "$REPO_ROOT/docs/metrics.census.tsv" | tr '.' '_' | sort -u
   )"
+  # Matched in-shell, not through `printf | grep -Fxq`. Under `set -o pipefail`
+  # that pipeline reports the WRITER's status too, and `grep -q` exits the
+  # moment it matches — so a metric near the top of the sorted census leaves
+  # `printf` writing into a closed pipe, and the SIGPIPE (141) becomes the
+  # pipeline's status even though the lookup SUCCEEDED. The `||` then fires and
+  # a declared metric is reported as undeclared. It is a race on whether the
+  # writer drains first, so it passes locally and fails on a loaded runner:
+  # `agentsfleet_admission_replays_total` sorts 3rd of 62 and lost it in CI.
+  # A `case` glob over the newline-delimited list asks the same question with
+  # no second process to outlive.
   while IFS= read -r metric; do
     [ -n "$metric" ] || continue
-    printf '%s\n' "$census" | grep -Fxq -- "${metric%_count}" ||
-      fail "Grafana asset references a metric no census row declares: $metric"
+    case $'\n'"$census"$'\n' in
+      *$'\n'"${metric%_count}"$'\n'*) ;;
+      *) fail "Grafana asset references a metric no census row declares: $metric" ;;
+    esac
   done < <(
     jq -r '.. | strings' "$DASHBOARD" "$ALERTS" |
       grep -oE '(agentsfleet|gen_ai)_[a-z0-9_]+' | sort -u
