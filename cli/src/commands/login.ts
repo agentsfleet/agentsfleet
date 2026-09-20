@@ -30,7 +30,7 @@ import { AGENTSFLEET_API_KEY_ENV, CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Input } from "../services/input.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Stdin } from "../services/stdin.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import {
@@ -80,9 +80,10 @@ const announceSession = Effect.fnUntraced(function* (
   sessionId: string,
   loginUrl: string,
 ) {
-  const config = yield* CliConfig;
-  if (config.jsonMode) return;
   const output = yield* Output;
+  // The session block is scaffolding a person reads while waiting; a script
+  // gets the whole outcome in one record when the flow completes.
+  if (output.format !== OUTPUT_FORMAT.text) return;
   yield* output.printSection("Login session");
   yield* output.printKeyValue({ session_id: sessionId, login_url: loginUrl });
 });
@@ -92,17 +93,16 @@ const maybeOpenBrowser = Effect.fnUntraced(function* (
   noOpen: boolean,
 ) {
   const config = yield* CliConfig;
+  const output = yield* Output;
   if (noOpen || config.noOpen) {
-    if (!config.jsonMode) {
-      const output = yield* Output;
+    if (output.format === OUTPUT_FORMAT.text) {
       yield* output.info(BROWSER_NOT_OPENED_MESSAGE);
     }
     return false;
   }
   const browser = yield* Browser;
   const opened = yield* browser.open(loginUrl);
-  if (!config.jsonMode) {
-    const output = yield* Output;
+  if (output.format === OUTPUT_FORMAT.text) {
     yield* output.info(
       opened ? "browser: opened" : BROWSER_NOT_OPENED_MESSAGE,
     );
@@ -127,8 +127,12 @@ const renderSuccess = Effect.fnUntraced(function* (
 ) {
   const config = yield* CliConfig;
   const output = yield* Output;
-  if (config.jsonMode) {
-    yield* output.printJson({
+  const who = identity === null ? "" : identity.displayName ?? identity.email;
+  yield* output.success(
+    identity !== null && who.length > 0
+      ? `signed in as ${who} — ${identity.tenantName}`
+      : LOGIN_COMPLETE,
+    {
       status: "complete",
       session_id: sessionId,
       token_saved: true,
@@ -137,14 +141,7 @@ const renderSuccess = Effect.fnUntraced(function* (
       // either way, so a script reads one shape and tests the value.
       email: identity?.email ?? null,
       tenant_name: identity?.tenantName ?? null,
-    });
-    return;
-  }
-  const who = identity === null ? "" : identity.displayName ?? identity.email;
-  yield* output.success(
-    identity !== null && who.length > 0
-      ? `signed in as ${who} — ${identity.tenantName}`
-      : LOGIN_COMPLETE,
+    },
   );
 });
 

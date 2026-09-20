@@ -31,39 +31,31 @@ interface ResolutionResponse {
   readonly resolved_by?: string | null;
 }
 
-const decideEffect = (
+const decideEffect = Effect.fn("approvals.decide")(function* (
   decision: GateDecision,
   gateIdPositional: string | undefined,
-): Effect.Effect<
-  void,
-  CliError,
-  CliConfig | Credentials | HttpClient | Output | Workspaces
-> =>
-  Effect.gen(function* () {
-    const config = yield* CliConfig;
-    const output = yield* Output;
-    const http = yield* HttpClient;
-    const workspaceId = yield* requireWorkspaceId;
-    const token = yield* resolveAuthToken;
-    const gateId = yield* requireGateId(gateIdPositional);
+) {
+  const output = yield* Output;
+  const http = yield* HttpClient;
+  const workspaceId = yield* requireWorkspaceId;
+  const token = yield* resolveAuthToken;
+  const gateId = yield* requireGateId(gateIdPositional);
 
-    const res = yield* http.request<ResolutionResponse>({
-      path: wsApprovalDecisionPath(workspaceId, gateId, decision),
-      method: HTTP_METHOD.post,
-      body: {},
-      token,
-    });
-
-    if (config.jsonMode) {
-      yield* output.printJson(res);
-      return;
-    }
-    // The outcome comes from the daemon rather than being assumed from the verb
-    // the operator typed: a gate someone else already decided answers with the
-    // decision that actually stands, and printing the typed verb would lie.
-    const outcome = res.outcome ?? decision;
-    yield* output.success(`Gate ${gateId} ${outcome}.`);
+  const res = yield* http.request<ResolutionResponse>({
+    path: wsApprovalDecisionPath(workspaceId, gateId, decision),
+    method: HTTP_METHOD.post,
+    body: {},
+    token,
   });
+
+  // The outcome comes from the daemon rather than being assumed from the verb
+  // the operator typed: a gate someone else already decided answers with the
+  // decision that actually stands, and printing the typed verb would lie.
+  const outcome = res.outcome ?? decision;
+  // One call answers both registers: the sentence a person reads and the
+  // record a script parses, so neither can be emitted without the other.
+  yield* output.success(`Gate ${gateId} ${outcome}.`, { ...res });
+});
 
 export const approvalsApproveEffectFromArgs = (
   gateId: string | undefined,

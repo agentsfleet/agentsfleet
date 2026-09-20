@@ -14,21 +14,19 @@
 // (schema/400_model_library.sql) and prints as a dash rather than $0.00.
 
 import { Effect } from "effect";
-import { CliConfig } from "../services/config.ts";
-import { Credentials } from "../services/credentials.ts";
-import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { resolveAuthToken } from "./workspace-guards.ts";
 import { catalogueProviders, fetchCatalogue, type LibraryModel } from "../lib/model-catalogue.ts";
 import { OPENAI_COMPATIBLE_PROVIDER } from "../constants/custom-endpoint.ts";
 import { ui, EMPTY_CELL } from "../output/index.ts";
-import type { CliError } from "../errors/index.ts";
 
 const FIELD_PROVIDER = "provider" as const;
 const FIELD_MODEL = "model" as const;
 const FIELD_CONTEXT = "context" as const;
 const FIELD_INPUT = "input" as const;
 const FIELD_OUTPUT = "output" as const;
+
+const MODELS_LISTED = "Model catalogue" as const;
 
 const NANOS_PER_USD = 1_000_000_000;
 const TOKENS_PER_K = 1_000;
@@ -65,61 +63,55 @@ const row = (m: LibraryModel): Record<string, string> => ({
   output: usd(m.output_nanos_per_mtok),
 });
 
-export const modelsEffectFromFlags = (
+export const modelsEffectFromFlags = Effect.fn("models.list")(function* (
   flags: ModelsFlags,
-): Effect.Effect<
-  void,
-  CliError,
-  CliConfig | Credentials | HttpClient | Output
-> =>
-  Effect.gen(function* () {
-    const config = yield* CliConfig;
-    const output = yield* Output;
+) {
+  const output = yield* Output;
 
-    const token = yield* resolveAuthToken;
-    const provider = flags.provider?.trim();
-    const models = yield* fetchCatalogue(token, { provider });
+  const token = yield* resolveAuthToken;
+  const provider = flags.provider?.trim();
+  const models = yield* fetchCatalogue(token, { provider });
 
-    if (config.jsonMode) {
-      yield* output.printJson({ models });
-      return;
-    }
+  if (output.format !== OUTPUT_FORMAT.text) {
+    yield* output.success(MODELS_LISTED, { models });
+    return;
+  }
 
-    if (models.length === 0) {
-      // An empty catalogue is a provisioning state, not an error: the table
-      // ships empty and the model_catalogue playbook fills it. Say which,
-      // because "no models" with no cause reads as a broken server.
-      yield* output.info(
-        provider
-          ? `No models for provider '${provider}'. Run \`agentsfleet models\` for the full catalogue.`
-          : "This server's model catalogue is empty — a platform admin primes it from scripts/model-library-allowlist.json.",
-      );
-      return;
-    }
-
-    yield* output.printTable(
-      [
-        { key: FIELD_PROVIDER, label: "PROVIDER" },
-        { key: FIELD_MODEL, label: "MODEL" },
-        { key: FIELD_CONTEXT, label: "CONTEXT" },
-        { key: FIELD_INPUT, label: "IN/MTOK" },
-        { key: FIELD_OUTPUT, label: "OUT/MTOK" },
-      ],
-      models.map(row),
+  if (models.length === 0) {
+    // An empty catalogue is a provisioning state, not an error: the table
+    // ships empty and the model_catalogue playbook fills it. Say which,
+    // because "no models" with no cause reads as a broken server.
+    yield* output.info(
+      provider
+        ? `No models for provider '${provider}'. Run \`agentsfleet models\` for the full catalogue.`
+        : "This server's model catalogue is empty — a platform admin primes it from scripts/model-library-allowlist.json.",
     );
+    return;
+  }
 
-    const providers = catalogueProviders(models);
+  yield* output.printTable(
+    [
+      { key: FIELD_PROVIDER, label: "PROVIDER" },
+      { key: FIELD_MODEL, label: "MODEL" },
+      { key: FIELD_CONTEXT, label: "CONTEXT" },
+      { key: FIELD_INPUT, label: "IN/MTOK" },
+      { key: FIELD_OUTPUT, label: "OUT/MTOK" },
+    ],
+    models.map(row),
+  );
+
+  const providers = catalogueProviders(models);
+  yield* output.info(
+    ui.dim(
+      `${models.length} model(s) across ${providers.length} provider(s). ` +
+        `Store a credential with: agentsfleet secret create <name> --provider <id> --api-key <key> --model <m>`,
+    ),
+  );
+  if (!provider) {
     yield* output.info(
       ui.dim(
-        `${models.length} model(s) across ${providers.length} provider(s). ` +
-          `Store a credential with: agentsfleet secret create <name> --provider <id> --api-key <key> --model <m>`,
+        `For an endpoint this catalogue does not carry, use --provider ${OPENAI_COMPATIBLE_PROVIDER} --base-url https://host/v1`,
       ),
     );
-    if (!provider) {
-      yield* output.info(
-        ui.dim(
-          `For an endpoint this catalogue does not carry, use --provider ${OPENAI_COMPATIBLE_PROVIDER} --base-url https://host/v1`,
-        ),
-      );
-    }
-  });
+  }
+});

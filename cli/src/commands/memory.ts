@@ -14,7 +14,7 @@ import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { resolveAuthToken, resolveWorkspaceId } from "./workspace-guards.ts";
 import { isNumber, isString } from "../lib/guards.ts";
@@ -194,7 +194,6 @@ const memoryReadEffect = (
   req: MemoryRequestSpec,
 ): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output | Workspaces> =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
@@ -208,7 +207,11 @@ const memoryReadEffect = (
 
     // Machine context — explicit --json, or stdout is not a terminal —
     // gets the published envelope verbatim: full content, raw updated_at.
-    if (config.jsonMode || req.stdoutIsTty === false) {
+    // A pipe gets the machine payload whatever the flag said: the table is for
+    // a terminal, and `stdoutIsTty === false` means there isn't one. The
+    // envelope goes out raw rather than through `success`, which answers in
+    // whichever register it was given and would print prose here.
+    if (output.format !== OUTPUT_FORMAT.text || req.stdoutIsTty === false) {
       yield* output.printJson(res);
       return;
     }

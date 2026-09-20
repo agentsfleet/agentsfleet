@@ -13,7 +13,7 @@ import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { isString } from "../lib/guards.ts";
@@ -61,6 +61,7 @@ const withCatalogueProvider = (
     if (target.model !== undefined) next[SECRET_FIELD_MODEL] = target.model;
     return next;
   });
+const SECRET_SHOWN = "Secret" as const;
 const STATUS_UPDATED = "updated" as const;
 
 
@@ -124,7 +125,6 @@ export const secretAddEffectFromFlags = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
@@ -156,7 +156,7 @@ export const secretAddEffectFromFlags = (
       );
 
     if (!stored) {
-      if (config.jsonMode) {
+      if (output.format !== OUTPUT_FORMAT.text) {
         yield* output.printJson({ status: "skipped", name, reason: "already_exists" });
       } else {
         yield* output.info(
@@ -166,11 +166,7 @@ export const secretAddEffectFromFlags = (
       return;
     }
 
-    if (config.jsonMode) {
-      yield* output.printJson({ status: "stored", name });
-    } else {
-      yield* output.success(`Secret '${name}' stored in vault.`);
-    }
+    yield* output.success(`Secret '${name}' stored in vault.`, { status: "stored", name });
   });
 
 /**
@@ -193,7 +189,6 @@ export const secretUpdateEffectFromFlags = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
@@ -215,11 +210,10 @@ export const secretUpdateEffectFromFlags = (
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson({ status: STATUS_UPDATED, name });
-    } else {
-      yield* output.success(`Secret '${name}' updated. The name stayed claimed throughout.`);
-    }
+    yield* output.success(
+      `Secret '${name}' updated. The name stayed claimed throughout.`,
+      { status: STATUS_UPDATED, name },
+    );
   });
 
 export const secretShowEffectFromName = (
@@ -230,14 +224,13 @@ export const secretShowEffectFromName = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
 
     const wsId = yield* requireWorkspaceId;
     const name = yield* requireName(rawName, "agentsfleet secret show <name>");
     const found = yield* findSecretByName(wsId, name);
     if (!found) {
-      if (config.jsonMode) {
+      if (output.format !== OUTPUT_FORMAT.text) {
         yield* output.printJson({ name, exists: false });
       } else {
         yield* output.error(`Secret '${name}' not found in vault.`);
@@ -250,8 +243,8 @@ export const secretShowEffectFromName = (
       );
     }
 
-    if (config.jsonMode) {
-      yield* output.printJson({
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(SECRET_SHOWN, {
         name: found.name,
         exists: true,
         created_at: found.created_at ?? null,
@@ -272,7 +265,6 @@ export const secretDeleteEffectFromName = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
@@ -285,9 +277,5 @@ export const secretDeleteEffectFromName = (
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson({ status: "deleted", name });
-    } else {
-      yield* output.success(`Secret '${name}' removed from vault.`);
-    }
+    yield* output.success(`Secret '${name}' removed from vault.`, { status: "deleted", name });
   });

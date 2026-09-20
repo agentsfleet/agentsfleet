@@ -98,10 +98,11 @@ export const makeLayer = (
         Effect.sync(() => { rec.requests.push(input); return httpReply<T>(input); }),
     }),
     Layer.succeed(Output, {
-      format: OUTPUT_FORMAT.text,
+      format: jsonMode ? OUTPUT_FORMAT.json : OUTPUT_FORMAT.text,
       intro: (m) => Effect.sync(() => { rec.stdout.push(m); }),
       info: (m) => Effect.sync(() => { rec.stdout.push(m); }),
-      success: (m) => Effect.sync(() => { rec.stdout.push(m); }),
+      success: (m, d) =>
+        Effect.sync(() => { rec.stdout.push(jsonMode && d ? JSON.stringify(d) : m); }),
       warn: (m) => Effect.sync(() => { rec.stderr.push(m); }),
       error: (m) => Effect.sync(() => { rec.stderr.push(m); }),
       outro: (m) => Effect.sync(() => { rec.stdout.push(m); }),

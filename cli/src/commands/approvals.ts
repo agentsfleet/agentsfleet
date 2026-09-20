@@ -13,7 +13,7 @@ import { Effect, type Redacted } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import {
   requireValue,
@@ -101,6 +101,8 @@ export const fetchGates = (
   });
 
 const EMPTY_INBOX = "No approval gates in this workspace." as const;
+const GATES_LISTED = "Approval gates" as const;
+const GATE_SHOWN = "Approval gate" as const;
 const SECTION_TITLE = "Approval gate" as const;
 const SHOW_USAGE = "usage: agentsfleet approvals show <gate_id>" as const;
 const GATE_ID_REQUIRED = "<gate_id> is required" as const;
@@ -128,15 +130,14 @@ export const approvalsListEffectFromArgs = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const workspaceId = yield* requireWorkspaceId;
     const token = yield* resolveAuthToken;
 
     const gates = yield* fetchGates(workspaceId, token, { fleetId: fleetFilter });
 
-    if (config.jsonMode) {
-      yield* output.printJson({ items: gates });
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(GATES_LISTED, { items: gates });
       return;
     }
     if (gates.length === 0) {
@@ -172,7 +173,6 @@ export const approvalsShowEffectFromArgs = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
     const workspaceId = yield* requireWorkspaceId;
@@ -184,8 +184,8 @@ export const approvalsShowEffectFromArgs = (
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson(gate);
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(GATE_SHOWN, { ...gate });
       return;
     }
     // The blast radius is the sentence a person needs in full to decide; it is

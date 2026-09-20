@@ -13,7 +13,7 @@ import { LIBRARY_ID_PLACEHOLDER } from "../constants/cli-flags.ts";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsFleetsPath, wsFleetPath } from "../lib/api-paths.ts";
@@ -81,7 +81,6 @@ export const statusEffect: Effect.Effect<
   CliError,
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > = Effect.gen(function* () {
-  const config = yield* CliConfig;
   const output = yield* Output;
   const http = yield* HttpClient;
   const wsId = yield* requireWorkspaceId;
@@ -92,8 +91,8 @@ export const statusEffect: Effect.Effect<
     token,
   });
 
-  if (config.jsonMode) {
-    yield* output.printJson(res);
+  if (output.format !== OUTPUT_FORMAT.text) {
+    yield* output.success(FLEETS_SHOWN, { ...res });
     return;
   }
 
@@ -145,7 +144,6 @@ const setStatusEffect = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
     const verb = STATUS_VERB[status];
@@ -153,18 +151,14 @@ const setStatusEffect = (
     const id = yield* requireFleetId(fleetId, `agentsfleet ${verb} <fleet_id>`);
     const token = yield* resolveAuthToken;
 
-    const res = yield* http.request<unknown>({
+    const res = yield* http.request<Record<string, unknown>>({
       path: wsFleetPath(wsId, id),
       method: "PATCH",
       body: { status },
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson(res);
-    } else {
-      yield* output.success(`${id} ${STATUS_PAST_TENSE[status]}.`);
-    }
+    yield* output.success(`${id} ${STATUS_PAST_TENSE[status]}.`, { ...res });
   });
 
 export const stopEffectFromId = (
@@ -199,7 +193,6 @@ export const deleteEffectFromId = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
     const wsId = yield* requireWorkspaceId;
@@ -212,15 +205,13 @@ export const deleteEffectFromId = (
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson({ fleet_id: id, deleted: true });
-    } else {
-      yield* output.success(`${id} deleted.`);
-    }
+    yield* output.success(`${id} deleted.`, { fleet_id: id, deleted: true });
   });
 
 // The status empty state names both halves of the next move: where the choices
 // are listed, and the command that installs one.
+const FLEETS_SHOWN = "Fleet status" as const;
+
 const NO_FLEETS_HINT =
   `No fleets running. List choices with: agentsfleet library. Install one with: agentsfleet install --library ${LIBRARY_ID_PLACEHOLDER}` as const;
 

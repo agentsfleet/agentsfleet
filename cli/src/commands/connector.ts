@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import {
   requireValue,
@@ -28,6 +28,9 @@ type ConnectorStatusResponse = Record<string, unknown>;
 const PROVIDER_RE = /^[a-z][a-z0-9_-]{0,63}$/;
 const CONTROL_BYTES_RE = /[\u0000-\u001f\u007f-\u009f]/g;
 const CONNECTOR_LIST_HINT = "run `agentsfleet connector list` to see provider ids";
+const CONNECTORS_LISTED = "Connectors" as const;
+const CONNECTOR_SHOWN = "Connector" as const;
+
 const FIELD_PROVIDER = "provider";
 const FIELD_STATE = "state";
 
@@ -67,7 +70,6 @@ export const connectorListEffectFromArgs = (
   workspaceIdFlag: string | undefined,
 ): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output | Workspaces> =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
@@ -79,8 +81,10 @@ export const connectorListEffectFromArgs = (
     });
 
     const summaries = entries.map(summarizeConnector);
-    if (config.jsonMode) {
-      yield* output.printJson(summaries);
+    if (output.format !== OUTPUT_FORMAT.text) {
+      // An array, not a record: the payload is what `printJson(summaries)`
+      // emitted, so a script indexing position 0 still finds the same row.
+      yield* output.success(CONNECTORS_LISTED, summaries);
       return;
     }
     if (summaries.length === 0) {
@@ -110,7 +114,6 @@ export const connectorStatusEffectFromArgs = (
   providerRaw: string | undefined,
 ): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output | Workspaces> =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
@@ -136,8 +139,8 @@ export const connectorStatusEffectFromArgs = (
       : null;
     const summary = summarizeStatus(entry, res);
 
-    if (config.jsonMode) {
-      yield* output.printJson(summary);
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(CONNECTOR_SHOWN, { ...summary });
       return;
     }
 

@@ -57,10 +57,10 @@ const makeLayer = (
       save: () => Effect.void,
     }),
     Layer.succeed(Output, {
-      format: OUTPUT_FORMAT.text,
+      format: jsonMode ? OUTPUT_FORMAT.json : OUTPUT_FORMAT.text,
       intro: (m) => Effect.sync(() => { captured.push(m); }),
       info: (m) => Effect.sync(() => { captured.push(m); }),
-      success: (m) => Effect.sync(() => { captured.push(m); }),
+      success: (m, d) => Effect.sync(() => { captured.push(d ? JSON.stringify(d) : m); }),
       warn: (m) => Effect.sync(() => { captured.push(m); }),
       error: (m) => Effect.sync(() => { captured.push(m); }),
       outro: (m) => Effect.sync(() => { captured.push(m); }),

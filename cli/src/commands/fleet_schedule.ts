@@ -7,7 +7,7 @@ import { Effect, type Redacted } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import {
   wsFleetSchedulePath,
@@ -98,19 +98,18 @@ const parseStatus = (value: string | undefined): Effect.Effect<string | undefine
   );
 };
 
-const machineOutput = (config: CliConfig, stdoutIsTty: boolean | undefined): boolean =>
-  config.jsonMode || stdoutIsTty === false;
+const machineOutput = (output: Output, stdoutIsTty: boolean | undefined): boolean =>
+  output.format !== OUTPUT_FORMAT.text || stdoutIsTty === false;
 
 const scheduleIdOf = (row: ScheduleRow): string => row.schedule_id ?? "";
 
 const printSchedule = (
   output: Output,
-  config: CliConfig,
   row: ScheduleRow,
   stdoutIsTty: boolean | undefined,
   verb: string,
 ): Effect.Effect<void> =>
-  machineOutput(config, stdoutIsTty)
+  machineOutput(output, stdoutIsTty)
     ? output.printJson(row)
     : output.success(
         `${verb} ${scheduleIdOf(row)} (${row.status ?? "-"}, sync=${row.sync ?? "-"})`,
@@ -148,7 +147,7 @@ export const scheduleAddEffectFromArgs = (
       token: ctx.token,
       body: { cron, timezone: flags.timezone ?? DEFAULT_TIMEZONE, message },
     });
-    yield* printSchedule(ctx.output, ctx.config, row, flags.stdoutIsTty, "created");
+    yield* printSchedule(ctx.output, row, flags.stdoutIsTty, "created");
   });
 
 export const scheduleListEffectFromArgs = (
@@ -162,7 +161,7 @@ export const scheduleListEffectFromArgs = (
       path: wsFleetSchedulesPath(ctx.wsId, fleetId),
       token: ctx.token,
     });
-    if (machineOutput(ctx.config, flags.stdoutIsTty)) {
+    if (machineOutput(ctx.output, flags.stdoutIsTty)) {
       yield* ctx.output.printJson(res);
       return;
     }
@@ -216,7 +215,7 @@ export const scheduleUpdateEffectFromArgs = (
       token: ctx.token,
       body,
     });
-    yield* printSchedule(ctx.output, ctx.config, row, flags.stdoutIsTty, "updated");
+    yield* printSchedule(ctx.output, row, flags.stdoutIsTty, "updated");
   });
 
 export const scheduleRmEffectFromArgs = (
@@ -233,7 +232,7 @@ export const scheduleRmEffectFromArgs = (
       method: "DELETE",
       token: ctx.token,
     });
-    if (machineOutput(ctx.config, flags.stdoutIsTty)) {
+    if (machineOutput(ctx.output, flags.stdoutIsTty)) {
       yield* ctx.output.printJson({ deleted: true, schedule_id: scheduleId });
     } else {
       yield* ctx.output.success(`removed ${scheduleId}`);
@@ -253,7 +252,7 @@ export const scheduleStatusEffectFromArgs = (
       path: wsFleetSchedulePath(ctx.wsId, fleetId, scheduleId),
       token: ctx.token,
     });
-    yield* printSchedule(ctx.output, ctx.config, row, flags.stdoutIsTty, "schedule");
+    yield* printSchedule(ctx.output, row, flags.stdoutIsTty, "schedule");
   });
 
 export const scheduleSyncEffectFromArgs = (
@@ -270,5 +269,5 @@ export const scheduleSyncEffectFromArgs = (
       method: HTTP_METHOD.post,
       token: ctx.token,
     });
-    yield* printSchedule(ctx.output, ctx.config, row, flags.stdoutIsTty, "synced");
+    yield* printSchedule(ctx.output, row, flags.stdoutIsTty, "synced");
   });

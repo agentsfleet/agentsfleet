@@ -15,7 +15,7 @@ import { Effect, Option, Redacted } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import {
   readIdentity,
   IDENTITY_ROUTE_ABSENT_STATUS,
@@ -110,7 +110,7 @@ export const whoamiEffect: Effect.Effect<
   // here as nothing. This branch is what that person sees, and it says the same
   // thing the guard would have.
   if (Option.isNone(token)) {
-    if (config.jsonMode) {
+    if (output.format !== OUTPUT_FORMAT.text) {
       yield* output.printJson({
         authenticated: false,
         api_url: config.apiUrl,
@@ -141,7 +141,7 @@ export const whoamiEffect: Effect.Effect<
     ),
   );
 
-  if (config.jsonMode) {
+  if (output.format !== OUTPUT_FORMAT.text) {
     yield* output.printJson({
       authenticated: true,
       user_id: identity.userId,
