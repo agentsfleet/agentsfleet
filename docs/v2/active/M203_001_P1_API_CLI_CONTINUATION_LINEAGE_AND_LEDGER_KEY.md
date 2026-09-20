@@ -134,7 +134,7 @@ The events-page cost subselect binds both `fleet_id` and `event_id`, so the new 
 - **Dimension 2.1** DONE — fresh bootstrap yields the composite unique, no old unique, and `fleet_id NOT NULL` → Test `ledger_key_shape_on_fresh_bootstrap`
 - **Dimension 2.2** DONE — a database provisioned through 915 upgrades to the same shape → Test `ledger_key_shape_after_upgrade`
 - **Dimension 2.3** DONE — two fleets charged under one event id string hold two rows, each with its own amounts → Test `same_event_id_two_fleets_two_rows`
-- **Dimension 2.4** — forty renewals on one fleet's event still accumulate into one stage row → Test `test_renewal_accumulates_per_fleet_event`
+- **Dimension 2.4** DONE — forty renewals on one fleet's event still accumulate into one stage row → Test `renewal_accumulates_per_fleet_event`
 - **Dimension 2.5** DONE — a redelivered receive insert still writes nothing → Test `receive_insert_dedups_per_fleet_event`
 - **Dimension 2.6** DONE — an insert with NULL `fleet_id` is refused → Test `ledger_refuses_null_fleet`
 - **Dimension 2.7** DONE — every ledger `ON CONFLICT` in the workspace names the composite → Test `every_ledger_conflict_target_carries_the_fleet`
@@ -211,7 +211,7 @@ The race's occurrence rate is not instrumented: the converge arm makes it harmle
 | 2.1 | integration | `ledger_key_shape_on_fresh_bootstrap` | `pg_constraint` holds `uq_usage_ledger_event_id_charge_type_fleet_id`, not the old name; `attnotnull` true for `fleet_id` |
 | 2.2 | integration | `ledger_key_shape_after_upgrade` | apply slots through 915, seed one charge, apply 916 → same shape, row retained |
 | 2.3 | integration | `same_event_id_two_fleets_two_rows` | two fleets in one tenant charged under one `event_id` string → two rows; each `credit_deducted_nanos` equals its own charge |
-| 2.4 | integration | `test_renewal_accumulates_per_fleet_event` | forty renewals on (F, X) → one stage row; sum equals the forty deltas (regression) |
+| 2.4 | integration | `renewal_accumulates_per_fleet_event` | forty renewals on (F, X) → one stage row; sum equals the forty deltas (regression) |
 | 2.5 | integration | `receive_insert_dedups_per_fleet_event` | the receive insert twice for (F, X) → one row (regression) |
 | 2.6 | integration | `ledger_refuses_null_fleet` | insert with NULL `fleet_id` → SQLSTATE 23502 naming `fleet_id` (negative) |
 | 2.7 | unit | `every_ledger_conflict_target_carries_the_fleet` | every `ON CONFLICT` following `billing.usage_ledger` in `rustd/crates/*/src` names `(event_id, charge_type, fleet_id)`; count = 3; goes red when one is reverted |
