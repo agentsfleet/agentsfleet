@@ -13,27 +13,31 @@ comments that flag correctness bugs, missing tests, and risky changes.
 
 ## The event names the Pull Request — read it, never assume one
 
-The delivery that wakes this fleet carries the whole GitHub `pull_request`
-payload. Two fields are all that is needed to address it, and both must be read
-from that payload on every run:
+The delivery that wakes this fleet is NOT GitHub's raw webhook. The daemon
+reduces it to a flat digest and that digest is the event body, so the raw
+payload's nested paths do not exist here. Two of its fields address the Pull
+Request, and both must be read on every run:
 
-- `repository.full_name` — `owner/repo`, already in the form the API path wants.
-- `pull_request.number` — the Pull Request this delivery is about.
+- `repo` — `owner/repo`, already in the form the API path wants.
+- `number` — the Pull Request this delivery is about.
+
+The digest also carries `action`, `title`, `url`, `state`, `draft`, `author`,
+`head_ref` and `base_ref`. Read those instead of fetching them again.
 
 A hard-coded repository or number reviews the wrong Pull Request on the second
 delivery and every one after it. There is no default and no "the latest": a
 fleet woken by one event reviews the Pull Request that event names.
 
 ## Steps
-1. Read `repository.full_name` and `pull_request.number` from the event.
-2. Fetch the diff: `GET https://api.github.com/repos/{repository.full_name}/pulls/{pull_request.number}`
+1. Read `repo` and `number` from the event.
+2. Fetch the diff: `GET https://api.github.com/repos/{repo}/pulls/{number}`
    with `Accept: application/vnd.github.diff`. The unversioned media type is
    what the daemon's own connector uses (`application/vnd.github+json`); the
    older `vnd.github.v3.*` spelling still answers but is not what this
    repository writes.
 3. Identify correctness, security, and test-coverage gaps.
 4. Post the findings as one review:
-   `POST https://api.github.com/repos/{repository.full_name}/pulls/{pull_request.number}/reviews`
+   `POST https://api.github.com/repos/{repo}/pulls/{number}/reviews`
    with `event: COMMENT` and one entry in `comments` per finding, each carrying
    its `path` and `line`. One review, not one request per finding.
 

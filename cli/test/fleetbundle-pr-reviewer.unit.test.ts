@@ -6,6 +6,10 @@
 // the second delivery and every one after it. The live fleet shipped exactly
 // that prose and reviewed nothing.
 //
+// Naming the WRONG fields is the same failure wearing a fix: an earlier pass
+// here named GitHub's raw `repository.full_name` and `pull_request.number`,
+// which the ingress digest does not carry.
+//
 // Asserted on the file rather than on a parse, because the defect is in what
 // the sentences say — a bundle can be perfectly well-formed and still tell a
 // model nothing it can act on.
@@ -14,9 +18,14 @@ import { describe, test, expect } from "bun:test";
 
 const BUNDLE_DIR = "tests/fixtures/fleetbundle/github-pr-reviewer";
 
-/// The two payload fields that address a Pull Request, spelled as the GitHub
-/// `pull_request` event spells them.
-const EVENT_FIELDS = ["repository.full_name", "pull_request.number"] as const;
+/// The two digest fields that address a Pull Request.
+///
+/// Spelled as `afd_wire::ingress::PullRequestDigest` spells them, NOT as
+/// GitHub's raw webhook does. The daemon reduces every delivery to that flat
+/// digest before a fleet sees it — deliberately, so an attacker-influenced
+/// eighty-field payload never reaches a model — so `repository.full_name` and
+/// `pull_request.number` do not exist on the event at all.
+const EVENT_FIELDS = ["`repo`", "`number`"] as const;
 
 const skill = async () =>
   await Bun.file(`${import.meta.dir}/../../${BUNDLE_DIR}/SKILL.md`).text();
