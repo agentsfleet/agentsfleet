@@ -5,36 +5,23 @@
 //! shows how many answers it is still owed without a read. Proven against the
 //! production subscriber for the reason the daemon's activity suite is: a raw
 //! `SUBSCRIBE` would agree with a publisher that had drifted from its reader.
+//!
+//! This file holds the ANNOUNCEMENT concern: that a frame goes out, what it
+//! counts, and what happens when the queue will not take it. The continuation
+//! and runless concerns are siblings.
 
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::time::Duration;
-
 use afd_approval::{Decision, Inbox, Resolution};
 use afd_core::clock::UnixMillis;
-use afd_dragonfly::hub::Received;
-use afd_dragonfly::{ReadyIndex, Subscription, SubscriptionHub};
-use serde_json::{Value, json};
+use afd_dragonfly::SubscriptionHub;
+use serde_json::json;
 
 use crate::lane::{Lane, NOW_MS, WINDOW_MS, dead_queue, dragonfly_config, sweeper_exclusive};
-
-/// Who answers, when a test needs an operator.
-const OPERATOR: &str = "human:fixture";
-
-/// The note an operator leaves.
-const NOTE: &str = "looks right";
-
-/// The resolver a swept gate records, mirrored from the store.
-const SWEEPER: &str = "system:approval_gate_sweeper";
-
-/// How long a published frame is given to reach the subscriber.
-const FRAME_DEADLINE: Duration = Duration::from_secs(5);
-
-/// How long the hub's pump is given to register the subscription with Dragonfly.
-const SUBSCRIBE_SETTLE: Duration = Duration::from_millis(250);
+use crate::tail_watch::{NOTE, OPERATOR, SUBSCRIBE_SETTLE, SWEEPER, next_frame};
 
 /// A decision is announced on the fleet's live tail, count included.
 ///
@@ -133,87 +120,6 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
     assert_eq!(swept.get("pending_approvals"), Some(&json!(1)));
 }
 
-/// An approval opens the continued run on the tail before it announces the
-/// answer.
-///
-/// The common operator path, and the one with an ordering to prove: the
-/// continuation row is inserted by the resolve, so the runner's pull finds it
-/// already there and announces nothing — the resolve is the one writer that
-/// can open it on the tail. A watcher hears `event_received` for the
-/// continuation, then `gate_resolved` for the answer, and the count on the
-/// answer says the sibling still waits.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
-    let lane = Lane::isolated().await;
-    let now = UnixMillis::from_millis(NOW_MS);
-
-    let hub = SubscriptionHub::start(dragonfly_config())
-        .await
-        .expect("the lane's Dragonfly accepts a subscriber");
-    let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
-    tokio::time::sleep(SUBSCRIBE_SETTLE).await;
-
-    let approved = lane.seed_gate(NOW_MS + WINDOW_MS).await;
-    let _still_waiting = lane.seed_gate(NOW_MS + WINDOW_MS).await;
-    let before = afd_events::fleet_counters(&lane.pool, lane.fleet.as_str())
-        .await
-        .expect("the counters read before the resolve");
-    let outcome = lane
-        .inbox
-        .resolve(&approved, Decision::Approved, OPERATOR, NOTE, None, now)
-        .await
-        .expect("the resolve must not fault");
-    let continuation = match outcome {
-        Resolution::Resolved(resolved) => resolved.continuation_event_id,
-        Resolution::AlreadyResolved(_) | Resolution::NotFound => None,
-    }
-    .expect("a pending gate is this caller's to answer, and an approval continues its run");
-
-    let opened = next_frame(&mut tail)
-        .await
-        .expect("the continued run opens on the fleet's tail");
-    assert_eq!(opened.get("kind"), Some(&json!("event_received")));
-    assert_eq!(opened.get("event_id"), Some(&json!(continuation)));
-    assert_eq!(opened.get("event_type"), Some(&json!("continuation")));
-    assert_eq!(
-        opened.get("actor"),
-        Some(&json!(format!(
-            "continuation:{}",
-            lane.gate_column(&approved, "event_id").await
-        )))
-    );
-    // The continuation's own insert moved the count, and its frame carries
-    // the moved figure — read after the row landed, on the same connection.
-    assert_eq!(
-        opened.get("events_processed"),
-        Some(&json!(before.events_processed + 1)),
-        "the continued run's frame counts the row it wrote"
-    );
-
-    let answered = next_frame(&mut tail)
-        .await
-        .expect("then the answer reaches the tail");
-    assert_eq!(answered.get("kind"), Some(&json!("gate_resolved")));
-    assert_eq!(answered.get("status"), Some(&json!("approved")));
-    assert_eq!(
-        answered.get("pending_approvals"),
-        Some(&json!(1)),
-        "the sibling gate still waits, and the frame says so"
-    );
-    // Read AFTER the continuation, so the answer carries the continued run's
-    // row too — a read before it would be one short.
-    assert_eq!(
-        answered.get("events_processed"),
-        Some(&json!(before.events_processed + 1)),
-        "the answer's snapshot includes the continuation it started"
-    );
-    assert_eq!(
-        answered.get("budget_used_nanos"),
-        Some(&json!(before.budget_used_nanos))
-    );
-}
-
 /// A re-raised action's rows are answered together, and counted together.
 ///
 /// `action_id` carries no unique constraint: a park that re-raises an action
@@ -252,158 +158,6 @@ async fn a_re_raised_actions_rows_are_counted_out_together() {
     );
 }
 
-/// A gate that held no run is answered, announced with no event, and
-/// continues nothing.
-///
-/// The column is nullable for exactly this row — a standing grant raised at
-/// install time — and an approval of it must decode, land, and say `null`
-/// where a run's answer would name its event, rather than fail after the
-/// row moved or continue a run that never was.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
-    let lane = Lane::isolated().await;
-    let now = UnixMillis::from_millis(NOW_MS);
-
-    let hub = SubscriptionHub::start(dragonfly_config())
-        .await
-        .expect("the lane's Dragonfly accepts a subscriber");
-    let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
-    tokio::time::sleep(SUBSCRIBE_SETTLE).await;
-
-    let runless = lane.seed_runless_gate(NOW_MS + WINDOW_MS).await;
-    let outcome = lane
-        .inbox
-        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None, now)
-        .await
-        .expect("the resolve must not fault");
-    let continued = match outcome {
-        Resolution::Resolved(resolved) => resolved.continuation_event_id,
-        Resolution::AlreadyResolved(_) | Resolution::NotFound => Some(String::new()),
-    };
-    assert_eq!(continued, None, "nothing to continue, and nothing invented");
-
-    let frame = next_frame(&mut tail)
-        .await
-        .expect("the answer reaches the fleet's tail");
-    assert_eq!(frame.get("kind"), Some(&json!("gate_resolved")));
-    assert_eq!(frame.get("status"), Some(&json!("approved")));
-    assert_eq!(frame.get("event_id"), Some(&Value::Null));
-    assert_eq!(lane.status_of(&runless).await, "approved");
-    assert_eq!(
-        ready_token(&lane).await.as_deref(),
-        Some(lane.fleet.as_str()),
-        "a runless approval wakes the original parked delivery"
-    );
-}
-
-/// A repeated answer to a runless gate still wakes the parked delivery.
-///
-/// The loser receives `AlreadyResolved`, but from the runner's point of view
-/// the operator pressed the same wake button again. That must refresh Dragonfly too:
-/// the original delivery is still the thing that will re-read the durable row.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn an_already_resolved_runless_gate_refreshes_readiness() {
-    let lane = Lane::isolated().await;
-    let now = UnixMillis::from_millis(NOW_MS);
-    let runless = lane.seed_runless_gate(NOW_MS + WINDOW_MS).await;
-
-    let first = lane
-        .inbox
-        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None, now)
-        .await
-        .expect("the first answer resolves the gate");
-    assert!(matches!(first, Resolution::Resolved(_)));
-
-    ReadyIndex::new(lane.queue.clone())
-        .force_clear(lane.fleet.as_str())
-        .await
-        .expect("the test can clear the ready mark");
-    assert_eq!(ready_token(&lane).await, None);
-
-    let second = lane
-        .inbox
-        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None, now)
-        .await
-        .expect("the repeated answer reads the standing decision");
-    assert!(matches!(second, Resolution::AlreadyResolved(_)));
-    assert_eq!(
-        ready_token(&lane).await.as_deref(),
-        Some(lane.fleet.as_str()),
-        "the already-resolved runless path wakes the parked delivery"
-    );
-}
-
-/// A lost readiness refresh does not undo the durable answer.
-///
-/// The wake is best-effort: Dragonfly can be down after Postgres accepts the
-/// person's decision. The resolve must still answer with the row's outcome so
-/// a retry or sweeper can repair the readiness edge later.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_runless_gate_with_a_dead_ready_index_still_resolves() {
-    let lane = Lane::isolated().await;
-    let now = UnixMillis::from_millis(NOW_MS);
-    let inbox = Inbox::new(
-        lane.pool.clone(),
-        dead_queue(),
-        afd_admission::Admissions::for_tests(lane.pool.clone(), dead_queue()),
-    );
-    let runless = lane.seed_runless_gate(NOW_MS + WINDOW_MS).await;
-
-    let outcome = inbox
-        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None, now)
-        .await
-        .expect("a lost ready mark does not reject the answer");
-    assert!(matches!(outcome, Resolution::Resolved(_)));
-    assert_eq!(lane.status_of(&runless).await, "approved");
-}
-
-/// An approval whose continuation the queue refuses is still answered.
-///
-/// The row moved before the continuation was attempted, so the decision is the
-/// operator's whatever the queue does: the answer is announced (into the same
-/// queue, which drops it) and the row reads `approved`.
-///
-/// The continuation SUCCEEDS, which is the guarantee the admission ledger was
-/// built for. Its row commits to Postgres before the append is attempted, so a
-/// queue that will not take the entry leaves an admitted row with a NULL
-/// receipt and the replay sweeper owes it one. Reporting a failure here would
-/// now be a lie: the run restarts when the queue comes back. Before the ledger
-/// the entry WAS the acceptance, so a refused append lost the continuation and
-/// an error was the only honest answer.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn an_approval_whose_continuation_the_queue_refuses_is_still_answered() {
-    let lane = Lane::isolated().await;
-    let now = UnixMillis::from_millis(NOW_MS);
-    let inbox = Inbox::new(
-        lane.pool.clone(),
-        dead_queue(),
-        afd_admission::Admissions::for_tests(lane.pool.clone(), dead_queue()),
-    );
-    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
-
-    let outcome = inbox
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None, now)
-        .await
-        .expect("a queue that refuses the entry does not lose the continuation");
-    assert_eq!(lane.status_of(&action).await, "approved");
-    let continuation = match outcome {
-        Resolution::Resolved(resolved) => resolved.continuation_event_id,
-        Resolution::AlreadyResolved(_) | Resolution::NotFound => None,
-    };
-    assert!(
-        continuation.is_some(),
-        "the continuation has a logical id even though no entry carries it yet"
-    );
-    assert!(
-        lane.awaits_replay(&action).await,
-        "the continuation is admitted with no receipt, so the sweeper owes it an entry"
-    );
-}
-
 /// A queue that will not take the frame does not fail the decision.
 ///
 /// The row moved over live Postgres before the announcement ran, and a
@@ -431,24 +185,4 @@ async fn a_queue_that_will_not_take_the_frame_does_not_fail_the_decision() {
         "the operator decided; the lost announcement is the log's, not theirs"
     );
     assert_eq!(lane.status_of(&action).await, "denied");
-}
-
-/// The next frame on the tail, as JSON, or `None` if none arrives in time.
-async fn next_frame(tail: &mut Subscription) -> Option<Value> {
-    let received = tokio::time::timeout(FRAME_DEADLINE, tail.recv())
-        .await
-        .ok()?;
-    let Received::Message(message) = received.expect("the subscription stays live") else {
-        return None;
-    };
-    serde_json::from_str(&message.payload).ok()
-}
-
-/// The current ready token for the lane's fleet.
-async fn ready_token(lane: &Lane) -> Option<String> {
-    ReadyIndex::new(lane.queue.clone())
-        .token_for(lane.fleet.as_str())
-        .await
-        .expect("the ready index is readable")
-        .map(|token| token.as_str().to_owned())
 }
