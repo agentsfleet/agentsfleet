@@ -13,7 +13,7 @@ import { secretUpdateEffectFromFlags } from "../src/commands/fleet_secret.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
-import { Output } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { ServerError, ValidationError, type CliError } from "../src/errors/index.ts";
 
@@ -30,6 +30,7 @@ interface Sent {
 
 const makeOutputLayer = (captured: string[]): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    format: OUTPUT_FORMAT.text,
     intro: (msg) => Effect.sync(() => { captured.push(msg); }),
     info: (msg) => Effect.sync(() => { captured.push(msg); }),
     success: (msg) => Effect.sync(() => { captured.push(`ok: ${msg}`); }),

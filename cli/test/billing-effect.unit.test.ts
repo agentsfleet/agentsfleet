@@ -8,7 +8,7 @@ import { billingShowEffectFromArgs } from "../src/commands/billing.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
-import { Output } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
 import {
   ServerError,
   ValidationError,
@@ -36,6 +36,7 @@ const makeRecorder = (): Recorder => ({ stdout: [], stderr: [], httpCalls: [] })
 
 const outputLayer = (rec: Recorder): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    format: OUTPUT_FORMAT.text,
     intro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     info: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     success: (msg) => Effect.sync(() => rec.stdout.push(`ok: ${msg}`)),

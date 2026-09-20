@@ -22,7 +22,7 @@ import { EVENT_STATUS } from "../src/constants/event-status.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
-import { Output, type OutputShape } from "../src/services/output.ts";
+import { Output, type OutputShape, OUTPUT_FORMAT } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import type { StreamGetCallback } from "../src/lib/sse.ts";
 import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts";
@@ -98,6 +98,7 @@ export const makeLayer = (
         Effect.sync(() => { rec.requests.push(input); return httpReply<T>(input); }),
     }),
     Layer.succeed(Output, {
+      format: OUTPUT_FORMAT.text,
       intro: (m) => Effect.sync(() => { rec.stdout.push(m); }),
       info: (m) => Effect.sync(() => { rec.stdout.push(m); }),
       success: (m) => Effect.sync(() => { rec.stdout.push(m); }),

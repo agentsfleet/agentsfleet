@@ -12,7 +12,8 @@
 //     also consumes CliConfig for telemetryPosthogKey/Host.
 //   - CommandRuntime is per-invocation; populated from MainLayerInput.commandPath
 //   - HttpClient consumes CliConfig
-//   - Output, Credentials, Browser, Workspaces have no service deps
+//   - Output consumes CliConfig for the `--json` register
+//   - Credentials, Browser, Workspaces have no service deps
 //
 // One entry point: `mainLayerFor(input)` composes a layer with config/
 // streams/commandPath overrides and the invocation's resolved environment.
@@ -104,8 +105,13 @@ export const mainLayerFor = (
 ): Layer.Layer<MainLayerServices> => {
   const configBase =
     input.config !== undefined ? cliConfigFromValuesLayer(input.config) : cliConfigLayer;
-  const outputBase =
-    input.streams !== undefined ? outputFromStreamsLayer(input.streams) : outputStdioLayer;
+  // Output reads its register (`--json`) off CliConfig, so it is provided the
+  // config the same way HttpClient is provided its base URL. `Layer.mergeAll`
+  // does not wire requirements between the layers it merges — a merged layer
+  // still has to have its own deps satisfied.
+  const outputBase = (
+    input.streams !== undefined ? outputFromStreamsLayer(input.streams) : outputStdioLayer
+  ).pipe(Layer.provide(configBase));
   const stdinBase =
     input.stdin !== undefined ? stdinFromStreamLayer(input.stdin) : stdinLayer;
 

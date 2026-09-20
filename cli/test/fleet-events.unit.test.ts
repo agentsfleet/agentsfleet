@@ -9,7 +9,7 @@ import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { eventsEffectFromFlags } from "../src/commands/fleet_events.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient } from "../src/services/http-client.ts";
-import { Output } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { ValidationError, type CliError } from "../src/errors/index.ts";
@@ -30,6 +30,7 @@ const configLayer = (): Layer.Layer<CliConfig> =>
 
 const outputLayer = (): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    format: OUTPUT_FORMAT.text,
     intro: () => Effect.void,
     info: () => Effect.void,
     success: () => Effect.void,

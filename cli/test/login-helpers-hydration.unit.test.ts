@@ -10,7 +10,7 @@ import {
   HttpClient,
   type HttpRequestInput,
 } from "../src/services/http-client.ts";
-import { Output } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
 import {
   Workspaces,
   type WorkspacesValue,
@@ -31,6 +31,7 @@ const makeRec = (): Rec => ({ stderr: [], saved: 0, savedValue: null });
 
 const outputLayer = (rec: Rec): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    format: OUTPUT_FORMAT.text,
     intro: () => Effect.void,
     info: () => Effect.void,
     success: () => Effect.void,

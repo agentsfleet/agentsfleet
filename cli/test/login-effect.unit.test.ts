@@ -22,7 +22,7 @@ import {
   type HttpRequestInput,
 } from "../src/services/http-client.ts";
 import { Input } from "../src/services/input.ts";
-import { Output } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
 import { Stdin } from "../src/services/stdin.ts";
 import {
   TelemetryRuntime,
@@ -54,6 +54,7 @@ const makeRec = (): Rec => ({ stdout: [], stderr: [] });
 
 const outputLayer = (rec: Rec): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    format: OUTPUT_FORMAT.text,
     intro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     info: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     success: (msg) => Effect.sync(() => rec.stdout.push(`ok: ${msg}`)),

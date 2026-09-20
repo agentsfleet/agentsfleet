@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Layer } from "effect";
 import { exitToCliError, renderCliError } from "../src/lib/cli-error-render.ts";
-import { Output } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
 import { ServerError, UnexpectedError, ValidationError } from "../src/errors/index.ts";
 
 const recordingOutput = (sink: string[]) =>
   Layer.succeed(Output, {
+    format: OUTPUT_FORMAT.text,
     intro: () => Effect.void,
     info: () => Effect.void,
     success: () => Effect.void,

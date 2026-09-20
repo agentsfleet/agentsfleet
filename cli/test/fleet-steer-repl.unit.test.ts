@@ -6,7 +6,7 @@ import { EVENT_STATUS } from "../src/constants/event-status.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
-import { Output } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { ReplSignalEmitter, type ReplInputStream, type ReplOutputStream } from "../src/lib/repl.ts";
 import type { StreamGetCallback } from "../src/lib/sse.ts";
@@ -86,6 +86,7 @@ const testLayer = (
         }),
     }),
     Layer.succeed(Output, {
+      format: OUTPUT_FORMAT.text,
       intro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
       info: (msg) => Effect.sync(() => rec.stdout.push(msg)),
       success: (msg) => Effect.sync(() => rec.stdout.push(msg)),
