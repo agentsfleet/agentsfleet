@@ -29,11 +29,9 @@
 import { InvalidArgumentError } from "commander";
 import path from "node:path";
 import fs from "node:fs";
-import { validate as isValidUuid, version as uuidVersion } from "uuid";
 import { HTTPS_SCHEME_PREFIX } from "../constants/custom-endpoint.ts";
+import { EXAMPLE_UUIDV7, isValidId } from "../lib/id.ts";
 import { isString } from "../lib/guards.ts";
-
-export const EXAMPLE_UUIDV7 = "0192a3b4-c5d6-7e8f-9012-345678901234";
 
 export const INTEGER_RE = /^-?\d+$/;
 const NUMBER_RE = /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/;
@@ -250,35 +248,3 @@ export function parseJsonObjectOption(
   };
 }
 
-// ── Handler-side type guards / result-bag validators ─────────────────
-
-export type ValidateResult =
-  | { ok: true }
-  | { ok: false; message: string };
-
-export function isValidId(value: unknown): value is string {
-  if (!value || !isString(value)) return false;
-  // `uuid`'s validate is case-insensitive, but server ids are canonical
-  // lowercase: an uppercase alias is the same row in Postgres and a different
-  // key in Redis/cache, so the server rejects it too. Keep the two runtimes
-  // agreeing — see `rustd/crates/afd_core/src/id.rs`.
-  if (value !== value.toLowerCase()) return false;
-  if (!isValidUuid(value)) return false;
-  return uuidVersion(value) === 7;
-}
-
-export function validateRequiredId(
-  value: unknown,
-  name: string,
-): ValidateResult {
-  if (!value || !isString(value) || value.trim().length === 0) {
-    return { ok: false, message: `${name} is required` };
-  }
-  if (!isValidId(value)) {
-    return {
-      ok: false,
-      message: `invalid ${name}: expected uuidv7 format (e.g. ${EXAMPLE_UUIDV7})`,
-    };
-  }
-  return { ok: true };
-}

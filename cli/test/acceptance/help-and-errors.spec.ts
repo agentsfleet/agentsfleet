@@ -97,7 +97,7 @@ let unauthenticatedStateDir: string;
 beforeAll(async () => {
   const pkgRaw = await fs.readFile(path.join(CLI_ROOT, "package.json"), "utf8");
   pkgVersion = (JSON.parse(pkgRaw) as { version: string }).version;
-  validateModule = await import(path.join(CLI_ROOT, "src/program/validators.ts")) as ValidateModule;
+  validateModule = await import(path.join(CLI_ROOT, "src/lib/id.ts")) as ValidateModule;
   unauthenticatedStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-unauth-"));
 });
 

@@ -11,7 +11,7 @@ import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { isString } from "../lib/guards.ts";
 import { wsFleetEventsPath } from "../lib/api-paths.ts";
-import { validateRequiredId } from "../program/validators.ts";
+import { validateRequiredId } from "../lib/id.ts";
 import { ui, EMPTY_CELL } from "../output/index.ts";
 import {
   ValidationError,

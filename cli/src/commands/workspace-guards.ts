@@ -15,7 +15,7 @@ import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { resolveToken } from "../services/http-client.ts";
-import { validateRequiredId } from "../program/validators.ts";
+import { validateRequiredId } from "../lib/id.ts";
 import {
   ConfigError,
   ValidationError,
