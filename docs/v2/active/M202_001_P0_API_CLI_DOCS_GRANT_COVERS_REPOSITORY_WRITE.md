@@ -32,11 +32,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** A fleet holding an approved `github` integration grant runs a `pull_request` event from wake to posted review — token minted, diff read, comments posted — raising zero approval cards, and the next event after `grant revoke` is refused without minting.
+**Goal (testable):** A fleet holding an approved `github` integration grant runs a `pull_request` event from wake to posted review — token minted, diff read, comments posted — raising zero approval cards, and the next event after `grant delete` is refused without minting.
 
 **Problem:** An operator installs the Pull Request reviewer, opens a Pull Request, and gets an unbounded queue of approval cards instead of a review. Each model turn raises its own card, and every card after the first is blank — it names no action, because a continuation carries no message of its own. Reproduced live on Sep 19, 2026: one steer against `agentsfleet/linkwarden#1` produced three `repository_write` cards, two approvals, 27,393,300 nanos of spend, and zero review comments on the Pull Request.
 
-**Solution summary:** The integration grant already names the fleet, and the fleet's own `TRIGGER.md` already names the repositories and the access level — so the grant is the authorisation, and a second per-event question adds no information a person can act on. The grant lands approved at install, the unconditional `repository_write` park is deleted, and the credential mint reads the grant instead of a gate row. `budget.daily_dollars` becomes the money brake it was always meant to be, and `agentsfleet grant revoke` is the manual stop.
+**Solution summary:** The integration grant already names the fleet, and the fleet's own `TRIGGER.md` already names the repositories and the access level — so the grant is the authorisation, and a second per-event question adds no information a person can act on. The grant lands approved at install, the unconditional `repository_write` park is deleted, and the credential mint reads the grant instead of a gate row. `budget.daily_dollars` becomes the money brake it was always meant to be, and `agentsfleet grant delete` is the manual stop.
 
 ## PR Intent & comprehension handshake
 
@@ -171,7 +171,7 @@ Repair branch identity  (owner decision, Sep 19, 2026 — see Discovery)
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
 | Grant absent | Fleet installed before this change, or a credential declared by a later PATCH | Mint refused, `write_mint_refused` names `grant_absent`; the operator reinstalls or the request path raises the grant. |
-| Grant revoked | Operator ran `grant revoke` | Mint refused; the next event is refused before any provider call and before any spend. |
+| Grant revoked | Operator ran `grant delete` | Mint refused; the next event is refused before any provider call and before any spend. |
 | Grant read fails | Database unavailable mid-run | Refuse closed, never admit; the event stays leasable and re-decides on the next poll. |
 | Repository not declared | Fleet's binding does not name the repository the event carries | Unchanged — the mint's existing scoping refuses, and `Granted::verify` refuses a response that widened. |
 | Budget exhausted | Fleet spent its `daily_dollars` | Unchanged — the money gate halts the fleet; this is the brake the retired ceiling duplicated. |
@@ -286,7 +286,7 @@ A MOVED row is never rendered ✅. The criterion has not been met; it has change
 ## Product Clarity (authoring record)
 
 1. **Successful user moment** — Priya opens a Pull Request, walks away, and comes back to find review comments on it. She was asked nothing.
-2. **Preserved user behaviour** — `grant revoke` still stops a fleet instantly. Gate rules a workspace authored still park events. An in-flight parked event still resolves from its recorded gate. Budget still halts a fleet that overspends.
+2. **Preserved user behaviour** — `grant delete` still stops a fleet instantly. Gate rules a workspace authored still park events. An in-flight parked event still resolves from its recorded gate. Budget still halts a fleet that overspends.
 3. **Optimal-way check** — this is the most direct shape: the authorisation a person already gave is the one consulted. The gap to unconstrained-optimal is that the declared repository list is trusted as written rather than snapshotted at approval; acceptable now because the App installation bounds which repositories a token can ever reach, and revoke is immediate.
 4. **Rebuild-vs-iterate** — iterate. The grant table, its statuses and its revoke path already exist and are already the memory of a human answer; nothing about them needs rebuilding to carry this.
 5. **What we build** — an approved-at-install grant, a deleted park, a mint that reads the grant, and the surfaces that describe it.
@@ -308,13 +308,13 @@ A MOVED row is never rendered ✅. The criterion has not been met; it has change
 - **Owner decisions (verbatim).**
   > Indy (2026-09-19): "But instead how about do the integration_grant on a repo level as well, once Priya has connected their github repo, and the PR #42 is triggered is part of the repo list, the fleet repsonsible for it must start? meaning an auto approved grant with option to deny, or the regular what revoke/approve pattern we have." — context: the shape of the fix.
   > Indy (2026-09-19): "I want an auto approve, and i dont want a repository_grants table, as this is an integration_grant ..." — context: overrides the agent's recommendation to ask once at bind time and to add a table.
-  > Indy (2026-09-19): "budet is the brake, i dont this we must cap on 32. the cap is already there. and the if priya revokes is a gate too (manual)" — context: retires `REPOSITORY_WRITE_SPEND_CEILING`; `budget.daily_dollars` and `grant revoke` are the brakes.
+  > Indy (2026-09-19): "budet is the brake, i dont this we must cap on 32. the cap is already there. and the if priya revokes is a gate too (manual)" — context: retires `REPOSITORY_WRITE_SPEND_CEILING`; `budget.daily_dollars` and `grant delete` are the brakes.
 - **Owner decision during implementation (Sep 19, 2026)** — `repair::branch_for`
   names the branch after the APPROVED gate and `policy::egress::write` locks that
   string as the only ref a run may create, so §2 leaves the write lease refused at
   `Misconfigured::NoRepairBranch`. Offered four sources; Indy selected **the event**,
   rejecting the grant on evidence that its unique constraint collides every event.
-- **Agent recommendation not taken, recorded for the record** — the agent recommended asking once at bind time rather than auto-approving, on the grounds that the declared repository list is editable under the same scope that wakes the fleet, so auto-approval trusts a list no person confirmed. The owner weighed it and chose auto-approve. The residual risk is bounded by the App installation, `budget.daily_dollars` and `grant revoke`, and is stated in Product Clarity item 3.
+- **Agent recommendation not taken, recorded for the record** — the agent recommended asking once at bind time rather than auto-approving, on the grounds that the declared repository list is editable under the same scope that wakes the fleet, so auto-approval trusts a list no person confirmed. The owner weighed it and chose auto-approve. The residual risk is bounded by the App installation, `budget.daily_dollars` and `grant delete`, and is stated in Product Clarity item 3.
 - **Metrics review** — pending; no analytics/funnel playbook update is expected, because the retired card has no funnel defined over it. Confirm at `/review`.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test` per Section and at the boundary, `/orly-write-integration-test` at the boundary, gstack `/review`, `orly-babysit-prs` after each push.
 - **Deferrals** — none at authoring. Every item in Out of Scope is a named separate defect, not a deferral of this spec's own scope.

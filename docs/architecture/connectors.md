@@ -103,7 +103,7 @@ The connector registry (`rustd/crates/afd_credential/`) holds a compile-time `Co
    unrevoked row admits a mint. An install writes that row approved, because
    installing the fleet IS the answer: the bundle names the integration and the
    fleet's binding names the repositories and the access level. A repository
-   write raises no per-event card; `agentsfleet grant revoke` is the manual stop
+   write raises no per-event card; `agentsfleet grant delete` is the manual stop
    and takes effect on the next event before any provider call, and
    `budget.daily_dollars` bounds the money. The token is still narrowed to the
    declared repositories by `ScopedRequest::for_binding` and the response still
