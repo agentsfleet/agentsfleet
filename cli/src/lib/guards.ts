@@ -13,7 +13,6 @@ const TYPEOF = {
   string: "string",
   number: "number",
   object: "object",
-  boolean: "boolean",
 } as const;
 
 export const isString = (value: unknown): value is string =>
@@ -21,9 +20,6 @@ export const isString = (value: unknown): value is string =>
 
 export const isNumber = (value: unknown): value is number =>
   typeof value === TYPEOF.number;
-
-export const isBoolean = (value: unknown): value is boolean =>
-  typeof value === TYPEOF.boolean;
 
 /**
  * A non-null object, which is what every caller that wrote
