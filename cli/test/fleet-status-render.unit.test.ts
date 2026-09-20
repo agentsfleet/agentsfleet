@@ -9,7 +9,7 @@ import { Effect, Exit, Layer, Option, Redacted } from "effect";
 import { statusEffect } from "../src/commands/fleet.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
-import { Output } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { Credentials } from "../src/services/credentials.ts";
 
@@ -36,6 +36,7 @@ const configLayer = (): Layer.Layer<CliConfig> =>
 
 const capturingOutput = (sink: Array<Record<string, string>>): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    format: OUTPUT_FORMAT.text,
     intro: () => Effect.void,
     info: () => Effect.void,
     success: () => Effect.void,

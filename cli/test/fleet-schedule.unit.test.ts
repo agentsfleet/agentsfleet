@@ -12,7 +12,7 @@ import {
 import { CliConfig, type CliConfigShape } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
-import { Output, type OutputShape } from "../src/services/output.ts";
+import { Output, type OutputShape, OUTPUT_FORMAT } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000000001";
@@ -45,6 +45,7 @@ const outputLayer = (cap: Capture): Layer.Layer<Output> =>
   Layer.succeed(
     Output,
     Output.of({
+      format: OUTPUT_FORMAT.text,
       intro: () => Effect.void,
       info: (msg) => Effect.sync(() => { cap.infos.push(msg); }),
       success: (msg) => Effect.sync(() => { cap.successes.push(msg); }),

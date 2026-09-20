@@ -10,7 +10,7 @@ import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 import { formatTimestamp, logsEffectFromFlags } from "../src/commands/fleet_logs.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient } from "../src/services/http-client.ts";
-import { Output } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { wsFleetEventsPath } from "../src/lib/api-paths.ts";
@@ -44,6 +44,7 @@ interface OutputSpy {
 
 const outputLayer = (spy: OutputSpy): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    format: OUTPUT_FORMAT.text,
     intro: () => Effect.void,
     info: (line: string) =>
       Effect.sync(() => {

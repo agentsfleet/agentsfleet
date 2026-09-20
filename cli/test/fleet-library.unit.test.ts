@@ -11,7 +11,7 @@ import { libraryEffect } from "../src/commands/fleet_library.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
-import { Output } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 
 const TOKEN = "test.jwt.templates";
@@ -57,6 +57,7 @@ const makeLayer = (
       save: () => Effect.void,
     }),
     Layer.succeed(Output, {
+      format: OUTPUT_FORMAT.text,
       intro: (m) => Effect.sync(() => { captured.push(m); }),
       info: (m) => Effect.sync(() => { captured.push(m); }),
       success: (m) => Effect.sync(() => { captured.push(m); }),
@@ -225,6 +226,7 @@ describe("libraryEffect — a gallery larger than one page", () => {
           }),
       }),
       Layer.succeed(Output, {
+        format: OUTPUT_FORMAT.text,
         intro: () => Effect.void,
         info: (m) => Effect.sync(() => { captured.push(m); }),
         success: () => Effect.void,

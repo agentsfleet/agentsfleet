@@ -10,7 +10,7 @@ import { authStatusEffect } from "../src/commands/auth.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
-import { Output } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
 
 const API_URL = "https://api.test.local";
 const FIXED_SAVED_AT = 1700000000000;
@@ -38,6 +38,7 @@ const makeRecorder = (): Recorder => ({ stdout: [], stderr: [] });
 
 const outputLayer = (rec: Recorder): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    format: OUTPUT_FORMAT.text,
     intro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     info: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     success: (msg) => Effect.sync(() => rec.stdout.push(`ok: ${msg}`)),

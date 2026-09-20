@@ -6,7 +6,7 @@ import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
-import { Output } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import type { CliError, NetworkError, ServerError } from "../src/errors/index.ts";
@@ -34,6 +34,7 @@ export const configLayer = (jsonMode: boolean): Layer.Layer<CliConfig> =>
 
 export const outputLayer = (cap: CapturedOutput): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    format: OUTPUT_FORMAT.text,
     intro: () => Effect.void,
     info: (msg) => Effect.sync(() => { cap.infos.push(msg); }),
     success: () => Effect.void,

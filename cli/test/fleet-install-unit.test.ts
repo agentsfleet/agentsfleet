@@ -23,7 +23,7 @@ import { loadSkillFromPath } from "../src/lib/load-skill-from-path.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
-import { Output } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000c1a172";
@@ -68,6 +68,7 @@ const makeLayer = (
         }),
     }),
     Layer.succeed(Output, {
+      format: OUTPUT_FORMAT.text,
       intro: (m) => Effect.sync(() => { captured.push(m); }),
       info: (m) => Effect.sync(() => { captured.push(m); }),
       success: (m) => Effect.sync(() => { captured.push(m); }),
