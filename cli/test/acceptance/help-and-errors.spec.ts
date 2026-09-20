@@ -11,106 +11,20 @@
 
 import { describe, it, beforeAll, afterAll } from "bun:test";
 import assert from "node:assert/strict";
-import fs from "node:fs/promises";
-import { createServer } from "node:http";
-import type { Socket } from "node:net";
-import os from "node:os";
-import path from "node:path";
-import url from "node:url";
-
-import {
-  COMMAND_GROUPS,
-  AUTH_REQUIRED_REPRESENTATIVE,
-} from "./fixtures/command-matrix.ts";
+import { COMMAND_GROUPS, AUTH_REQUIRED_REPRESENTATIVE } from "./fixtures/command-matrix.ts";
 import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
-
 import { runFleetctl, composeEnv } from "./fixtures/cli.js";
 import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
+import { expectInvalidSubcommand, assertNoConnectionError } from "./fixtures/negatives.ts";
 import {
-  expectInvalidSubcommand,
-  assertNoConnectionError,
-} from "./fixtures/negatives.ts";
-
-const HERE = path.dirname(url.fileURLToPath(import.meta.url));
-const CLI_ROOT = path.resolve(HERE, "..", "..");
-
-const ANSI_RE = /\x1b\[[0-9;]*m/g;
-const TELEMETRY_NOT_DISABLED = "0";
-const TELEMETRY_EXIT_BUDGET_MS = 5_000;
-
-interface StalledServer {
-  readonly url: string;
-  close(): Promise<void>;
-}
-
-async function startStalledServer(): Promise<StalledServer> {
-  const sockets = new Set<Socket>();
-  const server = createServer(() => {
-    // Keep the response open so the client request timeout must end the flush.
-  });
-  server.on("connection", (socket) => {
-    sockets.add(socket);
-    socket.once("close", () => sockets.delete(socket));
-  });
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const address = server.address();
-  if (address === null || typeof address === "string") {
-    for (const socket of sockets) socket.destroy();
-    throw new Error("stalled telemetry server did not open a TCP port");
-  }
-  return {
-    url: `http://127.0.0.1:${address.port}`,
-    close: () =>
-      new Promise<void>((resolve, reject) => {
-        for (const socket of sockets) socket.destroy();
-        server.close((error) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-          resolve();
-        });
-      }),
-  };
-}
-
-function stripAnsi(text: string): string {
-  return text.replace(ANSI_RE, "").replace(/\s+$/gm, "");
-}
-
-interface ValidateResult {
-  readonly ok: boolean;
-  readonly message: string;
-}
-
-interface ValidateModule {
-  validateRequiredId(value: string, label: string): ValidateResult;
-}
-
-let pkgVersion: string;
-let validateModule: ValidateModule;
-let unauthenticatedStateDir: string;
-
-beforeAll(async () => {
-  const pkgRaw = await fs.readFile(path.join(CLI_ROOT, "package.json"), "utf8");
-  pkgVersion = (JSON.parse(pkgRaw) as { version: string }).version;
-  validateModule = await import(path.join(CLI_ROOT, "src/lib/id.ts")) as ValidateModule;
-  unauthenticatedStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-unauth-"));
-});
-
-afterAll(async () => fs.rm(unauthenticatedStateDir, { recursive: true, force: true }));
-
-function emptyEnv(extra?: Record<string, string>): Record<string, string> {
-  return composeEnv({
-    AGENTSFLEET_API_URL: UNROUTABLE_API_URL,
-    AGENTSFLEET_STATE_DIR: unauthenticatedStateDir,
-    NO_COLOR: "1",
-    ...(extra ?? {}),
-  });
-}
+  TELEMETRY_NOT_DISABLED,
+  TELEMETRY_EXIT_BUDGET_MS,
+  startStalledServer,
+  stripAnsi,
+  pkgVersion,
+  validateModule,
+  emptyEnv,
+} from "./helpers-help-and-errors.ts";
 
 describe("help triplet", () => {
   const invocations: ReadonlyArray<ReadonlyArray<string>> = [[], ["help"], ["-h"], ["--help"]];

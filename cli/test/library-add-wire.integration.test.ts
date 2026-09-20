@@ -1,130 +1,21 @@
+// `library add` — what actually goes on the wire once a source is accepted,
+// what comes back on the machine surface, and what the command still prints
+// when the daemon answers with fields missing.
+
 import { describe, test, expect } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts";
+import { bufferStream, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
-
-const WS_ID = "01900000-0000-7000-8000-00000067e210";
-const LIBRARIES = `/v1/workspaces/${WS_ID}/fleet-libraries`;
-const LIBRARY_ID = "01900000-0000-7000-8000-0000000aa001";
-
-const SKILL_MD = "---\nname: probe\n---\n# Probe\n";
-const TRIGGER_MD = "---\nname: probe\n---\n# Wake rule\n";
-
-const created = (overrides: Record<string, unknown> = {}) => ({
-  id: LIBRARY_ID,
-  name: "probe",
-  visibility: "tenant",
-  requirements: { credentials: ["github"], tools: [], network_hosts: [], trigger_present: true },
-  ...overrides,
-});
-
-const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
-  withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_library_add" }, fn);
-
-/** A bundle directory on disk; `withTrigger: false` omits TRIGGER.md, which the
- *  daemon treats as optional. */
-const withBundle = async <T>(
-  withTrigger: boolean,
-  fn: (dir: string) => Promise<T>,
-): Promise<T> => {
-  const dir = mkdtempSync(join(tmpdir(), "af-bundle-"));
-  try {
-    writeFileSync(join(dir, "SKILL.md"), SKILL_MD);
-    if (withTrigger) writeFileSync(join(dir, "TRIGGER.md"), TRIGGER_MD);
-    return await fn(dir);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-};
-
-const parseBody = (raw: string | null): Record<string, unknown> =>
-  raw === null ? {} : (JSON.parse(raw) as Record<string, unknown>);
-
-describe("library add — source selection", () => {
-  test("refuses a bare invocation before any request leaves the process", async () => {
-    await authedScope(async () => {
-      await withMockApi({}, async (apiUrl, calls) => {
-        const out = bufferStream();
-        const err = bufferStream();
-        const code = await runCli(["library", "add"], {
-          stdout: out.stream,
-          stderr: err.stream,
-          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
-        });
-        expect(code).toBe(4);
-        expect(err.read()).toContain("exactly one of --github, --from, or --template");
-        expect(calls).toEqual([]);
-      });
-    });
-  });
-
-  test("refuses two sources before any request leaves the process", async () => {
-    await authedScope(async () => {
-      await withMockApi({}, async (apiUrl, calls) => {
-        const out = bufferStream();
-        const err = bufferStream();
-        const code = await runCli(
-          ["library", "add", "--github", "owner/repo", "--template", "starter"],
-          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
-        );
-        expect(code).toBe(4);
-        expect(calls).toEqual([]);
-      });
-    });
-  });
-
-  test("refuses --ref on a source that has no repository", async () => {
-    await authedScope(async () => {
-      await withMockApi({}, async (apiUrl, calls) => {
-        const out = bufferStream();
-        const err = bufferStream();
-        const code = await runCli(
-          ["library", "add", "--template", "starter", "--ref", "main"],
-          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
-        );
-        expect(code).toBe(4);
-        expect(err.read()).toContain("--github only");
-        expect(calls).toEqual([]);
-      });
-    });
-  });
-
-  test("refuses a --github value that is not owner/repo", async () => {
-    await authedScope(async () => {
-      await withMockApi({}, async (apiUrl, calls) => {
-        const out = bufferStream();
-        const err = bufferStream();
-        const code = await runCli(["library", "add", "--github", "not-a-repo"], {
-          stdout: out.stream,
-          stderr: err.stream,
-          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
-        });
-        expect(code).toBe(4);
-        expect(err.read()).toContain("owner/repo");
-        expect(calls).toEqual([]);
-      });
-    });
-  });
-
-  test("refuses a --from path that is not a bundle, without a request", async () => {
-    await authedScope(async () => {
-      await withMockApi({}, async (apiUrl, calls) => {
-        const out = bufferStream();
-        const err = bufferStream();
-        const code = await runCli(
-          ["library", "add", "--from", join(tmpdir(), "af-does-not-exist-9e3f")],
-          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
-        );
-        expect(code).toBe(5);
-        expect(calls).toEqual([]);
-      });
-    });
-  });
-});
+import {
+  LIBRARIES,
+  LIBRARY_ID,
+  SKILL_MD,
+  TRIGGER_MD,
+  created,
+  authedScope,
+  withBundle,
+  parseBody,
+} from "./helpers-library-add.ts";
 
 describe("library add — request shaping", () => {
   test("--github posts a github source carrying the repository", async () => {
@@ -358,78 +249,6 @@ describe("library add — degraded daemon answers", () => {
         expect(text).toContain("<library_id>");
         expect(text).not.toContain("undefined");
       });
-    });
-  });
-});
-
-describe("library add --from — a bundle an upload cannot carry", () => {
-  const withExtras = async <T>(
-    extra: { readonly dir?: string; readonly file?: string },
-    fn: (dir: string) => Promise<T>,
-  ): Promise<T> => {
-    const dir = mkdtempSync(join(tmpdir(), "af-bundle-extra-"));
-    try {
-      writeFileSync(join(dir, "SKILL.md"), SKILL_MD);
-      writeFileSync(join(dir, "TRIGGER.md"), TRIGGER_MD);
-      if (extra.dir) {
-        mkdirSync(join(dir, extra.dir));
-        writeFileSync(join(dir, extra.dir, "owasp.md"), "# checklist\n");
-      }
-      if (extra.file) writeFileSync(join(dir, extra.file), "helper\n");
-      return await fn(dir);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  };
-
-  const addFrom = async (dir: string) => {
-    let captured = { code: 0, err: "", calls: 0 };
-    await withMockApi(
-      { [`POST ${LIBRARIES}`]: () => jsonResponse(201, created()) },
-      async (apiUrl, calls) => {
-        const out = bufferStream();
-        const err = bufferStream();
-        const code = await runCli(["library", "add", "--from", dir], {
-          stdout: out.stream,
-          stderr: err.stream,
-          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
-        });
-        captured = { code, err: err.read(), calls: calls.length };
-      },
-    );
-    return captured;
-  };
-
-  test("refuses a bundle with a support directory instead of dropping it", async () => {
-    await authedScope(async () => {
-      // `tests/fixtures/fleetbundle/security-reviewer` ships `checklists/`, so
-      // this is the ordinary shape. Reading the two root documents and
-      // reporting success installs a Fleet whose instructions reference files
-      // that were never uploaded.
-      const r = await withExtras({ dir: "checklists" }, addFrom);
-      expect(r.code).toBe(4);
-      expect(r.err).toContain("checklists/");
-      expect(r.err).toContain("--github");
-      expect(r.calls).toBe(0);
-    });
-  });
-
-  test("refuses a bundle with a stray support file", async () => {
-    await authedScope(async () => {
-      const r = await withExtras({ file: "helper.py" }, addFrom);
-      expect(r.code).toBe(4);
-      expect(r.err).toContain("helper.py");
-      expect(r.calls).toBe(0);
-    });
-  });
-
-  test("a dotfile is not a support file and does not block the upload", async () => {
-    await authedScope(async () => {
-      // `.gitignore` sits in real bundle repositories and is not content the
-      // Fleet reads; the daemon's own archive reader skips dot-prefixed paths.
-      const r = await withExtras({ file: ".gitignore" }, addFrom);
-      expect(r.code).toBe(0);
-      expect(r.calls).toBe(1);
     });
   });
 });
