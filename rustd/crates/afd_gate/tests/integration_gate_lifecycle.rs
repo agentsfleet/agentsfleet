@@ -5,14 +5,27 @@
 mod fixture;
 
 use afd_crypto::entropy::Entropy;
-use afd_fleet_runtime::FleetConfig;
-use afd_gate::gate::{Gates, Refused, Trigger, Verdict, Waiting};
+use afd_gate::gate::{Gates, Trigger, Verdict, Waiting};
 
 use self::fixture::{Fixture, NOW, config, config_gates, connect_redis};
 
+/// The rule a gate rules fleet is parked by, and the only one this suite parks on.
+const APPROVE_EVERY_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"approve","gate_kind":"deploy","blast_radius":"production"}]}"#;
+
+/// The kind no daemon path raises any longer.
+const RETIRED_WRITE_KIND: &str = "repository_write";
+
+/// Dimensions 2.1 and 2.2 — a write fleet runs every event, and every
+/// continuation of one, without a card.
+///
+/// This suite used to assert the opposite, and the assertion was the defect.
+/// A fleet whose binding declared WRITE access parked EVERY first-encounter
+/// event, and a continuation gets a fresh event identifier, so a single steer
+/// raised one approval card per model turn and posted nothing. The standing
+/// integration grant authorises the mint; nobody is asked per event.
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn write_gate_parks_once_and_honours_each_durable_outcome() {
+async fn test_m202_001_write_fleet_and_its_continuations_pass_without_a_card() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let gates = Gates::new(
@@ -22,72 +35,116 @@ async fn write_gate_parks_once_and_honours_each_durable_outcome() {
     );
     let writing = config(true);
 
-    assert_approved_path(&gates, &fixture, &writing).await;
-    assert_denied_path(&gates, &fixture, &writing).await;
-    assert_expired_path(&gates, &fixture, &writing).await;
+    // 2.1 — the first encounter.
     assert_eq!(
         gates
-            .check(fixture.check("event-free", &config(false)), NOW)
+            .check(fixture.check("event-write-first", &writing), NOW)
             .await,
         Verdict::Pass
+    );
+    // 2.2 — the turns after it. Each carries its own event identifier, which is
+    // exactly why the retired park re-asked: it read no `resumes_event_id` and
+    // saw every turn as a first encounter.
+    for turn in [
+        "event-write-turn-2",
+        "event-write-turn-3",
+        "event-write-turn-4",
+    ] {
+        assert_eq!(
+            gates.check(fixture.check(turn, &writing), NOW).await,
+            Verdict::Pass,
+            "{turn} raised a card"
+        );
+    }
+
+    assert_eq!(
+        fixture.card_count().await,
+        0,
+        "a write fleet raised an approval card"
     );
     fixture.cleanup().await;
 }
 
-async fn assert_approved_path(gates: &Gates, fixture: &Fixture, writing: &FleetConfig) {
+/// Dimension 2.3 — deleting the write park did not delete the rules path.
+///
+/// The boundary that survives. A workspace that asks to be consulted still is,
+/// and that is the one thing this milestone must not destabilize.
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn test_m202_001_rule_gated_fleet_still_parks() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let gates = Gates::new(
+        fixture.database.clone(),
+        connect_redis().await,
+        Entropy::new(),
+    );
+    let ruled = config_gates(APPROVE_EVERY_CHAT);
+
     assert_eq!(
-        gates
-            .check(fixture.check("event-approved", writing), NOW)
-            .await,
+        gates.check(fixture.check("event-ruled", &ruled), NOW).await,
         Verdict::Await(Waiting::Parked)
     );
     assert_eq!(
+        gates.check(fixture.check("event-ruled", &ruled), NOW).await,
+        Verdict::Await(Waiting::Pending)
+    );
+    fixture.resolve("event-ruled", "approved").await;
+    assert_eq!(
+        gates.check(fixture.check("event-ruled", &ruled), NOW).await,
+        Verdict::Pass
+    );
+
+    fixture.cleanup().await;
+}
+
+/// Dimension 2.4 — an event parked before this shipped is not stranded.
+///
+/// The row is real and so is the reference that finds it: the rules path wrote
+/// both. Only `gate_kind` is restated, to the kind an earlier build raised and
+/// this one never will. A recorded gate outranks policy, so the answer a person
+/// gives still lands and the run still continues.
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn test_m202_001_parked_event_still_resolves() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let gates = Gates::new(
+        fixture.database.clone(),
+        connect_redis().await,
+        Entropy::new(),
+    );
+    let ruled = config_gates(APPROVE_EVERY_CHAT);
+    assert_eq!(
         gates
-            .check(fixture.check("event-approved", writing), NOW)
+            .check(fixture.check("event-in-flight", &ruled), NOW)
+            .await,
+        Verdict::Await(Waiting::Parked)
+    );
+    fixture
+        .restate_kind("event-in-flight", RETIRED_WRITE_KIND)
+        .await;
+
+    // The fleet's config no longer asks for a gate at all — a write binding and
+    // no rules, which after this milestone is the ordinary shape. The recorded
+    // gate decides anyway, which is the property that keeps the in-flight run
+    // from being released before its answer arrives.
+    let writing = config(true);
+    assert_eq!(
+        gates
+            .check(fixture.check("event-in-flight", &writing), NOW)
             .await,
         Verdict::Await(Waiting::Pending)
     );
-    fixture.resolve("event-approved", "approved").await;
+    fixture.resolve("event-in-flight", "approved").await;
     assert_eq!(
         gates
-            .check(fixture.check("event-approved", writing), NOW)
+            .check(fixture.check("event-in-flight", &writing), NOW)
             .await,
         Verdict::Pass
     );
-}
 
-async fn assert_denied_path(gates: &Gates, fixture: &Fixture, writing: &FleetConfig) {
-    assert_eq!(
-        gates
-            .check(fixture.check("event-denied", writing), NOW)
-            .await,
-        Verdict::Await(Waiting::Parked)
-    );
-    fixture.resolve("event-denied", "denied").await;
-    assert_eq!(
-        gates
-            .check(fixture.check("event-denied", writing), NOW)
-            .await,
-        Verdict::Refuse(Refused::Denied)
-    );
-}
-
-async fn assert_expired_path(gates: &Gates, fixture: &Fixture, writing: &FleetConfig) {
-    assert_eq!(
-        gates
-            .check(fixture.check("event-expired", writing), NOW)
-            .await,
-        Verdict::Await(Waiting::Parked)
-    );
-    assert_eq!(
-        gates
-            .check(
-                fixture.check("event-expired", writing),
-                NOW.saturating_add_millis(3_600_001),
-            )
-            .await,
-        Verdict::Refuse(Refused::Expired)
-    );
+    fixture.cleanup().await;
 }
 
 #[tokio::test]
@@ -152,7 +209,10 @@ async fn a_gate_that_cannot_mint_its_identity_fails_closed() {
 
     assert_eq!(
         gates
-            .check(fixture.check("event-entropy-failure", &config(true)), NOW)
+            .check(
+                fixture.check("event-entropy-failure", &config_gates(APPROVE_EVERY_CHAT)),
+                NOW,
+            )
             .await,
         Verdict::Unavailable,
         "a gate with no durable identity cannot release the event"

@@ -45,7 +45,6 @@ mod pass;
 mod pause;
 mod pending;
 mod route;
-mod spend;
 pub mod sql;
 mod store;
 
@@ -55,15 +54,12 @@ use serde_json::Value;
 pub use self::anomaly::Anomaly;
 pub use self::claim::{Claim, MAX_EVIDENCE_BYTES, MAX_PROPOSED_ACTION_BYTES, NO_EVIDENCE};
 pub use self::decision::{Answer, DECISION_APPROVE, DECISION_DENY, Status};
-pub use self::detail::{
-    KIND_REPOSITORY_WRITE, RADIUS_REPOSITORY_WRITE, REPOSITORY_WRITE_SPEND_CEILING, Stated,
-};
+pub use self::detail::Stated;
 pub use self::park::{Park, Parked};
 pub use self::pass::{Check, Refused, Verdict, Waiting};
 pub use self::pause::Trigger;
 pub use self::pending::{Evaluation, GateRef, evaluate};
 pub use self::route::{RefState, Route, route};
-pub use self::spend::WriteApproval;
 pub use self::store::{Gates, key};
 
 /// The rule field that matches any tool, or any action.

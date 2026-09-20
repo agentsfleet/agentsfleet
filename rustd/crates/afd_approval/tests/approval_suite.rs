@@ -31,6 +31,8 @@ mod lane;
 mod integration_grant_card_uniqueness;
 #[path = "integration_grant_forgery.rs"]
 mod integration_grant_forgery;
+#[path = "integration_grant_install.rs"]
+mod integration_grant_install;
 #[path = "integration_grant_request.rs"]
 mod integration_grant_request;
 #[path = "integration_grants.rs"]

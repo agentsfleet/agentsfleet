@@ -14,7 +14,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Registry | a compile-time `ConnectorSpec` table, its length pinned at 5 | adding a provider is one entry + a small hook file; never new route or flow code | §The registry |
 | Dispatch | on archetype SHAPE, never provider id | exhaustive match on the tagged union; registry invariants are compile-time errors | §The registry |
 | Archetypes | 2 — `oauth2` · `app_install` | `slack` / `zoho` (multi-DC) / `jira` / `linear` · `github`; the `api_key` archetype was considered and dropped (M108_002) | §Archetypes |
-| Trust anchors | 4 | signed single-use state bound to workspace and starter identity (`UZ-CONN-002`) · user-authorization installation proof (`UZ-CONN-008`) · admin-vault `<provider>-app` bags (`UZ-CONN-001`) · provider signatures | §Trust anchors |
+| Trust anchors | 6 | signed single-use state bound to workspace and starter identity (`UZ-CONN-002`) · user-authorization installation proof (`UZ-CONN-008`) · admin-vault `<provider>-app` bags (`UZ-CONN-001`) · provider signatures · the standing integration grant | §Trust anchors |
 | GitHub App URLs | 2, different jobs | `/api/connectors/github/callback` on the dashboard (browser install) vs `/v1/ingress/github` on the API (machine events) | §GitHub App |
 | Disconnect | internal state only | `DELETE` removes the workspace handle and routing rows; provider authorization remains active | §The registry |
 | Binding writes | one transaction per provider and workspace | every callback and Disconnect share a transaction-scoped writer lock | §The registry |
@@ -97,6 +97,18 @@ The connector registry (`rustd/crates/afd_credential/`) holds a compile-time `Co
    `deployment_status.creator` or attest which system produced the status. A
    scenario that depends on this says so and cites this anchor rather than
    restating it.
+6. **The standing integration grant authorises every mint, including a
+   repository write.** `core.integration_grants` holds one row per
+   `(fleet_id, service)` — `UNIQUE (fleet_id, service)` — and only an `approved`,
+   unrevoked row admits a mint. An install writes that row approved, because
+   installing the fleet IS the answer: the bundle names the integration and the
+   fleet's binding names the repositories and the access level. A repository
+   write raises no per-event card; `agentsfleet grant delete` is the manual stop
+   and takes effect on the next event before any provider call, and
+   `budget.daily_dollars` bounds the money. The token is still narrowed to the
+   declared repositories by `ScopedRequest::for_binding` and the response still
+   checked by `Granted::verify` — the grant is the authorisation above that
+   scoping, never a replacement for it.
 
 The connector registry owns callback dispatch; provider ingress handlers own event routing once the route segment has selected them. Detailed auth behavior and refusal codes live in [`../AUTH.md`](../AUTH.md) §OAuth connectors.
 

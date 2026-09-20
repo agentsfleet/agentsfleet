@@ -37,6 +37,7 @@ mod decision;
 pub mod error;
 mod gate_status;
 mod grant;
+mod grant_sql;
 mod inbox;
 mod request;
 mod sql;

@@ -22,31 +22,6 @@
 
 use afd_fleet_runtime::config::{GateRule, RepositoryBinding};
 
-/// `core.fleet_approval_gates.gate_kind` for the unconditional write-fleet
-/// park.
-///
-/// Deliberately NOT a gate rule. Rules ride `config_json`, which a PATCH can
-/// reach under the same `fleet:write` scope that wakes the fleet — and
-/// [`Decision::AutoApprove`](super::Decision::AutoApprove) is their no-match
-/// fallthrough, so an emptied `rules` list would release every action.
-pub const KIND_REPOSITORY_WRITE: &str = "repository_write";
-
-/// One approval funds this many write-credential requests.
-///
-/// Requests spend before vault or provider access, including cached and failed
-/// mints — so the ceiling bounds attempts, not successes.
-pub const REPOSITORY_WRITE_SPEND_CEILING: i64 = 32;
-
-/// The write-kind card's blast radius.
-///
-/// The Zig derives this from [`REPOSITORY_WRITE_SPEND_CEILING`] with
-/// `comptimePrint`. Rust has no const formatter in this workspace's dependency
-/// set, so the number is written out — and
-/// `the_write_kind_radius_states_its_own_ceiling` is what keeps the sentence
-/// and the ceiling from drifting, which is the property the derivation bought.
-pub const RADIUS_REPOSITORY_WRITE: &str = "up to 32 write-credential requests, \
-one branch, and one draft Pull Request in the bound repository";
-
 /// The trustworthy half of one approval card.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Stated<'a> {
@@ -77,8 +52,6 @@ pub struct Stated<'a> {
     /// `None` when the fleet declares none, which fails the mint closed, so
     /// there is no reach to state.
     pub binding: Option<&'a RepositoryBinding>,
-    /// How many spending requests one yes funds, for a bounded approval.
-    pub spend_ceiling: Option<i64>,
     /// How long the question stands before it lapses, in milliseconds.
     pub timeout_ms: i64,
 }
@@ -86,11 +59,9 @@ pub struct Stated<'a> {
 impl<'a> Stated<'a> {
     /// The daemon-derived half, before a rule or a kind is stamped on it.
     ///
-    /// `kind` and `radius` open empty because their source differs by path: the
-    /// rules path takes both from the matched rule ([`Stated::under`]) and the
-    /// write-kind path stamps the daemon's own ([`Stated::write_kind`]). A
-    /// card reaching a human with neither would be a card that says what is
-    /// being asked but not what kind of question it is.
+    /// `kind` and `radius` open empty, and [`Stated::under`] fills both from
+    /// the rule that matched. A card reaching a human with neither would be a
+    /// card that says what is being asked but not what kind of question it is.
     #[must_use]
     pub const fn of(
         tool: &'a str,
@@ -106,7 +77,6 @@ impl<'a> Stated<'a> {
             kind: "",
             radius: "",
             binding,
-            spend_ceiling: None,
             timeout_ms,
         }
     }
@@ -122,26 +92,11 @@ impl<'a> Stated<'a> {
         self.radius = &rule.blast_radius;
         self
     }
-
-    /// The daemon's own copy for the unconditional write-fleet park.
-    ///
-    /// No rule carries workspace copy on this path, so the kind, the radius and
-    /// the ceiling are constants — and the caller supplies a default timeout
-    /// rather than a policy value a PATCH could stretch.
-    #[must_use]
-    pub const fn write_kind(mut self) -> Self {
-        self.kind = KIND_REPOSITORY_WRITE;
-        self.radius = RADIUS_REPOSITORY_WRITE;
-        self.spend_ceiling = Some(REPOSITORY_WRITE_SPEND_CEILING);
-        self
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        KIND_REPOSITORY_WRITE, RADIUS_REPOSITORY_WRITE, REPOSITORY_WRITE_SPEND_CEILING, Stated,
-    };
+    use super::Stated;
     use afd_fleet_runtime::config::{Behavior, GateRule};
 
     fn rule(kind: &str, radius: &str) -> GateRule {
@@ -174,9 +129,6 @@ mod tests {
 
         assert_eq!(stated.kind, "repair");
         assert_eq!(stated.radius, "one draft Pull Request");
-        // A rules-path card funds no spending: the ceiling belongs to the
-        // write-kind park, which is the only approval requests draw against.
-        assert_eq!(stated.spend_ceiling, None);
     }
 
     #[test]
@@ -185,32 +137,5 @@ mod tests {
         let stated = Stated::of("chat", "steer:user_42", "evt-1", None, 1).under(&matched);
 
         assert_eq!(stated.radius, "");
-    }
-
-    #[test]
-    fn the_write_kind_stamp_replaces_the_workspace_copy_entirely() {
-        // The write-kind park runs where no rule matched, so nothing a fleet
-        // author wrote may reach this card — including a `gate_kind` chosen to
-        // look like the daemon's own.
-        let misleading = rule("routine", "nothing at all");
-        let stated = Stated::of("chat", "steer:user_42", "evt-1", None, 1)
-            .under(&misleading)
-            .write_kind();
-
-        assert_eq!(stated.kind, KIND_REPOSITORY_WRITE);
-        assert_eq!(stated.radius, RADIUS_REPOSITORY_WRITE);
-        assert_eq!(stated.spend_ceiling, Some(REPOSITORY_WRITE_SPEND_CEILING));
-    }
-
-    #[test]
-    fn the_write_kind_radius_states_its_own_ceiling() {
-        // What `comptimePrint` bought upstream, bought here by a test: the
-        // sentence a human reads and the number the mint enforces are one
-        // value, so a changed ceiling cannot leave the card promising the old
-        // one.
-        assert!(
-            RADIUS_REPOSITORY_WRITE.contains(&REPOSITORY_WRITE_SPEND_CEILING.to_string()),
-            "{RADIUS_REPOSITORY_WRITE}"
-        );
     }
 }
