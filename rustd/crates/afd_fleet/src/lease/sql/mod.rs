@@ -73,10 +73,17 @@ mod tests {
     #[test]
     fn test_m201_accumulate_paths_never_rewrite_the_captured_name() {
         for (name, statement) in CHARGING_STATEMENTS {
+            // `assert!` then a defaulting split, rather than a panicking unwrap:
+            // this module is compiled as `afd_fleet` lib-test, where the lane
+            // denies `clippy::panic`, and the missing-clause case deserves its
+            // own sentence anyway.
+            assert!(
+                statement.contains(ACCUMULATE_CLAUSE),
+                "{name} has no {ACCUMULATE_CLAUSE} clause to check"
+            );
             let accumulate = statement
                 .split_once(ACCUMULATE_CLAUSE)
-                .map(|(_, tail)| tail)
-                .unwrap_or_else(|| panic!("{name} has no {ACCUMULATE_CLAUSE} clause to check"));
+                .map_or("", |(_, tail)| tail);
 
             // Comments stripped: both statements carry prose explaining why the
             // column is absent here, and that prose names it.

@@ -132,8 +132,15 @@ async fn test_m201_upgrade_from_populated_ledger() {
         .iter()
         .position(|migration| migration.version() == LEDGER_IDENTITY)
         .expect("slot 915 is registered");
+    // `get`, not a slice index: the boundary is derived from a `position` on
+    // this same list, so it cannot be out of range — but the lane denies
+    // `clippy::indexing_slicing`, and a test that panics on a slice bound
+    // reports the panic rather than the schema fault it exists to catch.
+    let head = MIGRATIONS
+        .get(..boundary)
+        .expect("the slot's own index is within its own list");
     let applied = Migrator::new()
-        .with_migrations(&MIGRATIONS[..boundary])
+        .with_migrations(head)
         .run(&db)
         .await
         .expect("the list up to slot 915 applies to a fresh database");
