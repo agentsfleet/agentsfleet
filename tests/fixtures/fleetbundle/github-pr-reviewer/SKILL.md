@@ -27,7 +27,10 @@ fleet woken by one event reviews the Pull Request that event names.
 ## Steps
 1. Read `repository.full_name` and `pull_request.number` from the event.
 2. Fetch the diff: `GET https://api.github.com/repos/{repository.full_name}/pulls/{pull_request.number}`
-   with `Accept: application/vnd.github.v3.diff`.
+   with `Accept: application/vnd.github.diff`. The unversioned media type is
+   what the daemon's own connector uses (`application/vnd.github+json`); the
+   older `vnd.github.v3.*` spelling still answers but is not what this
+   repository writes.
 3. Identify correctness, security, and test-coverage gaps.
 4. Post the findings as one review:
    `POST https://api.github.com/repos/{repository.full_name}/pulls/{pull_request.number}/reviews`

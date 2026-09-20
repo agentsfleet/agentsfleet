@@ -9,6 +9,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_fleet_runtime::FleetConfig;
 use afd_fleet_runtime::config::Access;
 use afd_wire::policy::ExecutionPolicy;
 
@@ -43,7 +44,7 @@ impl Plane {
                 &self.connectors,
             )
             .await?;
-        let branch = Self::repair_branch(&admitted.acquired, &admitted.installed);
+        let branch = Self::repair_branch(&admitted.acquired.event_id, &admitted.installed.config);
         let granted = self
             .gates
             .approved_integrations(&admitted.acquired.fleet_id)
@@ -185,6 +186,11 @@ impl Plane {
     /// refuses, because a write binding that cannot name its branch cannot be
     /// turned into rules that bound anything.
     ///
+    /// Takes the two values it reads rather than the two structs holding them.
+    /// It stopped needing a datastore when the gate lookup went, so the only
+    /// thing standing between it and a unit test was a signature asking for
+    /// more than it used.
+    ///
     /// # The branch names the EVENT, and the grant is what authorises it
     ///
     /// It named the approved repository-write gate until that gate was retired.
@@ -200,15 +206,12 @@ impl Plane {
     ///
     /// Still no fleet and no workspace in the name: a v7 identifier read off a
     /// public repository says when, never whose.
-    fn repair_branch(acquired: &Acquired, installed: &Installed) -> Option<String> {
-        let binding = installed.config.repository_binding()?;
+    fn repair_branch(event_id: &str, config: &FleetConfig) -> Option<String> {
+        let binding = config.repository_binding()?;
         if binding.access() != Access::Write {
             return None;
         }
-        Uuid7::parse(&acquired.event_id)
-            .ok()
-            .as_ref()
-            .map(repair::branch_for)
+        Uuid7::parse(event_id).ok().as_ref().map(repair::branch_for)
     }
 }
 
