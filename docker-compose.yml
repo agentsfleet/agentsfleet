@@ -148,7 +148,16 @@ services:
       # agentsfleetd's local override file (disambiguated from the app's .env.local and
       # the runner's .env.runner.local). Optional — the inline `environment:` block
       # below already satisfies a from-scratch `make up`.
-      - path: .env.agentsfleetd.local
+      #
+      # The variable lets an operator point straight at the machine-level source
+      # in ~/.config/agentsfleet/ and skip the per-worktree symlink. Compose
+      # interpolates this before parsing, reading the variable from the invoking
+      # shell — which is where `provision-env-1password` puts its exports. The
+      # default is the symlinked path, so an unset variable behaves exactly as
+      # before. Only the daemon can be pointed this way: the Next.js app's
+      # .env.local is loaded by the framework from its project root and takes no
+      # path override, so its symlink stays.
+      - path: ${AGENTSFLEETD_ENV_FILE:-.env.agentsfleetd.local}
         required: false
     environment:
       # Local dev defaults: satisfy role-separated startup checks without

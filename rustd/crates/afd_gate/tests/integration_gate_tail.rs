@@ -21,7 +21,7 @@ use afd_dragonfly::hub::Received;
 use afd_gate::gate::{Gates, Verdict, Waiting};
 use serde_json::json;
 
-use self::fixture::{Fixture, NOW, config, connect_redis, dragonfly_config};
+use self::fixture::{Fixture, NOW, config_gates, connect_redis, dragonfly_config};
 
 /// How long the hub's pump is given to register the subscription before the
 /// park publishes; `subscribe` queues the command rather than round-tripping.
@@ -29,6 +29,14 @@ const SUBSCRIBE_SETTLE: Duration = Duration::from_millis(250);
 
 /// How long a published frame is given to reach the subscriber.
 const FRAME_DEADLINE: Duration = Duration::from_secs(5);
+
+/// The policy that parks this fixture's event.
+///
+/// A write binding parked every first-encounter event until M202 and this suite
+/// used one. It no longer parks anything — the standing integration grant
+/// authorises the write — so the gate is opened by an authored rule instead.
+/// What is under test here is the ANNOUNCEMENT, not which policy raised it.
+const APPROVE_EVERY_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"approve","gate_kind":"deploy","blast_radius":"production"}]}"#;
 
 /// A parked gate is announced on the fleet's live tail, count included.
 ///
@@ -53,7 +61,10 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
 
     assert_eq!(
         gates
-            .check(fixture.check("event-announced", &config(true)), NOW)
+            .check(
+                fixture.check("event-announced", &config_gates(APPROVE_EVERY_CHAT)),
+                NOW,
+            )
             .await,
         Verdict::Await(Waiting::Parked)
     );

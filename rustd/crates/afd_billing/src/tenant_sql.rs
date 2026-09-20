@@ -15,10 +15,13 @@
 //!
 //! The identity columns are UUID, not TEXT, and the `::text` casts are
 //! load-bearing: a driver reading a UUID column as text without one hands back
-//! raw bytes. `workspace_id` and `fleet_id` are nullable — both foreign keys
-//! are ON DELETE SET NULL, so a charge outlives the fleet and workspace it was
-//! incurred on. `token_count_cached_input` is deliberately NOT selected: the
-//! charges response does not carry it.
+//! raw bytes. `workspace_id` and `fleet_id` are both nullable and they are
+//! nullable for different reasons since schema/915: the workspace reference is
+//! still `ON DELETE SET NULL`, while `fleet_id` stopped being a foreign key at
+//! all — a null there now means a charge written before that slot, not a fleet
+//! that has since gone. `fleet_name` is nullable on the same terms.
+//! `token_count_cached_input` is deliberately NOT selected: the charges
+//! response does not carry it.
 //!
 //! # `usage_ledger.id` is table-qualified in the ORDER BY
 //!
@@ -38,7 +41,7 @@ LIMIT 1";
 /// The first charges page: newest first, no boundary. `$1` tenant, `$2` limit.
 pub(crate) const SELECT_TENANT_CHARGES_PAGE_FIRST: &str = "\
 SELECT id::text, tenant_id::text, workspace_id::text, fleet_id::text, event_id, \
-charge_type, posture, model, \
+charge_type, posture, model, fleet_name, \
 credit_deducted_nanos, \
 token_count_input, token_count_output, wall_ms, \
 created_at \
@@ -51,7 +54,7 @@ LIMIT $2";
 /// `$2` boundary instant, `$3` boundary id, `$4` limit.
 pub(crate) const SELECT_TENANT_CHARGES_PAGE_AFTER: &str = "\
 SELECT id::text, tenant_id::text, workspace_id::text, fleet_id::text, event_id, \
-charge_type, posture, model, \
+charge_type, posture, model, fleet_name, \
 credit_deducted_nanos, \
 token_count_input, token_count_output, wall_ms, \
 created_at \

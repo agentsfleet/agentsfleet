@@ -69,11 +69,6 @@ const WRITE_REFERENCE: &str = "event_reference";
 
 /// The spend count a bounded approval opens at.
 ///
-/// Zero, and `None` for an approval that funds no spending at all — the column
-/// pair is `NULL`/`NULL` or `0`/`ceiling`, never one of each. The schema's
-/// append-only trigger fixes both before resolution.
-const SPEND_OPENS_AT: i64 = 0;
-
 /// What a park attempt produced.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Parked {
@@ -210,9 +205,6 @@ impl Gates {
             deadline: reference.deadline(),
             event_id: request.event_id,
             stated_binding: binding.as_deref(),
-            // Both columns or neither: a ceiling with no counter could never be
-            // spent down, and a counter with no ceiling bounds nothing.
-            spend_count: request.stated.spend_ceiling.map(|_| SPEND_OPENS_AT),
             now,
         }
         .bind()

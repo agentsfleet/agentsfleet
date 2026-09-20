@@ -5,22 +5,18 @@
 //! to be asked" — and only this one reads policy at all. The ordering that
 //! keeps them apart, and why it is a security property, is documented there.
 //!
-//! # The write-kind park runs before the rules, and before the no-gates return
+//! # The rules walk is the only first-encounter path
 //!
-//! A fleet whose repository binding declares WRITE access parks EVERY
-//! first-encounter event. Gate rules cannot hold that boundary: auto-approve is
-//! their no-match fallthrough, and they ride `config_json`, which a PATCH
-//! reaches under the same `fleet:write` scope that wakes the fleet. So an
-//! emptied `rules` list would release every action of a fleet that can push to
-//! a repository — which is exactly the fleet that must not be released.
-//!
-//! Anomaly counters are skipped on that path. Each event there costs one card
-//! and executes nothing until a human answers, so the human is the runaway
-//! brake and a counter would only stop the fleet for being asked patiently.
+//! A fleet whose repository binding declared WRITE access used to park EVERY
+//! first-encounter event here, ahead of the rules. It asked a person again on
+//! every model turn — a continuation gets a fresh event identifier, so each
+//! turn re-parked — and it bought nothing the standing integration grant did
+//! not already carry. The grant names the fleet, the fleet's binding names the
+//! repositories and the access level, and the mint narrows the token to exactly
+//! those. What bounds a write fleet now is that grant, the fleet's
+//! `budget.daily_dollars`, and `agentsfleet grant delete`.
 
 use afd_core::clock::UnixMillis;
-use afd_fleet_runtime::FleetConfig;
-use afd_fleet_runtime::config::{Access, DEFAULT_TIMEOUT_MS};
 use serde_json::Value;
 
 use crate::gate::claim::Claim;
@@ -50,22 +46,12 @@ impl Gates {
         state: RefState,
         now: UnixMillis,
     ) -> Verdict {
-        // KIND-PARK, and it runs BEFORE the rules walk and before the no-gates
-        // return below. Gate rules cannot hold this boundary: auto-approve is
-        // their no-match fallthrough, and they ride `config_json`, which a PATCH
-        // reaches under the same `fleet:write` scope that wakes the fleet.
-        if writes_to_a_repository(request.config) {
-            return self.park_write_kind(request, state, now).await;
-        }
-
         let Some(policy) = request.config.gates() else {
             return Verdict::Pass;
         };
 
         // Reached only on a first encounter — see the module note on why that
-        // matters for an increment. Anomaly counters are also skipped entirely
-        // on the write-kind path above: each event there costs one card and
-        // executes nothing until a human answers, so the human IS the brake.
+        // matters for an increment.
         if self
             .anomaly(
                 request.fleet_id,
@@ -121,35 +107,6 @@ impl Gates {
         }
     }
 
-    /// Park every first-encounter event of a fleet that can WRITE to a
-    /// repository.
-    ///
-    /// An unreadable lookup waits a poll rather than raising a possible second
-    /// card — the same discipline the rules path's [`Route::Wait`] holds.
-    async fn park_write_kind(
-        &self,
-        request: &Check<'_>,
-        state: RefState,
-        now: UnixMillis,
-    ) -> Verdict {
-        if state == RefState::Unreadable {
-            return Verdict::Await(Waiting::Unreadable);
-        }
-        // No rule carries workspace copy here, so the kind, the radius and the
-        // ceiling are the daemon's own, and the timeout is the default rather
-        // than a policy value a PATCH could stretch.
-        let stated = Stated::of(
-            request.event_type,
-            request.actor,
-            request.event_id,
-            request.config.repository_binding(),
-            timeout_of(DEFAULT_TIMEOUT_MS),
-        )
-        .write_kind();
-        let context = parse_context(request.request_json);
-        self.raise(request, stated, context.as_ref(), now).await
-    }
-
     /// Raise the card and say what the caller does next.
     async fn raise(
         &self,
@@ -200,16 +157,6 @@ impl Gates {
     }
 }
 
-/// Whether the fleet's repository binding declares WRITE access.
-///
-/// The one kind that parks unconditionally. A fleet with no binding, or a
-/// read-only one, is judged by its rules like any other.
-fn writes_to_a_repository(config: &FleetConfig) -> bool {
-    config
-        .repository_binding()
-        .is_some_and(|binding| binding.access() == Access::Write)
-}
-
 /// The event body as a condition context, when it is one.
 ///
 /// `None` for a body that is absent, empty, or will not parse — every one of
@@ -231,61 +178,9 @@ fn timeout_of(millis: u64) -> i64 {
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::expect_used,
-        reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
-    )]
-    use super::{parse_context, timeout_of, writes_to_a_repository};
-    use afd_fleet_runtime::FleetConfig;
-    use afd_fleet_runtime::config::{Access, DEFAULT_TIMEOUT_MS, Mode};
-    use afd_fleet_runtime::provider::StaticRegistry;
+    use super::{parse_context, timeout_of};
+    use afd_fleet_runtime::config::DEFAULT_TIMEOUT_MS;
     use serde_json::json;
-
-    /// A stored document declaring a repository binding at `access`, or none.
-    ///
-    /// Driven through the real `parse` rather than a hand-built struct: the
-    /// question here is what a STORED config resolves to, and a constructor
-    /// that skipped validation would prove the helper rather than the path.
-    fn config(access: Option<&str>) -> FleetConfig {
-        let binding = access.map_or_else(String::new, |access| {
-            let base = if access == "write" {
-                r#","repository_base":"main""#
-            } else {
-                ""
-            };
-            format!(r#","repositories":["acme/widgets"],"repository_access":"{access}"{base}"#)
-        });
-        // `triggers` is required, and `api` is the variant carrying no config
-        // of its own — the smallest document that resolves.
-        let document = format!(
-            r#"{{"name":"probe","x-agentsfleet":{{"triggers":[{{"type":"api"}}],"tools":[],"budget":{{"daily_dollars":1.0}}{binding}}}}}"#
-        );
-        FleetConfig::parse(&document, Mode::Stored, &StaticRegistry::default())
-            .expect("a stored document resolves")
-    }
-
-    #[test]
-    fn only_a_write_binding_parks_unconditionally() {
-        // The boundary the whole KIND-PARK path exists for. A fleet with no
-        // binding and one that may only READ are judged by their rules like
-        // any other; only the one that can push is parked on sight.
-        assert!(writes_to_a_repository(&config(Some("write"))));
-        assert!(!writes_to_a_repository(&config(Some("read"))));
-        assert!(!writes_to_a_repository(&config(None)));
-    }
-
-    #[test]
-    fn the_write_binding_this_reads_is_the_one_the_mint_scopes_by() {
-        // Not a second notion of "can write" — the same `Access` the credential
-        // mint enforces, so the card cannot promise a reach the token does not
-        // have.
-        let writing = config(Some("write"));
-        let binding = writing
-            .repository_binding()
-            .expect("a declared binding resolves");
-
-        assert_eq!(binding.access(), Access::Write);
-    }
 
     #[test]
     fn an_unusable_body_is_no_context_at_all() {

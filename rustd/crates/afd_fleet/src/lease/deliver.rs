@@ -9,6 +9,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_fleet_runtime::FleetConfig;
 use afd_fleet_runtime::config::Access;
 use afd_wire::policy::ExecutionPolicy;
 
@@ -43,9 +44,7 @@ impl Plane {
                 &self.connectors,
             )
             .await?;
-        let branch = self
-            .repair_branch(&admitted.acquired, &admitted.installed)
-            .await?;
+        let branch = Self::repair_branch(&admitted.acquired.event_id, &admitted.installed.config);
         let granted = self
             .gates
             .approved_integrations(&admitted.acquired.fleet_id)
@@ -180,29 +179,39 @@ impl Plane {
         )
     }
 
-    /// The branch a write-bound lease may author on, if one is authorised.
+    /// The branch a write-bound lease may author on.
     ///
-    /// `None` for a read binding, which needs none, and `None` for a write
-    /// binding with no usable approval — which the assembly then refuses,
-    /// because a write binding that cannot name its branch cannot be turned
-    /// into rules that bound anything.
-    async fn repair_branch(
-        &self,
-        acquired: &Acquired,
-        installed: &Installed,
-    ) -> Result<Option<String>> {
-        let Some(binding) = installed.config.repository_binding() else {
-            return Ok(None);
-        };
+    /// `None` for a read binding, which needs none, and `None` for an event
+    /// whose identifier is not one this daemon minted — which the assembly then
+    /// refuses, because a write binding that cannot name its branch cannot be
+    /// turned into rules that bound anything.
+    ///
+    /// Takes the two values it reads rather than the two structs holding them.
+    /// It stopped needing a datastore when the gate lookup went, so the only
+    /// thing standing between it and a unit test was a signature asking for
+    /// more than it used.
+    ///
+    /// # The branch names the EVENT, and the grant is what authorises it
+    ///
+    /// It named the approved repository-write gate until that gate was retired.
+    /// The grant could not take its place: `uq_integration_grants_fleet_id_service`
+    /// makes it one row for the fleet's whole life, so every event would author
+    /// on one branch and a second run would force-update the first run's head.
+    ///
+    /// So the two questions are answered by two sources. Authority is the
+    /// standing grant, read at the mint, which is the only path to a token.
+    /// Identity is the event, which is unique per run — and that is all the
+    /// branch has to carry, because `policy::egress` locks whatever name comes
+    /// back as the one ref the run may create.
+    ///
+    /// Still no fleet and no workspace in the name: a v7 identifier read off a
+    /// public repository says when, never whose.
+    fn repair_branch(event_id: &str, config: &FleetConfig) -> Option<String> {
+        let binding = config.repository_binding()?;
         if binding.access() != Access::Write {
-            return Ok(None);
+            return None;
         }
-        Ok(self
-            .gates
-            .approved_write_gate(&acquired.fleet_id, &acquired.event_id, binding)
-            .await?
-            .as_ref()
-            .map(repair::branch_for))
+        Uuid7::parse(event_id).ok().as_ref().map(repair::branch_for)
     }
 }
 
