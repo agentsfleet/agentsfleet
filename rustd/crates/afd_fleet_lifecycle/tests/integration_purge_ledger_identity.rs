@@ -109,8 +109,9 @@ async fn ledger_identity(lane: &Lane, row: &Uuid7) -> Option<(Option<String>, Op
 ///
 /// The table name is a literal from this file, never input.
 async fn rows_for(lane: &Lane, table: &str, fleet: &Uuid7) -> i64 {
-    let statement =
-        sqlx::AssertSqlSafe(format!("SELECT count(*) FROM {table} WHERE fleet_id = $1::uuid"));
+    let statement = sqlx::AssertSqlSafe(format!(
+        "SELECT count(*) FROM {table} WHERE fleet_id = $1::uuid"
+    ));
     sqlx::query(statement)
         .bind(fleet.as_str())
         .fetch_one(&mut *lane.connection().await)

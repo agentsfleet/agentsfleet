@@ -94,13 +94,14 @@ async fn workspace_of(held: &Held) -> Uuid7 {
         .acquire()
         .await
         .expect("a pooled connection");
-    let workspace: String = sqlx::query("SELECT workspace_id::text FROM core.fleets WHERE id = $1::uuid")
-        .bind(&held.fleet)
-        .fetch_one(&mut *connection)
-        .await
-        .expect("the fixture fleet must still be readable here")
-        .try_get(0)
-        .expect("workspace_id decodes as text");
+    let workspace: String =
+        sqlx::query("SELECT workspace_id::text FROM core.fleets WHERE id = $1::uuid")
+            .bind(&held.fleet)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the fixture fleet must still be readable here")
+            .try_get(0)
+            .expect("workspace_id decodes as text");
     Uuid7::parse(&workspace).expect("the fixture workspace is a v7 spelling")
 }
 
