@@ -64,6 +64,7 @@ export const httpLayer = (
   opts: {
     identityFails?: boolean;
     identityAbsent?: boolean;
+    identityUnreadable?: boolean;
     identity?: Record<string, unknown>;
     firstVerifyFails?: boolean;
     mintFails?: boolean;
@@ -172,6 +173,12 @@ export const httpLayer = (
               requestId: null,
             }),
           );
+        }
+        // A deployment that HAS the route and answers 200 in a shape this
+        // client cannot decode — the version-skew case that looks like success
+        // to the transport and fails at the parse boundary.
+        if (opts.identityUnreadable) {
+          return Effect.succeed({ unexpected: "shape" } as T);
         }
         if (opts.identityFails) {
           return Effect.fail(

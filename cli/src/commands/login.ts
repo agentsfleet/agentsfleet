@@ -37,11 +37,7 @@ import {
   AuthError,
   CLI_ERROR_TAG,
   InterruptedError,
-  MeValidationError,
   type CliError,
-  type NetworkError,
-  type ServerError,
-  type UnexpectedError,
 } from "../errors/index.ts";
 import {
   buildLoginUrl,
@@ -60,9 +56,9 @@ import {
   exchangeForCredential,
   type MintedCredential,
 } from "./login-exchange.ts";
+import { rollbackOnIdentityFailure } from "./login-identity-rollback.ts";
 import {
   readIdentity,
-  IDENTITY_ROUTE_ABSENT_STATUS,
   type CallerIdentity,
 } from "../lib/me-ping.ts";
 
@@ -165,50 +161,6 @@ const persistSuccess = Effect.fnUntraced(function* (
     credentialId: minted.id,
   });
   return minted.credential;
-});
-
-// Identity-read failure → wipe credentials.json before propagating, EXCEPT
-// when the route is simply not there.
-//
-// The credential was persisted moments ago and did not verify, so leaving it on
-// disk would route every later command at the same dead-on-arrival value. The
-// clear's own UnexpectedError is swallowed: the read's failure is the signal the
-// operator needs, and a report about the file would bury it.
-//
-// The sentence is written HERE and not in the read, because it is true only
-// here — `whoami` reaches the same endpoint having saved nothing, and inherited
-// this wording until the acceptance lane caught it.
-//
-// # Why a 404 keeps the credential
-//
-// The probe this replaced read the billing snapshot, which every deployment
-// serves. This one reads an identity route a deployment older than this client
-// does not have, and a router answers an unmatched path before any guard runs —
-// so a 404 says nothing about the credential and everything about the
-// deployment. Clearing on it would delete a working credential and leave the
-// operator in a login loop no retry escapes, on a condition that never clears.
-// Keeping it is the recoverable side: if the credential really is bad, the next
-// command says so in terms the operator can act on.
-//
-// A refusal, an outage and a body that would not parse still clear, which is the
-// policy this path arrived with.
-const rollbackOnIdentityFailure = Effect.fnUntraced(function* (
-  err: ServerError | NetworkError | UnexpectedError,
-) {
-  const output = yield* Output;
-  if (err._tag === CLI_ERROR_TAG.server && err.status === IDENTITY_ROUTE_ABSENT_STATUS) {
-    yield* output.warn(IDENTITY_ROUTE_ABSENT);
-    return null;
-  }
-  const credentials = yield* Credentials;
-  yield* credentials.clearAccessToken.pipe(Effect.ignore);
-  return yield* Effect.fail(
-    new MeValidationError({
-      detail: CREDENTIAL_UNCONFIRMED,
-      suggestion: SIGN_IN_AGAIN,
-      requestId: err._tag === CLI_ERROR_TAG.server ? err.requestId : null,
-    }),
-  );
 });
 
 // Verify branch: prompt → /verify → decrypt → persist → /me ping → hydrate
@@ -340,9 +292,3 @@ const BROWSER_NOT_OPENED_MESSAGE = "browser: not opened (open URL manually)" as 
 // The fallback line, for a server that answered an identity with neither a
 // display name nor an email. It reports what happened and claims no more.
 const LOGIN_COMPLETE = "login complete" as const;
-// What a failed post-mint identity read tells the operator. Names the outcome
-// (the login did not take) rather than the mechanism (a read was refused).
-const CREDENTIAL_UNCONFIRMED = "credential saved but failed validation" as const;
-const SIGN_IN_AGAIN = "try `agentsfleet login` again" as const;
-const IDENTITY_ROUTE_ABSENT =
-  "this deployment does not serve the identity read, so `agentsfleet whoami` will not work against it — the credential is saved and every other command works" as const;
