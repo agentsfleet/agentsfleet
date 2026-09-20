@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { chargeAgentLabel } from "@/app/(dashboard)/settings/billing/lib/charges";
-import { AGENT_PREFIX, DELETED_AGENT_LABEL, agentDisplayName } from "./agent-label";
+import { AGENT_PREFIX, agentDisplayName } from "./agent-label";
 import { deriveFleetIdentity } from "./identity";
 
 const FLEET_ID = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee";
@@ -14,7 +14,7 @@ const COMPOSERS = [
   "components/domain/AgentLabel.tsx",
 ] as const;
 
-function charge(fleetId: string | null) {
+function charge(fleetId: string) {
   return {
     id: "chg_1",
     fleet_id: fleetId,
@@ -31,7 +31,6 @@ describe("the agent label has one composer", () => {
     expect(agentDisplayName(FLEET_ID)).toBe(
       `${AGENT_PREFIX} ${deriveFleetIdentity(FLEET_ID).callsign.toUpperCase()}`,
     );
-    expect(chargeAgentLabel(charge(null))).toBe(DELETED_AGENT_LABEL);
   });
 
   it("neither composer reaches into a fleets component directory for it", () => {
