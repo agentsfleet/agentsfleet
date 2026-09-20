@@ -58,32 +58,28 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `rustd/crates/afd_tenant/src/sql/cli_credential.rs` | EDIT | `SELECT_USER_IDENTITY_BY_SUBJECT` gains the `core.tenants` join and three columns, plus the test pinning what its callers render |
 | `rustd/crates/afd_tenant/src/cli_credential/mod.rs` | EDIT | `UserIdentity` gains `email`, `display_name` and `tenant_name`; `user_of` reads them, and the renamed refusal constructor follows |
-| `rustd/crates/afd_wire/src/identity.rs` | CREATE | The response shape and the credential-class wire words |
+| `rustd/crates/afd_wire/src/{identity.rs,lib.rs}` | CREATE / EDIT | The response shape and the credential-class wire words, and the module declaration that exposes them |
 | `rustd/crates/afd_api_tenant/src/handler/tenant/identity.rs` | CREATE | The handler: extractor in, one service call, render — plus its class-rendering unit tests |
-| `rustd/crates/afd_http/src/route/tenant.rs` | EDIT | The `CurrentUser` variant, its `ALL` entry, its verb and its `RouteMeta` |
-| `rustd/crates/afd_http/src/openapi.rs` | EDIT | The `Users` tag the operation is filed under, one tag per resource |
-| `rustd/crates/afd_wire/src/lib.rs` | EDIT | Declares the response module |
+| `rustd/crates/afd_api_tenant/src/{lib.rs,openapi.rs,handler/tenant/mod.rs}` | EDIT | Declare and re-export the handler, return it from `tenant_handler_for`, add it to the document roster |
+| `rustd/crates/afd_http/src/{route/tenant.rs,openapi.rs}` | EDIT | The `CurrentUser` variant, its `ALL` entry, its verb and `RouteMeta`; and the `Users` tag the operation is filed under |
 | `rustd/crates/afd_auth/src/principal.rs` | EDIT | `Person::scopes()` — the accessor the family was missing, which `Principal::scopes` now reads through |
-| `rustd/crates/afd_tenant/src/error/{kind,detail,mod,raise,tests}.rs` | EDIT | Rename `CliCredentialUnknownSubject` and its detail constant and constructor to the family-neutral `UnknownSubject`; the wire code and sentence do not change |
-| `rustd/crates/afd_api_tenant/src/{lib.rs,openapi.rs}`, `.../handler/tenant/mod.rs` | EDIT | Declare and re-export the handler, return it from `tenant_handler_for`, add it to the document roster |
-| `rustd/crates/afd_api/tests/{route_inventory,route_meta_total,router}.rs` | EDIT | The three route rosters that enumerate the table by hand: the inventory, the pinned count (a `POST_PORT_ADDITIONS` term), and the mount matcher |
-| `rustd/crates/afd_api/tests/tenant_current_user.rs` | CREATE | The route is mounted, answers GET only, admits every person class, needs no capability, refuses a runner and an anonymous caller |
-| `rustd/crates/afd_tenant/tests/integration_identity.rs` | CREATE | `user_of` against live Postgres: the join, the NULL display name, the unknown-subject refusal, and that nothing is written |
-| `rustd/crates/afd_api/tests/tenant_plane_suite.rs`, `.../afd_tenant/tests/tenant_suite.rs` | EDIT | Register the two new suites in their binaries |
+| `rustd/crates/afd_tenant/src/error/{kind,detail,mod,raise,tests}.rs` | EDIT | Rename `CliCredentialUnknownSubject` and its detail constant and constructor to the family-neutral `UnknownSubject`; wire code and sentence unchanged |
+| `rustd/crates/afd_api/tests/{route_inventory,route_meta_total,router}.rs` | EDIT | The three route rosters enumerated by hand: the inventory, the pinned count (a `POST_PORT_ADDITIONS` term), and the mount matcher |
+| `rustd/crates/afd_api/tests/{tenant_current_user,integration_current_user}.rs`, `.../tenant_plane_suite.rs` | CREATE / EDIT | The route is mounted, answers GET only, admits every person class, needs no capability, refuses a runner and an anonymous caller — and the suite registration |
+| `rustd/crates/afd_tenant/tests/{integration_identity.rs,tenant_suite.rs}` | CREATE / EDIT | `user_of` against live Postgres: the join, the NULL display name, the unknown-subject refusal, that nothing is written — and its binary registration |
 | `public/openapi.json` | EDIT | Regenerated from the build; never hand-edited |
-| `cli/src/lib/api-paths.ts` | EDIT | `USERS_ME_PATH`, the CLI's one spelling of the route |
-| `cli/src/lib/me-ping.ts` | EDIT | The probe becomes the identity read, and stops needing a billing capability |
-| `cli/src/commands/whoami.ts` | CREATE | The command Effect: read, render human or JSON, refuse when nothing loads |
-| `cli/src/commands/login.ts` | EDIT | The success line names the person; the rollback owns the sentence that is true only there |
-| `cli/src/commands/auth.ts` | EDIT | The reachability probe moves to the scope-free route |
-| `cli/src/program/{cli-tree,cli-tree-types,handlers-bind}.ts` | EDIT | Register `agentsfleet whoami`, add its handler slot, bind the Effect through the dispatcher |
-| `cli/test/{whoami,me-ping}.unit.test.ts` | CREATE / EDIT | The command's render, refusal and failure cases; the probe's decode boundary and failure mapping |
-| `cli/test/acceptance/whoami.spec.ts` | CREATE | The subprocess walk: help, the logged-out and stale-credential refusals, both output streams |
-| `cli/test/acceptance/run-lane.ts`, `.../fixtures/command-matrix.ts` | EDIT | Register the deterministic spec, and add the `whoami --json` row the live read-only sweep picks up |
-| `cli/test/{command-matrix-parity.unit.test.ts,helpers-cli-tree.ts,json-contract.test.ts}` | EDIT | The three stub handler tables that must answer every registered command |
-| `rustd/crates/afd_api/tests/{fleet_messages_input,fleet_messages_steer}.rs` | EDIT / CREATE | Folded ratchet: a steer's operation id is judged before its message; the input file split at the LENGTH GATE |
-| `rustd/crates/afd_fleet/tests/integration_lease_gates{.rs,/bindings.rs,/cases.rs,/seed.rs}` | EDIT / CREATE | Folded ratchet: a write binding with no approval ends its event as `BINDING_UNENFORCEABLE`, which nothing read back |
-| `rustd/crates/afd_connector/tests/integration_{platform_app,connect_roundtrip}{.rs,/*.rs}` | CREATE | Folded ratchet: the crate's first live fixtures — the configured app bag, and one connect start-to-landed-grant over a loopback vendor |
+| `cli/src/lib/{api-paths,me-ping}.ts` | EDIT | `USERS_ME_PATH`, the CLI's one spelling of the route; and the probe becoming the identity read, no longer needing a billing capability |
+| `cli/src/commands/{whoami,login,auth}.ts` | CREATE / EDIT | The command Effect (read, render human or JSON, refuse when nothing loads); the success line naming the person; the reachability probe moving to the scope-free route |
+| `cli/src/program/{cli-tree,cli-tree-types,handlers-bind}.ts`, `cli/src/errors/index.ts` | EDIT | Register `agentsfleet whoami`, add its handler slot, bind the Effect through the dispatcher; and export `CLI_ERROR_TAG` so `login.ts` branches on the tag rather than re-spelling it (RULE UFS) |
+| `cli/test/{whoami,me-ping,auth-effect}.unit.test.ts` | CREATE / EDIT | The command's render, refusal and failure cases; the probe's decode boundary; `auth status` on the scope-free route, including the new `unverified` |
+| `cli/test/acceptance/{whoami.spec.ts,run-lane.ts,fixtures/command-matrix.ts}` | CREATE / EDIT | The subprocess walk — help, the logged-out and stale-credential refusals, both streams — its lane registration, and the `whoami --json` sweep row |
+| `cli/test/{command-matrix-parity.unit.test.ts,helpers-cli-tree.ts,json-contract.test.ts,golden/help-no-color.txt}` | EDIT | The three stub handler tables that must answer every registered command, and the one help line `whoami` adds |
+| `cli/test/login.acceptance.spec.ts`, `.../login-acceptance-{client,fixtures,server}.ts` | EDIT / CREATE | The 407-line walk split at the LENGTH GATE into its client, its fake server and their fixtures |
+| `docs/architecture/user_flow.md`, `docs/v2/done/M200_001_P1_API_CLI_DOCS_CALLER_IDENTITY_READ.md`, `playbooks/operations/acceptance/baselines/M200_001-e9bd5c2b2.md` | EDIT / CREATE | §8.0's login walk gains the identity read it named nothing for; this spec; and the baseline report its `Baseline evidence:` header cites |
+| `rustd/crates/afd_api/tests/{fleet_messages_input,fleet_messages_steer,integration_tenant_provider}.rs` | EDIT / CREATE | Folded ratchet: a steer's operation id is judged before its message (input file split at the LENGTH GATE), and the two activation outcomes decided from a credential's own bytes |
+| `rustd/crates/afd_fleet/tests/integration_lease_gates{.rs,/bindings.rs,/cases.rs,/seed.rs}` | CREATE | Folded ratchet: a write binding with no approval ends its event as `BINDING_UNENFORCEABLE`, which nothing read back |
+| `rustd/crates/afd_connector/tests/integration_{platform_app,connect_roundtrip}{.rs,/cases.rs}`, `.../integration_connect_roundtrip/vendor.rs` | CREATE | Folded ratchet: the crate's first live fixtures — the configured app bag, and one connect start-to-landed-grant over a loopback vendor |
+| `rustd/crates/afd_fleet/src/lease/pull{.rs,/claimed.rs}`, `.../tests/{fleet_suite.rs,integration_credential_mint.rs,integration_credential_mint/write_gate.rs,support/fleet_report_seed.rs}` | EDIT / CREATE | Folded ratchet: the deterministic half below the claim extracted so a suite can enter the lease verb, and each write-gate verdict leaving the mint as its own registry code |
 | `make/test-integration-rustd.mk` | EDIT | Folded ratchet: `RUSTD_COVERAGE_FLOOR` 97 -> 97.5, with the measurement that justifies it |
 
 ## Applicable Rules
@@ -257,17 +253,17 @@ Idempotency and replay rows are N/A: the endpoint is a `GET` with no side effect
 | R3 | The route needs no capability scope (§2) | `cd rustd && cargo test -p afd_api --features test-util --test tenant_plane tenant_current_user` | exit 0 | P0 | ✅ `test result: ok. 6 passed; 0 failed` |
 | R4 | The published document is the build's output (§2) | `cd rustd && cargo test -p afd_api --features openapi,test-util test_openapi_build_is_the_source` | exit 0 | P0 | ✅ `test result: ok. 1 passed; 0 failed` |
 | R5 | `login` closes by naming the person (§3) | `cd cli && bun test test/login.acceptance.spec.ts` | exit 0 | P1 | ✅ `7 pass 0 fail` |
-| R6 | The identity read holds no writer (§1) | `grep -cE '\b(INSERT\|UPDATE\|DELETE)\b' rustd/crates/afd_tenant/src/sql/identity.rs` | `0` | P0 | ✅ `0` |
+| R6 | The identity read holds no writer (§1) | `grep -cE '\b(INSERT\|UPDATE\|DELETE)\b' rustd/crates/afd_api_tenant/src/handler/tenant/identity.rs` | `0` | P0 | ✅ `0` |
 | R7 | One CLI spelling of the route (§3) | `grep -rn '/v1/users/me' cli/src \| grep -v api-paths.ts` | no output | P0 | ✅ no output |
-| R8 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R8 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ `0` paths missing |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ `ALL GATES GREEN` — 8 rows |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `All unit lanes passed`; every TypeScript package 100%, CLI line 100.00% |
-| S3 | Lint clean | `make lint-all` | exit 0 | P0 | |
+| S3 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ exit 0 — `cmd.verify.lint` |
 | S4 | Integration lane green (live Postgres and Dragonfly) | `make test-integration-rustd` | exit 0 | P0 | ✅ `513 passed; 0 failed` — `integration_identity` ran against live Postgres |
-| S5 | Version files agree | `make check-version` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S8 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
+| S5 | Version files agree | `make check-version` | exit 0 | P0 | ✅ exit 0 — all versions match 0.49.0 |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ exit 0 — `no leaks found`, 5,721 commits |
+| S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ❌ 3 files > 350 — deferred, see Discovery |
+| S8 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | ✅ `0` / `0` / `0` |
 
 **Command source rule:** every declared `conform` and `verify.*` invocation from `.oracle/orly.json` is copied verbatim into a Verify cell above with a mechanically checkable Expected. Command timing is `dispatch/lifecycle.md`'s; baseline metadata is pending at opening and measured before the Pull Request.
 
@@ -316,4 +312,9 @@ Idempotency and replay rows are N/A: the endpoint is a `GET` with no side effect
 - **Metrics review** — no analytics or funnel playbook update required: `whoami` emits `cli_command_executed` through the bind-site seam every command already rides (`handlers-bind-wrap-effect.unit.test.ts` proves the seam), and `login`'s events are untouched. No new event was added.
 - **Skill-chain outcomes** — a spec-versus-suite audit found six promised behaviours with no test (scope wire spelling, the handler's no-log invariant, `auth status` needing no billing capability, the unreachable-versus-rejected classification, the mint path staying narrow) and one uncovered line the CLI's 100% floor named (`renderSuccess`'s no-name fallback); all written. `/orly-write-integration-test` applies and produced `afd_tenant/tests/integration_identity.rs`, which runs in the live-datastore lane. gstack `/review` and `orly-babysit-prs`: pending.
 - **Coverage ratchet, and where the floor landed** — the ratchet folded into this stream reached **97.6994%** (41,362 of 42,336 lines, 974 missed, 3,074 tests passing), from 97.5671% at the stream's start. `RUSTD_COVERAGE_FLOOR` moves 97 -> 97.5 on Indy's call in session ("3 - what can we meet now? 97.5?" / "Okay bump and push"), which is a ratchet onto ground already held rather than a third attempt at the 98 that `make/test-integration-rustd.mk` records being set ahead of the code twice. The margin is 0.1994%, about 84 lines, chosen so the next commit touching an uncovered path does not go red. The remaining 128 lines to 98 are dominated by fail-open arms — the branch a gate takes when the datastore will not answer — and by defensive arms over cases the types exclude; `lease/coverage.rs` is the shape, where all nine missed lines are `admit_unreadable`. Reaching them needs a datastore that will not answer, which the shared lane cannot provide without failing every suite beside it. `Fixtures::create_isolated` is the seam that would, on a private migrated database, and it is unused. 98 remains a milestone behind that work, not a knob.
-- **Deferrals** — none. Two rubric rows are unrun rather than deferred, and both name what they need: S4 (`make test-integration-rustd`) wants docker compose and `~/.config/agentsfleet/agentsfleetd.env.local`; R2b wants a live acceptance target. Neither is scope leaving the spec. **Docs branch:** Indy approved the cross-repo write in session ("Yes go"). `~/Projects/docs` branch `chore/m200-whoami-changelog`, cut from `main` at `90bd63c` — command reference, API introduction, one changelog `<Update>`, plus `6ebe746` naming the deploy order the identity read needs; `make lint` passes there (documentation check, OpenAPI drift, build validation, links). Pushed and in sync with `origin/chore/m200-whoami-changelog` at `6ebe746`; no Pull Request opened there yet, which is Indy's to raise.
+- **Deferrals** — two, both Indy's call in session, Sep 20, 2026. **1. `decodeIdentity` collapses an absent or non-array `scopes` to `[]`** (`cli/src/lib/me-ping.ts:77-79`): every other field at that parse boundary refuses a body it cannot prove, so "you hold none" and "nobody answered" both render `scopes: none`, discarding the always-emitted guarantee `afd_wire/src/identity.rs:73` exists to give; unreachable today because the handler always emits the key, and two lines plus one test flip when wanted. **2. S7 is ❌, not blank** — `cli/test/auth-effect.unit.test.ts` (410), `public/openapi.json` (17,266, generated) and `rustd/crates/afd_tenant/src/cli_credential/mod.rs` (365) exceed the 350-line LENGTH cap, and splitting the hand-written two is a refactor this stream only touched in passing.
+
+> Indy (Sep 20, 2026: 08:09 AM), asked fix-or-defer on the `scopes` finding: "I prefer to defer, this is not an earth shattering must have issue."
+> Indy (Sep 20, 2026: 08:12 AM), shown S7's three oversize paths: "second deferral"
+
+  S4 has since RUN green (`orly gate pr` → `cmd.verify.integration` exit 0); R2b still wants a live acceptance target and remains unrun, which is not scope leaving the spec. **Docs branch:** Indy approved the cross-repo write in session ("Yes go"). `~/Projects/docs` branch `chore/m200-whoami-changelog`, cut from `main` at `90bd63c` — command reference, API introduction, one changelog `<Update>`, plus `6ebe746` naming the deploy order the identity read needs; `make lint` passes there (documentation check, OpenAPI drift, build validation, links). Pushed and in sync with `origin/chore/m200-whoami-changelog` at `6ebe746`; no Pull Request opened there yet, which is Indy's to raise.
