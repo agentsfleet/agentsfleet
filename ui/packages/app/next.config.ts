@@ -1,4 +1,8 @@
 import type { NextConfig } from "next";
+import { loadEnvFile } from "node:process";
+
+const uiEnvFile = process.env.AGENTSFLEET_UI_ENV_FILE;
+if (uiEnvFile) loadEnvFile(uiEnvFile);
 
 const nextConfig: NextConfig = {
   // Turbopack is the default bundler in Next.js 16.1.
@@ -38,13 +42,12 @@ const nextConfig: NextConfig = {
   // precedence question entirely instead of relying on router ordering.
   async rewrites() {
     // No fallback: an env-less worktree once silently proxied to the shared
-    // dev API. Fail the boot loudly instead — the post-checkout hook links
-    // .env.local from ~/.config/agentsfleet/ui.env.local (Next loads .env
-    // files before this config runs).
+    // dev API. Fail the boot loudly instead. Local test shells set
+    // AGENTSFLEET_UI_ENV_FILE to the machine-level UI env file.
     const backend = process.env.NEXT_PUBLIC_API_URL;
     if (!backend) {
       throw new Error(
-        "NEXT_PUBLIC_API_URL is unset — run provision-env-1password; the post-checkout hook links ui/packages/app/.env.local.",
+        "NEXT_PUBLIC_API_URL is unset — run provision-env-1password and set AGENTSFLEET_UI_ENV_FILE.",
       );
     }
     return [{ source: "/backend/:path*", destination: `${backend}/:path*` }];

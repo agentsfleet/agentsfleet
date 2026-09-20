@@ -12,8 +12,8 @@ export function requireApiOrigin(): string {
   if (!value) {
     throw new Error(
       "NEXT_PUBLIC_API_URL is unset — refusing to guess a backend. " +
-        "Run provision-env-1password; the repo's post-checkout hook links " +
-        "ui/packages/app/.env.local from ~/.config/agentsfleet/ui.env.local.",
+        "Run provision-env-1password and set AGENTSFLEET_UI_ENV_FILE " +
+        "to ~/.config/agentsfleet/ui.env.local.",
     );
   }
   return value;

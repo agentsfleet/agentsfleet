@@ -1,10 +1,9 @@
 /**
  * Bridges the worktree-root .env into the playwright process.
  *
- * Bun auto-loads only the cwd's .env / .env.local. The acceptance suite runs
- * from `ui/packages/app/`, where .env.local has NEXT_PUBLIC_API_URL but the
- * Clerk credentials (CLERK_SECRET_KEY, CLERK_WEBHOOK_SECRET) live one level
- * up at the worktree root alongside agentsfleetd's .env. Running the suite used
+ * Bun auto-loads only the cwd's .env / .env.local. The acceptance suite reads
+ * AGENTSFLEET_UI_ENV_FILE for NEXT_PUBLIC_API_URL and Clerk credentials;
+ * the worktree-root .env can supply additional credentials. Running it used
  * to require shell-side `op read` exports for every run; this loader makes
  * `bun run test:e2e:acceptance` self-sufficient.
  *
@@ -45,8 +44,8 @@ function applyFile(envPath: string): void {
 }
 
 /**
- * Loads `.env.local` (this package's local overrides — NEXT_PUBLIC_API_URL)
- * and `<worktree-root>/.env` (shared CLERK_* secrets) into `process.env`.
+ * Loads the machine-level UI file named by AGENTSFLEET_UI_ENV_FILE (or the
+ * package's local .env.local) and `<worktree-root>/.env` into `process.env`.
  * Already-set keys are preserved, so CI secrets / explicit shell exports
  * always override the files. Local file wins on conflict (loaded first).
  *
@@ -64,7 +63,9 @@ function applyFile(envPath: string): void {
  * single-source-of-truth in .env without duplicating the secret.
  */
 export function loadWorktreeEnv(): void {
-  applyFile(path.resolve(process.cwd(), ".env.local"));
+  const uiEnvFile = process.env.AGENTSFLEET_UI_ENV_FILE;
+  if (uiEnvFile && !fs.existsSync(uiEnvFile)) throw new Error("AGENTSFLEET_UI_ENV_FILE does not exist");
+  applyFile(uiEnvFile ?? path.resolve(process.cwd(), ".env.local"));
   applyFile(path.resolve(process.cwd(), "../../../.env"));
   if (
     process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY === undefined &&
