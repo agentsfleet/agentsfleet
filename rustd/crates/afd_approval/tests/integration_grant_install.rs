@@ -192,7 +192,7 @@ async fn test_m202_001_reinstall_keeps_one_grant() {
 /// A revoked grant outlives the next install.
 ///
 /// Not a Dimension of its own, and the most important test in this file. Your
-/// stop button is `grant revoke`; if reinstalling the fleet undid it, the stop
+/// stop button is `grant delete`; if reinstalling the fleet undid it, the stop
 /// button would have a timer on it. The park path raises the card, a person
 /// denies it, and the install that follows must find the no still standing.
 ///

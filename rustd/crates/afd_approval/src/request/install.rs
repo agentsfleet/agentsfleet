@@ -10,7 +10,7 @@
 //! this verb exists to end.
 //!
 //! What still stops a fleet is unchanged and deliberate: `budget.daily_dollars`
-//! bounds the money, `agentsfleet grant revoke` is the manual stop, and the
+//! bounds the money, `agentsfleet grant delete` is the manual stop, and the
 //! App installation bounds which repositories a token can ever reach.
 //!
 //! # A re-install never un-revokes
