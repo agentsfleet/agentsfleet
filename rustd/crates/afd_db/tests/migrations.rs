@@ -189,3 +189,107 @@ fn test_the_default_migrator_runs_the_canonical_list() {
         "Default and new() must not describe two different migrators"
     );
 }
+
+/// `schema/720` no longer justifies its index by a reader it lost.
+///
+/// The fleet index led with `fleet_id` because the `SET NULL` referential
+/// action matched on that column alone. Slot 915 drops that foreign key, so
+/// the justification went with it while the index stayed. A comment that still
+/// cites the retired reader is worse than no comment: the next person to weigh
+/// reordering or dropping this index would weigh it against a constraint that
+/// no longer exists.
+///
+/// Asserted against the file rather than left to review, because this is
+/// exactly the kind of prose that drifts back on a careless revert.
+#[test]
+fn test_m201_index_comment_names_surviving_reader() {
+    let indexes = std::fs::read_to_string(repo_root().join("schema/720_usage_ledger_indexes.sql"))
+        .expect("schema/720 must exist");
+    assert!(
+        !indexes.contains("Reader 2 — the fleet SET NULL"),
+        "schema/720 still cites the SET NULL reader that slot 915 removed"
+    );
+    assert!(
+        indexes.contains("schema/915"),
+        "schema/720 must name the slot that removed its second reader, so the \
+         history is followable from the file that changed meaning"
+    );
+}
+
+/// Slot 915 drops the foreign key by lookup, not by guessed name.
+///
+/// `DROP CONSTRAINT IF EXISTS usage_ledger_fleet_id_fkey` is the tempting
+/// spelling and the dangerous one: `IF EXISTS` swallows a name miss, so a
+/// generated name that differs by even one character leaves the foreign key in
+/// place while the migration reports success. The whole point of the slot is
+/// that `ON DELETE SET NULL` stops firing, and that failure mode is silent.
+///
+/// The catalogue lookup cannot miss that way, so this test pins the shape.
+#[test]
+fn test_m201_slot_915_drops_the_constraint_by_lookup() {
+    let slot = MIGRATIONS
+        .iter()
+        .find(|m| m.version() == 915)
+        .expect("slot 915 must be registered");
+
+    // Comments stripped first. The slot's own prose explains why the `IF
+    // EXISTS` form is wrong, and that explanation contains the very string
+    // this asserts the absence of — so a whole-file grep fails on the
+    // documentation rather than on the code. Ask the question of the
+    // statements only.
+    let statements: String = slot
+        .sql()
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("--"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        statements.contains("pg_constraint"),
+        "slot 915 must find the foreign key in the catalogue, not guess its name"
+    );
+    assert!(
+        !statements.contains("DROP CONSTRAINT IF EXISTS"),
+        "slot 915 must not use the IF EXISTS form, which hides a name miss"
+    );
+}
+
+/// Slot 915 is in the shipped list exactly once, and it follows 914.
+///
+/// The list is hand-written (see this file's module note), so a slot whose
+/// `.sql` landed without its `migration!()` entry is the failure mode this
+/// crate's other tests already catch. What they do NOT catch is the pair of
+/// mistakes that are specific to appending: a duplicated entry, which applies
+/// the same file twice and makes the ledger disagree with the directory, and an
+/// entry inserted ABOVE an already-shipped slot, which would renumber nothing
+/// but would run this file before the table it alters exists on a fresh
+/// database while leaving an upgraded one untouched — a divergence that only
+/// shows up on the next clean install.
+#[test]
+fn test_m201_migration_slot_registered() {
+    const LEDGER_IDENTITY: &str = "915_usage_ledger_retains_fleet_identity.sql";
+
+    let listed: Vec<&Migration> = MIGRATIONS
+        .iter()
+        .filter(|migration| migration.name() == LEDGER_IDENTITY)
+        .collect();
+    assert_eq!(
+        listed.len(),
+        1,
+        "{LEDGER_IDENTITY} must be registered exactly once"
+    );
+
+    let position = MIGRATIONS
+        .iter()
+        .position(|migration| migration.name() == LEDGER_IDENTITY)
+        .expect("the slot was just found by name");
+    let predecessor = MIGRATIONS
+        .get(position.wrapping_sub(1))
+        .expect("slot 915 is never the first entry");
+    assert_eq!(
+        predecessor.version(),
+        914,
+        "slot 915 must follow 914 — an entry placed above a shipped slot runs \
+         in a different order on a fresh database than on an upgraded one"
+    );
+}

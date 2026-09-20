@@ -54,10 +54,11 @@ pub(crate) const PURGE_MEMORY: &str = "DELETE FROM memory.memory_entries WHERE f
 ///
 /// `core.fleet_events` and `core.integration_grants` are absent because both
 /// are `ON DELETE CASCADE`. `billing.usage_ledger` is absent for a different
-/// reason: its `fleet_id` is `ON DELETE SET NULL`, so a charge the wallet was
-/// already debited for outlives the fleet with its tenant scope intact.
-/// Erasing one would falsify the reconciliation between the two, and no role
-/// here holds `DELETE` on that table anyway.
+/// reason: nothing there references the fleet any more — schema/915 dropped
+/// that foreign key so a charge the wallet was already debited for outlives
+/// the fleet still naming which one it paid for. Erasing one would falsify the
+/// reconciliation between the two, and no role here holds `DELETE` on that
+/// table anyway.
 ///
 /// A slice rather than two named constants: the purge runs them in order inside
 /// one transaction and never reaches for an individual one, so naming each would

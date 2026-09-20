@@ -29,6 +29,8 @@ mod config_tls;
 mod config_tls_cert_files;
 #[path = "error_surface.rs"]
 mod error_surface;
+#[path = "integration_ledger_identity.rs"]
+mod integration_ledger_identity;
 #[path = "integration_migrate.rs"]
 mod integration_migrate;
 #[path = "integration_migrate_batch.rs"]
