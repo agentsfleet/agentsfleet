@@ -62,7 +62,7 @@ Authoring assumptions, for the handshake to confirm: (1) not in production, sche
 | `rustd/crates/afd_fleet/src/lease/event.rs` | EDIT | first-delivery read from the returned flag, not rows affected |
 | `rustd/crates/afd_approval/src/inbox.rs` | EDIT | the same read for the frame-once and counters branches |
 | `rustd/crates/afd_approval/tests/integration_inbox_continuation.rs` | EDIT | both write orders, and the redelivery-never-clobbers case |
-| `schema/916_usage_ledger_fleet_scoped_key.sql` | CREATE | `fleet_id NOT NULL`; arbiter becomes `(fleet_id, event_id, charge_type)` |
+| `schema/916_usage_ledger_fleet_scoped_key.sql` | CREATE | `fleet_id NOT NULL`; arbiter becomes `(event_id, charge_type, fleet_id)` |
 | `rustd/crates/afd_db/src/migration.rs` | EDIT | register slot 916 |
 | `rustd/crates/afd_db/tests/migrations.rs` | EDIT | position assertion for the new slot |
 | `rustd/crates/afd_db/tests/integration_ledger_identity.rs` | EDIT | constraint shape on fresh bootstrap and on an upgraded database |
@@ -123,7 +123,7 @@ The statement's conflict arm becomes a converge: `resumes_event_id` is set to th
 
 ### §2 — The ledger's arbiter carries the fleet
 
-Slot 916: `billing.usage_ledger.fleet_id` becomes `NOT NULL`; `uq_usage_ledger_event_id_charge_type` is dropped by name; `uq_usage_ledger_fleet_id_event_id_charge_type UNIQUE (fleet_id, event_id, charge_type)` replaces it. NULL semantics are the reason `NOT NULL` is part of the change: PostgreSQL treats NULLs as distinct in a unique index, so a nullable `fleet_id` in the key would leave those rows unarbitrated. The slot carries the reasoning `710` cannot (it is frozen), and names `800:54` as the fact it reconciles.
+Slot 916: `billing.usage_ledger.fleet_id` becomes `NOT NULL`; `uq_usage_ledger_event_id_charge_type` is dropped by name; `uq_usage_ledger_event_id_charge_type_fleet_id UNIQUE (event_id, charge_type, fleet_id)` replaces it. NULL semantics are the reason `NOT NULL` is part of the change: PostgreSQL treats NULLs as distinct in a unique index, so a nullable `fleet_id` in the key would leave those rows unarbitrated. The slot carries the reasoning `710` cannot (it is frozen), and names `800:54` as the fact it reconciles.
 
 All three writers change together: the renewal and report accumulate arms and the receive insert's `DO NOTHING`. A source test asserts that every `ON CONFLICT` on `billing.usage_ledger` in the workspace names the composite, so a fourth writer cannot arrive with the old key.
 
@@ -131,20 +131,20 @@ The events-page cost subselect binds both `fleet_id` and `event_id`, so the new 
 
 **Implementation default:** `SET NOT NULL` refuses if a NULL row exists rather than deleting it, because the only database that can hold one is a developer's, and a migration that deletes money rows is the wrong reflex even there. The operator cleans and reruns.
 
-- **Dimension 2.1** — fresh bootstrap yields the composite unique, no old unique, and `fleet_id NOT NULL` → Test `test_ledger_key_shape_on_fresh_bootstrap`
-- **Dimension 2.2** — a database provisioned through 915 upgrades to the same shape → Test `test_ledger_key_shape_after_upgrade`
-- **Dimension 2.3** — two fleets charged under one event id string hold two rows, each with its own amounts → Test `test_same_event_id_two_fleets_two_rows`
+- **Dimension 2.1** DONE — fresh bootstrap yields the composite unique, no old unique, and `fleet_id NOT NULL` → Test `ledger_key_shape_on_fresh_bootstrap`
+- **Dimension 2.2** DONE — a database provisioned through 915 upgrades to the same shape → Test `ledger_key_shape_after_upgrade`
+- **Dimension 2.3** DONE — two fleets charged under one event id string hold two rows, each with its own amounts → Test `same_event_id_two_fleets_two_rows`
 - **Dimension 2.4** — forty renewals on one fleet's event still accumulate into one stage row → Test `test_renewal_accumulates_per_fleet_event`
-- **Dimension 2.5** — a redelivered receive insert still writes nothing → Test `test_receive_insert_dedups_per_fleet_event`
-- **Dimension 2.6** — an insert with NULL `fleet_id` is refused → Test `test_ledger_refuses_null_fleet`
-- **Dimension 2.7** — every ledger `ON CONFLICT` in the workspace names the composite → Test `test_every_ledger_conflict_target_carries_fleet`
+- **Dimension 2.5** DONE — a redelivered receive insert still writes nothing → Test `receive_insert_dedups_per_fleet_event`
+- **Dimension 2.6** DONE — an insert with NULL `fleet_id` is refused → Test `ledger_refuses_null_fleet`
+- **Dimension 2.7** DONE — every ledger `ON CONFLICT` in the workspace names the composite → Test `every_ledger_conflict_target_carries_the_fleet`
 
 ### §3 — Dependents move with the scope
 
 The command-line charge renderer groups a tenant's rows by `event_id` alone; after §2 two fleets may legitimately share an id, so the group key becomes `(fleet_id, event_id)`. Rendered output is unchanged for every input the daemon produces today. `docs/architecture/data_flow.md` states the ledger's key twice as `(event_id, charge_type)`; both lines change, and the partitioning note gains one sentence saying the key is fleet-scoped.
 
-- **Dimension 3.1** — two rows, same `event_id`, different `fleet_id` → two summaries → Test `test_charge_summary_groups_by_fleet_and_event`
-- **Dimension 3.2** — the architecture doc names the composite and no longer names the old key → Test `test_architecture_doc_names_composite_key`
+- **Dimension 3.1** DONE — two rows, same `event_id`, different `fleet_id` → two summaries → Test `two fleets sharing one event id render as two rows`
+- **Dimension 3.2** DONE — the architecture pages name the composite and no longer name the old key → Test `architecture_pages_name_the_composite_ledger_key`
 
 ## Interfaces
 
@@ -160,8 +160,8 @@ afd_fleet::lease::event::Leases::record_received(&Acquired, UnixMillis) -> Resul
 
 billing.usage_ledger
   fleet_id UUID NOT NULL
-  CONSTRAINT uq_usage_ledger_fleet_id_event_id_charge_type UNIQUE (fleet_id, event_id, charge_type)
-  -- renew.rs, report.rs, afd_billing/src/sql.rs: ON CONFLICT (fleet_id, event_id, charge_type)
+  CONSTRAINT uq_usage_ledger_event_id_charge_type_fleet_id UNIQUE (event_id, charge_type, fleet_id)
+  -- renew.rs, report.rs, afd_billing/src/sql.rs: ON CONFLICT (event_id, charge_type, fleet_id)
 
 cli/src/commands/billing.ts groupRowsByEvent(rows) -> EventSummary[]
   -- key: `${fleet_id}\u0000${event_id}`; EventSummary shape unchanged
@@ -208,15 +208,15 @@ The race's occurrence rate is not instrumented: the converge arm makes it harmle
 | 1.4 | integration | `only_a_fresh_insert_reports_inserted` | first write reports `inserted = true`; an identical second and a converging third both report `false` |
 | 1.6 | integration | `a_converged_continuation_announces_nothing` | with the lease path's row already present for (F, X), `continue_from` publishes no `EventReceived` and leaves `events_processed` unmoved. The existing `a_second_answer_does_not_continue_the_run_again` does NOT cover this: its second resolve is stopped by the gate's `WHERE status = 'pending'` guard before it reaches `continue_from` |
 | 1.5 | integration | `integration_inbox_continuation` | its five tests pass unchanged against the converged statement (regression); run of Sep 20, 2026 recorded all five green |
-| 2.1 | integration | `test_ledger_key_shape_on_fresh_bootstrap` | `pg_constraint` holds `uq_usage_ledger_fleet_id_event_id_charge_type`, not the old name; `attnotnull` true for `fleet_id` |
-| 2.2 | integration | `test_ledger_key_shape_after_upgrade` | apply slots through 915, seed one charge, apply 916 → same shape, row retained |
-| 2.3 | integration | `test_same_event_id_two_fleets_two_rows` | two fleets in one tenant charged under one `event_id` string → two rows; each `credit_deducted_nanos` equals its own charge |
+| 2.1 | integration | `ledger_key_shape_on_fresh_bootstrap` | `pg_constraint` holds `uq_usage_ledger_event_id_charge_type_fleet_id`, not the old name; `attnotnull` true for `fleet_id` |
+| 2.2 | integration | `ledger_key_shape_after_upgrade` | apply slots through 915, seed one charge, apply 916 → same shape, row retained |
+| 2.3 | integration | `same_event_id_two_fleets_two_rows` | two fleets in one tenant charged under one `event_id` string → two rows; each `credit_deducted_nanos` equals its own charge |
 | 2.4 | integration | `test_renewal_accumulates_per_fleet_event` | forty renewals on (F, X) → one stage row; sum equals the forty deltas (regression) |
-| 2.5 | integration | `test_receive_insert_dedups_per_fleet_event` | the receive insert twice for (F, X) → one row (regression) |
-| 2.6 | integration | `test_ledger_refuses_null_fleet` | insert with NULL `fleet_id` → SQLSTATE 23502 naming `fleet_id` (negative) |
-| 2.7 | unit | `test_every_ledger_conflict_target_carries_fleet` | every `ON CONFLICT` following `billing.usage_ledger` in `rustd/crates/*/src` names `(fleet_id, event_id, charge_type)`; count = 3; goes red when one is reverted |
-| 3.1 | unit | `test_charge_summary_groups_by_fleet_and_event` | rows [(F1, X), (F2, X), (F1, X)] → two summaries; F1's carries two rows' totals |
-| 3.2 | unit | `test_architecture_doc_names_composite_key` | `docs/architecture/data_flow.md` contains the composite name and not `UNIQUE \`(event_id, charge_type)\`` |
+| 2.5 | integration | `receive_insert_dedups_per_fleet_event` | the receive insert twice for (F, X) → one row (regression) |
+| 2.6 | integration | `ledger_refuses_null_fleet` | insert with NULL `fleet_id` → SQLSTATE 23502 naming `fleet_id` (negative) |
+| 2.7 | unit | `every_ledger_conflict_target_carries_the_fleet` | every `ON CONFLICT` following `billing.usage_ledger` in `rustd/crates/*/src` names `(event_id, charge_type, fleet_id)`; count = 3; goes red when one is reverted |
+| 3.1 | unit | `two fleets sharing one event id render as two rows` | rows [(F1, X), (F2, X), (F1, X)] → two summaries; F1's carries two rows' totals |
+| 3.2 | unit | `architecture_pages_name_the_composite_ledger_key` | `data_flow.md` and `billing_and_provider_keys.md` each name the composite and hold no bare `(event_id, charge_type)` mention |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -287,7 +287,7 @@ N/A — no files deleted.
 
 ## Discovery (consult log)
 
-- **Consults** — Source: `docs/v2/reviews/identity-key-fk-shard-audit-2026-09-20.md` revision 2, findings E1 and A1, with Tarzy's adversarial dispositions (#4 third writer, #25 the race). Authorisation to author: > Indy (2026-09-20): "Yes i agree - open spec from High table (first two, skip the third tarzy's round)" — context: the review's High table; E1 first, then A1. **Required human decision, pending at PLAN:** slot 916 drops a constraint on the money table (`docs/SCHEMA_CONVENTIONS.md`: destructive changes need an explicit owner decision per change); the quote above authorises the spec, not the drop — record Indy's explicit yes here before EXECUTE. Architecture consult: `docs/architecture/data_flow.md` names the ledger key as `(event_id, charge_type)` at two lines; this spec reconciles the doc in §3 rather than diverging from it silently. Pre-existing findings surfaced while authoring, not fixed here: (i) a continuation whose approval row lands before the lease is classified a redelivery and skips the receive row — behaviour preserved; (ii) the crash window between `admit()` and the approval path's insert.
+- **Consults** — Source: `docs/v2/reviews/identity-key-fk-shard-audit-2026-09-20.md` revision 2, findings E1 and A1, with Tarzy's adversarial dispositions (#4 third writer, #25 the race). Authorisation to author: > Indy (2026-09-20): "Yes i agree - open spec from High table (first two, skip the third tarzy's round)" — context: the review's High table; E1 first, then A1. **Required human decision, GRANTED:** slot 916 drops a constraint on the money table (`docs/SCHEMA_CONVENTIONS.md`: destructive changes need an explicit owner decision per change), and the authorisation to open the spec did not carry it. Asked as decision D3 — drop and replace the arbiter, plus `fleet_id NOT NULL` — and answered by > Indy (2026-09-20): "D3 - Okay go ahead" — context: the ask named the `DROP CONSTRAINT`, the `ADD CONSTRAINT` and the `SET NOT NULL` as one migration file, and recorded that slot 915 had already dropped a constraint on this same table with his approval while `docs/SCHEMA_CONVENTIONS.md:11` requires the decision per change. Architecture consult: `docs/architecture/data_flow.md` names the ledger key as `(event_id, charge_type)` at two lines; this spec reconciles the doc in §3 rather than diverging from it silently. Pre-existing findings surfaced while authoring, not fixed here: (i) a continuation whose approval row lands before the lease is classified a redelivery and skips the receive row — behaviour preserved; (ii) the crash window between `admit()` and the approval path's insert.
 - **Metrics review** — no analytics/funnel playbook update required: internal correctness change, no user-visible event.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test` per Section and at the boundary; `/review`; `orly-babysit-prs` after push.
 - **Deferrals** — none.

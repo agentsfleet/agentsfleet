@@ -135,8 +135,8 @@ pub(crate) async fn held() -> Held {
     // row is `Accounts::debit_receive`, reached through `money_gates` on the
     // pull path. A fixture that skipped it left ONE ledger row per event, so
     // every suite asserting the two-rows-per-event invariant was measuring the
-    // fixture's shortcut rather than the `ON CONFLICT (event_id, charge_type)`
-    // arm that holds it there.
+    // fixture's shortcut rather than the
+    // `ON CONFLICT (event_id, charge_type, fleet_id)` arm that holds it there.
     //
     // Called once, on the `Delivery::First` asserted above — the same condition
     // the plane matches on, and the reason that assertion is not decorative.

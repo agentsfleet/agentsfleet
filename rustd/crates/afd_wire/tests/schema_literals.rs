@@ -141,3 +141,144 @@ fn every_schema_guard_compares_against_the_value_rust_writes() {
 
     assert_eq!(checked, FILES_READING_THE_SETTING);
 }
+
+/// How many statements in the workspace insert into the usage ledger.
+///
+/// Named for the same reason `FILES_READING_THE_SETTING` is: a writer that
+/// DISAPPEARS should be as loud as one that drifts. Three today — the renewal
+/// accumulate, the report accumulate, and the receive insert.
+const LEDGER_WRITERS: usize = 3;
+
+/// The arbiter every ledger writer must name, from slot 916 onward.
+const LEDGER_ARBITER: &str = "event_id, charge_type, fleet_id";
+
+/// Every `crates/*/src/**.rs` file's body, comment lines removed.
+///
+/// Comments are stripped rather than searched around because several of these
+/// modules explain the conflict arm in prose directly above the statement that
+/// carries it, and a scan that counted the prose would pass while the statement
+/// beneath it said something else.
+fn rust_sources_without_comments() -> Vec<(String, String)> {
+    fn walk(directory: &Path, found: &mut Vec<(String, String)>) {
+        let Ok(entries) = std::fs::read_dir(directory) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, found);
+            } else if path.extension().is_some_and(|ext| ext == "rs")
+                && let Ok(body) = std::fs::read_to_string(&path)
+            {
+                let code = body
+                    .lines()
+                    .filter(|line| !line.trim_start().starts_with("//"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                found.push((path.display().to_string(), code));
+            }
+        }
+    }
+
+    let mut found = Vec::new();
+    let crates = repo_root().join("rustd").join("crates");
+    for entry in std::fs::read_dir(&crates)
+        .expect("rustd/crates must exist")
+        .flatten()
+    {
+        walk(&entry.path().join("src"), &mut found);
+    }
+    assert!(!found.is_empty(), "a scan matching nothing is not a pass");
+    found
+}
+
+/// Every insert into `billing.usage_ledger` arbitrates on the fleet too.
+///
+/// The conflict target is where a money invariant is actually enforced, and it
+/// is spelled once per writer with nothing binding the three spellings
+/// together. Slot 916 narrowed the key; a writer still naming
+/// `(event_id, charge_type)` would not fail loudly against it — PostgreSQL
+/// raises "no unique or exclusion constraint matching" only at execution, on a
+/// path that runs when money moves. This is the check that fires first.
+///
+/// An `ON CONFLICT` is attributed to the table of the `INSERT INTO` that
+/// precedes it, so a statement inserting elsewhere in the same file is not
+/// swept in.
+#[test]
+fn every_ledger_conflict_target_carries_the_fleet() {
+    let mut writers = Vec::new();
+
+    for (name, body) in rust_sources_without_comments() {
+        for (offset, _) in body.match_indices("ON CONFLICT (") {
+            let Some(insert) = body[..offset].rfind("INSERT INTO ") else {
+                continue;
+            };
+            let table = body[insert + "INSERT INTO ".len()..]
+                .split(|c: char| c.is_whitespace() || c == '(')
+                .next()
+                .unwrap_or_default();
+            if table != "billing.usage_ledger" {
+                continue;
+            }
+            let target = body[offset + "ON CONFLICT (".len()..]
+                .split(')')
+                .next()
+                .expect("a conflict target closes its parenthesis")
+                .to_owned();
+            writers.push((name.clone(), target));
+        }
+    }
+
+    for (name, target) in &writers {
+        assert_eq!(
+            target, LEDGER_ARBITER,
+            "{name} arbitrates the ledger on ({target}), not the fleet-scoped key"
+        );
+    }
+    assert_eq!(
+        writers.len(),
+        LEDGER_WRITERS,
+        "the ledger's writers changed in number: {writers:#?}"
+    );
+}
+
+/// The architecture pages that state the ledger's key, and must state it right.
+///
+/// `name_architecture` makes these pages authoritative until reconciled, which
+/// cuts both ways: a page naming a key the schema retired is not stale
+/// documentation, it is the canonical answer being wrong. An agent consulting
+/// it would design against `(event_id, charge_type)` and be told by the
+/// operating model that the page wins.
+const PAGES_NAMING_THE_LEDGER_KEY: [&str; 2] = [
+    "docs/architecture/data_flow.md",
+    "docs/architecture/billing_and_provider_keys.md",
+];
+
+/// No architecture page still names the arbiter slot 916 retired.
+#[test]
+fn architecture_pages_name_the_composite_ledger_key() {
+    for page in PAGES_NAMING_THE_LEDGER_KEY {
+        let path = repo_root().join(page);
+        let body = std::fs::read_to_string(&path)
+            .map_err(|error| format!("{page} must be readable: {error}"))
+            .expect("an architecture page this rule names must exist");
+
+        assert!(
+            body.contains(LEDGER_ARBITER),
+            "{page} must name the fleet-scoped arbiter ({LEDGER_ARBITER})"
+        );
+        // The retired spelling must not survive anywhere on the page. The
+        // composite never matches this substring — `(fleet_id, ` sits where
+        // the opening parenthesis would be — so any hit is a bare mention, and
+        // one is enough: a page that adds the new key in one paragraph and
+        // leaves the old one standing three paragraphs down still misleads.
+        let retired: Vec<&str> = body
+            .lines()
+            .filter(|line| line.contains("(event_id, charge_type)"))
+            .collect();
+        assert!(
+            retired.is_empty(),
+            "{page} still names the retired ledger key: {retired:#?}"
+        );
+    }
+}
