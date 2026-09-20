@@ -121,6 +121,21 @@ describe("login acceptance — jsonMode rendering + rollback", () => {
     expect(rec.cleared).toBe(true);
   });
 
+  test("a deployment answering the identity read unreadably keeps the credential", async () => {
+    const rec = makeRecorder();
+    // The credential got PAST the guard to reach a 200, so the body this client
+    // cannot decode is a statement about deployment skew, not about the
+    // credential. Clearing here would mint and delete a working credential on
+    // every retry, a loop no retry escapes — the same trap the 404 case avoids.
+    const exit = await Effect.runPromiseExit(
+      runLogin(rec, freshFixture(), { identityUnreadable: true }),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(rec.cleared).toBe(false);
+    expect(rec.savedToken).toBe(MINTED_CREDENTIAL);
+    expect(rec.stderr.concat(rec.stdout).some((l) => l.includes("cannot read"))).toBe(true);
+  });
+
   test("first wrong code then correct code: retry succeeds, token persists", async () => {
     const rec = makeRecorder();
     const fixture = freshFixture();
