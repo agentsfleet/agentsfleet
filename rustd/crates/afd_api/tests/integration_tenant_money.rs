@@ -128,7 +128,7 @@ async fn exercise_billing(router: &axum::Router, fixture: &Fixture) {
     assert_eq!(first.status(), StatusCode::OK);
     let first = json_body(first).await;
     assert_eq!(items(&first).len(), 1);
-    assert_charge_names_its_fleet(&items(&first)[0]);
+    assert_charge_names_its_fleet(first_item(&first));
     let cursor = text(&first, "next_cursor").to_owned();
 
     let next = send(
@@ -144,7 +144,7 @@ async fn exercise_billing(router: &axum::Router, fixture: &Fixture) {
     assert_eq!(items(&next).len(), 1);
     // The resumed page runs a SECOND select list, maintained by hand beside
     // its twin. Asserting only the first page leaves that one unproven.
-    assert_charge_names_its_fleet(&items(&next)[0]);
+    assert_charge_names_its_fleet(first_item(&next));
 
     fixture.remove_wallet().await;
     let missing = send(
@@ -156,6 +156,13 @@ async fn exercise_billing(router: &axum::Router, fixture: &Fixture) {
     )
     .await;
     assert_eq!(missing.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+/// The page's first charge, which every caller here has already counted.
+fn first_item(document: &Value) -> &Value {
+    items(document)
+        .first()
+        .expect("the caller asserted this page holds one item")
 }
 
 /// One charge on the wire still names the fleet it was incurred by.
