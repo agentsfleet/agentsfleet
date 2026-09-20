@@ -40,7 +40,7 @@ const WORKSPACE: &str = "01990000-0000-7000-8000-000000000002";
 /// The fleet they are charged against, still alive at upgrade time.
 const FLEET: &str = "01990000-0000-7000-8000-000000000003";
 /// The two charges written before the upgrade.
-const CHARGES: [&str; 2] = [
+pub(crate) const CHARGES: [&str; 2] = [
     "01990000-0000-7000-8000-000000000004",
     "01990000-0000-7000-8000-000000000005",
 ];
@@ -152,7 +152,16 @@ async fn test_m201_upgrade_from_populated_ledger() {
 
     seed_charges(&db).await;
 
+    // Sliced to END at 915 rather than running the whole list, so "and nothing
+    // else" keeps meaning what it says. Running to the tip asserted the same
+    // thing only while 915 happened to be the last slot: 916 landed and this
+    // read `[915, 916]`, failing a test about slot 915 for a reason that had
+    // nothing to do with slot 915.
+    let through = MIGRATIONS
+        .get(..=boundary)
+        .expect("the slot's own index is within its own list");
     let upgrade = Migrator::new()
+        .with_migrations(through)
         .run(&db)
         .await
         .expect("slot 915 applies to a populated ledger");
@@ -213,7 +222,7 @@ async fn test_m201_upgrade_from_populated_ledger() {
 ///
 /// Written through the schema as it stands at slot 914, where `fleet_id` is
 /// still a foreign key — so the fleet row is a precondition here, not decoration.
-async fn seed_charges(db: &afd_db::Db) {
+pub(crate) async fn seed_charges(db: &afd_db::Db) {
     let mut connection = db.acquire().await.expect("a pooled connection");
 
     sqlx::query(

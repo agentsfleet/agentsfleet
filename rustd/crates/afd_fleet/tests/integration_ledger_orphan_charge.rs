@@ -39,8 +39,8 @@ async fn test_m201_charge_survives_unreadable_fleet_row() {
     let fleet = Uuid7::parse(&held.fleet).expect("the fixture fleet is a v7 spelling");
     let workspace = workspace_of(&held).await;
     // Distinct from the fixture's own event, so the replay guard on
-    // `(event_id, charge_type)` cannot turn this insert into a no-op that would
-    // read as a pass.
+    // `(event_id, charge_type, fleet_id)` cannot turn this insert into a no-op
+    // that would read as a pass.
     let orphan_event = format!("{}-orphan", held.event_id);
 
     remove_fleet(&held).await;

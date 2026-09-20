@@ -11,7 +11,7 @@
 //!
 //! # Replay safety, and the half of it that is not in the statement
 //!
-//! `ON CONFLICT (event_id, charge_type) DO NOTHING` makes the ledger row
+//! `ON CONFLICT (event_id, charge_type, fleet_id) DO NOTHING` makes the ledger row
 //! idempotent. It does NOT make the balance drain idempotent, because the drain
 //! is a different write. So the statement protects the row and the CALLER
 //! protects the money, by charging on a first delivery only — see

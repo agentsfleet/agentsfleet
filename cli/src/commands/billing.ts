@@ -3,8 +3,11 @@
 // Calls GET /v1/tenants/me/billing for the balance card and GET
 // /v1/tenants/me/billing/charges for the per-event drain history. Each event
 // produces up to two charge rows (charge_type ∈ {receive, stage}); the CLI
-// groups them by event_id so each row in the table represents one event with
-// both charges combined. `--json` emits the raw shape for scripting and
+// groups them by (fleet_id, event_id) so each row in the table represents one
+// event with both charges combined. The fleet is part of the key because
+// event_id is a logical id that two fleets can both hold — schema slot 916
+// scopes the ledger's own arbiter the same way, and grouping by the event
+// alone would merge two fleets' charges into one rendered row. `--json` emits the raw shape for scripting and
 // includes `next_cursor` so callers can paginate.
 
 import { Effect } from "effect";
@@ -31,6 +34,7 @@ interface BillingSnapshot {
 }
 
 interface ChargeRow {
+  readonly fleet_id?: string;
   readonly event_id?: string;
   readonly posture?: string;
   readonly model?: string;
@@ -47,6 +51,7 @@ interface ChargesResponse {
 }
 
 interface EventSummary {
+  fleet_id: string | undefined;
   event_id: string | undefined;
   posture: string | undefined;
   model: string | undefined;
@@ -94,14 +99,22 @@ const parseCursor = (
   return Effect.succeed(raw);
 };
 
+// A charge belongs to one fleet's event, so the key is both. NUL separates
+// them because neither a UUID nor a `<millis>-<seq>` event id can contain one,
+// which a plain concatenation could not promise.
+const groupKey = (row: ChargeRow): string =>
+  `${row.fleet_id ?? ""}\u0000${row.event_id ?? ""}`;
+
 const groupRowsByEvent = (
   rows: ReadonlyArray<ChargeRow>,
 ): EventSummary[] => {
-  const byEvent = new Map<string | undefined, EventSummary>();
+  const byEvent = new Map<string, EventSummary>();
   for (const r of rows) {
-    let entry = byEvent.get(r.event_id);
+    const key = groupKey(r);
+    let entry = byEvent.get(key);
     if (!entry) {
       entry = {
+        fleet_id: r.fleet_id,
         event_id: r.event_id,
         posture: r.posture,
         model: r.model,
@@ -112,7 +125,7 @@ const groupRowsByEvent = (
         token_count_output: null,
         total_nanos: 0,
       };
-      byEvent.set(r.event_id, entry);
+      byEvent.set(key, entry);
     }
     if (r.charge_type === CHARGE_TYPE.receive) {
       entry.receive_nanos = r.credit_deducted_nanos ?? 0;

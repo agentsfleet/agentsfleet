@@ -208,7 +208,7 @@ async fn test_report_stale_fence_rejected() {
 /// Dimension 3.3 — a replayed report leaves the ledger at two rows.
 ///
 /// Two, not one: the receive row §2 wrote and the stage row §3 accumulates
-/// into. The `ON CONFLICT (event_id, charge_type)` arm is what holds it there,
+/// into. The `ON CONFLICT (event_id, charge_type, fleet_id)` arm holds it there,
 /// and the second charge is approximately nothing because the first advanced
 /// the cursors the deltas are measured from.
 ///

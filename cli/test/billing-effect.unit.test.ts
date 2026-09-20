@@ -30,9 +30,18 @@ interface Recorder {
   readonly stdout: string[];
   readonly stderr: string[];
   readonly httpCalls: string[];
+  // The rows as printed, not just how many. A double that kept only the count
+  // could not tell one grouping key from another, so every assertion about
+  // what the table SAYS would have passed against any implementation.
+  readonly tables: ReadonlyArray<Record<string, unknown>>[];
 }
 
-const makeRecorder = (): Recorder => ({ stdout: [], stderr: [], httpCalls: [] });
+const makeRecorder = (): Recorder => ({
+  stdout: [],
+  stderr: [],
+  httpCalls: [],
+  tables: [],
+});
 
 const outputLayer = (rec: Recorder): Layer.Layer<Output> =>
   Layer.succeed(Output, {
@@ -52,6 +61,7 @@ const outputLayer = (rec: Recorder): Layer.Layer<Output> =>
     printTable: (_columns, rows) =>
       Effect.sync(() => {
         rec.stdout.push(`TABLE:${rows.length}`);
+        rec.tables.push(rows as ReadonlyArray<Record<string, unknown>>);
       }),
   });
 
@@ -466,5 +476,77 @@ describe("billingShowEffectFromArgs", () => {
     expect(rec.stdout.join("\n")).toMatch(
       /more events available — re-run with --cursor next_token_xyz/,
     );
+  });
+});
+
+describe("charge grouping is scoped to the fleet", () => {
+  // Dimension 3.1. `event_id` is a logical id, and schema slot 916 stopped
+  // pretending it identifies a charge on its own. Two fleets can hold the same
+  // one; before the grouping key carried the fleet, their charges merged into
+  // a single rendered row and the totals were the sum of two fleets' spend.
+  test("two fleets sharing one event id render as two rows", async () => {
+    const rec = makeRecorder();
+    const FIRST = "01990000-0000-7000-8000-0000000000a1";
+    const SECOND = "01990000-0000-7000-8000-0000000000a2";
+    const SHARED_EVENT = "1760000000000-1";
+    const program = billingShowEffectFromArgs({
+      limit: undefined,
+      cursor: undefined,
+    }).pipe(
+      Effect.provide(configLayer()),
+      Effect.provide(credentialsLayer()),
+      Effect.provide(
+        httpClientLayer((path) => {
+          if (path === BILLING_PATH) {
+            return Effect.succeed({
+              balance_nanos: 471 * ONE_CENT_NANOS,
+              is_exhausted: false,
+            }) as Effect.Effect<unknown, ServerError>;
+          }
+          return Effect.succeed({
+            items: [
+              {
+                fleet_id: FIRST,
+                event_id: SHARED_EVENT,
+                charge_type: "receive",
+                credit_deducted_nanos: ONE_CENT_NANOS,
+                posture: "platform",
+                model: "claude-opus-5",
+                recorded_at: 1_760_000_000_000,
+              },
+              {
+                fleet_id: SECOND,
+                event_id: SHARED_EVENT,
+                charge_type: "receive",
+                credit_deducted_nanos: ONE_CENT_NANOS,
+                posture: "platform",
+                model: "claude-opus-5",
+                recorded_at: 1_760_000_000_001,
+              },
+              {
+                fleet_id: FIRST,
+                event_id: SHARED_EVENT,
+                charge_type: "stage",
+                credit_deducted_nanos: 2 * ONE_CENT_NANOS,
+                posture: "platform",
+                model: "claude-opus-5",
+                recorded_at: 1_760_000_000_002,
+              },
+            ],
+          }) as Effect.Effect<unknown, ServerError>;
+        }, rec),
+      ),
+      Effect.provide(outputLayer(rec)),
+    );
+
+    await runWith(program);
+    const rows = rec.tables[0] ?? [];
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.event_id === SHARED_EVENT)).toBe(true);
+    // The first fleet's two charges combine into its own row and stop there.
+    // Grouping by the event alone would have produced ONE row totalling all
+    // three charges, which is one fleet being billed for another's work.
+    const totals = rows.map((row) => row.total).sort();
+    expect(totals).toEqual(["$0.01", "$0.03"]);
   });
 });

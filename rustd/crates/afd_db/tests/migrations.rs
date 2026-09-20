@@ -293,3 +293,38 @@ fn test_m201_migration_slot_registered() {
          in a different order on a fresh database than on an upgraded one"
     );
 }
+
+/// Slot 916 is in the shipped list exactly once, and it follows 915.
+///
+/// Same pair of appending mistakes `test_m201_migration_slot_registered`
+/// guards for 915, asked of the slot that replaces the ledger's arbiter. The
+/// order matters more here than for an additive slot: 916 drops a constraint
+/// schema/710 created, so an entry placed above 710 would drop a constraint
+/// that does not exist yet on a fresh database while an upgraded one kept it.
+#[test]
+fn slot_916_follows_915_exactly_once() {
+    const FLEET_SCOPED_KEY: &str = "916_usage_ledger_fleet_scoped_key.sql";
+
+    let listed = MIGRATIONS
+        .iter()
+        .filter(|migration| migration.name() == FLEET_SCOPED_KEY)
+        .count();
+    assert_eq!(
+        listed, 1,
+        "{FLEET_SCOPED_KEY} must be registered exactly once"
+    );
+
+    let position = MIGRATIONS
+        .iter()
+        .position(|migration| migration.name() == FLEET_SCOPED_KEY)
+        .expect("the slot was just found by name");
+    let predecessor = MIGRATIONS
+        .get(position.wrapping_sub(1))
+        .expect("slot 916 is never the first entry");
+    assert_eq!(
+        predecessor.version(),
+        915,
+        "slot 916 must follow 915 — it drops the constraint schema/710 created \
+         and relies on the column schema/915 left behind"
+    );
+}
