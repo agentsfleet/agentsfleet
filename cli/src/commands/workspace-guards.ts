@@ -24,6 +24,16 @@ import {
 
 export const WORKSPACE_CREATE_USAGE =
   "agentsfleet workspace create <name>" as const;
+
+/**
+ * The one way out of "no workspace selected", naming every route.
+ *
+ * Five resolvers worded this four different ways, and only `connector`'s
+ * named `--workspace` — the flag every one of those commands accepts. The
+ * union of what they said is what a person needs, so it is what they get.
+ */
+const WORKSPACE_MISSING_SUGGESTION =
+  `run \`${WORKSPACE_CREATE_USAGE}\` or \`agentsfleet workspace use <id>\`, or pass --workspace <id>` as const;
 const WORKSPACE_NAME_MAX_CODEPOINTS = 128;
 const ASCII_EDGE_WHITESPACE_PATTERN =
   /^[\u0009-\u000d\u0020]+|[\u0009-\u000d\u0020]+$/gu;
@@ -76,12 +86,28 @@ export const requireWorkspaceId: Effect.Effect<
     return yield* Effect.fail(
       new ConfigError({
         detail: "no workspace selected",
-        suggestion: `run \`${WORKSPACE_CREATE_USAGE}\` or \`agentsfleet workspace use <id>\``,
+        suggestion: WORKSPACE_MISSING_SUGGESTION,
       }),
     );
   }
   return state.current_workspace_id;
 });
+
+/**
+ * A required value, as an Effect.
+ *
+ * `requireFlag` in `grant`, `requireValue` in `api_key` and `connector`, and
+ * `requireGateId` in `approvals` were four spellings of this three-line
+ * function, each with its own argument order.
+ */
+export const requireValue = (
+  value: string | undefined,
+  detail: string,
+  suggestion: string,
+): Effect.Effect<string, ValidationError> =>
+  isString(value) && value.length > 0
+    ? Effect.succeed(value)
+    : Effect.fail(new ValidationError({ detail, suggestion }));
 
 /**
  * A required identifier, validated, as an Effect.
