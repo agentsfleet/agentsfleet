@@ -10,6 +10,7 @@
 // (heartbeats) and skipped.
 
 import { ApiError, readProblemDetails, type FetchImpl } from "./http.ts";
+import { isRecord } from "./guards.ts";
 
 const MESSAGE_KEY = "message";
 
@@ -96,7 +97,7 @@ export async function streamGet(
       }
     }
   } catch (err) {
-    if (err !== null && typeof err === TYPE_OBJECT && (err as { name?: unknown }).name === "AbortError") {
+    if (isRecord(err) && (err as { name?: unknown }).name === "AbortError") {
       if (externalSignal?.aborted) return; // user-cancelled, not a timeout
       throw new ApiError(`stream timed out after ${timeoutMs}ms`, { status: 408, code: "TIMEOUT" });
     }
@@ -130,4 +131,3 @@ export function parseSseFrame(frame: string): SseFrame | null {
   return { id, type, data: parsed };
 }
 const LITERAL = "\n\n" as const;
-const TYPE_OBJECT = "object" as const;

@@ -12,6 +12,7 @@ import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import { resolveAuthToken } from "./workspace-guards.ts";
+import { isNumber, isString } from "../lib/guards.ts";
 import {
   PROVIDER_MODE,
   formatDollars,
@@ -22,15 +23,11 @@ import {
   TENANT_BILLING_PATH,
 } from "../lib/api-paths.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
+import { EMPTY_CELL } from "../output/index.ts";
 
 // <$1 left → warn on reset.
 const LOW_BALANCE_THRESHOLD_NANOS = NANOS_PER_USD;
-const TYPE_NUMBER = "number" as const;
-const TYPE_STRING = "string" as const;
-const LITERAL = "—" as const;
 
-const isNumber = (value: unknown): value is number => typeof value === TYPE_NUMBER;
-const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 interface ProviderResponse {
   readonly mode?: string;
@@ -63,17 +60,17 @@ const renderProviderTable = (
         { key: "value", label: "VALUE" },
       ],
       [
-        { field: "mode", value: res?.mode ?? LITERAL },
-        { field: "provider", value: res?.provider ?? LITERAL },
-        { field: "model", value: res?.model ?? LITERAL },
+        { field: "mode", value: res?.mode ?? EMPTY_CELL },
+        { field: "provider", value: res?.provider ?? EMPTY_CELL },
+        { field: "model", value: res?.model ?? EMPTY_CELL },
         {
           field: "context_cap_tokens",
           value:
             isNumber(res?.context_cap_tokens)
               ? String(res.context_cap_tokens)
-              : LITERAL,
+              : EMPTY_CELL,
         },
-        { field: "secret_ref", value: res?.secret_ref ?? LITERAL },
+        { field: "secret_ref", value: res?.secret_ref ?? EMPTY_CELL },
       ],
     );
   });

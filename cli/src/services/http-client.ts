@@ -18,17 +18,13 @@ import {
 import { apiRequestWithRetry, type RetryConfig } from "../lib/http-retry.ts";
 import { CliConfig } from "./config.ts";
 import { NetworkError, ServerError } from "../errors/index.ts";
+import { isString } from "../lib/guards.ts";
+import { HTTP_METHOD, type HttpMethod } from "../constants/http-method.ts";
 
-const HTTP_METHOD_GET = "GET" as const;
-const TYPE_STRING = "string" as const;
-
-const isString = (value: unknown): value is string =>
-  typeof value === TYPE_STRING;
 
 export interface HttpRequestInput {
   readonly path: string;
-  readonly method?:
-    typeof HTTP_METHOD_GET | "POST" | "PUT" | "PATCH" | "DELETE";
+  readonly method?: HttpMethod;
   readonly headers?: Record<string, string>;
   readonly body?: unknown;
   readonly token?: Redacted.Redacted<string> | undefined;
@@ -146,7 +142,7 @@ const makeLive = (
     return Effect.tryPromise({
       try: () =>
         apiRequestWithRetry(url, {
-          method: input.method ?? HTTP_METHOD_GET,
+          method: input.method ?? HTTP_METHOD.get,
           headers,
           ...(body !== undefined ? { body } : {}),
           ...(input.retry !== undefined ? { retry: input.retry } : {}),

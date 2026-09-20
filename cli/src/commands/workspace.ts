@@ -45,6 +45,7 @@ import {
   createWorkspaceWithReconciliation,
   WORKSPACE_CREATE_STATUS,
 } from "./workspace-create-reconcile.ts";
+import { EMPTY_CELL } from "../output/index.ts";
 
 const WORKSPACE_ID_FIELD = "workspace_id";
 const WORKSPACE_LOCAL_REMOVAL_FIELD = "removed_from_local_state";
@@ -135,7 +136,7 @@ export const workspaceAddEffect = (
     );
     yield* output.printKeyValue({
       workspace_id: workspaceId,
-      name: resolvedName ?? LITERAL,
+      name: resolvedName ?? EMPTY_CELL,
     });
   });
 
@@ -174,7 +175,7 @@ export const workspaceListEffect: Effect.Effect<
     state.items.map((item) => ({
       active: item.workspace_id === state.current_workspace_id ? "*" : "",
       workspace_id: item.workspace_id,
-      name: item.name ?? LITERAL,
+      name: item.name ?? EMPTY_CELL,
     })),
   );
 });
@@ -277,7 +278,7 @@ export const workspaceShowEffectFromArgs = (
     yield* output.printKeyValue({
       workspace_id: detail.workspace_id,
       active: detail.active ? "yes" : "no",
-      name: detail.name ?? LITERAL,
+      name: detail.name ?? EMPTY_CELL,
     });
   });
 
@@ -334,4 +335,3 @@ export const workspaceDeleteEffectFromArgs = (
       );
     }
   });
-const LITERAL = "—" as const;

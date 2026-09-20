@@ -47,7 +47,6 @@ export const GATE_FIELD = {
 
 // One em dash stands in for an absent optional field, matching every other
 // table this CLI prints.
-export const EMPTY_CELL = "—" as const;
 
 // Query parameters the approvals route serves. The Fleet and status filters
 // are the daemon's own, so narrowing happens there rather than over a page this

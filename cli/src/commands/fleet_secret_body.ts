@@ -27,13 +27,12 @@ import {
   SECRET_FIELD_BASE_URL,
   SECRET_FIELD_MODEL,
 } from "../constants/custom-endpoint.ts";
+import { isString } from "../lib/guards.ts";
 
 const STDIN_SENTINEL = "@-";
 const MISSING_DATA_HINT =
   "missing --data flag. Pipe JSON on stdin with --data=@- or pass --data='{...}'. Stdin form keeps secrets out of shell history.";
-const TYPE_STRING = "string" as const;
 
-const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 export interface SecretAddFlags {
   readonly name?: string | undefined;

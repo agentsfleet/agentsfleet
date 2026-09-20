@@ -16,6 +16,7 @@ import {
   type CliError,
 } from "../errors/index.ts";
 import { ERR_UNAUTHORIZED } from "../errors/auth.ts";
+import { EMPTY_CELL } from "../output/index.ts";
 
 // Server-side auth codes from src/errors/error_registry.zig. The CLI
 // branches on these to surface re-auth prompts; they are the only
@@ -26,8 +27,6 @@ const ERR_TOKEN_EXPIRED = "UZ-AUTH-003";
 
 type TokenSource = "file" | "env" | "none";
 type ProbeStatus = "valid" | "unauthorized" | "unreachable" | "unverified";
-
-const DASH = "—";
 // Both credential classes the CLI can hold — the minted afc_ file credential
 // and the agt_t service key — are opaque: no readable claims, capability
 // resolved server-side from the record the credential names.
@@ -55,7 +54,7 @@ interface AuthStatusResult {
 const formatTs = (ms: number | null | undefined): string =>
   typeof ms === "number" && Number.isFinite(ms)
     ? new Date(ms).toISOString()
-    : DASH;
+    : EMPTY_CELL;
 
 
 const classifyProbeError = (err: ServerError): ProbeResult => {

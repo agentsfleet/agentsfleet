@@ -1,7 +1,7 @@
 
+import { isRecord, isString } from "./guards.ts";
+
 const APIERROR = "ApiError" as const;
-const TYPE_OBJECT = "object" as const;
-const TYPE_STRING = "string" as const;
 const MS_PER_SECOND = 1000 as const;
 
 // HTTP transport: fetch wrapper, JSON envelope unwrap, AbortController-backed
@@ -122,7 +122,7 @@ export async function apiRequest(url: string, options: ApiRequestOptions = {}): 
 
     return json ?? {};
   } catch (err) {
-    if (err !== null && typeof err === TYPE_OBJECT && (err as { name?: unknown }).name === "AbortError") {
+    if (isRecord(err) && (err as { name?: unknown }).name === "AbortError") {
       throw new ApiError(`request timed out after ${timeoutMs}ms`, {
         status: 408,
         code: "TIMEOUT",
@@ -135,17 +135,17 @@ export async function apiRequest(url: string, options: ApiRequestOptions = {}): 
 }
 
 const readString = (value: unknown): string | undefined =>
-  typeof value === TYPE_STRING ? value as string : undefined;
+  isString(value) ? value : undefined;
 
 const readStringArray = (value: unknown): ReadonlyArray<string> | undefined =>
-  Array.isArray(value) && value.every((item) => typeof item === TYPE_STRING)
+  Array.isArray(value) && value.every((item) => isString(item))
     ? value
     : undefined;
 
 export function readProblemDetails(value: unknown): ProblemDetails {
-  if (value === null || typeof value !== TYPE_OBJECT) return {};
+  if (!isRecord(value)) return {};
   const body = value as Record<string, unknown>;
-  const nested = body.error !== null && typeof body.error === TYPE_OBJECT
+  const nested = isRecord(body.error)
     ? body.error as Record<string, unknown>
     : null;
   return {
