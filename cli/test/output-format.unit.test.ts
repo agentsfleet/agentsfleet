@@ -9,6 +9,8 @@ import {
   formatSection,
   formatHelpHeading,
   formatEvidence,
+  cell,
+  EMPTY_CELL,
 } from "../src/output/format.ts";
 import { ColorMode } from "../src/output/capability.ts";
 
@@ -20,6 +22,21 @@ const STYLED = { mode: ColorMode.XTERM256 };
 function stripAnsi(str: string): string {
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
+
+describe("cell — one glyph for nothing, across every table", () => {
+  test("a non-empty string is its own cell", () => {
+    expect(cell("ready")).toBe("ready");
+  });
+
+  // The three ways the wire says "nothing". They render identically, which is
+  // the whole point of one shared glyph: a reader scanning a column never has
+  // to decide whether an empty string means something a null does not.
+  test("null, undefined and the empty string all render the glyph", () => {
+    expect(cell(null)).toBe(EMPTY_CELL);
+    expect(cell(undefined)).toBe(EMPTY_CELL);
+    expect(cell("")).toBe(EMPTY_CELL);
+  });
+});
 
 describe("formatHelpHeading — the only pulse-currency callsite in format.js", () => {
   test("emits pulse-cyan + bold in xterm256", () => {
