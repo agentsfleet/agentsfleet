@@ -2,8 +2,8 @@
 //
 // The question this answers — may this command run with the credential and
 // target the invocation resolved? — has to be asked AFTER the parser and
-// BEFORE the handler. Commander did that with a `preAction` hook. Asking it
-// any earlier inverts the two failures a person can make at once: someone who
+// BEFORE the handler. Asking it any earlier inverts the two failures a
+// person can make at once: someone who
 // mistypes a flag AND is signed out should be told about the flag, because
 // that is the one they can fix without leaving the terminal. Being sent
 // through a login only to come back to the same typo is the worst outcome of

@@ -46,7 +46,7 @@ const HELP_ARGS = ["--help"] as const;
 const UNKNOWN_ARGS = ["definitely-not-a-real-command"] as const;
 
 // Pinned exit codes: the CLI exits 0 on --version/--help; an unrecognised
-// command maps through COMMANDER_USAGE_CODES to POSIX usage-error exit 2.
+// command is a rejected invocation and takes the validation code below.
 const EXIT_OK = 0;
 // An unknown command is a rejected invocation: the validation code, not
 // the transport code it used to share with a dead network.

@@ -205,7 +205,11 @@ if (!isLive) {
       it("is rejected as an unknown option and persists nothing", async () => {
         const result = await spawn([CMD_LOGIN, FLAG_TOKEN, "afc_whatever", FLAG_JSON]);
         assert.notEqual(result.code, 0, `removed flag must not succeed: ${result.stdout}`);
-        assert.match(result.stderr, /unknown option/i, `expected an unknown-option error: ${result.stderr}`);
+        // Asserted on the stable `--json` code rather than the parser's English.
+        // The invocation asks for JSON, so the code is the contract a caller
+        // switches on; the prose beside it is free to be reworded.
+        assert.match(result.stderr, /UNKNOWN_OPTION/, `expected the unknown-option code: ${result.stderr}`);
+        assert.match(result.stderr, /--token/, `the refusal must name the flag: ${result.stderr}`);
         assert.equal(await credentialsExist(credentialsPath), false,
           "a rejected flag must leave no credential behind");
       });

@@ -79,10 +79,10 @@ describe("runCli exit-code mapping", () => {
   });
 
   test("auth-required command short-circuits to exit 1 via state.exitCode", async () => {
-    // The preAction auth-guard sets state.exitCode = 1 and throws a
-    // CommanderError(code "auth.required"). exitFromCommanderError sees
-    // state.exitCode !== 0 first and returns it before the usage-code
-    // check — proving the state.exitCode short-circuit branch (line 158).
+    // The auth guard sets state.exitCode = 1 and fails with
+    // code "auth.required". The exit mapping sees state.exitCode !== 0
+    // first and returns it before the usage-code check — proving the
+    // state.exitCode short-circuit branch.
     await withFreshStateDir(async () => {
       const out = bufferStream();
       const err = bufferStream();
@@ -123,9 +123,9 @@ describe("runCli exit-code mapping", () => {
   });
 
   test("an authed command that parses cleanly returns state.exitCode (the success tail)", async () => {
-    // Drives the no-error tail (line 277, `return state.exitCode`) with a
-    // bound leaf handler so the CommanderError mapping is NOT exercised —
-    // the complementary side of the parseResult.ok branch.
+    // Drives the no-error tail (`return state.exitCode`) with a bound leaf
+    // handler so the rejection mapping is NOT exercised — the complementary
+    // side of the parseResult.ok branch.
     await withAuthedStateDir({ workspaceId: VALID_ID }, async () => {
       const code = await runCli(["workspace", "list"], {
         stdout: makeNoop(),
