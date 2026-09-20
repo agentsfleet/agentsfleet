@@ -1,5 +1,5 @@
-// I/O primitives consumed by every command handler. Help rendering
-// lives in help.js (commander.Help subclass).
+// I/O primitives consumed by every command handler. Help rendering belongs
+// to the CLI library's formatter — see program/entry/help-formatter.ts.
 
 import type { UiTheme, WriteStream } from "../output/index.ts";
 

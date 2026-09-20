@@ -51,6 +51,7 @@ const captureOutputLayer = (
   Layer.succeed(
     Output,
     Output.of({
+      stdoutIsTty: false,
       format,
       intro: () => Effect.void,
       info: (msg) =>

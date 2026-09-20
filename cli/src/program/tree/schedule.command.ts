@@ -4,8 +4,9 @@
 // because a schedule belongs to a Fleet and a Fleet belongs to a workspace —
 // the argument order says the same thing the paths do.
 
-import { Option } from "effect";
+import { Effect, Option } from "effect";
 import { Command } from "effect/unstable/cli";
+import { guardedHandler } from "./guarded-handler.ts";
 import {
   scheduleAddEffectFromArgs,
   scheduleListEffectFromArgs,
@@ -38,13 +39,16 @@ const scheduleAddCommand = Command.make("add", {
   workspace: workspaceFlag,
 }).pipe(
   Command.withDescription("Create a hosted schedule for a Fleet"),
-  Command.withHandler(({ fleetId, cron, message, timezone, workspace }) =>
-    scheduleAddEffectFromArgs(fleetId, {
-      cron,
-      message,
-      timezone: opt(timezone),
-      workspaceId: opt(workspace),
-      stdoutIsTty: stdoutIsTty(),
+  guardedHandler(({ fleetId, cron, message, timezone, workspace }) =>
+    Effect.gen(function* () {
+      const isTty = yield* stdoutIsTty;
+      return yield* scheduleAddEffectFromArgs(  fleetId, {
+        cron,
+        message,
+        timezone: opt(timezone),
+        workspaceId: opt(workspace),
+        stdoutIsTty: isTty,
+      });
     }),
   ),
 );
@@ -54,10 +58,13 @@ const scheduleListCommand = Command.make("list", {
   workspace: workspaceFlag,
 }).pipe(
   Command.withDescription("List hosted schedules for a Fleet"),
-  Command.withHandler(({ fleetId, workspace }) =>
-    scheduleListEffectFromArgs(fleetId, {
-      workspaceId: opt(workspace),
-      stdoutIsTty: stdoutIsTty(),
+  guardedHandler(({ fleetId, workspace }) =>
+    Effect.gen(function* () {
+      const isTty = yield* stdoutIsTty;
+      return yield* scheduleListEffectFromArgs(  fleetId, {
+        workspaceId: opt(workspace),
+        stdoutIsTty: isTty,
+      });
     }),
   ),
 );
@@ -72,14 +79,17 @@ const scheduleUpdateCommand = Command.make("update", {
   workspace: workspaceFlag,
 }).pipe(
   Command.withDescription("Update a hosted schedule"),
-  Command.withHandler(({ fleetId, scheduleId, cron, message, timezone, status, workspace }) =>
-    scheduleUpdateEffectFromArgs(fleetId, scheduleId, {
-      cron: opt(cron),
-      message: opt(message),
-      timezone: opt(timezone),
-      status: opt(status),
-      workspaceId: opt(workspace),
-      stdoutIsTty: stdoutIsTty(),
+  guardedHandler(({ fleetId, scheduleId, cron, message, timezone, status, workspace }) =>
+    Effect.gen(function* () {
+      const isTty = yield* stdoutIsTty;
+      return yield* scheduleUpdateEffectFromArgs(  fleetId, scheduleId, {
+        cron: opt(cron),
+        message: opt(message),
+        timezone: opt(timezone),
+        status: opt(status),
+        workspaceId: opt(workspace),
+        stdoutIsTty: isTty,
+      });
     }),
   ),
 );
@@ -90,10 +100,13 @@ const scheduleRmCommand = Command.make("rm", {
   workspace: workspaceFlag,
 }).pipe(
   Command.withDescription("Remove a hosted schedule"),
-  Command.withHandler(({ fleetId, scheduleId, workspace }) =>
-    scheduleRmEffectFromArgs(fleetId, scheduleId, {
-      workspaceId: opt(workspace),
-      stdoutIsTty: stdoutIsTty(),
+  guardedHandler(({ fleetId, scheduleId, workspace }) =>
+    Effect.gen(function* () {
+      const isTty = yield* stdoutIsTty;
+      return yield* scheduleRmEffectFromArgs(  fleetId, scheduleId, {
+        workspaceId: opt(workspace),
+        stdoutIsTty: isTty,
+      });
     }),
   ),
 );
@@ -104,10 +117,13 @@ const scheduleStatusCommand = Command.make("status", {
   workspace: workspaceFlag,
 }).pipe(
   Command.withDescription("Show one hosted schedule"),
-  Command.withHandler(({ fleetId, scheduleId, workspace }) =>
-    scheduleStatusEffectFromArgs(fleetId, scheduleId, {
-      workspaceId: opt(workspace),
-      stdoutIsTty: stdoutIsTty(),
+  guardedHandler(({ fleetId, scheduleId, workspace }) =>
+    Effect.gen(function* () {
+      const isTty = yield* stdoutIsTty;
+      return yield* scheduleStatusEffectFromArgs(  fleetId, scheduleId, {
+        workspaceId: opt(workspace),
+        stdoutIsTty: isTty,
+      });
     }),
   ),
 );
@@ -118,10 +134,13 @@ const scheduleSyncCommand = Command.make("sync", {
   workspace: workspaceFlag,
 }).pipe(
   Command.withDescription("Re-apply a hosted schedule to QStash"),
-  Command.withHandler(({ fleetId, scheduleId, workspace }) =>
-    scheduleSyncEffectFromArgs(fleetId, scheduleId, {
-      workspaceId: opt(workspace),
-      stdoutIsTty: stdoutIsTty(),
+  guardedHandler(({ fleetId, scheduleId, workspace }) =>
+    Effect.gen(function* () {
+      const isTty = yield* stdoutIsTty;
+      return yield* scheduleSyncEffectFromArgs(  fleetId, scheduleId, {
+        workspaceId: opt(workspace),
+        stdoutIsTty: isTty,
+      });
     }),
   ),
 );

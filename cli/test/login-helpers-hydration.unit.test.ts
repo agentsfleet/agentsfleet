@@ -31,6 +31,7 @@ const makeRec = (): Rec => ({ stderr: [], saved: 0, savedValue: null });
 
 const outputLayer = (rec: Rec): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    stdoutIsTty: false,
     format: OUTPUT_FORMAT.text,
     intro: () => Effect.void,
     info: () => Effect.void,

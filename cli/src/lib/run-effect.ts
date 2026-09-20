@@ -4,7 +4,7 @@
 //
 // Analytics emit is NOT this layer's responsibility — it lives in
 // services/telemetry/command-instrumentation.ts:withCommandInstrumentation,
-// applied at the single bind site in program/handlers-bind.ts. The
+// applied once around the whole run in cli.ts. The
 // dispatcher just runs the Effect and renders the Exit. Mirrors
 // Supabase's shared/cli/run.ts handledProgram shape.
 //
@@ -101,7 +101,16 @@ const renderError = (
     yield* output.error(err.message);
   });
 
-const renderAndCount = <A, E extends CliError>(
+/**
+ * Renders a finished Exit and answers its process exit code.
+ *
+ * Exported because the entry point shares it. The CLI tree's own failures are
+ * rendered by the library, but a command that fails with one of THIS
+ * repository's errors still has to produce the `UZ-*` code, the suggestion and
+ * the request id that support workflows grep for — and a second renderer at
+ * the entry point would drift from this one the first time a variant changed.
+ */
+export const renderAndCount = <A, E extends CliError>(
   exit: Exit.Exit<A, E>,
 ): Effect.Effect<number, never, Output> =>
   Effect.gen(function* () {

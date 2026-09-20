@@ -5,6 +5,7 @@
 
 import { Option } from "effect";
 import { Command } from "effect/unstable/cli";
+import { guardedHandler } from "./guarded-handler.ts";
 import {
   workspaceAddEffect,
   workspaceDeleteEffectFromArgs,
@@ -41,17 +42,17 @@ const DELETE = "delete" as const;
 
 const workspaceCreateCommand = Command.make(CREATE, { name: workspaceNameArgument }).pipe(
   Command.withDescription("Create a new workspace"),
-  Command.withHandler(({ name }) => workspaceAddEffect(name)),
+  guardedHandler(({ name }) => workspaceAddEffect(name)),
 );
 
 const workspaceListCommand = Command.make(LIST).pipe(
   Command.withDescription("List workspaces"),
-  Command.withHandler(() => workspaceListEffect),
+  guardedHandler(() => workspaceListEffect),
 );
 
 const workspaceUseCommand = Command.make("use", { workspaceId: workspaceIdArgument }).pipe(
   Command.withDescription("Set the active workspace"),
-  Command.withHandler(({ workspaceId }) => workspaceUseEffectFromArgs(workspaceId, undefined)),
+  guardedHandler(({ workspaceId }) => workspaceUseEffectFromArgs(workspaceId, undefined)),
 );
 
 // The id may arrive as a positional or as `--workspace-id`; the handler owns
@@ -61,19 +62,19 @@ const workspaceShowCommand = Command.make(SHOW, {
   workspaceIdFlag,
 }).pipe(
   Command.withDescription("Show workspace details"),
-  Command.withHandler(({ workspaceId, workspaceIdFlag: fromFlag }) =>
+  guardedHandler(({ workspaceId, workspaceIdFlag: fromFlag }) =>
     workspaceShowEffectFromArgs(opt(workspaceId), opt(fromFlag)),
   ),
 );
 
 const workspaceSecretsCommand = Command.make("secrets").pipe(
   Command.withDescription("Open the workspace secret vault"),
-  Command.withHandler(() => workspaceSecretsEffect),
+  guardedHandler(() => workspaceSecretsEffect),
 );
 
 const workspaceDeleteCommand = Command.make(DELETE, { workspaceId: workspaceIdArgument }).pipe(
   Command.withDescription("Remove a workspace from local client state"),
-  Command.withHandler(({ workspaceId }) => workspaceDeleteEffectFromArgs(workspaceId, undefined)),
+  guardedHandler(({ workspaceId }) => workspaceDeleteEffectFromArgs(workspaceId, undefined)),
 );
 
 export const workspaceCommand = Command.make("workspace").pipe(
@@ -92,7 +93,7 @@ export const workspaceCommand = Command.make("workspace").pipe(
 
 const tenantProviderShowCommand = Command.make(SHOW).pipe(
   Command.withDescription("Show the active provider config"),
-  Command.withHandler(() => tenantProviderShowEffect),
+  guardedHandler(() => tenantProviderShowEffect),
 );
 
 const tenantProviderCreateCommand = Command.make(CREATE, {
@@ -100,14 +101,14 @@ const tenantProviderCreateCommand = Command.make(CREATE, {
   model: modelOverrideFlag,
 }).pipe(
   Command.withDescription("Use a self-managed secret"),
-  Command.withHandler(({ secret, model }) =>
+  guardedHandler(({ secret, model }) =>
     tenantProviderAddEffectFromArgs(opt(secret), opt(model)),
   ),
 );
 
 const tenantProviderDeleteCommand = Command.make(DELETE).pipe(
   Command.withDescription("Reset to the platform default"),
-  Command.withHandler(() => tenantProviderDeleteEffect),
+  guardedHandler(() => tenantProviderDeleteEffect),
 );
 
 const tenantProviderCommand = Command.make("provider").pipe(
@@ -131,7 +132,7 @@ const billingShowCommand = Command.make(SHOW, {
   cursor: cursorFlag,
 }).pipe(
   Command.withDescription("Plan, balance, and recent events"),
-  Command.withHandler(({ limit, cursor }) =>
+  guardedHandler(({ limit, cursor }) =>
     billingShowEffectFromArgs({ limit: opt(limit), cursor: opt(cursor) }),
   ),
 );

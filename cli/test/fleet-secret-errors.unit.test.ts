@@ -27,6 +27,7 @@ import { ValidationError, type CliError } from "../src/errors/index.ts";
 
 const makeOutputLayer = (captured: string[]): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    stdoutIsTty: false,
     format: OUTPUT_FORMAT.text,
     intro: (msg) => Effect.sync(() => { captured.push(msg); }),
     info: (msg) => Effect.sync(() => { captured.push(msg); }),

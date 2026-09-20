@@ -131,10 +131,6 @@ export const REQUIRES_IDENTIFIER: ReadonlyArray<RequiresIdentifierRow> = [
 export interface RequiresPositionalArgRow {
   readonly args: ReadonlyArray<string>;
   readonly missingArgName: string;
-  // The token the rejection actually names, when it differs from the
-  // positional. commander validates required OPTIONS before positionals, so
-  // a bare `schedule add` is told about --cron first.
-  readonly reportedToken?: string;
 }
 
 // Commands whose first positional is `<required>` in cli-tree and so
@@ -166,7 +162,7 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["secret", "update"], missingArgName: "name" },
   { args: ["secret", "show"], missingArgName: "name" },
   { args: ["secret", "delete"], missingArgName: "name" },
-  { args: ["schedule", "add"], missingArgName: "fleet_id", reportedToken: "--cron" },
+  { args: ["schedule", "add"], missingArgName: "fleet_id" },
   { args: ["schedule", "list"], missingArgName: "fleet_id" },
   { args: ["schedule", "update"], missingArgName: "fleet_id" },
   { args: ["schedule", "rm"], missingArgName: "fleet_id" },

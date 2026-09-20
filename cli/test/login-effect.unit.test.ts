@@ -54,6 +54,7 @@ const makeRec = (): Rec => ({ stdout: [], stderr: [] });
 
 const outputLayer = (rec: Rec): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    stdoutIsTty: false,
     format: OUTPUT_FORMAT.text,
     intro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     info: (msg) => Effect.sync(() => rec.stdout.push(msg)),

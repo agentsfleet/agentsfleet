@@ -57,6 +57,7 @@ const makeLayer = (
       save: () => Effect.void,
     }),
     Layer.succeed(Output, {
+      stdoutIsTty: false,
       format: jsonMode ? OUTPUT_FORMAT.json : OUTPUT_FORMAT.text,
       intro: (m) => Effect.sync(() => { captured.push(m); }),
       info: (m) => Effect.sync(() => { captured.push(m); }),
@@ -226,6 +227,7 @@ describe("libraryEffect — a gallery larger than one page", () => {
           }),
       }),
       Layer.succeed(Output, {
+        stdoutIsTty: false,
         format: OUTPUT_FORMAT.text,
         intro: () => Effect.void,
         info: (m) => Effect.sync(() => { captured.push(m); }),

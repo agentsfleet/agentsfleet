@@ -1,98 +1,75 @@
-// The matrix fixture is only a single source of truth if it cannot fall
-// behind the command tree. These tests walk the built commander program and
-// diff what it actually declares against what the fixture enumerates, so a
-// command that lands with a required argument and no matrix row fails here
-// rather than going quietly unswept.
+// The matrix fixture is only a single source of truth if it cannot fall behind
+// the command tree. These tests walk the real tree and diff what it actually
+// declares against what the fixture enumerates, so a command that lands with a
+// required argument and no matrix row fails here rather than going unswept.
 //
-// This is the invariant that would have caught the gap M171 was opened for:
-// `events` and `steer` both declared <fleet_id> while the fixture listed
-// neither, and nothing failed.
+// This is the invariant M171 was opened for: `events` and `steer` both declared
+// <fleet_id> while the fixture listed neither, and nothing failed.
 
 import { describe, expect, test } from "bun:test";
-import type { Command } from "commander";
+import { Param } from "effect/unstable/cli";
 
-import { buildProgram } from "../src/program/cli-tree.ts";
+import { rootCommand } from "../src/program/tree/root.command.ts";
+import { childrenOf, type CommandNode } from "../src/program/tree/resolve-path.ts";
 import {
   ACTION_GROUP_NODES,
   GROUP_NODES,
   REQUIRES_POSITIONAL_ARG,
 } from "./acceptance/fixtures/command-matrix.ts";
-import type { CommandHandlerFn, Handlers } from "../src/program/cli-tree-types.ts";
 
-const CLI_NAME = "agentsfleet";
-const BUILTIN_HELP_COMMAND = "help";
+const OPTIONAL_TAG = "Optional";
 
-// The tree shape is what is under test, so the handlers only have to exist.
-function makeStubHandlers(): Handlers {
-  const noop: CommandHandlerFn = async () => 0;
-  return {
-    login: noop, logout: noop, doctor: noop, whoami: noop,
-    auth:      { status: noop },
-    workspace: { create: noop, list: noop, use: noop, show: noop, secrets: noop, delete: noop },
-    apiKey:    { create: noop, list: noop, revoke: noop, delete: noop },
-    connector: { list: noop, status: noop },
-    grant:     { list: noop, delete: noop },
-    approvals: { list: noop, show: noop, approve: noop, deny: noop },
-    schedule:  { add: noop, list: noop, update: noop, rm: noop, status: noop, sync: noop },
-    tenant:    { provider: { show: noop, create: noop, delete: noop } },
-    billing:   { show: noop },
-    fleet: {
-      library: noop, libraryAdd: noop, models: noop,
-      install: noop, update: noop, list: noop, status: noop, stop: noop, resume: noop,
-      kill: noop, delete: noop, logs: noop, events: noop, steer: noop,
-      secret: { create: noop, update: noop, show: noop, list: noop, delete: noop },
-    },
-    memory: { list: noop, search: noop },
-  };
+interface ArgumentNode extends CommandNode {
+  readonly config?: { readonly arguments?: ReadonlyArray<Param.Any> };
 }
 
-function pathOf(cmd: Command): string[] {
-  const segments: string[] = [];
-  for (let node: Command | null = cmd; node; node = node.parent) {
-    const name = node.name();
-    if (name && name !== CLI_NAME) segments.unshift(name);
+const tree = rootCommand as unknown as ArgumentNode;
+
+// A positional is optional when one of the combinators wrapping it says so —
+// `[message]` rather than `<fleet_id>`. Walking to the Single leaf and
+// recording whether an `Optional` was crossed on the way is how the spelling
+// is recovered, since the leaf itself carries only the name.
+function requiredArgNames(node: ArgumentNode): ReadonlyArray<string> {
+  const names: string[] = [];
+  for (const argument of node.config?.arguments ?? []) {
+    let current: Param.Any = argument;
+    let optional = false;
+    while (!Param.isSingle(current)) {
+      if ((current as { readonly _tag?: string })._tag === OPTIONAL_TAG) optional = true;
+      if (!("param" in current)) break;
+      current = (current as { readonly param: Param.Any }).param;
+    }
+    if (!optional && Param.isSingle(current)) names.push(current.name);
   }
-  return segments;
+  return names;
 }
 
-function walk(cmd: Command, visit: (c: Command) => void): void {
-  for (const sub of cmd.commands) {
-    visit(sub);
-    walk(sub, visit);
+function walk(
+  node: ArgumentNode,
+  path: ReadonlyArray<string>,
+  visit: (node: ArgumentNode, path: ReadonlyArray<string>) => void,
+): void {
+  for (const child of childrenOf(node)) {
+    const childPath = [...path, child.name];
+    visit(child as ArgumentNode, childPath);
+    walk(child as ArgumentNode, childPath, visit);
   }
-}
-
-function builtProgram(): Command {
-  return buildProgram({
-    handlers: makeStubHandlers(),
-    version: "0.0.0",
-    state: { exitCode: 0 },
-  });
-}
-
-// commander marks a declared positional required when it is spelled <name>.
-function requiredArgNames(cmd: Command): string[] {
-  const args = (cmd as unknown as {
-    registeredArguments?: ReadonlyArray<{ required?: boolean; name(): string }>;
-  }).registeredArguments ?? [];
-  return args.filter((a) => a.required === true).map((a) => a.name());
 }
 
 describe("command matrix parity — required positionals", () => {
   test("every command declaring a required positional has a matrix row", () => {
     const declared: string[] = [];
-    walk(builtProgram(), (cmd) => {
-      if (requiredArgNames(cmd).length > 0) declared.push(pathOf(cmd).join(" "));
+    walk(tree, [], (node, path) => {
+      if (requiredArgNames(node).length > 0) declared.push(path.join(" "));
     });
     const covered = new Set(REQUIRES_POSITIONAL_ARG.map((r) => r.args.join(" ")));
-    const missing = declared.filter((d) => !covered.has(d)).sort();
-    expect(missing).toEqual([]);
+    expect(declared.filter((d) => !covered.has(d)).sort()).toEqual([]);
   });
 
   test("every matrix row names an argument the command actually declares", () => {
-    const byPath = new Map<string, string[]>();
-    walk(builtProgram(), (cmd) => {
-      byPath.set(pathOf(cmd).join(" "), requiredArgNames(cmd));
+    const byPath = new Map<string, ReadonlyArray<string>>();
+    walk(tree, [], (node, path) => {
+      byPath.set(path.join(" "), requiredArgNames(node));
     });
     const wrong = REQUIRES_POSITIONAL_ARG.filter((row) => {
       const names = byPath.get(row.args.join(" "));
@@ -105,18 +82,14 @@ describe("command matrix parity — required positionals", () => {
 describe("command matrix parity — group nodes", () => {
   test("every command owning subcommands has a group-node row", () => {
     const groups: string[] = [];
-    walk(builtProgram(), (cmd) => {
-      // `help` is commander's built-in and carries no house help body.
-      if (cmd.commands.length > 0 && cmd.name() !== BUILTIN_HELP_COMMAND) {
-        groups.push(pathOf(cmd).join(" "));
-      }
+    walk(tree, [], (node, path) => {
+      if (childrenOf(node).length > 0) groups.push(path.join(" "));
     });
     // Either table covers a group: one asserts bare-invocation help, the other
     // records that bare invocation runs the command instead.
     const covered = new Set(
       [...GROUP_NODES, ...ACTION_GROUP_NODES].map((g) => g.join(" ")),
     );
-    const missing = groups.filter((g) => !covered.has(g)).sort();
-    expect(missing).toEqual([]);
+    expect(groups.filter((g) => !covered.has(g)).sort()).toEqual([]);
   });
 });

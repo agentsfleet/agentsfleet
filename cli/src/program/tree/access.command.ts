@@ -7,6 +7,7 @@
 
 import { Option } from "effect";
 import { Command } from "effect/unstable/cli";
+import { guardedHandler } from "./guarded-handler.ts";
 import { authStatusEffect } from "../../commands/auth.ts";
 import {
   apiKeyCreateEffectFromArgs,
@@ -55,7 +56,7 @@ const STATUS = "status" as const;
 
 const authStatusCommand = Command.make(STATUS).pipe(
   Command.withDescription("Show active credential source and server-side validity"),
-  Command.withHandler(() => authStatusEffect),
+  guardedHandler(() => authStatusEffect),
 );
 
 export const authCommand = Command.make("auth").pipe(
@@ -70,24 +71,24 @@ const apiKeyCreateCommand = Command.make(CREATE, {
   description: descriptionFlag,
 }).pipe(
   Command.withDescription("Create a tenant API key"),
-  Command.withHandler(({ name, description }) =>
+  guardedHandler(({ name, description }) =>
     apiKeyCreateEffectFromArgs({ name: opt(name), description: opt(description) }),
   ),
 );
 
 const apiKeyListCommand = Command.make(LIST, { sort: sortFlag }).pipe(
   Command.withDescription("List tenant API keys"),
-  Command.withHandler(({ sort }) => apiKeyListEffectFromArgs({ sort: opt(sort) })),
+  guardedHandler(({ sort }) => apiKeyListEffectFromArgs({ sort: opt(sort) })),
 );
 
 const apiKeyRevokeCommand = Command.make("revoke", { apiKeyId: apiKeyIdArgument }).pipe(
   Command.withDescription("Revoke a tenant API key"),
-  Command.withHandler(({ apiKeyId }) => apiKeyRevokeEffectFromId(apiKeyId)),
+  guardedHandler(({ apiKeyId }) => apiKeyRevokeEffectFromId(apiKeyId)),
 );
 
 const apiKeyDeleteCommand = Command.make(DELETE, { apiKeyId: apiKeyIdArgument }).pipe(
   Command.withDescription("Delete a revoked tenant API key"),
-  Command.withHandler(({ apiKeyId }) => apiKeyDeleteEffectFromId(apiKeyId)),
+  guardedHandler(({ apiKeyId }) => apiKeyDeleteEffectFromId(apiKeyId)),
 );
 
 export const apiKeyCommand = Command.make("api-key").pipe(
@@ -104,7 +105,7 @@ export const apiKeyCommand = Command.make("api-key").pipe(
 
 const connectorListCommand = Command.make(LIST, { workspace: workspaceFlag }).pipe(
   Command.withDescription("List connector setup and connection state"),
-  Command.withHandler(({ workspace }) => connectorListEffectFromArgs(opt(workspace))),
+  guardedHandler(({ workspace }) => connectorListEffectFromArgs(opt(workspace))),
 );
 
 const connectorStatusCommand = Command.make(STATUS, {
@@ -112,7 +113,7 @@ const connectorStatusCommand = Command.make(STATUS, {
   workspace: workspaceFlag,
 }).pipe(
   Command.withDescription("Show connector state"),
-  Command.withHandler(({ provider, workspace }) =>
+  guardedHandler(({ provider, workspace }) =>
     connectorStatusEffectFromArgs(opt(workspace), provider),
   ),
 );
@@ -126,12 +127,12 @@ export const connectorCommand = Command.make("connector").pipe(
 
 const approvalsListCommand = Command.make(LIST, { fleet: fleetFlag }).pipe(
   Command.withDescription("List approval gates in the active workspace"),
-  Command.withHandler(({ fleet }) => approvalsListEffectFromArgs(opt(fleet))),
+  guardedHandler(({ fleet }) => approvalsListEffectFromArgs(opt(fleet))),
 );
 
 const approvalsShowCommand = Command.make(SHOW, { gateId: gateIdArgument }).pipe(
   Command.withDescription("Show one gate's proposed action and blast radius"),
-  Command.withHandler(({ gateId }) => approvalsShowEffectFromArgs(gateId)),
+  guardedHandler(({ gateId }) => approvalsShowEffectFromArgs(gateId)),
 );
 
 // Approve and deny are subcommands rather than one `--decision` flag: the
@@ -139,12 +140,12 @@ const approvalsShowCommand = Command.make(SHOW, { gateId: gateIdArgument }).pipe
 // decision reachable by a flag default is a decision nobody made.
 const approvalsApproveCommand = Command.make("approve", { gateId: gateIdArgument }).pipe(
   Command.withDescription("Approve a gate and let the Fleet continue"),
-  Command.withHandler(({ gateId }) => approvalsApproveEffectFromArgs(gateId)),
+  guardedHandler(({ gateId }) => approvalsApproveEffectFromArgs(gateId)),
 );
 
 const approvalsDenyCommand = Command.make("deny", { gateId: gateIdArgument }).pipe(
   Command.withDescription("Deny a gate and stop the proposed action"),
-  Command.withHandler(({ gateId }) => approvalsDenyEffectFromArgs(gateId)),
+  guardedHandler(({ gateId }) => approvalsDenyEffectFromArgs(gateId)),
 );
 
 export const approvalsCommand = Command.make("approvals").pipe(
@@ -161,7 +162,7 @@ export const approvalsCommand = Command.make("approvals").pipe(
 
 const grantListCommand = Command.make(LIST, { fleet: fleetFlag }).pipe(
   Command.withDescription("List integration grants for a Fleet"),
-  Command.withHandler(({ fleet }) => grantListEffectFromArgs(undefined, opt(fleet))),
+  guardedHandler(({ fleet }) => grantListEffectFromArgs(undefined, opt(fleet))),
 );
 
 const grantDeleteCommand = Command.make(DELETE, {
@@ -169,7 +170,7 @@ const grantDeleteCommand = Command.make(DELETE, {
   fleet: fleetFlag,
 }).pipe(
   Command.withDescription("Revoke an integration grant"),
-  Command.withHandler(({ grantId, fleet }) => grantDeleteEffectFromArgs(opt(fleet), grantId)),
+  guardedHandler(({ grantId, fleet }) => grantDeleteEffectFromArgs(opt(fleet), grantId)),
 );
 
 export const grantCommand = Command.make("grant").pipe(

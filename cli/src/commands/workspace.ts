@@ -53,7 +53,7 @@ const WORKSPACE_SECRETS_REDIRECT = "Workspace secrets" as const;
 
 const WORKSPACE_ID_FIELD = "workspace_id";
 const WORKSPACE_LOCAL_REMOVAL_FIELD = "removed_from_local_state";
-// The real, registered top-level command group (cli-tree-fleet.ts). One const
+// The real, registered top-level command group (program/tree/fleet.command.ts). One const
 // so the JSON-mode and human-readable redirects can never re-diverge onto a
 // phantom `agentsfleet agent secret` that has no CLI registration.
 const SECRET_COMMAND = "agentsfleet secret" as const;

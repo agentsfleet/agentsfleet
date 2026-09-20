@@ -6,6 +6,7 @@ import { ServerError, UnexpectedError, ValidationError } from "../src/errors/ind
 
 const recordingOutput = (sink: string[]) =>
   Layer.succeed(Output, {
+    stdoutIsTty: false,
     format: OUTPUT_FORMAT.text,
     intro: () => Effect.void,
     info: () => Effect.void,

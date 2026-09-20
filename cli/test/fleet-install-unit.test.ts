@@ -68,6 +68,7 @@ const makeLayer = (
         }),
     }),
     Layer.succeed(Output, {
+      stdoutIsTty: false,
       format: jsonMode ? OUTPUT_FORMAT.json : OUTPUT_FORMAT.text,
       intro: (m) => Effect.sync(() => { captured.push(m); }),
       info: (m) => Effect.sync(() => { captured.push(m); }),

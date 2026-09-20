@@ -113,7 +113,7 @@ export const requireValue = (
  * A required identifier, validated, as an Effect.
  *
  * `validateRequiredId` returns a `{ ok, message }` record because it predates
- * the Effect layer and is called from both sides of the commander boundary.
+ * the Effect layer and is called from both the handler and the flag check.
  * This is the one place that lifts it, so a command never re-derives the
  * refusal: `fleet_schedule` had its own copy, and it was the only command that
  * validated an id at all.

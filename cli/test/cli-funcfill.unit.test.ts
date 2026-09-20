@@ -42,8 +42,8 @@ async function withBrokenStateBase<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-describe("runCli exit-code mapping (exitFromCommanderError reachable branches)", () => {
-  test("root-level unknown command maps a usage CommanderError to the validation exit", async () => {
+describe("runCli exit-code mapping", () => {
+  test("root-level unknown command maps a usage failure to the validation exit", async () => {
     await withFreshStateDir(async () => {
       const out = bufferStream();
       const err = bufferStream();
@@ -53,7 +53,7 @@ describe("runCli exit-code mapping (exitFromCommanderError reachable branches)",
         env: cliEnv({ NO_COLOR: "1" }),
       });
       expect(code).toBe(EXIT_CODE.ValidationError);
-      expect(err.read()).toContain("unknown command");
+      expect(err.read()).toContain("Unknown subcommand");
     });
   });
 
@@ -72,7 +72,7 @@ describe("runCli exit-code mapping (exitFromCommanderError reachable branches)",
     });
   });
 
-  test("root-level version returns Commander's own exit code", async () => {
+  test("root-level version exits 0", async () => {
     await withFreshStateDir(async () => {
       const code = await runCli(["--version"], {
         stdout: makeNoop(),

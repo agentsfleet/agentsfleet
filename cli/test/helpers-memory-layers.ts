@@ -37,6 +37,7 @@ export const outputLayer = (
   format: OutputFormat = OUTPUT_FORMAT.text,
 ): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    stdoutIsTty: false,
     format,
     intro: () => Effect.void,
     info: (msg) => Effect.sync(() => { cap.infos.push(msg); }),

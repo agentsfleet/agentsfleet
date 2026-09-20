@@ -3,8 +3,9 @@
 // There is no write verb and that is architecture, not an omission: the tenant
 // memory plane is written by the Fleet and read by everyone else.
 
-import { Option } from "effect";
+import { Effect, Option } from "effect";
 import { Command } from "effect/unstable/cli";
+import { guardedHandler } from "./guarded-handler.ts";
 import {
   memoryListEffectFromFlags,
   memorySearchEffectFromArgs,
@@ -39,14 +40,17 @@ const memoryListCommand = Command.make("list", {
   Command.withDescription(
     `List entries newest-first (server default ${DEFAULT_LIST_LIMIT}, cap ${MAX_RECALL_LIMIT})`,
   ),
-  Command.withHandler(({ fleet, category, limit, startingAfter, workspace }) =>
-    memoryListEffectFromFlags({
-      fleetId: opt(fleet),
-      category: opt(category),
-      limit: optNum(limit),
-      startingAfter: opt(startingAfter),
-      workspaceId: opt(workspace),
-      stdoutIsTty: stdoutIsTty(),
+  guardedHandler(({ fleet, category, limit, startingAfter, workspace }) =>
+    Effect.gen(function* () {
+      const isTty = yield* stdoutIsTty;
+      return yield* memoryListEffectFromFlags({
+        fleetId: opt(fleet),
+        category: opt(category),
+        limit: optNum(limit),
+        startingAfter: opt(startingAfter),
+        workspaceId: opt(workspace),
+        stdoutIsTty: isTty,
+      });
     }),
   ),
 );
@@ -60,12 +64,15 @@ const memorySearchCommand = Command.make("search", {
   Command.withDescription(
     `Substring-search keys and content (server default ${DEFAULT_RECALL_LIMIT}, cap ${MAX_RECALL_LIMIT})`,
   ),
-  Command.withHandler(({ query, fleet, limit, workspace }) =>
-    memorySearchEffectFromArgs(query, {
-      fleetId: opt(fleet),
-      limit: optNum(limit),
-      workspaceId: opt(workspace),
-      stdoutIsTty: stdoutIsTty(),
+  guardedHandler(({ query, fleet, limit, workspace }) =>
+    Effect.gen(function* () {
+      const isTty = yield* stdoutIsTty;
+      return yield* memorySearchEffectFromArgs(  query, {
+        fleetId: opt(fleet),
+        limit: optNum(limit),
+        workspaceId: opt(workspace),
+        stdoutIsTty: isTty,
+      });
     }),
   ),
 );

@@ -36,6 +36,7 @@ const configLayer = (): Layer.Layer<CliConfig> =>
 
 const capturingOutput = (sink: Array<Record<string, string>>): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    stdoutIsTty: false,
     format: OUTPUT_FORMAT.text,
     intro: () => Effect.void,
     info: () => Effect.void,

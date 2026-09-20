@@ -325,8 +325,8 @@ describe("help DX surfaces (real binary)", () => {
     const result = await runFleetctl(["--help"], { env: helpEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const out = stripAnsi(result.stdout);
-    // Commander's own Commands: block carries the command list.
-    assert.match(out, /Commands:/);
+    // The command list, whatever the renderer calls its heading.
+    assert.match(out, /subcommands/i);
     for (const command of ["install", "status", "steer", "workspace", "memory"]) {
       assert.ok(out.includes(command), `help missing "${command}" command`);
     }

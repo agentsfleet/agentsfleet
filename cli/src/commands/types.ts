@@ -4,7 +4,7 @@
 // of redeclaring at every call site.
 //
 // The shape mirrors what `cli.ts`'s buildDeps() and the lifecycle wrap
-// in handlers-bind.js actually produce. Fields tighten as commands
+// the command handlers actually produce. Fields tighten as commands
 // migrate; the open index signatures on CommandCtx / ParsedArgs /
 // Workspaces accept any extra fields handlers read so command-specific
 // reads don't force a churn through this file.
@@ -65,7 +65,7 @@ export interface CommandCtx {
   [key: string]: unknown;
 }
 
-// Parsed CLI invocation (Commander/cli-tree frame.parsed). `options`
+// Parsed CLI invocation. `options`
 // is a free-form record of flags — each command narrows by destructure.
 export interface ParsedArgs {
   options: Record<
@@ -111,7 +111,7 @@ export interface CommandDeps {
   saveWorkspaces: (workspaces: Workspaces) => Promise<void> | void;
   // Optional SSE injector — fleet_steer uses this for the live event
   // tail; tests override it with a fake to assert frame handling. The
-  // wrapper in handlers-bind.js omits it; commands fall back to the
+  // wrapper omits it; commands fall back to the
   // real `streamGet` from `lib/sse.ts` when absent.
   streamGet?: StreamGetFn;
   ui: UiTheme;
@@ -175,16 +175,3 @@ export function readNumber(
   return null;
 }
 
-// Sister to `readString` for callers that prefer `undefined`-shaped
-// optional reads (Effect-side commands, `??`-chained flag fallbacks).
-// Also coerces parseIntOption's numeric results to a string so query-
-// string + flag-passthrough plumbing doesn't have to special-case both.
-export function readStringOpt(
-  options: ParsedArgs["options"],
-  key: string,
-): string | undefined {
-  const v = options[key];
-  if (typeof v === "string" && v.length > 0) return v;
-  if (typeof v === "number" && Number.isFinite(v)) return String(v);
-  return undefined;
-}

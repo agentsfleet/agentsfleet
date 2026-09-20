@@ -33,6 +33,7 @@ const makeOutputLayer = (
   format: OutputFormat = OUTPUT_FORMAT.text,
 ): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    stdoutIsTty: false,
     format,
     intro: (msg) => Effect.sync(() => { captured.push(msg); }),
     info: (msg) => Effect.sync(() => { captured.push(msg); }),

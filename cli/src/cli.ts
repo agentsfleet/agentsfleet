@@ -1,60 +1,66 @@
+// The entry point: argv in, exit code out.
+//
+// Everything here happens in a fixed order, and the order is the design. The
+// command tree executes inside a layer, and that layer has to be built before
+// the tree runs — so the handful of things the layer is built FROM are read
+// off argv first, by hand, rather than being parsed:
+//
+//   1. the register (`--json`) and the target (`--api`), because Output and
+//      HttpClient are configured with them
+//   2. the saved credential, because the auth guard answers before any command
+//      is allowed to run
+//   3. the command path, walked off the tree, because CommandRuntime carries
+//      it and it names the span and the analytics row
+//
+// Only then is the layer composed and the tree handed the same argv to parse
+// properly. The scans are deliberately narrow — they answer three questions
+// and leave every other token to the parser.
+
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { type Command, CommanderError } from "commander";
+import { Cause, Console, Effect, Exit, Layer } from "effect";
+import { CliOutput, Command } from "effect/unstable/cli";
+import { BunServices } from "@effect/platform-bun";
 
-import { openUrl } from "./lib/browser.ts";
-import {
-  clearCredentials,
-  loadCredentials,
-  saveCredentials,
-  saveWorkspaces,
-} from "./lib/state.ts";
 import { loadState } from "./lib/state-load.ts";
-import { Effect } from "effect";
-import { runCommanderParse } from "./lib/commander-bridge.ts";
-import {
-  applyOutputToTree,
-  captureRejection,
-  exitFromCommanderError,
-  rejectionCodeFor,
-  routeGroupHelpToStdout,
-  renderRejection,
-  type PendingRejection,
-} from "./lib/commander-boundary.ts";
-import { EXIT_CODE } from "./errors/index.ts";
-import { isString } from "./lib/guards.ts";
-import { resolveApiKeyFromEnv } from "./services/config.ts";
-import { printJson, writeError, writeLine } from "./program/io.ts";
-import { printVersion } from "./program/banner.ts";
-import { guardCommand } from "./program/auth-guard.ts";
-import { ui, printKeyValue, printSection, printTable } from "./output/index.ts";
-import {
-  DEFAULT_API_URL,
-  normalizeApiUrl,
-  resolveDashboardUrl,
-} from "./util/url.ts";
-import { buildProgram } from "./program/cli-tree.ts";
-import { buildHandlers, type Lifecycle } from "./program/handlers-bind.ts";
 import { detectTokenInArgv } from "./lib/argv-redact.ts";
-import type { ProgramState } from "./program/cli-tree-types.ts";
-import type { CommandCtx, CommandDeps } from "./commands/types.ts";
+import { resolveApiKeyFromEnv } from "./services/config.ts";
+import type { FetchImpl } from "./lib/http.ts";
+import { printJson, writeError, writeLine } from "./program/io.ts";
+import { SUGGESTION_PREFIX } from "./constants/rejection.ts";
+import { guardCommand } from "./program/auth-guard.ts";
+import { ui } from "./output/index.ts";
+import { DEFAULT_API_URL, normalizeApiUrl, resolveDashboardUrl } from "./util/url.ts";
+import { rootCommand } from "./program/tree/root.command.ts";
+import { resolveCommandPath, type CommandNode } from "./program/tree/resolve-path.ts";
+import { mainLayerFor } from "./runtime/main-layer.ts";
+import { makeCommandExitCode } from "./runtime/exit-code.service.ts";
+import { CommandGuard, GuardRefused } from "./runtime/guard.service.ts";
+import { withCommandInstrumentation } from "./services/telemetry/command-instrumentation.ts";
+import { detectJsonMode, maybePrintVersion, resolveGlobalApiUrl } from "./program/entry/argv-scan.ts";
+import { consoleForStreams } from "./program/entry/console-bridge.ts";
+import { helpFormatter } from "./program/entry/help-formatter.ts";
+import {
+  exitCodeForFailure,
+  isGuardRefusal,
+  isLibraryUsageError,
+} from "./program/entry/exit-code.ts";
+import { houseRejection } from "./program/entry/rejection.ts";
+import { renderAndCount } from "./lib/run-effect.ts";
+import { layerInputFor } from "./program/entry/layer-input.ts";
 import type { WritableStreamLike } from "./output/capability.ts";
 
 // VERSION: package.json source of truth; `make sync-version` updates consumers.
-const PKG_JSON_PATH = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "package.json",
-);
-const pkgJson = JSON.parse(readFileSync(PKG_JSON_PATH, "utf8")) as {
-  version: string;
-};
+const PKG_JSON_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+const pkgJson = JSON.parse(readFileSync(PKG_JSON_PATH, "utf8")) as { version: string };
 export const VERSION: string = pkgJson.version;
 
-const FLAG = "--" as const;
-const FLAG_API = "--api=" as const;
+const HELP_FLAG = "--help" as const;
+const HELP_COMMAND = "help" as const;
+const GUARD_EXIT_CODE = 1;
+const SUCCESS_EXIT_CODE = 0;
 
 export interface RunCliIo {
   stdout?: WritableStreamLike;
@@ -64,126 +70,6 @@ export interface RunCliIo {
   fetchImpl?: typeof fetch;
 }
 
-// Commander's built-in --version prints plain text and exits, which
-// can't satisfy `--version --json` or `--help --version → --version
-// wins`. Pre-scan argv so we render version ourselves.
-function maybePrintVersion(
-  argv: readonly string[],
-  stdout: WritableStreamLike,
-  jsonMode: boolean,
-  env: NodeJS.ProcessEnv,
-): boolean {
-  for (const token of argv) {
-    if (token === FLAG) break;
-    if (token === "--version" || token === "-v") {
-      if (jsonMode) {
-        printJson(stdout, { version: VERSION });
-      } else {
-        printVersion(stdout, VERSION, {
-          noColor: Boolean(env.NO_COLOR && env.NO_COLOR.length > 0),
-          jsonMode: false,
-        });
-      }
-      return true;
-    }
-  }
-  return false;
-}
-
-function detectJsonMode(argv: readonly string[]): boolean {
-  for (const token of argv) {
-    if (token === FLAG) return false;
-    if (token === "--json") return true;
-  }
-  return false;
-}
-
-function resolveGlobalApiUrl(
-  argv: readonly string[],
-  env: NodeJS.ProcessEnv,
-): string | null {
-  let api: string | null = null;
-  for (let i = 0; i < argv.length; i += 1) {
-    const t = argv[i];
-    if (t === undefined) break;
-    if (t === FLAG) break;
-    if (t === "--api") {
-      api = argv[i + 1] || null;
-      break;
-    }
-    if (t.startsWith(FLAG_API)) {
-      api = t.slice(FLAG_API.length);
-      break;
-    }
-  }
-  return api || env.AGENTSFLEET_API_URL || null;
-}
-
-// Binds the invocation's resolved environment onto the state functions at
-// the composition root, so the CommandDeps shape (and every handler behind
-// it) stays environment-free while the store reads the caller's environment.
-function buildDeps(env: NodeJS.ProcessEnv): CommandDeps {
-  return {
-    clearCredentials: () => clearCredentials(env),
-    loadCredentials: () => loadCredentials(env),
-    openUrl,
-    printJson,
-    printKeyValue,
-    printSection,
-    printTable,
-    saveCredentials: (next) => saveCredentials(env, next),
-    saveWorkspaces: (next) => saveWorkspaces(env, next),
-    ui,
-    writeLine,
-    writeError,
-  };
-}
-
-function installPreAction(
-  program: Command,
-  ctx: CommandCtx,
-  state: ProgramState,
-): void {
-  program.hook("preAction", (thisCommand, actionCommand) => {
-    // Carry --no-open / --no-input / --json / --api from commander's
-    // globals into ctx so handlers see the operator's intent. Commander
-    // normalises --no-open to opts.open === false (similarly --no-input).
-    const opts = thisCommand.optsWithGlobals() as Record<string, unknown>;
-    ctx.jsonMode = ctx.jsonMode || Boolean(opts["json"]);
-    ctx.noOpen = opts["open"] === false || opts["noOpen"] === true;
-    ctx.noInput = opts["input"] === false || opts["noInput"] === true;
-    const apiOverride = opts["api"];
-    if (isString(apiOverride) && apiOverride.length > 0) {
-      ctx.apiUrl = normalizeApiUrl(apiOverride);
-      ctx.dashboardUrl = resolveDashboardUrl(
-        ctx.apiUrl,
-        ctx.env?.AGENTSFLEET_DASHBOARD_URL,
-      );
-    }
-
-    // Walk to the top-level command; auth-guard.ts owns which roots are
-    // exempt from which question.
-    let root: Command = actionCommand;
-    while (root.parent && root.parent.name() !== "agentsfleet")
-      root = root.parent;
-    const refusal = guardCommand(root.name(), ctx);
-    if (refusal) {
-      state.exitCode = 1;
-      writeError(ctx, refusal.errorCode, refusal.message, {
-        printJson,
-        writeLine,
-        ui,
-      });
-      throw new CommanderError(1, refusal.commanderCode, refusal.message);
-    }
-  });
-}
-
-function errMessage(err: unknown): string {
-  if (err instanceof Error && isString(err.message)) return err.message;
-  return String(err);
-}
-
 export async function runCli(
   argv: readonly string[],
   io: RunCliIo = {},
@@ -191,136 +77,192 @@ export async function runCli(
   const stdout = (io.stdout ?? process.stdout) as WritableStreamLike;
   const stderr = (io.stderr ?? process.stderr) as WritableStreamLike;
   const env = io.env ?? process.env;
-  const fetchImpl = io.fetchImpl ?? globalThis.fetch;
-
   const jsonMode = detectJsonMode(argv);
 
-  // D25 — surface the --token leak warning before any command runs. The
-  // check is pure (no env/process reads); fires for any argv shape, --version
-  // included, because the value is in shell history either way.
+  // Surfaced before any command runs, and for any argv shape — `--version`
+  // included, because a token passed on the command line is in the shell
+  // history either way. The check reads argv and nothing else.
   const tokenLeak = detectTokenInArgv(argv);
   if (tokenLeak) writeLine(stderr, tokenLeak);
 
-  if (maybePrintVersion(argv, stdout, jsonMode, env)) return 0;
+  if (maybePrintVersion(argv, stdout, VERSION, jsonMode, env)) return SUCCESS_EXIT_CODE;
 
-  // Bare `agentsfleet` → --help so commander routes via stdout + exit 0 instead of stderr "missing command".
-  const effectiveArgv = argv.length === 0 ? ["--help"] : [...argv];
-
-  // Real read failures (EACCES, EIO — not absence) are recorded here and
-  // reported below, once the endpoint is known; the why lives with the helper.
-  const { creds, workspaces, unreadable } = await loadState(env);
-  // Session identity is read and bumped through `telemetry.json`.
-  const stdinSrc = io.stdin ?? process.stdin;
-  // Two credential slots: the stored login credential (file slot, from
-  // credentials.json) and the service API key (env slot). The api key wins
-  // at the wire (resolveToken's env-first precedence). resolveApiKeyFromEnv
-  // trims, so a whitespace-only key is treated as absent everywhere
-  // (guard + wire) rather than sending a blank `Authorization: Bearer`.
-  const storedToken = creds.token ?? null;
-  const resolvedApiKey = resolveApiKeyFromEnv(env);
-
+  // Real read failures (EACCES, EIO — not absence) are recorded by the loader
+  // and reported below, once the endpoint they cost us is known.
+  const { creds, unreadable } = await loadState(env);
+  // Two credential slots: the stored login credential from disk, and the
+  // service API key from the environment. The key wins at the wire.
+  // `resolveApiKeyFromEnv` trims, so a whitespace-only export counts as absent
+  // to the guard and the wire alike, rather than sending a blank Bearer.
+  const apiKey = resolveApiKeyFromEnv(env);
   const explicitApi = resolveGlobalApiUrl(argv, env);
-  const apiUrl = normalizeApiUrl(
-    explicitApi || creds.api_url || DEFAULT_API_URL,
-  );
-  // One plain sentence when a saved file exists but cannot be read: what broke,
-  // what the CLI is doing instead, and how to put it right. The endpoint is
-  // named because a failed read took the recorded deployment down with it — an
-  // operator pinned to a self-hosted backend would otherwise find out from the
-  // access log. Same two-line shape as a rendered error (fact, then Suggestion).
-  if (unreadable.length > 0) {
-    const files = unreadable.map((u) => `${u.file}: ${u.code}`).join(", ");
-    writeLine(
-      stderr,
-      `warning: cannot read your saved sign-in (${files}) — continuing signed out, against ${apiUrl}`,
-    );
-    writeLine(
-      stderr,
-      "  Suggestion: check the file's permissions, or run `agentsfleet login` to sign in again",
-    );
-  }
-  const ctx: CommandCtx = {
-    apiUrl,
-    storedApiUrl: creds.api_url ?? null,
-    targetIsExplicit: Boolean(explicitApi),
-    dashboardUrl: resolveDashboardUrl(apiUrl, env.AGENTSFLEET_DASHBOARD_URL),
-    token: storedToken,
-    apiKey: resolvedApiKey,
-    jsonMode,
-    noOpen: false,
-    noInput: false,
-    // Tests inject partial WritableStreamLike mocks (just `.write` + `isTTY`);
-    // CommandCtx declares the field as the richer NodeJS.WritableStream because
-    // that matches the production runtime. Narrowing the field type would
-    // ripple through every handler that reads `ctx.stdout`; the cast is the
-    // smaller honest seam.
-    stdout: stdout as unknown as NodeJS.WritableStream,
-    stderr: stderr as unknown as NodeJS.WritableStream,
-    stdin: stdinSrc,
-    env,
-    fetchImpl,
-  };
+  const apiUrl = normalizeApiUrl(explicitApi || creds.api_url || DEFAULT_API_URL);
 
-  const lifecycle: Lifecycle = {
-    ctx,
-    workspaces,
-    deps: buildDeps(env),
-    lastCommand: null,
-  };
+  if (unreadable.length > 0) reportUnreadableState(stderr, unreadable, apiUrl);
 
-  const handlers = buildHandlers(lifecycle);
-  const state: ProgramState = { exitCode: 0 };
-  const program = buildProgram({ handlers, version: VERSION, state });
+  // Walked off the tree, not parsed: the layer carries the command path and
+  // has to exist before the parser does. An invalid invocation yields the
+  // deepest command that did resolve, which is the one whose help is coming.
+  const tree = rootCommand as unknown as CommandNode;
+  const commandPath = resolveCommandPath(tree, argv);
 
-  // commander 14 does NOT propagate exitOverride/configureOutput to
-  // subcommands, so an option validator that throws InvalidArgumentError on a
-  // SUBCOMMAND flag (e.g. `secret create --base-url`) would otherwise call
-  // process.exit + write to the real stderr, bypassing the Effect bridge and
-  // the injected test streams. Apply both to the whole tree so every parse-stage
-  // rejection throws (caught by runCommanderParse) and routes through the
-  // configured output instead.
-  // commander writes its rejection text before it throws, so the text is
-  // recorded here and joined with the commander.* code at the catch site.
-  let pendingRejection: PendingRejection | null = null;
-  applyOutputToTree(program, stdout, stderr, (text, cmd) => {
-    pendingRejection = captureRejection(text, cmd, pendingRejection);
+  // The refusal is DECIDED here, where the credential and target were
+  // resolved, and ASKED by the tree after the parser has run — a mistyped flag
+  // on a command you are not signed in for reports the flag, because that is
+  // the failure you can fix without leaving the terminal.
+  const guardLayer = Layer.succeed(CommandGuard, {
+    check: Effect.suspend(() => {
+      const refusal = guardCommand(commandPath[0] ?? "", {
+        token: creds.token ?? null,
+        apiKey,
+        apiUrl,
+        storedApiUrl: creds.api_url ?? null,
+        targetIsExplicit: Boolean(explicitApi),
+      });
+      if (refusal === null) return Effect.void;
+      writeError(
+        { stderr: stderr as unknown as NodeJS.WritableStream, jsonMode },
+        refusal.errorCode,
+        refusal.message,
+        { printJson, writeLine, ui },
+      );
+      return Effect.fail(new GuardRefused(GUARD_EXIT_CODE));
+    }),
   });
 
-  // A bare group node prints its help on stdout at exit 0; commander would
-  // otherwise route that body through the error stream.
-  routeGroupHelpToStdout(program);
-
-  installPreAction(program, ctx, state);
-
-  // commander parse runs through the bridge. On success, the command
-  // handler's own withCommandInstrumentation wrap (handlers-bind.ts) has
-  // already emitted cli_command_executed. On parse-stage failure, the
-  // bridge emits a single cli_command_executed with command "__parse__".
-  const parseResult = await Effect.runPromise(
-    runCommanderParse(program, effectiveArgv),
+  const layer = mainLayerFor(
+    layerInputFor({
+      apiUrl,
+      dashboardUrl: resolveDashboardUrl(apiUrl, env.AGENTSFLEET_DASHBOARD_URL),
+      apiKey,
+      jsonMode,
+      noOpen: false,
+      commandPath,
+      env,
+      stdout,
+      stderr,
+      stdin: io.stdin,
+      fetchImpl: io.fetchImpl as FetchImpl | undefined,
+    }),
   );
 
-  if (!parseResult.ok) {
-    const err = parseResult.commanderError ?? parseResult.otherError;
-    if (err instanceof CommanderError) {
-      // InvalidArgumentError is a CommanderError subclass, so it is caught
-      // here too; its commander.invalidArgument code is one of the usage
-      // codes. No separate branch is reachable below.
-      const pending: PendingRejection | null = pendingRejection;
-      if (pending) {
-        const body = renderRejection(pending, rejectionCodeFor(err.code), jsonMode);
-        writeLine(stderr, jsonMode ? body : ui.err(`error: ${body}`));
-      }
-      return exitFromCommanderError(err, state, EXIT_CODE.ValidationError);
-    }
-    const message = errMessage(err);
-    if (ctx.jsonMode) {
-      printJson(stderr, { error: { code: "UNEXPECTED", message } });
-    } else {
-      writeLine(stderr, ui.err(`error: ${message}`));
-    }
-    return 1;
-  }
+  // One holder per invocation: two runs in one process must not read each
+  // other's verdict, and every test file is two runs in one process.
+  const managedExitCode = makeCommandExitCode();
 
-  return state.exitCode;
+  // Bare `agentsfleet` asks for help explicitly rather than relying on the
+  // parser's own empty-argv behaviour, so the body lands on stdout at exit 0
+  // instead of reading as a missing-command failure.
+  //
+  // `agentsfleet help [command]` is the other spelling of the same request.
+  // The previous parser carried it as a built-in command; this one does not,
+  // and losing it would turn a form people have in their muscle memory into
+  // an unknown-command error. It is rewritten rather than declared as a
+  // command so `help schedule add` and `schedule add --help` cannot drift
+  // apart.
+  const effectiveArgv = helpArgv(argv);
+
+  // One span and one analytics row per invocation, wrapped around the whole
+  // run rather than each command. CommandRuntime is already correct for this
+  // invocation because the layer was built from the resolved command path.
+  // Rendered INSIDE the run, through the same `renderAndCount` the Effect
+  // dispatcher has always used, so a `ServerError` still reports its `UZ-*`
+  // code, its suggestion and its request id. It also restores the
+  // command-managed exit code: `doctor` succeeds with a number when its checks
+  // fail, and reading that as a plain success would report a broken
+  // deployment as healthy.
+  //
+  // The library's own parse failures are the exception — it has already
+  // written them, and their code comes from the exit-code map instead.
+  const program = Command.runWith(rootCommand, { version: VERSION, renderErrors: false })(effectiveArgv).pipe(
+    withCommandInstrumentation(),
+    Effect.exit,
+    Effect.flatMap((exit) => {
+      if (Exit.isSuccess(exit)) return renderAndCount(exit as Exit.Exit<unknown, never>);
+      // A refusal the gate already wrote carries its own code and no message;
+      // handing it to the shared renderer would print `error: undefined`
+      // under the sentence it already printed.
+      if (isGuardRefusal(exit.cause)) return Effect.succeed(exitCodeForFailure(exit.cause));
+      return isLibraryUsageError(exit.cause)
+        ? Effect.succeed(renderLibraryFailure(exit.cause, tree, argv, stderr, jsonMode))
+        : renderAndCount(exit as Exit.Exit<unknown, never>);
+    }),
+    // The library renders help and parse errors through Console. Left alone
+    // that reaches the real process streams, which would strand every test
+    // that injected its own and break runCli's promise to write only where it
+    // was told.
+    Effect.provideService(Console.Console, consoleForStreams(stdout, stderr)),
+    Effect.provide(CliOutput.layer(helpFormatter())),
+    Effect.provide(layer),
+    Effect.provide(managedExitCode.layer),
+    Effect.provide(guardLayer),
+    Effect.provide(BunServices.layer),
+  );
+
+  const exit = await Effect.runPromiseExit(program as Effect.Effect<number, never, never>);
+  // The pipeline above turns every outcome into a number, so a failure here is
+  // the runtime itself falling over rather than a command failing.
+  if (Exit.isFailure(exit)) return exitCodeForFailure(exit.cause);
+  // A command that reported its own verdict outranks the dispatcher's 0: the
+  // run succeeded, and the news it carries is still bad.
+  return exit.value !== SUCCESS_EXIT_CODE ? exit.value : managedExitCode.read();
+}
+
+// One plain sentence when a saved file exists but cannot be read: what broke,
+// what the CLI is doing instead, and how to put it right. The endpoint is
+// named because a failed read took the recorded deployment down with it — an
+// operator pinned to a self-hosted backend would otherwise find out from the
+// access log. Same two-line shape as a rendered error: fact, then Suggestion.
+function reportUnreadableState(
+  stderr: WritableStreamLike,
+  unreadable: ReadonlyArray<{ readonly file: string; readonly code: string }>,
+  apiUrl: string,
+): void {
+  const files = unreadable.map((u) => `${u.file}: ${u.code}`).join(", ");
+  writeLine(
+    stderr,
+    `warning: cannot read your saved sign-in (${files}) — continuing signed out, against ${apiUrl}`,
+  );
+  writeLine(
+    stderr,
+    "  Suggestion: check the file's permissions, or run `agentsfleet login` to sign in again",
+  );
+}
+
+// A parse failure, answered in the house shape rather than the library's.
+//
+// The library has already written its own text and help document by the time
+// this runs, but neither carries the ✕ glyph, the `error:` stem, the
+// Suggestion line, or — under `--json` — the stable code a consumer switches
+// on. So the house lines are added here, and the exit code comes from the
+// shared map.
+function renderLibraryFailure(
+  cause: Parameters<typeof exitCodeForFailure>[0],
+  tree: CommandNode,
+  argv: readonly string[],
+  stderr: WritableStreamLike,
+  jsonMode: boolean,
+): number {
+  const rejection = houseRejection(Cause.squash(cause), tree, argv);
+  if (rejection !== null) {
+    if (jsonMode) {
+      printJson(stderr, {
+        error: { code: rejection.code, message: rejection.detail },
+      });
+    } else {
+      writeLine(
+        stderr,
+        ui.err(`error: ${rejection.detail}${SUGGESTION_PREFIX}${rejection.suggestion}`),
+      );
+    }
+  }
+  return exitCodeForFailure(cause);
+}
+
+// `[]` → `--help`, and `help x y` → `x y --help`. Any other argv is its own.
+function helpArgv(argv: readonly string[]): string[] {
+  if (argv.length === 0) return [HELP_FLAG];
+  const [first, ...rest] = argv;
+  if (first !== HELP_COMMAND) return [...argv];
+  return [...rest, HELP_FLAG];
 }
