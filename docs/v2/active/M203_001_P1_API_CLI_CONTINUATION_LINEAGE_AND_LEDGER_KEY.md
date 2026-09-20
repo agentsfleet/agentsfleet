@@ -16,15 +16,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M203
 **Workstream:** 001
 **Date:** Sep 20, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing history loses lineage today under a real interleaving; the ledger key is a money invariant held by an undocumented sequence
 **Categories:** API | CLI
 **Batch:** B1 — standalone; no other M203 workstream
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** `feat/m203-continuation-lineage-and-ledger-key`
+**Baseline revision:** `57a77c73cdfe30b66cc1a765da91a64406fb37f0` (`origin/main` at CHORE(open))
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
-**Depends on:** none. M202_001 (active) edits `afd_approval/src/request.rs` and `afd_fleet/src/lease/{mint,deliver}.rs`; this spec edits `inbox.rs` and `lease/event.rs` — disjoint files, same crates; rebase onto whichever lands first.
+**Depends on:** none. M202_001 is in flight on `fix/m202-close-and-acceptance-lanes` and edits `afd_approval/src/request.rs` and `afd_fleet/src/lease/{mint,deliver}.rs`; this spec edits `inbox.rs` and `lease/event.rs` — disjoint files, same crates; rebase onto whichever lands first.
 **Provenance:** LLM-drafted (Claude Fable 5.1, Sep 20, 2026) from findings E1 and A1 of `docs/v2/reviews/identity-key-fk-shard-audit-2026-09-20.md`, revision 2
 **Canonical architecture:** `docs/architecture/data_flow.md` §The five durable stores
 
