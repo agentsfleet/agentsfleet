@@ -136,8 +136,18 @@ pub struct ChargeRow {
     pub tenant_id: String,
     /// The workspace it was incurred in, until that workspace is deleted.
     pub workspace_id: Option<String>,
-    /// The fleet it was incurred by, until that fleet is deleted.
+    /// The fleet it was incurred by, and it OUTLIVES that fleet.
+    ///
+    /// Optional because rows charged before slot 915 were nulled by the
+    /// foreign key that slot removed, not because a live charge can lack one.
+    /// The dashboard derives a fleet's callsign from this value, so keeping it
+    /// is what lets a purged fleet's charges still name themselves.
     pub fleet_id: Option<String>,
+    /// That fleet's name as it stood when the charge was written.
+    ///
+    /// `None` for a charge written before slot 915, or one whose fleet row was
+    /// unreadable at the time. A snapshot, so a later rename never reaches it.
+    pub fleet_name: Option<String>,
     /// The event that triggered the work.
     pub event_id: String,
     /// `receive` or `stage` — the two halves of one event's cost.
@@ -176,6 +186,7 @@ impl ChargeRow {
             charge_type: row.try_get("charge_type").map_err(&unreadable)?,
             posture: row.try_get("posture").map_err(&unreadable)?,
             model: row.try_get("model").map_err(&unreadable)?,
+            fleet_name: row.try_get("fleet_name").map_err(&unreadable)?,
             credit_deducted_nanos: row.try_get("credit_deducted_nanos").map_err(&unreadable)?,
             token_count_input: row.try_get("token_count_input").map_err(&unreadable)?,
             token_count_output: row.try_get("token_count_output").map_err(&unreadable)?,

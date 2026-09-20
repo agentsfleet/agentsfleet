@@ -67,11 +67,22 @@ const ONBOARD_TIMEOUT_MS = 120_000;
 /** A minimal bundle whose name carries the run prefix, so teardown finds it. */
 const bundleName = (): string => `${ACCEPTANCE_RUN_PREFIX}libadd`;
 
+// Minimal means minimal FOR THE DAEMON, not for a reader. `afd_library`'s
+// `frontmatter::skill` deserialises name + description + `version` and rejects
+// a document missing any of the three, and `FleetConfig::authored` reports
+// `MissingRequiredField` for `triggers` and for `budget`. A document short of
+// one of those is refused at onboard with UZ-BUNDLE-001 — whose sentence says
+// "missing SKILL.md, or has an unsafe or oversized file" and names none of
+// them — so the five fields below are each load-bearing.
 const skillDocument = (name: string): string =>
-  `---\nname: ${name}\ndescription: Acceptance probe for library onboarding.\n---\n# ${name}\n\nDoes nothing; exists to be onboarded.\n`;
+  `---\nname: ${name}\ndescription: Acceptance probe for library onboarding.\nversion: 0.1.0\n---\n# ${name}\n\nDoes nothing; exists to be onboarded.\n`;
 
+// `type: api` is the wake this probe wants — woken by an authenticated call and
+// by nothing else — and it is also the only trigger variant that carries no
+// configuration of its own, so the document declares a wake without declaring a
+// repository this fleet has no business reaching.
 const triggerDocument = (name: string): string =>
-  `---\nname: ${name}\nx-agentsfleet:\n  tools:\n    - http_request\n  network:\n    allow:\n      - api.github.com\n---\n# Wake rule\n\nWoken by an explicit message only.\n`;
+  `---\nname: ${name}\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools:\n    - http_request\n  network:\n    allow:\n      - api.github.com\n  budget:\n    daily_dollars: 1.0\n---\n# Wake rule\n\nWoken by an explicit message only.\n`;
 
 if (!isLive) {
   describe("library-onboard-live.spec.ts", () => {

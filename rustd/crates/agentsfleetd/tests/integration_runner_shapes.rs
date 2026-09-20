@@ -66,6 +66,14 @@ const LEASE_SHAPE: &[&str] = &[
 const EVENT_SHAPE: &[&str] = &["id", "runner_id", "event_type", "metadata", "created_at"];
 
 /// The columns a `stage` ledger row carries after a settle.
+///
+/// `fleet_name` joined the list at schema/915. It is the fleet's name as it
+/// stood when the charge was written, captured by subselect inside each
+/// charging statement rather than bound by a caller — so its presence HERE, on
+/// a row the booted daemon wrote through the real settle path, is what proves
+/// the capture reaches production and not merely the statement text. A row
+/// whose fleet could not be read carries NULL and drops out of this list, which
+/// is why the fixture charges a fleet that exists.
 const LEDGER_SHAPE: &[&str] = &[
     "id",
     "tenant_id",
@@ -83,6 +91,7 @@ const LEDGER_SHAPE: &[&str] = &[
     "event_created_at",
     "created_at",
     "last_charged_at",
+    "fleet_name",
 ];
 
 /// The columns one captured memory entry carries.
