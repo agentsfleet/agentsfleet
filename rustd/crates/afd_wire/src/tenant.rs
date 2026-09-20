@@ -168,10 +168,10 @@ pub struct ChargeSummary<'a> {
     ///
     /// Not optional since slot 916, which made the column `NOT NULL` as part
     /// of the accumulate arbiter. The nullable spelling outlived its meaning
-    /// by one slot: it documented a charge written before 915, and no database
-    /// holds one — nothing is deployed and the schema rebuilds from empty. A
-    /// reader who branched on the absent case would be writing for a row that
-    /// cannot exist.
+    /// by one slot: it documented a charge written before 915. No database
+    /// holds one, because nothing is deployed and the schema rebuilds from
+    /// empty. A reader who branched on the absent case would be writing for a
+    /// row that cannot exist.
     pub fleet_id: Cow<'a, str>,
     /// That fleet's name as it stood when the charge was written.
     ///
