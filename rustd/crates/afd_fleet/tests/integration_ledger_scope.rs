@@ -126,9 +126,10 @@ async fn charges_for(held: &Held, event: &str) -> Vec<(String, i64)> {
     sqlx::query(
         "SELECT fleet_id::text, credit_deducted_nanos
          FROM billing.usage_ledger
-         WHERE event_id = $1 AND charge_type = 'receive'
+         WHERE tenant_id = $1::uuid AND event_id = $2 AND charge_type = 'receive'
          ORDER BY fleet_id",
     )
+    .bind(&held.tenant)
     .bind(event)
     .fetch_all(&mut *connection)
     .await
@@ -253,6 +254,113 @@ async fn ledger_refuses_null_fleet() {
     assert_eq!(
         code, NOT_NULL_VIOLATION,
         "the refusal must be the column's, not an incidental fault: {error}"
+    );
+
+    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
+    held.fixtures.cleanup().await;
+}
+
+/// A budget deep enough that forty renewals cannot exhaust it.
+///
+/// The ceiling is not what this test is about, and a run that halted
+/// mid-way would assert a smaller sum and still pass.
+const DEEP_DAILY_BUDGET: &str = r#"{"name":"ledger-scope","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":1000}}}"#;
+
+/// How many renewals one run makes here.
+///
+/// A live run renews every ~25 seconds, so forty is an unremarkable hour. The
+/// number matters because the invariant is about REPETITION: one renewal
+/// proves the insert, and only many prove the conflict arm never multiplies.
+const RENEWALS: usize = 40;
+
+/// Raises the fleet's ceiling so the renewals below are not budget-gated.
+async fn fund(held: &Held) {
+    let mut connection = held
+        .fixtures
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    sqlx::query("UPDATE core.fleets SET config_json = $2::jsonb WHERE id = $1::uuid")
+        .bind(&held.fleet)
+        .bind(DEEP_DAILY_BUDGET)
+        .execute(&mut *connection)
+        .await
+        .expect("the fixture fleet is funded");
+}
+
+/// Meters one renewal through the production plane.
+async fn renew(held: &Held) {
+    let plane = held.fixtures.plane();
+    plane
+        .renew(
+            &held.runner,
+            held.issued.lease_id.as_str(),
+            afd_wire::report::RenewRequest::default(),
+            held.now,
+        )
+        .await
+        .expect("a funded lease renews");
+    drop(plane);
+}
+
+/// The stage rows this fleet's event holds, and what they total.
+async fn stage_rows(held: &Held) -> (i64, i64) {
+    let mut connection = held
+        .fixtures
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    let row = sqlx::query(
+        "SELECT count(*), COALESCE(SUM(credit_deducted_nanos), 0)::bigint
+         FROM billing.usage_ledger
+         WHERE fleet_id = $1::uuid AND event_id = $2 AND charge_type = 'stage'",
+    )
+    .bind(&held.fleet)
+    .bind(&held.event_id)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("reading the stage rows");
+    (
+        row.try_get::<i64, _>(0).expect("count decodes"),
+        row.try_get::<i64, _>(1).expect("sum decodes"),
+    )
+}
+
+/// Dimension 2.4. Repeated renewals accumulate into one stage row per fleet.
+///
+/// The regression the narrowed arbiter could most easily have caused. The
+/// accumulate arm's whole job is that a renewal finds the row the last one
+/// left and adds to it; an arbiter that stopped matching would insert a fresh
+/// row per tick instead, and the table would grow without bound on every live
+/// run while the totals still looked plausible row by row.
+///
+/// Forty rather than two, because two proves the conflict arm fires once and
+/// says nothing about it continuing to fire.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn renewal_accumulates_per_fleet_event() {
+    let held = held().await;
+    fund(&held).await;
+
+    for _ in 0..RENEWALS {
+        renew(&held).await;
+    }
+
+    let (rows, total) = stage_rows(&held).await;
+    assert_eq!(
+        rows, 1,
+        "forty renewals must accumulate into ONE stage row — a row per tick is \
+         a table that grows with a run's length"
+    );
+    // Not asserted to have MOVED: the metered amount is the renewal request's
+    // own token deltas, and `RenewRequest::default()` carries none. A test
+    // that demanded a non-zero total would be asserting the fixture's payload
+    // rather than the conflict arm this file is about.
+    assert!(
+        total >= 0,
+        "the accumulated row must decode as a charge, whatever it totals"
     );
 
     queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
