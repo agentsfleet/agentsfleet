@@ -38,8 +38,6 @@ use afd_crypto::aad::Aad;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::envelope::Sealer;
 use afd_crypto::secret::Kek;
-use afd_fleet_runtime::config::{Access, RepositoryBinding};
-use afd_gate::gate::WriteApproval;
 
 use self::seed::{Seeded, seeded};
 use self::support::Fixtures;
@@ -68,12 +66,6 @@ const OWNER_TOKEN: &str = "ghp_owner_workspace_token";
 
 /// The event a fixture lease is issued against.
 const EVENT_ID: &str = "evt-cred-mint-fixture";
-
-/// The gate kind a write mint spends.
-const KIND_REPOSITORY_WRITE: &str = "repository_write";
-
-/// The ceiling a repository-write card is raised with.
-const WRITE_SPEND_CEILING: i64 = 32;
 
 /// A fleet, a runner, and a live lease binding them.
 struct Bound {
@@ -248,52 +240,3 @@ async fn seed_grant(fixtures: &Fixtures, fleet: &str, service: &str, status: &st
     .await
     .expect("the grant row must insert");
 }
-
-/// Writes one answered repository-write gate for `fleet` and `EVENT_ID`.
-async fn seed_write_gate(fixtures: &Fixtures, fleet: &str, stated: &str, spent: i64) -> String {
-    let workspace = workspace_of(fixtures, fleet).await;
-    let gate_id = new_id();
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query(
-        "INSERT INTO core.fleet_approval_gates
-           (id, fleet_id, workspace_id, action_id, tool_name, action_name,
-            gate_kind, proposed_action, evidence, blast_radius, timeout_at,
-            resolved_by, status, detail, created_at, updated_at, event_id,
-            stated_binding, spend_count, spend_ceiling)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'git', 'push',
-                 $5, 'open a repair pull request', '{}'::jsonb, 'one repository',
-                 $6, 'fixture:human', 'approved', '', $7, $7, $8,
-                 $9::jsonb, $10, $11)",
-    )
-    .bind(&gate_id)
-    .bind(fleet)
-    .bind(&workspace)
-    .bind(new_id())
-    .bind(KIND_REPOSITORY_WRITE)
-    .bind(NOW_MS + LEASE_WINDOW_MS)
-    .bind(NOW_MS)
-    .bind(EVENT_ID)
-    .bind(stated)
-    .bind(spent)
-    .bind(WRITE_SPEND_CEILING)
-    .execute(&mut *connection)
-    .await
-    .expect("the gate row must insert");
-    gate_id
-}
-
-/// The reach a write-bound fixture fleet declares.
-fn declared() -> RepositoryBinding {
-    RepositoryBinding::from_parts(
-        vec!["acme/payments".into()],
-        Access::Write,
-        Some("main".into()),
-    )
-}
-
-/// The recorded form of [`declared`].
-const STATED_BINDING: &str = r#"{"repositories":["acme/payments"],"access":"write","base":"main"}"#;

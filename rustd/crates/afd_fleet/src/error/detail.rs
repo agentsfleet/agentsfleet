@@ -205,18 +205,6 @@ pub const DETAIL_CONNECTOR_MINT_FAILED: &str = "Connector token refresh failed";
 pub const DETAIL_GRANT_REQUIRED: &str =
     "No approved integration grant for this fleet and integration";
 
-/// `credentials_mint.zig`'s `S_WRITE_UNAPPROVED`.
-pub const DETAIL_WRITE_UNAPPROVED: &str =
-    "No approved repository-write gate for this lease's event";
-
-/// `credentials_mint.zig`'s `S_BINDING_DRIFT`.
-pub const DETAIL_BINDING_DRIFT: &str =
-    "Fleet repository binding changed since the approval was answered";
-
-/// `credentials_mint.zig`'s `S_WRITE_SPEND_EXHAUSTED`.
-pub const DETAIL_WRITE_SPEND_EXHAUSTED: &str =
-    "Approved write-credential request allowance is exhausted";
-
 // ── The device-flow login surface ────────────────────────────────────────
 //
 // Every sentence below is `session_helpers.zig`'s `failFromStoreError` mapping

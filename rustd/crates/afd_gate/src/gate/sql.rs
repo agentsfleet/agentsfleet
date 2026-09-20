@@ -109,7 +109,6 @@ pub struct PendingRow<'a> {
     /// The approved reach, as the mint will read it back.
     pub stated_binding: Option<&'a str>,
     /// The spend counter's opening value, for a bounded approval.
-    pub spend_count: Option<i64>,
     /// The instant the row is created at.
     pub now: UnixMillis,
 }
@@ -137,91 +136,12 @@ impl<'a> PendingRow<'a> {
             .bind(self.now.as_millis())
             .bind(self.event_id)
             .bind(self.stated_binding)
-            .bind(self.spend_count)
-            .bind(self.stated.spend_ceiling)
+            // Both NULL, always. No gate funds credential requests any more:
+            // the standing grant authorises the mint and `budget.daily_dollars`
+            // bounds the money. The columns stay because they are NOT NULL-free
+            // history on rows raised before this — no read selects them, so
+            // dropping them is a schema change this milestone does not need.
+            .bind(None::<i64>)
+            .bind(None::<i64>)
     }
 }
-
-/// The approved repository-write gate a lease's repair branch is named from.
-///
-/// Copied from `fleet_runtime/sql.zig`. Every predicate past the first three
-/// exists to refuse a row that is approved but not USABLE, and each names a
-/// different way that happens:
-///
-/// - `updated_at IS NOT NULL AND updated_at <= timeout_at` — the answer
-///   arrived, and it arrived before the question lapsed. An approval recorded
-///   after the deadline is a human answering a gate that had already expired.
-/// - `stated_binding IS NOT NULL` — the reach was recorded. Without it there
-///   is nothing to compare the fleet's current config against, and the caller
-///   would have to decide what an unrecorded reach authorises. It authorises
-///   nothing, and this is where that is enforced.
-/// - `spend_count IS NOT NULL AND spend_ceiling = $5` — the row was raised
-///   with THIS build's ceiling. A gate approved under a different ceiling was
-///   approved for a different blast radius.
-///
-/// `ORDER BY created_at DESC, id DESC` — newest first, and `id` breaks a tie
-/// so the answer is deterministic when two gates share an instant. `LIMIT 1`
-/// after that ordering makes this the most recent usable approval, not an
-/// arbitrary one.
-///
-/// The binding comparison itself is NOT in the statement. It is
-/// `RepositoryBinding::matches_recorded`, in Rust, because set equality that
-/// is case-insensitive and order-insensitive in both directions is not
-/// something to express in SQL and then have to keep in agreement with the
-/// serializer.
-///
-/// `$1` fleet, `$2` event, `$3` gate kind, `$4` approved status, `$5` ceiling.
-pub const SELECT_APPROVED_WRITE_GATE: &str = "\
-SELECT id::text, stated_binding::text FROM core.fleet_approval_gates
-WHERE fleet_id = $1::uuid AND event_id = $2 AND gate_kind = $3
-  AND status = $4 AND updated_at IS NOT NULL AND updated_at <= timeout_at
-  AND stated_binding IS NOT NULL
-  AND spend_count IS NOT NULL AND spend_ceiling = $5
-ORDER BY created_at DESC, id DESC
-LIMIT 1";
-
-/// The write gate a mint spends from, locked for the spend.
-///
-/// Text from `http/handlers/runner/sql.zig`'s `SELECT_WRITE_GATE_FOR_MINT`.
-/// Deliberately NOT [`SELECT_APPROVED_WRITE_GATE`], and the difference is the
-/// point: that statement answers "may this lease author a branch" and folds
-/// every refusal into no row, because its caller has one thing to say. This one
-/// answers a runner that must be TOLD which refusal it met — an unapproved
-/// gate, a reach that drifted, and an exhausted allowance are three different
-/// remedies and three registry codes — so the row comes back whatever its
-/// state and the verdict is decided in Rust.
-///
-/// `FOR UPDATE` is what makes the spend atomic: the row is held from the read
-/// until the update commits, so two concurrent mints on one approval cannot
-/// both see the same `spend_count`.
-///
-/// The kind is a `WHERE` clause rather than a check afterwards, because gates
-/// of other kinds share the event id — an install-time grant card raised after
-/// the write card would otherwise become "the newest gate" and shadow an answer
-/// a human already gave. `id DESC` settles a same-millisecond tie.
-///
-/// `$1` fleet, `$2` event, `$3` gate kind.
-pub const LOCK_WRITE_GATE_FOR_MINT: &str = "\
-SELECT id::text, status, stated_binding::text, timeout_at, updated_at,
-       spend_count, spend_ceiling
-FROM core.fleet_approval_gates
-WHERE fleet_id = $1::uuid AND event_id = $2 AND gate_kind = $3
-ORDER BY created_at DESC, id DESC
-LIMIT 1
-FOR UPDATE";
-
-/// Spends one request against an approved write gate.
-///
-/// The predicates are the same conditions the read already checked, restated
-/// where the WRITE happens: a row that changed between the two — answered
-/// again, or spent by a mint that got there first — updates nothing, and zero
-/// affected rows is the exhausted answer. The check and the spend are one
-/// decision even though they are two statements.
-///
-/// `$1` gate, `$2` approved status.
-pub const SPEND_WRITE_GATE_FOR_MINT: &str = "\
-UPDATE core.fleet_approval_gates
-SET spend_count = spend_count + 1
-WHERE id = $1::uuid AND status = $2
-  AND spend_count IS NOT NULL AND spend_ceiling IS NOT NULL
-  AND spend_count < spend_ceiling";

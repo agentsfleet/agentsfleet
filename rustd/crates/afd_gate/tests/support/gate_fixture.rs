@@ -147,6 +147,44 @@ impl Fixture {
         assert_eq!(changed.rows_affected(), 1);
     }
 
+    /// Every approval card this fixture's fleet holds, of any kind.
+    ///
+    /// Deliberately unfiltered by `gate_kind`: the claim a write fleet makes is
+    /// that it raises NOTHING, and a count filtered to one kind would pass
+    /// while a card of another was raised.
+    pub(crate) async fn card_count(&self) -> i64 {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM core.fleet_approval_gates WHERE fleet_id = $1::uuid",
+        )
+        .bind(self.fleet.as_str())
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the gate rows are readable")
+    }
+
+    /// Restates the recorded kind of `event_id`'s pending gate.
+    ///
+    /// The one way to stand up a row of a kind no daemon path raises any more.
+    /// The PARK is real — the rules path wrote both the Postgres row and the
+    /// Dragonfly reference that finds it — and only the `gate_kind` column is
+    /// rewritten, which is precisely the variable under test: an event parked
+    /// by an earlier build must still resolve from the gate it was parked on.
+    pub(crate) async fn restate_kind(&self, event_id: &str, kind: &str) {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        let changed = sqlx::query(
+            "UPDATE core.fleet_approval_gates SET gate_kind = $3 \
+             WHERE fleet_id = $1::uuid AND event_id = $2 AND status = 'pending'",
+        )
+        .bind(self.fleet.as_str())
+        .bind(event_id)
+        .bind(kind)
+        .execute(&mut *connection)
+        .await
+        .expect("the recorded kind is restated");
+        assert_eq!(changed.rows_affected(), 1);
+    }
+
     pub(crate) async fn activate(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query("UPDATE core.fleets SET status = 'active' WHERE id = $1::uuid")
