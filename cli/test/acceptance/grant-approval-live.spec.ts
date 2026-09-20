@@ -40,7 +40,7 @@ import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV } from "./fixtures/constan
 import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
-import { trailingJsonObject } from "./fixtures/steer-envelope.ts";
+import { trailingJson } from "./fixtures/steer-envelope.ts";
 import {
   resolveAcceptanceEnv,
   resolveClerkSecret,
@@ -191,7 +191,7 @@ if (!isLive) {
         { env },
       );
       assert.equal(listed.code, 0, `approvals list failed: ${listed.stderr}`);
-      const gates = (trailingJsonObject(listed.stdout) as { items?: Array<{ gate_id?: string }> }).items ?? [];
+      const gates = (trailingJson(listed.stdout) as { items?: Array<{ gate_id?: string }> }).items ?? [];
       assert.ok(gates.some((row) => row.gate_id === pending.gate_id),
         `the pending card is not in the inbox the CLI reads: ${listed.stdout}`);
     });
@@ -204,7 +204,7 @@ if (!isLive) {
         { env },
       );
       assert.equal(answered.code, 0, `approvals approve failed: ${answered.stderr}`);
-      const decided = trailingJsonObject(answered.stdout) as { outcome?: string };
+      const decided = trailingJson(answered.stdout) as { outcome?: string };
       assert.equal(decided.outcome, GATE_STATUS.approved,
         `the resolve did not answer approved: ${answered.stdout}`);
 
@@ -221,7 +221,7 @@ if (!isLive) {
       const result = await runWithEnv([STEER_COMMAND, fleetId, ONE_SHOT_MESSAGE, JSON_FLAG]);
       assert.equal(result.code, 0,
         `a granted fleet's steer must exit 0; stdout=${result.stdout} stderr=${result.stderr}`);
-      const envelope = JSON.parse(trailingJsonObject(result.stdout)) as Record<string, unknown>;
+      const envelope = trailingJson(result.stdout) as Record<string, unknown>;
       assert.equal(envelope[ENVELOPE_STATUS_KEY], STATUS_PROCESSED,
         `expected ${STATUS_PROCESSED}; got ${JSON.stringify(envelope)}`);
 

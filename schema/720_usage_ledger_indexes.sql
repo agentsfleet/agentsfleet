@@ -31,9 +31,9 @@
 CREATE INDEX IF NOT EXISTS idx_usage_ledger_tenant_id_created_at_id
     ON billing.usage_ledger (tenant_id, created_at DESC, id DESC);
 
--- Two readers, one index, and the column ORDER is what lets it serve both.
+-- One reader since slot 915, and the column order is now free rather than forced.
 --
--- Reader 1 — the budget drain (`fleet/sql.zig` SELECT_BUDGET_DRAIN and
+-- The reader is the budget drain (`fleet/sql.zig` SELECT_BUDGET_DRAIN and
 -- SELECT_BUDGET_POLICY_AND_DRAIN): WHERE workspace_id = $1 AND fleet_id = $2 AND
 -- last_charged_at >= floor. It runs on every event receive and every renewal —
 -- roughly every 25 seconds per live run — and this table is never pruned
@@ -42,13 +42,17 @@ CREATE INDEX IF NOT EXISTS idx_usage_ledger_tenant_id_created_at_id
 -- `docs/architecture/scaling.md` exists to refuse. Two equalities then a range is
 -- exactly the shape one index scan can serve.
 --
--- Reader 2 — the fleet SET NULL. Deleting a fleet is routine, not just an
--- erasure step, and it must find and detach that fleet's ledger rows.
+-- A second reader used to share it: the fleet `SET NULL`, which matched on
+-- `fleet_id` alone and so REQUIRED that column to lead. schema/915 dropped that
+-- foreign key — a purged fleet's charges keep their identifier now, because
+-- nulling it stripped a surviving charge of the only thing naming what it paid
+-- for. With the referential action gone, its reader is gone with it.
 --
--- `fleet_id` LEADS for reader 2's sake: a referential action matches on
--- `fleet_id` alone, and a btree leading with `workspace_id` could not serve it —
--- which is why this is one index and not two. Reader 1 is indifferent to the
--- order of the two equality columns.
+-- `fleet_id` still leads, and now that is a free choice rather than a forced
+-- one: the drain is indifferent to the order of its two equality columns, so
+-- the existing order is kept because reordering a live index would cost a
+-- rebuild and buy nothing. Written down because the next reader to ask "why
+-- this order?" deserves the real answer, not the retired one.
 CREATE INDEX IF NOT EXISTS idx_usage_ledger_fleet_id_workspace_id_last_charged_at
     ON billing.usage_ledger (fleet_id, workspace_id, last_charged_at);
 

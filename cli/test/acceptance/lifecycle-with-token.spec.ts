@@ -59,6 +59,7 @@ import {
   resumeFleet,
   stopFleet,
   expectStatus,
+  TOMBSTONE_REFUSAL,
 } from "./fixtures/lifecycle.ts";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
@@ -235,12 +236,18 @@ if (!isLive) {
 
       it("kill is idempotent on a terminal fleet", async () => {
         const result = await runWithEnv(["kill", fleetId, "--json"]);
-        // Either succeed silently, surface an already-terminal stem, or report
-        // not-found after the terminal transition hides the fleet from writes.
-        // What's not acceptable is re-emitting `status: active` later. The
-        // status assertion below catches that.
+        // Either succeed silently or report the tombstone: `edit.rs`'s
+        // `explain` answers UZ-AGT-009 for a killed row, so a second kill reads
+        // as not-found rather than as a refused transition. Matching the 010
+        // refusal here too would accept the daemon calling a tombstone a
+        // live-state conflict, the one thing this test is placed to notice. Nor
+        // is re-emitting `status: active` later; the assertion below catches it.
         if (result.code !== 0) {
-          assert.match(result.stderr + result.stdout, /UZ-AGT-010|already.*terminal|killed|terminated|HTTP_404|not found/i);
+          assert.match(
+            result.stderr + result.stdout,
+            TOMBSTONE_REFUSAL,
+            `a second kill must name the 009 tombstone: ${result.stdout}${result.stderr}`,
+          );
         }
         await expectStatus(env, fleetId, ["killed", "errored", "terminated"]);
       });
