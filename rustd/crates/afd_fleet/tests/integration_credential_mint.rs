@@ -29,6 +29,8 @@
 // to THIS file's directory, which the aggregator does not change.
 #[path = "integration_credential_mint/cases.rs"]
 mod cases;
+#[path = "integration_credential_mint/write_gate.rs"]
+mod write_gate;
 use crate::seed;
 use crate::support;
 use afd_core::clock::UnixMillis;
@@ -48,11 +50,21 @@ const NOW_MS: i64 = 1_900_000_000_000;
 /// How long the fixture leases stay live.
 const LEASE_WINDOW_MS: i64 = 30_000;
 
-/// The key the fixture vault rows are sealed under.
+/// The key every fixture in this lane seals and opens under.
 ///
-/// All zeroes, and that is the point: nothing here is secret, so a plausible
-/// key would only invite somebody to wonder whether it mattered.
-const FIXTURE_KEK_HEX: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+/// The same value `agentsfleetd`'s end-to-end suite uses, and that is the whole
+/// point of it. `core.platform_provider_defaults` has `provider` as its PRIMARY
+/// KEY, so the row is a fact about the deployment rather than about a test, and
+/// both suites seed it with `ON CONFLICT DO NOTHING` — whichever runs first
+/// owns it, and the secret it names is opened by the other. Under two different
+/// keys that resolution fails with `OpenFailed`, which is what kept every gate
+/// below the provider resolution unreachable from this crate.
+///
+/// It was thirty-two zero bytes while nothing here opened an envelope. The
+/// comment that recorded that said the gates "refuse before any credential is
+/// resolved", which stopped being true the moment a test drove the lease verb
+/// past the event type.
+const FIXTURE_KEK_HEX: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 /// The connector every case mints through — see the module note.
 const CONNECTOR_STATIC: &str = "static";
@@ -239,4 +251,50 @@ async fn seed_grant(fixtures: &Fixtures, fleet: &str, service: &str, status: &st
     .execute(&mut *connection)
     .await
     .expect("the grant row must insert");
+}
+
+/// The gate kind a write mint spends.
+const KIND_REPOSITORY_WRITE: &str = "repository_write";
+
+/// The ceiling a repository-write card is raised with.
+const WRITE_SPEND_CEILING: i64 = 32;
+
+/// The recorded reach a write-bound fixture fleet declares.
+const STATED_BINDING: &str = r#"{"repositories":["acme/payments"],"access":"write","base":"main"}"#;
+
+/// Writes one answered repository-write gate for `fleet` and `EVENT_ID`.
+async fn seed_write_gate(fixtures: &Fixtures, fleet: &str, stated: &str, spent: i64) -> String {
+    let workspace = workspace_of(fixtures, fleet).await;
+    let gate_id = new_id();
+    let mut connection = fixtures
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    sqlx::query(
+        "INSERT INTO core.fleet_approval_gates
+           (id, fleet_id, workspace_id, action_id, tool_name, action_name,
+            gate_kind, proposed_action, evidence, blast_radius, timeout_at,
+            resolved_by, status, detail, created_at, updated_at, event_id,
+            stated_binding, spend_count, spend_ceiling)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'git', 'push',
+                 $5, 'open a repair pull request', '{}'::jsonb, 'one repository',
+                 $6, 'fixture:human', 'approved', '', $7, $7, $8,
+                 $9::jsonb, $10, $11)",
+    )
+    .bind(&gate_id)
+    .bind(fleet)
+    .bind(&workspace)
+    .bind(new_id())
+    .bind(KIND_REPOSITORY_WRITE)
+    .bind(NOW_MS + LEASE_WINDOW_MS)
+    .bind(NOW_MS)
+    .bind(EVENT_ID)
+    .bind(stated)
+    .bind(spent)
+    .bind(WRITE_SPEND_CEILING)
+    .execute(&mut *connection)
+    .await
+    .expect("the gate row must insert");
+    gate_id
 }

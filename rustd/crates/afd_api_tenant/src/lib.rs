@@ -42,6 +42,7 @@ pub fn tenant_handler_for<D: Services>(verb: TenantRoute) -> Option<MethodRouter
             Some(patch(handler::tenant::revoke::<D>).delete(handler::tenant::delete::<D>))
         }
         TenantRoute::CliCredentials => Some(post(handler::tenant::mint_cli::<D>)),
+        TenantRoute::CurrentUser => Some(get(handler::tenant::current_user::<D>)),
         TenantRoute::CliCredential => Some(delete(handler::tenant::revoke_cli::<D>)),
         TenantRoute::Billing => Some(get(handler::tenant::billing_snapshot::<D>)),
         TenantRoute::BillingCharges => Some(get(handler::tenant::billing_charges::<D>)),

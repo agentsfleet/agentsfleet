@@ -6306,6 +6306,83 @@
         ]
       }
     },
+    "/v1/users/me": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Read the calling person",
+        "description": "Returns the person this credential belongs to, the tenant they act in, which credential class proved them, and what they may do. Call it with a browser session token, a tenant API key, or a command-line credential. A tenant API key answers with the person who created it. No capability is required, so this is also the cheapest way to confirm that a credential still authenticates. ",
+        "operationId": "get_current_user",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is not a person this tenant knows",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/webhooks/svix/{fleet_id}": {
       "post": {
         "tags": [
@@ -12997,6 +13074,54 @@
           "workspace_id": {
             "type": "string",
             "description": "The new workspace's identifier."
+          }
+        }
+      },
+      "CurrentUserResponse": {
+        "type": "object",
+        "description": "`GET /v1/users/me` — the person, the tenant, and how they proved it.",
+        "required": [
+          "user_id",
+          "email",
+          "tenant_id",
+          "tenant_name",
+          "credential",
+          "scopes"
+        ],
+        "properties": {
+          "credential": {
+            "type": "string",
+            "description": "How you signed in: `session_token`, `tenant_api_key`, or `cli_credential`."
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Your display name. Absent when the account never set one."
+          },
+          "email": {
+            "type": "string",
+            "description": "The address this account was opened with."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What you may do. Each entry is a scope name, such as `fleet:read`.\n\nAn empty list means you hold no scopes. The key is always present."
+          },
+          "tenant_id": {
+            "type": "string",
+            "description": "The tenant you act in."
+          },
+          "tenant_name": {
+            "type": "string",
+            "description": "That tenant's display name."
+          },
+          "user_id": {
+            "type": "string",
+            "description": "Your own identifier. Stable for the life of the account."
           }
         }
       },

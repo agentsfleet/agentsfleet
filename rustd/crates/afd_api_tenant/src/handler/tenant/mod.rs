@@ -1,4 +1,5 @@
-//! `/v1/api-keys*` and the rest of what a tenant manages for itself.
+//! `/v1/api-keys*`, `/v1/users/me`, and the rest of what a caller manages or
+//! reads for itself.
 //!
 //! Thin by construction, like [`super::auth`]: parse the body into a type that
 //! already carries its bounds, resolve which tenant is acting, call one service
@@ -9,6 +10,7 @@
 pub(crate) mod api_key;
 pub(crate) mod billing;
 pub(crate) mod cli_credential;
+pub(crate) mod identity;
 pub(crate) mod model_entry;
 pub(crate) mod models;
 pub(crate) mod provider;
@@ -18,6 +20,7 @@ pub(crate) use self::api_key::{delete, list, mint, revoke};
 pub(crate) use self::billing::{charges as billing_charges, snapshot as billing_snapshot};
 // The refusal sentences, for the router suite to assert by identity.
 pub use self::billing::{DETAIL_LIMIT_NOT_NUMERIC, DETAIL_LIMIT_RANGE};
+pub(crate) use self::identity::current as current_user;
 pub(crate) use self::model_entry::list as list_model_entries;
 pub(crate) use self::model_entry::write::{
     create as create_model_entry, remove as remove_model_entry, update as update_model_entry,

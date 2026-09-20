@@ -52,6 +52,11 @@ const INVENTORY: &[&str] = &[
     "/v1/api-keys/{id}",
     "/v1/cli-credentials",
     "/v1/cli-credentials/{id}",
+    // Added after the port rather than carried across it: the Zig daemon served
+    // no identity read, and the command-line client had been probing the
+    // billing snapshot in its place. Listed here beside the tenant plane's own
+    // rows because it is read for the caller itself, like every path above it.
+    "/v1/users/me",
     // §3 — workspace fleets and install.
     "/v1/workspaces/{workspace_id}/fleets",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",

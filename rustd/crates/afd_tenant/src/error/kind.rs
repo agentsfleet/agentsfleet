@@ -102,7 +102,7 @@ pub(crate) enum ErrorKind {
     CliCredentialMachineCollision,
 
     #[error("the authenticated subject has no user record")]
-    CliCredentialUnknownSubject,
+    UnknownSubject,
 
     #[error("a workspace name carries a character this daemon will not store")]
     WorkspaceNameInvalid,

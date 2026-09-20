@@ -1,4 +1,9 @@
-//! Tenant-scoped self-service: billing, credentials, and models.
+//! Tenant-scoped self-service: identity, billing, credentials, and models.
+//!
+//! The family is what a caller manages or reads FOR ITSELF, which is why
+//! `/v1/models`, `/v1/fleets/bundles` and `/v1/users/me` sit here beside the
+//! `/v1/tenants/me/*` rows — the grouping is the scope a request is keyed by,
+//! never a shared path prefix.
 
 use afd_auth::Scope;
 
@@ -42,6 +47,8 @@ pub enum TenantRoute {
     CliCredentials,
     /// One command-line credential.
     CliCredential,
+    /// The calling person's own identity.
+    CurrentUser,
 }
 
 impl TenantRoute {
@@ -60,6 +67,7 @@ impl TenantRoute {
         Self::ApiKey,
         Self::CliCredentials,
         Self::CliCredential,
+        Self::CurrentUser,
     ];
 
     /// The verbs this route identity serves.
@@ -79,7 +87,8 @@ impl TenantRoute {
             | Self::BillingCharges
             | Self::Workspaces
             | Self::ModelLibrary
-            | Self::FleetBundles => &[Verb::Get],
+            | Self::FleetBundles
+            | Self::CurrentUser => &[Verb::Get],
             Self::CreateWorkspace | Self::CliCredentials => &[Verb::Post],
             Self::CliCredential => &[Verb::Delete],
             Self::ApiKeys | Self::ModelEntries => &[Verb::Get, Verb::Post],
@@ -95,6 +104,8 @@ impl TenantRoute {
     /// Command-line credentials carry no capability and none could — a tenant
     /// key already holds every scope this family might name, so the refusal
     /// that matters is on principal mode and lives beside the ownership check.
+    /// The identity read carries none for a different reason, recorded on its
+    /// own arm: there is no capability a person can be short for their own name.
     #[must_use]
     pub const fn meta(self) -> RouteMeta {
         let (template, scopes) = match self {
@@ -120,6 +131,15 @@ impl TenantRoute {
             Self::ApiKey => ("/v1/api-keys/{id}", Scopes::wa(APIKEY_WRITE, APIKEY_ADMIN)),
             Self::CliCredentials => ("/v1/cli-credentials", Scopes::Always(NONE)),
             Self::CliCredential => ("/v1/cli-credentials/{id}", Scopes::Always(NONE)),
+            // No scope, for the reason the two rows above carry none and one
+            // more besides: a capability answers "may you do this KIND of
+            // thing", and reading your own name is not a kind of thing anybody
+            // can be short the capability for. A requirement here would also
+            // make this route useless as a login probe, which is what the
+            // command-line client uses it for — a person holding no
+            // `billing:read` was being told their credential was rejected,
+            // because the probe before this route existed needed one.
+            Self::CurrentUser => ("/v1/users/me", Scopes::Always(NONE)),
         };
         RouteMeta::new(Guard::Bearer, RouteClass::Api, template, scopes)
     }
