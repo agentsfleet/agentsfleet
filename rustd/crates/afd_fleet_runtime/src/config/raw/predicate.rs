@@ -85,23 +85,22 @@ pub(super) fn is_branch_name(base: &String, (): &()) -> garde::Result {
     Err(garde::Error::new(REASON_NOT_BRANCH))
 }
 
-/// The gate kinds only the daemon may raise.
+/// The one gate kind only the daemon may raise.
 ///
-/// `integration_grant` is spelled here rather than imported because this crate
-/// sits UNDER `afd_approval`, which owns `KIND_INTEGRATION_GRANT` and pins its
-/// constant against this list in its own test.
+/// Spelled here rather than imported because this crate and `afd_approval` are
+/// SIBLINGS — neither names the other in its manifest, so the constant
+/// `afd_approval` owns (`KIND_INTEGRATION_GRANT`) cannot be reached from this
+/// side. Each crate holds the literal and pins it in its own test, so renaming
+/// one alone fails a build rather than silently retiring the guard.
 ///
-/// `repository_write` is RESERVED rather than owned: no daemon path raises that
-/// kind any longer — the standing integration grant authorises a repository
-/// write, and nobody is asked per event. The spelling stays on this list
-/// because rows raised before that change are still in the table and the inbox
-/// still renders them, so a workspace that could author the kind could author a
-/// card an operator already recognises as the daemon's own.
-pub(super) const DAEMON_OWNED_GATE_KINDS: [&str; 2] = ["integration_grant", "repository_write"];
+/// It was a two-element list until the second kind was retired: the standing
+/// integration grant now authorises a repository write, no daemon path raises
+/// that card, and the spelling had no owning constant left to reserve.
+pub(super) const DAEMON_OWNED_GATE_KIND: &str = "integration_grant";
 
-/// Refuses a gate kind the daemon reserves for its own cards.
+/// Refuses the gate kind the daemon reserves for its own cards.
 pub(super) fn not_daemon_owned(kind: &String, (): &()) -> garde::Result {
-    if DAEMON_OWNED_GATE_KINDS.contains(&kind.as_str()) {
+    if kind == DAEMON_OWNED_GATE_KIND {
         return Err(garde::Error::new(format!(
             "gate_kind {kind:?} is reserved for the daemon's own approval cards"
         )));
@@ -111,7 +110,7 @@ pub(super) fn not_daemon_owned(kind: &String, (): &()) -> garde::Result {
 
 #[cfg(test)]
 mod reserved_kind_tests {
-    use super::{DAEMON_OWNED_GATE_KINDS, not_daemon_owned};
+    use super::{DAEMON_OWNED_GATE_KIND, not_daemon_owned};
 
     /// The escalation this validator exists to refuse.
     ///
@@ -120,12 +119,10 @@ mod reserved_kind_tests {
     /// the fleet standing permission to mint a third party's credentials.
     #[test]
     fn a_fleet_may_not_author_a_daemon_owned_gate_kind() {
-        for reserved in DAEMON_OWNED_GATE_KINDS {
-            assert!(
-                not_daemon_owned(&reserved.to_owned(), &()).is_err(),
-                "{reserved} must be refused"
-            );
-        }
+        assert!(
+            not_daemon_owned(&DAEMON_OWNED_GATE_KIND.to_owned(), &()).is_err(),
+            "{DAEMON_OWNED_GATE_KIND} must be refused"
+        );
     }
 
     /// An ordinary kind still passes, so the guard refuses a set and not a shape.
@@ -147,16 +144,45 @@ mod reserved_kind_tests {
 
     /// Pins the spelling, because the owner cannot import it.
     ///
-    /// `afd_approval::KIND_INTEGRATION_GRANT` is the constant the first string
+    /// `afd_approval::KIND_INTEGRATION_GRANT` is the constant this string
     /// stands in for, and that crate sits ABOVE this one so it cannot be
     /// imported here. It pins the same literal from its own side; a rename
-    /// there fails a test rather than silently retiring the guard. The second
-    /// string has no owning constant left — see the list's own note.
+    /// there fails a test rather than silently retiring the guard.
+    ///
+    /// A near-miss spelling is accepted, and that is deliberate.
+    ///
+    /// The guard matches the reserved kind EXACTLY, so a case variant or a
+    /// padded spelling passes it. That is safe rather than a hole, and the
+    /// reason is the resolve on the other side: `afd_approval` binds its own
+    /// `KIND_INTEGRATION_GRANT` constant into the statement that moves a
+    /// credential grant, so a card carrying a near-miss kind matches nothing
+    /// there and moves no grant. Pinned here because the guard changed from a
+    /// list membership test to an equality test — if a future reader "fixes"
+    /// this by lowercasing or trimming, they widen a refusal past the one
+    /// spelling that can actually reach the grant path, and start refusing
+    /// fleets names nothing claims.
     #[test]
-    fn the_reserved_set_is_exactly_the_two_kinds_the_daemon_raises() {
-        assert_eq!(
-            DAEMON_OWNED_GATE_KINDS,
-            ["integration_grant", "repository_write"]
-        );
+    fn a_near_miss_spelling_is_accepted_because_it_reaches_no_grant() {
+        for near_miss in [
+            "Integration_Grant",
+            "INTEGRATION_GRANT",
+            " integration_grant",
+            "integration_grant ",
+            "integration-grant",
+        ] {
+            assert!(
+                not_daemon_owned(&near_miss.to_owned(), &()).is_ok(),
+                "{near_miss} is not the reserved spelling and must be accepted"
+            );
+        }
+    }
+
+    /// A kind the daemon no longer raises must not stay reserved: that would
+    /// refuse a fleet a name nothing else claims. One was retired, and the
+    /// scalar is what keeps a second from creeping back without a daemon path
+    /// behind it — there is no list to append to.
+    #[test]
+    fn the_reserved_kind_is_the_one_the_daemon_raises() {
+        assert_eq!(DAEMON_OWNED_GATE_KIND, "integration_grant");
     }
 }

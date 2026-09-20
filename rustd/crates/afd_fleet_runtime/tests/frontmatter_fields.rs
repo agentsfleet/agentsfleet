@@ -178,14 +178,28 @@ fn the_name_mismatch_pair_parses_and_disagrees() {
 /// permission to mint a third party's credentials while answering about a tool.
 #[test]
 fn a_fleet_may_not_author_a_daemon_owned_gate_kind() {
-    for reserved in ["integration_grant", "repository_write"] {
-        let document = trigger_declaring_gate_kind(reserved);
-        let refused = parse_trigger(&document);
-        assert!(
-            refused.is_err(),
-            "{reserved} must be refused through parse, not merely by the validator"
-        );
-    }
+    let reserved = "integration_grant";
+    let document = trigger_declaring_gate_kind(reserved);
+    let refused = parse_trigger(&document);
+    assert!(
+        refused.is_err(),
+        "{reserved} must be refused through parse, not merely by the validator"
+    );
+}
+
+/// The retired write kind parses like any other kind a fleet authors.
+///
+/// It sat on the reserved list while a daemon path still raised it. That path
+/// is gone — the standing integration grant authorises a repository write and
+/// no card is raised — so reserving the spelling would refuse a fleet a name
+/// nothing else claims. This is the behaviour change, pinned: a list that grows
+/// the kind back fails here as well as in the validator's own length assertion.
+#[test]
+fn the_retired_write_kind_is_a_fleets_own_business_again() {
+    let document = trigger_declaring_gate_kind("repository_write");
+    let parsed = parse_trigger(&document)
+        .expect("the retired kind is reserved by nothing and parses like any other");
+    assert_eq!(parsed.config().name().as_str(), "gate-kind-probe");
 }
 
 /// The same document with an ordinary kind still parses.
