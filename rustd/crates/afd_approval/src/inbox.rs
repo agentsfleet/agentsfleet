@@ -359,9 +359,9 @@ impl Inbox {
             })
             .await?;
 
-        let (landed, counters) = {
+        let (inserted, counters) = {
             let mut connection = self.database.acquire().await?;
-            let landed = sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
+            let inserted: bool = sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
                 .bind(&resolved.fleet_id)
                 .bind(admitted.id.as_str())
                 .bind(&resolved.workspace_id)
@@ -371,23 +371,23 @@ impl Inbox {
                 .bind(event_id)
                 .bind(now.as_millis())
                 .bind(afd_core::event::status::RECEIVED)
-                .execute(&mut *connection)
+                .fetch_one(&mut *connection)
                 .await
+                .map_err(error::query(CONTEXT_CONTINUE))?
+                .try_get(0)
                 .map_err(error::query(CONTEXT_CONTINUE))?;
-            // The counters are read after the row landed, because the insert
-            // is what moves them — on the same connection, where the trigger's
-            // write is already visible and no second acquire is paid.
-            let counters = if landed.rows_affected() > 0 {
+            // Counters are read after the row landed, on the same connection:
+            // the trigger's write is visible there and no second acquire is paid.
+            let counters = if inserted {
                 afd_events::fleet_counters_best_effort_on(&mut connection, &resolved.fleet_id).await
             } else {
                 None
             };
-            (landed, counters)
+            (inserted, counters)
         };
-        // Once, on the write that landed the row: a retried resolve finds the
-        // row already there and announces nothing, the same rule the lease
-        // verb keeps for a redelivery.
-        if landed.rows_affected() > 0 {
+        // Once, on the write that landed the row: a retried resolve finds it
+        // already there and announces nothing, as the lease verb does.
+        if inserted {
             let frame = TailFrame::EventReceived {
                 event_id: Cow::Borrowed(admitted.id.as_str()),
                 actor: Cow::Borrowed(&actor),

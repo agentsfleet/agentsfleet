@@ -26,6 +26,8 @@ mod integration_admission_prototype;
 mod integration_backfill;
 #[path = "integration_budgets.rs"]
 mod integration_budgets;
+#[path = "integration_continuation_lineage.rs"]
+mod integration_continuation_lineage;
 #[path = "integration_steer.rs"]
 mod integration_steer;
 #[path = "integration_steer_retry.rs"]
