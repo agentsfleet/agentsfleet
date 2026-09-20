@@ -39,7 +39,13 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
     key: "fleet",
     header: "Fleet",
     sortValue: (c) => chargeAgentLabel(c),
-    cell: (c) => <AgentLabel fleetId={c.fleet_id} className="text-foreground" />,
+    cell: (c) => (
+      <AgentLabel
+        fleetId={c.fleet_id}
+        fleetName={c.fleet_name}
+        className="text-foreground"
+      />
+    ),
   },
   {
     key: "model",
