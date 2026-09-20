@@ -196,8 +196,8 @@ async fn test_m201_charge_row_decodes_fleet_name() {
          names a fleet after its own identifier"
     );
     assert_eq!(
-        captured.fleet_id.as_deref(),
-        Some(held.fleet.as_str()),
+        captured.fleet_id.as_str(),
+        held.fleet.as_str(),
         "the identifier the dashboard derives a callsign from must survive the read"
     );
 

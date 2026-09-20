@@ -195,7 +195,7 @@ fn a_charge_row_carries_its_whole_provenance() {
             id: Cow::Borrowed(TEXT),
             tenant_id: Cow::Borrowed(TEXT),
             workspace_id: Some(Cow::Borrowed(TEXT)),
-            fleet_id: Some(Cow::Borrowed(TEXT)),
+            fleet_id: Cow::Borrowed(TEXT),
             fleet_name: Some(Cow::Borrowed(TEXT)),
             event_id: Cow::Borrowed(TEXT),
             charge_type: Cow::Borrowed(TEXT),

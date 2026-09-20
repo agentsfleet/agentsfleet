@@ -138,11 +138,13 @@ pub struct ChargeRow {
     pub workspace_id: Option<String>,
     /// The fleet it was incurred by, and it OUTLIVES that fleet.
     ///
-    /// Optional because rows charged before slot 915 were nulled by the
-    /// foreign key that slot removed, not because a live charge can lack one.
-    /// The dashboard derives a fleet's callsign from this value, so keeping it
-    /// is what lets a purged fleet's charges still name themselves.
-    pub fleet_id: Option<String>,
+    /// Not optional: slot 916 made the column `NOT NULL` as part of the
+    /// accumulate arbiter, so the read cannot decode an absent one. It was
+    /// optional for rows charged before slot 915, which the foreign key that
+    /// slot removed had nulled — a shape no database holds. The dashboard
+    /// derives a fleet's callsign from this value, so keeping it is what lets
+    /// a purged fleet's charges still name themselves.
+    pub fleet_id: String,
     /// That fleet's name as it stood when the charge was written.
     ///
     /// `None` for a charge written before slot 915, or one whose fleet row was
