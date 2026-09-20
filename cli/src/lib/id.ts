@@ -1,9 +1,8 @@
 // What counts as an identifier, for every caller on both sides of the parser.
 //
-// This lived in `program/validators.ts` next to the commander option parsers,
-// which made it look like parse-time machinery. It is not: five command
-// handlers call `validateRequiredId` at run time, long after parsing, and they
-// have to keep working when the commander tree and its parsers are deleted.
+// This is not parse-time machinery, though it is used at parse time too:
+// five command handlers call `validateRequiredId` at run time, long after
+// parsing, on ids that never passed through a flag.
 
 import { validate as isValidUuid, version as uuidVersion } from "uuid";
 import { isString } from "./guards.ts";

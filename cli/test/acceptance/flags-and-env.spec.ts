@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import url from "node:url";
-import { helpTail } from "../../src/program/cli-tree-help.ts";
+import { helpTail } from "../../src/program/entry/help-formatter.ts";
 
 import { runFleetctl, spawnFleetctl, composeEnv } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";

@@ -258,7 +258,7 @@ describe("library add — request shaping", () => {
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(4);
-        expect(err.read()).toContain("unknown option");
+        expect(err.read()).toContain("Unrecognized flag");
         expect(calls).toEqual([]);
       });
     });

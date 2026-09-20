@@ -27,7 +27,7 @@ const MIGRATED_SOURCES = [
   "cli/src/commands/fleet_list.ts",
   "cli/src/commands/api_key.ts",
   "cli/src/commands/memory.ts",
-  "cli/src/program/cli-tree-memory.ts",
+  "cli/src/program/tree/memory.command.ts",
 ];
 
 // Mirrors the acceptance grep: a quoted `cursor` key or parameter name, a

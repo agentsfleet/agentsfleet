@@ -19,7 +19,7 @@ Authenticate, manage workspaces, install Fleets, tail their events, and operate 
 npm install -g @agentsfleet/cli
 ```
 
-Requires Node.js ≥ 24 (or Bun ≥ 1.4).
+Requires [Bun](https://bun.sh) ≥ 1.4 — the CLI runs on the bun runtime.
 
 ## Quick start
 

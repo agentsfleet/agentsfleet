@@ -45,6 +45,7 @@ const outputLayer = (cap: Capture): Layer.Layer<Output> =>
   Layer.succeed(
     Output,
     Output.of({
+      stdoutIsTty: false,
       format: OUTPUT_FORMAT.text,
       intro: () => Effect.void,
       info: (msg) => Effect.sync(() => { cap.infos.push(msg); }),

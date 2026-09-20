@@ -56,7 +56,7 @@ const EXIT_UNKNOWN_COMMAND = 4;
 // The version line is plain under NO_COLOR=1 (no leading status dot).
 const VERSION_LINE = /agentsfleet v\d+\.\d+\.\d+/;
 const VERSION_NAME = "agentsfleet";
-const HELP_USAGE_PREFIX = "Usage:";
+const HELP_USAGE_PREFIX = "USAGE";
 const CARRIAGE_RETURN = "\r";
 
 // A predicate that never matches — drives the timeout-rejection path.

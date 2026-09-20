@@ -115,6 +115,7 @@ const credentialsLayer = (rec: IdentityRecorder): Layer.Layer<Credentials> => {
 
 const outputLayer = (rec: IdentityRecorder): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    stdoutIsTty: false,
     format: OUTPUT_FORMAT.text,
     intro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     info: (msg) => Effect.sync(() => rec.stdout.push(msg)),

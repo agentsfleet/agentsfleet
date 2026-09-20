@@ -69,7 +69,10 @@ describe("test_memory_help_e2e — built binary renders the documented grammar",
     );
     assert.equal(result.code, 0, result.stderr);
     assert.match(result.stdout, /list/);
-    assert.match(result.stdout, /search \[options\] <query>/);
+    // The group listing names its verbs; the argument shape lives on the
+    // verb's own help, because the renderer's subcommand entries carry a name
+    // and a description and nothing else.
+    assert.match(result.stdout, /search/);
     assert.match(result.stdout, /read-only/i);
   }, SUBPROCESS_TEST_TIMEOUT_MS);
 

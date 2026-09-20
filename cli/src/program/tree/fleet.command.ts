@@ -8,6 +8,7 @@
 
 import { Option } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
+import { guardedHandler } from "./guarded-handler.ts";
 import { OPT_TTY } from "../../constants/cli-flags.ts";
 import {
   deleteEffectFromId,
@@ -62,9 +63,9 @@ import {
 
 const opt = Option.getOrUndefined;
 
-// The flag interfaces the command Effects declare still spell a page size as a
-// string, because commander handed them one. `Flag.Int` has already refused
-// anything outside the bound, so this only restores the spelling.
+// The command Effects declare a page size as a string, which is the spelling
+// the wire uses. The flag has already refused anything outside the bound, so
+// this only converts back.
 const optNum = (value: Option.Option<number>): string | undefined =>
   Option.match(value, { onNone: () => undefined, onSome: (n) => String(n) });
 
@@ -81,7 +82,7 @@ const libraryAddCommand = Command.make("add", {
   ref: refFlag,
 }).pipe(
   Command.withDescription("Onboard a Fleet library into this workspace"),
-  Command.withHandler(({ github, from, template, ref }) =>
+  guardedHandler(({ github, from, template, ref }) =>
     libraryAddEffectFromFlags({
       github: opt(github),
       from: opt(from),
@@ -93,13 +94,13 @@ const libraryAddCommand = Command.make("add", {
 
 export const libraryCommand = Command.make("library").pipe(
   Command.withDescription("Browse this workspace's Fleet library gallery"),
-  Command.withHandler(() => libraryEffect),
+  guardedHandler(() => libraryEffect),
   Command.withSubcommands([libraryAddCommand]),
 );
 
 export const modelsCommand = Command.make("models", { provider: providerFlag }).pipe(
   Command.withDescription("List the model catalogue this server serves"),
-  Command.withHandler(({ provider }) => modelsEffectFromFlags({ provider: opt(provider) })),
+  guardedHandler(({ provider }) => modelsEffectFromFlags({ provider: opt(provider) })),
 );
 
 export const installCommand = Command.make("install", {
@@ -107,7 +108,7 @@ export const installCommand = Command.make("install", {
   name: nameFlag,
 }).pipe(
   Command.withDescription(installLibraryDescription),
-  Command.withHandler(({ library, name }) =>
+  guardedHandler(({ library, name }) =>
     installEffectFromFlags({ libraryId: opt(library), name: opt(name) }),
   ),
 );
@@ -121,7 +122,7 @@ const fleetUpdateCommand = Command.make(UPDATE, {
   Command.withDescription(
     "Re-parse and PATCH a Fleet's TRIGGER.md + SKILL.md from a local bundle",
   ),
-  Command.withHandler(({ fleetId, from }) => updateEffectFromArgs(fleetId, opt(from))),
+  guardedHandler(({ fleetId, from }) => updateEffectFromArgs(fleetId, opt(from))),
 );
 
 export const fleetCommand = Command.make("fleet").pipe(
@@ -129,7 +130,11 @@ export const fleetCommand = Command.make("fleet").pipe(
     "Fleet management subcommands — in-place updates only.\n\n" +
       "The lifecycle verbs are top-level commands, not under `fleet`:\n" +
       "  agentsfleet list | status | logs | events | steer\n" +
-      "  agentsfleet library | install | stop | resume | kill | delete",
+      "  agentsfleet library | install | stop | resume | kill | delete\n" +
+      // Someone who came here looking for `stop` has just been told it is
+      // somewhere else; the next line has to say where the full list is, or
+      // they are left guessing at the spelling of a command they never saw.
+      "Run `agentsfleet --help` for the full command list.",
   ),
   Command.withShortDescription("Fleet management subcommands"),
   Command.withSubcommands([fleetUpdateCommand]),
@@ -143,7 +148,7 @@ export const listCommand = Command.make(LIST, {
   limit: listLimitFlag,
 }).pipe(
   Command.withDescription("List fleets in the active workspace (paginated)"),
-  Command.withHandler(({ workspaceIdFlag: workspaceId, startingAfter, limit }) =>
+  guardedHandler(({ workspaceIdFlag: workspaceId, startingAfter, limit }) =>
     listEffectFromFlags({
       workspaceId: opt(workspaceId),
       startingAfter: opt(startingAfter),
@@ -154,27 +159,27 @@ export const listCommand = Command.make(LIST, {
 
 export const statusCommand = Command.make("status").pipe(
   Command.withDescription("Show status for every fleet in the active workspace"),
-  Command.withHandler(() => statusEffect),
+  guardedHandler(() => statusEffect),
 );
 
 export const stopCommand = Command.make("stop", { fleetId: fleetIdArgument }).pipe(
   Command.withDescription("Halt the running session (resumable)"),
-  Command.withHandler(({ fleetId }) => stopEffectFromId(fleetId)),
+  guardedHandler(({ fleetId }) => stopEffectFromId(fleetId)),
 );
 
 export const resumeCommand = Command.make("resume", { fleetId: fleetIdArgument }).pipe(
   Command.withDescription("Resume from stopped or auto-paused"),
-  Command.withHandler(({ fleetId }) => resumeEffectFromId(fleetId)),
+  guardedHandler(({ fleetId }) => resumeEffectFromId(fleetId)),
 );
 
 export const killCommand = Command.make("kill", { fleetId: fleetIdArgument }).pipe(
   Command.withDescription("Mark terminal (irreversible)"),
-  Command.withHandler(({ fleetId }) => killEffectFromId(fleetId)),
+  guardedHandler(({ fleetId }) => killEffectFromId(fleetId)),
 );
 
 export const deleteCommand = Command.make(DELETE, { fleetId: fleetIdArgument }).pipe(
   Command.withDescription("Hard-delete a killed fleet"),
-  Command.withHandler(({ fleetId }) => deleteEffectFromId(fleetId)),
+  guardedHandler(({ fleetId }) => deleteEffectFromId(fleetId)),
 );
 
 export const logsCommand = Command.make("logs", {
@@ -184,7 +189,7 @@ export const logsCommand = Command.make("logs", {
   cursor: cursorFlag,
 }).pipe(
   Command.withDescription("Tail fleet activity"),
-  Command.withHandler(({ fleetId, fleet, limit, cursor }) =>
+  guardedHandler(({ fleetId, fleet, limit, cursor }) =>
     logsEffectFromFlags({
       fleetId: opt(fleet) ?? opt(fleetId),
       limit: optNum(limit),
@@ -201,7 +206,7 @@ export const eventsCommand = Command.make("events", {
   limit: eventsLimitFlag,
 }).pipe(
   Command.withDescription("Page through historical events"),
-  Command.withHandler(({ fleetId, actor, since, cursor, limit }) =>
+  guardedHandler(({ fleetId, actor, since, cursor, limit }) =>
     eventsEffectFromFlags({
       fleetId,
       actor: opt(actor),
@@ -220,10 +225,11 @@ export const steerCommand = Command.make("steer", {
   [OPT_TTY]: Flag.Boolean(OPT_TTY).pipe(
     Flag.withDescription("Force terminal prompt mode for steer"),
     Flag.withHidden,
+    Flag.withDefault(false),
   ),
 }).pipe(
   Command.withDescription("Send a message; stream the response"),
-  Command.withHandler((config) =>
+  guardedHandler((config) =>
     steerEffectFromArgs(config.fleetId, opt(config.message), {
       forceTty: config[OPT_TTY],
     }),
@@ -245,7 +251,7 @@ const secretCreateCommand = Command.make("create", {
   model: modelFlag,
 }).pipe(
   Command.withDescription("Store a secret JSON object"),
-  Command.withHandler(({ name, data, provider, baseUrl, apiKey, model }) =>
+  guardedHandler(({ name, data, provider, baseUrl, apiKey, model }) =>
     secretAddEffectFromFlags({
       name,
       data: opt(data),
@@ -269,7 +275,7 @@ const secretUpdateCommand = Command.make(UPDATE, {
   model: modelFlag,
 }).pipe(
   Command.withDescription("Replace a secret's stored body without releasing the name"),
-  Command.withHandler(({ name, data, provider, baseUrl, apiKey, model }) =>
+  guardedHandler(({ name, data, provider, baseUrl, apiKey, model }) =>
     secretUpdateEffectFromFlags({
       name,
       data: opt(data),
@@ -283,17 +289,17 @@ const secretUpdateCommand = Command.make(UPDATE, {
 
 const secretShowCommand = Command.make("show", { name: secretNameArgument }).pipe(
   Command.withDescription("Confirm a secret exists (never echoes secret bytes)"),
-  Command.withHandler(({ name }) => secretShowEffectFromName(name)),
+  guardedHandler(({ name }) => secretShowEffectFromName(name)),
 );
 
 const secretListCommand = Command.make(LIST).pipe(
   Command.withDescription("List secrets in the workspace vault"),
-  Command.withHandler(() => secretListEffect),
+  guardedHandler(() => secretListEffect),
 );
 
 const secretDeleteCommand = Command.make(DELETE, { name: secretNameArgument }).pipe(
   Command.withDescription("Delete a secret from the workspace vault"),
-  Command.withHandler(({ name }) => secretDeleteEffectFromName(name)),
+  guardedHandler(({ name }) => secretDeleteEffectFromName(name)),
 );
 
 export const secretCommand = Command.make("secret").pipe(

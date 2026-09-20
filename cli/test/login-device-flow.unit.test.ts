@@ -36,6 +36,7 @@ import {
 // functions above need no layers; the helpers below drive Credentials,
 // Input, Output, CliConfig, HttpClient through Layer.succeed stubs.
 const outputNoop: Layer.Layer<Output> = Layer.succeed(Output, {
+  stdoutIsTty: false,
   format: OUTPUT_FORMAT.text,
   intro: () => Effect.void,
   info: () => Effect.void,
@@ -52,6 +53,7 @@ const outputNoop: Layer.Layer<Output> = Layer.succeed(Output, {
 
 const outputRecording = (rec: { warnings: string[] }): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    stdoutIsTty: false,
     format: OUTPUT_FORMAT.text,
     intro: () => Effect.void,
     info: () => Effect.void,

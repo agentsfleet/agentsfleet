@@ -47,6 +47,7 @@ const outputLayer = (
   format: OutputFormat = OUTPUT_FORMAT.text,
 ): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    stdoutIsTty: false,
     format,
     intro: () => Effect.void,
     info: (line: string) =>

@@ -98,6 +98,7 @@ export const makeLayer = (
         Effect.sync(() => { rec.requests.push(input); return httpReply<T>(input); }),
     }),
     Layer.succeed(Output, {
+      stdoutIsTty: false,
       format: jsonMode ? OUTPUT_FORMAT.json : OUTPUT_FORMAT.text,
       intro: (m) => Effect.sync(() => { rec.stdout.push(m); }),
       info: (m) => Effect.sync(() => { rec.stdout.push(m); }),

@@ -6,10 +6,8 @@
 // `memory list` and the rest, rather than each command re-deriving what a
 // Fleet id is and what to say when it is not one.
 //
-// This replaces `program/validators.ts`, whose parsers threw commander's
-// `InvalidArgumentError`. `effect/unstable/cli` asks for the check as a
-// predicate plus the sentence to print, so the sentence lives beside the rule
-// it belongs to instead of inside a thrown object.
+// The check is a predicate plus the sentence to print, so the sentence lives
+// beside the rule it belongs to rather than inside a thrown error object.
 
 import { Flag, Argument } from "effect/unstable/cli";
 import { EXAMPLE_UUIDV7, isValidId } from "../../lib/id.ts";
@@ -50,13 +48,54 @@ const LIST_LIMIT_MAX = 200;
 const EVENTS_LIMIT_MAX = 500;
 const BILLING_LIMIT_MAX = 100;
 
-/** A whole number the server will accept, refused here rather than over the wire. */
+// The placeholder a flag advertises in help. The library defaults to the
+// parsed TYPE — `--limit integer` — which names what the parser does rather
+// than what the operator types. The house convention is the value's role:
+// `--limit <n>`, `--cursor <token>`. The acceptance suite asserts it, because
+// the CLI is the highest-frequency surface this product has.
+const METAVAR = {
+  count: "<n>",
+  id: "<id>",
+  token: "<token>",
+  name: "<name>",
+  label: "<label>",
+  url: "<url>",
+  glob: "<glob>",
+  when: "<when>",
+  path: "<path>",
+  libraryId: "<library_id>",
+  json: "<json>",
+  expression: "<expr>",
+  timezone: "<tz>",
+  status: "<status>",
+  message: "<message>",
+  text: "<text>",
+  ref: "<ref>",
+} as const;
+
+/**
+ * A whole number the server will accept, refused here rather than over the wire.
+ *
+ * The refusal names the bound that was crossed rather than restating the whole
+ * range: someone who passed 9999 to a flag capped at 500 is told `must be ≤
+ * 500`, which is the number they have to change. "Between 1 and 500" makes
+ * them work out which end they are on.
+ */
+const INTEGER_PATTERN = /^-?\d+$/;
+const NOT_AN_INTEGER = "must be an integer" as const;
+
 const boundedInt = (name: string, min: number, max: number) =>
-  Flag.Int(name).pipe(
-    Flag.filter(
-      (n: number) => n >= min && n <= max,
-      () => `must be between ${min} and ${max}`,
-    ),
+  // Taken as text and converted here, rather than as `Flag.Int`, because the
+  // library's own refusal for a non-numeric value reads "Expected a string
+  // representing a finite number" — a sentence about parsing. The three
+  // refusals a person can earn from one flag should read as one family:
+  // `must be an integer`, `must be ≥ 1`, `must be ≤ 200`.
+  Flag.String(name).pipe(
+    Flag.filter((value: string) => INTEGER_PATTERN.test(value), () => NOT_AN_INTEGER),
+    Flag.map((value: string) => Number.parseInt(value, 10)),
+    Flag.filter((n: number) => n >= min, () => `must be ≥ ${min}`),
+    Flag.filter((n: number) => n <= max, () => `must be ≤ ${max}`),
+    Flag.withMetavar(METAVAR.count),
   );
 
 /**
@@ -70,18 +109,23 @@ const idFlag = (name: string, description: string) =>
   Flag.String(name).pipe(
     Flag.withDescription(description),
     Flag.filter((value: string) => isValidId(value), () => NOT_A_UUIDV7),
+    Flag.withMetavar(METAVAR.id),
     Flag.optional,
   );
 
-const textFlag = (name: string, description: string) =>
-  Flag.String(name).pipe(Flag.withDescription(description), Flag.optional);
+const textFlag = (name: string, description: string, metavar: string = METAVAR.text) =>
+  Flag.String(name).pipe(
+    Flag.withDescription(description),
+    Flag.withMetavar(metavar),
+    Flag.optional,
+  );
 
 export const workspaceIdFlag = idFlag("workspace-id", WORKSPACE_ID_DESC);
 export const workspaceFlag = idFlag("workspace", WORKSPACE_ID_DESC);
 export const fleetFlag = idFlag("fleet", FLEET_ID_DESC);
 
-export const cursorFlag = textFlag("cursor", NEXT_CURSOR);
-export const startingAfterFlag = textFlag("starting-after", NEXT_CURSOR);
+export const cursorFlag = textFlag("cursor", NEXT_CURSOR, METAVAR.token);
+export const startingAfterFlag = textFlag("starting-after", NEXT_CURSOR, METAVAR.id);
 
 export const listLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, LIST_LIMIT_MAX).pipe(
   Flag.withDescription(PAGE_SIZE),
@@ -107,6 +151,7 @@ export const billingLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, BILLING_L
 export const providerFlag = textFlag(
   FLAG.provider,
   `Provider id from \`agentsfleet models\` (use '${OPENAI_COMPATIBLE_PROVIDER}' with --base-url for an endpoint the catalogue does not carry)`,
+  METAVAR.name,
 );
 
 /**
@@ -139,9 +184,10 @@ export const baseUrlFlag = Flag.String("base-url").pipe(
 export const apiKeyFlag = textFlag(
   "api-key",
   "Provider API key (required with a named --provider, optional for a keyless custom endpoint)",
+  METAVAR.token,
 );
-export const modelFlag = textFlag(FLAG.model, "Default model identifier (required with --provider)");
-export const dataFlag = textFlag(FLAG.data, "Secret JSON object, or @- to read stdin");
+export const modelFlag = textFlag(FLAG.model, "Default model identifier (required with --provider)", METAVAR.name);
+export const dataFlag = textFlag(FLAG.data, "Secret JSON object, or @- to read stdin", METAVAR.json);
 export const dataReplacementFlag = textFlag(
   FLAG.data,
   "Replacement JSON object, or @- to read stdin",
@@ -150,28 +196,36 @@ export const dataReplacementFlag = textFlag(
 export const nameFlag = textFlag(
   FLAG.name,
   "Override the fleet name (install the same bundle more than once)",
+  METAVAR.name,
 );
-export const libraryFlag = textFlag("library", "Library id from `agentsfleet library`");
-export const fromPathFlag = textFlag(FLAG.from, "Skill bundle path");
+export const libraryFlag = textFlag("library", "Library id from `agentsfleet library`", METAVAR.libraryId);
+export const fromPathFlag = textFlag(FLAG.from, "Skill bundle path", METAVAR.path);
 export const githubFlag = textFlag(
   "github",
   "Public GitHub repository carrying SKILL.md at its root",
+  METAVAR.name,
 );
-export const fromBundleFlag = textFlag(FLAG.from, "Local bundle directory to upload");
-export const templateFlag = textFlag("template", "First-party template id");
-export const refFlag = textFlag("ref", "Branch, tag, or commit (--github only)");
+export const fromBundleFlag = textFlag(FLAG.from, "Local bundle directory to upload", METAVAR.path);
+export const templateFlag = textFlag("template", "First-party template id", METAVAR.id);
+export const refFlag = textFlag("ref", "Branch, tag, or commit (--github only)", METAVAR.ref);
 
-export const categoryFlag = textFlag("category", "Filter by category");
-export const actorFlag = textFlag("actor", "Filter by actor glob");
-export const sinceFlag = textFlag("since", "RFC 3339 or duration (e.g. 2h)");
+export const categoryFlag = textFlag("category", "Filter by category", METAVAR.name);
+export const actorFlag = textFlag("actor", "Filter by actor glob", METAVAR.glob);
+export const sinceFlag = textFlag("since", "RFC 3339 or duration (e.g. 2h)", METAVAR.when);
 
-export const cronFlag = Flag.String(FLAG.cron).pipe(Flag.withDescription(DESC_CRON));
-export const messageFlag = Flag.String(FLAG.message).pipe(Flag.withDescription(DESC_MESSAGE));
-export const cronOptionalFlag = textFlag(FLAG.cron, DESC_CRON);
-export const messageOptionalFlag = textFlag(FLAG.message, DESC_MESSAGE);
-export const timezoneFlag = textFlag(FLAG.timezone, "IANA timezone");
-export const timezoneDefaultFlag = textFlag(FLAG.timezone, "IANA timezone (default: UTC)");
-export const scheduleStatusFlag = textFlag("status", "active or paused");
+export const cronFlag = Flag.String(FLAG.cron).pipe(
+  Flag.withDescription(DESC_CRON),
+  Flag.withMetavar(METAVAR.expression),
+);
+export const messageFlag = Flag.String(FLAG.message).pipe(
+  Flag.withDescription(DESC_MESSAGE),
+  Flag.withMetavar(METAVAR.message),
+);
+export const cronOptionalFlag = textFlag(FLAG.cron, DESC_CRON, METAVAR.expression);
+export const messageOptionalFlag = textFlag(FLAG.message, DESC_MESSAGE, METAVAR.message);
+export const timezoneFlag = textFlag(FLAG.timezone, "IANA timezone", METAVAR.timezone);
+export const timezoneDefaultFlag = textFlag(FLAG.timezone, "IANA timezone (default: UTC)", METAVAR.timezone);
+export const scheduleStatusFlag = textFlag("status", "active or paused", METAVAR.status);
 
 export const sortFlag = Flag.Literals("sort", API_KEY_SORTS).pipe(
   Flag.withDescription("Sort order"),
@@ -180,15 +234,17 @@ export const sortFlag = Flag.Literals("sort", API_KEY_SORTS).pipe(
 
 export const keyNameFlag = textFlag(FLAG.name, "Human-readable key name");
 export const descriptionFlag = textFlag("description", "Optional description");
-export const secretNameFlag = textFlag("secret", "Named secret from the workspace vault");
-export const modelOverrideFlag = textFlag(FLAG.model, "Override the default model identifier");
+export const secretNameFlag = textFlag("secret", "Named secret from the workspace vault", METAVAR.name);
+export const modelOverrideFlag = textFlag(FLAG.model, "Override the default model identifier", METAVAR.name);
 
 export const tokenNameFlag = textFlag(
   "token-name",
   "Label for this session, shown on the approval page and in `auth status` (default: platform family)",
+  METAVAR.label,
 );
 export const forceFlag = Flag.Boolean("force").pipe(
   Flag.withDescription("Skip the existing-credential prompt and overwrite"),
+  Flag.withDefault(false),
 );
 
 // Kept so the flag still parses and the handler can refuse it by name. Logout
@@ -199,6 +255,7 @@ export const logoutAllFlag = Flag.Boolean("all").pipe(
   Flag.withDescription(
     "rejected — logout already revokes what it can; passing this flag exits with a validation error",
   ),
+  Flag.withDefault(false),
 );
 
 export const installLibraryDescription =

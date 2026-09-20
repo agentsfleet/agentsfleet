@@ -12,7 +12,9 @@
 
 import { Option } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
+import { guardedHandler } from "./guarded-handler.ts";
 import { doctorEffect } from "../../commands/core-ops.ts";
+import { withManagedExitCode } from "../../runtime/exit-code.service.ts";
 import { whoamiEffect } from "../../commands/whoami.ts";
 import { logoutEffect } from "../../commands/auth-logout.ts";
 import { loginEffectFromFlags } from "../../commands/login.ts";
@@ -63,8 +65,15 @@ const LOGOUT_DESCRIPTION =
 // a parent and a child is refused outright: the parent would always claim it,
 // and the child's copy would silently never fire.
 const globalFlags = {
-  api: Flag.String("api").pipe(Flag.withDescription("API base URL"), Flag.optional),
-  json: Flag.Boolean("json").pipe(Flag.withDescription("Machine-readable JSON output")),
+  api: Flag.String("api").pipe(
+    Flag.withDescription("API base URL"),
+    Flag.withMetavar("<url>"),
+    Flag.optional,
+  ),
+  json: Flag.Boolean("json").pipe(
+    Flag.withDescription("Machine-readable JSON output"),
+    Flag.withDefault(false),
+  ),
 } as const;
 
 const loginCommand = Command.make("login", {
@@ -72,13 +81,15 @@ const loginCommand = Command.make("login", {
   force: forceFlag,
   noOpen: Flag.Boolean("no-open").pipe(
     Flag.withDescription("Skip auto-opening the browser on login"),
+    Flag.withDefault(false),
   ),
   noInput: Flag.Boolean("no-input").pipe(
     Flag.withDescription("Disable interactive prompts"),
+    Flag.withDefault(false),
   ),
 }).pipe(
   Command.withDescription("Authenticate via browser"),
-  Command.withHandler(({ tokenName, force, noOpen, noInput }) =>
+  guardedHandler(({ tokenName, force, noOpen, noInput }) =>
     loginEffectFromFlags({
       noOpen,
       noInput,
@@ -90,17 +101,20 @@ const loginCommand = Command.make("login", {
 
 const logoutCommand = Command.make("logout", { all: logoutAllFlag }).pipe(
   Command.withDescription(LOGOUT_DESCRIPTION),
-  Command.withHandler(({ all }) => logoutEffect({ all })),
+  guardedHandler(({ all }) => logoutEffect({ all })),
 );
 
 const whoamiCommand = Command.make("whoami").pipe(
   Command.withDescription("Show who this terminal is signed in as"),
-  Command.withHandler(() => whoamiEffect),
+  guardedHandler(() => whoamiEffect),
 );
 
 const doctorCommand = Command.make("doctor").pipe(
   Command.withDescription("Diagnose CLI configuration and connectivity"),
-  Command.withHandler(() => doctorEffect),
+  // doctor answers a verdict, not just success: every check ran, and one
+  // failed. The number goes to the exit-code service because the command
+  // tree discards a handler's return value.
+  guardedHandler(() => withManagedExitCode(doctorEffect)),
 );
 
 export const rootCommand = Command.make(CLI_NAME).pipe(

@@ -108,7 +108,7 @@ describe("unboundTarget", () => {
 });
 
 // The composed policy — each refusal is a stable contract (errorCode +
-// commanderCode + message), pinned here rather than left to incidental
+// errorCode + message), pinned here rather than left to incidental
 // coverage through command suites.
 describe("guardCommand", () => {
   const API_URL = "https://api.agentsfleet.net";
@@ -124,7 +124,6 @@ describe("guardCommand", () => {
       guardCommand("list", { token: null, apiKey: null, apiUrl: API_URL }),
     ).toEqual({
       errorCode: "AUTH_REQUIRED",
-      commanderCode: "auth.required",
       message: AUTH_FAIL_MESSAGE,
     });
   });
@@ -152,7 +151,6 @@ describe("guardCommand", () => {
       }),
     ).toEqual({
       errorCode: "DEPLOYMENT_UNKNOWN",
-      commanderCode: "deployment.unknown",
       message: UNBOUND_FAIL_MESSAGE,
     });
   });

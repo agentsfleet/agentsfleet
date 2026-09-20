@@ -101,7 +101,7 @@ describe("missing required positional", () => {
     it(`"${label}" rejects in the house shape`, async () => {
       const r = await reject(row.args);
       assertHouseShape(r, label);
-      const expected = row.reportedToken ?? row.missingArgName;
+      const expected = row.missingArgName;
       assert.ok(r.detailLine.includes(expected),
         `${label}: detail does not name ${expected}; got ${r.detailLine}`);
     });
@@ -167,7 +167,7 @@ describe("group nodes print help that survives a pipe", () => {
       const result = await runFleetctl([...args], { env: env() });
       assert.equal(result.code, 0, `${label}: expected exit 0; stderr=${result.stderr}`);
       assert.ok(result.stdout.length > 0, `${label}: help body did not reach stdout`);
-      assert.match(result.stdout, /Usage:/, `${label}: stdout carries no usage banner`);
+      assert.match(result.stdout, /usage/i, `${label}: stdout carries no usage banner`);
       assert.equal(result.stderr.trim(), "", `${label}: help leaked to stderr: ${result.stderr}`);
     });
 

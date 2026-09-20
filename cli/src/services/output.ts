@@ -61,6 +61,16 @@ export interface OutputShape {
    * other.
    */
   readonly format: OutputFormat;
+  /**
+   * Whether this invocation's stdout is a terminal.
+   *
+   * On the service for the same reason `format` is: the thing that does the
+   * writing is the thing that knows where it writes. Commands that render a
+   * table to a terminal and the JSON envelope to a pipe ask here rather than
+   * reading `process.stdout`, which would answer for the process instead of
+   * the invocation and ignore an injected stream entirely.
+   */
+  readonly stdoutIsTty: boolean;
   readonly intro: (msg: string) => Effect.Effect<void>;
   readonly info: (msg: string) => Effect.Effect<void>;
   /**
@@ -109,6 +119,7 @@ const writeLine = (stream: Stream, line: string): void => {
 const JSON_INDENT = 2;
 
 export const makeStdioOutput = ({ stdout, stderr, format }: OutputConfig): OutputShape => ({
+  stdoutIsTty: Boolean((stdout as { readonly isTTY?: boolean }).isTTY),
   format,
   intro: (msg) => Effect.sync(() => writeLine(stdout, `\n${msg}`)),
   info: (msg) => Effect.sync(() => writeLine(stdout, msg)),

@@ -18,8 +18,6 @@
 // One entry point: `mainLayerFor(input)` composes a layer with config/
 // streams/commandPath overrides and the invocation's resolved environment.
 // Mirrors Supabase's cliProgramFor helper factory in shared/cli/run.ts.
-// (The commander-parse path builds its own smaller layer in
-// commander-bridge.ts — it never calls this.)
 
 import { Layer } from "effect";
 import {
@@ -82,13 +80,12 @@ export interface MainLayerInput {
   // isTTY + piped payload from this seam.
   readonly stdin?: NodeJS.ReadableStream;
   // commandPath populates CommandRuntime so the supabase-pattern span
-  // name + analytics command label are non-empty. handlers-bind.ts
-  // passes the wrap site's `name` (e.g. "agent.add") split by "."; the
-  // commander-bridge passes ["__parse__"]. Defaults to ["unknown"]
-  // when omitted (tests that don't care about CommandRuntime).
+  // name + analytics command label are non-empty. The entry point passes the
+  // path it walked off the tree (e.g. ["fleet", "create"]). Defaults to
+  // ["unknown"] when omitted (tests that don't care about CommandRuntime).
   readonly commandPath?: ReadonlyArray<string>;
   // commandRunId correlates analytics events + spans + log lines for
-  // one invocation. handlers-bind.ts generates one per wrap call.
+  // one invocation. The entry point generates one per run.
   // Defaults to crypto.randomUUID() per mainLayerFor call.
   readonly commandRunId?: string;
   // The invocation's resolved environment (runCli's `io.env ?? process.env`,
