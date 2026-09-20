@@ -16,6 +16,7 @@ import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
+import { isString } from "../lib/guards.ts";
 import { wsSecretsPath, wsSecretPath } from "../lib/api-paths.ts";
 import { ui } from "../output/index.ts";
 import {
@@ -30,6 +31,7 @@ import {
 import { resolveCatalogueTarget } from "../lib/model-catalogue.ts";
 import { SECRET_FIELD_MODEL, SECRET_FIELD_PROVIDER } from "../constants/custom-endpoint.ts";
 import type { Redacted } from "effect/Redacted";
+import { HTTP_METHOD } from "../constants/http-method.ts";
 
 // Reject a provider this server's catalogue does not price, and normalise its
 // spelling to the catalogue's. Cannot run at parse time: the accepted set is a
@@ -59,12 +61,8 @@ const withCatalogueProvider = (
     if (target.model !== undefined) next[SECRET_FIELD_MODEL] = target.model;
     return next;
   });
-
-const TYPE_STRING = "string" as const;
-const METHOD_PUT = "PUT" as const;
 const STATUS_UPDATED = "updated" as const;
 
-const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 /** The workspace already holds this name. Matched on the code rather than the
  *  bare `409` so an unrelated future conflict on this route is not swallowed
@@ -212,7 +210,7 @@ export const secretUpdateEffectFromFlags = (
     const data = yield* withCatalogueProvider(flags, body, token);
     yield* http.request<unknown>({
       path: wsSecretPath(wsId, name),
-      method: METHOD_PUT,
+      method: HTTP_METHOD.put,
       body: { data },
       token,
     });

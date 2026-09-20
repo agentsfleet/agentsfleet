@@ -14,6 +14,7 @@ import {
   wsFleetEventsPath,
   wsFleetEventsStreamPath,
 } from "../lib/api-paths.ts";
+import { isString, isRecord } from "../lib/guards.ts";
 
 const MS_FIELD = "ms";
 
@@ -23,11 +24,9 @@ const FALLBACK_POLL_LIMIT = 200;
 const TOOL_PREFIX_LABEL = "[tool]" as const;
 export const STATUS_COMPLETE = "complete" as const;
 const FIELD_NAME = "name" as const;
-const TYPE_OBJECT = "object" as const;
 export const STATUS_SSE_DISCONNECTED = "sse_disconnected" as const;
 export const STATUS_SSE_ERROR = "sse_error" as const;
 const FIELD_STATUS = "status" as const;
-const TYPE_STRING = "string" as const;
 const FIELD_TEXT = "text" as const;
 export const STATUS_TIMEOUT = "timeout" as const;
 const MS_PER_SECOND = 1000 as const;
@@ -54,10 +53,7 @@ export const SSE_FALLBACK_TIMEOUT_SECONDS = Math.round(
   SSE_FALLBACK_TIMEOUT_MS / MS_PER_SECOND,
 );
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === TYPE_OBJECT;
 
-const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 export type SteerOutcome =
   | { readonly kind: typeof STATUS_COMPLETE; readonly status: string }

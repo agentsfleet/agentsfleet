@@ -5,6 +5,7 @@ import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
+import { isRecord } from "../lib/guards.ts";
 import { wsFleetMessagesPath } from "../lib/api-paths.ts";
 import { streamGet as defaultStreamGet } from "../lib/sse.ts";
 import { EVENT_STATUS } from "../constants/event-status.ts";
@@ -40,15 +41,12 @@ import {
 const TAG_FIELD = "_tag";
 
 const MESSAGE_PLACEHOLDER = "<message>" as const;
-const TYPE_OBJECT = "object" as const;
 const SUGGESTION_REPORT_COMMAND = "report this with the command you ran" as const;
 const SUGGESTION_RERUN_COMMAND = "rerun the command to continue" as const;
 const DETAIL_STEER_INTERRUPTED = "steer interrupted" as const;
 
 type RenderableSteerOutcome = PolledSteerOutcome;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === TYPE_OBJECT;
 
 const failSteerInterrupted = (): Effect.Effect<never, CliError> =>
   Effect.fail(

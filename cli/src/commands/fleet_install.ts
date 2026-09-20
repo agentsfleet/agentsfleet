@@ -23,6 +23,7 @@ import {
   wsFleetPath,
   wsFleetLibrariesPath,
 } from "../lib/api-paths.ts";
+import { findAcrossPages } from "../lib/paged.ts";
 import {
   loadSkillFromPath,
   SkillLoadError,
@@ -37,8 +38,6 @@ import {
 } from "../errors/index.ts";
 import {
   bodyFromBundle,
-  METHOD_GET,
-  METHOD_POST,
   printRequirements,
   requireFromPath,
   requireLibraryId,
@@ -48,10 +47,10 @@ import {
   withName,
   type CreateFleetBody,
   type FleetLibraryGalleryEntry,
-  type FleetLibraryGalleryResponse,
   type InstallResponse,
   type UpdateResponse,
 } from "./fleet_install_source.ts";
+import { HTTP_METHOD } from "../constants/http-method.ts";
 
 export interface InstallFlags {
   readonly libraryId?: string | null | undefined;
@@ -84,16 +83,6 @@ export const loadBundle = (
 
 // POST the create + render the install result. Shared by both sources so the
 // Rows per request, and the ceiling on how many requests one lookup will make.
-// The gallery pages at 50 by default and rejects a `limit` above 100
-// (`UZ-LIBRARY-003`), so asking for the maximum halves the round-trips.
-const GALLERY_PAGE_LIMIT = 100;
-const GALLERY_MAX_PAGES = 50;
-
-/** One wire page: `items` is that page alone, `next_cursor` null on the last. */
-type FleetLibraryGalleryPage = FleetLibraryGalleryResponse & {
-  readonly next_cursor?: string | null;
-};
-
 // Find one gallery entry by id, following `next_cursor` to exhaustion.
 //
 // Reading only the first page would report `library entry '<id>' is not in this
@@ -108,23 +97,12 @@ const findGalleryEntry = (
 ): Effect.Effect<FleetLibraryGalleryEntry | undefined, CliError, HttpClient> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
-    let cursor: string | null = null;
-
-    for (let page = 0; page < GALLERY_MAX_PAGES; page += 1) {
-      const params = new URLSearchParams({ limit: String(GALLERY_PAGE_LIMIT) });
-      if (cursor !== null) params.set("starting_after", cursor);
-
-      const body = yield* http.request<FleetLibraryGalleryPage>({
-        path: `${wsFleetLibrariesPath(wsId)}?${params.toString()}`,
-        method: METHOD_GET,
-        token,
-      });
-      const hit = (body.items ?? []).find((e) => e.id === libraryId);
-      if (hit) return hit;
-      if (!body.next_cursor) return undefined;
-      cursor = body.next_cursor;
-    }
-    return undefined;
+    return yield* findAcrossPages<FleetLibraryGalleryEntry>(
+      http,
+      wsFleetLibrariesPath(wsId),
+      token,
+      (entry) => entry.id === libraryId,
+    );
   });
 
 // success / JSON output stays identical whether the bundle came from a path or
@@ -143,7 +121,7 @@ const createAndRender = (
 
     const res = yield* http.request<InstallResponse>({
       path: wsFleetsPath(wsId),
-      method: METHOD_POST,
+      method: HTTP_METHOD.post,
       body,
       token,
     });

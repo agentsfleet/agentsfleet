@@ -16,26 +16,21 @@ import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
-import { resolveAuthToken } from "./workspace-guards.ts";
+import { resolveAuthToken, resolveWorkspaceId } from "./workspace-guards.ts";
+import { isNumber, isString } from "../lib/guards.ts";
 import { QUERY_STARTING_AFTER, wsFleetMemoriesPath } from "../lib/api-paths.ts";
-import { ui } from "../output/index.ts";
+import { ui, EMPTY_CELL } from "../output/index.ts";
 import {
-  ConfigError,
   ServerError,
   ValidationError,
   type CliError,
   type NetworkError,
-  type UnexpectedError,
 } from "../errors/index.ts";
 
 // Table preview cap in Unicode code points. Full content is never lost —
 // JSON mode carries it verbatim. The server limit mirrors live in
 // src/constants/memory-limits.ts (consumed by the command tree).
 const PREVIEW_MAX = 80;
-
-const TYPE_NUMBER = "number" as const;
-const TYPE_STRING = "string" as const;
-const LITERAL_DASH = "—" as const;
 const SERVER_ERROR_TAG = "ServerError" as const;
 
 // Server error codes this command remaps to actionable suggestions — the same
@@ -68,8 +63,6 @@ const FIELD_CATEGORY = "category" as const;
 const FIELD_UPDATED = "updated" as const;
 const FIELD_PREVIEW = "preview" as const;
 
-const isNumber = (value: unknown): value is number => typeof value === TYPE_NUMBER;
-const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 interface MemoryRow {
   readonly key?: string | null;
@@ -115,9 +108,9 @@ export const renderUpdatedAt = (value: number | null | undefined): string => {
       return new Date(value).toISOString();
     }
   } catch {
-    return LITERAL_DASH;
+    return EMPTY_CELL;
   }
-  return LITERAL_DASH;
+  return EMPTY_CELL;
 };
 
 // Collapse whitespace FIRST (newlines/tabs become spaces), then strip the
@@ -143,24 +136,6 @@ const requireFleetId = (
     : Effect.fail(
         new ValidationError({ detail: "--fleet <id> is required", suggestion: usage }),
       );
-
-const resolveWorkspace = (
-  override: string | undefined,
-): Effect.Effect<string, ConfigError | UnexpectedError, Workspaces> =>
-  Effect.gen(function* () {
-    if (isString(override) && override.length > 0) return override;
-    const workspaces = yield* Workspaces;
-    const state = yield* workspaces.load;
-    if (!state.current_workspace_id) {
-      return yield* Effect.fail(
-        new ConfigError({
-          detail: "no workspace selected",
-          suggestion: "run `agentsfleet workspace use <id>` or pass --workspace <id>",
-        }),
-      );
-    }
-    return state.current_workspace_id;
-  });
 
 interface MemoryQueryParams {
   readonly query: string | undefined;
@@ -224,7 +199,7 @@ const memoryReadEffect = (
     const http = yield* HttpClient;
 
     const fleetId = yield* requireFleetId(req.fleetId, req.usage);
-    const wsId = yield* resolveWorkspace(req.workspaceId);
+    const wsId = yield* resolveWorkspaceId(req.workspaceId);
     const token = yield* resolveAuthToken;
 
     const res = yield* http

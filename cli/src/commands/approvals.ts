@@ -18,9 +18,8 @@ import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsApprovalsPath, wsApprovalPath } from "../lib/api-paths.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
-import { ui } from "../output/index.ts";
+import { ui, EMPTY_CELL } from "../output/index.ts";
 import {
-  EMPTY_CELL,
   GATE_COLUMN,
   GATE_FIELD,
   GATE_MAX_PAGES,

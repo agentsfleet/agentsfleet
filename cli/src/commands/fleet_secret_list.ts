@@ -14,6 +14,7 @@ import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsSecretsPath } from "../lib/api-paths.ts";
 import type { CliError } from "../errors/index.ts";
+import { EMPTY_CELL } from "../output/index.ts";
 
 /** One vault row. `kind` says whether the value is a provider credential or a
  *  custom object; the daemon has always sent it and the list never read it. */
@@ -30,7 +31,6 @@ interface SecretsListResponse {
 const FIELD_NAME = "name" as const;
 const FIELD_KIND = "kind" as const;
 const FIELD_CREATED = "created" as const;
-const EMPTY_CELL = "—" as const;
 const EMPTY_VAULT =
   "No secrets stored. Create one with: agentsfleet secret create <name> --data=@- (pipe JSON on stdin)" as const;
 

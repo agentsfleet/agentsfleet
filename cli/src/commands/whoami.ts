@@ -22,6 +22,7 @@ import {
   type CallerIdentity,
 } from "../lib/me-ping.ts";
 import { AuthError, CLI_ERROR_TAG, ServerError, type CliError } from "../errors/index.ts";
+import { EMPTY_CELL } from "../output/index.ts";
 
 // A server refusal and a network failure travel out UNMAPPED, so the dispatcher
 // renders them the way it renders every other read's: the server's own code, its
@@ -32,7 +33,6 @@ import { AuthError, CLI_ERROR_TAG, ServerError, type CliError } from "../errors/
 // Rendered where a display name is absent, so the column still lines up. The
 // email above it already carries the identity, so this says only that the
 // person never gave a name — never a guess at one.
-const NO_DISPLAY_NAME = "—";
 
 // The wire words `credential_class` spells in
 // rustd/crates/afd_wire/src/identity.rs, and what each one means to somebody
@@ -72,7 +72,7 @@ const renderHuman = (
     yield* output.printSection("Identity");
     yield* output.printKeyValue({
       email: identity.email,
-      name: identity.displayName ?? NO_DISPLAY_NAME,
+      name: identity.displayName ?? EMPTY_CELL,
       user_id: identity.userId,
       tenant: `${identity.tenantName} (${identity.tenantId})`,
       credential: credentialProse(identity.credential),

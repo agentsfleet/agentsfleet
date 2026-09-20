@@ -8,6 +8,7 @@ import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { resolveAuthToken } from "./workspace-guards.ts";
+import { isString } from "../lib/guards.ts";
 import { QUERY_STARTING_AFTER, wsFleetsPath } from "../lib/api-paths.ts";
 import { ui } from "../output/index.ts";
 import {
@@ -27,10 +28,8 @@ interface FleetListResponse {
 
 const FIELD_NAME = "name" as const;
 const FIELD_STATUS = "status" as const;
-const TYPE_STRING = "string" as const;
 const FIELD_FLEET_ID = "fleet_id" as const;
 
-const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 const resolveWorkspaceOverride = (
   override: string | undefined,

@@ -31,6 +31,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { validate as isValidUuid, version as uuidVersion } from "uuid";
 import { HTTPS_SCHEME_PREFIX } from "../constants/custom-endpoint.ts";
+import { isString } from "../lib/guards.ts";
 
 export const EXAMPLE_UUIDV7 = "0192a3b4-c5d6-7e8f-9012-345678901234";
 
@@ -40,7 +41,6 @@ const DURATION_RE = /^(\d+)(ms|s|m|h)$/;
 const MUST_BE_A_NUMBER = "must be a number" as const;
 const MUST_BE_AN_INTEGER = "must be an integer" as const;
 const REQUIRED = "required" as const;
-const TYPE_STRING = "string" as const;
 // `URL.protocol` returns the scheme with a trailing colon, no slashes.
 const HTTPS_PROTOCOL = "https:" as const;
 const MS_PER_SECOND = 1000 as const;
@@ -52,7 +52,6 @@ const DURATION_FACTOR: Record<"ms" | "s" | "m" | "h", number> = {
 };
 const DEFAULT_JSON_MAX_BYTES = 4096;
 
-const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 export interface IntBounds {
   min?: number | undefined;

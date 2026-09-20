@@ -7,6 +7,7 @@
 // from http.ts so the two transports share their error vocabulary.
 
 import { ApiError, readProblemDetails, type FetchImpl } from "./http.ts";
+import { isRecord } from "./guards.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -75,7 +76,7 @@ export async function streamFetch(
       }
     }
   } catch (err) {
-    if (err !== null && typeof err === TYPE_OBJECT && (err as { name?: unknown }).name === "AbortError") {
+    if (isRecord(err) && (err as { name?: unknown }).name === "AbortError") {
       throw new ApiError(`stream timed out after ${timeoutMs}ms`, { status: 408, code: "TIMEOUT" });
     }
     throw err;
@@ -100,4 +101,3 @@ function parseSseFrame(frame: string): SseEvent | null {
   try { return { type, data: JSON.parse(data) }; } catch { return { type, data }; }
 }
 const LITERAL = "\n\n" as const;
-const TYPE_OBJECT = "object" as const;

@@ -10,10 +10,12 @@
 // `ConfigError | UnexpectedError` or just `CliError`.
 
 import { Effect, Option, type Redacted } from "effect";
+import { isString } from "../lib/guards.ts";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { resolveToken } from "../services/http-client.ts";
+import { validateRequiredId } from "../program/validators.ts";
 import {
   ConfigError,
   ValidationError,
@@ -80,6 +82,58 @@ export const requireWorkspaceId: Effect.Effect<
   }
   return state.current_workspace_id;
 });
+
+/**
+ * A required identifier, validated, as an Effect.
+ *
+ * `validateRequiredId` returns a `{ ok, message }` record because it predates
+ * the Effect layer and is called from both sides of the commander boundary.
+ * This is the one place that lifts it, so a command never re-derives the
+ * refusal: `fleet_schedule` had its own copy, and it was the only command that
+ * validated an id at all.
+ */
+export const requireValidId = (
+  value: string | undefined,
+  fieldName: string,
+  usage: string,
+): Effect.Effect<string, ValidationError> => {
+  const check = validateRequiredId(value, fieldName);
+  if (check.ok) return Effect.succeed(value as string);
+  // The two refusals point different ways on purpose. An absent id needs the
+  // usage line, because the caller has not typed the flag yet. A malformed one
+  // needs the SHAPE: they typed it, so repeating the usage tells them nothing
+  // they did not already do.
+  const typed = isString(value) && value.trim().length > 0;
+  return Effect.fail(
+    new ValidationError({
+      detail: check.message,
+      suggestion: typed ? UUIDV7_SUGGESTION : usage,
+    }),
+  );
+};
+
+/** The usage line a bad `--workspace` points at. */
+const WORKSPACE_OVERRIDE_USAGE = "pass --workspace <workspace_id>" as const;
+const WORKSPACE_ID_FIELD = "workspace_id" as const;
+const UUIDV7_SUGGESTION = "pass a valid uuidv7" as const;
+
+/**
+ * The workspace a command acts on: the caller's `--workspace` when it named
+ * one, otherwise the selected workspace.
+ *
+ * The override is VALIDATED, never merely trusted. Two commands carried
+ * private copies of this resolver and had already drifted apart: `memory`
+ * passed an unchecked `--workspace` straight into a URL path, while
+ * `schedule` refused a malformed one — so the same typo produced a server
+ * 404 from one command and a usage error from the other. A third spelling of
+ * the "no workspace selected" suggestion lived in each copy.
+ */
+export const resolveWorkspaceId = (
+  override: string | undefined,
+): Effect.Effect<string, ConfigError | UnexpectedError | ValidationError, Workspaces> =>
+  isString(override) && override.length > 0
+    ? requireValidId(override, WORKSPACE_ID_FIELD, WORKSPACE_OVERRIDE_USAGE)
+    : requireWorkspaceId;
 
 export const resolveAuthToken: Effect.Effect<
   Redacted.Redacted<string>,

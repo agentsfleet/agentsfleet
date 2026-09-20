@@ -18,7 +18,7 @@ import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsFleetsPath, wsFleetPath } from "../lib/api-paths.ts";
 import { validateRequiredId } from "../program/validators.ts";
-import { ui } from "../output/index.ts";
+import { ui, EMPTY_CELL } from "../output/index.ts";
 import { pendingGateCounts } from "./approvals_pending.ts";
 import {
   AGENTSFLEET_STATUS,
@@ -117,9 +117,9 @@ export const statusEffect: Effect.Effect<
     // Fleet is the answer this column exists to stop being given.
     const waiting =
       waitingByFleet === null
-        ? WAITING_UNKNOWN
+        ? EMPTY_CELL
         : String(z.id ? (waitingByFleet.get(z.id) ?? 0) : 0);
-    if (waiting !== WAITING_UNKNOWN && waiting !== "0") anyParked = true;
+    if (waiting !== EMPTY_CELL && waiting !== "0") anyParked = true;
     yield* output.printKeyValue({
       Name: z.name ?? "",
       Status: z.status ?? "",
@@ -230,7 +230,6 @@ const PARKED_HINT =
   "Some fleets are waiting on approval. Review with: agentsfleet approvals list" as const;
 
 // The waiting count when the approvals inbox could not be read at all.
-const WAITING_UNKNOWN = "—" as const;
 // Names what happened, never why. The read fails the same way for a missing
 // `approval:read` scope, a timeout, and a daemon that is down, and this line
 // cannot tell them apart — blaming scopes would send an operator to re-auth

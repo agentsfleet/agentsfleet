@@ -21,7 +21,7 @@ import { Output } from "../services/output.ts";
 import { resolveAuthToken } from "./workspace-guards.ts";
 import { catalogueProviders, fetchCatalogue, type LibraryModel } from "../lib/model-catalogue.ts";
 import { OPENAI_COMPATIBLE_PROVIDER } from "../constants/custom-endpoint.ts";
-import { ui } from "../output/index.ts";
+import { ui, EMPTY_CELL } from "../output/index.ts";
 import type { CliError } from "../errors/index.ts";
 
 const FIELD_PROVIDER = "provider" as const;
@@ -31,7 +31,6 @@ const FIELD_INPUT = "input" as const;
 const FIELD_OUTPUT = "output" as const;
 
 const NANOS_PER_USD = 1_000_000_000;
-const UNPRICED = "—" as const;
 const TOKENS_PER_K = 1_000;
 
 export interface ModelsFlags {
@@ -47,7 +46,7 @@ const SUB_CENT_DIGITS = 2;
 
 /** Nanos per million tokens → "$1.25", or a dash when the row carries no rate. */
 const usd = (nanos: number | undefined): string => {
-  if (!nanos || nanos <= 0) return UNPRICED;
+  if (!nanos || nanos <= 0) return EMPTY_CELL;
   const dollars = nanos / NANOS_PER_USD;
   return dollars < SUB_CENT
     ? `$${dollars.toPrecision(SUB_CENT_DIGITS)}`
@@ -56,7 +55,7 @@ const usd = (nanos: number | undefined): string => {
 
 /** 200000 → "200k". The exact number is in --json; the table wants a shape. */
 const contextLabel = (tokens: number | undefined): string =>
-  !tokens || tokens <= 0 ? UNPRICED : `${Math.round(tokens / TOKENS_PER_K)}k`;
+  !tokens || tokens <= 0 ? EMPTY_CELL : `${Math.round(tokens / TOKENS_PER_K)}k`;
 
 const row = (m: LibraryModel): Record<string, string> => ({
   provider: String(m.provider ?? ""),

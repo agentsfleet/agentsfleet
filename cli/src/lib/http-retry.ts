@@ -10,6 +10,8 @@
 // against.
 
 import { ApiError, apiRequest, type ApiRequestOptions } from "./http.ts";
+import { isRecord } from "./guards.ts";
+import { HTTP_METHOD } from "../constants/http-method.ts";
 
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_BASE_DELAY_MS = 250;
@@ -21,9 +23,7 @@ const DEFAULT_RETRY_AFTER_CAP_MS = 10_000;
 const RETRYABLE_STATUSES = new Set<number>([408, 425, 429, 502, 503, 504]);
 const RETRY_REASON_429 = "429" as const;
 const RETRY_REASON_5XX = "5xx" as const;
-const HTTP_METHOD_GET = "GET" as const;
 const RETRY_REASON_NETWORK = "network" as const;
-const TYPE_OBJECT = "object" as const;
 const STATUS_TIMEOUT = "timeout" as const;
 const HTTP_STATUS_SERVER_ERROR_FLOOR = 500;
 // The request provably never left this process.
@@ -62,9 +62,9 @@ interface Classified {
 }
 
 function hasRetryOptOut(body: unknown): boolean {
-  if (body === null || typeof body !== TYPE_OBJECT) return false;
+  if (!isRecord(body)) return false;
   const errField = (body as { error?: unknown }).error;
-  if (errField === null || typeof errField !== TYPE_OBJECT) return false;
+  if (!isRecord(errField)) return false;
   return (errField as { retry_after_seconds?: unknown }).retry_after_seconds === 0;
 }
 
@@ -173,7 +173,7 @@ export interface ApiRequestWithRetryOptions extends ApiRequestOptions {
  */
 export function isIdempotentMethod(method: string): boolean {
   const m = method.toUpperCase();
-  return m === HTTP_METHOD_GET || m === "PUT" || m === "DELETE" || m === "HEAD";
+  return m === HTTP_METHOD.get || m === "PUT" || m === "DELETE" || m === "HEAD";
 }
 
 interface ResolvedRetryRuntime {
@@ -208,7 +208,7 @@ function resolveRetryRuntime(options: ApiRequestWithRetryOptions): ResolvedRetry
     randomFn: options.randomFn ?? Math.random,
     onAttempt: options.onAttempt,
     onRetry: options.onRetry,
-    method: options.method ?? HTTP_METHOD_GET,
+    method: options.method ?? HTTP_METHOD.get,
   };
 }
 

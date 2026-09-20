@@ -29,8 +29,7 @@ import {
 } from "../constants/library-source.ts";
 import { LIBRARY_ID_PLACEHOLDER } from "../constants/cli-flags.ts";
 import { printRequirements, type BundleRequirements } from "./fleet_install_source.ts";
-
-const METHOD_POST = "POST" as const;
+import { HTTP_METHOD } from "../constants/http-method.ts";
 
 /** `owner/repo` — one slash, and neither half may be empty or carry a path
  *  separator. The daemon refuses the same shapes; refusing here costs no
@@ -215,7 +214,7 @@ export const libraryAddEffectFromFlags = (
 
     const res = yield* http.request<LibraryCreatedResponse>({
       path: wsFleetLibrariesPath(workspaceId),
-      method: METHOD_POST,
+      method: HTTP_METHOD.post,
       body,
       token,
     });

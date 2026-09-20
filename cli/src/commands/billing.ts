@@ -16,6 +16,7 @@ import { resolveAuthToken } from "./workspace-guards.ts";
 import { CHARGE_TYPE, formatDollars } from "../constants/billing.ts";
 import { TENANT_BILLING_PATH } from "../lib/api-paths.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
+import { EMPTY_CELL } from "../output/index.ts";
 
 const CHARGES_PATH = `${TENANT_BILLING_PATH}/charges`;
 const BILLING_DASHBOARD_URL = "https://app.agentsfleet.net/settings/billing";
@@ -166,8 +167,8 @@ const renderHuman = (
           event_id: e.event_id ?? "",
           posture: e.posture ?? "",
           model: e.model ?? "",
-          in_tok: e.token_count_input != null ? String(e.token_count_input) : LITERAL,
-          out_tok: e.token_count_output != null ? String(e.token_count_output) : LITERAL,
+          in_tok: e.token_count_input != null ? String(e.token_count_input) : EMPTY_CELL,
+          out_tok: e.token_count_output != null ? String(e.token_count_output) : EMPTY_CELL,
           receive: formatDollars(e.receive_nanos),
           stage: formatDollars(e.stage_nanos),
           total: formatDollars(e.total_nanos),
@@ -235,4 +236,3 @@ export const billingShowEffectFromArgs = (
     }
     yield* renderHuman(billing, events, nextCursor);
   });
-const LITERAL = "—" as const;

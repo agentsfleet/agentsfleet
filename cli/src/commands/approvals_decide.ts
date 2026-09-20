@@ -20,8 +20,7 @@ import { wsApprovalDecisionPath } from "../lib/api-paths.ts";
 import type { CliError } from "../errors/index.ts";
 import { GATE_DECISION, type GateDecision } from "../constants/approvals.ts";
 import { requireGateId } from "./approvals.ts";
-
-const METHOD_POST = "POST" as const;
+import { HTTP_METHOD } from "../constants/http-method.ts";
 
 /** The daemon's answer to a decision: what the gate became and who made it. */
 interface ResolutionResponse {
@@ -50,7 +49,7 @@ const decideEffect = (
 
     const res = yield* http.request<ResolutionResponse>({
       path: wsApprovalDecisionPath(workspaceId, gateId, decision),
-      method: METHOD_POST,
+      method: HTTP_METHOD.post,
       body: {},
       token,
     });
