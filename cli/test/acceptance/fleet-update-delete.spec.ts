@@ -49,7 +49,13 @@ import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { installPlatformOpsFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
-import { expectStatus, killFleet, stopFleet } from "./fixtures/lifecycle.ts";
+import {
+  expectStatus,
+  killFleet,
+  stopFleet,
+  TOMBSTONE_REFUSAL,
+  TRANSITION_REFUSAL,
+} from "./fixtures/lifecycle.ts";
 import { resolveFleetName, updateFleetBundle } from "./fixtures/update-delete-ops.ts";
 
 const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
@@ -70,17 +76,6 @@ const STOPPED_STATES: ReadonlyArray<string> = [
   AGENTSFLEET_STATUS.stopped,
 ];
 
-// An illegal lifecycle transition must be REFUSED. Verified live against
-// api-dev (2026-06-19), the server signals the refusal by HTTP status, not
-// a UZ-AGT-* error code: delete-before-kill and stop-already-stopped →
-// HTTP_409 Conflict; resume-of-killed → HTTP_404 Not Found (the killed
-// fleet is no longer addressable). We accept those signals plus the
-// documented UZ-AGT-010 / human stems so the assertion tracks the real
-// contract and would still pass if the API later attaches the UZ code.
-// (Observation for follow-up: these refusals carry no UZ-AGT-* code in the
-// body — a minor error-registry gap, surfaced in the PR session notes.)
-const TRANSITION_REJECTION =
-  /UZ-AGT-010|transition not allowed|already.*terminal|must be killed|HTTP_409|HTTP_404|Conflict|Not Found/i;
 const INSTALL_TIMEOUT_MS = 90_000;
 const SETUP_TIMEOUT_MS = 120_000;
 
@@ -161,12 +156,13 @@ if (!isLive) {
       });
 
       it("delete before kill is refused (must be killed first)", async () => {
-        // Server contract (delete.zig#not_killed → UZ-AGT-010): a live
-        // fleet cannot be hard-deleted. Proves the guard rather than
-        // assuming kill-then-delete is the only path.
+        // `purge.rs` refuses a fleet nobody killed first, and the daemon
+        // answers UZ-AGT-010. Proves the guard rather than assuming
+        // kill-then-delete is the only path.
         const result = await runWithEnv(["delete", fleetId, "--json"]);
         assert.notEqual(result.code, 0, `expected non-zero deleting a live fleet; stdout=${result.stdout}`);
-        assert.match(result.stderr + result.stdout, TRANSITION_REJECTION);
+        assert.match(result.stderr + result.stdout, TRANSITION_REFUSAL,
+          `delete-before-kill must be the 010 refusal, not the 009 tombstone; stdout=${result.stdout} stderr=${result.stderr}`);
         await expectStatus(env, fleetId, LIVE_STATES);
       });
 
@@ -191,7 +187,7 @@ if (!isLive) {
       }, 30_000);
     });
 
-    // Scenario 2a: install → kill → resume(killed) → non-zero + UZ-AGT-010.
+    // Scenario 2a: install → kill → resume(killed) → non-zero + UZ-AGT-009.
     describe("illegal transition — resume a killed fleet", () => {
       let fleetId: string = "";
 
@@ -202,11 +198,11 @@ if (!isLive) {
         await expectStatus(env, fleetId, TERMINAL_STATUSES);
       }, SETUP_TIMEOUT_MS);
 
-      it("resume <killed-id> exits non-zero with UZ-AGT-010", async () => {
+      it("resume <killed-id> is refused — a killed row is a tombstone", async () => {
         const result = await runWithEnv(["resume", fleetId, "--json"]);
         assert.notEqual(result.code, 0, `expected non-zero resuming a killed fleet; stdout=${result.stdout}`);
-        assert.match(result.stderr + result.stdout, TRANSITION_REJECTION,
-          `expected ALREADY_TERMINAL stem; stdout=${result.stdout} stderr=${result.stderr}`);
+        assert.match(result.stderr + result.stdout, TOMBSTONE_REFUSAL,
+          `a killed row is a tombstone — expected the 009 stem, not the 010 refusal; stdout=${result.stdout} stderr=${result.stderr}`);
       });
 
       it("status stays terminal after the rejected resume", async () => {
@@ -234,8 +230,8 @@ if (!isLive) {
         // flip to a live state — the post-condition below catches the last.
         const result = await runWithEnv(["stop", fleetId, "--json"]);
         if (result.code !== 0) {
-          assert.match(result.stderr + result.stdout, TRANSITION_REJECTION,
-            `non-zero stop must carry a transition stem; stdout=${result.stdout} stderr=${result.stderr}`);
+          assert.match(result.stderr + result.stdout, TRANSITION_REFUSAL,
+            `non-zero stop must carry the 010 transition stem; stdout=${result.stdout} stderr=${result.stderr}`);
         }
       });
 

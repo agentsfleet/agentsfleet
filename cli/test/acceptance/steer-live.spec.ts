@@ -54,7 +54,7 @@ import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { installSteerProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
-import { trailingJsonObject } from "./fixtures/steer-envelope.ts";
+import { trailingJsonText } from "./fixtures/steer-envelope.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
@@ -93,7 +93,7 @@ interface SteerEnvelope {
 }
 
 function parseSteerEnvelope(stdout: string): SteerEnvelope {
-  const raw = trailingJsonObject(stdout);
+  const raw = trailingJsonText(stdout);
   const parsed = JSON.parse(raw) as SteerEnvelope;
   assert.equal(typeof parsed, "object", `steer envelope is not an object: ${raw}`);
   assert.ok(parsed !== null, "steer envelope is null");

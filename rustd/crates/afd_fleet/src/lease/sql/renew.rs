@@ -129,10 +129,12 @@ WITH probe AS (
     INSERT INTO billing.usage_ledger
       (id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture,
        model, credit_deducted_nanos, token_count_input, token_count_cached_input,
-       token_count_output, wall_ms, event_created_at, created_at, last_charged_at)
+       token_count_output, wall_ms, event_created_at, created_at, last_charged_at,
+       fleet_name)
     SELECT $17::uuid, g.tenant_id, g.workspace_id, g.fleet_id, g.event_id, $14,
            g.posture, g.model, g.charged, g.d_in, g.d_cached, g.d_out, g.d_ms,
-           g.event_created_at, $6, $6
+           g.event_created_at, $6, $6,
+           (SELECT f.name FROM core.fleets f WHERE f.id = g.fleet_id)
     FROM guard g
     ON CONFLICT (event_id, charge_type) DO UPDATE SET
         credit_deducted_nanos = billing.usage_ledger.credit_deducted_nanos
@@ -146,6 +148,11 @@ WITH probe AS (
         wall_ms = COALESCE(billing.usage_ledger.wall_ms, 0) + EXCLUDED.wall_ms,
         last_charged_at = GREATEST(billing.usage_ledger.last_charged_at,
                                    EXCLUDED.last_charged_at)
+    -- `fleet_name` is deliberately absent, same as the report path. Renewal is
+    -- precisely the case that would corrupt it: this statement runs every ~25
+    -- seconds of a live run, so listing the name here would re-stamp it on
+    -- every tick and a mid-run rename would rewrite the whole charge's history.
+    -- The first write is the snapshot; renewals accumulate totals, not names.
     RETURNING event_id
 )
 SELECT

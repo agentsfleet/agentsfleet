@@ -52,6 +52,10 @@ export const READ_ONLY_COMMANDS: ReadonlyArray<ReadOnlyCommandRow> = [
   { args: ["workspace", "show", "--json"], requiredKey: "workspace_id" },
   { args: ["api-key", "list", "--json"], isList: true, itemsKey: "items" },
   { args: ["connector", "list", "--json"], label: "connector list" },
+  // Workspace-scoped, unlike `grant list`: the inbox is every fleet's cards,
+  // so it needs no fixture fleet threaded into its argv and belongs here
+  // rather than in the per-fleet table below.
+  { args: ["approvals", "list", "--json"], isList: true, itemsKey: "items" },
   { args: ["tenant", "provider", "show", "--json"], requiredKey: "mode" },
   { args: ["billing", "show", "--json"], requiredKey: "balance_nanos" },
   { args: ["list", "--json"], isList: true, itemsKey: "items", label: "fleet list" },

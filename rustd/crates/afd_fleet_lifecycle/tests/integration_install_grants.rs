@@ -1,27 +1,30 @@
-//! An install asks for the grants the bundle says the fleet will need.
+//! An install writes the grants the bundle says the fleet will need, answered.
 //!
 //! # Why this cannot be a unit test
 //!
 //! The claim spans three tables and a sealed envelope. The bundle names
 //! `github`; the workspace's stored handle for it says whether that is a
 //! connector the daemon must MINT against, and only opening the envelope
-//! answers that; and the request writes `core.integration_grants` and
-//! `core.fleet_approval_gates` together. A fake vault would prove the
-//! classifier, which `afd_credential` already proves; what is proven here is
-//! that the install RUNS it, on real bytes, and that the rows land.
+//! answers that; and the install writes `core.integration_grants`. A fake vault
+//! would prove the classifier, which `afd_credential` already proves; what is
+//! proven here is that the install RUNS it, on real bytes, and that the row
+//! lands approved with no card beside it.
 //!
 //! # And why a static credential is asserted beside it
 //!
-//! The request must not widen past `mintable()`. A bundle declaring `elastic`
+//! The write must not widen past `mintable()`. A bundle declaring `elastic`
 //! or `grafana` — an api key used as it stands, never brokered — would
-//! otherwise raise a card nobody can act on, for a decision no mint consults.
+//! otherwise hold a standing authorisation no mint ever consults.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_approval::{KIND_INTEGRATION_GRANT, REASON_DECLARED_AT_INSTALL};
+use afd_approval::{
+    IntegrationGrants, KIND_INTEGRATION_GRANT, Origin, REASON_DECLARED_AT_INSTALL, Wanted,
+};
+use afd_crypto::entropy::Entropy;
 use afd_wire::grant::status;
 use sqlx::Row as _;
 
@@ -33,8 +36,17 @@ const LIBRARY_ID_MINTING: &str = "grant-wanting";
 /// The credential that bundle names.
 const DECLARED_CREDENTIAL: &str = "github";
 
-/// The connector behind it — what the grant row and the card both name.
+/// The connector behind it — what the install's grant row names.
 const SERVICE: &str = "github";
+
+/// A connector the bundle does NOT declare.
+///
+/// The park path raises a card only for a grant that is still `pending`, and
+/// the install answers everything the bundle declared — so a card has to be
+/// asked for on behalf of something it did not. That is the real shape too: a
+/// credential added by a later PATCH reaches the lease path with no grant, and
+/// the backstop asks there.
+const UNDECLARED_SERVICE: &str = "slack";
 
 /// A bundle whose trigger declares a credential that ships as it stands.
 const LIBRARY_ID_STATIC: &str = "static-wanting";
@@ -105,10 +117,16 @@ async fn carded_services(lane: &Lane, fleet: &str) -> Vec<Option<String>> {
     .collect()
 }
 
-/// Installing a bundle that declares a mintable credential raises its card.
+/// Installing a bundle that declares a mintable credential answers it.
+///
+/// This asserted a PENDING row and a card until M202. Installing the fleet is
+/// the answer — the operator chose it, the bundle names the integration, and
+/// the fleet's binding names the repositories and the access level — so the row
+/// lands approved and no card is raised. Asking again per event is what put one
+/// approval card on every model turn and posted no reviews.
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn install_requests_a_grant_per_declared_mintable_credential() {
+async fn install_answers_the_grant_for_each_declared_mintable_credential() {
     let lane = Lane::create().await;
     lane.seed_library_entry(
         LIBRARY_ID_MINTING,
@@ -129,15 +147,17 @@ async fn install_requests_a_grant_per_declared_mintable_credential() {
         grant_rows(&lane, fleet).await,
         vec![(
             SERVICE.to_owned(),
-            status::PENDING.to_owned(),
+            status::APPROVED.to_owned(),
             REASON_DECLARED_AT_INSTALL.to_owned()
         )],
-        "the fleet leaves install with the decision already waiting, rather \
-         than discovering it needs one on a poll nobody is watching"
+        "the fleet leaves install already authorised, rather than discovering \
+         it needs a decision on a poll nobody is watching"
     );
     assert_eq!(
         carded_services(&lane, fleet).await,
-        vec![Some(SERVICE.to_owned())]
+        Vec::<Option<String>>::new(),
+        "an install raises no card: nobody is asked a question they answered \
+         by installing the fleet"
     );
 
     lane.cleanup().await;
@@ -206,15 +226,20 @@ async fn a_second_install_asks_for_its_own_fleets_grant() {
     lane.cleanup().await;
 }
 
-/// A fleet whose install raised a card can still be deleted.
+/// A fleet carrying a grant card can still be deleted.
 ///
-/// The regression this milestone would otherwise have shipped. `core.fleet_approval_gates`
-/// is append-only by trigger (schema/810) and refuses every DELETE unless the
-/// purge says it means it, and the cascade from the fleet row fires the same
-/// trigger. Before install requested grants, a fleet that never parked a
-/// delivery held no gate rows and purged clean, so the missing opt-in was
-/// unreachable — this test is the one that reaches it, and it covers the whole
-/// class of fleets that declare a mintable credential.
+/// `core.fleet_approval_gates` is append-only by trigger (schema/810) and
+/// refuses every DELETE unless the purge says it means it, and the cascade from
+/// the fleet row fires the same trigger. A fleet holding no gate rows purges
+/// clean and never reaches that opt-in; this test is the one that reaches it.
+///
+/// The card came from the INSTALL until M202, which no longer raises one — and
+/// asking the park path for a service the install already granted raises none
+/// either, because a standing yes is not re-asked. So the card here is asked
+/// for on behalf of a credential the bundle never declared, which is the shape
+/// a later PATCH produces. Deleting this test instead would re-open the
+/// regression the purge opt-in exists to prevent, across every fleet that holds
+/// a gate row for any reason.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_fleet_carrying_a_grant_card_still_purges() {
@@ -233,10 +258,23 @@ async fn a_fleet_carrying_a_grant_card_still_purges() {
         .await
         .expect("the install must land");
     let fleet = installed.id.as_str().to_owned();
+    IntegrationGrants::new(lane.pool.clone(), Entropy::new())
+        .request(
+            &lane.workspace,
+            &installed.id,
+            Wanted {
+                service: UNDECLARED_SERVICE,
+                credential: UNDECLARED_SERVICE,
+                origin: Origin::Park,
+            },
+            Lane::now(),
+        )
+        .await
+        .expect("the park backstop raises the card this test purges past");
     assert_eq!(
         carded_services(&lane, &fleet).await,
-        vec![Some(SERVICE.to_owned())],
-        "the install must have raised the card this test exists to purge past"
+        vec![Some(UNDECLARED_SERVICE.to_owned())],
+        "the precondition: a card exists for the purge to step over"
     );
 
     lane.fleets

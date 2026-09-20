@@ -23,11 +23,12 @@
 //! this; the purge did not, and a login role carrying `pg_write_all_data` meant
 //! no deployment could report the difference.
 //!
-//! `billing.usage_ledger` survives deliberately. Its `fleet_id` is
-//! `ON DELETE SET NULL`, so a charge the wallet was already debited for outlives
-//! the fleet with its tenant scope intact. Erasing one would falsify the
-//! reconciliation between the ledger and the wallet, and no role here holds
-//! `DELETE` on that table anyway.
+//! `billing.usage_ledger` survives deliberately, and since schema/915 it
+//! survives WITH its attribution: `fleet_id` is no longer a foreign key, so a
+//! charge the wallet was already debited for outlives the fleet still naming
+//! which fleet it paid for, beside the `fleet_name` captured when the money
+//! moved. Erasing one would falsify the reconciliation between the ledger and
+//! the wallet, and no role here holds `DELETE` on that table anyway.
 //!
 //! # The Dragonfly stream is best-effort, after the commit
 //!

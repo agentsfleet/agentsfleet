@@ -177,10 +177,12 @@ WITH probe AS (
     INSERT INTO billing.usage_ledger
       (id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture,
        model, credit_deducted_nanos, token_count_input, token_count_cached_input,
-       token_count_output, wall_ms, event_created_at, created_at, last_charged_at)
+       token_count_output, wall_ms, event_created_at, created_at, last_charged_at,
+       fleet_name)
     SELECT $16::uuid, g.tenant_id, g.workspace_id, g.fleet_id, g.event_id, $11,
            g.posture, g.model, g.charged, g.d_in, g.d_cached, g.d_out, g.d_ms,
-           g.event_created_at, $3, $3
+           g.event_created_at, $3, $3,
+           (SELECT f.name FROM core.fleets f WHERE f.id = g.fleet_id)
     FROM guard g
     ON CONFLICT (event_id, charge_type) DO UPDATE SET
         credit_deducted_nanos = billing.usage_ledger.credit_deducted_nanos
@@ -194,6 +196,13 @@ WITH probe AS (
         wall_ms = COALESCE(billing.usage_ledger.wall_ms, 0) + EXCLUDED.wall_ms,
         last_charged_at = GREATEST(billing.usage_ledger.last_charged_at,
                                    EXCLUDED.last_charged_at)
+    -- `fleet_name` is deliberately absent from this SET list, and its absence
+    -- is the behaviour. Every other column here accumulates because a renewal
+    -- adds to a running total; the name is a SNAPSHOT of what was true when the
+    -- charge was first written. Adding it to the list would look like symmetry
+    -- and would silently rewrite history — rename a fleet mid-run and every
+    -- earlier charge would start claiming the new name. A ledger records what
+    -- was true when the money moved.
     RETURNING event_id
 ), tally AS (
     INSERT INTO fleet.runner_lifetime_counters

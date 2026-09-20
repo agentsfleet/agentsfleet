@@ -49,10 +49,9 @@ pub use self::detail::{
 // mint family's are: they arrive together, they are read together, and every
 // one is pinned to `session_helpers.zig`.
 pub use self::detail::{
-    DETAIL_BINDING_DRIFT, DETAIL_CONNECTOR_MINT_FAILED, DETAIL_CONNECTOR_RECONNECT,
-    DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED,
-    DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED, DETAIL_WRITE_SPEND_EXHAUSTED,
-    DETAIL_WRITE_UNAPPROVED,
+    DETAIL_CONNECTOR_MINT_FAILED, DETAIL_CONNECTOR_RECONNECT, DETAIL_GITHUB_RECONNECT,
+    DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED, DETAIL_MINT_FAILED,
+    DETAIL_MINT_UNCONFIGURED,
 };
 /// The memory operator surface's sentences, listed apart for the reason the
 /// mint family's are: they arrive together, they are read together, and every
@@ -66,10 +65,9 @@ pub use self::detail::{
 /// the reason the api-key family's are: they arrive together and are read
 /// together, and each is pinned to `cli_credentials.zig`.
 pub(crate) use self::refuse::{
-    binding_drift, budget_exhausted, connector_mint_failed, connector_reconnect_required,
-    github_mint_failed, github_reconnect_required, grant_required, integration_not_connected,
-    lease_lost, lease_max_runtime, lease_not_found, mint_unconfigured, renewal_no_credits,
-    stale_fence, write_spend_exhausted, write_unapproved,
+    budget_exhausted, connector_mint_failed, connector_reconnect_required, github_mint_failed,
+    github_reconnect_required, grant_required, integration_not_connected, lease_lost,
+    lease_max_runtime, lease_not_found, mint_unconfigured, renewal_no_credits, stale_fence,
 };
 /// The memory operator surface's two refusals, listed apart for the reason the
 /// mint family's sentences are: they arrive together and are read together,
@@ -264,15 +262,6 @@ pub(crate) enum ErrorKind {
 
     #[error("the fleet holds no approved grant for that integration")]
     GrantRequired,
-
-    #[error("no approved repository-write gate was answered for this lease's event")]
-    WriteUnapproved,
-
-    #[error("the fleet's repository binding changed since the approval was answered")]
-    BindingDrift,
-
-    #[error("the approved write-credential allowance is spent")]
-    WriteSpendExhausted,
 
     #[error("the fleet a memory request names is not this workspace's")]
     MemoryFleetNotFound,
