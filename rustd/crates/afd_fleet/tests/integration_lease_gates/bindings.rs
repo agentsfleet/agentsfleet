@@ -35,16 +35,22 @@ use afd_gate::policy::repair;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_write_binding_with_no_approval_ends_the_event_as_unenforceable() {
-    // `repair_branch` finds no approved write gate, so the egress build has no
-    // branch to lock its rules to and refuses the binding outright. The event
-    // must END: the config cannot be enforced, and nothing about the next poll
-    // changes that, so parking it would be the redelivery loop this milestone
-    // exists to close.
+async fn test_a_write_binding_it_cannot_enforce_ends_the_event() {
+    // The egress build cannot lock its rules to two repositories, so it refuses
+    // the binding outright. The event must END: the config cannot be enforced,
+    // and nothing about the next poll changes that, so parking it would be the
+    // redelivery loop this milestone exists to close.
+    //
+    // The trigger used to be a missing approved write gate. M202 deleted that
+    // gate — authority is the standing grant, read at the mint — so a write
+    // binding always resolves a branch now and cannot reach this arm that way.
+    // The authority half is proven where it moved to, in
+    // `integration_credential_mint/write_gate.rs`. What is proven here is the
+    // half that did not move: an unenforceable config ends rather than parks.
     crate::support::install_subscriber();
     let fixtures = Fixtures::create_with_queue().await;
     let seeded = ready(&fixtures).await;
-    set_config(&fixtures, &seeded.fleet, WRITE_BOUND_CONFIG).await;
+    set_config(&fixtures, &seeded.fleet, MULTI_REPOSITORY_WRITE_CONFIG).await;
     seed_provider_resolution(&fixtures, &seeded.fleet).await;
     seed_gate(&fixtures, &seeded, STATUS_APPROVED).await;
 
@@ -75,22 +81,29 @@ async fn test_a_write_binding_with_no_approval_ends_the_event_as_unenforceable()
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_an_approved_write_binding_locks_its_egress_to_that_gates_branch() {
     // The mirror of the refusal above, and the half that makes the pair a test
-    // rather than a coincidence: the branch is derived from the GATE's
+    // rather than a coincidence: the branch is derived from the EVENT's
     // identifier, which is freshly minted per run, so no fixed string can
     // satisfy this assertion. A `repair_branch` hardcoded to `None` fails here
     // while still passing the case above.
+    //
+    // This is also the end-to-end guard main did not have. `deliver.rs` parsed
+    // the event id as a `Uuid7` before naming the branch, which never succeeds
+    // — admission mints `<millis>-<sequence>` — so every write-bound delivery
+    // lost its branch and answered no lease at all. The unit tests beside it
+    // passed throughout, because their fixture id was a canonical v7 that the
+    // ledger never produces.
     crate::support::install_subscriber();
     let fixtures = Fixtures::create_with_queue().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, WRITE_BOUND_CONFIG).await;
     seed_provider_resolution(&fixtures, &seeded.fleet).await;
     seed_gate(&fixtures, &seeded, STATUS_APPROVED).await;
-    let gate = seed_write_gate(&fixtures, &seeded, STATED_WRITE_BINDING).await;
+    let _gate = seed_write_gate(&fixtures, &seeded, STATED_WRITE_BINDING).await;
 
     let claimed = claim(&fixtures, &seeded).await;
     let answer = drive(&fixtures, &seeded, claimed).await;
 
-    let branch = repair::branch_for(&gate);
+    let branch = repair::branch_for(&seeded.event_id);
     assert!(
         answer.contains(&branch),
         "the delivery locked a branch that is not this gate's {branch}: {answer}"
