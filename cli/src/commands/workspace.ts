@@ -28,7 +28,7 @@ import {
   resolveAuthToken,
   WORKSPACE_CREATE_USAGE,
 } from "./workspace-guards.ts";
-import { validateRequiredId } from "../program/validators.ts";
+import { validateRequiredId } from "../lib/id.ts";
 import {
   ConfigError,
   ValidationError,

@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { InvalidArgumentError } from "commander";
-import { isValidId, parseIdOption, validateRequiredId } from "../src/program/validators.ts";
+import { parseIdOption } from "../src/program/validators.ts";
+import { isValidId, validateRequiredId } from "../src/lib/id.ts";
 
 // Sample valid uuidv7 — backend's allocUuidV7 emits this shape; CLI
 // validator must accept v7 (and ONLY v7, post-RULE-NLG swap).

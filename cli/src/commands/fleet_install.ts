@@ -29,7 +29,7 @@ import {
   SkillLoadError,
   type LoadedSkill,
 } from "../lib/load-skill-from-path.ts";
-import { validateRequiredId } from "../program/validators.ts";
+import { validateRequiredId } from "../lib/id.ts";
 import { OPT_FROM } from "../constants/cli-flags.ts";
 import {
   ConfigError,
