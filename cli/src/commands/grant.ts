@@ -9,13 +9,14 @@ import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
+import type { CliError } from "../errors/index.ts";
 import {
+  requireValidId,
+  requireValue,
   requireWorkspaceId,
   resolveAuthToken,
 } from "./workspace-guards.ts";
 import { wsGrantsListPath, wsGrantPath } from "../lib/api-paths.ts";
-import { validateRequiredId } from "../program/validators.ts";
-import { ValidationError, type CliError } from "../errors/index.ts";
 
 const GRANT_ID_FIELD = "id";
 
@@ -31,31 +32,6 @@ interface GrantListResponse {
   readonly items?: ReadonlyArray<GrantRow>;
 }
 
-const requireFlag = (
-  value: string | undefined,
-  detail: string,
-  suggestion: string,
-): Effect.Effect<string, ValidationError> =>
-  value
-    ? Effect.succeed(value)
-    : Effect.fail(new ValidationError({ detail, suggestion }));
-
-const requireValidId = (
-  value: string,
-  fieldName: string,
-): Effect.Effect<string, ValidationError> => {
-  const check = validateRequiredId(value, fieldName);
-  if (!check.ok) {
-    return Effect.fail(
-      new ValidationError({
-        detail: check.message,
-        suggestion: "pass a valid uuidv7",
-      }),
-    );
-  }
-  return Effect.succeed(value);
-};
-
 export const grantListEffectFromArgs = (
   fleetIdPositional: string | undefined,
   fleetIdFlag: string | undefined,
@@ -70,7 +46,7 @@ export const grantListEffectFromArgs = (
     const http = yield* HttpClient;
     const workspaceId = yield* requireWorkspaceId;
     const token = yield* resolveAuthToken;
-    const fleetId = yield* requireFlag(
+    const fleetId = yield* requireValue(
       fleetIdFlag ?? fleetIdPositional,
       FLEET_REQUIRED,
       GRANT_LIST_USAGE,
@@ -126,18 +102,18 @@ export const grantDeleteEffectFromArgs = (
     const http = yield* HttpClient;
     const workspaceId = yield* requireWorkspaceId;
     const token = yield* resolveAuthToken;
-    const fleetIdRaw = yield* requireFlag(
+    const fleetIdRaw = yield* requireValue(
       fleetIdFlag,
       FLEET_REQUIRED,
       GRANT_DELETE_USAGE,
     );
-    const fleetId = yield* requireValidId(fleetIdRaw, "fleet_id");
-    const grantIdRaw = yield* requireFlag(
+    const fleetId = yield* requireValidId(fleetIdRaw, "fleet_id", GRANT_DELETE_USAGE);
+    const grantIdRaw = yield* requireValue(
       grantIdPositional,
       GRANT_ID_REQUIRED,
       GRANT_DELETE_USAGE,
     );
-    const grantId = yield* requireValidId(grantIdRaw, GRANT_ID_FIELD);
+    const grantId = yield* requireValidId(grantIdRaw, GRANT_ID_FIELD, GRANT_DELETE_USAGE);
 
     yield* http.request<unknown>({
       path: wsGrantPath(workspaceId, fleetId, grantId),

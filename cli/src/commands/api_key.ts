@@ -6,12 +6,15 @@ import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
-import { resolveAuthToken } from "./workspace-guards.ts";
+import {
+  requireValidId,
+  requireValue,
+  resolveAuthToken,
+} from "./workspace-guards.ts";
 import {
   TENANT_API_KEYS_PATH,
   tenantApiKeyPath,
 } from "../lib/api-paths.ts";
-import { validateRequiredId } from "../program/validators.ts";
 import { UnexpectedError, ValidationError, type CliError } from "../errors/index.ts";
 import {
   API_KEY_CREATED_AT,
@@ -74,37 +77,6 @@ const STATUS_REVOKED = "revoked" as const;
 const TIME_NEVER = "never" as const;
 const TIME_MISSING = "-" as const;
 const SORTS: ReadonlySet<string> = new Set(API_KEY_SORTS);
-
-const requireValue = (
-  value: string | undefined,
-  detail: string,
-  suggestion: string,
-): Effect.Effect<string, ValidationError> =>
-  value
-    ? Effect.succeed(value)
-    : Effect.fail(new ValidationError({ detail, suggestion }));
-
-const requireValidId = (
-  value: string | undefined,
-  fieldName: string,
-): Effect.Effect<string, ValidationError> =>
-  Effect.gen(function* () {
-    const raw = yield* requireValue(
-      value,
-      `${fieldName} is required`,
-      `pass <${fieldName}> as a positional argument`,
-    );
-    const check = validateRequiredId(raw, fieldName);
-    if (!check.ok) {
-      return yield* Effect.fail(
-        new ValidationError({
-          detail: check.message,
-          suggestion: "pass a valid uuidv7",
-        }),
-      );
-    }
-    return raw;
-  });
 
 const parseSort = (raw: string | undefined): Effect.Effect<string, ValidationError> => {
   if (raw === undefined) return Effect.succeed(DEFAULT_SORT);
@@ -245,7 +217,7 @@ export const apiKeyRevokeEffectFromId = (
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
-    const id = yield* requireValidId(rawId, API_KEY_ID);
+    const id = yield* requireValidId(rawId, API_KEY_ID, `pass <${API_KEY_ID}> as a positional argument`);
 
     const res = yield* http.request<RevokedApiKey>({
       path: tenantApiKeyPath(id),
@@ -269,7 +241,7 @@ export const apiKeyDeleteEffectFromId = (
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
-    const id = yield* requireValidId(rawId, API_KEY_ID);
+    const id = yield* requireValidId(rawId, API_KEY_ID, `pass <${API_KEY_ID}> as a positional argument`);
 
     yield* http.request<unknown>({
       path: tenantApiKeyPath(id),

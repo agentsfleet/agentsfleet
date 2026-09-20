@@ -7,14 +7,15 @@ import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
-import { resolveAuthToken } from "./workspace-guards.ts";
+import {
+  resolveAuthToken,
+  resolveWorkspaceId,
+} from "./workspace-guards.ts";
 import { isString } from "../lib/guards.ts";
 import { QUERY_STARTING_AFTER, wsFleetsPath } from "../lib/api-paths.ts";
 import { ui } from "../output/index.ts";
 import {
-  ConfigError,
   type CliError,
-  type UnexpectedError,
 } from "../errors/index.ts";
 
 interface FleetListRow {
@@ -30,24 +31,6 @@ const FIELD_NAME = "name" as const;
 const FIELD_STATUS = "status" as const;
 const FIELD_FLEET_ID = "fleet_id" as const;
 
-
-const resolveWorkspaceOverride = (
-  override: string | undefined,
-): Effect.Effect<string, ConfigError | UnexpectedError, Workspaces> =>
-  Effect.gen(function* () {
-    if (isString(override) && override.length > 0) return override;
-    const workspaces = yield* Workspaces;
-    const state = yield* workspaces.load;
-    if (!state.current_workspace_id) {
-      return yield* Effect.fail(
-        new ConfigError({
-          detail: "no workspace selected",
-          suggestion: "run `agentsfleet workspace use <id>`",
-        }),
-      );
-    }
-    return state.current_workspace_id;
-  });
 
 const buildPath = (
   wsId: string,
@@ -79,7 +62,7 @@ export const listEffectFromFlags = (
     const output = yield* Output;
     const http = yield* HttpClient;
 
-    const wsId = yield* resolveWorkspaceOverride(flags.workspaceId);
+    const wsId = yield* resolveWorkspaceId(flags.workspaceId);
     const token = yield* resolveAuthToken;
     const res = yield* http.request<FleetListResponse>({
       path: buildPath(wsId, flags.startingAfter, flags.limit),

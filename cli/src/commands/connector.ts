@@ -7,7 +7,11 @@ import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
-import { resolveAuthToken } from "./workspace-guards.ts";
+import {
+  requireValue,
+  resolveAuthToken,
+  resolveWorkspaceId,
+} from "./workspace-guards.ts";
 import {
   wsConnectorPath,
   wsConnectorsPath,
@@ -26,29 +30,6 @@ const CONTROL_BYTES_RE = /[\u0000-\u001f\u007f-\u009f]/g;
 const CONNECTOR_LIST_HINT = "run `agentsfleet connector list` to see provider ids";
 const FIELD_PROVIDER = "provider";
 const FIELD_STATE = "state";
-
-const requireValue = (
-  value: string | undefined,
-  detail: string,
-  suggestion: string,
-): Effect.Effect<string, ValidationError> =>
-  value
-    ? Effect.succeed(value)
-    : Effect.fail(new ValidationError({ detail, suggestion }));
-
-const resolveWorkspaceId = (
-  override: string | undefined,
-): Effect.Effect<string, CliError, Workspaces> =>
-  Effect.gen(function* () {
-    if (override) return override;
-    const workspaces = yield* Workspaces;
-    const state = yield* workspaces.load;
-    return yield* requireValue(
-      state.current_workspace_id ?? undefined,
-      "connector command requires --workspace <id> or an active workspace context",
-      "run `agentsfleet workspace use <id>` or pass --workspace <id>",
-    );
-  });
 
 const requireProvider = (
   raw: string | undefined,

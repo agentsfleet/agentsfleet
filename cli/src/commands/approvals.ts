@@ -15,7 +15,11 @@ import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
-import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
+import {
+  requireValue,
+  requireWorkspaceId,
+  resolveAuthToken,
+} from "./workspace-guards.ts";
 import { wsApprovalsPath, wsApprovalPath } from "../lib/api-paths.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
 import { ui, EMPTY_CELL } from "../output/index.ts";
@@ -109,14 +113,12 @@ const cell = (value: string | null | undefined): string =>
 const isoOrDash = (value: number | string | null | undefined): string =>
   value ? new Date(value).toISOString() : EMPTY_CELL;
 
+/** The gate a command was asked to act on. The shared presence guard with this
+ *  command's two strings bound to it. */
 export const requireGateId = (
   value: string | undefined,
 ): Effect.Effect<string, ValidationError> =>
-  value
-    ? Effect.succeed(value)
-    : Effect.fail(
-        new ValidationError({ detail: GATE_ID_REQUIRED, suggestion: SHOW_USAGE }),
-      );
+  requireValue(value, GATE_ID_REQUIRED, SHOW_USAGE);
 
 export const approvalsListEffectFromArgs = (
   fleetFilter: string | undefined,
