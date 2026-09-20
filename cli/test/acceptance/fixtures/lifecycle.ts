@@ -20,6 +20,37 @@ export interface FleetRow {
 
 export class FleetNotFoundError extends Error {}
 
+// An illegal lifecycle transition must be REFUSED, and the daemon answers one
+// of TWO codes — never either. `edit.rs`'s `explain` re-reads the row a
+// zero-row UPDATE left behind: a killed row is a tombstone and answers
+// `ErrorKind::NotFound` (UZ-AGT-009, a 404), and everything else the status
+// machine turned down answers `ErrorKind::TransitionRefused` (UZ-AGT-010, a
+// 409). `purge.rs` refuses a delete of a fleet nobody killed first with
+// `ErrorKind::MustKillFirst`, which maps to UZ-AGT-010 as well. Both mappings
+// live in `afd_fleet_lifecycle/src/error.rs`.
+//
+// One pattern PER CLASSIFICATION, not one shared alternation. A regex that
+// accepts both codes everywhere still passes when the daemon picks the wrong
+// one, and the state-only assertions that follow each refusal cannot see the
+// difference — the fleet lands in the right state either way, so a
+// misclassification would ship unnoticed.
+//
+// Each pattern carries the sentence alongside its own code because that is the
+// half a person reads, and it is the half that moved: the CLI now renders the
+// daemon's `user_message` ("We couldn't find that Fleet") where it used to
+// print the log-side `detail` ("fleet not found"). A regex that knew only the
+// old wording went red on a rendering change and named nothing about the
+// product.
+
+/** A killed row is a tombstone: resume-of-killed and kill-of-killed. */
+export const TOMBSTONE_REFUSAL =
+  /UZ-AGT-009|couldn't find that Fleet|HTTP_404|Not Found/i;
+
+/** The status machine turned the transition down: delete-before-kill and
+ *  stop-already-stopped. */
+export const TRANSITION_REFUSAL =
+  /UZ-AGT-010|transition not allowed|already.*terminal|must be killed|HTTP_409|Conflict/i;
+
 async function lifecycleAction(verb: string, fleetId: string, env: Env): Promise<unknown> {
   const result = await runFleetctl([verb, fleetId, "--json"], { env });
   if (result.code !== 0) {
