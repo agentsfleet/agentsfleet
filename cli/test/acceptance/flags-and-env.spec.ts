@@ -84,7 +84,7 @@ describe("global flag matrix", () => {
   });
 
   // --help --json exits 0 and emits help output. A structured JSON help
-  // tree (Discovery row) is a future enhancement; commander's text body
+  // tree (Discovery row) is a future enhancement; the renderer's text body
   // is what --json currently returns. Assert exit 0 with help content
   // present — the contract the CLI ships.
   it("--help --json exits 0 with help content", async () => {

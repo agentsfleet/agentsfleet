@@ -80,7 +80,7 @@ export const ui: UiTheme = {
 
 // Build the parsed = { options, positionals } shape that leaf handlers
 // expect from a flat token array. Test-only utility — production now
-// flows through commander (cli-tree.ts). Matches the legacy parseFlags
+// flows through the command tree. Matches the legacy parseFlags
 // surface byte-for-byte so direct handler tests can keep synthesising
 // parsed objects from `["--limit", "20", "<positional>"]` token lists.
 export function buildParsed(tokens: readonly string[] = []): ParsedArgs {

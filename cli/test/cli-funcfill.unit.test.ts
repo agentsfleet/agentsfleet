@@ -1,21 +1,16 @@
-// Function-fill coverage for runCli's post-parse exit-code mapping
-// (src/cli.ts). These exercise the reachable branches of
-// exitFromCommanderError — the commander-error → POSIX-exit-code
-// translation that the did-you-mean suite touches only for the
+// Function-fill coverage for runCli's exit-code mapping (src/cli.ts). These
+// exercise the branches the did-you-mean suite touches only for the
 // unknown-command case.
 //
-// What is reachable through runCli's public surface, and what is not:
-//   • commander.help / group-with-no-subcommand → exit 0  (line 157)
-//   • auth-guard CommanderError with state.exitCode preset → that code
-//     short-circuits before the usage-code check               (line 158)
-//   • usage-family codes (unknownCommand / optionMissingArgument / …)
-//     → exit 2                                                  (line 159)
-// The fall-through (line 160) and the non-CommanderError parse branch
-// (errMessage + lines 263-272) are defensive: the command tree declares
-// no .conflicts() options, binds every leaf handler, and InvalidArgumentError
-// extends CommanderError — so no argv routes program.parseAsync to a
-// non-help / non-usage CommanderError or to a non-CommanderError throw.
-// Documented in the StructuredOutput note rather than faked.
+// What is reachable through runCli's public surface:
+//   • an explicit --help, and a group invoked with no subcommand → exit 0
+//   • the auth guard refusing before a handler runs → exit 1
+//   • the usage family (unknown command, a flag missing its value, a value
+//     the flag refuses) → exit 4, the validation code
+//
+// Exit codes are a machine surface: a script tells "you typed it wrong" (4)
+// from "the server said no" (3) from "the network failed" (2) by number, so
+// each branch is pinned rather than left to whatever the parser defaults to.
 
 import { describe, test, expect } from "bun:test";
 import fs from "node:fs/promises";
@@ -60,7 +55,7 @@ describe("runCli exit-code mapping", () => {
   test("root-level option missing its argument maps to the validation exit", async () => {
     // `--api` is a global value option; a dangling `--api` is emitted by
     // the ROOT command (which carries exitOverride), so it routes through
-    // the bridge as commander.optionMissingArgument → usage code → the
+    // a flag missing its value → the validation code → the
     // validation exit, rather than crashing at a leaf via process.exit.
     await withFreshStateDir(async () => {
       const code = await runCli(["--api"], {

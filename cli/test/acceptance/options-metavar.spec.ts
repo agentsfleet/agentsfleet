@@ -6,7 +6,7 @@
  *   1. `--help` documents the option with the angle-bracket `<metavar>`
  *      convention (e.g. `--limit <n>`, `--cursor <token>`).
  *   2. The validator rejects bad input with a clear stderr stem
- *      (commander exits 2 on parse failure).
+ *      (a parse failure exits 4).
  *   3. A valid value flows end-to-end through to where it should
  *      appear on the wire — captured by an in-memory stub HTTP server
  *      that records `(method, url, body)` for every request the CLI
@@ -145,21 +145,20 @@ describe("--help bodies use angle-bracket metavar convention", () => {
 
 describe("validators reject invalid values with clear error stem", () => {
   type ValidatorCase = readonly [string, ReadonlyArray<string>, RegExp];
-  // The CLI surfaces commander's "option '--X <v>' argument 'Y' is invalid.
-  // <stem>" line on stderr and exits non-zero. The stem is the rule
-  // we pin here. Exit code is currently 1 for commander.invalidArgument
-  // (commander wraps the InvalidArgumentError and exits 1); a separate
-  // cli.ts hygiene PR can map it to POSIX 2 by extending
-  // COMMANDER_USAGE_CODES.
+  // A refused value reaches stderr as `Invalid value for flag --X: "Y".
+  // Expected: <stem>` and exits 4, the validation code. The STEM is what is
+  // pinned here: it is the rule the operator has to satisfy, and the three a
+  // single flag can produce — below the floor, above the cap, not an integer
+  // — have to read as one family rather than three unrelated sentences.
   const cases: ReadonlyArray<ValidatorCase> = [
-    // parseIntOption rejections (commander wraps as "option '--x <n>' argument 'V' is invalid. <stem>")
+    // Bounded-integer refusals.
     ["list --limit 0",        ["list", "--limit", "0"],          /must be ≥ 1/],
     ["list --limit abc",      ["list", "--limit", "abc"],        /must be an integer/],
     ["list --limit 9999",     ["list", "--limit", "9999"],       /must be ≤ 200/],
     ["billing show --limit 9999", ["billing", "show", "--limit", "9999"], /must be ≤ 100/],
     ["logs --limit 9999",     ["logs", "--limit", "9999"],       /must be ≤ 500/],
     ["events <id> --limit 9999", ["events", FIXTURE_UUIDV7, "--limit", "9999"], /must be ≤ 500/],
-    // parseIdOption rejections (uuidv7 enforced)
+    // Identifier refusals (uuidv7 enforced).
     ["list --workspace-id not-a-uuid",   ["list", "--workspace-id", "not-a-uuid"], /uuidv7 format/],
   ];
 

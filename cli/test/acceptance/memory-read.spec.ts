@@ -178,7 +178,7 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
     });
   }, SUBPROCESS_TEST_TIMEOUT_MS);
 
-  it("`memory search` without a query is rejected by commander before any request", async () => {
+  it("`memory search` without a query is rejected before any request", async () => {
     await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
       const result = await run(["memory", "search", "--fleet", FLEET_ID]);
       assert.notEqual(result.code, 0);

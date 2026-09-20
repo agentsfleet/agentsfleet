@@ -211,7 +211,7 @@ describe("unknown commands", () => {
 
 describe("provider catalogue closes --provider (real binary)", () => {
   // The API URL is unroutable, so reaching the network would surface as a
-  // connection error, not commander's usage error: exit 2 + the enum message
+  // connection error, not a usage error: exit 2 + the enum message
   // prove the rejection happened at parse time.
   // The accepted set is a property of the SERVER, so an unauthenticated,
   // server-less invocation can no longer name it — and must not pretend to.
@@ -312,7 +312,7 @@ describe("validate.js error stem", () => {
 // Integration coverage through the REAL shipped binary (worktree-DEV /
 // npm-global-PROD), not the in-process renderer. cli-tree-help.unit.test.ts
 // asserts helpTail() in isolation; these prove the same guarantees survive
-// the build, commander wiring, and process boundary — a bundling or
+// the build, the parser wiring, and process boundary — a bundling or
 // help-registration regression the unit test can't see.
 describe("help DX surfaces (real binary)", () => {
   function helpEnv(): Record<string, string> {

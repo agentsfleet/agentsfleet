@@ -1,5 +1,5 @@
 // Direct Effect-layer tests for the memory read verbs: the ValidationError
-// guards commander normally pre-empts, table render order, JSON-mode
+// guards the parser normally pre-empts, table render order, JSON-mode
 // selection, workspace resolution, and the ServerError suggestion remap.
 // Pure render-helper tests live in memory-render.unit.test.ts (file cap).
 

@@ -17,6 +17,7 @@ import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { AUTH_SESSIONS_PATH, CLI_CREDENTIALS_PATH } from "../src/lib/api-paths.ts";
 import { CLI_CREDENTIAL_BODY_LEN, CLI_CREDENTIAL_PREFIX } from "../src/constants/cli-credential.ts";
 import { ServerError, type CliError } from "../src/errors/index.ts";
@@ -47,6 +48,7 @@ const makeRec = (): Rec => ({ stdout: [], stderr: [], cleared: [], calls: [] });
 
 const outputLayer = (rec: Rec, jsonMode = false): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    ...outputDouble({ jsonMode }),
     format: jsonMode ? OUTPUT_FORMAT.json : OUTPUT_FORMAT.text,
     info: (l: string) => Effect.sync(() => void rec.stdout.push(l)),
     success: (l: string, data?: unknown) =>
@@ -57,9 +59,6 @@ const outputLayer = (rec: Rec, jsonMode = false): Layer.Layer<Output> =>
     error: (l: string) => Effect.sync(() => void rec.stderr.push(l)),
     printJson: (v: unknown) =>
       Effect.sync(() => void rec.stdout.push(JSON.stringify(v))),
-    printKeyValue: () => Effect.void,
-    printSection: () => Effect.void,
-    printTable: () => Effect.void,
   } as unknown as Output);
 
 const analyticsLayer: Layer.Layer<Analytics> = Layer.succeed(Analytics, {

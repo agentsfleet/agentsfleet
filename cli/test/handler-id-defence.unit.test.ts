@@ -8,7 +8,8 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Layer } from "effect";
 
-import { Output, OUTPUT_FORMAT, type OutputShape } from "../src/services/output.ts";
+import { Output, type OutputShape } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
@@ -24,19 +25,7 @@ const WORKSPACE_ID = "0192a3b4-c5d6-7e8f-9012-3456789abcde";
 // check that silently stopped firing reach the network instead of failing
 // here, which is the opposite of what this file is for.
 const silentOutput = Layer.succeed(Output, {
-  stdoutIsTty: false,
-  format: OUTPUT_FORMAT.text,
-  intro: () => Effect.void,
-  info: () => Effect.void,
-  success: () => Effect.void,
-  warn: () => Effect.void,
-  error: () => Effect.void,
-  outro: () => Effect.void,
-  printJson: () => Effect.void,
-  printJsonErr: () => Effect.void,
-  printKeyValue: () => Effect.void,
-  printSection: () => Effect.void,
-  printTable: () => Effect.void,
+...outputDouble(),
 } as OutputShape);
 
 // The transport DIES rather than answering. The point of these tests is that

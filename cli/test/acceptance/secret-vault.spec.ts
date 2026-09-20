@@ -362,7 +362,7 @@ if (!isLive) {
 
     // Custom OpenAI-compatible endpoint secret — the typed secret-create
     // form stores provider + base_url; a non-https URL is rejected by the
-    // commander validator with NO network call.
+    // flag validator with NO network call.
     describe("custom OpenAI-compatible endpoint", () => {
       const customName = secretName("custom-endpoint");
 
