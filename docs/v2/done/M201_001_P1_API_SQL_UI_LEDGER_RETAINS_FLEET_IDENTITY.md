@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M201
 **Workstream:** 001
 **Date:** Sep 19, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — an operator reconciling a bill cannot tell which fleet spent what once that fleet is deleted, and no other surface answers it.
 **Categories:** API, SQL, UI
 **Batch:** B1 — schema precedes the writers, the writers precede the readers; one stream, no parallel context.
@@ -65,7 +65,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/src/lease/sql/renew.rs` | EDIT | The renewal path's ledger insert, same change — and the accumulate clause that must not list the column. |
 | `rustd/crates/afd_fleet/src/lease/sql/mod.rs` | EDIT | Holds the invariant both charging statements share: each captures the name, and neither accumulate path re-stamps it. Here because the rule is about the pair, and because `report.rs` sits within fifty lines of the length cap. |
 | `rustd/crates/afd_billing/src/tenant_sql.rs` | EDIT | Both charge-list statements select the new column. |
-| `rustd/crates/afd_billing/src/tenant/mod.rs` | EDIT | Charge row struct gains `fleet_name: Option<String>` and its decode. |
+| `rustd/crates/afd_billing/src/tenant/mod.rs` | EDIT | Charge row struct gains `fleet_name: Option<String>` and its decode, with coverage for a null and a populated value. |
 | `ui/packages/app/lib/types.ts` | EDIT | The charge type gains `fleet_name`. Corrected from `lib/api/tenant_billing.ts`, which authors the request and not the shape. |
 | `rustd/crates/afd_wire/src/tenant.rs` | EDIT | `ChargeSummary` gains the field — this struct carries `utoipa::ToSchema`, so it IS the public OpenAPI shape. `fleet_id`'s doc corrected: it no longer shares the workspace's deletion rule. |
 | `rustd/crates/afd_api_tenant/src/handler/tenant/billing.rs` | EDIT | `summary()` maps the new field onto the wire. |
@@ -74,12 +74,18 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/fleets/agent-label.ts` | EDIT | `agentDisplayName` takes the stored name and uses it instead of `DELETED_AGENT_LABEL` when the identifier is gone. |
 | `ui/packages/app/components/domain/AgentLabel.tsx` | EDIT | Optional `fleetName` prop, forwarded to the composer. Absent prop preserves today's rendering for the approvals and events callers. |
 | `ui/packages/app/app/(dashboard)/settings/billing/components/BillingUsageTab.tsx` | EDIT | The only caller that passes the new prop. |
-| `rustd/crates/afd_billing/src/tenant/mod.rs` tests | EDIT | Decode coverage for a null and a populated `fleet_name`. |
 | `ui/packages/app/tests/billing-charges.test.ts` | EDIT | The four label states, including that no combination renders blank. |
-| `ui/packages/app/tests/billing-charge-cell.test.tsx` | EDIT | Fixture gains the field; `tsc` catches its absence where vitest does not. |
-| `ui/packages/app/tests/billing-usage-tab.test.ts` | EDIT | Same fixture addition. |
-| `ui/packages/app/tests/identity-and-controls.test.tsx` | EDIT | Regression: the approvals and events callers still render the callsign with no prop passed. |
-| `rustd/crates/afd_fleet_lifecycle/tests/` | EDIT | Integration proof that a purge leaves the ledger row addressable and destroys everything else. |
+| `ui/packages/app/tests/billing-charge-cell.test.tsx`, `billing-usage-tab.test.ts` | EDIT | Fixtures gain the field, and the cell test renders a purged fleet's charge. `tsc` catches the absence where vitest does not. |
+| `rustd/crates/afd_fleet_lifecycle/tests/integration_purge_ledger_identity.rs` | CREATE | Integration proof that a purge leaves the ledger row addressable and destroys everything else. Kills the fleet first: only a killed fleet purges. |
+| `afd_fleet_lifecycle/src/purge.rs`, `src/sql/purge.rs` | EDIT | Comments only. Both still described the foreign key this slot removes (RULE NLR). |
+| `rustd/crates/afd_db/tests/integration_ledger_identity.rs` | CREATE | The applied column's shape, and slot 915 applied to a ledger that already holds charges — a fresh database has no rows for an upgrade to damage. |
+| `rustd/crates/afd_fleet/tests/integration_ledger_fleet_name.rs` | CREATE | All three writers capture the name; neither accumulate path re-stamps it; a rename reaches new charges and no old ones. |
+| `rustd/crates/afd_fleet/tests/integration_ledger_orphan_charge.rs` | CREATE | A charge whose fleet row cannot be read is still written, with the name NULL. Money must never be refused for want of a name. |
+| `rustd/crates/afd_fleet/tests/integration_ledger_reads.rs` | CREATE | The budget drain still reaches its index under a realistic fleet spread, and both charge-list statements decode the new column — including the resumed page, which no test reached before. |
+| `{afd_db,afd_fleet,afd_fleet_lifecycle}/tests/*_suite.rs` | EDIT | Each crate runs one test binary; the new files are declared there or they never run. |
+| `rustd/crates/afd_api/tests/tenant_shape_parity.rs` | EDIT | The wire-shape pin never learned `fleet_name`, so `afd_api`'s tenant_plane target did not compile. Repaired here. |
+| `rustd/crates/afd_api/tests/integration_tenant_money.rs` | EDIT | Seeds a fleet identifier and captured name on the ledger rows, and asserts both over HTTP on both pages — the only proof `summary()` maps the field rather than dropping or transposing it. |
+| `rustd/crates/agentsfleetd/tests/integration_runner_shapes.rs` | EDIT | The recorded ledger row shape predates the captured name. Its update is also the end-to-end proof: the column is POPULATED on a row the booted daemon wrote through the real settle path. |
 | `docs/AUTH.md` | EDIT | The `AUTH_SESSION_CODE_PEPPER` row barred disk outright while local development requires the value in a file for `docker-compose` to boot. Records the single permitted path, its mode, and why a real file inside a checkout is a defect. Folded in at the owner's direction — see Discovery. |
 | `docker-compose.yml` | EDIT | The daemon's `env_file` path becomes `${AGENTSFLEETD_ENV_FILE:-…}`, so an operator may point at the machine-level source directly instead of the per-worktree symlink. Default preserved, so an unset variable behaves as before. Folded in at the owner's direction — see Discovery. |
 
@@ -301,9 +307,7 @@ N/A — no files deleted.
 
   Two findings from that diagnosis are recorded here because they have no other home. **One:** the file was a real file rather than a symlink in the base checkout, at mode 0644 — a catastrophic-if-disclosed value world-readable on the machine. Hardened to 0600, and the AUTH.md note now names that shape as a defect. **Two:** `provision-env-1password` (dotfiles) writes only `ui.env.local` and `runner.env.local`, so the `agentsfleetd.env.local` source the hook links was never created; every knob in `preflight/knobs.rs` was audited and all are live, while `AUDIT_LOG_PEPPER` — retired in M196_001 and carried by the local file alone — was stripped with the owner's approval. The provisioner change itself lands in the dotfiles repository, not here.
 
-- **Dimension 3.2 tier lowered, e2e → component (Sep 19, 2026)** — the spec asked for a Playwright acceptance test. Written instead as a component test over `BillingUsageTab` in `ui/packages/app/tests/billing-charge-cell.test.tsx`. The acceptance lane needs Clerk credentials, a running app and a live daemon, and it is the lane `fix/m200-acceptance-cli-lane` exists to repair — a spec asserted only by a suite this workstream cannot run is not asserted. The component test makes the same three claims the row named, and the round trip the browser would have added is covered from the server side by Dimension 3.1, which reads the field back through `Billing::charges`. Surfaced to Indy with the cost of each option before it was written.
-
-  > Indy (2026-09-19): "yes go" — in answer to the tier question and the docs-repo branch, both named as open decisions in the message immediately preceding.
+- **Dimension 3.2 tier lowered, e2e → component (Sep 19, 2026)** — the spec asked for a Playwright acceptance test. Written instead as a component test over `BillingUsageTab` in `ui/packages/app/tests/billing-charge-cell.test.tsx`. The acceptance lane needs Clerk credentials, a running app and a live daemon, and it is the lane `fix/m200-acceptance-cli-lane` exists to repair — a spec asserted only by a suite this workstream cannot run is not asserted. The component test makes the same three claims the row named, and the round trip the browser would have added is covered from the server side by Dimension 3.1, which reads the field back through `Billing::charges`. Surfaced to Indy with the cost of each option before it was written; his answer, verbatim, was "yes go" (2026-09-19), given to a message naming the tier question and the docs-repo branch as the two open decisions.
 
 - **Docs-repo branch opened on the owner's approval (Sep 19, 2026)** — the quote above authorises it. `chore/m201-ledger-fleet-identity-changelog` is a worktree at `~/Projects/docs-m201-ledger-identity`, branched from `origin/main` rather than checked out in `~/Projects/docs`, because that checkout sits on `chore/m200-whoami-changelog` holding two unpushed commits that are not this workstream's to move. The changelog `<Update>` is the only page owed: the docs site renders its API reference straight from `public/openapi.json` on `main` (`docs.json:109`), which this branch already regenerated, so the new field documents itself. Commit `5944c97`, `make test` green, `gitleaks` clean.
 
