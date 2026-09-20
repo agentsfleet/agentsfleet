@@ -38,12 +38,6 @@ mod integration_credential_mint;
 mod integration_delivery_lookup;
 #[path = "integration_gate_grants.rs"]
 mod integration_gate_grants;
-#[path = "integration_ledger_fleet_name.rs"]
-mod integration_ledger_fleet_name;
-#[path = "integration_ledger_orphan_charge.rs"]
-mod integration_ledger_orphan_charge;
-#[path = "integration_ledger_reads.rs"]
-mod integration_ledger_reads;
 #[path = "integration_lease_affinity.rs"]
 mod integration_lease_affinity;
 #[path = "integration_lease_assign.rs"]
@@ -58,6 +52,12 @@ mod integration_lease_installed;
 mod integration_lease_issue;
 #[path = "integration_lease_started.rs"]
 mod integration_lease_started;
+#[path = "integration_ledger_fleet_name.rs"]
+mod integration_ledger_fleet_name;
+#[path = "integration_ledger_orphan_charge.rs"]
+mod integration_ledger_orphan_charge;
+#[path = "integration_ledger_reads.rs"]
+mod integration_ledger_reads;
 #[path = "integration_memory_capture.rs"]
 mod integration_memory_capture;
 #[path = "integration_money_gates.rs"]

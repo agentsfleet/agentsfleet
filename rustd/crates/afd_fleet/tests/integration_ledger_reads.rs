@@ -132,11 +132,7 @@ async fn test_m201_budget_drain_plan_unchanged() {
 /// what permits: the column stopped being a foreign key, so a ledger row may
 /// now name a fleet that does not exist. Seeding this way needs no fleet rows,
 /// no install, and no cleanup beyond the enclosing rollback.
-async fn seed_decoy_charges(
-    connection: &mut sqlx::PgConnection,
-    held: &Held,
-    workspace: &str,
-) {
+async fn seed_decoy_charges(connection: &mut sqlx::PgConnection, held: &Held, workspace: &str) {
     sqlx::query(
         "INSERT INTO billing.usage_ledger
            (id, tenant_id, workspace_id, fleet_id, event_id,
