@@ -32,6 +32,8 @@ import { childrenOf, resolveCommandPath, type CommandNode } from "../tree/resolv
 
 const OPTIONS_PLACEHOLDER = "[options]" as const;
 const OPTIONAL_TAG = "Optional" as const;
+const FLAG_KIND = "flag" as const;
+const FLAG_PREFIX = "--" as const;
 
 export interface HouseRejection {
   readonly code: RejectionCode;
@@ -127,6 +129,41 @@ const unwrapShowHelp = (error: unknown): CliError.CliError | null => {
 };
 
 /**
+ * The refusal sentence, in this repository's spelling rather than the library's.
+ *
+ * The library composes `Invalid value for argument <fleet_id>: "x". Expected:
+ * <what the filter said>`, which reads "Expected: expected uuidv7 format" once
+ * the filter supplies a sentence of its own, and drops the `invalid <name>:`
+ * stem every other refusal in this CLI opens with. `InvalidValue` carries
+ * `option`, `value`, `expected` and `kind` as fields, so the house sentence is
+ * rebuilt from those rather than parsed back out of the composed one.
+ *
+ * The stem matches `validateRequiredId` in `lib/id.ts`, and that is the point:
+ * the parser refuses a malformed id before a handler runs, the handler refuses
+ * one that never passed through a flag, and a person who hits either path reads
+ * the same sentence. Two spellings of one rule is what this replaces.
+ *
+ * Flags and positionals take the SAME shape. Splitting them by kind would
+ * rebuild the inconsistency one layer down, and nothing pins the library's
+ * flag wording — `options-metavar.spec.ts` asserts the stem alone, which is
+ * the rule an operator has to satisfy.
+ *
+ * The offending value is kept. A flag buried in a long invocation is the case
+ * where "which one was wrong" is not obvious from the line just typed.
+ *
+ * `kind` is read for ONE thing: a flag is named the way it was typed. The
+ * field carries the bare word, so `--` is restored — `invalid fleet:` sends
+ * someone looking for a positional they never passed.
+ */
+const houseDetail = (rejected: CliError.CliError): string => {
+  if (rejected instanceof CliError.InvalidValue) {
+    const name = rejected.kind === FLAG_KIND ? `${FLAG_PREFIX}${rejected.option}` : rejected.option;
+    return `invalid ${name}: ${rejected.expected} (got ${JSON.stringify(rejected.value)})`;
+  }
+  return rejected.message;
+};
+
+/**
  * The house shape for a library parse failure, or null if it is not one.
  *
  * Null means the caller should leave the error alone: a help document, or
@@ -143,7 +180,7 @@ export const houseRejection = (
   if (code === undefined) return null;
   return {
     code,
-    detail: rejected.message,
+    detail: houseDetail(rejected),
     suggestion: suggestionFor(root, resolveCommandPath(root, argv)),
   };
 };

@@ -14,11 +14,14 @@ const APPROVALS = `/v1/workspaces/${WS_ID}/approvals`;
 const BLAST =
   "up to 32 write-credential requests, one branch, and one draft Pull Request in the bound repository";
 
+// A kind a fleet authors in its own `TRIGGER.md`. It is deliberately not the
+// retired write kind: the daemon raises no such card any longer, so a
+// fixture spelling it would pin the client against a row the API cannot emit.
 const gate = (overrides: Record<string, unknown> = {}) => ({
   gate_id: GATE_ID,
   fleet_id: FLEET_ID,
   fleet_name: "pr-reviewer",
-  gate_kind: "repository_write",
+  gate_kind: "destructive_action",
   tool_name: "chat",
   status: "pending",
   proposed_action: "open a pull request",
@@ -70,7 +73,7 @@ describe("approvals commands", () => {
         const text = out.read();
         expect(text).toContain(GATE_ID);
         expect(text).toContain(OTHER_GATE_ID);
-        expect(text).toContain("repository_write");
+        expect(text).toContain("destructive_action");
         expect(text).toContain("integration_grant");
         expect(text).toContain("pending");
         expect(text).toContain("approved");

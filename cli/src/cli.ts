@@ -41,6 +41,7 @@ import { CommandGuard, GuardRefused } from "./runtime/guard.service.ts";
 import { withCommandInstrumentation } from "./services/telemetry/command-instrumentation.ts";
 import { detectJsonMode, maybePrintVersion, resolveGlobalApiUrl } from "./program/entry/argv-scan.ts";
 import { consoleForStreams } from "./program/entry/console-bridge.ts";
+import { deferredHelp, type DeferredHelp } from "./program/entry/deferred-help.ts";
 import { helpFormatter } from "./program/entry/help-formatter.ts";
 import {
   exitCodeForFailure,
@@ -174,6 +175,12 @@ export async function runCli(
   //
   // The library's own parse failures are the exception — it has already
   // written them, and their code comes from the exit-code map instead.
+  // In JSON mode the library's help document is held back until the outcome
+  // says whether it belongs on stdout — see `deferred-help.ts`. Outside JSON
+  // mode there is nothing to decide, so the real stream is used directly.
+  const heldHelp: DeferredHelp | null = jsonMode ? deferredHelp(stdout) : null;
+  const libraryStdout = heldHelp?.stream ?? stdout;
+
   const program = Command.runWith(rootCommand, { version: VERSION, renderErrors: false })(effectiveArgv).pipe(
     withCommandInstrumentation(),
     Effect.exit,
@@ -184,14 +191,14 @@ export async function runCli(
       // under the sentence it already printed.
       if (isGuardRefusal(exit.cause)) return Effect.succeed(exitCodeForFailure(exit.cause));
       return isLibraryUsageError(exit.cause)
-        ? Effect.succeed(renderLibraryFailure(exit.cause, tree, argv, stderr, jsonMode))
+        ? Effect.succeed(renderLibraryFailure(exit.cause, tree, argv, stderr, jsonMode, heldHelp))
         : renderAndCount(exit as Exit.Exit<unknown, never>);
     }),
     // The library renders help and parse errors through Console. Left alone
     // that reaches the real process streams, which would strand every test
     // that injected its own and break runCli's promise to write only where it
     // was told.
-    Effect.provideService(Console.Console, consoleForStreams(stdout, stderr)),
+    Effect.provideService(Console.Console, consoleForStreams(libraryStdout, stderr)),
     Effect.provide(CliOutput.layer(helpFormatter())),
     Effect.provide(layer),
     Effect.provide(managedExitCode.layer),
@@ -200,6 +207,9 @@ export async function runCli(
   );
 
   const exit = await Effect.runPromiseExit(program as Effect.Effect<number, never, never>);
+  // Help that no rejection spoke over is a person's help: it prints. `flush`
+  // is a no-op once `renderLibraryFailure` has discarded.
+  heldHelp?.flush();
   // The pipeline above turns every outcome into a number, so a failure here is
   // the runtime itself falling over rather than a command failing.
   if (Exit.isFailure(exit)) return exitCodeForFailure(exit.cause);
@@ -242,10 +252,15 @@ function renderLibraryFailure(
   argv: readonly string[],
   stderr: WritableStreamLike,
   jsonMode: boolean,
+  heldHelp: DeferredHelp | null,
 ): number {
   const rejection = houseRejection(Cause.squash(cause), tree, argv);
   if (rejection !== null) {
     if (jsonMode) {
+      // The envelope is the whole answer for a machine. The help document the
+      // library rendered beneath the parse failure is dropped rather than
+      // printed, so stdout stays parseable.
+      heldHelp?.discard();
       printJson(stderr, {
         error: { code: rejection.code, message: rejection.detail },
       });

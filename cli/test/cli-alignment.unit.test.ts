@@ -17,9 +17,9 @@ test("--help lists the fleet subcommand group", async () => {
   });
   assert.equal(code, 0);
   const text = out.read();
-  // Commander emits a flat Commands list — each fleet op gets its
-  // own line in the top-level body. The added Subcommands block lists
-  // the namespaced secret vault.
+  // The top-level body is a flat Commands list — each fleet op gets its
+  // own line. The Subcommands block below it lists the namespaced secret
+  // vault.
   assert.ok(text.includes("install"), "install line missing");
   assert.ok(text.includes("list"),    "list line missing");
   assert.ok(text.includes("status"),  "status line missing");
