@@ -114,11 +114,12 @@ The statement's conflict arm becomes a converge: `resumes_event_id` is set to th
 
 **Implementation default:** converge on the shared statement rather than carry the predecessor on the stream entry, because it touches three files, changes no wire type, and makes lineage a property of the row rather than of which process got there first. The entry-carried design is named in Decomposition as the refactor.
 
-- **Dimension 1.1** — lease first, approval second: the row ends with the predecessor set → Test `test_lineage_survives_lease_before_approval`
-- **Dimension 1.2** — approval first, lease second: the predecessor is kept and the lease is classified a redelivery, as today → Test `test_lineage_kept_when_approval_writes_first`
-- **Dimension 1.3** — a redelivery with no predecessor never clears one already set → Test `test_redelivery_never_clears_lineage`
-- **Dimension 1.4** — the tail frame is published once and the counters move once, across both orders → Test `test_first_delivery_flag_matches_rows_affected_semantics`
-- **Dimension 1.5** — the five existing continuation proofs still pass unchanged → Test `test_existing_continuation_suite_green`
+- **Dimension 1.1** DONE — lease first, approval second: the row ends with the predecessor set → Test `lineage_survives_lease_before_approval`
+- **Dimension 1.2** DONE — approval first, lease second: the predecessor is kept and the second writer observes the conflict arm, as today → Test `lineage_kept_when_approval_writes_first`
+- **Dimension 1.3** DONE — a redelivery with no predecessor never clears one already set → Test `a_redelivery_never_clears_lineage`
+- **Dimension 1.4** DONE — only a fresh insert reports `inserted`; a converging write does not → Test `only_a_fresh_insert_reports_inserted`
+- **Dimension 1.6** — with the lease path's row already present, the approval path publishes no tail frame and moves no counter → Test `a_converged_continuation_announces_nothing`
+- **Dimension 1.5** DONE — the five existing continuation proofs still pass unchanged → Test `integration_inbox_continuation`
 
 ### §2 — The ledger's arbiter carries the fleet
 
@@ -201,11 +202,12 @@ The race's occurrence rate is not instrumented: the converge arm makes it harmle
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | integration | `test_lineage_survives_lease_before_approval` | admit a continuation for gate G on event X; run the lease path's `record_received` first, then the approval path's insert → the row's `resumes_event_id` = X |
-| 1.2 | integration | `test_lineage_kept_when_approval_writes_first` | approval insert first, lease second → `resumes_event_id` = X and the lease's `Received.delivery` is the redelivery variant, as on the unmodified statement |
-| 1.3 | integration | `test_redelivery_never_clears_lineage` | row with X set; a second `record_received` (predecessor None) → still X |
-| 1.4 | integration | `test_first_delivery_flag_matches_rows_affected_semantics` | in both orders exactly one writer observes `inserted = true`; the tail publishes one `EventReceived`; `events_processed` advances by one |
-| 1.5 | integration | `test_existing_continuation_suite_green` | the five tests in `integration_inbox_continuation.rs` pass unchanged (regression) |
+| 1.1 | integration | `lineage_survives_lease_before_approval` | run `INSERT_FLEET_EVENT` for (F, X) binding no predecessor, then again binding P → the row's `resumes_event_id` = P, one row, second write reports `inserted = false` |
+| 1.2 | integration | `lineage_kept_when_approval_writes_first` | the same two writes in the other order → `resumes_event_id` = P survives a writer that binds none, one row, second write reports `inserted = false` |
+| 1.3 | integration | `a_redelivery_never_clears_lineage` | row with P set; three further writes binding None → still P, one row, every one reports `inserted = false` |
+| 1.4 | integration | `only_a_fresh_insert_reports_inserted` | first write reports `inserted = true`; an identical second and a converging third both report `false` |
+| 1.6 | integration | `a_converged_continuation_announces_nothing` | with the lease path's row already present for (F, X), `continue_from` publishes no `EventReceived` and leaves `events_processed` unmoved. The existing `a_second_answer_does_not_continue_the_run_again` does NOT cover this: its second resolve is stopped by the gate's `WHERE status = 'pending'` guard before it reaches `continue_from` |
+| 1.5 | integration | `integration_inbox_continuation` | its five tests pass unchanged against the converged statement (regression); run of Sep 20, 2026 recorded all five green |
 | 2.1 | integration | `test_ledger_key_shape_on_fresh_bootstrap` | `pg_constraint` holds `uq_usage_ledger_fleet_id_event_id_charge_type`, not the old name; `attnotnull` true for `fleet_id` |
 | 2.2 | integration | `test_ledger_key_shape_after_upgrade` | apply slots through 915, seed one charge, apply 916 → same shape, row retained |
 | 2.3 | integration | `test_same_event_id_two_fleets_two_rows` | two fleets in one tenant charged under one `event_id` string → two rows; each `credit_deducted_nanos` equals its own charge |
