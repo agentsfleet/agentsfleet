@@ -11,6 +11,7 @@ import { formatTimestamp, logsEffectFromFlags } from "../src/commands/fleet_logs
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { wsFleetEventsPath } from "../src/lib/api-paths.ts";
@@ -47,9 +48,8 @@ const outputLayer = (
   format: OutputFormat = OUTPUT_FORMAT.text,
 ): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    stdoutIsTty: false,
+    ...outputDouble(),
     format,
-    intro: () => Effect.void,
     info: (line: string) =>
       Effect.sync(() => {
         spy.infoLines.push(line);
@@ -58,17 +58,10 @@ const outputLayer = (
       Effect.sync(() => {
         if (format === OUTPUT_FORMAT.json) spy.jsonPayloads.push(data);
       }),
-    warn: () => Effect.void,
-    error: () => Effect.void,
-    outro: () => Effect.void,
     printJson: (value: unknown) =>
       Effect.sync(() => {
         spy.jsonPayloads.push(value);
       }),
-    printJsonErr: () => Effect.void,
-    printKeyValue: () => Effect.void,
-    printSection: () => Effect.void,
-    printTable: () => Effect.void,
   });
 
 // Records the request path so the cursor query-string can be asserted, and

@@ -1,6 +1,6 @@
 // Direct Effect-layer tests for eventsEffectFromFlags — covers the
 // ValidationError guard (missing fleetId) that is unreachable via the
-// normal CLI path because commander enforces <fleet_id> as a required
+// normal CLI path because the tree enforces <fleet_id> as a required
 // positional before the handler runs.
 
 import { describe, test, expect } from "bun:test";
@@ -9,7 +9,8 @@ import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { eventsEffectFromFlags } from "../src/commands/fleet_events.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient } from "../src/services/http-client.ts";
-import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { Output } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { ValidationError, type CliError } from "../src/errors/index.ts";
@@ -30,19 +31,7 @@ const configLayer = (): Layer.Layer<CliConfig> =>
 
 const outputLayer = (): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    stdoutIsTty: false,
-    format: OUTPUT_FORMAT.text,
-    intro: () => Effect.void,
-    info: () => Effect.void,
-    success: () => Effect.void,
-    warn: () => Effect.void,
-    error: () => Effect.void,
-    outro: () => Effect.void,
-    printJson: () => Effect.void,
-    printJsonErr: () => Effect.void,
-    printKeyValue: () => Effect.void,
-    printSection: () => Effect.void,
-    printTable: () => Effect.void,
+  ...outputDouble(),
   });
 
 const httpClientLayer = (): Layer.Layer<HttpClient> =>

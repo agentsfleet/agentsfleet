@@ -13,6 +13,7 @@ import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { Input } from "../src/services/input.ts";
 import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { Stdin } from "../src/services/stdin.ts";
 import {
   TelemetryRuntime,
@@ -28,7 +29,7 @@ const outputLayer = (
   format: OutputFormat = OUTPUT_FORMAT.text,
 ): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    stdoutIsTty: false,
+    ...outputDouble(),
     format,
     intro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     info: (msg) => Effect.sync(() => rec.stdout.push(msg)),
@@ -50,7 +51,6 @@ const outputLayer = (
         for (const [k, v] of Object.entries(record)) rec.stdout.push(`  ${k}: ${v}`);
       }),
     printSection: (title) => Effect.sync(() => rec.stdout.push(`# ${title}`)),
-    printTable: () => Effect.void,
   });
 
 const inputLayer = (rec: Recorder, code: string): Layer.Layer<Input> =>

@@ -11,7 +11,8 @@ import { libraryEffect } from "../src/commands/fleet_library.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
-import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { Output } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 
 const TOKEN = "test.jwt.templates";
@@ -57,8 +58,7 @@ const makeLayer = (
       save: () => Effect.void,
     }),
     Layer.succeed(Output, {
-      stdoutIsTty: false,
-      format: jsonMode ? OUTPUT_FORMAT.json : OUTPUT_FORMAT.text,
+      ...outputDouble({ jsonMode }),
       intro: (m) => Effect.sync(() => { captured.push(m); }),
       info: (m) => Effect.sync(() => { captured.push(m); }),
       success: (m, d) => Effect.sync(() => { captured.push(d ? JSON.stringify(d) : m); }),
@@ -67,8 +67,6 @@ const makeLayer = (
       outro: (m) => Effect.sync(() => { captured.push(m); }),
       printJson: (p) => Effect.sync(() => { captured.push(JSON.stringify(p)); }),
       printJsonErr: (p) => Effect.sync(() => { captured.push(JSON.stringify(p)); }),
-      printKeyValue: () => Effect.void,
-      printSection: () => Effect.void,
       printTable: (columns, rows) =>
         Effect.sync(() => { tables.push({ columns, rows }); }),
     }),
@@ -227,18 +225,8 @@ describe("libraryEffect — a gallery larger than one page", () => {
           }),
       }),
       Layer.succeed(Output, {
-        stdoutIsTty: false,
-        format: OUTPUT_FORMAT.text,
-        intro: () => Effect.void,
+        ...outputDouble(),
         info: (m) => Effect.sync(() => { captured.push(m); }),
-        success: () => Effect.void,
-        warn: () => Effect.void,
-        error: () => Effect.void,
-        outro: () => Effect.void,
-        printJson: () => Effect.void,
-        printJsonErr: () => Effect.void,
-        printKeyValue: () => Effect.void,
-        printSection: () => Effect.void,
         printTable: (columns, rows) => Effect.sync(() => { tables.push({ columns, rows }); }),
       }),
     );

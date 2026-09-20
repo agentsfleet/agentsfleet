@@ -12,7 +12,8 @@ import {
 import { CliConfig, type CliConfigShape } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
-import { Output, type OutputShape, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { Output, type OutputShape } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000000001";
@@ -45,18 +46,10 @@ const outputLayer = (cap: Capture): Layer.Layer<Output> =>
   Layer.succeed(
     Output,
     Output.of({
-      stdoutIsTty: false,
-      format: OUTPUT_FORMAT.text,
-      intro: () => Effect.void,
+      ...outputDouble(),
       info: (msg) => Effect.sync(() => { cap.infos.push(msg); }),
       success: (msg) => Effect.sync(() => { cap.successes.push(msg); }),
-      warn: () => Effect.void,
-      error: () => Effect.void,
-      outro: () => Effect.void,
       printJson: (payload) => Effect.sync(() => { cap.jsons.push(payload); }),
-      printJsonErr: () => Effect.void,
-      printKeyValue: () => Effect.void,
-      printSection: () => Effect.void,
       printTable: (columns, rows) => Effect.sync(() => { cap.tables.push({ columns, rows }); }),
     } satisfies OutputShape),
   );

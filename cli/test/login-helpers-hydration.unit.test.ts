@@ -10,7 +10,8 @@ import {
   HttpClient,
   type HttpRequestInput,
 } from "../src/services/http-client.ts";
-import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { Output } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import {
   Workspaces,
   type WorkspacesValue,
@@ -31,19 +32,8 @@ const makeRec = (): Rec => ({ stderr: [], saved: 0, savedValue: null });
 
 const outputLayer = (rec: Rec): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    stdoutIsTty: false,
-    format: OUTPUT_FORMAT.text,
-    intro: () => Effect.void,
-    info: () => Effect.void,
-    success: () => Effect.void,
+    ...outputDouble(),
     warn: (msg) => Effect.sync(() => rec.stderr.push(msg)),
-    error: () => Effect.void,
-    outro: () => Effect.void,
-    printJson: () => Effect.void,
-    printJsonErr: () => Effect.void,
-    printKeyValue: () => Effect.void,
-    printSection: () => Effect.void,
-    printTable: () => Effect.void,
   });
 
 const httpLayer = (

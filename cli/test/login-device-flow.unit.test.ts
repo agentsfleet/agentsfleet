@@ -20,7 +20,8 @@ import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
 import { Input } from "../src/services/input.ts";
-import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { Output } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import {
   AuthError,
   DecryptError,
@@ -36,36 +37,13 @@ import {
 // functions above need no layers; the helpers below drive Credentials,
 // Input, Output, CliConfig, HttpClient through Layer.succeed stubs.
 const outputNoop: Layer.Layer<Output> = Layer.succeed(Output, {
-  stdoutIsTty: false,
-  format: OUTPUT_FORMAT.text,
-  intro: () => Effect.void,
-  info: () => Effect.void,
-  success: () => Effect.void,
-  warn: () => Effect.void,
-  error: () => Effect.void,
-  outro: () => Effect.void,
-  printJson: () => Effect.void,
-  printJsonErr: () => Effect.void,
-  printKeyValue: () => Effect.void,
-  printSection: () => Effect.void,
-  printTable: () => Effect.void,
+...outputDouble(),
 });
 
 const outputRecording = (rec: { warnings: string[] }): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    stdoutIsTty: false,
-    format: OUTPUT_FORMAT.text,
-    intro: () => Effect.void,
-    info: () => Effect.void,
-    success: () => Effect.void,
+    ...outputDouble(),
     warn: (msg) => Effect.sync(() => rec.warnings.push(msg)),
-    error: () => Effect.void,
-    outro: () => Effect.void,
-    printJson: () => Effect.void,
-    printJsonErr: () => Effect.void,
-    printKeyValue: () => Effect.void,
-    printSection: () => Effect.void,
-    printTable: () => Effect.void,
   });
 
 const inputReturning = (answer: string): Layer.Layer<Input> =>

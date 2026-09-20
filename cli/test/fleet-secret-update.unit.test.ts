@@ -14,6 +14,7 @@ import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { ServerError, ValidationError, type CliError } from "../src/errors/index.ts";
 
@@ -33,7 +34,7 @@ const makeOutputLayer = (
   format: OutputFormat = OUTPUT_FORMAT.text,
 ): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    stdoutIsTty: false,
+    ...outputDouble({ format }),
     format,
     intro: (msg) => Effect.sync(() => { captured.push(msg); }),
     info: (msg) => Effect.sync(() => { captured.push(msg); }),

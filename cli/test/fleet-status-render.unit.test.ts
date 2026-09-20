@@ -9,7 +9,8 @@ import { Effect, Exit, Layer, Option, Redacted } from "effect";
 import { statusEffect } from "../src/commands/fleet.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
-import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { Output } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { Credentials } from "../src/services/credentials.ts";
 
@@ -36,22 +37,11 @@ const configLayer = (): Layer.Layer<CliConfig> =>
 
 const capturingOutput = (sink: Array<Record<string, string>>): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    stdoutIsTty: false,
-    format: OUTPUT_FORMAT.text,
-    intro: () => Effect.void,
-    info: () => Effect.void,
-    success: () => Effect.void,
-    warn: () => Effect.void,
-    error: () => Effect.void,
-    outro: () => Effect.void,
-    printJson: () => Effect.void,
-    printJsonErr: () => Effect.void,
+    ...outputDouble(),
     printKeyValue: (kv: Record<string, string>) => {
       sink.push(kv);
       return Effect.void;
     },
-    printSection: () => Effect.void,
-    printTable: () => Effect.void,
   });
 
 const httpClientLayer = (): Layer.Layer<HttpClient> =>

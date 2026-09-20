@@ -15,6 +15,7 @@ import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { DOCTOR_CHECK } from "../src/constants/doctor-checks.ts";
 
@@ -34,7 +35,7 @@ const outputLayer = (
   format: OutputFormat = OUTPUT_FORMAT.text,
 ): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    stdoutIsTty: false,
+    ...outputDouble(),
     format,
     intro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     info: (msg) => Effect.sync(() => rec.stdout.push(msg)),
@@ -51,9 +52,7 @@ const outputLayer = (
     outro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     printJson: (payload) => Effect.sync(() => rec.stdout.push(JSON.stringify(payload))),
     printJsonErr: (payload) => Effect.sync(() => rec.stderr.push(JSON.stringify(payload))),
-    printKeyValue: () => Effect.void,
     printSection: (title) => Effect.sync(() => rec.stdout.push(`# ${title}`)),
-    printTable: () => Effect.void,
   });
 
 // No stored token + config.accessToken=none → resolveAuthToken fails

@@ -8,7 +8,7 @@
 //
 //   - openai-compatible + https base_url + model succeeds and POSTs a
 //     secret whose `data` carries { provider, base_url, model, api_key? }.
-//   - a non-https `--base-url` is rejected by the commander option validator:
+//   - a non-https `--base-url` is rejected by its flag validator:
 //     exit non-zero, human-text stderr, and ZERO network calls — the mock's
 //     `calls` ledger proves the rejection happened at PARSE time, before any
 //     fetch. Full SSRF validation stays server-side (base_url_guard.zig).

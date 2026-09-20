@@ -6,7 +6,8 @@ import { EVENT_STATUS } from "../src/constants/event-status.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
-import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { Output } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { ReplSignalEmitter, type ReplInputStream, type ReplOutputStream } from "../src/lib/repl.ts";
 import type { StreamGetCallback } from "../src/lib/sse.ts";
@@ -86,8 +87,7 @@ const testLayer = (
         }),
     }),
     Layer.succeed(Output, {
-      stdoutIsTty: false,
-      format: OUTPUT_FORMAT.text,
+      ...outputDouble(),
       intro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
       info: (msg) => Effect.sync(() => rec.stdout.push(msg)),
       success: (msg) => Effect.sync(() => rec.stdout.push(msg)),
@@ -96,9 +96,6 @@ const testLayer = (
       outro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
       printJson: (payload) => Effect.sync(() => rec.stdout.push(JSON.stringify(payload))),
       printJsonErr: (payload) => Effect.sync(() => rec.stderr.push(JSON.stringify(payload))),
-      printKeyValue: () => Effect.void,
-      printSection: () => Effect.void,
-      printTable: () => Effect.void,
     }),
   );
 

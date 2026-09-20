@@ -209,7 +209,7 @@ if (!isLive) {
 
       it("logs --json returns a parseable envelope", async () => {
         // `--since` lives on `events`, NOT `logs` (`logs` only takes
-        // `--fleet`, `--limit`, `--cursor`); commander would exit 1 on
+        // `--fleet`, `--limit`, `--cursor`); an unknown flag exits 4 on
         // an unknown flag. The recency bound here was misplaced — the
         // intent is just to exercise the read path on a real fleet.
         const result = await runWithEnv(["logs", "--fleet", fleetId, "--json"]);

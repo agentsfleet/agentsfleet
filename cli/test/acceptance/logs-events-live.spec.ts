@@ -24,7 +24,7 @@
  *     assertion would flake the moment the timeline is served newest-first.
  *
  * Negative paths (no network residue / structured errors):
- *   - `events` with a missing `<fleet_id>` rejected by commander
+ *   - `events` with a missing `<fleet_id>` rejected by the parser
  *   - `logs --limit` out of bounds rejected client-side (EVENTS_LIMIT_BOUNDS)
  *
  * Teardown: prefix-scoped `cleanWorkspaceFleets` — only this run's fleets
@@ -239,7 +239,7 @@ if (!isLive) {
     });
 
     describe("negative paths (no residue)", () => {
-      it("events with no <fleet_id> is rejected by commander", async () => {
+      it("events with no <fleet_id> is rejected before any request", async () => {
         const result = await expectMissingArg([EVENTS_COMMAND], env);
         assertNoSecretLeak(result, sessionJwt);
       });

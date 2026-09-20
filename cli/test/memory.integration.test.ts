@@ -64,7 +64,7 @@ describe("memory list — human table on a terminal", () => {
   test("test_memory_list_flags_and_validation: --category and --limit forward on the wire", async () => {
     // The invalid-value half of this dimension (`--limit 0` → usage error,
     // zero requests) lives at the subprocess tier (acceptance/memory-read
-    // .spec.ts): commander's exitOverride applies to the root command only,
+    // .spec.ts): the parser renders its own refusals, so this path asserts
     // so an invalid option value on a subcommand process.exit()s an
     // in-process runCli — the same reason json-contract.test.ts carries a
     // recursive silenceTree().

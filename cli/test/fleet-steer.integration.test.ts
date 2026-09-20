@@ -22,7 +22,8 @@ import { EVENT_STATUS } from "../src/constants/event-status.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
-import { Output, type OutputShape, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { Output, type OutputShape } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import type { StreamGetCallback } from "../src/lib/sse.ts";
 import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts";
@@ -98,8 +99,7 @@ export const makeLayer = (
         Effect.sync(() => { rec.requests.push(input); return httpReply<T>(input); }),
     }),
     Layer.succeed(Output, {
-      stdoutIsTty: false,
-      format: jsonMode ? OUTPUT_FORMAT.json : OUTPUT_FORMAT.text,
+      ...outputDouble({ jsonMode }),
       intro: (m) => Effect.sync(() => { rec.stdout.push(m); }),
       info: (m) => Effect.sync(() => { rec.stdout.push(m); }),
       success: (m, d) =>
@@ -109,9 +109,6 @@ export const makeLayer = (
       outro: (m) => Effect.sync(() => { rec.stdout.push(m); }),
       printJson: (p) => Effect.sync(() => { rec.stdout.push(JSON.stringify(p)); }),
       printJsonErr: (p) => Effect.sync(() => { rec.stderr.push(JSON.stringify(p)); }),
-      printKeyValue: () => Effect.void,
-      printSection: () => Effect.void,
-      printTable: () => Effect.void,
       ...outputOverrides,
     }),
   );

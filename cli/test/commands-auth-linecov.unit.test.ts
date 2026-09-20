@@ -11,6 +11,7 @@ import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 
 const API_URL = "https://api.test.local";
 const FIXED_SAVED_AT = 1700000000000;
@@ -41,7 +42,7 @@ const outputLayer = (
   format: OutputFormat = OUTPUT_FORMAT.text,
 ): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    stdoutIsTty: false,
+    ...outputDouble(),
     format,
     intro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     info: (msg) => Effect.sync(() => rec.stdout.push(msg)),

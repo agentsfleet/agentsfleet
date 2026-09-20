@@ -7,6 +7,7 @@ import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
 import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import type { CliError, NetworkError, ServerError } from "../src/errors/index.ts";
@@ -37,21 +38,14 @@ export const outputLayer = (
   format: OutputFormat = OUTPUT_FORMAT.text,
 ): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    stdoutIsTty: false,
+    ...outputDouble(),
     format,
-    intro: () => Effect.void,
     info: (msg) => Effect.sync(() => { cap.infos.push(msg); }),
     success: (_msg, data) =>
       Effect.sync(() => {
         if (format === OUTPUT_FORMAT.json) cap.jsons.push(data);
       }),
-    warn: () => Effect.void,
-    error: () => Effect.void,
-    outro: () => Effect.void,
     printJson: (payload) => Effect.sync(() => { cap.jsons.push(payload); }),
-    printJsonErr: () => Effect.void,
-    printKeyValue: () => Effect.void,
-    printSection: () => Effect.void,
     printTable: (columns, rows) => Effect.sync(() => { cap.tables.push({ columns, rows }); }),
   });
 

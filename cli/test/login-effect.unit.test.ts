@@ -22,7 +22,8 @@ import {
   type HttpRequestInput,
 } from "../src/services/http-client.ts";
 import { Input } from "../src/services/input.ts";
-import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { Output } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { Stdin } from "../src/services/stdin.ts";
 import {
   TelemetryRuntime,
@@ -54,8 +55,7 @@ const makeRec = (): Rec => ({ stdout: [], stderr: [] });
 
 const outputLayer = (rec: Rec): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    stdoutIsTty: false,
-    format: OUTPUT_FORMAT.text,
+    ...outputDouble(),
     intro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     info: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     success: (msg) => Effect.sync(() => rec.stdout.push(`ok: ${msg}`)),
@@ -69,7 +69,6 @@ const outputLayer = (rec: Rec): Layer.Layer<Output> =>
         for (const [k, v] of Object.entries(record)) rec.stdout.push(`  ${k}: ${v}`);
       }),
     printSection: (title) => Effect.sync(() => rec.stdout.push(`# ${title}`)),
-    printTable: () => Effect.void,
   });
 
 const inputAlwaysEmpty: Layer.Layer<Input> = Layer.succeed(Input, {
