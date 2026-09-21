@@ -287,11 +287,10 @@ mod tests {
 
     /// The purge statement writes the setting the schema triggers read.
     ///
-    /// The other half of RULE STS for this pair: `afd_wire/tests/schema_literals.rs`
-    /// pins the seven schema files, and this pins the one statement that opens
-    /// their guard. A rename that misses either side leaves the append-only
-    /// triggers refusing the cascade, which is a personal-account erasure that
-    /// stops working with nothing red.
+    /// Pins the one statement that opens the schema triggers' guard to the
+    /// constants the Rust side reads. A rename that misses the schema side is
+    /// not caught here — the triggers would refuse the cascade, which is a
+    /// personal-account erasure that stops working with nothing red.
     #[test]
     fn the_purge_statement_names_the_setting_the_schema_guards_on() {
         let statement = super::purge::ALLOW_GATE_PURGE;
