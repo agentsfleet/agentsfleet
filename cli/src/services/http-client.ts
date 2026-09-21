@@ -15,7 +15,10 @@ import {
   readProblemDetails,
   type FetchImpl,
 } from "../lib/http.ts";
-import { DROP_CODES, PRE_SEND_CODES, apiRequestWithRetry, socketCode, type RetryConfig } from "../lib/http-retry.ts";
+import {
+  DROP_CODES, PRE_SEND_CODES, apiRequestWithRetry, socketCode,
+  type RetryConfig, type AttemptInfo, type RetryInfo,
+} from "../lib/http-retry.ts";
 import { CliConfig } from "./config.ts";
 import { NetworkError, ServerError } from "../errors/index.ts";
 import { isString } from "../lib/guards.ts";
@@ -136,6 +139,31 @@ const buildHeaders = (
   return { ...auth, ...(base ?? {}) };
 };
 
+// A request that is slow or flaky is the thing an operator needs to see, and
+// until now there was nothing to see: `--log-level` validated a level and then
+// governed no records, because this package emitted none. The retry layer
+// already decides; these only report what it decided.
+//
+// The path is reported with its identifiers replaced, so a record names the
+// endpoint rather than which fleet someone was looking at. The token never
+// appears: it lives in a header this function is not handed.
+const ID_SEGMENT = /\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?=\/|$)/g;
+const ID_PLACEHOLDER = "/{id}";
+const TRACE_ATTEMPT = "http.attempt";
+const TRACE_RETRY = "http.retry";
+const STATUS_NONE = "none";
+
+const endpointOf = (path: string): string => path.replace(ID_SEGMENT, ID_PLACEHOLDER);
+
+const attemptRecord = (method: string, path: string, info: AttemptInfo): string =>
+  `${TRACE_ATTEMPT} method=${method} endpoint=${endpointOf(path)} ` +
+  `attempt=${info.attempt} status=${info.status ?? STATUS_NONE} ` +
+  `duration_ms=${info.durationMs} terminal=${info.terminal}`;
+
+const retryRecord = (path: string, info: RetryInfo): string =>
+  `${TRACE_RETRY} endpoint=${endpointOf(path)} attempt=${info.attempt} ` +
+  `status=${info.status ?? STATUS_NONE} reason=${info.reason}`;
+
 const makeLive = (
   apiUrl: string,
   fetchImpl: FetchImpl | undefined,
@@ -151,10 +179,21 @@ const makeLive = (
         : isString(input.body)
           ? input.body
           : JSON.stringify(input.body);
+    const method = input.method ?? HTTP_METHOD.get;
+    // Collected during the request, emitted after it settles: the hooks are
+    // plain callbacks inside a promise, so logging from them would escape the
+    // fiber whose level `--log-level` set.
+    const trace: string[] = [];
     return Effect.tryPromise({
       try: () =>
         apiRequestWithRetry(url, {
-          method: input.method ?? HTTP_METHOD.get,
+          method,
+          onAttempt: (info: AttemptInfo) => {
+            trace.push(attemptRecord(method, input.path, info));
+          },
+          onRetry: (info: RetryInfo) => {
+            trace.push(retryRecord(input.path, info));
+          },
           headers,
           ...(body !== undefined ? { body } : {}),
           ...(input.retry !== undefined ? { retry: input.retry } : {}),
@@ -164,7 +203,12 @@ const makeLive = (
           ...(fetchImpl !== undefined ? { fetchImpl } : {}),
         }) as Promise<T>,
       catch: (cause) => toCliError(url, cause),
-    });
+    }).pipe(
+      // ensuring, not tap: a request that failed is the one worth reading.
+      Effect.ensuring(
+        Effect.forEach(trace, (line) => Effect.logDebug(line), { discard: true }),
+      ),
+    );
   },
 });
 
