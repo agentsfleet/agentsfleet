@@ -1,6 +1,6 @@
-// Wire-format constants for billing endpoints. Mirrors the canonical
-// definitions the daemon serves. Keep values verbatim — the API rejects
-// anything else.
+// Wire-format constants for billing endpoints. The enum spellings below are
+// what the API accepts; the nanos denominator is what its numbers are quoted
+// in. Rates are not here: the daemon charges them and serves the result.
 
 export const CHARGE_TYPE = Object.freeze({
   receive: "receive",
@@ -12,28 +12,9 @@ export const PROVIDER_MODE = Object.freeze({
   self_managed: "self_managed",
 });
 
-// 1¢ = 10_000_000 nanos. JS Number holds the canonical range
+// 1¢ = 10_000_000 nanos. A JavaScript Number holds the canonical range
 // (≤ 2^53 ≈ 9e15 nanos / ~$9M) without loss.
 export const NANOS_PER_USD = 1_000_000_000;
-
-// Rate constants — mirror rustd/crates/afd_billing/src/nanos.rs
-// identifier-for-identifier (cross-tier parity rule). Bump these only as part
-// of a paired rate change across afd_billing + ui/packages/app +
-// ~/Projects/docs/snippets/rates.mdx. afd_billing's cross_runtime_rates test
-// reads this file and fails on drift.
-//
-// NOTE FOR DEAD-CODE SWEEPS: these have no TypeScript importer ON PURPOSE.
-// They are a cross-RUNTIME contract — `afd_billing`'s `MIRRORED_NAMES` asserts
-// this file still declares every one, because the daemon charges on them and a
-// client that dropped one would display something else. An import-graph sweep
-// cannot see that edge; it crosses a language boundary.
-// Held as Number; every value here fits in 2^53 so no precision loss.
-export const STARTER_CREDIT_NANOS = 5 * NANOS_PER_USD;
-export const EVENT_NANOS = 0;
-// Per-second run rate ($0.0001/sec ≈ $0.36/hr), charged identically under both
-// postures while a Fleet is actively running. Replaces the former flat
-// per-stage fees.
-export const RUN_NANOS_PER_SEC = 100_000;
 
 // Two-to-four decimal places — cents granularity, with sub-cent precision
 // when the per-second run rate ($0.0001/sec) needs it.

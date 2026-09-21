@@ -41,6 +41,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_core::money::NANOS_PER_USD;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_observability::producers;
@@ -63,9 +64,6 @@ const OWNER_ROLE: &str = "owner";
 /// Stamped into the workspace row so analytics can tell a bootstrapped
 /// workspace from one a person created.
 const BOOTSTRAP_ACTOR: &str = "signup_bootstrap";
-
-/// The canonical nanos-per-USD factor the wallet column is denominated in.
-pub const NANOS_PER_USD: i64 = 1_000_000_000;
 
 /// The one-time starter balance a new tenant opens with, in nanos.
 ///

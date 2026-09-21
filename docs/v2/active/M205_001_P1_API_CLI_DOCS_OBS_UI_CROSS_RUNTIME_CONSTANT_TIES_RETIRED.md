@@ -76,6 +76,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/agentsfleetd/src/cli.rs` | EDIT | The `Thresholds` subcommand. |
 | `rustd/crates/agentsfleetd/src/lib.rs` | EDIT | Registers the new module. |
 | `rustd/crates/afd_runner/src/sweep/replay.rs` | EDIT | `MIN_AGE` and `INTERVAL` become `pub` so the binary that prints them can see them. |
+| `docs/architecture/billing_and_provider_keys.md` | EDIT | Described the rate as spelled in three files and named the deleted pin test as its guard; both are now false. |
+| `ui/packages/app/tests/billing-charges.test.ts` | EDIT | Carries Dimensions 1.1 and 1.4. |
+| `cli/test/billing-served-amounts.unit.test.ts` | CREATE | Carries Dimension 1.2. |
 | `playbooks/operations/observability/lib.sh` | EDIT | `obs_runner_offline_seconds` and `obs_admission_replay_floor_seconds` invoke the subcommand instead of running `sed` over Rust. |
 
 ## Applicable Rules
@@ -114,10 +117,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The three rate constants in the two TypeScript mirrors have no importer: a repository-wide search of `cli/src` and `ui/packages` finds `STARTER_CREDIT_NANOS`, `EVENT_NANOS` and `RUN_NANOS_PER_SEC` only in the mirror files themselves and in the Rust parser that reads them. They are deleted. `NANOS_PER_USD` is a different thing — it is the denominator of the wire format, needed to interpret any `balance_nanos` at all, and it has roughly thirty real callers — so it stays client-side and collapses to one declaration per package; the two ad-hoc respellings go with the rest. **Implementation default:** `afd_core::money::NANOS_PER_USD` is the Rust home, because every crate that reads a nanos column already depends on `afd_core` and moving it there adds no dependency edge, where making `afd_tenant` depend on `afd_billing` would.
 
-- **Dimension 1.1** — The dashboard renders a tenant balance from a served `balance_nanos` with no rate constant in the path → Test `test_balance_card_renders_served_nanos`
-- **Dimension 1.2** — `agentsfleet billing` prints a balance and per-event charges from the served response alone → Test `test_billing_output_uses_served_charges_only`
-- **Dimension 1.3** — A new tenant opens with the starter grant, with `STARTER_CREDIT_NANOS` declared once → Test `test_signup_grants_starter_credit_from_single_declaration`
-- **Dimension 1.4** — Both client packages resolve `NANOS_PER_USD` from their one declaration → Test `test_dollar_scale_has_one_declaration_per_package`
+- **Dimension 1.1** DONE — The dashboard reports the credits the ledger says were deducted, against rows whose durations no rate could reconcile → Test `sums the credits the ledger says were deducted, ignoring wall time`
+- **Dimension 1.2** DONE — `agentsfleet billing show` renders each served per-row charge and their sum, with no rate arithmetic → Test `prints each row's own charge and their sum, with no rate arithmetic`
+- **Dimension 1.3** DONE — A new tenant opens with the starter grant, with `STARTER_CREDIT_NANOS` derived from the one declared denominator → Test `integration_signup`
+- **Dimension 1.4** DONE — The nanos denominator stays exact across the whole range a balance can occupy, in both runtimes → Test `formats the largest balance the wire format claims to carry`
 
 ### §2 — The runner is told its clock; what is its own, its own compiler guards
 
@@ -125,7 +128,7 @@ The three rate constants in the two TypeScript mirrors have no importer: a repos
 
 - **Dimension 2.1** — A runner renews inside the window against a server-sent deadline, holding no lease-duration constant of its own → Test `test_renews_against_served_deadline_without_local_ttl`
 - **Dimension 2.2** — A runner whose reply carries a cadence beats at that cadence, not at its first-beat default → Test `test_heartbeat_adopts_served_cadence`
-- **Dimension 2.3** — A reply with no cadence field is refused and the runner reads degraded rather than guessing → Test `test_heartbeat_without_cadence_fails_closed`
+- **Dimension 2.3** — A reply with no cadence field is refused at parse and the beat is retried on the existing backoff, rather than the runner guessing a cadence → Test `test_heartbeat_without_cadence_fails_closed`
 - **Dimension 2.4** — The daemon serves a cadence strictly below its own offline threshold → Test `test_served_cadence_stays_below_offline_threshold`
 - **Dimension 2.5** — A renewal tick not strictly below the renewal window fails the build → Test `test_tick_window_inequality_is_comptime`
 
@@ -164,7 +167,7 @@ afd_tenant::signup::STARTER_CREDIT_NANOS          // the only credit inflow
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
-| Cadence absent from reply | A daemon that does not serve the field | The runner refuses the reply, reads degraded with a reason, and does not lease — the path `assigned_policy: null` already takes. Operator sees a degraded row, not a silent wrong cadence. |
+| Cadence absent from reply | A daemon that does not serve the field | The reply fails to parse and the beat takes the existing `heartbeat_failed` backoff at `src/runner/daemon/loop.zig`. The runner keeps its first-beat default and retries; it never adopts a guessed cadence, and the host goes offline rather than beating wrongly if the daemon never serves one. |
 | Cadence not below the offline threshold | A future edit to `afd_core::timing` | The daemon does not compile. The inequality is a `const` assertion in the crate that declares both numbers. |
 | Renewal tick not below the renewal window | A future edit to `constants.zig` | The runner does not compile. `@compileError` names which pair is wrong. |
 | Threshold verb unavailable | The playbook runs where the binary is not built | `obs_runner_offline_seconds` writes an error naming the missing verb to standard error and exits 1, the same loud failure the unparseable-`sed` path takes today. No threshold is guessed. |
@@ -193,15 +196,16 @@ No analytics or funnel playbook update is required: no user-visible product even
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | e2e | `test_balance_card_renders_served_nanos` | A billing response of 5_000_000_000 nanos renders `$5.00` in the rendered dashboard with no rate constant read. |
-| 1.2 | e2e | `test_billing_output_uses_served_charges_only` | A subprocess `agentsfleet billing` against a stubbed response prints the served per-event totals verbatim; no value is recomputed client-side. |
-| 1.3 | integration | `test_signup_grants_starter_credit_from_single_declaration` | A fresh signup opens with a balance equal to `afd_tenant::signup::STARTER_CREDIT_NANOS`, against a real datastore. |
-| 1.4 | unit | `test_dollar_scale_has_one_declaration_per_package` | Both client packages import `NANOS_PER_USD` from their package module; formatting 1 nano and 9_999_999_999_999 nanos is exact at the boundary. |
-| 1.4 | unit | `test_formatter_rejects_a_negative_and_a_null_balance` | Negative and null inputs render explicitly rather than as `$0.00`. |
+| 1.1 | unit | `sums the credits the ledger says were deducted, ignoring wall time` | Two rows of equal cost and unequal `wall_ms` (3_000 and 60_000) summarise to twice the served cost; a summary derived from duration × rate cannot produce it. Red-checked by deriving spend from `wall_ms`. |
+| 1.1 | unit | `renders a charge the server sent even when no rate could have produced it` | 7_111_111 nanos renders `−$0.0071`. |
+| 1.2 | unit | `prints each row's own charge and their sum, with no rate arithmetic` | Receive 7_111_111 and stage 12_345_678 nanos, against 820 input and 1_040 output tokens, render `$0.0071`, `$0.0123` and `$0.0195` in the table's own cells. |
+| 1.3 | integration | `integration_signup` | A fresh signup opens with a balance equal to `afd_tenant::signup::STARTER_CREDIT_NANOS`, against a real datastore. |
+| 1.4 | unit | `formats the largest balance the wire format claims to carry` | Nine million USD in nanos renders `$9,000,000.00` and stays below `Number.MAX_SAFE_INTEGER`. |
+| 1.4 | unit | `test_one_dollar_is_a_billion_nanos` / `test_a_balance_stays_exact_well_past_any_real_one` | The Rust declaration is 10^9, and the compile-time assertion beside it keeps a balance exact through a JavaScript number. |
 | 2.1 | unit | `test_renews_against_served_deadline_without_local_ttl` | A driver holding only `deadline_ms` renews inside the window and keeps outside it; no lease-duration constant is referenced. |
 | 2.1 | unit | `test_renewal_survives_an_extreme_served_deadline` | A deadline at the integer maximum does not overflow the tick decision; the driver keeps rather than panicking. |
 | 2.2 | integration | `test_heartbeat_adopts_served_cadence` | A reply carrying a cadence different from the first-beat default changes the loop's interval within one beat. |
-| 2.3 | integration | `test_heartbeat_without_cadence_fails_closed` | A reply omitting the field yields a degraded row with a reason, and the runner does not lease. |
+| 2.3 | integration | `test_heartbeat_without_cadence_fails_closed` | A reply omitting the field is refused at parse; the loop logs `heartbeat_failed`, backs off, and the applied interval is unchanged. |
 | 2.4 | unit | `test_served_cadence_stays_below_offline_threshold` | The handler's served value is strictly less than the offline threshold for the declared constants. |
 | 2.5 | manual | `test_tick_window_inequality_is_comptime` | A local edit making the tick equal the window fails `zig build` with the named message; evidence is the build output pasted into Session Notes. Procedure and required person recorded there. |
 | 3.1 | unit | `test_thresholds_renders_without_a_datastore` | The subcommand's render function returns both keys with no datastore handle constructed. |
