@@ -166,17 +166,22 @@ const renderHuman = (
       yield* output.info("No billable events recorded yet.");
     } else {
       yield* output.info(`Last ${events.length} events drained credits:`);
-      yield* output.printTable(
-        [
-          { key: "event_id", label: "EVENT_ID" },
-          { key: "posture", label: "POSTURE" },
-          { key: "model", label: "MODEL" },
-          { key: "in_tok", label: "IN_TOK" },
-          { key: "out_tok", label: "OUT_TOK" },
-          { key: "receive", label: "RECEIVE" },
-          { key: "stage", label: "STAGE" },
-          { key: "total", label: "TOTAL" },
-        ],
+      yield* output.printEntityTable(
+        {
+          // A charge has no name — the event that caused it is its identity.
+          id: { key: "event_id", label: "EVENT_ID" },
+          domain: [
+            { key: "posture", label: "POSTURE" },
+            { key: "model", label: "MODEL" },
+            { key: "in_tok", label: "IN_TOK" },
+            { key: "out_tok", label: "OUT_TOK" },
+            { key: "receive", label: "RECEIVE" },
+            { key: "stage", label: "STAGE" },
+            { key: "total", label: "TOTAL" },
+          ],
+          // The charges read carries no instant per row.
+          ageKey: null,
+        },
         events.map((e) => ({
           event_id: e.event_id ?? "",
           posture: e.posture ?? "",

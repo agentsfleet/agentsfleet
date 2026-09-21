@@ -30,13 +30,14 @@ interface GrantListResponse {
   readonly items?: ReadonlyArray<GrantRow>;
 }
 
-const GRANT_COLUMNS = [
-  { key: "service", label: "SERVICE" },
-  { key: "status", label: "STATUS" },
-  { key: "created_at", label: "CREATED_AT" },
-  { key: "approved_at", label: "APPROVED_AT" },
-  { key: GRANT_ID_FIELD, label: "ID" },
-] as const;
+const GRANT_SPEC = {
+  name: { key: "service", label: "SERVICE" },
+  id: { key: GRANT_ID_FIELD, label: "ID" },
+  domain: [
+    { key: "status", label: "STATUS" },
+    { key: "approved_at", label: "APPROVED_AT" },
+  ],
+} as const;
 
 const NO_GRANTS = "no integration grants found" as const;
 const GRANTS_LISTED = "Integration grants" as const;
@@ -79,12 +80,12 @@ export const grantListEffectFromArgs = Effect.fn("grant.list")(function* (
     yield* output.info(NO_GRANTS);
     return;
   }
-  yield* output.printTable(
-    GRANT_COLUMNS,
+  yield* output.printEntityTable(
+    GRANT_SPEC,
     grants.map((g) => ({
       service: g.service ?? "",
       status: g.status ?? "",
-      created_at: stamp(g.created_at),
+      created_at: g.created_at,
       approved_at: stamp(g.approved_at),
       id: g.id ?? "",
     })),

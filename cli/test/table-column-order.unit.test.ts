@@ -41,6 +41,13 @@ describe("entityColumns fixes one order", () => {
       .toEqual(["FLEET", "STATUS", "AGO"]);
   });
 
+  test("an entity that has no age declares it, and gets no empty column", () => {
+    // A published catalogue is not something a workspace made, so there is no
+    // age to report. Declaring it beats a column of dashes on every row.
+    expect(labels({ name: NAME, domain: [STATUS], ageKey: null }))
+      .toEqual(["NAME", "STATUS"]);
+  });
+
   test("domain order is the caller's, and it is preserved exactly", () => {
     const tier = { key: "tier", label: "TIER" } as const;
     const secrets = { key: "credentials", label: "SECRETS" } as const;
@@ -103,5 +110,30 @@ describe("entityTable renders the age from the row", () => {
       WIDE,
     );
     expect(rendered).not.toContain(String(now));
+  });
+});
+
+// The order only holds if every entity list actually goes through the helper.
+// A call site that keeps its own column array is how six conventions grew the
+// first time, so this counts them rather than trusting review.
+describe("every entity list renders through the helper", () => {
+  // A two-column label/value table for ONE resource is a different shape from
+  // a list of entities: it has no name, no identifier and no age, and its
+  // headers are deliberately blank or FIELD/VALUE.
+  const DETAIL_TABLES = ["api_key.ts", "connector.ts", "tenant.ts"] as const;
+
+  test("only the label/value detail tables still name their own columns", async () => {
+    const { readdirSync, readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const dir = join(import.meta.dir, "..", "src", "commands");
+    const holdouts: string[] = [];
+    let entityTables = 0;
+    for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts"))) {
+      const text = readFileSync(join(dir, file), "utf8");
+      entityTables += text.split("printEntityTable(").length - 1;
+      if (text.includes("output.printTable(")) holdouts.push(file);
+    }
+    expect(holdouts.sort()).toEqual([...DETAIL_TABLES]);
+    expect(entityTables).toBeGreaterThanOrEqual(13);
   });
 });

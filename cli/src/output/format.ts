@@ -82,8 +82,16 @@ export interface EntityTableSpec {
   readonly name?: TableColumn;
   readonly id?: TableColumn;
   readonly domain: ReadonlyArray<TableColumn>;
-  /** The row field the age reads, where it is not [`AGE_KEY`]. */
-  readonly ageKey?: string;
+  /**
+   * The row field the age reads, where it is not [`AGE_KEY`].
+   *
+   * `null` declares that this entity HAS no age — a catalogue the server
+   * publishes rather than something a workspace made. Declared rather than
+   * inferred from the rows, so the column set cannot change between pages,
+   * and so a table that quietly stopped carrying timestamps reads as the
+   * defect it is instead of silently losing its column.
+   */
+  readonly ageKey?: string | null;
 }
 
 const NARROW_THRESHOLD = 80;
@@ -264,7 +272,7 @@ export function entityColumns(spec: EntityTableSpec): ReadonlyArray<TableColumn>
     ...(spec.name === undefined ? [] : [spec.name]),
     ...(spec.id === undefined ? [] : [spec.id]),
     ...spec.domain,
-    { key: AGE_KEY, label: AGE_LABEL },
+    ...(spec.ageKey === null ? [] : [{ key: AGE_KEY, label: AGE_LABEL }]),
   ];
 }
 
@@ -274,6 +282,7 @@ export function entityTable(
   rows: ReadonlyArray<TableRow>,
   opts?: FormatOpts,
 ): string {
+  if (spec.ageKey === null) return formatTable(entityColumns(spec), rows, opts);
   const source = spec.ageKey ?? AGE_KEY;
   const aged = rows.map((row) => ({ ...row, [AGE_KEY]: ago(row[source]) }));
   return formatTable(entityColumns(spec), aged, opts);

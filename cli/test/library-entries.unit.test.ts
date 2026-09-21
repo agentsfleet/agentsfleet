@@ -1,3 +1,4 @@
+import { AGE_KEY, ago, entityColumns, EMPTY_CELL } from "../src/output/index.ts";
 // Unit coverage for `agentsfleet library list` and `library remove` — the two
 // verbs over the workspace's OWN entries.
 //
@@ -93,6 +94,13 @@ const makeLayer = (
       printJsonErr: (p) => Effect.sync(() => { h.captured.push(JSON.stringify(p)); }),
       printTable: (columns, rows) =>
         Effect.sync(() => { h.tables.push({ columns, rows }); }),
+      printEntityTable: (spec, rows) =>
+        Effect.sync(() => {
+          h.tables.push({
+            columns: entityColumns(spec),
+            rows: rows.map((r) => ({ ...r, [AGE_KEY]: ago(r[spec.ageKey ?? AGE_KEY]) })),
+          });
+        }),
     }),
   );
 
@@ -133,7 +141,7 @@ describe("library list — the workspace's own entries", () => {
     ).toBe(true);
   });
 
-  test("prints a row per entry, with its provenance and onboarding date", async () => {
+  test("prints a row per entry, with its provenance and age", async () => {
     const h = harness();
     await Effect.runPromiseExit(
       libraryListEffect.pipe(
@@ -149,7 +157,9 @@ describe("library list — the workspace's own entries", () => {
     // Two onboardings of near-identical bundles differ by their source before
     // they differ by anything else the table shows.
     expect(rows[0]?.source).toBe("github:acme/reviewer");
-    expect(rows[0]?.onboarded).toBe("2026-04-30");
+    // The onboarding date became the age: same question, fewer steps for a
+    // reader deciding which of these they added this morning.
+    expect(rows[0]?.created_at).toMatch(/^\d+[smhdy]$/);
   });
 
   test("a row missing its provenance renders the empty cell, not `undefined`", async () => {
@@ -165,7 +175,7 @@ describe("library list — the workspace's own entries", () => {
     );
     const rows = h.tables[0]?.rows as Array<Record<string, string>>;
     expect(rows[0]?.source).not.toContain("undefined");
-    expect(rows[0]?.onboarded).not.toContain("undefined");
+    expect(rows[0]?.created_at).toBe(EMPTY_CELL);
   });
 
   test("--format json prints the entries as data and no table", async () => {
