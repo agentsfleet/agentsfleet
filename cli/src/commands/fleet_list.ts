@@ -7,6 +7,7 @@ import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import {
   resolveAuthToken,
   resolveWorkspaceId,
+  WORKSPACE_ID_FLAG,
 } from "./workspace-guards.ts";
 import { isString } from "../lib/guards.ts";
 import { QUERY_STARTING_AFTER, wsFleetsPath } from "../lib/api-paths.ts";
@@ -52,7 +53,7 @@ export const listEffectFromFlags = Effect.fn("fleet.list")(function* (
   const output = yield* Output;
   const http = yield* HttpClient;
 
-  const wsId = yield* resolveWorkspaceId(flags.workspaceId);
+  const wsId = yield* resolveWorkspaceId(flags.workspaceId, WORKSPACE_ID_FLAG);
   const token = yield* resolveAuthToken;
   const res = yield* http.request<FleetListResponse>({
     path: buildPath(wsId, flags.startingAfter, flags.limit),

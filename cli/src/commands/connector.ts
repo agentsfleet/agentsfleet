@@ -11,6 +11,7 @@ import {
   requireValue,
   resolveAuthToken,
   resolveWorkspaceId,
+  WORKSPACE_FLAG,
 } from "./workspace-guards.ts";
 import {
   wsConnectorPath,
@@ -73,7 +74,7 @@ export const connectorListEffectFromArgs = (
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
-    const workspaceId = yield* resolveWorkspaceId(workspaceIdFlag);
+    const workspaceId = yield* resolveWorkspaceId(workspaceIdFlag, WORKSPACE_FLAG);
 
     const entries = yield* http.request<ReadonlyArray<ConnectorCatalogEntry>>({
       path: wsConnectorsPath(workspaceId),
@@ -117,7 +118,7 @@ export const connectorStatusEffectFromArgs = (
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
-    const workspaceId = yield* resolveWorkspaceId(workspaceIdFlag);
+    const workspaceId = yield* resolveWorkspaceId(workspaceIdFlag, WORKSPACE_FLAG);
     const provider = yield* requireProvider(providerRaw);
 
     const entries = yield* http.request<ReadonlyArray<ConnectorCatalogEntry>>({

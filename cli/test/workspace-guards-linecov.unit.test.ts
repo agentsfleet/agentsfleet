@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Option } from "effect";
-import { requireWorkspaceId } from "../src/commands/workspace-guards.ts";
+import { requireWorkspaceId, resolveWorkspaceId } from "../src/commands/workspace-guards.ts";
 import {
   Workspaces,
   type WorkspacesValue,
@@ -82,5 +82,39 @@ describe("requireWorkspaceId", () => {
     });
     const result = await Effect.runPromise(program);
     expect(result).toBe(WS_ID);
+  });
+
+  // The suggestion is shared by every workspace-scoped command, so it may only
+  // name routes every one of them has. It used to end "or pass --workspace
+  // <id>", which `list`, `install` and `approvals list` all answer with
+  // `Unrecognized flag: --workspace` — sending a person from one refusal
+  // straight into another. A command that does take the flag says so in its
+  // own `--help`, where the answer is true rather than usually true.
+  test("the bare guard names no flag, because its callers declare none", async () => {
+    const program = provideWorkspaces({ current_workspace_id: null, items: [] });
+    const exit = await Effect.runPromiseExit(program);
+    const failure = await runFailure(exit);
+    const suggestion = failure.suggestion ?? "";
+    expect(suggestion).toContain("workspace use");
+    expect(suggestion).toContain("workspace create");
+    expect(suggestion).not.toMatch(/--\w/);
+  });
+
+  // The override spelling is NOT uniform: `list` declares `--workspace-id`
+  // while `connector list`, `memory list` and `schedule list` declare
+  // `--workspace`. One shared sentence was wrong for almost every caller, so
+  // each passes the flag it actually has and the refusal names that one.
+  test("the resolver names the caller's own override flag", async () => {
+    for (const flag of ["--workspace", "--workspace-id"]) {
+      const program = resolveWorkspaceId(undefined, flag).pipe(
+        Effect.provideService(Workspaces, {
+          load: Effect.succeed({ current_workspace_id: null, items: [] }),
+          save: () => Effect.void,
+        }),
+      );
+      const exit = await Effect.runPromiseExit(program);
+      const failure = await runFailure(exit as never);
+      expect(failure.suggestion, `${flag} must be named`).toContain(`pass ${flag} <id>`);
+    }
   });
 });

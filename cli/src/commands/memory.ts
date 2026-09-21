@@ -16,7 +16,7 @@ import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
-import { resolveAuthToken, resolveWorkspaceId } from "./workspace-guards.ts";
+import { resolveAuthToken, resolveWorkspaceId, WORKSPACE_FLAG } from "./workspace-guards.ts";
 import { isNumber, isString } from "../lib/guards.ts";
 import { QUERY_STARTING_AFTER, wsFleetMemoriesPath } from "../lib/api-paths.ts";
 import { ui, EMPTY_CELL } from "../output/index.ts";
@@ -198,7 +198,7 @@ const memoryReadEffect = (
     const http = yield* HttpClient;
 
     const fleetId = yield* requireFleetId(req.fleetId, req.usage);
-    const wsId = yield* resolveWorkspaceId(req.workspaceId);
+    const wsId = yield* resolveWorkspaceId(req.workspaceId, WORKSPACE_FLAG);
     const token = yield* resolveAuthToken;
 
     const res = yield* http

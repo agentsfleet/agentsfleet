@@ -26,14 +26,41 @@ export const WORKSPACE_CREATE_USAGE =
   "agentsfleet workspace create <name>" as const;
 
 /**
- * The one way out of "no workspace selected", naming every route.
+ * The way out of "no workspace selected", naming only routes that work.
  *
- * Five resolvers worded this four different ways, and only `connector`'s
- * named `--workspace` — the flag every one of those commands accepts. The
- * union of what they said is what a person needs, so it is what they get.
+ * Five resolvers worded this four different ways, so they share one sentence
+ * now. The base names the two routes EVERY command reaching this guard has:
+ * create a workspace, or select one.
+ *
+ * The per-command flag is appended by `workspaceMissing` rather than baked in,
+ * because there is no one spelling to bake. `list` takes `--workspace-id`;
+ * `connector list` takes `--workspace`; `install` and `approvals list` take
+ * neither and answer `Unrecognized flag` to both. A single shared string was
+ * therefore wrong for almost every caller, and sent a person from one refusal
+ * straight into another.
  */
 const WORKSPACE_MISSING_SUGGESTION =
-  `run \`${WORKSPACE_CREATE_USAGE}\` or \`agentsfleet workspace use <id>\`, or pass --workspace <id>` as const;
+  `run \`${WORKSPACE_CREATE_USAGE}\` or \`agentsfleet workspace use <id>\`` as const;
+
+/** The two spellings commands use for the workspace override, as declared.
+ *
+ * They differ, and that is a real inconsistency rather than a naming choice
+ * made here: `list` declares `--workspace-id` while `connector list`, `memory
+ * list` and `schedule list` declare `--workspace`. A caller passes the one it
+ * actually has, so the refusal never names a flag that command would reject.
+ */
+export const WORKSPACE_FLAG = "--workspace" as const;
+export const WORKSPACE_ID_FLAG = "--workspace-id" as const;
+
+/** "no workspace selected", naming the override flag when the caller has one. */
+const workspaceMissing = (overrideFlag?: string): ConfigError =>
+  new ConfigError({
+    detail: "no workspace selected",
+    suggestion:
+      overrideFlag === undefined
+        ? WORKSPACE_MISSING_SUGGESTION
+        : `${WORKSPACE_MISSING_SUGGESTION}, or pass ${overrideFlag} <id>`,
+  });
 const WORKSPACE_NAME_MAX_CODEPOINTS = 128;
 const ASCII_EDGE_WHITESPACE_PATTERN =
   /^[\u0009-\u000d\u0020]+|[\u0009-\u000d\u0020]+$/gu;
@@ -75,23 +102,23 @@ export const requireCreateName = (
   return Effect.succeed(trimmed);
 };
 
+const workspaceIdOr = (
+  overrideFlag?: string,
+): Effect.Effect<string, ConfigError | UnexpectedError, Workspaces> =>
+  Effect.gen(function* () {
+    const workspaces = yield* Workspaces;
+    const state = yield* workspaces.load;
+    if (!state.current_workspace_id) {
+      return yield* Effect.fail(workspaceMissing(overrideFlag));
+    }
+    return state.current_workspace_id;
+  });
+
 export const requireWorkspaceId: Effect.Effect<
   string,
   ConfigError | UnexpectedError,
   Workspaces
-> = Effect.gen(function* () {
-  const workspaces = yield* Workspaces;
-  const state = yield* workspaces.load;
-  if (!state.current_workspace_id) {
-    return yield* Effect.fail(
-      new ConfigError({
-        detail: "no workspace selected",
-        suggestion: WORKSPACE_MISSING_SUGGESTION,
-      }),
-    );
-  }
-  return state.current_workspace_id;
-});
+> = workspaceIdOr();
 
 /**
  * A required value, as an Effect.
@@ -156,10 +183,11 @@ const UUIDV7_SUGGESTION = "pass a valid uuidv7" as const;
  */
 export const resolveWorkspaceId = (
   override: string | undefined,
+  overrideFlag?: string,
 ): Effect.Effect<string, ConfigError | UnexpectedError | ValidationError, Workspaces> =>
   isString(override) && override.length > 0
     ? requireValidId(override, WORKSPACE_ID_FIELD, WORKSPACE_OVERRIDE_USAGE)
-    : requireWorkspaceId;
+    : workspaceIdOr(overrideFlag);
 
 export const resolveAuthToken: Effect.Effect<
   Redacted.Redacted<string>,

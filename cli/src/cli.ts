@@ -274,10 +274,38 @@ function renderLibraryFailure(
   return exitCodeForFailure(cause);
 }
 
-// `[]` → `--help`, and `help x y` → `x y --help`. Any other argv is its own.
+// Global flags taking a value in the `--flag value` form. The `--flag=value`
+// spelling carries its own, so it never consumes the token after it.
+const VALUE_TAKING_GLOBAL_FLAGS: ReadonlySet<string> = new Set([
+  "--api",
+  "--completions",
+  "--log-level",
+]);
+
+/**
+ * Where the command name starts, skipping leading global flags and their values.
+ *
+ * `help` is a verb this CLI accepts and the tree has no subcommand for it, so
+ * the entry point rewrites it. Recognising it at position zero alone meant
+ * `agentsfleet --json help grant list` left `help` in the argv and failed as an
+ * unknown command, while the same line without `--json` printed the document.
+ * A flag before the verb is the ordinary shape for `--api` and `--json`.
+ */
+const firstCommandIndex = (argv: readonly string[]): number => {
+  let index = 0;
+  while (index < argv.length) {
+    const token = argv[index];
+    if (token === undefined || !token.startsWith("-")) return index;
+    index += !token.includes("=") && VALUE_TAKING_GLOBAL_FLAGS.has(token) ? 2 : 1;
+  }
+  return argv.length;
+};
+
+// `[]` → `--help`, and `<flags> help x y` → `<flags> x y --help`. Any other
+// argv is its own.
 function helpArgv(argv: readonly string[]): string[] {
   if (argv.length === 0) return [HELP_FLAG];
-  const [first, ...rest] = argv;
-  if (first !== HELP_COMMAND) return [...argv];
-  return [...rest, HELP_FLAG];
+  const at = firstCommandIndex(argv);
+  if (argv[at] !== HELP_COMMAND) return [...argv];
+  return [...argv.slice(0, at), ...argv.slice(at + 1), HELP_FLAG];
 }
