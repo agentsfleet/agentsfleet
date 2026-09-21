@@ -71,14 +71,13 @@ import {
   walkEventsCursor,
 } from "./fixtures/logs-events-ops.ts";
 import type { EventItem, EventsEnvelope } from "./fixtures/logs-events-ops.ts";
+import { API_URL_ENV, STATE_DIR_ENV } from "../../src/constants/env.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
 
 // Wire/output literals (RULE UFS — each used >=2x or crosses a boundary).
 const STATE_DIR_PREFIX = "agentsfleet-logs-events-" as const;
-const API_URL_ENV_KEY = "AGENTSFLEET_API_URL" as const;
-const STATE_DIR_ENV_KEY = "AGENTSFLEET_STATE_DIR" as const;
 const NO_COLOR_ENV_KEY = "NO_COLOR" as const;
 const NO_COLOR_ON = "1" as const;
 
@@ -132,8 +131,8 @@ if (!isLive) {
 
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), STATE_DIR_PREFIX));
       env = composeEnv({
-        [API_URL_ENV_KEY]: apiUrl,
-        [STATE_DIR_ENV_KEY]: stateDir,
+        [API_URL_ENV]: apiUrl,
+        [STATE_DIR_ENV]: stateDir,
         [NO_COLOR_ENV_KEY]: NO_COLOR_ON,
       });
       const hydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });

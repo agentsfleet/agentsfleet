@@ -16,6 +16,7 @@
 import type { WritableStreamLike } from "../../output/capability.ts";
 import { printJson } from "../io.ts";
 import { printVersion } from "../banner.ts";
+import { API_URL_ENV } from "../../constants/env.ts";
 
 const END_OF_FLAGS = "--" as const;
 const FLAG_API = "--api" as const;
@@ -23,7 +24,6 @@ const FLAG_API_INLINE = "--api=" as const;
 const FLAG_JSON = "--json" as const;
 const FLAG_VERSION = "--version" as const;
 const FLAG_VERSION_SHORT = "-v" as const;
-const ENV_API_URL = "AGENTSFLEET_API_URL" as const;
 const ENV_NO_COLOR = "NO_COLOR" as const;
 
 export const detectJsonMode = (argv: ReadonlyArray<string>): boolean => {
@@ -82,7 +82,7 @@ export const resolveGlobalApiUrl = (
   // short-circuiting to null, so an operator who exports AGENTSFLEET_API_URL
   // and then passes a blank flag still reaches their own deployment.
   const flagged = flaggedApiUrl(argv);
-  return flagged || env[ENV_API_URL] || null;
+  return flagged || env[API_URL_ENV] || null;
 };
 
 const flaggedApiUrl = (argv: ReadonlyArray<string>): string | null => {

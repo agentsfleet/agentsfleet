@@ -26,7 +26,8 @@ import { Effect, Redacted } from "effect";
 import { Analytics } from "../services/telemetry/analytics.service.ts";
 import { TelemetryRuntime } from "../services/telemetry/runtime.service.ts";
 import { Browser } from "../services/browser.service.ts";
-import { AGENTSFLEET_API_KEY_ENV, CliConfig } from "../services/config.ts";
+import { CliConfig } from "../services/config.ts";
+import { API_KEY_ENV } from "../constants/env.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Input } from "../services/input.ts";
@@ -214,7 +215,7 @@ const loginCore = Effect.fnUntraced(function* (flags: LoginFlags) {
       new InterruptedError({
         detail:
           "`agentsfleet login` needs an interactive terminal — a human types the device flow's verification code",
-        suggestion: `set ${AGENTSFLEET_API_KEY_ENV} to a tenant API key for unattended use`,
+        suggestion: `set ${API_KEY_ENV} to a tenant API key for unattended use`,
       }),
     );
   }

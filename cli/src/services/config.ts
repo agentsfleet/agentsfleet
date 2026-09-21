@@ -9,6 +9,13 @@
 import { Effect, Layer, Option, Redacted, Context } from "effect";
 import type { FetchImpl } from "../lib/http.ts";
 import {
+  API_KEY_ENV,
+  API_URL_ENV,
+  DASHBOARD_URL_ENV,
+  TELEMETRY_POSTHOG_HOST_ENV,
+  TELEMETRY_POSTHOG_KEY_ENV,
+} from "../constants/env.ts";
+import {
   DEFAULT_API_URL,
   normalizeApiUrl,
   resolveDashboardUrl,
@@ -19,12 +26,6 @@ import {
 // theirs as a plain string in cli-config.layer.ts; we match that.
 export const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
 export const DEFAULT_POSTHOG_KEY = "phc_XmuRIXBSTRfxka7IgfkU0VPMD3LDRR3IqILXNg3bXzv"; // gitleaks:allow — public phc_ key (write-only capture scope), see header comment
-// The service-auth env-var name. A machine principal (an `agt_t…` tenant
-// API key) exported here authenticates the CLI without a browser login,
-// and — by the env-wins precedence in `resolveToken` — takes priority over
-// a stored login JWT. This is the only env-sourced bearer the CLI reads; the
-// unprefixed `API_KEY` and `AGENTSFLEET_TOKEN` names are not accepted.
-export const AGENTSFLEET_API_KEY_ENV = "AGENTSFLEET_API_KEY";
 
 export interface CliConfigShape {
   readonly apiUrl: string;
@@ -64,15 +65,15 @@ const trimmed = (v: string | undefined): string | undefined => {
 // Bearer). Both cli.ts and resolveCliConfig resolve through here so the read
 // can't drift between the two paths. Only `AGENTSFLEET_API_KEY` is accepted.
 export const resolveApiKeyFromEnv = (env: NodeJS.ProcessEnv): string | null =>
-  trimmed(env[AGENTSFLEET_API_KEY_ENV]) ?? null;
+  trimmed(env[API_KEY_ENV]) ?? null;
 
 export const resolveCliConfig = (): CliConfigShape => {
   const apiUrl = normalizeApiUrl(
-    trimmed(readEnv("AGENTSFLEET_API_URL")) ?? DEFAULT_API_URL,
+    trimmed(readEnv(API_URL_ENV)) ?? DEFAULT_API_URL,
   );
   const dashboardUrl = resolveDashboardUrl(
     apiUrl,
-    trimmed(readEnv("AGENTSFLEET_DASHBOARD_URL")),
+    trimmed(readEnv(DASHBOARD_URL_ENV)),
   );
   // The env-sourced bearer is the service API key (env slot). It wins over
   // a stored login JWT via `resolveToken`'s env-first precedence. Resolution
@@ -80,9 +81,9 @@ export const resolveCliConfig = (): CliConfigShape => {
   // the env value here.
   const envToken = resolveApiKeyFromEnv(processEnv());
   const telemetryPosthogKey =
-    trimmed(readEnv("AGENTSFLEET_TELEMETRY_POSTHOG_KEY")) ?? DEFAULT_POSTHOG_KEY;
+    trimmed(readEnv(TELEMETRY_POSTHOG_KEY_ENV)) ?? DEFAULT_POSTHOG_KEY;
   const telemetryPosthogHost =
-    trimmed(readEnv("AGENTSFLEET_TELEMETRY_POSTHOG_HOST")) ?? DEFAULT_POSTHOG_HOST;
+    trimmed(readEnv(TELEMETRY_POSTHOG_HOST_ENV)) ?? DEFAULT_POSTHOG_HOST;
   return {
     apiUrl,
     dashboardUrl,

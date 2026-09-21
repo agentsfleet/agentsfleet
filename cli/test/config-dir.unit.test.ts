@@ -2,8 +2,31 @@ import { describe, test, expect } from "bun:test";
 import os from "node:os";
 import path from "node:path";
 
-import { resolveConfigDir, STATE_DIR_ENV } from "../src/lib/config-dir.ts";
+import { resolveConfigDir } from "../src/lib/config-dir.ts";
+import * as ENV from "../src/constants/env.ts";
+import { STATE_DIR_ENV } from "../src/constants/env.ts";
 import { cliEnv } from "./helpers-cli-state.ts";
+
+// Every name the module exports, so a new env var is guarded the day it lands
+// rather than the day someone remembers to add it here.
+const ENV_NAMES = Object.values(ENV);
+
+// Prose mentions the variables on purpose — operator help text ("set
+// AGENTSFLEET_API_URL") and comments that use markdown backticks around a
+// name. Only code may not spell one, so comment lines are dropped before the
+// scan rather than narrowing which quote styles count as a declaration.
+const codeOnly = (source: string): string =>
+  source
+    .split("\n")
+    .filter((line) => {
+      const trimmedLine = line.trimStart();
+      return !(
+        trimmedLine.startsWith("//") ||
+        trimmedLine.startsWith("*") ||
+        trimmedLine.startsWith("/*")
+      );
+    })
+    .join("\n");
 
 describe("resolveConfigDir", () => {
   test("honours the supplied environment", () => {
@@ -31,14 +54,18 @@ describe("resolveConfigDir", () => {
     expect(self).not.toContain("process.env");
   });
 
-  test("no file under src/ names the state-dir variable except its declaration site", async () => {
+  test("no file under src/ names an env variable except its declaration site", async () => {
     // Suite-level, not review-level: a re-introduced literal anywhere in
     // src/ — a new service, a command, a helper — fails here rather than
-    // depending on a reviewer to run the grep. The declaration site is the
-    // one file allowed to spell it.
+    // depending on a reviewer to run the grep. `constants/env.ts` is the one
+    // file allowed to spell any of them.
+    //
+    // Covers all three names, not just the state dir: each had drifted into
+    // its own copy (six files apiece for the URL and the state dir) precisely
+    // because only one of them was ever guarded.
     const srcRoot = new URL("../src/", import.meta.url).pathname;
     const glob = new Bun.Glob("**/*.ts");
-    const declarationSite = path.join("lib", "config-dir.ts");
+    const declarationSite = path.join("constants", "env.ts");
     const candidates: string[] = [];
     for await (const rel of glob.scan(srcRoot)) {
       if (rel !== declarationSite) candidates.push(rel);
@@ -47,8 +74,18 @@ describe("resolveConfigDir", () => {
     const bodies = await Promise.all(
       candidates.map((rel) => Bun.file(path.join(srcRoot, rel)).text()),
     );
-    const offenders = candidates.filter((_, i) => bodies[i]?.includes(STATE_DIR_ENV));
-    expect(offenders).toEqual([]);
+    // Match the name as a quoted literal in code, never as a bare substring:
+    // help text names these variables to the operator on purpose ("pass
+    // `--api <url>`, set AGENTSFLEET_API_URL, or run `agentsfleet login`
+    // again") and that prose must not read as a second declaration.
+    const code = bodies.map((body) => codeOnly(body ?? ""));
+    for (const name of ENV_NAMES) {
+      const spellings = [`"${name}"`, `'${name}'`, `\`${name}\``];
+      const offenders = candidates.filter((_, i) =>
+        spellings.some((spelling) => code[i]?.includes(spelling)),
+      );
+      expect(offenders).toEqual([]);
+    }
   });
 });
 
