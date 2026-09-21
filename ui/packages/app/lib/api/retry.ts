@@ -5,7 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Schedule from "effect/Schedule";
 import { ApiError } from "./errors";
-import { FAILURE_KIND, PROVENANCE, classifyFailure, type ClassifiedFailure, type FailureKind } from "./retry-classify";
+import { FAILURE_KIND, PROVENANCE, classifyFailure, socketDropped, type ClassifiedFailure, type FailureKind } from "./retry-classify";
 import {
   resolveRetryConfig,
   type AttemptInfo,
@@ -167,7 +167,7 @@ class RetryRun<T> {
       !this.#cfg.signal?.aborted &&
       failure.kind !== FAILURE_KIND.FATAL &&
       this.#withinRetryAfterCap(failure) &&
-      (failure.provenance !== PROVENANCE.POST_SEND || isIdempotentMethod(this.#method))
+      (failure.provenance !== PROVENANCE.POST_SEND || isIdempotentMethod(this.#method) || socketDropped(failure))
     );
   }
 

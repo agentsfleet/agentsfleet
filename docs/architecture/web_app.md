@@ -27,8 +27,13 @@ moving the private key with it. It is the documented exception
 the only one.
 Every server fetch runs under one policy, `lib/api/retry.ts`: a declared
 schedule with a 20 s deadline, a 10 s `Retry-After` cap, full jitter, and a
-replay gate read from where the failure happened, so a write the server may
-hold is never sent twice. The policy's dependency, `effect`, is server-only:
+replay gate read from where the failure happened. A write the server may hold
+is never sent twice on a gateway error or a client timeout; a socket the
+transport reported dropping is sent again whatever the method, because a reply
+nobody saw is usually a request that never ran. The price is named rather than
+hidden: a reset arriving after the server accepted a write can double it, and
+an idempotency key is what would retire that. The policy's dependency,
+`effect`, is server-only:
 a client component reads status facts from `lib/api/errors.ts`, and
 `.size-limit.mjs` fails the build if the runtime reaches a client chunk.
 

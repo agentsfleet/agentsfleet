@@ -1,5 +1,5 @@
 {
-  "$comment": "The retry policy's parity table. The dashboard (ui/packages/app/lib/api/retry.ts) and the CLI (cli/src/lib/http-retry.ts) each replay every case through their own transport and must make the same number of attempts. A script entry is either an answer, `{ \"status\": N }` with an optional `retryAfterSeconds`, or a failure before an answer, `{ \"error\": CODE }` where CODE is a socket code Node's fetch puts on the error's cause, or `timeout` for the transport's own clock running out. Attempts beyond the script repeat its last entry. `preSendCodes` is the set of cause codes that prove a request never left; both classifiers assert their own set equals it. Both cap a `Retry-After` at `policy.retryAfterCapSeconds` and fail at once beyond it.",
+  "$comment": "The retry policy's parity table. The dashboard (ui/packages/app/lib/api/retry.ts) and the CLI (cli/src/lib/http-retry.ts) each replay every case through their own transport and must make the same number of attempts. A script entry is either an answer, `{ \"status\": N }` with an optional `retryAfterSeconds`, or a failure before an answer, `{ \"error\": CODE }` where CODE is a socket code Node's fetch puts on the error's cause, or `timeout` for the transport's own clock running out. Attempts beyond the script repeat its last entry. `preSendCodes` is the set of cause codes that prove a request never left; both classifiers assert their own set equals it. Both cap a `Retry-After` at `policy.retryAfterCapSeconds` and fail at once beyond it. A failure may also be `{ \"error\": \"dropped\" }`: the socket was lost after connecting. Bun reports that as a `TypeError` whose `code` is `ECONNRESET` on the error itself; Node reports the same event as `fetch failed` with `cause.code` `UND_ERR_SOCKET`, and both are their own rows. A transport failure that names a socket code is sent again whatever the method: a reply nobody saw is usually a request that never ran, and the operator re-running by hand would send it again anyway. `{ \"error\": \"unsendable\" }` is the exception \u2014 a `TypeError` with no code at all, the client refusing to send, which retrying cannot fix. `{ \"error\": \"ERR_INVALID_URL\" }` and `{ \"error\": \"DEPTH_ZERO_SELF_SIGNED_CERT\" }` carry a code that is not about the connection but about the request itself, so neither lifts the replay gate: a write that failed either way is sent once. Reads still retry them, which this table does not pin \u2014 retrying a rejected certificate is a pre-existing waste, not something these rows govern.",
   "policy": {
     "maxAttempts": 3,
     "retryAfterCapSeconds": 10
@@ -159,14 +159,17 @@
       "attempts": 2
     },
     {
-      "name": "a write reset after sending is sent once",
+      "name": "a write reset after sending is sent again",
       "method": "POST",
       "script": [
         {
           "error": "ECONNRESET"
+        },
+        {
+          "status": 200
         }
       ],
-      "attempts": 1
+      "attempts": 2
     },
     {
       "name": "a write whose name did not resolve is sent again",
@@ -191,6 +194,98 @@
         },
         {
           "status": 200
+        }
+      ],
+      "attempts": 1
+    },
+    {
+      "name": "a write dropped after sending is sent again",
+      "method": "POST",
+      "script": [
+        {
+          "error": "dropped"
+        },
+        {
+          "status": 200
+        }
+      ],
+      "attempts": 2
+    },
+    {
+      "name": "a write dropped after sending, as Node reports it, is sent again",
+      "method": "POST",
+      "script": [
+        {
+          "error": "UND_ERR_SOCKET"
+        },
+        {
+          "status": 200
+        }
+      ],
+      "attempts": 2
+    },
+    {
+      "name": "a write stops at the ceiling when the socket keeps dropping",
+      "method": "POST",
+      "script": [
+        {
+          "error": "dropped"
+        }
+      ],
+      "attempts": 3
+    },
+    {
+      "name": "a write the client refused to send is sent once",
+      "method": "POST",
+      "script": [
+        {
+          "error": "unsendable"
+        }
+      ],
+      "attempts": 1
+    },
+    {
+      "name": "a read dropped after sending is read again",
+      "method": "GET",
+      "script": [
+        {
+          "error": "dropped"
+        },
+        {
+          "status": 200
+        }
+      ],
+      "attempts": 2
+    },
+    {
+      "name": "a read dropped after sending, as Node reports it, is read again",
+      "method": "GET",
+      "script": [
+        {
+          "error": "UND_ERR_SOCKET"
+        },
+        {
+          "status": 200
+        }
+      ],
+      "attempts": 2
+    },
+    {
+      "name": "a write the client could not address is sent once",
+      "method": "POST",
+      "script": [
+        {
+          "error": "ERR_INVALID_URL"
+        }
+      ],
+      "attempts": 1
+    },
+    {
+      "name": "a write refused over a certificate is sent once",
+      "method": "POST",
+      "script": [
+        {
+          "error": "DEPTH_ZERO_SELF_SIGNED_CERT"
         }
       ],
       "attempts": 1

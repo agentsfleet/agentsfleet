@@ -15,7 +15,7 @@ import {
   readProblemDetails,
   type FetchImpl,
 } from "../lib/http.ts";
-import { apiRequestWithRetry, type RetryConfig } from "../lib/http-retry.ts";
+import { DROP_CODES, PRE_SEND_CODES, apiRequestWithRetry, socketCode, type RetryConfig } from "../lib/http-retry.ts";
 import { CliConfig } from "./config.ts";
 import { NetworkError, ServerError } from "../errors/index.ts";
 import { isString } from "../lib/guards.ts";
@@ -43,10 +43,22 @@ export const HttpClient = Context.Service<HttpClient>(
   "agentsfleet/runtime/HttpClient",
 );
 
+// Node's fetch says "fetch failed"; Bun says what happened and puts the code
+// on the error. Both mean the connection never carried the request, and the
+// operator is owed the same suggestion. A code that is not about the
+// connection — an invalid URL, a certificate the client rejected — is not
+// this, and keeps its own message: telling someone to check their proxy when
+// the real answer is "that certificate is not the one I expected" hides the
+// one error worth reading closely.
+const reachabilityCode = (cause: TypeError): boolean => {
+  const code = socketCode(cause);
+  return code !== undefined && (DROP_CODES.has(code) || PRE_SEND_CODES.has(code));
+};
+
 const isFetchFailed = (cause: unknown): boolean =>
   cause instanceof TypeError &&
-  isString(cause.message) &&
-  cause.message.toLowerCase().includes("fetch failed");
+  ((isString(cause.message) && cause.message.toLowerCase().includes("fetch failed")) ||
+    reachabilityCode(cause));
 
 const BUNDLE_SECRETS_MISSING = "UZ-BUNDLE-003" as const;
 export const ERR_WORKSPACE_NAME_EXISTS = "UZ-WORKSPACE-001" as const;

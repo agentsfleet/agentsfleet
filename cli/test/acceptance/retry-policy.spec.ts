@@ -6,7 +6,8 @@
  *
  *   - a read recovers from a 503 blip: two round-trips, exit 0
  *   - a read whose socket reset after sending is read again
- *   - a write whose socket reset after sending is sent exactly once
+ *   - a write whose socket reset after sending is sent again, and the
+ *     operator output still carries no stack frames
  */
 import { afterAll, afterEach, beforeAll, describe, it } from "bun:test";
 import assert from "node:assert/strict";
@@ -25,6 +26,8 @@ const API_KEY_CREATE_ARGS = ["api-key", "create", "--name", "retry-probe"];
 const FLEET_LIST_ARGS = ["list"];
 const API_KEYS_PATH = "/v1/api-keys";
 const STACK_FRAME_RE = /\n\s+at\s+\S+/;
+// The transport ceiling the binary ships with (lib/http-retry.ts).
+const MAX_ATTEMPTS = 3;
 
 type Step = { readonly status: number; readonly body?: string } | { readonly reset: true };
 
@@ -90,11 +93,23 @@ describe("retry policy over a real socket", () => {
     assert.deepEqual(methods(), ["GET", "GET"]);
   });
 
-  it("a write whose socket reset after sending is sent exactly once", async () => {
+  it("a write whose socket reset after sending is sent again", async () => {
+    // A reply nobody saw is usually a request that never ran, so the write
+    // goes again over a real socket. The price — a reset arriving after the
+    // server accepted it doubles the write — is named in
+    // `docs/architecture/web_app.md`.
     queue.push({ reset: true });
+    queue.push({ status: HTTP_OK, body: JSON.stringify({ id: "key_1", key_name: "retry-probe" }) });
     const result = await runFleetctl([...API_KEY_CREATE_ARGS], { env: env() });
-    assert.notEqual(result.code, EXIT_OK, "a write the server may hold must not be reported as done");
-    assert.deepEqual(requests, [`POST ${API_KEYS_PATH}`]);
+    assert.equal(result.code, EXIT_OK, `${result.stdout}\n${result.stderr}`);
+    assert.deepEqual(requests, [`POST ${API_KEYS_PATH}`, `POST ${API_KEYS_PATH}`]);
+  });
+
+  it("a write the socket keeps dropping stops, without leaking stack frames", async () => {
+    queue.push({ reset: true }, { reset: true }, { reset: true });
+    const result = await runFleetctl([...API_KEY_CREATE_ARGS], { env: env() });
+    assert.notEqual(result.code, EXIT_OK, "a write that never reached the server must not be reported as done");
+    assert.deepEqual(requests, Array.from({ length: MAX_ATTEMPTS }, () => `POST ${API_KEYS_PATH}`));
     const output = `${result.stdout}\n${result.stderr}`;
     assert.ok(!STACK_FRAME_RE.test(output), `stack frames leaked into operator output: ${output}`);
   });

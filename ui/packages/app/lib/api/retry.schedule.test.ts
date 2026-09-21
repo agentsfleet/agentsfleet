@@ -209,16 +209,23 @@ describe("full jitter", () => {
 });
 
 describe("provenance decides replay", () => {
-  it("a write replays only when it provably never left", async () => {
+  it("a write replays when the connection failed, not when the server answered", async () => {
     const { sleepImpl } = recordingSleep();
-    const refused = vi.fn().mockRejectedValueOnce(fetchFailed("ECONNREFUSED")).mockResolvedValue("sent once");
-    expect(await runWithRetry(refused, "POST", { sleepImpl })).toBe("sent once");
+    const refused = vi.fn().mockRejectedValueOnce(fetchFailed("ECONNREFUSED")).mockResolvedValue("sent again");
+    expect(await runWithRetry(refused, "POST", { sleepImpl })).toBe("sent again");
     expect(refused).toHaveBeenCalledTimes(2);
 
-    const reset = fetchFailed("ECONNRESET");
-    const interrupted = vi.fn().mockRejectedValue(reset);
-    await expect(runWithRetry(interrupted, "POST", { sleepImpl })).rejects.toBe(reset);
-    expect(interrupted).toHaveBeenCalledTimes(1);
+    // A socket lost after sending is sent again too: a reply nobody saw is
+    // usually a request that never ran.
+    const dropped = vi.fn().mockRejectedValueOnce(fetchFailed("ECONNRESET")).mockResolvedValue("sent again");
+    expect(await runWithRetry(dropped, "POST", { sleepImpl })).toBe("sent again");
+    expect(dropped).toHaveBeenCalledTimes(2);
+
+    // A gateway error is the server answering, and it may have run the write.
+    const answered = transient();
+    const gateway = vi.fn().mockRejectedValue(answered);
+    await expect(runWithRetry(gateway, "POST", { sleepImpl })).rejects.toBe(answered);
+    expect(gateway).toHaveBeenCalledTimes(1);
 
     const read = vi.fn().mockRejectedValueOnce(fetchFailed("ECONNRESET")).mockResolvedValue("read again");
     expect(await runWithRetry(read, "GET", { sleepImpl })).toBe("read again");
