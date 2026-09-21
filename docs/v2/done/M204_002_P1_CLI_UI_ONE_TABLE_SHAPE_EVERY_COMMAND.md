@@ -16,14 +16,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M204
 **Workstream:** 002
 **Date:** Sep 21, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing: every table's columns change, and two advertised flags change behaviour.
 **Categories:** CLI, UI
 **Batch:** B1 — single stream; the helper precedes the call sites, the call sites precede the golden fixture.
 **Branch:** `feat/m204-workspace-library-removal`
 **Folded-into:** `M204_001`
 **Baseline revision:** 76eb9c2d305a480ea8437e65d63efbcaf7ba6de7
-**Test Baseline:** `unit=2640 integration=561` at the comparison revision, inherited from `M204_001` — one branch measured once. **Final:** unit=2662 integration=570, both unchanged by this workstream, which adds no Rust test: every test it ships is TypeScript. TypeScript app 2916 (+5 since `M204_001` recorded its numbers: 3 here, 2 from `72c2063f7`) · cli 1739 (+44).
+**Test Baseline:** `unit=2640 integration=561` at the comparison revision, inherited from `M204_001` — one branch measured once. **Final, measured at close:** unit=2662 integration=571. Both Rust numbers are unchanged by this workstream, which adds no Rust test: every test it ships is TypeScript. TypeScript app 2916 · cli 1749 (+10 since the workstream's own count of 1739, all from the skill chain: the unadvertised flag's neighbour keeps its help, and the endpoint a record names carries no identifier whatever follows it).
 **Baseline evidence:** measured at `ae4061557` in the M204 worktree. `cargo test --workspace --all-features` → 2662 passed, 0 failed, 590 ignored across 155 binaries. `make test-integration-rustd` → 570 passed, 0 failed across 134 binaries, against docker compose Postgres and Dragonfly. `cd cli && bun test` → 1739 pass, 0 fail. `cd ui/packages/app && bunx vitest run` → 2916 passed across 310 files. `make lint-all`, `make check-version` and `make harness-verify` each exit 0; two deploy-lock tests skip locally for a missing `flock`, which Continuous Integration (CI) has.
 **Depends on:** `M204_001` — it adds `library list`, whose table this workstream reshapes; both land on one branch and one Pull Request.
 **Provenance:** agent-generated (pre-spec, a command sweep of the built binary, Sep 21, 2026)
@@ -216,6 +216,8 @@ No product analytics event is added: reshaping a table and covering two flags ch
 | 1.4 | unit | `test_every_entity_list_renders_through_the_helper` | Thirteen call sites reach the renderer through `printEntityTable`; the three that do not are `connector status`, `api-key create` and `tenant provider show`, each a two-column label/value detail table for a single resource rather than a list of entities. |
 | 2.1 | unit | `test_log_level_governs_records_that_exist` | With a stub transport and one injected retry: `--log-level debug` → stderr carries the method, the path template, `attempt=1`, `attempt=2` and the retry verdict; `--log-level none` and the default → stderr carries none of the five; no record contains the bearer token; `--log-level bogus` → non-zero exit naming the nine levels. |
 | 2.2 | unit | `test_help_does_not_advertise_the_undesigned_flag` | `--help` stdout contains no `--wizard`; the golden fixture matches byte-for-byte; `agentsfleet --wizard` with closed standard input still opens the builder and exits 0. |
+| 2.1 | unit | `a_flag_whose_name_merely_begins_with_the_unadvertised_one_is_still_offered` | A flag declared as `wizardly` renders in the help with its description intact, and a declared `wizard` still goes along with its own. The term test matched a prefix, so the neighbour disappeared with the flag it merely shares a start with. |
+| 2.1 | unit | `the_endpoint_a_record_names_carries_no_identifier` | `endpointOf` replaces an identifier followed by a segment, by the end of the path, and by `?` — the last of which it kept. No command builds that shape today, so nothing leaked; the record's promise is unconditional and is now asserted directly rather than through whichever paths the commands happen to build. |
 | 2.3 | unit | `test_completions_emit_a_script_each_shell_parses` | `--completions bash` → non-empty stdout that `bash -n` accepts; `zsh` likewise under `zsh -n`; `fish` and `sh` each emit non-empty stdout; `--completions bogusshell` → non-zero exit naming all four. |
 | 3.1 | unit | `test_status_reports_one_fleet_or_the_whole_workspace` | `fleet show <uuidv7 of a seeded fleet>` → that fleet's row alone; `status` → every fleet in the active workspace, byte-identical to the pre-diff output over the same fixture; `fleet show not-a-uuid` → non-zero exit, `INVALID_ARGUMENT`, and no request issued against an unroutable API URL; `status <id>` → refused as an unexpected positional. |
 | 3.1 | e2e | `test_status_by_identifier_subprocess_walk` | The real binary in a subprocess against the acceptance stack: install a fleet, `fleet show <its id>` names it and no other, `status` names it among the workspace's fleets. |
@@ -243,10 +245,10 @@ No product analytics event is added: reshaping a table and covering two flags ch
 | R9 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 |  ✅ `0` unlisted across 127 paths, after the table was reconciled — `models.ts` and two library-page test files were missing |
 | R10 | The schedule verbs match the rest of the surface (§6) | `cd cli && bun test test/fleet-schedule.unit.test.ts && ./dist/bin/agentsfleet.js schedule --help \| grep -cE '^  (add|rm|status) '` | exit 0, then `0` | P1 |  ✅ `9 pass`; `schedule --help | grep -cE '^  (add|rm|status) '` → `0` |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 |  ✅ `ALL GATES GREEN` |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 |  ✅ `exit=0` — `All unit lanes passed`; Rust 2662 passed / 0 failed |
-| S3a | Lint green | `make lint-all` | exit 0 | P0 |  ✅ `exit=0` — `All lint checks passed` |
-| S3b | Integration lane green (live Postgres and Dragonfly) | `make test-integration-rustd` | exit 0 | P0 |  ✅ `exit=0` — 570 passed, 0 failed across 134 binaries |
-| S3c | Version sync | `make check-version` | exit 0 | P0 |  ✅ `exit=0` — `all versions match 0.49.0` |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 |  ✅ `exit=0` — `All unit lanes passed`; Rust 2662 passed / 0 failed. Re-run at close on tonight's tree: `All unit lanes passed`, Rust 2662 passed / 0 failed / 591 ignored across 155 binaries, cli 1749, app 2916. |
+| S3a | Lint green | `make lint-all` | exit 0 | P0 |  ✅ `exit=0` — `All lint checks passed`. Re-run at close on tonight's tree: `exit=0`, after a rustfmt on the test added by the skill chain. |
+| S3b | Integration lane green (live Postgres and Dragonfly) | `make test-integration-rustd` | exit 0 | P0 |  ✅ `exit=0` — 570 passed, 0 failed across 134 binaries. Re-run at close on tonight's tree: 571 passed / 0 failed across 134 binaries. |
+| S3c | Version sync | `make check-version` | exit 0 | P0 |  ✅ `exit=0` — `all versions match 0.49.0`. Re-run at close on tonight's tree: `all versions match 0.49.0`. |
 | S4 | No secrets | `gitleaks detect` | exit 0 | P0 |  ✅ `no leaks found` |
 | S5 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 |  ✅ one hit, `public/openapi.json` at 17565 lines — a generated published artefact, which the LENGTH GATE exempts under `public/`; no authored source file exceeds the cap |
 | S6 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 |  ✅ `0` — the diff deletes and renames no file; `renderUpdatedAt` and the CLI's `onboardedOn` have no remaining reference in `cli/` |
