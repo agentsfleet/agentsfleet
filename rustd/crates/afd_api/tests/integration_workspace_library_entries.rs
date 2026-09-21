@@ -188,6 +188,53 @@ async fn test_delete_refusals_are_malformed_and_scoped() {
     live.cleanup().await;
 }
 
+/// Dimension 2.3 — a removal that names a row it does not own leaves it there.
+///
+/// The verb answers `204` for an entry already gone and for one belonging to
+/// another workspace, and the two are indistinguishable on purpose. That
+/// sameness is what makes this case worth its own test: the response cannot
+/// tell you whether the scoping predicate ran, so the only observation that
+/// can is the row itself. Drop `AND workspace_id = $2` from `REMOVE_ENTRY` and
+/// every other case here still passes — this one is what fails.
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn test_removing_another_workspaces_entry_answers_204_and_leaves_it() {
+    let live = Live::start().await;
+    let theirs = live.seed_foreign_entries(2).await;
+    let mine = live.onboard("mine-to-keep").await;
+    let target = theirs.first().expect("two foreign rows were seeded");
+    assert_eq!(live.foreign_row_count().await, 2, "both of theirs are there");
+
+    let (status, body) = live.remove_response(target).await;
+    assert_eq!(
+        status,
+        StatusCode::NO_CONTENT,
+        "an unowned id is not distinguishable from one already gone: {}",
+        text(&body)
+    );
+    assert!(body.is_empty(), "204 carries no body: {}", text(&body));
+
+    assert_eq!(
+        live.foreign_row_count().await,
+        2,
+        "the answer was 204 and the other workspace still holds both rows"
+    );
+    assert_eq!(
+        live.owned_row_count().await,
+        1,
+        "and nothing of ours left with it"
+    );
+    assert_eq!(
+        items_of(&live.owned_page("").await)
+            .first()
+            .and_then(|item| item.get("id"))
+            .and_then(Value::as_str),
+        Some(mine.as_str()),
+        "the next read still answers with our own entry"
+    );
+    live.cleanup().await;
+}
+
 /// Dimension 2.6 — the removal's line carries the outcome and none of the bundle.
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
