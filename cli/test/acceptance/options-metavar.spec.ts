@@ -120,7 +120,7 @@ function runEnv(extra?: Record<string, string>): Record<string, string> {
 describe("--help bodies use angle-bracket metavar convention", () => {
   type HelpCase = readonly [string, ReadonlyArray<string>, ReadonlyArray<string>];
   const cases: ReadonlyArray<HelpCase> = [
-    ["agentsfleet list --help",                 ["list", "--help"],                 ["--limit <n>", "--starting-after <id>", "--workspace-id <id>"]],
+    ["agentsfleet list --help",                 ["list", "--help"],                 ["--limit <n>", "--starting-after <id>", "--workspace <id>"]],
     ["agentsfleet logs --help",                 ["logs", "--help"],                 ["--limit <n>", "--cursor <token>", "--fleet <id>"]],
     ["agentsfleet events --help",               ["events", "--help"],               ["--limit <n>", "--since <when>", "--actor <glob>", "--cursor <token>"]],
     ["agentsfleet install --help",              ["install", "--help"],              ["--library <library_id>", "--name <name>"]],
@@ -159,7 +159,7 @@ describe("validators reject invalid values with clear error stem", () => {
     ["logs --limit 9999",     ["logs", "--limit", "9999"],       /must be ≤ 500/],
     ["events <id> --limit 9999", ["events", FIXTURE_UUIDV7, "--limit", "9999"], /must be ≤ 500/],
     // Identifier refusals (uuidv7 enforced).
-    ["list --workspace-id not-a-uuid",   ["list", "--workspace-id", "not-a-uuid"], /uuidv7 format/],
+    ["list --workspace not-a-uuid",      ["list", "--workspace", "not-a-uuid"],    /uuidv7 format/],
   ];
 
   for (const [name, argv, stemRe] of cases) {

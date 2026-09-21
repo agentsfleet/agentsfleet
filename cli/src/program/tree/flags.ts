@@ -120,7 +120,6 @@ const textFlag = (name: string, description: string, metavar: string = METAVAR.t
     Flag.optional,
   );
 
-export const workspaceIdFlag = idFlag("workspace-id", WORKSPACE_ID_DESC);
 export const workspaceFlag = idFlag("workspace", WORKSPACE_ID_DESC);
 export const fleetFlag = idFlag("fleet", FLEET_ID_DESC);
 

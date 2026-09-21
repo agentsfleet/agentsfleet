@@ -9,7 +9,7 @@
  *   (a) delete a secret a tenant provider references → refused-conflict OR
  *       cascade-with-credential_missing disjunction; baseline restored on fail.
  *   (b) `workspace delete` is LOCAL-only (no server DELETE) → the server fleet
- *       survives and stays reachable via `list --workspace-id`.
+ *       survives and stays reachable via `list --workspace`.
  *
  * Prefix-scoped: every fleet + secret is ACCEPTANCE_RUN_PREFIX-named
  * and cleaned in afterAll; no assertion claims global emptiness. Live-only:
@@ -35,7 +35,7 @@ import { installPlatformOpsFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import { sweepSecrets } from "./fixtures/secret-ops.ts";
 import {
-  FLAG_WORKSPACE_ID,
+  FLAG_WORKSPACE,
   WORKSPACE_LOCAL_REMOVAL_FIELD,
 } from "./fixtures/workspace-ops.ts";
 import {
@@ -209,7 +209,7 @@ if (!isLive) {
           // `workspace delete` is a LOCAL-store op (no server DELETE route), so
           // it cannot guard against, nor cascade onto, the live fleet. The
           // documented behaviour: the local delete succeeds and the server
-          // workspace + its fleet remain reachable via `list --workspace-id`.
+          // workspace + its fleet remain reachable via `list --workspace`.
           const del = await run([CMD_WORKSPACE, SUB_DELETE, deletedWorkspaceId, FLAG_JSON]);
           assert.equal(del.code, 0, `workspace delete exited ${del.code}: ${del.stderr}`);
           assert.equal(
@@ -219,11 +219,11 @@ if (!isLive) {
           );
 
           // Server side is unaffected: the fleet is still listable by id even
-          // though the local workspace pointer was removed. `list --workspace-id`
+          // though the local workspace pointer was removed. `list --workspace`
           // takes the explicit override without requiring the (now-deleted) local
           // store entry (per cli/src/commands/fleet_list.ts).
-          const listed = await run([CMD_LIST, FLAG_WORKSPACE_ID, deletedWorkspaceId, FLAG_JSON]);
-          assert.equal(listed.code, 0, `list --workspace-id exited ${listed.code}: ${listed.stderr}`);
+          const listed = await run([CMD_LIST, FLAG_WORKSPACE, deletedWorkspaceId, FLAG_JSON]);
+          assert.equal(listed.code, 0, `list --workspace exited ${listed.code}: ${listed.stderr}`);
           const rows = parseJson<FleetListEnvelope>(listed.stdout, "ws-fleets").items ?? [];
           const survived = rows.some((r) => r.id === fleetId || r.fleet_id === fleetId);
           assert.ok(survived,

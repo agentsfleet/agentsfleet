@@ -254,7 +254,7 @@ export const workspaceShowEffectFromArgs = (
         new ConfigError({
           detail: "no active workspace",
           suggestion:
-            "run `agentsfleet workspace use <id>` or pass --workspace-id",
+            "run `agentsfleet workspace use <id>` or pass --workspace <id>",
         }),
       );
     }

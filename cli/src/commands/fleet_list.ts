@@ -1,5 +1,5 @@
 // `agentsfleet fleet list` — paginated table of fleets in a workspace.
-// Workspace defaults to `current_workspace_id`; `--workspace-id` overrides.
+// Workspace defaults to `current_workspace_id`; `--workspace` overrides.
 
 import { Effect } from "effect";
 import { HttpClient } from "../services/http-client.ts";
@@ -7,7 +7,7 @@ import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import {
   resolveAuthToken,
   resolveWorkspaceId,
-  WORKSPACE_ID_FLAG,
+  WORKSPACE_FLAG,
 } from "./workspace-guards.ts";
 import { isString } from "../lib/guards.ts";
 import { QUERY_STARTING_AFTER, wsFleetsPath } from "../lib/api-paths.ts";
@@ -53,7 +53,7 @@ export const listEffectFromFlags = Effect.fn("fleet.list")(function* (
   const output = yield* Output;
   const http = yield* HttpClient;
 
-  const wsId = yield* resolveWorkspaceId(flags.workspaceId, WORKSPACE_ID_FLAG);
+  const wsId = yield* resolveWorkspaceId(flags.workspaceId, WORKSPACE_FLAG);
   const token = yield* resolveAuthToken;
   const res = yield* http.request<FleetListResponse>({
     path: buildPath(wsId, flags.startingAfter, flags.limit),
