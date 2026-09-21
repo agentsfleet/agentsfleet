@@ -28,6 +28,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_events::Closed;
 use afd_wire::tail::FleetCounters;
+use sqlx::Row as _;
 
 use crate::error::{Result, query};
 use crate::lease::admit::Refusal;
@@ -113,9 +114,10 @@ impl Leases {
             .bind(Option::<&str>::None)
             .bind(now.as_millis())
             .bind(afd_core::event::status::RECEIVED)
-            .execute(&mut *connection)
+            .fetch_one(&mut *connection)
             .await
             .map_err(query(CONTEXT_RECEIVED))?;
+        let inserted: bool = landed.try_get(0).map_err(query(CONTEXT_RECEIVED))?;
 
         // Stamped on BOTH arms, before the arms diverge. A first delivery that
         // wrote the narrative row and then failed to stamp has committed the
@@ -129,9 +131,11 @@ impl Leases {
         // is what makes running it twice free.
         stamp_admission_delivered(&mut connection, acquired, now).await?;
 
-        // Zero rows is the `ON CONFLICT DO NOTHING` arm: the row was already
-        // there, so somebody has already paid for this event.
-        if landed.rows_affected() == 0 {
+        // A false flag is the conflict arm: the row was already there, so
+        // somebody has already paid for this event. `rows_affected` cannot say
+        // that any more — the arm converges to keep a continuation's
+        // predecessor, so it reports one row written either way.
+        if !inserted {
             return Ok(Received {
                 delivery: self.redelivery_of(&mut connection, acquired).await?,
                 counters: None,

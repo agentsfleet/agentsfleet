@@ -12817,6 +12817,7 @@
         "required": [
           "id",
           "tenant_id",
+          "fleet_id",
           "event_id",
           "charge_type",
           "posture",
@@ -12839,11 +12840,8 @@
             "description": "The event that triggered the work."
           },
           "fleet_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The fleet it was incurred by. Unlike `workspace_id`, this one SURVIVES\nthat fleet's deletion.\n\nThe two stopped sharing a rule at slot 915. A workspace is still nulled\non deletion. A fleet is not. The dashboard derives the fleet's callsign\nfrom this value, and nulling it left a real charge unable to say what it\npaid for. `null` here now means a charge written before that slot, not a\nfleet that has since gone."
+            "type": "string",
+            "description": "The fleet it was incurred by. Unlike `workspace_id`, this one SURVIVES\nthat fleet's deletion, and it is never absent.\n\nThe two stopped sharing a rule at slot 915. A workspace is still nulled\non deletion. A fleet is not. The dashboard derives the fleet's callsign\nfrom this value, and nulling it left a real charge unable to say what it\npaid for.\n\nNot optional since slot 916, which made the column `NOT NULL` as part\nof the accumulate arbiter. The nullable spelling outlived its meaning\nby one slot: it documented a charge written before 915. No database\nholds one, because nothing is deployed and the schema rebuilds from\nempty. A reader who branched on the absent case would be writing for a\nrow that cannot exist."
           },
           "fleet_name": {
             "type": [

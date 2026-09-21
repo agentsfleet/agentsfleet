@@ -19,6 +19,14 @@
 //! tests in one file already ran concurrently, so neither this file nor its
 //! absence ever changed that.
 
+#[path = "support/tail_watch.rs"]
+#[allow(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test support: an unmet precondition should fail the test loudly"
+)]
+mod tail_watch;
+
 #[path = "support/gate_lane.rs"]
 #[allow(
     clippy::expect_used,
@@ -47,6 +55,10 @@ mod integration_inbox_decider_name;
 mod integration_inbox_paging;
 #[path = "integration_inbox_tail.rs"]
 mod integration_inbox_tail;
+#[path = "integration_inbox_tail_continuation.rs"]
+mod integration_inbox_tail_continuation;
+#[path = "integration_inbox_tail_runless.rs"]
+mod integration_inbox_tail_runless;
 
 #[path = "error_surface.rs"]
 mod error_surface;

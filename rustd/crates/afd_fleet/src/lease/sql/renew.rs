@@ -136,7 +136,7 @@ WITH probe AS (
            g.event_created_at, $6, $6,
            (SELECT f.name FROM core.fleets f WHERE f.id = g.fleet_id)
     FROM guard g
-    ON CONFLICT (event_id, charge_type) DO UPDATE SET
+    ON CONFLICT (event_id, charge_type, fleet_id) DO UPDATE SET
         credit_deducted_nanos = billing.usage_ledger.credit_deducted_nanos
             + EXCLUDED.credit_deducted_nanos,
         token_count_input  = COALESCE(billing.usage_ledger.token_count_input, 0)

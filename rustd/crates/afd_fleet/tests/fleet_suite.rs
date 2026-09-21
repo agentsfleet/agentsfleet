@@ -60,6 +60,8 @@ mod integration_ledger_fleet_name;
 mod integration_ledger_orphan_charge;
 #[path = "integration_ledger_reads.rs"]
 mod integration_ledger_reads;
+#[path = "integration_ledger_scope.rs"]
+mod integration_ledger_scope;
 #[path = "integration_memory_capture.rs"]
 mod integration_memory_capture;
 #[path = "integration_money_gates.rs"]

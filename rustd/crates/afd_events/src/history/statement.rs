@@ -25,7 +25,7 @@
 ///
 /// `cost_nanos` is a correlated subselect rather than a `LEFT JOIN`: billing
 /// writes up to two ledger rows per event — `receive` and `stage`, unique on
-/// `(event_id, charge_type)` — so a join would duplicate the event row per leg
+/// `(event_id, charge_type, fleet_id)` — so a join would duplicate the event row per leg
 /// and a page of 50 would render as 100. The subselect keeps one row per event
 /// and yields SQL NULL where no telemetry exists.
 ///

@@ -183,9 +183,11 @@ async fn test_m201_charge_row_decodes_fleet_name() {
         .await
         .expect("a tenant's charges page must read");
 
+    // Found by its event, not its fleet: the seeded row names the same fleet
+    // now that `fleet_id` is NOT NULL, so the fleet no longer tells them apart.
     let captured = page
         .iter()
-        .find(|row| row.fleet_id.as_deref() == Some(held.fleet.as_str()))
+        .find(|row| row.event_id == held.event_id)
         .expect("the fixture's receive charge must be on the page");
     assert_eq!(
         captured.fleet_name.as_deref(),
@@ -194,8 +196,8 @@ async fn test_m201_charge_row_decodes_fleet_name() {
          names a fleet after its own identifier"
     );
     assert_eq!(
-        captured.fleet_id.as_deref(),
-        Some(held.fleet.as_str()),
+        captured.fleet_id.as_str(),
+        held.fleet.as_str(),
         "the identifier the dashboard derives a callsign from must survive the read"
     );
 
@@ -282,7 +284,15 @@ fn nameless_row_id(held: &Held) -> Uuid7 {
     Uuid7::encode(held.now, bytes).expect("a well-formed identifier")
 }
 
-/// A charge with neither identifier nor name, as a pre-915 purge left them.
+/// A charge carrying no captured name, as a pre-915 row does.
+///
+/// It once carried no `fleet_id` either, because a pre-915 purge nulled both
+/// through the foreign key slot 915 removed. Slot 916 made that column
+/// `NOT NULL`, so a row without one is no longer a state the database can
+/// hold, and seeding one tested a value nothing can reach (RULE TVR). The null
+/// this fixture is actually about is `fleet_name`, which stays nullable for
+/// exactly the reason slot 915 gave: a charge written before it has no name to
+/// carry, and one whose fleet row was unreadable still had to be written.
 async fn seed_nameless_charge(held: &Held) {
     let workspace = workspace_of(held).await;
     let mut connection = held
@@ -295,7 +305,7 @@ async fn seed_nameless_charge(held: &Held) {
         "INSERT INTO billing.usage_ledger
            (id, tenant_id, workspace_id, fleet_id, event_id,
             charge_type, posture, model, event_created_at, created_at, last_charged_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, NULL, $4, $5, 'platform',
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $7::uuid, $4, $5, 'platform',
                  'claude-opus-5', $6, $6, $6)",
     )
     .bind(nameless_row_id(held).as_str())
@@ -304,6 +314,7 @@ async fn seed_nameless_charge(held: &Held) {
     .bind(nameless_event(held))
     .bind(charge::RECEIVE)
     .bind(held.now.as_millis())
+    .bind(&held.fleet)
     .execute(&mut *connection)
     .await
     .expect("the pre-915 charge must insert");

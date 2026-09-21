@@ -22,9 +22,18 @@ export interface Recorder {
   readonly stdout: string[];
   readonly stderr: string[];
   readonly httpCalls: string[];
+  // The rendered rows, not just their count. A grouping assertion that reads
+  // only `TABLE:n` passes on a table with the right number of rows and the
+  // wrong money in them, which is the defect the grouping key exists to stop.
+  readonly tables: ReadonlyArray<Record<string, unknown>>[];
 }
 
-export const makeRecorder = (): Recorder => ({ stdout: [], stderr: [], httpCalls: [] });
+export const makeRecorder = (): Recorder => ({
+  stdout: [],
+  stderr: [],
+  httpCalls: [],
+  tables: [],
+});
 
 export const outputLayer = (
   rec: Recorder,
@@ -56,6 +65,7 @@ export const outputLayer = (
     printTable: (_columns, rows) =>
       Effect.sync(() => {
         rec.stdout.push(`TABLE:${rows.length}`);
+        rec.tables.push(rows as ReadonlyArray<Record<string, unknown>>);
       }),
   });
 

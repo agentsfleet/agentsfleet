@@ -284,8 +284,8 @@ async fn seed_spend(fixtures: &Fixtures, tenant: &str, workspace: &str, fleet: &
     .bind(tenant)
     .bind(workspace)
     .bind(fleet)
-    // `(event_id, charge_type)` is unique across the whole table, so this
-    // is per-run for the same reason the row id is.
+    // The arbiter is `(event_id, charge_type, fleet_id)` since slot 916, and
+    // the id below is minted per fleet, so this row is per-run either way.
     .bind(format!("event-already-spent-{fleet}"))
     .bind(MODEL)
     .bind(nanos)

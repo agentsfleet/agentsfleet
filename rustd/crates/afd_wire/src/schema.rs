@@ -7,11 +7,9 @@
 //! shows up as wrong data. A setting name that drifts fails *silently*: the
 //! guard simply stops guarding, and nothing in the system is louder about it.
 //!
-//! This module is the other half of the pair. The schema still writes the
-//! literal, but every Rust reader spells it from here, and
-//! `afd_db/tests/schema_literals.rs` asserts the two agree across every
-//! embedded migration. A rename on either side fails there rather than in
-//! production.
+//! The schema still writes the literal; every Rust reader spells it from here,
+//! so the Rust side has one place to rename. The schema side is held by
+//! convention — no test pins the two spellings to each other.
 
 /// The transaction-scoped setting that lets a hard purge past the append-only
 /// triggers.
