@@ -1,3 +1,4 @@
+import { AGE_KEY, ago, entityColumns } from "../src/output/index.ts";
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Layer, Option, Redacted } from "effect";
 
@@ -51,6 +52,7 @@ const outputLayer = (cap: Capture): Layer.Layer<Output> =>
       success: (msg) => Effect.sync(() => { cap.successes.push(msg); }),
       printJson: (payload) => Effect.sync(() => { cap.jsons.push(payload); }),
       printTable: (columns, rows) => Effect.sync(() => { cap.tables.push({ columns, rows }); }),
+      printEntityTable: (spec, rows) => Effect.sync(() => { cap.tables.push({ columns: entityColumns(spec), rows: rows.map((r) => ({ ...r, [AGE_KEY]: ago(r[spec.ageKey ?? AGE_KEY]) })) }); }),
     } satisfies OutputShape),
   );
 

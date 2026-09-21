@@ -17,9 +17,9 @@ import { HttpClient } from "../services/http-client.ts";
 import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { resolveAuthToken, resolveWorkspaceId, WORKSPACE_FLAG } from "./workspace-guards.ts";
-import { isNumber, isString } from "../lib/guards.ts";
+import { isString } from "../lib/guards.ts";
 import { QUERY_STARTING_AFTER, wsFleetMemoriesPath } from "../lib/api-paths.ts";
-import { ui, EMPTY_CELL } from "../output/index.ts";
+import { ui } from "../output/index.ts";
 import {
   ServerError,
   ValidationError,
@@ -60,7 +60,7 @@ const EMPTY_LIST_MESSAGE = "No memories stored for this fleet yet.";
 
 const FIELD_KEY = "key" as const;
 const FIELD_CATEGORY = "category" as const;
-const FIELD_UPDATED = "updated" as const;
+const FIELD_UPDATED_AT = "updated_at" as const;
 const FIELD_PREVIEW = "preview" as const;
 
 
@@ -96,22 +96,6 @@ export interface MemoryReadFlags {
 const CONTROL_BYTES_RE = /[\u0000-\u001F\u007F-\u009F]/g;
 export const cleanCell = (value: unknown): string =>
   String(value ?? "").replace(CONTROL_BYTES_RE, "");
-
-// The only spot that interprets the wire timestamp: numeric epoch
-// milliseconds (schema/013 BIGINT; OpenAPI integer/int64). JSON mode passes
-// the raw value through untouched. The runtime guard keeps a malformed
-// envelope rendering as the dash, and the try/catch keeps an out-of-range
-// value (Date throws RangeError past ±8.64e15 ms) from killing the table.
-export const renderUpdatedAt = (value: number | null | undefined): string => {
-  try {
-    if (isNumber(value) && Number.isFinite(value)) {
-      return new Date(value).toISOString();
-    }
-  } catch {
-    return EMPTY_CELL;
-  }
-  return EMPTY_CELL;
-};
 
 // Collapse whitespace FIRST (newlines/tabs become spaces), then strip the
 // remaining control bytes, then cut at PREVIEW_MAX code points. Order
@@ -225,18 +209,21 @@ const memoryReadEffect = (
       return;
     }
 
-    yield* output.printTable(
-      [
-        { key: FIELD_KEY, label: "KEY" },
-        { key: FIELD_CATEGORY, label: "CATEGORY" },
-        { key: FIELD_UPDATED, label: "UPDATED" },
-        { key: FIELD_PREVIEW, label: "PREVIEW" },
-      ],
+    yield* output.printEntityTable(
+      {
+        name: { key: FIELD_KEY, label: "KEY" },
+        domain: [
+          { key: FIELD_CATEGORY, label: "CATEGORY" },
+          { key: FIELD_PREVIEW, label: "PREVIEW" },
+        ],
+        // A memory's age is when it last changed, not when it was first written.
+        ageKey: FIELD_UPDATED_AT,
+      },
       items.map((m) => ({
         [FIELD_KEY]: cleanCell(m.key),
         [FIELD_CATEGORY]: cleanCell(m.category),
-        [FIELD_UPDATED]: renderUpdatedAt(m.updated_at),
         [FIELD_PREVIEW]: previewText(m.content),
+        [FIELD_UPDATED_AT]: m.updated_at,
       })),
     );
     if (isString(req.nextPageCommand) && isString(res.next_cursor) && res.next_cursor.length > 0) {

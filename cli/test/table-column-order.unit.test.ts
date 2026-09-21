@@ -34,6 +34,13 @@ describe("entityColumns fixes one order", () => {
       .toEqual(["NAME", "FLEET", "AGO"]);
   });
 
+  test("an entity with no name of its own leads with its identifier", () => {
+    // A hosted schedule has no name — its identity IS the identifier, and
+    // inventing one would be a column that says nothing.
+    expect(labels({ id: IDENTIFIER, domain: [STATUS] }))
+      .toEqual(["FLEET", "STATUS", "AGO"]);
+  });
+
   test("domain order is the caller's, and it is preserved exactly", () => {
     const tier = { key: "tier", label: "TIER" } as const;
     const secrets = { key: "credentials", label: "SECRETS" } as const;
@@ -77,6 +84,16 @@ describe("entityTable renders the age from the row", () => {
     );
     expect(rendered).toContain("AGO");
     expect(rendered).toContain(EMPTY_CELL);
+  });
+
+  test("a table ages by the field it names, not only by created_at", () => {
+    const rendered = entityTable(
+      { name: NAME, domain: [STATUS], ageKey: "updated_at" },
+      [{ name: "note", status: "kept", updated_at: now - 7_200_000 }],
+      WIDE,
+    );
+    expect(rendered).toContain("AGO");
+    expect(rendered).toContain("2h");
   });
 
   test("a row's own created_at value never reaches the output raw", () => {

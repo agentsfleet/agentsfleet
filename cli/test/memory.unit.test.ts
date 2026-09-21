@@ -146,8 +146,8 @@ describe("test_memory_list_table_newest_first", () => {
     const rows = cap.tables[0]?.rows ?? [];
     expect(rows.map((r) => r["key"])).toEqual(["acme_contact", "deploy_window", "greeting_style"]);
     expect(rows[0]?.["category"]).toBe("core");
-    // epoch-seconds string fixture renders as ISO 8601
-    expect(String(rows[0]?.["updated"])).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    // the column reports how long ago it last changed, not the instant
+    expect(String(rows[0]?.["created_at"])).toMatch(/^\d+[smhdy]$/);
     expect(String(rows[0]?.["preview"])).toContain("escalation contact");
   });
 

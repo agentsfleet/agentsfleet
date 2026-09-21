@@ -171,15 +171,18 @@ export const scheduleListEffectFromArgs = (
       yield* ctx.output.info("No schedules for this Fleet.");
       return;
     }
-    yield* ctx.output.printTable(
-      [
-        { key: FIELD_SCHEDULE_ID, label: "SCHEDULE_ID" },
-        { key: FIELD_CRON, label: "CRON" },
-        { key: FIELD_TIMEZONE, label: "TIMEZONE" },
-        { key: FIELD_STATUS, label: "STATUS" },
-        { key: FIELD_SYNC, label: "SYNC" },
-        { key: FIELD_MESSAGE, label: "MESSAGE" },
-      ],
+    yield* ctx.output.printEntityTable(
+      {
+        // A hosted schedule has no name — its identity is the identifier.
+        id: { key: FIELD_SCHEDULE_ID, label: "SCHEDULE_ID" },
+        domain: [
+          { key: FIELD_CRON, label: "CRON" },
+          { key: FIELD_TIMEZONE, label: "TIMEZONE" },
+          { key: FIELD_STATUS, label: "STATUS" },
+          { key: FIELD_SYNC, label: "SYNC" },
+          { key: FIELD_MESSAGE, label: "MESSAGE" },
+        ],
+      },
       items.map((row) => ({
         [FIELD_SCHEDULE_ID]: row.schedule_id ?? "",
         [FIELD_CRON]: row.cron ?? "",
