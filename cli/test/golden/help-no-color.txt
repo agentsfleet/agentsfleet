@@ -38,7 +38,7 @@ SUBCOMMANDS
   install      Install a Fleet from a library entry (--library <library_id>)
   fleet        Fleet management subcommands
   list         List fleets in the active workspace (paginated)
-  status       Show status for every fleet in the active workspace
+  status       Show status for one fleet, or every fleet in the active workspace
   stop         Halt the running session (resumable)
   resume       Resume from stopped or auto-paused
   kill         Mark terminal (irreversible)

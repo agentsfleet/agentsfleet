@@ -163,11 +163,11 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["secret", "update"], missingArgName: "name" },
   { args: ["secret", "show"], missingArgName: "name" },
   { args: ["secret", "delete"], missingArgName: "name" },
-  { args: ["schedule", "add"], missingArgName: "fleet_id" },
+  { args: ["schedule", "create"], missingArgName: "fleet_id" },
   { args: ["schedule", "list"], missingArgName: "fleet_id" },
   { args: ["schedule", "update"], missingArgName: "fleet_id" },
-  { args: ["schedule", "rm"], missingArgName: "fleet_id" },
-  { args: ["schedule", "status"], missingArgName: "fleet_id" },
+  { args: ["schedule", "delete"], missingArgName: "fleet_id" },
+  { args: ["schedule", "show"], missingArgName: "fleet_id" },
   { args: ["schedule", "sync"], missingArgName: "fleet_id" },
 ];
 
@@ -215,7 +215,7 @@ export const MISSING_OPTION_VALUE: ReadonlyArray<ReadonlyArray<string>> = [
 
 // A required option omitted entirely.
 export const MISSING_REQUIRED_OPTION: ReadonlyArray<ReadonlyArray<string>> = [
-  ["schedule", "add", EXAMPLE_FLEET_ID],
+  ["schedule", "create", EXAMPLE_FLEET_ID],
 ];
 
 // Commands whose required input is a FLAG the handler validates, not a

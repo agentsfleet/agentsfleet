@@ -104,7 +104,7 @@ const scheduleRow = {
   sync: "synced",
 };
 
-describe("schedule add/list/update/rm/sync effects", () => {
+describe("schedule create/list/update/delete/sync effects", () => {
   test("add posts cron body and renders a human success line", async () => {
     const cap = newCapture();
     const calls: HttpRequestInput[] = [];
