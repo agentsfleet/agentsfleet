@@ -21,6 +21,7 @@ Every row is extracted from the §-numbered sections below; the owner column nam
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
 | The wedge surface | `agentsfleet` CLI + first-party Fleet library | `curl -fsSL https://agentsfleet.dev \| bash` → `login` → `install --library <id>` | §8.0 |
+| List output shape | name, identifier, domain columns, `AGO` | one helper owns the order for every entity list the CLI prints, and appends the age itself, so a call site has neither a position to choose nor a column to forget; a catalogue with no age of its own declares that rather than rendering an empty column | §8.4 |
 | Install input | `--library <id>` only | no direct local-file install; live-edit via `agentsfleet fleet update <fleet_id> --from <path>` | §8.0 |
 | Deployment posture | hosted-only in v2 | no `--self-host` flag, no self-host runbook; validation on non-Fly hosts is v3 | §8.0.1 |
 | Fleet definition | `SKILL.md` required, `TRIGGER.md` optional | a missing trigger yields a default manual/API trigger with no tools, secrets, or network | §8.1, §8.2.2 |

@@ -81,6 +81,8 @@ Slot 460's header argued that an onboarded entry is "retired by visibility" and 
 
 The workspace gallery `GET /v1/workspaces/{ws}/fleet-libraries` returns the union of all **published** platform rows and that workspace's tenant rows, and nothing from another workspace. It is the one list a client should read: `agentsfleet library` and `agentsfleet install --library` both resolve against it, and both page it to exhaustion, so what a caller can see and what it can install stay the same set.
 
+Because it is a union, a chooser sees both tiers at once, and two entries can share a name — the platform catalogue's copy of a bundle and a workspace's own. Every surface that renders the gallery therefore names the tier an entry came from: `agentsfleet library` carries a `TIER` column, and the install picker's card carries a badge reading `Platform` or `This workspace`. The rule is not cosmetic. The identifier shapes differ (a platform slug against a tenant UUIDv7) and so does what removal means, so a person installing from a same-named pair has to know which one they picked.
+
 ## The publish gate (M128)
 
 The platform tier has a lifecycle, carried by `core.fleet_library.visibility`. The column was vestigial — tenant entries live in a different table, so it had only ever held `'public'`, on every row — and it now means:
