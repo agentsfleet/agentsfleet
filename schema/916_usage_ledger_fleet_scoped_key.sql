@@ -75,24 +75,21 @@ ALTER TABLE billing.usage_ledger
 -- be chosen for the one thing it does affect, which is which queries the
 -- index tempts the planner into.
 --
--- No `IF NOT EXISTS`: PostgreSQL has no such form for `ADD CONSTRAINT`, so
--- the guard is a catalogue check, which a second run finds satisfied.
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint con
-        JOIN pg_class rel ON rel.oid = con.conrelid
-        JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
-        WHERE nsp.nspname = 'billing'
-          AND rel.relname = 'usage_ledger'
-          AND con.conname = 'uq_usage_ledger_event_id_charge_type_fleet_id'
-    ) THEN
-        ALTER TABLE billing.usage_ledger
-            ADD CONSTRAINT uq_usage_ledger_event_id_charge_type_fleet_id
-            UNIQUE (event_id, charge_type, fleet_id);
-    END IF;
-END
-$$;
+-- PostgreSQL has no `ADD CONSTRAINT IF NOT EXISTS`, so a re-runnable slot
+-- either reads the catalogue or drops first. It drops first: the name is
+-- authored here, so `IF EXISTS` needs no lookup to resolve it, and the
+-- statement stays two lines of plain DDL a reader can check by eye.
+--
+-- The cost is real and is accepted: a SECOND run rebuilds the unique index
+-- under an exclusive lock, where a catalogue guard would have been a no-op.
+-- This schema rebuilds from empty and slots run once per database, so the
+-- re-run is a developer's, not a deployment's.
+ALTER TABLE billing.usage_ledger
+    DROP CONSTRAINT IF EXISTS uq_usage_ledger_event_id_charge_type_fleet_id;
+
+ALTER TABLE billing.usage_ledger
+    ADD CONSTRAINT uq_usage_ledger_event_id_charge_type_fleet_id
+    UNIQUE (event_id, charge_type, fleet_id);
 
 -- No GRANT block (RULE SGR applies to CREATE TABLE): the constraint and the
 -- column belong to a table schema/710 already granted.
