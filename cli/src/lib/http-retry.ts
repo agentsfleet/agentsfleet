@@ -2,8 +2,14 @@
 // Owns retry classification, exponential backoff + jitter, Retry-After
 // honoring, the AGENTSFLEET_NO_RETRY escape hatch, and the replay gate:
 // a non-idempotent method is sent again only when the failure provably
-// happened before the request left, or when the server answered without
-// running it. Split out of http.ts so transport and retry concerns stay
+// happened before the request left, when the server answered without
+// running it, or when the transport reported the socket dropping. The last
+// case is the Supabase CLI's reading of a transport error, adopted here: a
+// reply we never saw is usually a request that never ran, and the operator
+// re-running by hand would send it again anyway. It is a deliberate trade —
+// a reset arriving after the server accepted a `steer` or an `api-key
+// create` can double it — and `docs/architecture/web_app.md` names it.
+// Split out of http.ts so transport and retry concerns stay
 // separable and each module stays under the line cap. The dashboard's
 // policy (ui/packages/app/lib/api/retry.ts) makes the same decisions;
 // tests/fixtures/retry-policy/cases.json is the table both are proven
@@ -13,7 +19,7 @@ import { ApiError, apiRequest, type ApiRequestOptions } from "./http.ts";
 import { isRecord } from "./guards.ts";
 import { HTTP_METHOD } from "../constants/http-method.ts";
 
-const DEFAULT_MAX_ATTEMPTS = 3;
+export const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_BASE_DELAY_MS = 250;
 const DEFAULT_CAP_DELAY_MS = 2000;
 const MAX_ATTEMPTS_HARD_CAP = 10;
@@ -35,6 +41,23 @@ const PROVENANCE_ANSWERED = "answered" as const;
 // Socket and resolver codes that prove the request never left. Node's fetch
 // puts them on the error's `cause` (`UND_ERR_CONNECT_TIMEOUT` is undici's);
 // Bun's puts them on the error itself (`ConnectionRefused` is Bun's).
+/**
+ * Codes that prove the connection itself broke after the request was on the
+ * wire. Only these make a write replayable: a code the runtime attaches for
+ * something else — `ERR_INVALID_URL`, `ERR_INVALID_ARG_VALUE`, a certificate
+ * failure such as `DEPTH_ZERO_SELF_SIGNED_CERT` — describes a request that
+ * will fail the same way three times, and a certificate failure in particular
+ * must reach the operator in its own words rather than as a connectivity hint.
+ */
+export const DROP_CODES: ReadonlySet<string> = new Set([
+  "ECONNRESET",
+  "ECONNABORTED",
+  "EPIPE",
+  "ETIMEDOUT",
+  "UND_ERR_SOCKET",
+  "ConnectionClosed",
+]);
+
 export const PRE_SEND_CODES: ReadonlySet<string> = new Set([
   "ECONNREFUSED",
   "ENOTFOUND",
@@ -59,6 +82,9 @@ type Provenance =
 interface Classified {
   readonly reason: RetryReason;
   readonly provenance: Provenance;
+  // The transport named a socket code, so the failure is a real connection
+  // event rather than a request the client refused to send.
+  readonly socketDropped: boolean;
 }
 
 function hasRetryOptOut(body: unknown): boolean {
@@ -74,32 +100,39 @@ function codeOf(value: unknown): string | undefined {
 }
 
 // The code is on the error under Bun and on its cause under Node.
-function socketCode(err: Error): string | undefined {
+export function socketCode(err: Error): string | undefined {
   return codeOf(err) ?? codeOf(err.cause);
 }
 
 function classifyRetryable(err: unknown): Classified | null {
   if (err instanceof ApiError) {
     // The transport's own clock ran out with the request on the wire.
-    if (err.code === "TIMEOUT") return { reason: STATUS_TIMEOUT, provenance: PROVENANCE_POST_SEND };
+    if (err.code === "TIMEOUT") return { reason: STATUS_TIMEOUT, provenance: PROVENANCE_POST_SEND, socketDropped: false };
     if (err.status !== undefined && RETRYABLE_STATUSES.has(err.status)) {
       // Server can opt out of retries by sending Retry-After: 0; we
       // surface that on the body so the wrapper can honor it.
       if (hasRetryOptOut(err.body)) return null;
-      if (err.status === 429) return { reason: RETRY_REASON_429, provenance: PROVENANCE_ANSWERED };
+      if (err.status === 429) return { reason: RETRY_REASON_429, provenance: PROVENANCE_ANSWERED, socketDropped: false };
       // A 408 or 425 is the server declining to run the request; a 5xx is a
       // gateway answering for a handler that may have run.
       const provenance = err.status >= HTTP_STATUS_SERVER_ERROR_FLOOR ? PROVENANCE_POST_SEND : PROVENANCE_ANSWERED;
-      return { reason: RETRY_REASON_5XX, provenance };
+      return { reason: RETRY_REASON_5XX, provenance, socketDropped: false };
     }
     return null;
   }
   // A network failure is a TypeError carrying the socket code, or none at
-  // all — which is read as sent, since nothing proves otherwise.
+  // all — which is read as sent, since nothing proves otherwise. A code-less
+  // one is the client refusing to send at all (Bun's shape for a header with
+  // a stray newline), which no amount of retrying fixes; so is a coded one
+  // whose code is not a drop.
   if (err instanceof TypeError) {
     const code = socketCode(err);
     const provenance = code !== undefined && PRE_SEND_CODES.has(code) ? PROVENANCE_PRE_SEND : PROVENANCE_POST_SEND;
-    return { reason: RETRY_REASON_NETWORK, provenance };
+    return {
+      reason: RETRY_REASON_NETWORK,
+      provenance,
+      socketDropped: code !== undefined && DROP_CODES.has(code),
+    };
   }
   return null;
 }
@@ -231,7 +264,8 @@ interface AttemptContext {
 
 // Decides whether a failed attempt retries. Returns the backoff delay (and
 // fires onRetry) when it should, else null. The replay gate blocks a
-// non-idempotent method whenever the server may hold the request.
+// non-idempotent method whenever the server may hold the request, unless the
+// transport reported the socket dropping.
 function planRetry(
   err: unknown,
   cfg: ResolvedRetryRuntime,
@@ -239,7 +273,10 @@ function planRetry(
 ): { delayMs: number } | null {
   const classified = classifyRetryable(err);
   if (classified === null) return null;
-  const unsafeReplay = classified.provenance === PROVENANCE_POST_SEND && !isIdempotentMethod(cfg.method);
+  const unsafeReplay =
+    classified.provenance === PROVENANCE_POST_SEND &&
+    !isIdempotentMethod(cfg.method) &&
+    !classified.socketDropped;
   const retryAfterMs = err instanceof ApiError ? err.retryAfterMs : null;
   const waitTooLong = retryAfterMs !== null && retryAfterMs > cfg.retryAfterCapMs;
   if (unsafeReplay || waitTooLong || ctx.attempt >= cfg.maxAttempts) return null;

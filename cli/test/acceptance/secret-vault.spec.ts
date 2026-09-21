@@ -180,7 +180,7 @@ if (!isLive) {
         const repeatCreate = await run([
           CMD_SECRET, SUB_CREATE, upsertName, FLAG_DATA, secretPayload(), FLAG_JSON,
         ]);
-        assert.equal(repeatCreate.code, 0, `repeat create exited ${repeatCreate.code}`);
+        assert.equal(repeatCreate.code, 0, `repeat create exited ${repeatCreate.code}: ${repeatCreate.stderr}`);
         const reParsed = parseJson<Record<string, unknown>>(repeatCreate.stdout, "repeat-create");
         assert.equal(reParsed[KEY_STATUS], STATUS_SKIPPED, `expected skipped: ${repeatCreate.stdout}`);
         assert.equal(reParsed[KEY_REASON], REASON_ALREADY_EXISTS, `expected reason: ${repeatCreate.stdout}`);

@@ -54,10 +54,13 @@ test("a write that timed out on the client is sent once; a read is read again", 
   expect(read.retries.map((r) => r.reason)).toEqual(["timeout"]);
 });
 
-test("a write reset after sending is sent once; one refused at connect never left and is sent again", async () => {
+test("a write reset after sending is sent again; so is one refused at connect", async () => {
+  // A reply nobody saw is usually a request that never ran. The trade is
+  // named in `docs/architecture/web_app.md`: a reset arriving after the
+  // server accepted the write can double it.
   const reset = await run("POST", fetchFailed("ECONNRESET"));
-  expect(reset.calls).toBe(1);
-  expect(reset.outcome).toBeInstanceOf(TypeError);
+  expect(reset.calls).toBe(2);
+  expect(reset.retries.map((r) => r.reason)).toEqual(["network"]);
 
   const refused = await run("POST", fetchFailed("ECONNREFUSED"));
   expect(refused.calls).toBe(2);
@@ -68,7 +71,7 @@ test("Bun's shape, the code on the error itself, is read the same way", async ()
   const refused = await run("POST", Object.assign(new TypeError("Unable to connect"), { code: "ConnectionRefused" }));
   expect(refused.calls).toBe(2);
   const reset = await run("POST", Object.assign(new TypeError("The socket connection was closed"), { code: "ECONNRESET" }));
-  expect(reset.calls).toBe(1);
+  expect(reset.calls).toBe(2);
 });
 
 test("a Retry-After beyond the cap fails at once, with the answer in hand", async () => {
