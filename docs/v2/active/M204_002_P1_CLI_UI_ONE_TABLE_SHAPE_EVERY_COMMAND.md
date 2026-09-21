@@ -134,8 +134,8 @@ Three claims in the acceptance fixtures are measurably false, and two of them co
 
 `schedule` speaks a private dialect: `add` where every other collection says `create`, `rm` where the rest says `delete`, and `status` where a single-resource read is called `show` — and `status` is doubly wrong, because the top-level `status` is a workspace read while this one takes two identifiers. Its `sync` description also names a scheduling vendor this platform no longer runs on. **Implementation default:** no alias is kept for any retired spelling; RULE NLG forbids a compatibility verb before `0.30.0`, and the retired spelling answers as an unknown subcommand pointing at the group's list, which is the refusal `argument-negatives.spec.ts` already pins for that shape. **Implementation default:** the `sync` description loses the vendor name rather than swapping in the current one, because the verb re-applies a schedule and which host receives it is not a caller's concern.
 
-- **Dimension 6.1** — `schedule create`, `schedule delete` and `schedule show` are the only spellings the tree accepts, each behaving exactly as the verb it replaces did, and each retired spelling is refused as an unknown subcommand naming the group's list → Test `test_schedule_verbs_match_the_rest_of_the_surface`
-- **Dimension 6.2** — No command description in the tree names a scheduling vendor → Test `test_no_command_description_names_a_vendor`
+- **Dimension 6.1** — DONE — `schedule create`, `schedule delete` and `schedule show` are the only spellings the tree accepts, each behaving exactly as the verb it replaces did, and each retired spelling is refused as an unknown subcommand naming the group's list → Test `test_schedule_verbs_match_the_rest_of_the_surface`
+- **Dimension 6.2** — DONE — No command description in the tree names a scheduling vendor → Test `test_no_command_description_names_a_vendor`
 
 ### §7 — Documentation
 

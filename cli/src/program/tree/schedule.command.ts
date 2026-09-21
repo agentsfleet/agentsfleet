@@ -31,7 +31,19 @@ import { stdoutIsTty } from "./tty.ts";
 
 const opt = Option.getOrUndefined;
 
-const scheduleAddCommand = Command.make("add", {
+// `schedule` spoke a private dialect: add where every other collection says
+// create, rm where the rest says delete, and status where a single-resource
+// read is called show. No alias is kept for the retired spellings — a
+// compatibility verb is what the rules forbid at this version, and a retired
+// spelling answers as the unknown subcommand it now is.
+const CREATE = "create" as const;
+const DELETE = "delete" as const;
+const SHOW = "show" as const;
+const LIST = "list" as const;
+const UPDATE = "update" as const;
+const SYNC = "sync" as const;
+
+const scheduleCreateCommand = Command.make(CREATE, {
   fleetId: fleetIdArgument,
   cron: cronFlag,
   message: messageFlag,
@@ -53,7 +65,7 @@ const scheduleAddCommand = Command.make("add", {
   ),
 );
 
-const scheduleListCommand = Command.make("list", {
+const scheduleListCommand = Command.make(LIST, {
   fleetId: fleetIdArgument,
   workspace: workspaceFlag,
 }).pipe(
@@ -69,7 +81,7 @@ const scheduleListCommand = Command.make("list", {
   ),
 );
 
-const scheduleUpdateCommand = Command.make("update", {
+const scheduleUpdateCommand = Command.make(UPDATE, {
   fleetId: fleetIdArgument,
   scheduleId: scheduleIdArgument,
   cron: cronOptionalFlag,
@@ -94,12 +106,12 @@ const scheduleUpdateCommand = Command.make("update", {
   ),
 );
 
-const scheduleRmCommand = Command.make("rm", {
+const scheduleDeleteCommand = Command.make(DELETE, {
   fleetId: fleetIdArgument,
   scheduleId: scheduleIdArgument,
   workspace: workspaceFlag,
 }).pipe(
-  Command.withDescription("Remove a hosted schedule"),
+  Command.withDescription("Delete a hosted schedule"),
   guardedHandler(({ fleetId, scheduleId, workspace }) =>
     Effect.gen(function* () {
       const isTty = yield* stdoutIsTty;
@@ -111,7 +123,7 @@ const scheduleRmCommand = Command.make("rm", {
   ),
 );
 
-const scheduleStatusCommand = Command.make("status", {
+const scheduleShowCommand = Command.make(SHOW, {
   fleetId: fleetIdArgument,
   scheduleId: scheduleIdArgument,
   workspace: workspaceFlag,
@@ -128,12 +140,12 @@ const scheduleStatusCommand = Command.make("status", {
   ),
 );
 
-const scheduleSyncCommand = Command.make("sync", {
+const scheduleSyncCommand = Command.make(SYNC, {
   fleetId: fleetIdArgument,
   scheduleId: scheduleIdArgument,
   workspace: workspaceFlag,
 }).pipe(
-  Command.withDescription("Re-apply a hosted schedule to QStash"),
+  Command.withDescription("Re-apply a hosted schedule"),
   guardedHandler(({ fleetId, scheduleId, workspace }) =>
     Effect.gen(function* () {
       const isTty = yield* stdoutIsTty;
@@ -148,11 +160,11 @@ const scheduleSyncCommand = Command.make("sync", {
 export const scheduleCommand = Command.make("schedule").pipe(
   Command.withDescription("Manage hosted Fleet schedules"),
   Command.withSubcommands([
-    scheduleAddCommand,
+    scheduleCreateCommand,
     scheduleListCommand,
     scheduleUpdateCommand,
-    scheduleRmCommand,
-    scheduleStatusCommand,
+    scheduleDeleteCommand,
+    scheduleShowCommand,
     scheduleSyncCommand,
   ]),
 );
