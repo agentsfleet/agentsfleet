@@ -1,5 +1,8 @@
-// `agentsfleet status` answered for the whole workspace and had no way to
-// answer for one fleet, so the narrowest question needed the widest command.
+// `agentsfleet status` answered for the whole workspace and there was no way
+// to ask about one fleet. `status` keeps that meaning — narrowing it would
+// change a shipped command for every caller — and the one-fleet read is
+// `fleet show <fleet_id>`, named the way every other single-resource read on
+// this surface is named.
 
 import { describe, test, expect } from "bun:test";
 
@@ -43,27 +46,33 @@ const run = async (argv: ReadonlyArray<string>, apiOverride?: string) => {
   return { code, text };
 };
 
-describe("status reports one fleet or the whole workspace", () => {
-  test("an identifier reports that fleet and no other", async () => {
-    const { code, text } = await run(["status", WANTED]);
+describe("one fleet has a one-fleet command", () => {
+  test("fleet show reports that fleet and no other", async () => {
+    const { code, text } = await run(["fleet", "show", WANTED]);
     expect(code).toBe(0);
     expect(text).toContain("reviewer");
     expect(text).not.toContain("responder");
   });
 
-  test("bare status still reports every fleet in the workspace", async () => {
+  test("status still reports every fleet in the workspace, and takes no identifier", async () => {
     const { code, text } = await run(["status"]);
     expect(code).toBe(0);
     expect(text).toContain("reviewer");
     expect(text).toContain("responder");
   });
 
-  test("a malformed identifier is refused before a request is issued", async () => {
+  test("fleet show refuses a malformed identifier before a request is issued", async () => {
     // The unroutable API proves the refusal is client-side: a dial would
     // surface as a connection error rather than INVALID_ARGUMENT.
-    const { code, text } = await run(["status", "not-a-uuid", "--json"], UNROUTABLE);
+    const { code, text } = await run(["fleet", "show", "not-a-uuid", "--json"], UNROUTABLE);
     expect(code).not.toBe(0);
     expect(text).toContain("INVALID_ARGUMENT");
     expect(text).not.toContain("ECONNREFUSED");
+  });
+
+  test("status takes no identifier at all — the workspace view is its whole job", async () => {
+    const { code, text } = await run(["status", WANTED]);
+    expect(code).not.toBe(0);
+    expect(text).toContain("Unexpected positional argument");
   });
 });

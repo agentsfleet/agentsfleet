@@ -141,16 +141,17 @@ if (!isLive) {
         assert.equal(typeof payload.status, "string");
       });
 
-      it("status by identifier names that fleet, and bare status names it among the rest", async () => {
-        // The narrowest question used to need the widest command: status
-        // answered for the workspace and had no way to answer for one fleet.
-        const one = await runFleetctl(["status", fleetId, "--json"], { env });
-        assert.equal(one.code, 0, `status <id> failed: ${one.stderr}`);
-        assert.ok(one.stdout.includes(fleetId), `status <id> did not name it: ${one.stdout}`);
+      it("fleet show names that fleet, and status names it among the rest", async () => {
+        // status answered for the workspace and there was no way to ask about
+        // one fleet; the one-fleet read is its own verb rather than an
+        // optional argument on the workspace view.
+        const one = await runFleetctl(["fleet", "show", fleetId, "--json"], { env });
+        assert.equal(one.code, 0, `fleet show failed: ${one.stderr}`);
+        assert.ok(one.stdout.includes(fleetId), `fleet show did not name it: ${one.stdout}`);
 
         const all = await runFleetctl(["status", "--json"], { env });
-        assert.equal(all.code, 0, `bare status failed: ${all.stderr}`);
-        assert.ok(all.stdout.includes(fleetId), "bare status stopped naming the fleet");
+        assert.equal(all.code, 0, `status failed: ${all.stderr}`);
+        assert.ok(all.stdout.includes(fleetId), "status stopped naming the fleet");
       });
 
       it("status exposes per-fleet events_processed and budget_used_nanos", async () => {
