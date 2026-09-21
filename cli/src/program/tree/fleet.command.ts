@@ -20,6 +20,8 @@ import {
 import { listEffectFromFlags } from "../../commands/fleet_list.ts";
 import { libraryEffect } from "../../commands/fleet_library.ts";
 import { libraryAddEffectFromFlags } from "../../commands/fleet_library_add.ts";
+import { libraryListEffect } from "../../commands/fleet_library_list.ts";
+import { libraryRemoveEffectFromArgs } from "../../commands/fleet_library_remove.ts";
 import { modelsEffectFromFlags } from "../../commands/models.ts";
 import { installEffectFromFlags, updateEffectFromArgs } from "../../commands/fleet_install.ts";
 import { logsEffectFromFlags } from "../../commands/fleet_logs.ts";
@@ -39,6 +41,7 @@ import {
   cursorFlag,
   dataFlag,
   dataReplacementFlag,
+  entryIdArgument,
   eventsLimitFlag,
   fleetFlag,
   fleetIdArgument,
@@ -72,6 +75,7 @@ const optNum = (value: Option.Option<number>): string | undefined =>
 const LIST = "list" as const;
 const DELETE = "delete" as const;
 const UPDATE = "update" as const;
+const REMOVE = "remove" as const;
 
 // ── library, models, install ────────────────────────────────────────
 
@@ -92,10 +96,26 @@ const libraryAddCommand = Command.make("add", {
   ),
 );
 
+// `list` and `remove` answer for the workspace's OWN entries; bare `library`
+// keeps printing the gallery, which is what `install --library` resolves
+// against. Redefining the bare command would change a shipped command's
+// meaning for every caller, so the new verbs are explicit.
+const libraryListCommand = Command.make(LIST).pipe(
+  Command.withDescription("List the Fleet libraries this workspace onboarded"),
+  guardedHandler(() => libraryListEffect),
+);
+
+const libraryRemoveCommand = Command.make(REMOVE, {
+  entryId: entryIdArgument,
+}).pipe(
+  Command.withDescription("Remove a Fleet library this workspace onboarded"),
+  guardedHandler(({ entryId }) => libraryRemoveEffectFromArgs(entryId)),
+);
+
 export const libraryCommand = Command.make("library").pipe(
   Command.withDescription("Browse this workspace's Fleet library gallery"),
   guardedHandler(() => libraryEffect),
-  Command.withSubcommands([libraryAddCommand]),
+  Command.withSubcommands([libraryAddCommand, libraryListCommand, libraryRemoveCommand]),
 );
 
 export const modelsCommand = Command.make("models", { provider: providerFlag }).pipe(

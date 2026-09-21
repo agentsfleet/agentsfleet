@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { request } from "./client";
+import type { WorkspaceLibraryEntriesResponse } from "./library-types";
 import type {
   FleetLibraryGalleryResponse,
   OnboardedLibraryEntry,
@@ -12,6 +13,16 @@ import type {
 
 const workspaceFleetLibrariesPath = (workspaceId: string) =>
   `/v1/workspaces/${workspaceId}/fleet-libraries`;
+
+// The workspace's OWN entries — a second collection, not a filter on the
+// gallery. The gallery answers what is installable here, which includes
+// platform rows this workspace neither owns nor can remove; this answers what
+// it onboarded. Separate paths, separate shapes, separate cursors: the split
+// the models domain settled before this one existed.
+const workspaceLibraryEntriesPath = (workspaceId: string) =>
+  `/v1/workspaces/${workspaceId}/library-entries`;
+const workspaceLibraryEntryPath = (workspaceId: string, entryId: string) =>
+  `${workspaceLibraryEntriesPath(workspaceId)}/${encodeURIComponent(entryId)}`;
 
 // The platform catalog has no workspace segment — it is a single tier shared by
 // every tenant, gated on `platform-library:write` rather than workspace
@@ -144,6 +155,48 @@ export async function onboardPlatformFleetLibrary(
 // gallery and /fleets/new both list library entries) to a single round-trip.
 // Server-only — cache() is a React Server Component primitive.
 export const listWorkspaceFleetLibraryCached = cache(listWorkspaceFleetLibrary);
+
+// One page of the entries this workspace onboarded.
+//
+// `GALLERY_PAGE_LIMIT` is shared with the gallery because the server's bound
+// is the same: 100 is the largest window one round-trip buys, and asking for
+// more earns `UZ-LIBRARY-003`. The cursor is NOT shared — this collection
+// issues its own, bound to its own walk, and a gallery cursor spent here is
+// refused rather than silently resuming somewhere else.
+export async function listWorkspaceLibraryEntries(
+  workspaceId: string,
+  token: string,
+  startingAfter: string | null = null,
+): Promise<WorkspaceLibraryEntriesResponse> {
+  const params = new URLSearchParams({ limit: String(GALLERY_PAGE_LIMIT) });
+  if (startingAfter !== null) params.set("starting_after", startingAfter);
+
+  return request<WorkspaceLibraryEntriesResponse>(
+    `${workspaceLibraryEntriesPath(workspaceId)}?${params.toString()}`,
+    { method: "GET" },
+    token,
+  );
+}
+
+// Remove one entry. Answers 204 whether a row left or not — an id already
+// gone and one naming another workspace's entry are indistinguishable by
+// design, so there is nothing to return and nothing to branch on.
+//
+// Permanent, and safe: a fleet installed from the entry copied the bundle at
+// install time and carries its own, so nothing installed stops working.
+export async function removeWorkspaceLibraryEntry(
+  workspaceId: string,
+  entryId: string,
+  token: string,
+): Promise<void> {
+  await request<void>(
+    workspaceLibraryEntryPath(workspaceId, entryId),
+    { method: "DELETE" },
+    token,
+  );
+}
+
+export const listWorkspaceLibraryEntriesCached = cache(listWorkspaceLibraryEntries);
 
 // ── The platform catalog (M128) ──────────────────────────────────────────────
 //

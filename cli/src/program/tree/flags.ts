@@ -276,6 +276,7 @@ export const gateIdArgument = idArgument("gate_id", "Approval gate ID");
 export const apiKeyIdArgument = idArgument("api_key_id", "API key ID");
 export const grantIdArgument = idArgument("grant_id", "Grant ID");
 export const scheduleIdArgument = idArgument("schedule_id", "Schedule ID");
+export const entryIdArgument = idArgument("entry_id", "Fleet library entry ID");
 
 export const workspaceNameArgument = Argument.String(FLAG.name).pipe(
   Argument.withDescription("Workspace name"),

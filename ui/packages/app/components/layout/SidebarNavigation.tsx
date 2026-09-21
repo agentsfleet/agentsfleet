@@ -66,6 +66,11 @@ const CONFIGURATION_NAV: NavEntry[] = [
   { label: "Models", path: "settings/models", icon: BrainCircuitIcon, workspaceScoped: true },
   { label: "Integrations", path: "integrations", icon: PlugIcon, workspaceScoped: true },
   { label: "Secrets", path: "secrets", icon: KeyRoundIcon, workspaceScoped: true },
+  // "Library", not "Fleet library": the platform entry below already carries
+  // that label, and two identically-named items in one sidebar is the kind of
+  // thing nobody notices until it becomes a support ticket. This one is the
+  // workspace's own entries; that one is the operator's catalogue.
+  { label: "Library", path: "library", icon: LibraryIcon, workspaceScoped: true },
 ];
 
 const PLATFORM_NAV: PlatformNavEntry[] = [
