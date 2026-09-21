@@ -15,7 +15,7 @@ use http::{Method, StatusCode};
 use serde_json::Value;
 
 use super::Fixture;
-use crate::harness::{self, Fleet, json_body, send};
+use crate::harness::{self, ERROR_CODE, Fleet, json_body, send};
 
 /// The upload source every case onboards through — no network, no repository.
 const SOURCE_KIND: &str = "upload";
@@ -72,8 +72,8 @@ async fn test_install_from_a_removed_entry_is_refused() {
         "a removed entry earns the status an identifier that never existed does"
     );
     assert_eq!(
-        refused.1.get("code"),
-        unknown.1.get("code"),
+        borrowed(&refused.1, ERROR_CODE),
+        borrowed(&unknown.1, ERROR_CODE),
         "and the same registry code: {} vs {}",
         refused.1,
         unknown.1
@@ -270,7 +270,9 @@ impl Live {
 fn borrowed(body: &Value, field: &str) -> String {
     let found = body.get(field).and_then(Value::as_str);
     assert!(found.is_some(), "the response carries {field}: {body}");
-    found.expect("the assertion above already proved it").to_owned()
+    found
+        .expect("the assertion above already proved it")
+        .to_owned()
 }
 
 /// The identifier an onboarding answers with, proved canonical on the way out.
