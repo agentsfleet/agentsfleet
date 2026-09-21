@@ -48,13 +48,19 @@ macro_rules! owned_by {
 
 /// Newest first, with the identifier breaking ties.
 ///
-/// `COLLATE "C"` is byte order, and it is here for the reason the gallery
-/// records: the seek below compares identifiers bytewise, so a locale-sensitive
-/// collation would order the page differently from the way the cursor resumes
-/// it, and the rows falling between the two orders would never be served.
+/// No `COLLATE` here, unlike the gallery beside it, and the difference is the
+/// column type rather than a preference: this table's `id` is `UUID`, and
+/// Postgres refuses a collation on a non-collatable type — `collations are not
+/// supported by type uuid`. The gallery's ids are platform slugs, which are
+/// text, which is why the clause is right there and an error here. Copied
+/// across, it made every read of this collection answer 500.
+///
+/// UUID order is byte order, and a `UUIDv7` rendered canonically sorts the same
+/// way as its bytes, so the cursor below still resumes exactly where the page
+/// stopped.
 macro_rules! order_by {
     () => {
-        "\n ORDER BY created_at DESC, id COLLATE \"C\" DESC"
+        "\n ORDER BY created_at DESC, id DESC"
     };
 }
 
@@ -62,10 +68,11 @@ macro_rules! order_by {
 ///
 /// Both columns descend, so "after" is smaller in both. A predicate disagreeing
 /// with its `ORDER BY` does not error — it silently skips or repeats rows at
-/// every page boundary.
+/// every page boundary. `$3` arrives as text from the cursor and is cast, so
+/// the comparison is the same UUID ordering the `ORDER BY` uses.
 macro_rules! seek {
     () => {
-        "\n   AND (created_at < $2 OR (created_at = $2 AND id COLLATE \"C\" < $3))"
+        "\n   AND (created_at < $2 OR (created_at = $2 AND id < $3::uuid))"
     };
 }
 
@@ -134,14 +141,26 @@ mod tests {
     /// Both pages walk the same order, and the seek follows it.
     #[test]
     fn both_pages_walk_the_same_order_and_the_seek_mirrors_it() {
-        let order = "ORDER BY created_at DESC, id COLLATE \"C\" DESC";
+        let order = "ORDER BY created_at DESC, id DESC";
         assert!(FIRST_PAGE.contains(order));
         assert!(PAGE_AFTER.contains(order));
         assert!(PAGE_AFTER.contains("created_at < $2"));
-        assert!(PAGE_AFTER.contains("created_at = $2 AND id COLLATE \"C\" < $3"));
-        // Byte order in one and a locale in the other serves neither the page
-        // nor the resumption correctly. Both comparisons collate the same way.
-        assert_eq!(PAGE_AFTER.matches("COLLATE \"C\"").count(), 2);
+        assert!(PAGE_AFTER.contains("created_at = $2 AND id < $3::uuid"));
+    }
+
+    /// No statement here collates, because this table's `id` is a `UUID`.
+    ///
+    /// The gallery's ids are platform slugs and its order collates them; the
+    /// clause copied onto a UUID column is not a style difference, it is
+    /// `collations are not supported by type uuid` on every read.
+    #[test]
+    fn no_statement_collates_a_uuid_column() {
+        for statement in [FIRST_PAGE, PAGE_AFTER, REMOVE_ENTRY] {
+            assert!(
+                !statement.contains("COLLATE"),
+                "a collation on core.tenant_fleet_library.id is refused by Postgres"
+            );
+        }
     }
 
     /// Neither read projects bundle content.

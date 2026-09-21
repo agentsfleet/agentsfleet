@@ -19,11 +19,26 @@ use afd_core::id::Uuid7;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
+use serde::Deserialize;
 
 use super::{DETAIL_ENTRY_ID, EVENT_REMOVE, EVENT_REMOVED};
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
 use crate::services::Services;
+
+/// The segments the item template carries.
+///
+/// A named struct rather than `Path<String>`, for the reason
+/// [`crate::handler::secret::SecretPath`] already records: the template
+/// carries TWO parameters, and `Path<String>` deserializes a single one. It
+/// fails in the extractor and answers 500 before the handler body runs — so
+/// the verb is not merely wrong on an edge, it never works at all.
+#[derive(Debug, Deserialize)]
+pub(crate) struct EntryPath {
+    /// The entry named in the path, still text: it is parsed below, where a
+    /// failure becomes the refusal a caller can act on.
+    pub(crate) entry_id: String,
+}
 
 /// `DELETE /v1/workspaces/{workspace_id}/library-entries/{entry_id}`.
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -60,7 +75,7 @@ use crate::services::Services;
 pub(crate) async fn remove<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
-    Path(entry_id): Path<String>,
+    Path(EntryPath { entry_id }): Path<EntryPath>,
 ) -> Result<Response, Refusal> {
     let entry = parse_entry_id(&entry_id)?;
 

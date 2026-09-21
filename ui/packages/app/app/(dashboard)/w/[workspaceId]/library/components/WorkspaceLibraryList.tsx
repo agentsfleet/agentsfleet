@@ -7,6 +7,7 @@ import {
   ConfirmDialog,
   DataTable,
   EmptyState,
+  Time,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
 import { LibraryIcon } from "lucide-react";
@@ -40,10 +41,17 @@ function provenance(entry: WorkspaceLibraryEntry): string {
   return entry.source_kind ? `${entry.source_kind}:${entry.source_ref}` : entry.source_ref;
 }
 
-/** The onboarding day. The column answers "which of these is the one I added
- *  this morning", which a date answers and a millisecond count does not. */
-function onboardedOn(entry: WorkspaceLibraryEntry): string {
-  return new Date(entry.created_at).toLocaleDateString();
+/** The onboarding instant, rendered by the design system.
+ *
+ *  The column answers "which of these is the one I added this morning", which
+ *  a relative label answers better than either a date or a millisecond count.
+ *  `Time` owns the `<time datetime>` semantic, the locale pin and the
+ *  hydration guard — `tests/timestamp-standard.test.ts` is the grep that keeps
+ *  a hand-rolled formatter from reappearing here. */
+function onboardedOn(entry: WorkspaceLibraryEntry) {
+  return (
+    <Time value={new Date(entry.created_at)} format="relative" className="tabular-nums" />
+  );
 }
 
 function buildColumns({

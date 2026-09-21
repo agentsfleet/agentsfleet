@@ -17,6 +17,13 @@ use afd_db::test_util::{TestDatabase, mint_id};
 
 pub(super) struct Fixture {
     lane: TestDatabase,
+    /// This instance's own directory subject.
+    ///
+    /// `core.users.oidc_subject` is UNIQUE, so a subject shared across
+    /// instances is a duplicate key the moment a second case builds one. The
+    /// suite had exactly one case when it was written, which is why a constant
+    /// held for as long as it did.
+    pub(super) subject: String,
     pub(super) database: Db,
     tenant: String,
     pub(super) workspace: Uuid7,
@@ -32,6 +39,7 @@ impl Fixture {
         let lane = TestDatabase::shared();
         let token_bits = format!("{}{}", mint_id(), mint_id()).replace('-', "");
         Self {
+            subject: format!("{}-{}", super::SUBJECT, mint_id()),
             database: lane.open(DbRole::Api, &[]).await,
             tenant: mint_id(),
             workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
@@ -66,7 +74,7 @@ impl Fixture {
         )
         .bind(&self.tenant)
         .bind(self.workspace.as_str())
-        .bind(super::SUBJECT)
+        .bind(&self.subject)
         .bind(&self.user)
         .bind(&self.key)
         .bind(digest.as_str())

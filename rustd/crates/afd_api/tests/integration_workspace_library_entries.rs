@@ -94,20 +94,24 @@ async fn test_delete_is_idempotent_under_replay_and_concurrency() {
     assert_eq!(live.owned_row_count().await, 1);
 
     let (status, body) = live.remove_response(&entry).await;
-    assert_eq!(status, StatusCode::NO_CONTENT);
-    assert!(body.is_empty(), "204 carries no body: {body:?}");
+    // The body, not just the status: a refusal here carries the registry code
+    // that says WHY, and a bare status turns a one-line diagnosis into a re-run
+    // of a twenty-minute lane.
+    assert_eq!(status, StatusCode::NO_CONTENT, "{}", text(&body));
+    assert!(body.is_empty(), "204 carries no body: {}", text(&body));
     assert!(
         items_of(&live.owned_page("").await).is_empty(),
         "the follow-up read omits it"
     );
 
-    assert_eq!(live.remove_response(&entry).await.0, StatusCode::NO_CONTENT);
+    let (replayed, body) = live.remove_response(&entry).await;
+    assert_eq!(replayed, StatusCode::NO_CONTENT, "{}", text(&body));
     assert_eq!(live.owned_row_count().await, 0, "a replay changes nothing");
 
     let raced = live.onboard("removed-at-once").await;
     let (first, second) = tokio::join!(live.remove_response(&raced), live.remove_response(&raced));
-    assert_eq!(first.0, StatusCode::NO_CONTENT, "{:?}", first.1);
-    assert_eq!(second.0, StatusCode::NO_CONTENT, "{:?}", second.1);
+    assert_eq!(first.0, StatusCode::NO_CONTENT, "{}", text(&first.1));
+    assert_eq!(second.0, StatusCode::NO_CONTENT, "{}", text(&second.1));
     assert_eq!(live.owned_row_count().await, 0, "one row, removed once");
     live.cleanup().await;
 }
@@ -199,6 +203,11 @@ async fn test_removal_emits_a_scoped_event_without_bundle_content() {
         assert!(!removed.carries(field), "the line carries no {field}");
     }
     live.cleanup().await;
+}
+
+/// A response body as text, for a failure message that has to name itself.
+fn text(body: &[u8]) -> String {
+    String::from_utf8_lossy(body).into_owned()
 }
 
 /// Every item on one page, as the envelope carries them.

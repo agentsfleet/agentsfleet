@@ -126,7 +126,7 @@ impl Live {
         let queue = harness::connect_redis().await;
         let router = Fleet::live(
             fixture.database.clone(),
-            super::SUBJECT,
+            &fixture.subject,
             ScopeSet::from_scopes(&Scope::ALL),
         )
         .with_owned_workspace(fixture.workspace.clone())
