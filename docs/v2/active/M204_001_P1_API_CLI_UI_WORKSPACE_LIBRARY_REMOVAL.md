@@ -156,7 +156,7 @@ Both clients of the new surface, plus the sweep this workstream exists to make p
 The public surface changes, so the docs branch is part of the work. **Implementation default:** `~/Projects/docs` work happens on its own branch `chore/m204-workspace-library-removal-changelog`, cut from `main` there and never edited through this worktree.
 
 - **Dimension 6.1** — DONE — The architecture doc records the removal verb and that slot 460's position is superseded, and the diff carries one new changelog entry → Test `test_architecture_and_changelog_record_the_removal`
-- **Dimension 6.2** — The four `~/Projects/docs` pages are revised on their own branch → Test `test_docs_branch_carries_the_four_pages`
+- **Dimension 6.2** — DONE — The four `~/Projects/docs` pages are revised on their own branch → Test `test_docs_branch_carries_the_four_pages`
 
 ## Interfaces
 
