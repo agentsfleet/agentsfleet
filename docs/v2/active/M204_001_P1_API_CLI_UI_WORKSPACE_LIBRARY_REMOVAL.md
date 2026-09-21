@@ -110,9 +110,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The grant slot 460 withheld, plus the statement that exercises it. Nothing above works until `api_runtime` holds `DELETE`, and this is the one place §0's decision is enforced. **Implementation default:** a new slot `schema/917_tenant_fleet_library_delete_grant.sql`, because `cat VERSION` is `0.49.0` — above RULE SCH's anchor — so shipped slots are frozen and the reversal is recorded in the new header rather than by editing slot 460.
 
-- **Dimension 1.1** — The slot is single-concern, grants `DELETE` on `core.tenant_fleet_library` to `api_runtime` and nothing else, and is registered in the migration array → Test `test_delete_grant_slot_is_registered_and_single_privilege`
-- **Dimension 1.2** — Against a freshly migrated database, `api_runtime` holds `DELETE` on the table and no wider privilege → Test `test_api_runtime_holds_delete_on_tenant_fleet_library`
-- **Dimension 1.3** — The delete statement filters on both `id` and `workspace_id`, matching `SELECT_TENANT_INSTALL`'s shape, and an identifier this workspace does not own removes no row → Test `test_tenant_library_delete_statement_is_workspace_scoped`
+- **Dimension 1.1** — DONE — The slot is single-concern, grants `DELETE` on `core.tenant_fleet_library` to `api_runtime` and nothing else, and is registered in the migration array → Test `test_delete_grant_slot_is_registered_and_single_privilege`
+- **Dimension 1.2** — A pool authenticating as a login role holding only `api_runtime` removes a row through `remove_entry`, and the same role is still refused a privilege the slot did not grant → Test `test_api_runtime_holds_delete_on_tenant_fleet_library`
+- **Dimension 1.3** — DONE — The delete statement filters on both `id` and `workspace_id`, matching `SELECT_TENANT_INSTALL`'s shape, and an identifier this workspace does not own removes no row → Test `test_tenant_library_delete_statement_is_workspace_scoped`
 
 ### §2 — The tenant surface: the workspace's own collection, and its removal verb
 
@@ -233,7 +233,7 @@ Dashboard: /w/{workspaceId}/library — owned entries and removal.
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
 | 1.1 | unit | `test_delete_grant_slot_is_registered_and_single_privilege` | The slot text holds exactly one `GRANT`, naming `DELETE` and `core.tenant_fleet_library`, and no `ALTER` or `DROP`; the migration array contains the filename and `version_of` derives 917. |
-| 1.2 | integration | `test_api_runtime_holds_delete_on_tenant_fleet_library` | On a freshly migrated database, `has_table_privilege('api_runtime','core.tenant_fleet_library','DELETE')` → true; `TRUNCATE` → still false. |
+| 1.2 | integration | `test_api_runtime_holds_delete_on_tenant_fleet_library` | A pool authenticating as a probe login role holding only `api_runtime` removes a seeded row through `remove_entry` → `true`, and the row is gone; the same role's `TRUNCATE` on the table is refused. Asserted by running the statements, never by reading `has_table_privilege` — `integration_purge_privileges.rs` records why the two disagree. |
 | 1.3 | unit | `test_tenant_library_delete_statement_is_workspace_scoped` | The statement constant contains both `id = $1` and `workspace_id = $2`; and against the live schema, workspace A deleting B's identifier affects 0 rows while B still reads its own. |
 | 2.1 | unit | `test_library_entry_routes_mirror_the_model_entry_pair` | `LibraryEntries` → template `/v1/workspaces/{workspace_id}/library-entries`, verbs `[Get]`; `LibraryEntry` → `…/library-entries/{entry_id}`, verbs `[Delete]`, scope `Always(LIBRARY_WRITE)`. |
 | 2.2 | integration | `test_owned_collection_answers_only_this_workspace` | Workspace A with 1 own entry, workspace B with 2, against 2 published platform rows: A's `GET` → exactly 1 item, the onboarded identifier, no platform row and nothing of B's; a cursor this collection did not issue → 400 `UZ-LIBRARY-001`. |

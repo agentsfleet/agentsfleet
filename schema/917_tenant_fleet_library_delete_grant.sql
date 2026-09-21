@@ -1,0 +1,27 @@
+-- Slot 460 granted SELECT, INSERT, UPDATE on core.tenant_fleet_library and
+-- said of the missing verb: "No DELETE: an onboarded entry is retired by
+-- visibility, and the rows leave with their workspace through the cascade
+-- above." That position is superseded, and this slot is the reversal.
+--
+-- Retirement by visibility was never a mechanism left unwired. A tenant row's
+-- `visibility` is always the single value the tenant importer binds, and the
+-- workspace gallery filters on `workspace_id` alone and reads no visibility
+-- predicate; the {draft, public} publish gate the sentence borrows its
+-- language from belongs to the platform tier, which the tenant tier does not
+-- participate in. Worse, the domain key (workspace_id, content_hash) with an
+-- ON CONFLICT DO NOTHING onboarding upsert makes an unlisted row a permanent
+-- tombstone: the workspace could never onboard those bytes again, because the
+-- re-onboard converges onto the retired row and leaves it retired.
+--
+-- Hard removal has no such edge, because nothing depends on the row. A fleet
+-- copies skill_markdown, trigger_markdown and content_hash out of it at
+-- install time and carries its own, and no foreign key points here from the
+-- fleet side. Removing an entry cannot disturb a fleet installed from it.
+--
+-- Owner decision, Indy, Sep 21, 2026. VERSION is 0.49.0, above the 0.30.0
+-- anchor, so slot 460 stays frozen history — its comment included — and the
+-- superseding decision lives here and in docs/architecture/fleet_bundles.md.
+--
+-- Exactly DELETE, and nothing wider: api_runtime already holds the other three
+-- verbs it exercises, and this is the only privilege the removal handler adds.
+GRANT DELETE ON core.tenant_fleet_library TO api_runtime;
