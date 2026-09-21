@@ -21,8 +21,6 @@ export const GATE_STATUS = {
   denied: "denied",
 } as const;
 
-export type GateStatus = (typeof GATE_STATUS)[keyof typeof GATE_STATUS];
-
 // Column labels for the gate table. Shared with the tests so a header rename
 // cannot pass a test that hard-codes the old word.
 export const GATE_COLUMN = {

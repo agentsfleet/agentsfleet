@@ -1,9 +1,10 @@
 // GET-based Server-Sent Events consumer.
 //
-// `lib/http.ts::streamFetch` is POST-only (used by the execute proxy);
-// the events endpoint is GET. We consume frames via fetch +
+// The events endpoint is GET. We consume frames via fetch +
 // ReadableStream, which lets us set Authorization headers (the native
-// EventSource API can not).
+// EventSource API can not). A POST-based mirror module once sat beside
+// this one for the execute proxy; that caller and its module are gone,
+// so this is the only stream transport the client has.
 //
 // Each parsed frame is `{ id, type, data }` where `data` has been
 // JSON.parse()'d if possible. Lines starting with `:` are comments
