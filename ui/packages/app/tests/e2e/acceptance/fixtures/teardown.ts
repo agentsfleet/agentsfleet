@@ -155,6 +155,12 @@ export async function sweepLeakedFixtureFleets(): Promise<SweepCounts> {
   return total;
 }
 
+/** How many entries one sweep pass asks for. */
+const LIBRARY_SWEEP_PAGE_SIZE = 100;
+
+/** How many passes the drain makes before giving up and reporting what it has. */
+const LIBRARY_SWEEP_PASS_CEILING = 50;
+
 /**
  * One workspace's own Fleet library entries, removed.
  *
@@ -182,23 +188,39 @@ export async function cleanWorkspaceLibraryEntries(
   assertDestructiveTargetIsSafe();
   const c = clientFor(handle);
   const counts: SweepCounts = { removed: 0, failed: 0 };
-  const page = await c.get<{ items?: Array<{ id: string; name?: string }> }>(
-    `/v1/workspaces/${workspaceId}/library-entries?limit=100`,
-  );
-  for (const entry of page.items ?? []) {
-    try {
-      await c.delete(`/v1/workspaces/${workspaceId}/library-entries/${entry.id}`);
-      counts.removed++;
-    } catch (err) {
-      // Counted, not swallowed — the same reason the fleet sweep gives. A
-      // removal that failed is a row still in the gallery, which is the whole
-      // defect this sweep exists to prevent.
-      counts.failed++;
-      console.error(
-        `[e2e:teardown] remove failed for library entry ${entry.id} in workspace ${workspaceId}:`,
-        err,
-      );
+  // Drained, not read once. A single page would under-reap exactly the pile
+  // this sweep exists to clear: entries accumulate without bound precisely
+  // because nothing removed them before M204, so "one page" and "every entry"
+  // stop being the same set the moment a workspace passes the page size.
+  //
+  // Re-reading the FIRST page each pass rather than following a cursor: the
+  // rows are being deleted underneath the walk, so a keyset boundary would
+  // seek past rows that shifted forward. Deleting from the front converges.
+  for (let pass = 0; pass < LIBRARY_SWEEP_PASS_CEILING; pass += 1) {
+    const page = await c.get<{ items?: Array<{ id: string; name?: string }> }>(
+      `/v1/workspaces/${workspaceId}/library-entries?limit=${LIBRARY_SWEEP_PAGE_SIZE}`,
+    );
+    const entries = page.items ?? [];
+    if (entries.length === 0) break;
+    const removedBefore = counts.removed;
+    for (const entry of entries) {
+      try {
+        await c.delete(`/v1/workspaces/${workspaceId}/library-entries/${entry.id}`);
+        counts.removed++;
+      } catch (err) {
+        // Counted, not swallowed — the same reason the fleet sweep gives. A
+        // removal that failed is a row still in the gallery, which is the whole
+        // defect this sweep exists to prevent.
+        counts.failed++;
+        console.error(
+          `[e2e:teardown] remove failed for library entry ${entry.id} in workspace ${workspaceId}:`,
+          err,
+        );
+      }
     }
+    // Every row on this page refused. Re-reading returns the same page, so
+    // the loop would spin until the ceiling; stop and let the counts report it.
+    if (counts.removed === removedBefore) break;
   }
   return counts;
 }
