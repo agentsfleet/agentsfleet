@@ -132,7 +132,7 @@ A page at `/w/{workspaceId}/library` listing what this workspace owns, with the 
 - **Dimension 3.1** — DONE — The page lists owned entries with name, source reference and onboarding time, and no platform entry appears even when published platform rows exist → Test `test_workspace_library_page_lists_owned_entries`
 - **Dimension 3.2** — DONE — A workspace owning nothing sees an empty state naming the command that adds one; removal needs a confirmation naming the entry, and a failed removal leaves the row and surfaces the refusal → Test `test_remove_requires_confirmation_and_survives_failure`
 - **Dimension 3.4** — DONE — One verbose entry does not set the height of the cards beside it: a description past three lines is clamped and credentials past three become a counted overflow chip naming them on hover, while an entry already inside both bounds renders unchanged → Test `test_a_gallery_card_is_bounded`
-- **Dimension 3.3** — DONE — The whole walk works in a browser: onboard, reach the page from the navigation, remove, and the gallery no longer offers it → Test `test_workspace_library_page_walk`
+- **Dimension 3.3** — DONE (written and committed; its proof runs in `deploy-dev-acceptance.yml`, after a deploy to dev, since a worktree cannot stand up the acceptance stack) — The whole walk works in a browser: onboard, reach the page from the navigation, remove, and the gallery no longer offers it → Test `test_workspace_library_page_walk`
 
 ### §4 — Removal does not disturb an installed fleet
 
@@ -149,7 +149,7 @@ Both clients of the new surface, plus the sweep this workstream exists to make p
 - **Dimension 5.1** — DONE — `library list` prints owned entries, `--format json` prints them as data, an empty workspace gets a state naming `library add`, and bare `agentsfleet library` still issues the merged-gallery request unchanged → Test `test_library_list_prints_owned_entries_or_an_empty_state`
 - **Dimension 5.2** — DONE — `library remove <entry_id>` removes the entry, reports it, succeeds again on replay, and on a malformed identifier exits non-zero with the server's sentence rather than a stack trace → Test `test_library_remove_reports_success_and_is_idempotent`
 - **Dimension 5.3** — DONE — The sweep clears every tenant entry in fixture-owned workspaces, nothing outside the guard, and leaves a gallery of platform rows → Test `test_library_sweep_is_bounded_and_clears_tenant_rows`
-- **Dimension 5.4** — DONE — The real binary walks add → list → remove → list in a subprocess, and after a swept run `installViaUI` finds the seeded card on page one without a "Load more" click → Test `test_library_remove_subprocess_walk`
+- **Dimension 5.4** — DONE (written and committed; its proof runs in `deploy-dev-acceptance.yml`, after a deploy to dev, since a worktree cannot stand up the acceptance stack) — The real binary walks add → list → remove → list in a subprocess, and after a swept run `installViaUI` finds the seeded card on page one without a "Load more" click → Test `test_library_remove_subprocess_walk`
 
 ### §6 — Documentation
 
