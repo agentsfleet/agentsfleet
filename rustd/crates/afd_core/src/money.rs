@@ -51,6 +51,6 @@ mod tests {
     /// weigh: a balance stays exact in a double up to roughly nine million USD.
     #[test]
     fn test_a_balance_stays_exact_well_past_any_real_one() {
-        assert!(EXACT_IN_F64 / NANOS_PER_USD > 9_000_000);
+        const { assert!(EXACT_IN_F64 / NANOS_PER_USD > 9_000_000) };
     }
 }

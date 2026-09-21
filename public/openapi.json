@@ -14045,7 +14045,8 @@
         "required": [
           "status",
           "degraded",
-          "selftest_requested"
+          "selftest_requested",
+          "heartbeat_interval_ms"
         ],
         "properties": {
           "assigned_policy": {
@@ -14069,6 +14070,12 @@
               "null"
             ],
             "description": "Why it reads degraded."
+          },
+          "heartbeat_interval_ms": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How long the runner waits before its next beat, in milliseconds.\n\nRequired rather than optional. The daemon owns\n[`afd_core::timing::RUNNER_OFFLINE_AFTER_MS`], so it owns the cadence\nthat keeps a host ahead of it. A runner carrying its own copy could\nnot be told when that threshold moved. The assertion beside those\nconstants is what keeps the served value under the threshold.",
+            "minimum": 0
           },
           "selftest_requested": {
             "type": "boolean",

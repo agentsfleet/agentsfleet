@@ -105,6 +105,12 @@ fn read(body: &[u8]) -> HeartbeatRequest<'_> {
 /// compared against a `bigint` column; the wire quotes a duration, which is
 /// never negative. The assertion proves the narrowing before the cast, so a
 /// cadence edited past the wire's range fails the build rather than a beat.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "the const assertion inside this block proves the value sits \
+              inside u32 before the cast runs, so a cadence edited past the \
+              wire's range fails the build rather than truncating a beat"
+)]
 const WIRE_INTERVAL_MS: u32 = {
     const _: () = assert!(
         HEARTBEAT_INTERVAL_MS > 0 && HEARTBEAT_INTERVAL_MS <= u32::MAX as i64,

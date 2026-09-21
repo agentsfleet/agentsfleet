@@ -387,9 +387,7 @@ test "heartbeat and self replies carry the assignment and the degraded verdict" 
 
     // The cadence is NOT one of them. A host holds no interval to fall back
     // to, so a reply that omits it is refused rather than guessed at.
-    try std.testing.expectError(error.MissingField, std.json.parseFromSlice(
-        protocol.HeartbeatResponse,
-        a,
+    try std.testing.expectError(error.MissingField, std.json.parseFromSlice(protocol.HeartbeatResponse, a,
         \\{"status":"ok"}
     , .{}));
     try expectStable(protocol.SelfResponse, .{
