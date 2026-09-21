@@ -69,16 +69,23 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/lib/common/constants.zig` | EDIT | `LEASE_TTL_MS` and `RUNNER_OFFLINE_AFTER_MS` deleted; `HEARTBEAT_INTERVAL_MS` demoted to a first-beat default; the window/tick inequality becomes a `@compileError`. |
 | `src/lib/contract/protocol.zig` | EDIT | `HeartbeatResponse` gains the cadence field. |
 | `rustd/crates/afd_wire/src/runner.rs` | EDIT | The same field on the Rust side of the reply. |
-| `rustd/crates/afd_api_runner/src/handler/runner/heartbeat.rs` | EDIT | Serves the cadence from `afd_core::timing`. |
-| `src/runner/daemon/loop.zig` | EDIT | Applies the served cadence to `heartbeat_interval_ms`, which is already a `pub var`. |
-| `rustd/crates/afd_core/src/timing.rs` | EDIT | Adds the compile-time inequality between the served cadence and the offline threshold; doc comments stop citing `constants.zig`. |
+| `rustd/crates/afd_api_runner/src/handler/runner/heartbeat.rs` | EDIT | Serves the cadence from `afd_core::timing` and carries Dimension 2.4's tests. |
+| `src/runner/daemon/loop.zig` | EDIT | Applies the served cadence; the `pub var` becomes a nullable test seam and the probe floor lives here. Carries Dimension 2.2's tests. |
+| `src/runner/daemon/AppliedPolicy.zig` | EDIT | `HeartbeatReplyRaw` is the shape the client actually parses into — a third Zig declaration of the reply, found by a build failure rather than by reading. |
+| `src/runner/selftest.zig` | EDIT | Its `comptime` tied the probe budget to the deleted cadence; the floor moves to `loop.zig` and is derived from `PROBE_TIMEOUT_MS`. |
+| `src/runner/cmd/doctor.zig` | EDIT | Its reachability stub is a heartbeat reply and needs the required field. |
+| `src/lib/contract/protocol_test.zig` | EDIT | Dimension 2.3. |
+| `src/runner/daemon/renew_driver_test.zig` | EDIT | Dimension 2.1. |
+| `src/runner/daemon/{control_plane_client,selftest_heartbeat_wire,loop_heartbeat_seq}_test.zig` | EDIT | Reply fixtures gain the required field — including `BEAT_DRAIN`, without which the loop never sees the drain directive and the watchdog fires. |
+| `rustd/crates/afd_core/tests/core_suite.rs` | EDIT | Deregisters the deleted timing pin from the aggregated test binary. |
+| `rustd/crates/afd_core/src/timing.rs` | EDIT | Doc comments stop citing `constants.zig`. The cadence-below-threshold assertion was already here and needed no change. |
 | `rustd/crates/agentsfleetd/src/thresholds.rs` | CREATE | Assembles the operational thresholds and renders them as JavaScript Object Notation (JSON). |
 | `rustd/crates/agentsfleetd/src/cli.rs` | EDIT | The `Thresholds` subcommand. |
 | `rustd/crates/agentsfleetd/src/lib.rs` | EDIT | Registers the new module. |
 | `rustd/crates/afd_runner/src/sweep/replay.rs` | EDIT | `MIN_AGE` and `INTERVAL` become `pub` so the binary that prints them can see them. |
 | `docs/architecture/billing_and_provider_keys.md` | EDIT | Described the rate as spelled in three files and named the deleted pin test as its guard; both are now false. |
-| `ui/packages/app/tests/billing-charges.test.ts` | EDIT | Carries Dimensions 1.1 and 1.4. |
-| `cli/test/billing-served-amounts.unit.test.ts` | CREATE | Carries Dimension 1.2. |
+| `ui/packages/app/tests/billing-charges.test.ts` | EDIT | Dimensions 1.1 and 1.4. |
+| `cli/test/billing-served-amounts.unit.test.ts` | CREATE | Dimension 1.2. |
 | `playbooks/operations/observability/lib.sh` | EDIT | `obs_runner_offline_seconds` and `obs_admission_replay_floor_seconds` invoke the subcommand instead of running `sed` over Rust. |
 
 ## Applicable Rules
@@ -126,11 +133,11 @@ The three rate constants in the two TypeScript mirrors have no importer: a repos
 
 `src/runner/daemon/renew_driver.zig:120` renews against `self.deadline_ms`, which the server set — so the runner's `LEASE_TTL_MS` is read by nothing but the definition of `RUNNER_OFFLINE_AFTER_MS`, and deriving an offline threshold is the daemon's job, not the runner's. Both go. `RENEWAL_WINDOW_MS` and `RENEWAL_TICK_MS` stay as runner-local policy, which only ever had to satisfy `tick < window`, and a `@compileError` now says so. The heartbeat cadence is the one number whose safety genuinely depends on a threshold the daemon owns, so the daemon sends it. **Implementation default:** the field is required on the reply rather than optional, because RULE NLG forbids a compat shim before `0.30.0` and the daemon and runner ship together; a reply missing it fails the same closed path `assigned_policy: null` already takes.
 
-- **Dimension 2.1** — A runner renews inside the window against a server-sent deadline, holding no lease-duration constant of its own → Test `test_renews_against_served_deadline_without_local_ttl`
-- **Dimension 2.2** — A runner whose reply carries a cadence beats at that cadence, not at its first-beat default → Test `test_heartbeat_adopts_served_cadence`
-- **Dimension 2.3** — A reply with no cadence field is refused at parse and the beat is retried on the existing backoff, rather than the runner guessing a cadence → Test `test_heartbeat_without_cadence_fails_closed`
-- **Dimension 2.4** — The daemon serves a cadence strictly below its own offline threshold → Test `test_served_cadence_stays_below_offline_threshold`
-- **Dimension 2.5** — A renewal tick not strictly below the renewal window fails the build → Test `test_tick_window_inequality_is_comptime`
+- **Dimension 2.1** DONE — A runner renews from the deadline it was sent, holding no lease length of its own → Test `a deadline matching no lease length this host knows still follows the window rule`
+- **Dimension 2.2** DONE — A host beats at the cadence the reply carried, clamped up to its own probe floor and never below it → Test `the served cadence is what the host beats at`
+- **Dimension 2.3** DONE — A reply with no cadence is refused at parse, so the beat takes the existing backoff instead of the runner guessing → Test `the cadence is NOT one of them` (`protocol_test.zig`)
+- **Dimension 2.4** DONE — The daemon serves the cadence it enforces, strictly below its own offline threshold → Test `test_the_served_cadence_stays_below_the_offline_threshold`
+- **Dimension 2.5** DONE — A renewal tick not strictly below the renewal window fails the build → Test `the renewal tick stays inside the renewal window`
 
 ### §3 — The alert threshold comes from the binary that enforces it
 
@@ -159,8 +166,6 @@ agentsfleetd thresholds --json  →  stdout, exit 0
   // Values are illustrative of shape, not pinned here: the constants are.
 
 afd_core::money::NANOS_PER_USD : i64    // the wire unit, one Rust declaration
-afd_billing::{RUN_NANOS_PER_SEC, RECEIVE_NANOS}   // the rates, unchanged
-afd_tenant::signup::STARTER_CREDIT_NANOS          // the only credit inflow
 ```
 
 ## Failure Modes
@@ -202,12 +207,15 @@ No analytics or funnel playbook update is required: no user-visible product even
 | 1.3 | integration | `integration_signup` | A fresh signup opens with a balance equal to `afd_tenant::signup::STARTER_CREDIT_NANOS`, against a real datastore. |
 | 1.4 | unit | `formats the largest balance the wire format claims to carry` | Nine million USD in nanos renders `$9,000,000.00` and stays below `Number.MAX_SAFE_INTEGER`. |
 | 1.4 | unit | `test_one_dollar_is_a_billion_nanos` / `test_a_balance_stays_exact_well_past_any_real_one` | The Rust declaration is 10^9, and the compile-time assertion beside it keeps a balance exact through a JavaScript number. |
-| 2.1 | unit | `test_renews_against_served_deadline_without_local_ttl` | A driver holding only `deadline_ms` renews inside the window and keeps outside it; no lease-duration constant is referenced. |
-| 2.1 | unit | `test_renewal_survives_an_extreme_served_deadline` | A deadline at the integer maximum does not overflow the tick decision; the driver keeps rather than panicking. |
-| 2.2 | integration | `test_heartbeat_adopts_served_cadence` | A reply carrying a cadence different from the first-beat default changes the loop's interval within one beat. |
-| 2.3 | integration | `test_heartbeat_without_cadence_fails_closed` | A reply omitting the field is refused at parse; the loop logs `heartbeat_failed`, backs off, and the applied interval is unchanged. |
-| 2.4 | unit | `test_served_cadence_stays_below_offline_threshold` | The handler's served value is strictly less than the offline threshold for the declared constants. |
-| 2.5 | manual | `test_tick_window_inequality_is_comptime` | A local edit making the tick equal the window fails `zig build` with the named message; evidence is the build output pasted into Session Notes. Procedure and required person recorded there. |
+| 2.1 | unit | `a deadline matching no lease length this host knows still follows the window rule` | A deadline 137_000ms out keeps with zero control-plane calls, then renews once the clock steps inside the window — decided from `deadline_ms` alone. |
+| 2.1 | unit | `an extreme clock decides instead of overflowing the window comparison` | At `now = maxInt(i64) - 1` the tick reaches a decision and extends, rather than panicking on `now + window`. |
+| 2.2 | unit | `the served cadence is what the host beats at` | A served 21_000ms is slept verbatim. Red-checked by making `beatInterval` ignore its argument. |
+| 2.2 | unit | `a cadence under the probe floor is raised to it, never taken as given` | A served value at or below one probe timeout is clamped to two, so a timing-out probe cannot eat a whole beat. |
+| 2.2 | unit | `the test seam wins over the served cadence` | A non-null override is used unchanged, which is what keeps the scripted loop tests in milliseconds. |
+| 2.3 | unit | `the cadence is NOT one of them` | `{"status":"ok"}` yields `error.MissingField`, while `{"status":"ok","heartbeat_interval_ms":7000}` parses and reports 7000. |
+| 2.4 | unit | `test_the_served_cadence_is_the_enforced_cadence` | The wire value equals `afd_core::timing::HEARTBEAT_INTERVAL_MS`, not a second number that agrees today. |
+| 2.4 | unit | `test_the_served_cadence_stays_below_the_offline_threshold` | The served cadence is strictly less than `RUNNER_OFFLINE_AFTER_MS`. |
+| 2.5 | manual | `the renewal tick stays inside the renewal window` | The `@compileError` in `src/lib/common/constants.zig`: setting `RENEWAL_TICK_MS` equal to `RENEWAL_WINDOW_MS` fails `zig build --build-file build_runner.zig` with the named message. Evidence in Session Notes. |
 | 3.1 | unit | `test_thresholds_renders_without_a_datastore` | The subcommand's render function returns both keys with no datastore handle constructed. |
 | 3.2 | unit | `test_printed_offline_threshold_matches_sweep` | The printed seconds equal the liveness sweep's threshold converted from milliseconds. |
 | 3.3 | unit | `test_printed_replay_floor_matches_sweep` | The printed seconds equal the sweep's minimum age plus its interval. |
@@ -270,8 +278,7 @@ A MOVED row is never rendered ✅. The criterion has not been met; it has change
 | `RUN_NANOS_PER_SEC` (TypeScript) | `grep -rn -w "RUN_NANOS_PER_SEC" cli/src ui/packages \| head` | 0 matches |
 | `LEASE_TTL_MS` (Zig) | `grep -rn -w "LEASE_TTL_MS" src/ \| head` | 0 matches |
 | `RUNNER_OFFLINE_AFTER_MS` (Zig) | `grep -rn -w "RUNNER_OFFLINE_AFTER_MS" src/ \| head` | 0 matches |
-| `MIRRORED_NAMES` | `grep -rn -w "MIRRORED_NAMES" rustd/ \| head` | 0 matches |
-| `ZIG_MIRROR` | `grep -rn -w "ZIG_MIRROR" rustd/ \| head` | 0 matches |
+| `MIRRORED_NAMES`, `ZIG_MIRROR` | `grep -rnE -w "MIRRORED_NAMES\|ZIG_MIRROR" rustd/ \| head` | 0 matches |
 | `afd_tenant::signup::NANOS_PER_USD` | `grep -rn -w "NANOS_PER_USD" rustd/crates/afd_tenant/ \| head` | 0 matches |
 
 ## Out of Scope

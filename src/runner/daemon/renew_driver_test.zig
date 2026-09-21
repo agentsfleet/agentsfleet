@@ -136,3 +136,43 @@ test "TokenSplits.renewRequest projects the carrier onto the renew body verbatim
     try testing.expectEqual(@as(u32, 0), body.cached_input_tokens);
     try testing.expectEqual(@as(u32, 40), body.output_tokens);
 }
+
+// The driver decides from `deadline_ms` and nothing else. The lease's LENGTH is
+// the daemon's, arrives on the renew reply, and is not spelled on this side —
+// these two cover what that buys: an arbitrary deadline behaves by the window
+// rule alone, and a garbage one cannot panic the tick loop.
+
+test "a deadline matching no lease length this host knows still follows the window rule" {
+    // 137 seconds is not a multiple of anything either side declares. A driver
+    // holding a lease duration of its own would have to reconcile it with this.
+    const ODD_REMAINING_MS: i64 = 137_000;
+    var fake = FakeClient{ .outcome = .{ .renewed = NOW_MS + ONE_MILLION } };
+    var driver = driverWith(&fake, NOW_MS + ODD_REMAINING_MS);
+    const h = driver.hook();
+
+    try testing.expectEqual(RenewDecision.keep, h.onTick(h.ctx, NOW_MS, .{}));
+    try testing.expectEqual(@as(usize, 0), fake.calls);
+
+    // Step to inside the window and it renews — same driver, same deadline.
+    const inside = NOW_MS + ODD_REMAINING_MS - constants.RENEWAL_WINDOW_MS;
+    _ = h.onTick(h.ctx, inside, .{});
+    try testing.expectEqual(@as(usize, 1), fake.calls);
+}
+
+test "an extreme clock decides instead of overflowing the window comparison" {
+    const new_deadline = NOW_MS + ONE_MILLION;
+    var fake = FakeClient{ .outcome = .{ .renewed = new_deadline } };
+    var driver = driverWith(&fake, std.math.maxInt(i64));
+    const h = driver.hook();
+
+    // `now + WINDOW` is what overflows if the comparison is written the obvious
+    // way, and a saturating add is why this reaches a decision at all. The
+    // decision itself is a renewal, and correctly so: one millisecond of lease
+    // remains, which is inside any window. What is under test is that the tick
+    // loop survives a garbage clock, not which arm it picks.
+    try testing.expectEqual(
+        RenewDecision{ .extend = new_deadline },
+        h.onTick(h.ctx, std.math.maxInt(i64) - 1, .{}),
+    );
+    try testing.expectEqual(@as(usize, 1), fake.calls);
+}

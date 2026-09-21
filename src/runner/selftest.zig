@@ -37,18 +37,18 @@ pub const Check = doctor.Check;
 /// grows as checks are added, and a stale number here reads as a budget
 /// derivation that no longer holds.
 ///
-/// It MUST stay well under the heartbeat interval. The probe runs on the
-/// heartbeat path, so a probe that burns its whole bound delays the NEXT beat
-/// by that much — at parity with the interval a single timing-out probe costs a
-/// full beat, eating the margin `HEARTBEAT_INTERVAL_MS` keeps against
-/// `RUNNER_OFFLINE_AFTER_MS`. A self-test that reported a host offline would be
-/// worse than the fault it looks for.
+/// It MUST stay well under the beat interval. The probe runs on the heartbeat
+/// path, so a probe that burns its whole bound delays the NEXT beat by that
+/// much — at parity with the interval a single timing-out probe costs a full
+/// beat. A self-test that reported a host offline would be worse than the
+/// fault it looks for.
+///
+/// The interval is the daemon's now and arrives on each reply, so there is no
+/// compile-time constant here to compare against. `loop.zig` derives its floor
+/// from THIS value instead — `MIN_BEAT_INTERVAL_MS`, two probe timeouts — and
+/// clamps the served cadence up to it, which keeps the same margin without the
+/// runner holding a copy of a number the daemon declares.
 pub const PROBE_TIMEOUT_MS: u64 = 5_000;
-
-comptime {
-    if (PROBE_TIMEOUT_MS * 2 > @as(u64, @intCast(common.HEARTBEAT_INTERVAL_MS)))
-        @compileError("PROBE_TIMEOUT_MS must leave at least half the heartbeat interval, or a timing-out probe delays the beat that carries its verdict");
-}
 
 /// Check names. Operator-facing and stable — they appear on the runner page and
 /// in the stored result, so a historical result stays readable after a rename

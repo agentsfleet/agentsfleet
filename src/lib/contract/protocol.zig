@@ -222,6 +222,14 @@ pub const HeartbeatResponse = struct {
     /// An operator asked this runner to self-test. Rides the beat, like the
     /// assignment does — one interval, no second endpoint, no host visit.
     selftest_requested: bool = false,
+    /// How long to wait before the next beat.
+    ///
+    /// Required, and deliberately not defaulted: the daemon is what derives a
+    /// host offline, so the cadence that keeps a host ahead of that threshold
+    /// is the daemon's to choose. A reply without it fails to parse and the
+    /// beat takes the transport-loss backoff, which is the safe answer — a
+    /// runner that guessed would be guessing against a number it cannot see.
+    heartbeat_interval_ms: u32,
 };
 
 /// GET /v1/runners/me reply (Bearer runner_token). The runner's own registration
