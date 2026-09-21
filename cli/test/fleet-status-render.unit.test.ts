@@ -6,7 +6,7 @@
 import { describe, test, expect } from "bun:test";
 import { Effect, Exit, Layer, Option, Redacted } from "effect";
 
-import { statusEffect } from "../src/commands/fleet.ts";
+import { statusEffectFromId } from "../src/commands/fleet.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
 import { Output } from "../src/services/output.ts";
@@ -68,7 +68,7 @@ describe("agentsfleet status — per-fleet events + budget", () => {
   test("projects events_processed and formats budget_used_nanos as USD", async () => {
     const rows: Array<Record<string, string>> = [];
     const exit = await Effect.runPromiseExit(
-      statusEffect.pipe(
+      statusEffectFromId(undefined).pipe(
         Effect.provide(configLayer()),
         Effect.provide(capturingOutput(rows)),
         Effect.provide(httpClientLayer()),

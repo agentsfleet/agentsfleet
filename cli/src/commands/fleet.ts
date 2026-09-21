@@ -30,6 +30,8 @@ import {
   type CliError,
 } from "../errors/index.ts";
 
+const STATUS_USAGE = "agentsfleet status [fleet_id]" as const;
+
 const STATUS_PAST_TENSE: Record<FleetMutationStatus, string> = {
   [AGENTSFLEET_STATUS.STOPPED]: "stopped",
   [AGENTSFLEET_STATUS.ACTIVE]: "resumed",
@@ -76,20 +78,39 @@ const requireFleetId = (
     return fleetId;
   });
 
-export const statusEffect: Effect.Effect<
+/**
+ * `agentsfleet status [fleet_id]` — one fleet, or the whole workspace.
+ *
+ * Bare `status` keeps answering for every fleet, because changing what a
+ * shipped command means would change it for every caller. With an identifier
+ * it reads that ONE fleet rather than filtering the list: the list is paged,
+ * so a client-side filter would answer "no such fleet" for anything past the
+ * first page.
+ */
+export const statusEffectFromId = (
+  fleetId: string | undefined,
+): Effect.Effect<
   void,
   CliError,
   CliConfig | Credentials | HttpClient | Output | Workspaces
-> = Effect.gen(function* () {
+> => Effect.gen(function* () {
   const output = yield* Output;
   const http = yield* HttpClient;
   const wsId = yield* requireWorkspaceId;
   const token = yield* resolveAuthToken;
 
-  const res = yield* http.request<FleetListResponse>({
-    path: wsFleetsPath(wsId),
-    token,
-  });
+  const res = fleetId === undefined
+    ? yield* http.request<FleetListResponse>({ path: wsFleetsPath(wsId), token })
+    : yield* Effect.map(
+        http.request<FleetListItem>({
+          path: wsFleetPath(
+            wsId,
+            yield* requireFleetId(fleetId, STATUS_USAGE),
+          ),
+          token,
+        }),
+        (one): FleetListResponse => ({ items: [one] }),
+      );
 
   if (output.format !== OUTPUT_FORMAT.text) {
     yield* output.success(FLEETS_SHOWN, { ...res });

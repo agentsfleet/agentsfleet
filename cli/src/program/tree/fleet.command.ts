@@ -14,7 +14,7 @@ import {
   deleteEffectFromId,
   killEffectFromId,
   resumeEffectFromId,
-  statusEffect,
+  statusEffectFromId,
   stopEffectFromId,
 } from "../../commands/fleet.ts";
 import { listEffectFromFlags } from "../../commands/fleet_list.ts";
@@ -177,9 +177,11 @@ export const listCommand = Command.make(LIST, {
   ),
 );
 
-export const statusCommand = Command.make("status").pipe(
-  Command.withDescription("Show status for every fleet in the active workspace"),
-  guardedHandler(() => statusEffect),
+export const statusCommand = Command.make("status", {
+  fleetId: fleetIdOptionalArgument,
+}).pipe(
+  Command.withDescription("Show status for one fleet, or every fleet in the active workspace"),
+  guardedHandler(({ fleetId }) => statusEffectFromId(opt(fleetId))),
 );
 
 export const stopCommand = Command.make("stop", { fleetId: fleetIdArgument }).pipe(
