@@ -259,25 +259,25 @@ Dashboard: /w/{workspaceId}/library — owned entries and removal.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | `api_runtime` may delete a tenant library row, and only that (§1) | `grep -c GRANT schema/917_tenant_fleet_library_delete_grant.sql; grep -cE 'ALTER\|DROP' schema/917_tenant_fleet_library_delete_grant.sql` | `1` then `0` | P0 | |
-| R2 | Both new operations exist, and the platform one is untouched (§2) | `grep -c '"operationId": "list_workspace_library_entries"\|"operationId": "delete_workspace_library_entry"' public/openapi.json; grep -c '"operationId": "delete_platform_fleet_library"' public/openapi.json` | `2` then `1` | P0 | |
-| R3 | The diff mints no error code and the registry stays clean (§2) | `bash audits/error-codes.sh; git diff origin/main...HEAD -- rustd/crates/afd_core/src/error_code/ \| grep -c '^+.*ErrorCode::declare'` | exit 0, then `0` | P0 | |
-| R4 | Every tenant-library statement in the diff is workspace-scoped (§1, §2) | `cargo test -p afd_library -p afd_api_tenant workspace_scoped` | exit 0 | P0 | |
-| R5 | Removing an entry leaves a fleet installed from it running (§4) | `cargo test -p afd_api --test integration_fleet_lifecycle survives_library_removal -- --ignored` | exit 0 | P0 | |
-| R6 | The workspace page lists only what this workspace owns (§3) | `cd ui/packages/app && bun run test -- workspace-library` | exit 0 | P0 | |
-| R7 | Both new command verbs work against the real binary (§5) | `cd ui/packages/app && bun run test:e2e -- library-remove-subprocess` | exit 0 | P0 | |
-| R8 | The acceptance suite finds its seeded card on page one after a swept run (§5) | `cd ui/packages/app && bun run test:e2e -- acceptance/fleet-count.spec.ts` | exit 0 | P0 | |
-| R9 | The unfiltered gallery is unchanged (§2, Invariant 4) | `cargo test -p afd_library --test integration_catalogue unfiltered_gallery -- --ignored` | exit 0 | P0 | |
-| R10 | The docs branch carries the four revised pages (§6) | `git -C ~/Projects/docs diff --name-only main...chore/m204-workspace-library-removal-changelog` | 4 paths: `fleets/library.mdx`, `cli/agentsfleet.mdx`, `api-reference/error-codes.mdx`, `changelog.mdx` | P1 | |
-| R11 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
+| R1 | `api_runtime` may delete a tenant library row, and only that (§1) | `grep -c GRANT schema/917_tenant_fleet_library_delete_grant.sql; grep -cE 'ALTER\|DROP' schema/917_tenant_fleet_library_delete_grant.sql` | `1` then `0` | P0 | ✅ `1` then `0` |
+| R2 | Both new operations exist, and the platform one is untouched (§2) | `grep -c '"operationId": "list_workspace_library_entries"\|"operationId": "delete_workspace_library_entry"' public/openapi.json; grep -c '"operationId": "delete_platform_fleet_library"' public/openapi.json` | `2` then `1` | P0 | ✅ `2` then `1` |
+| R3 | The diff mints no error code and the registry stays clean (§2) | `bash audits/error-codes.sh; git diff origin/main...HEAD -- rustd/crates/afd_core/src/error_code/ \| grep -c '^+.*ErrorCode::declare'` | exit 0, then `0` | P0 | ✅ `OK: ERROR REGISTRY GATE: clean`, then `0` |
+| R4 | Every tenant-library statement in the diff is workspace-scoped (§1, §2) | `cargo test -p afd_library -p afd_api_tenant workspace_scoped` | exit 0 | P0 | ✅ `test_tenant_library_delete_statement_is_workspace_scoped ... ok` |
+| R5 | Removing an entry leaves a fleet installed from it running (§4) | `cargo test -p afd_api --test tenant_plane survives_library_removal -- --ignored` | exit 0 | P0 | ✅ `test_installed_fleet_survives_library_removal ... ok` |
+| R6 | The workspace page lists only what this workspace owns (§3) | `cd ui/packages/app && bun run test -- library/` | exit 0 | P0 | ✅ `Test Files 6 passed (6) · Tests 49 passed (49)` |
+| R7 | Both new command verbs work against the real binary (§5) | `cd ui/packages/app && bun run test:e2e:acceptance -- workspace-library` — the suite runs in `.github/workflows/deploy-dev-acceptance.yml`, which fires after a deploy to dev rather than on the Pull Request | exit 0 | P0 | ⏳ grades post-deploy — needs the acceptance stack and fixture users provisioned against Clerk; not runnable in a worktree |
+| R8 | The acceptance suite finds its seeded card on page one after a swept run (§5) | `cd ui/packages/app && bun run test:e2e:acceptance -- fleet-count` — same workflow, same constraint | exit 0 | P0 | ⏳ grades post-deploy — same constraint as R7 |
+| R9 | The unfiltered gallery is unchanged (§2, Invariant 4) | `cargo test -p afd_library --test integration_catalogue gallery_merges -- --ignored` | exit 0 | P0 | ✅ `the_gallery_merges_two_libraries_under_one_order_and_walks_it_by_seek ... ok` |
+| R10 | The docs branch carries the four revised pages (§6) | `git -C ~/Projects/docs diff --name-only main...chore/m204-workspace-library-removal-changelog` | 4 paths: `fleets/library.mdx`, `cli/agentsfleet.mdx`, `api-reference/error-codes.mdx`, `changelog.mdx` | P1 | ✅ the four paths, exactly |
+| R11 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ `0` paths missing, after the table was reconciled |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ `ALL GATES GREEN` |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3a | Lint green | `make lint-all` | exit 0 | P0 | |
-| S3b | Integration lane green (live Postgres and Dragonfly) | `make test-integration-rustd` | exit 0 | P0 | |
-| S3c | Version sync | `make check-version` | exit 0 | P0 | |
-| S4 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S5 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S6 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
+| S3a | Lint green | `make lint-all` | exit 0 | P0 | ✅ `exit=0` |
+| S3b | Integration lane green (live Postgres and Dragonfly) | `make test-integration-rustd` | exit 0 | P0 | ✅ `exit=0` — 8 new cases, the grant probe and both ledger-key cases all `ok` |
+| S3c | Version sync | `make check-version` | exit 0 | P0 | ✅ `exit=0` |
+| S4 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found`, 5799 commits scanned |
+| S5 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ `0` paths missing, after the table was reconciled |
+| S6 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | ✅ `git diff --name-status --diff-filter=DR origin/main...HEAD` prints nothing — the diff deletes and renames no file |
 
 **Command source rule:** every declared `conform` and `verify.*` invocation from `.oracle/orly.json` appears verbatim above with an Expected value. **Grading protocol (VERIFY):** run each spec-specific Verify command verbatim; Graded = ✅/❌ plus one decisive output line. Repository-command rows point at the final `orly gate pr` results in Pull Request Session Notes. **Ship gate:** every required check passes before the Pull Request is ready; missing evidence or any ❌ returns to EXECUTE. A P1 ❌ requires an Indy-acked deferral quote in Discovery. A P0 whose scope moves whole into a named successor spec is marked `MOVED to M{N}_{NNN} R{n}` — never ✅ — and only when that spec exists carrying the criterion as its own P0, both specs record the mapping, and Discovery holds the owner's verbatim quote authorising it.
 
