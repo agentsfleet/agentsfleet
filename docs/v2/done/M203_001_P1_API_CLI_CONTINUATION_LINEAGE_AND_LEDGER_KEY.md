@@ -263,6 +263,10 @@ The race's occurrence rate is not instrumented: the converge arm makes it harmle
 | File | Why |
 |------|-----|
 | `rustd/crates/afd_wire/tests/schema_literals.rs` | removed at Indy's direction at close (Discovery); took four tests with it — the two ledger-key pins this spec added and the two `current_setting` pins from the grant-request milestone |
+| `rustd/crates/afd_api/tests/http_plane_dependency_graph.rs` | text-matched `{crate}.workspace = true` to find a dependency cycle cargo refuses at build time; its own doc comment records that the roster went stale and missed the cycle it existed to catch |
+| `rustd/crates/afd_bench/tests/bench_targets.rs` | asserted that `make/bench.mk` contains two literal strings, one of them help text with its double space; reformatting the makefile turned it red and nothing else |
+| `rustd/crates/afd_wire/tests/manifest.rs` | hand-rolled TOML (`starts_with("default = [")`, `contains("optional = true")`); `cargo metadata` carries the same facts structurally, and `afd_core/tests/workspace.rs` already reads it that way |
+| `rustd/crates/afd_events/tests/fleet_event_writers.rs` | `is_a_use` — a `starts_with("//")` filter standing in for a parse, walking all 932 files under `crates/*/src`. The roster it guarded is a visibility question, recorded below as follow-on work |
 
 **2. Orphaned references — zero remaining imports/uses.**
 
@@ -270,6 +274,8 @@ The race's occurrence rate is not instrumented: the converge arm makes it harmle
 |-----------------------|------|----------|
 | `uq_usage_ledger_event_id_charge_type` | `grep -rn "uq_usage_ledger_event_id_charge_type" rustd/ cli/ ui/ docs/architecture/ \| head` | 0 matches (the name survives only in frozen `schema/710` and `schema/916`'s drop, and in `docs/v2/reviews/`) |
 | `schema_literals` | `grep -rn "schema_literals" rustd/ --include="*.rs" --include="*.toml"` | 0 matches (`docs/v2/` history keeps its citations) |
+| `http_plane_dependency_graph`, `bench_targets`, `fleet_event_writers` | `grep -rn "http_plane_dependency_graph\|bench_targets\|fleet_event_writers" rustd/ --include="*.rs" --include="*.toml"` | 0 matches; the three `mod` declarations in `http_substrate_suite.rs`, `wire_suite.rs` and `events_suite.rs` went with them |
+| `test_m201_index_comment_names_surviving_reader` | `grep -rn "test_m201_index_comment" rustd/` | 0 matches — it asserted the wording of a comment in `schema/720`, and carried the milestone-prefixed name this spec's Applicable Rules names as the pattern not to copy |
 
 ## Out of Scope
 
@@ -307,4 +313,6 @@ The race's occurrence rate is not instrumented: the converge arm makes it harmle
 - **Metrics review** — no analytics/funnel playbook update required: internal correctness change, no user-visible event.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test` per Section and at the boundary; `/review`; `orly-babysit-prs` after push.
 - **Removed at close** — `rustd/crates/afd_wire/tests/schema_literals.rs`, with Dimensions 2.7 and 3.2 and their Test Specification rows: > Indy (Sep 21, 2026): "I want schema_literals.rs to be removed. Its full of crap." — context: the file had grown from two `current_setting` pins into a grep-over-source home for any literal the schema spells; the ledger-key pins this spec added were the third and fourth. Consequence recorded, not fixed here: the eight `current_setting('fleet.allow_gate_purge')` literals in `schema/` are now unpinned, which RULE STS names as the case for a pin; the follow-on lifecycle milestone removes the setting itself, after which there is nothing to pin.
+- **Text-scan sweep, added at close by owner direction.** > Indy (Sep 21, 2026): "can you find out such patters like is_a_use, i think this must be nuked." and "i want to clean up as part of this PR" — context: `is_a_use` in `fleet_event_writers.rs`, a `starts_with("//")` filter standing in for a parse. Eleven grep-over-source tests were audited; four files and one assertion were removed where a compiler, `cargo metadata`, or an existing structured test already carries the claim. Measured cost of the whole family before removal: ~0.8s against a 1m31s `cargo test --workspace`, so speed was not the reason — the heuristics were. Kept, with reasons: `openapi_artifact.rs` and `workspace.rs` (structured, not heuristics), `scope_catalogue.rs` (13 of 14 tests are typed set membership), `names.rs` (utoipa merges duplicate component names silently and the generator cannot report what it merged, so no other guard exists — its hand parser should become a check on the generated document).
+- **Follow-on, not fixed here** — the `INSERT_FLEET_EVENT` writer roster is now unenforced. The principled guard is visibility: make the constant private to `afd_events` and expose a function, so the compiler bounds the caller set. That is a production change across three crates and belongs with the lifecycle milestone.
 - **Deferrals** — none.
