@@ -6,6 +6,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
+import { endpointOf } from "../src/services/http-client.ts";
 import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
@@ -78,5 +79,39 @@ describe("the level governs records that exist", () => {
     expect(code).not.toBe(0);
     for (const level of ["all", "trace", "debug", "info", "warn", "error", "fatal", "none"])
       expect(err.read()).toContain(level);
+  });
+});
+
+// The redaction boundary itself, asserted directly rather than only through
+// the paths today's commands happen to build. A record names the route
+// somebody called; which row they were looking at is theirs.
+describe("the endpoint a record names carries no identifier", () => {
+  const U = "01900000-0000-7000-8000-00000067e210";
+  const V = "01900000-0000-7000-8000-0000000f1ee7";
+
+  test.each([
+    ["a mid-path identifier", `/v1/workspaces/${U}/fleets`, "/v1/workspaces/{id}/fleets"],
+    ["a trailing identifier", `/v1/fleets/${U}`, "/v1/fleets/{id}"],
+    ["a trailing identifier before a query", `/v1/fleets/${U}?expand=runs`, "/v1/fleets/{id}?expand=runs"],
+    ["a collection query", `/v1/workspaces/${U}/approvals?limit=50`, "/v1/workspaces/{id}/approvals?limit=50"],
+    ["two identifiers", `/v1/workspaces/${U}/library-entries/${V}`, "/v1/workspaces/{id}/library-entries/{id}"],
+    ["two identifiers before a query", `/v1/workspaces/${U}/fleets/${V}?tail=1`, "/v1/workspaces/{id}/fleets/{id}?tail=1"],
+  ])("%s is replaced", (_label, path, expected) => {
+    expect(endpointOf(path as string)).toBe(expected as string);
+  });
+
+  test("no rendered endpoint contains a UUID, whatever follows it", () => {
+    const UUID_ANYWHERE = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/u;
+    for (const path of [
+      `/v1/fleets/${U}`,
+      `/v1/fleets/${U}?expand=runs`,
+      `/v1/workspaces/${U}/library-entries/${V}`,
+      `/v1/workspaces/${U}/library-entries/${V}?force=1`,
+    ])
+      expect(UUID_ANYWHERE.test(endpointOf(path))).toBe(false);
+  });
+
+  test("a path with nothing to redact is returned byte-identical", () => {
+    expect(endpointOf("/v1/tenants/me/models")).toBe("/v1/tenants/me/models");
   });
 });

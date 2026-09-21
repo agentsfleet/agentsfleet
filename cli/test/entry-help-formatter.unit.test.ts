@@ -111,3 +111,41 @@ describe("help formatter — a dead end gets a way out", () => {
     expect(formatter.formatError(other)).not.toContain("agentsfleet --help");
   });
 });
+
+describe("help formatter — the flag we do not advertise", () => {
+  const flag = (name: string, description: string) => ({
+    name,
+    aliases: [],
+    type: "boolean",
+    description: { _tag: "Some", value: description },
+    required: false,
+  });
+
+  const render = (...flags: ReadonlyArray<ReturnType<typeof flag>>): string =>
+    formatter.formatHelpDoc({
+      usage: "agentsfleet demo",
+      description: "demo",
+      flags,
+      args: [],
+    } as never);
+
+  test("a flag whose name merely begins with the unadvertised one is still offered", () => {
+    // `startsWith` on the term would take `--wizardly` out with `--wizard`,
+    // and its description with it — a flag vanishing from the help because
+    // of what another flag is called is the reader's problem, not a match.
+    const rendered = render(flag("wizardly", "a flag this repository does advertise"));
+    expect(rendered).toContain("--wizardly");
+    expect(rendered).toContain("a flag this repository does advertise");
+  });
+
+  test("the unadvertised flag goes, and the flag declared after it stays", () => {
+    const rendered = render(
+      flag("wizard", "the library's own builder"),
+      flag("json", "machine-readable output"),
+    );
+    expect(rendered).not.toContain("--wizard");
+    expect(rendered).not.toContain("the library's own builder");
+    expect(rendered).toContain("--json");
+    expect(rendered).toContain("machine-readable output");
+  });
+});
