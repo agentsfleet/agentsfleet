@@ -121,7 +121,7 @@ Three flags, one rule: a flag in the help does what the help says, or it is not 
 
 The one dashboard surface this workstream touches, because it is where an operator first meets the two library tiers and cannot currently tell them apart. Two entries of the same name, one platform and one this workspace onboarded, render identically. **Implementation default:** the label reads `visibility`, which the component already holds — it passes the field to React as part of a key at `InstallSourceSelector.tsx:187` and renders nothing from it — so nothing new is fetched. **Implementation default:** the label takes its shape from `ModelsRegistryTable.tsx`, which already distinguishes these two tiers for the models domain; a second vocabulary for one idea is what M204_001 §0b rejected.
 
-- **Dimension 4.1** — The install picker names the tier an entry came from, so a platform default and a workspace's own copy of the same name are distinguishable by rendered text alone → Test `test_the_install_picker_names_each_entry_tier`
+- **Dimension 4.1** — DONE — The install picker names the tier an entry came from, so a platform default and a workspace's own copy of the same name are distinguishable by rendered text alone → Test `test_the_install_picker_names_each_entry_tier`
 
 ### §5 — The fixture claims that describe a looser CLI than we ship
 

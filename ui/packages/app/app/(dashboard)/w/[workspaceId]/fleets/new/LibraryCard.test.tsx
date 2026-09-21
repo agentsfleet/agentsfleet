@@ -100,3 +100,46 @@ describe("a gallery card is bounded", () => {
     expect(screen.queryByText(/^\+\d+$/)).toBeNull();
   });
 });
+
+// Two entries of the SAME name across the two tiers is the case the gallery
+// actually serves — a workspace onboards its own copy of a bundle the
+// platform also publishes — and it is the case that was indistinguishable.
+describe("a card names the catalogue its entry came from", () => {
+  const PLATFORM_COPY: FleetLibraryGalleryEntry = {
+    ...BRIEF,
+    id: "github-pr-reviewer-platform",
+    name: "github-pr-reviewer",
+    visibility: "platform",
+  };
+  const WORKSPACE_COPY: FleetLibraryGalleryEntry = {
+    ...PLATFORM_COPY,
+    id: "github-pr-reviewer-tenant",
+    visibility: "tenant",
+  };
+
+  it("names the platform tier in words, not in the wire's spelling", () => {
+    render(<LibraryCard entry={PLATFORM_COPY} action={null} />);
+    expect(screen.getByTestId("library-card-tier-github-pr-reviewer-platform").textContent)
+      .toBe("Platform");
+  });
+
+  it("names a workspace's own copy as the workspace's", () => {
+    render(<LibraryCard entry={WORKSPACE_COPY} action={null} />);
+    expect(screen.getByTestId("library-card-tier-github-pr-reviewer-tenant").textContent)
+      .toBe("This workspace");
+  });
+
+  it("two same-named entries are distinguishable by rendered text alone", () => {
+    render(
+      <>
+        <LibraryCard entry={PLATFORM_COPY} action={null} />
+        <LibraryCard entry={WORKSPACE_COPY} action={null} />
+      </>,
+    );
+    // Both cards carry the same name, so the tier is the only thing telling a
+    // person which one they are about to install.
+    expect(screen.getAllByText("github-pr-reviewer")).toHaveLength(2);
+    expect(screen.getByText("Platform")).toBeTruthy();
+    expect(screen.getByText("This workspace")).toBeTruthy();
+  });
+});

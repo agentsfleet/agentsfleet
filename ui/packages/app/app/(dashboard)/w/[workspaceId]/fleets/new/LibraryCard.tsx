@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Badge, Card } from "@agentsfleet/design-system";
-import type { FleetLibraryGalleryEntry } from "@/lib/types";
+import type { FleetLibraryGalleryEntry, FleetLibraryVisibility } from "@/lib/types";
 
 // "Requires", not "needs": the badge states a prerequisite of the fleet, and
 // this is the word the install flow and the docs use for the same fact.
@@ -26,6 +26,16 @@ const VISIBLE_CREDENTIALS = 3;
 // is a named constant here (RULE UFS).
 const MORE_PREFIX = "+";
 
+// Which catalogue an entry came from, in words an operator uses rather than
+// the wire's own. Two entries can share a name across the two tiers — the
+// platform catalogue and a workspace's own copy of the same bundle — and
+// until now the card rendered them identically, so the one place a person
+// CHOOSES between them was the one place the difference was invisible.
+const TIER_LABEL: Record<FleetLibraryVisibility, string> = {
+  platform: "Platform",
+  tenant: "This workspace",
+};
+
 type Props = {
   entry: FleetLibraryGalleryEntry;
   // The call-to-action slot — the install picker's "Install" button. Kept
@@ -50,7 +60,12 @@ export function LibraryCard({ entry, action }: Props) {
     // numbers, none of them the card inset above and below them.
     <Card data-testid={`library-card-${entry.id}`} className="flex flex-col gap-lg">
       <div className="flex flex-col gap-sm">
-        <h3 className="font-medium text-foreground">{entry.name}</h3>
+        <div className="flex items-center gap-sm">
+          <h3 className="font-medium text-foreground">{entry.name}</h3>
+          <Badge data-testid={`library-card-tier-${entry.id}`}>
+            {TIER_LABEL[entry.visibility]}
+          </Badge>
+        </div>
         <p className={`text-body-sm leading-body-sm text-muted-foreground ${DESCRIPTION_LINES}`}>
           {entry.description}
         </p>
