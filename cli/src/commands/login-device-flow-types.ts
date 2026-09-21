@@ -3,8 +3,9 @@
 // (RULE FLL). Re-exported from login-device-flow.ts, so existing consumers
 // (login.ts, tests) import unchanged.
 //
-// Server response shapes are confirmed against src/http/handlers/auth/
-// sessions.zig + session_helpers.zig — see the login-device-flow.ts header for
+// Server response shapes are confirmed against
+// rustd/crates/afd_api_tenant/src/handler/auth/session.rs and its session/
+// submodules — see the login-device-flow.ts header for
 // the per-endpoint status-code map.
 
 export interface SessionCreatedResponse {

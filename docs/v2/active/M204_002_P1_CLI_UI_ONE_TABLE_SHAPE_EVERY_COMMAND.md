@@ -127,8 +127,8 @@ The one dashboard surface this workstream touches, because it is where an operat
 
 Three claims in the acceptance fixtures are measurably false, and two of them cost coverage: a row marked as not validating client-side is excluded from the sweep that proves no network call fires, so real validation goes unasserted. **Implementation default:** the claims are corrected in place rather than deleted, because each one carries a reason a future reader needs; what changes is the fact, not the commentary. RULE NLR applies — these files are already open in this diff.
 
-- **Dimension 5.1** — Every identifier-taking verb that rejects a malformed identifier client-side is marked as doing so, and the sweep that proves no network call fires covers each of them → Test `test_the_client_side_sweep_covers_every_validating_verb`
-- **Dimension 5.2** — No fixture comment cites a path that does not resolve, and the error codes the matrix expects are cited where they are declared → Test `test_fixture_comments_cite_paths_that_resolve`
+- **Dimension 5.1** — DONE — Every identifier-taking verb that rejects a malformed identifier client-side is marked as doing so, and the sweep that proves no network call fires covers each of them → Test `test_the_client_side_sweep_covers_every_validating_verb`
+- **Dimension 5.2** — DONE — No fixture comment cites a path that does not resolve, and the error codes the matrix expects are cited where they are declared → Test `test_fixture_comments_cite_paths_that_resolve`
 
 ### §6 — The schedule verbs say what the rest of the surface says
 
@@ -259,6 +259,7 @@ N/A — no files deleted. Nothing is renamed or removed: the helper is a new exp
 - **Renaming `library remove`, or any verb outside `schedule`.** §6 renames the three `schedule` verbs Indy named and nothing else. `library remove` versus `library rm` is the same class of inconsistency and is left alone here, because renaming a verb M204_001 is shipping in the same Pull Request would change a command twice in one release.
 - **A `library` column showing how many fleets were installed from each entry.** Asked about at authoring and left unresolved; it needs a count the gallery read does not return, so it is a server change, not a column.
 - **The dashboard's own table layouts.** This workstream standardises the CLI and adds one label to the install picker. The dashboard's lists follow the design system, not the CLI's column rule, and aligning them is a design decision with no operator complaint behind it yet.
+- **The rest of the retired-path citations.** §5 corrected the fixtures it names plus the six files the checker opened. Sixteen further `.zig` citations remain across ten files — seven in `failure-modes.integration.test.ts`, one each in six acceptance fixtures and in `model-catalogue.ts`, `fleet_secret_body.ts` and `api_key.ts`. Comment-only, zero runtime risk, and outside this workstream's Files Changed: widening `fixture-claims.unit.test.ts`'s `RETIRED_PATHS` is what will prove that sweep done.
 - **Making `--wizard` a designed surface.** Hiding it is the honest minimum. A wizard worth advertising asks about the command being built, not about the API base URL first, and that is a product design task.
 
 ## Product Clarity (authoring record)
