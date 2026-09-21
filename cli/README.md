@@ -43,7 +43,7 @@ and is versioned with each release:
 |------|--------|
 | [Install](https://docs.agentsfleet.net/cli/install) | Install, upgrade, supported runtimes |
 | [Commands](https://docs.agentsfleet.net/cli/agentsfleet) | Every command and its flags |
-| [Global flags](https://docs.agentsfleet.net/cli/flags) | `--api`, `--json`, `--no-input`, `--no-open` |
+| [Global flags](https://docs.agentsfleet.net/cli/flags) | `--api`, `--json` — and where the per-command flags live |
 | [Configuration](https://docs.agentsfleet.net/cli/configuration) | Environment variables, config paths, precedence |
 
 `agentsfleet --help` and `agentsfleet <command> --help` print the same surface
