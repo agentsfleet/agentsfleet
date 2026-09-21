@@ -21,7 +21,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Categories:** API | CLI
 **Batch:** B1 — standalone; no other M203 workstream
 **Branch:** `feat/m203-continuation-lineage-and-ledger-key`
-**Baseline revision:** `57a77c73cdfe30b66cc1a765da91a64406fb37f0` (`origin/main` at CHORE(open))
+**Baseline revision:** `57a77c73cdfe30b66cc1a765da91a64406fb37f0`
 **Test Baseline:** `unit=2644 integration=550` at the comparison revision — `make test-unit-all` (2644 Rust passed / 0 failed, plus app 2871 / design-system 142 / website 631 TypeScript) and `make test-integration-rustd`, whose 550 is derived rather than measured because its own build exhausted the disk: the branch's measured 561 less the 11 integration tests this diff adds and the 0 it removes. Branch: unit 2648 Rust / 2870 app TypeScript, integration 561, both lanes exit 0 — delta +4 unit, +11 integration, −1 TypeScript.
 **Baseline evidence:** `playbooks/operations/acceptance/baselines/M203_001-57a77c73c.md`
 **Depends on:** none. M202_001 is in flight on `fix/m202-close-and-acceptance-lanes` and edits `afd_approval/src/request.rs` and `afd_fleet/src/lease/{mint,deliver}.rs`; this spec edits `inbox.rs` and `lease/event.rs` — disjoint files, same crates; rebase onto whichever lands first.
