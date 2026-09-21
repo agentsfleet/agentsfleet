@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — single stream; the grant precedes the handler, the handler precedes both clients.
 **Branch:** `feat/m204-workspace-library-removal`
 **Baseline revision:** 76eb9c2d305a480ea8437e65d63efbcaf7ba6de7
-**Test Baseline:** `unit=2640 integration=561` at the comparison revision — derived, not measured: the branch's measured `unit=2662 integration=570` (both lanes exit 0) less the 22 unit and 9 integration tests this diff adds and the 0 it removes. A baseline worktree needs a full Rust build and the machine had 16 GiB free against a 34 GiB `target/` per worktree. **Final:** unit=2662 (+22) integration=570 (+9); TypeScript app 2911 (+32) · cli 1695 (+10).
+**Test Baseline:** `unit=2640 integration=561` at the comparison revision — derived, not measured: the branch's measured `unit=2662 integration=570` (both lanes exit 0) less the 22 unit and 9 integration tests this diff adds and the 0 it removes. A baseline worktree needs a full Rust build and the machine had 16 GiB free against a 34 GiB `target/` per worktree. **Final:** unit=2662 (+22) integration=570 (+9); TypeScript app 2913 · cli 1702 at `bd89852e1`, which carries workstream 002 too; 001's own delta is app +32 · cli +10.
 **Baseline evidence:** `playbooks/operations/acceptance/baselines/M204_001-76eb9c2d3.md`
 **Depends on:** none
 **Provenance:** LLM-drafted (claude-opus-5[1m], Sep 21, 2026)
