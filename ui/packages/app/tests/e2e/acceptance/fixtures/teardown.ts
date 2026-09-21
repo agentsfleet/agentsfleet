@@ -154,3 +154,89 @@ export async function sweepLeakedFixtureFleets(): Promise<SweepCounts> {
   else console.log(summary);
   return total;
 }
+
+/**
+ * One workspace's own Fleet library entries, removed.
+ *
+ * The other half of what a leaked run leaves behind. A leaked FLEET is not
+ * inert — its seeded cron trigger keeps waking runners until the row is gone —
+ * and a leaked library ENTRY is inert but cumulative: it stays in the install
+ * gallery forever, because until M204 there was no verb that could remove it.
+ * The pile-up is what pushed the seeded card off the gallery's first page and
+ * made `installViaUI` miss it.
+ *
+ * No prefix scoping, and no `namePrefix` parameter to pass one. The whole
+ * shape of the acceptance suite is re-onboarding ONE stable name per run, so
+ * every tenant entry in a fixture workspace is this run's or a previous run's,
+ * and both should go. A prefix would also be the hand-maintained list that
+ * `sweepLeakedFixtureFleets` records falling behind the specs.
+ *
+ * Only the workspace's OWN entries: the read is the owned collection, which
+ * never carries a platform row, so the platform catalogue cannot be reached
+ * from here even by mistake.
+ */
+export async function cleanWorkspaceLibraryEntries(
+  handle: ClientHandle,
+  workspaceId: string,
+): Promise<SweepCounts> {
+  assertDestructiveTargetIsSafe();
+  const c = clientFor(handle);
+  const counts: SweepCounts = { removed: 0, failed: 0 };
+  const page = await c.get<{ items?: Array<{ id: string; name?: string }> }>(
+    `/v1/workspaces/${workspaceId}/library-entries?limit=100`,
+  );
+  for (const entry of page.items ?? []) {
+    try {
+      await c.delete(`/v1/workspaces/${workspaceId}/library-entries/${entry.id}`);
+      counts.removed++;
+    } catch (err) {
+      // Counted, not swallowed — the same reason the fleet sweep gives. A
+      // removal that failed is a row still in the gallery, which is the whole
+      // defect this sweep exists to prevent.
+      counts.failed++;
+      console.error(
+        `[e2e:teardown] remove failed for library entry ${entry.id} in workspace ${workspaceId}:`,
+        err,
+      );
+    }
+  }
+  return counts;
+}
+
+/**
+ * Backstop sweep for global-teardown: reap every tenant library entry in every
+ * workspace a persistent fixture user owns.
+ *
+ * Deliberately the same shape, the same guard and the same blast radius as
+ * [`sweepLeakedFixtureFleets`] — read its note, which applies here unchanged.
+ * It runs beside that sweep rather than inside it because the two answer for
+ * different rows and either can fail without the other needing to.
+ */
+export async function sweepLeakedFixtureLibraries(): Promise<SweepCounts> {
+  assertDestructiveTargetIsSafe();
+  const total: SweepCounts = { removed: 0, failed: 0 };
+  for (const key of FIXTURE_KEYS) {
+    const workspaces = await listWorkspaces(key).catch((err: unknown) => {
+      console.error(`[e2e:sweep] workspace listing failed for fixture '${key}':`, err);
+      total.failed++;
+      return [];
+    });
+    for (const workspace of workspaces) {
+      try {
+        const counts = await cleanWorkspaceLibraryEntries(key, workspace.id);
+        total.removed += counts.removed;
+        total.failed += counts.failed;
+      } catch (err) {
+        console.error(
+          `[e2e:sweep] library sweep failed in workspace ${workspace.id} ('${key}'):`,
+          err,
+        );
+        total.failed++;
+      }
+    }
+  }
+  const summary = `[e2e:sweep] done — ${total.removed} fixture library entr(ies) removed, ${total.failed} failed`;
+  if (total.failed > 0) console.error(summary);
+  else console.log(summary);
+  return total;
+}

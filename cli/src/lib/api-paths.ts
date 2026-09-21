@@ -56,6 +56,19 @@ export const wsFleetPath = (wsId: string, fleetId: string): string =>
 export const wsFleetLibrariesPath = (wsId: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/fleet-libraries`;
 
+// Workspace-scoped OWNED entries (GET → only what this workspace onboarded,
+// never a platform row and never another workspace's). A second collection
+// rather than a filter on the gallery above: that one answers "what can I
+// install here", this one "what did we onboard". Its cursor is its own and a
+// gallery cursor cannot be spent against it.
+export const wsLibraryEntriesPath = (wsId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/library-entries`;
+
+// One owned entry (DELETE → 204, idempotent). An id already gone and one
+// naming another workspace's entry answer identically, on purpose.
+export const wsLibraryEntryPath = (wsId: string, entryId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/library-entries/${enc(entryId)}`;
+
 // Workspace-scoped per-fleet chat messages (POST → 202 with event_id).
 export const wsFleetMessagesPath = (wsId: string, fleetId: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/messages`;

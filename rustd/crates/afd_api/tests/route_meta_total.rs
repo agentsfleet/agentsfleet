@@ -50,15 +50,11 @@ const VERB_SPLITS: usize = 1;
 
 /// Routes this daemon serves that the Zig one never did.
 ///
-/// Three: `GET /v1/users/me`, and M204's pair for the entries a workspace
-/// onboarded — the collection it administers and the removal of one of them.
-/// The Zig daemon had no removal to port: slot 460 withheld the grant, and
-/// `schema/917` is what reverses that.
-///
-/// A term of its own rather than a smaller [`ZIG_ROUTE_COUNT`], which is what
-/// the retired daemon carried and is not ours to edit — an addition hidden
-/// inside it would make the next one indistinguishable from a route the port
-/// dropped.
+/// Three: `GET /v1/users/me`, plus the owned library collection and its
+/// removal — the Zig daemon had no removal to port, because slot 460 withheld
+/// the grant. A term of its own rather than a smaller [`ZIG_ROUTE_COUNT`],
+/// which is not ours to edit: an addition hidden inside it would make the next
+/// one indistinguishable from a route the port dropped.
 const POST_PORT_ADDITIONS: usize = 3;
 
 /// What this daemon's union must carry.
