@@ -33,7 +33,7 @@ const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_memory" }, fn);
 
 describe("memory list — human table on a terminal", () => {
-  test("test_memory_list_table_newest_first: keys, categories, ISO timestamps, previews", async () => {
+  test("test_memory_list_table_newest_first: keys, categories, ages, previews", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = { [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) };
       await withMockApi(routes, async (apiUrl, calls) => {
@@ -49,7 +49,8 @@ describe("memory list — human table on a terminal", () => {
         expect(text).toContain("acme_contact");
         expect(text).toContain("deploy_window");
         expect(text).toContain("core");
-        expect(text).toMatch(/\d{4}-\d{2}-\d{2}T/);
+        expect(text).toContain("AGO");
+        expect(text).toMatch(/\d+[smhdy]\b/);
         expect(text).toContain("escalation contact");
         // server order preserved: newest fixture renders first
         expect(text.indexOf("acme_contact")).toBeLessThan(text.indexOf("deploy_window"));

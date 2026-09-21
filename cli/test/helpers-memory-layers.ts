@@ -1,3 +1,4 @@
+import { AGE_KEY, ago, entityColumns } from "../src/output/index.ts";
 // Shared Effect stub layers + runner for the memory read-verb unit tests
 // (the helpers-cli-state.ts pattern). Stubs sit at system boundaries only:
 // HttpClient (network), Workspaces/Credentials (disk), Output (streams).
@@ -47,6 +48,7 @@ export const outputLayer = (
       }),
     printJson: (payload) => Effect.sync(() => { cap.jsons.push(payload); }),
     printTable: (columns, rows) => Effect.sync(() => { cap.tables.push({ columns, rows }); }),
+    printEntityTable: (spec, rows) => Effect.sync(() => { cap.tables.push({ columns: entityColumns(spec), rows: rows.map((r) => ({ ...r, [AGE_KEY]: ago(r[spec.ageKey ?? AGE_KEY]) })) }); }),
   });
 
 export const httpLayerReturning = (envelope: unknown, paths: string[]): Layer.Layer<HttpClient> =>

@@ -78,9 +78,12 @@ const AGE_COLUMN_IS_APPENDED =
  * edited.
  */
 export interface EntityTableSpec {
-  readonly name: TableColumn;
+  /** Absent only where the entity genuinely has none — a schedule, say. */
+  readonly name?: TableColumn;
   readonly id?: TableColumn;
   readonly domain: ReadonlyArray<TableColumn>;
+  /** The row field the age reads, where it is not [`AGE_KEY`]. */
+  readonly ageKey?: string;
 }
 
 const NARROW_THRESHOLD = 80;
@@ -258,7 +261,7 @@ export function entityColumns(spec: EntityTableSpec): ReadonlyArray<TableColumn>
     if (column.key === AGE_KEY || column.label === AGE_LABEL)
       throw new Error(AGE_COLUMN_IS_APPENDED);
   return [
-    spec.name,
+    ...(spec.name === undefined ? [] : [spec.name]),
     ...(spec.id === undefined ? [] : [spec.id]),
     ...spec.domain,
     { key: AGE_KEY, label: AGE_LABEL },
@@ -271,7 +274,8 @@ export function entityTable(
   rows: ReadonlyArray<TableRow>,
   opts?: FormatOpts,
 ): string {
-  const aged = rows.map((row) => ({ ...row, [AGE_KEY]: ago(row[AGE_KEY]) }));
+  const source = spec.ageKey ?? AGE_KEY;
+  const aged = rows.map((row) => ({ ...row, [AGE_KEY]: ago(row[source]) }));
   return formatTable(entityColumns(spec), aged, opts);
 }
 
