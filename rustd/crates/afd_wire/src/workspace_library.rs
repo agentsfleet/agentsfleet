@@ -86,17 +86,16 @@ pub struct GalleryResponse<'a> {
 /// One entry a workspace onboarded, on the collection it administers.
 ///
 /// A gallery card and this are deliberately different shapes. A card answers
-/// "what can I install here", so it carries the requirement chips and the
-/// reasons copy the install gate renders. This answers "what did we onboard",
-/// so it carries the provenance an operator tells two near-identical entries
-/// apart by — the source it came from and the hash of the bytes it holds — and
-/// none of the install-time decoration.
+/// "what can I install here". It carries the requirement chips and the reasons
+/// copy the install gate renders. This answers "what did we onboard". It
+/// carries the provenance instead: the source it came from, and the hash of
+/// the bytes it holds. None of the install-time decoration is here.
 ///
 /// `content_hash` is on this wire and not on the gallery's. It is the domain
-/// key's other half: two onboardings of the same bundle into one workspace are
-/// one entry, so a differing hash is what proves two rows are two bundles
-/// rather than one listed twice. Still no bundle CONTENT — the read projects
-/// no document column, and this struct has nowhere to put one.
+/// key's other half. Two onboardings of the same bundle into one workspace are
+/// one entry. So a differing hash proves two rows are two bundles, rather than
+/// one bundle listed twice. Still no bundle CONTENT. The read projects no
+/// document column, and this struct has nowhere to put one.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -126,11 +125,11 @@ pub struct OwnedEntryCard<'a> {
 /// `GET /v1/workspaces/{workspace_id}/library-entries` — one page of what a
 /// workspace owns.
 ///
-/// The same envelope keys as the gallery beside it, for the same reason: §3 of
-/// the REST guide requires `total` and `next_cursor` PRESENT on every page, so
-/// a client never branches on an absent key to tell "no more pages" from "this
-/// server is old". The cursor is this collection's own — it resumes a walk over
-/// one table, and a gallery cursor cannot be spent here.
+/// The same envelope keys as the gallery beside it, for the same reason. §3 of
+/// the REST guide requires `total` and `next_cursor` present on every page. A
+/// client then never branches on an absent key to tell "no more pages" from
+/// "this server is old". The cursor is this collection's own: it resumes a walk
+/// over one table, and a gallery cursor cannot be spent here.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
