@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M205
 **Workstream:** 001
 **Date:** Sep 21, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing: one of the three ties computes a live Grafana alert threshold by running `sed` over Rust source, and another governs lease renewal on the shipping runner.
 **Categories:** API, CLI, DOCS, OBS, UI
 **Batch:** B1 — single stream; §1 is independent, §2 precedes nothing, §3 depends on §2 having settled which crate owns the lease clock.
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** `feat/m205-cross-runtime-constant-ties`
+**Baseline revision:** `ebdc29a8c0a42ed4aa963b9e532cfee61f5995a1`
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** none — M203_001 is merged and its Discovery is this spec's source record.
 **Provenance:** LLM-drafted (claude-opus-5[1m], Sep 21, 2026)
