@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — single stream; §1 and §2 are independent of each other.
 **Branch:** `feat/m205-cross-runtime-constant-ties`
 **Baseline revision:** `ebdc29a8c0a42ed4aa963b9e532cfee61f5995a1`
-**Test Baseline:** Rust unit 2640 · Zig 716 · cli 1668 · app 2881 · design-system 631 · website 142 · integration 561, at `ebdc29a8c` — derived, method and arithmetic at `playbooks/operations/acceptance/baselines/M205_001-ebdc29a8c.md`
+**Test Baseline:** unit=2640 integration=561 — derived at `ebdc29a8c`, not measured; the per-runtime counts behind `unit` are Rust 2640 · Zig 716 · cli 1668 · app 2881 · design-system 631 · website 142, which track separately as the M90_002 precedent records. Method and arithmetic: `playbooks/operations/acceptance/baselines/M205_001-ebdc29a8c.md`.
 **Baseline evidence:** `playbooks/operations/acceptance/baselines/M205_001-ebdc29a8c.md` — branch measured at this worktree: Rust 2637/0, cli 1669 pass 16 skip, app 2885, design-system 631, website 142, Zig 721 pass 3 skip, integration 561/0; lint, version, gitleaks and both cross-compiles exit 0. Comparison revision derived: 19 GiB free could not hold a fourth build tree.
 **Depends on:** none — M203_001 is merged and its Discovery is this spec's source record.
 **Provenance:** LLM-drafted (claude-opus-5[1m], Sep 21, 2026)
