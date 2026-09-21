@@ -41,7 +41,7 @@ describe("help output", () => {
     expect(output).toContain("https://docs.agentsfleet.net/cli/configuration");
   });
 
-  test("--help shows global flags", async () => {
+  test("--help shows the flags that really are global", async () => {
     const out = bufferStream();
     const err = bufferStream();
     await runCli(["--help"], {
@@ -51,8 +51,26 @@ describe("help output", () => {
     });
     const output = out.read();
     expect(output).toContain("--json");
-    expect(output).toContain("--no-input");
+    expect(output).toContain("--api");
     expect(output).toContain("--version");
+  });
+
+  // `--no-open` and `--no-input` are login's, not the program's: they are read
+  // by exactly one command, and a flag cannot be declared on both a parent and
+  // a child — the parent would claim it and the child's copy would never fire.
+  // So they are listed where they are read, and this asserts they are still
+  // discoverable rather than quietly gone.
+  test("login's own flags are listed on login", async () => {
+    const out = bufferStream();
+    const err = bufferStream();
+    await runCli(["login", "--help"], {
+      stdout: out.stream,
+      stderr: err.stream,
+      env: { ...process.env, NO_COLOR: "1" },
+    });
+    const output = out.read();
+    expect(output).toContain("--no-input");
+    expect(output).toContain("--no-open");
   });
 
   test("--help output stays within 80 columns wide", async () => {

@@ -10,8 +10,9 @@ import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { resolveAuthToken } from "./workspace-guards.ts";
+import { isNumber, isString } from "../lib/guards.ts";
 import {
   PROVIDER_MODE,
   formatDollars,
@@ -22,15 +23,15 @@ import {
   TENANT_BILLING_PATH,
 } from "../lib/api-paths.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
+import { EMPTY_CELL } from "../output/index.ts";
 
 // <$1 left → warn on reset.
-const LOW_BALANCE_THRESHOLD_NANOS = NANOS_PER_USD;
-const TYPE_NUMBER = "number" as const;
-const TYPE_STRING = "string" as const;
-const LITERAL = "—" as const;
+const PROVIDER_SHOWN = "Tenant provider" as const;
+const PROVIDER_ADDED = "Tenant provider added" as const;
+const PROVIDER_REMOVED = "Tenant provider removed" as const;
 
-const isNumber = (value: unknown): value is number => typeof value === TYPE_NUMBER;
-const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
+const LOW_BALANCE_THRESHOLD_NANOS = NANOS_PER_USD;
+
 
 interface ProviderResponse {
   readonly mode?: string;
@@ -63,17 +64,17 @@ const renderProviderTable = (
         { key: "value", label: "VALUE" },
       ],
       [
-        { field: "mode", value: res?.mode ?? LITERAL },
-        { field: "provider", value: res?.provider ?? LITERAL },
-        { field: "model", value: res?.model ?? LITERAL },
+        { field: "mode", value: res?.mode ?? EMPTY_CELL },
+        { field: "provider", value: res?.provider ?? EMPTY_CELL },
+        { field: "model", value: res?.model ?? EMPTY_CELL },
         {
           field: "context_cap_tokens",
           value:
             isNumber(res?.context_cap_tokens)
               ? String(res.context_cap_tokens)
-              : LITERAL,
+              : EMPTY_CELL,
         },
-        { field: "secret_ref", value: res?.secret_ref ?? LITERAL },
+        { field: "secret_ref", value: res?.secret_ref ?? EMPTY_CELL },
       ],
     );
   });
@@ -83,7 +84,6 @@ export const tenantProviderShowEffect: Effect.Effect<
   CliError,
   CliConfig | Credentials | HttpClient | Output
 > = Effect.gen(function* () {
-  const config = yield* CliConfig;
   const output = yield* Output;
   const http = yield* HttpClient;
   const token = yield* resolveAuthToken;
@@ -93,8 +93,8 @@ export const tenantProviderShowEffect: Effect.Effect<
     token,
   });
 
-  if (config.jsonMode) {
-    yield* output.printJson(res);
+  if (output.format !== OUTPUT_FORMAT.text) {
+    yield* output.success(PROVIDER_SHOWN, { ...res });
     return;
   }
 
@@ -126,7 +126,6 @@ export const tenantProviderAddEffectFromArgs = (
   CliConfig | Credentials | HttpClient | Output
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
@@ -159,8 +158,8 @@ export const tenantProviderAddEffectFromArgs = (
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson(res);
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(PROVIDER_ADDED, { ...res });
       return;
     }
     yield* output.success(
@@ -206,7 +205,6 @@ export const tenantProviderDeleteEffect: Effect.Effect<
   CliError,
   CliConfig | Credentials | HttpClient | Output
 > = Effect.gen(function* () {
-  const config = yield* CliConfig;
   const output = yield* Output;
   const http = yield* HttpClient;
   const token = yield* resolveAuthToken;
@@ -217,8 +215,8 @@ export const tenantProviderDeleteEffect: Effect.Effect<
     token,
   });
 
-  if (config.jsonMode) {
-    yield* output.printJson(res);
+  if (output.format !== OUTPUT_FORMAT.text) {
+    yield* output.success(PROVIDER_REMOVED, { ...res });
     return;
   }
   yield* output.success(

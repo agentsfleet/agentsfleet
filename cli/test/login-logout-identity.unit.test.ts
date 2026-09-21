@@ -21,6 +21,7 @@ import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Output } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import type { TelemetryConfig } from "../src/services/telemetry/types.ts";
 import { useFreshStateDir } from "./helpers-cli-state.ts";
 
@@ -115,6 +116,7 @@ const credentialsLayer = (rec: IdentityRecorder): Layer.Layer<Credentials> => {
 
 const outputLayer = (rec: IdentityRecorder): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    ...outputDouble(),
     intro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     info: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     success: (msg) => Effect.sync(() => rec.stdout.push(`ok: ${msg}`)),

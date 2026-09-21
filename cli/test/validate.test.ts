@@ -1,6 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { InvalidArgumentError } from "commander";
-import { isValidId, parseIdOption, validateRequiredId } from "../src/program/validators.ts";
+import { isValidId, validateRequiredId } from "../src/lib/id.ts";
 
 // Sample valid uuidv7 — backend's allocUuidV7 emits this shape; CLI
 // validator must accept v7 (and ONLY v7, post-RULE-NLG swap).
@@ -111,19 +110,5 @@ describe("validateRequiredId", () => {
       expect(result.message).toContain("workspace_id");
       expect(result.message.toLowerCase()).toContain("uuidv7");
     }
-  });
-});
-
-describe("parseIdOption", () => {
-  test("valid uuidv7 passes through unchanged", () => {
-    expect(parseIdOption(VALID_UUIDV7)).toBe(VALID_UUIDV7);
-  });
-
-  test("uppercase uuidv7 throws InvalidArgumentError", () => {
-    expect(() => parseIdOption(VALID_UUIDV7.toUpperCase())).toThrow(InvalidArgumentError);
-  });
-
-  test("uppercase rejection message names the expected format", () => {
-    expect(() => parseIdOption(VALID_UUIDV7.toUpperCase())).toThrow(/uuidv7 format/);
   });
 });

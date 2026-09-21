@@ -4,27 +4,10 @@
 // validators, http, and browser modules.
 
 import { test, expect } from "bun:test";
-import {
-  parseIntOption,
-  parseFloatOption,
-} from "../src/program/validators.ts";
 import { apiRequest, authHeaders, readProblemDetails, type FetchImpl } from "../src/lib/http.ts";
 import { apiRequestWithRetry, type RetryInfo } from "../src/lib/http-retry.ts";
 import { openUrl } from "../src/lib/browser.ts";
 import { asFetchImpl } from "./helpers.ts";
-
-// ── validators.ts: Infinity catch after parseInt/parseFloat ───────────
-
-test("parseIntOption rejects digit-string that overflows to Infinity", () => {
-  const parse = parseIntOption();
-  // 400 digits — INTEGER_RE accepts; parseInt returns Infinity, caught.
-  const overflow = "9".repeat(400);
-  expect(() => parse(overflow)).toThrow("must be an integer");
-});
-
-test("parseFloatOption rejects 1e500 (regex matches, parseFloat → Infinity)", () => {
-  expect(() => parseFloatOption("1e500")).toThrow("must be a number");
-});
 
 // ── http.ts: authHeaders + classify ECONNRESET + fetch unavailable ────
 

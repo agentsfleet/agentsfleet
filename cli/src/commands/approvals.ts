@@ -13,14 +13,17 @@ import { Effect, type Redacted } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
-import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
+import {
+  requireValue,
+  requireWorkspaceId,
+  resolveAuthToken,
+} from "./workspace-guards.ts";
 import { wsApprovalsPath, wsApprovalPath } from "../lib/api-paths.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
-import { ui } from "../output/index.ts";
+import { ui, EMPTY_CELL } from "../output/index.ts";
 import {
-  EMPTY_CELL,
   GATE_COLUMN,
   GATE_FIELD,
   GATE_MAX_PAGES,
@@ -98,6 +101,8 @@ export const fetchGates = (
   });
 
 const EMPTY_INBOX = "No approval gates in this workspace." as const;
+const GATES_LISTED = "Approval gates" as const;
+const GATE_SHOWN = "Approval gate" as const;
 const SECTION_TITLE = "Approval gate" as const;
 const SHOW_USAGE = "usage: agentsfleet approvals show <gate_id>" as const;
 const GATE_ID_REQUIRED = "<gate_id> is required" as const;
@@ -110,14 +115,12 @@ const cell = (value: string | null | undefined): string =>
 const isoOrDash = (value: number | string | null | undefined): string =>
   value ? new Date(value).toISOString() : EMPTY_CELL;
 
+/** The gate a command was asked to act on. The shared presence guard with this
+ *  command's two strings bound to it. */
 export const requireGateId = (
   value: string | undefined,
 ): Effect.Effect<string, ValidationError> =>
-  value
-    ? Effect.succeed(value)
-    : Effect.fail(
-        new ValidationError({ detail: GATE_ID_REQUIRED, suggestion: SHOW_USAGE }),
-      );
+  requireValue(value, GATE_ID_REQUIRED, SHOW_USAGE);
 
 export const approvalsListEffectFromArgs = (
   fleetFilter: string | undefined,
@@ -127,15 +130,14 @@ export const approvalsListEffectFromArgs = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const workspaceId = yield* requireWorkspaceId;
     const token = yield* resolveAuthToken;
 
     const gates = yield* fetchGates(workspaceId, token, { fleetId: fleetFilter });
 
-    if (config.jsonMode) {
-      yield* output.printJson({ items: gates });
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(GATES_LISTED, { items: gates });
       return;
     }
     if (gates.length === 0) {
@@ -171,7 +173,6 @@ export const approvalsShowEffectFromArgs = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
     const workspaceId = yield* requireWorkspaceId;
@@ -183,8 +184,8 @@ export const approvalsShowEffectFromArgs = (
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson(gate);
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(GATE_SHOWN, { ...gate });
       return;
     }
     // The blast radius is the sentence a person needs in full to decide; it is

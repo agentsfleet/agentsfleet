@@ -1,20 +1,17 @@
 // `agentsfleet fleet list` — paginated table of fleets in a workspace.
-// Workspace defaults to `current_workspace_id`; `--workspace-id` overrides.
+// Workspace defaults to `current_workspace_id`; `--workspace` overrides.
 
 import { Effect } from "effect";
-import { CliConfig } from "../services/config.ts";
-import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
-import { Workspaces } from "../services/workspaces.ts";
-import { resolveAuthToken } from "./workspace-guards.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
+import {
+  resolveAuthToken,
+  resolveWorkspaceId,
+  WORKSPACE_FLAG,
+} from "./workspace-guards.ts";
+import { isString } from "../lib/guards.ts";
 import { QUERY_STARTING_AFTER, wsFleetsPath } from "../lib/api-paths.ts";
 import { ui } from "../output/index.ts";
-import {
-  ConfigError,
-  type CliError,
-  type UnexpectedError,
-} from "../errors/index.ts";
 
 interface FleetListRow {
   readonly [key: string]: unknown;
@@ -27,28 +24,10 @@ interface FleetListResponse {
 
 const FIELD_NAME = "name" as const;
 const FIELD_STATUS = "status" as const;
-const TYPE_STRING = "string" as const;
 const FIELD_FLEET_ID = "fleet_id" as const;
+const FLEETS_LISTED = "Fleets" as const;
+const NO_FLEETS = "No fleets in this workspace." as const;
 
-const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
-
-const resolveWorkspaceOverride = (
-  override: string | undefined,
-): Effect.Effect<string, ConfigError | UnexpectedError, Workspaces> =>
-  Effect.gen(function* () {
-    if (isString(override) && override.length > 0) return override;
-    const workspaces = yield* Workspaces;
-    const state = yield* workspaces.load;
-    if (!state.current_workspace_id) {
-      return yield* Effect.fail(
-        new ConfigError({
-          detail: "no workspace selected",
-          suggestion: "run `agentsfleet workspace use <id>`",
-        }),
-      );
-    }
-    return state.current_workspace_id;
-  });
 
 const buildPath = (
   wsId: string,
@@ -68,51 +47,47 @@ export interface ListEffectFlags {
   readonly limit?: string | undefined;
 }
 
-export const listEffectFromFlags = (
+export const listEffectFromFlags = Effect.fn("fleet.list")(function* (
   flags: ListEffectFlags,
-): Effect.Effect<
-  void,
-  CliError,
-  CliConfig | Credentials | HttpClient | Output | Workspaces
-> =>
-  Effect.gen(function* () {
-    const config = yield* CliConfig;
-    const output = yield* Output;
-    const http = yield* HttpClient;
+) {
+  const output = yield* Output;
+  const http = yield* HttpClient;
 
-    const wsId = yield* resolveWorkspaceOverride(flags.workspaceId);
-    const token = yield* resolveAuthToken;
-    const res = yield* http.request<FleetListResponse>({
-      path: buildPath(wsId, flags.startingAfter, flags.limit),
-      token,
-    });
-
-    if (config.jsonMode) {
-      yield* output.printJson(res);
-      return;
-    }
-
-    const items = res.items ?? [];
-    if (items.length === 0) {
-      yield* output.info("No fleets in this workspace.");
-      return;
-    }
-
-    yield* output.printTable(
-      [
-        { key: FIELD_NAME, label: "NAME" },
-        { key: FIELD_FLEET_ID, label: "FLEET" },
-        { key: FIELD_STATUS, label: "STATUS" },
-      ],
-      items.map((z) => ({
-        name: String(z[FIELD_NAME] ?? ""),
-        fleet_id: String(z[FIELD_FLEET_ID] ?? z["id"] ?? ""),
-        status: String(z[FIELD_STATUS] ?? ""),
-      })),
-    );
-    if (res.next_cursor) {
-      yield* output.info(
-        ui.dim(`More available. Next: agentsfleet list --starting-after ${res.next_cursor}`),
-      );
-    }
+  const wsId = yield* resolveWorkspaceId(flags.workspaceId, WORKSPACE_FLAG);
+  const token = yield* resolveAuthToken;
+  const res = yield* http.request<FleetListResponse>({
+    path: buildPath(wsId, flags.startingAfter, flags.limit),
+    token,
   });
+
+  if (output.format !== OUTPUT_FORMAT.text) {
+    // Spread, not a re-key: the payload stays byte-identical to what
+    // `printJson(res)` emitted, so a script reading `.items` is unaffected.
+    yield* output.success(FLEETS_LISTED, { ...res });
+    return;
+  }
+
+  const items = res.items ?? [];
+  if (items.length === 0) {
+    yield* output.info(NO_FLEETS);
+    return;
+  }
+
+  yield* output.printTable(
+    [
+      { key: FIELD_NAME, label: "NAME" },
+      { key: FIELD_FLEET_ID, label: "FLEET" },
+      { key: FIELD_STATUS, label: "STATUS" },
+    ],
+    items.map((z) => ({
+      name: String(z[FIELD_NAME] ?? ""),
+      fleet_id: String(z[FIELD_FLEET_ID] ?? z["id"] ?? ""),
+      status: String(z[FIELD_STATUS] ?? ""),
+    })),
+  );
+  if (res.next_cursor) {
+    yield* output.info(
+      ui.dim(`More available. Next: agentsfleet list --starting-after ${res.next_cursor}`),
+    );
+  }
+});

@@ -1,6 +1,6 @@
 // Direct Effect-layer test for the requireFleetId guard in fleet.ts —
 // covers the `!fleetId` branch (missing id) that is unreachable via the
-// normal CLI path because commander enforces <fleet_id> as a required
+// normal CLI path because the tree enforces <fleet_id> as a required
 // positional before the mutation handlers run. The workspace guard runs
 // first, so its stub must succeed for execution to reach the id guard.
 
@@ -11,6 +11,7 @@ import { deleteEffectFromId, stopEffectFromId } from "../src/commands/fleet.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Output } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { ValidationError, type CliError } from "../src/errors/index.ts";
@@ -30,17 +31,7 @@ const configLayer = (): Layer.Layer<CliConfig> =>
 
 const outputLayer = (): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    intro: () => Effect.void,
-    info: () => Effect.void,
-    success: () => Effect.void,
-    warn: () => Effect.void,
-    error: () => Effect.void,
-    outro: () => Effect.void,
-    printJson: () => Effect.void,
-    printJsonErr: () => Effect.void,
-    printKeyValue: () => Effect.void,
-    printSection: () => Effect.void,
-    printTable: () => Effect.void,
+  ...outputDouble(),
   });
 
 const httpClientLayer = (): Layer.Layer<HttpClient> =>

@@ -16,7 +16,7 @@ import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsFleetLibrariesPath } from "../lib/api-paths.ts";
@@ -29,12 +29,13 @@ import {
 } from "../constants/library-source.ts";
 import { LIBRARY_ID_PLACEHOLDER } from "../constants/cli-flags.ts";
 import { printRequirements, type BundleRequirements } from "./fleet_install_source.ts";
-
-const METHOD_POST = "POST" as const;
+import { HTTP_METHOD } from "../constants/http-method.ts";
 
 /** `owner/repo` — one slash, and neither half may be empty or carry a path
  *  separator. The daemon refuses the same shapes; refusing here costs no
  *  request. */
+const LIBRARY_ONBOARDED = "Fleet library onboarded" as const;
+
 const REPOSITORY_PATTERN = /^[^/\s]+\/[^/\s]+$/u;
 // Both separators: a Windows bundle path reduced by a slash-only splitter is
 // not reduced at all, and the whole point of reducing it is to keep an
@@ -204,7 +205,6 @@ export const libraryAddEffectFromFlags = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
@@ -215,13 +215,13 @@ export const libraryAddEffectFromFlags = (
 
     const res = yield* http.request<LibraryCreatedResponse>({
       path: wsFleetLibrariesPath(workspaceId),
-      method: METHOD_POST,
+      method: HTTP_METHOD.post,
       body,
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson(res);
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(LIBRARY_ONBOARDED, { ...res });
       return;
     }
     yield* output.success(`${res.name ?? source.ref} onboarded.`);

@@ -13,9 +13,10 @@ import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
+import { isString } from "../lib/guards.ts";
 import { wsSecretsPath, wsSecretPath } from "../lib/api-paths.ts";
 import { ui } from "../output/index.ts";
 import {
@@ -30,6 +31,7 @@ import {
 import { resolveCatalogueTarget } from "../lib/model-catalogue.ts";
 import { SECRET_FIELD_MODEL, SECRET_FIELD_PROVIDER } from "../constants/custom-endpoint.ts";
 import type { Redacted } from "effect/Redacted";
+import { HTTP_METHOD } from "../constants/http-method.ts";
 
 // Reject a provider this server's catalogue does not price, and normalise its
 // spelling to the catalogue's. Cannot run at parse time: the accepted set is a
@@ -59,12 +61,9 @@ const withCatalogueProvider = (
     if (target.model !== undefined) next[SECRET_FIELD_MODEL] = target.model;
     return next;
   });
-
-const TYPE_STRING = "string" as const;
-const METHOD_PUT = "PUT" as const;
+const SECRET_SHOWN = "Secret" as const;
 const STATUS_UPDATED = "updated" as const;
 
-const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 /** The workspace already holds this name. Matched on the code rather than the
  *  bare `409` so an unrelated future conflict on this route is not swallowed
@@ -126,7 +125,6 @@ export const secretAddEffectFromFlags = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
@@ -158,7 +156,7 @@ export const secretAddEffectFromFlags = (
       );
 
     if (!stored) {
-      if (config.jsonMode) {
+      if (output.format !== OUTPUT_FORMAT.text) {
         yield* output.printJson({ status: "skipped", name, reason: "already_exists" });
       } else {
         yield* output.info(
@@ -168,11 +166,7 @@ export const secretAddEffectFromFlags = (
       return;
     }
 
-    if (config.jsonMode) {
-      yield* output.printJson({ status: "stored", name });
-    } else {
-      yield* output.success(`Secret '${name}' stored in vault.`);
-    }
+    yield* output.success(`Secret '${name}' stored in vault.`, { status: "stored", name });
   });
 
 /**
@@ -195,7 +189,6 @@ export const secretUpdateEffectFromFlags = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
@@ -212,16 +205,15 @@ export const secretUpdateEffectFromFlags = (
     const data = yield* withCatalogueProvider(flags, body, token);
     yield* http.request<unknown>({
       path: wsSecretPath(wsId, name),
-      method: METHOD_PUT,
+      method: HTTP_METHOD.put,
       body: { data },
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson({ status: STATUS_UPDATED, name });
-    } else {
-      yield* output.success(`Secret '${name}' updated. The name stayed claimed throughout.`);
-    }
+    yield* output.success(
+      `Secret '${name}' updated. The name stayed claimed throughout.`,
+      { status: STATUS_UPDATED, name },
+    );
   });
 
 export const secretShowEffectFromName = (
@@ -232,14 +224,13 @@ export const secretShowEffectFromName = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
 
     const wsId = yield* requireWorkspaceId;
     const name = yield* requireName(rawName, "agentsfleet secret show <name>");
     const found = yield* findSecretByName(wsId, name);
     if (!found) {
-      if (config.jsonMode) {
+      if (output.format !== OUTPUT_FORMAT.text) {
         yield* output.printJson({ name, exists: false });
       } else {
         yield* output.error(`Secret '${name}' not found in vault.`);
@@ -252,8 +243,8 @@ export const secretShowEffectFromName = (
       );
     }
 
-    if (config.jsonMode) {
-      yield* output.printJson({
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(SECRET_SHOWN, {
         name: found.name,
         exists: true,
         created_at: found.created_at ?? null,
@@ -274,7 +265,6 @@ export const secretDeleteEffectFromName = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
@@ -287,9 +277,5 @@ export const secretDeleteEffectFromName = (
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson({ status: "deleted", name });
-    } else {
-      yield* output.success(`Secret '${name}' removed from vault.`);
-    }
+    yield* output.success(`Secret '${name}' removed from vault.`, { status: "deleted", name });
   });

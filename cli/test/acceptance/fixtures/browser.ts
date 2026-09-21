@@ -28,6 +28,7 @@ import {
   withClientSessionSweepOnFailure,
   withSessionRevocation,
 } from "./clerk-admin.ts";
+import { CLERK_SECRET_KEY_ENV } from "./constants.ts";
 
 const APPROVE_BUTTON_NAME = /approve/i;
 const VERIFICATION_CODE_LABEL = "Verification code";
@@ -36,7 +37,6 @@ const SIGN_IN_PATH = "/sign-in";
 const DEFAULT_TIMEOUT_MS = 30_000;
 const NODE_BIN = "node";
 const NODE_STRIP_TYPES_FLAG = "--experimental-strip-types";
-const CLERK_SECRET_ENV = "CLERK_SECRET_KEY";
 
 export interface CliAuthHandoffOptions {
   readonly loginUrl: string;
@@ -63,8 +63,8 @@ interface BrowserClerk {
 async function runBrowserHandoff(opts: CliAuthHandoffOptions): Promise<string> {
   if (!opts?.loginUrl) throw new Error("completeCliAuthHandoff: loginUrl required");
   if (!opts?.clerkUserId) throw new Error("completeCliAuthHandoff: clerkUserId required");
-  const clerkSecret = process.env[CLERK_SECRET_ENV];
-  if (!clerkSecret) throw new Error(`completeCliAuthHandoff: ${CLERK_SECRET_ENV} required`);
+  const clerkSecret = process.env[CLERK_SECRET_KEY_ENV];
+  if (!clerkSecret) throw new Error(`completeCliAuthHandoff: ${CLERK_SECRET_KEY_ENV} required`);
 
   // Lazy imports — playwright + @clerk/testing are devDependencies; never
   // pulled into non-handshake paths (the specs import this module but only

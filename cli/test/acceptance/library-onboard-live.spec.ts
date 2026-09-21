@@ -36,6 +36,7 @@ import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV } from "./fixtures/constan
 import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
+import { trailingJson } from "./fixtures/steer-envelope.ts";
 import {
   resolveAcceptanceEnv,
   resolveClerkSecret,
@@ -104,8 +105,19 @@ if (!isLive) {
       return result;
     }
 
-    const parseJson = (out: string): Record<string, unknown> =>
-      JSON.parse(out.trim()) as Record<string, unknown>;
+    // The lane's own reader, plus the two streams named when there is nothing
+    // to read. A bare `JSON.parse(stdout)` threw `Unexpected EOF` on an empty
+    // gallery read and reported neither the exit code nor one byte of what the
+    // CLI wrote, so the failure said only that the string was not JSON. Every
+    // sibling spec in this lane already reads through `trailingJson`, which
+    // also tolerates prose the CLI printed ahead of the payload.
+    const parseJson = (result: RunResult, label: string): Record<string, unknown> => {
+      assert.ok(
+        result.stdout.trim().length > 0,
+        `${label}: exited ${result.code} and wrote no stdout; stderr: ${result.stderr}`,
+      );
+      return trailingJson(result.stdout) as Record<string, unknown>;
+    };
 
     beforeAll(async () => {
       const apiUrl = resolveAcceptanceEnv().apiUrl;
@@ -151,7 +163,7 @@ if (!isLive) {
     it("`library add --from` uploads a local bundle and returns a tenant entry", async () => {
       const result = await runWithEnv(["library", "add", "--from", bundleDir, JSON_FLAG]);
       assert.equal(result.code, 0, `library add --from failed: ${result.stderr}`);
-      const created = parseJson(result.stdout);
+      const created = parseJson(result, "library add --from");
       assert.equal(typeof created.id, "string", `no library id returned: ${result.stdout}`);
       assert.equal(created.visibility, TIER_TENANT,
         `an onboarded workspace library is a tenant entry: ${result.stdout}`);
@@ -163,7 +175,7 @@ if (!isLive) {
         "library", "add", "--github", PUBLIC_BUNDLE_REPO, JSON_FLAG,
       ]);
       assert.equal(result.code, 0, `library add --github failed: ${result.stderr}`);
-      const created = parseJson(result.stdout);
+      const created = parseJson(result, "library add --github");
       assert.equal(typeof created.id, "string", `no library id returned: ${result.stdout}`);
       assert.equal(created.visibility, TIER_TENANT);
       githubLibraryId = created.id as string;
@@ -173,7 +185,7 @@ if (!isLive) {
       assert.ok(uploadedLibraryId && githubLibraryId, "nothing was onboarded to list");
       const result = await runWithEnv(["library", JSON_FLAG]);
       assert.equal(result.code, 0, `library failed: ${result.stderr}`);
-      const listed = parseJson(result.stdout) as {
+      const listed = parseJson(result, "library --json") as {
         items?: Array<{ id?: string; visibility?: string }>;
       };
       const ids = (listed.items ?? []).map((row) => row.id);
@@ -192,7 +204,7 @@ if (!isLive) {
         "install", "--library", uploadedLibraryId, "--name", `${ACCEPTANCE_RUN_PREFIX}libadd-fleet`, JSON_FLAG,
       ]);
       assert.equal(result.code, 0, `install failed: ${result.stderr}`);
-      const installed = parseJson(result.stdout);
+      const installed = parseJson(result, "install --library");
       assert.equal(typeof installed.fleet_id, "string",
         `install returned no fleet id: ${result.stdout}`);
     }, ONBOARD_TIMEOUT_MS);

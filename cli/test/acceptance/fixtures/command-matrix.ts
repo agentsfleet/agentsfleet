@@ -117,7 +117,7 @@ export const REQUIRES_IDENTIFIER: ReadonlyArray<RequiresIdentifierRow> = [
   { args: ["logs"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
   { args: ["workspace", "use"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: "UNKNOWN_WORKSPACE" },
   { args: ["workspace", "delete"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: null },
-  // api-key delete validates its positional through commander's parseIdOption,
+  // api-key delete validates its positional through the argument's id check,
   // not the handler's validateRequiredId, so its rejection text omits the
   // `invalid <name>: ` stem the client-side sweep below asserts — hence
   // validatesClient: false. The server-side probe still applies: a well-formed
@@ -131,14 +131,10 @@ export const REQUIRES_IDENTIFIER: ReadonlyArray<RequiresIdentifierRow> = [
 export interface RequiresPositionalArgRow {
   readonly args: ReadonlyArray<string>;
   readonly missingArgName: string;
-  // The token the rejection actually names, when it differs from the
-  // positional. commander validates required OPTIONS before positionals, so
-  // a bare `schedule add` is told about --cron first.
-  readonly reportedToken?: string;
 }
 
 // Commands whose first positional is `<required>` in cli-tree and so
-// produce commander's "missing required argument" rejection (matched by
+// produce the "missing required argument" rejection (matched by
 // `expectMissingArg`'s /missing|required|usage|expected/ regex).
 //
 // `logs [fleet_id]` has an optional positional. Bare `logs` exits 2 with a
@@ -166,7 +162,7 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["secret", "update"], missingArgName: "name" },
   { args: ["secret", "show"], missingArgName: "name" },
   { args: ["secret", "delete"], missingArgName: "name" },
-  { args: ["schedule", "add"], missingArgName: "fleet_id", reportedToken: "--cron" },
+  { args: ["schedule", "add"], missingArgName: "fleet_id" },
   { args: ["schedule", "list"], missingArgName: "fleet_id" },
   { args: ["schedule", "update"], missingArgName: "fleet_id" },
   { args: ["schedule", "rm"], missingArgName: "fleet_id" },
@@ -176,7 +172,7 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
 
 // Every command node that owns subcommands AND does nothing itself. Invoked
 // bare each must print its help on STDOUT and exit 0 — the body has to survive
-// a pipe, which it did not before M171 (commander routes a group's bare
+// a pipe, which it did not before M171 (the previous parser routed a group's bare
 // invocation through `help({ error: true })`, i.e. stderr).
 //
 // A node that owns subcommands and ALSO runs is listed in ACTION_GROUP_NODES
@@ -205,7 +201,7 @@ export const ACTION_GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
   ["library"],
 ];
 
-// A value-taking flag with its value omitted. commander raises
+// A value-taking flag with its value omitted. The parser raises
 // optionMissingArgument at parse time, so no state or network is involved.
 export const MISSING_OPTION_VALUE: ReadonlyArray<ReadonlyArray<string>> = [
   ["logs", "--fleet"],
@@ -216,14 +212,14 @@ export const MISSING_OPTION_VALUE: ReadonlyArray<ReadonlyArray<string>> = [
   ["connector", "list", "--workspace"],
 ];
 
-// A required option omitted entirely — commander's missingMandatoryOptionValue.
+// A required option omitted entirely.
 export const MISSING_REQUIRED_OPTION: ReadonlyArray<ReadonlyArray<string>> = [
   ["schedule", "add", EXAMPLE_FLEET_ID],
 ];
 
 // Commands whose required input is a FLAG the handler validates, not a
-// commander declaration. They already spoke the house error shape before
-// M171; they are swept alongside the commander rows so both dialects are
+// parser declaration. They already spoke the house error shape before
+// M171; they are swept alongside the parser rows so both dialects are
 // proven to have converged on one shape and one exit code.
 export const HANDLER_VALIDATED_REQUIRED_FLAG: ReadonlyArray<ReadonlyArray<string>> = [
   ["logs"],

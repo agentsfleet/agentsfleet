@@ -13,7 +13,7 @@
  *   - `workspace show --json` → { workspace_id, active: <bool>, name, created_at }
  *   - `workspace delete <id>` → LOCAL store removal only (no server route);
  *                               --json → { removed_from_local_state: <id> }
- *   - `list --workspace-id <id> --json` → { items: [...] } (top-level fleet list)
+ *   - `list --workspace <id> --json` → { items: [...] } (top-level fleet list)
  *
  * Hard constraint surfaced here (also in the spec header): the server
  * exposes no workspace-delete route, so every `workspace create` leaves a
@@ -45,10 +45,10 @@ export const AGENT_LIST_ITEMS_KEY = "items" as const;
 export const AGENT_ID_KEY = "fleet_id" as const;
 export const AGENT_NAME_KEY = "name" as const;
 export const FLAG_JSON = "--json" as const;
-// Top-level `list` scopes to a workspace via `--workspace-id` (per
+// Top-level `list` scopes to a workspace via `--workspace` (per
 // cli-tree-fleet.ts line 55). NOT `--workspace` — that's the per-resource
 // flag on grant subcommands.
-export const FLAG_WORKSPACE_ID = "--workspace-id" as const;
+export const FLAG_WORKSPACE = "--workspace" as const;
 
 export interface WorkspaceRow {
   readonly workspace_id: string;
@@ -106,13 +106,13 @@ export async function useWorkspace(env: Env, workspaceId: string): Promise<void>
     `workspace use ${workspaceId}: ${WS_USE_ACTIVE_KEY} mismatch: ${result.stdout}`);
 }
 
-/** `list --workspace-id <id> --json` → the workspace's fleet rows. */
+/** `list --workspace <id> --json` → the workspace's fleet rows. */
 export async function listFleetsIn(env: Env, workspaceId: string): Promise<ReadonlyArray<FleetRow>> {
-  const result = await runFleetctl(["list", FLAG_WORKSPACE_ID, workspaceId, FLAG_JSON], { env });
-  const parsed = parseJson(result, `list ${FLAG_WORKSPACE_ID} ${workspaceId}`);
+  const result = await runFleetctl(["list", FLAG_WORKSPACE, workspaceId, FLAG_JSON], { env });
+  const parsed = parseJson(result, `list ${FLAG_WORKSPACE} ${workspaceId}`);
   const items = parsed[AGENT_LIST_ITEMS_KEY];
   assert.ok(Array.isArray(items),
-    `list ${FLAG_WORKSPACE_ID} ${workspaceId}: ${AGENT_LIST_ITEMS_KEY} not an array: ${result.stdout}`);
+    `list ${FLAG_WORKSPACE} ${workspaceId}: ${AGENT_LIST_ITEMS_KEY} not an array: ${result.stdout}`);
   return items as ReadonlyArray<FleetRow>;
 }
 

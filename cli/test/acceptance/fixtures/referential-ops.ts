@@ -28,22 +28,6 @@ import assert from "node:assert/strict";
 import type { RunResult } from "./cli.js";
 import type { ProviderSnapshot } from "./tenant-provider-ops.ts";
 
-// --- command / flag / key wire literals (RULE UFS) -------------------------
-export const SUB_CREATE = "create" as const;
-export const SUB_LIST = "list" as const;
-export const SUB_DELETE = "delete" as const;
-export const FLAG_NAME = "--name" as const;
-export const FLAG_JSON = "--json" as const;
-
-
-// Auth-credential env vars (mirror the names in `cli/src/services/config.ts`
-// and `cli/src/cli.ts`).
-export const ENV_API_KEY = "AGENTSFLEET_API_KEY" as const;
-export const ENV_API_URL = "AGENTSFLEET_API_URL" as const;
-export const ENV_STATE_DIR = "AGENTSFLEET_STATE_DIR" as const;
-export const ENV_NO_COLOR = "NO_COLOR" as const;
-export const NO_COLOR_ON = "1" as const;
-
 // A secret delete refused for referential reasons surfaces as a conflict
 // (HTTP_409); the alternative is a clean cascade (exit 0). Dropped the bare
 // `UZ-` alternative — it matched any UZ-* code, including unrelated ones.

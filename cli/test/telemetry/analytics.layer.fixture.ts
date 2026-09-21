@@ -2,15 +2,16 @@ import { afterEach, beforeEach, mock } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { STATE_DIR_ENV, TELEMETRY_POSTHOG_HOST_ENV, TELEMETRY_POSTHOG_KEY_ENV } from "../../src/constants/env.ts";
 
 const POSTHOG_MODULE = "posthog-node";
 const STATE_DIRECTORY_PREFIX = "agentsfleet-analytics-test-";
 const TELEMETRY_FILE_NAME = "telemetry.json";
 const STDOUT_IS_TTY_PROPERTY = "isTTY";
 const ENV_KEYS = [
-  "AGENTSFLEET_TELEMETRY_POSTHOG_KEY",
-  "AGENTSFLEET_TELEMETRY_POSTHOG_HOST",
-  "AGENTSFLEET_STATE_DIR",
+  TELEMETRY_POSTHOG_KEY_ENV,
+  TELEMETRY_POSTHOG_HOST_ENV,
+  STATE_DIR_ENV,
   "AGENTSFLEET_TELEMETRY_DISABLED",
   "DO_NOT_TRACK",
   "AGENTSFLEET_TELEMETRY_DEBUG",

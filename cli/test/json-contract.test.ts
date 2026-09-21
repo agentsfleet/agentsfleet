@@ -1,20 +1,19 @@
-// CLI JSON contract — every documented command resolves through
-// commander, JSON mode suppresses banners/prose, the JSON error
-// envelope shape is stable, and removed v1 routes (run/runs/spec/specs)
-// surface UNKNOWN_COMMAND instead of resolving silently.
+// CLI JSON contract — every documented command resolves in the tree, JSON
+// mode suppresses banners/prose, the JSON error envelope shape is stable, and
+// removed v1 routes (run/runs/spec/specs) surface as unknown instead of
+// resolving silently.
 
 import { describe, test, expect } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { Command } from "commander";
 import { makeBufferStream, ui } from "./helpers.ts";
 import { runCli } from "../src/cli.ts";
 import { EXIT_CODE } from "../src/errors/index.ts";
-import { STATE_DIR_ENV } from "../src/lib/config-dir.ts";
+import { STATE_DIR_ENV } from "../src/constants/env.ts";
 import { writeError } from "../src/program/io.ts";
-import { buildProgram } from "../src/program/cli-tree.ts";
-import type { CommandHandlerFn, Handlers } from "../src/program/cli-tree-types.ts";
+import { rootCommand } from "../src/program/tree/root.command.ts";
+import { childrenOf, type CommandNode } from "../src/program/tree/resolve-path.ts";
 
 // The credential store resolves from the environment `runCli` is handed, so
 // the auth-shaped cases below isolate by passing this directory in `io.env` —
@@ -30,50 +29,21 @@ function tryParseJson(str: string): unknown {
   }
 }
 
-function makeStubHandlers(): Handlers {
-  const noop: CommandHandlerFn = async () => 0;
-  return {
-    login: noop, logout: noop, doctor: noop, whoami: noop,
-    auth:      { status: noop },
-    workspace: { create: noop, list: noop, use: noop, show: noop, secrets: noop, delete: noop },
-    apiKey:    { create: noop, list: noop, revoke: noop, delete: noop },
-    connector: { list: noop, status: noop },
-    grant:     { list: noop, delete: noop },
-    approvals: { list: noop, show: noop, approve: noop, deny: noop },
-    schedule:  { add: noop, list: noop, update: noop, rm: noop, status: noop, sync: noop },
-    tenant:    { provider: { show: noop, create: noop, delete: noop } },
-    billing:   { show: noop },
-    fleet: {
-      library: noop, libraryAdd: noop, models: noop,
-      install: noop, update: noop, list: noop, status: noop, stop: noop, resume: noop,
-      kill: noop, delete: noop, logs: noop, events: noop, steer: noop,
-      secret: { create: noop, update: noop, show: noop, list: noop, delete: noop },
-    },
-    memory: { list: noop, search: noop },
-  };
-}
-
-function findSubcommand(program: Command, ...names: string[]): Command | null {
-  let cmd: Command = program;
+function findSubcommand(...names: ReadonlyArray<string>): CommandNode | null {
+  let node = rootCommand as unknown as CommandNode;
   for (const name of names) {
-    const next: Command | undefined = cmd.commands.find((c) => c.name() === name);
+    const next = childrenOf(node).find((child) => child.name === name);
     if (!next) return null;
-    cmd = next;
+    node = next;
   }
-  return cmd;
+  return node;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
 // Command tree exposes every documented route
 // ═══════════════════════════════════════════════════════════════════════
 
-describe("CLI tree — every documented route is reachable through commander", () => {
-  const program = buildProgram({
-    handlers: makeStubHandlers(),
-    version: "0.0.0",
-    state: { exitCode: 0 },
-  });
-
+describe("CLI tree — every documented route is reachable", () => {
   const expectedCommands = [
     ["login"], ["logout"], ["doctor"],
     ["workspace", "create"], ["workspace", "list"], ["workspace", "use"],
@@ -90,11 +60,12 @@ describe("CLI tree — every documented route is reachable through commander", (
   ];
 
   for (const path of expectedCommands) {
-    test(`commander tree resolves "${path.join(" ")}"`, () => {
-      const cmd = findSubcommand(program, ...path);
-      expect(cmd).not.toBeNull();
-      const handler = (cmd as unknown as { _actionHandler?: unknown })._actionHandler;
-      expect(typeof handler).toBe("function");
+    test(`the tree resolves "${path.join(" ")}"`, () => {
+      const node = findSubcommand(...path);
+      expect(node).not.toBeNull();
+      // A leaf is a command someone can run; a group would resolve by name
+      // while having nothing to execute.
+      expect(childrenOf(node as CommandNode)).toEqual([]);
     });
   }
 });
@@ -154,7 +125,7 @@ describe("JSON error envelope", () => {
     expect(parsed?.error.code).toBe("AUTH_REQUIRED");
   });
 
-  test("removed v1 commands surface as commander unknown-command (validation exit)", async () => {
+  test("removed v1 commands surface as unknown (validation exit)", async () => {
     for (const argv of [["run"], ["runs", "list"], ["spec", "init"]]) {
       const out = makeBufferStream();
       const err = makeBufferStream();
@@ -164,7 +135,7 @@ describe("JSON error envelope", () => {
         env: { ...process.env, AGENTSFLEET_API_KEY: "agt_t_test" },
       });
       expect(code).toBe(EXIT_CODE.ValidationError);
-      expect(err.read()).toMatch(/unknown command/);
+      expect(err.read()).toMatch(/Unknown subcommand/);
     }
   });
 });

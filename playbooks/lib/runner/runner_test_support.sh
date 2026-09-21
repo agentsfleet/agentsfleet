@@ -120,9 +120,8 @@ run_script() {
   # harness assigns plus the VAR=val pairs each case passes. Cases that mean to
   # exercise a variable pass it as an argument below, which still wins.
   #
-  # The repository actively encourages a polluted environment:
-  # `.githooks/post-checkout` links `.env.runner.local`, which carries
-  # `AGENTSFLEET_API_URL`, and `common.sh` reads it as
+  # A shell can still export `AGENTSFLEET_API_URL` from the machine-level
+  # runner file. `common.sh` reads it as
   # `${AGENTSFLEET_API_URL:-$expected_api_url}` then refuses the deploy when it
   # disagrees with ENV's endpoint. An ambient dev endpoint therefore failed the
   # ENV=prod case on a workstation while Continuous Integration — with a bare

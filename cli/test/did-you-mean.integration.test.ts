@@ -18,7 +18,7 @@ describe("did-you-mean integration", () => {
     });
     expect(code).toBe(EXIT_VALIDATION);
     const errText = err.read();
-    expect(errText).toContain("unknown command");
+    expect(errText).toContain("Unknown subcommand");
     expect(errText).toContain("docto");
     expect(errText).toContain("doctor");
   });
@@ -36,7 +36,7 @@ describe("did-you-mean integration", () => {
     });
     expect(code).toBe(EXIT_VALIDATION);
     const errText = err.read();
-    expect(errText).toContain("unknown command");
+    expect(errText).toContain("Unknown subcommand");
     expect(errText).toContain("workspace");
   });
 
@@ -50,7 +50,7 @@ describe("did-you-mean integration", () => {
     });
     expect(code).toBe(EXIT_VALIDATION);
     const errText = err.read();
-    expect(errText).toContain("unknown command");
+    expect(errText).toContain("Unknown subcommand");
     expect(errText).toContain("--help");
   });
 

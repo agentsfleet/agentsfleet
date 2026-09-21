@@ -69,7 +69,10 @@ describe("test_memory_help_e2e — built binary renders the documented grammar",
     );
     assert.equal(result.code, 0, result.stderr);
     assert.match(result.stdout, /list/);
-    assert.match(result.stdout, /search \[options\] <query>/);
+    // The group listing names its verbs; the argument shape lives on the
+    // verb's own help, because the renderer's subcommand entries carry a name
+    // and a description and nothing else.
+    assert.match(result.stdout, /search/);
     assert.match(result.stdout, /read-only/i);
   }, SUBPROCESS_TEST_TIMEOUT_MS);
 
@@ -175,7 +178,7 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
     });
   }, SUBPROCESS_TEST_TIMEOUT_MS);
 
-  it("`memory search` without a query is rejected by commander before any request", async () => {
+  it("`memory search` without a query is rejected before any request", async () => {
     await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
       const result = await run(["memory", "search", "--fleet", FLEET_ID]);
       assert.notEqual(result.code, 0);
