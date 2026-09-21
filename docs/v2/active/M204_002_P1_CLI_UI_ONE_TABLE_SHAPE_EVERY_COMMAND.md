@@ -100,7 +100,7 @@ The column order and the age column, together, because separating them would lan
 - **Dimension 1.1** — Every entity table renders name, then its identifier, then its domain columns, then `AGO`, and the order comes from one helper rather than from each call site → Test `test_every_entity_table_shares_one_column_order`
 - **Dimension 1.2** — An age renders for each magnitude from seconds to years, a missing or unparseable timestamp renders the empty cell rather than a wrong number, and a timestamp in the future does not render a negative age → Test `test_ago_renders_every_magnitude_and_refuses_to_invent_one`
 - **Dimension 1.3** — A table whose payload carries no timestamp still renders `AGO`, holding the empty cell, so absence reads as absence rather than as a column nobody added → Test `test_a_table_without_timestamps_still_renders_the_column`
-- **Dimension 1.4** — No command file expresses a column order any more: the labels live with the helper and the call sites name only their columns → Test `test_no_call_site_declares_its_own_column_order`
+- **Dimension 1.4** — No entity list expresses a column order any more: every one renders through the helper, and the only tables still naming their own columns are the label/value detail tables, which are a different shape and not an entity list → Test `test_every_entity_list_renders_through_the_helper`
 - **Dimension 1.5** — Machine-readable output does not move: the reshape is a text-renderer change, so every `--json` answer is byte-identical to the pre-diff one → Test `test_json_output_is_unchanged_by_the_table_reshape`
 
 ### §2 — The global flags we advertise do something
@@ -151,12 +151,18 @@ cli/src/output/format.ts — the locked surface:
 
   entityTable(spec: EntityTableSpec, rows: ReadonlyArray<TableRow>): string
     EntityTableSpec = {
-      name:   TableColumn                      // rendered first
-      id?:    TableColumn                      // rendered second when present
+      name?:  TableColumn                      // first; absent only where the
+                                               //   entity has none (a schedule)
+      id?:    TableColumn                      // rendered next when present
       domain: ReadonlyArray<TableColumn>       // rendered in the given order
+      ageKey?: string | null                   // the row field the age reads;
+                                               //   null declares no age exists
     }
     AGO is appended by the helper. A caller cannot place it, omit it, or
-    reorder the three groups. A spec naming AGO in `domain` is a type error.
+    reorder the groups. A spec naming AGO in `domain` is REFUSED at the call
+    (a thrown Error, not a type error: TypeScript cannot exclude one string
+    literal from `string`, and a guard that runs is worth more than a type
+    that would need a branded key to express).
 
   ago(createdAtMs: unknown, nowMs?: number): string
     integer past instant  -> "45s" | "12m" | "3h" | "9d" | "2y"
@@ -204,7 +210,7 @@ No product analytics event is added: reshaping a table and covering two flags ch
 | 1.1 | unit | `test_every_entity_table_shares_one_column_order` | For each of the thirteen tables the rendered header is name, identifier, domain columns, `AGO` — `list` → `NAME FLEET STATUS AGO`; `library` → `NAME LIBRARY TIER SECRETS AGO`; `workspace list` → `NAME WORKSPACE STATUS AGO`; `api-key list` → `NAME API_KEY_ID STATUS LAST_USED AGO`; `secret list` → `NAME KIND AGO`. |
 | 1.2 | unit | `test_ago_renders_every_magnitude_and_refuses_to_invent_one` | `now-45s` → `45s`; `now-90m` → `1h`; `now-36h` → `1d`; `now-400d` → `1y`; `undefined`, `null`, `NaN`, `"x"` and a non-integer → `EMPTY_CELL`; `now+60s` → `EMPTY_CELL`, never `-1m`. |
 | 1.3 | unit | `test_a_table_without_timestamps_still_renders_the_column` | A `connector list` fixture carrying no timestamp → the header ends `AGO` and every body row holds `EMPTY_CELL` in it; column alignment matches the same table rendered with timestamps present. |
-| 1.4 | unit | `test_no_call_site_declares_its_own_column_order` | `grep -rn 'label: "' cli/src/commands/` → 0 matches; every table in `cli/src/commands/` reaches the renderer through `entityTable`. |
+| 1.4 | unit | `test_every_entity_list_renders_through_the_helper` | Thirteen call sites reach the renderer through `printEntityTable`; the three that do not are `connector status`, `api-key create` and `tenant provider show`, each a two-column label/value detail table for a single resource rather than a list of entities. |
 | 2.1 | unit | `test_log_level_governs_records_that_exist` | With a stub transport and one injected retry: `--log-level debug` → stderr carries the method, the path template, `attempt=1`, `attempt=2` and the retry verdict; `--log-level none` and the default → stderr carries none of the five; no record contains the bearer token; `--log-level bogus` → non-zero exit naming the nine levels. |
 | 2.2 | unit | `test_help_does_not_advertise_the_undesigned_flag` | `--help` stdout contains no `--wizard`; the golden fixture matches byte-for-byte; `agentsfleet --wizard` with closed standard input still opens the builder and exits 0. |
 | 2.3 | unit | `test_completions_emit_a_script_each_shell_parses` | `--completions bash` → non-empty stdout that `bash -n` accepts; `zsh` likewise under `zsh -n`; `fish` and `sh` each emit non-empty stdout; `--completions bogusshell` → non-zero exit naming all four. |
@@ -224,7 +230,7 @@ No product analytics event is added: reshaping a table and covering two flags ch
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Every table shares one column order and carries age (§1) | `cd cli && bun test test/table-column-order.unit.test.ts test/ago-format.unit.test.ts` | exit 0 | P1 | |
-| R2 | No table's columns are written at the call site (§1) | `grep -rn 'label: "' cli/src/commands/ \| wc -l` | `0` | P1 | |
+| R2 | Every entity list renders through the helper (§1) | `cd cli && grep -rc 'printEntityTable(' src/commands/*.ts \| awk -F: '{t+=$2} END{print t}'; grep -rc 'output.printTable(' src/commands/*.ts \| awk -F: '{t+=$2} END{print t}'` | `13` then `3` | P1 | |
 | R3 | Machine-readable output did not move (§1.5) | `cd cli && bun test test/json-output-regression.unit.test.ts` | exit 0 | P0 | |
 | R4 | The flags we advertise do something (§2) | `cd cli && bun test test/log-level.unit.test.ts test/completions.unit.test.ts && ./dist/bin/agentsfleet.js --help \| grep -c wizard` | exit 0, then `0` | P1 | |
 | R5 | Completions emit a script the shell parses (§2) | `cd cli && ./dist/bin/agentsfleet.js --completions bash \| bash -n && ./dist/bin/agentsfleet.js --completions zsh \| zsh -n` | exit 0 twice | P1 | |

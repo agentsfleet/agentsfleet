@@ -20,13 +20,12 @@ import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsLibraryEntriesPath } from "../lib/api-paths.ts";
 import { collectPages } from "../lib/paged.ts";
-import { ui, EMPTY_CELL } from "../output/index.ts";
+import { ui, AGE_KEY, EMPTY_CELL } from "../output/index.ts";
 import type { CliError } from "../errors/index.ts";
 
 const FIELD_ID = "id" as const;
 const FIELD_NAME = "name" as const;
 const FIELD_SOURCE = "source" as const;
-const FIELD_ONBOARDED = "onboarded" as const;
 
 const ENTRIES_LISTED = "Onboarded Fleet libraries" as const;
 const EMPTY_OWNED = "This workspace has onboarded no Fleet libraries." as const;
@@ -59,16 +58,6 @@ const provenance = (entry: OwnedLibraryEntry): string => {
   return kind.length > 0 ? `${kind}:${ref}` : ref;
 };
 
-/** The onboarding instant, as a date. The column answers "which of these three
- *  is the one I added this morning", which a date answers and a millisecond
- *  count does not. */
-const onboardedOn = (entry: OwnedLibraryEntry): string => {
-  const at = entry.created_at;
-  if (typeof at !== "number" || !Number.isFinite(at)) return EMPTY_CELL;
-  const iso = new Date(at).toISOString();
-  return iso.slice(0, iso.indexOf("T"));
-};
-
 export const libraryListEffect: Effect.Effect<
   void,
   CliError,
@@ -98,18 +87,17 @@ export const libraryListEffect: Effect.Effect<
     return;
   }
 
-  yield* output.printTable(
-    [
-      { key: FIELD_ID, label: "ENTRY" },
-      { key: FIELD_NAME, label: "NAME" },
-      { key: FIELD_SOURCE, label: "SOURCE" },
-      { key: FIELD_ONBOARDED, label: "ONBOARDED" },
-    ],
+  yield* output.printEntityTable(
+    {
+      name: { key: FIELD_NAME, label: "NAME" },
+      id: { key: FIELD_ID, label: "ENTRY" },
+      domain: [{ key: FIELD_SOURCE, label: "SOURCE" }],
+    },
     items.map((entry) => ({
       id: String(entry.id ?? ""),
       name: String(entry.name ?? ""),
       source: provenance(entry),
-      onboarded: onboardedOn(entry),
+      [AGE_KEY]: entry.created_at,
     })),
   );
   yield* output.info(ui.dim(REMOVE_HINT));

@@ -92,14 +92,18 @@ export const connectorListEffectFromArgs = (
       yield* output.info("no connectors found");
       return;
     }
-    yield* output.printTable(
-      [
-        { key: FIELD_PROVIDER, label: "PROVIDER" },
-        { key: "display_name", label: "NAME" },
-        { key: FIELD_STATE, label: "STATE" },
-        { key: "hint", label: "NEXT ACTION" },
-        { key: "archetype", label: "KIND" },
-      ],
+    yield* output.printEntityTable(
+      {
+        name: { key: "display_name", label: "NAME" },
+        id: { key: FIELD_PROVIDER, label: "PROVIDER" },
+        domain: [
+          { key: FIELD_STATE, label: "STATE" },
+          { key: "hint", label: "NEXT ACTION" },
+          { key: "archetype", label: "KIND" },
+        ],
+        // The summary carries no instant, so there is no age to report.
+        ageKey: null,
+      },
       summaries.map((entry) => ({
         provider: cleanTableCell(entry.provider),
         display_name: cleanTableCell(entry.display_name),
