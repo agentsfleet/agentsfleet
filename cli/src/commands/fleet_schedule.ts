@@ -19,6 +19,7 @@ import {
   requireValidId,
   resolveAuthToken,
   resolveWorkspaceId,
+  WORKSPACE_FLAG,
 } from "./workspace-guards.ts";
 import { isString } from "../lib/guards.ts";
 import { HTTP_METHOD } from "../constants/http-method.ts";
@@ -124,7 +125,7 @@ const scheduleContext = (
 > =>
   Effect.gen(function* () {
     return {
-      wsId: yield* resolveWorkspaceId(flags.workspaceId),
+      wsId: yield* resolveWorkspaceId(flags.workspaceId, WORKSPACE_FLAG),
       token: yield* resolveAuthToken,
       config: yield* CliConfig,
       output: yield* Output,
