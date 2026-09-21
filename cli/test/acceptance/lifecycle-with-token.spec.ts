@@ -276,10 +276,13 @@ if (!isLive) {
     });
 
     // Invalid-format ID rejected client-side; no network call fires.
-    // Today only workspace use/delete run `validateRequiredId`. The fleet /
-    // fleet / grant handlers send invalid strings straight to the API —
-    // surfaced as Discovery (CLI hygiene: wire validateRequiredId into the
-    // remaining ID-taking handlers, then this sweep widens automatically).
+    // This once said only workspace use/delete validated, and that the fleet
+    // and grant handlers sent invalid strings straight to the API. Measured
+    // against an unroutable API, every identifier-taking verb in the matrix
+    // answers INVALID_ARGUMENT without dialling: stop, kill, resume, logs,
+    // workspace use/delete, api-key delete, grant delete and fleet show. The
+    // comment outlived the gap it described, and the rows it justified
+    // excluding were the coverage this sweep was meant to have.
     describe("invalid-format ID — client-side rejection, no network", () => {
       // All INVALID_ID_SAMPLES fail the uuidv7 validator introduced in this
       // PR (SAFE_ID_RE was removed). Run the full set so every sample is

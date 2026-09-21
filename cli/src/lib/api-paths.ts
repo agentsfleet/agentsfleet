@@ -4,11 +4,12 @@
 
 export const WORKSPACES_PATH = "/v1/workspaces/";
 
-// Mirrors the daemon's QUERY_STARTING_AFTER (http/pagination.zig) — the
-// keyset paging request parameter every cursor-paged list accepts.
+// Mirrors the daemon's keyset paging parameter, declared in
+// rustd/crates/afd_http/src/openapi/query.rs — the request parameter every
+// cursor-paged list accepts.
 export const QUERY_STARTING_AFTER = "starting_after";
-// Mirrors Q_LIMIT / Q_PROVIDER in http/handlers/model_library.zig. `limit` is
-// bounded 1..100 server-side; `provider` filters the catalogue page.
+// The catalogue page's two query parameters. `limit` is bounded 1..100
+// server-side; `provider` filters the page.
 export const QUERY_LIMIT = "limit";
 export const QUERY_PROVIDER = "provider";
 
@@ -18,14 +19,16 @@ export const QUERY_PROVIDER = "provider";
 export const HEALTHZ_PATH = "/healthz";
 export const AUTH_SESSIONS_PATH = "/v1/auth/sessions";
 // Durable per-user credential minted by `login` from the recovered session
-// token. Mirrors the daemon's S_CLI_CREDENTIALS (http/route_matchers.zig).
+// token. Mirrors the daemon's route, declared in
+// rustd/crates/afd_http/src/route/tenant.rs and served by
+// afd_api_tenant/src/handler/tenant/cli_credential.rs.
 export const CLI_CREDENTIALS_PATH = "/v1/cli-credentials";
 export const WORKSPACES_COLLECTION_PATH = "/v1/workspaces";
 export const TENANT_API_KEYS_PATH = "/v1/api-keys";
 export const TENANT_BILLING_PATH = "/v1/tenants/me/billing";
 export const TENANT_PROVIDER_PATH = "/v1/tenants/me/provider";
 // The priced model catalogue (core.model_library). Shared verbatim with
-// MODEL_LIBRARY_PATH in http/handlers/model_library.zig and the dashboard's
+// the route declared in rustd/crates/afd_http/src/route/tenant.rs and the dashboard's
 // lib/api/model_library.ts. Backs `agentsfleet models` and the `--provider`
 // check — the CLI carries no provider list of its own.
 export const MODEL_LIBRARY_PATH = "/v1/models";

@@ -4,8 +4,9 @@
 // sessions/{id}/verify. The dashboard side approves out-of-band via PATCH
 // /approve which the CLI never touches.
 //
-// Server response shapes (confirmed against src/http/handlers/auth/
-// sessions.zig + session_helpers.zig):
+// Server response shapes (confirmed against
+// rustd/crates/afd_api_tenant/src/handler/auth/session.rs and its session/
+// submodules):
 //
 //   POST /v1/auth/sessions
 //     201 { session_id, login_url, request_id }
@@ -56,7 +57,8 @@ import { HTTP_METHOD } from "../constants/http-method.ts";
 const MAX_CLI_VERIFY_ATTEMPTS = 2;
 
 // Server code for a malformed verification code (not 6 digits). Identifier
-// matches ERR_INVALID_VERIFICATION_CODE in src/errors/error_registry.zig.
+// matches ERR_INVALID_VERIFICATION_CODE, declared in
+// rustd/crates/afd_core/src/error_code/auth.rs.
 const ERR_INVALID_VERIFICATION_CODE = "UZ-AUTH-018";
 
 // Re-export the device-flow wire shapes + platform default from their sibling

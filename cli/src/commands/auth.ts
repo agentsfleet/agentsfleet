@@ -18,7 +18,7 @@ import {
 import { ERR_UNAUTHORIZED } from "../errors/auth.ts";
 import { EMPTY_CELL } from "../output/index.ts";
 
-// Server-side auth codes from src/errors/error_registry.zig. The CLI
+// Server-side auth codes from rustd/crates/afd_core/src/error_code/auth.rs. The CLI
 // branches on these to surface re-auth prompts; they are the only
 // UZ-* codes the CLI inspects by name (other codes flow through the
 // dispatcher's typed CliError variants as opaque strings).
