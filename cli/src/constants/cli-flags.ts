@@ -4,7 +4,7 @@
  * across every reader instead of silently drifting per command.
  *
  * Naming: the constant matches the on-the-wire flag name exactly.
- * `OPT_WORKSPACE_ID = "workspace-id"` reflects `--workspace-id`.
+ * `OPT_FROM = "from"` reflects `--from`.
  *
  * RULE UFS.
  */

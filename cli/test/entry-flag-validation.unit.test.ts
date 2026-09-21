@@ -77,14 +77,14 @@ describe("--limit refuses out-of-range and non-numeric values in one voice", () 
 
 describe("id flags refuse anything that is not a canonical uuidv7", () => {
   test("a non-uuid is refused before the request", async () => {
-    const { code, err } = await reject(["list", "--workspace-id", "not-a-uuid"]);
+    const { code, err } = await reject(["list", "--workspace", "not-a-uuid"]);
     expect(code).toBe(EXIT_VALIDATION);
     expect(err).toContain("uuidv7");
   });
 
   test("an uppercase uuidv7 is refused, because canonical form is lowercase", async () => {
     const { code } = await reject([
-      "list", "--workspace-id", "0192A3B4-C5D6-7E8F-9012-345678901234",
+      "list", "--workspace", "0192A3B4-C5D6-7E8F-9012-345678901234",
     ]);
     expect(code).toBe(EXIT_VALIDATION);
   });

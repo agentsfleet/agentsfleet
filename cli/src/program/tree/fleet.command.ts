@@ -58,7 +58,7 @@ import {
   sinceFlag,
   startingAfterFlag,
   templateFlag,
-  workspaceIdFlag,
+  workspaceFlag,
 } from "./flags.ts";
 
 const opt = Option.getOrUndefined;
@@ -143,12 +143,12 @@ export const fleetCommand = Command.make("fleet").pipe(
 // ── lifecycle verbs ─────────────────────────────────────────────────
 
 export const listCommand = Command.make(LIST, {
-  workspaceIdFlag,
+  workspace: workspaceFlag,
   startingAfter: startingAfterFlag,
   limit: listLimitFlag,
 }).pipe(
   Command.withDescription("List fleets in the active workspace (paginated)"),
-  guardedHandler(({ workspaceIdFlag: workspaceId, startingAfter, limit }) =>
+  guardedHandler(({ workspace: workspaceId, startingAfter, limit }) =>
     listEffectFromFlags({
       workspaceId: opt(workspaceId),
       startingAfter: opt(startingAfter),

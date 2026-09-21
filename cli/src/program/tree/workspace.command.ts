@@ -26,7 +26,7 @@ import {
   modelOverrideFlag,
   secretNameFlag,
   workspaceIdArgument,
-  workspaceIdFlag,
+  workspaceFlag,
   workspaceIdOptionalArgument,
   workspaceNameArgument,
 } from "./flags.ts";
@@ -55,14 +55,14 @@ const workspaceUseCommand = Command.make("use", { workspaceId: workspaceIdArgume
   guardedHandler(({ workspaceId }) => workspaceUseEffectFromArgs(workspaceId, undefined)),
 );
 
-// The id may arrive as a positional or as `--workspace-id`; the handler owns
+// The id may arrive as a positional or as `--workspace`; the handler owns
 // which wins, so both reach it rather than one being resolved away here.
 const workspaceShowCommand = Command.make(SHOW, {
   workspaceId: workspaceIdOptionalArgument,
-  workspaceIdFlag,
+  workspace: workspaceFlag,
 }).pipe(
   Command.withDescription("Show workspace details"),
-  guardedHandler(({ workspaceId, workspaceIdFlag: fromFlag }) =>
+  guardedHandler(({ workspaceId, workspace: fromFlag }) =>
     workspaceShowEffectFromArgs(opt(workspaceId), opt(fromFlag)),
   ),
 );

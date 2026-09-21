@@ -100,12 +100,12 @@ describe("requireWorkspaceId", () => {
     expect(suggestion).not.toMatch(/--\w/);
   });
 
-  // The override spelling is NOT uniform: `list` declares `--workspace-id`
-  // while `connector list`, `memory list` and `schedule list` declare
-  // `--workspace`. One shared sentence was wrong for almost every caller, so
-  // each passes the flag it actually has and the refusal names that one.
+  // Every command with an override now declares `--workspace`; the spelling
+  // was collapsed from two. The resolver still takes the flag as an argument
+  // rather than assuming it, because `install` and `approvals list` declare no
+  // override at all and must not suggest one — which the test above pins.
   test("the resolver names the caller's own override flag", async () => {
-    for (const flag of ["--workspace", "--workspace-id"]) {
+    for (const flag of ["--workspace"]) {
       const program = resolveWorkspaceId(undefined, flag).pipe(
         Effect.provideService(Workspaces, {
           load: Effect.succeed({ current_workspace_id: null, items: [] }),

@@ -32,25 +32,27 @@ export const WORKSPACE_CREATE_USAGE =
  * now. The base names the two routes EVERY command reaching this guard has:
  * create a workspace, or select one.
  *
- * The per-command flag is appended by `workspaceMissing` rather than baked in,
- * because there is no one spelling to bake. `list` takes `--workspace-id`;
- * `connector list` takes `--workspace`; `install` and `approvals list` take
- * neither and answer `Unrecognized flag` to both. A single shared string was
- * therefore wrong for almost every caller, and sent a person from one refusal
- * straight into another.
+ * The override flag is appended by `workspaceMissing` rather than baked in,
+ * because not every caller has one: `install` and `approvals list` declare no
+ * override and answer `Unrecognized flag` to any. Baking it in sent a person
+ * from one refusal straight into another.
  */
 const WORKSPACE_MISSING_SUGGESTION =
   `run \`${WORKSPACE_CREATE_USAGE}\` or \`agentsfleet workspace use <id>\`` as const;
 
-/** The two spellings commands use for the workspace override, as declared.
+/** The workspace override flag, as every command that has one declares it.
  *
- * They differ, and that is a real inconsistency rather than a naming choice
- * made here: `list` declares `--workspace-id` while `connector list`, `memory
- * list` and `schedule list` declare `--workspace`. A caller passes the one it
- * actually has, so the refusal never names a flag that command would reject.
+ * One spelling now. `list` and `workspace show` carried `--workspace-id` while
+ * `connector list`, `memory list` and `schedule list` carried `--workspace`,
+ * so no shared refusal sentence could name a flag all of them accept. The
+ * survivor matches `--fleet`, which is the only spelling the fleet id flag has
+ * ever had — bare noun, no `-id` suffix.
+ *
+ * A caller still passes it explicitly rather than the guard assuming it,
+ * because commands like `install` and `approvals list` declare no override at
+ * all and must not suggest one.
  */
 export const WORKSPACE_FLAG = "--workspace" as const;
-export const WORKSPACE_ID_FLAG = "--workspace-id" as const;
 
 /** "no workspace selected", naming the override flag when the caller has one. */
 const workspaceMissing = (overrideFlag?: string): ConfigError =>

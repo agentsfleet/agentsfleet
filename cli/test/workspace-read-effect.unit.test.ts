@@ -155,7 +155,7 @@ describe("workspaceUseEffectFromArgs", () => {
     expect(failure.suggestion).toContain("workspace create <name>");
   });
 
-  test("reads workspaceId from --workspace-id flag", async () => {
+  test("reads workspaceId from --workspace flag", async () => {
     const rec = makeRecorder();
     const workspacesState = {
       value: {

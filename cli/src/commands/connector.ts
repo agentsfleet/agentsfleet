@@ -68,13 +68,13 @@ const primitive = (value: unknown, clean: boolean): string | null => {
 };
 
 export const connectorListEffectFromArgs = (
-  workspaceIdFlag: string | undefined,
+  workspaceFlagValue: string | undefined,
 ): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output | Workspaces> =>
   Effect.gen(function* () {
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
-    const workspaceId = yield* resolveWorkspaceId(workspaceIdFlag, WORKSPACE_FLAG);
+    const workspaceId = yield* resolveWorkspaceId(workspaceFlagValue, WORKSPACE_FLAG);
 
     const entries = yield* http.request<ReadonlyArray<ConnectorCatalogEntry>>({
       path: wsConnectorsPath(workspaceId),
@@ -111,14 +111,14 @@ export const connectorListEffectFromArgs = (
   });
 
 export const connectorStatusEffectFromArgs = (
-  workspaceIdFlag: string | undefined,
+  workspaceFlagValue: string | undefined,
   providerRaw: string | undefined,
 ): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output | Workspaces> =>
   Effect.gen(function* () {
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
-    const workspaceId = yield* resolveWorkspaceId(workspaceIdFlag, WORKSPACE_FLAG);
+    const workspaceId = yield* resolveWorkspaceId(workspaceFlagValue, WORKSPACE_FLAG);
     const provider = yield* requireProvider(providerRaw);
 
     const entries = yield* http.request<ReadonlyArray<ConnectorCatalogEntry>>({
