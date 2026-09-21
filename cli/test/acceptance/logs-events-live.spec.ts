@@ -71,14 +71,13 @@ import {
   walkEventsCursor,
 } from "./fixtures/logs-events-ops.ts";
 import type { EventItem, EventsEnvelope } from "./fixtures/logs-events-ops.ts";
-import { API_URL_ENV, STATE_DIR_ENV } from "../../src/constants/env.ts";
+import { API_URL_ENV, NO_COLOR_ENV, STATE_DIR_ENV } from "../../src/constants/env.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
 
 // Wire/output literals (RULE UFS — each used >=2x or crosses a boundary).
 const STATE_DIR_PREFIX = "agentsfleet-logs-events-" as const;
-const NO_COLOR_ENV_KEY = "NO_COLOR" as const;
 const NO_COLOR_ON = "1" as const;
 
 // `logs` is a single bounded HTTP read (not a follow/stream), but cap it
@@ -133,7 +132,7 @@ if (!isLive) {
       env = composeEnv({
         [API_URL_ENV]: apiUrl,
         [STATE_DIR_ENV]: stateDir,
-        [NO_COLOR_ENV_KEY]: NO_COLOR_ON,
+        [NO_COLOR_ENV]: NO_COLOR_ON,
       });
       const hydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
       workspaceId = hydrated.currentWorkspaceId;

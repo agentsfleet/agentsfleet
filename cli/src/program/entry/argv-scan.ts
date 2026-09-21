@@ -16,7 +16,7 @@
 import type { WritableStreamLike } from "../../output/capability.ts";
 import { printJson } from "../io.ts";
 import { printVersion } from "../banner.ts";
-import { API_URL_ENV } from "../../constants/env.ts";
+import { API_URL_ENV, NO_COLOR_ENV } from "../../constants/env.ts";
 
 const END_OF_FLAGS = "--" as const;
 const FLAG_API = "--api" as const;
@@ -24,7 +24,6 @@ const FLAG_API_INLINE = "--api=" as const;
 const FLAG_JSON = "--json" as const;
 const FLAG_VERSION = "--version" as const;
 const FLAG_VERSION_SHORT = "-v" as const;
-const ENV_NO_COLOR = "NO_COLOR" as const;
 
 export const detectJsonMode = (argv: ReadonlyArray<string>): boolean => {
   for (const token of argv) {
@@ -55,7 +54,7 @@ export const maybePrintVersion = (
       printJson(stdout, { version });
       return true;
     }
-    const noColor = env[ENV_NO_COLOR];
+    const noColor = env[NO_COLOR_ENV];
     printVersion(stdout, version, {
       noColor: Boolean(noColor && noColor.length > 0),
       jsonMode: false,

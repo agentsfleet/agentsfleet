@@ -45,6 +45,7 @@ import {
 } from "./fixtures/tenant-provider-ops.ts";
 import type { ProviderSnapshot } from "./fixtures/tenant-provider-ops.ts";
 import { assertSecretDeleteDisjunction } from "./fixtures/referential-ops.ts";
+import { API_URL_ENV, NO_COLOR_ENV, STATE_DIR_ENV } from "../../src/constants/env.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
@@ -65,9 +66,6 @@ const FLAG_JSON = "--json" as const;
 const KEY_STATUS = "status" as const;
 const STATUS_STORED = "stored" as const;
 
-const ENV_API_URL = "AGENTSFLEET_API_URL" as const;
-const ENV_STATE_DIR = "AGENTSFLEET_STATE_DIR" as const;
-const ENV_NO_COLOR = "NO_COLOR" as const;
 const NO_COLOR_ON = "1" as const;
 const STATE_DIR_PREFIX = "agentsfleet-refint-" as const;
 
@@ -125,9 +123,9 @@ if (!isLive) {
 
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), STATE_DIR_PREFIX));
       env = composeEnv({
-        [ENV_API_URL]: apiUrl,
-        [ENV_STATE_DIR]: stateDir,
-        [ENV_NO_COLOR]: NO_COLOR_ON,
+        [API_URL_ENV]: apiUrl,
+        [STATE_DIR_ENV]: stateDir,
+        [NO_COLOR_ENV]: NO_COLOR_ON,
       });
       const hydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
       workspaceId = hydrated.currentWorkspaceId;
