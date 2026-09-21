@@ -157,11 +157,6 @@ export function readProblemDetails(value: unknown): ProblemDetails {
   };
 }
 
-// POST-based SSE streaming consumer lives in stream-fetch.ts (the
-// mirror module to lib/sse.ts which owns the GET transport). Re-export
-// is intentionally NOT added — callers import directly from
-// stream-fetch.ts so the dependency direction stays honest.
-
 export interface AuthCredentials {
   token?: string | null | undefined;
 }

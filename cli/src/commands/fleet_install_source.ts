@@ -47,10 +47,6 @@ export interface FleetLibraryGalleryEntry {
   readonly requirements?: BundleRequirements;
 }
 
-export interface FleetLibraryGalleryResponse {
-  readonly items?: ReadonlyArray<FleetLibraryGalleryEntry>;
-}
-
 // Tier literals carried in a gallery entry's `visibility` field.
 export const VISIBILITY_PLATFORM = "platform" as const;
 export const VISIBILITY_TENANT = "tenant" as const;

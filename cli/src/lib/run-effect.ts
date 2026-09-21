@@ -12,11 +12,9 @@
 // and dies (uncaught exceptions inside the Effect graph) route through
 // the formatter — there's no untyped escape.
 
-import { Cause, Effect, Exit, Layer, Option } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 import { Output } from "../services/output.ts";
 import {
-  mainLayerFor,
-  type MainLayerInput,
   type MainLayerServices,
 } from "../runtime/main-layer.ts";
 import {
@@ -28,31 +26,6 @@ import {
 export type { MainLayerServices };
 
 const FALLBACK_EXIT_CODE = 1;
-
-// R is the service-set the command Effect needs. The dispatcher provides the
-// layer `mainLayerFor` composes; if R is not a subset of MainLayerServices,
-// the `Effect.provide(runtime)` call below fails to typecheck — that's the
-// compile-time guard that every command's declared service-set is actually
-// wired.
-//
-// A — the success value type. `void` is the common case (the dispatcher
-// maps success → exit 0). `number` lets a command emit its own exit
-// code on success (e.g. `doctor` returns 1 when checks logically fail
-// without raising a typed error).
-export interface RunEffectInput<A, E extends CliError, R> {
-  readonly name: string;
-  readonly effect: Effect.Effect<A, E, R>;
-  // Pre-built layer mirrors the Supabase pattern (shared/cli/run.ts):
-  // compose at one site, provide at the boundary. When omitted, a
-  // default layer is built from `mainLayerFor` — used by tests that
-  // don't need overrides. Callers with telemetry/config/streams should
-  // build the layer once via `mainLayerFor(...)` and pass it here.
-  readonly layer?: Layer.Layer<MainLayerServices>;
-  // Convenience shortcut for the common case where the caller doesn't
-  // build the layer itself. When set, `mainLayerFor(layerInput)` is
-  // composed here. `layer` takes precedence if both are provided.
-  readonly layerInput?: MainLayerInput;
-}
 
 const formatExit = <A, E extends CliError>(
   exit: Exit.Exit<A, E>,
@@ -122,27 +95,3 @@ export const renderAndCount = <A, E extends CliError>(
     yield* renderError(formatted.rendered);
     return formatted.code;
   });
-
-export const runEffect = async <A, E extends CliError, R extends MainLayerServices>(
-  input: RunEffectInput<A, E, R>,
-): Promise<number> => {
-  const program = Effect.gen(function* () {
-    const exit = yield* Effect.exit(input.effect);
-    return yield* renderAndCount(exit);
-  });
-
-  // A caller with neither layer nor layerInput is a layer-less test; the
-  // process environment is stated here rather than defaulted inside
-  // mainLayerFor, so the injected-env seam has no silent fallback left.
-  const runtime = input.layer ?? mainLayerFor(input.layerInput ?? { env: process.env });
-  // The `R extends MainLayerServices` constraint guarantees the residual
-  // after the runtime layer is `never`; TypeScript cannot prove the
-  // symbolic Exclude<> reduction so a single localised cast at the
-  // boundary is the smaller honest seam.
-  const provided = program.pipe(Effect.provide(runtime)) as Effect.Effect<
-    number,
-    never,
-    never
-  >;
-  return await Effect.runPromise(provided);
-};
