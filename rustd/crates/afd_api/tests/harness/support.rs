@@ -19,6 +19,13 @@ use tower::ServiceExt as _;
 
 use std::time::Duration;
 
+/// The refusal envelope's registry-code field.
+///
+/// `problem_json_envelope.rs` pins the shape; suites that compare one refusal
+/// against another read the code through this name, so a test cannot quietly
+/// compare two absent fields and pass.
+pub(crate) const ERROR_CODE: &str = "error_code";
+
 const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
