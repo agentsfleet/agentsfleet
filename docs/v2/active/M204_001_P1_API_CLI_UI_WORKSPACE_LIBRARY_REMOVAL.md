@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M204
 **Workstream:** 001
 **Date:** Sep 21, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing: an onboarded entry is today unremovable, and the pile-up breaks the acceptance suite.
 **Categories:** API, CLI, UI
 **Batch:** B1 — single stream; the grant precedes the handler, the handler precedes both clients.
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** `feat/m204-workspace-library-removal`
+**Baseline revision:** 76eb9c2d305a480ea8437e65d63efbcaf7ba6de7
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** none
 **Provenance:** LLM-drafted (claude-opus-5[1m], Sep 21, 2026)
