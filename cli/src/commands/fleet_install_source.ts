@@ -45,6 +45,8 @@ export interface FleetLibraryGalleryEntry {
   readonly name?: string;
   readonly visibility?: string;
   readonly requirements?: BundleRequirements;
+  // The wire has always carried this; the gallery table is the first reader.
+  readonly created_at?: number;
 }
 
 // Tier literals carried in a gallery entry's `visibility` field.

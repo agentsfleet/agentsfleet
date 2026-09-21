@@ -45,11 +45,12 @@ import {
   createWorkspaceWithReconciliation,
   WORKSPACE_CREATE_STATUS,
 } from "./workspace-create-reconcile.ts";
-import { EMPTY_CELL } from "../output/index.ts";
+import { AGE_KEY, EMPTY_CELL } from "../output/index.ts";
 
 const WORKSPACE_SHOWN = "Workspace" as const;
 const WORKSPACES_LISTED = "Workspaces" as const;
 const WORKSPACE_SECRETS_REDIRECT = "Workspace secrets" as const;
+const WORKSPACE_STATUS_ACTIVE = "active" as const;
 
 const WORKSPACE_ID_FIELD = "workspace_id";
 const WORKSPACE_LOCAL_REMOVAL_FIELD = "removed_from_local_state";
@@ -168,16 +169,22 @@ export const workspaceListEffect: Effect.Effect<
     yield* output.info("no workspaces");
     return;
   }
-  yield* output.printTable(
-    [
-      { key: "active", label: "ACTIVE" },
-      { key: WORKSPACE_ID_FIELD, label: "WORKSPACE" },
-      { key: "name", label: "NAME" },
-    ],
+  yield* output.printEntityTable(
+    {
+      name: { key: "name", label: "NAME" },
+      id: { key: WORKSPACE_ID_FIELD, label: "WORKSPACE" },
+      domain: [{ key: "status", label: "STATUS" }],
+    },
     state.items.map((item) => ({
-      active: item.workspace_id === state.current_workspace_id ? "*" : "",
-      workspace_id: item.workspace_id,
       name: item.name ?? EMPTY_CELL,
+      workspace_id: item.workspace_id,
+      // The bare `*` this replaced said the same thing in a glyph a reader had
+      // to learn. A workspace has no server-side status, so "which one am I
+      // in" is the only status there is to report.
+      status: item.workspace_id === state.current_workspace_id
+        ? WORKSPACE_STATUS_ACTIVE
+        : EMPTY_CELL,
+      [AGE_KEY]: item.created_at,
     })),
   );
 });

@@ -1,3 +1,4 @@
+import { AGE_KEY, ago } from "../src/output/index.ts";
 // Shared in-memory layers for the Effect-shaped billing handler tests.
 //
 // Extracted when billing-effect.unit.test.ts passed the repository's 350-line
@@ -66,6 +67,12 @@ export const outputLayer = (
       Effect.sync(() => {
         rec.stdout.push(`TABLE:${rows.length}`);
         rec.tables.push(rows as ReadonlyArray<Record<string, unknown>>);
+      }),
+    printEntityTable: (_spec, rows) =>
+      Effect.sync(() => {
+        rec.stdout.push(`TABLE:${rows.length}`);
+        const aged = rows.map((row) => ({ ...row, [AGE_KEY]: ago(row[AGE_KEY]) }));
+        rec.tables.push(aged as ReadonlyArray<Record<string, unknown>>);
       }),
   });
 

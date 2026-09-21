@@ -1,3 +1,4 @@
+import { entityColumns } from "../src/output/index.ts";
 // Unit coverage for src/commands/fleet_library.ts — the `agentsfleet library`
 // gallery list. Exercises the table render, JSON mode, the empty gallery, both
 // joinNames branches (credentials present vs none), and the invariant that
@@ -69,6 +70,8 @@ const makeLayer = (
       printJsonErr: (p) => Effect.sync(() => { captured.push(JSON.stringify(p)); }),
       printTable: (columns, rows) =>
         Effect.sync(() => { tables.push({ columns, rows }); }),
+      printEntityTable: (spec, rows) =>
+        Effect.sync(() => { tables.push({ columns: entityColumns(spec), rows }); }),
     }),
   );
 
@@ -228,6 +231,7 @@ describe("libraryEffect — a gallery larger than one page", () => {
         ...outputDouble(),
         info: (m) => Effect.sync(() => { captured.push(m); }),
         printTable: (columns, rows) => Effect.sync(() => { tables.push({ columns, rows }); }),
+        printEntityTable: (spec, rows) => Effect.sync(() => { tables.push({ columns: entityColumns(spec), rows }); }),
       }),
     );
     const exit = await Effect.runPromiseExit(libraryEffect.pipe(Effect.provide(layer)));
