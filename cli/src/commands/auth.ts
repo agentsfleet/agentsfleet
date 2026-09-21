@@ -6,7 +6,7 @@ import { Effect, Option, Redacted } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { USERS_ME_PATH } from "../lib/api-paths.ts";
 import { IDENTITY_ROUTE_ABSENT_STATUS } from "../lib/me-ping.ts";
 import {
@@ -16,6 +16,7 @@ import {
   type CliError,
 } from "../errors/index.ts";
 import { ERR_UNAUTHORIZED } from "../errors/auth.ts";
+import { EMPTY_CELL } from "../output/index.ts";
 
 // Server-side auth codes from src/errors/error_registry.zig. The CLI
 // branches on these to surface re-auth prompts; they are the only
@@ -26,8 +27,6 @@ const ERR_TOKEN_EXPIRED = "UZ-AUTH-003";
 
 type TokenSource = "file" | "env" | "none";
 type ProbeStatus = "valid" | "unauthorized" | "unreachable" | "unverified";
-
-const DASH = "—";
 // Both credential classes the CLI can hold — the minted afc_ file credential
 // and the agt_t service key — are opaque: no readable claims, capability
 // resolved server-side from the record the credential names.
@@ -55,7 +54,7 @@ interface AuthStatusResult {
 const formatTs = (ms: number | null | undefined): string =>
   typeof ms === "number" && Number.isFinite(ms)
     ? new Date(ms).toISOString()
-    : DASH;
+    : EMPTY_CELL;
 
 
 const classifyProbeError = (err: ServerError): ProbeResult => {
@@ -159,7 +158,7 @@ export const authStatusEffect: Effect.Effect<
       : "none";
 
   if (source === "none") {
-    if (config.jsonMode) {
+    if (output.format !== OUTPUT_FORMAT.text) {
       yield* output.printJson({
         authenticated: false,
         source: "none",
@@ -193,7 +192,7 @@ export const authStatusEffect: Effect.Effect<
     server_check: probeResult,
   };
 
-  if (config.jsonMode) {
+  if (output.format !== OUTPUT_FORMAT.text) {
     yield* output.printJson(result);
   } else {
     yield* renderHuman(result);

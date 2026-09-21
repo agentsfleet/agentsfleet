@@ -11,7 +11,7 @@
  *
  * The claim under test is uniformity. One shape (`✕ error:` + `Suggestion:`),
  * one exit code (validation), one stream (stderr for failure, stdout for
- * help) — whether commander rejected the invocation at parse time or a
+ * help) — whether the parser rejected the invocation at parse time or a
  * handler rejected it after.
  */
 
@@ -101,7 +101,7 @@ describe("missing required positional", () => {
     it(`"${label}" rejects in the house shape`, async () => {
       const r = await reject(row.args);
       assertHouseShape(r, label);
-      const expected = row.reportedToken ?? row.missingArgName;
+      const expected = row.missingArgName;
       assert.ok(r.detailLine.includes(expected),
         `${label}: detail does not name ${expected}; got ${r.detailLine}`);
     });
@@ -129,7 +129,7 @@ describe("missing required option", () => {
 describe("handler-validated required flag", () => {
   for (const args of HANDLER_VALIDATED_REQUIRED_FLAG) {
     const label = args.join(" ");
-    it(`"${label}" rejects in the same shape commander rows use`, async () => {
+    it(`"${label}" rejects in the same shape every other row uses`, async () => {
       assertHouseShape(await reject(args), label);
     });
   }
@@ -167,12 +167,12 @@ describe("group nodes print help that survives a pipe", () => {
       const result = await runFleetctl([...args], { env: env() });
       assert.equal(result.code, 0, `${label}: expected exit 0; stderr=${result.stderr}`);
       assert.ok(result.stdout.length > 0, `${label}: help body did not reach stdout`);
-      assert.match(result.stdout, /Usage:/, `${label}: stdout carries no usage banner`);
+      assert.match(result.stdout, /usage/i, `${label}: stdout carries no usage banner`);
       assert.equal(result.stderr.trim(), "", `${label}: help leaked to stderr: ${result.stderr}`);
     });
 
     // Regression: resolving this from the argv shape instead of from
-    // commander's own help path sent the body to stderr the moment any
+    // the previous parser's help path sent the body to stderr the moment any
     // global flag was present.
     it(`"${label}" writes help to stdout with a global flag present`, async () => {
       const result = await runFleetctl([...args, "--json"], { env: env() });

@@ -35,7 +35,7 @@ import {
   nullOutput,
   postedEvent,
   streamFrom,
-} from "./fleet-steer.integration.test.ts";
+} from "./helpers-fleet-steer.ts";
 
 // ── Pre-id buffer: replay order, foreign drop, bounds ─────────────────────
 

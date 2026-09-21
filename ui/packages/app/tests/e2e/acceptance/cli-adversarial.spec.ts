@@ -51,7 +51,7 @@ test.describe("command line adversarial reads", () => {
     try {
       await writeCliState(stateDir, workspaceId, expired, apiUrl, WORKSPACE_NAME);
       const expiredResult = await spawnAgentsfleet(
-        ["list", "--workspace-id", workspaceId, "--limit", "1"],
+        ["list", "--workspace", workspaceId, "--limit", "1"],
         cliEnv({
           AGENTSFLEET_STATE_DIR: stateDir,
           AGENTSFLEET_API_URL: apiUrl,
@@ -66,7 +66,7 @@ test.describe("command line adversarial reads", () => {
 
       await fs.writeFile(credentialsPath, CORRUPT_CREDENTIALS);
       const malformed = await spawnAgentsfleet(
-        ["list", "--workspace-id", workspaceId, "--limit", "1"],
+        ["list", "--workspace", workspaceId, "--limit", "1"],
         cliEnv({
           AGENTSFLEET_STATE_DIR: stateDir,
           AGENTSFLEET_API_URL: apiUrl,
@@ -88,7 +88,7 @@ test.describe("command line adversarial reads", () => {
         WORKSPACE_NAME,
       );
       const unreachable = await spawnAgentsfleet(
-        ["list", "--workspace-id", workspaceId, "--limit", "1"],
+        ["list", "--workspace", workspaceId, "--limit", "1"],
         cliEnv({
           AGENTSFLEET_STATE_DIR: stateDir,
           AGENTSFLEET_API_URL: UNREACHABLE_API_URL,

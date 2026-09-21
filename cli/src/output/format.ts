@@ -8,6 +8,22 @@ import { palette, type StyleOpts } from "./palette.ts";
 
 const COLUMN_GAP = "  ";
 
+/**
+ * What a rendered cell shows when there is no value.
+ *
+ * One declaration. This glyph was declared thirteen times across nine names —
+ * `LITERAL`, `DASH`, `LITERAL_DASH`, `EMPTY_CELL`, `EMPTY_REQUIREMENT`,
+ * `WAITING_UNKNOWN`, `NO_DISPLAY_NAME`, `UNPRICED` — because RULE UFS asks each
+ * file to name a repeated literal and nothing asks whether the file next door
+ * already named it. Nine names for one glyph is nine chances for the tables to
+ * stop agreeing about what "nothing" looks like.
+ */
+export const EMPTY_CELL = "—" as const;
+
+/** A cell's text, or [`EMPTY_CELL`] when there is nothing to show. */
+export const cell = (value: string | null | undefined): string =>
+  value !== null && value !== undefined && value.length > 0 ? value : EMPTY_CELL;
+
 const NARROW_THRESHOLD = 80;
 const HORIZONTAL_RULE = "─";
 const TERMINAL_CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/gu;

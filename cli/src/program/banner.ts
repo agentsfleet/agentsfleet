@@ -2,6 +2,7 @@
 // no emoji, no box-drawing border, no banner. The version line is one
 // line — a pulse-cyan dot, the name, the version.
 
+import { NO_COLOR_ENV } from "../constants/env.ts";
 import { palette, glyph } from "../output/index.ts";
 import type { WritableStreamLike } from "../output/capability.ts";
 
@@ -17,7 +18,8 @@ function resolveEnv(opts: { env?: NodeJS.ProcessEnv | undefined }): NodeJS.Proce
 }
 
 function resolveNoColor(opts: { noColor?: boolean | undefined }, env: NodeJS.ProcessEnv): boolean {
-  const envNoColor = typeof env.NO_COLOR === "string" && env.NO_COLOR.length > 0;
+  const noColor = env[NO_COLOR_ENV];
+  const envNoColor = typeof noColor === "string" && noColor.length > 0;
   return Boolean(opts.noColor) || envNoColor;
 }
 

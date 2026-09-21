@@ -21,11 +21,10 @@ import {
   STEER_PROBE_FIXTURE_NAME,
   STEER_PROBE_SAMPLE_DIR,
 } from "./constants.ts";
+import { API_URL_ENV, STATE_DIR_ENV } from "../../../src/constants/env.ts";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const WORKTREE_ROOT = path.resolve(HERE, "..", "..", "..", "..");
-const ENV_API_URL = "AGENTSFLEET_API_URL";
-const ENV_STATE_DIR = "AGENTSFLEET_STATE_DIR";
 const SOURCE_KIND_UPLOAD = "upload";
 const DEFAULT_ONBOARD_TIMEOUT_MS = 60_000;
 
@@ -43,10 +42,10 @@ export interface SampleContent {
 // Read the API URL + bearer token + workspace from the run's state dir, so the
 // onboard call carries the run's own identity (the same the CLI install uses).
 export async function readAuthContext(env: Readonly<Record<string, string>>): Promise<AuthContext> {
-  const apiUrl = env[ENV_API_URL];
-  const stateDir = env[ENV_STATE_DIR];
-  if (!apiUrl) throw new Error(`onboard requires ${ENV_API_URL} in the composed env`);
-  if (!stateDir) throw new Error(`onboard requires ${ENV_STATE_DIR} in the composed env`);
+  const apiUrl = env[API_URL_ENV];
+  const stateDir = env[STATE_DIR_ENV];
+  if (!apiUrl) throw new Error(`onboard requires ${API_URL_ENV} in the composed env`);
+  if (!stateDir) throw new Error(`onboard requires ${STATE_DIR_ENV} in the composed env`);
   const credentials = JSON.parse(
     await fs.readFile(path.join(stateDir, "credentials.json"), "utf8"),
   ) as { token?: string | null };

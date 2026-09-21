@@ -240,7 +240,7 @@ test.describe("operator journey", () => {
       AGENTSFLEET_STATE_DIR: stateDir,
       AGENTSFLEET_API_URL: apiUrl,
     });
-    const cli = await spawnAgentsfleet(["--json", "list", "--workspace-id", wsId, "--limit", "10"], commandEnv);
+    const cli = await spawnAgentsfleet(["--json", "list", "--workspace", wsId, "--limit", "10"], commandEnv);
     if (cli.code !== 0) {
       throw new Error(`agentsfleet list failed with API key auth (exit ${cli.code}):\n${cli.stderr}`);
     }
@@ -272,7 +272,7 @@ test.describe("operator journey", () => {
     await page.getByRole("alertdialog").getByRole("button", { name: /^revoke$/i }).click();
 
     const revokedCli = await spawnAgentsfleet(
-      ["list", "--workspace-id", wsId, "--limit", "1"],
+      ["list", "--workspace", wsId, "--limit", "1"],
       cliEnv({
         ...commandEnv,
         AGENTSFLEET_NO_RETRY: "1",

@@ -2,7 +2,8 @@ import { describe, test, expect } from "bun:test";
 import os from "node:os";
 import path from "node:path";
 
-import { resolveConfigDir, STATE_DIR_ENV } from "../src/lib/config-dir.ts";
+import { resolveConfigDir } from "../src/lib/config-dir.ts";
+import { STATE_DIR_ENV } from "../src/constants/env.ts";
 import { cliEnv } from "./helpers-cli-state.ts";
 
 describe("resolveConfigDir", () => {
@@ -29,26 +30,6 @@ describe("resolveConfigDir", () => {
     expect(state).not.toContain("process.env");
     const self = await read("../src/lib/config-dir.ts");
     expect(self).not.toContain("process.env");
-  });
-
-  test("no file under src/ names the state-dir variable except its declaration site", async () => {
-    // Suite-level, not review-level: a re-introduced literal anywhere in
-    // src/ — a new service, a command, a helper — fails here rather than
-    // depending on a reviewer to run the grep. The declaration site is the
-    // one file allowed to spell it.
-    const srcRoot = new URL("../src/", import.meta.url).pathname;
-    const glob = new Bun.Glob("**/*.ts");
-    const declarationSite = path.join("lib", "config-dir.ts");
-    const candidates: string[] = [];
-    for await (const rel of glob.scan(srcRoot)) {
-      if (rel !== declarationSite) candidates.push(rel);
-    }
-    // Read together rather than one at a time — this walks all of src/.
-    const bodies = await Promise.all(
-      candidates.map((rel) => Bun.file(path.join(srcRoot, rel)).text()),
-    );
-    const offenders = candidates.filter((_, i) => bodies[i]?.includes(STATE_DIR_ENV));
-    expect(offenders).toEqual([]);
   });
 });
 

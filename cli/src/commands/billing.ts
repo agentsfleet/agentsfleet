@@ -11,17 +11,19 @@ import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { resolveAuthToken } from "./workspace-guards.ts";
 import { CHARGE_TYPE, formatDollars } from "../constants/billing.ts";
 import { TENANT_BILLING_PATH } from "../lib/api-paths.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
+import { EMPTY_CELL } from "../output/index.ts";
 
 const CHARGES_PATH = `${TENANT_BILLING_PATH}/charges`;
 const BILLING_DASHBOARD_URL = "https://app.agentsfleet.net/settings/billing";
 const PURCHASE_FOOTER_LINE_2 =
   "Stripe purchase ships in v2.1; for now contact support for a top-up.";
 
+const BILLING_SHOWN = "Billing" as const;
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 100;
 
@@ -166,8 +168,8 @@ const renderHuman = (
           event_id: e.event_id ?? "",
           posture: e.posture ?? "",
           model: e.model ?? "",
-          in_tok: e.token_count_input != null ? String(e.token_count_input) : LITERAL,
-          out_tok: e.token_count_output != null ? String(e.token_count_output) : LITERAL,
+          in_tok: e.token_count_input != null ? String(e.token_count_input) : EMPTY_CELL,
+          out_tok: e.token_count_output != null ? String(e.token_count_output) : EMPTY_CELL,
           receive: formatDollars(e.receive_nanos),
           stage: formatDollars(e.stage_nanos),
           total: formatDollars(e.total_nanos),
@@ -198,7 +200,6 @@ export const billingShowEffectFromArgs = (
   CliConfig | Credentials | HttpClient | Output
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
@@ -224,8 +225,8 @@ export const billingShowEffectFromArgs = (
     const events = groupRowsByEvent(charges?.items ?? []).slice(0, limit);
     const nextCursor = charges?.next_cursor ?? null;
 
-    if (config.jsonMode) {
-      yield* output.printJson({
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(BILLING_SHOWN, {
         balance_nanos: billing?.balance_nanos ?? 0,
         is_exhausted: Boolean(billing?.is_exhausted),
         events,
@@ -235,4 +236,3 @@ export const billingShowEffectFromArgs = (
     }
     yield* renderHuman(billing, events, nextCursor);
   });
-const LITERAL = "—" as const;

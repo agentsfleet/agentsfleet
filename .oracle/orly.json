@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "orly_version": "0.10.11",
+  "orly_version": "0.10.12",
   "packs": [
     "language.rust",
     "persona.indy",

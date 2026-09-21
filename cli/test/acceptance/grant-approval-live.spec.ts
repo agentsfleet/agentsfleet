@@ -7,18 +7,25 @@
  *   - `secret create` stores a connector handle for the credential the bundle
  *     will declare
  *   - `install --library` installs a fleet declaring it, and the install leaves
- *     a PENDING grant behind — visible as `agentsfleet grant list --fleet <id>`
- *   - the card is answered, and `grant list` reports the SAME grant approved,
- *     with `approved_at` set: the stage change an operator watches for
+ *     an APPROVED grant behind — visible as `agentsfleet grant list --fleet <id>`
+ *   - no card is raised, and none is owed: installing is the answer
  *   - `steer` then completes, and `billing show` reports a lower balance than
  *     it did before the run
+ *   - `grant delete` revokes the standing permission, which is the one stop
+ *     button an operator has now that no card stands in the path
  *
- * # Every step is the CLI's
+ * # Why no card is answered here
  *
- * The card is answered by `agentsfleet approvals approve`. It used to go over
- * HTTP, because `agentsfleet grant` shipped `list` and `delete` and no verb
- * that answered a pending card — so the one decision the journey turns on was
- * the one step this walk could not take through the published surface.
+ * This walk used to install, wait for an `integration_grant` card, and answer
+ * it through `agentsfleet approvals approve`. M202 retired that step: an
+ * install declaring a mintable credential writes the grant already approved
+ * (`afd_approval::request::install` binds `status::APPROVED`), because you
+ * chose the fleet and its bundle names the integration. So the card's absence
+ * is the behaviour under test, not an omission from the walk.
+ *
+ * Absence is asserted after a positive signal, never after a bare sleep: the
+ * walk waits until `grant list` reports the install's own row, which is the
+ * same request that would have raised the card, and only then reads the inbox.
  *
  * # Why the balance is compared as an integer
  *
@@ -54,13 +61,13 @@ import { readAuthContext, type AuthContext } from "./fixtures/template-ops.ts";
 import {
   CONNECTOR_SERVICE_GITHUB,
   ensureConnectorHandle,
-  GATE_STATUS,
   GRANT_CREDENTIAL_NAME,
   GRANT_STATUS,
   KIND_INTEGRATION_GRANT,
   listGrants,
   pendingGateFor,
-  type GateRow,
+  REASON_DECLARED_AT_INSTALL,
+  type GrantRow,
 } from "./fixtures/grant-ops.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
@@ -75,18 +82,18 @@ const BALANCE_FIELD = "balance_nanos" as const;
 const ONE_SHOT_MESSAGE = "respond with a single short acknowledgement and stop" as const;
 const ENVELOPE_STATUS_KEY = "status" as const;
 const STATUS_PROCESSED = "processed" as const;
-// The evidence key the approve statement joins the grant row on. Mirrors
-// `afd_approval::request::EVIDENCE_SERVICE`.
-const EVIDENCE_SERVICE = "service" as const;
+const GRANT_COMMAND = "grant" as const;
+const DELETE_VERB = "delete" as const;
+const FLEET_FLAG = "--fleet" as const;
 
-// The install-time grant request runs after the fleet flips active, so the card
+// The install-time grant request runs after the fleet flips active, so the row
 // lands a beat behind the install response.
-const CARD_TIMEOUT_MS = 30_000;
-const CARD_POLL_MS = 1_000;
+const GRANT_TIMEOUT_MS = 30_000;
+const GRANT_POLL_MS = 1_000;
 // A steer's SSE round trip falls back to a ~60s poll window before rendering;
 // the budget has to exceed the CLI's own internal cap.
 const STEER_TIMEOUT_MS = 180_000;
-// Install plus the card wait.
+// Install plus the wait for the install-time grant row.
 const SETUP_TIMEOUT_MS = 180_000;
 // The usage ledger settles after the terminal row; the balance follows it.
 const BALANCE_SETTLE_MS = 90_000;
@@ -97,14 +104,14 @@ if (!isLive) {
     it.skip(`requires ${ACCEPTANCE_TARGET_ENV} to be an https URL`, () => {});
   });
 } else {
-  describe("grant-approval-live — install, answer the card, run, and pay for it", () => {
+  describe("grant-approval-live — install, run, and pay for it, with no card in the way", () => {
     let sessionJwt = "";
     let stateDir = "";
     let env: Record<string, string> = {};
     let workspaceId = "";
     let fleetId = "";
     let ctx: AuthContext | null = null;
-    let card: GateRow | null = null;
+    let installGrant: GrantRow | null = null;
     let balanceBeforeNanos = 0;
 
     async function runWithEnv(args: ReadonlyArray<string>): Promise<RunResult> {
@@ -146,10 +153,15 @@ if (!isLive) {
       if (!id) throw new Error(`install missing id: ${JSON.stringify(installed)}`);
       fleetId = id;
 
-      const deadline = Date.now() + CARD_TIMEOUT_MS;
-      while (card === null && Date.now() < deadline) {
-        card = await pendingGateFor(ctx, fleetId);
-        if (card === null) await Bun.sleep(CARD_POLL_MS);
+      // The install-time request is what would once have raised a card. Waiting
+      // for the row it writes gives the later absence assertions a positive
+      // ordering signal instead of a bare sleep.
+      const deadline = Date.now() + GRANT_TIMEOUT_MS;
+      while (installGrant === null && Date.now() < deadline) {
+        const mine = (await listGrants(env, fleetId))
+          .filter((row) => row.service === CONNECTOR_SERVICE_GITHUB);
+        installGrant = mine[0] ?? null;
+        if (installGrant === null) await Bun.sleep(GRANT_POLL_MS);
       }
     }, SETUP_TIMEOUT_MS);
 
@@ -162,58 +174,46 @@ if (!isLive) {
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
-    it("an install declaring a connector credential leaves a pending grant the CLI can read", async () => {
+    it("an install declaring a connector credential leaves an approved grant the CLI can read", async () => {
       assert.ok(fleetId, "the fleet was not installed in beforeAll");
       const grants = await listGrants(env, fleetId);
       const mine = grants.filter((row) => row.service === CONNECTOR_SERVICE_GITHUB);
       assert.equal(mine.length, 1,
         `expected one ${CONNECTOR_SERVICE_GITHUB} grant for the fleet; got ${JSON.stringify(grants)}`);
-      assert.equal(mine[0]?.status, GRANT_STATUS.pending,
-        `the install-time grant must start pending: ${JSON.stringify(mine[0])}`);
+      const grant = mine[0];
+      assert.equal(grant?.status, GRANT_STATUS.approved,
+        `the install-time grant must land approved: ${JSON.stringify(grant)}`);
+      assert.ok(grant?.approved_at,
+        `an approved grant must carry approved_at: ${JSON.stringify(grant)}`);
+      assert.equal(grant?.revoked_at ?? null, null,
+        `a fresh install-time grant is not revoked: ${JSON.stringify(grant)}`);
+      // The provenance separates this row from one a person answered: only the
+      // install writer stamps this sentence.
+      assert.equal(grant?.reason, REASON_DECLARED_AT_INSTALL,
+        `the grant must name the install as its provenance: ${JSON.stringify(grant)}`);
     });
 
-    it("the card raised alongside it names the service the approve statement reads", () => {
-      assert.ok(card, `no ${KIND_INTEGRATION_GRANT} card was raised for fleet ${fleetId}`);
-      assert.equal(card.gate_kind, KIND_INTEGRATION_GRANT);
-      assert.equal(card.fleet_id, fleetId);
-      assert.equal(card.status, GATE_STATUS.pending);
-      assert.equal(card.evidence[EVIDENCE_SERVICE], CONNECTOR_SERVICE_GITHUB,
-        `a card without the service key resolves cleanly and moves no grant: ${JSON.stringify(card.evidence)}`);
-      assert.ok(card.proposed_action.includes(CONNECTOR_SERVICE_GITHUB),
-        `the headline must name the service: ${card.proposed_action}`);
+    it("the install raises no card, because installing is the answer", async () => {
+      assert.ok(installGrant,
+        `the install wrote no grant within ${GRANT_TIMEOUT_MS}ms, so the inbox read proves nothing`);
+      assert.ok(ctx, "no auth context");
+      const card = await pendingGateFor(ctx, fleetId);
+      assert.equal(card, null,
+        `an install must raise no ${KIND_INTEGRATION_GRANT} card: ${JSON.stringify(card)}`);
     });
 
-    it("`approvals list` shows the card before it is answered", async () => {
-      assert.ok(card, "no card to find");
-      const pending = card;
+    it("`approvals list` shows the operator an empty inbox for the fleet", async () => {
+      assert.ok(installGrant, "the install wrote no grant, so an empty inbox proves nothing");
       const listed = await runFleetctl(
-        ["approvals", "list", "--fleet", fleetId, "--json"],
+        ["approvals", "list", FLEET_FLAG, fleetId, JSON_FLAG],
         { env },
       );
       assert.equal(listed.code, 0, `approvals list failed: ${listed.stderr}`);
-      const gates = (trailingJson(listed.stdout) as { items?: Array<{ gate_id?: string }> }).items ?? [];
-      assert.ok(gates.some((row) => row.gate_id === pending.gate_id),
-        `the pending card is not in the inbox the CLI reads: ${listed.stdout}`);
-    });
-
-    it("answering the card through the CLI moves the same grant to approved", async () => {
-      assert.ok(card, "no card to answer");
-      const answering = card;
-      const answered = await runFleetctl(
-        ["approvals", "approve", answering.gate_id, "--json"],
-        { env },
-      );
-      assert.equal(answered.code, 0, `approvals approve failed: ${answered.stderr}`);
-      const decided = trailingJson(answered.stdout) as { outcome?: string };
-      assert.equal(decided.outcome, GATE_STATUS.approved,
-        `the resolve did not answer approved: ${answered.stdout}`);
-
-      const grants = await listGrants(env, fleetId);
-      const mine = grants.filter((row) => row.service === CONNECTOR_SERVICE_GITHUB);
-      assert.equal(mine.length, 1, `the grant was duplicated: ${JSON.stringify(grants)}`);
-      assert.equal(mine[0]?.status, GRANT_STATUS.approved,
-        `the CLI still reports the grant unapproved: ${JSON.stringify(mine[0])}`);
-      assert.ok(mine[0]?.approved_at, `an approved grant must carry approved_at: ${JSON.stringify(mine[0])}`);
+      const gates =
+        (trailingJson(listed.stdout) as { items?: Array<{ gate_kind?: string }> }).items ?? [];
+      const cards = gates.filter((row) => row.gate_kind === KIND_INTEGRATION_GRANT);
+      assert.equal(cards.length, 0,
+        `the inbox the CLI reads must carry no ${KIND_INTEGRATION_GRANT} card: ${listed.stdout}`);
     });
 
     it("the granted fleet answers a steer, and the tenant balance falls", async () => {
@@ -236,5 +236,23 @@ if (!isLive) {
       assert.ok(balanceAfterNanos < balanceBeforeNanos,
         `the run did not deplete credit: ${balanceBeforeNanos} → ${balanceAfterNanos} nanos`);
     }, STEER_TIMEOUT_MS);
+
+    // Last, and deliberately so: revoking the standing grant is what stops the
+    // fleet reaching the provider, so every step that needs it has run by here.
+    it("`grant delete` revokes the standing permission the install wrote", async () => {
+      const grantId = installGrant?.id;
+      assert.ok(grantId, `the install-time grant carried no id: ${JSON.stringify(installGrant)}`);
+      const deleted = await runWithEnv([GRANT_COMMAND, DELETE_VERB, grantId, FLEET_FLAG, fleetId]);
+      assert.equal(deleted.code, 0, `grant delete exited ${deleted.code}: ${deleted.stderr}`);
+
+      const grants = await listGrants(env, fleetId);
+      const mine = grants.filter((row) => row.service === CONNECTOR_SERVICE_GITHUB);
+      assert.equal(mine.length, 1,
+        `the revoke must move the row, never add one: ${JSON.stringify(grants)}`);
+      assert.equal(mine[0]?.status, GRANT_STATUS.revoked,
+        `the CLI still reports the grant standing: ${JSON.stringify(mine[0])}`);
+      assert.ok(mine[0]?.revoked_at,
+        `a revoked grant must carry revoked_at: ${JSON.stringify(mine[0])}`);
+    });
   });
 }

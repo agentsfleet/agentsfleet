@@ -17,7 +17,12 @@ import {
 import { CliConfig, type CliConfigShape } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
-import { Output, type OutputShape } from "../src/services/output.ts";
+import {
+  OUTPUT_FORMAT,
+  Output,
+  type OutputFormat,
+  type OutputShape,
+} from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 
 const WS_ID = "01900000-0000-7000-8000-00000067e210";
@@ -30,21 +35,33 @@ interface PrintCapture {
   info: string[];
 }
 
-// A no-op Output where printJson + info append to a capture bag so a
-// test can assert which branch ran and with what payload. Everything
-// else is Effect.void.
+// A no-op Output where the machine payload and the info lines append to a
+// capture bag, so a test can assert which register ran and with what payload.
+// Everything else is Effect.void.
+//
+// `format` is the double's register now. The fork moved off CliConfig and onto
+// this service, so a test that wants the json arm says so HERE — setting
+// `jsonMode` on the config no longer reaches the renderer, which is the point:
+// one service decides, and a double that lies about its register is the only
+// way to get the two out of step.
 const captureOutputLayer = (
   cap: PrintCapture,
+  format: OutputFormat = OUTPUT_FORMAT.text,
 ): Layer.Layer<Output> =>
   Layer.succeed(
     Output,
     Output.of({
+      stdoutIsTty: false,
+      format,
       intro: () => Effect.void,
       info: (msg) =>
         Effect.sync(() => {
           cap.info.push(msg);
         }),
-      success: () => Effect.void,
+      success: (_msg, data) =>
+        Effect.sync(() => {
+          if (data !== undefined) cap.json.push(data);
+        }),
       warn: () => Effect.void,
       error: () => Effect.void,
       outro: () => Effect.void,
@@ -123,7 +140,7 @@ describe("grantListEffectFromArgs json + empty branches", () => {
       provideAll(grantListEffectFromArgs(undefined, FLEET_ID), {
         config: configLayer({ jsonMode: true }),
         http: httpReturning(body),
-        output: captureOutputLayer(cap),
+        output: captureOutputLayer(cap, OUTPUT_FORMAT.json),
       }),
     );
     expect(Exit.isSuccess(exit)).toBe(true);

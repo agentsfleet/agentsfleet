@@ -14,7 +14,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { runCli } from "../src/cli.ts";
-import { STATE_DIR_ENV } from "../src/lib/config-dir.ts";
+import { STATE_DIR_ENV } from "../src/constants/env.ts";
 import { loadWorkspaces, saveCredentials, saveWorkspaces } from "../src/lib/state.ts";
 import { bufferStream, FIXTURE_CREDENTIAL } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";

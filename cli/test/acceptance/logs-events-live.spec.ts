@@ -24,7 +24,7 @@
  *     assertion would flake the moment the timeline is served newest-first.
  *
  * Negative paths (no network residue / structured errors):
- *   - `events` with a missing `<fleet_id>` rejected by commander
+ *   - `events` with a missing `<fleet_id>` rejected by the parser
  *   - `logs --limit` out of bounds rejected client-side (EVENTS_LIMIT_BOUNDS)
  *
  * Teardown: prefix-scoped `cleanWorkspaceFleets` — only this run's fleets
@@ -71,15 +71,13 @@ import {
   walkEventsCursor,
 } from "./fixtures/logs-events-ops.ts";
 import type { EventItem, EventsEnvelope } from "./fixtures/logs-events-ops.ts";
+import { API_URL_ENV, NO_COLOR_ENV, STATE_DIR_ENV } from "../../src/constants/env.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
 
 // Wire/output literals (RULE UFS — each used >=2x or crosses a boundary).
 const STATE_DIR_PREFIX = "agentsfleet-logs-events-" as const;
-const API_URL_ENV_KEY = "AGENTSFLEET_API_URL" as const;
-const STATE_DIR_ENV_KEY = "AGENTSFLEET_STATE_DIR" as const;
-const NO_COLOR_ENV_KEY = "NO_COLOR" as const;
 const NO_COLOR_ON = "1" as const;
 
 // `logs` is a single bounded HTTP read (not a follow/stream), but cap it
@@ -132,9 +130,9 @@ if (!isLive) {
 
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), STATE_DIR_PREFIX));
       env = composeEnv({
-        [API_URL_ENV_KEY]: apiUrl,
-        [STATE_DIR_ENV_KEY]: stateDir,
-        [NO_COLOR_ENV_KEY]: NO_COLOR_ON,
+        [API_URL_ENV]: apiUrl,
+        [STATE_DIR_ENV]: stateDir,
+        [NO_COLOR_ENV]: NO_COLOR_ON,
       });
       const hydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
       workspaceId = hydrated.currentWorkspaceId;
@@ -239,7 +237,7 @@ if (!isLive) {
     });
 
     describe("negative paths (no residue)", () => {
-      it("events with no <fleet_id> is rejected by commander", async () => {
+      it("events with no <fleet_id> is rejected before any request", async () => {
         const result = await expectMissingArg([EVENTS_COMMAND], env);
         assertNoSecretLeak(result, sessionJwt);
       });

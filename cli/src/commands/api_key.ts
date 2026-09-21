@@ -5,13 +5,16 @@ import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
-import { resolveAuthToken } from "./workspace-guards.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
+import {
+  requireValidId,
+  requireValue,
+  resolveAuthToken,
+} from "./workspace-guards.ts";
 import {
   TENANT_API_KEYS_PATH,
   tenantApiKeyPath,
 } from "../lib/api-paths.ts";
-import { validateRequiredId } from "../program/validators.ts";
 import { UnexpectedError, ValidationError, type CliError } from "../errors/index.ts";
 import {
   API_KEY_CREATED_AT,
@@ -19,6 +22,9 @@ import {
   API_KEY_SORTS,
   API_KEY_SORT_CREATED_AT_DESC,
 } from "../constants/api-key.ts";
+
+const API_KEY_CREATED = "API key created" as const;
+const API_KEYS_LISTED = "API keys" as const;
 
 export interface ApiKeyCreateArgs {
   readonly name: string | undefined;
@@ -75,37 +81,6 @@ const TIME_NEVER = "never" as const;
 const TIME_MISSING = "-" as const;
 const SORTS: ReadonlySet<string> = new Set(API_KEY_SORTS);
 
-const requireValue = (
-  value: string | undefined,
-  detail: string,
-  suggestion: string,
-): Effect.Effect<string, ValidationError> =>
-  value
-    ? Effect.succeed(value)
-    : Effect.fail(new ValidationError({ detail, suggestion }));
-
-const requireValidId = (
-  value: string | undefined,
-  fieldName: string,
-): Effect.Effect<string, ValidationError> =>
-  Effect.gen(function* () {
-    const raw = yield* requireValue(
-      value,
-      `${fieldName} is required`,
-      `pass <${fieldName}> as a positional argument`,
-    );
-    const check = validateRequiredId(raw, fieldName);
-    if (!check.ok) {
-      return yield* Effect.fail(
-        new ValidationError({
-          detail: check.message,
-          suggestion: "pass a valid uuidv7",
-        }),
-      );
-    }
-    return raw;
-  });
-
 const parseSort = (raw: string | undefined): Effect.Effect<string, ValidationError> => {
   if (raw === undefined) return Effect.succeed(DEFAULT_SORT);
   if (SORTS.has(raw)) return Effect.succeed(raw);
@@ -149,7 +124,6 @@ export const apiKeyCreateEffectFromArgs = (
   args: ApiKeyCreateArgs,
 ): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output> =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
@@ -166,8 +140,8 @@ export const apiKeyCreateEffectFromArgs = (
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson(res);
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(API_KEY_CREATED, { ...res });
       return;
     }
 
@@ -193,7 +167,6 @@ export const apiKeyListEffectFromArgs = (
   args: ApiKeyListArgs,
 ): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output> =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
@@ -226,8 +199,12 @@ export const apiKeyListEffectFromArgs = (
       );
     }
 
-    if (config.jsonMode) {
-      yield* output.printJson({ items: keys, total: total ?? keys.length, next_cursor: null });
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(API_KEYS_LISTED, {
+        items: keys,
+        total: total ?? keys.length,
+        next_cursor: null,
+      });
       return;
     }
     if (keys.length === 0) {
@@ -241,11 +218,10 @@ export const apiKeyRevokeEffectFromId = (
   rawId: string | undefined,
 ): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output> =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
-    const id = yield* requireValidId(rawId, API_KEY_ID);
+    const id = yield* requireValidId(rawId, API_KEY_ID, `pass <${API_KEY_ID}> as a positional argument`);
 
     const res = yield* http.request<RevokedApiKey>({
       path: tenantApiKeyPath(id),
@@ -254,22 +230,20 @@ export const apiKeyRevokeEffectFromId = (
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson(res);
-      return;
-    }
-    yield* output.success(`API key ${res.id ?? id} revoked. It can no longer authenticate.`);
+    yield* output.success(
+      `API key ${res.id ?? id} revoked. It can no longer authenticate.`,
+      { ...res },
+    );
   });
 
 export const apiKeyDeleteEffectFromId = (
   rawId: string | undefined,
 ): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output> =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
-    const id = yield* requireValidId(rawId, API_KEY_ID);
+    const id = yield* requireValidId(rawId, API_KEY_ID, `pass <${API_KEY_ID}> as a positional argument`);
 
     yield* http.request<unknown>({
       path: tenantApiKeyPath(id),
@@ -277,9 +251,5 @@ export const apiKeyDeleteEffectFromId = (
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson({ deleted: true, id });
-      return;
-    }
-    yield* output.success(`API key ${id} deleted.`);
+    yield* output.success(`API key ${id} deleted.`, { deleted: true, id });
   });

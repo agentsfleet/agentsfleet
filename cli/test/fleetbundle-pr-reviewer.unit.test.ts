@@ -78,8 +78,11 @@ describe("scenario page — one authorisation, not two", () => {
 
     expect(text).toContain("core.integration_grants");
     expect(text).toContain("raises no approval card");
-    // The retired kind may be NAMED as history — the page explains why it went
-    // — but never as a step the reader should expect to perform.
-    expect(text).not.toContain("approve the repository_write card");
+    // A retired kind may be NAMED as history — the page explains why it went
+    // — but never as a step the reader should expect to perform. Asserted on
+    // the INSTRUCTION rather than one kind's spelling: that spelling is out of
+    // every production path, and a page that grew a different per-event card
+    // back would be the same regression under another name.
+    expect(text).not.toMatch(/approve the \w+ card/);
   });
 });

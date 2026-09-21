@@ -21,6 +21,12 @@ export const NANOS_PER_USD = 1_000_000_000;
 // of a paired rate change across afd_billing + ui/packages/app +
 // ~/Projects/docs/snippets/rates.mdx. afd_billing's cross_runtime_rates test
 // reads this file and fails on drift.
+//
+// NOTE FOR DEAD-CODE SWEEPS: these have no TypeScript importer ON PURPOSE.
+// They are a cross-RUNTIME contract — `afd_billing`'s `MIRRORED_NAMES` asserts
+// this file still declares every one, because the daemon charges on them and a
+// client that dropped one would display something else. An import-graph sweep
+// cannot see that edge; it crosses a language boundary.
 // Held as Number; every value here fits in 2^53 so no precision loss.
 export const STARTER_CREDIT_NANOS = 5 * NANOS_PER_USD;
 export const EVENT_NANOS = 0;

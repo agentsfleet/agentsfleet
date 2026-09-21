@@ -19,7 +19,7 @@ import { clearDistinctId } from "../services/telemetry/identity.ts";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { AUTH_SESSIONS_PATH } from "../lib/api-paths.ts";
 import { reasonOf, ValidationError, type CliError } from "../errors/index.ts";
 import { EVT_LOGOUT_COMPLETED } from "../constants/analytics-events.ts";
@@ -30,6 +30,7 @@ export interface LogoutFlags {
 
 const ALL_SESSIONS_PATH = `${AUTH_SESSIONS_PATH}/all`;
 
+const LOGGED_OUT = "Logged out" as const;
 const STATUS_OK = "ok" as const;
 // The two revokes report into the same vocabulary, so a machine reading the
 // envelope compares both slots against one pair of words.
@@ -81,10 +82,9 @@ const renderLogoutOutcome = (
   outcome: RevokeOutcome,
 ): Effect.Effect<void, never, CliConfig | Output> =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
-    if (config.jsonMode) {
-      yield* output.printJson({
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(LOGGED_OUT, {
         status: STATUS_OK,
         logged_out: true,
         aborted_count: outcome.aborted_count,

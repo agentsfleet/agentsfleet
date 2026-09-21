@@ -5,6 +5,7 @@
 // process.env at capture time.
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { TELEMETRY_POSTHOG_HOST_ENV, TELEMETRY_POSTHOG_KEY_ENV } from "../src/constants/env.ts";
 import {
   DEFAULT_POSTHOG_HOST,
   DEFAULT_POSTHOG_KEY,
@@ -12,8 +13,8 @@ import {
 } from "../src/services/config.ts";
 
 const ENV_KEYS = [
-  "AGENTSFLEET_TELEMETRY_POSTHOG_KEY",
-  "AGENTSFLEET_TELEMETRY_POSTHOG_HOST",
+  TELEMETRY_POSTHOG_KEY_ENV,
+  TELEMETRY_POSTHOG_HOST_ENV,
 ] as const;
 const saved: Record<string, string | undefined> = {};
 

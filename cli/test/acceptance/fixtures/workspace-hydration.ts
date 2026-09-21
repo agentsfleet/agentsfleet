@@ -13,7 +13,7 @@
  * empty local list even though the tenant has workspaces. This helper hits
  * `/v1/tenants/me/workspaces` with the bearer and writes the normalised
  * list. Returns the picked current workspace id so callers can chain into
- * `workspace use` (idempotent) or pass `--workspace-id` per command.
+ * `workspace use` (idempotent) or pass `--workspace` per command.
  */
 
 import fs from "node:fs/promises";

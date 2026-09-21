@@ -4,24 +4,13 @@
  * across every reader instead of silently drifting per command.
  *
  * Naming: the constant matches the on-the-wire flag name exactly.
- * `OPT_WORKSPACE_ID = "workspace-id"` reflects `--workspace-id`.
+ * `OPT_FROM = "from"` reflects `--from`.
  *
  * RULE UFS.
  */
 
-export const OPT_WORKSPACE = "workspace";
-export const OPT_WORKSPACE_ID = "workspace-id";
-export const OPT_AGENT = "fleet";
-export const OPT_FLEET_ID = "fleet-id";
-export const OPT_AGENT_ID = "fleet-id";
-export const OPT_NAME = "name";
-export const OPT_DESCRIPTION = "description";
 export const OPT_FROM = "from";
 export const OPT_TTY = "tty";
-export const OPT_LIBRARY = "library";
-export const OPT_GITHUB = "github";
-export const OPT_TEMPLATE = "template";
-export const OPT_REF = "ref";
 
 /**
  * One spelling for the Fleet-library identifier, wherever it is shown to a

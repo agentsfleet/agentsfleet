@@ -21,7 +21,7 @@
  *
  * Negative paths (no network residue beyond the already-installed fleet):
  *   - whitespace-only message rejected client-side ("message is required")
- *   - missing `<fleet_id>` rejected by commander before any network call
+ *   - missing `<fleet_id>` rejected by the parser before any network call
  *
  * Teardown: prefix-scoped `cleanWorkspaceFleets` — only this run's fleets
  * are killed; shared-tenant residue from other runs is left untouched and
