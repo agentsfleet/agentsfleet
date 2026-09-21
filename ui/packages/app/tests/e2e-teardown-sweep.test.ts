@@ -19,8 +19,18 @@ type StubFleet = { id: string; name: string; status: string };
 /** Fleets under names no prefix list ever carried — Dimension 1.1's point. */
 const UNLISTED_NAMES = ["console-ab12", "pulse-cd34", "nav-ef56"] as const;
 
+/** The collection the library sweep reads and removes through. */
+const ENTRIES_PATH = "/library-entries";
+
+/** Entries a leaked run leaves in a fixture workspace's own library. */
+const LEAKED_ENTRIES = [
+  { id: "entry-1", name: "github-pr-reviewer" },
+  { id: "entry-2", name: "github-pr-reviewer" },
+] as const;
+
 const listWorkspaces = vi.fn();
 const listFleets = vi.fn();
+const get = vi.fn();
 const del = vi.fn();
 const patch = vi.fn();
 
@@ -30,7 +40,7 @@ vi.mock("../tests/e2e/acceptance/fixtures/seed", () => ({
 }));
 
 vi.mock("../tests/e2e/acceptance/fixtures/api-client", () => ({
-  clientFor: () => ({ delete: del, patch }),
+  clientFor: () => ({ get, delete: del, patch }),
 }));
 
 async function loadSweep() {
@@ -47,6 +57,7 @@ beforeEach(() => {
   process.env.NEXT_PUBLIC_API_URL = DEV_API_URL;
   del.mockResolvedValue(undefined);
   patch.mockResolvedValue(undefined);
+  get.mockResolvedValue({ items: [] });
 });
 
 afterEach(() => {
@@ -118,6 +129,67 @@ describe("sweepLeakedFixtureFleets", () => {
     await expect(sweepLeakedFixtureFleets()).rejects.toThrow(/refusing to mass-delete/);
     expect(listWorkspaces).not.toHaveBeenCalled();
     expect(listFleets).not.toHaveBeenCalled();
+    expect(del).not.toHaveBeenCalled();
+  });
+});
+
+describe("sweepLeakedFixtureLibraries", () => {
+  it("test_library_sweep_is_bounded_and_clears_tenant_rows", async () => {
+    // Two near-identical entries under one name: exactly the pile-up that
+    // pushed the seeded card off the gallery's first page. A name-scoped
+    // sweep would have to know that name; this one does not.
+    listWorkspaces.mockResolvedValue([{ id: "ws-1", name: "fixture-workspace" }]);
+    get.mockResolvedValue({ items: [...LEAKED_ENTRIES] });
+
+    const { sweepLeakedFixtureLibraries } = await loadSweep();
+    const counts = await sweepLeakedFixtureLibraries();
+
+    const fixtureUsers = listWorkspaces.mock.calls.length;
+    expect(counts.removed).toBe(LEAKED_ENTRIES.length * fixtureUsers);
+    expect(counts.failed).toBe(0);
+
+    // Every read and every delete went through the OWNED collection, which
+    // carries no platform row — so the platform catalogue is unreachable from
+    // here even by mistake. That is the bound, and it is a property of the
+    // path, not of a filter the sweep applies afterwards.
+    const read = get.mock.calls.map(([path]) => String(path));
+    expect(read.every((path) => path.includes(ENTRIES_PATH))).toBe(true);
+    const deleted = del.mock.calls.map(([path]) => String(path));
+    LEAKED_ENTRIES.forEach((entry) => {
+      const swept = deleted.some(
+        (path) => path.includes(ENTRIES_PATH) && path.endsWith(entry.id),
+      );
+      expect(swept, `expected '${entry.id}' to be swept`).toBe(true);
+    });
+  });
+
+  it("test_library_sweep_reports_a_failed_removal", async () => {
+    // A removal that failed is a row still in the gallery, which is the whole
+    // defect the sweep exists to prevent. It is counted, never swallowed.
+    listWorkspaces.mockResolvedValue([{ id: "ws-1", name: "fixture-workspace" }]);
+    get.mockResolvedValue({ items: [...LEAKED_ENTRIES] });
+    del.mockImplementation((path: string) =>
+      path.endsWith("entry-1") ? Promise.reject(new Error("stuck")) : Promise.resolve(),
+    );
+
+    const { sweepLeakedFixtureLibraries } = await loadSweep();
+    const counts = await sweepLeakedFixtureLibraries();
+
+    const fixtureUsers = listWorkspaces.mock.calls.length;
+    expect(counts.failed).toBe(fixtureUsers);
+    expect(counts.removed).toBe(fixtureUsers);
+  });
+
+  it("test_library_sweep_refuses_an_unsafe_target", async () => {
+    // Same guard, same reason as the fleet sweep: listing a real workspace's
+    // library with fixture credentials is already wrong, so the refusal has
+    // to land before the first read.
+    process.env.NEXT_PUBLIC_API_URL = PROD_API_URL;
+    const { sweepLeakedFixtureLibraries } = await loadSweep();
+
+    await expect(sweepLeakedFixtureLibraries()).rejects.toThrow(/refusing to mass-delete/);
+    expect(listWorkspaces).not.toHaveBeenCalled();
+    expect(get).not.toHaveBeenCalled();
     expect(del).not.toHaveBeenCalled();
   });
 });
