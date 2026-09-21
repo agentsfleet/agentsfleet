@@ -32,7 +32,7 @@ import path from "node:path";
 import { Writable } from "node:stream";
 
 import { saveCredentials, saveWorkspaces } from "../src/lib/state.ts";
-import { STATE_DIR_ENV } from "../src/lib/config-dir.ts";
+import { STATE_DIR_ENV } from "../src/constants/env.ts";
 import {
   CLI_CREDENTIAL_BODY_LEN,
   CLI_CREDENTIAL_PREFIX,

@@ -16,6 +16,7 @@ import { resolveAcceptanceEnv, resolveClerkSecret, resolveFixtureEmail } from ".
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { sweepSecrets } from "./fixtures/secret-ops.ts";
+import { API_URL_ENV, STATE_DIR_ENV } from "../../src/constants/env.ts";
 
 export const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 export const isLive = target.startsWith("https://");
@@ -43,8 +44,6 @@ export const STATUS_DELETED = "deleted" as const;
 export const STATUS_UPDATED = "updated" as const;
 export const REASON_ALREADY_EXISTS = "already_exists" as const;
 
-export const ENV_API_URL = "AGENTSFLEET_API_URL" as const;
-export const ENV_STATE_DIR = "AGENTSFLEET_STATE_DIR" as const;
 export const ENV_NO_COLOR = "NO_COLOR" as const;
 export const NO_COLOR_ON = "1" as const;
 
@@ -162,7 +161,7 @@ export function vaultSession(): VaultSession {
   // client-side guard must reject the args before any network call, so an
   // observed connection error would prove the guard was bypassed.
   async function runUnroutable(args: ReadonlyArray<string>): Promise<RunResult> {
-    const unroutable = { ...env, [ENV_API_URL]: UNROUTABLE_API_URL };
+    const unroutable = { ...env, [API_URL_ENV]: UNROUTABLE_API_URL };
     const result = await runFleetctl(args, { env: unroutable, stdin: "" });
     assert.notEqual(result.code, 0, `expected non-zero; stdout=${result.stdout}`);
     assertNoConnectionError(result, args);
@@ -179,8 +178,8 @@ export function vaultSession(): VaultSession {
 
     stateDir = await fs.mkdtemp(path.join(os.tmpdir(), STATE_DIR_PREFIX));
     env = composeEnv({
-      [ENV_API_URL]: apiUrl,
-      [ENV_STATE_DIR]: stateDir,
+      [API_URL_ENV]: apiUrl,
+      [STATE_DIR_ENV]: stateDir,
       [ENV_NO_COLOR]: NO_COLOR_ON,
     });
     const hydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });

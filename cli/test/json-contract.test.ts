@@ -10,7 +10,7 @@ import path from "node:path";
 import { makeBufferStream, ui } from "./helpers.ts";
 import { runCli } from "../src/cli.ts";
 import { EXIT_CODE } from "../src/errors/index.ts";
-import { STATE_DIR_ENV } from "../src/lib/config-dir.ts";
+import { STATE_DIR_ENV } from "../src/constants/env.ts";
 import { writeError } from "../src/program/io.ts";
 import { rootCommand } from "../src/program/tree/root.command.ts";
 import { childrenOf, type CommandNode } from "../src/program/tree/resolve-path.ts";

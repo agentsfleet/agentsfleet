@@ -36,11 +36,6 @@ export const FLAG_NAME = "--name" as const;
 export const FLAG_JSON = "--json" as const;
 
 
-// Auth-credential env vars (mirror the names in `cli/src/services/config.ts`
-// and `cli/src/cli.ts`).
-export const ENV_API_KEY = "AGENTSFLEET_API_KEY" as const;
-export const ENV_API_URL = "AGENTSFLEET_API_URL" as const;
-export const ENV_STATE_DIR = "AGENTSFLEET_STATE_DIR" as const;
 export const ENV_NO_COLOR = "NO_COLOR" as const;
 export const NO_COLOR_ON = "1" as const;
 
