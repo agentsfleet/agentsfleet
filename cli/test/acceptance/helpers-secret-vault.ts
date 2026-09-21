@@ -16,7 +16,7 @@ import { resolveAcceptanceEnv, resolveClerkSecret, resolveFixtureEmail } from ".
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { sweepSecrets } from "./fixtures/secret-ops.ts";
-import { API_URL_ENV, STATE_DIR_ENV } from "../../src/constants/env.ts";
+import { API_URL_ENV, NO_COLOR_ENV, STATE_DIR_ENV } from "../../src/constants/env.ts";
 
 export const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 export const isLive = target.startsWith("https://");
@@ -44,7 +44,6 @@ export const STATUS_DELETED = "deleted" as const;
 export const STATUS_UPDATED = "updated" as const;
 export const REASON_ALREADY_EXISTS = "already_exists" as const;
 
-export const ENV_NO_COLOR = "NO_COLOR" as const;
 export const NO_COLOR_ON = "1" as const;
 
 export const STATE_DIR_PREFIX = "agentsfleet-secretvault-" as const;
@@ -180,7 +179,7 @@ export function vaultSession(): VaultSession {
     env = composeEnv({
       [API_URL_ENV]: apiUrl,
       [STATE_DIR_ENV]: stateDir,
-      [ENV_NO_COLOR]: NO_COLOR_ON,
+      [NO_COLOR_ENV]: NO_COLOR_ON,
     });
     const hydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
     workspaceId = hydrated.currentWorkspaceId;

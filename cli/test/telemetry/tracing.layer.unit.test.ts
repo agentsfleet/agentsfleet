@@ -14,12 +14,13 @@ import path from "node:path";
 import { telemetryRuntimeLayer } from "../../src/services/telemetry/runtime.layer.ts";
 import { tracingLayer } from "../../src/services/telemetry/tracing.layer.ts";
 import { Tracing } from "../../src/services/telemetry/tracing.service.ts";
+import { STATE_DIR_ENV } from "../../src/constants/env.ts";
 
 const ENV_KEYS = [
   "AGENTSFLEET_TELEMETRY_DISABLED",
   "DO_NOT_TRACK",
   "AGENTSFLEET_TELEMETRY_DEBUG",
-  "AGENTSFLEET_STATE_DIR",
+  STATE_DIR_ENV,
   "CI",
   "GITHUB_ACTIONS",
   "GITLAB_CI",

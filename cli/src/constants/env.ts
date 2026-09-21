@@ -1,22 +1,14 @@
 // The one declaration site for every environment-variable name the CLI spells
-// as a string literal.
+// as a string literal. Renaming an env var is a breaking change for anyone who
+// exports it, so the name belongs in one place where that break is visible in
+// a single diff. `test/constants-env.unit.test.ts` fails on a second spelling
+// anywhere under `src/`, quoted or dotted.
 //
-// Before this file the three names below were spelled in sixteen places —
-// once each in `lib/config-dir.ts`, `services/config.ts` and
-// `program/entry/argv-scan.ts`, and thirteen more times across the test and
-// acceptance trees, each with its own local identifier (`ENV_API_URL`,
-// `API_URL_ENV_KEY`, `ENV_STATE_DIR`, `STATE_DIR_ENV_KEY`, …). Two of those
-// files carried a comment claiming to be the single declaration site while
-// four siblings said the same thing. `audits/ufs.sh` never caught it: it
-// checks for a literal repeated inside one file, and each copy sat alone.
-//
-// Renaming an env var is a breaking change for anyone who exports it, so the
-// name belongs in one place where that break is visible in a single diff.
-//
-// Two names are deliberately absent: `services/telemetry/consent.ts` reads
-// `AGENTSFLEET_TELEMETRY_DISABLED` and `DO_NOT_TRACK` as dotted properties
-// (`env.DO_NOT_TRACK`), never as a literal, so there is no string here to
-// drift out of sync.
+// Four names are deliberately absent because they are only ever read as dotted
+// properties, never spelled as a string: `AGENTSFLEET_TELEMETRY_DISABLED` and
+// `DO_NOT_TRACK` (`services/telemetry/consent.ts`), `AGENTSFLEET_TELEMETRY_DEBUG`
+// (`services/telemetry/runtime.layer.ts`) and `AGENTSFLEET_NO_RETRY`
+// (`lib/http-retry.ts`).
 
 // The API base the CLI talks to. Read by `argv-scan` after `--api`, so the
 // flag wins and this is the fallback.
@@ -42,3 +34,6 @@ export const DASHBOARD_URL_ENV = "AGENTSFLEET_DASHBOARD_URL" as const;
 // self-hosted deployment can point telemetry at its own collector.
 export const TELEMETRY_POSTHOG_KEY_ENV = "AGENTSFLEET_TELEMETRY_POSTHOG_KEY" as const;
 export const TELEMETRY_POSTHOG_HOST_ENV = "AGENTSFLEET_TELEMETRY_POSTHOG_HOST" as const;
+
+// The industry convention (no-color.org): any value disables ANSI colour.
+export const NO_COLOR_ENV = "NO_COLOR" as const;

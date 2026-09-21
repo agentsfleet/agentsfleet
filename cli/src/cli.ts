@@ -52,6 +52,7 @@ import { houseRejection } from "./program/entry/rejection.ts";
 import { renderAndCount } from "./lib/run-effect.ts";
 import { layerInputFor } from "./program/entry/layer-input.ts";
 import type { WritableStreamLike } from "./output/capability.ts";
+import { DASHBOARD_URL_ENV } from "./constants/env.ts";
 
 // VERSION: package.json source of truth; `make sync-version` updates consumers.
 const PKG_JSON_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
@@ -134,7 +135,7 @@ export async function runCli(
   const layer = mainLayerFor(
     layerInputFor({
       apiUrl,
-      dashboardUrl: resolveDashboardUrl(apiUrl, env.AGENTSFLEET_DASHBOARD_URL),
+      dashboardUrl: resolveDashboardUrl(apiUrl, env[DASHBOARD_URL_ENV]),
       apiKey,
       jsonMode,
       noOpen: false,
