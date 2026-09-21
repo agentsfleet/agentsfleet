@@ -73,9 +73,9 @@ agentsfleet_repair_synthetic_events_total	counter	u64	1	cumulative	outcome	-	fix
 agentsfleet_repair_verifier_runs_total	counter	u64	1	cumulative	outcome	-	fixed:4	no	traffic	queued and completed verifier Fleet runs
 agentsfleet_repair_dispatch_due_batch	gauge	u64	{entry}	-	-	-	fixed:1	no	saturation	due verifier sample capped at the dispatcher batch limit
 agentsfleet_repair_dispatch_oldest_age_seconds	gauge	u64	s	-	-	-	fixed:1	no	saturation	age of the oldest due verifier intent
-agentsfleet_library_stage_duration_seconds_total	counter	f64	s	cumulative	surface,stage	-	fixed:30	no	latency	÷ observations = mean stage cost
-agentsfleet_library_stage_observations_total	counter	u64	1	cumulative	surface,stage	-	fixed:30	no	latency	the denominator above
-agentsfleet_library_read_outcome_total	counter	u64	1	cumulative	surface,outcome	-	fixed:27	no	errors	non-`ok` outcomes per surface
+agentsfleet_library_stage_duration_seconds_total	counter	f64	s	cumulative	surface,stage	-	fixed:40	no	latency	÷ observations = mean stage cost
+agentsfleet_library_stage_observations_total	counter	u64	1	cumulative	surface,stage	-	fixed:40	no	latency	the denominator above
+agentsfleet_library_read_outcome_total	counter	u64	1	cumulative	surface,outcome	-	fixed:36	no	errors	non-`ok` outcomes per surface
 agentsfleet_library_pool_result_total	counter	u64	1	cumulative	pool_result	-	fixed:4	no	saturation	`timeout` = pool starved; `error` = datastore down
 agentsfleet_library_payload_bytes_total	counter	u64	By	cumulative	surface	-	fixed:4	no	traffic	response bytes per surface
 agentsfleet_library_results_total	counter	u64	1	cumulative	surface	-	fixed:4	no	traffic	rows served per surface

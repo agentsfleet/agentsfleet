@@ -90,6 +90,8 @@ pub fn workspace_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<Method
             get(handler::workspace_library::list::<D>)
                 .post(handler::workspace_library::onboard::<D>),
         ),
+        WorkspaceRoute::LibraryEntries => Some(get(handler::library_entry::list::<D>)),
+        WorkspaceRoute::LibraryEntry => Some(delete(handler::library_entry::remove::<D>)),
     }
 }
 
