@@ -23,8 +23,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Branch:** `feat/m204-workspace-library-removal`
 **Folded-into:** `M204_001`
 **Baseline revision:** 76eb9c2d305a480ea8437e65d63efbcaf7ba6de7
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** `unit=2640 integration=561` at the comparison revision, inherited from `M204_001` — one branch measured once. **Final:** unit=2662 integration=570, both unchanged by this workstream, which adds no Rust test: every test it ships is TypeScript. TypeScript app 2916 (+5 since `M204_001` recorded its numbers: 3 here, 2 from `72c2063f7`) · cli 1739 (+44).
+**Baseline evidence:** measured at `ae4061557` in the M204 worktree. `cargo test --workspace --all-features` → 2662 passed, 0 failed, 590 ignored across 155 binaries. `make test-integration-rustd` → 570 passed, 0 failed across 134 binaries, against docker compose Postgres and Dragonfly. `cd cli && bun test` → 1739 pass, 0 fail. `cd ui/packages/app && bunx vitest run` → 2916 passed across 310 files. `make lint-all`, `make check-version` and `make harness-verify` each exit 0; two deploy-lock tests skip locally for a missing `flock`, which Continuous Integration (CI) has.
 **Depends on:** `M204_001` — it adds `library list`, whose table this workstream reshapes; both land on one branch and one Pull Request.
 **Provenance:** agent-generated (pre-spec, a command sweep of the built binary, Sep 21, 2026)
 **Canonical architecture:** `docs/architecture/user_flow.md` §Facts (the list output shape) and `docs/architecture/fleet_bundles.md` §Two-tier Fleet library catalog (the tier a gallery surface names)
@@ -58,15 +58,18 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `cli/src/output/format.ts` · `cli/src/output/index.ts` (EDIT) | EDIT | The age formatter and the column helper every table passes through. `format.ts` already owns `formatTable`, `cell` and `EMPTY_CELL`, so the order rule lands beside the renderer rather than in a new module nothing else imports. |
-| `cli/src/commands/{fleet_list,fleet_library,fleet_library_list,workspace,api_key,fleet_schedule,fleet_secret_list,memory,billing,connector,approvals,grant,tenant}.ts` (EDIT) | EDIT | Thirteen table call sites trade a hand-written column array for the helper. `fleet.ts` and `fleet_install_source.ts` widen their row interfaces to carry `created_at`, which the wire already sends and these types drop. |
+| `cli/src/commands/{fleet_list,fleet_library,fleet_library_list,workspace,api_key,fleet_schedule,fleet_secret_list,memory,billing,connector,approvals,grant,models}.ts` · `cli/src/services/output.ts` (EDIT) | EDIT | Thirteen table call sites trade a hand-written column array for the helper. `fleet.ts` and `fleet_install_source.ts` widen their row interfaces to carry `created_at`, which the wire already sends and these types drop. |
 | `cli/src/commands/fleet.ts` · `cli/src/commands/fleet_install_source.ts` · `cli/src/program/tree/fleet.command.ts` (EDIT) | EDIT | The two row interfaces gain `created_at`; the command tree gives `status` its optional fleet-identifier argument beside the existing lifecycle verbs. |
 | `cli/src/lib/http-retry.ts` · `cli/src/services/http-client.ts` (EDIT) | EDIT | The request line, the attempt ordinal and the retry verdict become log records, so a level has something to govern. The retry decision is already taken here; this names it. |
 | `cli/src/program/entry/help-formatter.ts` (EDIT) · `cli/test/golden/help-no-color.txt` (EDIT) | EDIT | The help stops listing `--wizard`, which moves the golden fixture that pins the help byte-for-byte. |
-| `cli/test/{table-column-order,ago-format,completions,log-level,status-argument}.unit.test.ts` (CREATE) | CREATE | One test file per Dimension family, so a failure names which claim broke. |
+| `cli/test/{table-column-order,ago-format,completions,log-level,fleet-show,schedule-verbs,fixture-claims,json-output-regression}.unit.test.ts` (CREATE) · `cli/test/{helpers-output-double,helpers-workspace-effect,helpers-auth-effect,helpers-billing-effect,helpers-tenant-effect,helpers-memory-layers}.ts` · `cli/test/{helpers-output-double,commands-grant-linecov,fleet-library,fleet-secret-errors,memory,memory-render,workspace-read-effect,fleet-schedule}.unit.test.ts` · `cli/test/{json-contract,fleet-schedule.integration,memory.integration,secret-list-render.integration}.test.ts` (EDIT) | CREATE | One test file per Dimension family, so a failure names which claim broke. |
 | `cli/test/acceptance/fixtures/command-matrix.ts` · `cli/test/acceptance/lifecycle-with-token.spec.ts` (EDIT) | EDIT | Three fixture claims describe a looser CLI than this repository ships, and two of them suppress coverage by excluding rows from the no-network sweep. Corrected with the `status` row, whose positional this workstream adds. |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/InstallSourceSelector.tsx` (EDIT) · `ui/packages/app/tests/install-source-tier.test.ts` (CREATE) | EDIT / CREATE | The install picker names each entry's tier. It reads `visibility` today only as a React key, so the field is already in hand and nothing new is fetched. |
 | `cli/src/program/tree/schedule.command.ts` · `cli/src/commands/fleet_schedule.ts` · `cli/src/cli.ts` · `cli/test/fleet-schedule.unit.test.ts` · `cli/test/fleet-schedule.integration.test.ts` (EDIT) | EDIT | §6's three renamed verbs and the vendor name dropped from the `sync` description. The two test files name the old verbs and move with them. |
-| `docs/architecture/web_app.md` (EDIT) | EDIT | Records that the CLI has one table shape and that the install picker distinguishes the two library tiers. |
+| `docs/architecture/user_flow.md` · `docs/architecture/fleet_bundles.md` (EDIT) | EDIT | The list output shape joins the other durable command-line conventions in §Facts; the tier every gallery surface names sits beside the union that makes two same-named entries possible. |
+| `cli/src/commands/{auth,login-device-flow,login-device-flow-types}.ts` · `cli/src/lib/{contact,model-catalogue,api-paths}.ts` · `cli/test/acceptance/fixtures/install-negatives-ops.ts` (EDIT) | EDIT | §5's retired-path citations, in the files the checker opened. Comment-only: each pointed at a Zig file the daemon's retirement took with it. |
+| `.oracle/orly.json` · `AGENTS.orly.md` · `dispatch/lifecycle.md` · `dispatch/write_changelog.md` (EDIT) | EDIT | The engine pin moves to 0.10.14 and the rules re-materialise. Not this workstream's subject, but its prerequisite: 0.10.12 refused to open a second active spec at all, which is what `Folded-into` exists to allow. |
+| `docs/v2/active/M204_001_P1_API_CLI_UI_WORKSPACE_LIBRARY_REMOVAL.md` · `docs/v2/active/M204_002_P1_CLI_UI_ONE_TABLE_SHAPE_EVERY_COMMAND.md` (EDIT) | EDIT | This spec, and the owning spec's TypeScript totals, which this workstream moved. |
 
 ## Applicable Rules
 
@@ -229,24 +232,24 @@ No product analytics event is added: reshaping a table and covering two flags ch
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Every table shares one column order and carries age (§1) | `cd cli && bun test test/table-column-order.unit.test.ts test/ago-format.unit.test.ts` | exit 0 | P1 | |
-| R2 | Every entity list renders through the helper (§1) | `cd cli && grep -rc 'printEntityTable(' src/commands/*.ts \| awk -F: '{t+=$2} END{print t}'; grep -rc 'output.printTable(' src/commands/*.ts \| awk -F: '{t+=$2} END{print t}'` | `13` then `3` | P1 | |
-| R3 | Machine-readable output did not move (§1.5) | `cd cli && bun test test/json-output-regression.unit.test.ts` | exit 0 | P0 | |
-| R4 | The flags we advertise do something (§2) | `cd cli && bun test test/log-level.unit.test.ts test/completions.unit.test.ts && ./dist/bin/agentsfleet.js --help \| grep -c wizard` | exit 0, then `0` | P1 | |
-| R5 | Completions emit a script the shell parses (§2) | `cd cli && ./dist/bin/agentsfleet.js --completions bash \| bash -n && ./dist/bin/agentsfleet.js --completions zsh \| zsh -n` | exit 0 twice | P1 | |
-| R6 | One fleet has a one-fleet command (§3) | `cd cli && bun test test/status-argument.unit.test.ts` | exit 0 | P1 | |
-| R7 | The acceptance fixtures describe the CLI we ship (§5) | `cd cli && bun test test/acceptance/argument-negatives.spec.ts && grep -c 'error_registry.zig' test/acceptance/fixtures/command-matrix.ts` | exit 0, then `0` | P1 | |
-| R8 | The install picker distinguishes the two tiers (§4) | `cd ui/packages/app && bun run test -- install-source-tier` | exit 0 | P1 | |
-| R9 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| R10 | The schedule verbs match the rest of the surface (§6) | `cd cli && bun test test/fleet-schedule.unit.test.ts && ./dist/bin/agentsfleet.js schedule --help \| grep -cE '^  (add|rm|status) '` | exit 0, then `0` | P1 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3a | Lint green | `make lint-all` | exit 0 | P0 | |
-| S3b | Integration lane green (live Postgres and Dragonfly) | `make test-integration-rustd` | exit 0 | P0 | |
-| S3c | Version sync | `make check-version` | exit 0 | P0 | |
-| S4 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S5 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S6 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
+| R1 | Every table shares one column order and carries age (§1) | `cd cli && bun test test/table-column-order.unit.test.ts test/ago-format.unit.test.ts` | exit 0 | P1 |  ✅ `25 pass, 0 fail` across both files |
+| R2 | Every entity list renders through the helper (§1) | `cd cli && grep -rc 'printEntityTable(' src/commands/*.ts \| awk -F: '{t+=$2} END{print t}'; grep -rc 'output.printTable(' src/commands/*.ts \| awk -F: '{t+=$2} END{print t}'` | `13` then `3` | P1 |  ✅ `13` then `3` |
+| R3 | Machine-readable output did not move (§1.5) | `cd cli && bun test test/json-output-regression.unit.test.ts` | exit 0 | P0 |  ✅ `5 pass, 0 fail` — four commands keep the raw wire instant, none carries `AGO` |
+| R4 | The flags we advertise do something (§2) | `cd cli && bun test test/log-level.unit.test.ts test/completions.unit.test.ts && ./dist/bin/agentsfleet.js --help \| grep -c wizard` | exit 0, then `0` | P1 |  ✅ `9 pass` on completions, `5 pass` on log-level; `--help | grep -c wizard` → `0` |
+| R5 | Completions emit a script the shell parses (§2) | `cd cli && ./dist/bin/agentsfleet.js --completions bash \| bash -n && ./dist/bin/agentsfleet.js --completions zsh \| zsh -n` | exit 0 twice | P1 |  ✅ `bash -n` and `zsh -n` each exit 0 on the emitted script |
+| R6 | One fleet has a one-fleet command (§3) | `cd cli && bun test test/status-argument.unit.test.ts` | exit 0 | P1 |  ✅ `4 pass, 0 fail` |
+| R7 | The acceptance fixtures describe the CLI we ship (§5) | `cd cli && bun test test/acceptance/argument-negatives.spec.ts && grep -c 'error_registry.zig' test/acceptance/fixtures/command-matrix.ts` | exit 0, then `0` | P1 |  ✅ `88 pass, 0 fail`, then `0` — no citation of the retired registry survives |
+| R8 | The install picker distinguishes the two tiers (§4) | `cd ui/packages/app && bun run test -- install-source-tier` | exit 0 | P1 |  ✅ `Test Files 1 passed · Tests 8 passed` |
+| R9 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 |  ✅ `0` unlisted across 127 paths, after the table was reconciled — `models.ts` and two library-page test files were missing |
+| R10 | The schedule verbs match the rest of the surface (§6) | `cd cli && bun test test/fleet-schedule.unit.test.ts && ./dist/bin/agentsfleet.js schedule --help \| grep -cE '^  (add|rm|status) '` | exit 0, then `0` | P1 |  ✅ `9 pass`; `schedule --help | grep -cE '^  (add|rm|status) '` → `0` |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 |  ✅ `ALL GATES GREEN` |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 |  ✅ `exit=0` — `All unit lanes passed`; Rust 2662 passed / 0 failed |
+| S3a | Lint green | `make lint-all` | exit 0 | P0 |  ✅ `exit=0` — `All lint checks passed` |
+| S3b | Integration lane green (live Postgres and Dragonfly) | `make test-integration-rustd` | exit 0 | P0 |  ✅ `exit=0` — 570 passed, 0 failed across 134 binaries |
+| S3c | Version sync | `make check-version` | exit 0 | P0 |  ✅ `exit=0` — `all versions match 0.49.0` |
+| S4 | No secrets | `gitleaks detect` | exit 0 | P0 |  ✅ `no leaks found` |
+| S5 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 |  ✅ one hit, `public/openapi.json` at 17565 lines — a generated published artefact, which the LENGTH GATE exempts under `public/`; no authored source file exceeds the cap |
+| S6 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 |  ✅ `0` — the diff deletes and renames no file; `renderUpdatedAt` and the CLI's `onboardedOn` have no remaining reference in `cli/` |
 
 **Command source rule:** every declared `conform` and `verify.*` invocation from `.oracle/orly.json` appears verbatim above with an Expected value. **Grading protocol (VERIFY):** run each spec-specific Verify command verbatim; Graded = ✅/❌ plus one decisive output line. Repository-command rows point at the final `orly gate pr` results in Pull Request Session Notes. **Ship gate:** every required check passes before the Pull Request is ready; missing evidence or any ❌ returns to EXECUTE. A P1 ❌ requires an Indy-acked deferral quote in Discovery. A P0 whose scope moves whole into a named successor spec is marked `MOVED to M{N}_{NNN} R{n}` — never ✅ — and only when that spec exists carrying the criterion as its own P0, both specs record the mapping, and Discovery holds the owner's verbatim quote authorising it.
 
