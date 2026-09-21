@@ -311,9 +311,9 @@ pub struct HeartbeatResponse<'a> {
     ///
     /// Required rather than optional. The daemon owns
     /// [`afd_core::timing::RUNNER_OFFLINE_AFTER_MS`], so it owns the cadence
-    /// that keeps a host ahead of it; a runner carrying its own copy could not
-    /// be told when that threshold moved. The assertion beside those constants
-    /// is what keeps the served value under the threshold.
+    /// that keeps a host ahead of it. A runner carrying its own copy could
+    /// not be told when that threshold moved. The assertion beside those
+    /// constants is what keeps the served value under the threshold.
     pub heartbeat_interval_ms: u32,
 }
 
