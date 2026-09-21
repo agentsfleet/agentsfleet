@@ -11,106 +11,20 @@
 
 import { describe, it, beforeAll, afterAll } from "bun:test";
 import assert from "node:assert/strict";
-import fs from "node:fs/promises";
-import { createServer } from "node:http";
-import type { Socket } from "node:net";
-import os from "node:os";
-import path from "node:path";
-import url from "node:url";
-
-import {
-  COMMAND_GROUPS,
-  AUTH_REQUIRED_REPRESENTATIVE,
-} from "./fixtures/command-matrix.ts";
+import { COMMAND_GROUPS, AUTH_REQUIRED_REPRESENTATIVE } from "./fixtures/command-matrix.ts";
 import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
-
 import { runFleetctl, composeEnv } from "./fixtures/cli.js";
 import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
+import { expectInvalidSubcommand, assertNoConnectionError } from "./fixtures/negatives.ts";
 import {
-  expectInvalidSubcommand,
-  assertNoConnectionError,
-} from "./fixtures/negatives.ts";
-
-const HERE = path.dirname(url.fileURLToPath(import.meta.url));
-const CLI_ROOT = path.resolve(HERE, "..", "..");
-
-const ANSI_RE = /\x1b\[[0-9;]*m/g;
-const TELEMETRY_NOT_DISABLED = "0";
-const TELEMETRY_EXIT_BUDGET_MS = 5_000;
-
-interface StalledServer {
-  readonly url: string;
-  close(): Promise<void>;
-}
-
-async function startStalledServer(): Promise<StalledServer> {
-  const sockets = new Set<Socket>();
-  const server = createServer(() => {
-    // Keep the response open so the client request timeout must end the flush.
-  });
-  server.on("connection", (socket) => {
-    sockets.add(socket);
-    socket.once("close", () => sockets.delete(socket));
-  });
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const address = server.address();
-  if (address === null || typeof address === "string") {
-    for (const socket of sockets) socket.destroy();
-    throw new Error("stalled telemetry server did not open a TCP port");
-  }
-  return {
-    url: `http://127.0.0.1:${address.port}`,
-    close: () =>
-      new Promise<void>((resolve, reject) => {
-        for (const socket of sockets) socket.destroy();
-        server.close((error) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-          resolve();
-        });
-      }),
-  };
-}
-
-function stripAnsi(text: string): string {
-  return text.replace(ANSI_RE, "").replace(/\s+$/gm, "");
-}
-
-interface ValidateResult {
-  readonly ok: boolean;
-  readonly message: string;
-}
-
-interface ValidateModule {
-  validateRequiredId(value: string, label: string): ValidateResult;
-}
-
-let pkgVersion: string;
-let validateModule: ValidateModule;
-let unauthenticatedStateDir: string;
-
-beforeAll(async () => {
-  const pkgRaw = await fs.readFile(path.join(CLI_ROOT, "package.json"), "utf8");
-  pkgVersion = (JSON.parse(pkgRaw) as { version: string }).version;
-  validateModule = await import(path.join(CLI_ROOT, "src/program/validators.ts")) as ValidateModule;
-  unauthenticatedStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-unauth-"));
-});
-
-afterAll(async () => fs.rm(unauthenticatedStateDir, { recursive: true, force: true }));
-
-function emptyEnv(extra?: Record<string, string>): Record<string, string> {
-  return composeEnv({
-    AGENTSFLEET_API_URL: UNROUTABLE_API_URL,
-    AGENTSFLEET_STATE_DIR: unauthenticatedStateDir,
-    NO_COLOR: "1",
-    ...(extra ?? {}),
-  });
-}
+  TELEMETRY_NOT_DISABLED,
+  TELEMETRY_EXIT_BUDGET_MS,
+  startStalledServer,
+  stripAnsi,
+  pkgVersion,
+  validateModule,
+  emptyEnv,
+} from "./helpers-help-and-errors.ts";
 
 describe("help triplet", () => {
   const invocations: ReadonlyArray<ReadonlyArray<string>> = [[], ["help"], ["-h"], ["--help"]];
@@ -211,7 +125,7 @@ describe("unknown commands", () => {
 
 describe("provider catalogue closes --provider (real binary)", () => {
   // The API URL is unroutable, so reaching the network would surface as a
-  // connection error, not commander's usage error: exit 2 + the enum message
+  // connection error, not a usage error: exit 2 + the enum message
   // prove the rejection happened at parse time.
   // The accepted set is a property of the SERVER, so an unauthenticated,
   // server-less invocation can no longer name it — and must not pretend to.
@@ -312,7 +226,7 @@ describe("validate.js error stem", () => {
 // Integration coverage through the REAL shipped binary (worktree-DEV /
 // npm-global-PROD), not the in-process renderer. cli-tree-help.unit.test.ts
 // asserts helpTail() in isolation; these prove the same guarantees survive
-// the build, commander wiring, and process boundary — a bundling or
+// the build, the parser wiring, and process boundary — a bundling or
 // help-registration regression the unit test can't see.
 describe("help DX surfaces (real binary)", () => {
   function helpEnv(): Record<string, string> {
@@ -325,8 +239,8 @@ describe("help DX surfaces (real binary)", () => {
     const result = await runFleetctl(["--help"], { env: helpEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const out = stripAnsi(result.stdout);
-    // Commander's own Commands: block carries the command list.
-    assert.match(out, /Commands:/);
+    // The command list, whatever the renderer calls its heading.
+    assert.match(out, /subcommands/i);
     for (const command of ["install", "status", "steer", "workspace", "memory"]) {
       assert.ok(out.includes(command), `help missing "${command}" command`);
     }

@@ -12,7 +12,8 @@ import { Browser } from "../src/services/browser.service.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { Input } from "../src/services/input.ts";
-import { Output } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { Stdin } from "../src/services/stdin.ts";
 import {
   TelemetryRuntime,
@@ -23,11 +24,23 @@ import { type CliError } from "../src/errors/index.ts";
 import { VERIFICATION_CODE, type Recorder } from "./login-acceptance-fixtures.ts";
 import { httpLayer, type DeviceFlowFixture } from "./login-acceptance-server.ts";
 
-const outputLayer = (rec: Recorder): Layer.Layer<Output> =>
+const outputLayer = (
+  rec: Recorder,
+  format: OutputFormat = OUTPUT_FORMAT.text,
+): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    ...outputDouble(),
+    format,
     intro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
     info: (msg) => Effect.sync(() => rec.stdout.push(msg)),
-    success: (msg) => Effect.sync(() => rec.stdout.push(`ok: ${msg}`)),
+    success: (msg, data) =>
+      Effect.sync(() =>
+        rec.stdout.push(
+          format === OUTPUT_FORMAT.json
+            ? JSON.stringify(data ?? { message: msg })
+            : `ok: ${msg}`,
+        ),
+      ),
     warn: (msg) => Effect.sync(() => rec.stderr.push(`warn: ${msg}`)),
     error: (msg) => Effect.sync(() => rec.stderr.push(`error: ${msg}`)),
     outro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
@@ -38,7 +51,6 @@ const outputLayer = (rec: Recorder): Layer.Layer<Output> =>
         for (const [k, v] of Object.entries(record)) rec.stdout.push(`  ${k}: ${v}`);
       }),
     printSection: (title) => Effect.sync(() => rec.stdout.push(`# ${title}`)),
-    printTable: () => Effect.void,
   });
 
 const inputLayer = (rec: Recorder, code: string): Layer.Layer<Input> =>
@@ -153,7 +165,12 @@ export const runLogin = (
       }),
     ),
     Effect.provide(inputLayer(rec, VERIFICATION_CODE)),
-    Effect.provide(outputLayer(rec)),
+    Effect.provide(
+      outputLayer(
+        rec,
+        opts.jsonMode === true ? OUTPUT_FORMAT.json : OUTPUT_FORMAT.text,
+      ),
+    ),
     Effect.provide(credentialsLayer(rec)),
     Effect.provide(browserLayer(rec)),
     Effect.provide(workspacesLayer),

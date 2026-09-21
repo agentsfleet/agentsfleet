@@ -15,13 +15,14 @@ import { Effect, Option, Redacted } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import {
   readIdentity,
   IDENTITY_ROUTE_ABSENT_STATUS,
   type CallerIdentity,
 } from "../lib/me-ping.ts";
 import { AuthError, CLI_ERROR_TAG, ServerError, type CliError } from "../errors/index.ts";
+import { EMPTY_CELL } from "../output/index.ts";
 
 // A server refusal and a network failure travel out UNMAPPED, so the dispatcher
 // renders them the way it renders every other read's: the server's own code, its
@@ -32,7 +33,6 @@ import { AuthError, CLI_ERROR_TAG, ServerError, type CliError } from "../errors/
 // Rendered where a display name is absent, so the column still lines up. The
 // email above it already carries the identity, so this says only that the
 // person never gave a name — never a guess at one.
-const NO_DISPLAY_NAME = "—";
 
 // The wire words `credential_class` spells in
 // rustd/crates/afd_wire/src/identity.rs, and what each one means to somebody
@@ -72,7 +72,7 @@ const renderHuman = (
     yield* output.printSection("Identity");
     yield* output.printKeyValue({
       email: identity.email,
-      name: identity.displayName ?? NO_DISPLAY_NAME,
+      name: identity.displayName ?? EMPTY_CELL,
       user_id: identity.userId,
       tenant: `${identity.tenantName} (${identity.tenantId})`,
       credential: credentialProse(identity.credential),
@@ -110,7 +110,7 @@ export const whoamiEffect: Effect.Effect<
   // here as nothing. This branch is what that person sees, and it says the same
   // thing the guard would have.
   if (Option.isNone(token)) {
-    if (config.jsonMode) {
+    if (output.format !== OUTPUT_FORMAT.text) {
       yield* output.printJson({
         authenticated: false,
         api_url: config.apiUrl,
@@ -141,7 +141,7 @@ export const whoamiEffect: Effect.Effect<
     ),
   );
 
-  if (config.jsonMode) {
+  if (output.format !== OUTPUT_FORMAT.text) {
     yield* output.printJson({
       authenticated: true,
       user_id: identity.userId,

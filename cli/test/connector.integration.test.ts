@@ -178,7 +178,12 @@ describe("connector commands", () => {
         );
 
         expect(code).not.toBe(0);
-        expect(`${out.read()}\n${err.read()}`).toContain("connector command requires --workspace");
+        // The unified rejection. `connector` used to word this its own way —
+        // one of five spellings across five private workspace resolvers — and
+        // the shared guard now answers every command the same, naming both the
+        // stored-workspace route and the flag.
+        expect(`${out.read()}\n${err.read()}`).toContain("no workspace selected");
+        expect(`${out.read()}\n${err.read()}`).toContain("--workspace <id>");
         expect(calls).toEqual([]);
       });
     });

@@ -15,7 +15,7 @@
  * extraction in `rustd/crates/afd_vault/src/projection.rs` (`api_key` /
  * `base_url`); the `custom`-flow flags compose a `{ provider, api_key,
  * base_url, model? }` object posted to the vault, so a non-https
- * `base_url` is rejected by a commander option validator (exit 2, no
+ * `base_url` is rejected by a flag validator (exit 4, no
  * network call) while full SSRF validation stays server-side in that same
  * `endpoint/mod.rs`, which pairs the URL check with the may-this-provider-
  * carry-one check in one `resolve`.

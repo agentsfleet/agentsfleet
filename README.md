@@ -75,10 +75,13 @@ for pkg in ui/packages/*/; do (cd "$pkg" && bun install); done
 cd ui/packages/app && bun run dev
 ```
 
-`.githooks/post-checkout` links `ui/packages/app/.env.local` and `.env.runner.local`
-from `~/.config/agentsfleet/`, so do not write over them — a redirect goes through
-the symlink into your dotfiles. A ⚠ from the hook means run `provision-env-1password`
-first. The app throws on an unset `NEXT_PUBLIC_API_URL` rather than guessing a backend.
+Run `provision-env-1password` before local tests. The shell sources
+`~/.config/agentsfleet/.env`, which names the UI, runner, and daemon files under
+that directory through `AGENTSFLEET_UI_ENV_FILE`, `AGENTSFLEET_RUNNER_ENV_FILE`,
+and `AGENTSFLEET_RUSTD_ENV_FILE`. Local UI and daemon tests read their files
+directly; the runner path is available to tests that need it. No worktree
+environment-file symlinks are needed. The app refuses to guess a backend when
+`NEXT_PUBLIC_API_URL` is unset.
 
 **Verify:**
 

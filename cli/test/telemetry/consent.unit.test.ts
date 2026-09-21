@@ -19,6 +19,7 @@ import {
   writeTelemetryConfig,
 } from "../../src/services/telemetry/consent.ts";
 import type { TelemetryConfig } from "../../src/services/telemetry/types.ts";
+import { STATE_DIR_ENV } from "../../src/constants/env.ts";
 
 function makeConfig(consent: TelemetryConfig["consent"]): TelemetryConfig {
   return {
@@ -33,7 +34,7 @@ function makeTempDir(): string {
   return mkdtempSync(path.join(tmpdir(), "agentsfleet-consent-test-"));
 }
 
-const ENV_KEYS = ["AGENTSFLEET_TELEMETRY_DISABLED", "DO_NOT_TRACK", "AGENTSFLEET_STATE_DIR"] as const;
+const ENV_KEYS = ["AGENTSFLEET_TELEMETRY_DISABLED", "DO_NOT_TRACK", STATE_DIR_ENV] as const;
 const saved: Record<string, string | undefined> = {};
 
 beforeEach(() => {

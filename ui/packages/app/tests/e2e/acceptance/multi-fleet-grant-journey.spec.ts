@@ -1,22 +1,34 @@
 /**
- * multi-fleet-grant-journey.spec.ts — two fleets, two cards, two answers, and
- * the credit the work spent.
+ * multi-fleet-grant-journey.spec.ts — two fleets, two standing grants, and the
+ * credit the work spent.
  *
  * Wire: install two fleets from the gallery, each declaring a credential the
- * workspace holds as a connector handle → each install raises its OWN pending
- * card, one per (fleet, service) → a message to the first fleet parks, because
- * a pending grant is a question nobody has answered → answering the card in the
- * Approvals table moves the row and unparks the delivery → the fleet replies
- * and its metrics strip carries tokens and a duration → the same for the second
- * fleet → the tenant's credit balance is lower than it was, and the ledger says
- * which fleets took it.
+ * workspace holds as a connector handle → each install leaves its OWN approved
+ * grant, one per (fleet, service), and neither raises a card → a message to the
+ * first fleet leases and runs, because the permission already stands → the
+ * fleet replies and its metrics strip carries tokens and a duration → the same
+ * for the second fleet → the tenant's credit balance is lower than it was, and
+ * the ledger says which fleets took it.
  *
- * # Why the park is asserted as an ABSENCE
+ * # Why there is no card to answer
  *
- * "The delivery parks" is not a visible state; what is visible is that no
- * runner ever leases it. So the walk waits a named window for a lease and
- * requires none to appear, having first established that a runner is live —
- * without that check an offline runner would prove the park for free.
+ * This walk used to install, wait for an `integration_grant` card per fleet,
+ * and answer each in the Approvals table. M202 retired that step:
+ * `afd_approval::request::install` binds `status::APPROVED`, so an install
+ * declaring a mintable credential writes the grant already granted. Installing
+ * is the answer — you chose the fleet, and its bundle names the integration.
+ *
+ * So the journey now asserts the opposite of what it once did: no card reaches
+ * the inbox, and the first delivery LEASES rather than parks. Parking still
+ * exists for a fleet whose grant is missing or revoked (`Origin::Park`); it is
+ * no longer where a freshly installed fleet begins.
+ *
+ * # Why absence is asserted after a positive signal
+ *
+ * "No card was raised" is unfalsifiable on its own — read early enough, every
+ * fleet holds none. The walk first waits for the grant row the install-time
+ * request writes, which is the same request that would once have raised the
+ * card, and only then requires the inbox to be empty.
  *
  * # Why the balance is read in nanos
  *
@@ -29,13 +41,11 @@
  *
  * The tests are serial and share the two installed fleets: each provider round
  * trip is real money and a real minute, and the claims stack — there is nothing
- * to approve until an install raised a card.
+ * to run until an install left a grant standing.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { APPROVAL_STATUS } from "@/lib/api/approvals-types";
-import type { ApprovalGate } from "@/lib/api/approvals";
 import { deriveFleetIdentity } from "@/lib/fleets/identity";
-import { fixtureSubject, signInAs } from "./fixtures/auth";
+import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import {
   anyRunnerLive,
@@ -53,24 +63,19 @@ import {
   messageFleet,
 } from "./fixtures/chat-walk";
 import { observed, pollFor, uniqueTag } from "./fixtures/observation";
-import {
-  approvalsHrefForFleet,
-  approveRow,
-  APPROVAL_GATES_REGION_LABEL,
-  expectDecidedBy,
-  expectPending,
-  rowForAgent,
-} from "./fixtures/approvals-table";
+import { APPROVAL_GATES_REGION_LABEL, rowForAgent } from "./fixtures/approvals-table";
 import {
   chargedToFleets,
+  connectorGrantFor,
   connectorTriggerMd,
   CONNECTOR_SERVICE_GITHUB,
   ensureConnectorHandle,
+  GRANT_STATUS,
+  type IntegrationGrant,
   KIND_INTEGRATION_GRANT,
   pendingGateFor,
-  readGate,
   readTenantBilling,
-  serviceOn,
+  REASON_DECLARED_AT_INSTALL,
 } from "./fixtures/grants";
 import { installViaUI } from "./fixtures/install-ui";
 import { workspaceHref } from "./fixtures/nav";
@@ -90,13 +95,13 @@ const TEMPLATE_SECOND = "grant-walk-beta";
 const SWEEP_PREFIX = "grant-walk";
 
 const RENDER_TIMEOUT_MS = 15_000;
-// How long a parked delivery must go unleased before the park is believed.
-// Comfortably past the runner's poll cadence: a shorter window would call a
-// slow queue a park.
-const PARK_WINDOW_MS = 30_000;
-// The install-time grant request runs after the fleet flips active, so the card
+// How long a delivery may take to reach a runner before the lease is called
+// missing. Comfortably past the runner's poll cadence: a shorter window would
+// call a slow queue a park.
+const LEASE_WINDOW_MS = 30_000;
+// The install-time grant request runs after the fleet flips active, so the row
 // lands a beat behind the install itself.
-const CARD_TIMEOUT_MS = 30_000;
+const GRANT_TIMEOUT_MS = 30_000;
 // The usage ledger settles after the terminal row; the balance follows it.
 const BILLING_SETTLE_TIMEOUT_MS = 90_000;
 
@@ -112,7 +117,7 @@ interface WalkFleet {
   readonly callsign: string;
 }
 
-// Shared by the serial chain: installed once, answered once, run once.
+// Shared by the serial chain: installed once, granted once, run once.
 let workspaceId = "";
 let first: WalkFleet | null = null;
 let second: WalkFleet | null = null;
@@ -125,10 +130,11 @@ function installed(fleet: WalkFleet | null): WalkFleet {
   return fleet;
 }
 
-/** The card a fleet is waiting on, or a failure naming the agent that has none. */
-function raised(gate: ApprovalGate | null, callsign: string): ApprovalGate {
-  if (gate === null) throw new Error(`agent ${callsign} holds no pending card`);
-  return gate;
+/** The standing grant a fleet's install left, or a failure naming the agent
+ *  whose install wrote none. */
+function standing(grant: IntegrationGrant | null, callsign: string): IntegrationGrant {
+  if (grant === null) throw new Error(`agent ${callsign} holds no integration grant`);
+  return grant;
 }
 
 /** What one gallery install needs: a real instruction body, and frontmatter
@@ -156,7 +162,7 @@ test.describe.serial("multi-fleet grant journey", () => {
     await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, SWEEP_PREFIX);
   });
 
-  test("two installs each raise a pending grant card for their own agent", async ({ page }) => {
+  test("two installs each leave an approved grant for their own agent, and neither raises a card", async ({ page }) => {
     test.setTimeout(INSTALL_TEST_TIMEOUT_MS);
     workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     await observed(JOURNEY_LEG.install, () =>
@@ -184,83 +190,96 @@ test.describe.serial("multi-fleet grant journey", () => {
     second = await activated(secondId);
     expect(first.callsign, "two fleets must not share one callsign").not.toBe(second.callsign);
 
-    // One card per (fleet, service): each install asked for its OWN fleet's
-    // grant, so neither answer can stand in for the other.
+    // One grant per (fleet, service): each install wrote its OWN fleet's row,
+    // so neither can stand in for the other.
     for (const fleet of [first, second]) {
-      const gate = raised(
+      const grant = standing(
         await pollFor(
           () =>
             observed(JOURNEY_LEG.install, () =>
-              pendingGateFor(FIXTURE_KEY.regular, workspaceId, fleet.id),
+              connectorGrantFor(FIXTURE_KEY.regular, workspaceId, fleet.id),
             ),
-          CARD_TIMEOUT_MS,
+          GRANT_TIMEOUT_MS,
         ),
         fleet.callsign,
       );
-      expect(gate.gate_kind).toBe(KIND_INTEGRATION_GRANT);
-      expect(serviceOn(gate)).toBe(CONNECTOR_SERVICE_GITHUB);
-      expect(gate.fleet_id).toBe(fleet.id);
+      expect(grant.status).toBe(GRANT_STATUS.approved);
+      expect(grant.approved_at).not.toBeNull();
+      expect(grant.revoked_at).toBeNull();
+      // The provenance separates an install's own row from one a person
+      // answered: only the install writer stamps this sentence.
+      expect(grant.reason).toBe(REASON_DECLARED_AT_INSTALL);
+
+      // Read only now the grant exists: the request that wrote it is the one
+      // that would once have raised the card, so an empty inbox here is a
+      // decision and not a race.
+      expect(
+        await observed(JOURNEY_LEG.install, () =>
+          pendingGateFor(FIXTURE_KEY.regular, workspaceId, fleet.id),
+        ),
+        `installing ${fleet.callsign} must raise no ${KIND_INTEGRATION_GRANT} card`,
+      ).toBeNull();
     }
 
-    // The operator's own view: both cards, in one workspace inbox, each naming
-    // a different agent.
+    // The operator's own view: the inbox names neither agent, because neither
+    // is waiting on anybody.
     await page.goto(workspaceHref(workspaceId, "approvals"));
     await expect(page.getByLabel(APPROVAL_GATES_REGION_LABEL)).toBeVisible({
       timeout: RENDER_TIMEOUT_MS,
     });
     for (const fleet of [first, second]) {
-      await expectPending(rowForAgent(page, fleet.callsign), RENDER_TIMEOUT_MS);
+      await expect(rowForAgent(page, fleet.callsign)).toHaveCount(0, {
+        timeout: RENDER_TIMEOUT_MS,
+      });
     }
   });
 
-  test("a pending card parks the delivery, and answering it moves the row and runs the work", async ({
+  test("the first delivery leases and runs, because the grant already stands", async ({
     page,
   }) => {
     test.setTimeout(RUN_TEST_TIMEOUT_MS);
     const fleet = installed(first);
     await signInAs(page, FIXTURE_KEY.regular);
 
-    // A runner must be live first: with none, "nothing leased it" would be the
-    // environment agreeing with the assertion for the wrong reason.
+    // A runner must be live first. This assertion inverted with M202: the walk
+    // now requires a lease to APPEAR, so an offline runner would fail it for
+    // the environment's reason rather than the daemon's.
     expect(
       await observed(JOURNEY_LEG.lease, () => anyRunnerLive()),
-      "no runner is online, so an unleased delivery proves nothing about the park",
+      "no runner is online, so an unleased delivery says nothing about the grant",
     ).toBe(true);
 
     await messageFleet(page, workspaceId, fleet.id, `${MESSAGE_PREFIX}${uniqueTag()}`);
-    const leasedWhilePending = await pollFor<LeaseLocation>(
+    const leased = await pollFor<LeaseLocation>(
       () => observed(JOURNEY_LEG.lease, () => findLeaseFor(fleet.id)),
-      PARK_WINDOW_MS,
+      LEASE_WINDOW_MS,
     );
     expect(
-      leasedWhilePending,
-      "a delivery whose grant is still pending must park, not lease",
-    ).toBeNull();
+      leased,
+      "a delivery whose grant already stands must lease, not park",
+    ).not.toBeNull();
 
-    const gate = raised(
+    // Every model turn is its own event. A continuation that asked again would
+    // raise a card mid-run, which is the defect M202 closed — so the inbox is
+    // read after the run, not only after the install.
+    assertPassed(classifyTerminalEvent(await awaitTerminalTurn(workspaceId, fleet.id)));
+    expect(
       await observed(JOURNEY_LEG.observe, () =>
         pendingGateFor(FIXTURE_KEY.regular, workspaceId, fleet.id),
       ),
+      `no turn of ${fleet.callsign}'s run may raise a ${KIND_INTEGRATION_GRANT} card`,
+    ).toBeNull();
+
+    // The grant the run minted against is the install's own, still standing and
+    // still one row: a run must not write a second.
+    const after = standing(
+      await observed(JOURNEY_LEG.observe, () =>
+        connectorGrantFor(FIXTURE_KEY.regular, workspaceId, fleet.id),
+      ),
       fleet.callsign,
     );
-    const decider = fixtureSubject(FIXTURE_KEY.regular);
+    expect(after.status).toBe(GRANT_STATUS.approved);
 
-    await page.goto(approvalsHrefForFleet(workspaceId, fleet.id));
-    const row = rowForAgent(page, fleet.callsign);
-    await expectPending(row, RENDER_TIMEOUT_MS);
-    await approveRow(row, gate.proposed_action, RENDER_TIMEOUT_MS);
-    await expectDecidedBy(row, decider, RENDER_TIMEOUT_MS);
-
-    // The same decision as the daemon recorded it, read back off the card.
-    const answered = await observed(JOURNEY_LEG.observe, () =>
-      readGate(FIXTURE_KEY.regular, workspaceId, gate.gate_id),
-    );
-    expect(answered.status).toBe(APPROVAL_STATUS.APPROVED);
-    expect(answered.resolved_by).toBe(decider);
-
-    // The parked delivery is still the one that runs: the card carries no event
-    // id, so answering it lands no second copy of the work.
-    assertPassed(classifyTerminalEvent(await awaitTerminalTurn(workspaceId, fleet.id)));
     await expectAnsweredOnScreen(page, workspaceId, fleet.id);
   });
 
@@ -272,14 +291,14 @@ test.describe.serial("multi-fleet grant journey", () => {
     const both = [installed(first).id, fleet.id];
     await signInAs(page, FIXTURE_KEY.regular);
 
-    const gate = raised(
+    // No approval leg: the second fleet's install granted it too, so the only
+    // thing standing between the message and the work is the work.
+    standing(
       await observed(JOURNEY_LEG.observe, () =>
-        pendingGateFor(FIXTURE_KEY.regular, workspaceId, fleet.id),
+        connectorGrantFor(FIXTURE_KEY.regular, workspaceId, fleet.id),
       ),
       fleet.callsign,
     );
-    await page.goto(approvalsHrefForFleet(workspaceId, fleet.id));
-    await approveRow(rowForAgent(page, fleet.callsign), gate.proposed_action, RENDER_TIMEOUT_MS);
 
     await messageFleet(page, workspaceId, fleet.id, `${MESSAGE_PREFIX}${uniqueTag()}`);
     assertPassed(classifyTerminalEvent(await awaitTerminalTurn(workspaceId, fleet.id)));

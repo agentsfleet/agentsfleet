@@ -9,7 +9,7 @@
  * with a fully-composed hermetic env and exercise nothing but commands whose
  * output and exit code are fixed by `cli.ts` / `cli-tree.ts` — `--version`
  * (prints `agentsfleet v<semver>`, exits 0), `--help` (prints `Usage:`, exits
- * 0), and an unknown command (commander prints `unknown command`, exits 2).
+ * 0), and an unknown command (the CLI names the token and exits 4).
  *
  * No isLive gate: this never touches the network. composeEnv forwards only
  * PATH/HOME plus telemetry-off, so the spawned child neither reads a parent
@@ -24,7 +24,7 @@
  *     surfacing a `timed out` message — never hangs the suite.
  *   - output strips the carriage returns the pty line discipline echoes.
  *   - exited resolves to the child's REAL exit code (0 for --version, the
- *     non-zero commander code for an unknown command).
+ *     non-zero validation code for an unknown command).
  *   - kill resolves exited rather than leaving a zombie.
  *
  * test/** is coverage-excluded (bunfig coveragePathIgnorePatterns), so this
@@ -45,8 +45,8 @@ const VERSION_ARGS = ["--version"] as const;
 const HELP_ARGS = ["--help"] as const;
 const UNKNOWN_ARGS = ["definitely-not-a-real-command"] as const;
 
-// Pinned exit codes: commander exits 0 on --version/--help; an unrecognised
-// command maps through COMMANDER_USAGE_CODES to POSIX usage-error exit 2.
+// Pinned exit codes: the CLI exits 0 on --version/--help; an unrecognised
+// command is a rejected invocation and takes the validation code below.
 const EXIT_OK = 0;
 // An unknown command is a rejected invocation: the validation code, not
 // the transport code it used to share with a dead network.
@@ -56,7 +56,7 @@ const EXIT_UNKNOWN_COMMAND = 4;
 // The version line is plain under NO_COLOR=1 (no leading status dot).
 const VERSION_LINE = /agentsfleet v\d+\.\d+\.\d+/;
 const VERSION_NAME = "agentsfleet";
-const HELP_USAGE_PREFIX = "Usage:";
+const HELP_USAGE_PREFIX = "USAGE";
 const CARRIAGE_RETURN = "\r";
 
 // A predicate that never matches — drives the timeout-rejection path.

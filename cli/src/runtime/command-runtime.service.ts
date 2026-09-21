@@ -1,18 +1,15 @@
 // CommandRuntime — per-invocation command identity. Mirrors
 // ~/Projects/oss/cli/apps/cli/src/shared/runtime/command-runtime.service.ts.
 //
-// Populated once per CLI invocation by the commander → Effect bridge
-// (src/lib/commander-bridge.ts). Reads:
+// Populated once per CLI invocation by the entry point, from the command path
+// it walks off the tree before the parser runs. Reads:
 //   - commandPath: the resolved command name(s), e.g. ["workspace", "create"]
 //   - commandRunId: a fresh UUID per invocation (correlates analytics
 //     events, spans, and log lines emitted during this run)
 //
-// Forward-looking — keeps option (c) close: when commander is replaced
-// with effect/unstable/cli's Command.runWith, this service is populated
-// natively by the Command primitive — the consumer code (analytics
-// layer, command-instrumentation, spans) does not change. Only the
-// adapter that fills CommandRuntime moves from commander-bridge.ts to
-// "wherever Command.runWith puts it".
+// The path is resolved rather than parsed because the layer carrying it has
+// to be built before `Command.runWith` executes — see
+// program/tree/resolve-path.ts.
 
 import { Context, Layer } from "effect";
 

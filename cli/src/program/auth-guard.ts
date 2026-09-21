@@ -73,7 +73,6 @@ const DEPLOYMENT_EXEMPT: ReadonlySet<string> = new Set(["logout", "doctor"]);
 
 export interface GuardRefusal {
   errorCode: string;
-  commanderCode: string;
   message: string;
 }
 
@@ -91,7 +90,6 @@ export function guardCommand(
   if (!requireAuth(ctx).ok) {
     return {
       errorCode: "AUTH_REQUIRED",
-      commanderCode: "auth.required",
       message: AUTH_FAIL_MESSAGE,
     };
   }
@@ -102,7 +100,6 @@ export function guardCommand(
   return unbound
     ? {
         errorCode: "DEPLOYMENT_UNKNOWN",
-        commanderCode: "deployment.unknown",
         message: unbound,
       }
     : null;

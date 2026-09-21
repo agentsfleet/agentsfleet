@@ -66,6 +66,8 @@ export const GRANT_CREDENTIAL_NAME = "grant_walk_github";
 
 const SECRETS_PATH = (workspaceId: string) => `/v1/workspaces/${workspaceId}/secrets`;
 const APPROVALS_PATH = (workspaceId: string) => `/v1/workspaces/${workspaceId}/approvals`;
+const GRANTS_PATH = (workspaceId: string, fleetId: string) =>
+  `/v1/workspaces/${workspaceId}/fleets/${fleetId}/integration-grants`;
 const TENANT_BILLING_PATH = "/v1/tenants/me/billing";
 const TENANT_CHARGES_PATH = `${TENANT_BILLING_PATH}/charges`;
 
@@ -169,6 +171,65 @@ export async function pendingGateFor(
     );
   }
   return pending[0] ?? null;
+}
+
+/** Grant-row statuses, as `afd_wire::grant::status` spells them. */
+export const GRANT_STATUS = {
+  pending: "pending",
+  approved: "approved",
+  revoked: "revoked",
+} as const;
+
+/**
+ * The provenance an install-time grant carries. Cross-runtime pair of
+ * `afd_approval::request::REASON_DECLARED_AT_INSTALL`.
+ */
+export const REASON_DECLARED_AT_INSTALL = "Declared by the fleet bundle at install";
+
+/** One standing permission the daemon checks before it mints. */
+export interface IntegrationGrant {
+  readonly id: string;
+  readonly service: string;
+  readonly status: string;
+  readonly approved_at: number | null;
+  readonly revoked_at: number | null;
+  readonly reason: string | null;
+}
+
+/** Every integration grant the workspace holds for one fleet. */
+export async function listGrantsForFleet(
+  handle: ClientHandle,
+  workspaceId: string,
+  fleetId: string,
+): Promise<IntegrationGrant[]> {
+  const page = await clientFor(handle).get<{ items: IntegrationGrant[] }>(
+    GRANTS_PATH(workspaceId, fleetId),
+  );
+  return page.items ?? [];
+}
+
+/**
+ * The one standing grant an install wrote for the connector, or `null` while
+ * the install-time request is still in flight.
+ *
+ * Singular for the reason `pendingGateFor` is: `uq_integration_grants_fleet_id_service`
+ * permits one row per (fleet, service), so a second is a defect to surface.
+ */
+export async function connectorGrantFor(
+  handle: ClientHandle,
+  workspaceId: string,
+  fleetId: string,
+): Promise<IntegrationGrant | null> {
+  const mine = (await listGrantsForFleet(handle, workspaceId, fleetId)).filter(
+    (grant) => grant.service === CONNECTOR_SERVICE_GITHUB,
+  );
+  if (mine.length > 1) {
+    throw new Error(
+      `fleet ${fleetId} holds ${mine.length} ${CONNECTOR_SERVICE_GITHUB} grants; ` +
+        "uq_integration_grants_fleet_id_service permits one",
+    );
+  }
+  return mine[0] ?? null;
 }
 
 /** One gate by id — how a walk reads back what the browser just decided. */

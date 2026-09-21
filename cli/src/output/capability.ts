@@ -6,6 +6,8 @@
 // Returns one of: "none" (plain ASCII), "basic16" (8/16-color ANSI),
 // "xterm256" (256-color). Helpers in palette.ts gate every escape on this.
 
+import { NO_COLOR_ENV } from "../constants/env.ts";
+
 const MODE_NONE = "none" as const;
 const MODE_BASIC16 = "basic16" as const;
 const MODE_XTERM256 = "xterm256" as const;
@@ -33,7 +35,8 @@ export function detectColorMode(
   stream: IsTtyStream = process.stdout,
 ): ColorModeValue {
   // NO_COLOR is the highest-priority disable per no-color.org.
-  if (env.NO_COLOR && env.NO_COLOR.length > 0) return MODE_NONE;
+  const noColor = env[NO_COLOR_ENV];
+  if (noColor && noColor.length > 0) return MODE_NONE;
 
   // FORCE_COLOR is the highest-priority enable, overriding !isTTY for
   // CI / piped-to-pretty-printer / explicit-test scenarios.

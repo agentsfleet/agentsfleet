@@ -6,7 +6,7 @@
  *
  *   - a dashboard read recovers from a 503 blip in two round-trips
  *   - a Retry-After the policy will not honour fails the read at once
- *   - a dashboard write whose socket reset after sending is sent once
+ *   - a dashboard write whose socket reset after sending is sent again
  *   - the command line makes the same decisions against the same server
  *
  * The dashboard fetches server-side (docs/architecture/web_app.md, statement
@@ -121,16 +121,16 @@ test.describe("the dashboard's transport over a real socket", () => {
     expect(methods()).toEqual(["GET"]);
   });
 
-  test("a write whose socket reset after sending is sent once, even when its caller asked for retries", async () => {
+  test("a write whose socket reset after sending is sent again", async () => {
     queue.push({ reset: true });
     const outcome = await probe("write");
-    expect(outcome).toMatchObject({ settled: "failed", name: "TypeError" });
-    expect(methods()).toEqual(["POST"]);
+    expect(outcome.settled).toBe("answered");
+    expect(methods()).toEqual(["POST", "POST"]);
   });
 });
 
 test.describe("the command line makes the same decisions", () => {
-  test("a read recovers from a blip; a write reset after sending is sent once", async () => {
+  test("a read recovers from a blip; a write reset after sending is sent again", async () => {
     const { root, stateDir } = await makeCliStateDir(TEMP_DIR_PREFIX);
     try {
       await writeCliState(stateDir, WORKSPACE_ID, STUB_TOKEN, apiUrl, WORKSPACE_NAME);
@@ -144,9 +144,13 @@ test.describe("the command line makes the same decisions", () => {
       queue.length = 0;
       requests.length = 0;
       queue.push({ reset: true });
+      // The accepted trade: a reset after the daemon minted the key would
+      // mint a second. A reply nobody saw is usually a request that never
+      // ran, so the command completes rather than failing an operator whose
+      // socket blipped.
       const created = await spawnAgentsfleet(["api-key", "create", "--name", "retry-probe"], env);
-      expect(created.code).not.toBe(EXIT_OK);
-      expect(requests).toEqual([`POST ${API_KEYS_PATH}`]);
+      expect(created.code, `${created.stdout}\n${created.stderr}`).toBe(EXIT_OK);
+      expect(requests).toEqual([`POST ${API_KEYS_PATH}`, `POST ${API_KEYS_PATH}`]);
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }

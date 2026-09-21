@@ -17,7 +17,7 @@ import { Analytics } from "../services/telemetry/analytics.service.ts";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import {
   Workspaces,
   type WorkspaceItem,
@@ -28,7 +28,7 @@ import {
   resolveAuthToken,
   WORKSPACE_CREATE_USAGE,
 } from "./workspace-guards.ts";
-import { validateRequiredId } from "../program/validators.ts";
+import { validateRequiredId } from "../lib/id.ts";
 import {
   ConfigError,
   ValidationError,
@@ -45,10 +45,15 @@ import {
   createWorkspaceWithReconciliation,
   WORKSPACE_CREATE_STATUS,
 } from "./workspace-create-reconcile.ts";
+import { EMPTY_CELL } from "../output/index.ts";
+
+const WORKSPACE_SHOWN = "Workspace" as const;
+const WORKSPACES_LISTED = "Workspaces" as const;
+const WORKSPACE_SECRETS_REDIRECT = "Workspace secrets" as const;
 
 const WORKSPACE_ID_FIELD = "workspace_id";
 const WORKSPACE_LOCAL_REMOVAL_FIELD = "removed_from_local_state";
-// The real, registered top-level command group (cli-tree-fleet.ts). One const
+// The real, registered top-level command group (program/tree/fleet.command.ts). One const
 // so the JSON-mode and human-readable redirects can never re-diverge onto a
 // phantom `agentsfleet agent secret` that has no CLI registration.
 const SECRET_COMMAND = "agentsfleet secret" as const;
@@ -77,7 +82,6 @@ export const workspaceAddEffect = (
 > =>
   Effect.gen(function* () {
     const name = yield* requireCreateName(nameArg);
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
     const analytics = yield* Analytics;
@@ -121,8 +125,8 @@ export const workspaceAddEffect = (
       });
     }
 
-    if (config.jsonMode) {
-      yield* output.printJson({
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(WORKSPACE_SHOWN, {
         workspace_id: workspaceId,
         name: resolvedName,
       });
@@ -135,7 +139,7 @@ export const workspaceAddEffect = (
     );
     yield* output.printKeyValue({
       workspace_id: workspaceId,
-      name: resolvedName ?? LITERAL,
+      name: resolvedName ?? EMPTY_CELL,
     });
   });
 
@@ -144,7 +148,6 @@ export const workspaceListEffect: Effect.Effect<
   CliError,
   Analytics | CliConfig | Output | Workspaces
 > = Effect.gen(function* () {
-  const config = yield* CliConfig;
   const output = yield* Output;
   const analytics = yield* Analytics;
   const workspaces = yield* Workspaces;
@@ -154,8 +157,8 @@ export const workspaceListEffect: Effect.Effect<
     workspace_count: state.items.length,
   });
 
-  if (config.jsonMode) {
-    yield* output.printJson({
+  if (output.format !== OUTPUT_FORMAT.text) {
+    yield* output.success(WORKSPACES_LISTED, {
       current_workspace_id: state.current_workspace_id,
       workspaces: state.items,
     });
@@ -174,7 +177,7 @@ export const workspaceListEffect: Effect.Effect<
     state.items.map((item) => ({
       active: item.workspace_id === state.current_workspace_id ? "*" : "",
       workspace_id: item.workspace_id,
-      name: item.name ?? LITERAL,
+      name: item.name ?? EMPTY_CELL,
     })),
   );
 });
@@ -214,7 +217,6 @@ export const workspaceUseEffectFromArgs = (
   fromOpt: string | undefined,
 ): Effect.Effect<void, CliError, Analytics | CliConfig | Output | Workspaces> =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const analytics = yield* Analytics;
     const workspaces = yield* Workspaces;
@@ -233,11 +235,7 @@ export const workspaceUseEffectFromArgs = (
     yield* workspaces.save({ ...state, current_workspace_id: workspaceId });
     yield* analytics.capture(EVT_WORKSPACE_USED, { workspace_id: workspaceId });
 
-    if (config.jsonMode) {
-      yield* output.printJson({ active: workspaceId });
-    } else {
-      yield* output.success(`active workspace: ${workspaceId}`);
-    }
+    yield* output.success(`active workspace: ${workspaceId}`, { active: workspaceId });
   });
 
 export const workspaceShowEffectFromArgs = (
@@ -245,7 +243,6 @@ export const workspaceShowEffectFromArgs = (
   fromOpt: string | undefined,
 ): Effect.Effect<void, CliError, CliConfig | Output | Workspaces> =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const workspaces = yield* Workspaces;
     const state = yield* workspaces.load;
@@ -257,7 +254,7 @@ export const workspaceShowEffectFromArgs = (
         new ConfigError({
           detail: "no active workspace",
           suggestion:
-            "run `agentsfleet workspace use <id>` or pass --workspace-id",
+            "run `agentsfleet workspace use <id>` or pass --workspace <id>",
         }),
       );
     }
@@ -269,15 +266,15 @@ export const workspaceShowEffectFromArgs = (
       name: known?.name ?? null,
       created_at: known?.created_at ?? null,
     };
-    if (config.jsonMode) {
-      yield* output.printJson(detail);
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(WORKSPACE_SHOWN, { ...detail });
       return;
     }
     yield* output.printSection("Workspace");
     yield* output.printKeyValue({
       workspace_id: detail.workspace_id,
       active: detail.active ? "yes" : "no",
-      name: detail.name ?? LITERAL,
+      name: detail.name ?? EMPTY_CELL,
     });
   });
 
@@ -286,10 +283,9 @@ export const workspaceSecretsEffect: Effect.Effect<
   CliError,
   CliConfig | Output
 > = Effect.gen(function* () {
-  const config = yield* CliConfig;
   const output = yield* Output;
-  if (config.jsonMode) {
-    yield* output.printJson({
+  if (output.format !== OUTPUT_FORMAT.text) {
+    yield* output.success(WORKSPACE_SECRETS_REDIRECT, {
       status: "redirect",
       message: `use \`${SECRET_COMMAND}\` from the CLI, or manage workspace secrets at /secrets in the dashboard`,
     });
@@ -306,7 +302,6 @@ export const workspaceDeleteEffectFromArgs = (
   fromOpt: string | undefined,
 ): Effect.Effect<void, CliError, Analytics | CliConfig | Output | Workspaces> =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const analytics = yield* Analytics;
     const workspaces = yield* Workspaces;
@@ -326,12 +321,7 @@ export const workspaceDeleteEffectFromArgs = (
       workspace_id: workspaceId,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson({ [WORKSPACE_LOCAL_REMOVAL_FIELD]: workspaceId });
-    } else {
-      yield* output.success(
-        `workspace removed from local state: ${workspaceId}`,
-      );
-    }
+    yield* output.success(`workspace removed from local state: ${workspaceId}`, {
+      [WORKSPACE_LOCAL_REMOVAL_FIELD]: workspaceId,
+    });
   });
-const LITERAL = "—" as const;

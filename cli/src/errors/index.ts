@@ -16,7 +16,7 @@ import {
   VerificationFailedError,
   type AuthFlowError,
 } from "./auth.ts";
-import { SUGGESTION_PREFIX } from "../constants/rejection.ts";
+import { TaggedCliError } from "./base.ts";
 
 export {
   DecryptError,
@@ -43,25 +43,7 @@ export const CLI_ERROR_TAG = {
   unexpected: "UnexpectedError",
 } as const;
 
-abstract class CliErrorBase<Tag extends string> extends Error {
-  readonly _tag: Tag;
-  readonly detail: string;
-  readonly suggestion: string;
-
-  protected constructor(
-    tag: Tag,
-    fields: { readonly detail: string; readonly suggestion: string },
-  ) {
-    super(`${fields.detail}${SUGGESTION_PREFIX}${fields.suggestion}`);
-    this.name = tag;
-    this._tag = tag;
-    this.detail = fields.detail;
-    this.suggestion = fields.suggestion;
-    Object.setPrototypeOf(this, new.target.prototype);
-  }
-}
-
-export class AuthError extends CliErrorBase<typeof CLI_ERROR_TAG.auth> {
+export class AuthError extends TaggedCliError<typeof CLI_ERROR_TAG.auth> {
   readonly code: string;
   readonly requestId: string | null | undefined;
 
@@ -77,7 +59,7 @@ export class AuthError extends CliErrorBase<typeof CLI_ERROR_TAG.auth> {
   }
 }
 
-export class NetworkError extends CliErrorBase<typeof CLI_ERROR_TAG.network> {
+export class NetworkError extends TaggedCliError<typeof CLI_ERROR_TAG.network> {
   readonly url: string;
 
   constructor(fields: { readonly detail: string; readonly suggestion: string; readonly url: string }) {
@@ -86,7 +68,7 @@ export class NetworkError extends CliErrorBase<typeof CLI_ERROR_TAG.network> {
   }
 }
 
-export class ServerError extends CliErrorBase<typeof CLI_ERROR_TAG.server> {
+export class ServerError extends TaggedCliError<typeof CLI_ERROR_TAG.server> {
   readonly code: string;
   readonly status: number;
   readonly requestId: string | null;
@@ -105,19 +87,19 @@ export class ServerError extends CliErrorBase<typeof CLI_ERROR_TAG.server> {
   }
 }
 
-export class ValidationError extends CliErrorBase<typeof CLI_ERROR_TAG.validation> {
+export class ValidationError extends TaggedCliError<typeof CLI_ERROR_TAG.validation> {
   constructor(fields: { readonly detail: string; readonly suggestion: string }) {
     super(CLI_ERROR_TAG.validation, fields);
   }
 }
 
-export class ConfigError extends CliErrorBase<typeof CLI_ERROR_TAG.config> {
+export class ConfigError extends TaggedCliError<typeof CLI_ERROR_TAG.config> {
   constructor(fields: { readonly detail: string; readonly suggestion: string }) {
     super(CLI_ERROR_TAG.config, fields);
   }
 }
 
-export class UnexpectedError extends CliErrorBase<typeof CLI_ERROR_TAG.unexpected> {
+export class UnexpectedError extends TaggedCliError<typeof CLI_ERROR_TAG.unexpected> {
   constructor(fields: { readonly detail: string; readonly suggestion: string }) {
     super(CLI_ERROR_TAG.unexpected, fields);
   }

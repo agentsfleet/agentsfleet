@@ -83,10 +83,15 @@ export class ClassifiedFailure extends Data.TaggedError("ClassifiedFailure")<{
   readonly cause: unknown;
 }> {}
 
+function readCode(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null || !("code" in value)) return undefined;
+  return typeof value.code === "string" ? value.code : undefined;
+}
+
+// Node's fetch puts the socket code on the error's cause; Bun puts it on the
+// error itself. Either one is the transport naming what happened.
 function causeCode(err: Error): string | undefined {
-  const { cause } = err;
-  if (typeof cause !== "object" || cause === null || !("code" in cause)) return undefined;
-  return typeof cause.code === "string" ? cause.code : undefined;
+  return readCode(err) ?? readCode(err.cause);
 }
 
 function classifyAnswer(err: ApiError): ClassifiedFailure {
@@ -103,6 +108,28 @@ function classifyAnswer(err: ApiError): ClassifiedFailure {
   // server saying it did not run one.
   const provenance = kind === FAILURE_KIND.SERVER ? PROVENANCE.POST_SEND : PROVENANCE.ANSWERED;
   return new ClassifiedFailure({ ...facts, kind, provenance });
+}
+
+/**
+ * The connection itself broke after the request was on the wire. Only these
+ * codes make a write replayable; a certificate failure or an invalid URL
+ * carries a code too, and retrying either is three attempts at the same
+ * refusal. Mirrors `DROP_CODES` in the command line's `lib/http-retry.ts`.
+ */
+export const DROP_CODES: ReadonlySet<string> = new Set([
+  "ECONNRESET",
+  "ECONNABORTED",
+  "EPIPE",
+  "ETIMEDOUT",
+  "UND_ERR_SOCKET",
+  "ConnectionClosed",
+]);
+
+/** The transport named a code saying the connection dropped mid-flight. */
+export function socketDropped(failure: ClassifiedFailure): boolean {
+  if (failure.kind !== FAILURE_KIND.NETWORK) return false;
+  const code = causeCode(failure.cause as Error);
+  return code !== undefined && DROP_CODES.has(code);
 }
 
 function classifyNetwork(err: TypeError, sent: boolean): ClassifiedFailure {

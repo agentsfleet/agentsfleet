@@ -9,11 +9,11 @@
 //      [--api-key <key>]`) — composing the same
 //      `{ provider, model, base_url?, api_key? }` JSON.
 //
-// `--base-url`'s https check already ran at PARSE time (commander option
-// validator, exit 2, no network); the only checks here are the field-pairing
-// rules, kept in lockstep with the resolver: `--provider` is required, because
-// any ONE typed flag routes here and commander only runs the catalogue parser
-// on a flag it sees; `--model` is always required; `--api-key` is required for
+// `--base-url`'s https check already ran at PARSE time (a flag validator, no
+// network); the only checks here are the field-pairing rules, kept in lockstep
+// with the resolver: `--provider` is required, because any ONE typed flag
+// routes here and the catalogue check only runs on a flag the parser saw;
+// `--model` is always required; `--api-key` is required for
 // a named provider but OPTIONAL for openai-compatible (a keyless gateway dials
 // with no key); openai-compatible ⇔ base_url present.
 // Full SSRF validation stays server-side in base_url_guard.zig (typed UZ-* error).
@@ -27,13 +27,12 @@ import {
   SECRET_FIELD_BASE_URL,
   SECRET_FIELD_MODEL,
 } from "../constants/custom-endpoint.ts";
+import { isString } from "../lib/guards.ts";
 
 const STDIN_SENTINEL = "@-";
 const MISSING_DATA_HINT =
   "missing --data flag. Pipe JSON on stdin with --data=@- or pass --data='{...}'. Stdin form keeps secrets out of shell history.";
-const TYPE_STRING = "string" as const;
 
-const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 export interface SecretAddFlags {
   readonly name?: string | undefined;
@@ -114,7 +113,7 @@ const typedProviderBody = (flags: SecretAddFlags): ParsedData => {
   const isCustom = provider === OPENAI_COMPATIBLE_PROVIDER;
 
   // Any one of the four typed flags engages this path, so it is reachable with
-  // no --provider at all — and commander only runs the catalogue parser on a
+  // no --provider at all — and the catalogue check only runs on a
   // flag it actually sees. Without this rule `--api-key k --model m` composes
   // `provider: ""`, which the server classifies as a provider_key like any
   // other non-sentinel string: stored, reported stored, and never dialable.

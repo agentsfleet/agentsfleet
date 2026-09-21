@@ -13,6 +13,7 @@ import {
   ACCEPTANCE_TARGET_ENV,
   API_URL_DEV,
   API_URL_PROD,
+  CLERK_SECRET_KEY_ENV,
   DASHBOARD_URL_DEV,
   DASHBOARD_URL_PROD,
 } from "./fixtures/constants.ts";
@@ -25,7 +26,6 @@ export interface AcceptanceEnv {
 export type FixtureKey = "admin" | "regular";
 
 const LOGIN_HANDSHAKE_ENV = "AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE";
-const CLERK_SECRET_ENV = "CLERK_SECRET_KEY";
 const CLERK_PUBLISHABLE_KEY_ENV = "CLERK_PUBLISHABLE_KEY";
 const CLERK_WEBHOOK_SECRET_ENV = "CLERK_WEBHOOK_SECRET";
 const REGULAR_EMAIL_ENV = "AUTH_E2E_REGULAR_EMAIL";
@@ -75,8 +75,8 @@ export function resolveDashboardUrl(
 }
 
 export function resolveClerkSecret(env: NodeJS.ProcessEnv = process.env): string {
-  const secret = env[CLERK_SECRET_ENV];
-  if (!secret) throw new Error(`${CLERK_SECRET_ENV} missing — op:// resolution must run at the workflow layer`);
+  const secret = env[CLERK_SECRET_KEY_ENV];
+  if (!secret) throw new Error(`${CLERK_SECRET_KEY_ENV} missing — op:// resolution must run at the workflow layer`);
   return secret;
 }
 

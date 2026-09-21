@@ -51,10 +51,10 @@ facts.
   leaves `ui/packages/app` short of its own dependencies, and
   `make test-coverage-all` then fails resolving `next/headers` — a failure that
   looks like a code defect and is not one.
-  `.githooks/post-checkout` links `ui/packages/app/.env.local` and
-  `.env.runner.local` from `~/.config/agentsfleet/`; a ⚠ from the hook
-  means run `provision-env-1password` (dotfiles) first. The app throws on
-  an unset `NEXT_PUBLIC_API_URL` instead of guessing a backend.
+  `provision-env-1password` (dotfiles) writes machine-level environment files
+  under `~/.config/agentsfleet/`; its shared `.env` exports their paths for
+  local tests. The app throws on an unset `NEXT_PUBLIC_API_URL` instead of
+  guessing a backend.
 - **Rust errors follow [`docs/RUST_ERROR_STANDARD.md`](docs/RUST_ERROR_STANDARD.md)** —
   read it before adding or changing a fallible signature under `rustd/`. The
   four rules and their examples are in `dispatch/write_rust.md`, which fires on

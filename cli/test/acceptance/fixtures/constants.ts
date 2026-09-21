@@ -80,6 +80,12 @@ export const ACCEPTANCE_BINARY = {
 
 export const ACCEPTANCE_TARGET_ENV = "AGENTSFLEET_ACCEPTANCE_TARGET";
 
+// Clerk admin-API credentials. Resolved from op:// at the workflow layer, so
+// the suite only ever reads the names. `global-setup.ts` requires all three;
+// `fixtures/browser.ts` reads the secret again for the CLI auth handoff —
+// which is why the name lives here rather than in either of them.
+export const CLERK_SECRET_KEY_ENV = "CLERK_SECRET_KEY";
+
 export const ACCEPTANCE_BINARY_ENV = "AGENTSFLEET_ACCEPTANCE_BINARY";
 
 export const ACCEPTANCE_DASHBOARD_URL_ENV = "AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL";

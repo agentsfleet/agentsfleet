@@ -7,7 +7,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { PRE_SEND_CODES, apiRequestWithRetry } from "../src/lib/http-retry.ts";
-import { asFetchImpl, type ResponseLike } from "./helpers.ts";
+import { asFetchImpl, socketDropped, unsendableRequest, type ResponseLike } from "./helpers.ts";
 
 const MS_PER_SECOND = 1000;
 
@@ -15,6 +15,8 @@ const FIXTURE_PATH = path.resolve(import.meta.dir, "..", "..", "tests", "fixture
 const URL = "https://api.example.test/v1/thing";
 const OK_BODY = '{"ok":true}';
 const ERROR_TIMEOUT = "timeout";
+const ERROR_DROPPED = "dropped";
+const ERROR_UNSENDABLE = "unsendable";
 const NO_SLEEP = async (): Promise<void> => undefined;
 
 interface Answer { readonly status: number; readonly retryAfterSeconds?: number }
@@ -43,6 +45,11 @@ function answer(step: Answer): ResponseLike {
 /** What this transport's fetch rejects with for each scripted failure. */
 function failure(step: Failure): Error {
   if (step.error === ERROR_TIMEOUT) return Object.assign(new Error("aborted"), { name: "AbortError" });
+  // A socket lost after connecting, as Bun reports it: the code sits on the
+  // error itself, not on a cause. Node's shape for the same event is the
+  // `UND_ERR_SOCKET` row, which the branch below builds.
+  if (step.error === ERROR_DROPPED) return socketDropped();
+  if (step.error === ERROR_UNSENDABLE) return unsendableRequest();
   return new TypeError("fetch failed", { cause: Object.assign(new Error(step.error), { code: step.error }) });
 }
 
@@ -72,7 +79,10 @@ describe("both runtimes agree on every fixture case", () => {
         fetchImpl: server.fetchImpl,
         sleepImpl: NO_SLEEP,
         randomFn: () => 0,
-        retry: { maxAttempts: fixture.policy.maxAttempts, retryAfterCapMs: fixture.policy.retryAfterCapSeconds * MS_PER_SECOND },
+        retry: {
+          maxAttempts: fixture.policy.maxAttempts,
+          retryAfterCapMs: fixture.policy.retryAfterCapSeconds * MS_PER_SECOND,
+        },
         env: {},
       }).then(
         () => "answered",

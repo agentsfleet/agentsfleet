@@ -3,7 +3,13 @@
 
 import { describe, test, expect } from "bun:test";
 import { Effect, Layer } from "effect";
-import { Output, outputFromStreamsLayer, makeStdioOutput } from "../src/services/output.ts";
+import {
+  makeStdioOutput,
+  OUTPUT_FORMAT,
+  Output,
+  outputFromStreamsLayer,
+} from "../src/services/output.ts";
+import { cliConfigFromValuesLayer } from "../src/services/config.ts";
 
 class BufStream {
   readonly chunks: string[] = [];
@@ -18,13 +24,18 @@ class BufStream {
   }
 }
 
-const makeStreams = (): { stdout: BufStream; stderr: BufStream; layer: Layer.Layer<Output> } => {
+// The output layer reads its register off CliConfig, so the harness provides
+// one. `jsonMode: false` keeps every existing assertion in the text register
+// they were written against.
+const makeStreams = (
+  jsonMode = false,
+): { stdout: BufStream; stderr: BufStream; layer: Layer.Layer<Output> } => {
   const stdout = new BufStream();
   const stderr = new BufStream();
   const layer = outputFromStreamsLayer({
     stdout: stdout as unknown as NodeJS.WritableStream,
     stderr: stderr as unknown as NodeJS.WritableStream,
-  });
+  }).pipe(Layer.provide(cliConfigFromValuesLayer({ jsonMode })));
   return { stdout, stderr, layer };
 };
 
@@ -204,6 +215,7 @@ describe("makeStdioOutput", () => {
     const shape = makeStdioOutput({
       stdout: stdout as unknown as NodeJS.WritableStream,
       stderr: stderr as unknown as NodeJS.WritableStream,
+      format: OUTPUT_FORMAT.text,
     });
     expect(typeof shape.intro).toBe("function");
     expect(typeof shape.printJson).toBe("function");

@@ -13,12 +13,12 @@ import { LIBRARY_ID_PLACEHOLDER } from "../constants/cli-flags.ts";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsFleetsPath, wsFleetPath } from "../lib/api-paths.ts";
-import { validateRequiredId } from "../program/validators.ts";
-import { ui } from "../output/index.ts";
+import { validateRequiredId } from "../lib/id.ts";
+import { ui, EMPTY_CELL } from "../output/index.ts";
 import { pendingGateCounts } from "./approvals_pending.ts";
 import {
   AGENTSFLEET_STATUS,
@@ -81,7 +81,6 @@ export const statusEffect: Effect.Effect<
   CliError,
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > = Effect.gen(function* () {
-  const config = yield* CliConfig;
   const output = yield* Output;
   const http = yield* HttpClient;
   const wsId = yield* requireWorkspaceId;
@@ -92,8 +91,8 @@ export const statusEffect: Effect.Effect<
     token,
   });
 
-  if (config.jsonMode) {
-    yield* output.printJson(res);
+  if (output.format !== OUTPUT_FORMAT.text) {
+    yield* output.success(FLEETS_SHOWN, { ...res });
     return;
   }
 
@@ -117,9 +116,9 @@ export const statusEffect: Effect.Effect<
     // Fleet is the answer this column exists to stop being given.
     const waiting =
       waitingByFleet === null
-        ? WAITING_UNKNOWN
+        ? EMPTY_CELL
         : String(z.id ? (waitingByFleet.get(z.id) ?? 0) : 0);
-    if (waiting !== WAITING_UNKNOWN && waiting !== "0") anyParked = true;
+    if (waiting !== EMPTY_CELL && waiting !== "0") anyParked = true;
     yield* output.printKeyValue({
       Name: z.name ?? "",
       Status: z.status ?? "",
@@ -145,7 +144,6 @@ const setStatusEffect = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
     const verb = STATUS_VERB[status];
@@ -153,18 +151,14 @@ const setStatusEffect = (
     const id = yield* requireFleetId(fleetId, `agentsfleet ${verb} <fleet_id>`);
     const token = yield* resolveAuthToken;
 
-    const res = yield* http.request<unknown>({
+    const res = yield* http.request<Record<string, unknown>>({
       path: wsFleetPath(wsId, id),
       method: "PATCH",
       body: { status },
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson(res);
-    } else {
-      yield* output.success(`${id} ${STATUS_PAST_TENSE[status]}.`);
-    }
+    yield* output.success(`${id} ${STATUS_PAST_TENSE[status]}.`, { ...res });
   });
 
 export const stopEffectFromId = (
@@ -199,7 +193,6 @@ export const deleteEffectFromId = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
     const wsId = yield* requireWorkspaceId;
@@ -212,15 +205,13 @@ export const deleteEffectFromId = (
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson({ fleet_id: id, deleted: true });
-    } else {
-      yield* output.success(`${id} deleted.`);
-    }
+    yield* output.success(`${id} deleted.`, { fleet_id: id, deleted: true });
   });
 
 // The status empty state names both halves of the next move: where the choices
 // are listed, and the command that installs one.
+const FLEETS_SHOWN = "Fleet status" as const;
+
 const NO_FLEETS_HINT =
   `No fleets running. List choices with: agentsfleet library. Install one with: agentsfleet install --library ${LIBRARY_ID_PLACEHOLDER}` as const;
 
@@ -230,7 +221,6 @@ const PARKED_HINT =
   "Some fleets are waiting on approval. Review with: agentsfleet approvals list" as const;
 
 // The waiting count when the approvals inbox could not be read at all.
-const WAITING_UNKNOWN = "—" as const;
 // Names what happened, never why. The read fails the same way for a missing
 // `approval:read` scope, a timeout, and a daemon that is down, and this line
 // cannot tell them apart — blaming scopes would send an operator to re-auth
