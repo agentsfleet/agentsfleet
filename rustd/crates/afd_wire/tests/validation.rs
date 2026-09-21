@@ -101,7 +101,7 @@ fn report_with(checks: Vec<SelftestCheck<'static>>) -> SelftestReport<'static> {
 ///
 /// So the numbers are written out once, here. A bound may absolutely be moved;
 /// this makes moving it a line in a diff someone reviews rather than a silent
-/// widening. That is the same reason `schema_literals` exists one file over.
+/// widening.
 #[test]
 fn the_declared_bounds_are_the_numbers_this_wire_was_designed_around() {
     assert_eq!(CHECK_NAME_MAX_BYTES, 128, "CHECK_NAME_MAX_BYTES");

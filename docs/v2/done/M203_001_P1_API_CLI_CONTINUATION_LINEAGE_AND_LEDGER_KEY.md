@@ -52,7 +52,6 @@ Authoring assumptions, for the handshake to confirm: (1) not in production, sche
 4. `rustd/crates/afd_admission/src/sql.rs` — `INSERT_ADMISSION` already uses `ON CONFLICT DO UPDATE … RETURNING (xmax = 0) AS inserted` to learn on the conflict arm; the same idiom here.
 5. `schema/915_usage_ledger_retains_fleet_identity.sql` — the nearest forward migration on the same table, and the reasoning style a slot on `billing.usage_ledger` carries.
 6. `docs/SCHEMA_CONVENTIONS.md` — additive migrations resume after the rebuild; a destructive change needs an owner decision, recorded in Discovery.
-7. `rustd/crates/afd_wire/tests/schema_literals.rs` — the source-pinning test shape §2 uses to hold three statements to one arbiter.
 
 ## Files Changed (blast radius)
 
@@ -70,7 +69,7 @@ Authoring assumptions, for the handshake to confirm: (1) not in production, sche
 | `rustd/crates/afd_fleet/src/lease/sql/report.rs` | EDIT | conflict target |
 | `rustd/crates/afd_billing/src/sql.rs` | EDIT | conflict target on the receive insert |
 | `rustd/crates/afd_fleet/tests/integration_ledger_scope.rs` | CREATE | two fleets, one event id, two rows; accumulate still converges per fleet |
-| `rustd/crates/afd_wire/tests/schema_literals.rs` | EDIT | every `ON CONFLICT` on the ledger names the composite arbiter |
+| `rustd/crates/afd_wire/tests/schema_literals.rs` | DELETE | removed at Indy's direction at close (Discovery); its `mod` line in `wire_suite.rs` and the three comments naming it go with it |
 | `rustd/crates/afd_events/src/history/statement.rs` | EDIT | doc comment names the new unique; no statement change |
 | `cli/src/commands/billing.ts` | EDIT | charge summaries group by `(fleet_id, event_id)` |
 | `cli/test/billing-effect.unit.test.ts` | EDIT | grouping keeps two fleets' same-id charges apart |
@@ -115,7 +114,6 @@ Authoring assumptions, for the handshake to confirm: (1) not in production, sche
 
 - **Reference:** `rustd/crates/afd_admission/src/sql.rs` `INSERT_ADMISSION` — `ON CONFLICT DO UPDATE … RETURNING (xmax = 0) AS inserted` is the house idiom for "learn on the conflict arm"; §1 mirrors it exactly.
 - **Reference:** `schema/915_usage_ledger_retains_fleet_identity.sql` — a forward migration on this table that changes a constraint and states its reasoning; §2 follows its shape. The 710 unique is named, so it is dropped by name.
-- **Reference:** `rustd/crates/afd_wire/tests/schema_literals.rs` — pins schema-side spellings to Rust with a source test; §2's "one arbiter, three writers" proof is the same shape.
 
 ## Sections (implementation slices)
 
@@ -138,7 +136,7 @@ The statement's conflict arm becomes a converge: `resumes_event_id` is set to th
 
 Slot 916: `billing.usage_ledger.fleet_id` becomes `NOT NULL`; `uq_usage_ledger_event_id_charge_type` is dropped by name; `uq_usage_ledger_event_id_charge_type_fleet_id UNIQUE (event_id, charge_type, fleet_id)` replaces it. NULL semantics are the reason `NOT NULL` is part of the change: PostgreSQL treats NULLs as distinct in a unique index, so a nullable `fleet_id` in the key would leave those rows unarbitrated. The slot carries the reasoning `710` cannot (it is frozen), and names `800:54` as the fact it reconciles.
 
-All three writers change together: the renewal and report accumulate arms and the receive insert's `DO NOTHING`. A source test asserts that every `ON CONFLICT` on `billing.usage_ledger` in the workspace names the composite, so a fourth writer cannot arrive with the old key.
+All three writers change together: the renewal and report accumulate arms and the receive insert's `DO NOTHING`. The three targets are listed in Interfaces; a fourth writer with the old key fails at the constraint on its first run, since no matching unique exists after slot 916.
 
 The events-page cost subselect binds both `fleet_id` and `event_id`, so the new index serves it; the executing agent captures one `EXPLAIN` of `SELECT_PAGE` against the compose lane in Session Notes showing the index name, as evidence rather than as a rubric gate.
 
@@ -150,7 +148,6 @@ The events-page cost subselect binds both `fleet_id` and `event_id`, so the new 
 - **Dimension 2.4** DONE — forty renewals on one fleet's event still accumulate into one stage row → Test `renewal_accumulates_per_fleet_event`
 - **Dimension 2.5** DONE — a redelivered receive insert still writes nothing → Test `receive_insert_dedups_per_fleet_event`
 - **Dimension 2.6** DONE — an insert with NULL `fleet_id` is refused → Test `ledger_refuses_null_fleet`
-- **Dimension 2.7** DONE — every ledger `ON CONFLICT` in the workspace names the composite → Test `every_ledger_conflict_target_carries_the_fleet`
 
 ### §3 — Dependents move with the scope
 
@@ -159,7 +156,6 @@ The command-line charge renderer groups a tenant's rows by `event_id` alone; aft
 Slot 916 also settles a type. `ChargeRow.fleet_id` and `ChargeSummary.fleet_id` were `Option`, documenting a charge written before slot 915 whose fleet the foreign key of the day had nulled. `NOT NULL` closes that state, and no database holds such a row — nothing is deployed and the schema rebuilds from empty — so the option described a row that cannot exist and the dashboard carried a `DELETED AGENT` cell no charge could render. The three types narrow together with the TypeScript response item. `agentDisplayName` KEEPS its absent-identifier arm: `AgentLabel` takes `fleetId: string | null` as its own prop, so leases, approvals and events still pass one.
 
 - **Dimension 3.1** DONE — two rows, same `event_id`, different `fleet_id` → two summaries → Test `two fleets sharing one event id render as two rows`
-- **Dimension 3.2** DONE — the architecture pages name the composite and no longer name the old key → Test `architecture_pages_name_the_composite_ledger_key`
 - **Dimension 3.3** DONE — a charge's fleet is not optional on the wire, because slot 916 made the column `NOT NULL` → Test `a_charge_row_carries_its_whole_provenance`
 - **Dimension 3.4** DONE — narrowing the charge keeps the shared label's absent-identifier arm, which leases and events still reach → Test `names a deleted fleet rather than deriving a callsign for it`
 
@@ -204,7 +200,7 @@ Stream entry fields, /v1/runners, /v1/tenants/me/billing/charges, event history 
 1. A known predecessor is never lost — enforced by the converge arm (`COALESCE(existing, incoming)`) on the one shared statement; proved by Dimensions 1.1–1.3 under both orders.
 2. First-delivery classification is a property of "this statement inserted", unchanged in every case — enforced by `RETURNING (xmax = 0)` read at both callers; proved by 1.2 and 1.4.
 3. A ledger row's arbiter includes its fleet and `fleet_id` is never NULL — enforced by the constraint and `NOT NULL`; proved by 2.3 and 2.6.
-4. Every ledger writer names one arbiter — enforced by a source test over the workspace's SQL text that goes red when any one target reverts; proved by 2.7.
+4. Every ledger writer names one arbiter — held by the constraint: after slot 916 the only unique on the table is the composite, so a writer naming the old target fails at its first `ON CONFLICT`. The source test that pinned the three spellings was removed at close (Discovery); 2.4 and 2.5 exercise the renewal and receive writers, and `integration_ledger_fleet_name.rs` drives the report writer's `CLAIM_AND_SETTLE`.
 5. Rendered charge summaries never merge two fleets — enforced by the composite group key; proved by 3.1.
 
 ## Metrics & Observability
@@ -231,9 +227,7 @@ The race's occurrence rate is not instrumented: the converge arm makes it harmle
 | 2.4 | integration | `renewal_accumulates_per_fleet_event` | forty renewals on (F, X) → one stage row; sum equals the forty deltas (regression) |
 | 2.5 | integration | `receive_insert_dedups_per_fleet_event` | the receive insert twice for (F, X) → one row (regression) |
 | 2.6 | integration | `ledger_refuses_null_fleet` | insert with NULL `fleet_id` → SQLSTATE 23502 naming `fleet_id` (negative) |
-| 2.7 | unit | `every_ledger_conflict_target_carries_the_fleet` | every `ON CONFLICT` following `billing.usage_ledger` in `rustd/crates/*/src` names `(event_id, charge_type, fleet_id)`; count = 3; goes red when one is reverted |
 | 3.1 | unit | `two fleets sharing one event id render as two rows` | rows [(F1, X), (F2, X), (F1, X)] → two summaries; F1's carries two rows' totals |
-| 3.2 | unit | `architecture_pages_name_the_composite_ledger_key` | `data_flow.md` and `billing_and_provider_keys.md` each name the composite and hold no bare `(event_id, charge_type)` mention |
 | 3.3 | unit | `a_charge_row_carries_its_whole_provenance` | `ChargeSummary` is constructed with a bare `Cow` fleet and its field list is asserted unchanged; an `Option` spelling no longer compiles |
 | 3.4 | unit | `names a deleted fleet rather than deriving a callsign for it` | `agentDisplayName(null)` still returns the deleted label and `AgentLabel fleetId={null}` still renders it — the arm the charge no longer reaches is still proven where a lease does |
 
@@ -266,13 +260,16 @@ The race's occurrence rate is not instrumented: the converge arm makes it harmle
 
 **1. Orphaned files — deleted from disk and git.**
 
-N/A — no files deleted.
+| File | Why |
+|------|-----|
+| `rustd/crates/afd_wire/tests/schema_literals.rs` | removed at Indy's direction at close (Discovery); took four tests with it — the two ledger-key pins this spec added and the two `current_setting` pins from the grant-request milestone |
 
 **2. Orphaned references — zero remaining imports/uses.**
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
 | `uq_usage_ledger_event_id_charge_type` | `grep -rn "uq_usage_ledger_event_id_charge_type" rustd/ cli/ ui/ docs/architecture/ \| head` | 0 matches (the name survives only in frozen `schema/710` and `schema/916`'s drop, and in `docs/v2/reviews/`) |
+| `schema_literals` | `grep -rn "schema_literals" rustd/ --include="*.rs" --include="*.toml"` | 0 matches (`docs/v2/` history keeps its citations) |
 
 ## Out of Scope
 
@@ -291,7 +288,7 @@ N/A — no files deleted.
 2. **Preserved user behaviour** — approving a gate continues the run exactly once; the charges page and `agentsfleet billing` show the same rows and totals; every existing continuation and money proof stays green.
 3. **Optimal-way check** — the unconstrained shape carries lineage on the admission row and the stream entry so the lease path binds it itself; the converge arm delivers the moment with three files and no wire change. The gap: lineage stays a property of two writers rather than of the acceptance. Acceptable now; the refactor is named below.
 4. **Rebuild-vs-iterate** — patch. A typed event id and entry-carried lineage are each right in the long game and each is a separate spec; folding them here would trade a three-file fix for a twenty-crate one.
-5. **What we build** — a converge arm plus a returned flag; slot 916; three conflict targets; one source test; a group key; two doc lines; the tests above.
+5. **What we build** — a converge arm plus a returned flag; slot 916; three conflict targets; a group key; two doc lines; the tests above.
 6. **What we do NOT build** — the newtype (A2); the recovery-scan work (A3, A4); any UI; a metric for a race the design absorbs; entry-carried lineage.
 7. **Fit with existing features** — compounds with M202's repository-write identity, which names branches by event id; must not destabilise `RENEW_AND_METER` / `CLAIM_AND_SETTLE`, which keep their single-statement atomicity — only their conflict target changes.
 8. **Surface order** — N/A — no new user surface; the CLI change is a grouping key with identical output on today's data.
@@ -309,4 +306,5 @@ N/A — no files deleted.
 - **Consults** — Source: `docs/v2/reviews/identity-key-fk-shard-audit-2026-09-20.md` revision 2, findings E1 and A1, with Tarzy's adversarial dispositions (#4 third writer, #25 the race). Authorisation to author: > Indy (2026-09-20): "Yes i agree - open spec from High table (first two, skip the third tarzy's round)" — context: the review's High table; E1 first, then A1. **Required human decision, GRANTED:** slot 916 drops a constraint on the money table (`docs/SCHEMA_CONVENTIONS.md`: destructive changes need an explicit owner decision per change), and the authorisation to open the spec did not carry it. Asked as decision D3 — drop and replace the arbiter, plus `fleet_id NOT NULL` — and answered by > Indy (2026-09-20): "D3 - Okay go ahead" — context: the ask named the `DROP CONSTRAINT`, the `ADD CONSTRAINT` and the `SET NOT NULL` as one migration file, and recorded that slot 915 had already dropped a constraint on this same table with his approval while `docs/SCHEMA_CONVENTIONS.md:11` requires the decision per change. Architecture consult: `docs/architecture/data_flow.md` names the ledger key as `(event_id, charge_type)` at two lines; this spec reconciles the doc in §3 rather than diverging from it silently. Pre-existing findings surfaced while authoring, not fixed here: (i) a continuation whose approval row lands before the lease is classified a redelivery and skips the receive row — behaviour preserved; (ii) the crash window between `admit()` and the approval path's insert.
 - **Metrics review** — no analytics/funnel playbook update required: internal correctness change, no user-visible event.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test` per Section and at the boundary; `/review`; `orly-babysit-prs` after push.
+- **Removed at close** — `rustd/crates/afd_wire/tests/schema_literals.rs`, with Dimensions 2.7 and 3.2 and their Test Specification rows: > Indy (Sep 21, 2026): "I want schema_literals.rs to be removed. Its full of crap." — context: the file had grown from two `current_setting` pins into a grep-over-source home for any literal the schema spells; the ledger-key pins this spec added were the third and fourth. Consequence recorded, not fixed here: the eight `current_setting('fleet.allow_gate_purge')` literals in `schema/` are now unpinned, which RULE STS names as the case for a pin; the follow-on lifecycle milestone removes the setting itself, after which there is nothing to pin.
 - **Deferrals** — none.
