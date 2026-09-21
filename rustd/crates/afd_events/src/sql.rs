@@ -18,11 +18,36 @@
 
 /// Record an inbound event.
 ///
-/// `ON CONFLICT DO NOTHING` on `(fleet_id, event_id)` is the idempotence
-/// boundary for redelivery: the same event arriving twice writes one row, so a
-/// retrying producer cannot double-run a fleet. It is also what makes the
-/// reclaim path safe — a re-leased event finds its row already there — and what
-/// makes a retried approval resolve continue its run exactly once.
+/// The conflict arm on `(fleet_id, event_id)` is the idempotence boundary for
+/// redelivery: the same event arriving twice holds one row, so a retrying
+/// producer cannot double-run a fleet. It is also what makes the reclaim path
+/// safe — a re-leased event finds its row already there — and what makes a
+/// retried approval resolve continue its run exactly once.
+///
+/// The arm converges rather than doing nothing, because two writers race for
+/// this row and only one of them knows the predecessor. `continue_from` marks
+/// a fleet ready before it writes the narrative row, so a polling runner can
+/// insert first and bind no predecessor; under `DO NOTHING` the approval
+/// path's later insert was discarded and the continuation lost its lineage
+/// with no statement anywhere to restore it. `COALESCE` keeps a predecessor
+/// whichever writer arrives with it, and never overwrites one already stored,
+/// so a redelivery that knows nothing cannot clear one.
+///
+/// `(xmax = 0)` is how a caller now tells the arms apart. It is true only for
+/// a fresh insert, and it replaces `rows_affected()`, which counts one on
+/// either arm once the conflict arm updates. The fleet's activity counter does
+/// not move on the conflict arm either way: `trg_fleet_events_bump_count` is
+/// `AFTER INSERT` alone (`schema/890_fleet_activity_counter_triggers.sql`).
+///
+/// The `DO UPDATE` is deliberately UNCONDITIONAL, and that is load-bearing.
+/// It rewrites the row on every redelivery even when `COALESCE` changes
+/// nothing, which looks like pure churn worth a `WHERE` guard. It is not: a
+/// filtered `DO UPDATE` that matches no row updates nothing, `RETURNING` then
+/// yields nothing, and both callers read this statement with `fetch_one`
+/// (`lease/event.rs`, `inbox/resolve.rs`). Adding that guard turns every
+/// redelivery into `RowNotFound` — on the receive path, which decides whether
+/// a fleet has already paid. The wasted tuple version is the price of the
+/// caller getting an answer on both arms.
 ///
 /// `$1` fleet, `$2` event, `$3` workspace, `$4` actor, `$5` type, `$6` body,
 /// `$7` resumes-event, `$8` now, `$9` status.
@@ -31,7 +56,10 @@ INSERT INTO core.fleet_events
   (fleet_id, event_id, workspace_id, actor, event_type,
    status, request_json, resumes_event_id, created_at, updated_at)
 VALUES ($1::uuid, $2, $3::uuid, $4, $5, $9, $6::jsonb, $7, $8, $8)
-ON CONFLICT (fleet_id, event_id) DO NOTHING";
+ON CONFLICT (fleet_id, event_id) DO UPDATE SET
+    resumes_event_id = COALESCE(core.fleet_events.resumes_event_id,
+                                EXCLUDED.resumes_event_id)
+RETURNING (xmax = 0) AS inserted";
 
 /// What a closing statement hands back: the terminal row as the events list
 /// would serve it, joined to the two fleet facts the live tail publishes with

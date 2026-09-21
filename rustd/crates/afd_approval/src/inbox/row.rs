@@ -11,7 +11,7 @@
 
 use sqlx::Row as _;
 
-use super::CONTEXT_RESOLVE;
+use super::resolve::CONTEXT_RESOLVE;
 use crate::gate_status::GateStatus;
 use crate::{Result, error};
 

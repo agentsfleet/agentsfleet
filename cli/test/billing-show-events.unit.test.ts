@@ -51,6 +51,51 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
     expect(out).toMatch(/TABLE:1/);
   });
 
+  // Two fleets may legitimately hold one event id: the ledger's arbiter is
+  // (event_id, charge_type, fleet_id), so the id alone stopped being an
+  // identity. Grouping on it alone bills one fleet for another's work.
+  test("two fleets sharing one event id render as two rows", async () => {
+    const rec = makeRecorder();
+    const FIRST = "01990000-0000-7000-8000-0000000000a1";
+    const SECOND = "01990000-0000-7000-8000-0000000000a2";
+    const SHARED_EVENT = "1760000000000-1";
+    const program = billingShowEffectFromArgs({
+      limit: undefined,
+      cursor: undefined,
+    }).pipe(
+      Effect.provide(configLayer()),
+      Effect.provide(credentialsLayer()),
+      Effect.provide(
+        httpClientLayer((path) => {
+          if (path === BILLING_PATH) {
+            return Effect.succeed({
+              balance_nanos: 471 * ONE_CENT_NANOS,
+              is_exhausted: false,
+            }) as Effect.Effect<unknown, ServerError>;
+          }
+          return Effect.succeed({
+            items: [
+              { ...RECEIVE_ROW, fleet_id: FIRST, event_id: SHARED_EVENT },
+              { ...RECEIVE_ROW, fleet_id: SECOND, event_id: SHARED_EVENT },
+              { ...STAGE_ROW, fleet_id: FIRST, event_id: SHARED_EVENT },
+            ],
+          }) as Effect.Effect<unknown, ServerError>;
+        }, rec),
+      ),
+      Effect.provide(outputLayer(rec)),
+    );
+
+    await runWith(program);
+    const rows = rec.tables[0] ?? [];
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row["event_id"] === SHARED_EVENT)).toBe(true);
+    // The first fleet's receive and stage charges combine into its own row and
+    // stop there. Grouping by the event alone would have produced ONE row
+    // totalling all three, which is one fleet billed for another's work.
+    const totals = rows.map((row) => row["total"]).sort();
+    expect(totals).toEqual(["$0.01", "$0.03"]);
+  });
+
   test("--json emits balance + grouped events + next_cursor", async () => {
     const rec = makeRecorder();
     const program = billingShowEffectFromArgs({

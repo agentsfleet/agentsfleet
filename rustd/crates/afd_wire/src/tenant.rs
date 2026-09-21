@@ -159,14 +159,20 @@ pub struct ChargeSummary<'a> {
     /// deleted, because a charge outlives what it was incurred on.
     pub workspace_id: Option<Cow<'a, str>>,
     /// The fleet it was incurred by. Unlike `workspace_id`, this one SURVIVES
-    /// that fleet's deletion.
+    /// that fleet's deletion, and it is never absent.
     ///
     /// The two stopped sharing a rule at slot 915. A workspace is still nulled
     /// on deletion. A fleet is not. The dashboard derives the fleet's callsign
     /// from this value, and nulling it left a real charge unable to say what it
-    /// paid for. `null` here now means a charge written before that slot, not a
-    /// fleet that has since gone.
-    pub fleet_id: Option<Cow<'a, str>>,
+    /// paid for.
+    ///
+    /// Not optional since slot 916, which made the column `NOT NULL` as part
+    /// of the accumulate arbiter. The nullable spelling outlived its meaning
+    /// by one slot: it documented a charge written before 915. No database
+    /// holds one, because nothing is deployed and the schema rebuilds from
+    /// empty. A reader who branched on the absent case would be writing for a
+    /// row that cannot exist.
+    pub fleet_id: Cow<'a, str>,
     /// That fleet's name as it stood when the charge was written.
     ///
     /// A snapshot rather than a live lookup. Renaming a fleet does not reach

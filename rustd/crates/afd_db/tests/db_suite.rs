@@ -31,6 +31,8 @@ mod config_tls_cert_files;
 mod error_surface;
 #[path = "integration_ledger_identity.rs"]
 mod integration_ledger_identity;
+#[path = "integration_ledger_key.rs"]
+mod integration_ledger_key;
 #[path = "integration_migrate.rs"]
 mod integration_migrate;
 #[path = "integration_migrate_batch.rs"]

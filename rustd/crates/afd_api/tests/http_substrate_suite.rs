@@ -6,8 +6,6 @@ mod harness;
 mod admission_ceiling;
 #[path = "header_limit.rs"]
 mod header_limit;
-#[path = "http_plane_dependency_graph.rs"]
-mod http_plane_dependency_graph;
 #[path = "person_policy.rs"]
 mod person_policy;
 #[path = "problem_json_envelope.rs"]

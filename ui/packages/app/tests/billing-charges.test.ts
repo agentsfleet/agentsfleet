@@ -90,31 +90,18 @@ describe("charge identity", () => {
     expect(displayModelName("kimi-k2.6")).toBe("kimi k2.6");
   });
 
-  it("labels a historical charge whose fleet was deleted", () => {
-    expect(chargeAgentLabel(charge({ fleet_id: null }))).toBe("DELETED AGENT");
-  });
-
-  // The four states slot 915 made reachable. The point of the set is that no
-  // combination renders blank: an empty cell against a real charge reads as a
-  // rendering bug, and the operator cannot tell it from a missing charge.
+  // The states slot 915 made reachable, less the ones slot 916 closed: a
+  // charge's `fleet_id` is NOT NULL now, so only `fleet_name` still varies.
+  // The point of the set is unchanged — no combination renders blank, because
+  // an empty cell against a real charge reads as a rendering bug.
+  //
+  // `agentDisplayName`'s absent-identifier arm is still live and still proven,
+  // through `AgentLabel`'s own `fleetId: string | null` prop:
+  // `tests/identity-and-controls.test.tsx` asserts it directly.
   it("shows the callsign and the operator's own name once both survive", () => {
     expect(chargeAgentLabel(charge({ fleet_name: "deploy-bot" }))).toMatch(
       /^AGENT [A-Z]+-[0-9A-F]{4} · deploy-bot$/,
     );
-  });
-
-  it("shows the stored name when the identifier is gone", () => {
-    expect(
-      chargeAgentLabel(charge({ fleet_id: null, fleet_name: "deploy-bot" })),
-    ).toBe("deploy-bot");
-  });
-
-  it("falls back to the deleted label, never a blank cell", () => {
-    for (const fleet_name of [null, undefined, "", "   "]) {
-      expect(
-        chargeAgentLabel(charge({ fleet_id: null, fleet_name })),
-      ).toBe("DELETED AGENT");
-    }
   });
 
   // A pre-slot-915 charge whose fleet is still alive: no stored name, but the

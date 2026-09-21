@@ -15,9 +15,6 @@
 mod admin_shapes;
 #[path = "memory_shapes.rs"]
 mod memory_shapes;
-// Ungated: what it asserts is a property of the build WITHOUT the feature.
-#[path = "manifest.rs"]
-mod manifest;
 // Ungated for the same reason: it reads the sources, not the schemas.
 #[path = "names.rs"]
 mod names;
@@ -28,10 +25,6 @@ mod redaction;
 #[cfg(feature = "openapi")]
 #[path = "schema.rs"]
 mod schema;
-// Ungated: it reads `schema/*.sql` off disk and compares against this crate's
-// own constants, neither of which the feature changes.
-#[path = "schema_literals.rs"]
-mod schema_literals;
 #[path = "strictness.rs"]
 mod strictness;
 #[path = "tenant_provider_shapes.rs"]

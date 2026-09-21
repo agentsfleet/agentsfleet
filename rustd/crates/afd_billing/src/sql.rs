@@ -94,7 +94,7 @@ WHERE l.workspace_id = $1::uuid AND l.fleet_id = $2::uuid
 
 /// Record one charge.
 ///
-/// `ON CONFLICT (event_id, charge_type) DO NOTHING` is the replay guard, and it
+/// `ON CONFLICT (event_id, charge_type, fleet_id) DO NOTHING` is the replay guard, and it
 /// guards THIS ROW ONLY. The balance drain itself is not replay-guarded, which
 /// is the entire reason the receive debit is gated on a first delivery — a
 /// re-delivered event that reached this statement twice would write one row and
@@ -133,7 +133,7 @@ INSERT INTO billing.usage_ledger
 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16,
         (SELECT f.name FROM core.fleets f WHERE f.id = $4::uuid))
-ON CONFLICT (event_id, charge_type) DO NOTHING";
+ON CONFLICT (event_id, charge_type, fleet_id) DO NOTHING";
 
 /// A model's rates, and the catalogue generation they were read at.
 ///

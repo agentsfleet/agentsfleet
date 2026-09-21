@@ -56,10 +56,11 @@ const STAGE: &str = "stage";
 /// Keyed on the FLEET as well as the event, and that is not belt-and-braces.
 /// The fixture mints its logical event id from a process-local counter and a
 /// fixed instant, so two runs against a lane database that was not reset
-/// produce the same id — and `(event_id, charge_type)` is unique across the
-/// whole table, not per tenant. An event-only lookup answered with a previous
-/// run's row, belonging to a different fleet, and read as a capture defect.
-/// The fleet id is minted per fixture and cannot collide that way.
+/// produce the same id. Since slot 916 the ledger's own arbiter is
+/// `(event_id, charge_type, fleet_id)`, so that repeated id belongs to a
+/// different fleet and holds a row of its own — which is exactly why an
+/// event-only lookup answered with the previous run's row and read as a
+/// capture defect. The fleet id is minted per fixture and cannot collide.
 async fn captured_name(held: &Held, charge_type: &str) -> Option<Option<String>> {
     let mut connection = held
         .fixtures
