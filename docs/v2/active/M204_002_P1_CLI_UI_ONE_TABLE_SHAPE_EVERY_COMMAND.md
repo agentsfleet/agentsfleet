@@ -115,7 +115,7 @@ Three flags, one rule: a flag in the help does what the help says, or it is not 
 
 `status` answers for the workspace and cannot answer for a fleet, so the narrowest question needs the widest command. **Implementation default:** the identifier is optional and the bare command keeps its workspace-wide answer, because changing what bare `status` means would change a shipped command for every caller — the rule M204_001 §5 applied to its own bare verb. **Implementation default:** the identifier runs `validateRequiredId` like every other identifier-taking verb, so a malformed one is refused before a request is issued.
 
-- **Dimension 3.1** — `status <fleet_id>` reports that one fleet, bare `status` keeps reporting every fleet in the active workspace, and a malformed identifier is refused client-side without a request → Test `test_status_reports_one_fleet_or_the_whole_workspace`
+- **Dimension 3.1** — DONE (unit; the acceptance walk is written and grades post-deploy) — `status <fleet_id>` reports that one fleet, bare `status` keeps reporting every fleet in the active workspace, and a malformed identifier is refused client-side without a request → Test `test_status_reports_one_fleet_or_the_whole_workspace`
 
 ### §4 — The install picker names the tier
 

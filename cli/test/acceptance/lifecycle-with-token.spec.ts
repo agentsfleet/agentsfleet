@@ -141,6 +141,18 @@ if (!isLive) {
         assert.equal(typeof payload.status, "string");
       });
 
+      it("status by identifier names that fleet, and bare status names it among the rest", async () => {
+        // The narrowest question used to need the widest command: status
+        // answered for the workspace and had no way to answer for one fleet.
+        const one = await runFleetctl(["status", fleetId, "--json"], { env });
+        assert.equal(one.code, 0, `status <id> failed: ${one.stderr}`);
+        assert.ok(one.stdout.includes(fleetId), `status <id> did not name it: ${one.stdout}`);
+
+        const all = await runFleetctl(["status", "--json"], { env });
+        assert.equal(all.code, 0, `bare status failed: ${all.stderr}`);
+        assert.ok(all.stdout.includes(fleetId), "bare status stopped naming the fleet");
+      });
+
       it("status exposes per-fleet events_processed and budget_used_nanos", async () => {
         // End-to-end: the real server aggregates these from core.fleet_events
         // and fleet_execution_telemetry, and the CLI surfaces them in the list
