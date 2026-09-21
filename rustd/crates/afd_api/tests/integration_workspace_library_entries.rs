@@ -203,7 +203,11 @@ async fn test_removing_another_workspaces_entry_answers_204_and_leaves_it() {
     let theirs = live.seed_foreign_entries(2).await;
     let mine = live.onboard("mine-to-keep").await;
     let target = theirs.first().expect("two foreign rows were seeded");
-    assert_eq!(live.foreign_row_count().await, 2, "both of theirs are there");
+    assert_eq!(
+        live.foreign_row_count().await,
+        2,
+        "both of theirs are there"
+    );
 
     let (status, body) = live.remove_response(target).await;
     assert_eq!(
