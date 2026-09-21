@@ -16,14 +16,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M205
 **Workstream:** 001
 **Date:** Sep 21, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing: the lease clock governs renewal on the shipping runner, and the heartbeat reply gains a required field every host reads.
 **Categories:** API, CLI, DOCS, UI
 **Batch:** B1 — single stream; §1 and §2 are independent of each other.
 **Branch:** `feat/m205-cross-runtime-constant-ties`
 **Baseline revision:** `ebdc29a8c0a42ed4aa963b9e532cfee61f5995a1`
-**Test Baseline:** pending — measured before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** Rust unit 2640 · Zig 716 · cli 1668 · app 2881 · design-system 631 · website 142 · integration 561, at `ebdc29a8c` — derived, method and arithmetic at `playbooks/operations/acceptance/baselines/M205_001-ebdc29a8c.md`
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M205_001-ebdc29a8c.md` — branch measured at this worktree: Rust 2637/0, cli 1669 pass 16 skip, app 2885, design-system 631, website 142, Zig 721 pass 3 skip, integration 561/0; lint, version, gitleaks and both cross-compiles exit 0. Comparison revision derived: 19 GiB free could not hold a fourth build tree.
 **Depends on:** none — M203_001 is merged and its Discovery is this spec's source record.
 **Provenance:** LLM-drafted (claude-opus-5[1m], Sep 21, 2026)
 **Canonical architecture:** `docs/architecture/runner_fleet.md` §The control protocol — `/v1/runners`
@@ -69,6 +69,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/lib/contract/protocol.zig` | EDIT | `HeartbeatResponse` gains the cadence field. |
 | `rustd/crates/afd_wire/src/runner.rs` | EDIT | The same field on the Rust side of the reply. |
 | `rustd/crates/afd_api_runner/src/handler/runner/heartbeat.rs` | EDIT | Serves the cadence from `afd_core::timing` and carries Dimension 2.4's tests. |
+| `public/openapi.json` | REGENERATE | The reply's new required field reaches the published schema. Never hand-edited — `cd rustd && cargo run -q -p agentsfleetd --features openapi --bin agentsfleetd -- --no-banner openapi > ../public/openapi.json`, which `openapi_artifact::test_openapi_build_is_the_source` enforces. |
 | `src/runner/daemon/loop.zig` | EDIT | Applies the served cadence; the `pub var` becomes a nullable test seam and the probe floor lives here. Carries Dimension 2.2's tests. |
 | `src/runner/daemon/AppliedPolicy.zig` | EDIT | `HeartbeatReplyRaw` is the shape the client actually parses into — a third Zig declaration of the reply, found by a build failure rather than by reading. |
 | `src/runner/selftest.zig` | EDIT | Its `comptime` tied the probe budget to the deleted cadence; the floor moves to `loop.zig` and is derived from `PROBE_TIMEOUT_MS`. |
@@ -79,6 +80,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_core/tests/core_suite.rs` | EDIT | Deregisters the deleted timing pin from the aggregated test binary. |
 | `rustd/crates/afd_core/src/timing.rs` | EDIT | Doc comments stop citing `constants.zig`. The cadence-below-threshold assertion was already here and needed no change. |
 | `docs/architecture/billing_and_provider_keys.md` | EDIT | Described the rate as spelled in three files and named the deleted pin test as its guard; both are now false. |
+| `docs/architecture/runner_fleet.md` | EDIT | This spec's canonical architecture. The heartbeat row described a reply carrying only `status` and revoked lease IDs; it now carries a required cadence. §Assigned policy gains the paragraph saying the cadence travels the same channel the policy does. |
+| `playbooks/operations/acceptance/baselines/M205_001-ebdc29a8c.md` | CREATE | The Test Baseline: branch counts measured, comparison revision derived, with the reason a fourth build tree would not fit. |
 | `ui/packages/app/tests/billing-charges.test.ts` | EDIT | Dimensions 1.1 and 1.4. |
 | `cli/test/billing-served-amounts.unit.test.ts` | CREATE | Dimension 1.2. |
 
@@ -200,19 +203,20 @@ No analytics or funnel playbook update is required: no user-visible product even
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | No Rust test reads a TypeScript or Zig source file (§1, §2) | `test ! -f rustd/crates/afd_billing/tests/cross_runtime_rates.rs && test ! -f rustd/crates/afd_core/tests/cross_runtime_timing.rs` | exit 0 | P0 | |
-| R2 | The runner holds no lease-duration constant (§2) | `grep -c 'LEASE_TTL_MS\|RUNNER_OFFLINE_AFTER_MS' src/lib/common/constants.zig` | `0` | P0 | |
-| R3 | The unimported rate constants are gone from both clients (§1) | `grep -rn 'STARTER_CREDIT_NANOS\|EVENT_NANOS\|RUN_NANOS_PER_SEC' cli/src ui/packages \| wc -l` | `0` | P0 | |
-| R4 | The runner cross-compiles for both linux targets (§2) | `make dry` | exit 0 | P0 | |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3a | Lint green | `make lint-all` | exit 0 | P0 | |
-| S3b | Integration green (live Postgres + Dragonfly) | `make test-integration-rustd` | exit 0 | P0 | |
-| S3c | Version sync | `make check-version` | exit 0 | P0 | |
-| S4 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S5 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S6 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
+| R1 | No Rust test reads a TypeScript or Zig source file (§1, §2) | `test ! -f rustd/crates/afd_billing/tests/cross_runtime_rates.rs && test ! -f rustd/crates/afd_core/tests/cross_runtime_timing.rs` | exit 0 | P0 | ✅ both `test ! -f` → exit 0 |
+| R2 | The runner holds no lease-duration constant (§2) | `grep -c 'LEASE_TTL_MS\|RUNNER_OFFLINE_AFTER_MS' src/lib/common/constants.zig` | `0` | P0 | ✅ `grep -c` on `constants.zig` → `0` |
+| R3 | The unimported rate constants are gone from both clients (§1) | `grep -rn 'STARTER_CREDIT_NANOS\|EVENT_NANOS\|RUN_NANOS_PER_SEC' cli/src ui/packages \| wc -l` | `0` | P0 | ✅ `grep -rn … cli/src ui/packages \| wc -l` → `0` |
+| R4 | The runner cross-compiles for both linux targets (§2) | `zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl` then the same with `-Dtarget=aarch64-linux-musl` | exit 0 each | P0 | ✅ x86_64-linux-musl exit 0; aarch64-linux-musl exit 0 |
+| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 29 of 29 listed paths touched, none missing; the two unlisted are this spec and `docs/v2/pending/M204_001_*.md`, inherited via `76eb9c2d3` — see Discovery |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ exit 0 — ALL GATES GREEN across 4 staged files (UFS, GITLEAKS CONFIG, DESIGN TOKEN, SPEC TEMPLATE, LOGGING, RUST ERR, LIFECYCLE, MS-ID + UI) |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 — Rust 2637 passed 0 failed; cli 1669 pass 0 fail 16 skip; app 2885; design-system 631; website 142 |
+| S2b | The Zig runner suite passes and the renewal-window `@compileError` holds (§2) | `zig build test --build-file build_runner.zig --summary all` | exit 0 | P0 | ✅ 9/9 steps, 721/724 passed (3 skipped), exit 0 — manual: no declared lane runs Zig tests, see Discovery |
+| S3a | Lint green | `make lint-all` | exit 0 | P0 | ✅ exit 0 — `✓ All lint checks passed` (clippy `-D warnings`, `zig fmt --check`, script self-tests 4 passed) |
+| S3b | Integration green (live Postgres + Dragonfly) | `make test-integration-rustd` | exit 0 | P0 | ✅ exit 0 — 561 passed, 0 failed (live Postgres + Dragonfly) |
+| S3c | Version sync | `make check-version` | exit 0 | P0 | ✅ exit 0 — `✓ all versions match 0.49.0` |
+| S4 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ exit 0 — 5828 commits / 196.23 MB scanned, `no leaks found` |
+| S5 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | LENGTH GATE: SKIPPED per user override (reason: Indy, Sep 21, 2026 — see Discovery) |
+| S6 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | ✅ six of seven greps 0 matches. The seventh returns 2 in `afd_tenant/`, and the row's stated target — the *declaration* `afd_tenant::signup::NANOS_PER_USD` — is gone: `signup.rs:44` is `use afd_core::money::NANOS_PER_USD;` and `:73` derives `STARTER_CREDIT_NANOS` from it, which is exactly the single Rust home §1 created. Grep left as written; criterion met. |
 
 **Command source rule:** copy every declared `conform` and `verify.*` invocation from `.oracle/orly.json` into a Verify cell, verbatim, with an Expected value. Include conditional suites; the final gate decides applicability from the actual branch diff. Additional spec-specific commands, secret scans, and named manual checks are allowed. Missing configuration must be completed before authoring. See `dispatch/lifecycle.md` for command timing; baseline metadata is pending at opening and measured before the Pull Request.
 
@@ -288,4 +292,6 @@ A MOVED row is never rendered ✅. The criterion has not been met; it has change
 - **Public surface, cross-repository.** The heartbeat reply gains a required field and the daemon gains a subcommand, so a matching branch in `~/Projects/docs` is required at CHORE(close) per the repository rules. It is authored on its own branch off `main` there, never through this worktree.
 - **Metrics review** — no analytics or funnel playbook update required: no product event is added, renamed or removed. The operator-facing change is the derivation of two existing Grafana thresholds.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test` once per Section over that Section's diff and again at the boundary; `/orly-write-integration-test` at the boundary, which applies here because §2 crosses a module boundary with real input and output; `/review`; `orly-babysit-prs` after push.
+- **LENGTH GATE: SKIPPED per user override** (rubric row S5). Seven files in this diff exceed the 350-line cap the row asserts. Three were pushed over it by this spec's own edits — `src/runner/daemon/loop.zig` 350 → 403, `rustd/crates/afd_wire/src/runner.rs` 345 → 353, `src/runner/daemon/AppliedPolicy.zig` 344 → 352 — and four were already over on `origin/main`: `src/lib/contract/protocol_test.zig` 402 → 413, `src/runner/daemon/control_plane_client_test.zig` 504, `src/runner/selftest.zig` 536, and `ui/packages/app/lib/types.ts` 440 → 429, which this diff improved. **Required human decision, GRANTED** (reason: the owner waived the 350-line file cap for this spec in full, for files already over it and files this diff pushed over it alike): > Indy (Sep 21, 2026): "I want to skip all the 350 lines gate and approve the override.  so move on to the next" — context: the ask named all seven files with their before and after line counts, separated the three this diff pushed over the cap from the four that were already over, and recommended splitting `loop.zig` and trimming the other two. The answer overrode the gate for every file rather than for the three. No split is performed and no file is trimmed for length under this spec.
+- **R5 counts one path this spec never edited.** `docs/v2/pending/M204_001_P1_API_CLI_UI_WORKSPACE_LIBRARY_REMOVAL.md` appears in `git diff --name-only origin/main...HEAD` because it arrived on this branch with `76eb9c2d3 docs(m204): add spec`, an ancestor commit that `origin/main` does not yet carry. It is branch ancestry, not an edit by this spec, and it is absent from the Files Changed table for that reason.
 - **Deferrals** — none. The two Out of Scope items that carry work are named as their own milestone with the owner quote recorded in the M203 Discovery cited above; neither is a deferral of this spec's scope.
