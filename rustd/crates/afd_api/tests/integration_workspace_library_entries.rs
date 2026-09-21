@@ -146,7 +146,17 @@ async fn test_gallery_and_platform_delete_are_unchanged() {
         live.remove_response(&onboarded).await.0,
         StatusCode::NO_CONTENT
     );
-    let after = live.gallery_ids().await;
+    // Compared against THIS fixture's own platform rows, never the whole
+    // catalogue. `core.fleet_library` is global — a published row is visible
+    // to every workspace — so a sibling case seeding its own platform rows
+    // puts them in this gallery too. Asserting on the unfiltered list makes
+    // the case pass or fail on which tests happen to run beside it.
+    let after: Vec<String> = live
+        .gallery_ids()
+        .await
+        .into_iter()
+        .filter(|id| platform.contains(id) || *id == onboarded)
+        .collect();
     assert_eq!(
         after, platform,
         "removing the tenant entry leaves the platform rows exactly as they were"
