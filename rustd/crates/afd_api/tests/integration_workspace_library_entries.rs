@@ -24,6 +24,8 @@ use serde_json::Value;
 
 use self::fixture::Live;
 use self::harness::ERROR_CODE;
+#[path = "workspace_library_entries_live/events.rs"]
+mod events;
 #[path = "workspace_library_entries_live/fixture.rs"]
 mod fixture;
 
@@ -35,6 +37,19 @@ const SOURCE_KIND: &str = "upload";
 const CURSOR_MALFORMED: &str = "UZ-LIBRARY-001";
 /// A token no walk minted.
 const FOREIGN_CURSOR: &str = "not-a-cursor-this-collection-issued";
+/// The family every cursor refusal belongs to, and a malformed id belongs to none.
+const LIBRARY_CODE_FAMILY: &str = "UZ-LIBRARY-";
+/// A path segment that is not an identifier at all.
+const MALFORMED_ENTRY_ID: &str = "not-a-uuid";
+/// The line a completed removal leaves behind.
+const REMOVAL_EVENT: &str = "workspace_library_entry_removed";
+/// What a bundle holds, none of which may reach a log line.
+const BUNDLE_FIELDS: [&str; 4] = [
+    "skill_markdown",
+    "trigger_markdown",
+    "content_hash",
+    "source_ref",
+];
 
 /// Dimension 2.2 — the collection answers for one workspace and no other.
 #[tokio::test]
@@ -132,6 +147,57 @@ async fn test_gallery_and_platform_delete_are_unchanged() {
         after, platform,
         "removing the tenant entry leaves the platform rows exactly as they were"
     );
+    live.cleanup().await;
+}
+
+/// Dimension 2.4 — a malformed identifier is refused before any statement runs.
+///
+/// Graded here rather than beside the route rows because the refusal is only
+/// reachable through the router: `parse_entry_id` is private to the handler,
+/// and making it visible to widen a test would be the test shaping the code.
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn test_delete_refusals_are_malformed_and_scoped() {
+    let live = Live::start().await;
+    let (status, body) = live.remove_response(MALFORMED_ENTRY_ID).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let body: Value = serde_json::from_slice(&body).expect("a refusal carries the envelope");
+    let code = body
+        .get(ERROR_CODE)
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        !code.starts_with(LIBRARY_CODE_FAMILY),
+        "a malformed id mints no library code: {body}"
+    );
+    live.cleanup().await;
+}
+
+/// Dimension 2.6 — the removal's line carries the outcome and none of the bundle.
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn test_removal_emits_a_scoped_event_without_bundle_content() {
+    let live = Live::start().await;
+    let entry = live.onboard("logged").await;
+
+    let (events, _capturing) = events::capture();
+    assert_eq!(live.remove_response(&entry).await.0, StatusCode::NO_CONTENT);
+    let removed = events.named(REMOVAL_EVENT);
+
+    assert_eq!(removed.field("library_entry_id"), Some(entry.as_str()));
+    assert_eq!(
+        removed.field("removed"),
+        Some("true"),
+        "the outcome is on it"
+    );
+    assert!(
+        removed.carries("workspace_id"),
+        "and the scope it ran under"
+    );
+    for field in BUNDLE_FIELDS {
+        assert!(!removed.carries(field), "the line carries no {field}");
+    }
     live.cleanup().await;
 }
 
