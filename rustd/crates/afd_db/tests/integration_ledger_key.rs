@@ -63,8 +63,12 @@ async fn assert_fleet_scoped_key(db: &afd_db::Db) {
         });
     assert_eq!(
         installed.1, "UNIQUE (event_id, charge_type, fleet_id)",
-        "the arbiter must name the fleet first, so the index also serves a \
-         per-fleet spend read"
+        "the arbiter is event-led and the fleet comes LAST, deliberately: \
+         leading with the fleet was tried and made the planner take this \
+         index for the budget drain, demoting last_charged_at from an index \
+         condition to a filter over every row a fleet was ever charged for. \
+         Uniqueness is identical either way, so the order is chosen for the \
+         read it tempts. Do not reorder to fix this failure"
     );
     assert!(
         !constraints.iter().any(|(name, _)| name == RETIRED_KEY),
