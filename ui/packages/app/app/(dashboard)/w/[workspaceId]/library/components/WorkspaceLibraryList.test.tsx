@@ -27,7 +27,7 @@ import WorkspaceLibraryList from "./WorkspaceLibraryList";
 
 const CREATED_MS = Date.UTC(2026, 3, 30, 10, 30, 0);
 
-function entry(id: string, name: string): WorkspaceLibraryEntry {
+function entry(id: string, name: string, createdAt = CREATED_MS): WorkspaceLibraryEntry {
   return {
     id,
     name,
@@ -35,8 +35,16 @@ function entry(id: string, name: string): WorkspaceLibraryEntry {
     source_kind: "github",
     source_ref: "acme/reviewer",
     content_hash: `hash-${id}`,
-    created_at: CREATED_MS,
+    created_at: createdAt,
   };
+}
+
+/** The entry names the table renders, top row first. */
+function renderedNames(): string[] {
+  return screen
+    .getAllByRole("row")
+    .slice(1)
+    .map((row) => row.querySelectorAll("td")[0]?.textContent ?? "");
 }
 
 function renderList(entries: WorkspaceLibraryEntry[]) {
@@ -139,5 +147,84 @@ describe("the workspace library list", () => {
     await waitFor(() => {
       expect(screen.getByText("github-pr-reviewer")).toBeTruthy();
     });
+  });
+  it("should order by name when the Name header is sorted", async () => {
+    // The column is sortable because it carries a `sortValue`, so the callback
+    // is what decides the order an operator sees. A sort key reading the wrong
+    // field looks identical until two rows disagree, which is why the fixture
+    // is seeded out of order.
+    renderList([entry("e1", "incident-responder"), entry("e2", "github-pr-reviewer")]);
+    expect(renderedNames()).toEqual(["incident-responder", "github-pr-reviewer"]);
+
+    fireEvent.click(screen.getByRole("button", { name: /Name/ }));
+
+    await waitFor(() => {
+      expect(renderedNames()).toEqual(["github-pr-reviewer", "incident-responder"]);
+    });
+  });
+
+  it("should order by onboarding time when the Onboarded header is sorted", async () => {
+    // Three near-identical entries under one name is the pile-up this page
+    // exists to clear, and then the only thing telling them apart is when each
+    // arrived — so this sort key is the one that has to be the timestamp.
+    const older = CREATED_MS - 86_400_000;
+    renderList([entry("e1", "github-pr-reviewer"), entry("e2", "incident-responder", older)]);
+    expect(renderedNames()).toEqual(["github-pr-reviewer", "incident-responder"]);
+
+    fireEvent.click(screen.getByRole("button", { name: /Onboarded/ }));
+
+    await waitFor(() => {
+      expect(renderedNames()).toEqual(["incident-responder", "github-pr-reviewer"]);
+    });
+  });
+
+  it("should issue no request and keep the row when the question is dismissed", async () => {
+    // Dimension 3.2's claim, which no test held until now: backing out of a
+    // destructive confirmation must be free. A dismiss wired to the confirm
+    // path would remove the entry on Escape.
+    renderList([entry("e1", "github-pr-reviewer")]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
+    await waitFor(() => screen.getByText(/from this workspace\?/));
+
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape", code: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByText(/from this workspace\?/)).toBeNull();
+    });
+    expect(removeActionMock).not.toHaveBeenCalled();
+    expect(refreshMock).not.toHaveBeenCalled();
+    expect(screen.getByText("github-pr-reviewer")).toBeTruthy();
+  });
+  it("should show the bare source reference when an entry carries no kind", () => {
+    // An upload onboarded without a kind still has to say where it came from.
+    // The falsy arm printing `undefined:acme/reviewer` is the visible bug.
+    renderList([{ ...entry("e1", "github-pr-reviewer"), source_kind: "" }]);
+
+    expect(screen.getByText("acme/reviewer")).toBeTruthy();
+    expect(screen.queryByText(/^:/)).toBeNull();
+  });
+
+  it("should not re-read the list when the server definitely refused", async () => {
+    // A 4xx is the server's final answer, so the row the transition restores
+    // is already true and a refresh would be a wasted round trip. A 5xx or a
+    // timeout is NOT definite — the removal may have landed — and that path
+    // does refresh, which the 500 case above covers.
+    removeActionMock.mockResolvedValue({
+      ok: false,
+      status: 403,
+      error: "you do not hold library:write",
+      errorCode: "UZ-AUTH-003",
+    });
+    renderList([entry("e1", "github-pr-reviewer")]);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
+    await waitFor(() => screen.getByText(/from this workspace\?/));
+    const confirms = screen.getAllByRole("button", { name: "Remove" });
+    fireEvent.click(confirms[confirms.length - 1]!);
+
+    await waitFor(() => {
+      expect(screen.getByText(/do not hold library:write/)).toBeTruthy();
+    });
+    expect(refreshMock).not.toHaveBeenCalled();
   });
 });
