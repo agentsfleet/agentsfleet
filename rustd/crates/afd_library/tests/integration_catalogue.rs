@@ -13,6 +13,8 @@ use std::sync::Arc;
 use afd_library::{LibraryImports, SupportFile};
 use object_store::memory::InMemory;
 
+#[path = "integration_catalogue/entry_privileges.rs"]
+mod entry_privileges;
 #[path = "integration_catalogue/fixtures.rs"]
 mod fixtures;
 #[path = "integration_catalogue/source_imports.rs"]
