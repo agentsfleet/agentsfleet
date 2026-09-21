@@ -10998,6 +10998,222 @@
         ]
       }
     },
+    "/v1/workspaces/{workspace_id}/library-entries": {
+      "get": {
+        "tags": [
+          "Fleet library"
+        ],
+        "summary": "List the Fleet library entries this workspace onboarded",
+        "description": "Returns only the entries this workspace onboarded — never a platform catalog row, and never another workspace's. The gallery at `/fleet-libraries` is what lists everything installable here; this is what the workspace administers. Each entry carries its identity, its provenance and the content hash of the bundle bytes it holds, which is what tells two near-identical onboardings apart. Never bundle content. A bounded keyset page ordered by `created_at DESC, id DESC`; follow `next_cursor` to read the whole collection. ",
+        "operationId": "list_workspace_library_entries",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Rows per page, 1..100. Defaults to 50.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "Opaque cursor from a previous page's `next_cursor`. Bound to the workspace and page size that produced it; a mismatch is `UZ-LIBRARY-002`. A gallery cursor cannot be spent here.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnedEntriesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/workspaces/{workspace_id}/library-entries/{entry_id}": {
+      "delete": {
+        "tags": [
+          "Fleet library"
+        ],
+        "summary": "Remove a Fleet library entry this workspace onboarded",
+        "description": "Idempotent — removing an id that is already gone, or one that names another workspace's entry, still returns 204. The two are indistinguishable on purpose: every statement is scoped by workspace, so separating them would need an unscoped read whose only effect is to confirm the id exists somewhere. Removal is permanent and cannot disturb a fleet installed from the entry: the fleet copied the bundle at install time and carries its own. Re-onboarding the same bytes afterwards mints a new entry with a new id. Distinct from `delete_platform_fleet_library`, which is operator-held. ",
+        "operationId": "delete_workspace_library_entry",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entry_id",
+            "in": "path",
+            "description": "The entry's UUIDv7, from `list_workspace_library_entries`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "description": "The request could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/workspaces/{workspace_id}/onboarding": {
       "get": {
         "tags": [
@@ -15021,6 +15237,84 @@
           "processed",
           "fleet_error"
         ]
+      },
+      "OwnedEntriesResponse": {
+        "type": "object",
+        "description": "`GET /v1/workspaces/{workspace_id}/library-entries` — one page of what a\nworkspace owns.\n\nThe same envelope keys as the gallery beside it, for the same reason: §3 of\nthe REST guide requires `total` and `next_cursor` PRESENT on every page, so\na client never branches on an absent key to tell \"no more pages\" from \"this\nserver is old\". The cursor is this collection's own — it resumes a walk over\none table, and a gallery cursor cannot be spent here.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OwnedEntryCard"
+            },
+            "description": "The entries, newest first."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the next page resumes, or null on the last one."
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Always null — counting a keyset page costs the scan paging avoids.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "OwnedEntryCard": {
+        "type": "object",
+        "description": "One entry a workspace onboarded, on the collection it administers.\n\nA gallery card and this are deliberately different shapes. A card answers\n\"what can I install here\", so it carries the requirement chips and the\nreasons copy the install gate renders. This answers \"what did we onboard\",\nso it carries the provenance an operator tells two near-identical entries\napart by — the source it came from and the hash of the bytes it holds — and\nnone of the install-time decoration.\n\n`content_hash` is on this wire and not on the gallery's. It is the domain\nkey's other half: two onboardings of the same bundle into one workspace are\none entry, so a differing hash is what proves two rows are two bundles\nrather than one listed twice. Still no bundle CONTENT — the read projects\nno document column, and this struct has nowhere to put one.",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "source_kind",
+          "source_ref",
+          "content_hash",
+          "created_at"
+        ],
+        "properties": {
+          "content_hash": {
+            "type": "string",
+            "description": "The hash of the bundle bytes this entry holds."
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When the workspace onboarded it, in epoch milliseconds."
+          },
+          "description": {
+            "type": "string",
+            "description": "The summary, likewise."
+          },
+          "id": {
+            "type": "string",
+            "description": "The entry's identifier — a UUID, and what a removal names."
+          },
+          "name": {
+            "type": "string",
+            "description": "The display name, from the bundle's own frontmatter."
+          },
+          "source_kind": {
+            "type": "string",
+            "description": "How it was onboarded: an upload, a repository, a template."
+          },
+          "source_ref": {
+            "type": "string",
+            "description": "The reference within that source."
+          }
+        },
+        "additionalProperties": false
       },
       "Page": {
         "type": "object",
