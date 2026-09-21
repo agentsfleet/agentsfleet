@@ -123,6 +123,20 @@ const wrapDocument = (doc: string): string =>
 const UNADVERTISED_FLAG = "--wizard";
 const TERM_INDENT = 2;
 
+/**
+ * The term line that IS the unadvertised flag, rather than one that merely
+ * begins with its name.
+ *
+ * A prefix match would take `--wizardly` out with `--wizard` and its
+ * description with it. The boundary accepts what can follow a flag's name in a
+ * rendered term — nothing, a space, an alias comma, or `=value`.
+ */
+const FLAG_NAME_CHARACTER = /[\w-]/u;
+
+const namesUnadvertisedFlag = (term: string): boolean =>
+  term.startsWith(UNADVERTISED_FLAG) &&
+  !FLAG_NAME_CHARACTER.test(term.charAt(UNADVERTISED_FLAG.length));
+
 const indentOf = (line: string): number => line.length - line.trimStart().length;
 
 const withoutUnadvertisedFlag = (doc: string): string => {
@@ -136,7 +150,7 @@ const withoutUnadvertisedFlag = (doc: string): string => {
       if (line.trim().length > 0 && indent > TERM_INDENT) continue;
       skipping = false;
     }
-    if (indent === TERM_INDENT && line.trim().startsWith(UNADVERTISED_FLAG)) {
+    if (indent === TERM_INDENT && namesUnadvertisedFlag(line.trim())) {
       skipping = true;
       continue;
     }

@@ -147,13 +147,26 @@ const buildHeaders = (
 // The path is reported with its identifiers replaced, so a record names the
 // endpoint rather than which fleet someone was looking at. The token never
 // appears: it lives in a header this function is not handed.
-const ID_SEGMENT = /\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?=\/|$)/g;
+// The boundary accepts what can FOLLOW an identifier in a request path: the
+// next segment, the end of the path, or the query string. Without the last of
+// those a path ending in an identifier keeps it whenever a caller appends a
+// query — the redaction would hold everywhere except the one shape a reader
+// would never think to check.
+const ID_SEGMENT = /\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?=[/?]|$)/g;
 const ID_PLACEHOLDER = "/{id}";
 const TRACE_ATTEMPT = "http.attempt";
 const TRACE_RETRY = "http.retry";
 const STATUS_NONE = "none";
 
-const endpointOf = (path: string): string => path.replace(ID_SEGMENT, ID_PLACEHOLDER);
+/**
+ * The endpoint a record names, with every identifier in it replaced.
+ *
+ * Exported because it is the redaction boundary: a record must name the route
+ * somebody called, never the row they were looking at, and that promise is
+ * worth asserting directly rather than only through whichever paths today's
+ * commands happen to build.
+ */
+export const endpointOf = (path: string): string => path.replace(ID_SEGMENT, ID_PLACEHOLDER);
 
 const attemptRecord = (method: string, path: string, info: AttemptInfo): string =>
   `${TRACE_ATTEMPT} method=${method} endpoint=${endpointOf(path)} ` +
