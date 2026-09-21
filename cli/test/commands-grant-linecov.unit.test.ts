@@ -73,6 +73,7 @@ const captureOutputLayer = (
       printKeyValue: () => Effect.void,
       printSection: () => Effect.void,
       printTable: () => Effect.void,
+      printEntityTable: () => Effect.void,
     } satisfies OutputShape),
   );
 

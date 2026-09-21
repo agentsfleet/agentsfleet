@@ -24,6 +24,65 @@ export const EMPTY_CELL = "—" as const;
 export const cell = (value: string | null | undefined): string =>
   value !== null && value !== undefined && value.length > 0 ? value : EMPTY_CELL;
 
+const MS_PER_SECOND = 1_000;
+const SECONDS_PER_MINUTE = 60;
+const MINUTES_PER_HOUR = 60;
+const HOURS_PER_DAY = 24;
+const DAYS_PER_YEAR = 365;
+const SECONDS_PER_HOUR = SECONDS_PER_MINUTE * MINUTES_PER_HOUR;
+const SECONDS_PER_DAY = SECONDS_PER_HOUR * HOURS_PER_DAY;
+const SECONDS_PER_YEAR = SECONDS_PER_DAY * DAYS_PER_YEAR;
+
+/** The coarse unit an age is reported in, one letter each. */
+const AGE_UNIT = {
+  second: "s", minute: "m", hour: "h", day: "d", year: "y",
+} as const;
+
+/**
+ * How long ago an instant was, in the coarsest unit that still reads true.
+ *
+ * It renders [`EMPTY_CELL`] rather than a number whenever it cannot know: a
+ * missing or unparseable timestamp, and an instant in the future — which is
+ * clock disagreement between this machine and the server, not an age. A table
+ * that printed `-1m` there would be stating something no one measured.
+ */
+export function ago(createdAtMs: unknown, nowMs: number = Date.now()): string {
+  if (typeof createdAtMs !== "number" || !Number.isSafeInteger(createdAtMs))
+    return EMPTY_CELL;
+  const elapsed = Math.floor((nowMs - createdAtMs) / MS_PER_SECOND);
+  if (elapsed < 0) return EMPTY_CELL;
+  if (elapsed < SECONDS_PER_MINUTE) return `${elapsed}${AGE_UNIT.second}`;
+  if (elapsed < SECONDS_PER_HOUR)
+    return `${Math.floor(elapsed / SECONDS_PER_MINUTE)}${AGE_UNIT.minute}`;
+  if (elapsed < SECONDS_PER_DAY)
+    return `${Math.floor(elapsed / SECONDS_PER_HOUR)}${AGE_UNIT.hour}`;
+  if (elapsed < SECONDS_PER_YEAR)
+    return `${Math.floor(elapsed / SECONDS_PER_DAY)}${AGE_UNIT.day}`;
+  return `${Math.floor(elapsed / SECONDS_PER_YEAR)}${AGE_UNIT.year}`;
+}
+
+/** The row field an age reads from, and the header it renders under. */
+export const AGE_KEY = "created_at" as const;
+const AGE_LABEL = "AGO" as const;
+const AGE_COLUMN_IS_APPENDED =
+  "the age column is appended by entityColumns — a domain column cannot claim it";
+
+/**
+ * One table shape: the thing's name, then its identifier, then what it is,
+ * then how old it is.
+ *
+ * The groups are separate fields rather than one array because that is what
+ * removes the choice: a caller has no position to place, so thirteen tables
+ * cannot drift into six orders the way they did when each owned its own column
+ * list. The age column is appended here, so a table cannot omit it by being
+ * edited.
+ */
+export interface EntityTableSpec {
+  readonly name: TableColumn;
+  readonly id?: TableColumn;
+  readonly domain: ReadonlyArray<TableColumn>;
+}
+
 const NARROW_THRESHOLD = 80;
 const HORIZONTAL_RULE = "─";
 const TERMINAL_CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/gu;
@@ -194,6 +253,28 @@ export function formatTable(
     ? renderVertical(columns, rows, opts)
     : renderHorizontal(columns, rows, opts);
 }
+export function entityColumns(spec: EntityTableSpec): ReadonlyArray<TableColumn> {
+  for (const column of spec.domain)
+    if (column.key === AGE_KEY || column.label === AGE_LABEL)
+      throw new Error(AGE_COLUMN_IS_APPENDED);
+  return [
+    spec.name,
+    ...(spec.id === undefined ? [] : [spec.id]),
+    ...spec.domain,
+    { key: AGE_KEY, label: AGE_LABEL },
+  ];
+}
+
+/** [`formatTable`] over [`entityColumns`], with the age rendered per row. */
+export function entityTable(
+  spec: EntityTableSpec,
+  rows: ReadonlyArray<TableRow>,
+  opts?: FormatOpts,
+): string {
+  const aged = rows.map((row) => ({ ...row, [AGE_KEY]: ago(row[AGE_KEY]) }));
+  return formatTable(entityColumns(spec), aged, opts);
+}
+
 const LITERAL = "\n" as const;
 const ALIGN_LEFT = "left" as const;
 const ALIGN_RIGHT = "right" as const;

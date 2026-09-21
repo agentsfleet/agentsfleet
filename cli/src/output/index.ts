@@ -6,6 +6,10 @@ import { glyph, withGlyph } from "./glyph.ts";
 import {
   EMPTY_CELL,
   cell,
+  ago,
+  entityColumns,
+  entityTable,
+  AGE_KEY,
   formatTable,
   formatKeyValue,
   formatSection,
@@ -15,6 +19,7 @@ import {
   type TableColumn,
   type TableRow,
   type KeyValueRows,
+  type EntityTableSpec,
 } from "./format.ts";
 import { detectColorMode, isTty, resetCapabilityWarning, ColorMode } from "./capability.ts";
 
@@ -60,13 +65,21 @@ export function printTable(stream: WriteStream, columns: ReadonlyArray<TableColu
   stream.write(formatTable(columns, rows));
 }
 
+export function printEntityTable(stream: WriteStream, spec: EntityTableSpec, rows: ReadonlyArray<TableRow>): void {
+  stream.write(entityTable(spec, rows));
+}
+
 export {
   palette,
   glyph,
   EMPTY_CELL,
   cell,
+  ago,
   withGlyph,
   formatTable,
+  entityColumns,
+  entityTable,
+  AGE_KEY,
   formatKeyValue,
   formatSection,
   formatHelpHeading,
@@ -80,4 +93,5 @@ export {
   type TableColumn,
   type TableRow,
   type KeyValueRows,
+  type EntityTableSpec,
 };
