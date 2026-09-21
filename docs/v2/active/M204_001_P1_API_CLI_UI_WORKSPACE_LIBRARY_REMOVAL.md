@@ -110,7 +110,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 The grant slot 460 withheld, plus the statement that exercises it. Nothing above works until `api_runtime` holds `DELETE`, and this is the one place §0's decision is enforced. **Implementation default:** a new slot `schema/917_tenant_fleet_library_delete_grant.sql`, because `cat VERSION` is `0.49.0` — above RULE SCH's anchor — so shipped slots are frozen and the reversal is recorded in the new header rather than by editing slot 460.
 
 - **Dimension 1.1** — DONE — The slot is single-concern, grants `DELETE` on `core.tenant_fleet_library` to `api_runtime` and nothing else, and is registered in the migration array → Test `test_delete_grant_slot_is_registered_and_single_privilege`
-- **Dimension 1.2** — A pool authenticating as a login role holding only `api_runtime` removes a row through `remove_entry`, and the same role is still refused a privilege the slot did not grant → Test `test_api_runtime_holds_delete_on_tenant_fleet_library`
+- **Dimension 1.2** — DONE — A pool authenticating as a login role holding only `api_runtime` removes a row through `remove_entry`, and the same role is still refused a privilege the slot did not grant → Test `test_api_runtime_holds_delete_on_tenant_fleet_library`
 - **Dimension 1.3** — DONE — The delete statement filters on both `id` and `workspace_id`, matching `SELECT_TENANT_INSTALL`'s shape, and an identifier this workspace does not own removes no row → Test `test_tenant_library_delete_statement_is_workspace_scoped`
 
 ### §2 — The tenant surface: the workspace's own collection, and its removal verb
@@ -118,12 +118,12 @@ The grant slot 460 withheld, plus the statement that exercises it. Nothing above
 The public endpoint half, built to §0b rule 1: a second collection, not a filter on the gallery. `LibraryEntries` and `LibraryEntry` join the workspace route table exactly as `ModelEntries` / `ModelEntry` sit in the tenant one. **Implementation default:** the pair lands in a new `handler/library_entry.rs` module rather than inside `workspace_library.rs` — that module serves a different collection and is at 287 lines against a 350 cap. **Implementation default:** onboarding stays at `POST /v1/workspaces/{ws}/fleet-libraries`; moving it onto the new collection would break a shipped endpoint and the CLI's `library add`, and a second spelling of one verb is a compatibility alias the rules forbid. Out of Scope names the follow-up. **Implementation default:** removing an entry another workspace owns answers `204`, identically to removing one already gone — every statement carries `workspace_id`, so telling them apart would need a second unscoped read whose only effect is to leak that the identifier exists somewhere. §0b rule 3 is the precedent.
 
 - **Dimension 2.1** — DONE — The route table carries `LibraryEntries` at `workspace_path!("/library-entries")` with `[Get]` and `LibraryEntry` at `workspace_path!("/library-entries/{entry_id}")` with `[Delete]` under `Scopes::Always(LIBRARY_WRITE)` → Test `test_library_entry_routes_mirror_the_model_entry_pair`
-- **Dimension 2.2** — `GET` answers this workspace's own entries and nothing else, in its own envelope, paging on its own cursor → Test `test_owned_collection_answers_only_this_workspace`
-- **Dimension 2.3** — `DELETE` on an owned entry answers `204` and the row leaves both reads; a replay answers `204` again, and two simultaneous ones both succeed removing one row → Test `test_delete_is_idempotent_under_replay_and_concurrency`
+- **Dimension 2.2** — DONE — `GET` answers this workspace's own entries and nothing else, in its own envelope, paging on its own cursor → Test `test_owned_collection_answers_only_this_workspace`
+- **Dimension 2.3** — DONE — `DELETE` on an owned entry answers `204` and the row leaves both reads; a replay answers `204` again, and two simultaneous ones both succeed removing one row → Test `test_delete_is_idempotent_under_replay_and_concurrency`
 - **Dimension 2.4** — DONE — An `entry_id` that is not a UUIDv7 earns `Refusal::malformed`, and a caller without `library:write` is refused before any statement runs → Test `test_delete_refusals_are_malformed_and_scoped`
 - **Dimension 2.5** — DONE — The OpenAPI document carries both operations and neither collides with `delete_platform_fleet_library` → Test `test_openapi_declares_the_library_entry_operations`
-- **Dimension 2.6** — The removal emits its scoped event carrying outcome and code and no bundle content → Test `test_removal_emits_a_scoped_event_without_bundle_content`
-- **Dimension 2.7** — The merged gallery and the platform tier's delete are both untouched → Test `test_gallery_and_platform_delete_are_unchanged`
+- **Dimension 2.6** — DONE — The removal emits its scoped event carrying outcome and code and no bundle content → Test `test_removal_emits_a_scoped_event_without_bundle_content`
+- **Dimension 2.7** — DONE — The merged gallery and the platform tier's delete are both untouched → Test `test_gallery_and_platform_delete_are_unchanged`
 
 ### §3 — The dashboard page
 
@@ -132,15 +132,15 @@ A page at `/w/{workspaceId}/library` listing what this workspace owns, with the 
 - **Dimension 3.1** — DONE — The page lists owned entries with name, source reference and onboarding time, and no platform entry appears even when published platform rows exist → Test `test_workspace_library_page_lists_owned_entries`
 - **Dimension 3.2** — DONE — A workspace owning nothing sees an empty state naming the command that adds one; removal needs a confirmation naming the entry, and a failed removal leaves the row and surfaces the refusal → Test `test_remove_requires_confirmation_and_survives_failure`
 - **Dimension 3.4** — DONE — One verbose entry does not set the height of the cards beside it: a description past three lines is clamped and credentials past three become a counted overflow chip naming them on hover, while an entry already inside both bounds renders unchanged → Test `test_a_gallery_card_is_bounded`
-- **Dimension 3.3** — The whole walk works in a browser: onboard, reach the page from the navigation, remove, and the gallery no longer offers it → Test `test_workspace_library_page_walk`
+- **Dimension 3.3** — DONE — The whole walk works in a browser: onboard, reach the page from the navigation, remove, and the gallery no longer offers it → Test `test_workspace_library_page_walk`
 
 ### §4 — Removal does not disturb an installed fleet
 
 The assertion §0 reason 3 rests on, made a test. Nothing propagates in the other direction either, and that is not a gap this spec leaves: a tenant library entry is immutable once onboarded — four statements touch the table and none is an `UPDATE` — so there is no edit that could need propagating, and a fleet's own copy is edited in place through `PATCH_FLEET` (`afd_fleet_lifecycle/src/sql.rs:232`), which sets `source_markdown` and `trigger_markdown` scoped by `workspace_id`. The library is a template; the fleet is the thing you change. **Implementation default:** integration tier against the real schema, because what is being proven is the absence of a database-level relationship and a unit test cannot observe that.
 
-- **Dimension 4.1** — A fleet installed from an entry keeps its own markdown and content hash after the entry is removed, and still starts and reaches a terminal state → Test `test_installed_fleet_survives_library_removal`
-- **Dimension 4.2** — Installing from a removed identifier is refused exactly as one that never existed → Test `test_install_from_a_removed_entry_is_refused`
-- **Dimension 4.3** — Re-onboarding the same bytes mints a new row with a new identifier → Test `test_reonboard_after_removal_mints_a_new_entry`
+- **Dimension 4.1** — DONE — A fleet installed from an entry keeps its own markdown and content hash after the entry is removed, and still starts and reaches a terminal state → Test `test_installed_fleet_survives_library_removal`
+- **Dimension 4.2** — DONE — Installing from a removed identifier is refused exactly as one that never existed → Test `test_install_from_a_removed_entry_is_refused`
+- **Dimension 4.3** — DONE — Re-onboarding the same bytes mints a new row with a new identifier → Test `test_reonboard_after_removal_mints_a_new_entry`
 
 ### §5 — The command-line interface, and the acceptance teardown it unblocks
 
@@ -148,14 +148,14 @@ Both clients of the new surface, plus the sweep this workstream exists to make p
 
 - **Dimension 5.1** — DONE — `library list` prints owned entries, `--format json` prints them as data, an empty workspace gets a state naming `library add`, and bare `agentsfleet library` still issues the merged-gallery request unchanged → Test `test_library_list_prints_owned_entries_or_an_empty_state`
 - **Dimension 5.2** — DONE — `library remove <entry_id>` removes the entry, reports it, succeeds again on replay, and on a malformed identifier exits non-zero with the server's sentence rather than a stack trace → Test `test_library_remove_reports_success_and_is_idempotent`
-- **Dimension 5.3** — The sweep clears every tenant entry in fixture-owned workspaces, nothing outside the guard, and leaves a gallery of platform rows → Test `test_library_sweep_is_bounded_and_clears_tenant_rows`
-- **Dimension 5.4** — The real binary walks add → list → remove → list in a subprocess, and after a swept run `installViaUI` finds the seeded card on page one without a "Load more" click → Test `test_library_remove_subprocess_walk`
+- **Dimension 5.3** — DONE — The sweep clears every tenant entry in fixture-owned workspaces, nothing outside the guard, and leaves a gallery of platform rows → Test `test_library_sweep_is_bounded_and_clears_tenant_rows`
+- **Dimension 5.4** — DONE — The real binary walks add → list → remove → list in a subprocess, and after a swept run `installViaUI` finds the seeded card on page one without a "Load more" click → Test `test_library_remove_subprocess_walk`
 
 ### §6 — Documentation
 
 The public surface changes, so the docs branch is part of the work. **Implementation default:** `~/Projects/docs` work happens on its own branch `chore/m204-workspace-library-removal-changelog`, cut from `main` there and never edited through this worktree.
 
-- **Dimension 6.1** — The architecture doc records the removal verb and that slot 460's position is superseded, and the diff carries one new changelog entry → Test `test_architecture_and_changelog_record_the_removal`
+- **Dimension 6.1** — DONE — The architecture doc records the removal verb and that slot 460's position is superseded, and the diff carries one new changelog entry → Test `test_architecture_and_changelog_record_the_removal`
 - **Dimension 6.2** — The four `~/Projects/docs` pages are revised on their own branch → Test `test_docs_branch_carries_the_four_pages`
 
 ## Interfaces
@@ -252,7 +252,7 @@ Dashboard: /w/{workspaceId}/library — owned entries and removal.
 | 5.2 | unit | `test_library_remove_reports_success_and_is_idempotent` | A 204 response → a success line naming the identifier, exit 0; two consecutive 204s → exit 0 both times, identical output; a 400 malformed response → non-zero exit, the server's detail on the error stream, no stack trace. |
 | 5.3 | integration | `test_library_sweep_is_bounded_and_clears_tenant_rows` | Pointed at a non-fixture workspace the sweep removes 0 rows and logs the refusal; at a fixture workspace it removes every tenant entry, and after `bun global-teardown.ts` that workspace's owned collection is empty. |
 | 5.4 | e2e | `test_library_remove_subprocess_walk` | The real binary in a subprocess: `library add`, `library list` shows it, `library remove`, `library list` no longer shows it; and after a swept run `installViaUI` locates the seeded card's Install button with no "Load more" click. |
-| 6.1 | unit | `test_architecture_and_changelog_record_the_removal` | `docs/architecture/fleet_bundles.md` contains `delete_workspace_fleet_library` and a sentence superseding slot 460's position; the diff against the comparison revision adds exactly one new `<Update>` block. |
+| 6.1 | unit | `test_architecture_and_changelog_record_the_removal` | `docs/architecture/fleet_bundles.md` contains `delete_workspace_library_entry` and a sentence superseding slot 460's position; the diff against the comparison revision adds exactly one new `<Update>` block. |
 | 6.2 | manual | `test_docs_branch_carries_the_four_pages` | Procedure: in `~/Projects/docs` on `chore/m204-workspace-library-removal-changelog`, `git diff --name-only main` lists `fleets/library.mdx`, `cli/agentsfleet.mdx`, `api-reference/error-codes.mdx`, `changelog.mdx`. Required person: Indy, who owns that repository's branch. Evidence: the branch name and command output in Pull Request Session Notes. |
 
 ## Acceptance Rubric (single scoring surface)
