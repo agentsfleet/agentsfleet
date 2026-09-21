@@ -14,7 +14,8 @@ import {
   deleteEffectFromId,
   killEffectFromId,
   resumeEffectFromId,
-  statusEffectFromId,
+  statusEffect,
+  fleetShowEffectFromId,
   stopEffectFromId,
 } from "../../commands/fleet.ts";
 import { listEffectFromFlags } from "../../commands/fleet_list.ts";
@@ -75,6 +76,7 @@ const optNum = (value: Option.Option<number>): string | undefined =>
 const LIST = "list" as const;
 const DELETE = "delete" as const;
 const UPDATE = "update" as const;
+const SHOW = "show" as const;
 const REMOVE = "remove" as const;
 
 // ── library, models, install ────────────────────────────────────────
@@ -145,6 +147,11 @@ const fleetUpdateCommand = Command.make(UPDATE, {
   guardedHandler(({ fleetId, from }) => updateEffectFromArgs(fleetId, opt(from))),
 );
 
+const fleetShowCommand = Command.make(SHOW, { fleetId: fleetIdArgument }).pipe(
+  Command.withDescription("Show one fleet"),
+  guardedHandler(({ fleetId }) => fleetShowEffectFromId(fleetId)),
+);
+
 export const fleetCommand = Command.make("fleet").pipe(
   Command.withDescription(
     "Fleet management subcommands — in-place updates only.\n\n" +
@@ -157,7 +164,7 @@ export const fleetCommand = Command.make("fleet").pipe(
       "Run `agentsfleet --help` for the full command list.",
   ),
   Command.withShortDescription("Fleet management subcommands"),
-  Command.withSubcommands([fleetUpdateCommand]),
+  Command.withSubcommands([fleetShowCommand, fleetUpdateCommand]),
 );
 
 // ── lifecycle verbs ─────────────────────────────────────────────────
@@ -177,11 +184,9 @@ export const listCommand = Command.make(LIST, {
   ),
 );
 
-export const statusCommand = Command.make("status", {
-  fleetId: fleetIdOptionalArgument,
-}).pipe(
-  Command.withDescription("Show status for one fleet, or every fleet in the active workspace"),
-  guardedHandler(({ fleetId }) => statusEffectFromId(opt(fleetId))),
+export const statusCommand = Command.make("status").pipe(
+  Command.withDescription("Show status for every fleet in the active workspace"),
+  guardedHandler(() => statusEffect),
 );
 
 export const stopCommand = Command.make("stop", { fleetId: fleetIdArgument }).pipe(

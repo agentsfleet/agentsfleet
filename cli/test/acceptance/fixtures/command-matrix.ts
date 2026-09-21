@@ -147,6 +147,7 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["api-key", "delete"], missingArgName: "api_key_id" },
   { args: ["grant", "delete"], missingArgName: "grant_id" },
   { args: ["library", "remove"], missingArgName: "entry_id" },
+  { args: ["fleet", "show"], missingArgName: "fleet_id" },
   { args: ["approvals", "show"], missingArgName: "gate_id" },
   { args: ["approvals", "approve"], missingArgName: "gate_id" },
   { args: ["approvals", "deny"], missingArgName: "gate_id" },

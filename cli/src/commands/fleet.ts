@@ -30,7 +30,7 @@ import {
   type CliError,
 } from "../errors/index.ts";
 
-const STATUS_USAGE = "agentsfleet status [fleet_id]" as const;
+const FLEET_SHOW_USAGE = "agentsfleet fleet show <fleet_id>" as const;
 
 const STATUS_PAST_TENSE: Record<FleetMutationStatus, string> = {
   [AGENTSFLEET_STATUS.STOPPED]: "stopped",
@@ -79,15 +79,18 @@ const requireFleetId = (
   });
 
 /**
- * `agentsfleet status [fleet_id]` — one fleet, or the whole workspace.
+ * The workspace summary and the single-fleet read, sharing one rendering.
  *
- * Bare `status` keeps answering for every fleet, because changing what a
- * shipped command means would change it for every caller. With an identifier
- * it reads that ONE fleet rather than filtering the list: the list is paged,
- * so a client-side filter would answer "no such fleet" for anything past the
- * first page.
+ * `status` answers for every fleet and takes no identifier: that is what it
+ * has always meant, and narrowing it would change a shipped command for every
+ * caller. `fleet show <fleet_id>` is the one-fleet read, named the way every
+ * other single-resource read on this surface is named.
+ *
+ * With an identifier it READS that one fleet rather than filtering the list.
+ * The list is paged, so a client-side filter would answer "no such fleet" for
+ * anything past the first page.
  */
-export const statusEffectFromId = (
+const statusEffectFromId = (
   fleetId: string | undefined,
 ): Effect.Effect<
   void,
@@ -105,7 +108,7 @@ export const statusEffectFromId = (
         http.request<FleetListItem>({
           path: wsFleetPath(
             wsId,
-            yield* requireFleetId(fleetId, STATUS_USAGE),
+            yield* requireFleetId(fleetId, FLEET_SHOW_USAGE),
           ),
           token,
         }),
@@ -155,6 +158,18 @@ export const statusEffectFromId = (
     yield* output.info(ui.dim(WAITING_UNREADABLE));
   }
 });
+
+/** `agentsfleet status` — every fleet in the active workspace. */
+export const statusEffect = statusEffectFromId(undefined);
+
+/** `agentsfleet fleet show <fleet_id>` — that one fleet. */
+export const fleetShowEffectFromId = (
+  fleetId: string | undefined,
+): Effect.Effect<
+  void,
+  CliError,
+  CliConfig | Credentials | HttpClient | Output | Workspaces
+> => statusEffectFromId(fleetId);
 
 const setStatusEffect = (
   fleetId: string | undefined,
