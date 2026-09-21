@@ -307,6 +307,14 @@ pub struct HeartbeatResponse<'a> {
     /// An operator asked this runner to self-test. Rides the beat like the
     /// assignment does — one interval, no second endpoint, no host visit.
     pub selftest_requested: bool,
+    /// How long the runner waits before its next beat, in milliseconds.
+    ///
+    /// Required rather than optional. The daemon owns
+    /// [`afd_core::timing::RUNNER_OFFLINE_AFTER_MS`], so it owns the cadence
+    /// that keeps a host ahead of it; a runner carrying its own copy could not
+    /// be told when that threshold moved. The assertion beside those constants
+    /// is what keeps the served value under the threshold.
+    pub heartbeat_interval_ms: u32,
 }
 
 /// `GET /v1/runners/me` reply — the runner's own registration row, read-only.

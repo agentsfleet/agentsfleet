@@ -69,7 +69,7 @@ test "runner admin patch bodies round-trip in both one-of shapes" {
 }
 
 test "heartbeat response round-trips" {
-    try expectStable(protocol.HeartbeatResponse, .{ .status = .ok });
+    try expectStable(protocol.HeartbeatResponse, .{ .status = .ok, .heartbeat_interval_ms = 10_000 });
 }
 
 test "report request and response round-trip (fenced, no runner_id)" {
@@ -372,15 +372,26 @@ test "heartbeat and self replies carry the assignment and the degraded verdict" 
         .assigned_policy = assigned,
         .degraded = true,
         .degraded_reason = "cgroup controllers not delegated",
+        .heartbeat_interval_ms = 10_000,
     });
-    // A bare-status reply (the pre-policy shape) still parses — fields default.
+    // The optional fields still default, so a reply that carries only what it
+    // must still parses.
     const a = std.testing.allocator;
     const p = try std.json.parseFromSlice(protocol.HeartbeatResponse, a,
-        \\{"status":"ok"}
+        \\{"status":"ok","heartbeat_interval_ms":7000}
     , .{});
     defer p.deinit();
     try std.testing.expect(p.value.assigned_policy == null);
     try std.testing.expect(!p.value.degraded);
+    try std.testing.expectEqual(@as(u32, 7000), p.value.heartbeat_interval_ms);
+
+    // The cadence is NOT one of them. A host holds no interval to fall back
+    // to, so a reply that omits it is refused rather than guessed at.
+    try std.testing.expectError(error.MissingField, std.json.parseFromSlice(
+        protocol.HeartbeatResponse,
+        a,
+        \\{"status":"ok"}
+    , .{}));
     try expectStable(protocol.SelfResponse, .{
         .id = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee",
         .status = "active",
