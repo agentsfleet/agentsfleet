@@ -16,8 +16,10 @@ import {
   printKeyValue as printKeyValueRaw,
   printSection as printSectionRaw,
   printTable as printTableRaw,
+  printEntityTable as printEntityTableRaw,
   type TableColumn,
   type TableRow,
+  type EntityTableSpec,
 } from "../output/index.ts";
 
 type Stream = NodeJS.WritableStream;
@@ -97,6 +99,10 @@ export interface OutputShape {
     columns: ReadonlyArray<TableColumn>,
     rows: ReadonlyArray<TableRow>,
   ) => Effect.Effect<void>;
+  readonly printEntityTable: (
+    spec: EntityTableSpec,
+    rows: ReadonlyArray<TableRow>,
+  ) => Effect.Effect<void>;
 }
 
 export type Output = OutputShape;
@@ -153,6 +159,10 @@ export const makeStdioOutput = ({ stdout, stderr, format }: OutputConfig): Outpu
   printTable: (columns, rows) =>
     Effect.sync(() => {
       printTableRaw(stdout as unknown as Parameters<typeof printTableRaw>[0], columns, rows);
+    }),
+  printEntityTable: (spec, rows) =>
+    Effect.sync(() => {
+      printEntityTableRaw(stdout as unknown as Parameters<typeof printEntityTableRaw>[0], spec, rows);
     }),
 });
 
