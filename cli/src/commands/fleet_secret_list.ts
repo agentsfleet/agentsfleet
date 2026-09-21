@@ -14,7 +14,7 @@ import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsSecretsPath } from "../lib/api-paths.ts";
 import type { CliError } from "../errors/index.ts";
-import { EMPTY_CELL } from "../output/index.ts";
+import { AGE_KEY, EMPTY_CELL } from "../output/index.ts";
 
 /** One vault row. `kind` says whether the value is a provider credential or a
  *  custom object; the daemon has always sent it and the list never read it. */
@@ -30,7 +30,6 @@ interface SecretsListResponse {
 
 const FIELD_NAME = "name" as const;
 const FIELD_KIND = "kind" as const;
-const FIELD_CREATED = "created" as const;
 const SECRETS_LISTED = "Workspace secrets" as const;
 const EMPTY_VAULT =
   "No secrets stored. Create one with: agentsfleet secret create <name> --data=@- (pipe JSON on stdin)" as const;
@@ -65,18 +64,15 @@ export const secretListEffect: Effect.Effect<
   // This printed two space-separated fields and a raw epoch integer, so the one
   // list a person reads while handling credentials was the one that did not
   // look like the others.
-  yield* output.printTable(
-    [
-      { key: FIELD_NAME, label: "NAME" },
-      { key: FIELD_KIND, label: "KIND" },
-      { key: FIELD_CREATED, label: "CREATED" },
-    ],
+  yield* output.printEntityTable(
+    {
+      name: { key: FIELD_NAME, label: "NAME" },
+      domain: [{ key: FIELD_KIND, label: "KIND" }],
+    },
     secrets.map((row) => ({
       name: row.name ?? "",
       kind: row.kind ?? EMPTY_CELL,
-      created: row.created_at
-        ? new Date(row.created_at).toISOString()
-        : EMPTY_CELL,
+      [AGE_KEY]: row.created_at,
     })),
   );
 });

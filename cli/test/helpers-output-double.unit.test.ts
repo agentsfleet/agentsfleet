@@ -40,6 +40,7 @@ describe("outputDouble — defaults and overrides", () => {
     for (const key of [
       "intro", "info", "success", "warn", "error", "outro",
       "printJson", "printJsonErr", "printKeyValue", "printSection", "printTable",
+      "printEntityTable",
     ] as const) {
       expect(typeof double[key]).toBe("function");
     }
