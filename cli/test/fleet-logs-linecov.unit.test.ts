@@ -10,7 +10,8 @@ import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 import { formatTimestamp, logsEffectFromFlags } from "../src/commands/fleet_logs.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient } from "../src/services/http-client.ts";
-import { Output } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { wsFleetEventsPath } from "../src/lib/api-paths.ts";
@@ -42,25 +43,25 @@ interface OutputSpy {
   readonly infoLines: string[];
 }
 
-const outputLayer = (spy: OutputSpy): Layer.Layer<Output> =>
+const outputLayer = (
+  spy: OutputSpy,
+  format: OutputFormat = OUTPUT_FORMAT.text,
+): Layer.Layer<Output> =>
   Layer.succeed(Output, {
-    intro: () => Effect.void,
+    ...outputDouble(),
+    format,
     info: (line: string) =>
       Effect.sync(() => {
         spy.infoLines.push(line);
       }),
-    success: () => Effect.void,
-    warn: () => Effect.void,
-    error: () => Effect.void,
-    outro: () => Effect.void,
+    success: (_msg, data) =>
+      Effect.sync(() => {
+        if (format === OUTPUT_FORMAT.json) spy.jsonPayloads.push(data);
+      }),
     printJson: (value: unknown) =>
       Effect.sync(() => {
         spy.jsonPayloads.push(value);
       }),
-    printJsonErr: () => Effect.void,
-    printKeyValue: () => Effect.void,
-    printSection: () => Effect.void,
-    printTable: () => Effect.void,
   });
 
 // Records the request path so the cursor query-string can be asserted, and
@@ -163,7 +164,7 @@ describe("logsEffectFromFlags — JSON mode", () => {
       logsEffectFromFlags({ fleetId: VALID_FLEET_ID }),
       {
         config: configLayer(true),
-        output: outputLayer(outSpy),
+        output: outputLayer(outSpy, OUTPUT_FORMAT.json),
         http: httpClientLayer(httpSpy, response),
       },
     );

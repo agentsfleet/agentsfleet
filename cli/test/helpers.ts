@@ -1,12 +1,11 @@
 import { Writable } from "node:stream";
 import { ApiError, type FetchImpl } from "../src/lib/http.ts";
 
-import type { ParsedArgs } from "../src/commands/types.ts";
 
 export { ApiError };
 export type { FetchImpl };
 
-// Structural Response mocks for tests that hit apiRequest / streamFetch
+// Structural Response mocks for tests that hit apiRequest
 // only need ok/status/statusText/headers.get/text (+ optional body for SSE).
 // Double-cast widens to FetchImpl at the test→prod boundary so production
 // code paths still face full strict-mode pressure.
@@ -18,6 +17,19 @@ export interface ResponseLike {
   text: () => Promise<string>;
   body?: unknown;
 }
+
+/**
+ * What Bun's fetch throws when the socket is lost after connecting: a
+ * `TypeError` carrying the code on the error itself. Node's shape for the
+ * same event puts `UND_ERR_SOCKET` on the cause; the parity table has a row
+ * for each, and both read as sent.
+ */
+export const socketDropped = (): TypeError =>
+  Object.assign(new TypeError("The socket connection was closed unexpectedly"), { code: "ECONNRESET" });
+
+/** What the client throws when it refuses to send at all: no code anywhere. */
+export const unsendableRequest = (): TypeError =>
+  new TypeError("Header 'Authorization' has invalid value");
 
 export const asFetchImpl = (
   impl: (url: string, init?: RequestInit) => Promise<ResponseLike>,
@@ -41,14 +53,6 @@ export function makeHeaders(
   return { get: (name) => map.get(name) ?? null };
 }
 
-export interface UiTheme {
-  ok: (s: string) => string;
-  err: (s: string) => string;
-  info: (s: string) => string;
-  dim: (s: string) => string;
-  head: (s: string) => string;
-}
-
 // Tests mutate `stream.isTTY = true` to flip color/spinner code paths
 // (capability.ts reads it for !isTTY → NONE). The Node `Writable` class
 // has no `isTTY` field; the intersection makes the test-set safe under
@@ -69,6 +73,14 @@ export function makeBufferStream(): { stream: TestStream; read: () => string } {
   };
 }
 
+export interface UiTheme {
+  ok: (s: string) => string;
+  err: (s: string) => string;
+  info: (s: string) => string;
+  dim: (s: string) => string;
+  head: (s: string) => string;
+}
+
 /** Passthrough UI theme (no ANSI escapes). */
 export const ui: UiTheme = {
   ok: (s) => s,
@@ -78,41 +90,5 @@ export const ui: UiTheme = {
   head: (s) => s,
 };
 
-// Build the parsed = { options, positionals } shape that leaf handlers
-// expect from a flat token array. Test-only utility — production now
-// flows through commander (cli-tree.ts). Matches the legacy parseFlags
-// surface byte-for-byte so direct handler tests can keep synthesising
-// parsed objects from `["--limit", "20", "<positional>"]` token lists.
-export function buildParsed(tokens: readonly string[] = []): ParsedArgs {
-  const options: ParsedArgs["options"] = {};
-  const positionals: string[] = [];
-  for (let i = 0; i < tokens.length; i += 1) {
-    const token = tokens[i];
-    if (token === undefined) continue;
-    if (!token.startsWith("--")) { positionals.push(token); continue; }
-    const eq = token.indexOf("=");
-    if (eq !== -1) {
-      options[token.slice(2, eq)] = token.slice(eq + 1);
-      continue;
-    }
-    const key = token.slice(2);
-    const next = tokens[i + 1];
-    if (next !== undefined && !next.startsWith("--")) {
-      options[key] = next;
-      i += 1;
-    } else {
-      options[key] = true;
-    }
-  }
-  return { options, positionals };
-}
-
-// ── Stable test constants ─────────────────────────────────────────────────────
-export const AGENT_ID   = "0195b4ba-8d3a-7f13-8abc-000000000001";
-export const AGENT_NAME = "my-agent";
 export const WS_ID      = "0195b4ba-8d3a-7f13-8abc-000000000010";
-export const SCORE_ID_1 = "0195b4ba-8d3a-7f13-8abc-000000000021";
-export const SCORE_ID_2 = "0195b4ba-8d3a-7f13-8abc-000000000022";
-export const RUN_ID_1   = "0195b4ba-8d3a-7f13-8abc-000000000031";
-export const RUN_ID_2   = "0195b4ba-8d3a-7f13-8abc-000000000032";
-export const PVER_ID    = "0195b4ba-8d3a-7f13-8abc-000000000041";
+

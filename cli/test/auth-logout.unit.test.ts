@@ -16,7 +16,8 @@ import { Analytics } from "../src/services/telemetry/analytics.service.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
-import { Output } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { AUTH_SESSIONS_PATH, CLI_CREDENTIALS_PATH } from "../src/lib/api-paths.ts";
 import { CLI_CREDENTIAL_BODY_LEN, CLI_CREDENTIAL_PREFIX } from "../src/constants/cli-credential.ts";
 import { ServerError, type CliError } from "../src/errors/index.ts";
@@ -45,17 +46,19 @@ interface Rec {
 
 const makeRec = (): Rec => ({ stdout: [], stderr: [], cleared: [], calls: [] });
 
-const outputLayer = (rec: Rec): Layer.Layer<Output> =>
+const outputLayer = (rec: Rec, jsonMode = false): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    ...outputDouble({ jsonMode }),
+    format: jsonMode ? OUTPUT_FORMAT.json : OUTPUT_FORMAT.text,
     info: (l: string) => Effect.sync(() => void rec.stdout.push(l)),
-    success: (l: string) => Effect.sync(() => void rec.stdout.push(l)),
+    success: (l: string, data?: unknown) =>
+      Effect.sync(() =>
+        void rec.stdout.push(jsonMode ? JSON.stringify(data ?? { message: l }) : l),
+      ),
     warn: (l: string) => Effect.sync(() => void rec.stderr.push(l)),
     error: (l: string) => Effect.sync(() => void rec.stderr.push(l)),
     printJson: (v: unknown) =>
       Effect.sync(() => void rec.stdout.push(JSON.stringify(v))),
-    printKeyValue: () => Effect.void,
-    printSection: () => Effect.void,
-    printTable: () => Effect.void,
   } as unknown as Output);
 
 const analyticsLayer: Layer.Layer<Analytics> = Layer.succeed(Analytics, {
@@ -140,7 +143,7 @@ const runLogout = (
             opts.credentialId === undefined ? CREDENTIAL_ID : opts.credentialId,
         }),
       ),
-      Effect.provide(outputLayer(rec)),
+      Effect.provide(outputLayer(rec, opts.jsonMode ?? false)),
       Effect.provide(analyticsLayer),
       Effect.provide(configLayer(opts.jsonMode ?? false)),
     ) as Effect.Effect<void, CliError, never>,

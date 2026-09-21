@@ -8,25 +8,22 @@ import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
+import { isNumber, isString } from "../lib/guards.ts";
 import { wsFleetEventsPath } from "../lib/api-paths.ts";
 import { EVENT_STATUS } from "../constants/event-status.ts";
-import { ui, type UiTheme } from "../output/index.ts";
+import { ui, type UiTheme, EMPTY_CELL } from "../output/index.ts";
 import {
   ValidationError,
   type CliError,
 } from "../errors/index.ts";
 
+const EVENTS_LISTED = "Fleet events" as const;
 const DEFAULT_LIMIT = 50;
 const PREVIEW_MAX = 80;
-const TYPE_NUMBER = "number" as const;
-const TYPE_STRING = "string" as const;
-const LITERAL = "—" as const;
 
-const isNumber = (value: unknown): value is number => typeof value === TYPE_NUMBER;
-const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 interface EventRow {
   readonly created_at?: number | string | null;
@@ -63,7 +60,7 @@ const buildQuery = (flags: EventsEffectFlags): string => {
 };
 
 const renderStatus = (status: string | null | undefined, theme: UiTheme): string => {
-  if (!status) return theme.dim(LITERAL);
+  if (!status) return theme.dim(EMPTY_CELL);
   if (status === EVENT_STATUS.PROCESSED) return theme.ok(status);
   if (status === EVENT_STATUS.FLEET_ERROR) return theme.err(status);
   if (status === EVENT_STATUS.GATE_BLOCKED) return theme.warn(status);
@@ -80,7 +77,7 @@ const formatRow = (ev: EventRow): string => {
   const ts =
     isNumber(ev.created_at) && Number.isFinite(ev.created_at)
       ? new Date(ev.created_at).toISOString()
-      : LITERAL;
+      : EMPTY_CELL;
   const status = renderStatus(ev.status, ui);
   const actor = ev.actor || "—";
   const preview = previewText(ev.response_text);
@@ -95,7 +92,6 @@ export const eventsEffectFromFlags = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
@@ -114,8 +110,10 @@ export const eventsEffectFromFlags = (
     const path = `${wsFleetEventsPath(wsId, flags.fleetId)}?${buildQuery(flags)}`;
     const res = yield* http.request<EventsResponse>({ path, token });
 
-    if (config.jsonMode || flags.json === true) {
-      yield* output.printJson(res);
+    // `--json` on this command forces the register regardless of the global
+    // flag, so the per-command arm stays beside the service's own.
+    if (output.format !== OUTPUT_FORMAT.text || flags.json === true) {
+      yield* output.success(EVENTS_LISTED, { ...res });
       return;
     }
 

@@ -6,17 +6,19 @@ import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
+import { isString } from "../lib/guards.ts";
 import { wsFleetEventsPath } from "../lib/api-paths.ts";
-import { validateRequiredId } from "../program/validators.ts";
-import { ui } from "../output/index.ts";
+import { validateRequiredId } from "../lib/id.ts";
+import { ui, EMPTY_CELL } from "../output/index.ts";
 import {
   ValidationError,
   type CliError,
 } from "../errors/index.ts";
 
+const LOGS_LISTED = "Fleet event log" as const;
 const DEFAULT_LOGS_LIMIT = "20";
 // The detail says what is wrong; the suggestion says what to run. Before
 // M171 both carried the same sentence, so the rendered failure repeated
@@ -24,10 +26,7 @@ const DEFAULT_LOGS_LIMIT = "20";
 const FLEET_REQUIRED = "--fleet <id> is required";
 const USAGE =
   "usage: agentsfleet logs --fleet <id> [--limit <n>] [--cursor <token>]";
-const TYPE_STRING = "string" as const;
-const LITERAL = "—" as const;
 
-const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 interface EventRow {
   readonly created_at?: number | string | null;
@@ -66,14 +65,14 @@ const requireFleetId = (
   });
 
 // Falsy input (null/undefined/0/""/NaN) and any truthy-but-unparseable value
-// (`new Date("garbage")`, out-of-range numbers) both fall back to LITERAL —
+// (`new Date("garbage")`, out-of-range numbers) both fall back to EMPTY_CELL —
 // never throw RangeError, which would crash the whole `logs` command.
 // Numeric 0 (Unix epoch) is treated as an unset/invalid sentinel here, not a
 // valid timestamp, matching how the API uses created_at.
 export const formatTimestamp = (raw: number | string | null | undefined): string => {
-  if (!raw) return LITERAL;
+  if (!raw) return EMPTY_CELL;
   const date = new Date(raw);
-  return Number.isNaN(date.getTime()) ? LITERAL : date.toISOString();
+  return Number.isNaN(date.getTime()) ? EMPTY_CELL : date.toISOString();
 };
 
 export const logsEffectFromFlags = (
@@ -84,7 +83,6 @@ export const logsEffectFromFlags = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
@@ -105,8 +103,8 @@ export const logsEffectFromFlags = (
     const token = yield* resolveAuthToken;
     const res = yield* http.request<LogsResponse>({ path, token });
 
-    if (config.jsonMode) {
-      yield* output.printJson(res);
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(LOGS_LISTED, { ...res });
       return;
     }
 
@@ -123,7 +121,7 @@ export const logsEffectFromFlags = (
         ? evt.response_text.slice(0, 80)
         : (evt.status ?? "");
       yield* output.info(
-        `  ${ui.dim(ts)}  ${evt.actor ?? LITERAL}  ${summary}`,
+        `  ${ui.dim(ts)}  ${evt.actor ?? EMPTY_CELL}  ${summary}`,
       );
     }
 

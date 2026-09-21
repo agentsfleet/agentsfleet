@@ -2,9 +2,10 @@ import { Effect, Exit, Layer, Redacted } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
+import { isRecord } from "../lib/guards.ts";
 import { wsFleetMessagesPath } from "../lib/api-paths.ts";
 import { streamGet as defaultStreamGet } from "../lib/sse.ts";
 import { EVENT_STATUS } from "../constants/event-status.ts";
@@ -39,16 +40,14 @@ import {
 
 const TAG_FIELD = "_tag";
 
+const STEER_OUTCOME = "Steer outcome" as const;
 const MESSAGE_PLACEHOLDER = "<message>" as const;
-const TYPE_OBJECT = "object" as const;
 const SUGGESTION_REPORT_COMMAND = "report this with the command you ran" as const;
 const SUGGESTION_RERUN_COMMAND = "rerun the command to continue" as const;
 const DETAIL_STEER_INTERRUPTED = "steer interrupted" as const;
 
 type RenderableSteerOutcome = PolledSteerOutcome;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === TYPE_OBJECT;
 
 const failSteerInterrupted = (): Effect.Effect<never, CliError> =>
   Effect.fail(
@@ -174,11 +173,10 @@ const renderOutcome = (
   token: Redacted.Redacted<string>,
 ): Effect.Effect<void, CliError, CliConfig | HttpClient | Output> =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
 
-    if (config.jsonMode) {
-      yield* output.printJson({ event_id: eventId, ...outcome });
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(STEER_OUTCOME, { event_id: eventId, ...outcome });
     } else if (outcome.kind === STATUS_COMPLETE) {
       yield* output.info("");
       yield* output.success(`event ${eventId} ${outcome.status}`);
@@ -222,8 +220,9 @@ export const steerEffectFromArgs = (
 > =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
-    const config = yield* CliConfig;
     const output = yield* Output;
+    // Held only to re-provide it to the REPL's per-turn layer below.
+    const config = yield* CliConfig;
     const streamGet = deps.streamGet ?? defaultStreamGet;
     const stdin = deps.stdin ?? (process.stdin as ReplInputStream);
     const stdout = deps.stdout ?? (process.stdout as ReplOutputStream);

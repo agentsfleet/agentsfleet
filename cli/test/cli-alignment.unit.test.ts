@@ -17,9 +17,9 @@ test("--help lists the fleet subcommand group", async () => {
   });
   assert.equal(code, 0);
   const text = out.read();
-  // Commander emits a flat Commands list — each fleet op gets its
-  // own line in the top-level body. The added Subcommands block lists
-  // the namespaced secret vault.
+  // The top-level body is a flat Commands list — each fleet op gets its
+  // own line. The Subcommands block below it lists the namespaced secret
+  // vault.
   assert.ok(text.includes("install"), "install line missing");
   assert.ok(text.includes("list"),    "list line missing");
   assert.ok(text.includes("status"),  "status line missing");
@@ -171,7 +171,7 @@ test("workspace show --json returns the full detail object", async () => {
   });
 });
 
-test("workspace show errors when no active workspace and no --workspace-id", async () => {
+test("workspace show errors when no active workspace and no --workspace", async () => {
   await withFreshStateDir(async () => {
     await saveWorkspaces(process.env, { current_workspace_id: null, items: [] });
     const out = bufferStream();
@@ -292,7 +292,7 @@ test("fleet list --json returns the raw envelope incl. next_cursor", async () =>
   });
 });
 
-test("fleet list honors --workspace-id override over current_workspace_id", async () => {
+test("fleet list honors --workspace override over current_workspace_id", async () => {
   await withFreshStateDir(async () => {
     await saveWorkspaces(process.env, {
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
@@ -314,7 +314,7 @@ test("fleet list honors --workspace-id override over current_workspace_id", asyn
         text: async () => JSON.stringify({ items: [], total: 0, cursor: null }),
       };
     });
-    await runCli(["list", "--workspace-id", "01900000-0000-7000-8000-000000000002"], {
+    await runCli(["list", "--workspace", "01900000-0000-7000-8000-000000000002"], {
       stdout: out.stream,
       stderr: err.stream,
       env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
@@ -324,7 +324,7 @@ test("fleet list honors --workspace-id override over current_workspace_id", asyn
   });
 });
 
-test("fleet list errors with ConfigError when no active workspace and no --workspace-id", async () => {
+test("fleet list errors with ConfigError when no active workspace and no --workspace", async () => {
   await withFreshStateDir(async () => {
     await saveWorkspaces(process.env, { current_workspace_id: null, items: [] });
     const out = bufferStream();

@@ -123,8 +123,8 @@ WHERE g.id = $1::uuid AND g.workspace_id = $2::uuid";
 /// `{"evidence":{"service":"github"}}`, and have the ordinary-looking card that
 /// raises flip its own standing permission to mint that service's credentials —
 /// granted by an operator who was answering a different question. The retired
-/// `repository_write` kind was defended twice over by the daemon path that
-/// raised it; this kind had nothing.
+/// write kind was defended twice over by the daemon path that raised it;
+/// this kind had nothing.
 ///
 /// The event column is the discriminator because it is the one thing on this row
 /// a fleet cannot reach. [`REQUEST_GRANT`] writes NULL there by construction

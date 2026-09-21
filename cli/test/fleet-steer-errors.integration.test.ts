@@ -38,7 +38,7 @@ import {
   makeRecorder,
   makeLayer,
   eventStream,
-} from "./fleet-steer.integration.test.ts";
+} from "./helpers-fleet-steer.ts";
 
 type StreamGetFn = typeof import("../src/lib/sse.ts").streamGet;
 

@@ -4,6 +4,8 @@
 import { palette, type StyleOpts } from "./palette.ts";
 import { glyph, withGlyph } from "./glyph.ts";
 import {
+  EMPTY_CELL,
+  cell,
   formatTable,
   formatKeyValue,
   formatSection,
@@ -61,6 +63,8 @@ export function printTable(stream: WriteStream, columns: ReadonlyArray<TableColu
 export {
   palette,
   glyph,
+  EMPTY_CELL,
+  cell,
   withGlyph,
   formatTable,
   formatKeyValue,

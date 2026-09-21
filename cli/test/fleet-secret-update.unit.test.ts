@@ -13,7 +13,8 @@ import { secretUpdateEffectFromFlags } from "../src/commands/fleet_secret.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
-import { Output } from "../src/services/output.ts";
+import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { ServerError, ValidationError, type CliError } from "../src/errors/index.ts";
 
@@ -28,11 +29,23 @@ interface Sent {
   readonly body?: unknown;
 }
 
-const makeOutputLayer = (captured: string[]): Layer.Layer<Output> =>
+const makeOutputLayer = (
+  captured: string[],
+  format: OutputFormat = OUTPUT_FORMAT.text,
+): Layer.Layer<Output> =>
   Layer.succeed(Output, {
+    ...outputDouble({ format }),
+    format,
     intro: (msg) => Effect.sync(() => { captured.push(msg); }),
     info: (msg) => Effect.sync(() => { captured.push(msg); }),
-    success: (msg) => Effect.sync(() => { captured.push(`ok: ${msg}`); }),
+    success: (msg, data) =>
+      Effect.sync(() =>
+        captured.push(
+          format === OUTPUT_FORMAT.json
+            ? JSON.stringify(data ?? { message: msg })
+            : `ok: ${msg}`,
+        ),
+      ),
     warn: (msg) => Effect.sync(() => { captured.push(`warn: ${msg}`); }),
     error: (msg) => Effect.sync(() => { captured.push(`err: ${msg}`); }),
     outro: (msg) => Effect.sync(() => { captured.push(msg); }),
@@ -97,7 +110,12 @@ const run = (
       Effect.provide(makeConfigLayer(jsonMode)),
       Effect.provide(makeCredsLayer()),
       Effect.provide(makeRecordingHttp(sent, responder)),
-      Effect.provide(makeOutputLayer(captured)),
+      Effect.provide(
+        makeOutputLayer(
+          captured,
+          jsonMode ? OUTPUT_FORMAT.json : OUTPUT_FORMAT.text,
+        ),
+      ),
       Effect.provide(makeWsLayer()),
     ),
   );

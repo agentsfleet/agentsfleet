@@ -13,8 +13,8 @@ import {
   loadCredentials as loadCredsRaw,
   saveCredentials as saveCredsRaw,
   clearCredentials as clearCredsRaw,
+  type Credentials as CredentialsRecord,
 } from "../lib/state.ts";
-import type { Credentials as CredentialsRecord } from "../commands/types.ts";
 import {
   CLI_CREDENTIAL_PATTERN,
   TENANT_KEY_PREFIX,

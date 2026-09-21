@@ -19,7 +19,7 @@ Authenticate, manage workspaces, install Fleets, tail their events, and operate 
 npm install -g @agentsfleet/cli
 ```
 
-Requires Node.js ≥ 24 (or Bun ≥ 1.4).
+Requires [Bun](https://bun.sh) ≥ 1.4 — the CLI runs on the bun runtime.
 
 ## Quick start
 
@@ -43,7 +43,7 @@ and is versioned with each release:
 |------|--------|
 | [Install](https://docs.agentsfleet.net/cli/install) | Install, upgrade, supported runtimes |
 | [Commands](https://docs.agentsfleet.net/cli/agentsfleet) | Every command and its flags |
-| [Global flags](https://docs.agentsfleet.net/cli/flags) | `--api`, `--json`, `--no-input`, `--no-open` |
+| [Global flags](https://docs.agentsfleet.net/cli/flags) | `--api`, `--json` — and where the per-command flags live |
 | [Configuration](https://docs.agentsfleet.net/cli/configuration) | Environment variables, config paths, precedence |
 
 `agentsfleet --help` and `agentsfleet <command> --help` print the same surface

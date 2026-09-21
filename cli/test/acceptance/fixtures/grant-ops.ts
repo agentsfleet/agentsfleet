@@ -50,6 +50,12 @@ export const GRANT_CREDENTIAL_NAME = "grant_walk_github";
  * `afd_credential::secrets::connector::FIELD_INTEGRATION`. */
 const FIELD_INTEGRATION = "integration";
 
+/**
+ * The provenance an install-time grant carries. Cross-runtime pair of
+ * `afd_approval::request::REASON_DECLARED_AT_INSTALL`.
+ */
+export const REASON_DECLARED_AT_INSTALL = "Declared by the fleet bundle at install";
+
 /** Grant-row statuses, as `afd_wire::grant::status` spells them. */
 export const GRANT_STATUS = {
   pending: "pending",
@@ -71,6 +77,8 @@ export interface GrantRow {
   readonly service?: string | null;
   readonly status?: string | null;
   readonly approved_at?: number | string | null;
+  readonly revoked_at?: number | string | null;
+  readonly reason?: string | null;
 }
 
 export interface GateRow {

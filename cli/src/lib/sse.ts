@@ -1,15 +1,17 @@
 // GET-based Server-Sent Events consumer.
 //
-// `lib/http.ts::streamFetch` is POST-only (used by the execute proxy);
-// the events endpoint is GET. We consume frames via fetch +
+// The events endpoint is GET. We consume frames via fetch +
 // ReadableStream, which lets us set Authorization headers (the native
-// EventSource API can not).
+// EventSource API can not). A POST-based mirror module once sat beside
+// this one for the execute proxy; that caller and its module are gone,
+// so this is the only stream transport the client has.
 //
 // Each parsed frame is `{ id, type, data }` where `data` has been
 // JSON.parse()'d if possible. Lines starting with `:` are comments
 // (heartbeats) and skipped.
 
 import { ApiError, readProblemDetails, type FetchImpl } from "./http.ts";
+import { isRecord } from "./guards.ts";
 
 const MESSAGE_KEY = "message";
 
@@ -96,7 +98,7 @@ export async function streamGet(
       }
     }
   } catch (err) {
-    if (err !== null && typeof err === TYPE_OBJECT && (err as { name?: unknown }).name === "AbortError") {
+    if (isRecord(err) && (err as { name?: unknown }).name === "AbortError") {
       if (externalSignal?.aborted) return; // user-cancelled, not a timeout
       throw new ApiError(`stream timed out after ${timeoutMs}ms`, { status: 408, code: "TIMEOUT" });
     }
@@ -130,4 +132,3 @@ export function parseSseFrame(frame: string): SseFrame | null {
   return { id, type, data: parsed };
 }
 const LITERAL = "\n\n" as const;
-const TYPE_OBJECT = "object" as const;

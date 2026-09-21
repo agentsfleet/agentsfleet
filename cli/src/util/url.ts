@@ -1,6 +1,6 @@
 // API URL normalisation — extracted from the deleted program/args.js so
 // the helper lives near other URL/path utilities and survives the
-// commander refactor.
+// the parser migration.
 
 export const DEFAULT_API_URL = "https://api.agentsfleet.net";
 export const DEFAULT_DASHBOARD_URL = "https://app.agentsfleet.net";

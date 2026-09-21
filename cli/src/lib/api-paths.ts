@@ -11,7 +11,6 @@ export const QUERY_STARTING_AFTER = "starting_after";
 // bounded 1..100 server-side; `provider` filters the catalogue page.
 export const QUERY_LIMIT = "limit";
 export const QUERY_PROVIDER = "provider";
-export const WEBHOOKS_PATH = "/v1/webhooks/";
 
 // Flat (non-workspace-scoped) routes the CLI hits directly. Centralised
 // so the audit catches drift if a server-side rename ships without a
@@ -36,11 +35,6 @@ export const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
 // plane that requires no capability — which is why `login` and `auth status`
 // both probe it rather than the billing snapshot they used to reach for.
 export const USERS_ME_PATH = "/v1/users/me";
-
-// First-party Fleet library catalog — global (not workspace-scoped),
-// metadata only. Backs `agentsfleet library` (the platform shop-window).
-// The SKILL.md/TRIGGER.md content is fetched server-side at onboard time.
-export const FLEET_BUNDLES_PATH = "/v1/fleets/bundles";
 
 // Healthz body envelope — the server's `{status: "ok"}` response.
 export const HEALTHZ_STATUS_OK = "ok";
@@ -98,10 +92,6 @@ export const wsFleetScheduleSyncPath = (
   fleetId: string,
   scheduleId: string,
 ): string => `${wsFleetSchedulePath(wsId, fleetId, scheduleId)}/sync`;
-
-// Workspace-aggregate event history.
-export const wsEventsPath = (wsId: string): string =>
-  `${WORKSPACES_PATH}${enc(wsId)}/events`;
 
 // Workspace-scoped secrets vault (workspace-level, not per-fleet).
 export const wsSecretsPath = (wsId: string): string =>

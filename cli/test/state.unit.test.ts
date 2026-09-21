@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { stateInternals } from "../src/lib/state.ts";
-import { STATE_DIR_ENV } from "../src/lib/config-dir.ts";
+import { STATE_DIR_ENV } from "../src/constants/env.ts";
 
 // No process-environment save/restore dance here, deliberately: the suite
 // preload (test/setup.ts) sets the process variable, so these passing proves

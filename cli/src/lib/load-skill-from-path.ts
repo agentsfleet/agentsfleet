@@ -3,6 +3,7 @@
 
 import { readFileSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
+import { isString } from "./guards.ts";
 
 const SKILL_FILENAME = "SKILL.md";
 const TRIGGER_FILENAME = "TRIGGER.md";
@@ -29,11 +30,11 @@ export interface LoadedSkill {
 }
 
 function isNodeErrnoException(err: unknown): err is NodeJS.ErrnoException {
-  return err instanceof Error && typeof (err as NodeJS.ErrnoException).code === TYPE_STRING;
+  return err instanceof Error && isString((err as NodeJS.ErrnoException).code);
 }
 
 export function loadSkillFromPath(path: string): LoadedSkill {
-  if (typeof path !== TYPE_STRING || path === "") {
+  if (!isString(path) || path === "") {
     throw new SkillLoadError(ERR_PATH_NOT_FOUND_2, "<no path provided>");
   }
   let stat;
@@ -81,5 +82,4 @@ const EACCES_CODE = "EACCES" as const;
 const ERR_PATH_DENIED_2 = "ERR_PATH_DENIED" as const;
 const ERR_PATH_NOT_FOUND_2 = "ERR_PATH_NOT_FOUND" as const;
 const ERR_SKILL_MISSING_2 = "ERR_SKILL_MISSING" as const;
-const TYPE_STRING = "string" as const;
 const UTF8_ENCODING = "utf-8" as const;

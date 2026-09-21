@@ -9,6 +9,7 @@ import { LIBRARY_ID_PLACEHOLDER } from "../constants/cli-flags.ts";
 import { Output } from "../services/output.ts";
 import { ValidationError } from "../errors/index.ts";
 import type { LoadedSkill } from "../lib/load-skill-from-path.ts";
+import { isString } from "../lib/guards.ts";
 
 /** One webhook trigger the bundle declared, and the URL the provider is pointed at. */
 export interface WebhookUrl {
@@ -46,10 +47,6 @@ export interface FleetLibraryGalleryEntry {
   readonly requirements?: BundleRequirements;
 }
 
-export interface FleetLibraryGalleryResponse {
-  readonly items?: ReadonlyArray<FleetLibraryGalleryEntry>;
-}
-
 // Tier literals carried in a gallery entry's `visibility` field.
 export const VISIBILITY_PLATFORM = "platform" as const;
 export const VISIBILITY_TENANT = "tenant" as const;
@@ -67,13 +64,8 @@ export interface CreateFleetBody {
   readonly name?: string;
 }
 
-export const METHOD_GET = "GET" as const;
-export const METHOD_POST = "POST" as const;
-const TYPE_STRING = "string" as const;
-
-// Predicate (not an inline `typeof x === TYPE_STRING`) so TypeScript narrows at
+// Predicate (not an inline `isString(x)`) so TypeScript narrows at
 // the call site — typeof-narrowing only fires on the string literal, not a const.
-export const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 export const USAGE_INSTALL = `agentsfleet install --library ${LIBRARY_ID_PLACEHOLDER}`;
 export const USAGE_UPDATE = "agentsfleet fleet update <fleet_id> --from <path>";

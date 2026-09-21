@@ -154,7 +154,7 @@ describe("requireGateId", () => {
   });
 
   test("refuses a missing identifier with the usage line", async () => {
-    // commander declares `<gate_id>` required, so this arm is the type-level
+    // The tree declares `<gate_id>` required, so this arm is the type-level
     // guard behind that: the handler reads `positionals[0]`, which is
     // `string | undefined`, and must not send a request for `undefined`.
     const exit = await Effect.runPromiseExit(requireGateId(undefined));

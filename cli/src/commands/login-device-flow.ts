@@ -47,6 +47,7 @@ import {
   type SessionCreatedResponse,
   type VerifySuccessResponse,
 } from "./login-device-flow-types.ts";
+import { HTTP_METHOD } from "../constants/http-method.ts";
 
 // Wrong-code budget for the interactive verify prompt. Only a wrong code
 // (UZ-AUTH-011 → VerificationFailedError) spends a strike; the 6-digit shape
@@ -139,7 +140,7 @@ export const createSession = (
     const http = yield* HttpClient;
     return yield* http.request<SessionCreatedResponse>({
       path: AUTH_SESSIONS_PATH,
-      method: HTTP_METHOD_POST,
+      method: HTTP_METHOD.post,
       body: { public_key: publicKeyBase64Url, token_name: tokenName },
     });
   });
@@ -152,7 +153,7 @@ export const submitVerificationCode = (
     const http = yield* HttpClient;
     return yield* http.request<VerifySuccessResponse>({
       path: `${AUTH_SESSIONS_PATH}/${encodeURIComponent(sessionId)}/verify`,
-      method: HTTP_METHOD_POST,
+      method: HTTP_METHOD.post,
       body: { verification_code: verificationCode },
     });
   });
@@ -280,5 +281,4 @@ export const verifyAndDecryptWithRetry = (
       });
     return yield* submit(MAX_CLI_VERIFY_ATTEMPTS);
   });
-const HTTP_METHOD_POST = "POST" as const;
 const STATUS_OK = "ok" as const;

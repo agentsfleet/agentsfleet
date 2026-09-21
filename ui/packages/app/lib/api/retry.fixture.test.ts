@@ -17,6 +17,8 @@ const PATH = "/v1/thing";
 const MS_PER_SECOND = 1000;
 const OK_BODY = { ok: true };
 const ERROR_TIMEOUT = "timeout";
+const ERROR_DROPPED = "dropped";
+const ERROR_UNSENDABLE = "unsendable";
 
 type Answer = { status: number; retryAfterSeconds?: number };
 type Failure = { error: string };
@@ -54,6 +56,13 @@ function answer(step: Answer) {
 /** What this transport's fetch rejects with for each scripted failure. */
 function failure(step: Failure): Error {
   if (step.error === ERROR_TIMEOUT) return new DOMException("signal timed out", "TimeoutError");
+  // A socket lost after connecting, as Bun reports it (code on the error, no
+  // cause); the Node shape is the `UND_ERR_SOCKET` row. This classifier reads
+  // only the cause, so the Bun shape reads as sent — the same decision.
+  if (step.error === ERROR_UNSENDABLE) return new TypeError("Header 'Authorization' has invalid value");
+  if (step.error === ERROR_DROPPED) {
+    return Object.assign(new TypeError("The socket connection was closed unexpectedly"), { code: "ECONNRESET" });
+  }
   return fetchFailed(step.error);
 }
 

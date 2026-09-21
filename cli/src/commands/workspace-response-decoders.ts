@@ -1,5 +1,6 @@
+import { isString } from "../lib/guards.ts";
+
 const WORKSPACE_LIST_PAGE_LIMIT = 100;
-const STRING_TYPE = "string";
 
 export interface WorkspaceWireItem {
   readonly id: string;
@@ -24,8 +25,6 @@ export interface WorkspaceCreateResponse {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
-const isString = (value: unknown): value is string =>
-  typeof value === STRING_TYPE;
 
 const isNonEmptyString = (value: unknown): value is string =>
   isString(value) && value.trim().length > 0;

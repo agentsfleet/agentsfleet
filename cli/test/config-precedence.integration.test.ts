@@ -26,7 +26,7 @@
 //       API key (AGENTSFLEET_API_KEY) WINS over the on-disk login token at
 //       the wire. The on-disk login token reaches the wire only when no env
 //       API key is set.
-//   (c) Active workspace: the --workspace-id flag overrides the persisted
+//   (c) Active workspace: the --workspace flag overrides the persisted
 //       current_workspace_id in the request path; absent the flag the
 //       persisted id is used.
 //
@@ -48,12 +48,12 @@ import {
 
 // `list` (top-level, cli-tree-fleet.ts) is the authed, workspace-scoped
 // surface under test — it GETs /v1/workspaces/<wsId>/fleets with a Bearer
-// header and honours --workspace-id.
+// header and honours --workspace.
 const LIST = "list" as const;
 const FLAG_API = "--api" as const;
-const FLAG_WORKSPACE_ID = "--workspace-id" as const;
+const FLAG_WORKSPACE = "--workspace" as const;
 
-// Persisted (current_workspace_id) vs the --workspace-id override target.
+// Persisted (current_workspace_id) vs the --workspace override target.
 // Both are real uuidv7 values — parseIdOption (src/program/validators.ts)
 // rejects anything else, so a malformed id would fail before the wire.
 const WS_PERSISTED = "01900000-0000-7000-8000-0000000ab1de";
@@ -258,7 +258,7 @@ describe("config precedence — auth token Bearer at the wire (authed list)", ()
 });
 
 describe("config precedence — active workspace in the request path (authed list)", () => {
-  test("persisted current_workspace_id drives the path when no --workspace-id flag", async () => {
+  test("persisted current_workspace_id drives the path when no --workspace flag", async () => {
     await withAuthedStateDir({ workspaceId: WS_PERSISTED, token: DISK_TOKEN }, async () => {
       await withMockApi(listRoutes(WS_PERSISTED), async (apiUrl, calls) => {
         const out = bufferStream();
@@ -275,14 +275,14 @@ describe("config precedence — active workspace in the request path (authed lis
     });
   });
 
-  test("--workspace-id flag overrides the persisted current_workspace_id in the path", async () => {
+  test("--workspace flag overrides the persisted current_workspace_id in the path", async () => {
     await withAuthedStateDir({ workspaceId: WS_PERSISTED, token: DISK_TOKEN }, async () => {
       // Mock both ids so a wrong-precedence call still resolves (200) and
       // the assertion — not a 404 — is what fails on regression.
       await withMockApi(listRoutes(WS_PERSISTED, WS_OVERRIDE), async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli([LIST, FLAG_WORKSPACE_ID, WS_OVERRIDE], {
+        const code = await runCli([LIST, FLAG_WORKSPACE, WS_OVERRIDE], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),

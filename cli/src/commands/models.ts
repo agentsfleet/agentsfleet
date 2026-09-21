@@ -14,15 +14,11 @@
 // (schema/400_model_library.sql) and prints as a dash rather than $0.00.
 
 import { Effect } from "effect";
-import { CliConfig } from "../services/config.ts";
-import { Credentials } from "../services/credentials.ts";
-import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { resolveAuthToken } from "./workspace-guards.ts";
 import { catalogueProviders, fetchCatalogue, type LibraryModel } from "../lib/model-catalogue.ts";
 import { OPENAI_COMPATIBLE_PROVIDER } from "../constants/custom-endpoint.ts";
-import { ui } from "../output/index.ts";
-import type { CliError } from "../errors/index.ts";
+import { ui, EMPTY_CELL } from "../output/index.ts";
 
 const FIELD_PROVIDER = "provider" as const;
 const FIELD_MODEL = "model" as const;
@@ -30,8 +26,9 @@ const FIELD_CONTEXT = "context" as const;
 const FIELD_INPUT = "input" as const;
 const FIELD_OUTPUT = "output" as const;
 
+const MODELS_LISTED = "Model catalogue" as const;
+
 const NANOS_PER_USD = 1_000_000_000;
-const UNPRICED = "—" as const;
 const TOKENS_PER_K = 1_000;
 
 export interface ModelsFlags {
@@ -47,7 +44,7 @@ const SUB_CENT_DIGITS = 2;
 
 /** Nanos per million tokens → "$1.25", or a dash when the row carries no rate. */
 const usd = (nanos: number | undefined): string => {
-  if (!nanos || nanos <= 0) return UNPRICED;
+  if (!nanos || nanos <= 0) return EMPTY_CELL;
   const dollars = nanos / NANOS_PER_USD;
   return dollars < SUB_CENT
     ? `$${dollars.toPrecision(SUB_CENT_DIGITS)}`
@@ -56,7 +53,7 @@ const usd = (nanos: number | undefined): string => {
 
 /** 200000 → "200k". The exact number is in --json; the table wants a shape. */
 const contextLabel = (tokens: number | undefined): string =>
-  !tokens || tokens <= 0 ? UNPRICED : `${Math.round(tokens / TOKENS_PER_K)}k`;
+  !tokens || tokens <= 0 ? EMPTY_CELL : `${Math.round(tokens / TOKENS_PER_K)}k`;
 
 const row = (m: LibraryModel): Record<string, string> => ({
   provider: String(m.provider ?? ""),
@@ -66,61 +63,55 @@ const row = (m: LibraryModel): Record<string, string> => ({
   output: usd(m.output_nanos_per_mtok),
 });
 
-export const modelsEffectFromFlags = (
+export const modelsEffectFromFlags = Effect.fn("models.list")(function* (
   flags: ModelsFlags,
-): Effect.Effect<
-  void,
-  CliError,
-  CliConfig | Credentials | HttpClient | Output
-> =>
-  Effect.gen(function* () {
-    const config = yield* CliConfig;
-    const output = yield* Output;
+) {
+  const output = yield* Output;
 
-    const token = yield* resolveAuthToken;
-    const provider = flags.provider?.trim();
-    const models = yield* fetchCatalogue(token, { provider });
+  const token = yield* resolveAuthToken;
+  const provider = flags.provider?.trim();
+  const models = yield* fetchCatalogue(token, { provider });
 
-    if (config.jsonMode) {
-      yield* output.printJson({ models });
-      return;
-    }
+  if (output.format !== OUTPUT_FORMAT.text) {
+    yield* output.success(MODELS_LISTED, { models });
+    return;
+  }
 
-    if (models.length === 0) {
-      // An empty catalogue is a provisioning state, not an error: the table
-      // ships empty and the model_catalogue playbook fills it. Say which,
-      // because "no models" with no cause reads as a broken server.
-      yield* output.info(
-        provider
-          ? `No models for provider '${provider}'. Run \`agentsfleet models\` for the full catalogue.`
-          : "This server's model catalogue is empty — a platform admin primes it from scripts/model-library-allowlist.json.",
-      );
-      return;
-    }
-
-    yield* output.printTable(
-      [
-        { key: FIELD_PROVIDER, label: "PROVIDER" },
-        { key: FIELD_MODEL, label: "MODEL" },
-        { key: FIELD_CONTEXT, label: "CONTEXT" },
-        { key: FIELD_INPUT, label: "IN/MTOK" },
-        { key: FIELD_OUTPUT, label: "OUT/MTOK" },
-      ],
-      models.map(row),
+  if (models.length === 0) {
+    // An empty catalogue is a provisioning state, not an error: the table
+    // ships empty and the model_catalogue playbook fills it. Say which,
+    // because "no models" with no cause reads as a broken server.
+    yield* output.info(
+      provider
+        ? `No models for provider '${provider}'. Run \`agentsfleet models\` for the full catalogue.`
+        : "This server's model catalogue is empty — a platform admin primes it from scripts/model-library-allowlist.json.",
     );
+    return;
+  }
 
-    const providers = catalogueProviders(models);
+  yield* output.printTable(
+    [
+      { key: FIELD_PROVIDER, label: "PROVIDER" },
+      { key: FIELD_MODEL, label: "MODEL" },
+      { key: FIELD_CONTEXT, label: "CONTEXT" },
+      { key: FIELD_INPUT, label: "IN/MTOK" },
+      { key: FIELD_OUTPUT, label: "OUT/MTOK" },
+    ],
+    models.map(row),
+  );
+
+  const providers = catalogueProviders(models);
+  yield* output.info(
+    ui.dim(
+      `${models.length} model(s) across ${providers.length} provider(s). ` +
+        `Store a credential with: agentsfleet secret create <name> --provider <id> --api-key <key> --model <m>`,
+    ),
+  );
+  if (!provider) {
     yield* output.info(
       ui.dim(
-        `${models.length} model(s) across ${providers.length} provider(s). ` +
-          `Store a credential with: agentsfleet secret create <name> --provider <id> --api-key <key> --model <m>`,
+        `For an endpoint this catalogue does not carry, use --provider ${OPENAI_COMPATIBLE_PROVIDER} --base-url https://host/v1`,
       ),
     );
-    if (!provider) {
-      yield* output.info(
-        ui.dim(
-          `For an endpoint this catalogue does not carry, use --provider ${OPENAI_COMPATIBLE_PROVIDER} --base-url https://host/v1`,
-        ),
-      );
-    }
-  });
+  }
+});

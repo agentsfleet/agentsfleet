@@ -15,7 +15,7 @@ import { Effect, Redacted } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import {
@@ -23,12 +23,13 @@ import {
   wsFleetPath,
   wsFleetLibrariesPath,
 } from "../lib/api-paths.ts";
+import { findAcrossPages } from "../lib/paged.ts";
 import {
   loadSkillFromPath,
   SkillLoadError,
   type LoadedSkill,
 } from "../lib/load-skill-from-path.ts";
-import { validateRequiredId } from "../program/validators.ts";
+import { validateRequiredId } from "../lib/id.ts";
 import { OPT_FROM } from "../constants/cli-flags.ts";
 import {
   ConfigError,
@@ -37,8 +38,6 @@ import {
 } from "../errors/index.ts";
 import {
   bodyFromBundle,
-  METHOD_GET,
-  METHOD_POST,
   printRequirements,
   requireFromPath,
   requireLibraryId,
@@ -48,10 +47,10 @@ import {
   withName,
   type CreateFleetBody,
   type FleetLibraryGalleryEntry,
-  type FleetLibraryGalleryResponse,
   type InstallResponse,
   type UpdateResponse,
 } from "./fleet_install_source.ts";
+import { HTTP_METHOD } from "../constants/http-method.ts";
 
 export interface InstallFlags {
   readonly libraryId?: string | null | undefined;
@@ -82,18 +81,11 @@ export const loadBundle = (
       }),
   });
 
+const FLEET_INSTALLED = "Fleet installed" as const;
+const FLEET_UPDATED = "Fleet updated" as const;
+
 // POST the create + render the install result. Shared by both sources so the
 // Rows per request, and the ceiling on how many requests one lookup will make.
-// The gallery pages at 50 by default and rejects a `limit` above 100
-// (`UZ-LIBRARY-003`), so asking for the maximum halves the round-trips.
-const GALLERY_PAGE_LIMIT = 100;
-const GALLERY_MAX_PAGES = 50;
-
-/** One wire page: `items` is that page alone, `next_cursor` null on the last. */
-type FleetLibraryGalleryPage = FleetLibraryGalleryResponse & {
-  readonly next_cursor?: string | null;
-};
-
 // Find one gallery entry by id, following `next_cursor` to exhaustion.
 //
 // Reading only the first page would report `library entry '<id>' is not in this
@@ -108,23 +100,12 @@ const findGalleryEntry = (
 ): Effect.Effect<FleetLibraryGalleryEntry | undefined, CliError, HttpClient> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
-    let cursor: string | null = null;
-
-    for (let page = 0; page < GALLERY_MAX_PAGES; page += 1) {
-      const params = new URLSearchParams({ limit: String(GALLERY_PAGE_LIMIT) });
-      if (cursor !== null) params.set("starting_after", cursor);
-
-      const body = yield* http.request<FleetLibraryGalleryPage>({
-        path: `${wsFleetLibrariesPath(wsId)}?${params.toString()}`,
-        method: METHOD_GET,
-        token,
-      });
-      const hit = (body.items ?? []).find((e) => e.id === libraryId);
-      if (hit) return hit;
-      if (!body.next_cursor) return undefined;
-      cursor = body.next_cursor;
-    }
-    return undefined;
+    return yield* findAcrossPages<FleetLibraryGalleryEntry>(
+      http,
+      wsFleetLibrariesPath(wsId),
+      token,
+      (entry) => entry.id === libraryId,
+    );
   });
 
 // success / JSON output stays identical whether the bundle came from a path or
@@ -137,21 +118,20 @@ const createAndRender = (
   fallbackName: string,
 ): Effect.Effect<void, CliError, CliConfig | HttpClient | Output> =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
     const res = yield* http.request<InstallResponse>({
       path: wsFleetsPath(wsId),
-      method: METHOD_POST,
+      method: HTTP_METHOD.post,
       body,
       token,
     });
 
     const displayName = res.name || fallbackName;
 
-    if (config.jsonMode) {
-      yield* output.printJson({
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(FLEET_INSTALLED, {
         status: "installed",
         fleet_id: res.fleet_id,
         webhook_urls: res.webhook_urls ?? [],
@@ -183,7 +163,7 @@ export const installEffectFromFlags = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
+    const output = yield* Output;
 
     const libraryId = yield* requireLibraryId(flags.libraryId);
     const wsId = yield* requireWorkspaceId;
@@ -202,7 +182,11 @@ export const installEffectFromFlags = (
         }),
       );
     }
-    if (!config.jsonMode) yield* printRequirements(entry.requirements);
+    // The requirement preview is prose for a person; a script gets the same
+    // facts in the payload below and would only have to skip these lines.
+    if (output.format === OUTPUT_FORMAT.text) {
+      yield* printRequirements(entry.requirements);
+    }
     // Key the create body off the resolved tier. Fail loud on an unrecognized
     // visibility rather than silently posting a platform slug as a tenant id.
     if (entry.visibility !== VISIBILITY_PLATFORM && entry.visibility !== VISIBILITY_TENANT) {
@@ -232,7 +216,6 @@ export const updateEffectFromArgs = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
-    const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
@@ -266,8 +249,8 @@ export const updateEffectFromArgs = (
       token,
     });
 
-    if (config.jsonMode) {
-      yield* output.printJson({
+    if (output.format !== OUTPUT_FORMAT.text) {
+      yield* output.success(FLEET_UPDATED, {
         status: "updated",
         fleet_id: fleetId,
         config_revision: res.config_revision,

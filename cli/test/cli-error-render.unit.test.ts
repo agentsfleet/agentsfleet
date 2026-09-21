@@ -2,21 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Layer } from "effect";
 import { exitToCliError, renderCliError } from "../src/lib/cli-error-render.ts";
 import { Output } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { ServerError, UnexpectedError, ValidationError } from "../src/errors/index.ts";
 
 const recordingOutput = (sink: string[]) =>
   Layer.succeed(Output, {
-    intro: () => Effect.void,
-    info: () => Effect.void,
-    success: () => Effect.void,
+    ...outputDouble(),
     warn: (msg) => Effect.sync(() => sink.push(msg)),
     error: (msg) => Effect.sync(() => sink.push(msg)),
-    outro: () => Effect.void,
-    printJson: () => Effect.void,
-    printJsonErr: () => Effect.void,
-    printKeyValue: () => Effect.void,
-    printSection: () => Effect.void,
-    printTable: () => Effect.void,
   });
 
 describe("exitToCliError", () => {

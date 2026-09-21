@@ -204,12 +204,15 @@ describe("a write replays only when it provably never left", () => {
     expect(retries.map((r) => r.reason)).toEqual(["network"]);
   });
 
-  it("a POST whose socket reset after sending is sent once; a GET is read again", async () => {
+  it("a POST whose socket reset after sending is sent again; so is a GET", async () => {
+    // A reply nobody saw is usually a request that never ran, so the write
+    // goes again. The price — a reset after the server accepted it doubles
+    // the write — is named in docs/architecture/web_app.md.
     const { options } = fastRetry();
-    await expect(
-      requestWithRetry(RESET_PATH, { method: "POST", body: "{}" }, TOKEN, options),
-    ).rejects.toBeInstanceOf(TypeError);
-    expect(methodLog).toEqual(["POST"]);
+    queue.push({ status: 200, body: OK_BODY });
+    const written = await requestWithRetry<{ ok: boolean }>(RESET_PATH, { method: "POST", body: "{}" }, TOKEN, options);
+    expect(written).toEqual({ ok: true });
+    expect(methodLog).toEqual(["POST", "POST"]);
 
     methodLog.length = 0;
     queue.push({ status: 200, body: OK_BODY });

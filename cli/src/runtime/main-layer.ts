@@ -12,13 +12,12 @@
 //     also consumes CliConfig for telemetryPosthogKey/Host.
 //   - CommandRuntime is per-invocation; populated from MainLayerInput.commandPath
 //   - HttpClient consumes CliConfig
-//   - Output, Credentials, Browser, Workspaces have no service deps
+//   - Output consumes CliConfig for the `--json` register
+//   - Credentials, Browser, Workspaces have no service deps
 //
 // One entry point: `mainLayerFor(input)` composes a layer with config/
 // streams/commandPath overrides and the invocation's resolved environment.
 // Mirrors Supabase's cliProgramFor helper factory in shared/cli/run.ts.
-// (The commander-parse path builds its own smaller layer in
-// commander-bridge.ts — it never calls this.)
 
 import { Layer } from "effect";
 import {
@@ -81,13 +80,12 @@ export interface MainLayerInput {
   // isTTY + piped payload from this seam.
   readonly stdin?: NodeJS.ReadableStream;
   // commandPath populates CommandRuntime so the supabase-pattern span
-  // name + analytics command label are non-empty. handlers-bind.ts
-  // passes the wrap site's `name` (e.g. "agent.add") split by "."; the
-  // commander-bridge passes ["__parse__"]. Defaults to ["unknown"]
-  // when omitted (tests that don't care about CommandRuntime).
+  // name + analytics command label are non-empty. The entry point passes the
+  // path it walked off the tree (e.g. ["fleet", "create"]). Defaults to
+  // ["unknown"] when omitted (tests that don't care about CommandRuntime).
   readonly commandPath?: ReadonlyArray<string>;
   // commandRunId correlates analytics events + spans + log lines for
-  // one invocation. handlers-bind.ts generates one per wrap call.
+  // one invocation. The entry point generates one per run.
   // Defaults to crypto.randomUUID() per mainLayerFor call.
   readonly commandRunId?: string;
   // The invocation's resolved environment (runCli's `io.env ?? process.env`,
@@ -104,8 +102,13 @@ export const mainLayerFor = (
 ): Layer.Layer<MainLayerServices> => {
   const configBase =
     input.config !== undefined ? cliConfigFromValuesLayer(input.config) : cliConfigLayer;
-  const outputBase =
-    input.streams !== undefined ? outputFromStreamsLayer(input.streams) : outputStdioLayer;
+  // Output reads its register (`--json`) off CliConfig, so it is provided the
+  // config the same way HttpClient is provided its base URL. `Layer.mergeAll`
+  // does not wire requirements between the layers it merges — a merged layer
+  // still has to have its own deps satisfied.
+  const outputBase = (
+    input.streams !== undefined ? outputFromStreamsLayer(input.streams) : outputStdioLayer
+  ).pipe(Layer.provide(configBase));
   const stdinBase =
     input.stdin !== undefined ? stdinFromStreamLayer(input.stdin) : stdinLayer;
 
