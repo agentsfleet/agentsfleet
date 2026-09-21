@@ -242,6 +242,18 @@ fn every_ledger_conflict_target_carries_the_fleet() {
     );
 }
 
+/// Phrases that treat `event_id` alone as the ledger's identity.
+///
+/// Each is a sentence a reader acts on rather than a constraint they copy, so
+/// none contains the retired parenthesised spelling and none is caught by the
+/// check above. They are the shapes that were actually on the page.
+const RETIRED_IDENTITY_CLAIMS: [&str; 4] = [
+    "join key `event_id`",
+    "via `event_id`",
+    "rows per event ",
+    "rows per event|",
+];
+
 /// The architecture pages that state the ledger's key, and must state it right.
 ///
 /// `name_architecture` makes these pages authoritative until reconciled, which
@@ -279,6 +291,27 @@ fn architecture_pages_name_the_composite_ledger_key() {
         assert!(
             retired.is_empty(),
             "{page} still names the retired ledger key: {retired:#?}"
+        );
+
+        // The constraint spelling is not where a page misleads. This pin
+        // passed green on a `data_flow.md` that carried the new UNIQUE and,
+        // three hundred lines down, still called `event_id` the join key and
+        // told a reader the ledger joins to `fleet_events` through it — the
+        // exact aggregation slot 916 exists to stop. A reviewer caught what
+        // this test did not, so the test now reads the identity claim too.
+        let event_only: Vec<&str> = body
+            .lines()
+            .filter(|line| {
+                RETIRED_IDENTITY_CLAIMS
+                    .iter()
+                    .any(|claim| line.contains(claim))
+            })
+            .collect();
+        assert!(
+            event_only.is_empty(),
+            "{page} still treats `event_id` alone as the ledger's identity. \
+             Two fleets may hold one event id, so a join or a count on it \
+             merges their money: {event_only:#?}"
         );
     }
 }
