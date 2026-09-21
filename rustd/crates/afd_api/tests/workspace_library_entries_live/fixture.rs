@@ -127,8 +127,14 @@ impl Live {
     }
 
     /// Rows the OTHER workspace owns, seeded where this router cannot write.
-    pub(super) async fn seed_foreign_entries(&self, count: usize) {
+    ///
+    /// Answers their identifiers, because naming one of them in a request is
+    /// how the scoping predicate gets exercised from the outside: a removal
+    /// that names a row it does not own must leave that row where it is.
+    pub(super) async fn seed_foreign_entries(&self, count: usize) -> Vec<String> {
+        let mut seeded = Vec::with_capacity(count);
         for index in 0..count {
+            let id = mint_id();
             let mut connection = self.database.acquire().await.expect("an API connection");
             sqlx::query(
                 "INSERT INTO core.tenant_fleet_library ( \
@@ -140,13 +146,31 @@ impl Live {
                    '{\"credentials\":[],\"tools\":[],\"network_hosts\":[],\"trigger_present\":false}', \
                    1, 1)",
             )
-            .bind(mint_id())
+            .bind(&id)
             .bind(self.foreign.as_str())
             .bind(format!("theirs-{index}"))
             .execute(&mut *connection)
             .await
             .expect("the foreign row seeds");
+            seeded.push(id);
         }
+        seeded
+    }
+
+    /// The rows the OTHER workspace owns, counted in the table itself.
+    ///
+    /// Counted rather than read back through the router, because this router
+    /// cannot read them — which is the whole point of the workspace they sit
+    /// in. A count is the only observation of them available from here.
+    pub(super) async fn foreign_row_count(&self) -> i64 {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM core.tenant_fleet_library WHERE workspace_id = $1::uuid",
+        )
+        .bind(self.foreign.as_str())
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the count reads")
     }
 
     /// Onboards one upload bundle and answers its identifier.
