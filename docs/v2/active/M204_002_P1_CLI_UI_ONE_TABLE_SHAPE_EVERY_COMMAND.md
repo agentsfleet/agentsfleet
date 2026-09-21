@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M204
 **Workstream:** 002
 **Date:** Sep 21, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing: every table's columns change, and two advertised flags change behaviour.
 **Categories:** CLI, UI
 **Batch:** B1 — single stream; the helper precedes the call sites, the call sites precede the golden fixture.
-**Branch:** pending — set at CHORE(open)
-**Folded-into:** `M204_001` — one branch, one Pull Request; that spec is the sole non-folded owner.
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
+**Branch:** `feat/m204-workspace-library-removal`
+**Folded-into:** `M204_001`
+**Baseline revision:** 76eb9c2d305a480ea8437e65d63efbcaf7ba6de7
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** `M204_001` — it adds `library list`, whose table this workstream reshapes; both land on one branch and one Pull Request.
