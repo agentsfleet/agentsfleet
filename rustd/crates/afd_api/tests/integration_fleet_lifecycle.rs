@@ -31,7 +31,7 @@ async fn fleet_and_event_http_lifecycles_use_the_live_stores() {
     let queue = harness::connect_redis().await;
     let router = Fleet::live(
         fixture.database.clone(),
-        SUBJECT,
+        &fixture.subject,
         ScopeSet::from_scopes(&Scope::ALL),
     )
     .with_owned_workspace(fixture.workspace.clone())

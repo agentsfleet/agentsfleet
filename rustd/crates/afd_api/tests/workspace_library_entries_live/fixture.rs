@@ -20,6 +20,9 @@ use crate::harness::{Fleet, json_body, send};
 /// A seeded workspace, its live router, and a second workspace it cannot reach.
 pub(super) struct Live {
     lane: TestDatabase,
+    /// This instance's own directory subject — `core.users.oidc_subject` is
+    /// UNIQUE, so a constant shared across cases is a duplicate key.
+    subject: String,
     database: Db,
     tenant: String,
     workspace: Uuid7,
@@ -35,6 +38,7 @@ impl Live {
         let database = lane.open(DbRole::Api, &[]).await;
         let token_bits = format!("{}{}", mint_id(), mint_id()).replace('-', "");
         let live = Self {
+            subject: format!("{SUBJECT}-{}", mint_id()),
             tenant: mint_id(),
             workspace: parse(&mint_id()),
             foreign: parse(&mint_id()),
@@ -48,7 +52,7 @@ impl Live {
         let path = format!("/v1/workspaces/{}", live.workspace.as_str());
         let router = Fleet::live(
             live.database.clone(),
-            SUBJECT,
+            &live.subject,
             ScopeSet::from_scopes(&Scope::ALL),
         )
         .with_owned_workspace(live.workspace.clone())
@@ -86,7 +90,7 @@ impl Live {
         )
         .bind(&self.tenant)
         .bind(self.workspace.as_str())
-        .bind(SUBJECT)
+        .bind(&self.subject)
         .bind(self.foreign.as_str())
         .bind(mint_id())
         .bind(mint_id())
