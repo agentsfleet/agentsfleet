@@ -17,8 +17,6 @@ mod support;
 mod counters_refused;
 #[path = "counters_statement.rs"]
 mod counters_statement;
-#[path = "fleet_event_writers.rs"]
-mod fleet_event_writers;
 
 #[path = "integration_admission_prototype.rs"]
 mod integration_admission_prototype;

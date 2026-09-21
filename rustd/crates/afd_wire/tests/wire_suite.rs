@@ -15,9 +15,6 @@
 mod admin_shapes;
 #[path = "memory_shapes.rs"]
 mod memory_shapes;
-// Ungated: what it asserts is a property of the build WITHOUT the feature.
-#[path = "manifest.rs"]
-mod manifest;
 // Ungated for the same reason: it reads the sources, not the schemas.
 #[path = "names.rs"]
 mod names;

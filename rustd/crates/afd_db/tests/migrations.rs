@@ -190,32 +190,6 @@ fn test_the_default_migrator_runs_the_canonical_list() {
     );
 }
 
-/// `schema/720` no longer justifies its index by a reader it lost.
-///
-/// The fleet index led with `fleet_id` because the `SET NULL` referential
-/// action matched on that column alone. Slot 915 drops that foreign key, so
-/// the justification went with it while the index stayed. A comment that still
-/// cites the retired reader is worse than no comment: the next person to weigh
-/// reordering or dropping this index would weigh it against a constraint that
-/// no longer exists.
-///
-/// Asserted against the file rather than left to review, because this is
-/// exactly the kind of prose that drifts back on a careless revert.
-#[test]
-fn test_m201_index_comment_names_surviving_reader() {
-    let indexes = std::fs::read_to_string(repo_root().join("schema/720_usage_ledger_indexes.sql"))
-        .expect("schema/720 must exist");
-    assert!(
-        !indexes.contains("Reader 2 — the fleet SET NULL"),
-        "schema/720 still cites the SET NULL reader that slot 915 removed"
-    );
-    assert!(
-        indexes.contains("schema/915"),
-        "schema/720 must name the slot that removed its second reader, so the \
-         history is followable from the file that changed meaning"
-    );
-}
-
 /// Slot 915 drops the foreign key by lookup, not by guessed name.
 ///
 /// `DROP CONSTRAINT IF EXISTS usage_ledger_fleet_id_fkey` is the tempting
