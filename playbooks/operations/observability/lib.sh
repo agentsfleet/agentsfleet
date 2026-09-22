@@ -54,6 +54,7 @@ obs_open_session() {
   OBS_GRAFANA_TOKEN="$(obs_read_required grafana-sa-token)"
   OBS_NAMESPACE="$(obs_read_required grafana-namespace)"
   OBS_PROMETHEUS_UID="$(obs_read_required prometheus-datasource-uid)"
+  OBS_LOKI_UID="$(obs_read_required loki-datasource-uid)"
   OBS_GRAFANA_URL="${OBS_GRAFANA_URL%/}"
 
   if [[ "$OBS_GRAFANA_URL" != https://* ]] &&

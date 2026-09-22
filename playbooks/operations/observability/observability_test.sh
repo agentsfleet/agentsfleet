@@ -55,6 +55,21 @@ test_should_reject_wrong_datasource_type() {
   fi
 }
 
+test_should_reject_wrong_loki_datasource_type() {
+  local name="test_should_reject_wrong_loki_datasource_type"
+  local calls="$(mktemp -p "$work_dir")"
+  local captures="$(mktemp -d -p "$work_dir")"
+  local output status=0
+  output="$(
+    run_script MOCK_LOKI_TYPE=prometheus ACTION=check ENV=dev bash "$GATE"
+  )" || status=$?
+  if [ "$status" -eq 0 ]; then
+    bad "$name" "a non-Loki datasource passed"
+  else
+    ok "$name"
+  fi
+}
+
 test_should_create_every_resource_in_one_apply() {
   local name="test_should_create_every_resource_in_one_apply"
   local calls="$(mktemp -p "$work_dir")"
@@ -512,6 +527,7 @@ TEST_NAMES=(
   test_should_validate_assets
   test_should_verify_prometheus_without_exposing_token
   test_should_reject_wrong_datasource_type
+  test_should_reject_wrong_loki_datasource_type
   test_should_fail_when_grafana_rejects_a_write
   test_should_create_every_resource_in_one_apply
   test_should_update_every_resource_with_its_version

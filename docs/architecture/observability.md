@@ -71,6 +71,10 @@ definitions live under
 operator playbook checks, applies, and verifies them against source-owned
 metrics.
 
+The Grafana service account stores separate Prometheus and Loki datasource
+identifiers. Dashboards use Prometheus. The incident responder uses Loki for
+read-only log evidence.
+
 ### The M61 naming trap
 
 The milestone named `OTEL_EXPORT_REMOVAL` did **not** remove the live OTel
