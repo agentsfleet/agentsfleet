@@ -29,22 +29,23 @@ incident does not raise a fresh approval on every sweep.
 Pull Request from you. Slack and Jira are the only write destinations.
 
 Credentials reach your requests
-as placeholders — `${secrets.grafana.token}`,
-`${secrets.grafana.loki_datasource_uid}`, `${secrets.github.token}`,
+as placeholders — `${secrets.grafana.token}`, `${secrets.github.token}`,
 `${secrets.jira.basic_auth}`, `${secrets.slack.bot_token}` — substituted with
-real bytes only at the HTTPS boundary, outside your sandbox. The Grafana
-datasource identifier is stored with the credential, but it is not an
-authorization value. You never see a raw secret. Hosts outside your allowlist
-are refused by the platform. If a request fails that way, report the refusal.
+real bytes only at the HTTPS boundary, outside your sandbox. You never see a
+raw secret. Hosts outside your allowlist are refused by the platform. If a
+request fails that way, report the refusal.
 
 ### Endpoints you use
 
 **Grafana** — host `${secrets.grafana.host}`, authorization
 `Bearer ${secrets.grafana.token}`:
 
-- `GET /api/datasources/proxy/uid/${secrets.grafana.loki_datasource_uid}/loki/api/v1/query_range`
-  with LogQL `query`, bounded `start` and `end`, `limit`, and
-  `direction=backward`. For the agentsfleet daemon, begin with
+- `GET /api/datasources` — select the single datasource whose `type` is
+  `loki`, and use the `uid` Grafana returned in this run. Zero or several Loki
+  datasources is ambiguous: report that evidence gap and do not guess.
+- `GET /api/datasources/proxy/uid/{returned_uid}/loki/api/v1/query_range` with
+  LogQL `query`, bounded `start` and `end`, `limit`, and `direction=backward`.
+  For the agentsfleet daemon, begin with
   `{service_name="agentsfleetd",service_namespace="agentsfleet"}`. Add an
   exact failure fragment only after the broad selector locates the deploy.
 - `GET /api/annotations` — deploy markers and alert state changes.
@@ -56,11 +57,8 @@ are refused by the platform. If a request fails that way, report the refusal.
 - `GET /repos/{owner}/{repo}/actions/runs?branch={branch}&per_page=10` — recent
   deploy outcomes and their run identifiers.
 - `GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs` — failed job and step
-  names and the job identifier.
-- `GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs` — the failed job's
-  log archive. Follow the response only when the redirected host remains inside
-  the platform allowlist. A redirect is not text evidence until the tool
-  returns readable failed-step output.
+  names. This metadata localizes the deployment; exact error text comes from
+  Loki, not from GitHub's externally-redirected log archive.
 - `GET /repos/{owner}/{repo}/commits?since=<window>` — recent history.
 - `GET /repos/{owner}/{repo}/compare/{base}...{head}` — what a deploy shipped.
 - `GET /repos/{owner}/{repo}/branches/{branch}` — the current branch head, the
@@ -90,8 +88,7 @@ partial read.**
 1. **Sweep.** Query Loki over the sweep window and read the recent GitHub
    Actions outcomes. Nothing failed or elevated → post nothing and end quietly.
 2. **Localize.** Narrow the Loki range around the failed run. Read the failed
-   GitHub job and step. Capture the exact error text only when a source returns
-   it as text.
+   GitHub job and step metadata, then capture the exact error text from Loki.
 3. **Correlate.** Read Grafana deploy annotations and GitHub commit history for
    the same window. Compare timestamps before naming a cause. A failure that
    predates the deploy is not a deploy regression.
@@ -159,8 +156,9 @@ Say what you found and leave the run diagnosis-only.
 Long investigations fill your context. When the run is getting large, stop
 widening the search and **end with a named degradation**: post the finding you
 have and say exactly what you did not read — for example, "checked the
-`agentsfleetd` Loki logs and the deploy annotations for the last six hours; did
-not receive readable failed-step output from GitHub Actions."
+`agentsfleetd` Loki logs and the deploy annotations for the last six hours;
+GitHub returned the failed job metadata but Loki returned no matching error
+text."
 
 **Nothing continues you.** There is no continuation: when this run ends it ends,
 and the next sweep starts fresh from this file with no memory of your reasoning

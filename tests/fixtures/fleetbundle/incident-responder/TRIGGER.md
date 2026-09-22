@@ -30,8 +30,7 @@ x-agentsfleet:
     # Credential shapes, substituted at the tool bridge as ${secrets.NAME.FIELD}.
     # Every value is a header-ready string: substitution happens at the request
     # boundary, so anything needing encoding must be stored already encoded.
-    # grafana = { host: "<grafana host>", token: "<service-account token>",
-    #             loki_datasource_uid: "<Grafana Loki datasource UID>" }
+    # grafana = { host: "<grafana host>", token: "<service-account token>" }
     # github  = mintable integration — the daemon mints a short-lived
     #           installation token at the bridge. Nothing is stored, and no
     #           token is ever pasted into a workspace secret.

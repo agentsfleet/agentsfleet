@@ -74,15 +74,21 @@ if ! jq -e \
   exit 1
 fi
 
-loki_labels="$(
-  obs_get_json \
-    "/api/datasources/proxy/uid/$OBS_LOKI_UID/loki/api/v1/labels"
+loki_query="$(
+  obs_get_loki_query_range \
+    "/api/datasources/proxy/uid/$OBS_LOKI_UID/loki/api/v1/query_range" \
+    '{service_name="agentsfleetd",service_namespace="agentsfleet"}'
 )"
 if ! jq -e \
-  '.status == "success" and (.data | index("service_name") != null)' \
-  <<<"$loki_labels" >/dev/null; then
-  echo "ERROR: Loki does not expose the service_name label" >&2
+  '.status == "success" and
+   (.data.result | any(
+     .stream.service_name == "agentsfleetd" and
+     .stream.service_namespace == "agentsfleet" and
+     (.values | length > 0)
+   ))' \
+  <<<"$loki_query" >/dev/null; then
+  echo "ERROR: Loki returned no agentsfleetd logs for the incident-responder selector" >&2
   exit 1
 fi
 
-echo "PASS: $OBS_ENVIRONMENT Loki datasource exposes agentsfleetd logs"
+echo "PASS: $OBS_ENVIRONMENT Loki datasource returns agentsfleetd logs"
