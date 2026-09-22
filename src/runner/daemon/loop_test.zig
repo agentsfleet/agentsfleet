@@ -162,18 +162,23 @@ test "runner boots from a agt_r token straight into the lease loop with no regis
     var deadlines: dts.TestScheduler = .{};
     defer deadlines.deinit();
     const exit_reason = loop.runLoop(io, alloc, try deadlines.start(alloc), cfg, &env_map, null);
-    // Split rather than `or`: a bare `fleet_stop or drained` passes through the
-    // drain branch when the stub's reply stops parsing, which is how a fixture
-    // that lost a required field went unnoticed. Drain is legal only when the
-    // watchdog actually fired.
-    if (wd.fired.load(.seq_cst)) {
-        try testing.expect(exit_reason == .drained);
-    } else {
-        try testing.expect(exit_reason == .fleet_stop);
-    }
     wd.done.store(true, .seq_cst);
     server_thread.join();
     wd_thread.join();
+    // Asserted after the join, so `fired` is final rather than sampled while
+    // the watchdog can still write it.
+    //
+    // Not a bare `fleet_stop or drained`: that passes through the drain branch
+    // when the stub's reply stops parsing, which is how a fixture that lost a
+    // required field went unnoticed. Not `if (fired) expect(drained)` either —
+    // the watchdog can fire in the window after `runLoop` has already returned
+    // `fleet_stop`, and failing a correctly handled stop for that is a race.
+    //
+    // `fleet_stop` is the outcome under test and is always acceptable. Drain is
+    // acceptable only because the watchdog fired.
+    if (exit_reason != .fleet_stop) {
+        try testing.expect(exit_reason == .drained and wd.fired.load(.seq_cst));
+    }
     if (!wd.fired.load(.seq_cst)) listener.deinit(io); // watchdog already closed it if it fired
 
     // First (and only) control-plane contact is the heartbeat — not register.
