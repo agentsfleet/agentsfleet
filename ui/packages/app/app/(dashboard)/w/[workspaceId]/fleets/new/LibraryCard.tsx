@@ -6,7 +6,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@agentsfleet/design-system";
-import { Building2Icon, GlobeIcon, KeyRoundIcon } from "lucide-react";
+import { Building2Icon, GlobeIcon } from "lucide-react";
+import { VendorMark } from "@/components/domain/fleet-library/VendorMark";
 import type { FleetLibraryGalleryEntry, FleetLibraryVisibility } from "@/lib/types";
 
 // "Requires", not "needs": the badge states a prerequisite of the fleet, and
@@ -28,23 +29,25 @@ const REQUIRES_PREFIX = "Requires";
 // nothing the card omits is unreachable from the card.
 const DESCRIPTION_LINES = "line-clamp-1";
 
-// One chip stating how many credentials a fleet asks for; the names are on
-// hover.
+// One mark per credential, and the names on hover.
 //
 // Names as chips was the shape before, and three chips carrying words the
 // length of `grafana` wrap to a second line — which makes that card taller
 // than every neighbour in its grid row, the exact unevenness this card is
-// being straightened to avoid. A count is one line whatever a bundle needs.
+// being straightened to avoid. Marks are one line whatever a bundle needs.
 //
-// Per-provider icons were considered and rejected. The integrations page
-// decorates a provider with a glyph and reads fine, but there the glyph sits
-// BESIDE the provider's name — it decorates a label. Here it would have to
-// identify on its own, and `lucide-react` ships no brand marks: Elastic would
-// be a magnifying glass, which is equally Algolia, Meilisearch, or just
-// "search". A real brand set would work and is a bigger change than this card
-// justifies today.
-const CREDENTIAL_SINGULAR = "credential";
-const CREDENTIAL_PLURAL = "credentials";
+// Metaphor glyphs were tried first and dropped. The integrations page
+// decorates a provider with a lucide glyph and reads fine, but there the glyph
+// sits BESIDE the provider's name — it decorates a label. Here it identifies
+// alone, and a magnifying glass for Elastic is equally Algolia, Meilisearch,
+// or just "search". So these are the providers' own marks, committed in
+// `vendor-marks.ts`; an unrecognised provider draws a neutral key and is named
+// in the tooltip like every other.
+const MARK_CEILING = 5;
+
+// The overflow chip, e.g. "+2". Its own constant because it is copy, and copy
+// is a named constant here (RULE UFS).
+const MORE_PREFIX = "+";
 
 // Which catalogue an entry came from.
 //
@@ -77,7 +80,6 @@ export function LibraryCard({ entry, action }: Props) {
   const credentials = entry.requirements.credentials;
   const tier = TIER_LABEL[entry.visibility];
   const TierIcon = TIER_ICON[entry.visibility];
-  const credentialNoun = credentials.length === 1 ? CREDENTIAL_SINGULAR : CREDENTIAL_PLURAL;
 
   return (
     // Keyed by catalog id so a test can assert an entry appears exactly once —
@@ -124,26 +126,31 @@ export function LibraryCard({ entry, action }: Props) {
       {credentials.length > 0 ? (
         <Tooltip>
           <TooltipTrigger asChild>
-            {/* `w-fit`: the chip is the hover target, so it ends where its text
-             * does rather than spanning the card and arming a tooltip over
-             * empty space. */}
+            {/* `w-fit`: the row is the hover target, so it ends where the marks
+             * do rather than spanning the card and arming a tooltip over empty
+             * space. */}
             <div
               data-testid={`library-card-requires-${entry.id}`}
-              className="flex w-fit items-center gap-sm"
+              className="flex w-fit items-center gap-sm text-muted-foreground"
             >
               {/* Muted, not amber: nothing is wrong here. Amber is this
                * system's warning colour, and a fleet naming the credential it
                * will ask for is a fact about the fleet, not a fault in the
                * workspace. */}
-              <Badge className="gap-sm whitespace-nowrap">
-                <KeyRoundIcon aria-hidden="true" className="size-3" />
-                {credentials.length} {credentialNoun}
-              </Badge>
+              {credentials.slice(0, MARK_CEILING).map((credential) => (
+                <VendorMark key={credential} credential={credential} />
+              ))}
+              {credentials.length > MARK_CEILING ? (
+                <Badge>
+                  {MORE_PREFIX}
+                  {credentials.length - MARK_CEILING}
+                </Badge>
+              ) : null}
             </div>
           </TooltipTrigger>
-          {/* The names the count stands for. The install dialog remains the
-           * screen that can refuse for a missing one; this answers only
-           * "which ones". */}
+          {/* The names. No mark identifies a provider to a reader who does not
+           * already know it, and the neutral glyph identifies nothing at all,
+           * so the row never draws without this naming what it drew. */}
           <TooltipContent className="max-w-prose">
             {REQUIRES_PREFIX}: {credentials.join(", ")}
           </TooltipContent>
