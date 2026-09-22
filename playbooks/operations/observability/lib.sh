@@ -54,6 +54,7 @@ obs_open_session() {
   OBS_GRAFANA_TOKEN="$(obs_read_required grafana-sa-token)"
   OBS_NAMESPACE="$(obs_read_required grafana-namespace)"
   OBS_PROMETHEUS_UID="$(obs_read_required prometheus-datasource-uid)"
+  OBS_LOKI_UID="$(obs_read_required loki-datasource-uid)"
   OBS_GRAFANA_URL="${OBS_GRAFANA_URL%/}"
 
   if [[ "$OBS_GRAFANA_URL" != https://* ]] &&
@@ -105,6 +106,19 @@ obs_get_query() {
     --header 'Accept: application/json' \
     --get \
     --data-urlencode "query=$query" \
+    "$OBS_GRAFANA_URL$path"
+}
+
+obs_get_loki_query_range() {
+  local path="$1"
+  local query="$2"
+  curl --config "$OBS_CURL_CONFIG" \
+    --header 'Accept: application/json' \
+    --get \
+    --data-urlencode "query=$query" \
+    --data-urlencode 'since=15m' \
+    --data-urlencode 'limit=1' \
+    --data-urlencode 'direction=backward' \
     "$OBS_GRAFANA_URL$path"
 }
 
