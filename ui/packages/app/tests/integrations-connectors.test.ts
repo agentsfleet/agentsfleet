@@ -147,6 +147,55 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     expect(github.textContent).toContain("Ready for your fleets to use.");
   });
 
+  it("should say it is disconnecting, and refuse a second click, while the write is in flight", async () => {
+    // The action became a glyph, and `IconAction` folds its label into BOTH
+    // the tooltip and the accessible name. So the busy label is not cosmetic:
+    // it IS the only name the button has while the write runs, and a button
+    // that kept saying "Disconnect GitHub" with no visible spinner would
+    // invite the second click that sends the second request.
+    let release: (value: unknown) => void = () => {};
+    disconnectConnectorActionMock.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    renderConnectors([GITHUB], { githubStatus: CONNECTOR_STATUS.connected });
+
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect GitHub" }));
+
+    const busy = await screen.findByRole("button", { name: "Disconnecting…" });
+    expect(busy.getAttribute("aria-busy")).toBe("true");
+    expect((busy as HTMLButtonElement).disabled).toBe(true);
+    // One request, no matter how many times it is clicked while disabled.
+    fireEvent.click(busy);
+    expect(disconnectConnectorActionMock).toHaveBeenCalledTimes(1);
+
+    release({ ok: true });
+    await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+  });
+
+  it("should say it is connecting while the redirect is being fetched", async () => {
+    // Same property on the other arm. `startConnectAction` ends in a browser
+    // navigation, so the window between click and redirect is the one a person
+    // can click through.
+    let release: (value: unknown) => void = () => {};
+    startConnectActionMock.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    renderConnectors([ZOHO]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect Zoho Desk" }));
+
+    const busy = await screen.findByRole("button", { name: "Connecting…" });
+    expect(busy.getAttribute("aria-busy")).toBe("true");
+    expect((busy as HTMLButtonElement).disabled).toBe(true);
+
+    release({ ok: false, error: "nope" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Connect Zoho Desk" })).toBeTruthy());
+  });
+
   it("offers Connect when the install was revoked", () => {
     renderConnectors([GITHUB], { githubStatus: CONNECTOR_STATUS.reconnectRequired });
     expect(screen.getByRole("button", { name: "Connect GitHub" })).toBeTruthy();
