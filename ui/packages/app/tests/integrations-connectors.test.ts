@@ -29,6 +29,7 @@ vi.mock("lucide-react", () => {
     HashIcon: make("HashIcon"),
     PlugIcon: make("PlugIcon"),
     TicketIcon: make("TicketIcon"),
+    UnplugIcon: make("UnplugIcon"),
   };
 });
 
@@ -132,14 +133,18 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     expect(within(github).getByText("Not connected").getAttribute("data-variant")).toBe("neutral");
   });
 
-  it("shows Connected before an exact Disconnect action", () => {
+  it("says connected exactly once, on the pill, and offers an exact Disconnect", () => {
     renderConnectors([GITHUB], { githubStatus: CONNECTOR_STATUS.connected });
     const github = screen.getByTestId("integration-github");
-    expect(github.textContent).toContain("Connected");
+    // The pill is the one place the state is spelled. The description used to
+    // say "Connected." underneath it, so the row read the word twice, and the
+    // action beside it made three.
+    expect(github.textContent?.match(/Connected/g)).toHaveLength(1);
+    expect(within(github).getByText("Connected").getAttribute("data-variant")).toBe("success");
+    // The action is a glyph now; its accessible name still names the provider.
     expect(screen.getByRole("button", { name: "Disconnect GitHub" })).toBeTruthy();
-    expect(github.textContent?.indexOf("Connected")).toBeLessThan(
-      github.textContent?.indexOf("Disconnect") ?? -1,
-    );
+    // And the description says what the pill cannot: what the connection is FOR.
+    expect(github.textContent).toContain("Ready for your fleets to use.");
   });
 
   it("offers Connect when the install was revoked", () => {
@@ -149,7 +154,7 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
 
   it("derives status from the catalog `connected` flag when there's no override (Zoho)", () => {
     renderConnectors([entry({ id: "zoho", archetype: "oauth2", display_name: "Zoho Desk", connected: true })]);
-    expect(screen.getByTestId("integration-zoho").textContent).toContain("Connected");
+    expect(within(screen.getByTestId("integration-zoho")).getByText("Connected")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Disconnect Zoho Desk" })).toBeTruthy();
   });
 
@@ -162,7 +167,7 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
 
   it("shows the Slack team identity from the override when connected", () => {
     renderConnectors([SLACK], { slackStatus: CONNECTOR_STATUS.connected, slackTeam: "Acme Corp" });
-    expect(screen.getByTestId("integration-slack").textContent).toContain("Connected: Acme Corp");
+    expect(screen.getByTestId("integration-slack").textContent).toContain("Installed on Acme Corp");
   });
 
   it("calls the connect action with the catalog id and redirects on success", async () => {
