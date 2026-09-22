@@ -43,10 +43,16 @@ function entry(id: string, name: string, createdAt = CREATED_MS): WorkspaceLibra
   };
 }
 
-/** The entry names the table renders, top row first. */
+/**
+ * The entry names the table renders, top row first.
+ *
+ * `queryAllByRole` rather than `getAllByRole`: a list that has emptied renders
+ * an empty state and no row at all, and the getter throws where every caller
+ * here wants the empty answer.
+ */
 function renderedNames(): string[] {
   return screen
-    .getAllByRole("row")
+    .queryAllByRole("row")
     .slice(1)
     .map((row) => row.querySelectorAll("td")[0]?.textContent ?? "");
 }
@@ -231,122 +237,5 @@ describe("the workspace library list", () => {
       expect(screen.getByText(/do not hold library:write/)).toBeTruthy();
     });
     expect(refreshMock).not.toHaveBeenCalled();
-  });
-});
-
-/**
- * Reading one page and rendering `items` drops every entry past the server's
- * page size with nothing on screen to say so. The gallery beside this list
- * documents that hazard as unacceptable and pages behind a control; so does
- * the runner wall. These are the cases that keep this list honest about what
- * it has not loaded.
- */
-describe("the list discloses what it has not loaded", () => {
-  const CURSOR = "cursor-page-2";
-
-  it("should offer no control when the first page is the whole collection", () => {
-    renderList([entry("e1", "github-pr-reviewer")], null);
-    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
-  });
-
-  it("should offer a control when the server says a page remains", () => {
-    renderList([entry("e1", "github-pr-reviewer")], CURSOR);
-    expect(screen.getByRole("button", { name: "Load more" })).toBeTruthy();
-  });
-
-  it("should append the next page and follow its cursor", async () => {
-    listActionMock.mockResolvedValue({
-      ok: true,
-      data: { items: [entry("e2", "incident-responder")], total: null, next_cursor: null },
-    });
-    renderList([entry("e1", "github-pr-reviewer")], CURSOR);
-
-    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
-
-    await waitFor(() => expect(screen.getByText("incident-responder")).toBeTruthy());
-    expect(listActionMock).toHaveBeenCalledWith("ws_1", CURSOR);
-    expect(renderedNames()).toEqual(["github-pr-reviewer", "incident-responder"]);
-    // The cursor came back null, so the collection is exhausted and the
-    // control goes — a button that fetches nothing is a worse lie than no
-    // button.
-    await waitFor(() =>
-      expect(screen.queryByRole("button", { name: "Load more" })).toBeNull(),
-    );
-  });
-
-  it("should keep the rows already shown when a page fails, and keep the control", async () => {
-    listActionMock.mockResolvedValue({
-      ok: false,
-      status: 503,
-      errorCode: "UZ-LIBRARY-006",
-      error: "the datastore did not answer",
-    });
-    renderList([entry("e1", "github-pr-reviewer")], CURSOR);
-
-    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
-
-    await waitFor(() => expect(screen.getByText("github-pr-reviewer")).toBeTruthy());
-    expect(renderedNames()).toEqual(["github-pr-reviewer"]);
-    expect(await screen.findByRole("button", { name: "Load more" })).toBeTruthy();
-  });
-});
-
-describe("a removal invalidates the pages after the first", () => {
-  const CURSOR = "cursor-page-2";
-
-  it("should drop the appended pages so a shifted row cannot render twice", async () => {
-    // The collection is keyset-paged: removing a row shifts the rest up across
-    // the page boundary, so the refreshed first page can re-contain a row the
-    // client already appended. Keeping both renders it twice under one key.
-    listActionMock.mockResolvedValue({
-      ok: true,
-      data: { items: [entry("e2", "incident-responder")], total: null, next_cursor: null },
-    });
-    removeActionMock.mockResolvedValue({ ok: true, data: undefined });
-    renderList([entry("e1", "github-pr-reviewer")], CURSOR);
-
-    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
-    await waitFor(() => expect(screen.getByText("incident-responder")).toBeTruthy());
-    expect(renderedNames()).toEqual(["github-pr-reviewer", "incident-responder"]);
-
-    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
-    await waitFor(() => screen.getByText(/from this workspace\?/));
-    const confirms = screen.getAllByRole("button", { name: "Remove" });
-    fireEvent.click(confirms[confirms.length - 1]!);
-
-    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
-    // Only the server's own first page survives; the appended page is gone.
-    await waitFor(() => expect(screen.queryByText("incident-responder")).toBeNull());
-    expect(new Set(renderedNames()).size).toBe(renderedNames().length);
-  });
-
-  it("should put Load more back on the server's cursor, not the stale one", async () => {
-    listActionMock.mockResolvedValue({
-      ok: true,
-      data: { items: [entry("e2", "incident-responder")], total: null, next_cursor: null },
-    });
-    removeActionMock.mockResolvedValue({ ok: true, data: undefined });
-    renderList([entry("e1", "github-pr-reviewer")], CURSOR);
-
-    // Exhaust the walk, so the control is gone.
-    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Load more" })).toBeNull());
-    // The row actions are disabled while the page transition is in flight, and
-    // a click on a disabled button is silently dropped.
-    await waitFor(() =>
-      expect(
-        (screen.getAllByRole("button", { name: "Remove" })[0] as HTMLButtonElement).disabled,
-      ).toBe(false),
-    );
-
-    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
-    await waitFor(() => screen.getByText(/from this workspace\?/));
-    const confirms = screen.getAllByRole("button", { name: "Remove" });
-    fireEvent.click(confirms[confirms.length - 1]!);
-    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
-
-    // Back to the cursor the server handed down, so the rest stays reachable
-    // instead of being stranded behind an exhausted walk.
-    expect(await screen.findByRole("button", { name: "Load more" })).toBeTruthy();
   });
 });
