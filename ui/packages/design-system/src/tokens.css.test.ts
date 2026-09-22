@@ -102,3 +102,31 @@ describe("theme contrast pairs and font roles", () => {
     expect(css).not.toContain("opacity: 0.6");
   });
 });
+
+describe("tokens.css — the onboarding beckon [data-beckon] selector contract", () => {
+  const css = readFileSync(TOKENS_CSS_PATH, "utf8");
+
+  it('only animates the literal [data-beckon="true"] value, as [data-live] does', () => {
+    // The same permanent-glow bug wake-pulse once had: a presence selector
+    // would fire for `data-beckon="false"` too.
+    expect(css).toMatch(/\[data-beckon="true"\]\s*\{[^}]*animation: cta-beckon/);
+    expect(css).not.toMatch(/\[data-beckon\]\s*\{/);
+    // No gradient: the design-token gate forbids them, and the beckon carries
+    // its motion in box-shadow and transform instead.
+    expect(css).not.toMatch(/\[data-beckon="true"\][\s\S]{0,200}linear-gradient/);
+  });
+
+  it("is a different keyframe from wake-pulse, at the same cadence", () => {
+    // Two meanings, two names; one rhythm, so a page carrying both never strobes.
+    expect(css).toMatch(/@keyframes cta-beckon\b/);
+    expect(css).toMatch(/animation: wake-pulse 2\.4s/);
+    expect(css).toMatch(/animation: cta-beckon 2\.4s/);
+    expect(css).toMatch(/animation: text-beckon 2\.4s/);
+  });
+
+  it("stops moving under reduced motion and keeps a static mark", () => {
+    const reduced = css.split("prefers-reduced-motion: reduce").slice(1).join("");
+    expect(reduced).toMatch(/\[data-beckon="true"\]\s*\{[^}]*animation: none;[^}]*box-shadow: 0 0 0 4px var\(--pulse-glow\)/);
+    expect(reduced).toMatch(/\[data-beckon-text="true"\]\s*\{[^}]*animation: none/);
+  });
+});
