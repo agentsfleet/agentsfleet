@@ -15,6 +15,7 @@ const Config = @import("config.zig");
 const AppliedPolicy = @import("AppliedPolicy.zig");
 const policy_apply = @import("policy_apply.zig");
 const selftest_beat = @import("selftest_beat.zig");
+const selftest = @import("../selftest.zig");
 const capability_probe = @import("../engine/capability_probe.zig");
 const call_deadline = @import("call_deadline");
 const client_mod = @import("control_plane_client.zig");
@@ -90,8 +91,25 @@ pub var backoff_ms: *const fn (u32) u64 = constants.backoff.ms;
 
 /// Heartbeat-cadence seam, same shape and reason as `backoff_ms`: the scripted
 /// multi-beat control-loop tests run in milliseconds instead of one real
-/// `HEARTBEAT_INTERVAL_MS` per beat. Production never overrides it.
-pub var heartbeat_interval_ms: u64 = @intCast(constants.HEARTBEAT_INTERVAL_MS);
+/// cadence per beat. Production leaves it null and beats at what the daemon
+/// served on the last reply.
+pub var heartbeat_interval_ms: ?u64 = null;
+
+/// The floor the served cadence is clamped to.
+///
+/// The capability probe runs on the beat path, so a probe that burns its whole
+/// bound delays the NEXT beat by that much. Two probe timeouts is the margin
+/// that keeps a timing-out probe from eating a full interval. Runner-local and
+/// derived from the runner's own probe budget — it is not a copy of any number
+/// the daemon declares, and it binds only this host's sleep.
+const MIN_BEAT_INTERVAL_MS: u64 = selftest.PROBE_TIMEOUT_MS * 2;
+
+/// The cadence to sleep for after a beat: the test seam, else what the daemon
+/// sent, never below the probe floor.
+fn beatInterval(served_ms: u32) u64 {
+    if (heartbeat_interval_ms) |override_ms| return override_ms;
+    return @max(@as(u64, served_ms), MIN_BEAT_INTERVAL_MS);
+}
 
 /// Control loop: the host's single thread heartbeats once per host on the
 /// `HEARTBEAT_INTERVAL_MS` cadence, maps a `.stop`/`.drain` directive (and the
@@ -197,6 +215,7 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
         const status = hb_parsed.value.status;
         const reply_degraded = hb_parsed.value.degraded;
         const selftest_asked = hb_parsed.value.selftest_requested;
+        const beat_ms = beatInterval(hb_parsed.value.heartbeat_interval_ms);
         policy_apply.applyHeartbeatPolicy(alloc, &applied, &gates, hb_parsed.value.assigned_policy);
         policy_apply.noteDegraded(&applied, &gates, hb_parsed.value.degraded, hb_parsed.value.degraded_reason);
         hb_parsed.deinit();
@@ -250,7 +269,7 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
             policy_apply.logGrowNeedsRestart(&gates, assigned_workers);
         }
 
-        sleepMs(io, heartbeat_interval_ms);
+        sleepMs(io, beat_ms);
     }
 }
 
@@ -347,4 +366,38 @@ pub fn splitFields(result: contract.execution_result.ExecutionResult) renew_driv
 /// Sleep for `ms` milliseconds.
 fn sleepMs(io: std.Io, ms: u64) void {
     io.sleep(std.Io.Duration.fromMilliseconds(@intCast(ms)), .awake) catch return;
+}
+
+// The cadence this host beats at is the daemon's to choose, because the daemon
+// is what derives a host offline. What stays local is the floor below: the
+// capability probe runs on the beat path, so a probe that times out must not
+// eat a whole interval.
+
+test "the served cadence is what the host beats at" {
+    const saved = heartbeat_interval_ms;
+    heartbeat_interval_ms = null;
+    defer heartbeat_interval_ms = saved;
+
+    // Comfortably above the probe floor, and not any value this file declares —
+    // there is none to fall back to, which is the point.
+    try std.testing.expectEqual(@as(u64, 21_000), beatInterval(21_000));
+}
+
+test "a cadence under the probe floor is raised to it, never taken as given" {
+    const saved = heartbeat_interval_ms;
+    heartbeat_interval_ms = null;
+    defer heartbeat_interval_ms = saved;
+
+    // One probe timeout of beat interval would let a single timing-out probe
+    // delay the beat that carries its own verdict.
+    try std.testing.expectEqual(MIN_BEAT_INTERVAL_MS, beatInterval(@intCast(selftest.PROBE_TIMEOUT_MS)));
+    try std.testing.expectEqual(MIN_BEAT_INTERVAL_MS, beatInterval(0));
+}
+
+test "the test seam wins over the served cadence" {
+    const saved = heartbeat_interval_ms;
+    heartbeat_interval_ms = 1;
+    defer heartbeat_interval_ms = saved;
+
+    try std.testing.expectEqual(@as(u64, 1), beatInterval(21_000));
 }

@@ -70,9 +70,14 @@ fn serveOneStopHeartbeat(listener: *std.Io.net.Server, io: std.Io, probe: *BootP
 
     var wbuf: [256]u8 = undefined;
     var w = conn.writer(io, &wbuf);
+    // A wire fixture spells the cadence out rather than importing it: a Zig
+    // const mirroring the daemon's `HEARTBEAT_INTERVAL_MS` is exactly the
+    // cross-language tie M205 deletes.
     w.interface.writeAll(
         "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n" ++
-            "Content-Length: 17\r\nConnection: close\r\n\r\n{\"status\":\"stop\"}",
+            "Content-Length: 47\r\nConnection: close\r\n\r\n" ++
+            // pin test: literal is the contract
+            "{\"status\":\"stop\",\"heartbeat_interval_ms\":10000}",
     ) catch return;
     w.interface.flush() catch return;
 }
@@ -157,10 +162,23 @@ test "runner boots from a agt_r token straight into the lease loop with no regis
     var deadlines: dts.TestScheduler = .{};
     defer deadlines.deinit();
     const exit_reason = loop.runLoop(io, alloc, try deadlines.start(alloc), cfg, &env_map, null);
-    try testing.expect(exit_reason == .fleet_stop or exit_reason == .drained);
     wd.done.store(true, .seq_cst);
     server_thread.join();
     wd_thread.join();
+    // Asserted after the join, so `fired` is final rather than sampled while
+    // the watchdog can still write it.
+    //
+    // Not a bare `fleet_stop or drained`: that passes through the drain branch
+    // when the stub's reply stops parsing, which is how a fixture that lost a
+    // required field went unnoticed. Not `if (fired) expect(drained)` either —
+    // the watchdog can fire in the window after `runLoop` has already returned
+    // `fleet_stop`, and failing a correctly handled stop for that is a race.
+    //
+    // `fleet_stop` is the outcome under test and is always acceptable. Drain is
+    // acceptable only because the watchdog fired.
+    if (exit_reason != .fleet_stop) {
+        try testing.expect(exit_reason == .drained and wd.fired.load(.seq_cst));
+    }
     if (!wd.fired.load(.seq_cst)) listener.deinit(io); // watchdog already closed it if it fired
 
     // First (and only) control-plane contact is the heartbeat — not register.

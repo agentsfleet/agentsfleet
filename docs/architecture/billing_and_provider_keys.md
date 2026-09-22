@@ -255,7 +255,7 @@ pub const fn slice_charge(
 
 One named constant drives the run fee — `RUN_NANOS_PER_SEC`, in `rustd/crates/afd_billing/src/nanos.rs`, applied identically to **both** postures. Under platform: the run fee plus a three-tier per-token component (input / cached-input / output) from the model-library rate cache (§10). Under self-managed: the run fee only — we did not pay for the tokens, only for running the fleet.
 
-Posture changes only whether the per-token component is added (platform) or not (self-managed); the run fee is the same. That difference is the friction-reducing signal: on-ramp on platform without a key, graduate to self-managed once the cost-vs-convenience tradeoff tilts. `RUN_NANOS_PER_SEC` is spelled in three repository files (`nanos.rs` + `app/lib/types.ts` + `cli/src/constants/billing.ts`), and a bump that misses one of them fails `rustd/crates/afd_billing/tests/cross_runtime_rates.rs`, which reads both TypeScript files and compares them against the daemon's own constant. That test replaced a shell audit removed on Sep 07, 2026 — the script had no caller, so it guarded nothing; the test runs in `make test-unit-all`. The daemon is the enforcer, and the two TypeScript surfaces only display — a drift between them is a billing-display lie rather than a wrong charge.
+Posture changes only whether the per-token component is added (platform) or not (self-managed); the run fee is the same. That difference is the friction-reducing signal: on-ramp on platform without a key, graduate to self-managed once the cost-vs-convenience tradeoff tilts. `RUN_NANOS_PER_SEC` is spelled once, in `nanos.rs`, so a bump has nowhere else to miss. It was carried in `app/lib/types.ts` and `cli/src/constants/billing.ts` as well until neither file turned out to have an importer: the daemon charges the fee and serves the result, and a client renders what it was served. A pin test read both TypeScript files to hold the three copies equal; deleting the copies retired the test with them.
 
 Rates come from a process-local cache in front of `core.model_library` (`afd_billing`), on a shared cache-table primitive. The table is the single source of truth; the cache exists to keep the charge path off it in the common case.
 
@@ -292,7 +292,7 @@ total_nanos = RECEIVE_NANOS                            // receive
             + Σ_slices [ (elapsed_ms/1000) × RUN_NANOS_PER_SEC ]         // run fee only, no token math
 ```
 
-`RUN_NANOS_PER_SEC` is the one run rate for both postures (receive stays `RECEIVE_NANOS`); platform additionally layers the three-tier token cost. The live dollar amounts are canonical on [`agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing); implementers read the pin-tested constants in `rustd/crates/afd_billing/src/nanos.rs` and the model library (GET /v1/models) for the per-token rates.
+`RUN_NANOS_PER_SEC` is the one run rate for both postures (receive stays `RECEIVE_NANOS`); platform additionally layers the three-tier token cost. The live dollar amounts are canonical on [`agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing); implementers read the constants in `rustd/crates/afd_billing/src/nanos.rs` and the model library (GET /v1/models) for the per-token rates.
 
 ---
 

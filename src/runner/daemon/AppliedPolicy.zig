@@ -32,6 +32,14 @@ pub const HeartbeatReplyRaw = struct {
     /// An operator asked this runner to self-test. Defaulted false so a control
     /// plane too old to send it simply never asks, rather than failing the beat.
     selftest_requested: bool = false,
+    /// How long to wait before the next beat.
+    ///
+    /// Not defaulted, unlike its neighbours: this host holds no cadence to fall
+    /// back to, because the daemon is what derives a host offline and so what
+    /// decides how often to beat. A reply without it fails the parse, and the
+    /// beat takes the transport-loss backoff — the safe answer, where a guess
+    /// would be a guess against a threshold this side cannot see.
+    heartbeat_interval_ms: u32,
 };
 
 pub fn init(alloc: std.mem.Allocator) AppliedPolicy {

@@ -26,6 +26,7 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_core::timing::HEARTBEAT_INTERVAL_MS;
 use afd_runner::{Beat, NO_REPORT};
 use afd_wire::runner::{HeartbeatRequest, HeartbeatResponse, HeartbeatStatus};
 use axum::Json;
@@ -98,6 +99,26 @@ fn read(body: &[u8]) -> HeartbeatRequest<'_> {
     afd_http::handler::read_body(body).unwrap_or(NO_REPORT)
 }
 
+/// The cadence as the wire carries it.
+///
+/// [`HEARTBEAT_INTERVAL_MS`] is an `i64` because every span beside it is
+/// compared against a `bigint` column; the wire quotes a duration, which is
+/// never negative. The assertion proves the narrowing before the cast, so a
+/// cadence edited past the wire's range fails the build rather than a beat.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "the const assertion inside this block proves the value sits \
+              inside u32 before the cast runs, so a cadence edited past the \
+              wire's range fails the build rather than truncating a beat"
+)]
+const WIRE_INTERVAL_MS: u32 = {
+    const _: () = assert!(
+        HEARTBEAT_INTERVAL_MS > 0 && HEARTBEAT_INTERVAL_MS <= u32::MAX as i64,
+        "the heartbeat cadence must be a positive duration the wire can carry"
+    );
+    HEARTBEAT_INTERVAL_MS as u32
+};
+
 /// The beat as the wire shape, borrowing the assignment from the row.
 fn payload(beat: &Beat) -> HeartbeatResponse<'_> {
     HeartbeatResponse {
@@ -110,5 +131,33 @@ fn payload(beat: &Beat) -> HeartbeatResponse<'_> {
         degraded: beat.verdict.is_degraded(),
         degraded_reason: beat.verdict.reason().map(Cow::Borrowed),
         selftest_requested: beat.selftest_requested,
+        // The runner holds no cadence of its own: this daemon is what derives a
+        // host offline, so it is what says how often to beat. `timing`'s
+        // assertion keeps this under that threshold.
+        heartbeat_interval_ms: WIRE_INTERVAL_MS,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use afd_core::timing::{HEARTBEAT_INTERVAL_MS, RUNNER_OFFLINE_AFTER_MS};
+
+    use super::WIRE_INTERVAL_MS;
+
+    /// What the runner is told must be the number this daemon enforces, not a
+    /// second one that happens to agree today.
+    #[test]
+    fn test_the_served_cadence_is_the_enforced_cadence() {
+        assert_eq!(i64::from(WIRE_INTERVAL_MS), HEARTBEAT_INTERVAL_MS);
+    }
+
+    /// The whole reason the cadence is served rather than held by the host: it
+    /// has to stay under a threshold only this side knows.
+    #[test]
+    fn test_the_served_cadence_stays_below_the_offline_threshold() {
+        assert!(
+            i64::from(WIRE_INTERVAL_MS) < RUNNER_OFFLINE_AFTER_MS,
+            "a host beating at {WIRE_INTERVAL_MS}ms would be derived offline at {RUNNER_OFFLINE_AFTER_MS}ms"
+        );
     }
 }

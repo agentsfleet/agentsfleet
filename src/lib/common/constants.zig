@@ -41,31 +41,18 @@ pub const env = @import("env.zig");
 /// unsupported so a probe skips. See `rss.zig`.
 pub const rss = @import("rss.zig");
 
-/// How long an issued lease/affinity claim stays valid before the slot becomes
-/// reclaimable, and the increment each renewal adds. The control plane sets
-/// `leased_until = now + this` and stamps the lease row's `lease_expires_at` to
-/// the same value; the daemon treats it as the kill deadline. A live runner
-/// extends it via the `/renew` verb (decoupling liveness from execution
-/// duration); dead-runner detection is a separate later workstream (a lapse
-/// scan over `last_seen_at`), not a function of shrinking this — so it stays
-/// short as the silent-death backstop.
-///
-/// `pub` for a reader no Zig analysis can see, though no longer the one this
-/// comment used to name. The Grafana alerting playbook derived its
-/// runner-offline threshold from THIS file until Sep 18, 2026; it now reads
-/// `afd_core::timing`, which is the right direction — the daemon decides a
-/// runner is offline, so the daemon's constant is the one an alert quotes.
-///
-/// The keyword is still load-bearing for a different reader:
-/// `rustd/crates/afd_core/tests/cross_runtime_timing.rs` parses this file on
-/// the literal `"pub const "` to prove the Rust copies have not drifted from
-/// these. Dropping it compiles and fails that test instead.
-pub const LEASE_TTL_MS: i64 = 30_000;
-
 /// The runner auto-renews a lease once fewer than this many ms remain before
-/// `lease_expires_at`. Must be < `LEASE_TTL_MS` so a renewal leaves slack for a
-/// transient failure to retry before the deadline (renew-fail is fail-safe:
-/// unrenewed by the deadline → child killed + event reclaimed, never double-run).
+/// the deadline the server sent it.
+///
+/// Runner-local policy, and only that. The lease's length is the daemon's and
+/// arrives on the renew reply, so this file does not spell it: the driver
+/// compares against `self.deadline_ms` and never against a duration of its own.
+/// What this value has to be smaller than is the remaining lease, which the
+/// daemon guarantees by never issuing a deadline closer than one renewal
+/// window — so all that is left to enforce here is the tick below.
+///
+/// Renew-fail is fail-safe: unrenewed by the deadline → child killed + event
+/// reclaimed, never double-run.
 pub const RENEWAL_WINDOW_MS: i64 = 10_000;
 
 /// How often the runner's child-supervision read loop wakes to consider a
@@ -76,28 +63,9 @@ pub const RENEWAL_WINDOW_MS: i64 = 10_000;
 /// frames, so a legitimate long run renews and is never falsely reclaimed.
 pub const RENEWAL_TICK_MS: i64 = 5_000;
 
-/// Liveness lapse threshold: a runner whose `last_seen_at` is older than this is
-/// derived `offline` by the fleet read. Reintroduced here with its first
-/// consumer (the derived-liveness display) now that the detection model is
-/// settled: an actively-renewing runner is `busy` (the live-lease check runs
-/// BEFORE this threshold), so a long execution that stops heartbeating is never
-/// falsely offline — exactly the concern that kept this undefined. Three lease
-/// TTLs of silence is unambiguously dead for an idle runner (which heartbeats
-/// every lease cycle). The lapse-reassignment scan reuses/refines this value.
-pub const RUNNER_OFFLINE_AFTER_MS: i64 = LEASE_TTL_MS * 3;
-
-/// Control-loop heartbeat cadence: how often the runner's main (control) thread
-/// emits one host heartbeat, decoupled from worker execution now that the worker
-/// pool owns lease polling. A busy pool no longer carries the heartbeat, so this
-/// only has to keep an *idle* host live: it MUST stay below `RUNNER_OFFLINE_AFTER_MS`
-/// (the comptime assertion below enforces it) so an idle host always heartbeats
-/// before the fleet read would derive it offline. One stream per host regardless
-/// of the assigned worker count.
-pub const HEARTBEAT_INTERVAL_MS: i64 = 10_000;
-
 comptime {
-    if (HEARTBEAT_INTERVAL_MS >= RUNNER_OFFLINE_AFTER_MS)
-        @compileError("HEARTBEAT_INTERVAL_MS must be < RUNNER_OFFLINE_AFTER_MS so an idle host heartbeats before it is derived offline");
+    if (RENEWAL_TICK_MS >= RENEWAL_WINDOW_MS)
+        @compileError("RENEWAL_TICK_MS must be < RENEWAL_WINDOW_MS so at least one tick lands inside the renewal window");
 }
 
 /// Backoff hint handed to a runner when there is no work to lease. The lease
