@@ -60,10 +60,8 @@ function onboardedOn(entry: WorkspaceLibraryEntry) {
 }
 
 function buildColumns({
-  pending,
   onRemove,
 }: {
-  pending: boolean;
   onRemove: (entry: WorkspaceLibraryEntry) => void;
 }): DataTableColumn<WorkspaceLibraryEntry>[] {
   return [
@@ -91,13 +89,16 @@ function buildColumns({
       key: "actions",
       header: COLUMN_ACTIONS,
       numeric: true,
+      // Never disabled. Opening the question sends nothing — it sets local
+      // state and nothing else — so there is no request to guard against, and
+      // `pending` here is shared with Load more: appending a page used to
+      // shut this button for as long as the fetch ran. A click landing in
+      // that window is not queued or replayed, it is dropped, so a person
+      // clicked Remove, saw nothing happen, and had to discover that a second
+      // click works. The destructive step is the dialog's own confirm, which
+      // is where the guard belongs and where it still is.
       cell: (entry) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={pending}
-          onClick={() => onRemove(entry)}
-        >
+        <Button variant="ghost" size="sm" onClick={() => onRemove(entry)}>
           {REMOVE_CONFIRM_LABEL}
         </Button>
       ),
@@ -216,7 +217,6 @@ export default function WorkspaceLibraryList({ workspaceId, entries, initialCurs
         <DataTable
           className="flex min-h-0 flex-1 flex-col"
           columns={buildColumns({
-            pending,
             onRemove: (entry) => {
               setError(null);
               setTarget(entry);

@@ -113,6 +113,10 @@ export function LibraryCard({ entry, action }: Props) {
         </div>
         <Tooltip>
           <TooltipTrigger asChild>
+            {/* No `tabIndex`: the clamp is CSS, so the sentence a sighted
+             * reader loses to it is still in the document and still read by
+             * anything not rendering the clip. The tooltip repeats it for a
+             * pointer; it is an enhancement, not the only copy. */}
             <p
               data-testid={`library-card-description-${entry.id}`}
               className={`text-body-sm leading-body-sm text-muted-foreground ${DESCRIPTION_LINES}`}
@@ -125,32 +129,38 @@ export function LibraryCard({ entry, action }: Props) {
       </div>
       {credentials.length > 0 ? (
         <Tooltip>
-          <TooltipTrigger asChild>
-            {/* `w-fit`: the row is the hover target, so it ends where the marks
-             * do rather than spanning the card and arming a tooltip over empty
-             * space. */}
-            <div
-              data-testid={`library-card-requires-${entry.id}`}
-              className="flex w-fit items-center gap-sm text-muted-foreground"
-            >
-              {/* Muted, not amber: nothing is wrong here. Amber is this
-               * system's warning colour, and a fleet naming the credential it
-               * will ask for is a fact about the fleet, not a fault in the
-               * workspace. */}
-              {credentials.slice(0, MARK_CEILING).map((credential) => (
-                <VendorMark key={credential} credential={credential} />
-              ))}
-              {credentials.length > MARK_CEILING ? (
-                <Badge>
-                  {MORE_PREFIX}
-                  {credentials.length - MARK_CEILING}
-                </Badge>
-              ) : null}
-            </div>
+          {/* A real button, not `asChild` over a <div>. The marks are the only
+            * place this card renders its credentials, so whatever reveals
+            * their names has to take focus — and an element that genuinely
+            * takes focus is the one answer the a11y lint and a screen reader
+            * both accept. `w-fit` keeps it ending where the marks do rather
+            * than spanning the card and arming a tooltip over empty space. */}
+          <TooltipTrigger
+            data-testid={`library-card-requires-${entry.id}`}
+            className="flex w-fit cursor-default items-center gap-sm text-muted-foreground"
+          >
+            {/* Muted, not amber: nothing is wrong here. Amber is this system's
+              * warning colour, and a fleet naming the credential it will ask
+              * for is a fact about the fleet, not a fault in the workspace. */}
+            {credentials.slice(0, MARK_CEILING).map((credential) => (
+              <VendorMark key={credential} credential={credential} />
+            ))}
+            {credentials.length > MARK_CEILING ? (
+              <Badge>
+                {MORE_PREFIX}
+                {credentials.length - MARK_CEILING}
+              </Badge>
+            ) : null}
+            {/* The names, always, for anyone not reading the marks. A mark
+              * identifies only what its reader already knows and the neutral
+              * glyph identifies nothing, so this is the copy that says which
+              * providers a fleet asks for however the card is read. */}
+            <span className="sr-only">
+              {REQUIRES_PREFIX}: {credentials.join(", ")}
+            </span>
           </TooltipTrigger>
-          {/* The names. No mark identifies a provider to a reader who does not
-           * already know it, and the neutral glyph identifies nothing at all,
-           * so the row never draws without this naming what it drew. */}
+          {/* The same names, shown. The tooltip is the pointer's path to the
+            * fact the sr-only copy already carries. */}
           <TooltipContent className="max-w-prose">
             {REQUIRES_PREFIX}: {credentials.join(", ")}
           </TooltipContent>

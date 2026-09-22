@@ -35,11 +35,9 @@ const GALLERY_SUBPATH = "fleets/new";
 const SIDEBAR_LABEL = "Library";
 const REMOVE_LABEL = "Remove";
 
-/** How long one attempt waits for the confirmation to appear. */
+/** How long the confirmation may take to appear after one click. */
 const DIALOG_OPEN_MS = 3_000;
 
-/** How long the open is retried before the row action is called broken. */
-const DIALOG_SETTLE_MS = 20_000;
 const BUNDLE_SKILL_FILE = "SKILL.md";
 const BUNDLE_TRIGGER_FILE = "TRIGGER.md";
 const WORKSPACE_NAME = "fixture-workspace";
@@ -123,20 +121,20 @@ test.describe("workspace-library", () => {
     const row = page.getByRole("row").filter({ hasText: name });
     await expect(row).toBeVisible();
 
-    // The row actions carry `disabled={pending}` while a page transition is in
-    // flight, and a click that lands in the window where that flips is dropped
-    // without a trace — the dialog simply never opens. Playwright waits for
-    // enabled before clicking, which does not close the window, so the open is
-    // retried rather than assumed.
+    // One click, and the question opens. This used to need a retry: the row
+    // action read `disabled={pending}` from the transition Load more shares,
+    // so a click landing during a page fetch was dropped and the dialog never
+    // came. Retrying made the test pass and left the person clicking twice, so
+    // the button stopped being disabled instead — opening the question sends
+    // nothing, and there was never a request here to guard.
     const removeAction = row.getByRole("button", { name: REMOVE_LABEL });
+    await expect(removeAction).toBeEnabled();
+    await removeAction.click();
+
     // Both the row action and the dialog's confirm read "Remove", so the
     // confirm is addressed through the dialog rather than by label alone.
     const dialog = page.getByRole("dialog");
-    await expect(async () => {
-      await expect(removeAction).toBeEnabled();
-      await removeAction.click();
-      await expect(dialog).toBeVisible({ timeout: DIALOG_OPEN_MS });
-    }).toPass({ timeout: DIALOG_SETTLE_MS });
+    await expect(dialog).toBeVisible({ timeout: DIALOG_OPEN_MS });
     await expect(dialog).toContainText(name);
     await dialog.getByRole("button", { name: REMOVE_LABEL }).click();
 
