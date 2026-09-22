@@ -10,7 +10,7 @@ export const LIBRARY_SECTION_LABEL = "Onboarded Fleet libraries";
 // step reads as a broken screen rather than an empty one.
 export const LIBRARY_EMPTY_TITLE = "Nothing onboarded yet";
 export const LIBRARY_EMPTY_BODY =
-  "Onboard a Fleet library with: agentsfleet library add --github <owner/repo>";
+  "Onboard a Fleet library with: agentsfleet library create --github <owner/repo>";
 
 // The removal confirmation. It names the entry, says what survives, and says
 // what does not — someone reading it should not have to guess whether a

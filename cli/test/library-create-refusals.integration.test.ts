@@ -1,4 +1,4 @@
-// `library add` — the invocations it refuses, and the bundles it will not
+// `library create` — the invocations it refuses, and the bundles it will not
 // upload. Every case asserts the refusal happened before a request left the
 // process: a source that is wrong is cheaper to reject locally than to send.
 
@@ -9,15 +9,15 @@ import { join } from "node:path";
 import { runCli } from "../src/cli.ts";
 import { bufferStream, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse } from "./helpers-mock-api.ts";
-import { LIBRARIES, SKILL_MD, TRIGGER_MD, created, authedScope } from "./helpers-library-add.ts";
+import { LIBRARIES, SKILL_MD, TRIGGER_MD, created, authedScope } from "./helpers-library-create.ts";
 
-describe("library add — source selection", () => {
+describe("library create — source selection", () => {
   test("refuses a bare invocation before any request leaves the process", async () => {
     await authedScope(async () => {
       await withMockApi({}, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["library", "add"], {
+        const code = await runCli(["library", "create"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -35,7 +35,7 @@ describe("library add — source selection", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["library", "add", "--github", "owner/repo", "--template", "starter"],
+          ["library", "create", "--github", "owner/repo", "--template", "starter"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(4);
@@ -50,7 +50,7 @@ describe("library add — source selection", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["library", "add", "--template", "starter", "--ref", "main"],
+          ["library", "create", "--template", "starter", "--ref", "main"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(4);
@@ -65,7 +65,7 @@ describe("library add — source selection", () => {
       await withMockApi({}, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["library", "add", "--github", "not-a-repo"], {
+        const code = await runCli(["library", "create", "--github", "not-a-repo"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -83,7 +83,7 @@ describe("library add — source selection", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["library", "add", "--from", join(tmpdir(), "af-does-not-exist-9e3f")],
+          ["library", "create", "--from", join(tmpdir(), "af-does-not-exist-9e3f")],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(5);
@@ -93,7 +93,7 @@ describe("library add — source selection", () => {
   });
 });
 
-describe("library add --from — a bundle an upload cannot carry", () => {
+describe("library create --from — a bundle an upload cannot carry", () => {
   const withExtras = async <T>(
     extra: { readonly dir?: string; readonly file?: string },
     fn: (dir: string) => Promise<T>,
@@ -120,7 +120,7 @@ describe("library add --from — a bundle an upload cannot carry", () => {
       async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["library", "add", "--from", dir], {
+        const code = await runCli(["library", "create", "--from", dir], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),

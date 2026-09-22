@@ -1,5 +1,5 @@
 import { AGE_KEY, ago, entityColumns, EMPTY_CELL } from "../src/output/index.ts";
-// Unit coverage for `agentsfleet library list` and `library remove` — the two
+// Unit coverage for `agentsfleet library list` and `library delete` — the two
 // verbs over the workspace's OWN entries.
 //
 // The invariant these exist for is the path. Bare `agentsfleet library` reads
@@ -15,9 +15,9 @@ import { Effect, Exit, Layer, Option, Redacted } from "effect";
 import { libraryEffect } from "../src/commands/fleet_library.ts";
 import { libraryListEffect } from "../src/commands/fleet_library_list.ts";
 import {
-  libraryRemoveEffectFromArgs,
+  libraryDeleteEffectFromArgs,
   removedNotice,
-} from "../src/commands/fleet_library_remove.ts";
+} from "../src/commands/fleet_library_delete.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
@@ -189,24 +189,24 @@ describe("library list — the workspace's own entries", () => {
     expect(h.captured.join("\n")).toContain(ENTRY_ID);
   });
 
-  test("an empty workspace gets a state naming `library add`", async () => {
+  test("an empty workspace gets a state naming `library create`", async () => {
     // An empty list with no next step reads as a broken screen rather than an
-    // empty one, and `library add` is the command that fills it.
+    // empty one, and `library create` is the command that fills it.
     const h = harness();
     const exit = await Effect.runPromiseExit(
       libraryListEffect.pipe(Effect.provide(makeLayer(h, false, { items: [] }))),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(h.tables).toHaveLength(0);
-    expect(h.captured.join("\n")).toContain("library add");
+    expect(h.captured.join("\n")).toContain("library create");
   });
 });
 
-describe("library remove — taking one back out", () => {
+describe("library delete — taking one back out", () => {
   test("issues DELETE against the single-entry path", async () => {
     const h = harness();
     const exit = await Effect.runPromiseExit(
-      libraryRemoveEffectFromArgs(ENTRY_ID).pipe(
+      libraryDeleteEffectFromArgs(ENTRY_ID).pipe(
         Effect.provide(makeLayer(h, false, undefined)),
       ),
     );
@@ -221,7 +221,7 @@ describe("library remove — taking one back out", () => {
     // this command cannot know. What it CAN state is the end state.
     const h = harness();
     await Effect.runPromiseExit(
-      libraryRemoveEffectFromArgs(ENTRY_ID).pipe(
+      libraryDeleteEffectFromArgs(ENTRY_ID).pipe(
         Effect.provide(makeLayer(h, false, undefined)),
       ),
     );
@@ -242,7 +242,7 @@ describe("library remove — taking one back out", () => {
     const second = harness();
     for (const h of [first, second]) {
       const exit = await Effect.runPromiseExit(
-        libraryRemoveEffectFromArgs(ENTRY_ID).pipe(
+        libraryDeleteEffectFromArgs(ENTRY_ID).pipe(
           Effect.provide(makeLayer(h, false, undefined)),
         ),
       );
@@ -257,7 +257,7 @@ describe("library remove — taking one back out", () => {
     // earns, and its detail is the repair.
     const h = harness();
     const exit = await Effect.runPromiseExit(
-      libraryRemoveEffectFromArgs(ENTRY_ID).pipe(
+      libraryDeleteEffectFromArgs(ENTRY_ID).pipe(
         Effect.provide(
           makeLayer(
             h,

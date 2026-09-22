@@ -49,7 +49,7 @@ describe("CLI tree — every documented route is reachable", () => {
     ["workspace", "create"], ["workspace", "list"], ["workspace", "use"],
     ["workspace", "show"], ["workspace", "secrets"], ["workspace", "delete"],
     ["api-key", "create"], ["api-key", "list"], ["api-key", "revoke"], ["api-key", "delete"],
-    ["connector", "list"], ["connector", "status"],
+    ["connector", "list"], ["connector", "show"],
     ["grant", "list"], ["grant", "delete"],
     ["schedule", "create"], ["schedule", "list"], ["schedule", "update"], ["schedule", "delete"], ["schedule", "show"], ["schedule", "sync"],
     ["tenant", "provider", "show"], ["tenant", "provider", "create"], ["tenant", "provider", "delete"],

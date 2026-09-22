@@ -41,7 +41,7 @@ const requireProvider = (
   Effect.gen(function* () {
     const provider = yield* requireValue(
       raw,
-      "connector status requires <provider>",
+      "connector show requires <provider>",
       "pass a provider id such as slack or github",
     );
     if (!PROVIDER_RE.test(provider)) {

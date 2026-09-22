@@ -152,12 +152,12 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["api-key", "revoke"], missingArgName: "api_key_id" },
   { args: ["api-key", "delete"], missingArgName: "api_key_id" },
   { args: ["grant", "delete"], missingArgName: "grant_id" },
-  { args: ["library", "remove"], missingArgName: "entry_id" },
+  { args: ["library", "delete"], missingArgName: "entry_id" },
   { args: ["fleet", "show"], missingArgName: "fleet_id" },
   { args: ["approvals", "show"], missingArgName: "gate_id" },
   { args: ["approvals", "approve"], missingArgName: "gate_id" },
   { args: ["approvals", "deny"], missingArgName: "gate_id" },
-  { args: ["connector", "status"], missingArgName: "provider" },
+  { args: ["connector", "show"], missingArgName: "provider" },
   { args: ["kill"], missingArgName: "fleet_id" },
   { args: ["stop"], missingArgName: "fleet_id" },
   { args: ["resume"], missingArgName: "fleet_id" },
@@ -187,7 +187,6 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
 // instead: bare `agentsfleet library` lists the gallery, so asserting it prints
 // help would be asserting the opposite of what it is for.
 export const GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
-  ["auth"],
   ["workspace"],
   ["api-key"],
   ["connector"],
