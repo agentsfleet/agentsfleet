@@ -70,6 +70,23 @@ test_should_reject_wrong_loki_datasource_type() {
   fi
 }
 
+test_should_require_the_incident_responder_loki_stream() {
+  local name="test_should_require_the_incident_responder_loki_stream"
+  local calls="$(mktemp -p "$work_dir")"
+  local captures="$(mktemp -d -p "$work_dir")"
+  local output status=0
+  output="$(
+    run_script MOCK_LOKI_EMPTY=1 ACTION=check ENV=dev bash "$GATE"
+  )" || status=$?
+  if [ "$status" -eq 0 ]; then
+    bad "$name" "an empty incident-responder Loki selector passed"
+  elif ! rg --quiet 'service_name="agentsfleetd",service_namespace="agentsfleet"' "$calls"; then
+    bad "$name" "the gate did not run the incident responder selector"
+  else
+    ok "$name"
+  fi
+}
+
 test_should_create_every_resource_in_one_apply() {
   local name="test_should_create_every_resource_in_one_apply"
   local calls="$(mktemp -p "$work_dir")"
@@ -528,6 +545,7 @@ TEST_NAMES=(
   test_should_verify_prometheus_without_exposing_token
   test_should_reject_wrong_datasource_type
   test_should_reject_wrong_loki_datasource_type
+  test_should_require_the_incident_responder_loki_stream
   test_should_fail_when_grafana_rejects_a_write
   test_should_create_every_resource_in_one_apply
   test_should_update_every_resource_with_its_version

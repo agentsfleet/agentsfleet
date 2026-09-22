@@ -75,8 +75,12 @@ case "$url" in
   */api/datasources/uid/loki-main)
     body="{\"uid\":\"loki-main\",\"type\":\"${MOCK_LOKI_TYPE:-loki}\"}"
     ;;
-  */api/datasources/proxy/uid/loki-main/loki/api/v1/labels)
-    body='{"status":"success","data":["service_name","service_namespace"]}'
+  */api/datasources/proxy/uid/loki-main/loki/api/v1/query_range)
+    if [ "${MOCK_LOKI_EMPTY:-0}" = "1" ]; then
+      body='{"status":"success","data":{"resultType":"streams","result":[]}}'
+    else
+      body='{"status":"success","data":{"resultType":"streams","result":[{"stream":{"service_name":"agentsfleetd","service_namespace":"agentsfleet"},"values":[["1","ready"]]}]}}'
+    fi
     ;;
   */folders/agentsfleet-dev | */dashboards/agentsfleet-runtime-dev | */alertrules/*-dev)
     if [ "${MOCK_MODE:-create}" = "create" ]; then

@@ -109,6 +109,19 @@ obs_get_query() {
     "$OBS_GRAFANA_URL$path"
 }
 
+obs_get_loki_query_range() {
+  local path="$1"
+  local query="$2"
+  curl --config "$OBS_CURL_CONFIG" \
+    --header 'Accept: application/json' \
+    --get \
+    --data-urlencode "query=$query" \
+    --data-urlencode 'since=15m' \
+    --data-urlencode 'limit=1' \
+    --data-urlencode 'direction=backward' \
+    "$OBS_GRAFANA_URL$path"
+}
+
 obs_get_status() {
   local path="$1"
   local output_file="$2"
