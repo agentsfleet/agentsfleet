@@ -26,9 +26,13 @@ const STORAGE_BASE = "/tmp/agentsfleet-m164-loop-seq-test";
 const POLICY_JSON =
     \\{"sandbox_tier":"landlock_full","network_policy":"deny_all_egress","registry_allowlist":[],"worker_count":1}
 ;
-const BEAT_OK_WITH_POLICY = "{\"status\":\"ok\",\"assigned_policy\":" ++ POLICY_JSON ++ "}";
-const BEAT_OK_DEGRADED = "{\"status\":\"ok\",\"degraded\":true,\"assigned_policy\":" ++ POLICY_JSON ++ "}";
-const BEAT_DRAIN = "{\"status\":\"drain\"}";
+/// The cadence every scripted reply carries. Deliberately not the daemon's own
+/// value: a test that used 10_000 could not tell "the runner applied what it
+/// was served" from "the runner fell back to a copy of the daemon's number".
+const BEAT_MS_JSON = ",\"heartbeat_interval_ms\":7000";
+const BEAT_OK_WITH_POLICY = "{\"status\":\"ok\",\"assigned_policy\":" ++ POLICY_JSON ++ BEAT_MS_JSON ++ "}";
+const BEAT_OK_DEGRADED = "{\"status\":\"ok\",\"degraded\":true,\"assigned_policy\":" ++ POLICY_JSON ++ BEAT_MS_JSON ++ "}";
+const BEAT_DRAIN = "{\"status\":\"drain\"" ++ BEAT_MS_JSON ++ "}";
 /// The retry hint is deliberately LONG. This stub is serial — one connection at
 /// a time — and the pool's worker shares it with the control loop. A tight hint
 /// lets the worker re-poll faster than the loop can heartbeat, so the loop is
