@@ -20,9 +20,9 @@ import {
 } from "../../commands/fleet.ts";
 import { listEffectFromFlags } from "../../commands/fleet_list.ts";
 import { libraryEffect } from "../../commands/fleet_library.ts";
-import { libraryAddEffectFromFlags } from "../../commands/fleet_library_add.ts";
+import { libraryCreateEffectFromFlags } from "../../commands/fleet_library_create.ts";
 import { libraryListEffect } from "../../commands/fleet_library_list.ts";
-import { libraryRemoveEffectFromArgs } from "../../commands/fleet_library_remove.ts";
+import { libraryDeleteEffectFromArgs } from "../../commands/fleet_library_delete.ts";
 import { modelsEffectFromFlags } from "../../commands/models.ts";
 import { installEffectFromFlags, updateEffectFromArgs } from "../../commands/fleet_install.ts";
 import { logsEffectFromFlags } from "../../commands/fleet_logs.ts";
@@ -77,11 +77,11 @@ const LIST = "list" as const;
 const DELETE = "delete" as const;
 const UPDATE = "update" as const;
 const SHOW = "show" as const;
-const REMOVE = "remove" as const;
+const CREATE = "create" as const;
 
 // ── library, models, install ────────────────────────────────────────
 
-const libraryAddCommand = Command.make("add", {
+const libraryCreateCommand = Command.make(CREATE, {
   github: githubFlag,
   from: fromBundleFlag,
   template: templateFlag,
@@ -89,7 +89,7 @@ const libraryAddCommand = Command.make("add", {
 }).pipe(
   Command.withDescription("Onboard a Fleet library into this workspace"),
   guardedHandler(({ github, from, template, ref }) =>
-    libraryAddEffectFromFlags({
+    libraryCreateEffectFromFlags({
       github: opt(github),
       from: opt(from),
       template: opt(template),
@@ -98,7 +98,7 @@ const libraryAddCommand = Command.make("add", {
   ),
 );
 
-// `list` and `remove` answer for the workspace's OWN entries; bare `library`
+// `list` and `delete` answer for the workspace's OWN entries; bare `library`
 // keeps printing the gallery, which is what `install --library` resolves
 // against. Redefining the bare command would change a shipped command's
 // meaning for every caller, so the new verbs are explicit.
@@ -107,17 +107,17 @@ const libraryListCommand = Command.make(LIST).pipe(
   guardedHandler(() => libraryListEffect),
 );
 
-const libraryRemoveCommand = Command.make(REMOVE, {
+const libraryDeleteCommand = Command.make(DELETE, {
   entryId: entryIdArgument,
 }).pipe(
   Command.withDescription("Remove a Fleet library this workspace onboarded"),
-  guardedHandler(({ entryId }) => libraryRemoveEffectFromArgs(entryId)),
+  guardedHandler(({ entryId }) => libraryDeleteEffectFromArgs(entryId)),
 );
 
 export const libraryCommand = Command.make("library").pipe(
   Command.withDescription("Browse this workspace's Fleet library gallery"),
   guardedHandler(() => libraryEffect),
-  Command.withSubcommands([libraryAddCommand, libraryListCommand, libraryRemoveCommand]),
+  Command.withSubcommands([libraryCreateCommand, libraryListCommand, libraryDeleteCommand]),
 );
 
 export const modelsCommand = Command.make("models", { provider: providerFlag }).pipe(

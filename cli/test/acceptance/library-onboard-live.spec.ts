@@ -2,7 +2,7 @@
  * library-onboard-live — create a Fleet library from the terminal, then install it.
  *
  * The journey this grades is the one the CLI could not complete at all before
- * `library add` landed: a workspace gains a library, `agentsfleet library`
+ * `library create` landed: a workspace gains a library, `agentsfleet library`
  * lists it, and `agentsfleet install --library <id>` accepts the identifier
  * that listing printed.
  *
@@ -152,7 +152,7 @@ if (!isLive) {
     });
 
     it("refuses an invocation naming no source, without reaching the daemon", async () => {
-      const result = await runWithEnv(["library", "add"]);
+      const result = await runWithEnv(["library", "create"]);
       assert.equal(result.code, 4, `expected a usage rejection: ${result.stdout}${result.stderr}`);
       assert.ok(
         result.stderr.includes("--github"),
@@ -160,22 +160,22 @@ if (!isLive) {
       );
     });
 
-    it("`library add --from` uploads a local bundle and returns a tenant entry", async () => {
-      const result = await runWithEnv(["library", "add", "--from", bundleDir, JSON_FLAG]);
-      assert.equal(result.code, 0, `library add --from failed: ${result.stderr}`);
-      const created = parseJson(result, "library add --from");
+    it("`library create --from` uploads a local bundle and returns a tenant entry", async () => {
+      const result = await runWithEnv(["library", "create", "--from", bundleDir, JSON_FLAG]);
+      assert.equal(result.code, 0, `library create --from failed: ${result.stderr}`);
+      const created = parseJson(result, "library create --from");
       assert.equal(typeof created.id, "string", `no library id returned: ${result.stdout}`);
       assert.equal(created.visibility, TIER_TENANT,
         `an onboarded workspace library is a tenant entry: ${result.stdout}`);
       uploadedLibraryId = created.id as string;
     }, ONBOARD_TIMEOUT_MS);
 
-    it("`library add --github` fetches a public repository server-side", async () => {
+    it("`library create --github` fetches a public repository server-side", async () => {
       const result = await runWithEnv([
-        "library", "add", "--github", PUBLIC_BUNDLE_REPO, JSON_FLAG,
+        "library", "create", "--github", PUBLIC_BUNDLE_REPO, JSON_FLAG,
       ]);
-      assert.equal(result.code, 0, `library add --github failed: ${result.stderr}`);
-      const created = parseJson(result, "library add --github");
+      assert.equal(result.code, 0, `library create --github failed: ${result.stderr}`);
+      const created = parseJson(result, "library create --github");
       assert.equal(typeof created.id, "string", `no library id returned: ${result.stdout}`);
       assert.equal(created.visibility, TIER_TENANT);
       githubLibraryId = created.id as string;

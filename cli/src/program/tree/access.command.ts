@@ -8,7 +8,6 @@
 import { Option } from "effect";
 import { Command } from "effect/unstable/cli";
 import { guardedHandler } from "./guarded-handler.ts";
-import { authStatusEffect } from "../../commands/auth.ts";
 import {
   apiKeyCreateEffectFromArgs,
   apiKeyDeleteEffectFromId,
@@ -50,19 +49,6 @@ const LIST = "list" as const;
 const SHOW = "show" as const;
 const CREATE = "create" as const;
 const DELETE = "delete" as const;
-const STATUS = "status" as const;
-
-// ── auth ────────────────────────────────────────────────────────────
-
-const authStatusCommand = Command.make(STATUS).pipe(
-  Command.withDescription("Show active credential source and server-side validity"),
-  guardedHandler(() => authStatusEffect),
-);
-
-export const authCommand = Command.make("auth").pipe(
-  Command.withDescription("Inspect authentication state"),
-  Command.withSubcommands([authStatusCommand]),
-);
 
 // ── api-key ─────────────────────────────────────────────────────────
 
@@ -108,7 +94,7 @@ const connectorListCommand = Command.make(LIST, { workspace: workspaceFlag }).pi
   guardedHandler(({ workspace }) => connectorListEffectFromArgs(opt(workspace))),
 );
 
-const connectorStatusCommand = Command.make(STATUS, {
+const connectorShowCommand = Command.make(SHOW, {
   provider: providerArgument,
   workspace: workspaceFlag,
 }).pipe(
@@ -120,7 +106,7 @@ const connectorStatusCommand = Command.make(STATUS, {
 
 export const connectorCommand = Command.make("connector").pipe(
   Command.withDescription("Inspect workspace connectors"),
-  Command.withSubcommands([connectorListCommand, connectorStatusCommand]),
+  Command.withSubcommands([connectorListCommand, connectorShowCommand]),
 );
 
 // ── approvals ───────────────────────────────────────────────────────

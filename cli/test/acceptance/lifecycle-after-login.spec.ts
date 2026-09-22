@@ -149,9 +149,9 @@ if (!isLive) {
         assert.equal(typeof creds.token, "string");
         assert.match(creds.token, CLI_CREDENTIAL_PATTERN, "persisted token is not a CLI credential");
 
-        const authStatus = await spawn(["auth", "status", "--json"]);
+        const authStatus = await spawn(["whoami", "--json"]);
         assert.equal(authStatus.code, 0,
-          `persisted auth status exited ${authStatus.code}: ${authStatus.stderr}`);
+          `persisted whoami exited ${authStatus.code}: ${authStatus.stderr}`);
         const status = JSON.parse(authStatus.stdout.trim()) as {
           authenticated?: boolean;
           source?: string;

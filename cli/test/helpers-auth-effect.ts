@@ -1,4 +1,4 @@
-// Shared fixtures and doubles for the auth status and logout suites.
+// Shared fixtures and doubles for the logout suite.
 //
 // Extracted when auth-effect.unit.test.ts passed the repository's 350-line cap;
 // the suites that read them are unchanged.

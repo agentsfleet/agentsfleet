@@ -1,4 +1,4 @@
-// `agentsfleet library remove <entry_id>` — take an onboarded entry back out.
+// `agentsfleet library delete <entry_id>` — take an onboarded entry back out.
 //
 // The verb slot 460 withheld. Removal is permanent: there is no unlist, no
 // marker and no visibility flip, because nothing depends on the row. A fleet
@@ -20,16 +20,16 @@ import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsLibraryEntryPath } from "../lib/api-paths.ts";
 import { HTTP_METHOD } from "../constants/http-method.ts";
 
-export const REMOVE_USAGE = "usage: agentsfleet library remove <entry_id>" as const;
+export const REMOVE_USAGE = "usage: agentsfleet library delete <entry_id>" as const;
 
 export const removedNotice = (entryId: string): string =>
   `${entryId} is no longer in this workspace's Fleet library. ` +
   `Fleets already installed from it keep running.`;
 
 const REINSTATE_HINT =
-  "Onboard it again with: agentsfleet library add --github <owner/repo>" as const;
+  "Onboard it again with: agentsfleet library create --github <owner/repo>" as const;
 
-export const libraryRemoveEffectFromArgs = Effect.fn("library.remove")(
+export const libraryDeleteEffectFromArgs = Effect.fn("library.delete")(
   function* (entryId: string) {
     const output = yield* Output;
     const http = yield* HttpClient;

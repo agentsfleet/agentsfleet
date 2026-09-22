@@ -86,10 +86,10 @@ describe("the workspace library list", () => {
 
   it("shows an empty state naming the command that fills it", () => {
     // An empty list with no next step reads as a broken screen rather than an
-    // empty one, and `library add` is what fills it.
+    // empty one, and `library create` is what fills it.
     renderList([]);
 
-    expect(screen.getByText(/library add/)).toBeTruthy();
+    expect(screen.getByText(/library create/)).toBeTruthy();
     expect(screen.queryByRole("table")).toBeNull();
   });
 

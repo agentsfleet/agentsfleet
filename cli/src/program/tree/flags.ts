@@ -238,7 +238,7 @@ export const modelOverrideFlag = textFlag(FLAG.model, "Override the default mode
 
 export const tokenNameFlag = textFlag(
   "token-name",
-  "Label for this session, shown on the approval page and in `auth status` (default: platform family)",
+  "Label for this session, shown on the approval page and in `whoami` (default: platform family)",
   METAVAR.label,
 );
 export const forceFlag = Flag.Boolean("force").pipe(

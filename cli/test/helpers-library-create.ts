@@ -1,4 +1,4 @@
-// Shared fixtures for the `library add` integration suites.
+// Shared fixtures for the `library create` integration suites.
 //
 // Extracted when library-add.integration.test.ts passed the repository's
 // 350-line cap.

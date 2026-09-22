@@ -159,7 +159,7 @@ describe("libraryEffect — JSON mode", () => {
 });
 
 describe("libraryEffect — empty catalog", () => {
-  test("an empty gallery names library add as the next move", async () => {
+  test("an empty gallery names library create as the next move", async () => {
     const captured: string[] = [];
     const tables: TableCapture[] = [];
     const requests: HttpRequestInput[] = [];

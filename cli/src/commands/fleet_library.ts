@@ -30,7 +30,7 @@ const FIELD_CREDENTIALS = "credentials" as const;
 const EMPTY_GALLERY =
   "No Fleet libraries in this workspace." as const;
 const EMPTY_HINT =
-  "Add one with: agentsfleet library add --github <owner/repo>" as const;
+  "Add one with: agentsfleet library create --github <owner/repo>" as const;
 const LIBRARIES_LISTED = "Fleet libraries" as const;
 const INSTALL_HINT =
   `Install one with: agentsfleet install --library ${LIBRARY_ID_PLACEHOLDER}` as const;

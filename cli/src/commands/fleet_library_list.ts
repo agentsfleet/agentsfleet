@@ -31,10 +31,10 @@ const ENTRIES_LISTED = "Onboarded Fleet libraries" as const;
 const EMPTY_OWNED = "This workspace has onboarded no Fleet libraries." as const;
 // Names the command that creates one, because an empty list with no next step
 // reads as a broken screen rather than an empty one.
-const EMPTY_HINT = "Add one with: agentsfleet library add --github <owner/repo>" as const;
+const EMPTY_HINT = "Add one with: agentsfleet library create --github <owner/repo>" as const;
 const GALLERY_HINT =
   "Everything installable here, platform entries included: agentsfleet library" as const;
-const REMOVE_HINT = "Remove one with: agentsfleet library remove <entry_id>" as const;
+const REMOVE_HINT = "Remove one with: agentsfleet library delete <entry_id>" as const;
 
 /** One row of the owned collection. Metadata only — the endpoint projects no
  *  document column, so there is nothing here to hold bundle content. */

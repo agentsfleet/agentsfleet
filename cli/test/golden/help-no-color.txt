@@ -24,7 +24,6 @@ SUBCOMMANDS
   logout       Sign out — revoke this machine's credential, abort unfinished
                sign-ins, and clear local state (other machines stay signed in)
   whoami       Show who this terminal is signed in as
-  auth         Inspect authentication state
   doctor       Diagnose CLI configuration and connectivity
   workspace    Manage workspaces
   grant        Manage integration grants
