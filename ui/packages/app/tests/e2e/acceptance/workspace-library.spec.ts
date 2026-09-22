@@ -30,10 +30,16 @@ import { cliEnv, makeCliStateDir, spawnAgentsfleet, writeCliState } from "./fixt
 const SOURCE_KIND_UPLOAD = "upload";
 const LIBRARY_SUBPATH = "library";
 const GALLERY_SUBPATH = "fleets/new";
-/** The sidebar entry. It shares its label with the platform catalogue's entry
- * under /admin, which only a platform admin ever sees — this spec signs in as
- * the regular fixture, so one link answers to the name. */
-const SIDEBAR_LABEL = "Fleet library";
+/**
+ * The workspace entry, addressed by where it GOES rather than what it says.
+ *
+ * It shares its label with the platform catalogue's entry under /admin. A
+ * comment here once argued that the regular fixture never sees that one, so the
+ * name was unambiguous — the acceptance run disproved it, and matching on the
+ * name is the wrong instinct regardless: the destination is what this click is
+ * for, and it is the only thing that separates the two.
+ */
+const WORKSPACE_NAV_LINK = `a[href$="/${LIBRARY_SUBPATH}"]`;
 /** The row action is a glyph; this is the tooltip and its accessible name. */
 const REMOVE_ROW_LABEL = "Remove from this workspace";
 /** The dialog's confirm, which is the bare verb. */
@@ -119,7 +125,7 @@ test.describe("workspace-library", () => {
 
     // Reached from the navigation, not a typed URL: a page nothing links to
     // is a page the operator never finds.
-    await page.getByRole("link", { name: SIDEBAR_LABEL, exact: true }).click();
+    await page.locator(WORKSPACE_NAV_LINK).click();
     await expect(page).toHaveURL(workspaceUrlPattern(LIBRARY_SUBPATH));
 
     const row = page.getByRole("row").filter({ hasText: name });
@@ -138,7 +144,12 @@ test.describe("workspace-library", () => {
     // The confirm is addressed through the dialog rather than by label alone:
     // the row action's name now contains the verb, so a bare "Remove" would
     // still be ambiguous across the page.
-    const dialog = page.getByRole("dialog");
+    // `alertdialog`, not `dialog` — ConfirmDialog sets `role="alertdialog"`
+    // (design-system/ConfirmDialog.tsx:88), so `getByRole("dialog")` matches
+    // nothing. The sibling platform spec already addresses it correctly; this
+    // one never ran long enough to find out, because the lane died in global
+    // setup on the commits before this.
+    const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible({ timeout: DIALOG_OPEN_MS });
     await expect(dialog).toContainText(name);
     await dialog.getByRole("button", { name: REMOVE_LABEL }).click();
