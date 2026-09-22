@@ -173,12 +173,24 @@ async function removeUploadedFleet(page: Page) {
   await expect(uploadedRow(page)).toHaveCount(0, { timeout: 30_000 });
 }
 
+// Addressed by the NAME cell, not by the slug's copy button.
+//
+// The table used to carry the entry id under the name with a CopyButton beside
+// it, and its accessible name ("Copy fleet id: <id>") was the sturdiest handle
+// on a row. The id left the table with that button, so the name cell is the
+// handle now — and for both fixtures the two are the same string: an entry's id
+// is derived from its bundle's SKILL.md `name`, which is what `skillMd(ID)`
+// writes and what the sample repository declares.
+function rowNamed(page: Page, name: string) {
+  return page.getByRole("row").filter({ hasText: name });
+}
+
 function uploadedRow(page: Page) {
-  return page.getByRole("row", { name: new RegExp(`Copy fleet id: ${UPLOADED_ENTRY_ID}`) });
+  return rowNamed(page, UPLOADED_ENTRY_ID);
 }
 
 function sampleRow(page: Page) {
-  return page.getByRole("row", { name: new RegExp(`Copy fleet id: ${SAMPLE_ENTRY_ID}`) });
+  return rowNamed(page, SAMPLE_ENTRY_ID);
 }
 
 function galleryCards(page: Page) {

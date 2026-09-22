@@ -28,6 +28,7 @@ vi.mock("../actions", () => ({
 }));
 
 import WorkspaceLibraryList from "./WorkspaceLibraryList";
+import { REMOVE_ROW_LABEL } from "../copy";
 
 const CREATED_MS = Date.UTC(2026, 3, 30, 10, 30, 0);
 
@@ -80,8 +81,14 @@ describe("the workspace library list", () => {
 
     expect(screen.getByText("github-pr-reviewer")).toBeTruthy();
     expect(screen.getByText("incident-responder")).toBeTruthy();
-    // Two onboardings of near-identical bundles differ by source first.
-    expect(screen.getAllByText("github:acme/reviewer")).toHaveLength(2);
+    // Two onboardings of near-identical bundles differ by source first. The
+    // kind rides as a glyph, so the cell's words are the ref alone and a
+    // GitHub row links to the repository it came from.
+    const sources = screen.getAllByRole("link", { name: /acme\/reviewer/ });
+    expect(sources).toHaveLength(2);
+    expect(sources[0]!.getAttribute("href")).toBe("https://github.com/acme/reviewer");
+    expect(sources[0]!.getAttribute("rel")).toContain("noopener");
+    expect(screen.queryByText("github:acme/reviewer")).toBeNull();
   });
 
   it("shows an empty state naming the command that fills it", () => {
@@ -96,7 +103,7 @@ describe("the workspace library list", () => {
   it("asks before removing, and names the entry in the question", async () => {
     renderList([entry("e1", "github-pr-reviewer")]);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: REMOVE_ROW_LABEL })[0]!);
 
     await waitFor(() => {
       expect(screen.getByText(/Remove "github-pr-reviewer" from this workspace\?/)).toBeTruthy();
@@ -109,7 +116,7 @@ describe("the workspace library list", () => {
     // Someone reading the confirmation should not have to guess whether a
     // running fleet is about to stop. It is not, and the copy says so.
     renderList([entry("e1", "github-pr-reviewer")]);
-    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: REMOVE_ROW_LABEL })[0]!);
 
     await waitFor(() => {
       expect(screen.getByText(/keep running/)).toBeTruthy();
@@ -120,7 +127,7 @@ describe("the workspace library list", () => {
     removeActionMock.mockResolvedValue({ ok: true });
     renderList([entry("e1", "github-pr-reviewer"), entry("e2", "incident-responder")]);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: REMOVE_ROW_LABEL })[0]!);
     await waitFor(() => screen.getByText(/from this workspace\?/));
     // The dialog's own confirm, not the row action that opened it.
     const confirms = screen.getAllByRole("button", { name: "Remove" });
@@ -144,7 +151,7 @@ describe("the workspace library list", () => {
     });
     renderList([entry("e1", "github-pr-reviewer")]);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: REMOVE_ROW_LABEL })[0]!);
     await waitFor(() => screen.getByText(/from this workspace\?/));
     const confirms = screen.getAllByRole("button", { name: "Remove" });
     fireEvent.click(confirms[confirms.length - 1]!);
@@ -174,7 +181,7 @@ describe("the workspace library list", () => {
     });
   });
 
-  it("should order by onboarding time when the Onboarded header is sorted", async () => {
+  it("should order by onboarding time when the Time header is sorted", async () => {
     // Three near-identical entries under one name is the pile-up this page
     // exists to clear, and then the only thing telling them apart is when each
     // arrived — so this sort key is the one that has to be the timestamp.
@@ -182,11 +189,48 @@ describe("the workspace library list", () => {
     renderList([entry("e1", "github-pr-reviewer"), entry("e2", "incident-responder", older)]);
     expect(renderedNames()).toEqual(["github-pr-reviewer", "incident-responder"]);
 
-    fireEvent.click(screen.getByRole("button", { name: /Onboarded/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Time/ }));
 
     await waitFor(() => {
       expect(renderedNames()).toEqual(["incident-responder", "github-pr-reviewer"]);
     });
+  });
+
+  it("should group the sources by kind when the Source header is sorted", async () => {
+    // The cell draws the kind as a glyph, so the SORT is the only thing left
+    // that can group two uploads together and keep them away from the GitHub
+    // rows. Sorting on the rendered text alone would sort by the ref and
+    // interleave the kinds, which is the pile-up the glyph was meant to clear.
+    const uploaded = {
+      ...entry("e2", "incident-responder"),
+      source_kind: "upload",
+      source_ref: "aaa/first-alphabetically",
+    };
+    renderList([entry("e1", "github-pr-reviewer"), uploaded]);
+
+    fireEvent.click(screen.getByRole("button", { name: /Source/ }));
+
+    await waitFor(() => {
+      expect(renderedNames()).toEqual(["github-pr-reviewer", "incident-responder"]);
+    });
+  });
+
+  it("should sort a kindless row on its ref alone, never on the word undefined", async () => {
+    // A row whose `source_kind` the server left empty still has to land
+    // somewhere deterministic. Prefixing an absent kind would sort every such
+    // row under a literal empty prefix and bury them together at one end,
+    // which is a sort order nobody asked for.
+    const kindless = { ...entry("e2", "incident-responder"), source_kind: "", source_ref: "zzz/last" };
+    renderList([entry("e1", "github-pr-reviewer"), kindless]);
+
+    fireEvent.click(screen.getByRole("button", { name: /Source/ }));
+
+    await waitFor(() => {
+      expect(renderedNames()).toEqual(["github-pr-reviewer", "incident-responder"]);
+    });
+    // The ref is still the cell's only words — the empty kind draws the
+    // fallback glyph rather than a prefix.
+    expect(screen.getByText("zzz/last")).toBeTruthy();
   });
 
   it("should issue no request and keep the row when the question is dismissed", async () => {
@@ -194,7 +238,7 @@ describe("the workspace library list", () => {
     // destructive confirmation must be free. A dismiss wired to the confirm
     // path would remove the entry on Escape.
     renderList([entry("e1", "github-pr-reviewer")]);
-    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: REMOVE_ROW_LABEL })[0]!);
     await waitFor(() => screen.getByText(/from this workspace\?/));
 
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape", code: "Escape" });
@@ -228,7 +272,7 @@ describe("the workspace library list", () => {
     });
     renderList([entry("e1", "github-pr-reviewer")]);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: REMOVE_ROW_LABEL })[0]!);
     await waitFor(() => screen.getByText(/from this workspace\?/));
     const confirms = screen.getAllByRole("button", { name: "Remove" });
     fireEvent.click(confirms[confirms.length - 1]!);
