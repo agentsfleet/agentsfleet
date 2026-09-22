@@ -81,23 +81,31 @@ const STDOUT_EXCERPT = 2_000;
  * entry is absent entirely, or it is present under a different identifier than
  * the one `library create` returned. The second is a defect in the daemon; the
  * first is a timing or scope problem, and they are fixed in different places.
+ *
+ * Matched on the entry's OWN name, not on the run prefix. Only the uploaded
+ * bundle is named after the run — the GitHub entry takes its name from the
+ * repository's own frontmatter — so a prefix match answers for the wrong row:
+ * with the upload present and the GitHub entry missing it would report an
+ * identifier mismatch that had not happened, and with the upload missing it
+ * would report nothing from this run while a GitHub row sat in the listing.
  */
 const missingFrom = (
   which: string,
   wanted: string,
+  expectedName: string,
   listed: { items?: Array<{ id?: string; name?: string }> },
   stdout: string,
 ): string => {
   const items = listed.items ?? [];
-  const mine = items.filter((row) => (row.name ?? "").startsWith(ACCEPTANCE_RUN_PREFIX));
-  const named = mine.map((row) => `${row.name}=${row.id}`).join(", ") || "none";
+  const sameName = items.filter((row) => row.name === expectedName);
+  const named = sameName.map((row) => `${row.name}=${row.id}`).join(", ") || "none";
   return (
     `the ${which} entry is missing from the gallery. ` +
-    `wanted id=${wanted}; gallery holds ${items.length} row(s); ` +
-    `rows from this run: ${named}. ` +
-    (mine.length > 0
-      ? "A row from this run IS listed, so the identifier the gallery prints differs from the one create returned."
-      : `No row from this run is listed at all. stdout: ${stdout.slice(0, STDOUT_EXCERPT)}`)
+    `wanted name=${expectedName} id=${wanted}; gallery holds ${items.length} row(s); ` +
+    `rows under that name: ${named}. ` +
+    (sameName.length > 0
+      ? "That name IS listed, so the identifier the gallery prints differs from the one create returned."
+      : `That name is not listed at all. stdout: ${stdout.slice(0, STDOUT_EXCERPT)}`)
   );
 };
 
@@ -134,6 +142,12 @@ if (!isLive) {
     let workspaceId = "";
     let uploadedLibraryId = "";
     let githubLibraryId = "";
+    // The names the daemon stored, read back from what create answered rather
+    // than assumed here. The uploaded bundle is named after the run; the
+    // GitHub entry is named by the repository's own frontmatter, and only the
+    // daemon knows which of the two a given row is.
+    let uploadedEntryName = "";
+    let githubEntryName = "";
 
     async function runWithEnv(args: ReadonlyArray<string>): Promise<RunResult> {
       const result = await runFleetctl(args, { env, timeoutMs: ONBOARD_TIMEOUT_MS });
@@ -204,6 +218,7 @@ if (!isLive) {
       assert.equal(created.visibility, TIER_TENANT,
         `an onboarded workspace library is a tenant entry: ${result.stdout}`);
       uploadedLibraryId = created.id as string;
+      uploadedEntryName = created.name as string;
     }, ONBOARD_TIMEOUT_MS);
 
     it("`library create --github` fetches a public repository server-side", async () => {
@@ -215,6 +230,7 @@ if (!isLive) {
       assert.equal(typeof created.id, "string", `no library id returned: ${result.stdout}`);
       assert.equal(created.visibility, TIER_TENANT);
       githubLibraryId = created.id as string;
+      githubEntryName = created.name as string;
     }, ONBOARD_TIMEOUT_MS);
 
     it("`library` lists both onboarded entries, each carrying its tier", async () => {
@@ -247,8 +263,14 @@ if (!isLive) {
       // whole listing. A gallery of several hundred rows scrolls the reason off
       // the top of a CI log, and "is the row absent, or present under another
       // id" is the question a reader actually has.
-      assert.ok(ids.includes(uploadedLibraryId), missingFrom("uploaded", uploadedLibraryId, listed, stdout));
-      assert.ok(ids.includes(githubLibraryId), missingFrom("github", githubLibraryId, listed, stdout));
+      assert.ok(
+        ids.includes(uploadedLibraryId),
+        missingFrom("uploaded", uploadedLibraryId, uploadedEntryName, listed, stdout),
+      );
+      assert.ok(
+        ids.includes(githubLibraryId),
+        missingFrom("github", githubLibraryId, githubEntryName, listed, stdout),
+      );
       assert.ok((listed.items ?? []).every((row) => typeof row.visibility === "string"),
         `every row carries a tier: ${stdout}`);
     });
