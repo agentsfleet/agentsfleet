@@ -35,6 +35,7 @@ case "${1:-}" in
       */grafana-sa-token) printf 'grafana-secret\n' ;;
       */grafana-namespace) printf 'default\n' ;;
       */prometheus-datasource-uid) printf 'prometheus-main\n' ;;
+      */loki-datasource-uid) printf 'loki-main\n' ;;
       *) exit 1 ;;
     esac
     ;;

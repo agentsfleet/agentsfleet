@@ -36,6 +36,7 @@ case "${1:-}" in
       */grafana-sa-token) printf 'grafana-secret\n' ;;
       */grafana-namespace) printf 'default\n' ;;
       */prometheus-datasource-uid) printf 'prometheus-main\n' ;;
+      */loki-datasource-uid) printf 'loki-main\n' ;;
       *) exit 1 ;;
     esac
     ;;
@@ -70,6 +71,16 @@ case "$url" in
     ;;
   */api/datasources/proxy/uid/prometheus-main/api/v1/query)
     body='{"status":"success","data":{"result":[{"value":[1,"0"]}]}}'
+    ;;
+  */api/datasources/uid/loki-main)
+    body="{\"uid\":\"loki-main\",\"type\":\"${MOCK_LOKI_TYPE:-loki}\"}"
+    ;;
+  */api/datasources/proxy/uid/loki-main/loki/api/v1/query_range)
+    if [ "${MOCK_LOKI_EMPTY:-0}" = "1" ]; then
+      body='{"status":"success","data":{"resultType":"streams","result":[]}}'
+    else
+      body='{"status":"success","data":{"resultType":"streams","result":[{"stream":{"service_name":"agentsfleetd","service_namespace":"agentsfleet"},"values":[["1","ready"]]}]}}'
+    fi
     ;;
   */folders/agentsfleet-dev | */dashboards/agentsfleet-runtime-dev | */alertrules/*-dev)
     if [ "${MOCK_MODE:-create}" = "create" ]; then
