@@ -32,6 +32,12 @@ const FOREIGN_WORKSPACE: &str = "019329c5-0000-7000-8000-0000000000b2";
 /// The page size every token below is minted under.
 const LIMIT: u32 = 25;
 
+/// The onboarding instant the rendered-cursor cases mint their boundary from.
+const PAGE_AT: i64 = 1_725_000_000_500;
+
+/// The entry identifier that boundary names.
+const PAGE_ID: &str = "0195b4ba-8d3a-7f13-8abc-cd0000000009";
+
 /// Dimension 2.1 — the pair mirrors `ModelEntries` / `ModelEntry`.
 ///
 /// The collection reads and the item removes; neither carries the other's verb.
@@ -159,4 +165,94 @@ fn resume(
     limit: u32,
 ) -> Result<Option<afd_library::EntryPosition>, crate::handler::Refusal> {
     resume_from(&format!("starting_after={token}"), workspace, limit)
+}
+
+/// The end of the walk renders no token, so a caller cannot ask for a page
+/// that does not exist.
+///
+/// [`super::list::rendered`] mints `next_cursor` from `page.next`, and an
+/// exhausted page carries `None` there. `total` is unconditionally `None` —
+/// counting a keyset page costs the scan the pagination exists to avoid.
+#[test]
+fn an_exhausted_page_renders_no_token() {
+    let page = afd_library::OwnedPage {
+        items: vec![owned_entry(PAGE_AT, PAGE_ID)],
+        next: None,
+    };
+
+    let response = rendered(&page, WORKSPACE, LIMIT);
+
+    assert!(
+        response.next_cursor.is_none(),
+        "a walk with nothing after it must not offer a token"
+    );
+    assert!(response.total.is_none(), "a keyset page never counts");
+    assert_eq!(response.items.len(), 1);
+}
+
+/// A page with more behind it renders a token this same walk accepts.
+///
+/// The cursor is minted in [`super::list::rendered`] and read back by
+/// [`super::list::resume_from`]; until now only the reading end was under
+/// test, so a renderer that minted a token no parser here would take —
+/// wrong workspace, wrong limit, wrong version — would have gone green.
+/// Asserting the round trip is what makes the pair honest.
+#[test]
+fn a_rendered_token_resumes_the_walk_that_minted_it() {
+    let page = afd_library::OwnedPage {
+        items: vec![owned_entry(PAGE_AT, PAGE_ID)],
+        next: Some(afd_library::EntryPosition {
+            created_at_ms: PAGE_AT,
+            id: PAGE_ID.to_owned(),
+        }),
+    };
+
+    let response = rendered(&page, WORKSPACE, LIMIT);
+    let token = response
+        .next_cursor
+        .expect("a page with more behind it offers a token");
+
+    let boundary = resume(&token, WORKSPACE, LIMIT)
+        .expect("the token this walk minted must resume this walk")
+        .expect("a token always names a boundary");
+    assert_eq!(boundary.created_at_ms, PAGE_AT);
+    assert_eq!(boundary.id, PAGE_ID);
+}
+
+/// The minted token carries the workspace it was minted under, not the
+/// caller's.
+///
+/// The refusing direction of the test above. Without it, a renderer that wrote
+/// a constant or an empty workspace into the cursor would still round-trip
+/// through the assertion above, because that one hands the same workspace back
+/// in.
+#[test]
+fn a_rendered_token_does_not_resume_a_foreign_workspace() {
+    let page = afd_library::OwnedPage {
+        items: vec![owned_entry(PAGE_AT, PAGE_ID)],
+        next: Some(afd_library::EntryPosition {
+            created_at_ms: PAGE_AT,
+            id: PAGE_ID.to_owned(),
+        }),
+    };
+
+    let token = rendered(&page, WORKSPACE, LIMIT)
+        .next_cursor
+        .expect("a page with more behind it offers a token");
+
+    resume(&token, FOREIGN_WORKSPACE, LIMIT)
+        .expect_err("a token minted for one workspace must not resume another");
+}
+
+/// One entry, with the fields the renderer borrows.
+fn owned_entry(created_at_ms: i64, id: &str) -> afd_library::OwnedEntry {
+    afd_library::OwnedEntry {
+        id: id.to_owned(),
+        name: "incident-responder".to_owned(),
+        description: "Answers pages.".to_owned(),
+        source_kind: "github".to_owned(),
+        source_ref: "acme/responder".to_owned(),
+        content_hash: "sha256:fixture".to_owned(),
+        created_at_ms,
+    }
 }
