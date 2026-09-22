@@ -9,23 +9,30 @@
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const { credentialMock, removeMock } = vi.hoisted(() => ({
+const { credentialMock, removeMock, listMock } = vi.hoisted(() => ({
   credentialMock: vi.fn(),
   removeMock: vi.fn(),
+  listMock: vi.fn(),
 }));
 vi.mock("@/lib/auth/credential", () => ({ credential: credentialMock }));
-vi.mock("@/lib/api/fleet-library", () => ({ removeWorkspaceLibraryEntry: removeMock }));
+vi.mock("@/lib/api/fleet-library", () => ({
+  removeWorkspaceLibraryEntry: removeMock,
+  listWorkspaceLibraryEntries: listMock,
+}));
 
 import { ApiError } from "@/lib/api/errors";
-import { removeLibraryEntryAction } from "./actions";
+import { listLibraryEntriesAction, removeLibraryEntryAction } from "./actions";
 
 const WORKSPACE = "ws_1";
 const ENTRY = "0199c5a0-0000-7000-8000-00000000000a";
 const TOKEN = "a-session-token";
 
+const CURSOR = "cursor-page-2";
+
 beforeEach(() => {
   credentialMock.mockReset();
   removeMock.mockReset();
+  listMock.mockReset();
 });
 
 describe("removeLibraryEntryAction", () => {
@@ -68,6 +75,55 @@ describe("removeLibraryEntryAction", () => {
       status: 500,
       errorCode: "UZ-LIBRARY-006",
       error: "the datastore would not answer",
+    });
+  });
+});
+
+/**
+ * The later-page read behind the list's Load more. The first page is rendered
+ * by the page itself, so this action only ever runs with a cursor in hand —
+ * and it has to pass that cursor through, because an action that silently
+ * re-read page one would loop the control forever on the same rows.
+ */
+describe("listLibraryEntriesAction", () => {
+  const page = { items: [], total: null, next_cursor: null };
+
+  it("should read the next page with the caller's token and the given cursor", async () => {
+    credentialMock.mockResolvedValue(TOKEN);
+    listMock.mockResolvedValue(page);
+
+    const result = await listLibraryEntriesAction(WORKSPACE, CURSOR);
+
+    expect(result).toMatchObject({ ok: true, data: page });
+    // Workspace, token, cursor — in that order. A dropped cursor re-reads the
+    // first page, which renders the rows already shown and never advances.
+    expect(listMock).toHaveBeenCalledWith(WORKSPACE, TOKEN, CURSOR);
+  });
+
+  it("should refuse without calling the endpoint when no token resolves", async () => {
+    credentialMock.mockResolvedValue(null);
+
+    const result = await listLibraryEntriesAction(WORKSPACE, CURSOR);
+
+    expect(result).toMatchObject({ ok: false, status: 401 });
+    expect(listMock).not.toHaveBeenCalled();
+  });
+
+  it("should carry the daemon's status and code when the page is refused", async () => {
+    credentialMock.mockResolvedValue(TOKEN);
+    listMock.mockRejectedValue(
+      new ApiError("that cursor was issued for another walk", 400, "UZ-LIBRARY-002"),
+    );
+
+    const result = await listLibraryEntriesAction(WORKSPACE, CURSOR);
+
+    // The list renders this sentence beside the rows it already has, so the
+    // status and the code both have to survive the action.
+    expect(result).toMatchObject({
+      ok: false,
+      status: 400,
+      errorCode: "UZ-LIBRARY-002",
+      error: "that cursor was issued for another walk",
     });
   });
 });
