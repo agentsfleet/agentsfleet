@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { cn, EYEBROW_CLASS } from "@agentsfleet/design-system";
-import { CheckIcon } from "lucide-react";
+import { CheckIcon, ChevronRightIcon } from "lucide-react";
 import type { OnboardingStep } from "@/lib/onboarding";
 import { workspacePath } from "@/lib/workspace-routes";
 
@@ -53,11 +53,16 @@ function RailRow({
   const marker = <RailMarker step={step} />;
   const label = (
     <span
+      // The next step's words breathe toward the CTA colour, at the button's
+      // cadence — the page's one moving thing, in two places that agree.
+      data-beckon-text={!step.done && step.isNext && !compact ? true : undefined}
       className={cn(
         "font-sans",
         compact ? "text-label" : "text-body-sm",
         step.done && "line-through text-text-subtle",
-        !step.done && step.isNext && "text-text",
+        // The next step is the one thing on this page to act on, so it reads
+        // as a heading among its siblings rather than as another line of copy.
+        !step.done && step.isNext && "font-medium text-text group-hover:underline underline-offset-4",
         !step.done && !step.isNext && "text-muted-foreground",
       )}
     >
@@ -79,21 +84,48 @@ function RailRow({
     </span>
   );
 
+  // A chevron on a row that goes somewhere and is not finished yet.
+  //
+  // The rail used to rely on `hover:bg-muted` alone, which is no affordance at
+  // all: a person reading the checklist for the first time sees plain text with
+  // tick marks and reads the whole thing as a status report. It says what is
+  // left to do and nothing about where to do it, and the one row that matters —
+  // the next step — looks exactly like the four that do not.
+  //
+  // Not on a done row (nothing left to go and do) and not in the compact widget
+  // (the sidebar has no width to spend on it).
+  const goes = step.href !== null && !step.done;
+
   const inner = (
-    <span className={cn("grid grid-cols-[16px_1fr] items-start", compact ? "gap-2 py-1" : "gap-3 py-2")}>
+    <span
+      className={cn(
+        "grid items-start",
+        goes && !compact ? "grid-cols-[16px_1fr_16px]" : "grid-cols-[16px_1fr]",
+        compact ? "gap-2 py-1" : "gap-3 py-2",
+      )}
+    >
       <span className="relative z-10 flex justify-center pt-1">{marker}</span>
       {body}
+      {goes && !compact ? (
+        <ChevronRightIcon
+          size={16}
+          aria-hidden="true"
+          className={cn(
+            "mt-1 shrink-0 transition-transform duration-snap ease-snap group-hover:translate-x-0.5",
+            step.isNext ? "text-pulse" : "text-text-subtle",
+          )}
+        />
+      ) : null}
     </span>
   );
 
   // A step with a destination links there; one without (it completes by activity
-  // elsewhere) is inert text. The next-step ring already draws the eye, so the
-  // link is an affordance, not the only signal.
+  // elsewhere) is inert text.
   if (step.href) {
     return (
       <Link
         href={workspacePath(workspaceId, step.href)}
-        className="block rounded-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="group block rounded-sm px-2 -mx-2 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {inner}
       </Link>

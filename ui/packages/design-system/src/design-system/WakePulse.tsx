@@ -16,8 +16,10 @@ export interface WakePulseProps extends ComponentProps<"span"> {
 }
 
 /*
- * The signature wake-pulse — the live-signal animation (one of two in the
- * design system; the other is the <Terminal animate> install-demo reveal).
+ * The signature wake-pulse — the live-signal animation (one of three in the
+ * design system; the others are the <Terminal animate> install-demo reveal
+ * and the onboarding beckon on `[data-beckon]`, which means "click here next"
+ * and must never be confused with this, which means "live right now").
  *
  * Sets `data-live` on the rendered element when `live` is true; the
  * `[data-live="true"]` rule in tokens.css drives the keyframe (2.4s ease-in-out

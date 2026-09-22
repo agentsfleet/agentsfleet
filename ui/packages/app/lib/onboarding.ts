@@ -8,6 +8,11 @@
 // is the provider view reporting a non-empty model; `cliTicked` is the one
 // signal the server cannot detect (a CLI install), so it is a manual, persisted
 // tick. See `deriveSteps` for how each maps to a step.
+import { CATALOG_PUBLIC } from "@/lib/types";
+
+/** The platform catalogue id of the fleet the checklist recommends first. */
+export const FIRST_FLEET_ID = "github-pr-reviewer";
+
 export type OnboardingInputs = {
   modelConfigured: boolean;
   fleetTotal: number;
@@ -66,7 +71,13 @@ const STEP_TEMPLATES: ReadonlyArray<{
     label: "Install a fleet",
     hint: "Start from the prebuilt library. GitHub PR reviewer is a good first one.",
     required: true,
-    href: "fleets/new",
+    // Straight to the card the hint names, not to the gallery's front door.
+    // The hint recommends one fleet; a link that then lands on a grid and
+    // asks the person to find it again is a recommendation that stops one
+    // click short. `library_id` + `library_visibility` are what the install
+    // screen reads to pre-select a card (fleets/new/page.tsx), and a platform
+    // entry's visibility is `public` when it is installable at all.
+    href: `fleets/new?library_id=${FIRST_FLEET_ID}&library_visibility=${CATALOG_PUBLIC}`,
     doneOf: (i) => i.fleetTotal >= 1,
   },
   {

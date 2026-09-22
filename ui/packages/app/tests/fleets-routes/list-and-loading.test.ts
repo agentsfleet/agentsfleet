@@ -85,8 +85,8 @@ describe("fleets routes — list and loading", () => {
     // With zero fleets the Wall renders the checklist — not the old EmptyState.
     expect(markup).toContain("Getting started");
     expect(markup).toContain("Install a fleet");
-    // The install step still routes to the library.
-    expect(markup).toContain('href="/w/ws_1/fleets/new"');
+    // The install step deep-links to the recommended card; static markup escapes the query's `&`.
+    expect(markup).toContain('href="/w/ws_1/fleets/new?library_id=github-pr-reviewer&amp;library_visibility=public"');
     // The old empty-state affordances are gone.
     expect(markup).not.toContain("No fleets yet");
     expect(markup).not.toContain("credit balance is exhausted");
