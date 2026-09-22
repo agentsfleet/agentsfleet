@@ -158,7 +158,10 @@ describe("the cards on the wall and in the gallery use the named scale", () => {
     // Amber is this system's warning colour. A fleet naming the credential it
     // will ask for is a fact about the fleet, not a fault in the workspace.
     const source = read(LIBRARY_CARD);
-    expect(source).toContain('const REQUIRES_PREFIX = "requires:"');
+    // The word, not the whole declaration: the colon moved into the JSX when
+    // the chip became a count, and pinning the line rather than the copy made
+    // this fail for a change it does not grade.
+    expect(source).toContain('const REQUIRES_PREFIX = "Requires"');
     expect(source).not.toMatch(/variant="amber"/);
   });
 });

@@ -77,12 +77,9 @@ function renderList(entries: WorkspaceLibraryEntry[], initialCursor: string | nu
  * on a loaded one.
  */
 async function removeRow(index = 0) {
-  await waitFor(() =>
-    expect(
-      (screen.getAllByRole("button", { name: "Remove" })[index] as HTMLButtonElement).disabled,
-    ).toBe(false),
-  );
-  fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[index]!);
+  const action = screen.getAllByRole("button", { name: "Remove" })[index] as HTMLButtonElement;
+  expect(action.disabled).toBe(false);
+  fireEvent.click(action);
   await waitFor(() => screen.getByText(/from this workspace\?/));
   const confirms = screen.getAllByRole("button", { name: "Remove" });
   fireEvent.click(confirms[confirms.length - 1]!);
@@ -149,6 +146,44 @@ describe("the list discloses what it has not loaded", () => {
     await waitFor(() => expect(screen.getByText("github-pr-reviewer")).toBeTruthy());
     expect(renderedNames()).toEqual(["github-pr-reviewer"]);
     expect(await screen.findByRole("button", { name: "Load more" })).toBeTruthy();
+  });
+});
+
+describe("a page fetch does not shut the row actions", () => {
+  const CURSOR = "cursor-page-2";
+
+  it("should keep Remove clickable while Load more is in flight", async () => {
+    // The defect this pins: `pending` is one transition shared by Load more
+    // and the removal, and the row action read it. Appending a page therefore
+    // disabled a button that sends nothing — opening the question is local
+    // state — and a click landing in that window is not queued or replayed,
+    // it is dropped. A person clicked Remove, saw nothing, and had to find
+    // out that a second click works.
+    let releasePage: (value: unknown) => void = () => {};
+    listActionMock.mockReturnValue(
+      new Promise((resolve) => {
+        releasePage = resolve;
+      }),
+    );
+    renderList([entry("e1", "github-pr-reviewer")], CURSOR);
+
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    // Mid-flight: the page has not arrived, so the control reads its pending
+    // label. That IS the assertion that a transition is running — the name
+    // changes with `pending`, so finding it proves the state this case needs.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Loading…" })).toBeTruthy());
+
+    const action = screen.getAllByRole("button", { name: "Remove" })[0] as HTMLButtonElement;
+    expect(action.disabled).toBe(false);
+    fireEvent.click(action);
+
+    // The click was taken, not dropped: the question is open, during the fetch.
+    await waitFor(() => expect(screen.getByText(/from this workspace\?/)).toBeTruthy());
+
+    releasePage({
+      ok: true,
+      data: { items: [entry("e2", "incident-responder")], total: null, next_cursor: null },
+    });
   });
 });
 
