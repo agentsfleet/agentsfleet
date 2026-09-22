@@ -23,7 +23,6 @@ x-agentsfleet:
     - memory_recall
 
   credentials:
-    - elastic
     - grafana
     - github
     - jira
@@ -31,9 +30,8 @@ x-agentsfleet:
     # Credential shapes, substituted at the tool bridge as ${secrets.NAME.FIELD}.
     # Every value is a header-ready string: substitution happens at the request
     # boundary, so anything needing encoding must be stored already encoded.
-    # elastic = { host: "<deployment>.es.<region>.aws.elastic.cloud",
-    #             api_key: "<the ENCODED api key Elastic hands you, not the id>" }
-    # grafana = { host: "<grafana host>", token: "<service-account token>" }
+    # grafana = { host: "<grafana host>", token: "<service-account token>",
+    #             loki_datasource_uid: "<Grafana Loki datasource UID>" }
     # github  = mintable integration — the daemon mints a short-lived
     #           installation token at the bridge. Nothing is stored, and no
     #           token is ever pasted into a workspace secret.
@@ -64,11 +62,10 @@ x-agentsfleet:
 
   network:
     allow:
-      # The Elastic, Grafana, and Jira hosts are deployment-specific: the demo
+      # The Grafana and Jira hosts are deployment-specific: the demo
       # playbook (or the operator, via a fleet PATCH after install) pins the
       # real hosts here. The sandbox refuses any host not on this list, so an
       # unpinned entry fails fast rather than leaking a request elsewhere.
-      - demo.es.us-east-1.aws.elastic.cloud
       - demo-grafana.internal
       - demo.atlassian.net
       - api.github.com

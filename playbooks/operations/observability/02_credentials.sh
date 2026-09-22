@@ -17,7 +17,8 @@ for field in \
   grafana-url \
   grafana-sa-token \
   grafana-namespace \
-  prometheus-datasource-uid; do
+  prometheus-datasource-uid \
+  loki-datasource-uid; do
   value="$(playbooks_read_ref_or_empty "op://$OBS_VAULT/agentsfleet-fleets-investigation-service-token/$field")"
   if [ -z "$value" ]; then
     echo "MISSING: $OBS_VAULT / agentsfleet-fleets-investigation-service-token / $field" >&2
@@ -63,3 +64,25 @@ if ! jq -e \
 fi
 
 echo "PASS: $OBS_ENVIRONMENT Prometheus datasource scrapes agentsfleetd"
+
+loki_datasource="$(obs_get_json "/api/datasources/uid/$OBS_LOKI_UID")"
+if ! jq -e \
+  --arg uid "$OBS_LOKI_UID" \
+  '.uid == $uid and .type == "loki"' \
+  <<<"$loki_datasource" >/dev/null; then
+  echo "ERROR: $OBS_LOKI_UID is not a Loki datasource" >&2
+  exit 1
+fi
+
+loki_labels="$(
+  obs_get_json \
+    "/api/datasources/proxy/uid/$OBS_LOKI_UID/loki/api/v1/labels"
+)"
+if ! jq -e \
+  '.status == "success" and (.data | index("service_name") != null)' \
+  <<<"$loki_labels" >/dev/null; then
+  echo "ERROR: Loki does not expose the service_name label" >&2
+  exit 1
+fi
+
+echo "PASS: $OBS_ENVIRONMENT Loki datasource exposes agentsfleetd logs"
