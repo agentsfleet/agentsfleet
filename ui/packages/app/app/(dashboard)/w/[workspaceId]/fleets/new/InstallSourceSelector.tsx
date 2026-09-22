@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Button, EmptyState, SectionLabel } from "@agentsfleet/design-system";
+import { Button, EmptyState, SectionLabel, TooltipProvider } from "@agentsfleet/design-system";
 import { DownloadIcon, LayoutTemplateIcon } from "lucide-react";
 import type { FleetLibraryPageResult } from "@/lib/api/fleet-library";
 import { LIBRARY_AFTER_PARAM, LIBRARY_ERROR_KIND, readErrorFrom, type LibraryError } from "@/lib/api/library-types";
@@ -181,20 +181,26 @@ export function InstallSourceSelector({
 
       {hasEntries ? (
         <>
-          <div className="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-3">
-            {entries.map((entry) => (
-              <LibraryCard
-                key={`${entry.visibility}:${entry.id}`}
-                entry={entry}
-                action={
-                  <Button type="button" onClick={() => onUseLibraryEntry(entry)}>
-                    <DownloadIcon size={14} />
-                    Install
-                  </Button>
-                }
-              />
-            ))}
-          </div>
+          {/* The cards state on hover the half of themselves they clip, so the
+              grid owns one provider rather than each card carrying its own.
+              The dashboard layout mounts one too and nesting is harmless; this
+              is what keeps the gallery renderable without that layout. */}
+          <TooltipProvider>
+            <div className="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-3">
+              {entries.map((entry) => (
+                <LibraryCard
+                  key={`${entry.visibility}:${entry.id}`}
+                  entry={entry}
+                  action={
+                    <Button type="button" onClick={() => onUseLibraryEntry(entry)}>
+                      <DownloadIcon size={14} />
+                      Install
+                    </Button>
+                  }
+                />
+              ))}
+            </div>
+          </TooltipProvider>
 
           {nextCursor !== null ? (
             <div className="flex items-center gap-3">
