@@ -41,7 +41,7 @@ pub(crate) mod remove;
 
 pub(crate) use self::list::list;
 #[cfg(test)]
-use self::list::resume_from;
+use self::list::{rendered, resume_from};
 pub(crate) use self::remove::remove;
 
 /// The surface both verbs report under, distinct from the gallery's.

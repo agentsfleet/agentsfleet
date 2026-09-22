@@ -140,7 +140,15 @@ pub(super) fn resume_from(
 }
 
 /// The page, rendered.
-fn rendered<'p>(page: &'p OwnedPage, workspace: &str, limit: u32) -> OwnedEntriesResponse<'p> {
+///
+/// `pub(super)` so the sibling test module reaches it: the cursor is MINTED
+/// here and PARSED by [`resume_from`], and only the parse direction was under
+/// test. A walk is a round trip, so proving one end proves half of it.
+pub(super) fn rendered<'p>(
+    page: &'p OwnedPage,
+    workspace: &str,
+    limit: u32,
+) -> OwnedEntriesResponse<'p> {
     OwnedEntriesResponse {
         items: page.items.iter().map(entry).collect(),
         // Always null: counting a keyset page costs the scan this pagination
