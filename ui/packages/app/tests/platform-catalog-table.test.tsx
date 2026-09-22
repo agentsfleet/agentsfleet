@@ -43,7 +43,7 @@ describe("PlatformCatalogTable sorting", () => {
       </TooltipProvider>,
     );
 
-    for (const name of ["Fleet", "Repository", "Status", "Bundle"]) {
+    for (const name of ["Name", "Source", "Status", "Bundle", "Time"]) {
       fireEvent.click(screen.getByRole("button", { name }));
       expect(screen.getByRole("columnheader", { name }).getAttribute("aria-sort")).toBe("ascending");
     }

@@ -74,10 +74,10 @@ export function workspaceMock() {
 // stub <svg data-icon="…"> so name-based queries keep working.
 const LUCIDE_ICONS = [
   "AlertTriangleIcon", "CheckIcon", "CopyIcon", "DownloadIcon", "Loader2Icon", "PlusIcon", "ShieldIcon",
-  "KeyRoundIcon", "KeyIcon", "Trash2Icon", "ChevronDownIcon", "ChevronRightIcon", "SettingsIcon",
+  "KeyRoundIcon", "KeyIcon", "Trash2Icon", "ChevronDownIcon", "ChevronRightIcon", "ArrowRightIcon", "SettingsIcon",
   "WalletIcon", "ZapIcon", "ReceiptIcon", "CreditCardIcon", "ActivityIcon", "BrainCircuitIcon", "BoxesIcon",
   "SlidersHorizontalIcon", "PencilIcon", "GitPullRequestIcon", "BriefcaseIcon", "HashIcon",
-  "BotIcon", "PlugIcon", "CheckCircle2Icon", "CircleHelpIcon", "CircleXIcon", "LayoutTemplateIcon",
+  "BotIcon", "PlugIcon", "UnplugIcon", "CheckCircle2Icon", "CircleHelpIcon", "CircleXIcon", "LayoutTemplateIcon",
   "BookOpenIcon", "LibraryIcon", "ServerIcon", "MenuIcon", "PanelLeftCloseIcon", "PanelLeftOpenIcon",
   "BrainIcon", "LayoutDashboardIcon",
   // The gallery card's tier marks: which catalogue an entry came from.

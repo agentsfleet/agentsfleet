@@ -199,6 +199,83 @@
   }
 }
 
+/* The beckon — the one call to action on a surface that has exactly one.
+ *
+ * Distinct from wake-pulse on purpose: that ring means "this entity is live
+ * right now" and is reserved for live entities; this means "click here next"
+ * and is reserved for the single next step of an onboarding surface. Same
+ * 2.4s cadence, so a page carrying both does not strobe at two rhythms.
+ *
+ * A sheen sweeping the button was the first shape of this, and the design-token
+ * gate refused it: gradients are forbidden, the token surface is solid colors,
+ * and the override for that rule is the user's to invoke. So the motion is
+ * carried by the two properties that are safe to animate anyway — a glow that
+ * breathes out from the button's edge, and the arrow nudging the way it points.
+ * Both are box-shadow and transform, neither is a repaint, and the glow is
+ * `--pulse-glow`, the same token wake-pulse rings with.
+ *
+ * Under reduced motion the movement stops and the button keeps a static glow
+ * ring — still marked, no longer moving. */
+@keyframes cta-beckon {
+  0% {
+    box-shadow: 0 0 0 0 var(--pulse-glow);
+  }
+  40% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@keyframes cta-beckon-arrow {
+  0%, 60%, 100% {
+    transform: translateX(0);
+  }
+  80% {
+    transform: translateX(3px);
+  }
+}
+
+[data-beckon="true"] {
+  animation: cta-beckon 2.4s ease-in-out infinite;
+}
+
+[data-beckon="true"] > svg {
+  animation: cta-beckon-arrow 2.4s ease-in-out infinite;
+}
+
+/* The words for the same step, where they sit in a list: a breath between the
+ * body colour and the CTA colour, at the same cadence as the button. */
+@keyframes text-beckon {
+  0%, 100% {
+    color: var(--text);
+  }
+  50% {
+    color: var(--pulse);
+  }
+}
+
+[data-beckon-text="true"] {
+  animation: text-beckon 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-beckon="true"] {
+    animation: none;
+    box-shadow: 0 0 0 4px var(--pulse-glow);
+    opacity: 1;
+  }
+  [data-beckon="true"] > svg {
+    animation: none;
+  }
+  [data-beckon-text="true"] {
+    animation: none;
+    color: var(--pulse);
+    opacity: 1;
+  }
+}
+
 @keyframes terminal-line-in {
   from {
     opacity: 0;

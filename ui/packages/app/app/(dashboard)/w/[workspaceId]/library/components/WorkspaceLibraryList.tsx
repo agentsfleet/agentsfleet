@@ -7,10 +7,12 @@ import {
   ConfirmDialog,
   DataTable,
   EmptyState,
+  IconAction,
   Time,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
-import { LibraryIcon } from "lucide-react";
+import { LibraryIcon, Trash2Icon } from "lucide-react";
+import { SourceMark } from "@/components/domain/fleet-library/SourceMark";
 import { listLibraryEntriesAction, removeLibraryEntryAction } from "../actions";
 import type { WorkspaceLibraryEntry } from "@/lib/api/library-types";
 import { isDefiniteRefusal } from "@/lib/api/errors";
@@ -18,8 +20,8 @@ import { presentErrorString } from "@/lib/errors";
 import {
   COLUMN_ACTIONS,
   COLUMN_NAME,
-  COLUMN_ONBOARDED,
   COLUMN_SOURCE,
+  COLUMN_TIME,
   LIBRARY_EMPTY_BODY,
   LIBRARY_EMPTY_TITLE,
   LIBRARY_SECTION_LABEL,
@@ -29,6 +31,7 @@ import {
   REMOVE_CONFIRM_LABEL,
   REMOVE_DIALOG_BODY,
   REMOVE_DIALOG_TITLE,
+  REMOVE_ROW_LABEL,
 } from "../copy";
 
 type Props = {
@@ -40,10 +43,24 @@ type Props = {
 
 const REMOVE_ACTION_DESCRIPTION = "remove the library entry";
 
-/** `github:acme/reviewer` — where the bytes came from, which is what tells two
- *  near-identical onboardings apart before anything else on the row does. */
+/** The sort key for Source: the kind first, so the GitHub rows group together,
+ *  then the ref. It is deliberately NOT what the cell renders — the cell draws
+ *  the kind as a glyph, and sorting by a glyph is not a thing. */
 function provenance(entry: WorkspaceLibraryEntry): string {
   return entry.source_kind ? `${entry.source_kind}:${entry.source_ref}` : entry.source_ref;
+}
+
+/** Where the bytes came from: the kind as its mark, the ref as the only words,
+ *  and a GitHub row as a link to the repository it was onboarded from.
+ *
+ *  The link lands on the repository's default branch, because that is all this
+ *  row stores. `core.tenant_fleet_library` has `source_kind` and `source_ref`
+ *  and no git revision at all (schema/460_tenant_fleet_library.sql) — the
+ *  `content_hash` beside them is the BUNDLE's hash, the key its tar is stored
+ *  under, not a commit anyone can resolve on github.com. Pinning the link needs
+ *  the importer to record the commit it fetched first. */
+function sourceCell(entry: WorkspaceLibraryEntry) {
+  return <SourceMark kind={entry.source_kind} sourceRef={entry.source_ref} />;
 }
 
 /** The onboarding instant, rendered by the design system.
@@ -76,11 +93,11 @@ function buildColumns({
       header: COLUMN_SOURCE,
       hideOnMobile: true,
       sortValue: provenance,
-      cell: provenance,
+      cell: sourceCell,
     },
     {
       key: "created_at",
-      header: COLUMN_ONBOARDED,
+      header: COLUMN_TIME,
       hideOnMobile: true,
       sortValue: (entry) => entry.created_at,
       cell: onboardedOn,
@@ -98,9 +115,13 @@ function buildColumns({
       // click works. The destructive step is the dialog's own confirm, which
       // is where the guard belongs and where it still is.
       cell: (entry) => (
-        <Button variant="ghost" size="sm" onClick={() => onRemove(entry)}>
-          {REMOVE_CONFIRM_LABEL}
-        </Button>
+        <IconAction
+          variant="destructive"
+          label={REMOVE_ROW_LABEL}
+          onClick={() => onRemove(entry)}
+        >
+          <Trash2Icon size={14} />
+        </IconAction>
       ),
     },
   ];

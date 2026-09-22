@@ -8,6 +8,29 @@
 // is the provider view reporting a non-empty model; `cliTicked` is the one
 // signal the server cannot detect (a CLI install), so it is a manual, persisted
 // tick. See `deriveSteps` for how each maps to a step.
+import { SAMPLE_LIBRARY_REPO } from "@/lib/fleet-library-source";
+import { CATALOG_PUBLIC } from "@/lib/types";
+
+/**
+ * The platform catalogue id of the fleet the checklist recommends first.
+ *
+ * Derived, never re-spelled. The hint below already recommends this fleet by
+ * name in prose, and `SAMPLE_LIBRARY_REPO` is the one place the repository
+ * names it — the platform entry's id is its bundle's SKILL.md `name`, which
+ * for a one-repository-per-entry catalogue is the repository's own name. A
+ * second literal here would drift from the sentence beside it the first time
+ * the sample repository moved.
+ *
+ * The entry is operator-curated, so a deployment that has not published it
+ * deep-links to a card that is not there. That is a state the install screen
+ * already designs for — it renders its not-found line above a gallery that
+ * still lists everything else — and the hint's prose would be equally wrong
+ * in that deployment, so the link is no worse than the sentence it follows.
+ */
+export const FIRST_FLEET_ID = SAMPLE_LIBRARY_REPO.slice(
+  SAMPLE_LIBRARY_REPO.indexOf("/") + 1,
+);
+
 export type OnboardingInputs = {
   modelConfigured: boolean;
   fleetTotal: number;
@@ -66,7 +89,13 @@ const STEP_TEMPLATES: ReadonlyArray<{
     label: "Install a fleet",
     hint: "Start from the prebuilt library. GitHub PR reviewer is a good first one.",
     required: true,
-    href: "fleets/new",
+    // Straight to the card the hint names, not to the gallery's front door.
+    // The hint recommends one fleet; a link that then lands on a grid and
+    // asks the person to find it again is a recommendation that stops one
+    // click short. `library_id` + `library_visibility` are what the install
+    // screen reads to pre-select a card (fleets/new/page.tsx), and a platform
+    // entry's visibility is `public` when it is installable at all.
+    href: `fleets/new?library_id=${FIRST_FLEET_ID}&library_visibility=${CATALOG_PUBLIC}`,
     doneOf: (i) => i.fleetTotal >= 1,
   },
   {
