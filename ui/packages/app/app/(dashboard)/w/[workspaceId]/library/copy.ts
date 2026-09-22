@@ -25,3 +25,9 @@ export const COLUMN_NAME = "Name";
 export const COLUMN_SOURCE = "Source";
 export const COLUMN_ONBOARDED = "Onboarded";
 export const COLUMN_ACTIONS = "Actions";
+
+// Load more, and what a failed one says. The label matches the runner wall's,
+// because two pages that page differently teach an operator two habits.
+export const LOAD_MORE_LABEL = "Load more";
+export const LOADING_LABEL = "Loading…";
+export const LOAD_MORE_ERROR_ACTION = "load more library entries";

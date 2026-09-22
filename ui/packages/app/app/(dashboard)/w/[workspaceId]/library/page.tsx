@@ -32,7 +32,11 @@ export default async function LibraryPage({
           its own once it carries a label, precisely so a caller cannot lose
           the accessible name by forgetting to ask for it. */}
       <Section aria-label={LIBRARY_SECTION_LABEL} className="flex min-h-0 flex-1 flex-col gap-xl">
-        <WorkspaceLibraryList workspaceId={workspaceId} entries={page.items} />
+        <WorkspaceLibraryList
+          workspaceId={workspaceId}
+          entries={page.items}
+          initialCursor={page.next_cursor}
+        />
       </Section>
     </PageLayout>
   );
