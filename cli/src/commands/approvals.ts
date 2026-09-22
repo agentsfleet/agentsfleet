@@ -22,7 +22,7 @@ import {
 } from "./workspace-guards.ts";
 import { wsApprovalsPath, wsApprovalPath } from "../lib/api-paths.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
-import { ui, EMPTY_CELL } from "../output/index.ts";
+import { ui, AGE_KEY, EMPTY_CELL } from "../output/index.ts";
 import {
   GATE_COLUMN,
   GATE_FIELD,
@@ -144,20 +144,23 @@ export const approvalsListEffectFromArgs = (
       yield* output.info(EMPTY_INBOX);
       return;
     }
-    yield* output.printTable(
-      [
-        { key: GATE_FIELD.gate, label: GATE_COLUMN.gate },
-        { key: GATE_FIELD.fleet, label: GATE_COLUMN.fleet },
-        { key: GATE_FIELD.kind, label: GATE_COLUMN.kind },
-        { key: GATE_FIELD.status, label: GATE_COLUMN.status },
-        { key: GATE_FIELD.action, label: GATE_COLUMN.action },
-      ],
+    yield* output.printEntityTable(
+      {
+        name: { key: GATE_FIELD.fleet, label: GATE_COLUMN.fleet },
+        id: { key: GATE_FIELD.gate, label: GATE_COLUMN.gate },
+        domain: [
+          { key: GATE_FIELD.kind, label: GATE_COLUMN.kind },
+          { key: GATE_FIELD.status, label: GATE_COLUMN.status },
+          { key: GATE_FIELD.action, label: GATE_COLUMN.action },
+        ],
+      },
       gates.map((g) => ({
         gate: cell(g.gate_id),
         fleet: cell(g.fleet_name ?? g.fleet_id),
         kind: cell(g.gate_kind),
         status: cell(g.status),
         action: cell(g.proposed_action ?? g.tool_name),
+        [AGE_KEY]: typeof g.created_at === "number" ? g.created_at : undefined,
       })),
     );
     if (gates.some((g) => g.status === GATE_STATUS.pending)) {

@@ -1,8 +1,8 @@
 // `whoami` — who this terminal is signed in as.
 //
-// The complement to `auth status`, not a bigger version of it. That command
-// answers where the credential came from and whether the target answers;
-// this one answers whose it is, which nothing local can tell you: an `afc_`
+// It answers two questions that used to be split across two commands: where
+// the credential came from, which is the `source` field, and whose it is.
+// The second is the one nothing local can tell you, because an `afc_`
 // credential carries no readable claims by design, because capability resolves
 // server-side from the row it names. So the answer comes from the server, every
 // time, and is never cached — a cached name drifts the moment an account or a
@@ -57,6 +57,17 @@ const ROUTE_ABSENT =
 const ROUTE_ABSENT_FIX =
   "check `--api` / AGENTSFLEET_API_URL, or wait for the deployment to catch up" as const;
 
+/**
+ * Where the live credential came from.
+ *
+ * `whoami` already resolves env-first below, so the answer is a read of that
+ * same precedence rather than a second one. It is reported because an exported
+ * service key silently outranking a stored login is the confusing case: the
+ * terminal looks signed in as one identity and acts as another.
+ */
+const SOURCE_ENVIRONMENT = "environment" as const;
+const SOURCE_FILE = "file" as const;
+
 const SCOPE_SEPARATOR = ", " as const;
 const NO_SCOPES = "none" as const;
 
@@ -66,6 +77,7 @@ const credentialProse = (wire: string): string =>
 const renderHuman = (
   identity: CallerIdentity,
   apiUrl: string,
+  source: string,
 ): Effect.Effect<void, never, Output> =>
   Effect.gen(function* () {
     const output = yield* Output;
@@ -76,6 +88,7 @@ const renderHuman = (
       user_id: identity.userId,
       tenant: `${identity.tenantName} (${identity.tenantId})`,
       credential: credentialProse(identity.credential),
+      source,
       api_url: apiUrl,
       scopes:
         identity.scopes.length > 0
@@ -93,8 +106,10 @@ export const whoamiEffect: Effect.Effect<
   const credentials = yield* Credentials;
   const output = yield* Output;
 
-  // Env-first, matching the wire precedence `resolveToken` applies and the one
-  // `auth status` reports: an exported service key wins over a stored login.
+  // Env-first, matching the wire precedence `resolveToken` applies, and the
+  // precedence `source` reports below: an exported service key wins over a
+  // stored login, which is the case worth naming — the terminal looks signed
+  // in as one identity and acts as another.
   const stored = yield* credentials.getAccessToken;
   const token = Option.orElse(config.accessToken, () => stored);
 
@@ -113,6 +128,7 @@ export const whoamiEffect: Effect.Effect<
     if (output.format !== OUTPUT_FORMAT.text) {
       yield* output.printJson({
         authenticated: false,
+        source: null,
         api_url: config.apiUrl,
       });
     } else {
@@ -150,10 +166,15 @@ export const whoamiEffect: Effect.Effect<
       tenant_id: identity.tenantId,
       tenant_name: identity.tenantName,
       credential: identity.credential,
+      source: Option.isSome(config.accessToken) ? SOURCE_ENVIRONMENT : SOURCE_FILE,
       scopes: identity.scopes,
       api_url: config.apiUrl,
     });
   } else {
-    yield* renderHuman(identity, config.apiUrl);
+    yield* renderHuman(
+      identity,
+      config.apiUrl,
+      Option.isSome(config.accessToken) ? SOURCE_ENVIRONMENT : SOURCE_FILE,
+    );
   }
 });

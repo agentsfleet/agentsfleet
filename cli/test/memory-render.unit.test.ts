@@ -1,11 +1,12 @@
 // Pure render-helper tests for the memory read verbs, split from
 // memory.unit.test.ts for the 350-line file cap. previewText is the
-// UTF-8-safety surface; renderUpdatedAt is the isolated wire-timestamp
-// helper (the one spot that changes when the wire goes numeric).
+// UTF-8-safety surface. The wire-timestamp helper this file also covered is
+// gone: the age column renders through ago, whose own tests carry every claim
+// this file used to make about malformed, null and out-of-range instants.
 
 import { describe, test, expect } from "bun:test";
 
-import { cleanCell, previewText, renderUpdatedAt } from "../src/commands/memory.ts";
+import { cleanCell, previewText } from "../src/commands/memory.ts";
 
 describe("cleanCell — server content can't drive the operator's terminal", () => {
   test("strips ESC/BEL/CSI control bytes that carry ANSI and OSC sequences", () => {
@@ -18,32 +19,6 @@ describe("cleanCell — server content can't drive the operator's terminal", () 
     expect(cleanCell(null)).toBe("");
     expect(cleanCell(undefined)).toBe("");
     expect(cleanCell("na\u00efve caf\u00e9 \u{1f989}")).toBe("na\u00efve caf\u00e9 \u{1f989}");
-  });
-});
-
-describe("renderUpdatedAt — the isolated wire-timestamp helper", () => {
-  // pin test: literal is the contract — the wire instant pins to its ISO form.
-  test("numeric epoch millis (the wire shape) renders ISO 8601", () => {
-    expect(renderUpdatedAt(1765500300000)).toBe("2025-12-12T00:45:00.000Z");
-  });
-
-  test("digit strings no longer render — the seconds-string wire is gone", () => {
-    // The pre-numeric wire sent epoch seconds as a decimal string; that
-    // branch is deleted, so a string-shaped value (server rot) degrades to
-    // the dash instead of being silently re-interpreted as seconds.
-    expect(renderUpdatedAt("1765500300" as unknown as number)).toBe("—");
-  });
-
-  test("null, undefined, and non-numeric values render the dash", () => {
-    expect(renderUpdatedAt(null)).toBe("—");
-    expect(renderUpdatedAt(undefined)).toBe("—");
-    expect(renderUpdatedAt("not-a-timestamp" as unknown as number)).toBe("—");
-  });
-
-  test("out-of-range wire values render the dash instead of throwing", () => {
-    // past Date's ±8.64e15 ms ceiling — a RangeError here would kill the table
-    expect(renderUpdatedAt(9.7e15)).toBe("—");
-    expect(renderUpdatedAt(Number.NaN)).toBe("—");
   });
 });
 

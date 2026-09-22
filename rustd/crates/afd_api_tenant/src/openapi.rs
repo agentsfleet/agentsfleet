@@ -90,6 +90,8 @@ use utoipa::OpenApi as _;
     crate::handler::tenant::workspace::list,
     crate::handler::workspace_library::list,
     crate::handler::workspace_library::onboard,
+    crate::handler::library_entry::list::list,
+    crate::handler::library_entry::remove::remove,
 ))]
 struct Plane;
 

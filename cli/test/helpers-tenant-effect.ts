@@ -1,3 +1,4 @@
+import { AGE_KEY, ago } from "../src/output/index.ts";
 // Shared in-memory layers for the Effect-shaped tenant provider tests.
 //
 // Extracted when tenant-effect.unit.test.ts passed the repository's 350-line cap.
@@ -59,6 +60,12 @@ export const outputLayer = (
     printTable: (_columns, rows) =>
       Effect.sync(() => {
         for (const row of rows) rec.stdout.push(JSON.stringify(row));
+      }),
+    // Mirrors what entityTable renders, so a test reads the age a user sees.
+    printEntityTable: (_spec, rows) =>
+      Effect.sync(() => {
+        for (const row of rows)
+          rec.stdout.push(JSON.stringify({ ...row, [AGE_KEY]: ago(row[AGE_KEY]) }));
       }),
   });
 

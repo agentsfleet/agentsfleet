@@ -21,7 +21,6 @@ import { loginEffectFromFlags } from "../../commands/login.ts";
 import {
   apiKeyCommand,
   approvalsCommand,
-  authCommand,
   connectorCommand,
   grantCommand,
 } from "./access.command.ts";
@@ -124,8 +123,7 @@ export const rootCommand = Command.make(CLI_NAME).pipe(
     loginCommand,
     logoutCommand,
     whoamiCommand,
-    authCommand,
-    doctorCommand,
+      doctorCommand,
     workspaceCommand,
     grantCommand,
     apiKeyCommand,

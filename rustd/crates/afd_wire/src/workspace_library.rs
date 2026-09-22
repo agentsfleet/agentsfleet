@@ -83,6 +83,66 @@ pub struct GalleryResponse<'a> {
     pub next_cursor: Option<String>,
 }
 
+/// One entry a workspace onboarded, on the collection it administers.
+///
+/// A gallery card and this are deliberately different shapes. A card answers
+/// "what can I install here". It carries the requirement chips and the reasons
+/// copy the install gate renders. This answers "what did we onboard". It
+/// carries the provenance instead: the source it came from, and the hash of
+/// the bytes it holds. None of the install-time decoration is here.
+///
+/// `content_hash` is on this wire and not on the gallery's. It is the domain
+/// key's other half. Two onboardings of the same bundle into one workspace are
+/// one entry. So a differing hash proves two rows are two bundles, rather than
+/// one bundle listed twice. Still no bundle CONTENT. The read projects no
+/// document column, and this struct has nowhere to put one.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OwnedEntryCard<'a> {
+    /// The entry's identifier — a UUID, and what a removal names.
+    #[serde(borrow)]
+    pub id: Cow<'a, str>,
+    /// The display name, from the bundle's own frontmatter.
+    #[serde(borrow)]
+    pub name: Cow<'a, str>,
+    /// The summary, likewise.
+    #[serde(borrow)]
+    pub description: Cow<'a, str>,
+    /// How it was onboarded: an upload, a repository, a template.
+    #[serde(borrow)]
+    pub source_kind: Cow<'a, str>,
+    /// The reference within that source.
+    #[serde(borrow)]
+    pub source_ref: Cow<'a, str>,
+    /// The hash of the bundle bytes this entry holds.
+    #[serde(borrow)]
+    pub content_hash: Cow<'a, str>,
+    /// When the workspace onboarded it, in epoch milliseconds.
+    pub created_at: i64,
+}
+
+/// `GET /v1/workspaces/{workspace_id}/library-entries` — one page of what a
+/// workspace owns.
+///
+/// The same envelope keys as the gallery beside it, for the same reason. §3 of
+/// the REST guide requires `total` and `next_cursor` present on every page. A
+/// client then never branches on an absent key to tell "no more pages" from
+/// "this server is old". The cursor is this collection's own: it resumes a walk
+/// over one table, and a gallery cursor cannot be spent here.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OwnedEntriesResponse<'a> {
+    /// The entries, newest first.
+    #[serde(borrow)]
+    pub items: Vec<OwnedEntryCard<'a>>,
+    /// Always null — counting a keyset page costs the scan paging avoids.
+    pub total: Option<u64>,
+    /// Where the next page resumes, or null on the last one.
+    pub next_cursor: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     #![expect(
@@ -90,7 +150,7 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
 
-    use super::{GalleryCard, GalleryResponse};
+    use super::{GalleryCard, GalleryResponse, OwnedEntriesResponse, OwnedEntryCard};
     use crate::admin::AdminLibraryRequirements;
     use serde_json::{Value, json};
     use std::borrow::Cow;
@@ -162,5 +222,66 @@ mod tests {
 
         assert!(body.contains(r#""required_credentials_reasons":{}"#));
         assert!(body.contains(r#""visibility":"tenant""#));
+    }
+
+    #[test]
+    fn an_owned_entry_carries_its_provenance_and_no_bundle_content() {
+        // The hash is present because it is what tells two onboardings of
+        // near-identical bundles apart, which is the whole question this
+        // collection answers. The documents are absent because a response
+        // cannot leak through a field it does not have.
+        let body = serde_json::to_string(&OwnedEntryCard {
+            id: Cow::Borrowed("0195b4ba-8d3a-7f13-8abc-cd0000000002"),
+            name: Cow::Borrowed("github-pr-reviewer"),
+            description: Cow::Borrowed("Reviews pull requests"),
+            source_kind: Cow::Borrowed("github"),
+            source_ref: Cow::Borrowed("acme/reviewer"),
+            content_hash: Cow::Borrowed("0123456789abcdef"),
+            created_at: 1_777_507_200_000,
+        })
+        .expect("the entry serializes");
+
+        assert_eq!(
+            body,
+            r#"{"id":"0195b4ba-8d3a-7f13-8abc-cd0000000002","name":"github-pr-reviewer","description":"Reviews pull requests","source_kind":"github","source_ref":"acme/reviewer","content_hash":"0123456789abcdef","created_at":1777507200000}"#
+        );
+        for leaked in ["skill_markdown", "trigger_markdown", "support_files"] {
+            assert!(!body.contains(leaked), "the entry carries {leaked}");
+        }
+    }
+
+    #[test]
+    fn an_empty_owned_page_still_carries_both_navigation_keys() {
+        // Same guarantee the gallery makes, and a workspace that owns nothing
+        // is the ordinary first visit rather than an edge case.
+        let body = serde_json::to_string(&OwnedEntriesResponse {
+            items: vec![],
+            total: None,
+            next_cursor: None,
+        })
+        .expect("the page serializes");
+
+        assert_eq!(body, r#"{"items":[],"total":null,"next_cursor":null}"#);
+    }
+
+    #[test]
+    fn an_owned_entry_is_not_a_gallery_card() {
+        // The two collections answer different questions, and a client that
+        // deserialized one as the other would silently lose the provenance or
+        // gain requirement chips this read never fetched. `deny_unknown_fields`
+        // on both is what makes the mistake loud.
+        let entry = serde_json::to_string(&OwnedEntryCard {
+            id: Cow::Borrowed("0195b4ba-8d3a-7f13-8abc-cd0000000002"),
+            name: Cow::Borrowed("Internal"),
+            description: Cow::Borrowed("Ours"),
+            source_kind: Cow::Borrowed("upload"),
+            source_ref: Cow::Borrowed("internal.tar.gz"),
+            content_hash: Cow::Borrowed("deadbeef"),
+            created_at: 1,
+        })
+        .expect("the entry serializes");
+
+        serde_json::from_str::<GalleryCard<'_>>(&entry)
+            .expect_err("an owned entry must not deserialize as a gallery card");
     }
 }

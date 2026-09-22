@@ -40,10 +40,9 @@ a gate skip.
   names, money amounts stay verbatim.
 - **Internal cleanup** gets aggressive trimming, not a paragraph.
 - **History is archived, not rewritten** — past entries are an immutable record.
-- **Rate constants** are pinned by `cross_runtime_rates.rs`, which reads the
-  app and Command-Line Interface (CLI) mirrors against the Rust constant. A
-  changelog money or rate claim must match those, and `rates.mdx` in the docs
-  repository, which no test can reach.
+- **Rate constants** are declared once, in `afd_billing`'s `nanos.rs`, with the
+  nanos denominator in `afd_core::money`. A changelog money or rate claim must
+  match those — and `rates.mdx` in the docs repository, which no test reaches.
 
 ## Required output (self-audit line before committing the changelog)
 

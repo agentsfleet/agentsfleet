@@ -36,7 +36,8 @@ export const EXIT_SERVER_ERROR = 3;
 export const FLAG_LIBRARY = "--library";
 
 // Server conflict code for a duplicate fleet name within a workspace (mirrors
-// `core` schema `uq_fleets_workspace_id_name` → `error_registry.zig` UZ-AGT-006,
+// `core` schema `uq_fleets_workspace_id_name` → UZ-AGT-006 (declared at
+// rustd/crates/afd_core/src/error_code/fleet.rs),
 // a 409). The CLI surfaces it as a ServerError (exit 3) carrying this code.
 export const ERR_AGENTSFLEET_NAME_TAKEN = "UZ-AGT-006";
 

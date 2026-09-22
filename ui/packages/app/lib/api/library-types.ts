@@ -71,3 +71,34 @@ export function libraryErrorFromCause(cause: unknown): LibraryError {
     detail: cause instanceof Error ? cause.message : undefined,
   };
 }
+
+// One row from GET /v1/workspaces/{ws}/library-entries — an entry THIS
+// workspace onboarded, on the collection it administers.
+//
+// A different shape from the gallery row above, on purpose. A gallery card
+// answers "what can I install here", so it carries the requirement chips and
+// the reason copy the install gate renders. This answers "what did we
+// onboard", so it carries provenance instead: where the bytes came from, and
+// the hash of the bytes themselves. `content_hash` is the domain key's other
+// half — two onboardings of one bundle into one workspace are one entry, so a
+// differing hash is what proves two rows are two bundles rather than one
+// listed twice, which is the question this page exists to answer.
+//
+// No `visibility`: every row here is this workspace's, so a tier column would
+// carry one value forever. And no bundle content — the endpoint projects no
+// document column, so there is nothing to hold.
+export type WorkspaceLibraryEntry = {
+  id: string;
+  name: string;
+  description: string;
+  source_kind: string;
+  source_ref: string;
+  content_hash: string;
+  created_at: number;
+};
+
+export type WorkspaceLibraryEntriesResponse = {
+  items: WorkspaceLibraryEntry[];
+  total: number | null;
+  next_cursor: string | null;
+};

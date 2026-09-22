@@ -17,7 +17,7 @@
  *      existing credential untouched.
  *   6. `logout` after a token login → a subsequent read command is
  *      auth-required (non-zero).
- *   7. `auth status` before login → unauthenticated; after → shows identity.
+ *   7. `whoami` before login → unauthenticated; after → shows identity and source.
  *
  * Live-only: the whole suite registers only when AGENTSFLEET_ACCEPTANCE_TARGET
  * is an https URL — the pty browser legs need the live dashboard + Clerk, and
@@ -69,8 +69,7 @@ const AUTH_REQUIRED_RE = /not authenticated|UZ-AUTH|run .*login/i;
 // asserted against src/program/cli-tree.ts.
 const CMD_LOGIN = "login" as const;
 const CMD_LOGOUT = "logout" as const;
-const CMD_AUTH = "auth" as const;
-const SUB_STATUS = "status" as const;
+const CMD_WHOAMI = "whoami" as const;
 const CMD_WORKSPACE = "workspace" as const;
 const SUB_LIST = "list" as const;
 const FLAG_JSON = "--json" as const;
@@ -180,16 +179,16 @@ if (!isLive) {
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
-    // 7a — `auth status` with no credentials is unauthenticated. The
-    // preAction auth-guard exempts only `login`, so `auth status` fails the
-    // guard (AUTH_REQUIRED on stderr) before reaching authStatusEffect — the
+    // 7a — `whoami` with no credentials is unauthenticated. The
+    // preAction auth-guard exempts only `login`, so `whoami` fails the
+    // guard (AUTH_REQUIRED on stderr) before reaching whoamiEffect — the
     // observable "unauthenticated" contract for a credential-less invocation.
-    describe("auth status before login", () => {
+    describe("whoami before login", () => {
       beforeEach(freshStateDir);
 
-      it("auth status --json → AUTH_REQUIRED, non-zero", async () => {
-        const result = await spawn([CMD_AUTH, SUB_STATUS, FLAG_JSON]);
-        assert.notEqual(result.code, 0, `auth status should fail unauth; stdout=${result.stdout}`);
+      it("whoami --json → AUTH_REQUIRED, non-zero", async () => {
+        const result = await spawn([CMD_WHOAMI, FLAG_JSON]);
+        assert.notEqual(result.code, 0, `whoami should fail unauth; stdout=${result.stdout}`);
         const parsed = JSON.parse(result.stderr.trim()) as { error?: { code?: string } };
         assert.equal(parsed.error?.code, AUTH_REQUIRED_CODE,
           `expected ${AUTH_REQUIRED_CODE} on stderr; got stderr=${result.stderr} stdout=${result.stdout}`);
@@ -215,14 +214,14 @@ if (!isLive) {
       });
     });
 
-    // 7b — `auth status` after a token login surfaces the identity.
-    describe("auth status after login", () => {
+    // 7b — `whoami` after a token login surfaces the identity and its source.
+    describe("whoami after login", () => {
       beforeEach(freshStateDir);
 
-      it("auth status --json → authenticated:true, source file", async () => {
+      it("whoami --json → authenticated:true, source file", async () => {
         await seedCredential();
-        const result = await spawn([CMD_AUTH, SUB_STATUS, FLAG_JSON]);
-        assert.equal(result.code, 0, `auth status exited ${result.code}: ${result.stderr}`);
+        const result = await spawn([CMD_WHOAMI, FLAG_JSON]);
+        assert.equal(result.code, 0, `whoami exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim()) as { authenticated?: boolean; source?: string };
         assert.equal(parsed.authenticated, true, `expected authenticated:true; got ${result.stdout}`);
         assert.equal(parsed.source, SOURCE_FILE, `expected source:${SOURCE_FILE}; got ${result.stdout}`);

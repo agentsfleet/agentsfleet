@@ -1,4 +1,4 @@
-// `agentsfleet library add` — onboard a Fleet library into this workspace.
+// `agentsfleet library create` — onboard a Fleet library into this workspace.
 //
 // The daemon has accepted this body on the workspace plane for some time; the
 // CLI never grew the verb, so a tenant library could only be created from the
@@ -69,10 +69,10 @@ interface LibraryCreatedResponse {
   readonly requirements?: BundleRequirements;
 }
 
-export const ADD_USAGE =
-  "usage: agentsfleet library add (--github <owner/repo> [--ref <rev>] | --from <path> | --template <id>)" as const;
+export const CREATE_USAGE =
+  "usage: agentsfleet library create (--github <owner/repo> [--ref <rev>] | --from <path> | --template <id>)" as const;
 const ONE_SOURCE_REQUIRED =
-  "library add needs exactly one of --github, --from, or --template" as const;
+  "library create needs exactly one of --github, --from, or --template" as const;
 const REVISION_NEEDS_GITHUB =
   "--ref names a branch, tag, or commit, so it rides --github only" as const;
 const REPOSITORY_SHAPE =
@@ -143,16 +143,16 @@ const selectSource = (
 
   const [source] = chosen;
   if (chosen.length !== 1 || source === undefined) {
-    return reject(ONE_SOURCE_REQUIRED, ADD_USAGE);
+    return reject(ONE_SOURCE_REQUIRED, CREATE_USAGE);
   }
   if (flags.revision && source.kind !== LIBRARY_SOURCE_KIND.github) {
-    return reject(REVISION_NEEDS_GITHUB, ADD_USAGE);
+    return reject(REVISION_NEEDS_GITHUB, CREATE_USAGE);
   }
   if (
     source.kind === LIBRARY_SOURCE_KIND.github &&
     !REPOSITORY_PATTERN.test(source.ref)
   ) {
-    return reject(REPOSITORY_SHAPE, ADD_USAGE);
+    return reject(REPOSITORY_SHAPE, CREATE_USAGE);
   }
   return Effect.succeed(source);
 };
@@ -177,7 +177,7 @@ const bodyForSource = (
       try: () => supportFilesIn(source.ref),
       // A directory that cannot be listed is the bundle loader's problem, and
       // it already failed above if the path is unusable.
-      catch: () => new ValidationError({ detail: UNREADABLE_BUNDLE, suggestion: ADD_USAGE }),
+      catch: () => new ValidationError({ detail: UNREADABLE_BUNDLE, suggestion: CREATE_USAGE }),
     });
     if (extras.length > 0) {
       return yield* reject(
@@ -197,7 +197,7 @@ const bodyForSource = (
     };
   });
 
-export const libraryAddEffectFromFlags = (
+export const libraryCreateEffectFromFlags = (
   flags: LibraryAddFlags,
 ): Effect.Effect<
   void,

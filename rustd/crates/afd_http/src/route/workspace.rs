@@ -22,6 +22,10 @@ const LIBRARY_WRITE: &[Scope] = &[Scope::LibraryWrite];
 pub enum WorkspaceRoute {
     /// The workspace's fleet-library catalogue.
     FleetLibrary,
+    /// The entries this workspace onboarded, which it administers.
+    LibraryEntries,
+    /// One of those entries, by identifier.
+    LibraryEntry,
     /// The workspace's fleets.
     Fleets,
     /// The workspace's secrets.
@@ -50,6 +54,8 @@ impl WorkspaceRoute {
     /// Every workspace route.
     pub const ALL: &'static [Self] = &[
         Self::FleetLibrary,
+        Self::LibraryEntries,
+        Self::LibraryEntry,
         Self::Fleets,
         Self::Secrets,
         Self::Secret,
@@ -78,11 +84,13 @@ impl WorkspaceRoute {
             | Self::Onboarding
             | Self::Preferences
             | Self::Approvals
-            | Self::Approval => &[Verb::Get],
+            | Self::Approval
+            | Self::LibraryEntries => &[Verb::Get],
             Self::Preference => &[Verb::Put],
             Self::ApprovalResolve => &[Verb::Post],
             Self::FleetLibrary | Self::Fleets | Self::Secrets => &[Verb::Get, Verb::Post],
             Self::Secret => &[Verb::Put, Verb::Delete],
+            Self::LibraryEntry => &[Verb::Delete],
         }
     }
 
@@ -99,6 +107,25 @@ impl WorkspaceRoute {
                 api,
                 workspace_path!("/fleet-libraries"),
                 Scopes::rw(FLEET_READ, LIBRARY_WRITE),
+            ),
+            // A second collection rather than a tier filter on the gallery
+            // above. The gallery answers what this workspace can INSTALL —
+            // the published platform catalogue unioned with its own rows —
+            // and this answers what it OWNS. The models domain settled the
+            // same split first: `/v1/models` is the catalogue, and
+            // `/v1/tenants/me/models` is the registry a tenant administers.
+            Self::LibraryEntries => (
+                api,
+                workspace_path!("/library-entries"),
+                Scopes::rw(FLEET_READ, LIBRARY_WRITE),
+            ),
+            // No read half, as `ModelEntry` carries none: the only verb here
+            // is a removal, and a scope pair would grant a read this row does
+            // not serve.
+            Self::LibraryEntry => (
+                api,
+                workspace_path!("/library-entries/{entry_id}"),
+                Scopes::Always(LIBRARY_WRITE),
             ),
             Self::Fleets => (
                 api,

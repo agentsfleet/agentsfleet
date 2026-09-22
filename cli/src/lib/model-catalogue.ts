@@ -14,9 +14,8 @@
 // (scripts/model-library-allowlist.json → the model_catalogue playbook), never
 // by editing TypeScript.
 //
-// The catalogue is bearer-authed (`handlers/model_library.zig`: "the catalogue
-// prices the platform's billing spine and has no anonymous consumer"), which is
-// why every read here takes a token.
+// The catalogue is bearer-authed — it prices the platform's billing spine and
+// has no anonymous consumer — which is why every read here takes a token.
 
 import { Effect } from "effect";
 import { HttpClient } from "../services/http-client.ts";

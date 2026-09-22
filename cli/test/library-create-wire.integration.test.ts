@@ -1,4 +1,4 @@
-// `library add` — what actually goes on the wire once a source is accepted,
+// `library create` — what actually goes on the wire once a source is accepted,
 // what comes back on the machine surface, and what the command still prints
 // when the daemon answers with fields missing.
 
@@ -15,9 +15,9 @@ import {
   authedScope,
   withBundle,
   parseBody,
-} from "./helpers-library-add.ts";
+} from "./helpers-library-create.ts";
 
-describe("library add — request shaping", () => {
+describe("library create — request shaping", () => {
   test("--github posts a github source carrying the repository", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
@@ -27,7 +27,7 @@ describe("library add — request shaping", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["library", "add", "--github", "agentsfleet/github-pr-reviewer"],
+          ["library", "create", "--github", "agentsfleet/github-pr-reviewer"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -52,7 +52,7 @@ describe("library add — request shaping", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["library", "add", "--github", "owner/repo", "--ref", "v1.2.0"],
+          ["library", "create", "--github", "owner/repo", "--ref", "v1.2.0"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -70,7 +70,7 @@ describe("library add — request shaping", () => {
         withMockApi(routes, async (apiUrl, calls) => {
           const out = bufferStream();
           const err = bufferStream();
-          const code = await runCli(["library", "add", "--from", dir], {
+          const code = await runCli(["library", "create", "--from", dir], {
             stdout: out.stream,
             stderr: err.stream,
             env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -100,7 +100,7 @@ describe("library add — request shaping", () => {
         withMockApi(routes, async (apiUrl, calls) => {
           const out = bufferStream();
           const err = bufferStream();
-          const code = await runCli(["library", "add", "--from", dir], {
+          const code = await runCli(["library", "create", "--from", dir], {
             stdout: out.stream,
             stderr: err.stream,
             env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -122,7 +122,7 @@ describe("library add — request shaping", () => {
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["library", "add", "--template", "starter"], {
+        const code = await runCli(["library", "create", "--template", "starter"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -145,7 +145,7 @@ describe("library add — request shaping", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["library", "add", "--github", "owner/repo", "--replace"],
+          ["library", "create", "--github", "owner/repo", "--replace"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(4);
@@ -169,7 +169,7 @@ describe("library add — request shaping", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["library", "add", "--github", "owner/repo"], {
+        const code = await runCli(["library", "create", "--github", "owner/repo"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -183,7 +183,7 @@ describe("library add — request shaping", () => {
   });
 });
 
-describe("library add — machine surface", () => {
+describe("library create — machine surface", () => {
   test("--json emits the created entry instead of the prose block", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
@@ -193,7 +193,7 @@ describe("library add — machine surface", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["library", "add", "--json", "--github", "owner/repo"],
+          ["library", "create", "--json", "--github", "owner/repo"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -207,7 +207,7 @@ describe("library add — machine surface", () => {
   });
 });
 
-describe("library add — degraded daemon answers", () => {
+describe("library create — degraded daemon answers", () => {
   test("a creation carrying no name falls back to the source reference", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
@@ -216,7 +216,7 @@ describe("library add — degraded daemon answers", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["library", "add", "--github", "owner/repo"], {
+        const code = await runCli(["library", "create", "--github", "owner/repo"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -239,7 +239,7 @@ describe("library add — degraded daemon answers", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["library", "add", "--github", "owner/repo"], {
+        const code = await runCli(["library", "create", "--github", "owner/repo"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),

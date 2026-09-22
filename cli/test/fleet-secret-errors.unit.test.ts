@@ -1,3 +1,4 @@
+import { AGE_KEY, ago } from "../src/output/index.ts";
 // Unit tests for fleet_secret.ts error branches that cannot be reached
 // via the CLI parser (which enforces `<name>` as required). These tests call
 // the exported Effect functions directly with test layers, covering:
@@ -41,6 +42,11 @@ const makeOutputLayer = (captured: string[]): Layer.Layer<Output> =>
     printSection: (t) => Effect.sync(() => { captured.push(`# ${t}`); }),
     printTable: (_cols, rows) =>
       Effect.sync(() => { for (const row of rows) captured.push(JSON.stringify(row)); }),
+    printEntityTable: (_spec, rows) =>
+      Effect.sync(() => {
+        for (const row of rows)
+          captured.push(JSON.stringify({ ...row, [AGE_KEY]: ago(row[AGE_KEY]) }));
+      }),
   });
 
 const makeConfigLayer = (jsonMode = false): Layer.Layer<CliConfig> =>

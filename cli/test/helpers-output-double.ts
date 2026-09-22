@@ -62,6 +62,7 @@ export const outputDouble = (
   printKeyValue: () => Effect.void,
   printSection: () => Effect.void,
   printTable: () => Effect.void,
+  printEntityTable: () => Effect.void,
 });
 
 /** The register a double was built with, for a test that branches on it. */

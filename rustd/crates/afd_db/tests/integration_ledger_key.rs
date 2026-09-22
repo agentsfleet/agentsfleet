@@ -137,7 +137,15 @@ async fn ledger_key_shape_after_upgrade() {
 
     seed_charges(&db).await;
 
+    // Up to and INCLUDING 916, rather than the whole canonical list. The
+    // subject is what slot 916 does to a populated ledger, and running
+    // everything after it too would make the assertion below a statement about
+    // whichever slot happens to be last — it was, and slot 917 broke it.
+    let through = MIGRATIONS
+        .get(..=boundary)
+        .expect("the slot's own index is within its own list");
     let upgrade = Migrator::new()
+        .with_migrations(through)
         .run(&db)
         .await
         .expect("slot 916 applies to a populated ledger");

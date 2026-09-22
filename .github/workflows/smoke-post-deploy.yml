@@ -22,7 +22,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.0
+          bun-version: 1.4.2
 
       # Detect which Vercel project deployed based on GitHub deployment metadata first.
       # URL-shape fallback remains for safety, but deployment.environment is the stable source.
@@ -143,7 +143,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.0
+          bun-version: 1.4.2
 
       # Installs and builds run BEFORE the 1Password load (same posture as
       # the dev jobs): no postinstall script ever sees a Clerk key.

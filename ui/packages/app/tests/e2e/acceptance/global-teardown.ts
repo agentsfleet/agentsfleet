@@ -16,7 +16,7 @@
  *    previous crashed one. Clerk's user.deleted webhook then hard-purges the
  *    bootstrapped tenant daemon-side (state/account_teardown.zig).
  *
- * 3. Leaked-fleet sweep. Per-spec afterEach cleanup misses whenever a run
+ * 3. Leaked-fleet and leaked-library sweeps. Per-spec afterEach cleanup misses whenever a run
  *    crashes or CI is interrupted, and a leaked fixture fleet is not inert:
  *    its seeded cron trigger keeps waking runners until the row is deleted.
  *    sweepLeakedFixtureFleets (fixtures/teardown.ts) empties every workspace
@@ -37,7 +37,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { deleteUser, listUsersByQuery, revokeSession } from "./fixtures/clerk-admin";
 import { loadWorktreeEnv } from "./fixtures/env-loader";
-import { sweepLeakedFixtureFleets } from "./fixtures/teardown";
+import { sweepLeakedFixtureFleets, sweepLeakedFixtureLibraries } from "./fixtures/teardown";
 import { revokeBrowserSessions } from "./fixtures/browser-sessions";
 
 const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
@@ -132,6 +132,19 @@ export default async function globalTeardown(): Promise<void> {
     }
   } catch (err) {
     console.error("[e2e:sweep] leaked-fleet sweep failed:", err);
+  }
+  try {
+    // Beside the fleet sweep, not inside it: the two answer for different rows
+    // and either can fail without the other needing to. A leaked library entry
+    // is inert but cumulative — it sits in the install gallery forever, and
+    // enough of them push the seeded card off the first page.
+    if (fs.existsSync(JWT_CACHE_PATH)) {
+      await sweepLeakedFixtureLibraries();
+    } else {
+      console.log("[e2e:sweep] fixture JWT cache missing — skipping leaked-library sweep");
+    }
+  } catch (err) {
+    console.error("[e2e:sweep] leaked-library sweep failed:", err);
   }
   try {
     // A long suite can outlive the cached JWT. Fleet cleanup must still be

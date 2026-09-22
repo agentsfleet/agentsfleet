@@ -62,6 +62,8 @@ mod integration_tenant_provider;
 mod integration_workspace_approvals;
 #[path = "integration_workspace_approvals_listing.rs"]
 mod integration_workspace_approvals_listing;
+#[path = "integration_workspace_library_entries.rs"]
+mod integration_workspace_library_entries;
 #[path = "integration_workspace_preferences.rs"]
 mod integration_workspace_preferences;
 #[path = "tenant_api_keys.rs"]

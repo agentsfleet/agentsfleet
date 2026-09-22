@@ -240,12 +240,12 @@ fn test_every_memory_producer_runs_its_body() {
 fn test_every_library_producer_runs_its_body() {
     install();
 
-    let surfaces = [
-        Surface::TenantModels,
-        Surface::GlobalModels,
-        Surface::FleetSummary,
-    ];
-    for surface in surfaces {
+    // `Surface::ALL`, not a list repeated here: a surface added to the closed
+    // set raises the census ceiling for every family carrying this label, and a
+    // hand-kept copy silently stops driving the one that was added. This is
+    // where `workspace_entries` went undriven — the set grew, the literal did
+    // not.
+    for &surface in Surface::ALL {
         for stage in [
             Stage::NextUpstream,
             Stage::AuthVerify,

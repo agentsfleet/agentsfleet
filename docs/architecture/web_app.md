@@ -125,12 +125,13 @@ Measured against `ui/packages/app` at 222 `.tsx` files.
 | `"use client"` files | 119 | ~25 | `grep -rl '"use client"' app components \| wc -l` |
 | `useEffect` files | 31 | ~5 | `grep -rl useEffect app components hooks \| wc -l` |
 | `useActionState` | 0 | every form | `grep -rl useActionState app components \| wc -l` |
-| `useOptimistic` | 4 | every mutation surface | `grep -rl useOptimistic app components \| wc -l` |
+| `useOptimistic` | 5 | every mutation surface | `grep -rl useOptimistic app components \| wc -l` |
 | `Suspense` files | 5 | every data route | `grep -rl Suspense app \| wc -l` |
 
 The first two moved away from target as the app grew. `useOptimistic` moved
-from one surface to four — secrets delete, runner state, the approvals inbox
-and the fleet kill switch — each reconciling inside the transition that set it,
+from one surface to five — secrets delete, runner state, the approvals inbox,
+the fleet kill switch and workspace library removal — each reconciling inside
+the transition that set it,
 so the row is now a pattern rather than an exception. The one `useEffect` file
 the chat's summary strip gained is statement 5 as written: a subscription to
 the fleet stream (`useFleetRunSummary`, selecting the two identity-stable

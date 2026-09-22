@@ -89,14 +89,19 @@ export const modelsEffectFromFlags = Effect.fn("models.list")(function* (
     return;
   }
 
-  yield* output.printTable(
-    [
-      { key: FIELD_PROVIDER, label: "PROVIDER" },
-      { key: FIELD_MODEL, label: "MODEL" },
-      { key: FIELD_CONTEXT, label: "CONTEXT" },
-      { key: FIELD_INPUT, label: "IN/MTOK" },
-      { key: FIELD_OUTPUT, label: "OUT/MTOK" },
-    ],
+  yield* output.printEntityTable(
+    {
+      name: { key: FIELD_MODEL, label: "MODEL" },
+      domain: [
+        { key: FIELD_PROVIDER, label: "PROVIDER" },
+        { key: FIELD_CONTEXT, label: "CONTEXT" },
+        { key: FIELD_INPUT, label: "IN/MTOK" },
+        { key: FIELD_OUTPUT, label: "OUT/MTOK" },
+      ],
+      // A published catalogue is not something this workspace made, so there
+      // is no age to report.
+      ageKey: null,
+    },
     models.map(row),
   );
 

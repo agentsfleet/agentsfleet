@@ -21,6 +21,7 @@ import {
   resolveWorkspaceId,
   WORKSPACE_FLAG,
 } from "./workspace-guards.ts";
+import { AGE_KEY } from "../output/index.ts";
 import { isString } from "../lib/guards.ts";
 import { HTTP_METHOD } from "../constants/http-method.ts";
 const STATUS_ACTIVE = "active" as const;
@@ -34,14 +35,14 @@ const FIELD_STATUS = "status" as const;
 const FIELD_SYNC = "sync" as const;
 const DEFAULT_TIMEZONE = "UTC" as const;
 
-const USAGE_ADD =
-  "usage: agentsfleet schedule add <fleet_id> --cron <expr> --message <text> [--timezone <tz>]";
+const USAGE_CREATE =
+  "usage: agentsfleet schedule create <fleet_id> --cron <expr> --message <text> [--timezone <tz>]";
 const USAGE_LIST = "usage: agentsfleet schedule list <fleet_id>";
 const USAGE_UPDATE =
   "usage: agentsfleet schedule update <fleet_id> <schedule_id> [--cron <expr>] [--message <text>] [--timezone <tz>] [--status active|paused]";
-const USAGE_RM = "usage: agentsfleet schedule rm <fleet_id> <schedule_id>";
+const USAGE_DELETE = "usage: agentsfleet schedule delete <fleet_id> <schedule_id>";
 const USAGE_SYNC = "usage: agentsfleet schedule sync <fleet_id> <schedule_id>";
-const USAGE_STATUS = "usage: agentsfleet schedule status <fleet_id> <schedule_id>";
+const USAGE_SHOW = "usage: agentsfleet schedule show <fleet_id> <schedule_id>";
 
 
 interface ScheduleRow {
@@ -138,9 +139,9 @@ export const scheduleAddEffectFromArgs = (
   flags: ScheduleAddFlags,
 ): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output | Workspaces> =>
   Effect.gen(function* () {
-    const fleetId = yield* requireValidId(fleetIdRaw, FIELD_FLEET_ID, USAGE_ADD);
-    const cron = yield* requireText(flags.cron, "--cron <expr> is required", USAGE_ADD);
-    const message = yield* requireText(flags.message, "--message <text> is required", USAGE_ADD);
+    const fleetId = yield* requireValidId(fleetIdRaw, FIELD_FLEET_ID, USAGE_CREATE);
+    const cron = yield* requireText(flags.cron, "--cron <expr> is required", USAGE_CREATE);
+    const message = yield* requireText(flags.message, "--message <text> is required", USAGE_CREATE);
     const ctx = yield* scheduleContext(flags);
     const row = yield* ctx.http.request<ScheduleRow>({
       path: wsFleetSchedulesPath(ctx.wsId, fleetId),
@@ -171,15 +172,18 @@ export const scheduleListEffectFromArgs = (
       yield* ctx.output.info("No schedules for this Fleet.");
       return;
     }
-    yield* ctx.output.printTable(
-      [
-        { key: FIELD_SCHEDULE_ID, label: "SCHEDULE_ID" },
-        { key: FIELD_CRON, label: "CRON" },
-        { key: FIELD_TIMEZONE, label: "TIMEZONE" },
-        { key: FIELD_STATUS, label: "STATUS" },
-        { key: FIELD_SYNC, label: "SYNC" },
-        { key: FIELD_MESSAGE, label: "MESSAGE" },
-      ],
+    yield* ctx.output.printEntityTable(
+      {
+        // A hosted schedule has no name — its identity is the identifier.
+        id: { key: FIELD_SCHEDULE_ID, label: "SCHEDULE_ID" },
+        domain: [
+          { key: FIELD_CRON, label: "CRON" },
+          { key: FIELD_TIMEZONE, label: "TIMEZONE" },
+          { key: FIELD_STATUS, label: "STATUS" },
+          { key: FIELD_SYNC, label: "SYNC" },
+          { key: FIELD_MESSAGE, label: "MESSAGE" },
+        ],
+      },
       items.map((row) => ({
         [FIELD_SCHEDULE_ID]: row.schedule_id ?? "",
         [FIELD_CRON]: row.cron ?? "",
@@ -187,6 +191,10 @@ export const scheduleListEffectFromArgs = (
         [FIELD_STATUS]: row.status ?? "",
         [FIELD_SYNC]: row.sync ?? "",
         [FIELD_MESSAGE]: row.message ?? "",
+        // The age column is appended by entityColumns, so the row has to carry
+        // what it reads. Dropped, every schedule renders its age as the empty
+        // cell — a column present, correct-looking and never once filled.
+        [AGE_KEY]: row.created_at,
       })),
     );
   });
@@ -225,8 +233,8 @@ export const scheduleRmEffectFromArgs = (
   flags: ScheduleCommonFlags,
 ): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output | Workspaces> =>
   Effect.gen(function* () {
-    const fleetId = yield* requireValidId(fleetIdRaw, FIELD_FLEET_ID, USAGE_RM);
-    const scheduleId = yield* requireValidId(scheduleIdRaw, FIELD_SCHEDULE_ID, USAGE_RM);
+    const fleetId = yield* requireValidId(fleetIdRaw, FIELD_FLEET_ID, USAGE_DELETE);
+    const scheduleId = yield* requireValidId(scheduleIdRaw, FIELD_SCHEDULE_ID, USAGE_DELETE);
     const ctx = yield* scheduleContext(flags);
     yield* ctx.http.request<unknown>({
       path: wsFleetSchedulePath(ctx.wsId, fleetId, scheduleId),
@@ -246,8 +254,8 @@ export const scheduleStatusEffectFromArgs = (
   flags: ScheduleCommonFlags,
 ): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output | Workspaces> =>
   Effect.gen(function* () {
-    const fleetId = yield* requireValidId(fleetIdRaw, FIELD_FLEET_ID, USAGE_STATUS);
-    const scheduleId = yield* requireValidId(scheduleIdRaw, FIELD_SCHEDULE_ID, USAGE_STATUS);
+    const fleetId = yield* requireValidId(fleetIdRaw, FIELD_FLEET_ID, USAGE_SHOW);
+    const scheduleId = yield* requireValidId(scheduleIdRaw, FIELD_SCHEDULE_ID, USAGE_SHOW);
     const ctx = yield* scheduleContext(flags);
     const row = yield* ctx.http.request<ScheduleRow>({
       path: wsFleetSchedulePath(ctx.wsId, fleetId, scheduleId),
