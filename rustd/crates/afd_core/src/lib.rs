@@ -41,6 +41,7 @@ pub mod event;
 pub mod id;
 pub mod json;
 pub mod limits;
+pub mod money;
 pub mod paging;
 pub mod problem;
 pub mod spelling;

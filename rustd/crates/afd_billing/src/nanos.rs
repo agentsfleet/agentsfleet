@@ -4,11 +4,10 @@
 //!
 //! `billing.usage_ledger.credit_deducted_nanos` is `BIGINT`, and every drain in
 //! this product is a whole number of nanos. One US dollar is
-//! [`NANOS_PER_USD`]; the rate constants below are declared once, here, and
-//! carried rather than re-derived — the website, the dashboard and the
-//! command-line interface each spell the same numbers for display, and a
-//! second set derived here would be a second source of truth for what a second
-//! of runtime costs. A bump lands in all four or in none.
+//! [`NANOS_PER_USD`], which [`afd_core::money`] declares because an account
+//! balance is denominated in it too. The rates below are this crate's alone:
+//! the daemon is what charges a lease, and a client renders the charge it was
+//! served rather than recomputing it, so a bump lands here and nowhere else.
 //!
 //! # Why not a decimal crate
 //!
@@ -40,19 +39,12 @@ use afd_fleet_runtime::config::Dollars;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Nanos(i64);
 
-/// Nanos in one US dollar.
-///
-/// `tenant_billing.zig`'s `NANOS_PER_USD`, which `ui/packages/app/lib/types.ts`
-/// and `cli/src/constants/billing.js` also carry — three spellings of one
-/// constant, and this is the fourth. It is restated rather than imported
-/// because there is nothing in Rust yet to import it FROM; the cross-tier audit
-/// is what keeps the four honest.
-pub const NANOS_PER_USD: i64 = 1_000_000_000;
+pub use afd_core::money::NANOS_PER_USD;
 
 /// What receiving one event costs, under either posture.
 ///
-/// Zero, and that is not a placeholder: `computeReceiveCharge` discards its
-/// posture argument and returns `EVENT_NANOS`. The debit still fires, and still
+/// Zero, and that is not a placeholder: the receive path prices every posture
+/// the same. The debit still fires, and still
 /// writes its ledger row, because the ROW is what the budget drain and the
 /// charges endpoint read — a charge of zero that is recorded is a different
 /// thing from a charge that never happened, and only one of them can later be
@@ -61,14 +53,14 @@ pub const RECEIVE_NANOS: Nanos = Nanos(0);
 
 /// What one second of active runtime costs, under either posture.
 ///
-/// `tenant_billing.zig`'s `RUN_NANOS_PER_SEC` — $0.0001/sec, about $0.36/hour.
+/// $0.0001/sec, about $0.36/hour. Declared once: the daemon is what charges a
+/// lease, and no client recomputes a fee it is served.
 pub const RUN_NANOS_PER_SEC: i64 = 100_000;
 
 /// The input-token floor the issue-time estimate is sized against.
 ///
 /// The runner does not know its real token counts at lease time, so the gate
-/// prices a deliberately small floor. `tenant_billing.zig`'s
-/// `ESTIMATE_FLOOR_INPUT_TOKENS`.
+/// prices a deliberately small floor.
 pub const ESTIMATE_FLOOR_INPUT_TOKENS: i64 = 100;
 
 /// The output-token floor the issue-time estimate is sized against.
@@ -81,8 +73,8 @@ pub const ESTIMATE_FLOOR_OUTPUT_TOKENS: i64 = 100;
 /// mantissa against 64 bits of integer — so writing the cast invites a reader
 /// to wonder whether the scale factor is exact. It is: 10^9 is well under
 /// 2^53, so this literal and the integer constant name the same number with no
-/// rounding between them. `nanos_per_usd_is_exact_in_both_representations`
-/// keeps the two from drifting apart.
+/// rounding between them, and `afd_core::money` asserts that headroom where the
+/// integer is declared.
 const NANOS_PER_USD_F64: f64 = 1e9;
 
 /// Tokens in the unit a catalogue rate is quoted per.

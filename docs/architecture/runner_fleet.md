@@ -215,7 +215,7 @@ Five verbs. `agentsfleetd` translates them into the Postgres writes and Dragonfl
 | Verb | Path | Auth | Handler | Purpose |
 |---|---|---|---|---|
 | `register` | `POST /v1/runners` | `Bearer` JWT carrying the `runner:enroll` scope | `afd_api_runner`'s enrolment handler | platform admin mints a durable `runner_token` (`agt_r`) for a host; record `host_id`, `sandbox_tier`, `labels`. Tenant `admin` JWT / `agt_t` api_key → `403`. Called from the **dashboard "Add runner"** (a session-authed server action) — **not** the runner CLI, and never the host. The operator installs the once-revealed `agt_r` (M84_001) |
-| `heartbeat` | `POST /v1/runners/me/heartbeats` | `Bearer agt_r` | `afd_api_runner`'s heartbeat handler | liveness; reply carries `status` (`ok` / `drain` / `stop`) and any revoked lease IDs |
+| `heartbeat` | `POST /v1/runners/me/heartbeats` | `Bearer agt_r` | `afd_api_runner`'s heartbeat handler | liveness; reply carries `status` (`ok` / `drain` / `stop`), any revoked lease IDs, and `heartbeat_interval_ms` — the cadence the host beats at, **required** on every reply (M205) |
 | `lease` | `POST /v1/runners/me/leases` | `Bearer agt_r` | `afd_api_runner`'s lease handler | non-blocking poll for the next event; reply carries the event, resolved config, secrets, `lease_id`, `fencing_token` — or `null` + `retry_after_ms` |
 | `report` | `POST /v1/runners/me/reports` | `Bearer agt_r` | `afd_api_runner`'s report handler | terminal result for a lease; `agentsfleetd` persists + `XACK`s after a fencing check |
 | `activity` | `POST /v1/runners/me/leases/{lease_id}/activity` | `Bearer agt_r` | `afd_api_runner`'s activity handler | write-only progress stream for the live tail; best-effort, no ack |
@@ -253,6 +253,8 @@ A runner needs a `agt_r` token before it can pull work. The **platform admin pre
 ## Assigned policy and reconciliation (M148)
 
 Configuration flows **down**. Sandbox tier, network policy, registry allowlist and worker count are attributes the control plane ASSIGNS to the runner row. They are written at enrollment and changed through `PATCH /v1/fleets/runners/{id} {assigned_policy}`. Each one rides the runner's identity on the enrollment read and on **every heartbeat reply**, so a dashboard change reaches the host within one beat and nobody visits the host.
+
+The **heartbeat cadence travels the same way** (M205). `afd_core::timing` owns both `RUNNER_OFFLINE_AFTER_MS` and the `HEARTBEAT_INTERVAL_MS` served beneath it, and a compile-time assertion beside them keeps the served cadence strictly below the offline threshold. A host holds no interval of its own, so moving the threshold moves every host's beat within one cycle. The field is required rather than optional: a reply without it is refused at parse and the beat takes the existing backoff, because a runner guessing its own cadence is the drift this removes.
 
 The host never declares policy. The per-policy environment variables that once did are removed outright rather than deprecated, so there is no fallback path two sources of truth could diverge through. The failure that removes: a dev worker advertised `landlock_full` while refusing every lease for two days, because the dashboard's tier and the host's env file held different values and nothing compared them.
 
