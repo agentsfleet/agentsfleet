@@ -126,6 +126,18 @@ export default function WorkspaceLibraryList({ workspaceId, entries, initialCurs
       current.filter((entry) => entry.id !== removedId),
   );
 
+  // A removal invalidates every page after the first. The server re-renders
+  // page one, but these are client state and would survive it: the collection
+  // is keyset-paged, so taking a row out shifts the rest up across the page
+  // boundary, and the refreshed first page then re-contains a row `appended`
+  // still holds. That renders the row twice under one key, and leaves Load
+  // more resuming from a position that no longer exists. So the pages go back
+  // to what the server just said, and the cursor with them.
+  function resetPaging() {
+    setAppended([]);
+    setCursor(initialCursor);
+  }
+
   // Mirrors the runner wall: append the page, follow its cursor, and keep the
   // rows already shown when a page fails.
   function loadMore(next: string) {
@@ -169,10 +181,17 @@ export default function WorkspaceLibraryList({ workspaceId, entries, initialCurs
             // transition ends. A failure whose outcome is unknown — a timeout,
             // a transport fault — may have removed the row anyway, and the
             // re-read makes its return or absence server truth.
-            if (!isDefiniteRefusal(result.status)) router.refresh();
+            // An outcome we cannot read may have removed the row, so the
+            // re-read is server truth — and the pages after the first are
+            // invalidated by it exactly as they are on success.
+            if (!isDefiniteRefusal(result.status)) {
+              resetPaging();
+              router.refresh();
+            }
             return;
           }
           setTarget(null);
+          resetPaging();
           router.refresh();
         } finally {
           resolve();
