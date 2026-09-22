@@ -27,8 +27,14 @@ pub const NANOS_PER_USD: i64 = 1_000_000_000;
 /// The largest integer a double can hold without losing a unit.
 ///
 /// JavaScript has no integer type, so every balance this product serves is read
-/// by a client that holds it as a double. A nanos value above this would arrive
+/// by a client that holds it as a double. A nanos value above this arrives
 /// rounded, and a rounded balance is a wrong one.
+///
+/// This bound is headroom, not a cap. `balance_nanos` is an unbounded `BIGINT`
+/// and nothing refuses a top-up that crosses the line, so a wallet above
+/// roughly nine million USD would lose precision at the client. Enforcing a
+/// maximum is a billing change and is not made here — stated so the constant
+/// is not read as a guarantee it does not carry.
 const EXACT_IN_F64: i64 = 1_i64 << 53;
 
 const _: () = assert!(
@@ -48,7 +54,8 @@ mod tests {
     }
 
     /// The headroom the assertion above buys, stated as a number a reader can
-    /// weigh: a balance stays exact in a double up to roughly nine million USD.
+    /// weigh: a balance below roughly nine million USD stays exact in a double.
+    /// Nothing holds a balance below it; see `EXACT_IN_F64`.
     #[test]
     fn test_a_balance_stays_exact_well_past_any_real_one() {
         const { assert!(EXACT_IN_F64 / NANOS_PER_USD > 9_000_000) };
