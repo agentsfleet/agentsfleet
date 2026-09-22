@@ -66,11 +66,12 @@ const CONFIGURATION_NAV: NavEntry[] = [
   { label: "Models", path: "settings/models", icon: BrainCircuitIcon, workspaceScoped: true },
   { label: "Integrations", path: "integrations", icon: PlugIcon, workspaceScoped: true },
   { label: "Secrets", path: "secrets", icon: KeyRoundIcon, workspaceScoped: true },
-  // "Library", not "Fleet library": the platform entry below already carries
-  // that label, and two identically-named items in one sidebar is the kind of
-  // thing nobody notices until it becomes a support ticket. This one is the
-  // workspace's own entries; that one is the operator's catalogue.
-  { label: "Library", path: "library", icon: LibraryIcon, workspaceScoped: true },
+  // "Fleet library", matching the platform entry below (Indy, 2026-09-22). The
+  // two are told apart by the group heading they sit under, not by the word:
+  // CONFIGURATION is this workspace's own onboarded entries, PLATFORM is the
+  // operator's catalogue. A workspace admin never sees the platform one at all,
+  // so for all but a handful of accounts the label is unambiguous on its own.
+  { label: "Fleet library", path: "library", icon: LibraryIcon, workspaceScoped: true },
 ];
 
 const PLATFORM_NAV: PlatformNavEntry[] = [

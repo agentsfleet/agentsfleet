@@ -30,9 +30,13 @@ import { cliEnv, makeCliStateDir, spawnAgentsfleet, writeCliState } from "./fixt
 const SOURCE_KIND_UPLOAD = "upload";
 const LIBRARY_SUBPATH = "library";
 const GALLERY_SUBPATH = "fleets/new";
-/** The sidebar entry, which is "Library" and not "Fleet library" — that label
- * belongs to the platform catalogue under /admin. */
-const SIDEBAR_LABEL = "Library";
+/** The sidebar entry. It shares its label with the platform catalogue's entry
+ * under /admin, which only a platform admin ever sees — this spec signs in as
+ * the regular fixture, so one link answers to the name. */
+const SIDEBAR_LABEL = "Fleet library";
+/** The row action is a glyph; this is the tooltip and its accessible name. */
+const REMOVE_ROW_LABEL = "Remove from this workspace";
+/** The dialog's confirm, which is the bare verb. */
 const REMOVE_LABEL = "Remove";
 
 /** How long the confirmation may take to appear after one click. */
@@ -127,12 +131,13 @@ test.describe("workspace-library", () => {
     // came. Retrying made the test pass and left the person clicking twice, so
     // the button stopped being disabled instead — opening the question sends
     // nothing, and there was never a request here to guard.
-    const removeAction = row.getByRole("button", { name: REMOVE_LABEL });
+    const removeAction = row.getByRole("button", { name: REMOVE_ROW_LABEL });
     await expect(removeAction).toBeEnabled();
     await removeAction.click();
 
-    // Both the row action and the dialog's confirm read "Remove", so the
-    // confirm is addressed through the dialog rather than by label alone.
+    // The confirm is addressed through the dialog rather than by label alone:
+    // the row action's name now contains the verb, so a bare "Remove" would
+    // still be ambiguous across the page.
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible({ timeout: DIALOG_OPEN_MS });
     await expect(dialog).toContainText(name);

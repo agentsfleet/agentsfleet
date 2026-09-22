@@ -75,3 +75,66 @@ describe("OnboardingRail — tick marks + strikethrough (3.4)", () => {
     expect(getByText("optional")).not.toBeNull();
   });
 });
+
+describe("OnboardingRail — a row that goes somewhere says so", () => {
+  it("draws a chevron on an incomplete step that links, and none on a done one", () => {
+    // Model done → struck through, no chevron: nothing left to go and do.
+    // Install a fleet → next, links → chevron.
+    const { container } = renderRail({ ...ZERO, modelConfigured: true });
+    const rows = Array.from(container.querySelectorAll("li"));
+    const done = rows.find((li) => li.textContent?.includes("Model configured"));
+    const next = rows.find((li) => li.textContent?.includes("Install a fleet"));
+    expect(done?.querySelector(".lucide-chevron-right")).toBeNull();
+    expect(next?.querySelector(".lucide-chevron-right")).not.toBeNull();
+  });
+
+  it("draws no chevron on a step with no destination", () => {
+    // "Watch it wake" completes by activity, not by navigation, so a chevron
+    // would point at nothing.
+    const { container } = renderRail({ ...ZERO, modelConfigured: true, fleetTotal: 1, secretCount: 1 });
+    const rows = Array.from(container.querySelectorAll("li"));
+    const wake = rows.find((li) => li.textContent?.includes("Watch it wake"));
+    expect(wake?.querySelector("a")).toBeNull();
+    expect(wake?.querySelector(".lucide-chevron-right")).toBeNull();
+  });
+
+  it("draws no chevron in the compact widget", () => {
+    const { container } = render(
+      React.createElement(OnboardingRail, {
+        workspaceId: "ws_1",
+        steps: deriveSteps({ ...ZERO, modelConfigured: true }),
+        compact: true,
+      }),
+    );
+    expect(container.querySelector(".lucide-chevron-right")).toBeNull();
+  });
+
+  it("sends Install a fleet straight to the recommended card", () => {
+    const { container } = renderRail({ ...ZERO, modelConfigured: true });
+    const rows = Array.from(container.querySelectorAll("li"));
+    const next = rows.find((li) => li.textContent?.includes("Install a fleet"));
+    expect(next?.querySelector("a")?.getAttribute("href")).toBe(
+      "/w/ws_1/fleets/new?library_id=github-pr-reviewer&library_visibility=public",
+    );
+  });
+});
+
+describe("OnboardingRail — the next step's words beckon with the button", () => {
+  it("marks only the next step's label, never a done or future one", () => {
+    const { getByText } = renderRail({ ...ZERO, modelConfigured: true });
+    expect(getByText("Install a fleet").getAttribute("data-beckon-text")).toBe("true");
+    expect(getByText("Model configured").getAttribute("data-beckon-text")).toBeNull();
+    expect(getByText("Connect its credential").getAttribute("data-beckon-text")).toBeNull();
+  });
+
+  it("does not beckon in the compact widget", () => {
+    const { getByText } = render(
+      React.createElement(OnboardingRail, {
+        workspaceId: "ws_1",
+        steps: deriveSteps({ ...ZERO, modelConfigured: true }),
+        compact: true,
+      }),
+    );
+    expect(getByText("Install a fleet").getAttribute("data-beckon-text")).toBeNull();
+  });
+});

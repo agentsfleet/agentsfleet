@@ -3,13 +3,13 @@
 import { useState } from "react";
 import {
   Badge,
-  Button,
   ConfirmDialog,
   CopyButton,
   DataTable,
   type DataTableColumn,
   EmptyState,
   IconAction,
+  Time,
 } from "@agentsfleet/design-system";
 import {
   DownloadIcon,
@@ -19,6 +19,11 @@ import {
   PencilIcon,
   Trash2Icon,
 } from "lucide-react";
+import {
+  SOURCE_KIND_GITHUB,
+  SOURCE_KIND_UPLOAD,
+  SourceMark,
+} from "@/components/domain/fleet-library/SourceMark";
 import type { PlatformCatalogEntry } from "@/lib/types";
 import { presentErrorString } from "@/lib/errors";
 import { captureProductEvent } from "@/lib/analytics/posthog";
@@ -35,9 +40,10 @@ import { deletePlatformLibraryAction, patchPlatformLibraryAction } from "../acti
 import {
   COLUMN_ACTIONS,
   COLUMN_BUNDLE,
-  COLUMN_FLEET,
-  COLUMN_REPOSITORY,
+  COLUMN_NAME,
+  COLUMN_SOURCE,
   COLUMN_STATUS,
+  COLUMN_TIME,
   DELETE,
   DELETE_ACTION,
   DELETE_CONFIRM_BODY,
@@ -48,12 +54,10 @@ import {
   FETCH_BUNDLE,
   FETCH_UPDATE,
   COPY_HASH_LABEL,
-  COPY_SLUG_LABEL,
+  FLEET_CATALOG_SECTION,
   HASH_PREVIEW_LENGTH,
   PATCH_ACTION,
   PUBLISH,
-  REPOSITORY_HOST,
-  REPOSITORY_LINK_LABEL,
   SOURCE_REF_PATTERN,
   UNPUBLISH,
 } from "../library-copy";
@@ -63,25 +67,30 @@ import { rowActions, statusView } from "./catalog-status";
 // blank space reads as a rendering bug.
 const NO_HASH = "—";
 
-// A platform row is normally imported from GitHub, so its source is `owner/repo`
-// and an operator wants to click through and check it. A template- or
-// upload-sourced row is not, and linking it would point at a repository that does
-// not exist — so the cell only becomes a link when the value is actually a slug.
-function RepositoryCell({ repo }: { repo: string }) {
-  if (!SOURCE_REF_PATTERN.test(repo)) {
-    return <span className="text-sm text-muted-foreground">{repo}</span>;
-  }
+// This table draws its source exactly as the workspace Fleet library draws its
+// own, through one component, so the two surfaces cannot drift apart a glyph at
+// a time.
+//
+// The kind is derived rather than read: `core.fleet_library` stores no
+// `source_kind` (schema/450_fleet_library.sql), and an upload leaves
+// `source_repo` empty — the same predicate `rowActions` keys Fetch off, so the
+// glyph and the affordance can never disagree about what a row is.
+function sourceKindOf(entry: PlatformCatalogEntry): string {
+  return SOURCE_REF_PATTERN.test(entry.source_repo) ? SOURCE_KIND_GITHUB : SOURCE_KIND_UPLOAD;
+}
+
+// Unlike the workspace row, a platform row DOES store the revision it was
+// fetched at, so the link is pinned to it. `source_ref` takes a branch, a tag,
+// or a commit (afd_library::github), and only the last of the three actually
+// holds still — a link to `main` is a link to whatever main is today, which is
+// what the row's title says.
+function sourceCell(entry: PlatformCatalogEntry) {
   return (
-    <Button asChild variant="link" size="sm" className="h-auto p-0 text-sm font-normal">
-      <a
-        href={`${REPOSITORY_HOST}${repo}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label={`${REPOSITORY_LINK_LABEL}: ${repo}`}
-      >
-        {repo}
-      </a>
-    </Button>
+    <SourceMark
+      kind={sourceKindOf(entry)}
+      sourceRef={entry.source_repo}
+      gitRef={entry.source_ref || undefined}
+    />
   );
 }
 
@@ -180,27 +189,21 @@ export default function PlatformCatalogTable({
 
   const columns: DataTableColumn<PlatformCatalogEntry>[] = [
     {
-      key: "fleet",
-      header: COLUMN_FLEET,
+      key: "name",
+      header: COLUMN_NAME,
       sortValue: (row) => row.name,
-      cell: (row) => (
-        <div className="flex flex-col">
-          <span className="font-medium">{row.name}</span>
-          {/* The slug is the id a workspace installs by (`platform_library_id`) and
-              the id every API call names. It is meant to be pasted, so it can be. */}
-          <span className="flex items-center gap-1">
-            <span className="text-xs text-muted-foreground">{row.id}</span>
-            <CopyButton value={row.id} label={`${COPY_SLUG_LABEL}: ${row.id}`} />
-          </span>
-        </div>
-      ),
+      // The name alone. The slug (`platform_library_id`) used to ride under it
+      // with a copy button; it is an API identifier, and the Edit dialog is
+      // where a row is worked on, so the table reads as a catalogue instead of
+      // a clipboard.
+      cell: (row) => <span className="font-medium">{row.name}</span>,
     },
     {
-      key: "repository",
-      header: COLUMN_REPOSITORY,
+      key: "source",
+      header: COLUMN_SOURCE,
       hideOnMobile: true,
-      sortValue: (row) => row.source_repo,
-      cell: (row) => <RepositoryCell repo={row.source_repo} />,
+      sortValue: (row) => `${sourceKindOf(row)}:${row.source_repo}`,
+      cell: sourceCell,
     },
     {
       key: "status",
@@ -235,6 +238,18 @@ export default function PlatformCatalogTable({
         ) : (
           <code className="text-mono leading-mono text-muted-foreground">{NO_HASH}</code>
         ),
+    },
+    {
+      key: "updated_at",
+      header: COLUMN_TIME,
+      hideOnMobile: true,
+      sortValue: (row) => row.updated_at,
+      // `updated_at`, not a creation instant: the catalogue carries no other,
+      // and on this table the question is "when did this row last move" — a
+      // refetch, a publish, an edit — which is the one it answers.
+      cell: (row) => (
+        <Time value={new Date(row.updated_at)} format="relative" className="tabular-nums" />
+      ),
     },
     {
       key: "actions",
@@ -312,7 +327,13 @@ export default function PlatformCatalogTable({
   ];
 
   return (
-    <div className="space-y-4">
+    // Fills the height its page already reserves. `FleetLibrariesView` wraps
+    // this in `h-full overflow-hidden` + `flex min-h-0 flex-1 flex-col`, but
+    // the table stopped at its own content, so a one-row catalog floated in
+    // the top of the screen with its pagination bar tucked beneath it while
+    // the workspace Fleet library — same data, same DataTable — spanned. The
+    // shell was never the difference; this wrapper was.
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       {error ? (
         <p role="alert" data-testid="catalog-error" className="text-sm text-destructive">
           {error}
@@ -320,10 +341,12 @@ export default function PlatformCatalogTable({
       ) : null}
 
       <DataTable
+        className="flex min-h-0 flex-1 flex-col"
+        viewportClassName="min-h-0 flex-1 max-h-none"
         columns={columns}
         rows={currentEntries}
         rowKey={(row) => row.id}
-        caption={COLUMN_FLEET}
+        caption={FLEET_CATALOG_SECTION}
         empty={
           <EmptyState
             icon={<LibraryIcon size={20} aria-hidden="true" />}

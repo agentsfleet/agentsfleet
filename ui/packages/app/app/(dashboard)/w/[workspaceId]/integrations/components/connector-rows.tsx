@@ -5,8 +5,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Alert,
-  Button,
   DashboardRow,
+  IconAction,
   StatusPill,
   type StatusPillVariant,
 } from "@agentsfleet/design-system";
@@ -18,6 +18,7 @@ import {
   HashIcon,
   PlugIcon,
   TicketIcon,
+  UnplugIcon,
 } from "lucide-react";
 import { type ConnectorCatalogEntry } from "@/lib/api/connectors";
 import { CONNECTOR_NOT_CONFIGURED_DOCS_URI, CONNECTOR_STATUS, type ConnectorStatus } from "@/lib/api/connectors-types";
@@ -33,7 +34,12 @@ const DISCONNECTING_LABEL = "Disconnecting…";
 const CONNECT_LABEL = "Connect";
 const DISCONNECT_LABEL = "Disconnect";
 const SETUP_STEPS_LABEL = "Setup guide";
-const CONNECTED_IDENTITY_PREFIX = "Connected: ";
+// The description never says "connected": the status pill on the same row
+// already does, and a row that said it twice read as a stutter. It says what
+// the connection IS instead — which account it landed on, or that fleets may
+// use it — which is the one thing the pill cannot.
+const INSTALLED_ON_PREFIX = "Installed on ";
+const CONNECTED_DESCRIPTION = "Ready for your fleets to use.";
 const NOT_CONFIGURED_DESCRIPTION = "A platform admin needs to enable this connector.";
 
 // The card LIST comes from the catalog; this map only decorates a known provider
@@ -148,8 +154,8 @@ export function OAuthConnectorRow({
     ? NOT_CONFIGURED_DESCRIPTION
     : isConnected
       ? identity
-        ? `${CONNECTED_IDENTITY_PREFIX}${identity}`
-        : "Connected."
+        ? `${INSTALLED_ON_PREFIX}${identity}`
+        : CONNECTED_DESCRIPTION
       : "Connect in one click — no token to paste.";
 
   return (
@@ -184,29 +190,28 @@ export function OAuthConnectorRow({
               {SETUP_STEPS_LABEL}
             </a>
           ) : isConnected ? (
-            <Button
-              type="button"
+            // Glyphs, matching every other row action in the product. The
+            // label is the tooltip AND the accessible name, so "Disconnect
+            // GitHub" survives the words leaving the button.
+            <IconAction
               variant="ghost"
-              size="sm"
+              label={disconnecting ? DISCONNECTING_LABEL : `${DISCONNECT_LABEL} ${entry.display_name}`}
               onClick={() => void disconnect()}
               disabled={disconnecting}
               aria-busy={disconnecting}
-              aria-label={`${DISCONNECT_LABEL} ${entry.display_name}`}
             >
-              {disconnecting ? DISCONNECTING_LABEL : DISCONNECT_LABEL}
-            </Button>
+              <UnplugIcon size={14} />
+            </IconAction>
           ) : (
-            <Button
-              type="button"
+            <IconAction
               variant="ghost"
-              size="sm"
+              label={connecting ? CONNECTING_LABEL : `${CONNECT_LABEL} ${entry.display_name}`}
               onClick={() => void connect()}
               disabled={connecting}
               aria-busy={connecting}
-              aria-label={`${CONNECT_LABEL} ${entry.display_name}`}
             >
-              {connecting ? CONNECTING_LABEL : CONNECT_LABEL}
-            </Button>
+              <PlugIcon size={14} />
+            </IconAction>
           )}
         </div>
       }

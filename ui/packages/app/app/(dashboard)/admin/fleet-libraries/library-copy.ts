@@ -69,10 +69,19 @@ export const STATUS_HELP_BROKEN =
 
 // ── Table ────────────────────────────────────────────────────────────────────
 
-export const COLUMN_FLEET = "Fleet";
-export const COLUMN_REPOSITORY = "Repository";
+// The column set matches the workspace Fleet library table, header for header
+// (Indy, 2026-09-22): an operator who administers both should not have to learn
+// that "Repository" here is "Source" there. "Fleet" became "Name" for the same
+// reason, and the row no longer carries the slug — the entry id is an API
+// identifier, and the table is a place to read the catalogue, not to copy one.
+export const COLUMN_NAME = "Name";
+export const COLUMN_SOURCE = "Source";
 export const COLUMN_STATUS = "Status";
+// Kept, and the only column that is not shared. It is how an operator tells a
+// refetch that changed something from one that changed nothing — comparing two
+// hashes IS the job — and no other column on the row can answer that.
 export const COLUMN_BUNDLE = "Bundle";
+export const COLUMN_TIME = "Time";
 export const COLUMN_ACTIONS = "Actions";
 
 export const EMPTY_TITLE = "No fleets in the catalog";
@@ -113,13 +122,9 @@ export const EDIT_SOURCE_WARNING =
 // for and refuse to explain.
 export const EDIT_REASON_MISSING = "No copy — the install gate will not explain this one.";
 
-export const REPOSITORY_HOST = "https://github.com/";
-export const REPOSITORY_LINK_LABEL = "Open on GitHub";
-
 // Copy affordances. The hash cell shows a preview but copies the WHOLE hash — a
 // truncated hash compares to nothing, and comparing two of them is the only reason
 // the column exists.
-export const COPY_SLUG_LABEL = "Copy fleet id";
 export const COPY_HASH_LABEL = "Copy the full bundle hash";
 
 // The source shape (accepted form, example repository, authoring docs) is shared

@@ -130,7 +130,15 @@ describe("app shell navigation", () => {
     expect(platform.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("link", { name: "Runners" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Model library" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Fleet library" })).toBeTruthy();
+    // Addressed by href, not by name: a platform admin is the one session that
+    // sees BOTH "Fleet library" links — the workspace's own entries under
+    // Configuration and this catalogue under Platform. The group heading is
+    // what tells them apart on screen, and the path is what tells them apart
+    // here.
+    const platformLibrary = screen
+      .getAllByRole("link", { name: "Fleet library" })
+      .find((link) => link.getAttribute("href") === "/admin/fleet-libraries");
+    expect(platformLibrary).toBeTruthy();
 
     // Still collapsible on demand.
     await user.click(platform);

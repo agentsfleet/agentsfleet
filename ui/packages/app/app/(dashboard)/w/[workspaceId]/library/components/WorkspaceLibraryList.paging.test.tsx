@@ -28,6 +28,7 @@ vi.mock("../actions", () => ({
 }));
 
 import WorkspaceLibraryList from "./WorkspaceLibraryList";
+import { REMOVE_ROW_LABEL } from "../copy";
 
 const CREATED_MS = Date.UTC(2026, 3, 30, 10, 30, 0);
 
@@ -77,7 +78,7 @@ function renderList(entries: WorkspaceLibraryEntry[], initialCursor: string | nu
  * on a loaded one.
  */
 async function removeRow(index = 0) {
-  const action = screen.getAllByRole("button", { name: "Remove" })[index] as HTMLButtonElement;
+  const action = screen.getAllByRole("button", { name: REMOVE_ROW_LABEL })[index] as HTMLButtonElement;
   expect(action.disabled).toBe(false);
   fireEvent.click(action);
   await waitFor(() => screen.getByText(/from this workspace\?/));
@@ -173,7 +174,7 @@ describe("a page fetch does not shut the row actions", () => {
     // changes with `pending`, so finding it proves the state this case needs.
     await waitFor(() => expect(screen.getByRole("button", { name: "Loading…" })).toBeTruthy());
 
-    const action = screen.getAllByRole("button", { name: "Remove" })[0] as HTMLButtonElement;
+    const action = screen.getAllByRole("button", { name: REMOVE_ROW_LABEL })[0] as HTMLButtonElement;
     expect(action.disabled).toBe(false);
     fireEvent.click(action);
 
