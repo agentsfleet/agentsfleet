@@ -416,6 +416,19 @@ describe("FleetLibrariesView", () => {
     expect(link.textContent).toBe("agentsfleet/platform-ops");
   });
 
+  it("draws an uploaded row as an upload, never a repository", async () => {
+    // The shape an upload ACTUALLY stores: the empty string (catalog-status.ts
+    // — "An upload stores the empty string, so there is no revision to
+    // re-read"). The other non-slug case in this file is a pasted string; this
+    // is the one that occurs in production, and `sourceKindOf` keys the glyph
+    // off the same predicate `rowActions` keys Fetch off, so a row drawn as a
+    // repository here would also be offered a refetch it cannot serve.
+    renderView([entry({ id: "uploaded", name: "uploaded-bundle", source_repo: "", source_ref: "" })]);
+
+    await screen.findByText("uploaded-bundle");
+    expect(screen.queryByRole("link", { name: /Open on GitHub/ })).toBeNull();
+  });
+
   // A template- or upload-sourced row carries a source that is not a GitHub
   // slug. Linking it would point at a repository that does not exist — inert
   // text is the honest rendering.
