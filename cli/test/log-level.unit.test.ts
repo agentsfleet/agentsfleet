@@ -92,12 +92,26 @@ describe("the endpoint a record names carries no identifier", () => {
   test.each([
     ["a mid-path identifier", `/v1/workspaces/${U}/fleets`, "/v1/workspaces/{id}/fleets"],
     ["a trailing identifier", `/v1/fleets/${U}`, "/v1/fleets/{id}"],
-    ["a trailing identifier before a query", `/v1/fleets/${U}?expand=runs`, "/v1/fleets/{id}?expand=runs"],
-    ["a collection query", `/v1/workspaces/${U}/approvals?limit=50`, "/v1/workspaces/{id}/approvals?limit=50"],
+    ["a trailing identifier before a query", `/v1/fleets/${U}?expand=runs`, "/v1/fleets/{id}?expand={value}"],
+    ["a collection query", `/v1/workspaces/${U}/approvals?limit=50`, "/v1/workspaces/{id}/approvals?limit={value}"],
     ["two identifiers", `/v1/workspaces/${U}/library-entries/${V}`, "/v1/workspaces/{id}/library-entries/{id}"],
-    ["two identifiers before a query", `/v1/workspaces/${U}/fleets/${V}?tail=1`, "/v1/workspaces/{id}/fleets/{id}?tail=1"],
+    ["two identifiers before a query", `/v1/workspaces/${U}/fleets/${V}?tail=1`, "/v1/workspaces/{id}/fleets/{id}?tail={value}"],
+    // A cursor is a row identifier that does not look like one. The memory
+    // cursor carries the memory key, so keeping the value would name the row
+    // through the one part of the path nobody reads as an identifier.
+    ["an opaque cursor", "/v1/memories?starting_after=bWVtb3J5OnNlY3JldC1rZXk", "/v1/memories?starting_after={value}"],
+    ["several parameters", `/v1/workspaces/${U}/approvals?limit=50&starting_after=abc`, "/v1/workspaces/{id}/approvals?limit={value}&starting_after={value}"],
+    ["a bare flag carrying no value", "/v1/fleets?all", "/v1/fleets?all"],
   ])("%s is replaced", (_label, path, expected) => {
     expect(endpointOf(path as string)).toBe(expected as string);
+  });
+
+  test("a parameter name survives, so a reader still sees which were sent", () => {
+    const rendered = endpointOf("/v1/memories?starting_after=bWVtb3J5OnNlY3JldA&limit=25");
+    expect(rendered).toContain("starting_after=");
+    expect(rendered).toContain("limit=");
+    expect(rendered).not.toContain("bWVtb3J5OnNlY3JldA");
+    expect(rendered).not.toContain("25");
   });
 
   test("no rendered endpoint contains a UUID, whatever follows it", () => {

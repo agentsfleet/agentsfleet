@@ -94,6 +94,14 @@ const provide = (
     Effect.provide(workspacesLayer),
   );
 
+// `created_at` is on the wire (afd_wire/src/schedule.rs:45) and the table
+// appends an AGO column, so the fixture carries it: without it the row renders
+// a column that is always the empty cell, which is what shipped.
+// Ninety seconds ago, so the rendered age is a real one. A fixed future
+// instant renders the empty cell on purpose — `ago` refuses to invent an age
+// for clock disagreement — and that is not what this row is proving.
+const SCHEDULE_CREATED_AT = Date.now() - 90_000;
+
 const scheduleRow = {
   schedule_id: SCHEDULE_ID,
   fleet_id: FLEET_ID,
@@ -102,6 +110,7 @@ const scheduleRow = {
   message: "summarize",
   status: "active",
   sync: "synced",
+  created_at: SCHEDULE_CREATED_AT,
 };
 
 describe("schedule create/list/update/delete/sync effects", () => {
@@ -140,6 +149,12 @@ describe("schedule create/list/update/delete/sync effects", () => {
     );
     expect(Exit.isSuccess(tableExit)).toBe(true);
     expect(cap.tables[0]?.rows[0]?.schedule_id).toBe(SCHEDULE_ID);
+    // The age column has to be filled, not merely present. Every schedule
+    // rendered `—` because the row mapping dropped the timestamp the appended
+    // column reads.
+    expect(cap.tables[0]?.columns.at(-1)?.key).toBe(AGE_KEY);
+    expect(cap.tables[0]?.rows[0]?.[AGE_KEY]).toBe(ago(SCHEDULE_CREATED_AT));
+    expect(cap.tables[0]?.rows[0]?.[AGE_KEY]).toMatch(/^\d+[smhdy]$/);
 
     const piped = newCapture();
     const pipedCalls: HttpRequestInput[] = [];

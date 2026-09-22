@@ -48,6 +48,38 @@ describe("the schedule verbs match the rest of the surface", () => {
   });
 });
 
+describe("a refusal names a verb the parser accepts", () => {
+  // The rename moved the verbs and left the usage lines behind, so a bad
+  // identifier answered with `usage: agentsfleet schedule rm ...` — a sentence
+  // naming the one spelling the parser had just stopped accepting. A
+  // suggestion that cannot be typed is worse than none: it costs the reader a
+  // second failure to find out.
+  const BAD_ID = "not-a-uuid";
+
+  test.each([
+    ["create", ["schedule", "create", BAD_ID, "--cron", "* * * * *", "--message", "hi"]],
+    ["delete", ["schedule", "delete", BAD_ID, BAD_ID]],
+    ["show", ["schedule", "show", BAD_ID, BAD_ID]],
+  ])("%s refuses a malformed id naming its own spelling", async (verb, argv) => {
+    const { code, stderr } = await help(argv as ReadonlyArray<string>);
+    expect(code).not.toBe(0);
+    expect(stderr).toContain(`agentsfleet schedule ${verb}`);
+    for (const [retired] of RENAMED)
+      expect(stderr).not.toContain(`agentsfleet schedule ${retired}`);
+  });
+
+  test("no usage line in the schedule module names a retired verb", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const text = readFileSync(
+      join(import.meta.dir, "..", "src", "commands", "fleet_schedule.ts"),
+      "utf8",
+    );
+    for (const [retired] of RENAMED)
+      expect(text).not.toContain(`agentsfleet schedule ${retired}`);
+  });
+});
+
 describe("no command description names a scheduling vendor", () => {
   // The schedule surface named the host it happened to run on. Which host
   // receives a re-applied schedule is not a caller's concern, and naming it

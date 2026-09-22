@@ -11,7 +11,7 @@ import {
   type DataTableColumn,
 } from "@agentsfleet/design-system";
 import { LibraryIcon } from "lucide-react";
-import { removeLibraryEntryAction } from "../actions";
+import { listLibraryEntriesAction, removeLibraryEntryAction } from "../actions";
 import type { WorkspaceLibraryEntry } from "@/lib/api/library-types";
 import { isDefiniteRefusal } from "@/lib/api/errors";
 import { presentErrorString } from "@/lib/errors";
@@ -23,6 +23,9 @@ import {
   LIBRARY_EMPTY_BODY,
   LIBRARY_EMPTY_TITLE,
   LIBRARY_SECTION_LABEL,
+  LOAD_MORE_LABEL,
+  LOAD_MORE_ERROR_ACTION,
+  LOADING_LABEL,
   REMOVE_CONFIRM_LABEL,
   REMOVE_DIALOG_BODY,
   REMOVE_DIALOG_TITLE,
@@ -31,6 +34,8 @@ import {
 type Props = {
   workspaceId: string;
   entries: WorkspaceLibraryEntry[];
+  /** Where the next page resumes, or `null` when the first page is all of it. */
+  initialCursor: string | null;
 };
 
 const REMOVE_ACTION_DESCRIPTION = "remove the library entry";
@@ -100,20 +105,47 @@ function buildColumns({
   ];
 }
 
-export default function WorkspaceLibraryList({ workspaceId, entries }: Props) {
+export default function WorkspaceLibraryList({ workspaceId, entries, initialCursor }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [target, setTarget] = useState<WorkspaceLibraryEntry | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Pages after the first. The server renders page one; these accumulate as
+  // the operator asks for more, so the table shows everything fetched rather
+  // than the first hundred and a silence.
+  const [appended, setAppended] = useState<WorkspaceLibraryEntry[]>([]);
+  const [cursor, setCursor] = useState<string | null>(initialCursor);
+  const all = [...entries, ...appended];
   // The row leaves the table the moment the operator confirms; the server is
   // told inside the same transition. A rejected removal ends that transition
   // and React restores the row from the server-rendered list on its own — the
   // same shape the secrets list uses, so nothing here has to put it back.
   const [visible, hideEntry] = useOptimistic(
-    entries,
+    all,
     (current: WorkspaceLibraryEntry[], removedId: string) =>
       current.filter((entry) => entry.id !== removedId),
   );
+
+  // Mirrors the runner wall: append the page, follow its cursor, and keep the
+  // rows already shown when a page fails.
+  function loadMore(next: string) {
+    setError(null);
+    startTransition(async () => {
+      const result = await listLibraryEntriesAction(workspaceId, next);
+      if (!result.ok) {
+        setError(
+          presentErrorString({
+            errorCode: result.errorCode,
+            message: result.error,
+            action: LOAD_MORE_ERROR_ACTION,
+          }),
+        );
+        return;
+      }
+      setAppended((prev) => [...prev, ...result.data.items]);
+      setCursor(result.data.next_cursor);
+    });
+  }
 
   // Resolves when the transition settles, so the dialog holds its buttons
   // disabled until then. A confirm that returned at once would leave the
@@ -176,6 +208,19 @@ export default function WorkspaceLibraryList({ workspaceId, entries }: Props) {
           caption={LIBRARY_SECTION_LABEL}
           viewportClassName="min-h-0 flex-1 max-h-none"
         />
+      )}
+      {cursor === null ? null : (
+        <div className="flex justify-center">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => loadMore(cursor)}
+            disabled={pending}
+            aria-busy={pending}
+          >
+            {pending ? LOADING_LABEL : LOAD_MORE_LABEL}
+          </Button>
+        </div>
       )}
       <ConfirmDialog
         open={target !== null}

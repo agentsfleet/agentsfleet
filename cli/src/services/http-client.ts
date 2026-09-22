@@ -154,6 +154,15 @@ const buildHeaders = (
 // would never think to check.
 const ID_SEGMENT = /\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?=[/?]|$)/g;
 const ID_PLACEHOLDER = "/{id}";
+// A query VALUE is a row identifier as often as a path segment is, and it does
+// not have to look like a UUID to be one: `starting_after` carries an opaque
+// cursor, and a memory cursor carries the memory key. Names are what a reader
+// needs — which parameters a request sent — so the names stay and the values
+// go. A bare flag with no `=` carries no value and is left alone.
+const QUERY_SEPARATOR = "?";
+const QUERY_PAIR_SEPARATOR = "&";
+const QUERY_ASSIGNMENT = "=";
+const QUERY_VALUE_PLACEHOLDER = "{value}";
 const TRACE_ATTEMPT = "http.attempt";
 const TRACE_RETRY = "http.retry";
 const STATUS_NONE = "none";
@@ -166,7 +175,22 @@ const STATUS_NONE = "none";
  * worth asserting directly rather than only through whichever paths today's
  * commands happen to build.
  */
-export const endpointOf = (path: string): string => path.replace(ID_SEGMENT, ID_PLACEHOLDER);
+export const endpointOf = (path: string): string => {
+  const split = path.indexOf(QUERY_SEPARATOR);
+  const route = (split === -1 ? path : path.slice(0, split)).replace(ID_SEGMENT, ID_PLACEHOLDER);
+  if (split === -1) return route;
+  const named = path
+    .slice(split + 1)
+    .split(QUERY_PAIR_SEPARATOR)
+    .map((pair) => {
+      const assigned = pair.indexOf(QUERY_ASSIGNMENT);
+      return assigned === -1
+        ? pair
+        : `${pair.slice(0, assigned)}${QUERY_ASSIGNMENT}${QUERY_VALUE_PLACEHOLDER}`;
+    })
+    .join(QUERY_PAIR_SEPARATOR);
+  return `${route}${QUERY_SEPARATOR}${named}`;
+};
 
 const attemptRecord = (method: string, path: string, info: AttemptInfo): string =>
   `${TRACE_ATTEMPT} method=${method} endpoint=${endpointOf(path)} ` +

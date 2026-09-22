@@ -14,14 +14,18 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { TooltipProvider } from "@agentsfleet/design-system";
 import type { WorkspaceLibraryEntry } from "@/lib/api/library-types";
 
-const { refreshMock, removeActionMock } = vi.hoisted(() => ({
+const { refreshMock, removeActionMock, listActionMock } = vi.hoisted(() => ({
   refreshMock: vi.fn(),
   removeActionMock: vi.fn(),
+  listActionMock: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: refreshMock, push: vi.fn() }),
 }));
-vi.mock("../actions", () => ({ removeLibraryEntryAction: removeActionMock }));
+vi.mock("../actions", () => ({
+  removeLibraryEntryAction: removeActionMock,
+  listLibraryEntriesAction: listActionMock,
+}));
 
 import WorkspaceLibraryList from "./WorkspaceLibraryList";
 
@@ -47,12 +51,12 @@ function renderedNames(): string[] {
     .map((row) => row.querySelectorAll("td")[0]?.textContent ?? "");
 }
 
-function renderList(entries: WorkspaceLibraryEntry[]) {
+function renderList(entries: WorkspaceLibraryEntry[], initialCursor: string | null = null) {
   return render(
     React.createElement(
       TooltipProvider,
       null,
-      React.createElement(WorkspaceLibraryList, { workspaceId: "ws_1", entries }),
+      React.createElement(WorkspaceLibraryList, { workspaceId: "ws_1", entries, initialCursor }),
     ),
   );
 }
@@ -61,6 +65,7 @@ afterEach(() => {
   cleanup();
   refreshMock.mockReset();
   removeActionMock.mockReset();
+  listActionMock.mockReset();
 });
 
 describe("the workspace library list", () => {
@@ -226,5 +231,62 @@ describe("the workspace library list", () => {
       expect(screen.getByText(/do not hold library:write/)).toBeTruthy();
     });
     expect(refreshMock).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Reading one page and rendering `items` drops every entry past the server's
+ * page size with nothing on screen to say so. The gallery beside this list
+ * documents that hazard as unacceptable and pages behind a control; so does
+ * the runner wall. These are the cases that keep this list honest about what
+ * it has not loaded.
+ */
+describe("the list discloses what it has not loaded", () => {
+  const CURSOR = "cursor-page-2";
+
+  it("should offer no control when the first page is the whole collection", () => {
+    renderList([entry("e1", "github-pr-reviewer")], null);
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+  });
+
+  it("should offer a control when the server says a page remains", () => {
+    renderList([entry("e1", "github-pr-reviewer")], CURSOR);
+    expect(screen.getByRole("button", { name: "Load more" })).toBeTruthy();
+  });
+
+  it("should append the next page and follow its cursor", async () => {
+    listActionMock.mockResolvedValue({
+      ok: true,
+      data: { items: [entry("e2", "incident-responder")], total: null, next_cursor: null },
+    });
+    renderList([entry("e1", "github-pr-reviewer")], CURSOR);
+
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+
+    await waitFor(() => expect(screen.getByText("incident-responder")).toBeTruthy());
+    expect(listActionMock).toHaveBeenCalledWith("ws_1", CURSOR);
+    expect(renderedNames()).toEqual(["github-pr-reviewer", "incident-responder"]);
+    // The cursor came back null, so the collection is exhausted and the
+    // control goes — a button that fetches nothing is a worse lie than no
+    // button.
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Load more" })).toBeNull(),
+    );
+  });
+
+  it("should keep the rows already shown when a page fails, and keep the control", async () => {
+    listActionMock.mockResolvedValue({
+      ok: false,
+      status: 503,
+      errorCode: "UZ-LIBRARY-006",
+      error: "the datastore did not answer",
+    });
+    renderList([entry("e1", "github-pr-reviewer")], CURSOR);
+
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+
+    await waitFor(() => expect(screen.getByText("github-pr-reviewer")).toBeTruthy());
+    expect(renderedNames()).toEqual(["github-pr-reviewer"]);
+    expect(await screen.findByRole("button", { name: "Load more" })).toBeTruthy();
   });
 });
