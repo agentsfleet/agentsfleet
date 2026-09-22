@@ -24,7 +24,11 @@ const selftest_beat = @import("selftest_beat.zig");
 
 /// Reply carrying an operator's ask, so the same exchange proves the DOWN
 /// direction: a runner that cannot read this field never probes at all.
-const REPLY_ASKING = "{\"status\":\"ok\",\"selftest_requested\":true}";
+/// The cadence fragment every reply here carries. The daemon sends this on
+/// every beat and a reply without it does not parse, so a fixture that omitted
+/// it would be testing the refusal rather than the exchange it names.
+const BEAT_MS_JSON = ",\"heartbeat_interval_ms\":10000";
+const REPLY_ASKING = "{\"status\":\"ok\",\"selftest_requested\":true" ++ BEAT_MS_JSON ++ "}";
 
 /// Captures one heartbeat's request body. Mirrors `LeaseBodyStub` in the
 /// sibling client test; the buffer is larger because a verdict carries prose
@@ -177,7 +181,7 @@ test "a control plane that never sends the field simply never asks" {
     const parsed = try std.json.parseFromSlice(
         @import("AppliedPolicy.zig").HeartbeatReplyRaw,
         alloc,
-        "{\"status\":\"ok\"}",
+        "{\"status\":\"ok\"" ++ BEAT_MS_JSON ++ "}",
         .{ .ignore_unknown_fields = true },
     );
     defer parsed.deinit();

@@ -71,6 +71,12 @@ definitions live under
 operator playbook checks, applies, and verifies them against source-owned
 metrics.
 
+The operator playbook stores separate Prometheus and Loki datasource
+identifiers so its probes address the intended sources exactly. The incident
+responder keeps the existing workspace Grafana credential shape (`host` and
+`token`): it discovers the single Loki datasource through Grafana, then uses
+that returned identifier for read-only log evidence.
+
 ### The M61 naming trap
 
 The milestone named `OTEL_EXPORT_REMOVAL` did **not** remove the live OTel

@@ -155,3 +155,43 @@ describe("summarizeCharges", () => {
     expect(s.meterPct).toBe(100);
   });
 });
+
+// The dashboard holds the nanos denominator and no rate. These cover what that
+// buys: a figure the server sent is the figure rendered, and the denominator
+// stays exact across the whole range a balance can occupy.
+
+// Deliberately inconsistent with any per-second rate: 3_000 ms of runtime at
+// the daemon's run rate would be 300_000_000 nanos, not this. A client that
+// recomputed a run fee from wall_ms would report that instead of what the
+// ledger row actually says was charged.
+const SERVED_COST_NANOS = 7_111_111;
+
+// The largest balance the product's own copy claims to hold without loss.
+const NINE_MILLION_USD = 9_000_000;
+
+describe("spend is reported from the served figure, never recomputed", () => {
+  it("sums the credits the ledger says were deducted, ignoring wall time", () => {
+    const rows = [
+      charge({ id: "tel_1", event_id: "evt_1", credit_deducted_nanos: SERVED_COST_NANOS, wall_ms: 3000 }),
+      charge({ id: "tel_2", event_id: "evt_2", credit_deducted_nanos: SERVED_COST_NANOS, wall_ms: 60_000 }),
+    ];
+
+    // Equal costs against wildly unequal durations: only a summary that reads
+    // the served field can produce this total.
+    expect(summarizeCharges(rows, NANOS_PER_USD).spentNanos).toBe(2 * SERVED_COST_NANOS);
+  });
+
+  it("renders a charge the server sent even when no rate could have produced it", () => {
+    expect(formatChargeAmount(SERVED_COST_NANOS)).toBe("−$0.0071");
+  });
+});
+
+describe("the nanos denominator stays exact across a balance's range", () => {
+  it("formats the largest balance the wire format claims to carry", () => {
+    expect(formatDollars(NINE_MILLION_USD * NANOS_PER_USD)).toBe("$9,000,000.00");
+  });
+
+  it("keeps that balance inside the safe-integer range", () => {
+    expect(NINE_MILLION_USD * NANOS_PER_USD).toBeLessThan(Number.MAX_SAFE_INTEGER);
+  });
+});

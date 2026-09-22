@@ -5,6 +5,7 @@ import {
   MIN_VISIBLE_NANOS,
   SUBVISIBLE_AMOUNT_LABEL,
 } from "@/app/(dashboard)/settings/billing/lib/charges";
+import { NANOS_PER_USD } from "@/lib/types";
 
 /*
  * What is left to spend, in the header, on every page.
@@ -39,8 +40,8 @@ export const BALANCE_LABEL = "Credits";
 export const BALANCE_ARIA_LABEL = "Credit balance";
 export const BALANCE_EXHAUSTED_ARIA_LABEL = "Credit balance exhausted";
 
-const NANOS_PER_CENT = 10_000_000;
-const NANOS_PER_USD = NANOS_PER_CENT * 100;
+const CENTS_PER_USD = 100;
+const NANOS_PER_CENT = NANOS_PER_USD / CENTS_PER_USD;
 const CENTS_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",

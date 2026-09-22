@@ -19,6 +19,7 @@ import { resolveAuthToken } from "./workspace-guards.ts";
 import { catalogueProviders, fetchCatalogue, type LibraryModel } from "../lib/model-catalogue.ts";
 import { OPENAI_COMPATIBLE_PROVIDER } from "../constants/custom-endpoint.ts";
 import { ui, EMPTY_CELL } from "../output/index.ts";
+import { NANOS_PER_USD } from "../constants/billing.ts";
 
 const FIELD_PROVIDER = "provider" as const;
 const FIELD_MODEL = "model" as const;
@@ -28,7 +29,6 @@ const FIELD_OUTPUT = "output" as const;
 
 const MODELS_LISTED = "Model catalogue" as const;
 
-const NANOS_PER_USD = 1_000_000_000;
 const TOKENS_PER_K = 1_000;
 
 export interface ModelsFlags {

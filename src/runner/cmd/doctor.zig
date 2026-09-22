@@ -157,7 +157,7 @@ const common_test = @import("common");
 const dts = @import("../daemon/deadline_test_support.zig");
 const plane_stub = @import("plane_stub_test.zig");
 
-const STUB_OK = plane_stub.StubStatus{ .line = "200 OK", .body = "{\"status\":\"ok\"}" };
+const STUB_OK = plane_stub.StubStatus{ .line = "200 OK", .body = "{\"status\":\"ok\",\"heartbeat_interval_ms\":10000}" };
 const STUB_REJECT = plane_stub.StubStatus{ .line = "401 Unauthorized", .body = "{}" };
 const STUB_WRONG_HOST = plane_stub.StubStatus{ .line = "302 Found", .body = "" };
 

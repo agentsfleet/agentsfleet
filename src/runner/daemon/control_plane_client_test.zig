@@ -157,7 +157,7 @@ test "a hung control plane surfaces a transport error within the armed deadline"
     try testing.expect(elapsed < DEADLINE_PROBE_BOUND_MS);
 }
 
-const HEARTBEAT_OK_BODY = "{\"status\":\"ok\"}";
+const HEARTBEAT_OK_BODY = "{\"status\":\"ok\",\"heartbeat_interval_ms\":10000}";
 
 /// Keep-alive responder: accepts ONE connection and answers every request on
 /// it, so the accept counter is the connection-reuse proof.
