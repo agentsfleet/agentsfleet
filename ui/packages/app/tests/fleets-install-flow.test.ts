@@ -120,9 +120,9 @@ describe("test_install_template_gallery_render", () => {
     renderFlow();
     expect(screen.getByText("Fleet library")).toBeTruthy();
     expect(screen.getByText("GitHub PR reviewer")).toBeTruthy();
-    // The card states how many credentials an entry needs; the names are on
-    // hover, so the chip reads as a count rather than one chip per name.
-    expect(screen.getByText("1 credential")).toBeTruthy();
+    // The card draws each credential as its provider's mark; the names are on
+    // hover, so there is no chip carrying one to assert on.
+    expect(document.querySelector("[data-vendor-mark='github']")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Install" }).length).toBe(2);
   });
 

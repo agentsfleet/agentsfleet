@@ -82,22 +82,51 @@ describe("a gallery card is bounded", () => {
     expect(description.textContent).toContain("cannot open a Pull Request");
   });
 
-  it("states how many credentials an entry needs, not which", () => {
+  it("draws one mark per credential rather than a chip per name", () => {
     // Chips carrying five names wrap to a second line, and a wrapped row is
     // the other half of what made this card tall. The names are on hover.
     renderCard(<LibraryCard entry={VERBOSE} action={null} />);
 
-    expect(screen.getByText("5 credentials")).toBeTruthy();
+    const row = screen.getByTestId(`library-card-requires-${VERBOSE.id}`);
+    expect(row.querySelectorAll("svg")).toHaveLength(
+      VERBOSE.requirements.credentials.length,
+    );
     for (const name of VERBOSE.requirements.credentials) {
       expect(screen.queryByText(`Requires: ${name}`)).toBeNull();
     }
   });
 
-  it("counts one credential in the singular", () => {
-    renderCard(<LibraryCard entry={BRIEF} action={null} />);
+  it("draws the marks of the providers it knows", () => {
+    renderCard(<LibraryCard entry={VERBOSE} action={null} />);
 
-    expect(screen.getByText("1 credential")).toBeTruthy();
-    expect(screen.queryByText("1 credentials")).toBeNull();
+    const row = screen.getByTestId(`library-card-requires-${VERBOSE.id}`);
+    for (const known of ["elastic", "grafana", "github", "jira"]) {
+      expect(row.querySelector(`[data-vendor-mark='${known}']`)).toBeTruthy();
+    }
+    // Slack has no mark upstream and is deliberately not faked into one.
+    expect(row.querySelector("[data-vendor-mark='slack']")).toBeNull();
+  });
+
+  it("caps the marks and counts the rest", () => {
+    // Six is past the ceiling, and the row still has to be one line. The chip
+    // says how many are not drawn; the tooltip names every one of them,
+    // drawn or not.
+    const CROWDED = {
+      ...VERBOSE,
+      id: "crowded",
+      requirements: {
+        ...VERBOSE.requirements,
+        credentials: ["elastic", "grafana", "github", "jira", "slack", "zoho"],
+      },
+    };
+    renderCard(<LibraryCard entry={CROWDED} action={null} />);
+
+    const row = screen.getByTestId("library-card-requires-crowded");
+    expect(row.querySelectorAll("svg")).toHaveLength(5);
+    // `+` and the count are separate text nodes, so this reads the chip whole.
+    expect(row.textContent).toContain("+1");
+    // The sixth is not drawn, so its mark must not be either.
+    expect(row.querySelector("[data-vendor-mark='zoho']")).toBeNull();
   });
 
   it("renders no credential row for an entry that needs none", () => {
@@ -109,7 +138,6 @@ describe("a gallery card is bounded", () => {
     );
 
     expect(screen.queryByTestId(`library-card-requires-${BRIEF.id}`)).toBeNull();
-    expect(screen.queryByText(/credentials?$/)).toBeNull();
   });
 });
 
