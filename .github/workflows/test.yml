@@ -112,7 +112,7 @@ jobs:
       # Written by the step above; the cli lane already emits lcov.
       - name: Upload cli coverage to Codecov
         if: success()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: cli/coverage/lcov.info
@@ -136,7 +136,7 @@ jobs:
       # Written by the step above; the website lane already emits lcov.
       - name: Upload website coverage to Codecov
         if: success()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ui/packages/website/coverage/lcov.info
@@ -160,7 +160,7 @@ jobs:
       # Written by the step above; the app lane already emits lcov.
       - name: Upload app coverage to Codecov
         if: success()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ui/packages/app/coverage/lcov.info
