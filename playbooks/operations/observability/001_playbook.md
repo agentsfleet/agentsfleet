@@ -33,8 +33,8 @@ For each environment:
 
    | Vault | Item | Fields |
    |---|---|---|
-   | `ZMB_CD_DEV` | `agentsfleet-fleets-investigation-service-token` | `grafana-url`, `grafana-sa-token`, `grafana-namespace`, `prometheus-datasource-uid` |
-   | `ZMB_CD_PROD` | `agentsfleet-fleets-investigation-service-token` | `grafana-url`, `grafana-sa-token`, `grafana-namespace`, `prometheus-datasource-uid` |
+   | `ZMB_CD_DEV` | `agentsfleet-fleets-investigation-service-token` | `grafana-url`, `grafana-sa-token`, `grafana-namespace`, `prometheus-datasource-uid`, `loki-datasource-uid` |
+   | `ZMB_CD_PROD` | `agentsfleet-fleets-investigation-service-token` | `grafana-url`, `grafana-sa-token`, `grafana-namespace`, `prometheus-datasource-uid`, `loki-datasource-uid` |
 
 For self-hosted Grafana organization 1, the namespace is `default`. Grafana
 Cloud uses `stacks-<stack-id>`; copy it from that stack's Swagger page rather
