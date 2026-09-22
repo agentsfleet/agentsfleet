@@ -102,7 +102,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.0
+          bun-version: 1.4.2
       - name: Install agentsfleet dependencies
         run: bun install --frozen-lockfile
         working-directory: cli
@@ -112,7 +112,7 @@ jobs:
       # Written by the step above; the cli lane already emits lcov.
       - name: Upload cli coverage to Codecov
         if: success()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: cli/coverage/lcov.info
@@ -126,7 +126,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.0
+          bun-version: 1.4.2
       - name: Install website dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/website
@@ -136,7 +136,7 @@ jobs:
       # Written by the step above; the website lane already emits lcov.
       - name: Upload website coverage to Codecov
         if: success()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ui/packages/website/coverage/lcov.info
@@ -150,7 +150,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.0
+          bun-version: 1.4.2
       - name: Install app dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/app
@@ -160,7 +160,7 @@ jobs:
       # Written by the step above; the app lane already emits lcov.
       - name: Upload app coverage to Codecov
         if: success()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ui/packages/app/coverage/lcov.info
@@ -174,7 +174,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.0
+          bun-version: 1.4.2
       - name: Install design-system dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/design-system
@@ -188,7 +188,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.0
+          bun-version: 1.4.2
       - name: Install website dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/website
@@ -205,7 +205,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.0
+          bun-version: 1.4.2
       - name: Install app dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/app

@@ -104,19 +104,22 @@ const queryForList = (sort: string, startingAfter: string | undefined): string =
   return `${TENANT_API_KEYS_PATH}?${query.toString()}`;
 };
 
-const LIST_TABLE_COLUMNS = [
-  { key: KEY_NAME, label: "NAME" },
-  { key: "status", label: "STATUS" },
-  { key: "last_used_at", label: "LAST_USED" },
-  { key: CREATED_AT, label: "CREATED" },
-  { key: API_KEY_ID, label: "API_KEY_ID" },
-];
+// Last use and age answer different questions, so LAST_USED stays its own
+// column while CREATED becomes the age every table carries.
+const LIST_TABLE_SPEC = {
+  name: { key: KEY_NAME, label: "NAME" },
+  id: { key: API_KEY_ID, label: "API_KEY_ID" },
+  domain: [
+    { key: "status", label: "STATUS" },
+    { key: "last_used_at", label: "LAST_USED" },
+  ],
+} as const;
 
 const listTableRow = (key: ApiKeyRow) => ({
   key_name: key.key_name ?? "",
   status: key.active === false ? STATUS_REVOKED : STATUS_ACTIVE,
   last_used_at: formatTime(key.last_used_at, TIME_NEVER),
-  created_at: formatTime(key.created_at, TIME_MISSING),
+  [CREATED_AT]: key.created_at,
   api_key_id: key.id ?? "",
 });
 
@@ -211,7 +214,7 @@ export const apiKeyListEffectFromArgs = (
       yield* output.info("no API keys found");
       return;
     }
-    yield* output.printTable(LIST_TABLE_COLUMNS, keys.map(listTableRow));
+    yield* output.printEntityTable(LIST_TABLE_SPEC, keys.map(listTableRow));
   });
 
 export const apiKeyRevokeEffectFromId = (

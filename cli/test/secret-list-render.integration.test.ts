@@ -45,14 +45,14 @@ describe("secret list rendering", () => {
         const text = out.read();
         expect(text).toContain("NAME");
         expect(text).toContain("KIND");
-        expect(text).toContain("CREATED");
+        expect(text).toContain("AGO");
         expect(text).toContain("custom_secret");
         expect(text).toContain("provider_key");
       });
     });
   });
 
-  test("renders timestamps in ISO 8601, never a bare epoch integer", async () => {
+  test("renders an age, never a bare epoch integer", async () => {
     await authedScope(async () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
@@ -63,8 +63,12 @@ describe("secret list rendering", () => {
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         const text = out.read();
-        expect(text).toContain(CREATED_ISO);
+        // The column reports how long ago, not when. The half of this that
+        // was always load-bearing survives: a raw epoch integer is never what
+        // a reader is handed.
+        expect(text).toMatch(/\d+[smhdy]\b/);
         expect(text).not.toContain(String(CREATED_MS));
+        expect(text).not.toContain(CREATED_ISO);
       });
     });
   });

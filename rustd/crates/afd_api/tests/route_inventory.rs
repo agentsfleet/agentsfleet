@@ -83,6 +83,11 @@ const INVENTORY: &[&str] = &[
     "/v1/workspaces/{workspace_id}/preferences",
     "/v1/workspaces/{workspace_id}/preferences/{pref_key}",
     "/v1/workspaces/{workspace_id}/fleet-libraries",
+    // M204 — the entries a workspace onboarded, and removing one. A second
+    // collection rather than a filter on the gallery above: that one answers
+    // what is installable here, this one what this workspace owns.
+    "/v1/workspaces/{workspace_id}/library-entries",
+    "/v1/workspaces/{workspace_id}/library-entries/{entry_id}",
 ];
 
 /// The paths the table carries that belong to a LATER milestone.
@@ -212,7 +217,7 @@ fn tenant_and_workspace_templates() -> impl Iterator<Item = &'static str> {
 fn test_the_workspace_roster_is_whole() {
     assert_eq!(
         WorkspaceRoute::ALL.len(),
-        12,
+        14,
         "a workspace route was added or removed without the inventory moving"
     );
 }

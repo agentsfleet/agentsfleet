@@ -72,7 +72,7 @@ follows is the repo-workflow half that page does not carry.
   `ui/packages/app` → `bun run test:e2e:acceptance` (signup, login, lifecycle,
   kill, billing, multi-workspace). Local twins of the CI jobs:
   `make acceptance-e2e` (app suite; local run auto-starts dev on :3101, needs
-  Clerk DEV creds in the worktree-root `.env`) and `make cli-acceptance`
+  Clerk DEV creds in the worktree-root `.env`) and `make acceptance-cli`
   (agentsfleet). CI runs the same suite against the dev deployment on PR and prod
   post-deploy.
 

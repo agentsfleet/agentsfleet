@@ -110,6 +110,56 @@ const wrapDocument = (doc: string): string =>
   doc.split(NEWLINE).flatMap(wrapLine).join(NEWLINE);
 
 /**
+ * The flag this repository does not advertise.
+ *
+ * `--wizard` is the command-line library's own builder, which this repository
+ * never designed: it walks flags in declaration order, so the first thing it
+ * asks a newcomer is whether to set an API base URL. Deleting it is not ours
+ * to do — it belongs to the library — but listing it in the help WE render is,
+ * and a flag in the help is a promise that someone thought about it.
+ *
+ * It keeps working for anyone who names it. This only stops offering it.
+ */
+const UNADVERTISED_FLAG = "--wizard";
+const TERM_INDENT = 2;
+
+/**
+ * The term line that IS the unadvertised flag, rather than one that merely
+ * begins with its name.
+ *
+ * A prefix match would take `--wizardly` out with `--wizard` and its
+ * description with it. The boundary accepts what can follow a flag's name in a
+ * rendered term — nothing, a space, an alias comma, or `=value`.
+ */
+const FLAG_NAME_CHARACTER = /[\w-]/u;
+
+const namesUnadvertisedFlag = (term: string): boolean =>
+  term.startsWith(UNADVERTISED_FLAG) &&
+  !FLAG_NAME_CHARACTER.test(term.charAt(UNADVERTISED_FLAG.length));
+
+const indentOf = (line: string): number => line.length - line.trimStart().length;
+
+const withoutUnadvertisedFlag = (doc: string): string => {
+  const lines = doc.split(NEWLINE);
+  const kept: string[] = [];
+  let skipping = false;
+  for (const line of lines) {
+    const indent = indentOf(line);
+    if (skipping) {
+      // The entry's own wrapped description sits further in than its term.
+      if (line.trim().length > 0 && indent > TERM_INDENT) continue;
+      skipping = false;
+    }
+    if (indent === TERM_INDENT && namesUnadvertisedFlag(line.trim())) {
+      skipping = true;
+      continue;
+    }
+    kept.push(line);
+  }
+  return kept.join(NEWLINE);
+};
+
+/**
  * A mistyped command that resembles nothing gets a way forward.
  *
  * The library suggests a near match and says nothing when there is none, which
@@ -142,7 +192,8 @@ export const helpFormatter = (): CliOutput.Formatter => {
 
   return {
     ...base,
-    formatHelpDoc: (doc) => `${wrapDocument(base.formatHelpDoc(doc))}${helpTail()}`,
+    formatHelpDoc: (doc) =>
+      `${wrapDocument(withoutUnadvertisedFlag(base.formatHelpDoc(doc)))}${helpTail()}`,
     formatCliError: pointerFor(base.formatCliError),
     formatError: pointerFor(base.formatError),
     // The parser renders a parse failure through the PLURAL form, so this is

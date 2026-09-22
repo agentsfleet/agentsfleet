@@ -25,7 +25,7 @@ import {
 } from "./helpers-workspace-effect.ts";
 
 describe("workspaceListEffect", () => {
-  test("renders table with active marker", async () => {
+  test("names the workspace you are in under STATUS", async () => {
     const rec = makeRecorder();
     const workspacesState = {
       value: {
@@ -43,9 +43,11 @@ describe("workspaceListEffect", () => {
       Effect.provide(analyticsLayer(rec)),
     );
     await runWith(program);
-    expect(rec.stdout[0]).toContain(`"active":"*"`);
+    expect(rec.stdout[0]).toContain(`"status":"active"`);
     expect(rec.stdout[0]).toContain(`"workspace_id":"${WS_ID}"`);
-    expect(rec.stdout[1]).toContain(`"active":""`);
+    // The row that is not the current workspace reports the empty cell, not a
+    // second status word — there is only one workspace you are in.
+    expect(rec.stdout[1]).not.toContain(`"status":"active"`);
     expect(rec.events[0]?.event).toBe("workspace_list_viewed");
     expect(rec.events[0]?.properties).toEqual({ workspace_count: 2 });
   });

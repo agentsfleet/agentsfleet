@@ -135,6 +135,7 @@ rejects!(should_reject_a_lowercase_prefix, "uz-REQ-001");
 rejects!(should_reject_an_empty_family, "UZ--001");
 rejects!(should_reject_a_lowercase_family, "UZ-req-001");
 rejects!(should_reject_two_digits, "UZ-REQ-01");
+// audit-error-codes: intentional-fake — the four-digit number IS the subject here.
 rejects!(should_reject_four_digits, "UZ-REQ-0001");
 rejects!(should_reject_a_non_digit_number, "UZ-REQ-00A");
 rejects!(should_reject_a_missing_number, "UZ-REQ");

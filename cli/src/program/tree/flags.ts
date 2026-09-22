@@ -238,7 +238,7 @@ export const modelOverrideFlag = textFlag(FLAG.model, "Override the default mode
 
 export const tokenNameFlag = textFlag(
   "token-name",
-  "Label for this session, shown on the approval page and in `auth status` (default: platform family)",
+  "Label for this session, shown on the approval page and in `whoami` (default: platform family)",
   METAVAR.label,
 );
 export const forceFlag = Flag.Boolean("force").pipe(
@@ -276,6 +276,7 @@ export const gateIdArgument = idArgument("gate_id", "Approval gate ID");
 export const apiKeyIdArgument = idArgument("api_key_id", "API key ID");
 export const grantIdArgument = idArgument("grant_id", "Grant ID");
 export const scheduleIdArgument = idArgument("schedule_id", "Schedule ID");
+export const entryIdArgument = idArgument("entry_id", "Fleet library entry ID");
 
 export const workspaceNameArgument = Argument.String(FLAG.name).pipe(
   Argument.withDescription("Workspace name"),

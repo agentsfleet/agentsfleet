@@ -2,7 +2,7 @@
 //
 // One request answers two questions, which is why they share a file. "Does this
 // credential still authenticate" is what `login` asks after it mints one and
-// what `auth status` asks on demand; "who does it belong to" is what `whoami`
+// what `whoami` asks on demand; "who does it belong to" is what it
 // asks and what `login` reports when it finishes. The endpoint requires no
 // capability, so the answer is the same for every signed-in person.
 //

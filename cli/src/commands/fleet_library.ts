@@ -16,7 +16,7 @@ import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsFleetLibrariesPath } from "../lib/api-paths.ts";
 import { collectPages } from "../lib/paged.ts";
-import { ui, EMPTY_CELL } from "../output/index.ts";
+import { ui, AGE_KEY, EMPTY_CELL } from "../output/index.ts";
 import { LIBRARY_ID_PLACEHOLDER } from "../constants/cli-flags.ts";
 import type { CliError } from "../errors/index.ts";
 import type { FleetLibraryGalleryEntry } from "./fleet_install_source.ts";
@@ -30,7 +30,7 @@ const FIELD_CREDENTIALS = "credentials" as const;
 const EMPTY_GALLERY =
   "No Fleet libraries in this workspace." as const;
 const EMPTY_HINT =
-  "Add one with: agentsfleet library add --github <owner/repo>" as const;
+  "Add one with: agentsfleet library create --github <owner/repo>" as const;
 const LIBRARIES_LISTED = "Fleet libraries" as const;
 const INSTALL_HINT =
   `Install one with: agentsfleet install --library ${LIBRARY_ID_PLACEHOLDER}` as const;
@@ -66,13 +66,15 @@ export const libraryEffect: Effect.Effect<
     return;
   }
 
-  yield* output.printTable(
-    [
-      { key: FIELD_ID, label: "LIBRARY" },
-      { key: FIELD_NAME, label: "NAME" },
-      { key: FIELD_TIER, label: "TIER" },
-      { key: FIELD_CREDENTIALS, label: "SECRETS" },
-    ],
+  yield* output.printEntityTable(
+    {
+      name: { key: FIELD_NAME, label: "NAME" },
+      id: { key: FIELD_ID, label: "LIBRARY" },
+      domain: [
+        { key: FIELD_TIER, label: "TIER" },
+        { key: FIELD_CREDENTIALS, label: "SECRETS" },
+      ],
+    },
     items.map((entry) => ({
       id: String(entry.id ?? ""),
       name: String(entry.name ?? ""),
@@ -81,6 +83,7 @@ export const libraryEffect: Effect.Effect<
       // the two rows apart.
       tier: String(entry.visibility ?? EMPTY_CELL),
       credentials: joinNames(entry.requirements?.credentials),
+      [AGE_KEY]: entry.created_at,
     })),
   );
   yield* output.info(ui.dim(INSTALL_HINT));

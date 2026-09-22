@@ -141,6 +141,19 @@ if (!isLive) {
         assert.equal(typeof payload.status, "string");
       });
 
+      it("fleet show names that fleet, and status names it among the rest", async () => {
+        // status answered for the workspace and there was no way to ask about
+        // one fleet; the one-fleet read is its own verb rather than an
+        // optional argument on the workspace view.
+        const one = await runFleetctl(["fleet", "show", fleetId, "--json"], { env });
+        assert.equal(one.code, 0, `fleet show failed: ${one.stderr}`);
+        assert.ok(one.stdout.includes(fleetId), `fleet show did not name it: ${one.stdout}`);
+
+        const all = await runFleetctl(["status", "--json"], { env });
+        assert.equal(all.code, 0, `status failed: ${all.stderr}`);
+        assert.ok(all.stdout.includes(fleetId), "status stopped naming the fleet");
+      });
+
       it("status exposes per-fleet events_processed and budget_used_nanos", async () => {
         // End-to-end: the real server aggregates these from core.fleet_events
         // and fleet_execution_telemetry, and the CLI surfaces them in the list
@@ -263,10 +276,13 @@ if (!isLive) {
     });
 
     // Invalid-format ID rejected client-side; no network call fires.
-    // Today only workspace use/delete run `validateRequiredId`. The fleet /
-    // fleet / grant handlers send invalid strings straight to the API —
-    // surfaced as Discovery (CLI hygiene: wire validateRequiredId into the
-    // remaining ID-taking handlers, then this sweep widens automatically).
+    // This once said only workspace use/delete validated, and that the fleet
+    // and grant handlers sent invalid strings straight to the API. Measured
+    // against an unroutable API, every identifier-taking verb in the matrix
+    // answers INVALID_ARGUMENT without dialling: stop, kill, resume, logs,
+    // workspace use/delete, api-key delete, grant delete and fleet show. The
+    // comment outlived the gap it described, and the rows it justified
+    // excluding were the coverage this sweep was meant to have.
     describe("invalid-format ID — client-side rejection, no network", () => {
       // All INVALID_ID_SAMPLES fail the uuidv7 validator introduced in this
       // PR (SAFE_ID_RE was removed). Run the full set so every sample is

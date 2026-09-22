@@ -15,7 +15,10 @@ import {
   readProblemDetails,
   type FetchImpl,
 } from "../lib/http.ts";
-import { DROP_CODES, PRE_SEND_CODES, apiRequestWithRetry, socketCode, type RetryConfig } from "../lib/http-retry.ts";
+import {
+  DROP_CODES, PRE_SEND_CODES, apiRequestWithRetry, socketCode,
+  type RetryConfig, type AttemptInfo, type RetryInfo,
+} from "../lib/http-retry.ts";
 import { CliConfig } from "./config.ts";
 import { NetworkError, ServerError } from "../errors/index.ts";
 import { isString } from "../lib/guards.ts";
@@ -136,6 +139,68 @@ const buildHeaders = (
   return { ...auth, ...(base ?? {}) };
 };
 
+// A request that is slow or flaky is the thing an operator needs to see, and
+// until now there was nothing to see: `--log-level` validated a level and then
+// governed no records, because this package emitted none. The retry layer
+// already decides; these only report what it decided.
+//
+// The path is reported with its identifiers replaced, so a record names the
+// endpoint rather than which fleet someone was looking at. The token never
+// appears: it lives in a header this function is not handed.
+// The boundary accepts what can FOLLOW an identifier in a request path: the
+// next segment, the end of the path, or the query string. Without the last of
+// those a path ending in an identifier keeps it whenever a caller appends a
+// query — the redaction would hold everywhere except the one shape a reader
+// would never think to check.
+const ID_SEGMENT = /\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?=[/?]|$)/g;
+const ID_PLACEHOLDER = "/{id}";
+// A query VALUE is a row identifier as often as a path segment is, and it does
+// not have to look like a UUID to be one: `starting_after` carries an opaque
+// cursor, and a memory cursor carries the memory key. Names are what a reader
+// needs — which parameters a request sent — so the names stay and the values
+// go. A bare flag with no `=` carries no value and is left alone.
+const QUERY_SEPARATOR = "?";
+const QUERY_PAIR_SEPARATOR = "&";
+const QUERY_ASSIGNMENT = "=";
+const QUERY_VALUE_PLACEHOLDER = "{value}";
+const TRACE_ATTEMPT = "http.attempt";
+const TRACE_RETRY = "http.retry";
+const STATUS_NONE = "none";
+
+/**
+ * The endpoint a record names, with every identifier in it replaced.
+ *
+ * Exported because it is the redaction boundary: a record must name the route
+ * somebody called, never the row they were looking at, and that promise is
+ * worth asserting directly rather than only through whichever paths today's
+ * commands happen to build.
+ */
+export const endpointOf = (path: string): string => {
+  const split = path.indexOf(QUERY_SEPARATOR);
+  const route = (split === -1 ? path : path.slice(0, split)).replace(ID_SEGMENT, ID_PLACEHOLDER);
+  if (split === -1) return route;
+  const named = path
+    .slice(split + 1)
+    .split(QUERY_PAIR_SEPARATOR)
+    .map((pair) => {
+      const assigned = pair.indexOf(QUERY_ASSIGNMENT);
+      return assigned === -1
+        ? pair
+        : `${pair.slice(0, assigned)}${QUERY_ASSIGNMENT}${QUERY_VALUE_PLACEHOLDER}`;
+    })
+    .join(QUERY_PAIR_SEPARATOR);
+  return `${route}${QUERY_SEPARATOR}${named}`;
+};
+
+const attemptRecord = (method: string, path: string, info: AttemptInfo): string =>
+  `${TRACE_ATTEMPT} method=${method} endpoint=${endpointOf(path)} ` +
+  `attempt=${info.attempt} status=${info.status ?? STATUS_NONE} ` +
+  `duration_ms=${info.durationMs} terminal=${info.terminal}`;
+
+const retryRecord = (path: string, info: RetryInfo): string =>
+  `${TRACE_RETRY} endpoint=${endpointOf(path)} attempt=${info.attempt} ` +
+  `status=${info.status ?? STATUS_NONE} reason=${info.reason}`;
+
 const makeLive = (
   apiUrl: string,
   fetchImpl: FetchImpl | undefined,
@@ -151,10 +216,21 @@ const makeLive = (
         : isString(input.body)
           ? input.body
           : JSON.stringify(input.body);
+    const method = input.method ?? HTTP_METHOD.get;
+    // Collected during the request, emitted after it settles: the hooks are
+    // plain callbacks inside a promise, so logging from them would escape the
+    // fiber whose level `--log-level` set.
+    const trace: string[] = [];
     return Effect.tryPromise({
       try: () =>
         apiRequestWithRetry(url, {
-          method: input.method ?? HTTP_METHOD.get,
+          method,
+          onAttempt: (info: AttemptInfo) => {
+            trace.push(attemptRecord(method, input.path, info));
+          },
+          onRetry: (info: RetryInfo) => {
+            trace.push(retryRecord(input.path, info));
+          },
           headers,
           ...(body !== undefined ? { body } : {}),
           ...(input.retry !== undefined ? { retry: input.retry } : {}),
@@ -164,7 +240,12 @@ const makeLive = (
           ...(fetchImpl !== undefined ? { fetchImpl } : {}),
         }) as Promise<T>,
       catch: (cause) => toCliError(url, cause),
-    });
+    }).pipe(
+      // ensuring, not tap: a request that failed is the one worth reading.
+      Effect.ensuring(
+        Effect.forEach(trace, (line) => Effect.logDebug(line), { discard: true }),
+      ),
+    );
   },
 });
 

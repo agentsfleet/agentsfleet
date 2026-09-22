@@ -127,8 +127,8 @@ pub(crate) const SCHEDULE_DESTINATION: &str =
 pub(crate) const SCHEDULE_API_BASE: &str = "https://qstash.fixture.test/v2";
 
 pub(crate) use self::support::{
-    connect_redis, dragonfly_config, file_runner, json_body, presented, runner_id, send,
-    send_with_headers, tenant,
+    ERROR_CODE, connect_redis, dragonfly_config, file_runner, json_body, presented, runner_id,
+    send, send_with_headers, tenant,
 };
 
 /// A Postgres nobody is listening on.

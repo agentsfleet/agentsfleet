@@ -256,7 +256,12 @@ and every spec criterion runs against it; skip-pass is only for genuinely
 spec-less branches. A deliberately folded spec retains the exact branch header
 and adds `**Folded-into:** \`M178_001\`` naming the owning spec. Discovery
 validates that relation and gates the sole non-folded owner; two non-folded
-specs on one branch remain a hard error. Mechanical criteria: `spec.moved`
+specs on one branch remain a hard error. **The same relation holds in
+`active/`, from the moment the fold is decided.** A second workstream may sit
+beside an open stream while it names that stream through `Folded-into`, and the
+gates run against the owner — a fold is not a second stream, and it was decided
+when the scope was, not when the spec moved. Extra `active/` specs without the
+header are still the hard error they were: one stream per worktree. Mechanical criteria: `spec.moved`
 (`Status: DONE` ⇒ the spec sits under `done/` and was moved on this branch) · `spec.baseline`
 (`Test Baseline:` recorded) · `spec.ordering` (the branch's first commit
 carries the spec — no code before CHORE(open)) · `spec.deferrals` (a deferral

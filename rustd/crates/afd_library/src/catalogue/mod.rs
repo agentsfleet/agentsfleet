@@ -1,5 +1,6 @@
 //! Metadata-only platform Fleet-library administration.
 
+mod entries;
 mod etag;
 mod gallery;
 mod import;
@@ -10,6 +11,7 @@ mod store;
 const VISIBILITY_DRAFT: &str = "draft";
 const VISIBILITY_PUBLIC: &str = "public";
 
+pub use entries::{EntryPosition, OwnedEntry, OwnedPage};
 pub use gallery::{GalleryPage, Position, SummaryEntry, Tier};
 pub use import::{Destination, LibraryImports};
 pub use model::{DeleteLibrary, LibraryItem, LibraryPatch, LibraryRequirements, PatchLibrary};

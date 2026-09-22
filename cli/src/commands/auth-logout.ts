@@ -1,7 +1,7 @@
 // `agentsfleet logout` — the server-side revokes and the local clear.
 //
 // Split from auth.ts when the credential revoke landed and the file crossed
-// its length cap. The seam is real rather than arbitrary: `auth status` reads
+// its length cap. The seam is real rather than arbitrary: `whoami` reads
 // and reports, while logout is the only command that ends credentials, so the
 // two share services but no logic.
 //

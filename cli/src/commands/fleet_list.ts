@@ -11,7 +11,7 @@ import {
 } from "./workspace-guards.ts";
 import { isString } from "../lib/guards.ts";
 import { QUERY_STARTING_AFTER, wsFleetsPath } from "../lib/api-paths.ts";
-import { ui } from "../output/index.ts";
+import { ui, AGE_KEY } from "../output/index.ts";
 
 interface FleetListRow {
   readonly [key: string]: unknown;
@@ -73,16 +73,17 @@ export const listEffectFromFlags = Effect.fn("fleet.list")(function* (
     return;
   }
 
-  yield* output.printTable(
-    [
-      { key: FIELD_NAME, label: "NAME" },
-      { key: FIELD_FLEET_ID, label: "FLEET" },
-      { key: FIELD_STATUS, label: "STATUS" },
-    ],
+  yield* output.printEntityTable(
+    {
+      name: { key: FIELD_NAME, label: "NAME" },
+      id: { key: FIELD_FLEET_ID, label: "FLEET" },
+      domain: [{ key: FIELD_STATUS, label: "STATUS" }],
+    },
     items.map((z) => ({
       name: String(z[FIELD_NAME] ?? ""),
       fleet_id: String(z[FIELD_FLEET_ID] ?? z["id"] ?? ""),
       status: String(z[FIELD_STATUS] ?? ""),
+      [AGE_KEY]: z[AGE_KEY],
     })),
   );
   if (res.next_cursor) {

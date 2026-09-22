@@ -30,6 +30,13 @@ closed_set! {
         GlobalModels => "global_models",
         /// The fleet gallery's summary rows.
         FleetSummary => "fleet_summary",
+        /// The entries one workspace onboarded, on the collection it
+        /// administers. Distinct from the gallery beside it because the two
+        /// answer different questions over different row counts: a gallery
+        /// read grows with the platform catalogue, and this one only with what
+        /// a workspace onboarded. Sharing `fleet_summary` would average the
+        /// two and hide whichever is slow.
+        WorkspaceEntries => "workspace_entries",
     }
 }
 

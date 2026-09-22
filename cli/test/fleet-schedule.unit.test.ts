@@ -1,3 +1,4 @@
+import { AGE_KEY, ago, entityColumns } from "../src/output/index.ts";
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Layer, Option, Redacted } from "effect";
 
@@ -51,6 +52,7 @@ const outputLayer = (cap: Capture): Layer.Layer<Output> =>
       success: (msg) => Effect.sync(() => { cap.successes.push(msg); }),
       printJson: (payload) => Effect.sync(() => { cap.jsons.push(payload); }),
       printTable: (columns, rows) => Effect.sync(() => { cap.tables.push({ columns, rows }); }),
+      printEntityTable: (spec, rows) => Effect.sync(() => { cap.tables.push({ columns: entityColumns(spec), rows: rows.map((r) => ({ ...r, [AGE_KEY]: ago(r[spec.ageKey ?? AGE_KEY]) })) }); }),
     } satisfies OutputShape),
   );
 
@@ -92,6 +94,14 @@ const provide = (
     Effect.provide(workspacesLayer),
   );
 
+// `created_at` is on the wire (afd_wire/src/schedule.rs:45) and the table
+// appends an AGO column, so the fixture carries it: without it the row renders
+// a column that is always the empty cell, which is what shipped.
+// Ninety seconds ago, so the rendered age is a real one. A fixed future
+// instant renders the empty cell on purpose — `ago` refuses to invent an age
+// for clock disagreement — and that is not what this row is proving.
+const SCHEDULE_CREATED_AT = Date.now() - 90_000;
+
 const scheduleRow = {
   schedule_id: SCHEDULE_ID,
   fleet_id: FLEET_ID,
@@ -100,9 +110,10 @@ const scheduleRow = {
   message: "summarize",
   status: "active",
   sync: "synced",
+  created_at: SCHEDULE_CREATED_AT,
 };
 
-describe("schedule add/list/update/rm/sync effects", () => {
+describe("schedule create/list/update/delete/sync effects", () => {
   test("add posts cron body and renders a human success line", async () => {
     const cap = newCapture();
     const calls: HttpRequestInput[] = [];
@@ -138,6 +149,12 @@ describe("schedule add/list/update/rm/sync effects", () => {
     );
     expect(Exit.isSuccess(tableExit)).toBe(true);
     expect(cap.tables[0]?.rows[0]?.schedule_id).toBe(SCHEDULE_ID);
+    // The age column has to be filled, not merely present. Every schedule
+    // rendered `—` because the row mapping dropped the timestamp the appended
+    // column reads.
+    expect(cap.tables[0]?.columns.at(-1)?.key).toBe(AGE_KEY);
+    expect(cap.tables[0]?.rows[0]?.[AGE_KEY]).toBe(ago(SCHEDULE_CREATED_AT));
+    expect(cap.tables[0]?.rows[0]?.[AGE_KEY]).toMatch(/^\d+[smhdy]$/);
 
     const piped = newCapture();
     const pipedCalls: HttpRequestInput[] = [];

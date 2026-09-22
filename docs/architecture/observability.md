@@ -637,7 +637,7 @@ Labels are bounded at the source and again by the 256-series flush ceiling:
 | `agentsfleet.billing.charge.type` | `receive`, `renewal`, `settle` | closed set; no overflow value |
 | `gen_ai.provider.name` | exact OpenTelemetry well-known names only | unmapped provider omits the attribute and counts the omission |
 | `gen_ai.request.model` | exact value, admitted while the derived series budget holds | overflow omits the attribute and counts the omission |
-| `surface` (library) | `tenant_models`, `global_models`, `fleet_summary` | closed enum; no overflow value — a fourth surface is a code change, not a label |
+| `surface` (library) | `tenant_models`, `global_models`, `fleet_summary`, `workspace_entries` | closed enum; no overflow value — a fifth surface is a code change, not a label |
 | `stage` (library) | `next_upstream`, `auth_verify`, `pool_wait`, `authorize`, `sql`, `secret_project`, `map`, `serialize`, `cache_revision`, `cache_lookup` | closed enum; no overflow value |
 | `outcome` (library) | `ok`, `invalid`, `unauthorized`, `forbidden`, `not_found`, `timeout`, `cancelled`, `dependency_error`, `internal_error` | closed enum; no overflow value |
 | `cache` (library) | `hit`, `miss`, `bypass`, `stale`, `not_applicable` | closed enum; `not_applicable` is never counted — it means no cache decision was made |

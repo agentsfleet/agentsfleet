@@ -64,7 +64,7 @@ describe("connector commands", () => {
         expect(text).toContain("configured");
         expect(text).toContain("connected");
         // The disconnected row must render its own next action through the
-        // LIST renderer, not just through `connector status`.
+        // LIST renderer, not just through `connector show`.
         expect(text).toContain("linear");
         expect(text).toContain("not_connected");
         expect(text).toMatch(/Connect linear/i);
@@ -75,7 +75,7 @@ describe("connector commands", () => {
     });
   });
 
-  test("`connector status <provider>` prints primitive status fields", async () => {
+  test("`connector show <provider>` prints primitive status fields", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/connectors`]: () =>
@@ -91,7 +91,7 @@ describe("connector commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["connector", "status", "slack", "--workspace", WS_ID],
+          ["connector", "show", "slack", "--workspace", WS_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
@@ -112,7 +112,7 @@ describe("connector commands", () => {
     });
   });
 
-  test("`connector status --json` preserves raw backend strings for machines", async () => {
+  test("`connector show --json` preserves raw backend strings for machines", async () => {
     await authedScope(async () => {
       const rawTeam = "agentsfleet\u001b[31m-dev";
       const routes: MockRoutes = {
@@ -125,7 +125,7 @@ describe("connector commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["connector", "status", "slack", "--workspace", WS_ID, "--json"],
+          ["connector", "show", "slack", "--workspace", WS_ID, "--json"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
@@ -148,7 +148,7 @@ describe("connector commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["connector", "status", "Slack/Bad", "--workspace", WS_ID],
+          ["connector", "show", "Slack/Bad", "--workspace", WS_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
@@ -189,7 +189,7 @@ describe("connector commands", () => {
     });
   });
 
-  test("disconnected connector status succeeds with a next action", async () => {
+  test("disconnected connector show succeeds with a next action", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/connectors`]: () =>
@@ -201,7 +201,7 @@ describe("connector commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["connector", "status", "github", "--workspace", WS_ID, "--json"],
+          ["connector", "show", "github", "--workspace", WS_ID, "--json"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);

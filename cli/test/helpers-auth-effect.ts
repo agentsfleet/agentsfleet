@@ -1,8 +1,9 @@
-// Shared fixtures and doubles for the auth status and logout suites.
+// Shared fixtures and doubles for the logout suite.
 //
 // Extracted when auth-effect.unit.test.ts passed the repository's 350-line cap;
 // the suites that read them are unchanged.
 
+import { AGE_KEY, ago } from "../src/output/index.ts";
 import { Effect, Exit, Layer, Option, Redacted } from "effect";
 import { Analytics } from "../src/services/telemetry/analytics.service.ts";
 import { CliConfig } from "../src/services/config.ts";
@@ -56,6 +57,12 @@ export const outputLayer = (
     printTable: (_columns, rows) =>
       Effect.sync(() => {
         for (const row of rows) rec.stdout.push(JSON.stringify(row));
+      }),
+    // Mirrors what entityTable renders, so a test reads the age a user sees.
+    printEntityTable: (_spec, rows) =>
+      Effect.sync(() => {
+        for (const row of rows)
+          rec.stdout.push(JSON.stringify({ ...row, [AGE_KEY]: ago(row[AGE_KEY]) }));
       }),
   });
 
