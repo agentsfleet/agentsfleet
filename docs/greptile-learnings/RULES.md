@@ -178,10 +178,10 @@ every code a dispatch `.sh` emits resolves to exactly one row here.
 
 ## RULE TCF — A test that cannot fail is not a test
 
-**Rule:** Before trusting a test, make it red — delete the clause, guard, or branch it covers and confirm it fails. Assert what the check FOUND (the count, the symbol, the line), never only its exit code. A test that survives removal of its own subject is repaired or deleted, never kept for coverage.
+**Rule:** Before trusting a test, make it red — delete the clause, guard, or branch it covers and confirm it fails. Assert what the check FOUND (the count, the symbol, the line), never only its exit code. A test that survives removal of its own subject is repaired or deleted, never kept for coverage. **A disjunctive assertion (`expect(A or B)`) is vacuous when the failure mode produces B** — the outcome under test is always acceptable, and the fallback must earn its pass by asserting the condition that justifies it.
 **Why:** A vacuous pass and a real pass look identical from the outside, so the suite reports green while the guarantee is already gone.
 **Tags:** testing, review, all
-**Example:** a tenant-scope property asserted absence only and passed with the scope clause deleted; a dispatch eval asserted an exit code while its glob pointed at a dead tree.
+**Example:** a tenant-scope property asserted absence only and passed with the scope clause deleted; a dispatch eval asserted an exit code while its glob pointed at a dead tree. M205: `loop_test.zig` asserted `exit_reason == .fleet_stop or .drained`, and when a fixture lost a newly required wire field the reply stopped parsing, the loop backed off, the watchdog fired, and the drain branch satisfied the `or` — a stop-handling test passing while proving nothing. Correlating the fallback against watchdog state then raced a correct `.fleet_stop`; the shape that holds reads `if (exit_reason != .fleet_stop) expect(.drained and wd.fired)`, after the join.
 
 ## RULE JCL — CLI JSON contract discipline
 
