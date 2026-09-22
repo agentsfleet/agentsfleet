@@ -6,17 +6,31 @@
  * five credentials gave its five neighbours a screenful of dead space — the
  * defect these tests were written against, measured on the running app.
  *
- * Both bounds are asserted on the RENDERED output rather than on the source,
- * because what has to stay true is what someone sees: three lines and three
- * chips, whatever the entry carries.
+ * The first fix clamped to three lines and three chips, which straightened the
+ * grid and left the reader holding half a sentence: a description cut at "when
+ * the cause i…" with the rest a click away in the install dialog, past the
+ * decision the card exists to inform. So the card is now four rows that cannot
+ * wrap, and everything the clamp hides is on hover instead of on another
+ * screen.
+ *
+ * Asserted on the RENDERED output rather than on the source, because what has
+ * to stay true is what someone sees.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import { TooltipProvider } from "@agentsfleet/design-system";
 import type { FleetLibraryGalleryEntry } from "@/lib/types";
 
 import { LibraryCard } from "./LibraryCard";
 
 afterEach(cleanup);
+
+// The card's tooltips come from the design system, which requires a provider.
+// The dashboard layout mounts one around every page; these renders stand in
+// for it rather than the card carrying its own.
+function renderCard(ui: React.ReactNode) {
+  return render(<TooltipProvider>{ui}</TooltipProvider>);
+}
 
 // The entry that caused this: five sentences and five credentials, which is
 // four more sentences and four more credentials than its neighbours.
@@ -50,54 +64,52 @@ const BRIEF: FleetLibraryGalleryEntry = {
 };
 
 describe("a gallery card is bounded", () => {
-  it("clamps a long description rather than letting it set the row height", () => {
-    render(<LibraryCard entry={VERBOSE} action={null} />);
+  it("clamps a long description to one line rather than setting the row height", () => {
+    renderCard(<LibraryCard entry={VERBOSE} action={null} />);
 
-    const description = screen.getByText(/^Sweeps Grafana and Elastic/);
-    expect(description.className).toContain("line-clamp-3");
+    const description = screen.getByTestId(`library-card-description-${VERBOSE.id}`);
+    expect(description.className).toContain("line-clamp-1");
   });
 
-  it("shows three credentials and counts the rest", () => {
-    render(<LibraryCard entry={VERBOSE} action={null} />);
+  it("keeps the whole description in the document, clipped only by the clamp", () => {
+    // The clamp is CSS. The sentence a sighted reader loses to it is still
+    // here for anyone reading the page another way, and it is what the
+    // tooltip repeats — so "the rest is one screen away" stops being true.
+    renderCard(<LibraryCard entry={VERBOSE} action={null} />);
 
-    for (const shown of ["elastic", "grafana", "github"]) {
-      expect(screen.getByText(`requires: ${shown}`)).toBeTruthy();
+    const description = screen.getByTestId(`library-card-description-${VERBOSE.id}`);
+    expect(description.textContent).toBe(VERBOSE.description);
+    expect(description.textContent).toContain("cannot open a Pull Request");
+  });
+
+  it("states how many credentials an entry needs, not which", () => {
+    // Chips carrying five names wrap to a second line, and a wrapped row is
+    // the other half of what made this card tall. The names are on hover.
+    renderCard(<LibraryCard entry={VERBOSE} action={null} />);
+
+    expect(screen.getByText("5 credentials")).toBeTruthy();
+    for (const name of VERBOSE.requirements.credentials) {
+      expect(screen.queryByText(`Requires: ${name}`)).toBeNull();
     }
-    // The two that did not fit are a count, not two more chips — a third row
-    // of badges is the other half of what made this card tall.
-    expect(screen.queryByText("requires: jira")).toBeNull();
-    expect(screen.queryByText("requires: slack")).toBeNull();
-    expect(screen.getByText("+2")).toBeTruthy();
   });
 
-  it("names the hidden credentials on the overflow chip", () => {
-    // The count answers "roughly what does this need"; hovering answers which,
-    // without a card growing to say so. The install dialog is what refuses for
-    // a missing one, and it names every credential in full.
-    render(<LibraryCard entry={VERBOSE} action={null} />);
+  it("counts one credential in the singular", () => {
+    renderCard(<LibraryCard entry={BRIEF} action={null} />);
 
-    expect(screen.getByText("+2").getAttribute("title")).toBe("jira, slack");
-  });
-
-  it("leaves an entry that already fits alone", () => {
-    // The clamp is a ceiling, not a reformat: an entry inside both bounds
-    // renders exactly what it carries, with no overflow chip invented for it.
-    render(<LibraryCard entry={BRIEF} action={null} />);
-
-    expect(screen.getByText("requires: github")).toBeTruthy();
-    expect(screen.queryByText(/^\+\d+$/)).toBeNull();
+    expect(screen.getByText("1 credential")).toBeTruthy();
+    expect(screen.queryByText("1 credentials")).toBeNull();
   });
 
   it("renders no credential row for an entry that needs none", () => {
-    render(
+    renderCard(
       <LibraryCard
         entry={{ ...BRIEF, requirements: { ...BRIEF.requirements, credentials: [] } }}
         action={null}
       />,
     );
 
-    expect(screen.queryByText(/^requires: /)).toBeNull();
-    expect(screen.queryByText(/^\+\d+$/)).toBeNull();
+    expect(screen.queryByTestId(`library-card-requires-${BRIEF.id}`)).toBeNull();
+    expect(screen.queryByText(/credentials?$/)).toBeNull();
   });
 });
 
@@ -117,29 +129,35 @@ describe("a card names the catalogue its entry came from", () => {
     visibility: "tenant",
   };
 
-  it("names the platform tier in words, not in the wire's spelling", () => {
-    render(<LibraryCard entry={PLATFORM_COPY} action={null} />);
-    expect(screen.getByTestId("library-card-tier-github-pr-reviewer-platform").textContent)
-      .toBe("Platform");
+  it("names the platform tier on the mark, not in the wire's spelling", () => {
+    renderCard(<LibraryCard entry={PLATFORM_COPY} action={null} />);
+
+    const tier = screen.getByTestId("library-card-tier-github-pr-reviewer-platform");
+    expect(tier.textContent).toBe("Platform catalogue");
   });
 
   it("names a workspace's own copy as the workspace's", () => {
-    render(<LibraryCard entry={WORKSPACE_COPY} action={null} />);
-    expect(screen.getByTestId("library-card-tier-github-pr-reviewer-tenant").textContent)
-      .toBe("This workspace");
+    renderCard(<LibraryCard entry={WORKSPACE_COPY} action={null} />);
+
+    const tier = screen.getByTestId("library-card-tier-github-pr-reviewer-tenant");
+    expect(tier.textContent).toBe("This workspace");
   });
 
-  it("two same-named entries are distinguishable by rendered text alone", () => {
-    render(
+  it("two same-named entries are distinguishable by accessible name", () => {
+    // The tier is a mark now, so "distinguishable by rendered text" is no
+    // longer the property — the word moved to the accessible name and the
+    // tooltip. That is the thing to hold: a person who cannot hover, or who
+    // is not looking, must still be able to tell the two apart, because
+    // installing the wrong one of two identically named entries is silent.
+    renderCard(
       <>
         <LibraryCard entry={PLATFORM_COPY} action={null} />
         <LibraryCard entry={WORKSPACE_COPY} action={null} />
       </>,
     );
-    // Both cards carry the same name, so the tier is the only thing telling a
-    // person which one they are about to install.
+
     expect(screen.getAllByText("github-pr-reviewer")).toHaveLength(2);
-    expect(screen.getByText("Platform")).toBeTruthy();
+    expect(screen.getByText("Platform catalogue")).toBeTruthy();
     expect(screen.getByText("This workspace")).toBeTruthy();
   });
 });

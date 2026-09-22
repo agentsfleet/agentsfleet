@@ -65,6 +65,42 @@ const PUBLIC_BUNDLE_REPO = "agentsfleet/github-pr-reviewer" as const;
 const SETUP_TIMEOUT_MS = 120_000;
 const ONBOARD_TIMEOUT_MS = 120_000;
 
+/** How long the gallery may take to show a row `library create` just returned. */
+const LISTING_SETTLE_MS = 30_000;
+
+/** The gap between gallery reads while waiting for that row. */
+const LISTING_POLL_MS = 1_000;
+
+/** How much of a listing a refusal quotes before a CI log stops being readable. */
+const STDOUT_EXCERPT = 2_000;
+
+/**
+ * Why an identifier is not in the gallery, in one sentence.
+ *
+ * Distinguishes the two failures that read identically from a raw dump: the
+ * entry is absent entirely, or it is present under a different identifier than
+ * the one `library create` returned. The second is a defect in the daemon; the
+ * first is a timing or scope problem, and they are fixed in different places.
+ */
+const missingFrom = (
+  which: string,
+  wanted: string,
+  listed: { items?: Array<{ id?: string; name?: string }> },
+  stdout: string,
+): string => {
+  const items = listed.items ?? [];
+  const mine = items.filter((row) => (row.name ?? "").startsWith(ACCEPTANCE_RUN_PREFIX));
+  const named = mine.map((row) => `${row.name}=${row.id}`).join(", ") || "none";
+  return (
+    `the ${which} entry is missing from the gallery. ` +
+    `wanted id=${wanted}; gallery holds ${items.length} row(s); ` +
+    `rows from this run: ${named}. ` +
+    (mine.length > 0
+      ? "A row from this run IS listed, so the identifier the gallery prints differs from the one create returned."
+      : `No row from this run is listed at all. stdout: ${stdout.slice(0, STDOUT_EXCERPT)}`)
+  );
+};
+
 /** A minimal bundle whose name carries the run prefix, so teardown finds it. */
 const bundleName = (): string => `${ACCEPTANCE_RUN_PREFIX}libadd`;
 
@@ -183,19 +219,38 @@ if (!isLive) {
 
     it("`library` lists both onboarded entries, each carrying its tier", async () => {
       assert.ok(uploadedLibraryId && githubLibraryId, "nothing was onboarded to list");
-      const result = await runWithEnv(["library", JSON_FLAG]);
-      assert.equal(result.code, 0, `library failed: ${result.stderr}`);
-      const listed = parseJson(result, "library --json") as {
-        items?: Array<{ id?: string; visibility?: string }>;
-      };
-      const ids = (listed.items ?? []).map((row) => row.id);
+
+      // Polled, not read once. The gallery is a live distributed read behind a
+      // write that just returned, and a single read asserts that the two are
+      // instantaneous. They are not required to be, and in CI they are not: this
+      // case has failed there while passing locally against the same deployment
+      // and the same collection, which is the signature of a read that ran too
+      // early rather than a gallery missing a row.
+      const deadline = Date.now() + LISTING_SETTLE_MS;
+      let listed: { items?: Array<{ id?: string; name?: string; visibility?: string }> } = {};
+      let ids: Array<string | undefined> = [];
+      let stdout = "";
+      for (;;) {
+        const result = await runWithEnv(["library", JSON_FLAG]);
+        assert.equal(result.code, 0, `library failed: ${result.stderr}`);
+        stdout = result.stdout;
+        listed = parseJson(result, "library --json") as typeof listed;
+        ids = (listed.items ?? []).map((row) => row.id);
+        if (ids.includes(uploadedLibraryId) && ids.includes(githubLibraryId)) break;
+        if (Date.now() >= deadline) break;
+        await new Promise((settle) => setTimeout(settle, LISTING_POLL_MS));
+      }
+
       // The whole point: what `library` prints is what `install` will accept.
-      assert.ok(ids.includes(uploadedLibraryId),
-        `the uploaded entry is missing from the gallery: ${result.stdout}`);
-      assert.ok(ids.includes(githubLibraryId),
-        `the github entry is missing from the gallery: ${result.stdout}`);
+      //
+      // The message carries the identifiers and the name match rather than the
+      // whole listing. A gallery of several hundred rows scrolls the reason off
+      // the top of a CI log, and "is the row absent, or present under another
+      // id" is the question a reader actually has.
+      assert.ok(ids.includes(uploadedLibraryId), missingFrom("uploaded", uploadedLibraryId, listed, stdout));
+      assert.ok(ids.includes(githubLibraryId), missingFrom("github", githubLibraryId, listed, stdout));
       assert.ok((listed.items ?? []).every((row) => typeof row.visibility === "string"),
-        `every row carries a tier: ${result.stdout}`);
+        `every row carries a tier: ${stdout}`);
     });
 
     it("`install --library` accepts the identifier the listing printed", async () => {

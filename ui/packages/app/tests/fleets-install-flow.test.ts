@@ -120,7 +120,9 @@ describe("test_install_template_gallery_render", () => {
     renderFlow();
     expect(screen.getByText("Fleet library")).toBeTruthy();
     expect(screen.getByText("GitHub PR reviewer")).toBeTruthy();
-    expect(screen.getByText("requires: github")).toBeTruthy();
+    // The card states how many credentials an entry needs; the names are on
+    // hover, so the chip reads as a count rather than one chip per name.
+    expect(screen.getByText("1 credential")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Install" }).length).toBe(2);
   });
 
