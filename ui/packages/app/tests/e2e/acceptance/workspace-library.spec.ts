@@ -9,7 +9,7 @@
  *
  * The command-line walk runs the REAL binary in a subprocess against local
  * `agentsfleetd`. It onboards from a bundle directory it writes itself, so the
- * walk needs no network and no repository: `library add --from` uploads
+ * walk needs no network and no repository: `library create --from` uploads
  * SKILL.md and TRIGGER.md and nothing else.
  *
  * Both onboard under a per-run name. The gallery converges identical bytes
@@ -34,6 +34,12 @@ const GALLERY_SUBPATH = "fleets/new";
  * belongs to the platform catalogue under /admin. */
 const SIDEBAR_LABEL = "Library";
 const REMOVE_LABEL = "Remove";
+
+/** How long one attempt waits for the confirmation to appear. */
+const DIALOG_OPEN_MS = 3_000;
+
+/** How long the open is retried before the row action is called broken. */
+const DIALOG_SETTLE_MS = 20_000;
 const BUNDLE_SKILL_FILE = "SKILL.md";
 const BUNDLE_TRIGGER_FILE = "TRIGGER.md";
 const WORKSPACE_NAME = "fixture-workspace";
@@ -117,10 +123,20 @@ test.describe("workspace-library", () => {
     const row = page.getByRole("row").filter({ hasText: name });
     await expect(row).toBeVisible();
 
-    await row.getByRole("button", { name: REMOVE_LABEL }).click();
+    // The row actions carry `disabled={pending}` while a page transition is in
+    // flight, and a click that lands in the window where that flips is dropped
+    // without a trace — the dialog simply never opens. Playwright waits for
+    // enabled before clicking, which does not close the window, so the open is
+    // retried rather than assumed.
+    const removeAction = row.getByRole("button", { name: REMOVE_LABEL });
     // Both the row action and the dialog's confirm read "Remove", so the
     // confirm is addressed through the dialog rather than by label alone.
     const dialog = page.getByRole("dialog");
+    await expect(async () => {
+      await expect(removeAction).toBeEnabled();
+      await removeAction.click();
+      await expect(dialog).toBeVisible({ timeout: DIALOG_OPEN_MS });
+    }).toPass({ timeout: DIALOG_SETTLE_MS });
     await expect(dialog).toContainText(name);
     await dialog.getByRole("button", { name: REMOVE_LABEL }).click();
 
@@ -144,8 +160,8 @@ test.describe("workspace-library", () => {
       const env = cliEnv({ AGENTSFLEET_STATE_DIR: stateDir, AGENTSFLEET_API_URL: apiUrl });
       const bundle = await writeBundle(root, name);
 
-      const added = await spawnAgentsfleet(["--json", "library", "add", "--from", bundle], env);
-      expect(added.code, `add failed:\n${added.stdout}\n${added.stderr}`).toBe(0);
+      const added = await spawnAgentsfleet(["--json", "library", "create", "--from", bundle], env);
+      expect(added.code, `library create failed:\n${added.stdout}\n${added.stderr}`).toBe(0);
       const entryId = (JSON.parse(added.stdout) as { id?: string }).id;
       expect(entryId).toBeTruthy();
 
@@ -153,8 +169,8 @@ test.describe("workspace-library", () => {
       expect(listed.code, listed.stderr).toBe(0);
       expect(listed.stdout).toContain(entryId);
 
-      const removed = await spawnAgentsfleet(["library", "remove", String(entryId)], env);
-      expect(removed.code, `remove failed:\n${removed.stdout}\n${removed.stderr}`).toBe(0);
+      const removed = await spawnAgentsfleet(["library", "delete", String(entryId)], env);
+      expect(removed.code, `library delete failed:\n${removed.stdout}\n${removed.stderr}`).toBe(0);
       expect(removed.stdout).toContain(String(entryId));
 
       const after = await spawnAgentsfleet(["--json", "library", "list"], env);
