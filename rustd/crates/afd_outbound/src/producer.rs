@@ -65,6 +65,13 @@ pub const MIN_AGE: Duration = Duration::from_secs(30);
 /// gone".
 pub const LOST_AFTER: Duration = Duration::from_secs(300);
 
+/// How many delivery cycles an answer is allowed before it is abandoned.
+///
+/// A cycle ends retryable only after its own backoff has run out, and a lost
+/// answer is re-offered once per [`LOST_AFTER`], so this is roughly an hour of
+/// a destination refusing before the answer stops costing the queue anything.
+pub const MAX_DELIVERY_CYCLES: i64 = 12;
+
 /// How many rows one pass takes from each scan.
 pub const BATCH_LIMIT: i64 = 32;
 
@@ -83,6 +90,10 @@ const _: () = {
         "a queued answer must be given longer than an unqueued one"
     );
     assert!(BATCH_LIMIT > 0, "a pass that takes no rows never drains");
+    assert!(
+        MAX_DELIVERY_CYCLES >= 2,
+        "one cycle is no retry budget: a single outage would abandon the answer"
+    );
     assert!(
         BATCH_LIMIT <= 128,
         "a batch this large holds the queue for a live report"

@@ -18,9 +18,9 @@
               which row it was"
 )]
 
-use afd_connector::Provider;
 use std::time::Duration;
 
+use afd_connector::Provider;
 use afd_core::clock::UnixMillis;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::streams::ACKNOWLEDGED_HISTORY;

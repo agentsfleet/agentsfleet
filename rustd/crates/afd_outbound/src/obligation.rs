@@ -46,6 +46,34 @@ const CONTEXT_COUNT: &str = "count delivery attempt";
 /// Statement name, for the context a scan failure carries.
 const CONTEXT_SCAN: &str = "scan obligations";
 
+/// Statement name, for the context an abandon failure carries.
+const CONTEXT_ABANDON: &str = "abandon obligation";
+
+/// Why an answer was given up on.
+///
+/// A closed set whose spelling is what `abandon_reason` stores, so an operator
+/// filtering on it and the code writing it cannot drift apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AbandonReason {
+    /// The destination refused it and no retry changes that: a deleted
+    /// channel, a removed bot, an address naming nowhere. The poster's own
+    /// failure event names which.
+    Refused,
+    /// Every delivery cycle it was allowed ended retryable.
+    CyclesExhausted,
+}
+
+impl AbandonReason {
+    /// The stored spelling.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Refused => "refused",
+            Self::CyclesExhausted => "cycles_exhausted",
+        }
+    }
+}
+
 /// One owed delivery, as a caller ADDRESSES it.
 ///
 /// The borrowing half of the pair below. A struct rather than five positional
@@ -327,4 +355,31 @@ pub async fn stamp_delivered(
         .await
         .map_err(crate::error::query(CONTEXT_STAMP))?;
     Ok(())
+}
+
+/// Record that nobody can take this answer, so no scan offers it again.
+///
+/// Answers the attempt count when THIS call stamped the row, and `None` when
+/// the row was already delivered or abandoned — so a caller announces an
+/// abandonment once, whatever duplicate entries reach it.
+///
+/// # Errors
+/// Reports a database that would not answer.
+pub async fn abandon(
+    database: &Db,
+    fleet_id: &str,
+    event_id: &str,
+    reason: AbandonReason,
+    now: UnixMillis,
+) -> Result<Option<i64>> {
+    let mut connection = database.acquire().await?;
+    let stamped: Option<(i64,)> = sqlx::query_as(sql::ABANDON)
+        .bind(fleet_id)
+        .bind(event_id)
+        .bind(now.as_millis())
+        .bind(reason.as_str())
+        .fetch_optional(&mut *connection)
+        .await
+        .map_err(crate::error::query(CONTEXT_ABANDON))?;
+    Ok(stamped.map(|(attempts,)| attempts))
 }
