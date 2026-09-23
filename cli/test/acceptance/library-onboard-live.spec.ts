@@ -43,7 +43,7 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
+import { cleanWorkspaceFleets, cleanWorkspaceLibraryEntries } from "./fixtures/teardown.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
@@ -230,7 +230,15 @@ if (!isLive) {
     afterAll(async () => {
       if (env && workspaceId) {
         try {
+          // Fleets first, then the entries they were installed from: a fleet
+          // holds its own copy of the bundle, so the order is not a constraint
+          // — but reading the gallery after the fleets are gone keeps the
+          // listing this walks small.
           await cleanWorkspaceFleets(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
+          await cleanWorkspaceLibraryEntries(env, {
+            workspaceId,
+            runPrefix: ACCEPTANCE_RUN_PREFIX,
+          });
         } catch { /* best-effort teardown; never fail the run on cleanup */ }
       }
       if (bundleDir) await fs.rm(bundleDir, { recursive: true, force: true });
