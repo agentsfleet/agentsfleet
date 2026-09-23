@@ -91,6 +91,7 @@ Cross-repository, on its own branch per `AGENTS.orly.md`: `~/Projects/docs/fleet
 - `docs/LOGGING_STANDARD.md` — mention events carry identifiers and verdicts, never message text.
 - `dispatch/write_ts_adhere_bun.md` — the CLI flag; RULE JCL keeps `--json` output stable.
 - `docs/RUST_ERROR_STANDARD.md`.
+- `dispatch/write_rust.md` RULE FN-RS with `M-STRONG-TYPES-GUARD` — the envelope deserialises into a `serde`-tagged enum; `TeamId`, `ChannelId` and `EventId` are newtypes built by `FromStr`; the re-read reuses the workspace `reqwest` client and `tokio::time::timeout` (RULE PSR: no hand-rolled parser or helper where one exists).
 
 ## Applicable Gates
 
@@ -249,6 +250,7 @@ CLI                                agentsfleet install --library <id> --slack-ch
 | R4 | The OpenAPI prose names the codes the handler answers (§1) | `grep -c 'UZ-SLK-01' rustd/crates/afd_api_ingress/src/handler/events.rs` | `0` | P1 | |
 | R5 | The attach flag exists (§2) | `grep -q 'slack-channel' cli/src/program/tree/flags.ts` | exit 0 | P0 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R7 | Patch coverage meets the repository bar | `gh pr checks --json name,state --jq '.[] \| select(.name\|startswith("codecov/patch")) \| .state'` | every line `SUCCESS` — `rust-afd` at 99% and `typescript` at 100% of added lines (`codecov.yml`, threshold 0%) | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3a | Lint green | `make lint-all` | exit 0 | P0 | |

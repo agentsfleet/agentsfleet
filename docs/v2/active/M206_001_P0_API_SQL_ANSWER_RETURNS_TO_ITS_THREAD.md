@@ -76,6 +76,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **`docs/greptile-learnings/RULES.md`** — STS (both-or-neither is a NULL-test check with no literal; no provider spelled in SQL), NSQ, SGR (918/919 carry grants unchanged), UFS (reasons and events are named constants), ECL (permanent vs retryable vs abandoned stay distinct), IDMP (a replayed report owes once), ORP (the removed event-table read), TST-NAM, LOG, ERR-RS, FLL.
 - `docs/RUST_ERROR_STANDARD.md` — new fallible signatures in `afd_admission`, `afd_outbound`, `afd_fleet`.
+- `dispatch/write_rust.md` RULE FN-RS with `M-STRONG-TYPES` and `M-STRONG-TYPES-GUARD` — the destination is one `Option<ReplyDestination>`, never two nullable strings; the provider is `afd_connector::Provider` at every signature from admission to the poster, so passing a model provider fails to compile; the abandon reason and the delivery outcome are enums. RULE PSR — a workspace helper or a `[workspace.dependencies]` crate wins over a new function; a new helper says in its PR why neither fits.
 - `docs/SCHEMA_CONVENTIONS.md` — forward, additive, single-concern slots of at most 100 lines.
 - `docs/LOGGING_STANDARD.md` — `outbound_delivery_abandoned` carries reason and count, never the answer or the address.
 
@@ -206,6 +207,7 @@ Slack address (opaque outside the Slack poster):
 | R3 | The Slack poster reads no event row (§3) | `grep -c 'core.fleet_events' rustd/crates/afd_outbound/src/slack.rs` | `0` | P0 | |
 | R4 | Both slots are registered (§1, §4) | `grep -cE '91(8\|9)_fleet_' rustd/crates/afd_db/src/migration.rs` | `2` | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R6 | Patch coverage meets the repository bar | `gh pr checks --json name,state --jq '.[] \| select(.name\|startswith("codecov/patch")) \| .state'` | every line `SUCCESS` — `rust-afd` at 99% of added lines (`codecov.yml`, threshold 0%) | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3a | Lint green | `make lint-all` | exit 0 | P0 | |
