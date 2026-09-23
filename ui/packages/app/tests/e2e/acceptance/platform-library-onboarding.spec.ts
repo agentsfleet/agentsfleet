@@ -28,6 +28,16 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 
 const ADMIN_PATH = "/admin/fleet-libraries";
 const NAV_LABEL = "Fleet library";
+/**
+ * The platform entry, addressed by where it GOES rather than what it says.
+ *
+ * Both sidebar entries read "Fleet library" — the workspace's own entries under
+ * Configuration and this catalogue under Platform — so the name alone resolves
+ * to two links for an operator and to the WRONG one for a workspace user. Only
+ * the destination separates them, and the destination is the thing these tests
+ * are actually about.
+ */
+const ADMIN_NAV_LINK = `a[href="${ADMIN_PATH}"]`;
 
 // Published at agentsfleet/<id>. The catalog id is the bundle's SKILL.md
 // frontmatter name — not the repository path the operator types.
@@ -208,7 +218,11 @@ const GALLERY_SECTION_LABEL = "Fleet library";
 const GALLERY_PAGE_BOUND = 20;
 
 async function loadWholeGallery(page: Page) {
-  await expect(page.getByText(GALLERY_SECTION_LABEL, { exact: true })).toBeVisible();
+  // The gallery's own section heading, not the sidebar link that now shares its
+  // words. `getByText` matched both and failed strict mode.
+  await expect(
+    page.getByRole("heading", { name: GALLERY_SECTION_LABEL, exact: true }),
+  ).toBeVisible();
   const loadMore = page.getByRole("button", { name: LOAD_MORE_LABEL });
   for (let pages = 0; pages < GALLERY_PAGE_BOUND; pages += 1) {
     if (!(await loadMore.isVisible())) return;
@@ -226,7 +240,10 @@ test.describe("platform fleet catalog", () => {
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto("/");
 
-    await expect(page.getByRole("link", { name: NAV_LABEL })).toHaveCount(0);
+    // By destination: a workspace user has a "Fleet library" link of their own
+    // (their workspace's entries), and matching on the name would find THAT and
+    // call the operator surface leaked.
+    await expect(page.locator(ADMIN_NAV_LINK)).toHaveCount(0);
 
     // Even by direct URL: the page redirects rather than rendering an action the
     // session could not take.
@@ -237,7 +254,7 @@ test.describe("platform fleet catalog", () => {
     await signInAs(page, FIXTURE_KEY.operator);
     await page.goto("/");
 
-    await page.getByRole("link", { name: NAV_LABEL }).click();
+    await page.locator(ADMIN_NAV_LINK).click();
 
     await expect(page).toHaveURL(new RegExp(ADMIN_PATH));
     await expect(page.getByRole("heading", { level: 1, name: NAV_LABEL })).toBeVisible();
