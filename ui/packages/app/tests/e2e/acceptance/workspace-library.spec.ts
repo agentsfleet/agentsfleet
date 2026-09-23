@@ -23,7 +23,7 @@ import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId, skillMd, triggerMd } from "./fixtures/seed";
-import { cleanWorkspaceLibraryEntries } from "./fixtures/teardown";
+import { CLI_KEY_PREFIX, cleanWorkspaceLibraryEntries } from "./fixtures/teardown";
 import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import {
   cliEnv,
@@ -180,7 +180,11 @@ test.describe("workspace-library", () => {
     try {
       // An `agt_t` key, not the session JWT: the CLI refuses a JWT on shape
       // alone and reports it as "not authenticated".
-      minted = await mintCliKey(apiUrl, sessionJwtFor(FIXTURE_KEY.regular), uniqueName("cli-key"));
+      minted = await mintCliKey(
+        apiUrl,
+        sessionJwtFor(FIXTURE_KEY.regular),
+        `${CLI_KEY_PREFIX}${Math.random().toString(36).slice(2, 8)}`,
+      );
       await writeCliState(stateDir, ws, minted.key, apiUrl, WORKSPACE_NAME);
       const env = cliEnv({ AGENTSFLEET_STATE_DIR: stateDir, AGENTSFLEET_API_URL: apiUrl });
       const bundle = await writeBundle(root, name);
