@@ -7,7 +7,7 @@ import { EVENTS } from "@/lib/analytics/events";
 import {
   OUTCOME,
   SAVE_NEXT_WAKE_NOTICE,
-  SAVE_STALE_RELOADED_NOTICE,
+  SAVE_OVERWRITE_NOTICE,
   SOURCE_FIELD,
   TRIGGER_DOC_EMPTY,
   VIEW_SOURCE_LABEL,
@@ -15,8 +15,6 @@ import {
 } from "./console-copy";
 
 const HIDE_SOURCE_LABEL = "Hide source";
-const SERVER_SOURCE_LABEL = "Current server version";
-const UNSAVED_DRAFT_LABEL = "Your unsaved draft";
 
 const saveFleetSourceAction = vi.fn();
 const getFleetDetailAction = vi.fn();
@@ -137,26 +135,102 @@ describe("SkillEditor", () => {
     expect(routerRefresh).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the pending edit when a stale save reloads server source", async () => {
+  it("should save straight through when the SIBLING document moved, not this one", async () => {
+    // The ETag covers BOTH documents (afd_fleet_lifecycle/src/read.rs
+    // `surface()`), so saving the Trigger invalidates the tag the Skill editor
+    // holds and vice versa. Neither document changed from the editor's point of
+    // view. This used to refuse the save and render a comparison of two
+    // identical texts — the state Indy could not get past.
+    saveFleetSourceAction
+      .mockResolvedValueOnce({ ok: false, status: 412, error: "stale" })
+      .mockResolvedValueOnce({ ok: true, data: { etag: '"after"' } });
+    // The server's SKILL.md still matches what this editor opened with — only
+    // the tag moved, because the Trigger was saved. `renderEditor` opens on
+    // "# SKILL\noriginal", so that is what "unchanged" means here.
+    getFleetDetailAction.mockResolvedValue({
+      ok: true,
+      // NOTE the double backslash: `renderEditor` passes this through a JSX
+      // string attribute, where `\n` is a literal backslash and an `n`, not a
+      // newline. The editor's `base` therefore holds the literal form, and a
+      // real newline here would read as a changed document.
+      data: { fleet: detail({ source_markdown: "# SKILL\\noriginal" }), etag: '"fresh"' },
+    });
+
+    const user = await edit(SOURCE_FIELD.skill, "# SKILL\nmy draft");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    // Retried with the fresh tag and landed. One press, no banner, no diff.
+    await waitFor(() => expect(saveFleetSourceAction).toHaveBeenCalledTimes(2));
+    expect(saveFleetSourceAction.mock.calls[1]?.[3]).toBe('"fresh"');
+    expect(screen.queryByText(SAVE_OVERWRITE_NOTICE)).toBeNull();
+    expect(captureProductEvent).toHaveBeenCalledWith(EVENTS.fleet_source_saved, {
+      fleet_id: "agt_1",
+      field: SOURCE_FIELD.skill,
+      outcome: OUTCOME.success,
+    });
+  });
+
+  it("should send what is in the box at retry time, not what was there at the 412", async () => {
+    // Greptile P1 on #711, and it was right. The retry runs inside the closure
+    // of the save that started it, and the reload it waits on is a round trip
+    // a person can type through. Sending the closure's copy saved the older
+    // text and then closed the editor on the newer — losing work silently,
+    // which is the worst shape a bug can take in a text editor.
+    let releaseReload: (value: unknown) => void = () => {};
+    saveFleetSourceAction
+      .mockResolvedValueOnce({ ok: false, status: 412, error: "stale" })
+      .mockResolvedValueOnce({ ok: true, data: { etag: '"after"' } });
+    getFleetDetailAction.mockReturnValue(
+      new Promise((resolve) => {
+        releaseReload = resolve;
+      }),
+    );
+
+    const user = await edit(SOURCE_FIELD.skill, "# SKILL\nfirst");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(saveFleetSourceAction).toHaveBeenCalledTimes(1));
+
+    // The reload is still in flight. Keep typing, the way a person would.
+    fireEvent.change(screen.getByRole("textbox", { name: "Edit SKILL.md" }), {
+      target: { value: "# SKILL\nsecond" },
+    });
+    releaseReload({
+      ok: true,
+      data: { fleet: detail({ source_markdown: "# SKILL\\noriginal" }), etag: '"fresh"' },
+    });
+
+    await waitFor(() => expect(saveFleetSourceAction).toHaveBeenCalledTimes(2));
+    // The retry carries the LATER text.
+    expect(saveFleetSourceAction.mock.calls[1]?.[2]).toEqual({
+      source_markdown: "# SKILL\nsecond",
+    });
+  });
+
+  it("should warn once, and keep the draft, when THIS document really moved", async () => {
+    // A real conflict still gets a word — but one line, and the next save
+    // wins. The person pressing it is the one deciding.
     saveFleetSourceAction.mockResolvedValue({ ok: false, status: 412, error: "stale" });
     getFleetDetailAction.mockResolvedValue({
       ok: true,
       data: { fleet: detail({ source_markdown: "# SKILL\nnew server" }), etag: '"fresh"' },
     });
+
     const user = await edit(SOURCE_FIELD.skill, "# SKILL\nmy draft");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
     await user.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(screen.getByText(SAVE_STALE_RELOADED_NOTICE)).toBeTruthy());
+
+    await waitFor(() => expect(screen.getByText(SAVE_OVERWRITE_NOTICE)).toBeTruthy());
+    // The draft survives — losing typing to a conflict notice is the other
+    // way this can be infuriating.
     expect(screen.getByRole("textbox", { name: "Edit SKILL.md" })).toHaveProperty(
       "value",
       "# SKILL\nmy draft",
     );
-    expect(screen.getByTestId(`source-comparison-${SERVER_SOURCE_LABEL.toLowerCase().replaceAll(" ", "-")}`).textContent).toContain(
-      "# SKILL\nnew server",
-    );
-    expect(screen.getByTestId(`source-comparison-${UNSAVED_DRAFT_LABEL.toLowerCase().replaceAll(" ", "-")}`).textContent).toContain(
-      "# SKILL\nmy draft",
-    );
+    // And no side-by-side: the comparison pane is gone for good.
+    expect(screen.queryByText("Current server version")).toBeNull();
+    expect(screen.queryByText("Review server changes")).toBeNull();
   });
 
   it("preserves a draft when refreshed props arrive for the same document", async () => {
