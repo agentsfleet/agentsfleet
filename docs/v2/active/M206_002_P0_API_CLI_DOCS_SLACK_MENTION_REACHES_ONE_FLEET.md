@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M206
 **Workstream:** 002
 **Date:** Sep 23, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — the incident journey starts with a mention, and the Rust daemon drops every mention it receives.
 **Categories:** API, CLI, DOCS
 **Batch:** B2 — after M206_001, whose destination this producer is the first to write; runs beside M206_003, which shares its Pull Request.
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** feat/m206-slack-incident-responder
+**Baseline revision:** f3edd3c17062087a6db7f7e271606bf0c3901259
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M206_001 — an admission's reply destination and the obligation address this producer writes and its notices use.
 **Provenance:** LLM-drafted (Claude Opus 5.5, Sep 23, 2026) from source reads at `b1bc6f0c4` and the retired Zig daemon at `1ad07eb2` in `~/Projects/oss/zig/agentsfleet_zig`
