@@ -3,33 +3,6 @@
 import { useLayoutEffect, useRef } from "react";
 import { CopyButton, Textarea, cn } from "@agentsfleet/design-system";
 
-const SERVER_SOURCE_LABEL = "Current server version";
-const UNSAVED_DRAFT_LABEL = "Your unsaved draft";
-const STALE_SOURCE_REVIEW_LABEL = "Review server changes";
-
-export function StaleSourceComparison({ base, draft }: { base: string; draft: string }) {
-  return (
-    <details open className="rounded-md border border-warning/40 bg-warning/5 px-3 py-2">
-      <summary className="cursor-pointer font-sans text-xs font-medium text-foreground">
-        {STALE_SOURCE_REVIEW_LABEL}
-      </summary>
-      <div className="grid gap-sm pt-sm md:grid-cols-2">
-        <SourceComparisonPane label={SERVER_SOURCE_LABEL} value={base} />
-        <SourceComparisonPane label={UNSAVED_DRAFT_LABEL} value={draft} />
-      </div>
-    </details>
-  );
-}
-
-function SourceComparisonPane({ label, value }: { label: string; value: string }) {
-  return (
-    <div data-testid={`source-comparison-${label.toLowerCase().replaceAll(" ", "-")}`} className="min-w-0">
-      <p className="mb-xs font-sans text-xs text-muted-foreground">{label}</p>
-      <Textarea readOnly value={value} aria-label={label} rows={8} className="max-h-48 overflow-auto rounded-sm border border-border bg-muted/30 px-2 py-1 font-mono text-mono leading-mono text-foreground" />
-    </div>
-  );
-}
-
 export function DocumentPane({
   label,
   editing,

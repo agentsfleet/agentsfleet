@@ -2,7 +2,7 @@
 
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { DocumentPane, StaleSourceComparison } from "./SourceDocumentPane";
+import { DocumentPane } from "./SourceDocumentPane";
 import { PencilIcon } from "lucide-react";
 import {
   Alert,
@@ -24,7 +24,7 @@ import {
   SAVE_DIALOG_TITLE,
   SAVE_NEXT_WAKE_NOTICE,
   SAVE_SOURCE_LABEL,
-  SAVE_STALE_RELOADED_NOTICE,
+  SAVE_OVERWRITE_NOTICE,
   SKILL_DOC_LABEL,
   SKILL_SOURCE_PANEL_TITLE,
   SOURCE_FIELD,
@@ -74,12 +74,23 @@ export default function SkillEditor({
   const initial = documentValue(field, sourceMarkdown, triggerMarkdown);
   const [base, setBase] = useState(initial);
   const [draft, setDraft] = useState(initial);
+  /**
+   * The live draft, for the one caller that cannot read state: the retry.
+   *
+   * A retry runs inside the closure of the save that started it, so `draft`
+   * there is whatever was typed BEFORE the 412 — and the reload it waits on is
+   * a round trip a person can type through. Sending the closure's copy would
+   * save the older text and then close the editor on the newer, which is the
+   * silent way to lose someone's work.
+   */
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   const [editing, setEditing] = useState(false);
   const [expanded, setExpanded] = useState(true);
   const [etag, setEtag] = useState(initialEtag);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [staleReloaded, setStaleReloaded] = useState(false);
+  const [overwriteNotice, setOverwriteNotice] = useState(false);
   const editingRef = useRef(editing);
   const fieldRef = useRef(field);
   editingRef.current = editing;
@@ -94,7 +105,7 @@ export default function SkillEditor({
       setEditing(false);
       setExpanded(false);
       setError(null);
-      setStaleReloaded(false);
+      setOverwriteNotice(false);
     }
     fieldRef.current = field;
   }, [field, sourceMarkdown, triggerMarkdown, initialEtag]);
@@ -107,7 +118,7 @@ export default function SkillEditor({
 
   function enterEdit() {
     setError(null);
-    setStaleReloaded(false);
+    setOverwriteNotice(false);
     setExpanded(true);
     setEditing(true);
   }
@@ -116,10 +127,16 @@ export default function SkillEditor({
     setDraft(base);
     setEditing(false);
     setError(null);
-    setStaleReloaded(false);
+    setOverwriteNotice(false);
   }
 
-  async function reloadAfterStale() {
+  /**
+   * The server's current text for the field this editor owns, and its tag.
+   *
+   * Returns the tag rather than leaning on `setEtag`: a retry happens in the
+   * same tick, and the state variable would still hold the stale one there.
+   */
+  async function serverDocument(): Promise<{ document: string; etag: string } | null> {
     const reloaded = await getFleetDetailAction(workspaceId, fleetId);
     if (!reloaded.ok) {
       setError(presentErrorString({
@@ -127,32 +144,53 @@ export default function SkillEditor({
         message: reloaded.error,
         action: "reload the source",
       }));
-      return;
+      return null;
     }
-    const fresh = documentValue(
-      field,
-      reloaded.data.fleet.source_markdown,
-      reloaded.data.fleet.trigger_markdown,
-    );
-    setBase(fresh);
     setEtag(reloaded.data.etag);
-    setStaleReloaded(true);
+    return {
+      document: documentValue(
+        field,
+        reloaded.data.fleet.source_markdown,
+        reloaded.data.fleet.trigger_markdown,
+      ),
+      etag: reloaded.data.etag,
+    };
   }
 
   async function onConfirmSave() {
     setError(null);
+    setDialogOpen(false);
+    await save(draft, etag, true);
+  }
+
+  /**
+   * Save, and on a stale tag decide whether there is anything to tell anybody.
+   *
+   * The `ETag` covers BOTH documents — `surface()` in
+   * `afd_fleet_lifecycle/src/read.rs` hashes `source_markdown` and
+   * `trigger_markdown` together — so saving the Skill invalidates the tag the
+   * Trigger editor is holding, and the other way round. Neither document
+   * changed from the editor's point of view, and the old flow answered that by
+   * refusing the save and rendering a comparison of two identical texts.
+   *
+   * So a 412 is re-read before it is believed. If the field THIS editor owns
+   * still matches what it started from, the conflict was the sibling's and the
+   * save simply goes again with the fresh tag — no banner, no diff, nothing for
+   * a person to do. Only a genuine change to this document says so, once, and
+   * the next save overwrites it rather than demanding a review first.
+   */
+  async function save(text: string, withEtag: string, mayRetry: boolean) {
     const result = await saveFleetSourceAction(
       workspaceId,
       fleetId,
-      { [PATCH_FIELD[field]]: draft },
-      etag,
+      { [PATCH_FIELD[field]]: text },
+      withEtag,
     );
     if (result.ok) {
-      setBase(draft);
+      setBase(text);
       setEtag(result.data.etag);
       setEditing(false);
-      setDialogOpen(false);
-      setStaleReloaded(false);
+      setOverwriteNotice(false);
       captureProductEvent(EVENTS.fleet_source_saved, {
         fleet_id: fleetId,
         field,
@@ -161,11 +199,24 @@ export default function SkillEditor({
       router.refresh();
       return;
     }
-    setDialogOpen(false);
-    if (result.status === PRECONDITION_FAILED) {
-      await reloadAfterStale();
+
+    if (result.status === PRECONDITION_FAILED && mayRetry) {
+      const current = await serverDocument();
+      if (current === null) return;
+      if (current.document === base) {
+        // The sibling document moved, not this one. Nothing to review.
+        // `draftRef`, not `text`: the reload above was a round trip, and
+        // anything typed during it is the newer truth.
+        await save(draftRef.current, current.etag, false);
+        return;
+      }
+      // This document really did change underneath. Say so once; the next
+      // save wins, because the person pressing it is the one who decides.
+      setBase(current.document);
+      setOverwriteNotice(true);
       return;
     }
+
     captureProductEvent(EVENTS.fleet_source_saved, {
       fleet_id: fleetId,
       field,
@@ -207,8 +258,7 @@ export default function SkillEditor({
             onChange={setDraft}
             fillAvailableSpace={fillAvailableSpace}
           />
-          {staleReloaded ? <Alert variant="warning">{SAVE_STALE_RELOADED_NOTICE}</Alert> : null}
-          {staleReloaded ? <StaleSourceComparison base={base} draft={draft} /> : null}
+          {overwriteNotice ? <Alert variant="warning">{SAVE_OVERWRITE_NOTICE}</Alert> : null}
           {error ? <Alert variant="destructive">{error}</Alert> : null}
         </div>
       ) : null}
