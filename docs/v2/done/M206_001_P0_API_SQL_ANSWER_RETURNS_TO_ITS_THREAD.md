@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M206
 **Workstream:** 001
 **Date:** Sep 23, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — no connector answer can reach its thread, and every non-empty answer from every producer is owed to a model provider and re-offered to the queue without end.
 **Categories:** API, SQL
 **Batch:** B1 — first on the critical path, beside M206_003 §1 and §3 and M206_004 §1–§2; M206_002 adds the only producer that records a destination, and an approval continuation inherits one wherever a fleet's own gate rules park an event.
@@ -273,5 +273,5 @@ OutboundJob → From<Delivery> (one conversion for the report's append and the p
 
 - **Consults** — `ARCH: grounded in data_flow.md §C "Slack-resident answer round-trip" | proposal: the producer records the destination; the report owes only to it | status: conflicts — the page described the Zig binding lookup, which the Rust port did not keep | landing: a` (doc-only commit beside this spec corrects the page to today's code and names this design). Source findings: `commit.rs:198-210` passes the lease provider; `settle.rs:69-70` documents it as the provider resolved at issue; `poster.rs:77-92` drops an unparseable provider as permanent; `lanes.rs:223-228` stamps only on delivered; `obligation/sql.rs:111-116` re-offers after `LOST_AFTER`. Agent choice: destination on admissions only (§1 default).
 - **Metrics review** — two operator events added, one existing event expected to fall silent for report-owed jobs; no analytics or funnel playbook update required, because nothing user-facing is counted.
-- **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
+- **Skill-chain outcomes** — `/orly-write-unit-test` (Sep 24, 2026): diff ledger 16/16 resolved; patch coverage 223/238 → 267/267 added lines; mutation not run (live-datastore proofs), carried to the PR. `/orly-write-integration-test`, `/review` and `orly-babysit-prs` run at the milestone Pull Request.
 - **Deferrals** — none at authoring.
