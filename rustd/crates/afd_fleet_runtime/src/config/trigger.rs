@@ -11,6 +11,8 @@
 //! already-typed values, so the comparison is a `match` the compiler proves
 //! total.
 
+use std::str::FromStr;
+
 use crate::config::raw;
 use crate::error::{Error, ErrorKind, Result};
 use crate::provider::ProviderRegistry;
@@ -33,6 +35,8 @@ const REASON_DUPLICATE_SOURCE: &str = "two webhook triggers share one source";
 const REASON_DUPLICATE_CRON: &str = "a fleet may hold only one cron trigger";
 /// See [`REASON_SET_EMPTY`].
 const REASON_DUPLICATE_API: &str = "a fleet may hold only one api trigger";
+/// See [`REASON_SET_EMPTY`].
+const REASON_DUPLICATE_MENTION: &str = "a fleet may attach to only one channel";
 
 /// Why a signature block was refused.
 const REASON_NO_SECRET: &str = "it names no secret";
@@ -44,6 +48,21 @@ const REASON_NO_HEADER: &str =
 const REASON_NO_SOURCE: &str = "a webhook trigger names no source";
 /// Why a cron trigger was refused.
 const REASON_NO_SCHEDULE: &str = "a cron trigger names no schedule";
+/// Why a mention trigger was refused.
+const REASON_MENTION_NO_SOURCE: &str = "a mention trigger names no source";
+/// See [`REASON_MENTION_NO_SOURCE`].
+const REASON_MENTION_NO_CHANNEL: &str = "a mention trigger's `channels` names no channel";
+/// Why a channel identifier was refused.
+const REASON_NOT_CHANNEL_ID: &str = "a mention trigger's `channels` entry is not a channel identifier: \
+     `C` or `G`, then at least eight upper-case letters or digits";
+
+/// The first byte a public channel's identifier carries.
+const CHANNEL_PUBLIC: u8 = b'C';
+/// The first byte a private channel's identifier carries. A direct message's
+/// starts with `D` and is refused: a fleet answers a channel, never one person.
+const CHANNEL_PRIVATE: u8 = b'G';
+/// The fewest characters after the leading kind byte.
+const CHANNEL_MIN_BODY: usize = 8;
 
 /// How a signed delivery proves itself.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -163,6 +182,62 @@ pub struct Cron {
     pub message: Box<str>,
 }
 
+/// A chat channel, by the identifier its provider minted.
+///
+/// The identifier rather than the name, because a channel is renamed and its
+/// identifier is not: a subscription that followed the name would move to
+/// whichever channel took it next. Built only by [`FromStr`], so a value of
+/// this type is one the shape check passed (`M-STRONG-TYPES-GUARD`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ChannelId(Box<str>);
+
+impl ChannelId {
+    /// The identifier as its provider spells it.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl FromStr for ChannelId {
+    type Err = Error;
+
+    /// `C` or `G`, then at least [`CHANNEL_MIN_BODY`] upper-case ASCII letters
+    /// or digits, and nothing else.
+    ///
+    /// # Errors
+    /// [`Error::InvalidTriggerSet`] for any other shape, a direct message's
+    /// `D…` identifier included.
+    fn from_str(candidate: &str) -> Result<Self> {
+        let well_formed = match candidate.as_bytes().split_first() {
+            Some((&(CHANNEL_PUBLIC | CHANNEL_PRIVATE), body)) => {
+                body.len() >= CHANNEL_MIN_BODY
+                    && body
+                        .iter()
+                        .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+            }
+            _ => false,
+        };
+        if well_formed {
+            Ok(Self(candidate.into()))
+        } else {
+            Err(ErrorKind::InvalidTriggerSet {
+                reason: REASON_NOT_CHANNEL_ID,
+            }
+            .into())
+        }
+    }
+}
+
+/// A fleet woken when someone mentions the bot in one channel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Mention {
+    /// Which chat provider.
+    pub source: Box<str>,
+    /// The one channel it answers in.
+    pub channel: ChannelId,
+}
+
 /// What may wake a fleet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Trigger {
@@ -172,6 +247,8 @@ pub enum Trigger {
     Cron(Cron),
     /// An authenticated API call.
     Api,
+    /// A mention in one chat channel.
+    Mention(Mention),
 }
 
 impl Trigger {
@@ -225,6 +302,22 @@ impl Trigger {
                     .into(),
             })),
             raw::Trigger::Api => Ok(Self::Api),
+            raw::Trigger::Mention { source, channels } => {
+                let refuse = |reason| Error::from(ErrorKind::InvalidTriggerSet { reason });
+                let source = source
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| refuse(REASON_MENTION_NO_SOURCE))?;
+                // The schema allowed exactly one entry, so the first is the
+                // only one; absent is the case left to refuse here.
+                let channel = channels
+                    .and_then(|named| named.into_iter().next())
+                    .ok_or_else(|| refuse(REASON_MENTION_NO_CHANNEL))?
+                    .parse()?;
+                Ok(Self::Mention(Mention {
+                    source: source.into(),
+                    channel,
+                }))
+            }
         }
     }
 
@@ -232,7 +325,7 @@ impl Trigger {
     fn source(&self) -> Option<&str> {
         match self {
             Self::Webhook(hook) => Some(&hook.source),
-            Self::Cron(_) | Self::Api => None,
+            Self::Cron(_) | Self::Api | Self::Mention(_) => None,
         }
     }
 }
@@ -277,7 +370,9 @@ fn prove_unique(triggers: &[Trigger]) -> Result<()> {
         .try_fold((), |(), (index, trigger)| {
             let clashes = triggers.iter().skip(index + 1).any(|later| {
                 match (trigger, later) {
-                    (Trigger::Cron(_), Trigger::Cron(_)) | (Trigger::Api, Trigger::Api) => true,
+                    (Trigger::Cron(_), Trigger::Cron(_))
+                    | (Trigger::Api, Trigger::Api)
+                    | (Trigger::Mention(_), Trigger::Mention(_)) => true,
                     // Two webhooks clash only on one source. Different sources
                     // are the whole point of declaring more than one.
                     (Trigger::Webhook(_), Trigger::Webhook(_)) => {
@@ -295,6 +390,7 @@ fn prove_unique(triggers: &[Trigger]) -> Result<()> {
                 Trigger::Webhook(_) => REASON_DUPLICATE_SOURCE,
                 Trigger::Cron(_) => REASON_DUPLICATE_CRON,
                 Trigger::Api => REASON_DUPLICATE_API,
+                Trigger::Mention(_) => REASON_DUPLICATE_MENTION,
             }))
         })
 }
