@@ -57,7 +57,7 @@ impl Authored {
             .iter()
             .filter_map(|declared| match declared {
                 Trigger::Webhook(hook) => Some(hook.source.clone()),
-                Trigger::Cron(_) | Trigger::Api => None,
+                Trigger::Cron(_) | Trigger::Api | Trigger::Mention(_) => None,
             })
             .collect()
     }

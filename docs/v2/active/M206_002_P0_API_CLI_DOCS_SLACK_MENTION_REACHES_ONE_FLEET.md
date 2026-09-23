@@ -70,7 +70,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_ingress/src/slack/{mod.rs,route.rs,thread.rs,message.rs,resident.rs,notice.rs}` | CREATE | Pure routing, the bounded re-read, message composition, resident materialisation, notice text. |
 | `rustd/crates/afd_ingress/src/{lib.rs,sql.rs}` | EDIT | Subscribed-fleet read for a workspace; resident binding read and insert. |
 | `rustd/crates/afd_admission/src/lib.rs` · `tests.rs` | EDIT | `Producer::SlackMention`, spelled `slack_mention`. |
-| `rustd/crates/afd_fleet_runtime/src/config/raw/trigger.rs` · `config/trigger.rs` · `config/raw/predicate.rs` | EDIT | The `mention` trigger: `source`, exactly one `channels` entry, channel-identifier shape. |
+| `rustd/crates/afd_fleet_runtime/src/config/{raw/mod.rs,raw/trigger.rs,trigger.rs,mod.rs}` · `tests/{frontmatter_mention.rs,runtime_suite.rs}` | EDIT · CREATE | The `mention` trigger: `source`, exactly one `channels` entry (schema), and `ChannelId`, whose `FromStr` is the one shape check. |
+| `rustd/crates/afd_ingress/src/binding.rs` · `afd_fleet_lifecycle/src/install/authored.rs` | EDIT | Their exhaustive trigger matches name the new variant. |
 | `rustd/crates/afd_fleet_runtime/src/slack_resident.md` | CREATE | The resident's embedded `SKILL.md`. |
 | `rustd/crates/afd_connector/src/grant/holding.rs` | EDIT | Returns the bot user identifier beside the token, for the self and address checks. |
 | `rustd/crates/afd_wire/src/ingress.rs` | EDIT | The mention's `request_json` shape. |
@@ -124,7 +125,7 @@ After the wall, `decide` recognises `event_callback` whose `event.type` is `app_
 
 `triggers` gains `type: mention` with `source: slack` and `channels`, holding exactly one channel identifier matching `^[CG][A-Z0-9]{8,}$`; a direct-message (DM) identifier is refused. A fleet whose repository binding is `write` is **addressed-only**: it never receives an unaddressed mention. **Implementation default:** one channel per fleet, so a fleet's memory never spans two audiences; a second channel is a second fleet. No integration grant is needed, because the fleet mints no Slack credential and the daemon posts.
 
-- **Dimension 2.1** — a document with one valid channel parses; none, two, a lowercase or a `D…` identifier is refused naming the key → Test `mention_trigger_takes_exactly_one_channel_id`
+- **Dimension 2.1** DONE — a document with one valid channel parses; none, two, a lowercase or a `D…` identifier is refused naming the key → Test `mention_trigger_takes_exactly_one_channel_id`
 - **Dimension 2.2** — the subscribed-fleet read returns every fleet whose trigger names the channel, with status and addressed-only flag → Test `subscribers_are_read_from_the_document`
 - **Dimension 2.3** — renaming the Slack channel changes nothing; editing the identifier moves the subscription → Test `subscription_follows_the_channel_id`
 - **Dimension 2.4** — an install carrying `slack_channel` stores a `TRIGGER.md` whose `mention` trigger names it, and `fleet update` round-trips it → Test `install_with_a_channel_writes_the_mention_trigger`

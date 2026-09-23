@@ -278,7 +278,7 @@ fn webhook_trigger<'c>(config: &'c FleetConfig, source: Option<&str>) -> Option<
             Some(named) if !hook.source.eq_ignore_ascii_case(named) => None,
             Some(_) | None => Some(hook),
         },
-        Trigger::Cron(_) | Trigger::Api => None,
+        Trigger::Cron(_) | Trigger::Api | Trigger::Mention(_) => None,
     })
 }
 
