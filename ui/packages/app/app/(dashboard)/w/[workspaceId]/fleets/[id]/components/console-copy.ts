@@ -37,8 +37,12 @@ export const SAVE_DIALOG_TITLE = "Save source changes?";
 
 // Shown after a 412: another operator saved while this editor was open, so the
 // current source was reloaded while the operator's pending edit was kept.
-export const SAVE_STALE_RELOADED_NOTICE =
-  "This source changed while you were editing. Compare your pending edit with the latest version before saving again.";
+// Shown ONCE, and only when this document really moved on the server — not
+// when its sibling did. The next save wins: the person pressing it is the one
+// deciding, and a mandatory side-by-side of two identical texts was the bug
+// this replaced.
+export const SAVE_OVERWRITE_NOTICE =
+  "This changed on the server since you started editing. The copy above is now the server's; saving again replaces it with yours."
 
 // Which document a save touched — the `field` value on fleet_source_saved.
 export const SOURCE_FIELD = {
