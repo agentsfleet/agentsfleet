@@ -25,7 +25,14 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId, skillMd, triggerMd } from "./fixtures/seed";
 import { cleanWorkspaceLibraryEntries } from "./fixtures/teardown";
 import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
-import { cliEnv, makeCliStateDir, spawnAgentsfleet, writeCliState } from "./fixtures/cli-runner";
+import {
+  cliEnv,
+  deleteCliKey,
+  makeCliStateDir,
+  mintCliKey,
+  spawnAgentsfleet,
+  writeCliState,
+} from "./fixtures/cli-runner";
 
 const SOURCE_KIND_UPLOAD = "upload";
 const LIBRARY_SUBPATH = "library";
@@ -168,9 +175,13 @@ test.describe("workspace-library", () => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const name = uniqueName("library-cli");
     const { root, stateDir } = await makeCliStateDir(CLI_STATE_PREFIX);
+    let minted: { key: string; id: string } | null = null;
 
     try {
-      await writeCliState(stateDir, ws, sessionJwtFor(FIXTURE_KEY.regular), apiUrl, WORKSPACE_NAME);
+      // An `agt_t` key, not the session JWT: the CLI refuses a JWT on shape
+      // alone and reports it as "not authenticated".
+      minted = await mintCliKey(apiUrl, sessionJwtFor(FIXTURE_KEY.regular), uniqueName("cli-key"));
+      await writeCliState(stateDir, ws, minted.key, apiUrl, WORKSPACE_NAME);
       const env = cliEnv({ AGENTSFLEET_STATE_DIR: stateDir, AGENTSFLEET_API_URL: apiUrl });
       const bundle = await writeBundle(root, name);
 
@@ -191,6 +202,10 @@ test.describe("workspace-library", () => {
       expect(after.code, after.stderr).toBe(0);
       expect(after.stdout).not.toContain(entryId);
     } finally {
+      // A leaked API key is a live credential, so it goes even if the walk threw.
+      if (minted) {
+        await deleteCliKey(apiUrl, sessionJwtFor(FIXTURE_KEY.regular), minted.id);
+      }
       await fs.rm(root, { recursive: true, force: true });
     }
   });
