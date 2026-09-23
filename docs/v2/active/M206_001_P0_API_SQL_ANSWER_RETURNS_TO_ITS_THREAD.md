@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M206
 **Workstream:** 001
 **Date:** Sep 23, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — no connector answer can reach its thread, and every non-empty answer from every producer is owed to a model provider and re-offered to the queue without end.
 **Categories:** API, SQL
 **Batch:** B1 — first on the critical path, beside M206_003 §1 and §3 and M206_004 §1–§2; M206_002 adds the only producer that records a destination, and an approval continuation inherits one wherever a fleet's own gate rules park an event.
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** feat/m206-slack-incident-responder
+**Baseline revision:** f3edd3c17062087a6db7f7e271606bf0c3901259
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Opus 5.5, Sep 23, 2026) from source reads at `b1bc6f0c4` and the retired Zig daemon at `1ad07eb2` in `~/Projects/oss/zig/agentsfleet_zig`
