@@ -12,7 +12,7 @@ Every row is extracted from the sections below; the owner column names the secti
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Event ingress | ONE — six producers | steer / webhook / cron / continuation / Slack / repair-verifier each commit a `core.fleet_admissions` row, then `XADD fleet:{id}:events`; the LEDGER row carries the canonical event id and the stream entry id is its receipt | §B. TRIGGER |
+| Event ingress | ONE — six producers | `steer` / `webhook` / `webhook_app` / `schedule_fire` / `gate_continuation` / `repair_verification` (`rustd/crates/afd_admission/src/lib.rs:81-106`) each commit a `core.fleet_admissions` row, then `XADD fleet:{id}:events`; the LEDGER row carries the canonical event id and the stream entry id is its receipt. Slack mentions have no producer in the Rust daemon; `slack_mention` is specified in M206_002 | §B. TRIGGER |
 | Hot-path writes | 12, in the worker's order | `lease` does 1–6, `report` does 7–12; row-equivalent to the deleted worker (cutover Invariant 2) | §Steer flow end-to-end |
 | Durable stores | 5 tables, join key `(fleet_id, event_id)` | `fleet_admissions` (one row per acceptance, UNIQUE `(producer, producer_key)`) · `fleet_events` (one row per delivery) · `fleet_obligations` (one row per answer, UNIQUE `(fleet_id, event_id)`) · `fleet_sessions` (one row per fleet, UPSERT) · `billing.usage_ledger` (two rows per FLEET-event — a receive and a stage — UNIQUE `(event_id, charge_type, fleet_id)`, so one event id charged by two fleets holds four rows, not two) | §The five durable stores |
 | Replay safety | idempotent | `INSERT … ON CONFLICT DO NOTHING` + the UNIQUE telemetry `event_id` | §C. EXECUTE |
@@ -374,7 +374,7 @@ context_json         → handed to the runner as the conversation so far
  fleet busy, in fleet.runner_leases)
 ```
 
-The lease reply ships to the runner. NullClaw runs inside the runner's sandboxed child: fetches GH run logs via `${secrets.github.token}`, fetches Fly app logs, fetches Dragonfly cluster stats, posts a remediation message to Slack. GitHub is a **mintable integration**, so that placeholder does not resolve to a stored value. At the tool bridge the child asks its runner, which forwards to the daemon-side credential broker over the `agt_r` plane (`POST /v1/runners/me/credentials/mint`). The broker signs a GitHub App JWT (RS256, platform key, daemon-side) and exchanges it for a short-lived installation token, returned just for that call. The App private key never leaves the daemon. (Fly/Slack remain static custom secrets until the `oauth_refresh` integration lands.) The child returns `ExecutionResult{content, tokens=1840, wall_ms=8210, ttft_ms=320, outcome=ok}` over the stdout pipe; the runner POSTs it to `report`.
+The lease reply ships to the runner. NullClaw runs inside the runner's sandboxed child: reads the failed GitHub run through `${secrets.github.token}` (run and job metadata only: a read mint carries `contents: read` and nothing else, `rustd/crates/afd_credential/src/credential/github.rs:107-119`, and job logs sit behind a redirect the runner does not follow; M206_004 widens the read), fetches Fly app logs, fetches Dragonfly cluster stats, posts a remediation message to Slack. GitHub is a **mintable integration**, so that placeholder does not resolve to a stored value. At the tool bridge the child asks its runner, which forwards to the daemon-side credential broker over the `agt_r` plane (`POST /v1/runners/me/credentials/mint`). The broker signs a GitHub App JWT (RS256, platform key, daemon-side) and exchanges it for a short-lived installation token, returned just for that call. The App private key never leaves the daemon. (Fly/Slack remain static custom secrets until the `oauth_refresh` integration lands.) The child returns `ExecutionResult{content, tokens=1840, wall_ms=8210, ttft_ms=320, outcome=ok}` over the stdout pipe; the runner POSTs it to `report`.
 
 **Step 7 — UPDATE `fleet_events`** (close the same row, at `report`):
 
@@ -709,7 +709,12 @@ not authority by itself.
    SKILL.md prose and the user's history filter.
 
    > [!NOTE]
-   > SLACK (M106): a fifth producer — the Slack-resident
+   > SLACK — the retired Zig daemon's producer, not ported. The Rust daemon
+   > verifies the signature, echoes url_verification, and drops every mention
+   > as event_producer_not_ported (afd_api_ingress/src/handler/events.rs:88).
+   > M206_002 restores it as `slack_mention` with channel subscriptions; the
+   > routing lives in scenarios/slack-incident-responder.md §4. What the Zig
+   > daemon did, for the record (M106): the Slack-resident
    > bot lands an actor=slack:<user> event on fleet:{channel_fleet_id}:events
    > via the webhook-producer XADD shape (signature-authed, no principal —
    > afd_http/src/route/webhook.rs) after POST /v1/connectors/slack/events resolves
@@ -906,7 +911,9 @@ The deleted worker's single in-process `processEvent` loop is now split across t
    dead runner is fenced out at claimReport (UZ-RUN-005).
 ```
 
-**Slack-resident answer round-trip (M106).** For the Slack producer in §"B. TRIGGER" two connector-specific hops bracket this generic trace without altering it. *At ingress:* the Slack connector's thread re-read does a best-effort re-read of the recent thread (Slack `conversations.replies`, bounded to the last-N messages) so the leased `request_json` carries same-thread context. It **never throws**: a failed or absent re-fetch degrades to an empty thread, and the answer still runs from the mention alone. *On the way out:* the answer is not posted from the report handler directly. Step 7's report path hands the answer off — if the reporting fleet has a `core.connector_channels` binding it enqueues a `provider`-tagged job onto the generic `connector:outbound` stream; a non-connector fleet, empty answer, or any failure is a logged no-op that never fails the finalized report. The boot-started outbound-worker consumer (the one blocking Dragonfly consumer sized in [`scaling.md`](./scaling.md)) then reads the job, routes it by `provider`, and posts the answer back in-thread with bounded retry + pending-first redelivery. The core report path stays provider-agnostic (Invariant 9) — the worker is the only place a connector poster is imported.
+**Answer round-trip to a connector thread.** Two connector-specific hops bracket this generic trace without altering it. *At ingress:* the producer that owns a reply surface re-reads the thread (Slack `conversations.replies`, bounded) into the event's `message` and records the event's reply destination — provider plus an opaque address — on the admission. A failed re-read degrades to the mention alone. *On the way out:* the report transaction owes a delivery (`core.fleet_obligations`) only when the event, or the event an approval continuation resumes, carries a destination, addressed by that destination's connector; an empty answer owes nothing. The outbound worker (the one blocking Dragonfly consumer sized in [`scaling.md`](./scaling.md)) routes the job by provider and posts from the obligation's own address with bounded retry; a permanent refusal abandons the obligation so recovery stops re-offering it. The core report path stays provider-agnostic: the worker is the only place a connector poster is imported. Specified in M206_001 and M206_002; walkthrough in [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §5–§6.
+
+*Today* the Rust report path owes every non-empty answer, from any producer, to the lease's model provider (`rustd/crates/afd_fleet/src/lease/commit.rs:198-210`); the worker drops it as `unknown_provider` (`afd_outbound/src/poster.rs:77-92`) and the undelivered scan re-appends it every 300 seconds (`afd_outbound/src/obligation/sql.rs:111-116`). The retired Zig daemon took the provider from the fleet's `core.connector_channels` binding and owed nothing for an unbound fleet.
 
 ### D. WATCH  (user-side: how the live tail surfaces)
 
@@ -1135,7 +1142,7 @@ A future reconcile job (a control-plane sweep over `core.fleets` for `active` ro
 ## Notable invariants this flow proves
 
 - **No race on stream / group creation.** `innerCreateFleet` does INSERT + `XGROUP CREATE` synchronously before returning 201. Any event arriving within microseconds of the 201 finds the stream already there, ready to be leased.
-- **All triggers funnel into one ingress.** Webhook, cron, steer, continuation, the Slack bot, and the repair verifier are different *producers* into `fleet:{id}:events`; the lease path doesn't branch on actor type.
+- **All triggers funnel into one ingress.** Webhook, cron, steer, continuation, and the repair verifier are different *producers* into `fleet:{id}:events`, and the Slack mention joins them as `slack_mention` in M206_002; the lease path doesn't branch on actor type.
 - **Secrets never enter fleet context.** Substitution happens at the tool bridge, inside the runner's sandboxed child, after sandbox entry. The fleet sees `${secrets.fly.api_token}`; HTTPS request headers get real bytes; responses never echo the token; the bytes never cross the activity pipe.
 - **Exactly one active lease per fleet.** The atomic affinity claim + monotonic fencing token guarantee a single in-flight lease per fleet no matter how many runners poll.
 - **Reclaim is lease-layer, not Dragonfly-consumer.** A dead runner is reclaimed via `lease_expires_at` + `fencing_token`, never `XAUTOCLAIM` — Dragonfly cannot observe an off-platform processor's death.

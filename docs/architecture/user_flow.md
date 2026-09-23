@@ -34,7 +34,7 @@ Every row is extracted from the §-numbered sections below; the owner column nam
 | Model/cap overlay | per-field, at lease time | frontmatter `""` / `0` / absent ⇒ overlay from `tenant_model_selection` (or synth-default) | §8.7 |
 | Cap resolution time | provider-set or install time | never at trigger time — no network dependency on the hot path | §8.7 |
 | Run-chunk threshold | 0.75 × `context_cap_tokens` | L3 chunking; continuation resumes in a fresh window | §8.7 |
-| Slack surface | Rung 0, reactive only | per-channel resident fleet is the memory namespace; answers on `@mention`, never unattended | §8.8 |
+| Slack surface | Rung 0, reactive only | per-channel resident fleet is the memory namespace; answers on `@mention`, never unattended. Zig-only today: the Rust daemon drops mentions until M206_002 | §8.8 |
 
 ## Traps
 
@@ -318,6 +318,8 @@ Single source of truth for caps: the `core.model_library` table (tenant read: be
 **Dashboard equivalent — the Models page (`/settings/models`).** A browser user manages the same self-managed posture there instead of the CLI. The **active-model row** shows the resolved `provider` · `model` with a LIVE/DEFAULT pill (the dashboard read of `tenant provider show`). The secret-driven **switch-list** flips the active provider in one click. It calls the same self-managed provider-set as `tenant provider create`, keyed off the server-projected secret `kind` (see [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.3). The row's **Edit** replaces the credential whole via PUT (§8.3), prefilled from the projected row — provider, base URL, and model are editable, and the key is re-entered because a stored secret is never readable. The `/credentials` page was removed outright (not redirected) — provider keys live here; custom (non-provider) secrets moved to the standalone Secrets & ENVs page (`/secrets`).
 
 ## §8.8 Slack as a resident surface (Rung 0) — M106
+
+> **Status.** Everything below shipped in the retired Zig daemon. The Rust daemon verifies Slack's signature and echoes the `url_verification` handshake, then drops every mention (`rustd/crates/afd_api_ingress/src/handler/events.rs:88`). M206_002 restores the mention path, keeps the resident, and adds fleets that subscribe to one channel by its ID; [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) walks the zero-, one- and several-fleet cases.
 
 A second front door, alongside Claude / CLI / dashboard, for users who live in Slack and never author markdown. After a workspace admin connects Slack once in the dashboard (OAuth — Open Authorization; the install is a `fleet:slack` vault handle plus a generic `core.connector_installs` row mapping `team_id → workspace`), `@agentsfleet` lives in any channel it's invited to:
 
