@@ -37,7 +37,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { deleteUser, listUsersByQuery, revokeSession } from "./fixtures/clerk-admin";
 import { loadWorktreeEnv } from "./fixtures/env-loader";
-import { sweepLeakedFixtureFleets, sweepLeakedFixtureLibraries } from "./fixtures/teardown";
+import {
+  sweepLeakedFixtureFleets,
+  sweepLeakedFixtureKeys,
+  sweepLeakedFixtureLibraries,
+} from "./fixtures/teardown";
 import { revokeBrowserSessions } from "./fixtures/browser-sessions";
 
 const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
@@ -145,6 +149,18 @@ export default async function globalTeardown(): Promise<void> {
     }
   } catch (err) {
     console.error("[e2e:sweep] leaked-library sweep failed:", err);
+  }
+  try {
+    // Last, and the only sweep whose leak is a live credential rather than a
+    // row: an `agt_t` key the CLI specs mint. Its own `finally` covers a thrown
+    // test and cannot cover a killed run.
+    if (fs.existsSync(JWT_CACHE_PATH)) {
+      await sweepLeakedFixtureKeys();
+    } else {
+      console.log("[e2e:sweep] fixture JWT cache missing — skipping leaked-key sweep");
+    }
+  } catch (err) {
+    console.error("[e2e:sweep] leaked-key sweep failed:", err);
   }
   try {
     // A long suite can outlive the cached JWT. Fleet cleanup must still be

@@ -65,3 +65,47 @@ export async function cleanWorkspaceFleets(
   }
   return mine.length;
 }
+
+/**
+ * Remove the library entries a run onboarded.
+ *
+ * `cleanWorkspaceFleets` was this lane's entire teardown, and a fleet is not
+ * the only row a spec creates: `library-onboard-live` onboards two entries per
+ * run and deleted neither. They are inert on their own and they accumulate —
+ * the gallery listing grows every run until somebody clears it by hand, and a
+ * listing large enough to be truncated is what made `library --json` report a
+ * row it had just printed as missing. The mess and the mis-parse were the same
+ * mess.
+ *
+ * Prefix-scoped like the fleet sweep beside it, for the same reason: specs run
+ * against a shared fixture workspace, and an unscoped delete takes a sibling's
+ * row out from under it mid-test.
+ */
+export async function cleanWorkspaceLibraryEntries(
+  env: Env,
+  options: TeardownOptions = {},
+): Promise<number> {
+  // `workspaceId` rides in `TeardownOptions` for symmetry with the fleet
+  // sweep; the CLI resolves the workspace from its own state, so nothing here
+  // needs to read it.
+  const runPrefix = options.runPrefix ?? ACCEPTANCE_RUN_PREFIX;
+  let removed = 0;
+  const listed = await runFleetctl(["library", "--json"], { env });
+  if (listed.code !== 0) return removed;
+  let rows: Array<{ id?: string; name?: string }>;
+  try {
+    const open = listed.stdout.indexOf("{");
+    if (open < 0) return removed;
+    rows = (JSON.parse(listed.stdout.slice(open)) as { items?: typeof rows }).items ?? [];
+  } catch {
+    // A listing this teardown cannot read is not a reason to fail a run that
+    // already passed; the e2e lane's ownership sweep is the backstop.
+    return removed;
+  }
+  for (const row of rows) {
+    if (!row.id || !row.name?.startsWith(runPrefix)) continue;
+    const deleted = await runFleetctl(["library", "delete", row.id], { env });
+    if (deleted.code === 0) removed++;
+  }
+  return removed;
+}

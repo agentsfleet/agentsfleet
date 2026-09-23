@@ -262,3 +262,83 @@ export async function sweepLeakedFixtureLibraries(): Promise<SweepCounts> {
   else console.log(summary);
   return total;
 }
+
+/**
+ * The prefix every CLI key this suite mints carries, so the sweep can find one
+ * nobody deleted. Kept here beside the sweep that reads it (RULE UFS).
+ */
+export const CLI_KEY_PREFIX = "acc-cli-key-";
+
+/**
+ * Revoke and delete every API key this suite left behind.
+ *
+ * Unlike a leaked fleet or library entry, a leaked key is not inert: it is a
+ * live `agt_t` tenant credential sitting in the account until somebody notices.
+ * `workspace-library.spec.ts` deletes its own in a `finally`, which covers a
+ * thrown assertion and does NOT cover the run being killed — a cancelled
+ * workflow, a runner reclaimed mid-test, an `--exit-on-first-failure`. That gap
+ * is the whole reason this exists.
+ *
+ * Prefix-matched, so it can never touch a key a human made.
+ */
+export async function sweepLeakedFixtureKeys(): Promise<SweepCounts> {
+  assertDestructiveTargetIsSafe();
+  const total: SweepCounts = { removed: 0, failed: 0 };
+  for (const key of FIXTURE_KEYS) {
+    const client = clientFor(key as ClientHandle);
+    // Every page, not just the first. The listing defaults to a page size, so
+    // a tenant that has accumulated keys hides the OLDEST ones — exactly the
+    // leaked credentials this sweep exists to reach — behind a cursor.
+    let cursor: string | null = null;
+    do {
+      // `starting_after`, not `cursor` (api_key.rs:124 — Stripe-style keyset
+      // pagination). The wrong name is not an error the server reports: it is
+      // ignored, page one is served again, and the loop never advances past
+      // the newest keys — an unterminated teardown on a sweep whose whole job
+      // is reaching the OLDER ones.
+      const path: string = cursor
+        ? `/v1/api-keys?starting_after=${encodeURIComponent(cursor)}`
+        : "/v1/api-keys";
+      let page: { items?: Array<{ id?: string; key_name?: string }>; next_cursor?: string | null };
+      try {
+        page = await client.get<typeof page>(path);
+      } catch (err) {
+        console.error(`[e2e:sweep] API-key listing failed for fixture '${key}':`, err);
+        total.failed++;
+        break;
+      }
+      for (const row of page.items ?? []) {
+        if (!row.id || !row.key_name?.startsWith(CLI_KEY_PREFIX)) continue;
+        try {
+          await revokeAndDeleteKey(client, row.id);
+          total.removed++;
+        } catch (err) {
+          console.error(`[e2e:sweep] API-key delete failed for ${row.key_name}:`, err);
+          total.failed++;
+        }
+      }
+      cursor = page.next_cursor ?? null;
+    } while (cursor);
+  }
+  const summary = `[e2e:sweep] done — ${total.removed} fixture API key(s) removed, ${total.failed} failed`;
+  if (total.failed > 0) console.error(summary);
+  else console.log(summary);
+  return total;
+}
+
+/**
+ * Revoke, then delete. Both verbs live on the SAME path.
+ *
+ * Revocation is `PATCH /v1/api-keys/{id}` with `{"active": false}` — there is
+ * no `POST .../revoke` route, and an earlier draft of this file called one.
+ * It 404'd, the delete that followed refused a still-active key, neither status
+ * was read, and the helper reported success over a live tenant credential. The
+ * client throws on a non-2xx, so a failure is now loud by construction.
+ */
+async function revokeAndDeleteKey(
+  client: ReturnType<typeof clientFor>,
+  id: string,
+): Promise<void> {
+  await client.patch(`/v1/api-keys/${id}`, { active: false });
+  await client.delete(`/v1/api-keys/${id}`);
+}
