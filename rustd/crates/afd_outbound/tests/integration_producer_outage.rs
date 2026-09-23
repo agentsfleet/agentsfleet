@@ -225,6 +225,7 @@ async fn a_trim_keeps_the_answers_the_group_has_not_taken() {
             .queue
             .enqueue(OutboundJob {
                 provider: PROVIDER,
+                destination: DESTINATION,
                 workspace_id: WORKSPACE,
                 fleet_id: FLEET,
                 event_id: &event_id,

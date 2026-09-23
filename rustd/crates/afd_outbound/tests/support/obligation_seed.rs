@@ -136,6 +136,8 @@ const RANGE_END: &str = "+";
 /// The entry field naming the logical event an answer belongs to; written by
 /// `OutboundQueue::enqueue`.
 const FIELD_EVENT_ID: &str = "event_id";
+/// The job field the destination is appended under.
+const FIELD_DESTINATION: &str = "destination";
 
 /// Destroys the consumer group, leaving the stream and its entries in place.
 ///
@@ -193,6 +195,30 @@ pub(crate) async fn entries_on(redis: &Dragonfly) -> u64 {
 /// `XRANGE` rather than read through the group, because a read would claim the
 /// entries and change the pending list this suite asserts on.
 pub(crate) async fn entries_naming(redis: &Dragonfly, event: &str) -> u64 {
+    fields_naming(redis, event)
+        .await
+        .len()
+        .try_into()
+        .unwrap_or(u64::MAX)
+}
+
+/// The destination every entry carrying `event` was appended with.
+///
+/// Scoped to this test's own answer for the reason [`entries_naming`] gives.
+pub(crate) async fn destinations_naming(redis: &Dragonfly, event: &str) -> Vec<String> {
+    fields_naming(redis, event)
+        .await
+        .into_iter()
+        .filter_map(|fields| {
+            fields
+                .into_iter()
+                .find_map(|(key, value)| (key == FIELD_DESTINATION).then_some(value))
+        })
+        .collect()
+}
+
+/// Each entry on the stream that carries `event`, as its field pairs.
+async fn fields_naming(redis: &Dragonfly, event: &str) -> Vec<Vec<(String, String)>> {
     let mut cmd = redis::cmd(CMD_XRANGE);
     cmd.arg(OUTBOUND_STREAM_KEY).arg(RANGE_START).arg(RANGE_END);
     let entries: Vec<(String, Vec<String>)> = redis
@@ -201,16 +227,20 @@ pub(crate) async fn entries_naming(redis: &Dragonfly, event: &str) -> u64 {
         .expect("XRANGE answers on a live stream, and a missing key reads as empty");
     entries
         .into_iter()
-        .filter(|(_id, fields)| {
+        .map(|(_id, fields)| {
             fields
                 .as_chunks::<2>()
                 .0
                 .iter()
-                .any(|[key, value]| key == FIELD_EVENT_ID && value == event)
+                .map(|[key, value]| (key.clone(), value.clone()))
+                .collect::<Vec<_>>()
         })
-        .count()
-        .try_into()
-        .unwrap_or(u64::MAX)
+        .filter(|fields| {
+            fields
+                .iter()
+                .any(|(key, value)| key == FIELD_EVENT_ID && value == event)
+        })
+        .collect()
 }
 
 /// A reader under a consumer name of the caller's choosing.

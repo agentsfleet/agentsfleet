@@ -190,6 +190,7 @@ async fn owe_and_queue(harness: &OutboundHarness, nth: u8, event: &str) -> Event
         .queue
         .enqueue(OutboundJob {
             provider: PROVIDER,
+            destination: DESTINATION,
             workspace_id: WORKSPACE,
             fleet_id: FLEET,
             event_id: event,
@@ -528,6 +529,7 @@ fn job(id: EventId, event_id: &str) -> Box<OutboundDelivery> {
     Box::new(OutboundDelivery {
         id,
         provider: PROVIDER.to_owned(),
+        destination: DESTINATION.to_owned(),
         workspace_id: WORKSPACE.to_owned(),
         fleet_id: FLEET.to_owned(),
         event_id: event_id.to_owned(),

@@ -50,6 +50,9 @@ mod support;
 
 use self::support::{OUTBOUND_LANE, OutboundHarness};
 
+/// The thread an owed answer is addressed to, as a Slack producer records it.
+const DESTINATION: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
+
 /// How long a worker may take to pick a job up, deliver it, and acknowledge it.
 ///
 /// Generous against a cold container and a jittered backoff — the assertions
@@ -204,6 +207,7 @@ async fn enqueue(harness: &OutboundHarness, answer: &str) {
         .queue
         .enqueue(OutboundJob {
             provider: PROVIDER,
+            destination: DESTINATION,
             workspace_id: WORKSPACE_ID,
             fleet_id: FLEET_ID,
             event_id: "1700000000000-0",
@@ -570,6 +574,7 @@ async fn a_queue_that_answers_and_refuses_is_not_reported_as_an_outage() {
         .queue
         .enqueue(OutboundJob {
             provider: PROVIDER,
+            destination: DESTINATION,
             workspace_id: WORKSPACE_ID,
             fleet_id: FLEET_ID,
             event_id: "1700000000-0",

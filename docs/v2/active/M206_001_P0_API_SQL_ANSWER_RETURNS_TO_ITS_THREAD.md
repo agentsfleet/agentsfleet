@@ -70,7 +70,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/tests/integration_report_commit.rs` | EDIT | A charged report over an event with no destination owes nothing. |
 | `rustd/crates/afd_outbound/src/{obligation.rs,obligation/sql.rs,producer.rs,lanes.rs,poster.rs,slack.rs,worker.rs}` | EDIT | Typed provider and destination on `Delivery`/`Owed`; scans skip abandoned and destination-less rows; abandon on a permanent or exhausted verdict; the poster reads the address from the job. |
 | `rustd/crates/afd_outbound/src/lanes/abandon.rs` | CREATE | The abandon stamp and its event, beside `lanes/retire.rs`, keeping `lanes.rs` under the cap. |
-| `rustd/crates/afd_dragonfly/src/{lib.rs,outbound.rs,outbound/reader.rs}` | EDIT | The queue entry carries the destination. |
+| `rustd/crates/afd_dragonfly/src/{outbound.rs,outbound/reader.rs}` | EDIT | The queue entry carries the destination; an entry without one is dropped as undecodable. |
+| `rustd/crates/agentsfleetd/src/outbound.rs` | EDIT | The poster is built without a pool: it reads no event row. |
 | `rustd/crates/afd_bench/src/lane/outbound.rs` · `outbound/poster.rs` · `outbound/tests.rs` · `outbound/poster/tests.rs` | EDIT | Bench jobs carry a destination. |
 | `rustd/crates/afd_outbound/tests/{integration_obligations.rs,integration_attempt_count.rs,integration_worker.rs,integration_producer_outage.rs,integration_slack_poster.rs,delivery.rs,lanes.rs,lane_sharing.rs,ledger_faults.rs,read_backoff.rs,support/gated_poster.rs,support/obligation_seed.rs}` | EDIT | Seed a destination; add the abandonment cases. |
 | `rustd/crates/afd_fleet/tests/integration_report_owes_destination.rs` | CREATE | Report to ledger, end to end, for three producers. |
@@ -122,9 +123,9 @@ Inside the report transaction, after the settle and before commit, the owe step 
 
 `OutboundJob` and `OutboundDelivery` carry the destination, and the producer's requeue passes the stored one. The Slack poster parses `{team_id, channel_id, thread_ts}` from the job and no longer queries `core.fleet_events`; an address missing a field is a permanent verdict before any request is built.
 
-- **Dimension 3.1** — the poster posts to the job's channel and thread → Test `poster_posts_to_the_jobs_address`
-- **Dimension 3.2** — an address missing `channel_id` or `thread_ts` is permanent with zero HTTP calls → Test `unreadable_address_is_permanent_without_a_request`
-- **Dimension 3.3** — an unreceipted and an undelivered row are re-appended carrying their stored destination → Test `requeued_obligation_keeps_its_destination`
+- **Dimension 3.1** DONE — the poster posts to the job's channel and thread → Test `poster_posts_to_the_jobs_address`
+- **Dimension 3.2** DONE — an address missing `channel_id` or `thread_ts` is permanent with zero HTTP calls → Test `unreadable_address_is_permanent_without_a_request`
+- **Dimension 3.3** DONE — an unreceipted and an undelivered row are re-appended carrying their stored destination → Test `requeued_obligation_keeps_its_destination`
 
 ### §4 — An answer nobody can take is abandoned
 
@@ -151,8 +152,9 @@ afd_outbound::obligation::Delivery { fleet_id, workspace_id, provider: afd_conne
                                      destination: &str, event_id, answer }
 afd_dragonfly::{OutboundJob, OutboundDelivery} gain `destination`
 
-Slack address (opaque outside the Slack poster):
-  {"team_id":"T0123","channel_id":"C0123456789","thread_ts":"1700000000.000100"}
+Slack address (opaque outside the Slack poster; channel_id and thread_ts required, other keys ignored):
+  {"team_id":"T024BE7LD","channel_id":"C0123456789","thread_ts":"1700000000.000100"}
+OutboundJob → From<Delivery> (one conversion for the report's append and the producer's re-append)
 ```
 
 ## Failure Modes

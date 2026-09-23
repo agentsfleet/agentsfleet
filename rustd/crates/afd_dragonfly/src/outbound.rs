@@ -78,6 +78,10 @@ pub(super) const FIELD_FLEET_ID: &str = "fleet_id";
 pub(super) const FIELD_EVENT_ID: &str = "event_id";
 /// See [`FIELD_PROVIDER`].
 pub(super) const FIELD_ANSWER: &str = "answer";
+/// See [`FIELD_PROVIDER`]. Added after the Zig daemon retired, so an entry
+/// it wrote carries none and is dropped as undecodable — every such entry was
+/// owed to a model provider and could not be delivered anyway.
+pub(super) const FIELD_DESTINATION: &str = "destination";
 
 /// Read id meaning "entries never delivered to any consumer".
 pub(super) const NEW_ENTRIES: &str = ">";
@@ -161,6 +165,9 @@ pub fn outbound_consumer() -> String {
 pub struct OutboundJob<'a> {
     /// Which connector the answer goes back through, as opaque text.
     pub provider: &'a str,
+    /// Where that connector posts it, as the producer recorded it: opaque
+    /// here, read only by that connector's poster.
+    pub destination: &'a str,
     /// The workspace whose grant pays for the delivery.
     pub workspace_id: &'a str,
     /// The fleet that produced the answer.
@@ -178,6 +185,8 @@ pub struct OutboundDelivery {
     pub id: EventId,
     /// See [`OutboundJob::provider`].
     pub provider: String,
+    /// See [`OutboundJob::destination`].
+    pub destination: String,
     /// See [`OutboundJob::workspace_id`].
     pub workspace_id: String,
     /// See [`OutboundJob::fleet_id`].
@@ -259,6 +268,8 @@ impl OutboundQueue {
             .arg("*")
             .arg(FIELD_PROVIDER)
             .arg(job.provider)
+            .arg(FIELD_DESTINATION)
+            .arg(job.destination)
             .arg(FIELD_WORKSPACE_ID)
             .arg(job.workspace_id)
             .arg(FIELD_FLEET_ID)

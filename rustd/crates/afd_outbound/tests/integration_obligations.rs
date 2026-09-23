@@ -58,8 +58,8 @@ mod seed;
 mod support;
 
 use seed::{
-    FLEET, SEEDED_AT, WORKSPACE, clear_obligations, entries_naming, entries_on, forget_group,
-    forget_stream, obligation_id, reader_named, seed_parents,
+    FLEET, SEEDED_AT, WORKSPACE, clear_obligations, destinations_naming, entries_naming,
+    entries_on, forget_group, forget_stream, obligation_id, reader_named, seed_parents,
 };
 use support::{OUTBOUND_LANE, OutboundHarness};
 
@@ -198,6 +198,7 @@ async fn owe_and_queue(harness: &OutboundHarness, nth: u8, event: &str) {
         .queue
         .enqueue(OutboundJob {
             provider: PROVIDER,
+            destination: DESTINATION,
             workspace_id: WORKSPACE,
             fleet_id: FLEET,
             event_id: event,
@@ -253,6 +254,7 @@ async fn a_result_committed_without_its_append_is_still_owed() {
         .queue
         .enqueue(OutboundJob {
             provider: PROVIDER,
+            destination: DESTINATION,
             workspace_id: WORKSPACE,
             fleet_id: FLEET,
             event_id: event,
@@ -302,6 +304,7 @@ async fn two_replicas_reporting_one_answer_owe_one_delivery() {
                 .queue
                 .enqueue(OutboundJob {
                     provider: PROVIDER,
+                    destination: DESTINATION,
                     workspace_id: WORKSPACE,
                     fleet_id: FLEET,
                     event_id: event,
@@ -450,6 +453,7 @@ async fn test_outbound_obligations_survive_worker_replacement() {
         .queue
         .enqueue(OutboundJob {
             provider: PROVIDER,
+            destination: DESTINATION,
             workspace_id: WORKSPACE,
             fleet_id: FLEET,
             event_id: event,
@@ -601,5 +605,43 @@ async fn the_daemon_producer_appends_an_owed_answer_and_receipts_it() {
         awaiting_append(&harness).await.is_empty(),
         "the producer receipted the row it appended, so the next pass does not \
          append the same answer a second time"
+    );
+}
+
+/// Dimension 3.3 — the producer re-appends an owed answer carrying the
+/// destination its row stored, so a poster reading only the job still threads
+/// it where the question came from.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+async fn requeued_obligation_keeps_its_destination() {
+    let _lane = OUTBOUND_LANE.lock().await;
+    let harness = ready().await;
+    let redis = datastore().await;
+    let event = "1700000000-7";
+
+    assert!(owe_committed(&harness, &obligation_id(9), event).await);
+    let token = CancellationToken::new();
+    let running = tokio::spawn(
+        Producer::new(harness.queue.clone(), harness.database.clone()).run(token.clone()),
+    );
+    let appended = timeout(PRODUCER_PASS, async {
+        while entries_naming(&redis, event).await == 0 {
+            sleep(POLL).await;
+        }
+    })
+    .await;
+    token.cancel();
+    running
+        .await
+        .expect("the producer stops when its token is cancelled");
+
+    assert!(
+        appended.is_ok(),
+        "the producer's pass appended the owed answer"
+    );
+    assert_eq!(
+        destinations_naming(&redis, event).await,
+        vec![DESTINATION.to_owned()],
+        "the re-appended job carries the destination the row stored"
     );
 }
