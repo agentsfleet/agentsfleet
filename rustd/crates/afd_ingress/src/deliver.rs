@@ -33,7 +33,7 @@
 //! records, which keeps a per-fleet delivery and an App fan-out to the same
 //! fleet from deduplicating against each other.
 
-use afd_admission::{Admission, Admitted, Key, Producer};
+use afd_admission::{Admission, Admitted, Key, Producer, Reply};
 use afd_wire::event::EventType;
 
 use crate::Ingress;
@@ -114,6 +114,8 @@ impl Ingress {
                 actor: delivery.actor,
                 event_type: EventType::Webhook,
                 request_json: delivery.request_json,
+                // A delivery's sender owns no reply surface this ledger can post to.
+                reply: Reply::None,
             })
             .await?;
 

@@ -57,12 +57,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `schema/918_fleet_admissions_reply_destination.sql` | CREATE | Nullable `reply_provider` and `reply_address` on `core.fleet_admissions`, both-or-neither check. |
+| `schema/918_fleet_admissions_reply_destination.sql` | CREATE | Nullable `reply_provider` and `reply_address` on `core.fleet_admissions`, both-or-neither check, and a lookup index partial on the destination. |
 | `schema/919_fleet_obligations_destination.sql` | CREATE | `destination`, `abandoned_at`, `abandon_reason` on `core.fleet_obligations`; both scan indexes rebuilt to exclude abandoned and destination-less rows. |
 | `rustd/crates/afd_db/src/migration.rs` | EDIT | Registers 918 and 919. |
-| `rustd/crates/afd_admission/src/{lib.rs,admit.rs,sql.rs,tests.rs}` | EDIT | `Admission` carries the optional destination; the insert writes it; the digest covers it; a lookup by logical event id returns it. |
-| `rustd/crates/afd_events/src/steer.rs` · `afd_cron/src/fire.rs` · `afd_ingress/src/deliver.rs` · `afd_runner/src/sweep/repair.rs` | EDIT | Each existing producer states no destination. |
-| `rustd/crates/afd_approval/src/inbox/resolve.rs` | EDIT | The continuation inherits the resumed event's destination. |
+| `rustd/crates/afd_admission/src/{lib.rs,admit.rs,sql.rs,tests.rs}` | EDIT | `Admission` carries a `Reply` — none, stated, or inherited; the insert writes or copies it; the digest covers it; `SELECT_REPLY_DESTINATION` returns it. |
+| `rustd/crates/afd_events/src/steer.rs` · `afd_cron/src/fire.rs` · `afd_ingress/src/deliver.rs` · `afd_runner/src/sweep/repair.rs` | EDIT | Each existing producer states `Reply::None`. |
+| `rustd/crates/afd_approval/tests/integration_inbox_tail_continuation.rs` · `afd_events/tests/integration_budgets.rs` · `afd_fleet/tests/{integration_cluster_rebuild.rs,integration_recovery_outage.rs,integration_admission_recovery.rs,support/fleet_recovery_seed.rs}` · `agentsfleetd/tests/support/e2e_event.rs` | EDIT | Test admissions state `Reply::None`. |
+| `rustd/crates/afd_fleet/tests/integration_reply_destination.rs` · `afd_fleet/tests/fleet_suite.rs` | CREATE · EDIT | §1's proofs against the live ledger. |
+| `rustd/crates/afd_approval/src/inbox/resolve.rs` | EDIT | The continuation states `Reply::Inherit` with the resumed event's id. |
 | `rustd/crates/afd_fleet/src/lease/{commit.rs,obligation.rs,report.rs,report/steps.rs,settle.rs}` | EDIT | The settle reads the destination in its transaction and owes only with one; `Reported.provider` feeds metering only. |
 | `rustd/crates/afd_outbound/src/{obligation.rs,obligation/sql.rs,producer.rs,lanes.rs,poster.rs,slack.rs,worker.rs}` | EDIT | Typed provider and destination on `Delivery`/`Owed`; scans skip abandoned and destination-less rows; abandon on a permanent or exhausted verdict; the poster reads the address from the job. |
 | `rustd/crates/afd_outbound/src/lanes/abandon.rs` | CREATE | The abandon stamp and its event, beside `lanes/retire.rs`, keeping `lanes.rs` under the cap. |
@@ -76,7 +78,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **`docs/greptile-learnings/RULES.md`** — STS (both-or-neither is a NULL-test check with no literal; no provider spelled in SQL), NSQ, SGR (918/919 carry grants unchanged), UFS (reasons and events are named constants), ECL (permanent vs retryable vs abandoned stay distinct), IDMP (a replayed report owes once), ORP (the removed event-table read), TST-NAM, LOG, ERR-RS, FLL.
 - `docs/RUST_ERROR_STANDARD.md` — new fallible signatures in `afd_admission`, `afd_outbound`, `afd_fleet`.
-- `dispatch/write_rust.md` RULE FN-RS with `M-STRONG-TYPES` and `M-STRONG-TYPES-GUARD` — the destination is one `Option<ReplyDestination>`, never two nullable strings; the provider is `afd_connector::Provider` at every signature from admission to the poster, so passing a model provider fails to compile; the abandon reason and the delivery outcome are enums. RULE PSR — a workspace helper or a `[workspace.dependencies]` crate wins over a new function; a new helper says in its PR why neither fits.
+- `dispatch/write_rust.md` RULE FN-RS with `M-STRONG-TYPES` and `M-STRONG-TYPES-GUARD` — the destination is one `Option<ReplyDestination>`, never two nullable strings; the provider is `afd_connector::Provider` from the ledger read to the poster, and at admission a `&'static str` that only a constant such as `Provider::id()` supplies, so a model provider fails to compile at either end while `afd_admission` stays free of `afd_vault` (`cargo tree`: `afd_events`, `afd_cron`, `afd_runner` and `afd_approval` do not link it); the abandon reason and the delivery outcome are enums. RULE PSR — a workspace helper or a `[workspace.dependencies]` crate wins over a new function; a new helper says in its PR why neither fits.
 - `docs/SCHEMA_CONVENTIONS.md` — forward, additive, single-concern slots of at most 100 lines.
 - `docs/LOGGING_STANDARD.md` — `outbound_delivery_abandoned` carries reason and count, never the answer or the address.
 
@@ -98,12 +100,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — A producer records where an answer goes
 
-The admission gains a nullable pair: `reply_provider`, a connector id, and `reply_address`, an address only that connector's poster reads. Only a producer owning a reply surface writes it; in this milestone there is none, and M206_002's `slack_mention` is the first. The existing producers state `None` in the struct literal, so a producer added later cannot forget the question. The payload digest covers the pair. **Implementation default:** keep the destination on `core.fleet_admissions` only, because the report finds that row by the logical event id the delivery stamp already uses; a copy on `core.fleet_events` would be a second row that could disagree. `continue_from` reads the resumed event's admission and admits the continuation with the same destination.
+The admission gains a nullable pair: `reply_provider`, a connector id, and `reply_address`, an address only that connector's poster reads. Only a producer owning a reply surface writes it; in this milestone there is none, and M206_002's `slack_mention` is the first. The existing producers state `Reply::None` in the struct literal, so a producer added later cannot forget the question. The payload digest covers the pair. **Implementation default:** keep the destination on `core.fleet_admissions` only, because the report finds that row by the logical event id the delivery stamp already uses; a copy on `core.fleet_events` would be a second row that could disagree. `continue_from` states `Reply::Inherit` with the resumed event's id, and the insert copies that row's pair in the same statement, so no read races the write. The lookup rides a new index partial on `reply_provider IS NOT NULL`: the settled event was delivered, so neither index partial on `delivered_at IS NULL` covers it.
 
-- **Dimension 1.1** — the steer, webhook, App webhook, schedule and repair-verification producers admit rows with no destination → Test `existing_producers_record_no_reply_destination`
-- **Dimension 1.2** — a row with both halves round-trips; a row with one half is refused by the check → Test `reply_destination_is_both_or_neither`
-- **Dimension 1.3** — an approval continuation carries its resumed event's destination; resuming an event with none yields none → Test `continuation_inherits_the_resumed_destination`
-- **Dimension 1.4** — a retried producer key whose destination differs keeps the first admission and logs drift → Test `retried_key_with_a_new_destination_keeps_the_first`
+- **Dimension 1.1** DONE — the steer, webhook, App webhook, schedule and repair-verification producers admit rows with no destination → Test `existing_producers_record_no_reply_destination`
+- **Dimension 1.2** DONE — a row with both halves round-trips; a row with one half is refused by the check → Test `reply_destination_is_both_or_neither`
+- **Dimension 1.3** DONE — an approval continuation carries its resumed event's destination; resuming an event with none yields none → Test `continuation_inherits_the_resumed_destination`
+- **Dimension 1.4** DONE — a retried producer key whose destination differs keeps the first admission and logs drift → Test `retried_key_with_a_new_destination_keeps_the_first`
 
 ### §2 — The report owes a delivery only to a recorded destination
 
@@ -140,7 +142,9 @@ core.fleet_obligations + destination TEXT NULL, abandoned_at BIGINT NULL, abando
   owed set  = receipt IS NULL     AND destination IS NOT NULL AND abandoned_at IS NULL
   lost set  = receipt IS NOT NULL AND delivered_at IS NULL AND destination IS NOT NULL AND abandoned_at IS NULL
 
-afd_admission::Admission { …, reply: Option<Reply<'a>> }        Reply { provider: &str, address: &str }
+afd_admission::Admission { …, reply: Reply<'a> }
+  Reply::None | Reply::To { connector: &'static str, address: &'a str } | Reply::Inherit { event_id: &'a str }
+idx_fleet_admissions_reply_lookup ON core.fleet_admissions (fleet_id, created_at, seq) WHERE reply_provider IS NOT NULL
 afd_outbound::obligation::Delivery { fleet_id, workspace_id, provider: afd_connector::Provider,
                                      destination: &str, event_id, answer }
 afd_dragonfly::{OutboundJob, OutboundDelivery} gain `destination`
@@ -168,7 +172,7 @@ Slack address (opaque outside the Slack poster):
 2. No destination, no obligation — the owe call takes a destination value, not an `Option`; the report branches once on the read (test 2.1).
 3. An abandoned or destination-less row is never re-offered — both scan predicates and both partial indexes carry the two NULL tests (tests 4.1, 4.3).
 4. A reply pair is both-or-neither — the named check in slot 918 (test 1.2).
-5. A continuation's destination equals its resumed event's — written in the same admission `continue_from` makes (test 1.3).
+5. A continuation's destination equals its resumed event's — copied inside the continuation's own insert (test 1.3).
 
 ## Metrics & Observability
 
@@ -182,10 +186,10 @@ Slack address (opaque outside the Slack poster):
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | integration | `existing_producers_record_no_reply_destination` | One admission from each of the five call sites leaves `reply_provider` and `reply_address` NULL. |
+| 1.1 | integration | `existing_producers_record_no_reply_destination` | Each of the five producers without a reply surface, admitted with `Reply::None`, has no destination under the shipped lookup; every call site states its `Reply` because the field has no default. |
 | 1.2 | integration | `reply_destination_is_both_or_neither` | `(slack, address)` round-trips; `(slack, NULL)` fails the named check. |
-| 1.3 | integration | `continuation_inherits_the_resumed_destination` | Approving a gate on an event admitted with `(slack, A)` admits a continuation carrying `(slack, A)`; one on a steer carries none. |
-| 1.4 | integration | `retried_key_with_a_new_destination_keeps_the_first` | Re-admitting a key with address B returns the first event, keeps A, logs the drift warning once. |
+| 1.3 | integration | `continuation_inherits_the_resumed_destination` | Continuations inheriting from an event admitted with `(slack, A)`, one admitted with none, and an id the ledger never minted carry `(slack, A)`, none, and none. |
+| 1.4 | integration | `retried_key_with_a_new_destination_keeps_the_first` | Re-admitting a key with address B returns the first event and keeps A; the stored digest differs from the retry's, the condition the drift warning fires on. |
 | 2.1 | integration | `answers_without_a_destination_owe_nothing` | Reports carrying `"done"` for a steer, an App webhook and a cron fire leave zero rows in `core.fleet_obligations`. |
 | 2.2 | integration | `answer_is_owed_to_the_recorded_destination` | A report for an event admitted with `(slack, A)` writes one row: provider `slack`, destination `A`. |
 | 2.3 | integration | `the_model_provider_never_reaches_the_ledger` | With lease provider `anthropic`, `SELECT count(*) … WHERE provider = 'anthropic'` is 0 after reports from three producers. |

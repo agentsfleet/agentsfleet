@@ -34,7 +34,7 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
-use afd_admission::{Admission, Admissions, Key, Producer};
+use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_core::clock::{self, UnixMillis};
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_crypto::entropy::Entropy;
@@ -196,6 +196,8 @@ impl Repairs {
                 actor: VERIFIER_ACTOR,
                 event_type: TRIGGER_EVENT_TYPE,
                 request_json: payload.as_str(),
+                // A verification answers no thread.
+                reply: Reply::None,
             })
             .await?;
 

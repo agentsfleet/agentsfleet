@@ -40,6 +40,7 @@ fn admission<'a>(lane: &'a EventsLane, delivery: &'a str) -> Admission<'a> {
         actor: "webhook:budget",
         event_type: EventType::Webhook,
         request_json: r#"{"delivery":"budget"}"#,
+        reply: afd_admission::Reply::None,
     }
 }
 

@@ -71,6 +71,7 @@ pub(crate) async fn enqueue(
             actor: ACTOR,
             event_type,
             request_json: REQUEST_JSON,
+            reply: afd_admission::Reply::None,
         })
         .await
         .expect("the ledger must admit the event");
