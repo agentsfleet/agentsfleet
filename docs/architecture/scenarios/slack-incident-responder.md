@@ -6,7 +6,7 @@
 
 Legend: ✅ in the Rust daemon · 🟡 in the Rust daemon, broken · 🔨 specified, not built · ⛔ only in the retired Zig daemon.
 
-**Outcome under test:** a failed GitHub Actions run is announced in `#ci-dev`. Someone replies in that announcement's thread with `@agentsfleet why did this fail?`. One fleet answers in the same thread with evidence it read from GitHub and Grafana and a proposed fix. A draft fix Pull Request (PR) opens only after a workspace member approves it. Merging and deploying stay with people and the pipeline.
+**Outcome under test:** a failed GitHub Actions run is announced in `#ci-dev`. Someone replies in that announcement's thread with `@agentsfleet why did this fail?`. One fleet answers in the same thread with evidence it read from GitHub and Grafana and a proposed fix. Asked to, the channel's repairer opens one draft fix Pull Request (PR): attaching it to the channel was the authorisation, as in Claude Tag. Merging and deploying stay with people and the pipeline.
 
 ## 1. The flow
 
@@ -35,7 +35,7 @@ agentsfleetd:  check signature -> Slack team -> workspace -> who listens in this
   answer is owed to that thread -> daemon posts it with chat.postMessage(thread_ts)
 
 later, in the same thread:  "@agentsfleet ci-dev-repairer open the fix"
-  -> request parks -> a workspace member approves in the dashboard or command line
+  -> the repairer attached to this channel runs; no per-request approval (as in Claude Tag)
   -> one draft PR on one daemon-issued branch -> its link lands in the thread
   -> a person merges in GitHub -> the pipeline deploys -> verdicts belong in #release-*
 ```
@@ -73,7 +73,7 @@ The GitHub subscription keys on a repository's name, so renaming a repository si
 | a sandbox session per thread | one run per mention |
 | memory per channel; public channels share it workspace-wide | memory per fleet; the resident's never leaves its channel |
 | a service account in channels, no per-user linking | the workspace bot token and the GitHub App: the same |
-| opens draft PRs with no approval step | a Slack request to a write-bound fleet waits for a member (§7) |
+| opens draft PRs with no approval step | the same: an attached write fleet opens one draft PR per request (§7) |
 | live progress checklist in the thread | the final answer and notices; progress comes later |
 
 Fleets are attached, never created per message: a fleet per message would start with empty memory ([`../memory.md`](../memory.md) §3).
@@ -90,7 +90,7 @@ One mention produces one event or one notice, never both and never two.
 |---|---|---|
 | none | no name can match, so it is unaddressed | the resident answers |
 | one read-only | that fleet | that fleet |
-| one write-bound | parks for approval (§7) | notice naming it; it takes addressed requests only |
+| one write-bound | that fleet: at most one draft PR (§7) | notice naming it; it takes addressed requests only |
 | several | the named one | notice listing the names; no model runs |
 | any paused, named | notice: paused, and who can resume it | not eligible |
 
@@ -115,19 +115,17 @@ Today every non-empty answer is owed to the lease's **model** provider: `commit.
 | Stage | Who acts | Credential | Approval |
 |---|---|---|---|
 | Diagnosis | the responder fleet, on a mention | GitHub token with `contents`, `actions` and `checks` read; Grafana Viewer token; network read-only | none needed; it cannot write |
-| Draft fix PR | the repairer fleet, addressed by name | GitHub token for one repository, writing one daemon-issued branch and one draft PR (`afd_gate/src/policy/egress/write.rs`) | a workspace member approves the parked request in the dashboard or command-line interface (CLI) |
+| Draft fix PR | the repairer fleet, addressed by name | GitHub token for one repository, writing one daemon-issued branch and one draft PR (`afd_gate/src/policy/egress/write.rs`) | none per request: attaching the repairer to the channel is the authorisation, as in Claude Tag |
 | Merge | a person in GitHub | their own | the repository's branch protection |
-| Deploy | the repository's pipeline | the pipeline's | the release process; rollout verdicts belong in `#release-dev` / `#release-prod` |
+| Deploy | the repository's pipeline | the pipeline's | the release process; rollout verdicts belong in `#release-dev` / `#release-prod`; the setup keeps deploy secrets off `agentsfleet-repair/*` branches |
 
-Any Slack-originated run is read-only until approved: the lease forces `network.read_only` for a `chat` event whose actor starts `slack:`, and carries only read repository rules, because the runner still admits a POST matching a daemon-authored rule under `read_only` (`src/runner/engine/runtime/policy_http_request.zig:180-187`). A Slack user is not an authenticated `agentsfleet` principal, and anything in the thread can steer the model. A write-bound fleet never receives an unaddressed mention, and an addressed one parks before its lease. Parking posts a notice with the approval link into the thread. The approved continuation carries the original request and reply destination and runs exactly once.
-
-This narrows `connectors.md` trust anchor 6 for one surface. An installed grant still covers GitHub-originated and steered writes without a card; a request typed by any member of a Slack channel does not.
+A Slack-requested run can do exactly what the attached fleet's own policy allows. For the repairer that is one daemon-issued branch and one draft PR against the trusted base (`afd_gate/src/policy/egress/write.rs:54-91`): no rule admits a merge, a ref update, a deletion or GraphQL, the runner denies any request no rule matches on a ruled host (`src/runner/engine/runtime/http_request_policy.zig:22-30`), and the token carries no workflow permission. A write-bound fleet never receives an unaddressed mention. A branch pushed into the same repository runs its workflows, so the drill's setup keeps deploy secrets off `agentsfleet-repair/*` branches. An installed grant covers the write, exactly as `connectors.md` trust anchor 6 says for every other origin.
 
 ## 8. Evidence sources
 
 | Source | How a fleet reads it | Known gaps |
 |---|---|---|
-| GitHub run | `GET /repos/{owner}/{repo}/actions/runs/{id}`, `…/jobs`, `…/check-runs/{id}/annotations`, commits and compare, under the read egress prefix (`afd_gate/src/policy/egress/read.rs:14-27`) | A read mint requests `contents: read` only (`afd_credential/src/credential/github.rs:107-119`), so Actions and Checks reads fail until M206_004. The platform App grants no Checks permission (`playbooks/operations/github_app_registration/001_playbook.md:33-38`). Job logs answer with a redirect to storage the exact-host allowlist cannot name (`src/runner/network/AllowList.zig:154`), and the tool never follows redirects. |
+| GitHub run | `agentsfleetd` reads the linked run, its failed jobs, annotations and each failed job's log tail, and attaches them to the lease (M206_003 §2); the fleet reads commits and compare itself under the read egress prefix (`afd_gate/src/policy/egress/read.rs:14-27`) | A read mint requests `contents: read` only (`afd_credential/src/credential/github.rs:107-119`), so Actions and Checks reads fail until M206_004. The platform App grants no Checks permission (`playbooks/operations/github_app_registration/001_playbook.md:33-38`). Job logs answer with a redirect to storage the exact-host allowlist cannot name (`src/runner/network/AllowList.zig:154`), and the tool never follows redirects. |
 | Grafana | workspace secret `grafana = {host, token}`; `Bearer ${secrets.grafana.token}`; Loki and alert reads over GET | No connector, by design (`../connectors.md` §Archetypes). The host must resolve publicly, because the tool rejects private addresses. Read-only is enforced by `network.read_only`, which is otherwise off by default (`afd_fleet_runtime/src/config/policy.rs:154-157`). |
 | Memory | the fleet's own namespace, hydrated only under a live lease for that fleet (`afd_fleet/src/lease/memory.rs:45-50`) | none for this journey |
 
@@ -154,11 +152,10 @@ This narrows `connectors.md` trust anchor 6 for one surface. An installed grant 
 | Thread context | ⛔ Zig re-read the thread; Rust has none | bounded re-read into `message` | M206_002 |
 | Answer delivery | 🟡 owed to the model provider, dropped, re-offered forever | owed only to a recorded destination; abandoned when undeliverable | M206_001 |
 | Slack poster | ✅ `chat.postMessage` with verdicts (`afd_outbound/src/slack.rs`) | reads its address from the obligation | M206_001 |
-| Read-only Slack runs | 🔨 | forced for unapproved Slack-originated leases | M206_003 |
-| Approval before repository write | 🟡 retired for every origin by M202 (`afd_gate/src/gate/first.rs:8-17`) | parked for Slack-originated requests to write-bound fleets | M206_003 |
-| One run per approval | unverified: the parked delivery passes once approved (`afd_gate/src/gate/pass.rs:162-163`) while approval also admits a continuation (`afd_approval/src/inbox/resolve.rs:154-155`) | exactly one run | M206_003 |
-| Continuous Integration (CI) evidence reach | 🟡 token lacks `actions`/`checks`; logs unreachable | read token reaches runs, jobs, annotations; log tail readable | M206_004 |
-| Grafana read-only | ✅ when the fleet declares `network.read_only` | declared by the drill bundle and forced by M206_003 | M206_004 |
+| Write reach from Slack | ✅ write rules admit one ref and one draft PR (`afd_gate/src/policy/egress/write.rs:54-91`) | proven for Slack-requested leases; no per-request approval, by owner decision | M206_003 |
+| One run per approval | unverified: the parked delivery passes once approved (`afd_gate/src/gate/pass.rs:162-163`) while approval also admits a continuation (`afd_approval/src/inbox/resolve.rs:154-155`) | exactly one run | its own spec; off this path, since Slack requests do not park |
+| Continuous Integration (CI) evidence reach | 🟡 token lacks `actions`/`checks`; logs unreachable | read token reaches runs, jobs, annotations; `agentsfleetd` attaches log tails | M206_003 |
+| Grafana read-only | ✅ when the fleet declares `network.read_only` | declared by the drill bundle | M206_004 |
 | External setup | not in code | playbook: apps, channels, subscriptions, App permissions, Grafana token | M206_004 |
 
 ## 11. Channels and environments
@@ -178,9 +175,9 @@ Development runs first. The production app and `#ci-prod` follow only after the 
 - A delivery is owed only to a destination its producer recorded; a model provider never reaches the delivery ledger.
 - An obligation the destination permanently refuses is abandoned and never re-offered.
 - The resident's memory is the channel's; a subscribed fleet never reads another fleet's memory.
-- A Slack-originated run cannot issue a non-read request until a workspace member approves it.
+- A Slack-requested write run reaches one daemon-issued branch and one draft PR, and never merges or deploys.
 - A write-bound fleet never receives an unaddressed mention.
-- An approved request runs exactly once, with its original context and reply destination.
+- A job log a fleet reads was fetched by `agentsfleetd` over one credential-free hop.
 - No fleet holds the Slack bot token; the daemon posts.
 
 ## 13. Proof status

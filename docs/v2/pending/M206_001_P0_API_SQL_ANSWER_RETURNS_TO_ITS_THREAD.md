@@ -19,7 +19,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Status:** PENDING
 **Priority:** P0 — no connector answer can reach its thread, and every non-empty answer from every producer is owed to a model provider and re-offered to the queue without end.
 **Categories:** API, SQL
-**Batch:** B1 — first on the critical path, beside M206_004 §1–§4 and M206_003 §1–§3; M206_002 adds the only producer that records a destination, and M206_003's approval continuation inherits one.
+**Batch:** B1 — first on the critical path, beside M206_003 §1 and §3 and M206_004 §1–§2; M206_002 adds the only producer that records a destination, and an approval continuation inherits one wherever a fleet's own gate rules park an event.
 **Branch:** pending — set at CHORE(open)
 **Baseline revision:** pending — record the full comparison commit at CHORE(open)
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
@@ -233,7 +233,7 @@ Slack address (opaque outside the Slack poster):
 ## Out of Scope
 
 - The Slack mention producer and every routing decision — M206_002.
-- Read-only Slack runs and the approval park — M206_003.
+- GitHub evidence and the Slack write reach — M206_003.
 - Deleting the destination-less rows already in the ledger: they stop cycling here and leave with their fleet by cascade.
 - A dashboard surface for abandoned answers; the structured event is the operator signal until someone asks for more.
 

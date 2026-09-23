@@ -16,7 +16,7 @@ Legend: ✅ implemented and tested · 🟡 being hardened · 🔨 specified, not
 > 3. The repair-evidence writer and `deployment_status` intake are not ported: the App ingress drops both as unsupported (`rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs:22-32`), so no production result reaches the verifier.
 > 4. The three bundles are test fixtures under `tests/fixtures/fleetbundle/` since `e621d7262`, not folders under `library/`.
 >
-> A Slack-originated request to a write-bound fleet parks for a workspace member's approval again under M206_003; see [`slack-incident-responder.md`](./slack-incident-responder.md) §7.
+> A Slack-requested repair runs under the same grant, the way Claude Tag's attached bundles do; see [`slack-incident-responder.md`](./slack-incident-responder.md) §7.
 
 ```text
                    Grafana + Elasticsearch

@@ -191,7 +191,7 @@ CLI                                agentsfleet install --library <id> --slack-ch
 | Dragonfly down at admission | datastore | Admission row commits; the replay sweeper appends later; Slack sees 200. |
 | Postgres down | datastore | 503; Slack retries; nothing half-written. |
 | Bot loop | the bot's own reply mentions itself | Dropped as `bot_message`. |
-| Prompt injection in the thread | hostile message text | Text is data under the fixed heading; tools and hosts come only from the fleet's parsed policy and M206_003's read-only lease. |
+| Prompt injection in the thread | hostile message text | Text is data under the fixed heading; tools and hosts come only from the attached fleet's parsed policy, and a write fleet's reach is one branch and one draft PR (M206_003 §3). |
 | Channel renamed | Slack admin | Identifier unchanged; routing unchanged. |
 | Fleet deleted | operator | Its subscription vanishes with its row; a resident row cascades and is re-materialised on the next mention. |
 
@@ -306,7 +306,9 @@ CLI                                agentsfleet install --library <id> --slack-ch
 
 - **Consults** — `ARCH: grounded in memory.md §4 and slack-channel-resident.md §2 | proposal: a mention reaches a subscribed fleet when one exists; the resident only when none does | status: conflicts — both pages say every mention in a channel reaches the resident | landing: a, after Indy decides` (the page corrections landed with this spec state only what the Rust daemon does). Source findings: `events.rs:88,125-134` drops mentions; `afd_ingress/src/sql.rs:49-52` resolves a team with the App statement; `binding.rs:259-265` matches repositories case-insensitively by name; `schema/500_fleets.sql:57` makes names unique but case-sensitive; the Zig daemon re-read the thread at `events.zig:219-226` and deduped with `SETNX` before appending at `events.zig:205-217`, which loses a mention that crashes between the two.
 - **Reference product** — Claude Tag, read through its docs (`claude.com/docs/claude-tag/concepts/how-it-works.md`, `agent-identity.md`, `admins/add-connections.md`, `users/memory.md`, `users/use-cases/fix-bugs.md`): one agent, access bundles attached per channel, a sandbox per thread, service-account identity. Copied: attach per channel, thread-first answers, no per-user linking. Not copied: workspace-wide memory for public channels (the brief keeps the channel boundary) and a general assistant (`docs/architecture/high_level.md:23`).
-- **Decisions pending with Indy** — recorded as agent recommendations, not approvals: (1) attach by the CLI flag now (default) or a dashboard picker in this milestone; (2) zero subscribers → the resident answers with a model (default) or a fixed setup notice; (3) one channel per fleet (default) or several; (4) an unaddressed mention with several eligible subscribers → a notice (default), never fan-out.
+- **Owner decisions** —
+  > Indy (2026-09-23): "CLI flag now, UI later (Recommended)" — context: a fleet is attached with `install --slack-channel`; the dashboard picker and attaching from Slack are the next milestone.
+- **Decisions pending with Indy** — recorded as agent recommendations, not approvals: (1) zero subscribers → the resident answers with a model (default) or a fixed setup notice, asked twice and unanswered; (2) one channel per fleet (default) or several; (3) an unaddressed mention with several eligible subscribers → a notice (default), never fan-out.
 - **Metrics review** — three operator events, one of them existing; no analytics or funnel playbook update, because no product event is counted until the drill proves the path.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
 - **Deferrals** — none at authoring.
