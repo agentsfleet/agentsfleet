@@ -86,3 +86,21 @@ WHERE f.workspace_id = $1::uuid
   AND g.service = $3
   AND g.status = $4
 ORDER BY f.id";
+
+/// The fleets in a workspace a chat mention could reach, for
+/// [`crate::slack::subscribed`] to read.
+///
+/// The relational half only, as [`SELECT_APP_SUBSCRIBERS`] is: whether a
+/// fleet's `mention` trigger names the channel is a question about its
+/// document, answered where a test can reach it. No grant join — a fleet
+/// answering a mention mints no chat credential; the daemon posts for it.
+///
+/// Ordered by id so every replica routes the same set the same way.
+///
+/// `$1` workspace, `$2` the statuses a subscriber can be read in.
+pub const SELECT_MENTION_CANDIDATES: &str = "\
+SELECT f.id::text, f.status, f.config_json::text
+FROM core.fleets f
+WHERE f.workspace_id = $1::uuid
+  AND f.status = ANY($2::text[])
+ORDER BY f.id";

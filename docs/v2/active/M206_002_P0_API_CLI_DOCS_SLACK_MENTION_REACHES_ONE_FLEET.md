@@ -67,7 +67,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `rustd/crates/afd_api_ingress/src/handler/events.rs` · `handler/events/tests.rs` | EDIT | The mention arm; drop reasons for bot, edited, self and unmapped. |
 | `rustd/crates/afd_api_ingress/src/handler/mention.rs` · `handler/mention/tests.rs` | CREATE | Parse, resolve, route, re-read, admit; kept out of `events.rs` for the length cap. |
-| `rustd/crates/afd_ingress/src/slack/{mod.rs,route.rs,thread.rs,message.rs,resident.rs,notice.rs}` | CREATE | Pure routing, the bounded re-read, message composition, resident materialisation, notice text. |
+| `rustd/crates/afd_ingress/src/slack/{mod.rs,tests.rs,route.rs,thread.rs,message.rs,resident.rs,notice.rs}` | CREATE | The subscriber read (`mod.rs`: SQL asks which fleets are alive, a pure `subscribed` reads the document), pure routing, the bounded re-read, message composition, resident materialisation, notice text. |
 | `rustd/crates/afd_ingress/src/{lib.rs,sql.rs}` | EDIT | Subscribed-fleet read for a workspace; resident binding read and insert. |
 | `rustd/crates/afd_admission/src/lib.rs` · `tests.rs` | EDIT | `Producer::SlackMention`, spelled `slack_mention`. |
 | `rustd/crates/afd_fleet_runtime/src/config/{raw/mod.rs,raw/trigger.rs,trigger.rs,mod.rs}` · `tests/{frontmatter_mention.rs,runtime_suite.rs}` | EDIT · CREATE | The `mention` trigger: `source`, exactly one `channels` entry (schema), and `ChannelId`, whose `FromStr` is the one shape check. |
@@ -127,7 +127,7 @@ After the wall, `decide` recognises `event_callback` whose `event.type` is `app_
 
 - **Dimension 2.1** DONE — a document with one valid channel parses; none, two, a lowercase or a `D…` identifier is refused naming the key → Test `mention_trigger_takes_exactly_one_channel_id`
 - **Dimension 2.2** — the subscribed-fleet read returns every fleet whose trigger names the channel, with status and addressed-only flag → Test `subscribers_are_read_from_the_document`
-- **Dimension 2.3** — renaming the Slack channel changes nothing; editing the identifier moves the subscription → Test `subscription_follows_the_channel_id`
+- **Dimension 2.3** DONE — renaming the Slack channel changes nothing; editing the identifier moves the subscription → Test `subscription_follows_the_channel_id`
 - **Dimension 2.4** — an install carrying `slack_channel` stores a `TRIGGER.md` whose `mention` trigger names it, and `fleet update` round-trips it → Test `install_with_a_channel_writes_the_mention_trigger`
 - **Dimension 2.5** — `agentsfleet install --library ci-responder --slack-channel C0123456789` attaches the fleet; a malformed identifier fails before any request → Test `cli_install_attaches_a_channel`
 

@@ -58,6 +58,7 @@ mod app;
 mod binding;
 mod deliver;
 mod secret;
+pub mod slack;
 
 pub mod error;
 pub mod sql;
