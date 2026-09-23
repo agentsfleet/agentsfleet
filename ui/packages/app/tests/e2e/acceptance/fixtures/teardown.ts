@@ -262,3 +262,54 @@ export async function sweepLeakedFixtureLibraries(): Promise<SweepCounts> {
   else console.log(summary);
   return total;
 }
+
+/**
+ * The prefix every CLI key this suite mints carries, so the sweep can find one
+ * nobody deleted. Kept here beside the sweep that reads it (RULE UFS).
+ */
+export const CLI_KEY_PREFIX = "acc-cli-key-";
+
+/**
+ * Revoke and delete every API key this suite left behind.
+ *
+ * Unlike a leaked fleet or library entry, a leaked key is not inert: it is a
+ * live `agt_t` tenant credential sitting in the account until somebody notices.
+ * `workspace-library.spec.ts` deletes its own in a `finally`, which covers a
+ * thrown assertion and does NOT cover the run being killed — a cancelled
+ * workflow, a runner reclaimed mid-test, an `--exit-on-first-failure`. That gap
+ * is the whole reason this exists.
+ *
+ * Prefix-matched, so it can never touch a key a human made.
+ */
+export async function sweepLeakedFixtureKeys(): Promise<SweepCounts> {
+  assertDestructiveTargetIsSafe();
+  const total: SweepCounts = { removed: 0, failed: 0 };
+  for (const key of FIXTURE_KEYS) {
+    const client = clientFor(key as ClientHandle);
+    let listing: { items?: Array<{ id?: string; key_name?: string }> };
+    try {
+      listing = await client.get<typeof listing>("/v1/api-keys");
+    } catch (err) {
+      console.error(`[e2e:sweep] API-key listing failed for fixture '${key}':`, err);
+      total.failed++;
+      continue;
+    }
+    for (const row of listing.items ?? []) {
+      if (!row.id || !row.key_name?.startsWith(CLI_KEY_PREFIX)) continue;
+      try {
+        // Revoke THEN delete: the route refuses to delete a key that is still
+        // live, which is the same order the dashboard walks.
+        await client.post(`/v1/api-keys/${row.id}/revoke`, {});
+        await client.delete(`/v1/api-keys/${row.id}`);
+        total.removed++;
+      } catch (err) {
+        console.error(`[e2e:sweep] API-key delete failed for ${row.key_name}:`, err);
+        total.failed++;
+      }
+    }
+  }
+  const summary = `[e2e:sweep] done — ${total.removed} fixture API key(s) removed, ${total.failed} failed`;
+  if (total.failed > 0) console.error(summary);
+  else console.log(summary);
+  return total;
+}
