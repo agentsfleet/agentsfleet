@@ -108,6 +108,7 @@ const EVENT_REQUEUED: &str = "outbound_delivery_requeued_at_shutdown";
 const EVENT_COUNT_FAILED: &str = "outbound_obligation_attempt_failed";
 const EVENT_STAMP_FAILED: &str = "outbound_obligation_stamp_failed";
 const EVENT_ABANDONED: &str = "outbound_delivery_abandoned";
+const EVENT_ABANDON_FAILED: &str = "outbound_obligation_abandon_failed";
 /// The field the count rides on.
 const FIELD_ATTEMPTS: &str = "attempts";
 /// The field an event is named by.
@@ -235,6 +236,8 @@ async fn reoffered_before(harness: &OutboundHarness, cutoff: i64) -> Vec<String>
         .await
         .expect("the scan answers")
         .into_iter()
+        // Deployment-wide scan, this suite's own fleet (ISO-1).
+        .filter(|owed| owed.fleet_id == FLEET)
         .map(|owed| owed.event_id)
         .collect()
 }
@@ -869,6 +872,51 @@ async fn permanent_refusal_abandons_the_obligation() {
         .expect("the ledger answers"),
         None,
         "a second abandon stamps nothing, so nothing is announced twice"
+    );
+
+    // A duplicate entry for the same answer reaches a lane and is refused
+    // again: the row is already abandoned, so the lane says nothing new.
+    one_cycle(
+        &harness,
+        EventId::of("1700000004999-0"),
+        event,
+        Verdict::Permanent,
+    )
+    .await;
+    assert_eq!(
+        capture.named(EVENT_ABANDONED).len(),
+        announced_before + 1,
+        "a refused duplicate of an abandoned answer is not announced again"
+    );
+}
+
+/// An abandon stamp the ledger will not write is reported, and the job is
+/// acknowledged anyway: the row stays in the lost set, which is the
+/// at-least-once direction, and the lane is not left holding a refusal.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_failed_abandon_stamp_is_reported_and_the_job_acknowledged() {
+    let capture = capture();
+    let event = "1700000004-4";
+    let entry = EventId::of("1700000004000-4");
+    let server = HangingQueue::spawn().await;
+    let token = CancellationToken::new();
+    let poster = Scripted::answering(&[Verdict::Permanent]);
+    let lanes = lanes_over(&server, no_ledger::no_ledger(), poster, &token).await;
+
+    lanes.dispatch(job(entry.clone(), event)).await;
+    await_until(
+        "the refused job to be acknowledged despite the dead ledger",
+        || server.acks().contains(&entry.as_str().to_owned()),
+    )
+    .await;
+    token.cancel();
+    lanes.drain().await;
+
+    assert!(
+        !capture.named(EVENT_ABANDON_FAILED).is_empty(),
+        "the abandon failure is reported: {:?}",
+        capture.events()
     );
 }
 

@@ -61,6 +61,10 @@ pub enum AbandonReason {
     Refused,
     /// Every delivery cycle it was allowed ended retryable.
     CyclesExhausted,
+    /// Its stored connector id names no connector, so no queue entry could
+    /// deliver it: a connector removed from the catalogue, or an edit made
+    /// out of band.
+    Unaddressable,
 }
 
 impl AbandonReason {
@@ -70,6 +74,7 @@ impl AbandonReason {
         match self {
             Self::Refused => "refused",
             Self::CyclesExhausted => "cycles_exhausted",
+            Self::Unaddressable => "unaddressable",
         }
     }
 }

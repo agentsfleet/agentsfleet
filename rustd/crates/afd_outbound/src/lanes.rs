@@ -59,7 +59,6 @@ use crate::obligation::AbandonReason;
 use crate::poster::{Deliver, Posters, Verdict, deliver_with_retry};
 use crate::producer::MAX_DELIVERY_CYCLES;
 
-mod abandon;
 mod retire;
 
 /// How many vendor calls may be in flight at once, across every lane.
@@ -230,7 +229,7 @@ impl<S: Deliver + 'static> Inner<S> {
             self.stamp_delivered(job, attempts).await;
         }
         if verdict == Verdict::Permanent {
-            self.abandon(job, AbandonReason::Refused).await;
+            crate::abandon::delivery(&self.database, job, AbandonReason::Refused).await;
         }
         if verdict == Verdict::Retryable {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.
@@ -259,7 +258,7 @@ impl<S: Deliver + 'static> Inner<S> {
                 event = EVENT_DELIVERY_EXHAUSTED
             );
             if attempts.is_some_and(|cycles| cycles >= MAX_DELIVERY_CYCLES) {
-                self.abandon(job, AbandonReason::CyclesExhausted).await;
+                crate::abandon::delivery(&self.database, job, AbandonReason::CyclesExhausted).await;
             }
         }
         if let Err(failure) = self.queue.ack(&job.id).await {
