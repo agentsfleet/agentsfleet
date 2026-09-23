@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M206
 **Workstream:** 004
 **Date:** Sep 23, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the operator-facing proof of the milestone; nothing before it touches a real Slack thread, a real failed run, or a real Grafana stack.
 **Categories:** DOCS, INFRA, SKILL
 **Batch:** B1 for §1–§2, which share no source file with M206_001–003; §3's drills in B3, after B2 reaches `api-dev`. Its own Pull Request, the milestone's follow-up.
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** feat/m206-004-ci-incident-drill
+**Baseline revision:** f3edd3c17062087a6db7f7e271606bf0c3901259
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M206_001, M206_002, M206_003 — delivery, routing, evidence and write reach, which the drills exercise.
 **Provenance:** LLM-drafted (Claude Opus 5.5, Sep 23, 2026) from source reads at `b1bc6f0c4`
