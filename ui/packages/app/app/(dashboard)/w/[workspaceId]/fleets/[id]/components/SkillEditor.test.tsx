@@ -171,6 +171,43 @@ describe("SkillEditor", () => {
     });
   });
 
+  it("should send what is in the box at retry time, not what was there at the 412", async () => {
+    // Greptile P1 on #711, and it was right. The retry runs inside the closure
+    // of the save that started it, and the reload it waits on is a round trip
+    // a person can type through. Sending the closure's copy saved the older
+    // text and then closed the editor on the newer — losing work silently,
+    // which is the worst shape a bug can take in a text editor.
+    let releaseReload: (value: unknown) => void = () => {};
+    saveFleetSourceAction
+      .mockResolvedValueOnce({ ok: false, status: 412, error: "stale" })
+      .mockResolvedValueOnce({ ok: true, data: { etag: '"after"' } });
+    getFleetDetailAction.mockReturnValue(
+      new Promise((resolve) => {
+        releaseReload = resolve;
+      }),
+    );
+
+    const user = await edit(SOURCE_FIELD.skill, "# SKILL\nfirst");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(saveFleetSourceAction).toHaveBeenCalledTimes(1));
+
+    // The reload is still in flight. Keep typing, the way a person would.
+    fireEvent.change(screen.getByRole("textbox", { name: "Edit SKILL.md" }), {
+      target: { value: "# SKILL\nsecond" },
+    });
+    releaseReload({
+      ok: true,
+      data: { fleet: detail({ source_markdown: "# SKILL\\noriginal" }), etag: '"fresh"' },
+    });
+
+    await waitFor(() => expect(saveFleetSourceAction).toHaveBeenCalledTimes(2));
+    // The retry carries the LATER text.
+    expect(saveFleetSourceAction.mock.calls[1]?.[2]).toEqual({
+      source_markdown: "# SKILL\nsecond",
+    });
+  });
+
   it("should warn once, and keep the draft, when THIS document really moved", async () => {
     // A real conflict still gets a word — but one line, and the next save
     // wins. The person pressing it is the one deciding.

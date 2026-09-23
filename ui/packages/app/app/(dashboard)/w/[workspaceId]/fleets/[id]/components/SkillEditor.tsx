@@ -74,6 +74,17 @@ export default function SkillEditor({
   const initial = documentValue(field, sourceMarkdown, triggerMarkdown);
   const [base, setBase] = useState(initial);
   const [draft, setDraft] = useState(initial);
+  /**
+   * The live draft, for the one caller that cannot read state: the retry.
+   *
+   * A retry runs inside the closure of the save that started it, so `draft`
+   * there is whatever was typed BEFORE the 412 — and the reload it waits on is
+   * a round trip a person can type through. Sending the closure's copy would
+   * save the older text and then close the editor on the newer, which is the
+   * silent way to lose someone's work.
+   */
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   const [editing, setEditing] = useState(false);
   const [expanded, setExpanded] = useState(true);
   const [etag, setEtag] = useState(initialEtag);
@@ -149,7 +160,7 @@ export default function SkillEditor({
   async function onConfirmSave() {
     setError(null);
     setDialogOpen(false);
-    await save(etag, true);
+    await save(draft, etag, true);
   }
 
   /**
@@ -168,15 +179,15 @@ export default function SkillEditor({
    * a person to do. Only a genuine change to this document says so, once, and
    * the next save overwrites it rather than demanding a review first.
    */
-  async function save(withEtag: string, mayRetry: boolean) {
+  async function save(text: string, withEtag: string, mayRetry: boolean) {
     const result = await saveFleetSourceAction(
       workspaceId,
       fleetId,
-      { [PATCH_FIELD[field]]: draft },
+      { [PATCH_FIELD[field]]: text },
       withEtag,
     );
     if (result.ok) {
-      setBase(draft);
+      setBase(text);
       setEtag(result.data.etag);
       setEditing(false);
       setOverwriteNotice(false);
@@ -194,7 +205,9 @@ export default function SkillEditor({
       if (current === null) return;
       if (current.document === base) {
         // The sibling document moved, not this one. Nothing to review.
-        await save(current.etag, false);
+        // `draftRef`, not `text`: the reload above was a round trip, and
+        // anything typed during it is the newer truth.
+        await save(draftRef.current, current.etag, false);
         return;
       }
       // This document really did change underneath. Say so once; the next
