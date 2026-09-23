@@ -106,7 +106,7 @@ The runner reads the request's `message` string and falls back to the whole body
 
 ## 6. How the answer comes back
 
-The producer that owns a reply surface records the reply destination on the admission: provider `slack` and the address `{team_id, channel_id, thread_ts}`, where `thread_ts` is the mention's `thread_ts`, or its `ts` when it started the thread. The destination travels with the event, and an approval continuation inherits it from the event it resumes. The report transaction owes a delivery only when the event carries a destination, addressed by it. The Slack poster reads the address from the delivery obligation.
+The producer that owns a reply surface records the reply destination on the admission: provider `slack` and the address `{team_id, channel_id, thread_ts}` (the poster requires `channel_id` and `thread_ts`), where `thread_ts` is the mention's `thread_ts`, or its `ts` when it started the thread. The destination travels with the event, and an approval continuation inherits it from the event it resumes. The report transaction owes a delivery only when the event carries a destination, addressed by it. The Slack poster reads the address from the delivery obligation.
 
 Today every non-empty answer is owed to the lease's **model** provider: `commit.rs:198-210` passes `lease.provider`, which is the provider resolved at billing (`schema/610_runner_leases.sql:35-39`). The dispatcher cannot parse `anthropic` as a connector and drops the job as permanent (`afd_outbound/src/poster.rs:77-92`). Nothing stamps the row, so the recovery scan re-appends it every `LOST_AFTER` of 300 seconds without end (`afd_outbound/src/obligation/sql.rs:111-116`, `producer.rs:59-66`). The Zig daemon took the provider from the channel binding and owed nothing for an unbound fleet (`src/agentsfleetd/fleet/service_report_outbound.zig:25-46` at `1ad07eb2`).
 
@@ -150,8 +150,8 @@ A Slack-requested run can do exactly what the attached fleet's own policy allows
 | Mention becomes an event | 🟡 dropped as `event_producer_not_ported` (`events.rs:88,125-134`); no Slack producer (`afd_admission/src/lib.rs:78-106`) | one admission per Slack event | M206_002 |
 | Channel → fleet | ⛔ `core.connector_channels` has no Rust reader or writer | resident binding plus subscriptions | M206_002 |
 | Thread context | ⛔ Zig re-read the thread; Rust has none | bounded re-read into `message` | M206_002 |
-| Answer delivery | 🟡 owed to the model provider, dropped, re-offered forever | owed only to a recorded destination; abandoned when undeliverable | M206_001 |
-| Slack poster | ✅ `chat.postMessage` with verdicts (`afd_outbound/src/slack.rs`) | reads its address from the obligation | M206_001 |
+| Answer delivery | ✅ owed only to a recorded destination; abandoned when refused or out of cycles (slots 918–920) | — | M206_001 |
+| Slack poster | ✅ `chat.postMessage` from the job's own address; reads no event row (`afd_outbound/src/slack.rs`) | — | M206_001 |
 | Write reach from Slack | ✅ write rules admit one ref and one draft PR (`afd_gate/src/policy/egress/write.rs:54-91`) | proven for Slack-requested leases; no per-request approval, by owner decision | M206_003 |
 | One run per approval | unverified: the parked delivery passes once approved (`afd_gate/src/gate/pass.rs:162-163`) while approval also admits a continuation (`afd_approval/src/inbox/resolve.rs:154-155`) | exactly one run | its own spec; off this path, since Slack requests do not park |
 | Continuous Integration (CI) evidence reach | 🟡 token lacks `actions`/`checks`; logs unreachable | read token reaches runs, jobs, annotations, and the fleet reads them; the log's storage hop is owner-held | M206_003 |

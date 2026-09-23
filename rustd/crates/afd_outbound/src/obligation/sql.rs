@@ -77,7 +77,9 @@ RETURNING attempt_count";
 /// for an answer already in flight.
 ///
 /// Rides `idx_fleet_obligations_unreceipted`, whose predicate is the same NULL
-/// test.
+/// tests. A row with no destination or already abandoned is never offered: the
+/// first was owed to a model provider before an obligation had to say where it
+/// goes, the second was refused for good.
 ///
 /// The three `::text` casts are load-bearing, not decoration: `id`, `fleet_id`
 /// and `workspace_id` are `UUID` columns and [`Owed`](crate::obligation::Owed)
@@ -90,6 +92,7 @@ pub(crate) const SELECT_UNRECEIPTED: &str = "\
 SELECT id::text, fleet_id::text, workspace_id::text, provider, destination, event_id, answer
   FROM core.fleet_obligations
  WHERE receipt IS NULL AND created_at < $1::bigint
+   AND destination IS NOT NULL AND abandoned_at IS NULL
  ORDER BY created_at, seq
  LIMIT $2::bigint";
 
@@ -107,11 +110,13 @@ SELECT id::text, fleet_id::text, workspace_id::text, provider, destination, even
 /// set when somebody actually got it.
 ///
 /// Rides `idx_fleet_obligations_undelivered`, leading on `fleet_id` because
-/// order is promised per destination.
+/// order is promised per destination, and skips the same two sets the scan
+/// above does.
 pub(crate) const SELECT_UNDELIVERED: &str = "\
 SELECT id::text, fleet_id::text, workspace_id::text, provider, destination, event_id, answer
   FROM core.fleet_obligations
  WHERE receipt IS NOT NULL AND delivered_at IS NULL AND updated_at < $1::bigint
+   AND destination IS NOT NULL AND abandoned_at IS NULL
  ORDER BY fleet_id, created_at, seq
  LIMIT $2::bigint";
 
@@ -166,3 +171,19 @@ pub(crate) const REAPPEND_RECEIPT: &str = "\
 UPDATE core.fleet_obligations
    SET receipt = $2::text, updated_at = $3::bigint
  WHERE id = $1::uuid";
+
+/// Give up on an answer: its destination refused it for good, or it has spent
+/// its delivery cycles.
+///
+/// Stamped before the acknowledgement, for the reason [`STAMP_DELIVERED`] is.
+/// Guarded on the row being neither delivered nor already abandoned, so only
+/// the one write that lands answers a row — which is what lets the caller log
+/// an abandonment exactly once however many duplicate entries reach it.
+///
+/// `$1` fleet, `$2` event, `$3` now, `$4` reason.
+pub(crate) const ABANDON: &str = "\
+UPDATE core.fleet_obligations
+   SET abandoned_at = $3::bigint, abandon_reason = $4::text, updated_at = $3::bigint
+ WHERE fleet_id = $1::uuid AND event_id = $2::text
+   AND delivered_at IS NULL AND abandoned_at IS NULL
+RETURNING attempt_count";

@@ -69,7 +69,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/src/lease/{commit.rs,obligation.rs,mod.rs,report.rs,report/steps.rs}` · `afd_fleet/Cargo.toml` | EDIT | The report reads the destination in its transaction and owes only with one; `Committed::Settled` carries an `Owing`; `Reported.provider` feeds metering only; `afd_connector` becomes a direct dependency. |
 | `rustd/crates/afd_fleet/tests/integration_report_commit.rs` | EDIT | A charged report over an event with no destination owes nothing. |
 | `rustd/crates/afd_outbound/src/{obligation.rs,obligation/sql.rs,producer.rs,lanes.rs,poster.rs,slack.rs,worker.rs}` | EDIT | Typed provider and destination on `Delivery`/`Owed`; scans skip abandoned and destination-less rows; abandon on a permanent or exhausted verdict; the poster reads the address from the job. |
-| `rustd/crates/afd_outbound/src/lanes/abandon.rs` | CREATE | The abandon stamp and its event, beside `lanes/retire.rs`, keeping `lanes.rs` under the cap. |
+| `rustd/crates/afd_outbound/src/lanes/abandon.rs` | CREATE | The abandon stamp and its event, beside `lanes/retire.rs`, keeping `lanes.rs` under the cap; the event's fields are a type with no field for the answer or the address. |
 | `rustd/crates/afd_dragonfly/src/{outbound.rs,outbound/reader.rs}` | EDIT | The queue entry carries the destination; an entry without one is dropped as undecodable. |
 | `rustd/crates/agentsfleetd/src/outbound.rs` | EDIT | The poster is built without a pool: it reads no event row. |
 | `rustd/crates/afd_bench/src/lane/outbound.rs` · `outbound/poster.rs` · `outbound/tests.rs` · `outbound/poster/tests.rs` | EDIT | Bench jobs carry a destination. |
@@ -131,10 +131,10 @@ Inside the report transaction, after the settle and before commit, the owe step 
 
 A permanent verdict stamps `abandoned_at` and a named reason before the acknowledgement. A retryable verdict stays re-offerable until `attempt_count` reaches `MAX_DELIVERY_CYCLES`, then the same stamp applies. **Implementation default:** `MAX_DELIVERY_CYCLES = 12`, a compile-time-asserted constant beside `LOST_AFTER`. Both scans require a destination and no abandonment, so rows written before this change are never re-offered and leave with their fleet by cascade.
 
-- **Dimension 4.1** — a permanent verdict abandons the row and a pass past `LOST_AFTER` does not re-offer it → Test `permanent_refusal_abandons_the_obligation`
-- **Dimension 4.2** — a destination failing retryably is re-offered until the cycle cap, then abandoned → Test `exhausted_cycles_abandon_the_obligation`
-- **Dimension 4.3** — destination-less rows are skipped by the unreceipted and the undelivered scan → Test `legacy_rows_are_never_reoffered`
-- **Dimension 4.4** — abandonment emits `outbound_delivery_abandoned` once, with reason and count and no answer or address → Test `abandonment_is_logged_once_without_content`
+- **Dimension 4.1** DONE — a permanent verdict abandons the row and a pass past `LOST_AFTER` does not re-offer it → Test `permanent_refusal_abandons_the_obligation`
+- **Dimension 4.2** DONE — a destination failing retryably is re-offered until the cycle cap, then abandoned → Test `exhausted_cycles_abandon_the_obligation`
+- **Dimension 4.3** DONE — destination-less rows are skipped by the unreceipted and the undelivered scan → Test `legacy_rows_are_never_reoffered`
+- **Dimension 4.4** DONE — abandonment emits `outbound_delivery_abandoned` once, with reason and count and no answer or address → Test `abandonment_is_logged_once_without_content`
 
 ## Interfaces
 
@@ -162,8 +162,8 @@ OutboundJob → From<Delivery> (one conversion for the report's append and the p
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
 | Crash between commit and append | process death | Row unreceipted; the producer scan re-appends it with its destination; the thread receives the answer late. |
-| Unreadable address | producer bug or a hand-edited row | Permanent before any request; abandoned with reason `address_unreadable`. |
-| Channel archived or bot removed | Slack answers `ok:false` | Permanent; abandoned; never re-offered. |
+| Unreadable address | producer bug or a hand-edited row | Permanent before any request; abandoned with reason `refused`; the poster logs `slack_post_address_unreadable`. |
+| Channel archived or bot removed | Slack answers `ok:false` | Permanent; abandoned with reason `refused`; never re-offered. |
 | Vendor outage across cycles | 429 or 5xx | Retryable; re-offered after `LOST_AFTER`; abandoned at the cycle cap with reason `cycles_exhausted`. |
 | Unknown stored provider | tampering or a removed connector | Report owes nothing and logs `report_reply_provider_unknown`; the run's result and charge stand. |
 | Continuation of an unknown event | lineage race | No destination; nothing owed. |
