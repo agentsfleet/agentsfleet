@@ -39,6 +39,8 @@ base64.workspace = true
 # The exchange POST. The same client the rest of the workspace dials vendors
 # with, so a connector adds no second HTTP stack.
 reqwest.workspace = true
+# The Slack thread address both ends of the round trip read and write.
+serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
 # Constant-time comparison of a presented state against the computed one, and

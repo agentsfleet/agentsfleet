@@ -39,10 +39,21 @@ use afd_crypto::secret::SecretBytes;
 use afd_vault::{Deleted, SecretName};
 
 use super::Grants;
-use super::parse::{HANDLE_BOT_TOKEN, HANDLE_INTEGRATION, HANDLE_LABEL};
+use super::parse::{HANDLE_BOT_TOKEN, HANDLE_BOT_USER_ID, HANDLE_INTEGRATION, HANDLE_LABEL};
 use crate::error::{Result, query};
 use crate::provider::Provider;
 use crate::sql;
+
+/// The bot a workspace's grant speaks as.
+///
+/// Not `Clone`: the token is zeroed on drop, and a copy would outlive that.
+#[derive(Debug)]
+pub struct BotIdentity {
+    /// What a call to the provider's API spends.
+    pub token: SecretBytes,
+    /// The id the provider knows the bot by, when the grant recorded one.
+    pub user_id: Option<String>,
+}
 
 /// The context a failed routing-row delete reports under.
 const CONTEXT_FORGET: &str = "forget a workspace's connector routing rows";
@@ -170,6 +181,28 @@ impl Grants {
         workspace: &Uuid7,
         provider: Provider,
     ) -> Result<Option<SecretBytes>> {
+        Ok(self
+            .bot_identity(workspace, provider)
+            .await?
+            .map(|identity| identity.token))
+    }
+
+    /// The bot this workspace's grant speaks as: its token, and the user id the
+    /// provider knows it by.
+    ///
+    /// The id is what lets an inbound mention recognise the bot's own messages
+    /// and its own leading mention; the token is what a thread re-read spends.
+    /// One read, so the two can never come from different grants.
+    ///
+    /// # Errors
+    /// As [`Self::bot_token`]: `None` for every shape that is not a landed
+    /// grant carrying a token. A grant with a token and no user id answers the
+    /// token with no id rather than nothing.
+    pub async fn bot_identity(
+        &self,
+        workspace: &Uuid7,
+        provider: Provider,
+    ) -> Result<Option<BotIdentity>> {
         let Ok(name) = SecretName::parse(provider.grant_key()) else {
             return Ok(None);
         };
@@ -182,7 +215,10 @@ impl Grants {
         if handle.get(HANDLE_INTEGRATION).is_none() {
             return Ok(None);
         }
-        Ok(text(&handle, HANDLE_BOT_TOKEN).map(|token| SecretBytes::new(token.into_bytes())))
+        Ok(text(&handle, HANDLE_BOT_TOKEN).map(|token| BotIdentity {
+            token: SecretBytes::new(token.into_bytes()),
+            user_id: text(&handle, HANDLE_BOT_USER_ID),
+        }))
     }
 
     /// Forgets this workspace's connection to `provider`.
