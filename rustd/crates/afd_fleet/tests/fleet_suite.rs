@@ -82,6 +82,8 @@ mod integration_reply_destination;
 mod integration_report_commit;
 #[path = "integration_report_fence.rs"]
 mod integration_report_fence;
+#[path = "integration_report_owes_destination.rs"]
+mod integration_report_owes_destination;
 #[path = "integration_report_settle.rs"]
 mod integration_report_settle;
 #[path = "integration_runner_admin.rs"]

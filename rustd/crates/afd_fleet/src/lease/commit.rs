@@ -41,6 +41,7 @@ use afd_events::Closed;
 use sqlx::Acquire as _;
 
 use crate::error::{Result, query};
+use crate::lease::obligation::Owing;
 use crate::lease::settle::{Reported, Settled};
 use crate::lease::store::Leases;
 use crate::lease::verdict::Terminal;
@@ -101,15 +102,16 @@ pub enum Committed {
         /// every fenced answer that size too. `Option<Box<_>>` rather than
         /// `Box<Option<_>>`: a report that closed nothing allocates nothing.
         closed: Option<Box<Closed>>,
-        /// The delivery obligation this report newly owed, for the caller to
-        /// append and receipt.
+        /// The delivery obligation this report newly owed, and where, for the
+        /// caller to append and receipt.
         ///
-        /// `None` when the run answered nothing, and `None` on a repeat that
-        /// conflicted — so a caller cannot append an entry for an answer that
-        /// is already owed and in flight. Carried up rather than appended in
-        /// here because the append is not part of the transaction and must not
-        /// be able to fail it.
-        owed: Option<Uuid7>,
+        /// `None` when the settled event was admitted with no destination, when
+        /// the run answered nothing, and on a repeat that conflicted — so a
+        /// caller cannot append an entry for an answer nobody asked for, or one
+        /// already owed and in flight. Carried up rather than appended in here
+        /// because the append is not part of the transaction and must not be
+        /// able to fail it.
+        owed: Option<Owing>,
     },
     /// This runner already settled this lease and the earlier report committed
     /// everything below. Nothing was written and nothing charged; what the
@@ -195,19 +197,32 @@ impl Leases {
         // here and the queue append leaves a record rather than a charged run
         // whose answer exists nowhere. The append itself is NOT here — see
         // `obligation` for why it cannot be.
-        let owed = self
-            .owe_delivery(
-                &mut transaction,
-                Delivery {
-                    fleet_id: lease.fleet_id.as_str(),
-                    workspace_id: lease.workspace_id.as_str(),
-                    provider: &lease.provider,
-                    event_id: &lease.event_id,
-                    answer,
-                },
-                now,
-            )
-            .await?;
+        //
+        // Owed only to where the question came from. The lease's own
+        // `provider` is the MODEL provider billing resolved, and it has no path
+        // in here: `Delivery` takes a connector type, which only the event's
+        // recorded destination supplies.
+        let destination =
+            Leases::reply_destination(&mut transaction, lease.fleet_id.as_str(), &lease.event_id)
+                .await?;
+        let owed = match destination {
+            Some(reply) => self
+                .owe_delivery(
+                    &mut transaction,
+                    Delivery {
+                        fleet_id: lease.fleet_id.as_str(),
+                        workspace_id: lease.workspace_id.as_str(),
+                        provider: reply.provider,
+                        destination: &reply.address,
+                        event_id: &lease.event_id,
+                        answer,
+                    },
+                    now,
+                )
+                .await?
+                .map(|obligation| Owing { obligation, reply }),
+            None => None,
+        };
 
         transaction.commit().await.map_err(query(CONTEXT_COMMIT))?;
         Ok(Committed::Settled {

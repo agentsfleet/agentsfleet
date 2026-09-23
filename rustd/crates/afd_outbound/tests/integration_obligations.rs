@@ -34,6 +34,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_connector::Provider;
 use afd_core::clock::UnixMillis;
 use afd_dragonfly::{Dragonfly, OutboundJob};
 use std::time::Duration;
@@ -63,7 +64,11 @@ use seed::{
 use support::{OUTBOUND_LANE, OutboundHarness};
 
 /// The connector every fixture answer goes back through.
-const PROVIDER: &str = "slack";
+const PROVIDER: &str = Provider::Slack.id();
+
+/// The thread every owed answer here is addressed to.
+const DESTINATION: &str =
+    r#"{"team_id":"T024BE7LD","channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
 /// What the fixture answers say.
 const ANSWER: &str = "Aurora is healthy.";
 /// A cutoff every seeded row is older than, so a scan sees all of them.
@@ -85,7 +90,8 @@ fn delivery(event_id: &str) -> Delivery<'_> {
     Delivery {
         fleet_id: FLEET,
         workspace_id: WORKSPACE,
-        provider: PROVIDER,
+        provider: Provider::Slack,
+        destination: DESTINATION,
         event_id,
         answer: ANSWER,
     }

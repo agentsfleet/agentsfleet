@@ -31,6 +31,7 @@ use afd_events::Closed;
 use afd_observability::producers;
 
 use crate::error::Result;
+use crate::lease::obligation::Owing;
 use crate::lease::pull::Plane;
 use crate::lease::settle::Reported;
 use afd_outbound::obligation::Delivery;
@@ -99,7 +100,7 @@ impl Plane {
     /// runner its finished, charged run did not land — and it did.
     pub(super) async fn queue_owed_answer(
         &self,
-        obligation: &Uuid7,
+        owing: &Owing,
         lease: &Reported,
         answer: &str,
         now: UnixMillis,
@@ -107,14 +108,15 @@ impl Plane {
         step(
             "queue_delivery",
             lease,
-            obligation.as_str(),
+            owing.obligation.as_str(),
             self.leases
                 .queue_delivery(
-                    obligation,
+                    &owing.obligation,
                     Delivery {
                         fleet_id: lease.fleet_id.as_str(),
                         workspace_id: lease.workspace_id.as_str(),
-                        provider: &lease.provider,
+                        provider: owing.reply.provider,
+                        destination: &owing.reply.address,
                         event_id: &lease.event_id,
                         answer,
                     },

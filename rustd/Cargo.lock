@@ -478,6 +478,7 @@ dependencies = [
  "afd_approval",
  "afd_auth",
  "afd_billing",
+ "afd_connector",
  "afd_core",
  "afd_credential",
  "afd_crypto",
