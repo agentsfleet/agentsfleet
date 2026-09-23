@@ -15,6 +15,10 @@ use sqlx::Row as _;
 use crate::error::{self, COLUMN_FLEET, COLUMN_STATUS, Result, row_unreadable};
 use crate::{Ingress, sql};
 
+mod route;
+
+pub use self::route::{Notice, Route, route};
+
 /// Statement name, for the context a query failure carries.
 const CONTEXT_MENTION_SUBSCRIBERS: &str = "resolve mention subscribers";
 

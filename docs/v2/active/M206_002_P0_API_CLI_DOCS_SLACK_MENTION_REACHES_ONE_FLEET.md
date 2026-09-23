@@ -133,12 +133,12 @@ After the wall, `decide` recognises `event_callback` whose `event.type` is `app_
 
 ### §3 — Routing picks one fleet or one notice
 
-A pure function takes the subscribers and the mention text with the leading bot mention stripped, and answers `Addressed`, `Sole`, `Resident`, or `Notice(kind)`. A first word equal to one subscriber's name ignoring case, after trimming `:` or `,`, addresses it; two names equal ignoring case are `Notice(ambiguous)`. Unaddressed: no subscribers → `Resident`; one eligible → `Sole`; several → `Notice(choose)`; only addressed-only or paused ones → `Notice(address_it)`. Addressing a paused fleet → `Notice(paused)`. No verdict admits more than one event.
+A pure function takes the subscribers and the mention text with the leading bot mention stripped, and answers `Addressed`, `Sole`, `Resident`, or `Notice(kind)`. A subscriber is **eligible** for an unaddressed mention when it can run and is not addressed-only, so the drill's channel — a read-only responder beside a write-bound repairer — routes an unaddressed mention to the responder. A first word equal to one subscriber's name ignoring case, after trimming `:` or `,`, addresses it; two names equal ignoring case are `Notice(ambiguous)`. Unaddressed: no subscribers → `Resident`; one eligible → `Sole`; several → `Notice(choose)`; only addressed-only or paused ones → `Notice(address_it)`. Addressing a paused fleet → `Notice(paused)`. No verdict admits more than one event.
 
-- **Dimension 3.1** — every row of the scenario §4 table yields its verdict → Test `routing_table_is_total`
-- **Dimension 3.2** — two subscribers named `Incident` and `incident` make `incident …` ambiguous and never pick one → Test `case_folded_duplicates_never_route`
-- **Dimension 3.3** — a write-bound subscriber is never `Sole`, even when it is the only one → Test `write_bound_fleets_take_addressed_mentions_only`
-- **Dimension 3.4** — the addressed name is removed from the message and the rest is kept verbatim → Test `addressed_name_is_stripped_from_the_message`
+- **Dimension 3.1** DONE — every row of the scenario §4 table yields its verdict → Test `routing_table_is_total`
+- **Dimension 3.2** DONE — two subscribers named `Incident` and `incident` make `incident …` ambiguous and never pick one → Test `case_folded_duplicates_never_route`
+- **Dimension 3.3** DONE — a write-bound subscriber is never `Sole`, even when it is the only one → Test `write_bound_fleets_take_addressed_mentions_only`
+- **Dimension 3.4** DONE — the addressed name is removed from the message and the rest is kept verbatim → Test `addressed_name_is_stripped_from_the_message`
 
 ### §4 — The fleet is told the thread
 
@@ -224,7 +224,7 @@ CLI                                agentsfleet install --library <id> --slack-ch
 | 1.5 | integration | `wall_still_refuses_before_parsing` | A wrong signature answers 401 `UZ-WH-010`; a 6-minute-old timestamp answers 401 `UZ-WH-011`; neither reaches the parser. |
 | 2.1 | unit | `mention_trigger_takes_exactly_one_channel_id` | `[C0123456789]` parses; `[]`, two entries, `c0123456789` and `D0123456789` are refused naming `channels`. |
 | 2.2 | integration | `subscribers_are_read_from_the_document` | Three fleets, two naming `C01` (one write-bound, one paused), one naming `C02`: the read for `C01` returns exactly the two with correct flags. |
-| 2.3 | integration | `subscription_follows_the_channel_id` | A mention carrying `C01` routes the same before and after a simulated rename; a document edited to `C02` stops receiving `C01`. |
+| 2.3 | unit | `subscription_follows_the_channel_id` | A stored document attached to `C0123456789` is reached there and not at `C0987654321`; the same document edited to `C0987654321` moves the fleet; no channel name is stored, so a rename changes nothing. |
 | 2.4 | integration | `install_with_a_channel_writes_the_mention_trigger` | Installing `ci-responder` with `slack_channel: C01` stores a document whose triggers include `mention` for `C01`; a `fleet update` with that document back leaves the subscription intact. |
 | 2.5 | e2e | `cli_install_attaches_a_channel` | The CLI subprocess with `--slack-channel C0123456789` exits 0 and the fleet's document names the channel; `--slack-channel c01` exits non-zero with the identifier rule and sends no request. |
 | 3.1 | unit | `routing_table_is_total` | One case per scenario §4 cell returns the listed verdict. |
