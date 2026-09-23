@@ -229,12 +229,18 @@ if (!isLive) {
 
     afterAll(async () => {
       if (env && workspaceId) {
+        // Fleets first, then the entries they were installed from: a fleet
+        // holds its own copy of the bundle, so the order is not a constraint
+        // — but reading the gallery after the fleets are gone keeps the
+        // listing this walks small.
+        //
+        // Separate `try`s, not one: a fleet cleanup that throws would jump
+        // past the library sweep and leave this run's entries in the shared
+        // workspace, which is the exact leak the sweep was added to stop.
         try {
-          // Fleets first, then the entries they were installed from: a fleet
-          // holds its own copy of the bundle, so the order is not a constraint
-          // — but reading the gallery after the fleets are gone keeps the
-          // listing this walks small.
           await cleanWorkspaceFleets(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
+        } catch { /* best-effort teardown; never fail the run on cleanup */ }
+        try {
           await cleanWorkspaceLibraryEntries(env, {
             workspaceId,
             runPrefix: ACCEPTANCE_RUN_PREFIX,

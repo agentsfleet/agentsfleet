@@ -286,30 +286,54 @@ export async function sweepLeakedFixtureKeys(): Promise<SweepCounts> {
   const total: SweepCounts = { removed: 0, failed: 0 };
   for (const key of FIXTURE_KEYS) {
     const client = clientFor(key as ClientHandle);
-    let listing: { items?: Array<{ id?: string; key_name?: string }> };
-    try {
-      listing = await client.get<typeof listing>("/v1/api-keys");
-    } catch (err) {
-      console.error(`[e2e:sweep] API-key listing failed for fixture '${key}':`, err);
-      total.failed++;
-      continue;
-    }
-    for (const row of listing.items ?? []) {
-      if (!row.id || !row.key_name?.startsWith(CLI_KEY_PREFIX)) continue;
+    // Every page, not just the first. The listing defaults to a page size, so
+    // a tenant that has accumulated keys hides the OLDEST ones — exactly the
+    // leaked credentials this sweep exists to reach — behind a cursor.
+    let cursor: string | null = null;
+    do {
+      const path: string = cursor
+        ? `/v1/api-keys?cursor=${encodeURIComponent(cursor)}`
+        : "/v1/api-keys";
+      let page: { items?: Array<{ id?: string; key_name?: string }>; next_cursor?: string | null };
       try {
-        // Revoke THEN delete: the route refuses to delete a key that is still
-        // live, which is the same order the dashboard walks.
-        await client.post(`/v1/api-keys/${row.id}/revoke`, {});
-        await client.delete(`/v1/api-keys/${row.id}`);
-        total.removed++;
+        page = await client.get<typeof page>(path);
       } catch (err) {
-        console.error(`[e2e:sweep] API-key delete failed for ${row.key_name}:`, err);
+        console.error(`[e2e:sweep] API-key listing failed for fixture '${key}':`, err);
         total.failed++;
+        break;
       }
-    }
+      for (const row of page.items ?? []) {
+        if (!row.id || !row.key_name?.startsWith(CLI_KEY_PREFIX)) continue;
+        try {
+          await revokeAndDeleteKey(client, row.id);
+          total.removed++;
+        } catch (err) {
+          console.error(`[e2e:sweep] API-key delete failed for ${row.key_name}:`, err);
+          total.failed++;
+        }
+      }
+      cursor = page.next_cursor ?? null;
+    } while (cursor);
   }
   const summary = `[e2e:sweep] done — ${total.removed} fixture API key(s) removed, ${total.failed} failed`;
   if (total.failed > 0) console.error(summary);
   else console.log(summary);
   return total;
+}
+
+/**
+ * Revoke, then delete. Both verbs live on the SAME path.
+ *
+ * Revocation is `PATCH /v1/api-keys/{id}` with `{"active": false}` — there is
+ * no `POST .../revoke` route, and an earlier draft of this file called one.
+ * It 404'd, the delete that followed refused a still-active key, neither status
+ * was read, and the helper reported success over a live tenant credential. The
+ * client throws on a non-2xx, so a failure is now loud by construction.
+ */
+async function revokeAndDeleteKey(
+  client: ReturnType<typeof clientFor>,
+  id: string,
+): Promise<void> {
+  await client.patch(`/v1/api-keys/${id}`, { active: false });
+  await client.delete(`/v1/api-keys/${id}`);
 }
