@@ -39,7 +39,7 @@ use afd_core::clock::UnixMillis;
 use afd_dragonfly::{Dragonfly, OutboundJob};
 use std::time::Duration;
 
-use afd_outbound::obligation::{self, Delivery};
+use afd_outbound::obligation::{self, AbandonReason, Delivery};
 use afd_outbound::producer::Producer;
 use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
@@ -164,6 +164,9 @@ async fn owing(harness: &OutboundHarness, scan: Scan) -> Vec<String> {
     .await
     .expect("the scan answers")
     .into_iter()
+    // The scans are deployment-wide by design; this suite asks about its own
+    // fleet, the one `clear_obligations` resets (ISO-1).
+    .filter(|owed| owed.fleet_id == FLEET)
     .map(|owed| owed.event_id)
     .collect()
 }
@@ -644,4 +647,91 @@ async fn requeued_obligation_keeps_its_destination() {
         vec![DESTINATION.to_owned()],
         "the re-appended job carries the destination the row stored"
     );
+}
+
+/// A row whose stored connector no connector answers to is abandoned by the
+/// producer, not appended and not left to come back in every scan, where a
+/// batch of them would fill the pass and starve every answer behind it.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+async fn an_unaddressable_row_is_abandoned_not_requeued() {
+    let _lane = OUTBOUND_LANE.lock().await;
+    let harness = ready().await;
+    let redis = datastore().await;
+    let event = "1700000000-8";
+    seed_unaddressable(&harness, event).await;
+
+    let token = CancellationToken::new();
+    let running = tokio::spawn(
+        Producer::new(harness.queue.clone(), harness.database.clone()).run(token.clone()),
+    );
+    let abandoned = timeout(PRODUCER_PASS, async {
+        while abandon_reason(&harness, event).await.is_none() {
+            sleep(POLL).await;
+        }
+    })
+    .await;
+    token.cancel();
+    running
+        .await
+        .expect("the producer stops when its token is cancelled");
+
+    assert!(abandoned.is_ok(), "the producer's pass abandoned the row");
+    assert_eq!(
+        abandon_reason(&harness, event).await.as_deref(),
+        Some(AbandonReason::Unaddressable.as_str())
+    );
+    assert_eq!(
+        entries_naming(&redis, event).await,
+        0,
+        "nothing was appended for an answer no poster could take"
+    );
+}
+
+/// Writes an owed row that names a destination and a connector nobody answers
+/// to — what a connector removed from the catalogue leaves behind.
+async fn seed_unaddressable(harness: &OutboundHarness, event: &str) {
+    let mut connection = harness
+        .database
+        .acquire()
+        .await
+        .expect("the ledger answers");
+    sqlx::query(
+        "INSERT INTO core.fleet_obligations
+           (id, fleet_id, workspace_id, provider, destination, event_id, answer,
+            attempt_count, created_at, updated_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, 0, $8, $8)",
+    )
+    .bind(obligation_id(10))
+    .bind(FLEET)
+    .bind(WORKSPACE)
+    .bind(UNKNOWN_CONNECTOR)
+    .bind(DESTINATION)
+    .bind(event)
+    .bind(ANSWER)
+    .bind(SEEDED_AT)
+    .execute(&mut *connection)
+    .await
+    .expect("seeding a row naming a connector nobody answers to");
+}
+
+/// A connector id nothing in the catalogue answers to.
+const UNKNOWN_CONNECTOR: &str = "carrier-pigeon";
+
+/// The reason a row was abandoned with, or `None` while it is still owed.
+async fn abandon_reason(harness: &OutboundHarness, event: &str) -> Option<String> {
+    let mut connection = harness
+        .database
+        .acquire()
+        .await
+        .expect("the ledger answers");
+    sqlx::query_scalar(
+        "SELECT abandon_reason FROM core.fleet_obligations
+          WHERE fleet_id = $1::uuid AND event_id = $2::text",
+    )
+    .bind(FLEET)
+    .bind(event)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("reading the obligation")
 }

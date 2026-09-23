@@ -16,16 +16,21 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use std::borrow::Cow;
+
 use afd_admission::{Admission, Key, Producer, Reply};
 use afd_connector::Provider;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_dragonfly::EventId;
 use afd_fleet::lease::{Billed, Committed, Leases, Owing, Reported};
+use afd_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use sqlx::Row as _;
 
 use crate::integration_admission_recovery::{admission, ledger, producer_key};
-use crate::report_commit::{RESPONSE_ACCEPTED, RESPONSE_POSTGRES_REFUSES, report};
+use crate::report_commit::{
+    RESPONSE_ACCEPTED, RESPONSE_POSTGRES_REFUSES, RESUME_EVENT_ID, RESUME_RESPONSE, report,
+};
 use crate::report_seed::{DEEP_POOL, SLICE_MS};
 use crate::requests::ENROLLED_AT;
 use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts};
@@ -353,6 +358,141 @@ async fn a_replayed_or_rolled_back_report_owes_at_most_once() {
         1,
         "a refused, a settled and a repeated report owe one delivery between them"
     );
+
+    stage.fixtures.cleanup().await;
+}
+
+/// A connector id nothing in the catalogue answers to, as a producer bug or an
+/// edit made out of band would record it.
+const UNKNOWN_CONNECTOR: &str = "carrier-pigeon";
+
+/// An event id the admission ledger never minted.
+const PRE_LEDGER_EVENT: &str = "evt_predates_the_ledger";
+
+/// A recorded connector no connector answers to owes nothing: the report reads
+/// it, cannot parse it, and settles without an obligation.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_unknown_recorded_connector_owes_nothing() {
+    let stage = stage().await;
+    stage
+        .admit(
+            Producer::Webhook,
+            "asked-through-nothing",
+            Reply::To {
+                connector: UNKNOWN_CONNECTOR,
+                address: THREAD,
+            },
+        )
+        .await;
+
+    assert_eq!(
+        owed_by(stage.run_next(0).await),
+        None,
+        "a destination no poster can take is owed nothing"
+    );
+    assert_eq!(obligations(&stage.fixtures, &stage.fleet).await, Vec::new());
+
+    stage.fixtures.cleanup().await;
+}
+
+/// A lease over an event id the ledger never minted owes nothing, and still
+/// settles: the run happened and is charged for.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_event_the_ledger_never_minted_owes_nothing() {
+    let stage = stage().await;
+    stage
+        .admit(
+            Producer::Webhook,
+            "asked-before-the-ledger",
+            Reply::To {
+                connector: Provider::Slack.id(),
+                address: THREAD,
+            },
+        )
+        .await;
+    let now = UnixMillis::from_millis(ENROLLED_AT);
+    let (lease_id, mut lease) = stage.lease_next(now).await;
+    lease.event_id = PRE_LEDGER_EVENT.to_owned();
+
+    let committed = stage
+        .report(&lease_id, &lease, RESPONSE_ACCEPTED, now)
+        .await
+        .expect("the report must reach the datastore");
+    assert_eq!(owed_by(committed), None, "no ledger row, no destination");
+    assert_eq!(obligations(&stage.fixtures, &stage.fleet).await, Vec::new());
+
+    stage.fixtures.cleanup().await;
+}
+
+/// The plane's report owes the answer and then appends and receipts it, so the
+/// fast path — not the producer's recovery — is what carries a thread's answer.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn the_plane_appends_and_receipts_what_it_owed() {
+    let stage = stage().await;
+    let event_id = stage
+        .admit(
+            Producer::Webhook,
+            "asked-and-answered",
+            Reply::To {
+                connector: Provider::Slack.id(),
+                address: THREAD,
+            },
+        )
+        .await;
+    let now = UnixMillis::from_millis(ENROLLED_AT);
+    let (lease_id, lease) = stage.lease_next(now).await;
+
+    let request = ReportRequest {
+        lease_id: Cow::Borrowed(&lease_id),
+        event_id: Cow::Borrowed(&lease.event_id),
+        fencing_token: lease.fence.as_u64(),
+        outcome: Outcome::Processed,
+        failure_reason: None,
+        failure_detail: Cow::Borrowed(""),
+        response_text: Cow::Borrowed(RESPONSE_ACCEPTED),
+        tokens: 0,
+        input_tokens: 0,
+        cached_input_tokens: 0,
+        output_tokens: 0,
+        telemetry: ReportTelemetry {
+            time_to_first_token_ms: 0,
+            wall_ms: u64::try_from(SLICE_MS).expect("a slice is positive"),
+        },
+        checkpoint: ReportCheckpoint {
+            last_event_id: Cow::Borrowed(RESUME_EVENT_ID),
+            last_response: Cow::Borrowed(RESUME_RESPONSE),
+        },
+    };
+    stage
+        .fixtures
+        .plane()
+        .report(&stage.runner, &request, now.saturating_add_millis(SLICE_MS))
+        .await
+        .expect("the plane settles the report");
+
+    let mut connection = stage
+        .fixtures
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    let receipt: Option<String> = sqlx::query_scalar(
+        "SELECT receipt FROM core.fleet_obligations
+          WHERE fleet_id = $1::uuid AND event_id = $2",
+    )
+    .bind(&stage.fleet)
+    .bind(&event_id)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("the report owed the thread's answer");
+    assert!(
+        receipt.is_some(),
+        "the plane appended the owed answer and recorded the entry it landed on"
+    );
+    drop(connection);
 
     stage.fixtures.cleanup().await;
 }

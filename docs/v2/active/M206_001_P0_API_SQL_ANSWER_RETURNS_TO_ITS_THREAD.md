@@ -69,7 +69,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/src/lease/{commit.rs,obligation.rs,mod.rs,report.rs,report/steps.rs}` · `afd_fleet/Cargo.toml` | EDIT | The report reads the destination in its transaction and owes only with one; `Committed::Settled` carries an `Owing`; `Reported.provider` feeds metering only; `afd_connector` becomes a direct dependency. |
 | `rustd/crates/afd_fleet/tests/integration_report_commit.rs` | EDIT | A charged report over an event with no destination owes nothing. |
 | `rustd/crates/afd_outbound/src/{obligation.rs,obligation/sql.rs,producer.rs,lanes.rs,poster.rs,slack.rs,worker.rs}` | EDIT | Typed provider and destination on `Delivery`/`Owed`; scans skip abandoned and destination-less rows; abandon on a permanent or exhausted verdict; the poster reads the address from the job. |
-| `rustd/crates/afd_outbound/src/lanes/abandon.rs` | CREATE | The abandon stamp and its event, beside `lanes/retire.rs`, keeping `lanes.rs` under the cap; the event's fields are a type with no field for the answer or the address. |
+| `rustd/crates/afd_outbound/src/abandon.rs` · `src/lib.rs` | CREATE · EDIT | The abandon stamp and its event, shared by the lanes (a queued job) and the producer (a scanned row), keeping `lanes.rs` under the cap; the event's fields are a type with no field for the answer or the address. |
 | `rustd/crates/afd_dragonfly/src/{outbound.rs,outbound/reader.rs}` | EDIT | The queue entry carries the destination; an entry without one is dropped as undecodable. |
 | `rustd/crates/agentsfleetd/src/outbound.rs` | EDIT | The poster is built without a pool: it reads no event row. |
 | `rustd/crates/afd_bench/src/lane/outbound.rs` · `outbound/poster.rs` · `outbound/tests.rs` · `outbound/poster/tests.rs` | EDIT | Bench jobs carry a destination. |
@@ -167,7 +167,8 @@ OutboundJob → From<Delivery> (one conversion for the report's append and the p
 | Vendor outage across cycles | 429 or 5xx | Retryable; re-offered after `LOST_AFTER`; abandoned at the cycle cap with reason `cycles_exhausted`. |
 | Unknown stored provider | tampering or a removed connector | Report owes nothing and logs `report_reply_provider_unknown`; the run's result and charge stand. |
 | Continuation of an unknown event | lineage race | No destination; nothing owed. |
-| Abandon stamp fails | datastore | Row stays in the lost set; re-offered after the window (the at-least-once direction). |
+| Abandon stamp fails | datastore | Reported as `outbound_obligation_abandon_failed`; the job is still acknowledged; the row stays in the lost set and is re-offered after the window (the at-least-once direction). |
+| Stored connector names no connector | a connector removed from the catalogue, or an out-of-band edit | The producer abandons the row with reason `unaddressable` rather than skip it, so a batch of such rows cannot fill `BATCH_LIMIT` and starve the answers behind it. |
 | Acknowledgement lost after delivery | at-least-once | The thread may show the answer twice; recorded, not prevented. |
 
 ## Invariants

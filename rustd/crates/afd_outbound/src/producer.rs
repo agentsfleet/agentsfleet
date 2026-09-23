@@ -46,7 +46,7 @@ use afd_db::Db;
 use afd_dragonfly::{OutboundJob, OutboundQueue};
 use tokio_util::sync::CancellationToken;
 
-use crate::obligation::{self, Owed};
+use crate::obligation::{self, AbandonReason, Owed};
 
 /// How long an obligation is left for its own committer before this pass takes
 /// it.
@@ -189,13 +189,12 @@ impl Producer {
         };
 
         let mut appended = 0;
-        let mut unaddressable = 0_u64;
         for owed in rows {
-            // A row that names no destination, or a connector nobody answers
-            // to, was written before an obligation had to say where it goes.
-            // No entry could deliver it, so none is appended.
+            // The scans return only rows that name a destination, so a row that
+            // will not address names a connector nobody answers to. No entry
+            // could deliver it, and skipping it would leave it in every scan.
             let Some(delivery) = owed.addressed() else {
-                unaddressable += 1;
+                crate::abandon::row(&self.database, &owed, AbandonReason::Unaddressable).await;
                 continue;
             };
             let entry = match self.queue.enqueue(OutboundJob::from(delivery)).await {
@@ -226,13 +225,6 @@ impl Producer {
         }
         if appended > 0 {
             tracing::debug!(scan, appended, event = "outbound_obligation_scan_requeued");
-        }
-        if unaddressable > 0 {
-            tracing::debug!(
-                scan,
-                unaddressable,
-                event = "outbound_obligation_unaddressable_skipped"
-            );
         }
         appended
     }

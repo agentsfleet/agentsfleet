@@ -57,6 +57,7 @@
 // dev-dependencies into this same target.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
+mod abandon;
 pub mod error;
 pub mod lanes;
 pub mod obligation;
