@@ -3,18 +3,19 @@
 //! `dispatch` routes exactly one provider — `outbound/worker.zig:124` does the
 //! same and says so — and `integration_worker.rs` drives it through a stub
 //! `Deliver`, because what that suite grades is the consumer group and the
-//! retry loop. So `SlackPoster` itself ran no covered lines: the pool read that
-//! finds where an answer goes, the vault read that opens the bot token, and the
-//! POST that carries it were all unproven.
+//! retry loop. So `SlackPoster` itself ran no covered lines: the address read
+//! that finds where an answer goes, the vault read that opens the bot token,
+//! and the POST that carries it were all unproven.
 //!
 //! # Why a loopback Slack rather than a stubbed client
 //!
 //! The verdict a status maps to is already graded without a server in
 //! `delivery.rs` — no server can make a vendor answer 429 three times on
 //! demand. What only a socket can show is the REQUEST: that the bearer is the
-//! token the vault opened, that the channel and thread come from the row the
-//! mention ingress wrote, and that a 200 carrying `{"ok":false}` is not a
-//! delivery. A stubbed client would assert the arguments this test passed it.
+//! token the vault opened, that the channel and thread come from the address
+//! the job carries — no event row exists here to read them from — and that a
+//! 200 carrying `{"ok":false}` is not a delivery. A stubbed client would assert
+//! the arguments this test passed it.
 
 #![expect(
     clippy::expect_used,
@@ -53,13 +54,16 @@ const FIXTURE_KEK: [u8; 32] = [7u8; 32];
 /// The bot token the vault holds for this workspace.
 const BOT_TOKEN: &str = "xoxb-fixture-bot-token";
 
-/// Where the answer is threaded, as the mention ingress wrote it.
+/// Where the answer is threaded, as a Slack producer records it.
 const CHANNEL: &str = "C0FIXTURE01";
 /// See [`CHANNEL`].
 const THREAD: &str = "1712345678.000100";
 
 /// What the fleet is answering with.
 const ANSWER: &str = "the fixture answer";
+
+/// A Slack base nothing listens on: any request sent here fails in transport.
+const NOBODY_LISTENING: &str = "http://127.0.0.1:1";
 
 /// One loopback Slack, answering `body` with `status` to the first request.
 ///
@@ -188,7 +192,6 @@ impl Fixture {
 
     fn poster(&self, api_base: &str) -> afd_outbound::SlackPoster {
         afd_outbound::SlackPoster::new(
-            self.database.clone(),
             Grants::new(self.vault(), self.database.clone(), Entropy::new()),
             reqwest::Client::new(),
             api_base.to_owned(),
@@ -200,6 +203,7 @@ impl Fixture {
         OutboundDelivery {
             id: EventId::of("1700000000001-0"),
             provider: Provider::Slack.id().to_owned(),
+            destination: format!(r#"{{"channel_id":"{CHANNEL}","thread_ts":"{THREAD}"}}"#),
             workspace_id: self.workspace.to_string(),
             fleet_id: self.fleet.to_string(),
             event_id: self.event.clone(),
@@ -207,11 +211,10 @@ impl Fixture {
         }
     }
 
-    /// Seeds the tenant, workspace, fleet and the event that asked.
+    /// Seeds the tenant, workspace and fleet whose grant the poster opens.
     ///
-    /// `request_json` is what the mention ingress wrote when the question
-    /// arrived, and it is the only record of where the answer belongs — a
-    /// missing one is an answer with nowhere to go, not a retryable blip.
+    /// No event row: where the answer belongs rides the job, and a poster that
+    /// still read `core.fleet_events` would find nothing here and fail.
     async fn seed(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
@@ -225,31 +228,21 @@ impl Fixture {
                INSERT INTO core.users \
                  (id, tenant_id, oidc_subject, email, created_at, updated_at) \
                VALUES ($4::uuid, $1::uuid, $3, 'slack-poster@example.test', 1, 1) \
-             ), fleet AS ( \
-               INSERT INTO core.fleets \
-                 (id, workspace_id, tenant_id, name, source_markdown, config_json, \
-                  status, created_at, updated_at) \
-               VALUES ($5::uuid, $2::uuid, $1::uuid, 'slack-poster-fleet', '# fixture', \
-                       '{}'::jsonb, 'active', 1, 1) \
              ) \
-             INSERT INTO core.fleet_events \
-               (fleet_id, workspace_id, event_id, actor, event_type, status, \
-                request_json, created_at, updated_at) \
-             VALUES ($5::uuid, $2::uuid, $6, 'slack:fixture', 'mention', 'succeeded', \
-                     $7::jsonb, 1, 1)",
+             INSERT INTO core.fleets \
+               (id, workspace_id, tenant_id, name, source_markdown, config_json, \
+                status, created_at, updated_at) \
+             VALUES ($5::uuid, $2::uuid, $1::uuid, 'slack-poster-fleet', '# fixture', \
+                     '{}'::jsonb, 'active', 1, 1)",
         )
         .bind(&self.tenant)
         .bind(self.workspace.as_str())
         .bind(&self.subject)
         .bind(&self.user)
         .bind(self.fleet.as_str())
-        .bind(&self.event)
-        .bind(format!(
-            r#"{{"channel_id":"{CHANNEL}","reply_thread_ts":"{THREAD}"}}"#
-        ))
         .execute(&mut *connection)
         .await
-        .expect("the tenant, workspace, fleet and asking event seed");
+        .expect("the tenant, workspace and fleet seed");
     }
 
     /// Seals a Slack grant carrying `token`.
@@ -294,11 +287,11 @@ impl Fixture {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn an_answer_is_threaded_under_the_message_that_asked_it() {
+async fn poster_posts_to_the_jobs_address() {
     // The whole read path in one pass, and every field asserted is one the
     // daemon looked up rather than one this test handed it: the bearer is the
-    // token the vault opened, and the channel and thread are the row the
-    // mention ingress wrote.
+    // token the vault opened, and the channel and thread are the address the
+    // job carries.
     let fixture = Fixture::create().await;
     fixture.seed().await;
     fixture.seal_grant(BOT_TOKEN).await;
@@ -320,7 +313,7 @@ async fn an_answer_is_threaded_under_the_message_that_asked_it() {
     assert!(
         sent.contains(CHANNEL) && sent.contains(THREAD),
         "the answer must be threaded under the message that asked it, from the \
-         stored request rather than from anywhere else: {sent}"
+         job's own address rather than from anywhere else: {sent}"
     );
     assert!(
         sent.contains(ANSWER),
@@ -349,21 +342,31 @@ async fn a_workspace_holding_no_grant_is_permanent_rather_than_retried() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn an_answer_to_an_event_no_row_remembers_is_permanent() {
-    // Gone, unreadable, or naming nowhere to post — one answer for all three,
-    // because a caller does the same thing with each: this is not an event a
-    // poster can thread an answer under, and no retry makes it one.
+async fn an_unreadable_address_is_permanent_without_a_request() {
+    // Missing a field, empty, or not JSON — one answer for all three, because a
+    // caller does the same thing with each: the job names nowhere to post, and
+    // no retry changes that. The poster is pointed at a port nothing listens
+    // on, where any request it built would fail in transport and answer
+    // `Retryable`; `Permanent` is therefore proof that none was attempted.
     let fixture = Fixture::create().await;
     fixture.seed().await;
     fixture.seal_grant(BOT_TOKEN).await;
 
-    let slack = FakeSlack::answering("200 OK", r#"{"ok":true}"#).await;
-    let mut orphaned = fixture.job();
-    orphaned.event_id = "evt_no_row_remembers_this".to_owned();
-    let verdict = fixture.poster(&slack.base).deliver(&orphaned).await;
-    assert_eq!(verdict, Verdict::Permanent);
+    for address in [
+        format!(r#"{{"channel_id":"{CHANNEL}"}}"#),
+        format!(r#"{{"channel_id":"{CHANNEL}","thread_ts":""}}"#),
+        "not json".to_owned(),
+    ] {
+        let mut nowhere = fixture.job();
+        nowhere.destination = address;
+        assert_eq!(
+            fixture.poster(NOBODY_LISTENING).deliver(&nowhere).await,
+            Verdict::Permanent,
+            "`{}` names nowhere, and nothing was asked of Slack",
+            nowhere.destination
+        );
+    }
 
-    drop(slack);
     fixture.cleanup().await;
 }
 

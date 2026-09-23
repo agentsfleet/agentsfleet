@@ -148,16 +148,7 @@ impl Leases {
         delivery: Delivery<'_>,
         now: UnixMillis,
     ) -> Result<()> {
-        let entry = self
-            .outbound()
-            .enqueue(OutboundJob {
-                provider: delivery.provider.id(),
-                workspace_id: delivery.workspace_id,
-                fleet_id: delivery.fleet_id,
-                event_id: delivery.event_id,
-                answer: delivery.answer,
-            })
-            .await?;
+        let entry = self.outbound().enqueue(OutboundJob::from(delivery)).await?;
         obligation::receipt(self.pool(), owed.as_str(), entry.as_str(), now).await?;
         Ok(())
     }

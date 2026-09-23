@@ -79,7 +79,6 @@ pub async fn spawn(
         database.clone(),
         Posters {
             slack: SlackPoster::new(
-                database.clone(),
                 grants,
                 vendor_client,
                 afd_outbound::slack::SLACK_API_BASE.to_owned(),

@@ -31,6 +31,7 @@
 use afd_connector::Provider;
 use afd_core::clock::UnixMillis;
 use afd_db::Db;
+use afd_dragonfly::OutboundJob;
 
 use crate::error::Result;
 
@@ -68,6 +69,23 @@ pub struct Delivery<'a> {
     pub event_id: &'a str,
     /// What to say.
     pub answer: &'a str,
+}
+
+impl<'a> From<Delivery<'a>> for OutboundJob<'a> {
+    /// The queue entry that carries a delivery to its poster.
+    ///
+    /// The one conversion, so the report's append and the producer's re-append
+    /// cannot disagree about which field goes where.
+    fn from(delivery: Delivery<'a>) -> Self {
+        Self {
+            provider: delivery.provider.id(),
+            destination: delivery.destination,
+            workspace_id: delivery.workspace_id,
+            fleet_id: delivery.fleet_id,
+            event_id: delivery.event_id,
+            answer: delivery.answer,
+        }
+    }
 }
 
 impl Owed {

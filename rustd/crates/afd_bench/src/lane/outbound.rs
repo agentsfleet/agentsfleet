@@ -62,6 +62,10 @@ const SLOW_ANSWER: Duration = Duration::from_millis(250);
 /// How many destinations the jobs are spread over.
 const DESTINATIONS: u64 = 16;
 
+/// The reply address every bench job carries. The scripted poster keys its
+/// lanes on the fleet and never reads this, so one value serves them all.
+const REPLY_ADDRESS: &str = r#"{"channel_id":"C0BENCH","thread_ts":"1700000000.000100"}"#;
+
 /// The provider every queued job names, so the worker routes it to the one
 /// poster this build ships.
 const PROVIDER: &str = "slack";
@@ -134,6 +138,7 @@ pub async fn run(
         let id = queue
             .enqueue(OutboundJob {
                 provider: PROVIDER,
+                destination: REPLY_ADDRESS,
                 workspace_id: prefix.as_str(),
                 fleet_id: destination,
                 event_id: &prefix.name(&format!("event-{index}")),

@@ -1,9 +1,10 @@
 //! Putting a fleet's answer back in the Slack thread the question came from.
 //!
-//! `chat.postMessage`, threaded under the mention that started the run. Three
-//! inputs, from three places: the channel and the reply thread come from the
-//! originating event's `request_json`, the bot token comes from the workspace's
-//! sealed grant, and the answer comes off the queue.
+//! `chat.postMessage`, threaded under the mention that started the run. Two
+//! inputs, from two places: the channel, the reply thread and the answer come
+//! off the queue — the destination is the one the producer recorded when the
+//! question arrived — and the bot token comes from the workspace's sealed
+//! grant.
 //!
 //! # Both wire shapes are `serde` types, not field lookups
 //!
@@ -18,25 +19,24 @@
 //!
 //! Reading either input can fail, and so can the POST. None of it returns
 //! `Err`: the worker's only useful question is whether to try again, and
-//! [`Verdict`] answers exactly that. A missing event row and a revoked token
+//! [`Verdict`] answers exactly that. An unreadable address and a revoked token
 //! are `Permanent` for the same reason — the answer has nowhere to go and no
-//! retry changes that. A pool that would not lend a connection is `Retryable`,
-//! because it is a blip rather than a fact about the job. `post.zig` reaches
-//! the same three answers.
+//! retry changes that. A vault that would not answer is `Retryable`, because
+//! it is a blip rather than a fact about the job. The address is read first,
+//! from the job alone, so a job that names nowhere costs no read and no
+//! request.
 //!
-//! # The pool connection is released before the vendor is dialled
+//! # No pool connection rides the vendor call
 //!
 //! A pool slot must never ride an HTTP call to somebody else's server. Slack
 //! being slow would otherwise hold a Postgres connection for the length of its
-//! outage, and a handful of stalled deliveries would starve the request path
-//! of connections for a reason nothing in Postgres could explain. The reads
-//! happen first, and the connection is dropped before [`SlackPoster::post`] is
+//! outage. The poster holds no pool of its own: the token read borrows the
+//! grant store's connection and returns it before [`SlackPoster::post`] is
 //! entered — which the types enforce, since `post` never receives one.
 
 use afd_connector::{Grants, Provider};
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
-use afd_db::Db;
 use afd_dragonfly::OutboundDelivery;
 use serde::{Deserialize, Serialize};
 
@@ -67,14 +67,6 @@ const POST_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
 /// `afd_connector::exchange`, which declined to turn one on for one call site.
 const CONTENT_TYPE_JSON: &str = "application/json; charset=utf-8";
 
-/// Where the channel and the reply thread are read from.
-///
-/// `request_json` is what the mention ingress wrote when the question arrived,
-/// so the answer is threaded under the message that asked it rather than
-/// dropped at the bottom of a channel.
-const SELECT_EVENT_REQUEST: &str = "SELECT request_json::text FROM core.fleet_events \
-                                    WHERE fleet_id = $1::uuid AND event_id = $2";
-
 /// HTTP statuses that decide a verdict, named once each (RULE UFS).
 const STATUS_OK: u16 = 200;
 /// See [`STATUS_OK`].
@@ -88,24 +80,26 @@ const STATUS_SERVER_ERROR_FLOOR: u16 = 500;
 /// with every one of them, and the verdict at the call site — not the reason —
 /// is what separates a retry from a give-up.
 const REASON_TOKEN_LOAD_FAILED: &str = "slack_post_token_load_failed";
-/// See [`REASON_TOKEN_LOAD_FAILED`].
-const REASON_EVENT_LOAD_FAILED: &str = "slack_post_event_load_failed";
 
-/// Where in a Slack thread an answer belongs.
+/// Logged when a job's address names nowhere this poster can post.
+const REASON_ADDRESS_UNREADABLE: &str = "slack_post_address_unreadable";
+
+/// Where in a Slack thread an answer belongs: the address a Slack producer
+/// records at admission and the obligation carries to this poster.
 ///
-/// A DATA FORMAT: these are the keys `events.zig`'s `buildRequestJson` writes,
-/// so the field names are `serde`'s contract with the other daemon and are not
-/// this crate's to rename.
+/// A DATA FORMAT: the producer writes these keys and this reads them, so
+/// renaming one strands every answer owed under the old spelling.
 ///
-/// Both fields are required, which is the whole guard: an event carrying
-/// neither is not a Slack mention whatever queued it, and one carrying an empty
+/// Both fields are required, which is the whole guard: an address carrying
+/// neither is not a Slack thread whatever queued it, and one carrying an empty
 /// channel posts nowhere — [`non_empty`] is what turns `""` into the same
 /// answer as absent, before a request is built rather than after it fails.
+/// Other keys are ignored, so a producer may record more than a post needs.
 #[derive(Debug, Deserialize)]
 struct Destination {
     #[serde(rename = "channel_id", deserialize_with = "non_empty")]
     channel: String,
-    #[serde(rename = "reply_thread_ts", deserialize_with = "non_empty")]
+    #[serde(rename = "thread_ts", deserialize_with = "non_empty")]
     thread: String,
 }
 
@@ -149,47 +143,38 @@ fn non_empty<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String
 /// Posts a fleet's answer to Slack.
 #[derive(Debug, Clone)]
 pub struct SlackPoster {
-    database: Db,
     grants: Grants,
     http: reqwest::Client,
     api_base: String,
 }
 
 impl SlackPoster {
-    /// Binds the poster to the pool, the grant store and an HTTP client.
+    /// Binds the poster to the grant store and an HTTP client.
     ///
     /// `api_base` is [`SLACK_API_BASE`] in a deployment and a loopback in a
     /// test. The client is shared with the rest of the workspace rather than
     /// built here, so a connector adds no second HTTP stack.
     #[must_use]
-    pub const fn new(
-        database: Db,
-        grants: Grants,
-        http: reqwest::Client,
-        api_base: String,
-    ) -> Self {
+    pub const fn new(grants: Grants, http: reqwest::Client, api_base: String) -> Self {
         Self {
-            database,
             grants,
             http,
             api_base,
         }
     }
 
-    /// Both stored inputs, with the pool connection released before returning.
+    /// Both inputs, the address first and from the job alone.
     ///
     /// Answers a verdict directly on failure — see the module note on why
     /// nothing here is an error.
     async fn inputs(&self, job: &OutboundDelivery) -> Result<Inputs, Verdict> {
-        let (Ok(fleet), Ok(workspace)) =
-            (Uuid7::parse(&job.fleet_id), Uuid7::parse(&job.workspace_id))
-        else {
+        let destination = destination(job)?;
+        let Ok(workspace) = Uuid7::parse(&job.workspace_id) else {
             // An identifier this daemon queued that will not parse is this
             // build's own bug, not a transient: retrying re-runs the parse.
             return Err(failed(job, "identifier_unparseable", Verdict::Permanent));
         };
 
-        let destination = self.destination(job, &fleet).await?;
         let token = match self.grants.bot_token(&workspace, Provider::Slack).await {
             Ok(Some(token)) => token,
             // No handle, or one carrying no token: uninstalled, disconnected,
@@ -203,33 +188,6 @@ impl SlackPoster {
         };
 
         Ok(Inputs { destination, token })
-    }
-
-    /// Where the answer goes, read from the event that asked the question.
-    async fn destination(
-        &self,
-        job: &OutboundDelivery,
-        fleet: &Uuid7,
-    ) -> Result<Destination, Verdict> {
-        let Ok(mut connection) = self.database.acquire().await else {
-            // A pool that will not lend is a blip, and the answer is still
-            // deliverable in a moment.
-            return Err(failed(job, "pool_unavailable", Verdict::Retryable));
-        };
-        let row: Option<(String,)> = sqlx::query_as(SELECT_EVENT_REQUEST)
-            .bind(fleet.as_str())
-            .bind(&job.event_id)
-            .fetch_optional(connection.as_mut())
-            .await
-            .map_err(|_unreadable| failed(job, REASON_EVENT_LOAD_FAILED, Verdict::Retryable))?;
-        drop(connection);
-
-        // Gone, unreadable, or naming nowhere to post — one answer for all
-        // three, because a caller does the same thing with each: the event is
-        // not one this poster can thread an answer under, and no retry makes
-        // it one.
-        row.and_then(|(request,)| serde_json::from_str::<Destination>(&request).ok())
-            .ok_or_else(|| failed(job, REASON_EVENT_LOAD_FAILED, Verdict::Permanent))
     }
 
     /// The POST itself, with no pool connection held — see the module note.
@@ -282,6 +240,17 @@ struct Inputs {
     destination: Destination,
     /// Still wrapped, so it zeroes on drop — see `Grants::bot_token`.
     token: SecretBytes,
+}
+
+/// Where the answer goes, read from the job's recorded address.
+///
+/// Not JSON, missing a field, or naming an empty channel or thread — one
+/// answer for all of them, because a caller does the same thing with each: the
+/// job names nowhere this poster can post, and no retry changes that. Nothing
+/// has been read or requested when it answers.
+fn destination(job: &OutboundDelivery) -> Result<Destination, Verdict> {
+    serde_json::from_str(&job.destination)
+        .map_err(|_unreadable| failed(job, REASON_ADDRESS_UNREADABLE, Verdict::Permanent))
 }
 
 /// The verdict a status and a body earn, or the event a failure is logged as.
@@ -345,9 +314,22 @@ mod tests {
         classify(status, payload).unwrap_or_else(|_event| verdict_of(status))
     }
 
-    /// The destination a stored `request_json` resolves to, if any.
-    fn destination(stored: &str) -> Option<Destination> {
+    /// The destination a recorded address resolves to, if any.
+    fn address(stored: &str) -> Option<Destination> {
         serde_json::from_str(stored).ok()
+    }
+
+    /// A job carrying `address`, with every other field well formed.
+    fn job(address: &str) -> OutboundDelivery {
+        OutboundDelivery {
+            id: afd_dragonfly::streams::EventId::of("1700000000001-0"),
+            provider: Provider::Slack.id().to_owned(),
+            destination: address.to_owned(),
+            workspace_id: "0199a0b0-0000-7000-8000-000000000001".to_owned(),
+            fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),
+            event_id: "1700000000000-0".to_owned(),
+            answer: "the answer".to_owned(),
+        }
     }
 
     #[test]
@@ -405,9 +387,9 @@ mod tests {
     }
 
     #[test]
-    fn test_a_complete_request_json_names_the_thread_to_answer_in() {
-        let resolved = destination(
-            r#"{"channel_id":"C123","reply_thread_ts":"1700000000.000100","text":"status?"}"#,
+    fn test_a_complete_address_names_the_thread_to_answer_in() {
+        let resolved = address(
+            r#"{"team_id":"T024BE7LD","channel_id":"C123","thread_ts":"1700000000.000100"}"#,
         );
 
         assert!(
@@ -424,21 +406,36 @@ mod tests {
     /// Every shape that names nowhere to post. Present-and-empty is in here
     /// deliberately: it is the one a bare presence check would let through, and
     /// it would be found at the vendor, a request later.
+    const UNPOSTABLE: [&str; 9] = [
+        r#"{"channel_id":"","thread_ts":"1700000000.000100"}"#,
+        r#"{"channel_id":"C123","thread_ts":""}"#,
+        r#"{"channel_id":"C123"}"#,
+        r#"{"thread_ts":"1700000000.000100"}"#,
+        r#"{"channel_id":42,"thread_ts":"1700000000.000100"}"#,
+        r#"{"channel_id":null,"thread_ts":"1700000000.000100"}"#,
+        r#"{"channel_id":"C123","reply_thread_ts":"1700000000.000100"}"#,
+        "{}",
+        "not json",
+    ];
+
     #[test]
-    fn test_no_unpostable_request_json_resolves_a_destination() {
-        for stored in [
-            r#"{"channel_id":"","reply_thread_ts":"1700000000.000100"}"#,
-            r#"{"channel_id":"C123","reply_thread_ts":""}"#,
-            r#"{"channel_id":"C123"}"#,
-            r#"{"reply_thread_ts":"1700000000.000100"}"#,
-            r#"{"channel_id":42,"reply_thread_ts":"1700000000.000100"}"#,
-            r#"{"channel_id":null,"reply_thread_ts":"1700000000.000100"}"#,
-            "{}",
-            "not json",
-        ] {
+    fn test_no_unpostable_address_resolves_a_destination() {
+        for stored in UNPOSTABLE {
             assert!(
-                destination(stored).is_none(),
+                address(stored).is_none(),
                 "`{stored}` names nowhere to put an answer"
+            );
+        }
+    }
+
+    /// Dimension 3.2 — an address naming nowhere is a permanent verdict, and it
+    /// is reached from the job alone: nothing has been read or requested.
+    #[test]
+    fn unreadable_address_is_permanent_without_a_request() {
+        for stored in UNPOSTABLE {
+            assert!(
+                matches!(destination(&job(stored)), Err(Verdict::Permanent)),
+                "`{stored}` must be refused before any request is built"
             );
         }
     }

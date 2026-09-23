@@ -178,18 +178,16 @@ impl Producer {
         };
 
         let mut appended = 0;
+        let mut unaddressable = 0_u64;
         for owed in rows {
-            let entry = match self
-                .queue
-                .enqueue(OutboundJob {
-                    provider: &owed.provider,
-                    workspace_id: &owed.workspace_id,
-                    fleet_id: &owed.fleet_id,
-                    event_id: &owed.event_id,
-                    answer: &owed.answer,
-                })
-                .await
-            {
+            // A row that names no destination, or a connector nobody answers
+            // to, was written before an obligation had to say where it goes.
+            // No entry could deliver it, so none is appended.
+            let Some(delivery) = owed.addressed() else {
+                unaddressable += 1;
+                continue;
+            };
+            let entry = match self.queue.enqueue(OutboundJob::from(delivery)).await {
                 Ok(entry) => entry,
                 Err(failure) => {
                     // The queue is refusing. Stop the pass rather than walk the
@@ -217,6 +215,13 @@ impl Producer {
         }
         if appended > 0 {
             tracing::debug!(scan, appended, event = "outbound_obligation_scan_requeued");
+        }
+        if unaddressable > 0 {
+            tracing::debug!(
+                scan,
+                unaddressable,
+                event = "outbound_obligation_unaddressable_skipped"
+            );
         }
         appended
     }
