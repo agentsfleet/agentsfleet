@@ -36,7 +36,6 @@ import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV } from "./fixtures/constan
 import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
-import { trailingJson } from "./fixtures/steer-envelope.ts";
 import {
   resolveAcceptanceEnv,
   resolveClerkSecret,
@@ -109,6 +108,43 @@ const missingFrom = (
   );
 };
 
+/**
+ * The ONE top-level object a `--json` command printed, or a loud failure.
+ *
+ * `trailingJson` walks backward from the last `}` to its matching `{`, which is
+ * exactly right for `steer --json`: prose, then one small object. It is wrong
+ * here, and wrong in a way that reads as a product bug.
+ *
+ * A gallery listing is an envelope wrapping N rows. Truncate that text anywhere
+ * mid-array and the last `}` stops belonging to the envelope and starts
+ * belonging to a ROW — so the backward walk returns that row, it parses
+ * cleanly, `items` is undefined, and the assertion reports "gallery holds 0
+ * row(s) ... That name is not listed at all" directly above a stdout excerpt
+ * containing that very name. The message and its own evidence disagree, and
+ * whoever reads it goes looking for a row that was never missing.
+ *
+ * `JSON.parse` is the whole implementation. It already rejects a truncated
+ * document and trailing garbage, which is the entire property wanted here —
+ * a scanner written by hand to find "the right brace" is a second parser to
+ * get wrong. The one thing it cannot do is skip prose the CLI printed first,
+ * and that is an `indexOf` away.
+ */
+function envelopeJson(stdout: string, label: string): Record<string, unknown> {
+  const open = stdout.indexOf("{");
+  assert.ok(open >= 0, `${label}: no JSON object in stdout: ${stdout.slice(0, STDOUT_EXCERPT)}`);
+  try {
+    return JSON.parse(stdout.slice(open)) as Record<string, unknown>;
+  } catch (cause) {
+    throw new assert.AssertionError({
+      message:
+        `${label}: stdout is not one complete JSON object — ` +
+        `${stdout.length} byte(s) captured, so it is truncated or followed by a second ` +
+        `document, NOT an empty gallery. ${String(cause)}. ` +
+        `Tail: ${stdout.slice(-STDOUT_EXCERPT)}`,
+    });
+  }
+}
+
 /** A minimal bundle whose name carries the run prefix, so teardown finds it. */
 const bundleName = (): string => `${ACCEPTANCE_RUN_PREFIX}libadd`;
 
@@ -159,14 +195,14 @@ if (!isLive) {
     // to read. A bare `JSON.parse(stdout)` threw `Unexpected EOF` on an empty
     // gallery read and reported neither the exit code nor one byte of what the
     // CLI wrote, so the failure said only that the string was not JSON. Every
-    // sibling spec in this lane already reads through `trailingJson`, which
-    // also tolerates prose the CLI printed ahead of the payload.
+    // sibling spec in this lane reads through `trailingJson`, which suits a
+    // steer envelope and not a listing — see `envelopeJson` above.
     const parseJson = (result: RunResult, label: string): Record<string, unknown> => {
       assert.ok(
         result.stdout.trim().length > 0,
         `${label}: exited ${result.code} and wrote no stdout; stderr: ${result.stderr}`,
       );
-      return trailingJson(result.stdout) as Record<string, unknown>;
+      return envelopeJson(result.stdout, label);
     };
 
     beforeAll(async () => {
