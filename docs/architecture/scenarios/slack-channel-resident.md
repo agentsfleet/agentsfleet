@@ -4,7 +4,7 @@
 
 > References: [`../runner_fleet.md`](../runner_fleet.md) (§"Memory continuity" — the hydrate/capture loop), [`../data_flow.md`](../data_flow.md) (single-ingress trigger/execute loop), [`../user_flow.md`](../user_flow.md) §8.8 (Slack as a resident surface).
 >
-> **Shipped (M106).** Specced in [`../../v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`](../../v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md). This narrates the channel-resident surface as it now ships.
+> **Shipped in the retired Zig daemon (M106); not in the Rust daemon.** Specced in [`../../v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`](../../v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md). This page narrates what the Zig daemon did. The Rust daemon verifies Slack's signature and echoes `url_verification`, then acknowledges every mention and drops it as `event_producer_not_ported` (`rustd/crates/afd_api_ingress/src/handler/events.rs:88,125-134`); nothing in Rust reads or writes `core.connector_channels`. `docs/v2/pending/M206_002_*` restores the resident beside channel subscriptions, and [`slack-incident-responder.md`](./slack-incident-responder.md) §4 carries the routing. The function names below (`innerCreateFleet`, `insertFleetOnConn`) are the Zig daemon's.
 
 **Outcome under test:** a fact a user tells `@agentsfleet` in one Slack thread is recalled by the bot in a *different thread of the same channel* — because the memory namespace is the per-channel resident fleet, not the thread. The bot stays read-only and never acts unattended.
 
@@ -58,16 +58,16 @@ A mention is a `slack:<user>` event XADDed via the webhook-producer shape (signa
 
 Thread A stored `prod=aurora`. Thread B — a different thread, possibly days later — hydrates the **same** `channel_fleet_id` namespace and recalls `aurora`. Memory persisted **not because anything was stored in the thread**, but because the resident fleet owns the namespace and the ephemeral run borrows it. The compute is ephemeral (`:memory:` SQLite, gone on child exit); the channel store is durable in Postgres.
 
-## 5. Shipped surface
+## 5. Surface, then and now
 
-| Step | Status |
-|---|---|
-| Memory hydrate/capture loop (keyed by `fleet_id`) | ♻️ reused |
-| Single ingress / lease / execute / report | ♻️ reused |
-| Slack OAuth install — vault handle + generic `core.connector_installs` | ✅ shipped in M106 |
-| Signed events ingress + `(team,channel)→fleet` routing (`core.connector_channels`) | ✅ shipped in M106 |
-| Per-channel resident fleet — via `innerCreateFleet` + default skill.md, code-set reactive config | ✅ shipped in M106 |
-| In-thread answer (`chat.postMessage thread_ts`) | ✅ shipped in M106 |
+| Step | Zig daemon (M106) | Rust daemon |
+|---|---|---|
+| Memory hydrate/capture loop (keyed by `fleet_id`) | ♻️ reused | ✅ lease-scoped (`rustd/crates/afd_fleet/src/lease/memory.rs:45-50`) |
+| Single ingress / lease / execute / report | ♻️ reused | ✅ no Slack producer yet (`rustd/crates/afd_admission/src/lib.rs:78-106`) |
+| Slack OAuth install — vault handle + generic `core.connector_installs` | ✅ | ✅ |
+| Signed events ingress + `(team,channel)→fleet` routing (`core.connector_channels`) | ✅ | signature and handshake only; mentions dropped |
+| Per-channel resident fleet — default skill.md, code-set reactive config | ✅ | not ported |
+| In-thread answer (`chat.postMessage thread_ts`) | ✅ | poster exists; every answer is owed to the model provider and dropped (`rustd/crates/afd_fleet/src/lease/commit.rs:198-210`) |
 
 ## 6. What this scenario proves
 

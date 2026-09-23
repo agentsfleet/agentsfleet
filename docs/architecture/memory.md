@@ -37,7 +37,7 @@ Continuity is the hydrate/capture loop bridging the two: `GET /v1/runners/me/mem
 
 ## 4. The M106 channel pattern
 
-Because memory is `fleet_id`-keyed, **per-channel memory = a per-channel fleet.** The Slack-resident bot (M106) gives each channel a **durable resident fleet**. Every mention in any thread of that channel routes to the same `fleet_id`, so memory persists thread to thread. The thread is a delivery surface, not a memory key. Per-thread would forget across threads; per-workspace can't exist (no workspace key). Spec: `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`; scenario: [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md).
+Because memory is `fleet_id`-keyed, **per-channel memory = a per-channel fleet.** The Slack-resident bot (M106) gives each channel a **durable resident fleet**. That bot shipped in the retired Zig daemon; the Rust daemon drops Slack mentions, and M206_002 restores the resident beside fleets that subscribe to a channel ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §4). The boundary itself needs no new code: a runner hydrates or captures only a fleet it holds a live lease on (`rustd/crates/afd_fleet/src/lease/memory.rs:45-50`). Every mention in any thread of that channel routes to the same `fleet_id`, so memory persists thread to thread. The thread is a delivery surface, not a memory key. Per-thread would forget across threads; per-workspace can't exist (no workspace key). Spec: `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`; scenario: [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md).
 
 ## 5. Categories, selection, tools — see the topic docs
 
