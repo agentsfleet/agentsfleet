@@ -114,15 +114,32 @@ export async function mintCliKey(
   return { key: minted.key, id: minted.id };
 }
 
-/** Best-effort teardown for {@link mintCliKey}; a leaked key is a live credential. */
+/**
+ * Teardown for {@link mintCliKey}; a leaked key is a live credential.
+ *
+ * Revocation is `PATCH /v1/api-keys/{id}` with `{"active": false}` — there is
+ * no `POST .../revoke`. Both responses are checked, because the failure this
+ * guards against is precisely a cleanup that reports success while the key
+ * stays live.
+ */
 export async function deleteCliKey(
   apiUrl: string,
   sessionJwt: string,
   keyId: string,
 ): Promise<void> {
   const auth = { Authorization: `Bearer ${sessionJwt}` };
-  await fetch(`${apiUrl}/v1/api-keys/${keyId}/revoke`, { method: "POST", headers: auth });
-  await fetch(`${apiUrl}/v1/api-keys/${keyId}`, { method: "DELETE", headers: auth });
+  const revoked = await fetch(`${apiUrl}/v1/api-keys/${keyId}`, {
+    method: "PATCH",
+    headers: { ...auth, "Content-Type": "application/json" },
+    body: JSON.stringify({ active: false }),
+  });
+  if (!revoked.ok) {
+    throw new Error(`revoke CLI key failed: ${revoked.status} ${await revoked.text()}`);
+  }
+  const deleted = await fetch(`${apiUrl}/v1/api-keys/${keyId}`, { method: "DELETE", headers: auth });
+  if (!deleted.ok) {
+    throw new Error(`delete CLI key failed: ${deleted.status} ${await deleted.text()}`);
+  }
 }
 
 export async function writeCliState(

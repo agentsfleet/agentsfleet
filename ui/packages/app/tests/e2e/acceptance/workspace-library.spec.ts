@@ -206,11 +206,19 @@ test.describe("workspace-library", () => {
       expect(after.code, after.stderr).toBe(0);
       expect(after.stdout).not.toContain(entryId);
     } finally {
-      // A leaked API key is a live credential, so it goes even if the walk threw.
-      if (minted) {
-        await deleteCliKey(apiUrl, sessionJwtFor(FIXTURE_KEY.regular), minted.id);
+      // A leaked API key is a live credential, so it goes even if the walk
+      // threw — but a cleanup that throws must not replace the assertion that
+      // explains the failure. Nested, so the state directory is removed either
+      // way and the credential failure is still reported rather than silent.
+      try {
+        if (minted) {
+          await deleteCliKey(apiUrl, sessionJwtFor(FIXTURE_KEY.regular), minted.id);
+        }
+      } catch (err) {
+        console.error(`[e2e:teardown] CLI key ${minted?.id} was not removed:`, err);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
       }
-      await fs.rm(root, { recursive: true, force: true });
     }
   });
 
