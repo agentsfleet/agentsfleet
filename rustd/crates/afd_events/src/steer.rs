@@ -32,7 +32,7 @@
 //! timeout does not prove an operation failed, but neither does it prove one
 //! happened, and a human typing in a terminal has no operation to identify.
 
-use afd_admission::{Admission, Admissions, Key, Producer};
+use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_wire::event::EventType;
 
 use crate::error::Result;
@@ -101,6 +101,8 @@ impl Steer {
                 actor,
                 event_type: EventType::Chat,
                 request_json,
+                // A steer is read on the event tail that carried it, never posted to a thread.
+                reply: Reply::None,
             })
             .await?;
 

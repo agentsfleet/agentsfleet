@@ -130,6 +130,36 @@ pub enum Key<'a> {
     Unrepeatable,
 }
 
+/// Where the answer to a unit of work goes, as its producer states it.
+///
+/// Three states rather than an `Option`, for the reason [`Key`] gives: a
+/// continuation neither owns a reply surface nor lacks one — it answers where
+/// the event it resumes would have — and folding that into `None` would lose a
+/// thread's answer the moment a gate parked it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reply<'a> {
+    /// This producer owns no reply surface, so no answer is ever owed.
+    None,
+    /// The producer's own reply surface.
+    To {
+        /// The connector whose poster delivers the answer. `&'static` on
+        /// purpose: only a constant such as `afd_connector::Provider::id()`
+        /// can supply it, so a string resolved at run time — a lease's model
+        /// provider, the defect this field exists to end — cannot be recorded
+        /// as a destination.
+        connector: &'static str,
+        /// An address only that connector's poster reads.
+        address: &'a str,
+    },
+    /// The destination of an earlier event on the same fleet, copied inside
+    /// the admission's own statement so no read can race the write.
+    Inherit {
+        /// The logical id of the event whose destination is copied. An id this
+        /// ledger never minted, or an event recorded with none, copies none.
+        event_id: &'a str,
+    },
+}
+
 /// One unit of work a producer asks a fleet to run.
 ///
 /// Borrowed throughout: every field is a slice of something the caller holds
@@ -150,26 +180,56 @@ pub struct Admission<'a> {
     pub event_type: EventType,
     /// The trigger payload, already serialized.
     pub request_json: &'a str,
+    /// Where the answer goes. No default: every producer states it, so one
+    /// added later cannot forget the question.
+    pub reply: Reply<'a>,
 }
+
+/// Opens a stated destination's parts in the payload digest.
+const DIGEST_REPLY_TO: &str = "reply_to";
+
+/// Opens an inherited destination's parts in the payload digest.
+const DIGEST_REPLY_INHERIT: &str = "reply_inherit";
 
 impl Admission<'_> {
     /// The digest a producer key is checked against on a retry.
     ///
     /// Over the fields that make the event what it is — actor, type,
-    /// workspace and body — and not the instant, which a retry legitimately
-    /// re-stamps. A NUL between parts, so two fields cannot slide into each
-    /// other and hash the same.
+    /// workspace, body and destination — and not the instant, which a retry
+    /// legitimately re-stamps. A NUL between parts, so two fields cannot slide
+    /// into each other and hash the same.
+    ///
+    /// [`Reply::None`] adds nothing, so every row admitted before destinations
+    /// existed keeps the digest it was stored with and a retry of one is not
+    /// logged as drift. The other two open with a distinct tag, so a stated
+    /// address can never hash like an inherited event id.
     #[must_use]
     pub fn payload_digest(&self) -> String {
         let mut hasher = Sha256::new();
+        let mut absorb = |part: &str| {
+            hasher.update(part.as_bytes());
+            hasher.update([0u8]);
+        };
         for part in [
             self.actor,
             self.event_type.as_str(),
             self.workspace,
             self.request_json,
         ] {
-            hasher.update(part.as_bytes());
-            hasher.update([0u8]);
+            absorb(part);
+        }
+        match self.reply {
+            Reply::None => {}
+            Reply::To { connector, address } => {
+                [DIGEST_REPLY_TO, connector, address]
+                    .into_iter()
+                    .for_each(absorb);
+            }
+            Reply::Inherit { event_id } => {
+                [DIGEST_REPLY_INHERIT, event_id]
+                    .into_iter()
+                    .for_each(absorb);
+            }
         }
         hex::encode(hasher.finalize())
     }

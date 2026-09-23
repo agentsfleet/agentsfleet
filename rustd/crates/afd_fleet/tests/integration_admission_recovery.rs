@@ -126,6 +126,7 @@ pub(crate) fn admission<'a>(
         actor: ACTOR,
         event_type: EventType::Webhook,
         request_json: REQUEST_JSON,
+        reply: afd_admission::Reply::None,
     }
 }
 
