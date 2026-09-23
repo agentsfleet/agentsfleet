@@ -41,8 +41,13 @@ export const SAVE_DIALOG_TITLE = "Save source changes?";
 // when its sibling did. The next save wins: the person pressing it is the one
 // deciding, and a mandatory side-by-side of two identical texts was the bug
 // this replaced.
+//
+// It describes the DRAFT, because the draft is what stays on screen: the pane
+// renders `editing ? draft : base`, and editing is still true here. An earlier
+// wording said the text above was now the server's, which was the opposite of
+// what a person was looking at.
 export const SAVE_OVERWRITE_NOTICE =
-  "This changed on the server since you started editing. The copy above is now the server's; saving again replaces it with yours."
+  "This changed on the server since you started editing. Saving replaces the server's copy with what you see here."
 
 // Which document a save touched — the `field` value on fleet_source_saved.
 export const SOURCE_FIELD = {
