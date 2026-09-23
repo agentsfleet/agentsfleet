@@ -46,7 +46,7 @@ later, in the same thread:  "@agentsfleet ci-dev-repairer open the fix"
 |---|---|---|---|
 | What it is | a workspace's Slack credential and team routing | the channel's memory namespace and front desk | a fleet that answers mentions in one channel |
 | Where it lives | vault handle `slack` + `core.connector_installs (slack, team_id)` | `core.connector_channels`, `kind` resident, one row per channel | the fleet's `TRIGGER.md`: `type: mention`, `source: slack`, `channels: [<channel identifier>]` |
-| Created by | Connect Slack (Open Authorization (OAuth)) | the first mention in the channel | a workspace member installing and configuring a fleet |
+| Created by | Connect Slack (Open Authorization (OAuth)) | the first mention in the channel | a workspace member: `agentsfleet install --library <id> --slack-channel <channel ID>`, or a `TRIGGER.md` edit |
 | Proves | the daemon may post into that team | nothing about which fleet answers | this fleet answers mentions here |
 
 A connected card proves only the first column. The catalogue's "Connected" is vault-key membership (`afd_connector/src/grant/holding.rs:129-142`); the per-provider status reads a JSON handle with an `integration` field (`holding.rs:95-115`). Neither checks a token is alive, an event subscription exists, or a channel is bound. The journey is proven by the drill in M206_004, never by a card.
@@ -64,6 +64,19 @@ A connected card proves only the first column. The catalogue's "Connected" is va
 | Credential | the fleet mints an installation token behind an approved `github` grant | the fleet holds no Slack credential; the daemon posts |
 
 The GitHub subscription keys on a repository's name, so renaming a repository silently drops its events (`UZ-WH-022`). That weakness is recorded here and not fixed by M206.
+
+**Against Claude Tag**, Claude's own Slack app, read through its documentation (`claude.com/docs/claude-tag/concepts/how-it-works.md`, `agent-identity.md`, `admins/add-connections.md`, `users/memory.md`, `users/use-cases/fix-bugs.md`):
+
+| Claude Tag | here |
+|---|---|
+| one agent; an admin attaches access bundles (credentials, domains, plugins) to a channel or the workspace | a fleet (skill, credentials, allowlist, budget) attached to one channel |
+| a sandbox session per thread | one run per mention |
+| memory per channel; public channels share it workspace-wide | memory per fleet; the resident's never leaves its channel |
+| a service account in channels, no per-user linking | the workspace bot token and the GitHub App: the same |
+| opens draft PRs with no approval step | a Slack request to a write-bound fleet waits for a member (§7) |
+| live progress checklist in the thread | the final answer and notices; progress comes later |
+
+Fleets are attached, never created per message: a fleet per message would start with empty memory ([`../memory.md`](../memory.md) §3).
 
 ## 4. Routing a mention
 
@@ -83,7 +96,7 @@ One mention produces one event or one notice, never both and never two.
 
 4. **Admit.** One `core.fleet_admissions` row, producer `slack_mention`, key `<team_id>:<event_id>`. The unique `(producer, producer_key)` (`schema/910_fleet_admissions.sql`) turns every Slack retry into the first answer. Notices are keyed the same way, so a retried ambiguous mention is not answered twice.
 
-The resident is materialised on the first mention in any channel, whatever the routing outcome, because it owns the channel's notices. It answers with a model only when no fleet subscribes.
+The resident is materialised on the first mention in any channel, whatever the routing outcome, because it owns the channel's notices. It answers with a model only when no fleet subscribes, and when asked for something it cannot reach it names the attach command with this channel's identifier filled in.
 
 ## 5. What the fleet is told
 
