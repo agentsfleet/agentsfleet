@@ -291,8 +291,13 @@ export async function sweepLeakedFixtureKeys(): Promise<SweepCounts> {
     // leaked credentials this sweep exists to reach — behind a cursor.
     let cursor: string | null = null;
     do {
+      // `starting_after`, not `cursor` (api_key.rs:124 — Stripe-style keyset
+      // pagination). The wrong name is not an error the server reports: it is
+      // ignored, page one is served again, and the loop never advances past
+      // the newest keys — an unterminated teardown on a sweep whose whole job
+      // is reaching the OLDER ones.
       const path: string = cursor
-        ? `/v1/api-keys?cursor=${encodeURIComponent(cursor)}`
+        ? `/v1/api-keys?starting_after=${encodeURIComponent(cursor)}`
         : "/v1/api-keys";
       let page: { items?: Array<{ id?: string; key_name?: string }>; next_cursor?: string | null };
       try {
