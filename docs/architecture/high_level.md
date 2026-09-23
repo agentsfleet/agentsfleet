@@ -217,7 +217,7 @@ What does not change: the runtime architecture, the sandbox boundary, the trigge
 
 ### 6.2 Slack Rung 1 — hired durable teammates
 
-Where the human front door points after the CLI/dashboard wedge. Rung 0 shipped in the retired Zig daemon as `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`, and the Rust daemon has not ported it. M206 specs the first hired-teammate slice: a fleet subscribed to one channel, read-only until a workspace member approves a write. **The follow-on is direction, not a commitment.**
+Where the human front door points after the CLI/dashboard wedge. Rung 0 shipped in the retired Zig daemon as `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`, and the Rust daemon has not ported it. M206 specs the first hired-teammate slice: a fleet attached to one channel, whose writes are bounded to one draft Pull Request per request. **The follow-on is direction, not a commitment.**
 
 The ladder's boundary is **agency, not memory**. Rung 0 is described in [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md).
 
