@@ -18,16 +18,90 @@
 //! the same lesson in its own note. The owner is the crate that DELIVERS; this
 //! one commits the obligation and then gets out of the way.
 
+use afd_connector::Provider;
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_dragonfly::OutboundJob;
 use afd_outbound::obligation::{self, Delivery};
 use sqlx::PgConnection;
 
-use crate::error::Result;
+use crate::error::{Result, query};
 use crate::lease::store::Leases;
 
+/// Statement name, for the context a destination read failure carries.
+const CONTEXT_REPLY: &str = "read reply destination";
+
+/// Logged when a stored connector id names no connector.
+const EVENT_REPLY_PROVIDER_UNKNOWN: &str = "report_reply_provider_unknown";
+
+/// Where a settled event's answer goes, as its producer recorded it.
+///
+/// Parsed once, here, so everything downstream holds the connector TYPE: the
+/// report also holds the lease's model provider as a string, and nothing past
+/// this point can confuse the two.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplyDestination {
+    /// The connector whose poster delivers the answer.
+    pub provider: Provider,
+    /// The address only that poster reads.
+    pub address: String,
+}
+
+/// An answer this report newly owed, and where it is owed.
+///
+/// Carried out of the transaction to the append that follows the commit, so
+/// the queue entry is addressed from what was committed rather than re-read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Owing {
+    /// The obligation row this report wrote.
+    pub obligation: Uuid7,
+    /// Where it is owed.
+    pub reply: ReplyDestination,
+}
+
 impl Leases {
+    /// The destination the settled event was admitted with, or `None`.
+    ///
+    /// Runs on the report's own transaction, through the ledger owner's
+    /// statement, so the answer describes the same snapshot the settle does.
+    /// `None` covers three cases that owe the same nothing: an event id the
+    /// ledger never minted, an event admitted with no destination, and a stored
+    /// connector id no connector answers to — the last logged, because only an
+    /// out-of-band edit or a removed connector writes one.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer.
+    pub(crate) async fn reply_destination(
+        connection: &mut PgConnection,
+        fleet_id: &str,
+        event_id: &str,
+    ) -> Result<Option<ReplyDestination>> {
+        let Some((created_at, seq)) = afd_admission::logical_parts(event_id) else {
+            return Ok(None);
+        };
+        let stored: Option<(String, String)> =
+            sqlx::query_as(afd_admission::sql::SELECT_REPLY_DESTINATION)
+                .bind(fleet_id)
+                .bind(created_at)
+                .bind(seq)
+                .fetch_optional(&mut *connection)
+                .await
+                .map_err(query(CONTEXT_REPLY))?;
+        Ok(stored.and_then(|(connector, address)| {
+            let parsed =
+                Provider::parse(&connector).map(|provider| ReplyDestination { provider, address });
+            if parsed.is_none() {
+                tracing::warn!(
+                    fleet_id,
+                    agentsfleet_event_id = event_id,
+                    event = EVENT_REPLY_PROVIDER_UNKNOWN,
+                    "the recorded connector names no connector; the answer is owed nowhere"
+                );
+            }
+            parsed
+        }))
+    }
+
     /// Record that this answer is owed to its destination.
     ///
     /// Runs on the caller's connection, inside the report's transaction, so the
@@ -77,7 +151,7 @@ impl Leases {
         let entry = self
             .outbound()
             .enqueue(OutboundJob {
-                provider: delivery.provider,
+                provider: delivery.provider.id(),
                 workspace_id: delivery.workspace_id,
                 fleet_id: delivery.fleet_id,
                 event_id: delivery.event_id,

@@ -37,6 +37,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_connector::Provider;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
@@ -80,7 +81,11 @@ use self::seed::{FLEET, SEEDED_AT, WORKSPACE, clear_obligations, obligation_id, 
 use self::support::{OUTBOUND_LANE, OutboundHarness};
 
 /// The connector every fixture answer goes back through.
-const PROVIDER: &str = "slack";
+const PROVIDER: &str = Provider::Slack.id();
+
+/// The thread every owed answer here is addressed to.
+const DESTINATION: &str =
+    r#"{"team_id":"T024BE7LD","channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
 /// What the fixture answers say.
 const ANSWER: &str = "Aurora is healthy.";
 /// More rows than any test seeds, so a scan's limit never decides an assertion.
@@ -124,7 +129,8 @@ fn delivery(event_id: &str) -> Delivery<'_> {
     Delivery {
         fleet_id: FLEET,
         workspace_id: WORKSPACE,
-        provider: PROVIDER,
+        provider: Provider::Slack,
+        destination: DESTINATION,
         event_id,
         answer: ANSWER,
     }

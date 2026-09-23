@@ -87,7 +87,7 @@ RETURNING attempt_count";
 /// runs. `afd_admission`'s replay scan casts the same three for the same
 /// reason.
 pub(crate) const SELECT_UNRECEIPTED: &str = "\
-SELECT id::text, fleet_id::text, workspace_id::text, provider, event_id, answer
+SELECT id::text, fleet_id::text, workspace_id::text, provider, destination, event_id, answer
   FROM core.fleet_obligations
  WHERE receipt IS NULL AND created_at < $1::bigint
  ORDER BY created_at, seq
@@ -109,7 +109,7 @@ SELECT id::text, fleet_id::text, workspace_id::text, provider, event_id, answer
 /// Rides `idx_fleet_obligations_undelivered`, leading on `fleet_id` because
 /// order is promised per destination.
 pub(crate) const SELECT_UNDELIVERED: &str = "\
-SELECT id::text, fleet_id::text, workspace_id::text, provider, event_id, answer
+SELECT id::text, fleet_id::text, workspace_id::text, provider, destination, event_id, answer
   FROM core.fleet_obligations
  WHERE receipt IS NOT NULL AND delivered_at IS NULL AND updated_at < $1::bigint
  ORDER BY fleet_id, created_at, seq
@@ -130,12 +130,12 @@ SELECT id::text, fleet_id::text, workspace_id::text, provider, event_id, answer
 /// call is the one that created it, and the caller appends only what it wrote.
 ///
 /// `$1` row id, `$2` fleet, `$3` workspace, `$4` provider, `$5` event,
-/// `$6` answer, `$7` now.
+/// `$6` answer, `$7` now, `$8` destination.
 pub(crate) const OWE_DELIVERY: &str = "\
 INSERT INTO core.fleet_obligations
-  (id, fleet_id, workspace_id, provider, event_id, answer,
+  (id, fleet_id, workspace_id, provider, destination, event_id, answer,
    receipt, delivered_at, attempt_count, created_at, updated_at)
-VALUES ($1::uuid, $2::uuid, $3::uuid, $4::text, $5::text, $6::text,
+VALUES ($1::uuid, $2::uuid, $3::uuid, $4::text, $8::text, $5::text, $6::text,
         NULL, NULL, 0, $7::bigint, $7::bigint)
 ON CONFLICT ON CONSTRAINT uq_fleet_obligations_event DO NOTHING
 RETURNING id";

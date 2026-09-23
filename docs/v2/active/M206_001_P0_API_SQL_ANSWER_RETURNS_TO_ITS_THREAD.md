@@ -58,14 +58,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `schema/918_fleet_admissions_reply_destination.sql` | CREATE | Nullable `reply_provider` and `reply_address` on `core.fleet_admissions`, both-or-neither check, and a lookup index partial on the destination. |
-| `schema/919_fleet_obligations_destination.sql` | CREATE | `destination`, `abandoned_at`, `abandon_reason` on `core.fleet_obligations`; both scan indexes rebuilt to exclude abandoned and destination-less rows. |
-| `rustd/crates/afd_db/src/migration.rs` | EDIT | Registers 918 and 919. |
+| `schema/919_fleet_obligations_destination.sql` | CREATE | `destination` on `core.fleet_obligations`. |
+| `schema/920_fleet_obligations_abandonment.sql` | CREATE | `abandoned_at`, `abandon_reason`; both scan indexes rebuilt to exclude abandoned and destination-less rows. One concern per slot, so the destination (§2) and abandonment (§4) are two. |
+| `rustd/crates/afd_db/src/migration.rs` | EDIT | Registers 918, 919 and 920. |
 | `rustd/crates/afd_admission/src/{lib.rs,admit.rs,sql.rs,tests.rs}` | EDIT | `Admission` carries a `Reply` — none, stated, or inherited; the insert writes or copies it; the digest covers it; `SELECT_REPLY_DESTINATION` returns it. |
 | `rustd/crates/afd_events/src/steer.rs` · `afd_cron/src/fire.rs` · `afd_ingress/src/deliver.rs` · `afd_runner/src/sweep/repair.rs` | EDIT | Each existing producer states `Reply::None`. |
 | `rustd/crates/afd_approval/tests/integration_inbox_tail_continuation.rs` · `afd_events/tests/integration_budgets.rs` · `afd_fleet/tests/{integration_cluster_rebuild.rs,integration_recovery_outage.rs,integration_admission_recovery.rs,support/fleet_recovery_seed.rs}` · `agentsfleetd/tests/support/e2e_event.rs` | EDIT | Test admissions state `Reply::None`. |
 | `rustd/crates/afd_fleet/tests/integration_reply_destination.rs` · `afd_fleet/tests/fleet_suite.rs` | CREATE · EDIT | §1's proofs against the live ledger. |
 | `rustd/crates/afd_approval/src/inbox/resolve.rs` | EDIT | The continuation states `Reply::Inherit` with the resumed event's id. |
-| `rustd/crates/afd_fleet/src/lease/{commit.rs,obligation.rs,report.rs,report/steps.rs,settle.rs}` | EDIT | The settle reads the destination in its transaction and owes only with one; `Reported.provider` feeds metering only. |
+| `rustd/crates/afd_fleet/src/lease/{commit.rs,obligation.rs,mod.rs,report.rs,report/steps.rs}` · `afd_fleet/Cargo.toml` | EDIT | The report reads the destination in its transaction and owes only with one; `Committed::Settled` carries an `Owing`; `Reported.provider` feeds metering only; `afd_connector` becomes a direct dependency. |
+| `rustd/crates/afd_fleet/tests/integration_report_commit.rs` | EDIT | A charged report over an event with no destination owes nothing. |
 | `rustd/crates/afd_outbound/src/{obligation.rs,obligation/sql.rs,producer.rs,lanes.rs,poster.rs,slack.rs,worker.rs}` | EDIT | Typed provider and destination on `Delivery`/`Owed`; scans skip abandoned and destination-less rows; abandon on a permanent or exhausted verdict; the poster reads the address from the job. |
 | `rustd/crates/afd_outbound/src/lanes/abandon.rs` | CREATE | The abandon stamp and its event, beside `lanes/retire.rs`, keeping `lanes.rs` under the cap. |
 | `rustd/crates/afd_dragonfly/src/{lib.rs,outbound.rs,outbound/reader.rs}` | EDIT | The queue entry carries the destination. |
@@ -111,10 +113,10 @@ The admission gains a nullable pair: `reply_provider`, a connector id, and `repl
 
 Inside the report transaction, after the settle and before commit, the owe step reads the settled event's destination. None, or an event id that is not a ledger id: nothing is owed, whatever the answer. Present: the stored provider is parsed with `Provider::parse`; an unknown id owes nothing and logs `report_reply_provider_unknown`. `Delivery.provider` becomes `afd_connector::Provider`, so `lease.provider` has no type-compatible path into the ledger.
 
-- **Dimension 2.1** — non-empty answers from a steer, an App webhook and a cron fire owe nothing → Test `answers_without_a_destination_owe_nothing`
-- **Dimension 2.2** — an event whose admission names `slack` and an address owes one row with provider `slack` and that exact address → Test `answer_is_owed_to_the_recorded_destination`
-- **Dimension 2.3** — with the lease resolved to provider `anthropic`, no ledger row names it → Test `the_model_provider_never_reaches_the_ledger`
-- **Dimension 2.4** — a replayed report owes one row; a report whose transaction rolls back owes none → Test `a_replayed_or_rolled_back_report_owes_at_most_once`
+- **Dimension 2.1** DONE — non-empty answers from a steer, an App webhook and a cron fire owe nothing → Test `answers_without_a_destination_owe_nothing`
+- **Dimension 2.2** DONE — an event whose admission names `slack` and an address owes one row with provider `slack` and that exact address → Test `answer_is_owed_to_the_recorded_destination`
+- **Dimension 2.3** DONE — with the lease resolved to provider `anthropic`, no ledger row names it → Test `the_model_provider_never_reaches_the_ledger`
+- **Dimension 2.4** DONE — a replayed report owes one row; a report whose transaction rolls back owes none → Test `a_replayed_or_rolled_back_report_owes_at_most_once`
 
 ### §3 — The poster posts from the obligation's address
 
@@ -138,7 +140,7 @@ A permanent verdict stamps `abandoned_at` and a named reason before the acknowle
 ```
 core.fleet_admissions  + reply_provider TEXT NULL, reply_address TEXT NULL
                          CHECK ((reply_provider IS NULL) = (reply_address IS NULL))
-core.fleet_obligations + destination TEXT NULL, abandoned_at BIGINT NULL, abandon_reason TEXT NULL
+core.fleet_obligations + destination TEXT NULL (919), abandoned_at BIGINT NULL, abandon_reason TEXT NULL (920)
   owed set  = receipt IS NULL     AND destination IS NOT NULL AND abandoned_at IS NULL
   lost set  = receipt IS NOT NULL AND delivered_at IS NULL AND destination IS NOT NULL AND abandoned_at IS NULL
 
@@ -193,7 +195,7 @@ Slack address (opaque outside the Slack poster):
 | 2.1 | integration | `answers_without_a_destination_owe_nothing` | Reports carrying `"done"` for a steer, an App webhook and a cron fire leave zero rows in `core.fleet_obligations`. |
 | 2.2 | integration | `answer_is_owed_to_the_recorded_destination` | A report for an event admitted with `(slack, A)` writes one row: provider `slack`, destination `A`. |
 | 2.3 | integration | `the_model_provider_never_reaches_the_ledger` | With lease provider `anthropic`, `SELECT count(*) … WHERE provider = 'anthropic'` is 0 after reports from three producers. |
-| 2.4 | integration | `a_replayed_or_rolled_back_report_owes_at_most_once` | Two identical reports leave one row; a report failing after the owe leaves none. |
+| 2.4 | integration | `a_replayed_or_rolled_back_report_owes_at_most_once` | A report the datastore refuses leaves no row; its retry leaves one; a repeat of the retry leaves one. |
 | 3.1 | integration | `poster_posts_to_the_jobs_address` | A loopback Slack receives `{channel:"C0123456789", thread_ts:"1700000000.000100", text}` from the job alone, with no `core.fleet_events` row present. |
 | 3.2 | unit | `unreadable_address_is_permanent_without_a_request` | Addresses lacking either field, empty strings, and non-JSON give `Permanent`; the fake records zero requests. |
 | 3.3 | integration | `requeued_obligation_keeps_its_destination` | After the queue loses an entry, the re-appended job's destination equals the row's. |
@@ -209,7 +211,7 @@ Slack address (opaque outside the Slack poster):
 | R1 | The report path cannot address a delivery with the lease's provider (§2) | `grep -rn 'provider: &lease.provider' rustd/crates/afd_fleet/src/lease \| wc -l` | `0` | P0 | |
 | R2 | Both recovery scans skip abandoned and destination-less rows (§4) | `grep -c 'destination IS NOT NULL AND abandoned_at IS NULL' rustd/crates/afd_outbound/src/obligation/sql.rs` | `2` | P0 | |
 | R3 | The Slack poster reads no event row (§3) | `grep -c 'core.fleet_events' rustd/crates/afd_outbound/src/slack.rs` | `0` | P0 | |
-| R4 | Both slots are registered (§1, §4) | `grep -cE '91(8\|9)_fleet_' rustd/crates/afd_db/src/migration.rs` | `2` | P0 | |
+| R4 | The three slots are registered (§1, §2, §4) | `grep -cE '9(18\|19\|20)_fleet_' rustd/crates/afd_db/src/migration.rs` | `3` | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | R6 | Patch coverage meets the repository bar | `gh pr checks --json name,state --jq '.[] \| select(.name\|startswith("codecov/patch")) \| .state'` | every line `SUCCESS` — `rust-afd` at 99% of added lines (`codecov.yml`, threshold 0%) | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
