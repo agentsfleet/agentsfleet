@@ -69,6 +69,7 @@ pub mod jira;
 pub mod oauth;
 pub mod provider;
 pub mod registry;
+pub mod slack;
 pub mod sql;
 pub mod state;
 pub mod zoho;

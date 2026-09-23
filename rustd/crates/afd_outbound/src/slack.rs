@@ -9,8 +9,9 @@
 //! # Both wire shapes are `serde` types, not field lookups
 //!
 //! `post.zig` walks `std.json.Value` with a `strField` helper because Zig has
-//! no derive. Here the destination and Slack's answer are each a struct with
-//! `Deserialize` on it, so the shape is stated once in the type and the
+//! no derive. Here the destination (`afd_connector::slack::Thread`, the one
+//! type the mention producer writes and this reads) and Slack's answer are each
+//! a struct with `Deserialize` on it, so the shape is stated once and the
 //! "present but empty", "present but not a string" and "absent" cases are the
 //! deserializer's problem rather than three hand-written guards that have to
 //! agree.
@@ -34,6 +35,7 @@
 //! grant store's connection and returns it before [`SlackPoster::post`] is
 //! entered — which the types enforce, since `post` never receives one.
 
+use afd_connector::slack::Thread;
 use afd_connector::{Grants, Provider};
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
@@ -84,25 +86,6 @@ const REASON_TOKEN_LOAD_FAILED: &str = "slack_post_token_load_failed";
 /// Logged when a job's address names nowhere this poster can post.
 const REASON_ADDRESS_UNREADABLE: &str = "slack_post_address_unreadable";
 
-/// Where in a Slack thread an answer belongs: the address a Slack producer
-/// records at admission and the obligation carries to this poster.
-///
-/// A DATA FORMAT: the producer writes these keys and this reads them, so
-/// renaming one strands every answer owed under the old spelling.
-///
-/// Both fields are required, which is the whole guard: an address carrying
-/// neither is not a Slack thread whatever queued it, and one carrying an empty
-/// channel posts nowhere — [`non_empty`] is what turns `""` into the same
-/// answer as absent, before a request is built rather than after it fails.
-/// Other keys are ignored, so a producer may record more than a post needs.
-#[derive(Debug, Deserialize)]
-struct Destination {
-    #[serde(rename = "channel_id", deserialize_with = "non_empty")]
-    channel: String,
-    #[serde(rename = "thread_ts", deserialize_with = "non_empty")]
-    thread: String,
-}
-
 /// What Slack answers a `chat.postMessage` with.
 ///
 /// `ok` alone, because it is the only field that changes what happens next.
@@ -125,19 +108,6 @@ struct Message<'a> {
     channel: &'a str,
     thread_ts: &'a str,
     text: &'a str,
-}
-
-/// Refuses a string field that is present and empty.
-///
-/// `""` and absent mean the same thing to every caller here, and the type
-/// system only distinguishes them if something says so. Saying it once in a
-/// deserializer beats saying it at each read.
-fn non_empty<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
-    let value = String::deserialize(deserializer)?;
-    if value.is_empty() {
-        return Err(serde::de::Error::custom("empty"));
-    }
-    Ok(value)
 }
 
 /// Posts a fleet's answer to Slack.
@@ -196,8 +166,8 @@ impl SlackPoster {
             return failed(job, REASON_TOKEN_LOAD_FAILED, Verdict::Permanent);
         };
         let body = serde_json::to_vec(&Message {
-            channel: &inputs.destination.channel,
-            thread_ts: &inputs.destination.thread,
+            channel: &inputs.destination.channel_id,
+            thread_ts: &inputs.destination.thread_ts,
             text: &job.answer,
         });
         let Ok(body) = body else {
@@ -237,7 +207,7 @@ impl Deliver for SlackPoster {
 /// Everything one post needs, gathered before any vendor call begins.
 #[derive(Debug)]
 struct Inputs {
-    destination: Destination,
+    destination: Thread,
     /// Still wrapped, so it zeroes on drop — see `Grants::bot_token`.
     token: SecretBytes,
 }
@@ -248,9 +218,9 @@ struct Inputs {
 /// answer for all of them, because a caller does the same thing with each: the
 /// job names nowhere this poster can post, and no retry changes that. Nothing
 /// has been read or requested when it answers.
-fn destination(job: &OutboundDelivery) -> Result<Destination, Verdict> {
-    serde_json::from_str(&job.destination)
-        .map_err(|_unreadable| failed(job, REASON_ADDRESS_UNREADABLE, Verdict::Permanent))
+fn destination(job: &OutboundDelivery) -> Result<Thread, Verdict> {
+    Thread::parse(&job.destination)
+        .ok_or_else(|| failed(job, REASON_ADDRESS_UNREADABLE, Verdict::Permanent))
 }
 
 /// The verdict a status and a body earn, or the event a failure is logged as.
@@ -312,11 +282,6 @@ mod tests {
     /// The verdict a real response earns, through both halves of the split.
     fn verdict(status: u16, payload: &str) -> Verdict {
         classify(status, payload).unwrap_or_else(|_event| verdict_of(status))
-    }
-
-    /// The destination a recorded address resolves to, if any.
-    fn address(stored: &str) -> Option<Destination> {
-        serde_json::from_str(stored).ok()
     }
 
     /// A job carrying `address`, with every other field well formed.
@@ -386,23 +351,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_a_complete_address_names_the_thread_to_answer_in() {
-        let resolved = address(
-            r#"{"team_id":"T024BE7LD","channel_id":"C123","thread_ts":"1700000000.000100"}"#,
-        );
-
-        assert!(
-            matches!(
-                &resolved,
-                Some(where_to)
-                    if where_to.channel == "C123"
-                        && where_to.thread == "1700000000.000100"
-            ),
-            "both destination fields are present: {resolved:?}"
-        );
-    }
-
     /// Every shape that names nowhere to post. Present-and-empty is in here
     /// deliberately: it is the one a bare presence check would let through, and
     /// it would be found at the vendor, a request later.
@@ -417,16 +365,6 @@ mod tests {
         "{}",
         "not json",
     ];
-
-    #[test]
-    fn test_no_unpostable_address_resolves_a_destination() {
-        for stored in UNPOSTABLE {
-            assert!(
-                address(stored).is_none(),
-                "`{stored}` names nowhere to put an answer"
-            );
-        }
-    }
 
     /// Dimension 3.2 — an address naming nowhere is a permanent verdict, and it
     /// is reached from the job alone: nothing has been read or requested.
