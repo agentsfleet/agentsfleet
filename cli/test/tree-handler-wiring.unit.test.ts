@@ -10,9 +10,15 @@
 import { describe, expect, test } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
+import { TENANT_PROVIDER_PATH, USERS_ME_PATH } from "../src/lib/api-paths.ts";
+import { loadCredentials, loadWorkspaces } from "../src/lib/state.ts";
+import { bufferStream, cliEnv, withAuthedStateDir, withFreshStateDir } from "./helpers-cli-state.ts";
+import { jsonResponse, withMockApi } from "./helpers-mock-api.ts";
 
 const EXIT_VALIDATION = 4;
 const UNROUTABLE = "https://127.0.0.1:1";
+const WORKSPACE_ID = "01900000-0000-7000-8000-000000000001";
+const PROVIDER = { mode: "platform", provider: "fireworks", model: "test-model" };
 
 const invoke = async (argv: ReadonlyArray<string>): Promise<{ code: number; err: string }> => {
   const chunks: string[] = [];
@@ -55,5 +61,84 @@ describe("billing show is wired to its effect", () => {
     const { code, err } = await invoke(["billing", "show", "--limit", "9999"]);
     expect(code).toBe(EXIT_VALIDATION);
     expect(err).toContain("must be ≤ 100");
+  });
+});
+
+test("whoami reaches the identity route and prints the server identity", async () => {
+  await withFreshStateDir(async () => {
+    const identity = {
+      user_id: WORKSPACE_ID,
+      email: "ada@example.test",
+      display_name: "Ada",
+      tenant_id: WORKSPACE_ID,
+      tenant_name: "Test tenant",
+      credential: "tenant_api_key",
+      scopes: ["fleet:read"],
+    };
+    await withMockApi({ [`GET ${USERS_ME_PATH}`]: () => jsonResponse(200, identity) }, async (apiUrl, calls) => {
+      const out = bufferStream();
+      const code = await runCli(["--json", "whoami"], {
+        stdout: out.stream,
+        stderr: bufferStream().stream,
+        env: cliEnv({ AGENTSFLEET_API_KEY: "afk_unit_test", AGENTSFLEET_API_URL: apiUrl }),
+      });
+      expect(code).toBe(0);
+      expect(calls.map((call) => call.path)).toEqual([USERS_ME_PATH]);
+      expect(JSON.parse(out.read()).email).toBe(identity.email);
+    });
+  });
+});
+
+test("logout --all refuses the unsupported scope without clearing credentials", async () => {
+  await withAuthedStateDir({ workspaceId: WORKSPACE_ID }, async () => {
+    const err = bufferStream();
+    const code = await runCli(["logout", "--all"], {
+      stdout: bufferStream().stream,
+      stderr: err.stream,
+      env: cliEnv({ AGENTSFLEET_API_URL: UNROUTABLE }),
+    });
+    expect(code).toBe(EXIT_VALIDATION);
+    expect(err.read()).toContain("--all");
+    expect((await loadCredentials(process.env)).token).not.toBeNull();
+  });
+});
+
+test("workspace delete removes the selected local workspace", async () => {
+  await withAuthedStateDir({ workspaceId: WORKSPACE_ID }, async () => {
+    const out = bufferStream();
+    const code = await runCli(["workspace", "delete", WORKSPACE_ID], {
+      stdout: out.stream,
+      stderr: bufferStream().stream,
+      env: cliEnv({ AGENTSFLEET_API_URL: UNROUTABLE }),
+    });
+    expect(code).toBe(0);
+    expect(out.read()).toContain(WORKSPACE_ID);
+    const saved = await loadWorkspaces(process.env);
+    expect(saved.items).toEqual([]);
+    expect(saved.current_workspace_id).toBeNull();
+  });
+});
+
+test("tenant provider show and delete reach their distinct HTTP methods", async () => {
+  await withAuthedStateDir({ workspaceId: WORKSPACE_ID }, async () => {
+    await withMockApi({
+      [`GET ${TENANT_PROVIDER_PATH}`]: () => jsonResponse(200, PROVIDER),
+      [`DELETE ${TENANT_PROVIDER_PATH}`]: () => jsonResponse(200, PROVIDER),
+    }, async (apiUrl, calls) => {
+      for (const verb of ["show", "delete"]) {
+        const out = bufferStream();
+        const code = await runCli(["--json", "tenant", "provider", verb], {
+          stdout: out.stream,
+          stderr: bufferStream().stream,
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
+        });
+        expect(code).toBe(0);
+        expect(JSON.parse(out.read()).model).toBe(PROVIDER.model);
+      }
+      expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+        `GET ${TENANT_PROVIDER_PATH}`,
+        `DELETE ${TENANT_PROVIDER_PATH}`,
+      ]);
+    });
   });
 });

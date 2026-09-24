@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Enforce the coverage floor declared in cli/bunfig.toml. Bun 1.3.x
+// Enforce the coverage floor declared in cli/bunfig.toml. Bun 1.4.x
 // parses `coverageThreshold` but does NOT fail the test run when the
 // floor is missed; this script runs `bun test --coverage`, parses the
 // "All files" summary, and exits non-zero if either function% or line%
@@ -11,6 +11,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { gradeLcov } from "./lcov-grade.mjs";
 
 const SELF = fileURLToPath(import.meta.url);
 const CLI_DIR = dirname(dirname(SELF));
@@ -47,11 +48,6 @@ function runTests() {
 }
 
 function parseSummary() {
-  // Read coverage/lcov.info records rather than bun's rendered table. The
-  // text reporter's aggregate row has disagreed with bun's own lcov output
-  // on function counts, and its "Uncovered Line #s" column mixes uncovered
-  // branches into the line list — the records are the truth the reporters
-  // render, so the floor is graded on FNF/FNH and LF/LH sums directly.
   const lcovPath = join(CLI_DIR, "coverage", "lcov.info");
   let raw;
   try {
@@ -60,48 +56,12 @@ function parseSummary() {
     console.error(`enforce-coverage: missing ${lcovPath} — did bun test --coverage run?`);
     process.exit(2);
   }
-  // Functions are graded from the per-function FNDA records, not the derived
-  // FNH sums: bun has emitted FNH one short of FNF while every FNDA record in
-  // the same block showed a hit (a merge artifact across suite workers). The
-  // per-function records are the finest-grained truth the file carries.
-  let fnFound = 0, fnHit = 0, lineFound = 0, lineHit = 0;
-  let blockFns = new Set(), blockHits = new Set();
-  let sf = null;
-  const uncovered = [];
-  const flushBlock = () => {
-    fnFound += blockFns.size;
-    let hits = 0;
-    for (const name of blockHits) if (blockFns.has(name)) hits += 1;
-    fnHit += Math.min(hits, blockFns.size);
-    blockFns = new Set();
-    blockHits = new Set();
-  };
-  for (const line of raw.split("\n")) {
-    if (line.startsWith("SF:")) { flushBlock(); sf = line.slice(3); }
-    else if (line.startsWith("FN:")) blockFns.add(line.slice(3).split(",").slice(1).join(","));
-    else if (line.startsWith("FNDA:")) {
-      const [count, ...nameParts] = line.slice(5).split(",");
-      if (Number(count) > 0) blockHits.add(nameParts.join(","));
-    }
-    else if (line.startsWith("LF:")) lineFound += Number(line.slice(3));
-    else if (line.startsWith("LH:")) lineHit += Number(line.slice(3));
-    else if (line.startsWith("DA:")) {
-      const [ln, count] = line.slice(3).split(",");
-      if (Number(count) === 0 && sf) uncovered.push(`${sf}:${ln}`);
-    }
-  }
-  flushBlock();
-  if (lineFound === 0) {
-    console.error("enforce-coverage: lcov.info carried no line records");
+  try {
+    return gradeLcov(raw);
+  } catch (err) {
+    console.error(`enforce-coverage: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(2);
   }
-  // bun 1.3.14 emits per-function FN/FNDA records inconsistently between
-  // runs; when it withholds them, its aggregate FNH has disagreed with its
-  // own detailed records by one, with no way to name the function it claims
-  // missed. An axis without records to grade it is reported as ungraded
-  // rather than guessed.
-  const fn = fnFound > 0 ? (fnHit / fnFound) * 100 : null;
-  return { fn, line: (lineHit / lineFound) * 100, uncovered };
 }
 
 function main() {
@@ -112,9 +72,8 @@ function main() {
   const floorLine = threshold.line * 100;
   console.log("");
   console.log(`enforce-coverage: floor function=${floorFn.toFixed(2)}% line=${floorLine.toFixed(2)}%`);
-  const fnActual = fn === null ? "ungraded (no per-function records this run)" : `${fn.toFixed(2)}%`;
-  console.log(`enforce-coverage: actual function=${fnActual} line=${line.toFixed(2)}%`);
-  if ((fn !== null && fn < floorFn) || line < floorLine) {
+  console.log(`enforce-coverage: actual function=${fn.toFixed(2)}% line=${line.toFixed(2)}%`);
+  if (fn < floorFn || line < floorLine) {
     console.error("enforce-coverage: FAIL — coverage below configured floor");
     if (line < floorLine && uncovered.length > 0) {
       console.error(`enforce-coverage: ${uncovered.length} uncovered line(s):`);
