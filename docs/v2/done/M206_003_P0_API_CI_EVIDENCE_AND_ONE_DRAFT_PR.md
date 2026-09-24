@@ -21,9 +21,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Categories:** API
 **Batch:** B1 for §1, §2, and Dimensions 3.1–3.2, which need no other workstream; Dimension 3.3 after M206_002 admits a mention. Ships in M206_002's Pull Request.
 **Branch:** feat/m206-slack-incident-responder
+**Folded-into:** `M206_001`
 **Baseline revision:** f3edd3c17062087a6db7f7e271606bf0c3901259
-**Test Baseline:** pending — measured before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** `unit=2662 integration=572` at the comparison revision, inherited from `M206_001` — one branch, measured once.
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M206_001-f3edd3c17.md`
 **Depends on:** M206_002 — Dimension 3.3 delivers a signed mention twice.
 **Provenance:** LLM-drafted (Claude Opus 5.5, Sep 23, 2026) from source reads at `b1bc6f0c4`; re-cut Sep 24, 2026 at `f3edd3c17` after the owner decisions quoted in Discovery
 **Canonical architecture:** `docs/architecture/scenarios/slack-incident-responder.md` §7–§8

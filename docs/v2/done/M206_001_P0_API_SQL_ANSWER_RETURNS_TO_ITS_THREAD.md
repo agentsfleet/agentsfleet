@@ -22,8 +22,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — first on the critical path, beside M206_003 §1 and §3 and M206_004 §1–§2; M206_002 adds the only producer that records a destination, and an approval continuation inherits one wherever a fleet's own gate rules park an event.
 **Branch:** feat/m206-slack-incident-responder
 **Baseline revision:** f3edd3c17062087a6db7f7e271606bf0c3901259
-**Test Baseline:** pending — measured before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** `unit=2662 integration=572` at the comparison revision, measured on an isolated checkout of it (Rust unit 2662 passed / 0 failed / 592 ignored; integration 571 + 1 exclusive, 0 failed; TypeScript app 2976 · website 142 · cli 1755 · design-system 634).
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M206_001-f3edd3c17.md`
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Opus 5.5, Sep 23, 2026) from source reads at `b1bc6f0c4` and the retired Zig daemon at `1ad07eb2` in `~/Projects/oss/zig/agentsfleet_zig`
 **Canonical architecture:** `docs/architecture/scenarios/slack-incident-responder.md` §6; `docs/architecture/data_flow.md` §"C. EXECUTE"
