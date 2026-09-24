@@ -105,6 +105,9 @@ afd_credential.workspace = true
 afd_crypto = { workspace = true, features = ["test-util"] }
 afd_fleet = { workspace = true, features = ["test-util"] }
 afd_fleet_lifecycle = { workspace = true, features = ["test-util"] }
+# The document parser, so a fleet row a suite seeds stores exactly what an
+# install would, rather than a hand-written `config_json` that could drift.
+afd_fleet_runtime.workspace = true
 afd_fleet_ops.workspace = true
 afd_library = { workspace = true, features = ["test-util"] }
 afd_runner.workspace = true

@@ -99,6 +99,7 @@ dependencies = [
  "afd_fleet",
  "afd_fleet_lifecycle",
  "afd_fleet_ops",
+ "afd_fleet_runtime",
  "afd_http",
  "afd_identity",
  "afd_ingress",

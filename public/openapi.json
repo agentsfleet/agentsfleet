@@ -2869,7 +2869,7 @@
           "Connectors"
         ],
         "summary": "Receive Slack events",
-        "description": "Slack sends signed events to this route. Users do not call this route. An invalid signature returns 401 `UZ-SLK-010`. A timestamp outside 5 minutes returns 401 `UZ-SLK-011`. ",
+        "description": "Slack sends signed events to this route. Users do not call this route. An invalid signature returns 401 `UZ-WH-010`. A timestamp outside 5 minutes returns 401 `UZ-WH-011`. When `agentsfleet` accepts a mention of the bot, it returns the event identifier. For any other delivery, `agentsfleet` returns the reason it ignored the delivery.",
         "operationId": "slack_events",
         "parameters": [
           {
@@ -2911,7 +2911,7 @@
         },
         "responses": {
           "200": {
-            "description": "A handshake echoed, or a delivery acknowledged and not acted on",
+            "description": "A handshake echo, an ignored delivery with its reason, or an accepted mention with its event identifier",
             "content": {
               "application/json": {
                 "schema": {
@@ -13641,9 +13641,12 @@
           },
           {
             "$ref": "#/components/schemas/Ignored"
+          },
+          {
+            "$ref": "#/components/schemas/Accepted"
           }
         ],
-        "description": "A handshake echoed under the provider's own field name, or a delivery acknowledged and not acted on, with the reason"
+        "description": "A handshake echo under the provider's field name, an ignored delivery with its reason, or an accepted delivery with its event identifier"
       },
       "EventsResponse": {
         "type": "object",
