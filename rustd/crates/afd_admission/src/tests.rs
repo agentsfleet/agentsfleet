@@ -21,13 +21,14 @@ use super::{Admission, BudgetScope, Budgets, Key, Producer, Replayed, Reply, log
 /// Written out rather than derived: a variant added without a spelling here
 /// fails to compile at the `match` in [`Producer::as_str`] and fails the
 /// count below, which is two failures naming the same omission.
-const EVERY_PRODUCER: [Producer; 6] = [
+const EVERY_PRODUCER: [Producer; 7] = [
     Producer::Steer,
     Producer::Webhook,
     Producer::WebhookApp,
     Producer::ScheduleFire,
     Producer::GateContinuation,
     Producer::RepairVerification,
+    Producer::SlackMention,
 ];
 
 /// An admission whose fields a test then varies one at a time.

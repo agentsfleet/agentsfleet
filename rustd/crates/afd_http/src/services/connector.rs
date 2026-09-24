@@ -24,6 +24,7 @@
 //! callback cost a hash rather than a round trip, and the signature is where
 //! that is stated.
 
+use afd_connector::grant::BotIdentity;
 use afd_connector::{
     Catalogued, Connection, Connectors, Finishing, Forgotten, Landed, Provider, Rejected,
     Result as ConnectorResult, Spent, Started, Starting, Verified,
@@ -137,6 +138,19 @@ pub trait WorkspaceConnectors: Send + Sync + std::fmt::Debug + 'static {
         workspace: &Uuid7,
         provider: Provider,
     ) -> impl Future<Output = ConnectorResult<Forgotten>> + Send;
+
+    /// The bot this workspace's grant for `provider` speaks as: its token and
+    /// the user id the provider knows it by.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer and an envelope that would not
+    /// open. Every shape that is not a landed grant carrying a token is
+    /// `Ok(None)`.
+    fn bot_identity(
+        &self,
+        workspace: &Uuid7,
+        provider: Provider,
+    ) -> impl Future<Output = ConnectorResult<Option<BotIdentity>>> + Send;
 }
 
 /// The production flow answers all seven directly.
@@ -206,5 +220,13 @@ impl WorkspaceConnectors for Connectors {
         provider: Provider,
     ) -> impl Future<Output = ConnectorResult<Forgotten>> + Send {
         Self::forget(self, workspace, provider)
+    }
+
+    fn bot_identity(
+        &self,
+        workspace: &Uuid7,
+        provider: Provider,
+    ) -> impl Future<Output = ConnectorResult<Option<BotIdentity>>> + Send {
+        Self::bot_identity(self, workspace, provider)
     }
 }

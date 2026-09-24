@@ -9,15 +9,20 @@
 
 use afd_core::id::Uuid7;
 use afd_fleet_lifecycle::FleetStatus;
-use afd_fleet_runtime::config::{Access, ChannelId, FleetConfig, Trigger};
+use afd_fleet_runtime::config::{Access, FleetConfig, Trigger};
 use sqlx::Row as _;
 
 use crate::error::{self, COLUMN_FLEET, COLUMN_STATUS, Result, row_unreadable};
 use crate::{Ingress, sql};
 
+mod admit;
 mod route;
 
+pub use self::admit::MentionAdmission;
 pub use self::route::{Notice, Route, route};
+/// The channel type every mention method takes, re-exported so a caller of
+/// this module needs no dependency on the document crate for it.
+pub use afd_fleet_runtime::config::ChannelId;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_MENTION_SUBSCRIBERS: &str = "resolve mention subscribers";
