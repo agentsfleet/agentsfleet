@@ -232,6 +232,9 @@ async fn slack_retry_admits_nothing_new() {
     fixture.cleanup().await;
 }
 
+#[path = "integration_slack_mention/addressed.rs"]
+mod addressed;
+
 #[path = "integration_slack_mention/drops.rs"]
 mod drops;
 

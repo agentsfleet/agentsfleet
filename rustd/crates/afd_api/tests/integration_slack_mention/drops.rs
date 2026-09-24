@@ -119,3 +119,93 @@ async fn wall_still_refuses_before_parsing() {
 
     fixture.cleanup().await;
 }
+
+/// A body that passed the wall and will not parse as JSON is acknowledged
+/// with its reason: the sender is authenticated, so a refusal would only
+/// retry a delivery that parses no better the second time.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_signed_body_that_is_not_json_is_dropped_as_unreadable() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let router = fixture.router();
+
+    let document = json_body(deliver(&router, "not json").await).await;
+    assert_eq!(
+        document.get("ignored").and_then(Value::as_str),
+        Some("unreadable_body"),
+        "{document}"
+    );
+    assert_eq!(fixture.admissions().await, 0);
+
+    fixture.cleanup().await;
+}
+
+/// A mapped team whose workspace grant is gone has no bot to answer as, which
+/// is the same fact as an unmapped team for the person waiting.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_mapped_team_with_no_bot_grant_is_dropped_as_unmapped() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    fixture
+        .fleet(
+            &document("responder", CHANNEL, Some("read")),
+            FleetStatus::Active.as_str(),
+        )
+        .await;
+    let mut connection = fixture.database().acquire().await.expect("a connection");
+    sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid AND key_name = $2")
+        .bind(fixture.workspace().as_str())
+        .bind(PROVIDER.grant_key())
+        .execute(&mut *connection)
+        .await
+        .expect("the workspace grant is removed");
+    drop(connection);
+    let router = fixture.router();
+
+    let body = mention(
+        &fixture.team,
+        "EvNoBot01",
+        PERSON,
+        &format!("<@{BOT_USER}> hi"),
+    );
+    let document = json_body(deliver(&router, &body).await).await;
+    assert_eq!(
+        document.get("ignored").and_then(Value::as_str),
+        Some("team_not_mapped"),
+        "{document}"
+    );
+    assert_eq!(fixture.admissions().await, 0);
+
+    fixture.cleanup().await;
+}
+
+/// A team whose identifier is too long to form the resident's fleet name has
+/// no resident to answer an unaddressed mention, and nothing is installed.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_team_too_long_to_name_a_resident_is_dropped() {
+    let mut fixture = Fixture::create().await;
+    // Past the fleet-name ceiling once `slack-channel-` and the channel are
+    // added around it.
+    fixture.team.push_str("LONGERTHANANAME");
+    fixture.seed().await;
+    let router = fixture.router();
+
+    let body = mention(
+        &fixture.team,
+        "EvLong01",
+        PERSON,
+        &format!("<@{BOT_USER}> hi"),
+    );
+    let document = json_body(deliver(&router, &body).await).await;
+    assert_eq!(
+        document.get("ignored").and_then(Value::as_str),
+        Some("unreadable_body"),
+        "{document}"
+    );
+    assert_eq!(fixture.admissions().await, 0);
+
+    fixture.cleanup().await;
+}
