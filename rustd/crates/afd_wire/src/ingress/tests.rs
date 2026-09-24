@@ -3,7 +3,8 @@
 use std::borrow::Cow;
 
 use super::{
-    AccountOpened, AppIngressAnswer, EchoAnswer, EventsAnswer, IdentityAnswer, Ignored, Pong,
+    Accepted, AccountOpened, AppIngressAnswer, EchoAnswer, EventsAnswer, IdentityAnswer, Ignored,
+    Pong,
 };
 
 /// The untagged answer is bytes-identical to the document it wraps.
@@ -26,6 +27,14 @@ fn test_the_events_answer_adds_no_bytes_around_either_document() {
     assert_eq!(
         serde_json::to_string(&ignored).ok().as_deref(),
         Some(r#"{"ignored":"fleet_paused"}"#),
+    );
+    let accepted = EventsAnswer::Accepted(Accepted {
+        event_id: Cow::Borrowed("1700000000000-7"),
+        replayed: true,
+    });
+    assert_eq!(
+        serde_json::to_string(&accepted).ok().as_deref(),
+        Some(r#"{"event_id":"1700000000000-7","replayed":true}"#),
     );
 }
 

@@ -1,15 +1,21 @@
 //! Authenticated GitHub App exchange after scope parsing and verification.
+//!
+//! Two calls per mint, both under the App's signature: the installation's
+//! permissions, then the token asked for within them.
 
 use afd_fleet_runtime::config::RepositoryBinding;
 use octocrab::Octocrab;
 use octocrab::models::AppId;
 use serde_json::Value;
 
-use super::{Granted, ScopedRequest, classify, installation_id};
+use super::{Granted, Installed, ScopedRequest, classify, installation_id};
 use crate::credential::outcome::{Minted, Outcome, Retry};
 use crate::credential::platform::GithubApp;
 
 const FIELD_INSTALLATION_ID: &str = "installation_id";
+
+/// Where an App reads one of its installations; the token is minted beneath it.
+const INSTALLATIONS_ROUTE: &str = "/app/installations";
 
 /// How long an installation token lasts, per GitHub's documentation.
 ///
@@ -64,19 +70,22 @@ pub async fn mint(exchange: Exchange<'_>) -> Outcome {
     request_token(&client, installation_id, binding, exchange.now_ms).await
 }
 
-/// Posts the narrowed request through a supplied client.
+/// Reads the installation, then posts the narrowed request, through a
+/// supplied client.
 pub(super) async fn request_token(
     client: &Octocrab,
     installation_id: u64,
     binding: &RepositoryBinding,
     now_ms: i64,
 ) -> Outcome {
-    let request = ScopedRequest::for_binding(binding);
+    let installation = format!("{INSTALLATIONS_ROUTE}/{installation_id}");
+    let installed: Installed = match client.get(&installation, None::<&()>).await {
+        Ok(installed) => installed,
+        Err(error) => return classify(&error),
+    };
+    let request = ScopedRequest::for_binding(binding, &installed);
     let granted: Granted = match client
-        .post(
-            format!("/app/installations/{installation_id}/access_tokens"),
-            Some(&request),
-        )
+        .post(format!("{installation}/access_tokens"), Some(&request))
         .await
     {
         Ok(granted) => granted,

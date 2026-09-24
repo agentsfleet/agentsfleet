@@ -9,6 +9,7 @@ const triggers: FleetTrigger[] = [
   { type: "webhook", source: "github", events: ["pull_request"] },
   { type: "cron", schedule: "*/15 * * * *" },
   { type: "api" },
+  { type: "mention", source: "slack", channels: ["C0123456789"] },
 ];
 const RECENT_DELIVERY_AGE_MS = 1_000;
 
@@ -27,6 +28,8 @@ describe("TriggerPanel", () => {
     expect(screen.getByText("github · pull_request")).toBeTruthy();
     expect(screen.getByText("*/15 * * * *")).toBeTruthy();
     expect(screen.getByText("Accepts events through the fleet API.")).toBeTruthy();
+    expect(screen.getByText("Chat mention")).toBeTruthy();
+    expect(screen.getByText("slack · C0123456789")).toBeTruthy();
     expect(screen.queryByText(/https?:\/\//i)).toBeNull();
   });
 
@@ -57,6 +60,7 @@ describe("TriggerPanel", () => {
       "webhook:github",
       "cron:*/15 * * * *",
       "api",
+      "mention:slack:C0123456789",
     ]);
   });
 });

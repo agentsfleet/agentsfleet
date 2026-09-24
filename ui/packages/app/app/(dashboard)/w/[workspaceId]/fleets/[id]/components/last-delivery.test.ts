@@ -19,6 +19,12 @@ describe("actorGlobFor", () => {
     );
   });
 
+  it("namespaces chat mentions by their provider, as the admission names its actor", () => {
+    expect(
+      actorGlobFor({ type: "mention", source: "slack", channels: ["C0123456789"] }),
+    ).toBe("slack:*");
+  });
+
   it("opts api triggers out — no stable actor namespace", () => {
     expect(actorGlobFor({ type: "api" })).toBeNull();
   });

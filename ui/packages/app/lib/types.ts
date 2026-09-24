@@ -17,11 +17,13 @@ export type ApiError = {
 // Server projects `config_json->'x-agentsfleet'->'triggers'` into the list-row
 // response (`src/http/handlers/fleets/list.zig` FleetListItem). One entry
 // per declared trigger from `TRIGGER.md`. Tagged union by `type` — webhook
-// carries source + events; cron carries the raw schedule expression.
+// carries source + events; cron carries the raw schedule expression; mention
+// carries the chat provider and the one channel it answers in.
 export type FleetTrigger =
   | { type: "webhook"; source: string; events?: string[] }
   | { type: "cron"; schedule: string }
-  | { type: "api" };
+  | { type: "api" }
+  | { type: "mention"; source: string; channels: string[] };
 
 // `status` is typed as the loose `string` because the wire format may carry
 // values the front-end doesn't recognise yet. Consumers should narrow with

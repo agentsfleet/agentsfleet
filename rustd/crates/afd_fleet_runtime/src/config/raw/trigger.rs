@@ -1,12 +1,12 @@
 //! What may wake a fleet, and how a signed delivery proves itself.
 
 use garde::Validate;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::predicate::{is_repository, is_token};
 use super::{
-    MAX_CREDENTIAL_LEN, MAX_EVENT_LEN, MAX_EVENTS, MAX_REFERENCE_LEN, MAX_REPOSITORIES,
-    MAX_REPOSITORY_LEN, MAX_SIGNATURE_HEADER_LEN,
+    MAX_CHANNEL_ID_LEN, MAX_CREDENTIAL_LEN, MAX_EVENT_LEN, MAX_EVENTS, MAX_REFERENCE_LEN,
+    MAX_REPOSITORIES, MAX_REPOSITORY_LEN, MAX_SIGNATURE_HEADER_LEN, MENTION_CHANNELS,
 };
 
 /// One entry of `triggers`.
@@ -16,7 +16,11 @@ use super::{
 /// where the compiler can check it. An unrecognised `type` becomes a serde
 /// error that NAMES the accepted variants, which is strictly more than the
 /// Zig's opaque `InvalidTriggerType`.
-#[derive(Debug, Deserialize, Validate)]
+///
+/// `Serialize` too, so a trigger the daemon WRITES into a document — an
+/// install attaching a channel — is spelled by this declaration and cannot
+/// drift from what the parser reads.
+#[derive(Debug, Deserialize, Serialize, Validate)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum Trigger {
     /// Woken by a signed delivery from an external provider.
@@ -61,10 +65,24 @@ pub(crate) enum Trigger {
     },
     /// Woken by an authenticated API call, which carries no further config.
     Api,
+    /// Woken when someone mentions the bot in one chat channel.
+    Mention {
+        /// Which chat provider.
+        #[garde(inner(length(chars, min = 1, max = MAX_REFERENCE_LEN)))]
+        source: Option<String>,
+        /// The channel, by its identifier. A list so the key reads like
+        /// `repositories`; exactly one entry, so a fleet speaks to one
+        /// audience. The identifier's shape is checked where it is typed.
+        #[garde(inner(
+            length(min = MENTION_CHANNELS, max = MENTION_CHANNELS),
+            inner(length(chars, min = 1, max = MAX_CHANNEL_ID_LEN))
+        ))]
+        channels: Option<Vec<String>>,
+    },
 }
 
 /// A webhook trigger's signature block.
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Serialize, Validate)]
 pub(crate) struct Signature {
     /// The vault key holding the shared secret.
     #[garde(inner(length(chars, min = 1, max = MAX_CREDENTIAL_LEN)))]

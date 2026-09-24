@@ -242,6 +242,14 @@ impl Error {
         self.answer().1
     }
 
+    /// Whether the install lost to a fleet this workspace already holds under
+    /// the name it chose. A caller materialising a well-known fleet — a
+    /// channel's resident — reads this as "someone else already made it".
+    #[must_use]
+    pub fn is_name_taken(&self) -> bool {
+        matches!(self.inner.kind, ErrorKind::NameExists)
+    }
+
     /// Whether the datastore behind this crate could not be reached.
     ///
     /// The question the HTTP edge turns on: an outage is this instance's

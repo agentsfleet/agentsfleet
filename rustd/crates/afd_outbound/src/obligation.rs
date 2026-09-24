@@ -28,18 +28,17 @@
 //! an answer the queue carried and nobody received, which is exactly the set
 //! the producer's recovery scan re-offers.
 
+use afd_connector::Provider;
 use afd_core::clock::UnixMillis;
 use afd_db::Db;
+use afd_dragonfly::OutboundJob;
 
 use crate::error::Result;
 
+mod outcome;
 mod sql;
 
-/// Statement name, for the context a failure carries.
-const CONTEXT_STAMP: &str = "stamp delivered";
-
-/// Statement name, for the context a cycle-start failure carries.
-const CONTEXT_COUNT: &str = "count delivery attempt";
+pub use self::outcome::{AbandonReason, abandon, count_attempt, stamp_delivered};
 
 /// Statement name, for the context a scan failure carries.
 const CONTEXT_SCAN: &str = "scan obligations";
@@ -56,29 +55,57 @@ pub struct Delivery<'a> {
     pub fleet_id: &'a str,
     /// The workspace whose grant pays for it.
     pub workspace_id: &'a str,
-    /// Which connector carries it back.
-    pub provider: &'a str,
+    /// Which connector carries it back. The connector type rather than its
+    /// id, so a lease's model provider — a string the report also holds —
+    /// cannot be passed here and compile.
+    pub provider: Provider,
+    /// Where that connector posts it: an address only its poster reads, as the
+    /// producer recorded it at admission.
+    pub destination: &'a str,
     /// The event the answer is threaded onto.
     pub event_id: &'a str,
     /// What to say.
     pub answer: &'a str,
 }
 
+impl<'a> From<Delivery<'a>> for OutboundJob<'a> {
+    /// The queue entry that carries a delivery to its poster.
+    ///
+    /// The one conversion, so the report's append and the producer's re-append
+    /// cannot disagree about which field goes where.
+    fn from(delivery: Delivery<'a>) -> Self {
+        Self {
+            provider: delivery.provider.id(),
+            destination: delivery.destination,
+            workspace_id: delivery.workspace_id,
+            fleet_id: delivery.fleet_id,
+            event_id: delivery.event_id,
+            answer: delivery.answer,
+        }
+    }
+}
+
 impl Owed {
-    /// This row as a caller would address it.
+    /// This row as a caller would address it, or `None` when it cannot be.
     ///
     /// The one place the owned and borrowed halves meet, so a scan hands its
     /// rows to the same append the report path uses and neither side carries a
-    /// second opinion about which five fields identify a delivery.
+    /// second opinion about which fields identify a delivery.
+    ///
+    /// `None` for a row with no destination, or whose stored connector id no
+    /// connector answers to: both are rows written before an obligation had to
+    /// name where it goes, owed to a model provider, and no append can deliver
+    /// them.
     #[must_use]
-    pub fn addressed(&self) -> Delivery<'_> {
-        Delivery {
+    pub fn addressed(&self) -> Option<Delivery<'_>> {
+        Some(Delivery {
             fleet_id: &self.fleet_id,
             workspace_id: &self.workspace_id,
-            provider: &self.provider,
+            provider: Provider::parse(&self.provider)?,
+            destination: self.destination.as_deref()?,
             event_id: &self.event_id,
             answer: &self.answer,
-        }
+        })
     }
 }
 
@@ -87,10 +114,10 @@ impl Owed {
 /// The owning half: a scan reads rows out of a transient result set, so it has
 /// to own its text. [`Owed::addressed`] is how it becomes a [`Delivery`].
 ///
-/// Decoded by `sqlx::FromRow` rather than six hand-written `try_get` calls:
+/// Decoded by `sqlx::FromRow` rather than seven hand-written `try_get` calls:
 /// the derive binds by COLUMN NAME, so it cannot be silently broken by editing
 /// a `SELECT` list into a different order the way a positional decoder can.
-/// Both scans select the same six names for exactly that reason.
+/// Both scans select the same seven names for exactly that reason.
 ///
 /// Not `Clone`: a scan hands each row to the append once and by value, so a
 /// clone here would only ever copy the answer text for nobody.
@@ -102,8 +129,11 @@ pub struct Owed {
     pub fleet_id: String,
     /// The workspace whose grant pays for the delivery.
     pub workspace_id: String,
-    /// Which connector carries it back.
+    /// Which connector carries it back, as the ledger spells it.
     pub provider: String,
+    /// Where that connector posts it; absent on rows written before an
+    /// obligation had to name one.
+    pub destination: Option<String>,
     /// The event the answer is threaded onto.
     pub event_id: String,
     /// What to say.
@@ -148,10 +178,11 @@ pub async fn owe(
         .bind(row_id)
         .bind(delivery.fleet_id)
         .bind(delivery.workspace_id)
-        .bind(delivery.provider)
+        .bind(delivery.provider.id())
         .bind(delivery.event_id)
         .bind(delivery.answer)
         .bind(now.as_millis())
+        .bind(delivery.destination)
         .fetch_optional(&mut *connection)
         .await
         .map_err(crate::error::query(CONTEXT_OWE))?;
@@ -238,59 +269,5 @@ async fn write_receipt(
         .execute(&mut *connection)
         .await
         .map_err(crate::error::query(CONTEXT_RECEIPT))?;
-    Ok(())
-}
-
-/// Record that a worker has taken this obligation for a delivery cycle.
-///
-/// Answers the count this call produced, or `None` when the row was already
-/// delivered and nothing was counted — which is what a duplicate queue entry
-/// for an answer somebody already received looks like from here.
-///
-/// Called at the START of the cycle, so the number survives the cycle failing.
-/// That makes it best-effort in one direction and only one: a process that dies
-/// between this write and the delivery has counted a cycle that produced
-/// nothing, and a process that dies before it has delivered a cycle it never
-/// counted. Neither can move `delivered_at`, which is the fact anything
-/// downstream acts on.
-///
-/// # Errors
-/// Reports a database that would not answer. A caller must log that and DELIVER
-/// ANYWAY: the answer is owed to a person and bookkeeping is not.
-pub async fn count_attempt(
-    database: &Db,
-    fleet_id: &str,
-    event_id: &str,
-    now: UnixMillis,
-) -> Result<Option<i64>> {
-    let mut connection = database.acquire().await?;
-    let counted: Option<(i64,)> = sqlx::query_as(sql::COUNT_ATTEMPT)
-        .bind(fleet_id)
-        .bind(event_id)
-        .bind(now.as_millis())
-        .fetch_optional(&mut *connection)
-        .await
-        .map_err(crate::error::query(CONTEXT_COUNT))?;
-    Ok(counted.map(|(count,)| count))
-}
-
-/// Record that a destination accepted this answer.
-///
-/// # Errors
-/// Reports a database that would not answer.
-pub async fn stamp_delivered(
-    database: &Db,
-    fleet_id: &str,
-    event_id: &str,
-    now: UnixMillis,
-) -> Result<()> {
-    let mut connection = database.acquire().await?;
-    sqlx::query(sql::STAMP_DELIVERED)
-        .bind(fleet_id)
-        .bind(event_id)
-        .bind(now.as_millis())
-        .execute(&mut *connection)
-        .await
-        .map_err(crate::error::query(CONTEXT_STAMP))?;
     Ok(())
 }

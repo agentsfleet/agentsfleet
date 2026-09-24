@@ -15,10 +15,14 @@ use afd_outbound::{Deliver as _, Verdict};
 
 use super::{Behaviour, Scripted};
 
+/// A reply address the scripted poster never reads.
+const REPLY_ADDRESS: &str = "{}";
+
 fn job(id: &str, destination: &str) -> OutboundDelivery {
     OutboundDelivery {
         id: EventId::of(id),
         provider: "slack".to_owned(),
+        destination: REPLY_ADDRESS.to_owned(),
         workspace_id: "w".to_owned(),
         fleet_id: destination.to_owned(),
         event_id: "e".to_owned(),

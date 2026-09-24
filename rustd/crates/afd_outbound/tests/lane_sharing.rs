@@ -41,6 +41,9 @@ mod no_ledger;
 use self::gated_poster::Gated;
 use self::hanging_queue::HangingQueue;
 
+/// The thread an owed answer is addressed to, as a Slack producer records it.
+const DESTINATION: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
+
 const PROVIDER: &str = "slack";
 const FLEET_ID: &str = "0199a0b0-0000-7000-8000-0000000000f1";
 const WORKSPACE: &str = "fast";
@@ -79,6 +82,7 @@ async fn a_clone_names_the_same_lanes() {
         .dispatch(Box::new(OutboundDelivery {
             id: EventId::of("1700000000001-0"),
             provider: PROVIDER.to_owned(),
+            destination: DESTINATION.to_owned(),
             workspace_id: WORKSPACE.to_owned(),
             fleet_id: FLEET_ID.to_owned(),
             event_id: "shared-1".to_owned(),
@@ -131,6 +135,7 @@ async fn a_delivery_survives_an_acknowledgement_that_cannot_be_recorded() {
         .dispatch(Box::new(OutboundDelivery {
             id: EventId::of("1700000000002-0"),
             provider: PROVIDER.to_owned(),
+            destination: DESTINATION.to_owned(),
             workspace_id: WORKSPACE.to_owned(),
             fleet_id: FLEET_ID.to_owned(),
             event_id: "unacknowledged-1".to_owned(),

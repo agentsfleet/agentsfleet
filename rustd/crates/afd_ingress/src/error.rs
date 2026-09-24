@@ -28,7 +28,7 @@ mod raise;
 
 #[cfg(feature = "test-util")]
 pub use self::raise::one_of_each_kind;
-pub(crate) use self::raise::{query, row_unreadable};
+pub(crate) use self::raise::{query, row_unreadable, stored_fleet, stored_status};
 
 /// The result every fallible function in this crate returns.
 ///
@@ -96,6 +96,27 @@ pub(crate) enum ErrorKind {
         /// The column, so an operator knows which one to go and look at.
         column: &'static str,
     },
+
+    /// The entropy a row identifier is minted from could not be drawn.
+    #[error("the entropy a row identifier is minted from could not be drawn")]
+    Entropy {
+        #[source]
+        source: afd_crypto::error::Error,
+    },
+
+    /// A row identifier could not be minted from the current instant.
+    #[error("a row identifier could not be minted")]
+    Identifier {
+        #[source]
+        source: afd_core::error::Error,
+    },
+
+    /// A notice's obligation could not be recorded.
+    #[error("the notice could not be owed")]
+    Obligation {
+        #[source]
+        source: afd_outbound::error::Error,
+    },
 }
 
 /// The columns [`ErrorKind::RowUnreadable`] can name, one spelling each.
@@ -118,14 +139,24 @@ impl Error {
             // constants in `afd_core::error` exist to prevent. It carries the
             // 503-versus-500 distinction the dashboard's retry turns on.
             ErrorKind::Admission { source } => (source.code(), source.detail()),
+            // The ledger decided which of its failures is an outage; the
+            // sentence follows the code it chose.
+            ErrorKind::Obligation { source } if source.is_datastore_unavailable() => (
+                error_code::INTERNAL_DB_UNAVAILABLE,
+                detail::DATABASE_UNAVAILABLE,
+            ),
             ErrorKind::Query { .. } | ErrorKind::RowUnreadable { .. } => {
                 (error_code::INTERNAL_DB_QUERY, detail::DATABASE_ERROR)
             }
-            // Three internal failures, one fixed sentence. Naming which of them
+            // The internal failures, one fixed sentence. Naming which of them
             // it was would tell whoever provoked it something about this
             // deployment's stored state, and a webhook sender is exactly the
             // caller who must not learn it.
-            ErrorKind::Vault { .. } | ErrorKind::ConfigUnreadable { .. } => (
+            ErrorKind::Vault { .. }
+            | ErrorKind::ConfigUnreadable { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::Obligation { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 detail::OPERATION_FAILED,
             ),
@@ -155,6 +186,7 @@ impl Error {
         match self.kind() {
             ErrorKind::Datastore { .. } => true,
             ErrorKind::Admission { source } => source.is_datastore_unavailable(),
+            ErrorKind::Obligation { source } => source.is_datastore_unavailable(),
             _reachable => false,
         }
     }

@@ -42,6 +42,7 @@ pub(crate) async fn installed(lane: &Lane) -> afd_fleet_lifecycle::Installed {
             &Install {
                 source: LibrarySource::Platform(LIBRARY_ID),
                 name: None,
+                mention: None,
             },
             Lane::now(),
         )

@@ -40,7 +40,7 @@ use crate::error::{Result, query};
 use crate::provider::Provider;
 use crate::sql;
 
-pub use self::holding::{Connection, Forgotten};
+pub use self::holding::{BotIdentity, Connection, Forgotten};
 pub use self::parse::{Grant, Install, InstallClaim};
 
 /// The context a failed install write reports under.

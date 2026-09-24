@@ -51,6 +51,7 @@ pub use self::envelope::{Acquired, Kind};
 pub use self::event::{Delivery, Ended, Received};
 pub use self::installed::{FRESH_CONTEXT, Installed};
 pub use self::issue::{Billed, Issued};
+pub use self::obligation::{Owing, ReplyDestination};
 pub use self::pull::Plane;
 pub use self::reclaim::{Reclaimed, Reused};
 pub use self::renew::{Renewed, Renewing};

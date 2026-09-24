@@ -164,6 +164,24 @@ pub(crate) fn github_headers<'d>(
     ]
 }
 
+/// A Slack delivery's headers: its proof, and the timestamp that proof binds.
+///
+/// Both names are read from [`Scheme::SlackV0`], for the reason
+/// [`github_headers`] reads its signature header rather than spelling it.
+pub(crate) fn slack_headers<'d>(
+    signature: &'d str,
+    timestamp: &'d str,
+) -> Vec<(HeaderName, &'d str)> {
+    let scheme = Scheme::SlackV0;
+    let timestamp_header = scheme
+        .timestamp_header()
+        .expect("the timestamped scheme names its timestamp header");
+    vec![
+        (name(scheme.signature_header()), signature),
+        (name(timestamp_header), timestamp),
+    ]
+}
+
 /// One header name, as the request builder takes it.
 pub(crate) fn name(header: &str) -> HeaderName {
     HeaderName::from_bytes(header.as_bytes()).expect("the fixture header names are well formed")

@@ -80,8 +80,9 @@ pub(super) fn unreachable_pool() -> PoolConfig {
         .expect("the fixture connection string is well formed")
 }
 
-/// The same, for the queue the login surface and the fleet install reach.
-pub(super) fn unreachable_queue() -> DragonflyConfig {
+/// The same, for the queue the login surface and the fleet install reach, and
+/// the one a suite pointing only the connectors' vendor elsewhere keeps.
+pub(crate) fn unreachable_queue() -> DragonflyConfig {
     DragonflyConfig::from_url(DragonflyRole::Default, NOWHERE_QUEUE.to_owned())
         .with_request_timeout(std::time::Duration::from_millis(250))
 }
