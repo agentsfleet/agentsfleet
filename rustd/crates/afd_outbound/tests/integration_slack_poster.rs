@@ -22,34 +22,15 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::sync::Arc;
-
-use afd_connector::{Grants, Provider};
-use afd_core::clock::UnixMillis;
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::Kek;
-use afd_db::Db;
-use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
-use afd_dragonfly::OutboundDelivery;
-use afd_dragonfly::streams::EventId;
 use afd_outbound::{Deliver as _, Verdict};
-use afd_vault::{SecretBody, SecretName, Vault};
-use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
-use tokio::net::TcpListener;
 
-/// How long the fake waits to be dialled before it gives up.
-///
-/// A deadline rather than an unbounded accept: a regression that answers
-/// `Delivered` without connecting must FAIL the suite, not park it.
-const ACCEPT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
+#[path = "integration_slack_poster/fake_slack.rs"]
+mod fake_slack;
+#[path = "integration_slack_poster/fixture.rs"]
+mod fixture;
 
-/// How long one request may take to arrive in full.
-const READ_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
-
-/// The key every fixture seals under — the harness's own, not a deployment's.
-const FIXTURE_KEK: [u8; 32] = [7u8; 32];
+use self::fake_slack::FakeSlack;
+use self::fixture::Fixture;
 
 /// The bot token the vault holds for this workspace.
 const BOT_TOKEN: &str = "xoxb-fixture-bot-token";
@@ -65,226 +46,6 @@ const ANSWER: &str = "the fixture answer";
 /// A Slack base nothing listens on: any request sent here fails in transport.
 const NOBODY_LISTENING: &str = "http://127.0.0.1:1";
 
-/// One loopback Slack, answering `body` with `status` to the first request.
-///
-/// Returns the base URL and a handle that yields what the daemon actually sent.
-struct FakeSlack {
-    base: String,
-    request: tokio::task::JoinHandle<String>,
-}
-
-impl FakeSlack {
-    async fn answering(status: &'static str, body: &'static str) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("a loopback port is available");
-        let port = listener.local_addr().expect("the listener is bound").port();
-        let request = tokio::spawn(async move {
-            // Bounded on both ends. A regression that answers `Delivered`
-            // without connecting would otherwise park this task forever and
-            // hang the suite, where what it should do is fail — and TCP is
-            // free to split a request across reads, so one `read` would fail
-            // for a reason that has nothing to do with the daemon.
-            let accepted = tokio::time::timeout(ACCEPT_DEADLINE, listener.accept()).await;
-            let Ok(Ok((mut socket, _peer))) = accepted else {
-                return String::new();
-            };
-            let received = read_request(&mut socket).await;
-            let response = format!(
-                "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
-                body.len()
-            );
-            let _written = socket.write_all(response.as_bytes()).await;
-            let _flushed = socket.flush().await;
-            received
-        });
-        Self {
-            base: format!("http://127.0.0.1:{port}"),
-            request,
-        }
-    }
-
-    /// What the daemon sent, once it has sent it.
-    async fn received(self) -> String {
-        self.request.await.expect("the fake Slack completed")
-    }
-}
-
-/// One HTTP request, read until its declared body is complete.
-///
-/// TCP does not promise a request arrives in one read, and this one carries a
-/// JSON body — so a single `read` would truncate under a split that has nothing
-/// to do with the daemon, and the assertions on the bearer and the channel
-/// would fail for the wrong reason.
-async fn read_request(socket: &mut tokio::net::TcpStream) -> String {
-    let mut received = Vec::new();
-    let mut chunk = vec![0u8; 4096];
-    let deadline = tokio::time::Instant::now() + READ_DEADLINE;
-    loop {
-        let read = tokio::time::timeout_at(deadline, socket.read(&mut chunk)).await;
-        let Ok(Ok(count)) = read else { break };
-        if count == 0 {
-            break;
-        }
-        received.extend_from_slice(chunk.get(..count).unwrap_or_default());
-        if complete(&received) {
-            break;
-        }
-    }
-    String::from_utf8_lossy(&received).into_owned()
-}
-
-/// Whether the bytes so far carry the headers and the whole declared body.
-fn complete(received: &[u8]) -> bool {
-    let text = String::from_utf8_lossy(received);
-    let Some(head_len) = text.find("\r\n\r\n") else {
-        return false;
-    };
-    let declared = text
-        .get(..head_len)
-        .unwrap_or_default()
-        .lines()
-        .find_map(|line| {
-            line.to_ascii_lowercase()
-                .strip_prefix("content-length:")?
-                .trim()
-                .parse::<usize>()
-                .ok()
-        })
-        .unwrap_or(0);
-    received.len() >= head_len + 4 + declared
-}
-
-/// A workspace whose fleet asked a question, and the grant that answers it.
-struct Fixture {
-    lane: TestDatabase,
-    database: Db,
-    tenant: String,
-    workspace: Uuid7,
-    subject: String,
-    user: String,
-    fleet: Uuid7,
-    event: String,
-}
-
-impl Fixture {
-    async fn create() -> Self {
-        let lane = TestDatabase::shared();
-        Self {
-            database: lane.open(DbRole::Api, &[]).await,
-            tenant: mint_id(),
-            workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
-            subject: format!("user_live_slack_poster_{}", mint_id()),
-            user: mint_id(),
-            fleet: Uuid7::parse(&mint_id()).expect("a minted fleet is canonical"),
-            event: format!("evt_{}", mint_id()),
-            lane,
-        }
-    }
-
-    fn vault(&self) -> Vault {
-        Vault::new(
-            self.database.clone(),
-            Arc::new(Kek::from_bytes(FIXTURE_KEK)),
-            Entropy::new(),
-        )
-    }
-
-    fn poster(&self, api_base: &str) -> afd_outbound::SlackPoster {
-        afd_outbound::SlackPoster::new(
-            Grants::new(self.vault(), self.database.clone(), Entropy::new()),
-            reqwest::Client::new(),
-            api_base.to_owned(),
-        )
-    }
-
-    /// The job the queue would have handed the worker.
-    fn job(&self) -> OutboundDelivery {
-        OutboundDelivery {
-            id: EventId::of("1700000000001-0"),
-            provider: Provider::Slack.id().to_owned(),
-            destination: format!(r#"{{"channel_id":"{CHANNEL}","thread_ts":"{THREAD}"}}"#),
-            workspace_id: self.workspace.to_string(),
-            fleet_id: self.fleet.to_string(),
-            event_id: self.event.clone(),
-            answer: ANSWER.to_owned(),
-        }
-    }
-
-    /// Seeds the tenant, workspace and fleet whose grant the poster opens.
-    ///
-    /// No event row: where the answer belongs rides the job, and a poster that
-    /// still read `core.fleet_events` would find nothing here and fail.
-    async fn seed(&self) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Slack poster live', 1, 1) \
-             ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'slack-poster', $3, 1) \
-             ), person AS ( \
-               INSERT INTO core.users \
-                 (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($4::uuid, $1::uuid, $3, 'slack-poster@example.test', 1, 1) \
-             ) \
-             INSERT INTO core.fleets \
-               (id, workspace_id, tenant_id, name, source_markdown, config_json, \
-                status, created_at, updated_at) \
-             VALUES ($5::uuid, $2::uuid, $1::uuid, 'slack-poster-fleet', '# fixture', \
-                     '{}'::jsonb, 'active', 1, 1)",
-        )
-        .bind(&self.tenant)
-        .bind(self.workspace.as_str())
-        .bind(&self.subject)
-        .bind(&self.user)
-        .bind(self.fleet.as_str())
-        .execute(&mut *connection)
-        .await
-        .expect("the tenant, workspace and fleet seed");
-    }
-
-    /// Seals a Slack grant carrying `token`.
-    async fn seal_grant(&self, token: &str) {
-        let body = format!(r#"{{"integration":"slack","bot_token":"{token}"}}"#);
-        let raw = serde_json::value::RawValue::from_string(body)
-            .expect("the fixture handle is an object");
-        let sealed = self
-            .vault()
-            .create(
-                &self.workspace,
-                &SecretName::parse(Provider::Slack.grant_key())
-                    .expect("a provider key is storable"),
-                &SecretBody::parse(&raw).expect("the fixture handle is a storable body"),
-                UnixMillis::from_millis(1),
-            )
-            .await;
-        assert!(sealed.is_ok(), "the fixture grant seals: {sealed:?}");
-    }
-
-    async fn cleanup(self) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        let mut transaction = sqlx::Acquire::begin(&mut *connection)
-            .await
-            .expect("the cleanup transaction opens");
-        sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid")
-            .bind(self.workspace.as_str())
-            .execute(&mut *transaction)
-            .await
-            .expect("the sealed grant cleans up");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
-            .bind(&self.tenant)
-            .execute(&mut *transaction)
-            .await
-            .expect("the tenant cascades away");
-        transaction.commit().await.expect("the cleanup commits");
-        drop(connection);
-        drop(self.database);
-        drop(self.lane);
-    }
-}
-
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn poster_posts_to_the_jobs_address() {
@@ -296,7 +57,7 @@ async fn poster_posts_to_the_jobs_address() {
     fixture.seed().await;
     fixture.seal_grant(BOT_TOKEN).await;
 
-    let slack = FakeSlack::answering("200 OK", r#"{"ok":true}"#).await;
+    let slack = FakeSlack::answering(200, r#"{"ok":true}"#).await;
     let verdict = fixture.poster(&slack.base).deliver(&fixture.job()).await;
     assert_eq!(
         verdict,
@@ -304,20 +65,22 @@ async fn poster_posts_to_the_jobs_address() {
         "a Slack that accepted is a delivery"
     );
 
-    let sent = slack.received().await;
-    assert!(
-        sent.contains(&format!("authorization: Bearer {BOT_TOKEN}"))
-            || sent.contains(&format!("Authorization: Bearer {BOT_TOKEN}")),
-        "the post must carry the token the vault opened: {sent}"
+    let sent = slack.received();
+    assert_eq!(
+        sent.authorization,
+        format!("Bearer {BOT_TOKEN}"),
+        "the post must carry the token the vault opened"
     );
-    assert!(
-        sent.contains(CHANNEL) && sent.contains(THREAD),
+    assert_eq!(
+        (sent.field("channel"), sent.field("thread_ts")),
+        (Some(CHANNEL), Some(THREAD)),
         "the answer must be threaded under the message that asked it, from the \
-         job's own address rather than from anywhere else: {sent}"
+         job's own address rather than from anywhere else"
     );
-    assert!(
-        sent.contains(ANSWER),
-        "the answer itself must be sent: {sent}"
+    assert_eq!(
+        sent.field("text"),
+        Some(ANSWER),
+        "the answer itself must be sent"
     );
 
     fixture.cleanup().await;
@@ -332,7 +95,7 @@ async fn a_workspace_holding_no_grant_is_permanent_rather_than_retried() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
 
-    let slack = FakeSlack::answering("200 OK", r#"{"ok":true}"#).await;
+    let slack = FakeSlack::answering(200, r#"{"ok":true}"#).await;
     let verdict = fixture.poster(&slack.base).deliver(&fixture.job()).await;
     assert_eq!(verdict, Verdict::Permanent);
 
@@ -380,7 +143,7 @@ async fn a_two_hundred_that_says_not_ok_is_not_a_delivery() {
     fixture.seed().await;
     fixture.seal_grant(BOT_TOKEN).await;
 
-    let slack = FakeSlack::answering("200 OK", r#"{"ok":false,"error":"channel_not_found"}"#).await;
+    let slack = FakeSlack::answering(200, r#"{"ok":false,"error":"channel_not_found"}"#).await;
     let verdict = fixture.poster(&slack.base).deliver(&fixture.job()).await;
     assert_ne!(
         verdict,
@@ -388,7 +151,7 @@ async fn a_two_hundred_that_says_not_ok_is_not_a_delivery() {
         "a 200 carrying `ok: false` is Slack refusing, not accepting"
     );
 
-    let _sent = slack.received().await;
+    let _sent = slack.received();
     fixture.cleanup().await;
 }
 
@@ -401,10 +164,10 @@ async fn a_vendor_that_is_briefly_unwell_is_retried() {
     fixture.seed().await;
     fixture.seal_grant(BOT_TOKEN).await;
 
-    let slack = FakeSlack::answering("503 Service Unavailable", r#"{"ok":false}"#).await;
+    let slack = FakeSlack::answering(503, r#"{"ok":false}"#).await;
     let verdict = fixture.poster(&slack.base).deliver(&fixture.job()).await;
     assert_eq!(verdict, Verdict::Retryable);
 
-    let _sent = slack.received().await;
+    let _sent = slack.received();
     fixture.cleanup().await;
 }

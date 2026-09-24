@@ -728,6 +728,7 @@ dependencies = [
  "afd_db",
  "afd_dragonfly",
  "afd_vault",
+ "axum",
  "backon",
  "dashmap",
  "http",
