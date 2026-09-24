@@ -38,7 +38,7 @@
 use afd_connector::slack::Thread;
 use afd_connector::{Grants, Provider};
 use afd_core::id::Uuid7;
-use afd_crypto::secret::SecretBytes;
+use afd_crypto::secret::SecretString;
 use afd_dragonfly::OutboundDelivery;
 use serde::{Deserialize, Serialize};
 
@@ -157,9 +157,6 @@ impl SlackPoster {
 
     /// The POST itself, with no pool connection held — see the module note.
     async fn post(&self, job: &OutboundDelivery, inputs: &Inputs) -> Verdict {
-        let Ok(token) = std::str::from_utf8(inputs.token.expose()) else {
-            return failed(job, REASON_TOKEN_LOAD_FAILED, Verdict::Permanent);
-        };
         let body = serde_json::to_vec(&Message {
             channel: &inputs.destination.channel_id,
             thread_ts: &inputs.destination.thread_ts,
@@ -172,7 +169,7 @@ impl SlackPoster {
         let response = self
             .http
             .post(format!("{}{METHOD_POST_MESSAGE}", self.api_base))
-            .bearer_auth(token)
+            .bearer_auth(inputs.token.expose())
             .header(http::header::CONTENT_TYPE, CONTENT_TYPE_JSON)
             .timeout(POST_DEADLINE)
             .body(body)
@@ -204,7 +201,7 @@ impl Deliver for SlackPoster {
 struct Inputs {
     destination: Thread,
     /// Still wrapped, so it zeroes on drop — see `Grants::bot_token`.
-    token: SecretBytes,
+    token: SecretString,
 }
 
 /// Where the answer goes, read from the job's recorded address.

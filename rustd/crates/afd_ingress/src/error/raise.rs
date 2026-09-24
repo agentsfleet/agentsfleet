@@ -5,7 +5,10 @@
 //! the ways to produce one. A reader asking "what can go wrong here" and a
 //! reader asking "where does this get raised" are looking for different things.
 
-use super::{Error, ErrorKind};
+use afd_core::id::Uuid7;
+use afd_fleet_lifecycle::FleetStatus;
+
+use super::{COLUMN_FLEET, COLUMN_STATUS, Error, ErrorKind, Result};
 
 // Every lift is a `From`, so `?` does the conversion at the call site and no
 // `map_err` appears on a path that adds nothing (`RUST_ERROR_STANDARD` rule 2).
@@ -42,6 +45,17 @@ pub(crate) fn row_unreadable(column: &'static str) -> Error {
     ErrorKind::RowUnreadable { column }.into()
 }
 
+/// A fleet id as a row stores it.
+pub(crate) fn stored_fleet(stored: &str) -> Result<Uuid7> {
+    Uuid7::parse(stored).map_err(|_shape| row_unreadable(COLUMN_FLEET))
+}
+
+/// A fleet status as a row stores it, refused rather than defaulted — see
+/// [`row_unreadable`].
+pub(crate) fn stored_status(stored: &str) -> Result<FleetStatus> {
+    FleetStatus::parse(stored).ok_or_else(|| row_unreadable(COLUMN_STATUS))
+}
+
 /// One [`Error`] of every kind, labelled, for a suite that grades the surface.
 ///
 /// The seam `afd_db`, `afd_dragonfly`, `afd_connector` and `afd_cron` already
@@ -72,7 +86,7 @@ pub(crate) fn row_unreadable(column: &'static str) -> Error {
     reason = "a sample builder whose own preconditions fail should stop the suite"
 )]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
-    use super::{COLUMN_STATUS, COLUMN_WORKSPACE};
+    use super::COLUMN_WORKSPACE;
 
     let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
     let vault = afd_vault::SecretName::parse("").expect_err("an empty secret name is refused");

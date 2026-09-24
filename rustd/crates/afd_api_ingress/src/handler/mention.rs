@@ -64,13 +64,6 @@ const EVENT_ROUTED: &str = "slack_mention_routed";
 /// The detail a body this daemon could not serialise is refused with.
 const DETAIL_UNSERIALISABLE: &str = "The mention could not be recorded.";
 
-/// How a verdict is spelled in the event body and the log.
-const VERDICT_ADDRESSED: &str = "addressed";
-/// See [`VERDICT_ADDRESSED`].
-const VERDICT_SOLE: &str = "sole";
-/// See [`VERDICT_ADDRESSED`].
-const VERDICT_RESIDENT: &str = "resident";
-
 /// The opening of a user mention in Slack's message markup: `<@U0123>`.
 const MENTION_OPEN: &str = "<@";
 /// Its close.
@@ -150,6 +143,12 @@ fn unserialisable() -> Refusal {
         afd_core::error_code::INTERNAL_OPERATION_FAILED,
         DETAIL_UNSERIALISABLE,
     )
+}
+
+/// `thread` as the obligation row records it, which both the admitted mention
+/// and an owed notice write.
+fn address(thread: &Thread) -> Result<String, Refusal> {
+    thread.address().map_err(|_unserialisable| unserialisable())
 }
 
 /// What a verified envelope is, before any datastore is asked.
@@ -262,15 +261,16 @@ pub(super) async fn admit<D: Services>(
     // Bound here and filled only on the resident arm, so every arm hands the
     // admission a borrowed subscriber.
     let installed;
-    let (fleet, message, verdict) = match route(&subscribers, without_bot_mention(&asked.text)) {
-        Route::Addressed { fleet, message } => (fleet, message, VERDICT_ADDRESSED),
-        Route::Sole { fleet, message } => (fleet, message, VERDICT_SOLE),
+    let routed = route(&subscribers, without_bot_mention(&asked.text));
+    let verdict = routed.verdict();
+    let (fleet, message) = match routed {
+        Route::Addressed { fleet, message } | Route::Sole { fleet, message } => (fleet, message),
         Route::Resident { message } => {
             match resident::answering(services, provider, &workspace, asked).await? {
                 Answering::Resident(found) => installed = found,
                 Answering::Settled(outcome) => return Ok(outcome),
             }
-            (&installed, message, VERDICT_RESIDENT)
+            (&installed, message)
         }
         Route::Notice(notice) => {
             return notice::owe(services, provider, &workspace, asked, &notice).await;

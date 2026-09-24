@@ -9,10 +9,10 @@
 
 use afd_core::id::Uuid7;
 use afd_fleet_lifecycle::FleetStatus;
-use afd_fleet_runtime::config::{Access, FleetConfig, Trigger};
+use afd_fleet_runtime::config::{Access, FleetConfig};
 use sqlx::Row as _;
 
-use crate::error::{self, COLUMN_FLEET, COLUMN_STATUS, Result, row_unreadable};
+use crate::error::{self, Result, stored_fleet};
 use crate::{Ingress, sql};
 
 mod admit;
@@ -92,8 +92,7 @@ impl Ingress {
                 let fleet: String = row.try_get(0).map_err(&unreadable)?;
                 let status: String = row.try_get(1).map_err(&unreadable)?;
                 let document: String = row.try_get(2).map_err(&unreadable)?;
-                let fleet = Uuid7::parse(&fleet).map_err(|_shape| row_unreadable(COLUMN_FLEET))?;
-                subscribed(fleet, &status, &document, provider, channel)
+                subscribed(stored_fleet(&fleet)?, &status, &document, provider, channel)
             })
             .filter_map(Result::transpose)
             .collect()
@@ -117,18 +116,12 @@ pub(crate) fn subscribed(
     provider: &str,
     channel: &ChannelId,
 ) -> Result<Option<Subscriber>> {
-    let status = FleetStatus::parse(stored_status).ok_or_else(|| row_unreadable(COLUMN_STATUS))?;
+    let status = error::stored_status(stored_status)?;
     let config = FleetConfig::stored(document)?;
-    let attached = config.triggers().iter().any(|trigger| match trigger {
-        Trigger::Mention(mention) => {
-            mention.source.eq_ignore_ascii_case(provider) && &mention.channel == channel
-        }
-        Trigger::Webhook(_) | Trigger::Cron(_) | Trigger::Api => false,
-    });
-    Ok(attached.then(|| Subscriber {
+    Ok(config.is_attached_to(provider, channel).then(|| Subscriber {
         fleet,
         name: config.name().as_str().to_owned(),
-        runnable: status == FleetStatus::Active,
+        runnable: status.is_runnable(),
         addressed_only: config
             .repository_binding()
             .is_some_and(|binding| binding.access() == Access::Write),

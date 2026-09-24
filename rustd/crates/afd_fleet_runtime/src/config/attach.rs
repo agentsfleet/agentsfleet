@@ -19,7 +19,7 @@
 
 use serde_json::Value;
 
-use super::{Mention, TRIGGERS, Trigger, raw};
+use super::{ChannelId, FleetConfig, Mention, TRIGGERS, Trigger, raw};
 use crate::error::{Error, ErrorKind, Result, missing};
 use crate::frontmatter::{FENCE, json, parse_trigger, scan};
 
@@ -37,12 +37,10 @@ const RUNTIME_BLOCK: &str = "x-agentsfleet";
 /// # Errors
 /// Refuses a document [`parse_trigger`] refuses.
 pub fn attach_mention(document: &str, mention: &Mention) -> Result<String> {
-    let declared = parse_trigger(document)?;
-    if declared.config().triggers().iter().any(|trigger| {
-        matches!(trigger, Trigger::Mention(existing)
-            if existing.source.eq_ignore_ascii_case(&mention.source)
-                && existing.channel == mention.channel)
-    }) {
+    if parse_trigger(document)?
+        .config()
+        .is_attached_to(&mention.source, &mention.channel)
+    {
         return Ok(document.to_owned());
     }
 
@@ -63,6 +61,23 @@ pub fn attach_mention(document: &str, mention: &Mention) -> Result<String> {
         "" => format!("{FENCE}\n{frontmatter}{FENCE}\n"),
         body => format!("{FENCE}\n{frontmatter}{FENCE}\n\n{body}\n"),
     })
+}
+
+impl FleetConfig {
+    /// Whether this fleet answers mentions from `source` in `channel`.
+    ///
+    /// The one definition the install's idempotence check above and the
+    /// ingress subscriber read (`afd_ingress::slack`) share, so a fleet the
+    /// install calls attached is exactly one a mention is routed to. The
+    /// provider compares without case because the authored `source` is
+    /// free-form text.
+    #[must_use]
+    pub fn is_attached_to(&self, source: &str, channel: &ChannelId) -> bool {
+        self.triggers().iter().any(|trigger| {
+            matches!(trigger, Trigger::Mention(mention)
+                if mention.source.eq_ignore_ascii_case(source) && &mention.channel == channel)
+        })
+    }
 }
 
 #[cfg(test)]

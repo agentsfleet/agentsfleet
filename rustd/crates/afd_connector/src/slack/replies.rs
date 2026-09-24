@@ -30,7 +30,7 @@
 use std::collections::VecDeque;
 use std::time::Duration;
 
-use afd_crypto::secret::SecretBytes;
+use afd_crypto::secret::SecretString;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -80,8 +80,6 @@ pub enum Unavailable {
     Unreachable,
     /// A 200 whose body is not Slack's answer.
     Unreadable,
-    /// The grant's token is not text, so no request can carry it.
-    Token,
 }
 
 impl Unavailable {
@@ -94,7 +92,6 @@ impl Unavailable {
             Self::Status => "unexpected_status",
             Self::Unreachable => "unreachable",
             Self::Unreadable => "unreadable",
-            Self::Token => "token_unreadable",
         }
     }
 }
@@ -163,7 +160,7 @@ impl Connectors {
     /// The [`Unavailable`] reason the read failed for.
     pub async fn thread(
         &self,
-        token: &SecretBytes,
+        token: &SecretString,
         thread: &Thread,
     ) -> Result<Replies, Unavailable> {
         replies(&self.client, self.exchange.pinned_endpoint(), token, thread).await
@@ -179,13 +176,12 @@ impl Connectors {
 pub async fn replies(
     client: &reqwest::Client,
     pinned: Option<&str>,
-    token: &SecretBytes,
+    token: &SecretString,
     thread: &Thread,
 ) -> Result<Replies, Unavailable> {
-    let token = std::str::from_utf8(token.expose()).map_err(|_not_text| Unavailable::Token)?;
     let vendor = format!("{SLACK_API_BASE}{METHOD_CONVERSATIONS_REPLIES}");
     let endpoint = endpoint::redirected(&vendor, pinned).ok_or(Unavailable::Unreachable)?;
-    tokio::time::timeout(READ_DEADLINE, pages(client, &endpoint, token, thread))
+    tokio::time::timeout(READ_DEADLINE, pages(client, &endpoint, token.expose(), thread))
         .await
         .unwrap_or(Err(Unavailable::Timeout))
 }

@@ -32,6 +32,8 @@ mod grants;
 mod rollback;
 mod row;
 
+pub use self::authored::default_trigger;
+
 use std::collections::BTreeSet;
 use std::time::Duration;
 

@@ -20,12 +20,12 @@
 
 use afd_connector::Provider;
 use afd_core::id::Uuid7;
-use afd_crypto::secret::SecretBytes;
+use afd_crypto::secret::SecretString;
 use afd_ingress::slack::{MentionAdmission, Subscriber, compose};
 use afd_wire::ingress::{Accepted, MentionRequest, MentionRoute};
 use std::borrow::Cow;
 
-use super::{Asked, EVENT_MENTION, EVENT_ROUTED, Outcome, unserialisable};
+use super::{Asked, EVENT_MENTION, EVENT_ROUTED, Outcome, address, unserialisable};
 use crate::handler::Refusal;
 use crate::services::{Services, WebhookIngress as _, WorkspaceConnectors as _};
 
@@ -36,7 +36,7 @@ pub(super) struct Routed<'a> {
     /// The mention as parsed.
     pub(super) asked: &'a Asked,
     /// The bot's token, already loaded, which the thread read spends.
-    pub(super) token: &'a SecretBytes,
+    pub(super) token: &'a SecretString,
     /// The fleet routing chose.
     pub(super) fleet: &'a Subscriber,
     /// What was asked, with the bot and any addressed name removed.
@@ -64,9 +64,7 @@ pub(super) async fn routed<D: Services>(
         verdict,
     } = routed;
     let thread = asked.thread();
-    let address = thread
-        .address()
-        .map_err(|_unserialisable| unserialisable())?;
+    let address = address(&thread)?;
 
     let read = services.connectors().thread(token, &thread).await;
     let composed = compose(message, &asked.ts, &read);

@@ -86,7 +86,7 @@ pub(super) fn read(entry: Entry, mention: Option<&Mention>) -> Result<Authored> 
 
     let trigger_markdown = match entry.trigger_markdown.as_deref() {
         Some(authored) => within_bounds(authored, ErrorKind::TriggerRejected)?.to_owned(),
-        None => generated(skill.name()),
+        None => default_trigger(skill.name()),
     };
     let trigger_markdown = match mention {
         Some(mention) => attach_mention(&trigger_markdown, mention)?,
@@ -123,8 +123,14 @@ fn within_bounds(document: &str, rejected: ErrorKind) -> Result<&str> {
     Ok(document)
 }
 
-/// The `TRIGGER.md` a bundle that carried none installs with.
-fn generated(name: &FleetName) -> String {
+/// The `TRIGGER.md` a bundle that carried none installs with: woken by an API
+/// call, no tools, held to the default daily ceiling.
+///
+/// Public because a fleet the daemon installs for itself (a Slack channel's
+/// resident, `afd_ingress::slack`) is exactly such an install, and two
+/// spellings of the same document would drift.
+#[must_use]
+pub fn default_trigger(name: &FleetName) -> String {
     format!(
         "---\nname: {}\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools: []\n  budget:\n    daily_dollars: {DEFAULT_DAILY_DOLLARS}\n---\n\n",
         name.as_str()
@@ -150,13 +156,13 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the restriction set is for the daemon"
     )]
-    use super::{MAX_TAG_LEN, MAX_TAGS, generated, tags_fit};
+    use super::{MAX_TAG_LEN, MAX_TAGS, default_trigger, tags_fit};
 
     #[test]
     fn a_generated_trigger_declares_an_api_wake_and_a_ceiling() {
         let name = afd_fleet_runtime::FleetName::parse("skill-only-install-pin")
             .expect("a kebab slug parses");
-        let document = generated(&name);
+        let document = default_trigger(&name);
 
         assert!(document.contains("name: skill-only-install-pin"));
         assert!(document.contains("type: api"));
@@ -170,7 +176,7 @@ mod tests {
         // document that generated but did not parse would install a fleet no
         // runner could ever claim.
         let name = afd_fleet_runtime::FleetName::parse("probe").expect("a kebab slug parses");
-        let parsed = afd_fleet_runtime::parse_trigger(&generated(&name));
+        let parsed = afd_fleet_runtime::parse_trigger(&default_trigger(&name));
 
         assert!(parsed.is_ok(), "the generated document must round-trip");
     }

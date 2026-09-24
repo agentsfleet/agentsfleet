@@ -95,28 +95,32 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
 impl Error {
     /// The registry code this failure answers with.
     ///
-    /// A `match` over named variants rather than a bare expression, because a
-    /// new variant must not be able to inherit another's code by forgetting to
-    /// extend anything — the match stops compiling until it is listed.
+    /// Decided by [`Self::is_datastore_unavailable`], whose `match` names every
+    /// variant: a new one must not inherit another's code by forgetting to
+    /// extend anything, and that match stops compiling until it is listed.
     #[must_use]
     pub fn code(&self) -> ErrorCode {
+        if self.is_datastore_unavailable() {
+            error_code::INTERNAL_DB_UNAVAILABLE
+        } else {
+            error_code::INTERNAL_OPERATION_FAILED
+        }
+    }
+
+    /// Whether a store behind the ledger could not be reached: Postgres, or
+    /// the queue an obligation is announced on.
+    ///
+    /// The accessor `afd_admission` and its siblings carry, so a crate
+    /// wrapping this error asks the question instead of comparing codes.
+    #[must_use]
+    pub fn is_datastore_unavailable(&self) -> bool {
         match self.kind() {
             // An unreachable store is the outage an operator retries against,
             // and a pool that will not hand out a connection is the same
             // outage. Anything either store ANSWERS is this daemon's own fault.
-            //
-            // Sharing one arm rather than repeating the constant, because
-            // clippy reads two arms with one body as a copy-paste. Every
-            // variant is still named, which is what the note above is actually
-            // asking for: a third one cannot inherit a code by being forgotten,
-            // because the match stops compiling until it is listed.
-            ErrorKind::Queue { source } if source.is_unavailable() => {
-                error_code::INTERNAL_DB_UNAVAILABLE
-            }
-            ErrorKind::Ledger { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
-            ErrorKind::Queue { .. } | ErrorKind::Query { .. } => {
-                error_code::INTERNAL_OPERATION_FAILED
-            }
+            ErrorKind::Queue { source } => source.is_unavailable(),
+            ErrorKind::Ledger { .. } => true,
+            ErrorKind::Query { .. } => false,
         }
     }
 }

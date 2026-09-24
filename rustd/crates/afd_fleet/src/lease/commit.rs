@@ -45,7 +45,6 @@ use crate::lease::obligation::Owing;
 use crate::lease::settle::{Reported, Settled};
 use crate::lease::store::Leases;
 use crate::lease::verdict::Terminal;
-use afd_outbound::obligation::Delivery;
 
 /// Statement name, for the context a transaction failure carries.
 const CONTEXT_COMMIT: &str = "report commit";
@@ -207,18 +206,7 @@ impl Leases {
                 .await?;
         let owed = match destination {
             Some(reply) => self
-                .owe_delivery(
-                    &mut transaction,
-                    Delivery {
-                        fleet_id: lease.fleet_id.as_str(),
-                        workspace_id: lease.workspace_id.as_str(),
-                        provider: reply.provider,
-                        destination: &reply.address,
-                        event_id: &lease.event_id,
-                        answer,
-                    },
-                    now,
-                )
+                .owe_delivery(&mut transaction, reply.delivery(lease, answer), now)
                 .await?
                 .map(|obligation| Owing { obligation, reply }),
             None => None,
