@@ -187,8 +187,9 @@ pub struct Echo {
 pub struct EventIngress {
     /// What the provider does before it will send anything.
     pub handshake: Handshake,
-    /// What turns a verified delivery into work, if anything does.
-    pub producer: Option<EventProducer>,
+    /// What turns a verified delivery into work. Required: a provider whose
+    /// deliveries become nothing has no reason to take them.
+    pub producer: EventProducer,
 }
 
 /// What a connector's verified deliveries become.
@@ -281,7 +282,7 @@ impl Provider {
                     type_value: "url_verification",
                     echo_field: "challenge",
                 }),
-                producer: Some(EventProducer::Mention),
+                producer: EventProducer::Mention,
             }),
             // GitHub delivers to `/v1/ingress/{provider}` — an App's events go
             // to the installation-wide surface, not to the per-workspace
