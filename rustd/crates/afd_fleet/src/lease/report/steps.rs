@@ -34,7 +34,6 @@ use crate::error::Result;
 use crate::lease::obligation::Owing;
 use crate::lease::pull::Plane;
 use crate::lease::settle::Reported;
-use afd_outbound::obligation::Delivery;
 
 /// A settled report was written.
 const EVENT_SETTLED: &str = "report_settled";
@@ -110,18 +109,7 @@ impl Plane {
             lease,
             owing.obligation.as_str(),
             self.leases
-                .queue_delivery(
-                    &owing.obligation,
-                    Delivery {
-                        fleet_id: lease.fleet_id.as_str(),
-                        workspace_id: lease.workspace_id.as_str(),
-                        provider: owing.reply.provider,
-                        destination: &owing.reply.address,
-                        event_id: &lease.event_id,
-                        answer,
-                    },
-                    now,
-                )
+                .queue_delivery(&owing.obligation, owing.reply.delivery(lease, answer), now)
                 .await,
         );
     }

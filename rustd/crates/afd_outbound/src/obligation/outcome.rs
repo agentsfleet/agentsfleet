@@ -73,14 +73,13 @@ pub async fn count_attempt(
     now: UnixMillis,
 ) -> Result<Option<i64>> {
     let mut connection = database.acquire().await?;
-    let counted: Option<(i64,)> = sqlx::query_as(sql::COUNT_ATTEMPT)
+    sqlx::query_scalar(sql::COUNT_ATTEMPT)
         .bind(fleet_id)
         .bind(event_id)
         .bind(now.as_millis())
         .fetch_optional(&mut *connection)
         .await
-        .map_err(crate::error::query(CONTEXT_COUNT))?;
-    Ok(counted.map(|(count,)| count))
+        .map_err(crate::error::query(CONTEXT_COUNT))
 }
 
 /// Record that a destination accepted this answer.
@@ -120,13 +119,12 @@ pub async fn abandon(
     now: UnixMillis,
 ) -> Result<Option<i64>> {
     let mut connection = database.acquire().await?;
-    let stamped: Option<(i64,)> = sqlx::query_as(sql::ABANDON)
+    sqlx::query_scalar(sql::ABANDON)
         .bind(fleet_id)
         .bind(event_id)
         .bind(now.as_millis())
         .bind(reason.as_str())
         .fetch_optional(&mut *connection)
         .await
-        .map_err(crate::error::query(CONTEXT_ABANDON))?;
-    Ok(stamped.map(|(attempts,)| attempts))
+        .map_err(crate::error::query(CONTEXT_ABANDON))
 }

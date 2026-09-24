@@ -28,7 +28,7 @@ mod raise;
 
 #[cfg(feature = "test-util")]
 pub use self::raise::one_of_each_kind;
-pub(crate) use self::raise::{query, row_unreadable};
+pub(crate) use self::raise::{query, row_unreadable, stored_fleet, stored_status};
 
 /// The result every fallible function in this crate returns.
 ///
@@ -141,7 +141,7 @@ impl Error {
             ErrorKind::Admission { source } => (source.code(), source.detail()),
             // The ledger decided which of its failures is an outage; the
             // sentence follows the code it chose.
-            ErrorKind::Obligation { source } if is_outage(source) => (
+            ErrorKind::Obligation { source } if source.is_datastore_unavailable() => (
                 error_code::INTERNAL_DB_UNAVAILABLE,
                 detail::DATABASE_UNAVAILABLE,
             ),
@@ -186,14 +186,8 @@ impl Error {
         match self.kind() {
             ErrorKind::Datastore { .. } => true,
             ErrorKind::Admission { source } => source.is_datastore_unavailable(),
-            ErrorKind::Obligation { source } => is_outage(source),
+            ErrorKind::Obligation { source } => source.is_datastore_unavailable(),
             _reachable => false,
         }
     }
-}
-
-/// Whether the obligation ledger failed for want of a datastore rather than on
-/// a statement it answered.
-fn is_outage(source: &afd_outbound::error::Error) -> bool {
-    source.code() == error_code::INTERNAL_DB_UNAVAILABLE
 }

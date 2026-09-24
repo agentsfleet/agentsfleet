@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use afd_connector::slack::{self, READ_DEADLINE, Thread, Unavailable};
-use afd_crypto::secret::SecretBytes;
+use afd_crypto::secret::SecretString;
 use axum::Router;
 use axum::extract::Form;
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
@@ -131,8 +131,8 @@ fn thread() -> Thread {
     }
 }
 
-fn token() -> SecretBytes {
-    SecretBytes::new(TOKEN.as_bytes().to_vec())
+fn token() -> SecretString {
+    SecretString::new(TOKEN.to_owned())
 }
 
 async fn read(fake: &FakeSlack) -> Result<slack::Replies, Unavailable> {
@@ -254,10 +254,9 @@ async fn an_unusable_pin_dials_nothing() {
     assert!(fake.requests().is_empty(), "nothing was dialled");
 }
 
-/// A host nothing listens on is unreachable, and a token that is not text is
-/// refused before any request.
+/// A host nothing listens on is unreachable: a reason, not an error or a hang.
 #[tokio::test]
-async fn an_absent_slack_and_a_binary_token_are_reasons() {
+async fn an_absent_slack_is_a_reason() {
     let closed = TcpListener::bind("127.0.0.1:0")
         .await
         .expect("a loopback port is available");
@@ -268,8 +267,4 @@ async fn an_absent_slack_and_a_binary_token_are_reasons() {
     drop(closed);
     let answer = slack::replies(&reqwest::Client::new(), Some(&nowhere), &token(), &thread()).await;
     assert_eq!(answer, Err(Unavailable::Unreachable));
-
-    let binary = SecretBytes::new(vec![0xff, 0xfe]);
-    let answer = slack::replies(&reqwest::Client::new(), Some(&nowhere), &binary, &thread()).await;
-    assert_eq!(answer, Err(Unavailable::Token));
 }

@@ -64,6 +64,21 @@ pub enum Notice<'s> {
     },
 }
 
+impl Route<'_, '_> {
+    /// How this verdict is spelled in the admitted event's body and the log:
+    /// the fleet-reaching arms by name, a notice by its [`Notice::kind`], so
+    /// the one vocabulary is written in one place.
+    #[must_use]
+    pub const fn verdict(&self) -> &'static str {
+        match self {
+            Self::Addressed { .. } => "addressed",
+            Self::Sole { .. } => "sole",
+            Self::Resident { .. } => "resident",
+            Self::Notice(notice) => notice.kind(),
+        }
+    }
+}
+
 impl Notice<'_> {
     /// The kind's stored spelling, for the operator event and the notice key.
     #[must_use]

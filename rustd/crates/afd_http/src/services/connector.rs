@@ -32,7 +32,7 @@ use afd_connector::{
 };
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_crypto::secret::SecretBytes;
+use afd_crypto::secret::{SecretBytes, SecretString};
 
 /// Everything the connector routes act through.
 pub trait WorkspaceConnectors: Send + Sync + std::fmt::Debug + 'static {
@@ -165,7 +165,7 @@ pub trait WorkspaceConnectors: Send + Sync + std::fmt::Debug + 'static {
     /// the fleet in the thread's place rather than refusing the mention.
     fn thread(
         &self,
-        token: &SecretBytes,
+        token: &SecretString,
         thread: &Thread,
     ) -> impl Future<Output = ConnectorResult<Replies, Unavailable>> + Send;
 }
@@ -249,7 +249,7 @@ impl WorkspaceConnectors for Connectors {
 
     fn thread(
         &self,
-        token: &SecretBytes,
+        token: &SecretString,
         thread: &Thread,
     ) -> impl Future<Output = ConnectorResult<Replies, Unavailable>> + Send {
         Self::thread(self, token, thread)

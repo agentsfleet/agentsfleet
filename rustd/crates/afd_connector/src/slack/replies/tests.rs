@@ -128,7 +128,6 @@ fn every_reason_is_spelled_apart() {
         Unavailable::Status,
         Unavailable::Unreachable,
         Unavailable::Unreadable,
-        Unavailable::Token,
     ];
     let mut spelled: Vec<&str> = reasons.iter().map(|reason| reason.as_str()).collect();
     spelled.sort_unstable();

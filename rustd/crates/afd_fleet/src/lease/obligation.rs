@@ -26,6 +26,7 @@ use afd_outbound::obligation::{self, Delivery};
 use sqlx::PgConnection;
 
 use crate::error::{Result, query};
+use crate::lease::settle::Reported;
 use crate::lease::store::Leases;
 
 /// Statement name, for the context a destination read failure carries.
@@ -45,6 +46,25 @@ pub struct ReplyDestination {
     pub provider: Provider,
     /// The address only that poster reads.
     pub address: String,
+}
+
+impl ReplyDestination {
+    /// The answer `lease` owes here, in the shape the ledger's verbs take.
+    ///
+    /// The owe inside the report's transaction and the queue append after the
+    /// commit both build it from here, so the row and the queue entry cannot
+    /// disagree about where the answer goes.
+    #[must_use]
+    pub(crate) fn delivery<'a>(&'a self, lease: &'a Reported, answer: &'a str) -> Delivery<'a> {
+        Delivery {
+            fleet_id: lease.fleet_id.as_str(),
+            workspace_id: lease.workspace_id.as_str(),
+            provider: self.provider,
+            destination: &self.address,
+            event_id: &lease.event_id,
+            answer,
+        }
+    }
 }
 
 /// An answer this report newly owed, and where it is owed.

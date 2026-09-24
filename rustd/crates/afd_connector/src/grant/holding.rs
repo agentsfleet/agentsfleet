@@ -35,7 +35,7 @@
 use std::collections::BTreeSet;
 
 use afd_core::id::Uuid7;
-use afd_crypto::secret::SecretBytes;
+use afd_crypto::secret::SecretString;
 use afd_vault::{Deleted, SecretName};
 
 use super::Grants;
@@ -50,7 +50,7 @@ use crate::sql;
 #[derive(Debug)]
 pub struct BotIdentity {
     /// What a call to the provider's API spends.
-    pub token: SecretBytes,
+    pub token: SecretString,
     /// The id the provider knows the bot by, when the grant recorded one.
     pub user_id: Option<String>,
 }
@@ -162,12 +162,12 @@ impl Grants {
     /// place the question came from. Nothing on the request path calls it —
     /// [`Connection`] is deliberately shaped so a status surface cannot.
     ///
-    /// # Why the token stays [`SecretBytes`]
+    /// # Why the token is a [`SecretString`]
     ///
     /// It is zeroed on drop, and handing back a `String` would silently end
     /// that: the caller builds one `Authorization` header from it and has no
-    /// reason to keep a copy. The vault's own note says a caller that copies
-    /// the bytes owns what happens next, and this one does not copy them.
+    /// reason to keep a copy. It is text because the grant stored it as a JSON
+    /// string, so no caller re-checks an encoding that cannot be wrong.
     ///
     /// # Errors
     /// Reports a datastore that would not answer and an envelope that would not
@@ -180,7 +180,7 @@ impl Grants {
         &self,
         workspace: &Uuid7,
         provider: Provider,
-    ) -> Result<Option<SecretBytes>> {
+    ) -> Result<Option<SecretString>> {
         Ok(self
             .bot_identity(workspace, provider)
             .await?
@@ -216,7 +216,7 @@ impl Grants {
             return Ok(None);
         }
         Ok(text(&handle, HANDLE_BOT_TOKEN).map(|token| BotIdentity {
-            token: SecretBytes::new(token.into_bytes()),
+            token: SecretString::new(token),
             user_id: text(&handle, HANDLE_BOT_USER_ID),
         }))
     }

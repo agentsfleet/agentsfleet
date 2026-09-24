@@ -34,9 +34,10 @@ use afd_core::id::Uuid7;
 use afd_fleet_lifecycle::FleetStatus;
 use afd_fleet_runtime::FleetName;
 use sqlx::Row as _;
+use sqlx::postgres::PgRow;
 
 use super::ChannelId;
-use crate::error::{self, COLUMN_FLEET, COLUMN_STATUS, Result, row_unreadable};
+use crate::error::{self, COLUMN_FLEET, Result, row_unreadable, stored_fleet, stored_status};
 use crate::{Ingress, sql};
 
 /// The skill every resident runs, before its placeholders are filled.
@@ -48,9 +49,6 @@ const PLACEHOLDER_CHANNEL: &str = "{channel_id}";
 
 /// What every resident's name opens with.
 const NAME_PREFIX: &str = "slack-channel-";
-
-/// The daily ceiling a resident is held to, in dollars.
-const DAILY_DOLLARS: &str = "1.0";
 
 /// How a binding row says it names a channel's resident. The table stores the
 /// spelling; this is the one place it is written (RULE STS).
@@ -70,10 +68,14 @@ pub struct Resident {
     pub name: FleetName,
     /// The skill, with the name and the channel filled in.
     pub skill_markdown: String,
-    /// The policy, built here rather than read from anything a person wrote.
+    /// The install's default policy ([`afd_fleet_lifecycle::default_trigger`]),
+    /// never anything a person wrote.
     pub trigger_markdown: String,
     /// [`Self::trigger_markdown`] as the fleet row stores it, which is how a
-    /// fleet already holding the name is recognised as this resident.
+    /// fleet already holding the name is recognised as this resident. A
+    /// skill-only install a person names this way carries the same default, so
+    /// it reads as the resident too: the check tells a resident from a fleet
+    /// with its own policy, not from one with none.
     pub config_json: String,
 }
 
@@ -103,10 +105,7 @@ impl Resident {
         let skill_markdown = SKILL_TEMPLATE
             .replace(PLACEHOLDER_NAME, name.as_str())
             .replace(PLACEHOLDER_CHANNEL, channel.as_str());
-        let trigger_markdown = format!(
-            "---\nname: {}\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools: []\n  budget:\n    daily_dollars: {DAILY_DOLLARS}\n---\n",
-            name.as_str()
-        );
+        let trigger_markdown = afd_fleet_lifecycle::default_trigger(&name);
         let config_json = afd_fleet_runtime::parse_trigger(&trigger_markdown)
             .ok()?
             .config_json()
@@ -154,16 +153,7 @@ impl Ingress {
             .await
             .map_err(error::query(CONTEXT_RESIDENT))?;
         found
-            .map(|row| {
-                let unreadable = error::query(CONTEXT_RESIDENT);
-                let fleet: String = row.try_get(0).map_err(&unreadable)?;
-                let status: String = row.try_get(1).map_err(&unreadable)?;
-                Ok(BoundResident {
-                    fleet: fleet_id(&fleet)?,
-                    status: FleetStatus::parse(&status)
-                        .ok_or_else(|| row_unreadable(COLUMN_STATUS))?,
-                })
-            })
+            .map(|row| bound(&row, CONTEXT_RESIDENT))
             .transpose()
     }
 
@@ -198,7 +188,7 @@ impl Ingress {
             .map_err(error::query(CONTEXT_BIND))?;
         drop(connection);
         match bound {
-            Some(bound) => fleet_id(&bound),
+            Some(bound) => stored_fleet(&bound),
             // The insert waited on a concurrent one and did nothing, and its
             // own read was taken before that commit; a fresh statement sees it.
             None => self
@@ -236,21 +226,23 @@ impl Ingress {
                 if !is_resident {
                     return Ok(Named::Other);
                 }
-                let fleet: String = row.try_get(0).map_err(&unreadable)?;
-                let status: String = row.try_get(1).map_err(&unreadable)?;
-                Ok(Named::Resident(BoundResident {
-                    fleet: fleet_id(&fleet)?,
-                    status: FleetStatus::parse(&status)
-                        .ok_or_else(|| row_unreadable(COLUMN_STATUS))?,
-                }))
+                bound(&row, CONTEXT_NAMED).map(Named::Resident)
             })
             .transpose()
     }
 }
 
-/// A fleet id as a row stores it.
-fn fleet_id(stored: &str) -> Result<Uuid7> {
-    Uuid7::parse(stored).map_err(|_shape| row_unreadable(COLUMN_FLEET))
+/// The resident a row's first two columns name: its fleet and that fleet's
+/// status, the shape both [`SELECT_RESIDENT`](sql::SELECT_RESIDENT) and
+/// [`SELECT_RESIDENT_NAMED`](sql::SELECT_RESIDENT_NAMED) lead with.
+fn bound(row: &PgRow, context: &'static str) -> Result<BoundResident> {
+    let unreadable = error::query(context);
+    let fleet: String = row.try_get(0).map_err(&unreadable)?;
+    let status: String = row.try_get(1).map_err(&unreadable)?;
+    Ok(BoundResident {
+        fleet: stored_fleet(&fleet)?,
+        status: stored_status(&status)?,
+    })
 }
 
 #[cfg(test)]

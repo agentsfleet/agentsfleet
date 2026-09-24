@@ -17,7 +17,7 @@ use afd_wire::ingress::Accepted;
 use std::borrow::Cow;
 
 use super::resident::resident;
-use super::{Asked, EVENT_MENTION, EVENT_ROUTED, Outcome, unserialisable};
+use super::{Asked, EVENT_MENTION, EVENT_ROUTED, Outcome, address};
 use crate::handler::Refusal;
 use crate::services::{Services, WebhookIngress as _};
 
@@ -40,10 +40,7 @@ pub(super) async fn owe<D: Services>(
         Ok(owner) => owner,
         Err(settled) => return Ok(settled),
     };
-    let address = asked
-        .thread()
-        .address()
-        .map_err(|_unserialisable| unserialisable())?;
+    let address = address(&asked.thread())?;
     let key = notice_key(&asked.team_id, &asked.event_id);
     let text = notice_text(notice);
     let written = services
