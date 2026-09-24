@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M206
 **Workstream:** 003
 **Date:** Sep 23, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — the drill's diagnosis needs Continuous Integration (CI) evidence no fleet token can read today, and under the Claude Tag authority model the write fleet's reach is the only boundary a channel member's request meets.
 **Categories:** API
 **Batch:** B1 for §1, §2, and Dimensions 3.1–3.2, which need no other workstream; Dimension 3.3 after M206_002 admits a mention. Ships in M206_002's Pull Request.
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** feat/m206-slack-incident-responder
+**Baseline revision:** f3edd3c17062087a6db7f7e271606bf0c3901259
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M206_002 — Dimension 3.3 delivers a signed mention twice.
 **Provenance:** LLM-drafted (Claude Opus 5.5, Sep 23, 2026) from source reads at `b1bc6f0c4`; re-cut Sep 24, 2026 at `f3edd3c17` after the owner decisions quoted in Discovery
