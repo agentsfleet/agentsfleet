@@ -30,9 +30,9 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_fleet_runtime::{Class, Error, parse_skill, parse_trigger};
+use afd_fleet_runtime::{Class, Error, config::Access, parse_skill, parse_trigger};
 
-use crate::support::{MODEL_VALUE, fixture, raw_fixture};
+use crate::support::{FIRST_PARTY, MODEL_VALUE, fixture, raw_fixture};
 
 /// What the corpus expects one document to answer, in the ZIG's vocabulary.
 ///
@@ -88,7 +88,7 @@ enum Kind {
 }
 
 /// Every purpose-built fixture, with the verdict its bytes must earn.
-const CORPUS_CASES: [(&str, Kind, Verdict); 15] = [
+const CORPUS_CASES: [(&str, Kind, Verdict); 19] = [
     ("skill/minimal.md", Kind::Skill, Verdict::Accepts),
     ("skill/full.md", Kind::Skill, Verdict::Accepts),
     // The fixture's own comment says it tests an absent `name`. It does not:
@@ -142,6 +142,10 @@ const CORPUS_CASES: [(&str, Kind, Verdict); 15] = [
         Kind::Trigger,
         Verdict::Accepts,
     ),
+    ("ci-responder/SKILL.md", Kind::Skill, Verdict::Accepts),
+    ("ci-responder/TRIGGER.md", Kind::Trigger, Verdict::Accepts),
+    ("ci-repairer/SKILL.md", Kind::Skill, Verdict::Accepts),
+    ("ci-repairer/TRIGGER.md", Kind::Trigger, Verdict::Accepts),
 ];
 
 /// The verdict a document actually earns.
@@ -205,5 +209,93 @@ fn an_unsubstituted_template_is_refused() {
     assert!(
         parse_trigger(&raw).is_err(),
         "an unfilled `{{{{context_cap_tokens}}}}` is not a number"
+    );
+}
+
+#[test]
+fn drill_bundles_parse_and_join_the_corpus() {
+    assert_eq!(FIRST_PARTY.len(), 9);
+    assert_eq!(CORPUS_CASES.len(), 19);
+    for slug in ["ci-responder", "ci-repairer"] {
+        assert!(
+            FIRST_PARTY.contains(&slug),
+            "{slug} joins the first-party roster"
+        );
+        let skill = parse_skill(&fixture(&format!("{slug}/SKILL.md")))
+            .unwrap_or_else(|failure| panic!("{slug} skill should parse: {failure}"));
+        let trigger = parse_trigger(&fixture(&format!("{slug}/TRIGGER.md")))
+            .unwrap_or_else(|failure| panic!("{slug} trigger should parse: {failure}"));
+        assert_eq!(skill.name(), trigger.config().name(), "{slug} names agree");
+    }
+}
+
+#[test]
+fn responder_bundle_holds_no_write_reach() {
+    let parsed =
+        parse_trigger(&fixture("ci-responder/TRIGGER.md")).expect("responder trigger should parse");
+    let config = parsed.config();
+    let binding = config.repository_binding().expect("a repository binding");
+    assert_eq!(binding.access(), Access::Read);
+    assert_eq!(binding.repositories().len(), 1);
+    assert_eq!(
+        binding.repositories().first().map(AsRef::as_ref),
+        Some("agentsfleet/linkwarden")
+    );
+    assert_eq!(binding.base_branch(), None);
+    let network = config.network().expect("a network policy");
+    assert!(network.read_only());
+    assert!(network.read_post_paths().is_empty());
+    assert_eq!(network.allow().len(), 2);
+    assert!(
+        network
+            .allow()
+            .iter()
+            .any(|host| &**host == "api.github.com")
+    );
+    assert!(
+        network
+            .allow()
+            .iter()
+            .any(|host| &**host == "grafana.example.net")
+    );
+    assert!(!network.allow().iter().any(|host| host.contains("slack")));
+    assert_eq!(config.credentials().len(), 2);
+    assert!(
+        config
+            .credentials()
+            .iter()
+            .any(|name| name.as_str() == "github")
+    );
+    assert!(
+        config
+            .credentials()
+            .iter()
+            .any(|name| name.as_str() == "grafana")
+    );
+    assert!(
+        !config
+            .credentials()
+            .iter()
+            .any(|name| name.as_str() == "slack")
+    );
+}
+
+#[test]
+fn repairer_bundle_is_write_bound_to_one_base() {
+    let parsed =
+        parse_trigger(&fixture("ci-repairer/TRIGGER.md")).expect("repairer trigger should parse");
+    let binding = parsed.config().repository_binding().expect("a binding");
+    assert_eq!(binding.access(), Access::Write);
+    assert_eq!(binding.repositories().len(), 1);
+    assert_eq!(
+        binding.repositories().first().map(AsRef::as_ref),
+        Some("agentsfleet/linkwarden")
+    );
+    assert_eq!(binding.base_branch(), Some("dev"));
+    let network = parsed.config().network().expect("a network policy");
+    assert_eq!(network.allow().len(), 1);
+    assert_eq!(
+        network.allow().first().map(AsRef::as_ref),
+        Some("api.github.com")
     );
 }
