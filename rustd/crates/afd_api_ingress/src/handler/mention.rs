@@ -39,6 +39,7 @@ mod notice;
 mod resident;
 
 use self::admit::Routed;
+use self::resident::Answering;
 
 /// Why a mention was dropped, named once each (RULE UFS). `unreadable_body`
 /// is the route's own, shared with a body that is not JSON at all, and
@@ -46,6 +47,10 @@ use self::admit::Routed;
 pub(super) const REASON_BOT_MESSAGE: &str = "bot_message";
 /// See [`REASON_BOT_MESSAGE`].
 pub(super) const REASON_TEAM_NOT_MAPPED: &str = "team_not_mapped";
+/// See [`REASON_BOT_MESSAGE`]. The channel's resident was killed and is not
+/// yet deleted; deletion releases the binding and the next mention installs
+/// a new one.
+pub(super) const REASON_RESIDENT_KILLED: &str = "resident_killed";
 
 /// The event a datastore failure on this path is refused under.
 const EVENT_MENTION: &str = "slack_mention_failed";
@@ -258,11 +263,10 @@ pub(super) async fn admit<D: Services>(
         Route::Addressed { fleet, message } => (fleet, message, VERDICT_ADDRESSED),
         Route::Sole { fleet, message } => (fleet, message, VERDICT_SOLE),
         Route::Resident { message } => {
-            let Some(found) = resident::resident(services, provider, &workspace, asked).await?
-            else {
-                return Ok(Outcome::Dropped(REASON_UNREADABLE));
-            };
-            installed = found;
+            match resident::answering(services, provider, &workspace, asked).await? {
+                Answering::Resident(found) => installed = found,
+                Answering::Settled(outcome) => return Ok(outcome),
+            }
             (&installed, message, VERDICT_RESIDENT)
         }
         Route::Notice(notice) => {

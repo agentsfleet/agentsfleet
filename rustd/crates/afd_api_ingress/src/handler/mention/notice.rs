@@ -19,7 +19,6 @@ use std::borrow::Cow;
 use super::resident::resident;
 use super::{Asked, EVENT_MENTION, EVENT_ROUTED, Outcome, unserialisable};
 use crate::handler::Refusal;
-use crate::handler::events::REASON_UNREADABLE;
 use crate::services::{Services, WebhookIngress as _};
 
 /// Owes `notice` to the thread `asked` was asked in.
@@ -34,8 +33,12 @@ pub(super) async fn owe<D: Services>(
     asked: &Asked,
     notice: &Notice<'_>,
 ) -> Result<Outcome, Refusal> {
-    let Some(owner) = resident(services, provider, workspace, asked).await? else {
-        return Ok(Outcome::Dropped(REASON_UNREADABLE));
+    let owner = match resident(services, provider, workspace, asked)
+        .await?
+        .resident()
+    {
+        Ok(owner) => owner,
+        Err(settled) => return Ok(settled),
     };
     let address = asked
         .thread()

@@ -9,7 +9,9 @@ use afd_api::services::WebhookIngress;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
-use afd_ingress::slack::{ChannelId, FleetName, MentionAdmission, NoticeOwed, Subscriber};
+use afd_ingress::slack::{
+    BoundResident, ChannelId, FleetName, MentionAdmission, NoticeOwed, Subscriber,
+};
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Result as IngressResult, Surface};
 
 use super::{ENTRY_ID_SEQUENCE, HarnessIngress, Recorded, Scripted};
@@ -128,18 +130,22 @@ impl WebhookIngress for HarnessIngress {
     // suite owns materialisation.
     async fn resident(
         &self,
+        workspace: &Uuid7,
         provider: &str,
         team: &str,
         channel: &ChannelId,
-    ) -> IngressResult<Option<Uuid7>> {
+    ) -> IngressResult<Option<BoundResident>> {
         match self {
-            Self::Unreachable(ingress) => ingress.resident(provider, team, channel).await,
+            Self::Unreachable(ingress) => {
+                ingress.resident(workspace, provider, team, channel).await
+            }
             Self::Scripted(_) => Ok(None),
         }
     }
 
     async fn bind_resident(
         &self,
+        workspace: &Uuid7,
         provider: &str,
         team: &str,
         channel: &ChannelId,
@@ -149,7 +155,7 @@ impl WebhookIngress for HarnessIngress {
         match self {
             Self::Unreachable(ingress) => {
                 ingress
-                    .bind_resident(provider, team, channel, fleet, now)
+                    .bind_resident(workspace, provider, team, channel, fleet, now)
                     .await
             }
             Self::Scripted(_) => Ok(fleet.clone()),
