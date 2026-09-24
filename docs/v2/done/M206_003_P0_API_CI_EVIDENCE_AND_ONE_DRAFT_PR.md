@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M206
 **Workstream:** 003
 **Date:** Sep 23, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — the drill's diagnosis needs Continuous Integration (CI) evidence no fleet token can read today, and under the Claude Tag authority model the write fleet's reach is the only boundary a channel member's request meets.
 **Categories:** API
 **Batch:** B1 for §1, §2, and Dimensions 3.1–3.2, which need no other workstream; Dimension 3.3 after M206_002 admits a mention. Ships in M206_002's Pull Request.
