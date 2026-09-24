@@ -100,6 +100,18 @@ impl Fixture {
     /// The production router over this deployment's live stores, its vendor
     /// calls pinned at the loopback Slack.
     pub(super) fn router(&self) -> axum::Router {
+        self.instance().router()
+    }
+
+    /// The same router with a live fleet queue, for a mention that installs
+    /// the channel's resident: an install creates the fleet's stream.
+    pub(super) async fn resident_router(&self) -> axum::Router {
+        self.instance()
+            .with_fleet_queue(self.database.clone(), harness::connect_redis().await)
+            .router()
+    }
+
+    fn instance(&self) -> harness::Fleet {
         let queue = Dragonfly::unreachable(&harness::unreachable_queue())
             .expect("a lazy manager opens no socket, so it cannot fail to open one");
         harness::Fleet::live(
@@ -109,7 +121,6 @@ impl Fixture {
         )
         .with_platform_admin(self.admin.clone())
         .with_live_connectors(self.database.clone(), queue, self.slack.base())
-        .router()
     }
 
     /// The tenant, both workspaces, the person, the app bag, the install row

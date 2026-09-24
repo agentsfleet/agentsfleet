@@ -17,6 +17,8 @@ afd_core::error_lifts!(Error, ErrorKind:
     afd_vault::Error => Vault,
     afd_admission::Error => Admission,
     afd_fleet_runtime::Error => ConfigUnreadable,
+    afd_crypto::error::Error => Entropy,
+    afd_core::error::Error => Identifier,
 );
 
 /// Reports a statement that failed, naming what it was doing.
@@ -75,6 +77,12 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let vault = afd_vault::SecretName::parse("").expect_err("an empty secret name is refused");
     let config =
         afd_fleet_runtime::FleetName::parse("").expect_err("an empty fleet name is refused");
+    let identifier = afd_core::id::Uuid7::parse("").expect_err("an empty identifier is refused");
+    let (entropy, control) = afd_crypto::entropy::Entropy::new_mocked();
+    control.fail_next();
+    let entropy = entropy
+        .uuid_randomness()
+        .expect_err("a mocked source told to fail refuses the draw");
 
     // Partitioned in one pass rather than searched twice: `afd_admission::Error`
     // is not `Clone`, so a second search over the same vector would have to
@@ -125,5 +133,10 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ),
         ("row unreadable status", row_unreadable(COLUMN_STATUS)),
         ("row unreadable workspace", row_unreadable(COLUMN_WORKSPACE)),
+        ("entropy", ErrorKind::Entropy { source: entropy }.into()),
+        (
+            "identifier",
+            ErrorKind::Identifier { source: identifier }.into(),
+        ),
     ]
 }

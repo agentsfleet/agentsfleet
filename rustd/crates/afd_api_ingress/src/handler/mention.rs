@@ -16,7 +16,8 @@
 //! ```
 //!
 //! The last three steps, for a mention routing gave one fleet, live in the
-//! `admit` module beside this one.
+//! `admit` module beside this one; a channel's resident is found or installed
+//! by `resident`.
 //!
 //! The envelope is a `serde`-tagged enum, so "an `event_callback` whose event
 //! is an `app_mention`" is a type rather than three field lookups that have to
@@ -33,6 +34,7 @@ use crate::handler::Refusal;
 use crate::services::{Services, WebhookIngress as _, WorkspaceConnectors as _};
 
 mod admit;
+mod resident;
 
 use self::admit::Routed;
 
@@ -50,6 +52,8 @@ const EVENT_MENTION: &str = "slack_mention_failed";
 const VERDICT_ADDRESSED: &str = "addressed";
 /// See [`VERDICT_ADDRESSED`].
 const VERDICT_SOLE: &str = "sole";
+/// See [`VERDICT_ADDRESSED`].
+const VERDICT_RESIDENT: &str = "resident";
 
 /// The opening of a user mention in Slack's message markup: `<@U0123>`.
 const MENTION_OPEN: &str = "<@";
@@ -220,14 +224,23 @@ pub(super) async fn admit<D: Services>(
         .mention_subscribers(&workspace, provider.id(), &asked.channel)
         .await
         .map_err(Refusal::at(EVENT_MENTION))?;
+    // Bound here and filled only on the resident arm, so every arm hands the
+    // admission a borrowed subscriber.
+    let installed;
     let (fleet, message, verdict) = match route(&subscribers, without_bot_mention(&asked.text)) {
         Route::Addressed { fleet, message } => (fleet, message, VERDICT_ADDRESSED),
         Route::Sole { fleet, message } => (fleet, message, VERDICT_SOLE),
-        // The resident and the notices land in their own sections; until
-        // then a mention nobody can take is acknowledged, not run.
-        Route::Resident { .. } | Route::Notice(_) => {
-            return Ok(Outcome::Dropped(REASON_UNSUPPORTED_EVENT));
+        Route::Resident { message } => {
+            let Some(found) = resident::resident(services, provider, &workspace, asked).await?
+            else {
+                return Ok(Outcome::Dropped(REASON_UNREADABLE));
+            };
+            installed = found;
+            (&installed, message, VERDICT_RESIDENT)
         }
+        // The notices land in their own section; until then a mention that
+        // earns one is acknowledged, not run.
+        Route::Notice(_) => return Ok(Outcome::Dropped(REASON_UNSUPPORTED_EVENT)),
     };
     admit::routed(
         services,

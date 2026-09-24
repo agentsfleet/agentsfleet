@@ -17,15 +17,19 @@ use crate::{Ingress, sql};
 
 mod admit;
 mod message;
+mod resident;
 mod route;
 
 pub use self::admit::MentionAdmission;
 pub use self::message::{
     Composed, MESSAGE_CAP, THREAD_CAP, THREAD_HEADING, THREAD_UNAVAILABLE, compose,
 };
+pub use self::resident::{KIND_RESIDENT, Resident};
 pub use self::route::{Notice, Route, route};
-/// The channel type every mention method takes, re-exported so a caller of
-/// this module needs no dependency on the document crate for it.
+/// The channel type every mention method takes, and the name a resident is
+/// found by, re-exported so a caller of this module needs no dependency on the
+/// document crate for them.
+pub use afd_fleet_runtime::FleetName;
 pub use afd_fleet_runtime::config::ChannelId;
 
 /// Statement name, for the context a query failure carries.
