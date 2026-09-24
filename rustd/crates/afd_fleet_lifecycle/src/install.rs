@@ -95,6 +95,15 @@ pub enum LibrarySource<'a> {
     Platform(&'a str),
     /// This workspace's own entry, by identifier.
     Tenant(Uuid7),
+    /// A bundle this daemon wrote in code rather than one a library row holds:
+    /// a Slack channel's resident. It carries no support files, so the fleet
+    /// stores no bundle hash.
+    InCode {
+        /// The `SKILL.md` the fleet runs.
+        skill_markdown: &'a str,
+        /// The `TRIGGER.md` whose policy it is held to.
+        trigger_markdown: &'a str,
+    },
 }
 
 /// One install request, already parsed.

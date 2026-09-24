@@ -6,9 +6,10 @@
 //! module, so it reads [`Scripted`]'s fields without widening them.
 
 use afd_api::services::WebhookIngress;
+use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
-use afd_ingress::slack::{ChannelId, MentionAdmission, Subscriber};
+use afd_ingress::slack::{ChannelId, FleetName, MentionAdmission, Subscriber};
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Result as IngressResult, Surface};
 
 use super::{ENTRY_ID_SEQUENCE, HarnessIngress, Recorded, Scripted};
@@ -119,6 +120,50 @@ impl WebhookIngress for HarnessIngress {
             Self::Scripted(scripted) => {
                 Ok(scripted.claim(&format!("{}:{}", mention.team_id, mention.event_id)))
             }
+        }
+    }
+
+    // A script arranges no chat channel, so no resident is bound, a binding
+    // answers the fleet it was handed, and no fleet is found by name. The live
+    // suite owns materialisation.
+    async fn resident(
+        &self,
+        provider: &str,
+        team: &str,
+        channel: &ChannelId,
+    ) -> IngressResult<Option<Uuid7>> {
+        match self {
+            Self::Unreachable(ingress) => ingress.resident(provider, team, channel).await,
+            Self::Scripted(_) => Ok(None),
+        }
+    }
+
+    async fn bind_resident(
+        &self,
+        provider: &str,
+        team: &str,
+        channel: &ChannelId,
+        fleet: &Uuid7,
+        now: UnixMillis,
+    ) -> IngressResult<Uuid7> {
+        match self {
+            Self::Unreachable(ingress) => {
+                ingress
+                    .bind_resident(provider, team, channel, fleet, now)
+                    .await
+            }
+            Self::Scripted(_) => Ok(fleet.clone()),
+        }
+    }
+
+    async fn fleet_named(
+        &self,
+        workspace: &Uuid7,
+        name: &FleetName,
+    ) -> IngressResult<Option<Uuid7>> {
+        match self {
+            Self::Unreachable(ingress) => ingress.fleet_named(workspace, name).await,
+            Self::Scripted(_) => Ok(None),
         }
     }
 }

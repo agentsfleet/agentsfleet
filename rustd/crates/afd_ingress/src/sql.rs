@@ -104,3 +104,42 @@ FROM core.fleets f
 WHERE f.workspace_id = $1::uuid
   AND f.status = ANY($2::text[])
 ORDER BY f.id";
+
+/// The fleet bound as a chat channel's resident, when one is.
+///
+/// `$1` provider, `$2` the provider's account (a Slack team), `$3` the channel,
+/// `$4` the binding kind.
+pub const SELECT_RESIDENT: &str = "\
+SELECT fleet_id::text
+FROM core.connector_channels
+WHERE provider = $1 AND external_account_id = $2 AND external_channel_id = $3
+  AND kind = $4";
+
+/// Binds a channel's resident once, answering whichever fleet is bound.
+///
+/// Insert-once under the channel's unique constraint: a concurrent first mention
+/// that lost the race inserts nothing, and the `UNION ALL` reads back the row
+/// the winner wrote, so both callers answer the same fleet.
+///
+/// `$1` binding id, `$2` provider, `$3` account, `$4` channel, `$5` fleet,
+/// `$6` kind, `$7` created at.
+pub const INSERT_RESIDENT: &str = "\
+WITH inserted AS (
+  INSERT INTO core.connector_channels
+    (id, provider, external_account_id, external_channel_id, fleet_id, kind, created_at)
+  VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, $7)
+  ON CONFLICT (provider, external_account_id, external_channel_id) DO NOTHING
+  RETURNING fleet_id
+)
+SELECT fleet_id::text FROM inserted
+UNION ALL
+SELECT fleet_id::text
+FROM core.connector_channels
+WHERE provider = $2 AND external_account_id = $3 AND external_channel_id = $4
+LIMIT 1";
+
+/// The fleet a workspace holds under one name.
+///
+/// `$1` workspace, `$2` name.
+pub const SELECT_FLEET_NAMED: &str = "\
+SELECT id::text FROM core.fleets WHERE workspace_id = $1::uuid AND name = $2";

@@ -713,8 +713,8 @@ not authority by itself.
    > signature, echoes url_verification, routes a mention to the fleet whose
    > TRIGGER.md names its channel, re-reads the thread into `message`, and
    > admits one event keyed by Slack's event id
-   > (afd_api_ingress/src/handler/mention.rs:191). A mention no subscriber
-   > takes drops as unsupported_event until the channel resident lands; the
+   > (afd_api_ingress/src/handler/mention.rs:195). A mention no subscriber
+   > takes reaches the channel's resident, installed on the first one; the
    > routing lives in scenarios/slack-incident-responder.md §4. What the Zig
    > daemon did, for the record (M106): the Slack-resident
    > bot lands an actor=slack:<user> event on fleet:{channel_fleet_id}:events

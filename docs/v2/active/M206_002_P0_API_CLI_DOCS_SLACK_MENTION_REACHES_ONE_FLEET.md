@@ -66,20 +66,20 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `rustd/crates/afd_api_ingress/src/handler/events.rs` · `handler/events/tests.rs` · `handler/mod.rs` | EDIT | The mention arm; drop reasons for bot, edited, self and unmapped. |
-| `rustd/crates/afd_api_ingress/src/handler/mention.rs` · `handler/mention/{tests.rs,admit.rs}` | CREATE | Parse, resolve and route; `admit.rs` re-reads, composes and admits; kept out of `events.rs` for the length cap. |
-| `rustd/crates/afd_ingress/src/slack/{mod.rs,tests.rs,route.rs,route_tests.rs,admit.rs,message.rs,message_tests.rs,resident.rs,notice.rs}` | CREATE | The subscriber read (`mod.rs`: SQL asks which fleets are alive, a pure `subscribed` reads the document), pure routing, the mention admission, message composition, resident materialisation, notice text. |
-| `rustd/crates/afd_ingress/src/{lib.rs,sql.rs}` | EDIT | Subscribed-fleet read for a workspace; resident binding read and insert. |
+| `rustd/crates/afd_api_ingress/src/handler/mention.rs` · `handler/mention/{tests.rs,admit.rs,resident.rs}` | CREATE | Parse, resolve and route; `admit.rs` re-reads, composes and admits; `resident.rs` finds or installs the resident; kept out of `events.rs` for the length cap. |
+| `rustd/crates/afd_ingress/src/slack/{mod.rs,tests.rs,route.rs,route_tests.rs,admit.rs,message.rs,message_tests.rs,resident.rs,resident.md,resident_tests.rs,notice.rs}` | CREATE | The subscriber read (`mod.rs`: SQL asks which fleets are alive, a pure `subscribed` reads the document), pure routing, the mention admission, message composition, resident materialisation, notice text. |
+| `rustd/crates/afd_ingress/{Cargo.toml,src/lib.rs,src/sql.rs,src/error.rs,src/error/raise.rs}` | EDIT | Subscribed-fleet read for a workspace; resident binding read and insert, and the binding id's mint errors. |
 | `rustd/crates/afd_admission/src/lib.rs` · `tests.rs` | EDIT | `Producer::SlackMention`, spelled `slack_mention`. |
 | `rustd/crates/afd_fleet_runtime/src/config/{raw/mod.rs,raw/trigger.rs,trigger.rs,mod.rs,attach.rs,attach/tests.rs}` · `src/frontmatter/mod.rs` · `tests/{frontmatter_mention.rs,runtime_suite.rs}` | EDIT · CREATE | The `mention` trigger: `source`, exactly one `channels` entry (schema), and `ChannelId`, whose `FromStr` is the one shape check; `attach_mention` writes one into a document. |
 | `rustd/crates/afd_ingress/src/binding.rs` · `afd_fleet_lifecycle/src/install/authored.rs` | EDIT | Their exhaustive trigger matches name the new variant. |
-| `rustd/crates/afd_fleet_runtime/src/slack_resident.md` | CREATE | The resident's embedded `SKILL.md`. |
+| `rustd/crates/afd_fleet_lifecycle/src/{install/row.rs,error.rs}` | EDIT | An install from a bundle written in code, and `is_name_taken` for the resident's race. |
 | `rustd/crates/afd_connector/{Cargo.toml,src/lib.rs,src/slack.rs,src/slack/replies.rs,src/slack/replies/tests.rs,tests/slack_replies.rs,src/connection.rs,src/grant.rs,src/grant/holding.rs,src/grant/parse.rs,src/registry.rs,src/registry/tests.rs}` · `afd_outbound/src/slack.rs` · `agentsfleetd/src/outbound.rs` | EDIT · CREATE | The bot user identifier beside the token, for the self and address checks; the bounded re-read on the pinned exchange; one Slack thread address and API base the poster shares; the registry names the mention producer. |
 | `rustd/crates/afd_wire/src/ingress.rs` · `ingress/{schema.rs,tests.rs}` | EDIT | The mention's `request_json` shape and the events route's accepted answer. |
 | `rustd/crates/afd_http/src/services/{connector.rs,ingress.rs,ingress/tests.rs}` | EDIT · CREATE | The seams the route calls: bot identity, subscriber read, mention admission; inline tests move out for the length cap. |
 | `rustd/crates/afd_api_tenant/src/handler/fleet/{mod.rs,install_request.rs}` · `afd_wire/src/fleet.rs` · `rustd/crates/afd_fleet_lifecycle/src/install.rs` · `install/authored.rs` · `afd_fleet_lifecycle/tests/integration_{install_credentials,wall_counters,patch_visibility,install_grants,install_rollback}.rs` · `integration_install_grants/recovery.rs` | EDIT · CREATE | `slack_channel_id` on the install request adds the `mention` trigger to the stored `TRIGGER.md`; the install body's parsing moves beside the handler for the length cap. |
 | `cli/src/program/tree/{fleet.command.ts,flags.ts}` · `cli/src/commands/{fleet_install.ts,fleet_install_source.ts}` · `cli/test/{entry-flag-validation.unit.test.ts,fleet-install.integration.test.ts,acceptance/options-metavar.spec.ts}` | EDIT | `agentsfleet install --slack-channel <ID>`. |
 | `public/openapi.json` | EDIT | Regenerated for the install field. |
-| `rustd/crates/afd_api/tests/integration_connector_events.rs` · `integration_slack_mention.rs` · `integration_slack_mention/{drops,subscribers,thread}.rs` · `slack_mention_live/fixture.rs` · `integration_fleet_lifecycle.rs` · `fleet_lifecycle_live/slack_channel.rs` · `workspace_fleets_input.rs` · `support/fake_slack.rs` · `ingress_plane_suite.rs` · `harness/{mod.rs,readiness.rs,stubs_ingress.rs,stubs_ingress/answers.rs}` · `afd_api/{Cargo.toml,src/lib.rs}` · `rustd/Cargo.lock` | EDIT · CREATE | Signed deliveries end to end against real Postgres and Dragonfly, the thread read on a loopback Slack; the harness answers the two new seams. |
+| `rustd/crates/afd_api/tests/integration_connector_events.rs` · `integration_slack_mention.rs` · `integration_slack_mention/{drops,subscribers,thread,resident}.rs` · `slack_mention_live/fixture.rs` · `integration_fleet_lifecycle.rs` · `fleet_lifecycle_live/slack_channel.rs` · `workspace_fleets_input.rs` · `support/fake_slack.rs` · `ingress_plane_suite.rs` · `harness/{mod.rs,readiness.rs,stubs_ingress.rs,stubs_ingress/answers.rs}` · `afd_api/{Cargo.toml,src/lib.rs}` · `rustd/Cargo.lock` | EDIT · CREATE | Signed deliveries end to end against real Postgres and Dragonfly, the thread read on a loopback Slack; the harness answers the two new seams. |
 | `rustd/crates/afd_fleet_runtime/src/config/trigger/signature.rs` · `afd_outbound/src/{obligation/outcome.rs,slack/tests.rs}` · `afd_dragonfly/src/outbound/tests.rs` · `afd_admission/src/tests/reply.rs` · `afd_fleet/tests/{integration_report_owes_destination/stage.rs,integration_admission_recovery/{drive,queue_loss}.rs}` · `afd_outbound/{Cargo.toml,tests/integration_slack_poster/{fake_slack,fixture}.rs}` · `afd_outbound/tests/{integration_worker/{scripted,shutdown},integration_obligations/{owed,loss,destination},integration_attempt_count/{ledger,capture,worker,abandonment}}.rs` | CREATE | Length splits of files this Pull Request grew past 350 lines; code moves, and the poster suite's fake Slack moves onto axum. |
 | `schema/560_connector_channels.sql` | reference | Resident bindings use it unchanged: one row per channel, insert-once. |
 | `docs/architecture/connectors.md` · `data_flow.md` · `user_flow.md` · `memory.md` · `scenarios/slack-channel-resident.md` · `scenarios/slack-incident-responder.md` | EDIT | Status lines move from "specified" to shipped; the resident page describes the Rust shape. |
@@ -155,9 +155,9 @@ Before admitting, the daemon calls `conversations.replies` for the thread root w
 
 The first mention in a channel materialises `slack-channel-<team>-<channel>` through `Fleets::install` with a configuration built in code: one `api` trigger, no tools, no network, a 1.0 daily dollar budget, the embedded skill. Its `core.connector_channels` row has kind `resident`; concurrent first mentions converge on one fleet by the name's uniqueness and the row's insert-once constraint. It answers only on `Resident`; asked for something it cannot reach, it names the attach command with this channel's identifier filled in. Its memory is the channel's, and no other fleet reads it.
 
-- **Dimension 5.1** — two concurrent first mentions create one fleet and one binding → Test `concurrent_first_mentions_make_one_resident`
-- **Dimension 5.2** — the resident's configuration admits no tool, host or trigger other than `api`, whatever its skill says → Test `resident_config_is_built_in_code`
-- **Dimension 5.3** — a fact captured in one thread is hydrated in another thread of the same channel and not in a second channel → Test `resident_memory_is_the_channel`
+- **Dimension 5.1** DONE — two concurrent first mentions create one fleet and one binding → Test `concurrent_first_mentions_make_one_resident`
+- **Dimension 5.2** DONE — the resident's configuration admits no tool, host or trigger other than `api`, whatever its skill says → Test `resident_config_is_built_in_code`
+- **Dimension 5.3** DONE — a fact captured in one thread is hydrated in another thread of the same channel and not in a second channel → Test `resident_memory_is_the_channel`
 
 ### §6 — Notices
 
@@ -180,9 +180,9 @@ route verdict                      Addressed(fleet) | Sole(fleet) | Resident | N
 POST /v1/workspaces/{ws}/fleets   + slack_channel_id?: "C0123456789" (optional; appends the mention trigger)
 CLI                                agentsfleet install --library <id> --slack-channel <channel ID>
 
-  mention ─► wall ─► parse+filter ─► team→workspace ─► resident ensured ─► subscribers ─► route
-                                                                              ├─ fleet ─► re-read ─► admit (owes to thread)
-                                                                              └─ notice ─► owe fixed text to thread
+  mention ─► wall ─► parse+filter ─► team→workspace ─► subscribers ─► route (none: resident, installed once)
+                                                                      ├─ fleet ─► re-read ─► admit (owes to thread)
+                                                                      └─ notice ─► owe fixed text to thread
 ```
 
 ## Failure Modes
@@ -237,7 +237,7 @@ CLI                                agentsfleet install --library <id> --slack-ch
 | 4.2 | unit | `attachment_links_survive_flattening` | An announcement whose run URL appears only in an attachment's `title_link` yields `message` containing that URL. |
 | 4.3 | integration | `failed_reread_degrades_to_the_mention` | A stalled, an `ok:false` and a 503 loopback each admit the mention with `Thread unavailable:` and the matching reason. |
 | 4.4 | integration | `reread_holds_no_pool_connection` | With a one-connection pool, a concurrent admission completes while a re-read is stalled. |
-| 5.1 | integration | `concurrent_first_mentions_make_one_resident` | Two gate-released first mentions for one channel leave one `core.fleets` row and one `resident` binding. |
+| 5.1 | integration | `concurrent_first_mentions_make_one_resident` | Two first mentions spawned at once for one channel leave one `core.fleets` row and one `resident` binding; an arranged lost name race converges on the winner. |
 | 5.2 | unit | `resident_config_is_built_in_code` | The built configuration has one `api` trigger, zero tools, an empty allowlist and a 1.0 budget, whatever the skill text contains. |
 | 5.3 | integration | `resident_memory_is_the_channel` | A capture in channel A thread 1 hydrates in A thread 2 and not in channel B's resident. |
 | 6.1 | unit | `each_notice_kind_owes_one_fixed_text` | Each of the four kinds renders its text, names the listed fleets, and owes one obligation to the thread. |
@@ -313,7 +313,8 @@ CLI                                agentsfleet install --library <id> --slack-ch
 - **Reference product** — Claude Tag, read through its docs (`claude.com/docs/claude-tag/concepts/how-it-works.md`, `agent-identity.md`, `admins/add-connections.md`, `users/memory.md`, `users/use-cases/fix-bugs.md`): one agent, access bundles attached per channel, a sandbox per thread, service-account identity. Copied: attach per channel, thread-first answers, no per-user linking. Not copied: workspace-wide memory for public channels (the brief keeps the channel boundary) and a general assistant (`docs/architecture/high_level.md:23`).
 - **Owner decisions** —
   > Indy (2026-09-23): "CLI flag now, UI later (Recommended)" — context: a fleet is attached with `install --slack-channel`; the dashboard picker and attaching from Slack are the next milestone.
-- **Decisions pending with Indy** — recorded as agent recommendations, not approvals: (1) zero subscribers → the resident answers with a model (default) or a fixed setup notice, asked twice and unanswered; (2) one channel per fleet (default) or several; (3) an unaddressed mention with several eligible subscribers → a notice (default), never fan-out.
+  > Indy (2026-09-24): "go" — context: the reply to "model answers (Recommended)" or a fixed setup notice for a channel with no attached fleet; the resident answers with a model.
+- **Decisions pending with Indy** — recorded as agent recommendations, not approvals: (2) one channel per fleet (default) or several; (3) an unaddressed mention with several eligible subscribers → a notice (default), never fan-out.
 - **Metrics review** — three operator events, one of them existing; no analytics or funnel playbook update, because no product event is counted until the drill proves the path.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
 - **Deferrals** — none at authoring.

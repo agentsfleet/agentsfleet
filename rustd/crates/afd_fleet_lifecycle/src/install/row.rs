@@ -58,8 +58,9 @@ pub(super) struct Entry {
     pub(super) skill_markdown: String,
     /// The authored `TRIGGER.md`, where the bundle carried one.
     pub(super) trigger_markdown: Option<String>,
-    /// What a runner materialises support files from.
-    pub(super) content_hash: String,
+    /// What a runner materialises support files from; absent for a bundle
+    /// written in code, which has none.
+    pub(super) content_hash: Option<String>,
 }
 
 /// How this install's name was decided, and therefore how a collision reads.
@@ -91,6 +92,16 @@ impl Fleets {
             LibrarySource::Tenant(id) => sqlx::query(sql::install::SELECT_TENANT_INSTALL)
                 .bind(id.as_str())
                 .bind(workspace.as_str()),
+            LibrarySource::InCode {
+                skill_markdown,
+                trigger_markdown,
+            } => {
+                return Ok(Entry {
+                    skill_markdown: (*skill_markdown).to_owned(),
+                    trigger_markdown: Some((*trigger_markdown).to_owned()),
+                    content_hash: None,
+                });
+            }
         };
         let found = query
             .fetch_optional(connection.as_mut())
@@ -102,7 +113,7 @@ impl Fleets {
         Ok(Entry {
             skill_markdown: row.try_get(0).map_err(&unreadable)?,
             trigger_markdown: row.try_get(1).map_err(&unreadable)?,
-            content_hash: row.try_get(2).map_err(&unreadable)?,
+            content_hash: Some(row.try_get(2).map_err(&unreadable)?),
         })
     }
 

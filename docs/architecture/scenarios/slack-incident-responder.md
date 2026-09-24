@@ -147,8 +147,8 @@ A Slack-requested run can do exactly what the attached fleet's own policy allows
 | Capability | Rust daemon today | Required | Workstream |
 |---|---|---|---|
 | Signed Slack delivery | ✅ signature, 5-minute window, `url_verification` echo (`afd_api_ingress/src/handler/events.rs:192-217`) | unchanged | — |
-| Mention becomes an event | ✅ one `slack_mention` admission per Slack event, keyed `<team_id>:<event_id>` (`afd_api_ingress/src/handler/mention.rs:191`, `afd_admission/src/lib.rs:110`) | — | M206_002 |
-| Channel → fleet | 🟡 subscriptions: a `mention` trigger names the channel, written by `install --slack-channel` (`afd_fleet_runtime/src/config/attach.rs:39`) and read per mention (`afd_ingress/src/slack/mod.rs:67`); no resident yet, so an unrouted mention drops as `unsupported_event` | resident binding | M206_002 §5 |
+| Mention becomes an event | ✅ one `slack_mention` admission per Slack event, keyed `<team_id>:<event_id>` (`afd_api_ingress/src/handler/mention.rs:195`, `afd_admission/src/lib.rs:110`) | — | M206_002 |
+| Channel → fleet | ✅ subscriptions: a `mention` trigger names the channel, written by `install --slack-channel` (`afd_fleet_runtime/src/config/attach.rs:39`) and read per mention (`afd_ingress/src/slack/mod.rs:67`); the resident: installed on the first unattached mention and bound once (`afd_api_ingress/src/handler/mention/resident.rs:42`) | — | M206_002 |
 | Thread context | ✅ `conversations.replies` under 1.5 s, parent plus latest replies, capped, under a fixed untrusted-data heading (`afd_connector/src/slack/replies.rs:179`, `afd_ingress/src/slack/message.rs:52`) | — | M206_002 |
 | Answer delivery | ✅ owed only to a recorded destination; abandoned when refused or out of cycles (slots 918–920) | — | M206_001 |
 | Slack poster | ✅ `chat.postMessage` from the job's own address; reads no event row (`afd_outbound/src/slack.rs`) | — | M206_001 |

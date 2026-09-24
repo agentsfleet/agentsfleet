@@ -19,8 +19,9 @@ categories.workspace = true
 # Forwarded rather than bare: `error::one_of_each_kind` samples an admission
 # failure through `afd_admission`'s own sample builder, which lives behind
 # that crate's `test-util`. Building the sample by hand instead would let this
-# crate's idea of a ledger outage drift from the ledger's.
-test-util = ["afd_admission/test-util"]
+# crate's idea of a ledger outage drift from the ledger's. `afd_crypto`'s is
+# the mocked entropy source a failed draw for a binding id is sampled from.
+test-util = ["afd_admission/test-util", "afd_crypto/test-util"]
 
 [dependencies]
 # Where a verified delivery is accepted before anything is queued. The

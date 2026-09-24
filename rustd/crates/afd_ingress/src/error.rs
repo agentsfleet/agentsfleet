@@ -96,6 +96,20 @@ pub(crate) enum ErrorKind {
         /// The column, so an operator knows which one to go and look at.
         column: &'static str,
     },
+
+    /// The entropy a row identifier is minted from could not be drawn.
+    #[error("the entropy a row identifier is minted from could not be drawn")]
+    Entropy {
+        #[source]
+        source: afd_crypto::error::Error,
+    },
+
+    /// A row identifier could not be minted from the current instant.
+    #[error("a row identifier could not be minted")]
+    Identifier {
+        #[source]
+        source: afd_core::error::Error,
+    },
 }
 
 /// The columns [`ErrorKind::RowUnreadable`] can name, one spelling each.
@@ -121,11 +135,14 @@ impl Error {
             ErrorKind::Query { .. } | ErrorKind::RowUnreadable { .. } => {
                 (error_code::INTERNAL_DB_QUERY, detail::DATABASE_ERROR)
             }
-            // Three internal failures, one fixed sentence. Naming which of them
+            // The internal failures, one fixed sentence. Naming which of them
             // it was would tell whoever provoked it something about this
             // deployment's stored state, and a webhook sender is exactly the
             // caller who must not learn it.
-            ErrorKind::Vault { .. } | ErrorKind::ConfigUnreadable { .. } => (
+            ErrorKind::Vault { .. }
+            | ErrorKind::ConfigUnreadable { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Identifier { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 detail::OPERATION_FAILED,
             ),

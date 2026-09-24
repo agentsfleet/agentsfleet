@@ -13,9 +13,10 @@
 //! would notice. [`Binding`] is resolved once and every later step takes it, so
 //! the pairing is made in one place and cannot be re-made wrongly.
 
+use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
-use afd_ingress::slack::{ChannelId, MentionAdmission, Subscriber};
+use afd_ingress::slack::{ChannelId, FleetName, MentionAdmission, Subscriber};
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
 
 /// Everything the signed-ingress routes act through.
@@ -127,9 +128,47 @@ pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
         &self,
         mention: MentionAdmission<'_>,
     ) -> impl Future<Output = IngressResult<Admitted>> + Send;
+
+    /// The fleet bound as a chat channel's resident, when one is.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer and a row this build cannot
+    /// read.
+    fn resident(
+        &self,
+        provider: &str,
+        team: &str,
+        channel: &ChannelId,
+    ) -> impl Future<Output = IngressResult<Option<Uuid7>>> + Send;
+
+    /// Binds `fleet` as the channel's resident unless one already is, and
+    /// answers whichever fleet is bound.
+    ///
+    /// # Errors
+    /// Reports an identifier that would not mint, a datastore that would not
+    /// answer, and a row this build cannot read.
+    fn bind_resident(
+        &self,
+        provider: &str,
+        team: &str,
+        channel: &ChannelId,
+        fleet: &Uuid7,
+        now: UnixMillis,
+    ) -> impl Future<Output = IngressResult<Uuid7>> + Send;
+
+    /// The fleet a workspace holds under `name`, when it holds one.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer and a row this build cannot
+    /// read.
+    fn fleet_named(
+        &self,
+        workspace: &Uuid7,
+        name: &FleetName,
+    ) -> impl Future<Output = IngressResult<Option<Uuid7>>> + Send;
 }
 
-/// The production ingress answers all three directly.
+/// The production ingress answers every one directly.
 impl WebhookIngress for Ingress {
     fn binding(
         &self,
@@ -202,6 +241,34 @@ impl WebhookIngress for Ingress {
         mention: MentionAdmission<'_>,
     ) -> impl Future<Output = IngressResult<Admitted>> + Send {
         Self::admit_mention(self, mention)
+    }
+
+    fn resident(
+        &self,
+        provider: &str,
+        team: &str,
+        channel: &ChannelId,
+    ) -> impl Future<Output = IngressResult<Option<Uuid7>>> + Send {
+        Self::resident(self, provider, team, channel)
+    }
+
+    fn bind_resident(
+        &self,
+        provider: &str,
+        team: &str,
+        channel: &ChannelId,
+        fleet: &Uuid7,
+        now: UnixMillis,
+    ) -> impl Future<Output = IngressResult<Uuid7>> + Send {
+        Self::bind_resident(self, provider, team, channel, fleet, now)
+    }
+
+    fn fleet_named(
+        &self,
+        workspace: &Uuid7,
+        name: &FleetName,
+    ) -> impl Future<Output = IngressResult<Option<Uuid7>>> + Send {
+        Self::fleet_named(self, workspace, name)
     }
 }
 
