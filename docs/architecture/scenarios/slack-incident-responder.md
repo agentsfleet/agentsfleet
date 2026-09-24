@@ -147,9 +147,9 @@ A Slack-requested run can do exactly what the attached fleet's own policy allows
 | Capability | Rust daemon today | Required | Workstream |
 |---|---|---|---|
 | Signed Slack delivery | ✅ signature, 5-minute window, `url_verification` echo (`afd_api_ingress/src/handler/events.rs:192-217`) | unchanged | — |
-| Mention becomes an event | 🟡 dropped as `event_producer_not_ported` (`events.rs:88,125-134`); no Slack producer (`afd_admission/src/lib.rs:78-106`) | one admission per Slack event | M206_002 |
-| Channel → fleet | ⛔ `core.connector_channels` has no Rust reader or writer | resident binding plus subscriptions | M206_002 |
-| Thread context | ⛔ Zig re-read the thread; Rust has none | bounded re-read into `message` | M206_002 |
+| Mention becomes an event | ✅ one `slack_mention` admission per Slack event, keyed `<team_id>:<event_id>` (`afd_api_ingress/src/handler/mention.rs:191`, `afd_admission/src/lib.rs:110`) | — | M206_002 |
+| Channel → fleet | 🟡 subscriptions: a `mention` trigger names the channel, written by `install --slack-channel` (`afd_fleet_runtime/src/config/attach.rs:39`) and read per mention (`afd_ingress/src/slack/mod.rs:67`); no resident yet, so an unrouted mention drops as `unsupported_event` | resident binding | M206_002 §5 |
+| Thread context | ✅ `conversations.replies` under 1.5 s, parent plus latest replies, capped, under a fixed untrusted-data heading (`afd_connector/src/slack/replies.rs:179`, `afd_ingress/src/slack/message.rs:52`) | — | M206_002 |
 | Answer delivery | ✅ owed only to a recorded destination; abandoned when refused or out of cycles (slots 918–920) | — | M206_001 |
 | Slack poster | ✅ `chat.postMessage` from the job's own address; reads no event row (`afd_outbound/src/slack.rs`) | — | M206_001 |
 | Write reach from Slack | ✅ write rules admit one ref and one draft PR (`afd_gate/src/policy/egress/write.rs:54-91`) | proven for Slack-requested leases; no per-request approval, by owner decision | M206_003 |

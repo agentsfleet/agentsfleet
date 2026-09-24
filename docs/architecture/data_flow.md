@@ -709,10 +709,12 @@ not authority by itself.
    SKILL.md prose and the user's history filter.
 
    > [!NOTE]
-   > SLACK — the retired Zig daemon's producer, not ported. The Rust daemon
-   > verifies the signature, echoes url_verification, and drops every mention
-   > as event_producer_not_ported (afd_api_ingress/src/handler/events.rs:88).
-   > M206_002 restores it as `slack_mention` with channel subscriptions; the
+   > SLACK — producer `slack_mention` (M206_002). The Rust daemon verifies the
+   > signature, echoes url_verification, routes a mention to the fleet whose
+   > TRIGGER.md names its channel, re-reads the thread into `message`, and
+   > admits one event keyed by Slack's event id
+   > (afd_api_ingress/src/handler/mention.rs:191). A mention no subscriber
+   > takes drops as unsupported_event until the channel resident lands; the
    > routing lives in scenarios/slack-incident-responder.md §4. What the Zig
    > daemon did, for the record (M106): the Slack-resident
    > bot lands an actor=slack:<user> event on fleet:{channel_fleet_id}:events
