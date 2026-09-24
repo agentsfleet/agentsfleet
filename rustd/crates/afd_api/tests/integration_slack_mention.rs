@@ -238,6 +238,9 @@ mod drops;
 #[path = "integration_slack_mention/subscribers.rs"]
 mod subscribers;
 
+#[path = "integration_slack_mention/notice.rs"]
+mod notice;
+
 #[path = "integration_slack_mention/resident.rs"]
 mod resident;
 

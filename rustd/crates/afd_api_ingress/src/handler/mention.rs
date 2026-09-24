@@ -17,13 +17,14 @@
 //!
 //! The last three steps, for a mention routing gave one fleet, live in the
 //! `admit` module beside this one; a channel's resident is found or installed
-//! by `resident`.
+//! by `resident`, and a mention no fleet can take is owed a notice by `notice`.
 //!
 //! The envelope is a `serde`-tagged enum, so "an `event_callback` whose event
 //! is an `app_mention`" is a type rather than three field lookups that have to
 //! agree (RULE PSR).
 
 use afd_connector::Provider;
+use afd_connector::slack::Thread;
 use afd_ingress::slack::{ChannelId, Route, route};
 use afd_wire::ingress::Accepted;
 use serde::Deserialize;
@@ -34,6 +35,7 @@ use crate::handler::Refusal;
 use crate::services::{Services, WebhookIngress as _, WorkspaceConnectors as _};
 
 mod admit;
+mod notice;
 mod resident;
 
 use self::admit::Routed;
@@ -47,6 +49,12 @@ pub(super) const REASON_TEAM_NOT_MAPPED: &str = "team_not_mapped";
 
 /// The event a datastore failure on this path is refused under.
 const EVENT_MENTION: &str = "slack_mention_failed";
+/// The event a mention that was admitted or answered with a notice is logged
+/// under.
+const EVENT_ROUTED: &str = "slack_mention_routed";
+
+/// The detail a body this daemon could not serialise is refused with.
+const DETAIL_UNSERIALISABLE: &str = "The mention could not be recorded.";
 
 /// How a verdict is spelled in the event body and the log.
 const VERDICT_ADDRESSED: &str = "addressed";
@@ -115,6 +123,25 @@ pub(super) struct Asked {
     /// The thread's root: the mention's own thread, or the mention itself
     /// when it started one.
     pub(super) thread_ts: String,
+}
+
+impl Asked {
+    /// The thread the mention was asked in, which is where it is answered.
+    fn thread(&self) -> Thread {
+        Thread {
+            team_id: Some(self.team_id.clone()),
+            channel_id: self.channel.as_str().to_owned(),
+            thread_ts: self.thread_ts.clone(),
+        }
+    }
+}
+
+/// The refusal for a body this daemon could not serialise.
+fn unserialisable() -> Refusal {
+    Refusal::coded(
+        afd_core::error_code::INTERNAL_OPERATION_FAILED,
+        DETAIL_UNSERIALISABLE,
+    )
 }
 
 /// What a verified envelope is, before any datastore is asked.
@@ -238,9 +265,9 @@ pub(super) async fn admit<D: Services>(
             installed = found;
             (&installed, message, VERDICT_RESIDENT)
         }
-        // The notices land in their own section; until then a mention that
-        // earns one is acknowledged, not run.
-        Route::Notice(_) => return Ok(Outcome::Dropped(REASON_UNSUPPORTED_EVENT)),
+        Route::Notice(notice) => {
+            return notice::owe(services, provider, &workspace, asked, &notice).await;
+        }
     };
     admit::routed(
         services,

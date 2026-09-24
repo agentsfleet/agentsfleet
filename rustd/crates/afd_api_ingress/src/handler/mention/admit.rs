@@ -19,22 +19,15 @@
 //! why in the thread's place, and the admission goes ahead.
 
 use afd_connector::Provider;
-use afd_connector::slack::Thread;
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
 use afd_ingress::slack::{MentionAdmission, Subscriber, compose};
 use afd_wire::ingress::{Accepted, MentionRequest, MentionRoute};
 use std::borrow::Cow;
 
-use super::{Asked, EVENT_MENTION, Outcome};
+use super::{Asked, EVENT_MENTION, EVENT_ROUTED, Outcome, unserialisable};
 use crate::handler::Refusal;
 use crate::services::{Services, WebhookIngress as _, WorkspaceConnectors as _};
-
-/// The event a routed mention is logged under.
-const EVENT_ROUTED: &str = "slack_mention_routed";
-
-/// The detail a body this daemon could not serialise is refused with.
-const DETAIL_UNSERIALISABLE: &str = "The mention could not be recorded.";
 
 /// A mention routing gave one fleet, with what admitting it reads.
 pub(super) struct Routed<'a> {
@@ -70,11 +63,7 @@ pub(super) async fn routed<D: Services>(
         message,
         verdict,
     } = routed;
-    let thread = Thread {
-        team_id: Some(asked.team_id.clone()),
-        channel_id: asked.channel.as_str().to_owned(),
-        thread_ts: asked.thread_ts.clone(),
-    };
+    let thread = asked.thread();
     let address = thread
         .address()
         .map_err(|_unserialisable| unserialisable())?;
@@ -128,12 +117,4 @@ pub(super) async fn routed<D: Services>(
         event_id: Cow::Owned(admitted.id),
         replayed: admitted.replayed,
     }))
-}
-
-/// The refusal for a body this daemon could not serialise.
-fn unserialisable() -> Refusal {
-    Refusal::coded(
-        afd_core::error_code::INTERNAL_OPERATION_FAILED,
-        DETAIL_UNSERIALISABLE,
-    )
 }

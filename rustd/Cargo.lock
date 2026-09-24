@@ -656,6 +656,7 @@ dependencies = [
  "afd_db",
  "afd_fleet_lifecycle",
  "afd_fleet_runtime",
+ "afd_outbound",
  "afd_vault",
  "afd_webhook",
  "afd_wire",

@@ -16,7 +16,7 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
-use afd_ingress::slack::{ChannelId, FleetName, MentionAdmission, Subscriber};
+use afd_ingress::slack::{ChannelId, FleetName, MentionAdmission, NoticeOwed, Subscriber};
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
 
 /// Everything the signed-ingress routes act through.
@@ -166,6 +166,18 @@ pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
         workspace: &Uuid7,
         name: &FleetName,
     ) -> impl Future<Output = IngressResult<Option<Uuid7>>> + Send;
+
+    /// Owes a notice to a mention's thread, once however often the mention
+    /// arrives. `true` when this call wrote it.
+    ///
+    /// # Errors
+    /// Reports an identifier that would not mint and a ledger that would not
+    /// record the obligation.
+    fn owe_notice(
+        &self,
+        owed: NoticeOwed<'_>,
+        now: UnixMillis,
+    ) -> impl Future<Output = IngressResult<bool>> + Send;
 }
 
 /// The production ingress answers every one directly.
@@ -269,6 +281,14 @@ impl WebhookIngress for Ingress {
         name: &FleetName,
     ) -> impl Future<Output = IngressResult<Option<Uuid7>>> + Send {
         Self::fleet_named(self, workspace, name)
+    }
+
+    fn owe_notice(
+        &self,
+        owed: NoticeOwed<'_>,
+        now: UnixMillis,
+    ) -> impl Future<Output = IngressResult<bool>> + Send {
+        Self::owe_notice(self, owed, now)
     }
 }
 

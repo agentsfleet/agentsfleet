@@ -20,8 +20,9 @@ categories.workspace = true
 # failure through `afd_admission`'s own sample builder, which lives behind
 # that crate's `test-util`. Building the sample by hand instead would let this
 # crate's idea of a ledger outage drift from the ledger's. `afd_crypto`'s is
-# the mocked entropy source a failed draw for a binding id is sampled from.
-test-util = ["afd_admission/test-util", "afd_crypto/test-util"]
+# the mocked entropy source a failed draw for a binding id is sampled from, and
+# `afd_outbound`'s the ledger failures a notice's obligation can raise.
+test-util = ["afd_admission/test-util", "afd_crypto/test-util", "afd_outbound/test-util"]
 
 [dependencies]
 # Where a verified delivery is accepted before anything is queued. The
@@ -32,6 +33,9 @@ afd_admission.workspace = true
 # The Slack thread a mention's fleet is told: the read and its reasons live
 # with the connector that holds the token, and this crate composes the result.
 afd_connector.workspace = true
+# The obligation ledger a notice is owed through: the one module that owns
+# `core.fleet_obligations`, so a notice and an answer are owed alike.
+afd_outbound.workspace = true
 # Identifiers, the instant a delivery is stamped with, and the registry codes.
 afd_core.workspace = true
 # The plaintext wrapper a signing secret comes back in. This crate computes no
