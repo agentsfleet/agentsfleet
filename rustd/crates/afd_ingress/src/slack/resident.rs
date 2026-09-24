@@ -152,9 +152,7 @@ impl Ingress {
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_RESIDENT))?;
-        found
-            .map(|row| bound(&row, CONTEXT_RESIDENT))
-            .transpose()
+        found.map(|row| bound(&row, CONTEXT_RESIDENT)).transpose()
     }
 
     /// Binds `fleet` as `channel`'s resident unless `workspace` already has

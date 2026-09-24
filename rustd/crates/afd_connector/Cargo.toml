@@ -16,8 +16,10 @@ categories.workspace = true
 # crates whose errors this one wraps. Most of these kinds cannot be provoked on
 # demand — a vendor does not become unreachable politely — and `Display`,
 # `code()` and `source()` are exactly what a human reads while something is
-# already going wrong.
-test-util = ["afd_core/test-util", "afd_db/test-util", "afd_dragonfly/test-util"]
+# already going wrong. It also unlocks `test_util::FakeSlack`, the one loopback
+# Slack this crate's thread reader, `afd_outbound`'s poster and `afd_api`'s
+# mention suites are proven against.
+test-util = ["afd_core/test-util", "afd_db/test-util", "afd_dragonfly/test-util", "dep:axum"]
 
 [dependencies]
 # Identifiers, the instant a row is stamped with, and the registry codes.
@@ -55,11 +57,11 @@ tracing.workspace = true
 # rather than a hand-rolled escape loop.
 url.workspace = true
 
-[dev-dependencies]
-# The loopback Slack a thread read is proven against: axum reads the request a
-# real Slack would, where a raw socket would need its own HTTP parser. `form`
-# decodes the fields the read posts.
-axum = { workspace = true, features = ["form"] }
+# The loopback Slack in `test_util`: axum reads the request a real Slack
+# would, where a raw socket would need its own HTTP parser. `form` decodes the
+# fields a thread read posts. Optional — `test-util` is the only thing that
+# wants it.
+axum = { workspace = true, features = ["form"], optional = true }
 
 [lints]
 workspace = true

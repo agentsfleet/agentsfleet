@@ -72,6 +72,8 @@ pub mod registry;
 pub mod slack;
 pub mod sql;
 pub mod state;
+#[cfg(feature = "test-util")]
+pub mod test_util;
 pub mod zoho;
 
 pub use self::app::PlatformApp;

@@ -22,14 +22,12 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_connector::test_util::{FakeSlack, Request};
 use afd_outbound::{Deliver as _, Verdict};
 
-#[path = "integration_slack_poster/fake_slack.rs"]
-mod fake_slack;
 #[path = "integration_slack_poster/fixture.rs"]
 mod fixture;
 
-use self::fake_slack::FakeSlack;
 use self::fixture::Fixture;
 
 /// The bot token the vault holds for this workspace.
@@ -46,6 +44,24 @@ const ANSWER: &str = "the fixture answer";
 /// A Slack base nothing listens on: any request sent here fails in transport.
 const NOBODY_LISTENING: &str = "http://127.0.0.1:1";
 
+/// A loopback Slack answering `status` with `body` to every post.
+async fn slack_answering(status: u16, body: &str) -> FakeSlack {
+    let slack = FakeSlack::start().await;
+    slack.post_answers(status, body);
+    slack
+}
+
+/// The post the poster sent, which it has finished sending by the time a
+/// verdict came back. Fails the case when nothing was posted, so a regression
+/// answering `Delivered` without dialling cannot pass.
+fn received(slack: &FakeSlack) -> Request {
+    slack
+        .requests()
+        .into_iter()
+        .next()
+        .expect("the poster posted to the fake Slack")
+}
+
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn poster_posts_to_the_jobs_address() {
@@ -57,15 +73,15 @@ async fn poster_posts_to_the_jobs_address() {
     fixture.seed().await;
     fixture.seal_grant(BOT_TOKEN).await;
 
-    let slack = FakeSlack::answering(200, r#"{"ok":true}"#).await;
-    let verdict = fixture.poster(&slack.base).deliver(&fixture.job()).await;
+    let slack = slack_answering(200, r#"{"ok":true}"#).await;
+    let verdict = fixture.poster(slack.base()).deliver(&fixture.job()).await;
     assert_eq!(
         verdict,
         Verdict::Delivered,
         "a Slack that accepted is a delivery"
     );
 
-    let sent = slack.received();
+    let sent = received(&slack);
     assert_eq!(
         sent.authorization,
         format!("Bearer {BOT_TOKEN}"),
@@ -95,8 +111,8 @@ async fn a_workspace_holding_no_grant_is_permanent_rather_than_retried() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
 
-    let slack = FakeSlack::answering(200, r#"{"ok":true}"#).await;
-    let verdict = fixture.poster(&slack.base).deliver(&fixture.job()).await;
+    let slack = slack_answering(200, r#"{"ok":true}"#).await;
+    let verdict = fixture.poster(slack.base()).deliver(&fixture.job()).await;
     assert_eq!(verdict, Verdict::Permanent);
 
     drop(slack);
@@ -143,15 +159,15 @@ async fn a_two_hundred_that_says_not_ok_is_not_a_delivery() {
     fixture.seed().await;
     fixture.seal_grant(BOT_TOKEN).await;
 
-    let slack = FakeSlack::answering(200, r#"{"ok":false,"error":"channel_not_found"}"#).await;
-    let verdict = fixture.poster(&slack.base).deliver(&fixture.job()).await;
+    let slack = slack_answering(200, r#"{"ok":false,"error":"channel_not_found"}"#).await;
+    let verdict = fixture.poster(slack.base()).deliver(&fixture.job()).await;
     assert_ne!(
         verdict,
         Verdict::Delivered,
         "a 200 carrying `ok: false` is Slack refusing, not accepting"
     );
 
-    let _sent = slack.received();
+    let _sent = received(&slack);
     fixture.cleanup().await;
 }
 
@@ -164,10 +180,10 @@ async fn a_vendor_that_is_briefly_unwell_is_retried() {
     fixture.seed().await;
     fixture.seal_grant(BOT_TOKEN).await;
 
-    let slack = FakeSlack::answering(503, r#"{"ok":false}"#).await;
-    let verdict = fixture.poster(&slack.base).deliver(&fixture.job()).await;
+    let slack = slack_answering(503, r#"{"ok":false}"#).await;
+    let verdict = fixture.poster(slack.base()).deliver(&fixture.job()).await;
     assert_eq!(verdict, Verdict::Retryable);
 
-    let _sent = slack.received();
+    let _sent = received(&slack);
     fixture.cleanup().await;
 }

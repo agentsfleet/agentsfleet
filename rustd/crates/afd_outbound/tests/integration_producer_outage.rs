@@ -42,14 +42,13 @@ mod seed;
 )]
 mod support;
 
-use seed::{FLEET, SEEDED_AT, WORKSPACE, clear_obligations, obligation_id, seed_parents};
+use seed::{
+    DESTINATION, FLEET, SEEDED_AT, WORKSPACE, clear_obligations, obligation_id, seed_parents,
+};
 use support::{OUTBOUND_LANE, OutboundHarness};
 
 const PROVIDER: &str = Provider::Slack.id();
 
-/// The thread every owed answer here is addressed to.
-const DESTINATION: &str =
-    r#"{"team_id":"T024BE7LD","channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
 const ANSWER: &str = "Aurora is healthy.";
 const EVENT_ID: &str = "1760000000001-0";
 /// The stem the trim proof numbers its answers off, so every entry it appends

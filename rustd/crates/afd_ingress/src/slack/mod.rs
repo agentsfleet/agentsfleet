@@ -118,14 +118,16 @@ pub(crate) fn subscribed(
 ) -> Result<Option<Subscriber>> {
     let status = error::stored_status(stored_status)?;
     let config = FleetConfig::stored(document)?;
-    Ok(config.is_attached_to(provider, channel).then(|| Subscriber {
-        fleet,
-        name: config.name().as_str().to_owned(),
-        runnable: status.is_runnable(),
-        addressed_only: config
-            .repository_binding()
-            .is_some_and(|binding| binding.access() == Access::Write),
-    }))
+    Ok(config
+        .is_attached_to(provider, channel)
+        .then(|| Subscriber {
+            fleet,
+            name: config.name().as_str().to_owned(),
+            runnable: status.is_runnable(),
+            addressed_only: config
+                .repository_binding()
+                .is_some_and(|binding| binding.access() == Access::Write),
+        }))
 }
 
 #[cfg(test)]

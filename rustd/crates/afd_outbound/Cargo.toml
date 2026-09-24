@@ -57,9 +57,10 @@ tokio-util = { workspace = true, features = ["rt"] }
 tracing.workspace = true
 
 [dev-dependencies]
-# The loopback Slack the poster is proven against: a real HTTP server reads the
-# request, where a raw socket would need its own parser.
-axum.workspace = true
+# `test_util::FakeSlack`, the loopback Slack the poster is proven against: a
+# real HTTP server reads the request, where a raw socket would need its own
+# parser, and it is the same fake the thread reader and the mention suites use.
+afd_connector = { workspace = true, features = ["test-util"] }
 # `SlackPoster` is the one poster this build ships and none of it was covered:
 # the worker suite drives a stub `Deliver`, so the real reads never run. Proving
 # it needs the two stores it actually holds — the pool the destination is read

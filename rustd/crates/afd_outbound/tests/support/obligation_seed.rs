@@ -102,6 +102,67 @@ pub(crate) async fn clear_obligations(database: &Db) {
         .expect("clearing this fixture's obligations");
 }
 
+/// The thread every fixture answer is addressed to, as a Slack producer
+/// records it.
+pub(crate) const DESTINATION: &str =
+    r#"{"team_id":"T024BE7LD","channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
+
+/// One owed row, written straight into the ledger.
+pub(crate) struct OwedRow<'a> {
+    /// Which [`obligation_id`] the row takes.
+    pub(crate) nth: u8,
+    pub(crate) event: &'a str,
+    /// The connector id the row names, which need not be one any connector
+    /// answers to.
+    pub(crate) provider: &'a str,
+    /// `None` for a row naming nowhere.
+    pub(crate) destination: Option<&'a str>,
+    pub(crate) receipt: Option<&'a str>,
+    pub(crate) answer: &'a str,
+}
+
+/// Writes `row` owed by the fixture fleet, bypassing the ledger's own verbs.
+///
+/// For the rows those verbs refuse to write and a deployment can still hold:
+/// one naming a connector the catalogue no longer answers to, or one the report
+/// path wrote before it read a destination.
+pub(crate) async fn seed_owed_row(database: &Db, row: OwedRow<'_>) {
+    let mut connection = database.acquire().await.expect("the ledger answers");
+    sqlx::query(
+        "INSERT INTO core.fleet_obligations
+           (id, fleet_id, workspace_id, provider, destination, event_id, answer,
+            receipt, attempt_count, created_at, updated_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, 0, $9, $9)",
+    )
+    .bind(obligation_id(row.nth))
+    .bind(FLEET)
+    .bind(WORKSPACE)
+    .bind(row.provider)
+    .bind(row.destination)
+    .bind(row.event)
+    .bind(row.answer)
+    .bind(row.receipt)
+    .bind(SEEDED_AT)
+    .execute(&mut *connection)
+    .await
+    .expect("seeding an owed row");
+}
+
+/// The fixture fleet's row for `event`, as its abandonment reads:
+/// `(abandoned_at, abandon_reason)`, both `None` while it is still owed.
+pub(crate) async fn abandonment(database: &Db, event: &str) -> (Option<i64>, Option<String>) {
+    let mut connection = database.acquire().await.expect("the ledger answers");
+    sqlx::query_as(
+        "SELECT abandoned_at, abandon_reason FROM core.fleet_obligations
+          WHERE fleet_id = $1::uuid AND event_id = $2::text",
+    )
+    .bind(FLEET)
+    .bind(event)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("reading the obligation")
+}
+
 /// A v7-shaped obligation id, distinct per caller.
 ///
 /// `ck_fleet_obligations_id_uuidv7` reads the version nibble, so the `7` in the

@@ -181,9 +181,12 @@ pub async fn replies(
 ) -> Result<Replies, Unavailable> {
     let vendor = format!("{SLACK_API_BASE}{METHOD_CONVERSATIONS_REPLIES}");
     let endpoint = endpoint::redirected(&vendor, pinned).ok_or(Unavailable::Unreachable)?;
-    tokio::time::timeout(READ_DEADLINE, pages(client, &endpoint, token.expose(), thread))
-        .await
-        .unwrap_or(Err(Unavailable::Timeout))
+    tokio::time::timeout(
+        READ_DEADLINE,
+        pages(client, &endpoint, token.expose(), thread),
+    )
+    .await
+    .unwrap_or(Err(Unavailable::Timeout))
 }
 
 /// Every page of the thread, folded into the parent and the latest replies.

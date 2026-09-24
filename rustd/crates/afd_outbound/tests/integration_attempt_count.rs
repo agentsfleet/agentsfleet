@@ -78,15 +78,15 @@ mod seed;
 mod support;
 
 use self::hanging_queue::HangingQueue;
-use self::seed::{FLEET, SEEDED_AT, WORKSPACE, clear_obligations, obligation_id, seed_parents};
+use self::seed::{
+    DESTINATION, FLEET, OwedRow, SEEDED_AT, WORKSPACE, abandonment, clear_obligations,
+    obligation_id, seed_owed_row, seed_parents,
+};
 use self::support::{OUTBOUND_LANE, OutboundHarness};
 
 /// The connector every fixture answer goes back through.
 const PROVIDER: &str = Provider::Slack.id();
 
-/// The thread every owed answer here is addressed to.
-const DESTINATION: &str =
-    r#"{"team_id":"T024BE7LD","channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
 /// What the fixture answers say.
 const ANSWER: &str = "Aurora is healthy.";
 /// More rows than any test seeds, so a scan's limit never decides an assertion.

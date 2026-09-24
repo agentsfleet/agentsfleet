@@ -11,8 +11,8 @@ use afd_connector::slack::{MAX_MESSAGES, READ_DEADLINE, Unavailable};
 use afd_ingress::slack::{THREAD_CAP, THREAD_HEADING, THREAD_UNAVAILABLE};
 use serde_json::json;
 
-use super::fake_slack::FakeSlack;
 use super::*;
+use afd_connector::test_util::FakeSlack;
 
 /// What every case asks, once the bot's own mention is removed.
 const QUESTION: &str = "why did it fail?";

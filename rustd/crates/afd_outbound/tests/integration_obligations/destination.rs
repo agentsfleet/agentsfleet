@@ -34,27 +34,9 @@ async fn the_daemon_producer_appends_an_owed_answer_and_receipts_it() {
     assert!(owe_committed(&harness, &obligation_id(8), event).await);
     assert_eq!(entries_on(&redis).await, 0, "nothing has appended it yet");
 
-    let token = CancellationToken::new();
-    let running = tokio::spawn(
-        Producer::new(harness.queue.clone(), harness.database.clone()).run(token.clone()),
-    );
-
-    let appended = timeout(PRODUCER_PASS, async {
-        while entries_on(&redis).await == 0 {
-            sleep(POLL).await;
-        }
-    })
-    .await;
-
-    // Cancelled before any assertion, so a failing claim still stops the loop
-    // rather than leaving it appending under the next test's lane lock.
-    token.cancel();
-    running
-        .await
-        .expect("the producer stops when its token is cancelled");
-
+    let appended = producer_until(&harness, async || entries_on(&redis).await > 0).await;
     assert!(
-        appended.is_ok(),
+        appended,
         "the producer's own pass appended nothing: the daemon path that closes \
          Dimensions 4.2 and 4.3 never reached `OutboundQueue::enqueue`"
     );
@@ -84,25 +66,8 @@ async fn requeued_obligation_keeps_its_destination() {
     let event = "1700000000-7";
 
     assert!(owe_committed(&harness, &obligation_id(9), event).await);
-    let token = CancellationToken::new();
-    let running = tokio::spawn(
-        Producer::new(harness.queue.clone(), harness.database.clone()).run(token.clone()),
-    );
-    let appended = timeout(PRODUCER_PASS, async {
-        while entries_naming(&redis, event).await == 0 {
-            sleep(POLL).await;
-        }
-    })
-    .await;
-    token.cancel();
-    running
-        .await
-        .expect("the producer stops when its token is cancelled");
-
-    assert!(
-        appended.is_ok(),
-        "the producer's pass appended the owed answer"
-    );
+    let appended = producer_until(&harness, async || entries_naming(&redis, event).await > 0).await;
+    assert!(appended, "the producer's pass appended the owed answer");
     assert_eq!(
         destinations_naming(&redis, event).await,
         vec![DESTINATION.to_owned()],
@@ -120,26 +85,28 @@ async fn an_unaddressable_row_is_abandoned_not_requeued() {
     let harness = ready().await;
     let redis = datastore().await;
     let event = "1700000000-8";
-    seed_unaddressable(&harness, event).await;
+    // What a connector removed from the catalogue leaves behind: a row naming
+    // a destination and a connector nobody answers to.
+    seed_owed_row(
+        &harness.database,
+        OwedRow {
+            nth: 10,
+            event,
+            provider: UNKNOWN_CONNECTOR,
+            destination: Some(DESTINATION),
+            receipt: None,
+            answer: ANSWER,
+        },
+    )
+    .await;
 
-    let token = CancellationToken::new();
-    let running = tokio::spawn(
-        Producer::new(harness.queue.clone(), harness.database.clone()).run(token.clone()),
-    );
-    let abandoned = timeout(PRODUCER_PASS, async {
-        while abandon_reason(&harness, event).await.is_none() {
-            sleep(POLL).await;
-        }
+    let abandoned = producer_until(&harness, async || {
+        abandonment(&harness.database, event).await.1.is_some()
     })
     .await;
-    token.cancel();
-    running
-        .await
-        .expect("the producer stops when its token is cancelled");
-
-    assert!(abandoned.is_ok(), "the producer's pass abandoned the row");
+    assert!(abandoned, "the producer's pass abandoned the row");
     assert_eq!(
-        abandon_reason(&harness, event).await.as_deref(),
+        abandonment(&harness.database, event).await.1.as_deref(),
         Some(AbandonReason::Unaddressable.as_str())
     );
     assert_eq!(
@@ -149,50 +116,29 @@ async fn an_unaddressable_row_is_abandoned_not_requeued() {
     );
 }
 
-/// Writes an owed row that names a destination and a connector nobody answers
-/// to — what a connector removed from the catalogue leaves behind.
-async fn seed_unaddressable(harness: &OutboundHarness, event: &str) {
-    let mut connection = harness
-        .database
-        .acquire()
+/// Runs the daemon's own producer until `done` holds or [`PRODUCER_PASS`]
+/// runs out, and answers whether it held.
+///
+/// The producer is cancelled and joined before this returns, so a case's
+/// failing assertion still stops the loop rather than leaving it appending
+/// under the next test's lane lock.
+async fn producer_until(harness: &OutboundHarness, mut done: impl AsyncFnMut() -> bool) -> bool {
+    let token = CancellationToken::new();
+    let running = tokio::spawn(
+        Producer::new(harness.queue.clone(), harness.database.clone()).run(token.clone()),
+    );
+    let held = timeout(PRODUCER_PASS, async {
+        while !done().await {
+            sleep(POLL).await;
+        }
+    })
+    .await;
+    token.cancel();
+    running
         .await
-        .expect("the ledger answers");
-    sqlx::query(
-        "INSERT INTO core.fleet_obligations
-           (id, fleet_id, workspace_id, provider, destination, event_id, answer,
-            attempt_count, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, 0, $8, $8)",
-    )
-    .bind(obligation_id(10))
-    .bind(FLEET)
-    .bind(WORKSPACE)
-    .bind(UNKNOWN_CONNECTOR)
-    .bind(DESTINATION)
-    .bind(event)
-    .bind(ANSWER)
-    .bind(SEEDED_AT)
-    .execute(&mut *connection)
-    .await
-    .expect("seeding a row naming a connector nobody answers to");
+        .expect("the producer stops when its token is cancelled");
+    held.is_ok()
 }
 
 /// A connector id nothing in the catalogue answers to.
 const UNKNOWN_CONNECTOR: &str = "carrier-pigeon";
-
-/// The reason a row was abandoned with, or `None` while it is still owed.
-async fn abandon_reason(harness: &OutboundHarness, event: &str) -> Option<String> {
-    let mut connection = harness
-        .database
-        .acquire()
-        .await
-        .expect("the ledger answers");
-    sqlx::query_scalar(
-        "SELECT abandon_reason FROM core.fleet_obligations
-          WHERE fleet_id = $1::uuid AND event_id = $2::text",
-    )
-    .bind(FLEET)
-    .bind(event)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("reading the obligation")
-}
