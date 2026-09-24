@@ -65,6 +65,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/tests/integration_lease_gates.rs` · `integration_lease_gates/slack.rs` | EDIT · CREATE | One Slack request is one lease: the ledger's key, the stream backlog, the branch. |
 | `rustd/crates/afd_gate/src/policy/egress/mod.rs` | EDIT | Declares the test module. |
 | `docs/architecture/scenarios/slack-incident-responder.md` | EDIT | §8 and §10 statuses when this ships. |
+| `VERSION` · `build.zig.zon` · `cli/package.json` · `rustd/{Cargo.toml,Cargo.lock}` | EDIT | 0.49.0 → 0.50.0, a feature milestone's minor bump. |
 
 ## Applicable Rules
 
