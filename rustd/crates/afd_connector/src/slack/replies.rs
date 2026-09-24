@@ -27,20 +27,22 @@
 //! [`crate::endpoint`] derives every vendor host from — so a test's thread read
 //! lands on its loopback and never on Slack.
 
-use std::collections::VecDeque;
+use std::ops::ControlFlow;
 use std::time::Duration;
 
 use afd_crypto::secret::SecretString;
 use serde::Deserialize;
 use serde_json::Value;
 
+use self::shown::{Window, flatten};
+use super::answered::MessageMetadata;
 use super::{SLACK_API_BASE, Thread};
 use crate::connect::Connectors;
 use crate::endpoint;
 use crate::error::Result;
 
 /// Slack's method for one thread's messages, parent first.
-const METHOD_CONVERSATIONS_REPLIES: &str = "/conversations.replies";
+pub(super) const METHOD_CONVERSATIONS_REPLIES: &str = "/conversations.replies";
 
 /// How long the whole read may take, every page included.
 pub const READ_DEADLINE: Duration = Duration::from_millis(1_500);
@@ -59,13 +61,11 @@ const FIELD_TS: &str = "ts";
 const FIELD_LIMIT: &str = "limit";
 /// See [`FIELD_CHANNEL`].
 const FIELD_CURSOR: &str = "cursor";
-
-/// The keys, anywhere inside an attachment or a block, whose string values a
-/// person reading the thread sees.
-///
-/// `title_link` is here because a CI announcement often carries its run URL
-/// nowhere else. `fallback` is not: it repeats the text beside it.
-const SHOWN_KEYS: [&str; 6] = ["text", "title", "title_link", "pretext", "value", "url"];
+/// See [`FIELD_CHANNEL`]. Asked on every page, so the answer check reads the
+/// marker a posted answer carries; the mention's read ignores it.
+const FIELD_INCLUDE_METADATA: &str = "include_all_metadata";
+/// The value a boolean form field is sent as.
+const FORM_TRUE: &str = "true";
 
 /// Why a thread could not be read, spelled once for the fleet and the log.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,7 +139,7 @@ struct Metadata {
 
 /// One message as Slack renders it.
 #[derive(Debug, Default, Deserialize)]
-struct Posted {
+pub(super) struct Posted {
     #[serde(default)]
     ts: String,
     user: Option<String>,
@@ -150,6 +150,9 @@ struct Posted {
     attachments: Vec<Value>,
     #[serde(default)]
     blocks: Vec<Value>,
+    /// The metadata an app posted the message with, if any.
+    #[serde(default)]
+    pub(super) metadata: Option<MessageMetadata>,
 }
 
 impl Connectors {
@@ -197,16 +200,40 @@ async fn pages(
     thread: &Thread,
 ) -> Result<Replies, Unavailable> {
     let mut window = Window::default();
+    walk(client, endpoint, token, thread, |posted| {
+        window.push(flatten(posted));
+        ControlFlow::Continue(())
+    })
+    .await?;
+    Ok(window.into_replies())
+}
+
+/// Hands every message of the thread to `visit`, oldest first and a page at
+/// a time, until the thread ends or `visit` breaks.
+///
+/// The one cursor loop both readers share: the mention's, which keeps a
+/// window, and the answer check, which stops at the first marker it knows.
+pub(super) async fn walk(
+    client: &reqwest::Client,
+    endpoint: &str,
+    token: &str,
+    thread: &Thread,
+    mut visit: impl FnMut(Posted) -> ControlFlow<()>,
+) -> Result<(), Unavailable> {
     let mut cursor = String::new();
     loop {
         let page = page(client, endpoint, token, thread, &cursor).await?;
-        page.messages
+        if page
+            .messages
             .into_iter()
-            .map(flatten)
-            .for_each(|message| window.push(message));
+            .map(&mut visit)
+            .any(|flow| flow.is_break())
+        {
+            return Ok(());
+        }
         let next = page.response_metadata.next_cursor;
         if !page.has_more || next.is_empty() {
-            return Ok(window.into_replies());
+            return Ok(());
         }
         cursor = next;
     }
@@ -224,6 +251,7 @@ async fn page(
         (FIELD_CHANNEL, thread.channel_id.as_str()),
         (FIELD_TS, thread.thread_ts.as_str()),
         (FIELD_LIMIT, PAGE_LIMIT),
+        (FIELD_INCLUDE_METADATA, FORM_TRUE),
     ];
     if !cursor.is_empty() {
         form.push((FIELD_CURSOR, cursor));
@@ -250,76 +278,8 @@ async fn page(
     }
 }
 
-/// The parent and the newest replies seen so far.
-#[derive(Debug, Default)]
-struct Window {
-    parent: Option<Message>,
-    latest: VecDeque<Message>,
-    seen: usize,
-}
-
-impl Window {
-    /// Takes the next message in thread order, dropping the oldest reply once
-    /// the window is full.
-    fn push(&mut self, message: Message) {
-        self.seen += 1;
-        if self.parent.is_none() {
-            self.parent = Some(message);
-            return;
-        }
-        if self.latest.len() == MAX_MESSAGES - 1 {
-            self.latest.pop_front();
-        }
-        self.latest.push_back(message);
-    }
-
-    fn into_replies(self) -> Replies {
-        Replies {
-            messages: self.parent.into_iter().chain(self.latest).collect(),
-            seen: self.seen,
-        }
-    }
-}
-
-/// One posted message, as the lines a person reading it sees.
-fn flatten(posted: Posted) -> Message {
-    let mut lines = Vec::new();
-    keep(&posted.text, &mut lines);
-    for part in posted.attachments.iter().chain(&posted.blocks) {
-        collect(part, &mut lines);
-    }
-    Message {
-        ts: posted.ts,
-        author: posted.user.or(posted.bot_id).unwrap_or_default(),
-        text: lines.join("\n"),
-    }
-}
-
-/// Every shown string inside `value`, in document order, each once.
-fn collect(value: &Value, lines: &mut Vec<String>) {
-    match value {
-        Value::Object(fields) => {
-            for (key, field) in fields {
-                match field {
-                    Value::String(text) if SHOWN_KEYS.contains(&key.as_str()) => {
-                        keep(text, lines);
-                    }
-                    _ => collect(field, lines),
-                }
-            }
-        }
-        Value::Array(items) => items.iter().for_each(|item| collect(item, lines)),
-        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
-    }
-}
-
-/// Keeps a non-empty line not already kept: Slack repeats a message's text in
-/// its blocks, and the fleet needs it once.
-fn keep(text: &str, lines: &mut Vec<String>) {
-    if !text.is_empty() && !lines.iter().any(|kept| kept == text) {
-        lines.push(text.to_owned());
-    }
-}
+#[path = "replies/shown.rs"]
+mod shown;
 
 #[cfg(test)]
 #[path = "replies/tests.rs"]

@@ -27,6 +27,8 @@ use afd_outbound::{Deliver as _, Verdict};
 
 #[path = "integration_slack_poster/fixture.rs"]
 mod fixture;
+#[path = "integration_slack_poster/repeat.rs"]
+mod repeat;
 
 use self::fixture::Fixture;
 
@@ -74,7 +76,10 @@ async fn poster_posts_to_the_jobs_address() {
     fixture.seal_grant(BOT_TOKEN).await;
 
     let slack = slack_answering(200, r#"{"ok":true}"#).await;
-    let verdict = fixture.poster(slack.base()).deliver(&fixture.job()).await;
+    let verdict = fixture
+        .poster(&slack.api_base())
+        .deliver(&fixture.job())
+        .await;
     assert_eq!(
         verdict,
         Verdict::Delivered,
@@ -112,7 +117,10 @@ async fn a_workspace_holding_no_grant_is_permanent_rather_than_retried() {
     fixture.seed().await;
 
     let slack = slack_answering(200, r#"{"ok":true}"#).await;
-    let verdict = fixture.poster(slack.base()).deliver(&fixture.job()).await;
+    let verdict = fixture
+        .poster(&slack.api_base())
+        .deliver(&fixture.job())
+        .await;
     assert_eq!(verdict, Verdict::Permanent);
 
     drop(slack);
@@ -160,7 +168,10 @@ async fn a_two_hundred_that_says_not_ok_is_not_a_delivery() {
     fixture.seal_grant(BOT_TOKEN).await;
 
     let slack = slack_answering(200, r#"{"ok":false,"error":"channel_not_found"}"#).await;
-    let verdict = fixture.poster(slack.base()).deliver(&fixture.job()).await;
+    let verdict = fixture
+        .poster(&slack.api_base())
+        .deliver(&fixture.job())
+        .await;
     assert_ne!(
         verdict,
         Verdict::Delivered,
@@ -181,7 +192,10 @@ async fn a_vendor_that_is_briefly_unwell_is_retried() {
     fixture.seal_grant(BOT_TOKEN).await;
 
     let slack = slack_answering(503, r#"{"ok":false}"#).await;
-    let verdict = fixture.poster(slack.base()).deliver(&fixture.job()).await;
+    let verdict = fixture
+        .poster(&slack.api_base())
+        .deliver(&fixture.job())
+        .await;
     assert_eq!(verdict, Verdict::Retryable);
 
     let _sent = received(&slack);

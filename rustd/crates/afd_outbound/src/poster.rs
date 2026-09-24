@@ -17,6 +17,8 @@
 //! comment makes — "adding Grafana/Jira/Linear is one more arm here" — with the
 //! compiler holding it instead of a reviewer.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use afd_connector::Provider;
 use afd_dragonfly::OutboundDelivery;
 use backon::Retryable as _;
@@ -38,6 +40,35 @@ pub enum Verdict {
     Permanent,
 }
 
+/// Whether an earlier attempt at this answer might already have landed.
+///
+/// A transport failure, or a deadline that fires after the vendor wrote the
+/// message, reads exactly like a post that never arrived. Only the first
+/// attempt of an answer's first cycle is sure nothing went before it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Attempt {
+    /// Nothing was tried before: post.
+    First,
+    /// Something may have landed: a poster that can ask looks first.
+    Repeat,
+}
+
+impl Attempt {
+    /// The attempt a delivery cycle opens with, from the count the ledger
+    /// recorded for it.
+    ///
+    /// Only a count of exactly one is a first cycle. `None` — a row already
+    /// delivered, or a ledger that did not answer — is not known to be first,
+    /// so it looks before posting.
+    #[must_use]
+    pub const fn opening(cycles: Option<i64>) -> Self {
+        match cycles {
+            Some(1) => Self::First,
+            _repeat_or_unknown => Self::Repeat,
+        }
+    }
+}
+
 /// Something that can put one answer in front of a person.
 ///
 /// A trait rather than a concrete poster because Dimension 5.1 grades the
@@ -54,6 +85,16 @@ pub trait Deliver: Send + Sync {
     /// the worker's loop — where the answer would have to be invented again per
     /// provider.
     fn deliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send;
+
+    /// Attempts delivery again, when an earlier attempt may have landed
+    /// without its verdict saying so.
+    ///
+    /// Defaults to [`Self::deliver`]: a destination that cannot be asked what
+    /// it already holds is posted to again, at least once over at most once.
+    /// A poster that CAN ask overrides this to look before it posts.
+    fn redeliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+        self.deliver(job)
+    }
 }
 
 /// Every provider's poster, held together so the worker takes one value.
@@ -74,18 +115,23 @@ pub struct Posters<S> {
 /// answer for the same reason: the job cannot be delivered by any retry, and
 /// leaving it unacknowledged would redeliver it forever. The Zig drops an
 /// unknown provider for exactly this reason.
-pub async fn dispatch<S: Deliver>(posters: &Posters<S>, job: &OutboundDelivery) -> Verdict {
+pub async fn dispatch<S: Deliver>(
+    posters: &Posters<S>,
+    job: &OutboundDelivery,
+    attempt: Attempt,
+) -> Verdict {
     let Some(provider) = Provider::parse(&job.provider) else {
         return unroutable(job, "unknown_provider");
     };
-    match provider {
-        Provider::Slack => posters.slack.deliver(job).await,
+    match (provider, attempt) {
+        (Provider::Slack, Attempt::First) => posters.slack.deliver(job).await,
+        (Provider::Slack, Attempt::Repeat) => posters.slack.redeliver(job).await,
         // Tabled, not yet posted. These four connect and hold a grant — §4
         // serves all five — but none has an answer surface yet: there is no
         // Jira comment to reply on until the ingress that reads one lands. A
         // job naming one is therefore this daemon's own bug rather than a
         // vendor problem, and it is dropped rather than redelivered.
-        Provider::GitHub | Provider::Zoho | Provider::Jira | Provider::Linear => {
+        (Provider::GitHub | Provider::Zoho | Provider::Jira | Provider::Linear, _attempt) => {
             unroutable(job, "no_poster_for_provider")
         }
     }
@@ -104,13 +150,23 @@ pub async fn dispatch<S: Deliver>(posters: &Posters<S>, job: &OutboundDelivery) 
 /// over: a permanent verdict is not retried, because it will refuse the same
 /// way in 800 milliseconds; and a cancelled token is not retried, because the
 /// attempt in flight is the last thing this process owes.
+///
+/// `opening` is the cycle's first attempt; every retry after it is an
+/// [`Attempt::Repeat`], because the attempt it follows may have landed.
 pub async fn deliver_with_retry<S: Deliver>(
     posters: &Posters<S>,
     job: &OutboundDelivery,
     token: &CancellationToken,
+    opening: Attempt,
 ) -> Verdict {
+    let tried = AtomicBool::new(false);
     let attempt = || async {
-        match dispatch(posters, job).await {
+        let this = if tried.swap(true, Ordering::Relaxed) {
+            Attempt::Repeat
+        } else {
+            opening
+        };
+        match dispatch(posters, job, this).await {
             Verdict::Delivered => Ok(()),
             // The verdict rides the `Err` so `when` can read it: `backon`
             // decides from the failure value, and collapsing the two failures
@@ -158,91 +214,5 @@ fn unroutable(job: &OutboundDelivery, reason: &'static str) -> Verdict {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    /// The thread an owed answer is addressed to, as a Slack producer records it.
-    const DESTINATION: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
-
-    /// A poster that records how many times it was asked.
-    #[derive(Debug, Default)]
-    struct Counting {
-        calls: AtomicUsize,
-    }
-
-    impl Deliver for Counting {
-        fn deliver(&self, _job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
-            self.calls.fetch_add(1, Ordering::Relaxed);
-            std::future::ready(Verdict::Delivered)
-        }
-    }
-
-    fn job(provider: &str) -> OutboundDelivery {
-        OutboundDelivery {
-            id: afd_dragonfly::streams::EventId::of("1700000000001-0"),
-            provider: provider.to_owned(),
-            destination: DESTINATION.to_owned(),
-            workspace_id: "0199a0b0-0000-7000-8000-000000000001".to_owned(),
-            fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),
-            event_id: "1700000000000-0".to_owned(),
-            answer: "Aurora is healthy.".to_owned(),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_a_slack_job_reaches_the_slack_poster() {
-        let posters = Posters {
-            slack: Counting::default(),
-        };
-
-        let verdict = dispatch(&posters, &job("slack")).await;
-
-        assert_eq!(verdict, Verdict::Delivered);
-        assert_eq!(posters.slack.calls.load(Ordering::Relaxed), 1);
-    }
-
-    /// A provider string no connector answers to must not reach a poster and
-    /// must not be redelivered — the two halves of dropping it safely.
-    #[tokio::test]
-    async fn test_an_unknown_provider_is_permanent_and_reaches_no_poster() {
-        let posters = Posters {
-            slack: Counting::default(),
-        };
-
-        let verdict = dispatch(&posters, &job("pagerduty")).await;
-
-        assert_eq!(
-            verdict,
-            Verdict::Permanent,
-            "an unroutable job retried forever is worse than one dropped"
-        );
-        assert_eq!(posters.slack.calls.load(Ordering::Relaxed), 0);
-    }
-
-    /// A provider this build CONNECTS but cannot answer through is the same
-    /// verdict for a different reason, and the reason is what the log carries.
-    #[tokio::test]
-    async fn test_a_connectable_provider_with_no_poster_is_permanent() {
-        let posters = Posters {
-            slack: Counting::default(),
-        };
-
-        for provider in [
-            Provider::GitHub,
-            Provider::Zoho,
-            Provider::Jira,
-            Provider::Linear,
-        ] {
-            let verdict = dispatch(&posters, &job(provider.id())).await;
-
-            assert_eq!(
-                verdict,
-                Verdict::Permanent,
-                "{} connects but has no answer surface yet",
-                provider.id()
-            );
-        }
-        assert_eq!(posters.slack.calls.load(Ordering::Relaxed), 0);
-    }
-}
+#[path = "poster/tests.rs"]
+mod tests;

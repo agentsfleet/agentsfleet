@@ -34,8 +34,16 @@
 //! outage. The poster holds no pool of its own: the token read borrows the
 //! grant store's connection and returns it before [`SlackPoster::post`] is
 //! entered — which the types enforce, since `post` never receives one.
+//!
+//! # A repeat looks before it posts
+//!
+//! `chat.postMessage` has no idempotency key, so every answer is posted
+//! carrying its [`AnswerMarker`] as message metadata, and a repeat attempt
+//! ([`Deliver::redeliver`]) first asks the thread whether that marker is
+//! already there — see `afd_connector::slack::holds_answer` for what the
+//! check can and cannot promise.
 
-use afd_connector::slack::Thread;
+use afd_connector::slack::{AnswerMarker, Stamp, Thread};
 use afd_connector::{Grants, Provider};
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretString;
@@ -79,6 +87,13 @@ const REASON_TOKEN_LOAD_FAILED: &str = "slack_post_token_load_failed";
 /// Logged when a job's address names nowhere this poster can post.
 const REASON_ADDRESS_UNREADABLE: &str = "slack_post_address_unreadable";
 
+/// Logged when a repeat found its answer already in the thread and posted
+/// nothing.
+const EVENT_ALREADY_IN_THREAD: &str = "slack_post_already_in_thread";
+
+/// Logged when a repeat could not read the thread and posted anyway.
+const EVENT_THREAD_CHECK_FAILED: &str = "slack_post_thread_check_failed";
+
 /// What Slack answers a `chat.postMessage` with.
 ///
 /// `ok` alone, because it is the only field that changes what happens next.
@@ -93,14 +108,16 @@ struct Accepted {
 
 /// The body one answer is posted as.
 ///
-/// A struct rather than `serde_json::json!` so the three keys Slack expects are
-/// a type, and `answer` — arbitrary model output — is escaped by `serde` on its
+/// A struct rather than `serde_json::json!` so the keys Slack expects are a
+/// type, and `answer` — arbitrary model output — is escaped by `serde` on its
 /// way out rather than interpolated.
 #[derive(Debug, Serialize)]
 struct Message<'a> {
     channel: &'a str,
     thread_ts: &'a str,
     text: &'a str,
+    /// Which answer this is, so a repeat can find it in the thread.
+    metadata: Stamp<'a>,
 }
 
 /// Posts a fleet's answer to Slack.
@@ -152,7 +169,15 @@ impl SlackPoster {
             }
         };
 
-        Ok(Inputs { destination, token })
+        let marker = AnswerMarker {
+            fleet_id: job.fleet_id.clone(),
+            event_id: job.event_id.clone(),
+        };
+        Ok(Inputs {
+            destination,
+            token,
+            marker,
+        })
     }
 
     /// The POST itself, with no pool connection held — see the module note.
@@ -161,6 +186,7 @@ impl SlackPoster {
             channel: &inputs.destination.channel_id,
             thread_ts: &inputs.destination.thread_ts,
             text: &job.answer,
+            metadata: inputs.marker.metadata(),
         });
         let Ok(body) = body else {
             return failed(job, "slack_post_body_unserializable", Verdict::Permanent);
@@ -194,6 +220,35 @@ impl Deliver for SlackPoster {
             Err(verdict) => verdict,
         }
     }
+
+    async fn redeliver(&self, job: &OutboundDelivery) -> Verdict {
+        let inputs = match self.inputs(job).await {
+            Ok(inputs) => inputs,
+            Err(verdict) => return verdict,
+        };
+        let held = afd_connector::slack::holds_answer(
+            &self.http,
+            &self.api_base,
+            &inputs.token,
+            &inputs.destination,
+            &inputs.marker,
+        )
+        .await;
+        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+        let fleet_id = job.fleet_id.as_str();
+        match held {
+            Ok(true) => {
+                tracing::info!(fleet_id, event = EVENT_ALREADY_IN_THREAD);
+                Verdict::Delivered
+            }
+            Ok(false) => self.post(job, &inputs).await,
+            Err(unavailable) => {
+                let reason = unavailable.as_str();
+                tracing::warn!(fleet_id, reason, event = EVENT_THREAD_CHECK_FAILED);
+                self.post(job, &inputs).await
+            }
+        }
+    }
 }
 
 /// Everything one post needs, gathered before any vendor call begins.
@@ -202,6 +257,8 @@ struct Inputs {
     destination: Thread,
     /// Still wrapped, so it zeroes on drop — see `Grants::bot_token`.
     token: SecretString,
+    /// Which answer this is, as the post carries it and a repeat looks for it.
+    marker: AnswerMarker,
 }
 
 /// Where the answer goes, read from the job's recorded address.

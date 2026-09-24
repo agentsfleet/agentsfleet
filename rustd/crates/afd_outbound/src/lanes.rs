@@ -56,7 +56,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use crate::obligation::AbandonReason;
-use crate::poster::{Deliver, Posters, Verdict, deliver_with_retry};
+use crate::poster::{Attempt, Deliver, Posters, Verdict, deliver_with_retry};
 use crate::producer::MAX_DELIVERY_CYCLES;
 
 mod retire;
@@ -224,7 +224,8 @@ impl<S: Deliver + 'static> Inner<S> {
     /// worth finding, and it is the one a success counter never records.
     async fn deliver_and_ack(&self, job: &OutboundDelivery) {
         let attempts = self.count_cycle(job).await;
-        let verdict = deliver_with_retry(&self.posters, job, &self.token).await;
+        let opening = Attempt::opening(attempts);
+        let verdict = deliver_with_retry(&self.posters, job, &self.token, opening).await;
         if verdict == Verdict::Delivered {
             self.stamp_delivered(job, attempts).await;
         }

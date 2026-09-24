@@ -104,10 +104,15 @@ fn unreadable_address_is_permanent_without_a_request() {
 #[test]
 fn test_the_body_escapes_an_answer_carrying_json_punctuation() {
     let answer = "she said \"yes\"\nand {\"ok\": false}";
+    let marker = AnswerMarker {
+        fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),
+        event_id: "1700000000000-0".to_owned(),
+    };
     let round_tripped: Option<serde_json::Value> = serde_json::to_vec(&Message {
         channel: "C123",
         thread_ts: "1700000000.000100",
         text: answer,
+        metadata: marker.metadata(),
     })
     .ok()
     .and_then(|body| serde_json::from_slice(&body).ok());
@@ -120,4 +125,43 @@ fn test_the_body_escapes_an_answer_carrying_json_punctuation() {
         Some(answer),
         "what serde wrote, serde reads back whole"
     );
+}
+
+/// Every post carries the answer's marker as Slack message metadata, so a
+/// repeat attempt can find this answer in the thread and post nothing.
+#[test]
+fn every_post_carries_its_answer_marker() {
+    let marker = AnswerMarker {
+        fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),
+        event_id: "1700000000000-0".to_owned(),
+    };
+    let body: Option<serde_json::Value> = serde_json::to_vec(&Message {
+        channel: "C123",
+        thread_ts: "1700000000.000100",
+        text: "the answer",
+        metadata: marker.metadata(),
+    })
+    .ok()
+    .and_then(|body| serde_json::from_slice(&body).ok());
+    let metadata = body.as_ref().and_then(|body| body.get("metadata"));
+
+    assert_eq!(
+        metadata
+            .and_then(|metadata| metadata.get("event_type"))
+            .and_then(serde_json::Value::as_str),
+        Some(afd_connector::slack::ANSWER_EVENT_TYPE)
+    );
+    let payload = metadata.and_then(|metadata| metadata.get("event_payload"));
+    for (field, expected) in [
+        ("fleet_id", marker.fleet_id.as_str()),
+        ("event_id", marker.event_id.as_str()),
+    ] {
+        assert_eq!(
+            payload
+                .and_then(|payload| payload.get(field))
+                .and_then(serde_json::Value::as_str),
+            Some(expected),
+            "{field}"
+        );
+    }
 }
