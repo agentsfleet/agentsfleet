@@ -2,7 +2,7 @@
 //!
 //! One trait over the whole connector surface, because a handler that held
 //! only half of it could not finish a connect: the four round-trip steps and
-//! the three reads act through the same vaults, and splitting them would mean
+//! the reads act through the same vaults, and splitting them would mean
 //! two stubs in every suite that arranges either. The same argument
 //! [`super::schedule::FleetSchedules`] makes for holding its CRUD and its fire
 //! path together.
@@ -25,6 +25,7 @@
 //! that is stated.
 
 use afd_connector::grant::BotIdentity;
+use afd_connector::slack::{Replies, Thread, Unavailable};
 use afd_connector::{
     Catalogued, Connection, Connectors, Finishing, Forgotten, Landed, Provider, Rejected,
     Result as ConnectorResult, Spent, Started, Starting, Verified,
@@ -151,9 +152,25 @@ pub trait WorkspaceConnectors: Send + Sync + std::fmt::Debug + 'static {
         workspace: &Uuid7,
         provider: Provider,
     ) -> impl Future<Output = ConnectorResult<Option<BotIdentity>>> + Send;
+
+    /// Reads a Slack `thread` back with the bot's `token`: the parent and the
+    /// latest replies, under one deadline.
+    ///
+    /// Takes the token rather than a workspace so nothing here can open a
+    /// pool connection: the caller loaded it with [`Self::bot_identity`] and
+    /// the connection went back before this is entered.
+    ///
+    /// # Errors
+    /// The [`Unavailable`] reason the read failed for, which the caller tells
+    /// the fleet in the thread's place rather than refusing the mention.
+    fn thread(
+        &self,
+        token: &SecretBytes,
+        thread: &Thread,
+    ) -> impl Future<Output = ConnectorResult<Replies, Unavailable>> + Send;
 }
 
-/// The production flow answers all seven directly.
+/// The production flow answers every one directly.
 impl WorkspaceConnectors for Connectors {
     fn start(
         &self,
@@ -228,5 +245,13 @@ impl WorkspaceConnectors for Connectors {
         provider: Provider,
     ) -> impl Future<Output = ConnectorResult<Option<BotIdentity>>> + Send {
         Self::bot_identity(self, workspace, provider)
+    }
+
+    fn thread(
+        &self,
+        token: &SecretBytes,
+        thread: &Thread,
+    ) -> impl Future<Output = ConnectorResult<Replies, Unavailable>> + Send {
+        Self::thread(self, token, thread)
     }
 }

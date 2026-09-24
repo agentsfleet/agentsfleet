@@ -28,6 +28,9 @@ test-util = ["afd_admission/test-util"]
 # be, and unlike that key it does not expire and does not live in the queue it
 # protects.
 afd_admission.workspace = true
+# The Slack thread a mention's fleet is told: the read and its reasons live
+# with the connector that holds the token, and this crate composes the result.
+afd_connector.workspace = true
 # Identifiers, the instant a delivery is stamped with, and the registry codes.
 afd_core.workspace = true
 # The plaintext wrapper a signing secret comes back in. This crate computes no

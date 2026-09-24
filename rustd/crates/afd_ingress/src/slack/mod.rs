@@ -16,9 +16,13 @@ use crate::error::{self, COLUMN_FLEET, COLUMN_STATUS, Result, row_unreadable};
 use crate::{Ingress, sql};
 
 mod admit;
+mod message;
 mod route;
 
 pub use self::admit::MentionAdmission;
+pub use self::message::{
+    Composed, MESSAGE_CAP, THREAD_CAP, THREAD_HEADING, THREAD_UNAVAILABLE, compose,
+};
 pub use self::route::{Notice, Route, route};
 /// The channel type every mention method takes, re-exported so a caller of
 /// this module needs no dependency on the document crate for it.

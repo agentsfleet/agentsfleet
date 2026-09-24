@@ -321,6 +321,7 @@ dependencies = [
  "afd_db",
  "afd_dragonfly",
  "afd_vault",
+ "axum",
  "base64 0.23.1",
  "reqwest",
  "serde",
@@ -649,6 +650,7 @@ name = "afd_ingress"
 version = "0.49.0"
 dependencies = [
  "afd_admission",
+ "afd_connector",
  "afd_core",
  "afd_crypto",
  "afd_db",

@@ -4,9 +4,23 @@
 //! into the admission as the reply destination, and the outbound poster reads
 //! it back off the delivery job. A shared type is what keeps the two from
 //! spelling a key differently and stranding every answer owed under the old
-//! spelling.
+//! spelling. The same address is what [`replies`] reads the thread back from.
 
 use serde::{Deserialize, Serialize};
+
+mod replies;
+
+pub use self::replies::{MAX_MESSAGES, Message, READ_DEADLINE, Replies, Unavailable, replies};
+
+/// The Slack Web API root, which every Slack method this daemon calls hangs
+/// off.
+///
+/// One spelling for both ends of the round trip: the thread reader here and
+/// the answer poster in `afd_outbound` build their method URLs from it, so the
+/// two cannot drift onto different hosts. Not a general knob: a deployment has
+/// no reason to talk to a different Slack, and a test points each end at its
+/// loopback through that end's own seam.
+pub const SLACK_API_BASE: &str = "https://slack.com/api";
 
 /// A Slack thread, as a reply destination's address.
 ///

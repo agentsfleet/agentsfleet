@@ -47,13 +47,19 @@ sqlx.workspace = true
 # of a subject tag against the starter's (RULE CTM).
 subtle.workspace = true
 thiserror.workspace = true
+# One deadline across every page of a Slack thread read, rather than one per
+# request that a many-page thread could multiply.
+tokio.workspace = true
 tracing.workspace = true
 # Percent-encoding the redirect URI a provider is handed, through a parser
 # rather than a hand-rolled escape loop.
 url.workspace = true
 
 [dev-dependencies]
-tokio.workspace = true
+# The loopback Slack a thread read is proven against: axum reads the request a
+# real Slack would, where a raw socket would need its own HTTP parser. `form`
+# decodes the fields the read posts.
+axum = { workspace = true, features = ["form"] }
 
 [lints]
 workspace = true

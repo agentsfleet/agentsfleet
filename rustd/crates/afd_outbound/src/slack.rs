@@ -44,13 +44,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::poster::{Deliver, Verdict};
 
-/// The Slack Web API root this deployment posts to.
-///
-/// Overridable so a test can point the poster at a loopback fake — the same
-/// seam `post.zig` carries for the same reason. Not a general knob: a
-/// deployment has no reason to talk to a different Slack.
-pub const SLACK_API_BASE: &str = "https://slack.com/api";
-
 /// The method one answer is posted through.
 const METHOD_POST_MESSAGE: &str = "/chat.postMessage";
 
@@ -121,9 +114,11 @@ pub struct SlackPoster {
 impl SlackPoster {
     /// Binds the poster to the grant store and an HTTP client.
     ///
-    /// `api_base` is [`SLACK_API_BASE`] in a deployment and a loopback in a
-    /// test. The client is shared with the rest of the workspace rather than
-    /// built here, so a connector adds no second HTTP stack.
+    /// `api_base` is [`afd_connector::slack::SLACK_API_BASE`] in a
+    /// deployment and a loopback in a test — the same seam `post.zig` carries
+    /// for the same reason. The client is shared with the rest of the
+    /// workspace rather than built here, so a connector adds no second HTTP
+    /// stack.
     #[must_use]
     pub const fn new(grants: Grants, http: reqwest::Client, api_base: String) -> Self {
         Self {

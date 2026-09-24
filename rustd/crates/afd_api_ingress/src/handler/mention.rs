@@ -10,26 +10,31 @@
 //!   envelope ─► parse+filter ─► team→workspace ─► bot identity ─► subscribers
 //!                  │                  │                 │               │
 //!                  └ unreadable_body  └ team_not_mapped └ bot_message   ▼
-//!                    bot_message                                       route ─► admit
-//!                    unsupported_event
+//!                    bot_message                                       route
+//!                    unsupported_event                                  │
+//!                                                   admit ◄─ compose ◄─ re-read
 //! ```
+//!
+//! The last three steps, for a mention routing gave one fleet, live in the
+//! `admit` module beside this one.
 //!
 //! The envelope is a `serde`-tagged enum, so "an `event_callback` whose event
 //! is an `app_mention`" is a type rather than three field lookups that have to
 //! agree (RULE PSR).
 
 use afd_connector::Provider;
-use afd_connector::slack::Thread;
-use afd_core::id::Uuid7;
-use afd_ingress::slack::{ChannelId, MentionAdmission, Route, Subscriber, route};
-use afd_wire::ingress::{Accepted, MentionRequest, MentionRoute, MentionThread};
+use afd_ingress::slack::{ChannelId, Route, route};
+use afd_wire::ingress::Accepted;
 use serde::Deserialize;
-use std::borrow::Cow;
 
 use super::events::REASON_UNREADABLE;
 use super::webhook::REASON_UNSUPPORTED_EVENT;
 use crate::handler::Refusal;
 use crate::services::{Services, WebhookIngress as _, WorkspaceConnectors as _};
+
+mod admit;
+
+use self::admit::Routed;
 
 /// Why a mention was dropped, named once each (RULE UFS). `unreadable_body`
 /// is the route's own, shared with a body that is not JSON at all, and
@@ -38,8 +43,6 @@ pub(super) const REASON_BOT_MESSAGE: &str = "bot_message";
 /// See [`REASON_BOT_MESSAGE`].
 pub(super) const REASON_TEAM_NOT_MAPPED: &str = "team_not_mapped";
 
-/// The event a routed mention is logged under.
-const EVENT_ROUTED: &str = "slack_mention_routed";
 /// The event a datastore failure on this path is refused under.
 const EVENT_MENTION: &str = "slack_mention_failed";
 
@@ -102,6 +105,9 @@ pub(super) struct Asked {
     pub(super) user: String,
     pub(super) text: String,
     pub(super) channel: ChannelId,
+    /// The mention's own message, which the thread read leaves out: it is
+    /// the question.
+    pub(super) ts: String,
     /// The thread's root: the mention's own thread, or the mention itself
     /// when it started one.
     pub(super) thread_ts: String,
@@ -161,7 +167,8 @@ pub(super) fn parse(envelope: serde_json::Value) -> Parsed {
         user,
         text: mention.text,
         channel,
-        thread_ts: mention.thread_ts.unwrap_or(mention.ts),
+        thread_ts: mention.thread_ts.unwrap_or_else(|| mention.ts.clone()),
+        ts: mention.ts,
     })
 }
 
@@ -222,91 +229,20 @@ pub(super) async fn admit<D: Services>(
             return Ok(Outcome::Dropped(REASON_UNSUPPORTED_EVENT));
         }
     };
-    admit_routed(
-        services, provider, &workspace, asked, fleet, message, verdict,
+    admit::routed(
+        services,
+        provider,
+        Routed {
+            workspace: &workspace,
+            asked,
+            token: &identity.token,
+            fleet,
+            message,
+            verdict,
+        },
     )
     .await
 }
-
-/// Admits a mention routing gave one fleet.
-async fn admit_routed<D: Services>(
-    services: &D,
-    provider: Provider,
-    workspace: &Uuid7,
-    asked: &Asked,
-    fleet: &Subscriber,
-    message: &str,
-    verdict: &'static str,
-) -> Result<Outcome, Refusal> {
-    let thread = Thread {
-        team_id: Some(asked.team_id.clone()),
-        channel_id: asked.channel.as_str().to_owned(),
-        thread_ts: asked.thread_ts.clone(),
-    };
-    let address = thread.address().map_err(|_unserialisable| {
-        Refusal::coded(
-            afd_core::error_code::INTERNAL_OPERATION_FAILED,
-            DETAIL_UNSERIALISABLE,
-        )
-    })?;
-    let body = MentionRequest {
-        message: Cow::Borrowed(message),
-        channel_id: Cow::Borrowed(asked.channel.as_str()),
-        reply_thread_ts: Cow::Borrowed(&asked.thread_ts),
-        route: MentionRoute {
-            verdict: Cow::Borrowed(verdict),
-            fleet: Cow::Borrowed(&fleet.name),
-        },
-        thread: MentionThread {
-            fetched: false,
-            count: 0,
-            truncated: false,
-        },
-    };
-    let request_json = serde_json::to_string(&body).map_err(|_unserialisable| {
-        Refusal::coded(
-            afd_core::error_code::INTERNAL_OPERATION_FAILED,
-            DETAIL_UNSERIALISABLE,
-        )
-    })?;
-
-    let admitted = services
-        .ingress()
-        .admit_mention(MentionAdmission {
-            fleet: &fleet.fleet,
-            workspace,
-            team_id: &asked.team_id,
-            event_id: &asked.event_id,
-            user: &asked.user,
-            request_json: &request_json,
-            connector: provider.id(),
-            address: &address,
-        })
-        .await
-        .map_err(Refusal::at(EVENT_MENTION))?;
-
-    // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-    let workspace_id = workspace.as_str();
-    let fleet_id = fleet.fleet.as_str();
-    let event_id = admitted.id.as_str();
-    tracing::info!(
-        workspace_id,
-        fleet_id,
-        verdict,
-        event_id,
-        replayed = admitted.replayed,
-        thread_fetched = body.thread.fetched,
-        message_count = body.thread.count,
-        event = EVENT_ROUTED,
-    );
-    Ok(Outcome::Accepted(Accepted {
-        event_id: Cow::Owned(admitted.id),
-        replayed: admitted.replayed,
-    }))
-}
-
-/// The detail a body this daemon could not serialise is refused with.
-const DETAIL_UNSERIALISABLE: &str = "The mention could not be recorded.";
 
 #[cfg(test)]
 #[path = "mention/tests.rs"]

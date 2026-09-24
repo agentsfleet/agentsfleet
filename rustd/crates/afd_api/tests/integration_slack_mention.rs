@@ -22,6 +22,8 @@ use http::{HeaderName, Method, StatusCode};
 use serde_json::Value;
 
 use self::harness::{json_body, send_with_headers};
+#[path = "support/fake_slack.rs"]
+mod fake_slack;
 #[path = "slack_mention_live/fixture.rs"]
 mod fixture;
 
@@ -65,10 +67,16 @@ fn document(name: &str, channel: &str, access: Option<&str>) -> String {
     )
 }
 
-/// One `app_mention` from `team`, asked by `user` with `text`.
+/// One `app_mention` from `team`, asked by `user` with `text`, in the
+/// fixture thread.
 fn mention(team: &str, event_id: &str, user: &str, text: &str) -> String {
+    mention_in(team, event_id, user, text, THREAD_TS)
+}
+
+/// The same, asked in the thread rooted at `thread_ts`.
+fn mention_in(team: &str, event_id: &str, user: &str, text: &str, thread_ts: &str) -> String {
     format!(
-        r#"{{"type":"event_callback","team_id":"{team}","event_id":"{event_id}","event":{{"type":"app_mention","user":"{user}","text":"{text}","ts":"{MENTION_TS}","thread_ts":"{THREAD_TS}","channel":"{CHANNEL}"}}}}"#
+        r#"{{"type":"event_callback","team_id":"{team}","event_id":"{event_id}","event":{{"type":"app_mention","user":"{user}","text":"{text}","ts":"{MENTION_TS}","thread_ts":"{thread_ts}","channel":"{CHANNEL}"}}}}"#
     )
 }
 
@@ -229,3 +237,6 @@ mod drops;
 
 #[path = "integration_slack_mention/subscribers.rs"]
 mod subscribers;
+
+#[path = "integration_slack_mention/thread.rs"]
+mod thread;
