@@ -11,7 +11,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use afd_dragonfly::ready::{Partition, READY_PARTITIONS, ReadyCursor, ReadyIndex, ReadyToken};
+use afd_dragonfly::ready::{
+    Partition, READY_PARTITIONS, ReadyCursor, ReadyIndex, ReadyPrefix, ReadyToken,
+};
 
 use crate::cluster::{CLUSTER_LANE, ClusterHarness};
 use crate::support::DragonflyHarness;
@@ -40,7 +42,12 @@ const ROTATIONS: u16 = 6;
 #[ignore = "needs the live Dragonfly cluster: make test-integration-rustd"]
 async fn test_ready_races_preserve_work_and_bound_poll_cost() {
     let harness = DragonflyHarness::connect().await;
-    let index = ReadyIndex::new(harness.redis.clone());
+    // The poller clears every sampled field. Keep this race inside one key
+    // family so it cannot erase a concurrent test's production mark.
+    let index = ReadyIndex::under(
+        harness.redis.clone(),
+        ReadyPrefix::private(&harness.name("race")),
+    );
     let fleets: Vec<String> = (0..FLEETS)
         .map(|n| harness.name(&format!("f{n}")))
         .collect();
@@ -70,6 +77,42 @@ async fn test_ready_races_preserve_work_and_bound_poll_cost() {
     assert!(
         lost.is_empty(),
         "fleets re-marked after a poll's read were cleared by that poll: {lost:?}"
+    );
+}
+
+/// The race poller may clear only marks in its own key family.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs the live Dragonfly cluster: make test-integration-rustd"]
+async fn test_private_poll_keeps_another_index_mark() {
+    let harness = DragonflyHarness::connect().await;
+    let other = ReadyIndex::under(
+        harness.redis.clone(),
+        ReadyPrefix::private(&harness.name("other-index")),
+    );
+    let private = ReadyIndex::under(
+        harness.redis.clone(),
+        ReadyPrefix::private(&harness.name("poll-isolation")),
+    );
+    let outside = harness.name("outside-mark");
+    let inside = harness.name("private-mark");
+    other
+        .mark(&outside, "outside")
+        .await
+        .expect("mark other index");
+    private.mark(&inside, "inside").await.expect("mark private");
+
+    let (cleared, _) = poll_and_clear(private.clone()).await;
+    let outside_token = other.token_for(&outside).await.expect("read other index");
+    private.force_clear(&inside).await.expect("cleanup private");
+    other
+        .force_clear(&outside)
+        .await
+        .expect("cleanup other index");
+    assert_eq!(cleared.get(&inside).map(String::as_str), Some("inside"));
+    assert_eq!(
+        outside_token.as_ref().map(ReadyToken::as_str),
+        Some("outside"),
+        "the test poller must not clear a mark in another index"
     );
 }
 
