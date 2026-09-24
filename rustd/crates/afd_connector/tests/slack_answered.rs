@@ -17,6 +17,8 @@ use afd_crypto::secret::SecretString;
 
 /// The bot token the grant holds.
 const TOKEN: &str = "xoxb-fixture-answered";
+/// The bot user the grant recorded: the author a marker must carry.
+const BOT_USER: &str = "U0BOTAF01";
 
 fn thread() -> Thread {
     Thread {
@@ -48,7 +50,9 @@ fn page(reply: &str, more: bool) -> Reply {
 /// A reply this daemon posted carrying `marker`.
 fn answered(marker: &AnswerMarker) -> String {
     let stamp = serde_json::to_string(&marker.metadata()).expect("a stamp serializes");
-    format!(r#"{{"ts":"1700000000.000900","bot_id":"B01","text":"the answer","metadata":{stamp}}}"#)
+    format!(
+        r#"{{"ts":"1700000000.000900","user":"{BOT_USER}","bot_id":"B01","text":"the answer","metadata":{stamp}}}"#
+    )
 }
 
 async fn check(fake: &FakeSlack) -> Result<bool, Unavailable> {
@@ -59,6 +63,7 @@ async fn check(fake: &FakeSlack) -> Result<bool, Unavailable> {
         &token,
         &thread(),
         &marker(),
+        BOT_USER,
     )
     .await
 }
@@ -77,6 +82,11 @@ async fn an_answer_on_a_later_page_is_found() {
     for request in &requests {
         assert_eq!(request.field("include_all_metadata"), Some("true"));
         assert_eq!(request.authorization, format!("Bearer {TOKEN}"));
+        assert_eq!(
+            request.field("oldest"),
+            Some("1759999700.000000"),
+            "every page starts shortly before the question, not at the thread's root"
+        );
     }
 }
 
@@ -114,4 +124,19 @@ async fn an_unreadable_thread_is_a_reason_not_a_yes() {
     .await;
 
     assert_eq!(check(&fake).await, Err(Unavailable::Refused));
+}
+
+/// A Slack that never answers is a timeout under the check's own deadline,
+/// never a yes, and never a wait past that deadline.
+#[tokio::test]
+async fn a_thread_that_never_answers_is_a_timeout_not_a_yes() {
+    let fake = FakeSlack::in_order(vec![Reply::Stalls]).await;
+    let started = std::time::Instant::now();
+
+    assert_eq!(check(&fake).await, Err(Unavailable::Timeout));
+    assert!(
+        started.elapsed() < slack::ANSWER_CHECK_DEADLINE * 2,
+        "bounded by the check's own deadline: {:?}",
+        started.elapsed()
+    );
 }

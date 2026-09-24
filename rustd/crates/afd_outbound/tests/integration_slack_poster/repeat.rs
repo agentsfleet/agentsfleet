@@ -23,7 +23,7 @@ fn thread_holding(marker: &AnswerMarker) -> String {
     let stamp = serde_json::to_string(&marker.metadata()).expect("a stamp serializes");
     format!(
         r#"{{"ok":true,"messages":[{{"ts":"{THREAD}","user":"U01","text":"why?"}},
-            {{"ts":"1712345678.000900","bot_id":"B01","text":"{ANSWER}","metadata":{stamp}}}]}}"#
+            {{"ts":"1712345678.000900","user":"{BOT_USER}","bot_id":"B01","text":"{ANSWER}","metadata":{stamp}}}]}}"#
     )
 }
 
@@ -153,6 +153,68 @@ async fn a_repeat_for_a_workspace_holding_no_grant_is_permanent_and_asks_nothing
 
     assert_eq!(verdict, Verdict::Permanent);
     assert!(slack.requests().is_empty(), "nothing was asked of Slack");
+
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_marker_another_app_posted_does_not_silence_the_answer() {
+    // Any app in the channel can post message metadata. This answer's exact
+    // marker under an author that is not the grant's bot is not proof the
+    // answer landed, so the repeat posts it.
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    fixture.seal_grant(BOT_TOKEN).await;
+
+    let slack = slack_answering(200, r#"{"ok":true}"#).await;
+    let forged = thread_holding(&marker(&fixture)).replace(BOT_USER, "U0OTHERAPP");
+    slack.answer(THREAD, 200, &forged);
+    let verdict = fixture
+        .poster(&slack.api_base())
+        .redeliver(&fixture.job())
+        .await;
+
+    assert_eq!(verdict, Verdict::Delivered);
+    assert_eq!(
+        slack
+            .requests()
+            .iter()
+            .map(Request::is_post)
+            .collect::<Vec<_>>(),
+        [false, true],
+        "a read, then the answer posted"
+    );
+
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_repeat_whose_grant_names_no_bot_user_posts_without_looking() {
+    // With no bot user recorded, no marker in the thread can be proven this
+    // daemon's own, so reading it would buy nothing: the repeat posts.
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    fixture.seal_grant_naming_no_bot_user(BOT_TOKEN).await;
+
+    let slack = slack_answering(200, r#"{"ok":true}"#).await;
+    slack.answer(THREAD, 200, &thread_holding(&marker(&fixture)));
+    let verdict = fixture
+        .poster(&slack.api_base())
+        .redeliver(&fixture.job())
+        .await;
+
+    assert_eq!(verdict, Verdict::Delivered);
+    assert_eq!(
+        slack
+            .requests()
+            .iter()
+            .map(Request::is_post)
+            .collect::<Vec<_>>(),
+        [true],
+        "one post and no thread read"
+    );
 
     fixture.cleanup().await;
 }

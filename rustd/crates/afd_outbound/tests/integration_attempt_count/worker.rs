@@ -36,6 +36,11 @@ async fn internal_retries_are_one_cycle_and_the_count_rides_the_delivered_event(
     lanes.drain().await;
 
     assert_eq!(poster.calls(), 3, "two refusals and an acceptance");
+    assert_eq!(
+        poster.kinds(),
+        [Attempt::First, Attempt::Repeat, Attempt::Repeat],
+        "a first cycle posts straight away; each retry may follow a post that landed"
+    );
     let (attempts, delivered_at, _updated_at) = row(&harness, event).await;
     assert_eq!(
         attempts, 1,
@@ -193,6 +198,11 @@ async fn bookkeeping_failure_does_not_discard_an_answer() {
     lanes.drain().await;
 
     assert_eq!(poster.calls(), 1, "the destination was given the answer");
+    assert_eq!(
+        poster.kinds(),
+        [Attempt::Repeat],
+        "a ledger that did not answer is not known to be a first cycle, so it looks"
+    );
     assert!(
         !capture.named(EVENT_COUNT_FAILED).is_empty(),
         "the cycle-start failure is reported: {:?}",
@@ -207,4 +217,43 @@ async fn bookkeeping_failure_does_not_discard_an_answer() {
         capture.named(EVENT_DELIVERED).is_empty(),
         "with the stamp refused, no delivered event claims a count"
     );
+}
+
+/// A later cycle looks before it posts.
+///
+/// The row already spent a cycle, in a process that may have died after its
+/// post landed. The lane opens this cycle from the ledger's count, so the
+/// poster is asked to repeat, which is what runs Slack's thread check.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_later_cycle_opens_as_a_repeat() {
+    let _lane = OUTBOUND_LANE.lock().await;
+    let harness = ready().await;
+    let event = "1700000002-9";
+    let entry = owe_and_queue(&harness, 9, event).await;
+    super::abandonment::set_attempts(&harness, event, 1).await;
+    let server = HangingQueue::spawn().await;
+    let token = CancellationToken::new();
+    let poster = Scripted::answering(&[Verdict::Delivered]);
+    let lanes = lanes_over(&server, harness.database.clone(), poster.clone(), &token).await;
+
+    lanes.dispatch(job(entry.clone(), event)).await;
+    await_until("the answer to be acknowledged", || {
+        server.acks().contains(&entry.as_str().to_owned())
+    })
+    .await;
+    token.cancel();
+    lanes.drain().await;
+
+    assert_eq!(
+        poster.kinds(),
+        [Attempt::Repeat],
+        "a second cycle is not a first attempt"
+    );
+    let (attempts, delivered_at, _updated_at) = row(&harness, event).await;
+    assert_eq!(
+        attempts, 2,
+        "this cycle is counted on top of the one before"
+    );
+    assert!(delivered_at.is_some(), "the answer is stamped delivered");
 }

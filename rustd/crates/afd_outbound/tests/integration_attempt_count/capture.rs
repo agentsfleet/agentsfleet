@@ -15,6 +15,9 @@ use super::*;
 pub(super) struct Scripted {
     verdicts: Arc<Vec<Verdict>>,
     calls: Arc<AtomicUsize>,
+    /// Which way each call arrived: a first attempt, or a repeat that may
+    /// follow one that landed.
+    kinds: Arc<Mutex<Vec<Attempt>>>,
 }
 
 impl Scripted {
@@ -22,7 +25,32 @@ impl Scripted {
         Self {
             verdicts: Arc::new(verdicts.to_vec()),
             calls: Arc::new(AtomicUsize::new(0)),
+            kinds: Arc::new(Mutex::new(Vec::new())),
         }
+    }
+
+    /// Which way each call arrived, in order.
+    pub(super) fn kinds(&self) -> Vec<Attempt> {
+        self.kinds
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// The next scripted verdict, recording how it was asked for.
+    fn answer(&self, attempt: Attempt) -> std::future::Ready<Verdict> {
+        self.kinds
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(attempt);
+        let nth = self.calls.fetch_add(1, Ordering::AcqRel);
+        let verdict = self
+            .verdicts
+            .get(nth)
+            .or_else(|| self.verdicts.last())
+            .copied()
+            .unwrap_or(Verdict::Permanent);
+        std::future::ready(verdict)
     }
 
     /// How many times the poster was asked.
@@ -33,14 +61,11 @@ impl Scripted {
 
 impl Deliver for Scripted {
     fn deliver(&self, _job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
-        let nth = self.calls.fetch_add(1, Ordering::AcqRel);
-        let verdict = self
-            .verdicts
-            .get(nth)
-            .or_else(|| self.verdicts.last())
-            .copied()
-            .unwrap_or(Verdict::Permanent);
-        std::future::ready(verdict)
+        self.answer(Attempt::First)
+    }
+
+    fn redeliver(&self, _job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+        self.answer(Attempt::Repeat)
     }
 }
 

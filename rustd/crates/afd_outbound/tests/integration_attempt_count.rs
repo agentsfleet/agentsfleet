@@ -49,7 +49,7 @@ use afd_dragonfly::{Dragonfly, OutboundDelivery, OutboundJob, OutboundQueue};
 use afd_outbound::obligation::{self, AbandonReason, Delivery};
 use afd_outbound::producer::MAX_DELIVERY_CYCLES;
 use afd_outbound::retry::DELIVERY_ATTEMPTS;
-use afd_outbound::{Deliver, Lanes, Posters, Verdict};
+use afd_outbound::{Attempt, Deliver, Lanes, Posters, Verdict};
 use tokio_util::sync::CancellationToken;
 use tracing::field::{Field, Visit};
 use tracing_subscriber::Layer;

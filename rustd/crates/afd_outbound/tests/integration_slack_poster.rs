@@ -34,6 +34,8 @@ use self::fixture::Fixture;
 
 /// The bot token the vault holds for this workspace.
 const BOT_TOKEN: &str = "xoxb-fixture-bot-token";
+/// The bot user the same grant recorded: the author of every answer posted.
+const BOT_USER: &str = "U0FIXTUREBOT";
 
 /// Where the answer is threaded, as a Slack producer records it.
 const CHANNEL: &str = "C0FIXTURE01";
