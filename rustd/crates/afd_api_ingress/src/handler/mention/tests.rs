@@ -1,6 +1,9 @@
 //! Parsing and filtering a verified mention, with no datastore.
 
-use super::{Asked, Parsed, REASON_BOT_MESSAGE, REASON_UNREADABLE, parse, without_bot_mention};
+use super::{
+    Asked, Parsed, REASON_BOT_MESSAGE, REASON_UNREADABLE, parse, unserialisable,
+    without_bot_mention,
+};
 use crate::handler::webhook::REASON_UNSUPPORTED_EVENT;
 
 /// One `event_callback` carrying an `app_mention` shaped by `event`.
@@ -122,4 +125,15 @@ fn the_leading_bot_mention_is_removed() {
     ] {
         assert_eq!(without_bot_mention(text), asked, "`{text}`");
     }
+}
+
+/// A body this daemon could not serialise is its own fault: a 500 carrying
+/// the fixed sentence, never a 4xx that would blame the sender, and never the
+/// serializer's message.
+#[test]
+fn an_unserialisable_body_is_this_daemons_own_500() {
+    assert_eq!(
+        unserialisable().status(),
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    );
 }

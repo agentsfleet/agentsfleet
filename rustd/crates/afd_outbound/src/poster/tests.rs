@@ -145,7 +145,8 @@ async fn a_retry_after_a_first_attempt_is_a_repeat() {
     };
     let token = CancellationToken::new();
 
-    let verdict = deliver_with_retry(&posters, &job(Provider::Slack.id()), &token, Attempt::First).await;
+    let verdict =
+        deliver_with_retry(&posters, &job(Provider::Slack.id()), &token, Attempt::First).await;
 
     assert_eq!(verdict, Verdict::Delivered);
     assert_eq!(posters.slack.seen(), [Attempt::First, Attempt::Repeat]);
@@ -159,7 +160,13 @@ async fn a_later_cycle_repeats_from_its_first_attempt() {
     };
     let token = CancellationToken::new();
 
-    let verdict = deliver_with_retry(&posters, &job(Provider::Slack.id()), &token, Attempt::Repeat).await;
+    let verdict = deliver_with_retry(
+        &posters,
+        &job(Provider::Slack.id()),
+        &token,
+        Attempt::Repeat,
+    )
+    .await;
 
     assert_eq!(verdict, Verdict::Delivered);
     assert_eq!(posters.slack.seen(), [Attempt::Repeat, Attempt::Repeat]);
