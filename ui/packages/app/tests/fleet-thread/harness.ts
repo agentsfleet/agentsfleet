@@ -119,6 +119,7 @@ export function ev(
     failureDetail: over.failureDetail ?? null,
     createdAt: over.createdAt ?? new Date(Date.UTC(2026, 4, 15, 9, 0, 0)),
     status: over.status ?? "processed",
+    clientTimestamp: over.clientTimestamp,
     custom: over.custom,
   };
 }
@@ -134,6 +135,7 @@ export function toThreadMessage(e: FleetEvent): ThreadMessageLike {
         actor: e.actor,
         requestJson: e.custom?.requestJson,
         status: e.status,
+        queued: e.clientTimestamp === true,
         reply: e.reply,
         outcome: e.outcome,
         failureLabel: e.failureLabel,

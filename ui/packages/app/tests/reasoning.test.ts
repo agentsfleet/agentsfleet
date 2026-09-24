@@ -42,6 +42,48 @@ describe("splitReasoning", () => {
     expect(parts.thinking).toBe(false);
   });
 
+  it("omits streamed tool payloads while preserving surrounding reasoning and answer", () => {
+    const parts = splitReasoning(
+      '<think>Checking memory. <tool_call>{"name":"memory_recall","arguments":{"query":"private"}}</tool_call><tool_result>private memory</tool_result> Found it.</think>The answer.',
+    );
+    expect(parts.reasoning).toBe("Checking memory. Found it.");
+    expect(parts.answer).toBe("The answer.");
+    expect(parts.reasoning).not.toContain("private");
+  });
+
+  it("hides a tool call that has not closed yet", () => {
+    const parts = splitReasoning('<think><tool_call>{"name":"memory_store","arguments":{"content":"private"');
+    expect(parts).toEqual({ reasoning: "", answer: "", thinking: true });
+  });
+
+  it("holds back a partial tool opener until the next streamed chunk arrives", () => {
+    expect(splitReasoning("<think>Checking <tool_ca").reasoning).toBe("Checking");
+    expect(splitReasoning("<think>Checking <tool_call>{private").reasoning).toBe("Checking");
+  });
+
+  it("removes tool protocol text outside a reasoning block from the spoken answer", () => {
+    const parts = splitReasoning('<think>Checking.</think><tool_call>{"name":"memory_store"}</tool_call>Saved.');
+    expect(parts).toEqual({ reasoning: "Checking.", answer: "Saved.", thinking: false });
+    expect(splitReasoning('Saved. <tool_re').answer).toBe("Saved.");
+  });
+
+  it("keeps a closing tag inside a quoted tool argument hidden", () => {
+    const parts = splitReasoning('<think>Checking <tool_call>{"content":"x </tool_call> secret"}</tool_call>Done.</think>Answer.');
+    expect(parts).toEqual({ reasoning: "Checking Done.", answer: "Answer.", thinking: false });
+    expect(splitReasoning("<think>Checking <").reasoning).toBe("Checking");
+  });
+
+  it("ignores reasoning delimiters inside tool arguments and keeps text between results", () => {
+    expect(splitReasoning('<think>Checking <tool_call>{"content":"x </think> secret"}</tool_call> Done.</think>Answer.'))
+      .toEqual({ reasoning: "Checking Done.", answer: "Answer.", thinking: false });
+    expect(splitReasoning("<think>Start <tool_result>one</tool_result> middle <tool_result>two</tool_result> End.</think>Answer."))
+      .toEqual({ reasoning: "Start middle End.", answer: "Answer.", thinking: false });
+    expect(splitReasoning("<think>Start <tool_result>x </tool_result> secret</tool_result> End.</think>Answer.").reasoning)
+      .toBe("Start End.");
+    expect(splitReasoning("<think>Before <tool_result>line <tool_call> literal</tool_result> After.</think>Answer."))
+      .toEqual({ reasoning: "Before After.", answer: "Answer.", thinking: false });
+  });
+
   it("survives a stray closing tag with no opening one", () => {
     expect(splitReasoning("answer</think>tail").answer).toBe("answer</think>tail");
   });

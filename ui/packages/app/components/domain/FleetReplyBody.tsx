@@ -15,7 +15,7 @@ import { FleetMarkdown } from "./FleetMarkdown";
 import { FleetMessageRow, ROW_TONE } from "./FleetMessageRow";
 import { ToolCalls, type readTools } from "./FleetToolCalls";
 import { messageOutcome } from "./fleetFailureCopy";
-import { readReply } from "./fleetMessageReaders";
+import { readQueued, readReply } from "./fleetMessageReaders";
 import {
   STATUS_AGENT_ERROR,
   STATUS_FAILED,
@@ -26,6 +26,7 @@ import { splitReasoning } from "@/lib/events/reasoning";
 
 const STREAM_CURSOR = "▍";
 const WORKING_LABEL = "Working";
+const QUEUED_LABEL = "Queued";
 const COPY_REPLY_LABEL = "Copy reply";
 const REASONING_VALUE = "reasoning";
 const REASONING_LABEL = "Reasoning";
@@ -56,7 +57,7 @@ export function FleetReply({
   const { reasoning, answer, thinking } = splitReasoning(reply);
   // Keep the same reply-side cue while delivery is pending and until the
   // first response arrives, so acknowledgement does not flash a second label.
-  const awaitingFirstWord = streaming && reply.length === 0;
+  const awaitingFirstWord = streaming && answer.length === 0 && reasoning.length === 0 && tools.length === 0;
   return (
     <FleetMessageRow
       sender={senderLabel || "Fleet"}
@@ -67,7 +68,7 @@ export function FleetReply({
       <ToolCalls tools={tools} />
       {reasoning.length > 0 ? <Reasoning text={reasoning} live={thinking} /> : null}
       {awaitingFirstWord ? (
-        <WorkingIndicator />
+        <WorkingIndicator queued={readQueued(message)} />
       ) : (
         <Spoken
           answer={answer}
@@ -142,11 +143,11 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
       className="mb-md"
     >
       <AccordionItem value={REASONING_VALUE} className="border-0">
-        <AccordionTrigger className="py-xs text-label text-muted-foreground hover:no-underline">
+        <AccordionTrigger className="py-xs text-label text-text-subtle hover:no-underline">
           {live ? REASONING_LIVE_LABEL : REASONING_LABEL}
         </AccordionTrigger>
         <AccordionContent>
-          <p className="whitespace-pre-wrap text-body-sm leading-prose text-muted-foreground">
+          <p className="whitespace-pre-wrap text-body-sm leading-prose text-text-subtle">
             {text}
           </p>
         </AccordionContent>
@@ -184,15 +185,16 @@ const ReplyActions = memo(function ReplyActions({
   );
 });
 
-function WorkingIndicator() {
+function WorkingIndicator({ queued }: { queued: boolean }) {
+  const label = queued ? QUEUED_LABEL : WORKING_LABEL;
   return (
     <output
-      className="inline-flex items-center gap-sm text-body-sm text-muted-foreground"
-      aria-label={WORKING_LABEL}
+      className="inline-flex items-center gap-sm text-body-sm text-text-subtle"
+      aria-label={label}
       data-testid="fleet-working"
     >
       <PawPrintIcon aria-hidden="true" className="size-4 motion-safe:animate-pulse" />
-      <span>{WORKING_LABEL}…</span>
+      <span>{label}…</span>
     </output>
   );
 }

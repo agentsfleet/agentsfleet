@@ -212,12 +212,48 @@ describe("useFleetEventStream", () => {
     expect(result.current.events[0]!.status).toBe("optimistic");
     expect(result.current.events[0]!.text).toBe("howdy");
     expect(result.current.events[0]!.role).toBe("user");
+    expect(result.current.convertEvent(result.current.events[0]!).metadata?.custom?.["queued"]).toBe(true);
 
     act(() => {
       result.current.reconcileOptimistic(tempId, "evt_real");
     });
     await waitFor(() => expect(result.current.events[0]!.id).toBe("evt_real"));
     expect(result.current.events[0]!.status).toBe("received");
+    expect(result.current.convertEvent(result.current.events[0]!).metadata?.custom?.["queued"]).toBe(true);
+    act(() => FakeEventSource.instances[0]!.emit({
+      kind: FRAME_KIND.EVENT_RECEIVED,
+      event_id: "evt_real",
+      actor: "steer:alice@example.com",
+      created_at: Date.now(),
+    }));
+    expect(result.current.convertEvent(result.current.events[0]!).metadata?.custom?.["queued"]).toBe(false);
+  });
+
+  it("keeps a later steer queued while the first run streams, then starts it without mixing replies", () => {
+    const { result } = mount();
+    let first = "";
+    let second = "";
+    act(() => {
+      first = result.current.appendOptimistic("remember me", "steer:alice@example.com");
+      second = result.current.appendOptimistic("what did I say?", "steer:alice@example.com");
+      result.current.reconcileOptimistic(first, "evt_first");
+      result.current.reconcileOptimistic(second, "evt_second");
+    });
+    const source = FakeEventSource.instances[0]!;
+    act(() => {
+      source.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_first", actor: "steer:alice@example.com", created_at: 1 });
+      source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_first", text: "Saved." });
+    });
+    expect(result.current.events.map((event) => event.reply)).toEqual(["Saved.", ""]);
+    expect(result.current.convertEvent(result.current.events[1]!).metadata?.custom?.["queued"]).toBe(true);
+
+    act(() => {
+      source.emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_first", status: "processed" });
+      source.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_second", actor: "steer:alice@example.com", created_at: 2 });
+      source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_second", text: "You said remember me." });
+    });
+    expect(result.current.events.map((event) => event.reply)).toEqual(["Saved.", "You said remember me."]);
+    expect(result.current.convertEvent(result.current.events[1]!).metadata?.custom?.["queued"]).toBe(false);
   });
 
   it("markOptimisticFailed flips the optimistic message to failed", async () => {

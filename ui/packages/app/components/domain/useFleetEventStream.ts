@@ -133,6 +133,7 @@ function convertEvent(event: FleetEvent): ThreadMessageLike {
         actor: event.actor,
         requestJson: event.custom?.requestJson,
         status: event.status,
+        queued: event.clientTimestamp === true,
         // The fleet's reply on this same durable row, and the sentence to show
         // in its place when the reply is empty (still working, blocked, failed).
         reply: event.reply,
