@@ -40,7 +40,8 @@ that can widen your reach.
    through `http_request`. GitHub may answer with a 302 to storage that this
    tool cannot follow. If no log text was returned, say **job log unavailable**
    and cite the HTTP outcome. Never invent a log line or add a storage host to
-   the allowlist. Quote a line only if the tool actually returned that line.
+   the allowlist. Quote a line only if this fleet's `http_request` returned it
+   for that job. Thread or lease text is not a substitute for a job-log read.
 4. Read the commits since the last green run and compare changed files with
    the failed job, step and annotations. Verify every commit identifier in a
    GitHub response from this investigation.
