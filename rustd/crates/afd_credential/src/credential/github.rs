@@ -40,17 +40,54 @@ mod exchange;
 
 pub use self::exchange::{Exchange, mint};
 
-/// The permission a repository-scoped mint asks for on `contents`.
+/// One repository permission a mint may ask GitHub for.
 ///
-/// Read and write both ask for it; the level is what differs, and it is the
-/// level the response is checked against.
-const PERMISSION_CONTENTS: &str = "contents";
+/// A closed set: a permission this enum does not name cannot be requested,
+/// because it cannot be written down (`M-STRONG-TYPES`). The response side
+/// keeps GitHub's own strings, because [`Granted::verify`] has to SEE a name it
+/// does not know in order to refuse it. Serialised through [`Self::as_str`], so
+/// the name on the wire and the name the response is checked by are one
+/// spelling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(into = "&'static str")]
+pub enum GithubPermission {
+    /// Workflow runs, their jobs and the job-log requests: the CI evidence.
+    Actions,
+    /// Check runs and their annotations: where a failed assertion is quoted.
+    Checks,
+    /// Repository files, and at write the Git objects and ref a repair pushes.
+    Contents,
+    /// Opening the draft Pull Request a repair proposes. Write mints only.
+    PullRequests,
+}
 
-/// The permission a WRITE mint additionally asks for.
-///
-/// Its absence is the read scope, which is why a read mint sends no entry for
-/// it rather than sending one set to read.
-const PERMISSION_PULL_REQUESTS: &str = "pull_requests";
+impl GithubPermission {
+    /// The name GitHub spells this permission with.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Actions => "actions",
+            Self::Checks => "checks",
+            Self::Contents => "contents",
+            Self::PullRequests => "pull_requests",
+        }
+    }
+}
+
+impl From<GithubPermission> for &'static str {
+    fn from(permission: GithubPermission) -> Self {
+        permission.as_str()
+    }
+}
+
+/// What every mint reads, write included: the repository, and the evidence a
+/// failed run leaves — its runs, jobs and job-log requests, and its check
+/// annotations.
+const EVIDENCE_READS: [GithubPermission; 3] = [
+    GithubPermission::Contents,
+    GithubPermission::Actions,
+    GithubPermission::Checks,
+];
 
 /// How far one permission reaches.
 ///
@@ -98,24 +135,26 @@ pub struct ScopedRequest {
     /// Bare repository names, owner stripped.
     repositories: Vec<String>,
     /// Exactly the permissions this access level needs, and no others.
-    permissions: BTreeMap<&'static str, Permission>,
+    permissions: BTreeMap<GithubPermission, Permission>,
 }
 
 impl ScopedRequest {
     /// The narrowest request that satisfies `binding`.
+    ///
+    /// Every mint reads [`EVIDENCE_READS`]. A write mint raises `contents` to
+    /// write and adds `pull_requests` write, and asks for nothing else: never
+    /// `workflows`, so a repair cannot change what CI runs.
     #[must_use]
     pub fn for_binding(binding: &RepositoryBinding) -> Self {
-        let contents = match binding.access() {
-            Access::Read => Permission::Read,
-            Access::Write => Permission::Write,
-        };
-        let mut permissions = BTreeMap::from([(PERMISSION_CONTENTS, contents)]);
+        let mut permissions: BTreeMap<GithubPermission, Permission> = EVIDENCE_READS
+            .into_iter()
+            .map(|permission| (permission, Permission::Read))
+            .collect();
         if binding.access() == Access::Write {
-            // Asked for ONLY at write. A read mint sends no entry at all,
-            // because the absence is the read scope — sending
-            // `pull_requests: read` would request a grant the fleet did not
-            // declare and then have to explain it in the response check.
-            permissions.insert(PERMISSION_PULL_REQUESTS, Permission::Write);
+            // `pull_requests` is asked for ONLY at write. A read mint sends no
+            // entry at all, because the absence is the read scope.
+            permissions.insert(GithubPermission::Contents, Permission::Write);
+            permissions.insert(GithubPermission::PullRequests, Permission::Write);
         }
         Self {
             repositories: binding
@@ -129,7 +168,7 @@ impl ScopedRequest {
 
     /// What this request asked for, for the response to be checked against.
     #[must_use]
-    pub const fn permissions(&self) -> &BTreeMap<&'static str, Permission> {
+    pub const fn permissions(&self) -> &BTreeMap<GithubPermission, Permission> {
         &self.permissions
     }
 }
@@ -201,7 +240,7 @@ impl Granted {
     pub fn verify(
         &self,
         binding: &RepositoryBinding,
-        requested: &BTreeMap<&'static str, Permission>,
+        requested: &BTreeMap<GithubPermission, Permission>,
     ) -> Result<(), Overreach> {
         self.verify_repositories(binding)?;
         self.verify_permissions(requested)
@@ -242,7 +281,7 @@ impl Granted {
     /// or does not model, is refused.
     fn verify_permissions(
         &self,
-        requested: &BTreeMap<&'static str, Permission>,
+        requested: &BTreeMap<GithubPermission, Permission>,
     ) -> Result<(), Overreach> {
         if self.permissions.is_empty() {
             return Err(Overreach::Unstated);
@@ -250,14 +289,17 @@ impl Granted {
         // Nothing granted beyond an ambient read except exactly what was asked
         // for, at exactly the level it was asked for.
         let within_request = self.permissions.iter().all(|(name, granted)| {
-            *granted <= Permission::Read || requested.get(name.as_str()) == Some(granted)
+            *granted <= Permission::Read
+                || requested
+                    .iter()
+                    .any(|(permission, want)| permission.as_str() == name && want == granted)
         });
         // And everything asked for was actually granted, so a token quietly
         // NARROWER than the declaration is refused here rather than at the
         // vendor.
         let fully_granted = requested
             .iter()
-            .all(|(name, want)| self.permissions.get(*name) == Some(want));
+            .all(|(permission, want)| self.permissions.get(permission.as_str()) == Some(want));
         if within_request && fully_granted {
             Ok(())
         } else {

@@ -56,9 +56,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/crates/afd_credential/src/credential/github.rs` · `github/exchange.rs` · their tests | EDIT | Permission names become an enum; the read mint adds `actions` and `checks` read; `Granted::verify` expects them. |
+| `rustd/crates/afd_credential/src/credential/github.rs` · `github/exchange.rs` · `github/tests.rs` · `github/tests/transport.rs` | EDIT | Permission names become an enum; the read mint adds `actions` and `checks` read; `Granted::verify` expects them. |
 | `rustd/crates/afd_gate/src/policy/egress/read.rs` | EDIT | A test pins that the prefix covers the CI evidence paths and no neighbour. |
-| `rustd/crates/afd_gate/src/policy/egress/tests.rs` | CREATE | The write-reach proofs for a Slack-requested lease. |
+| `rustd/crates/afd_gate/src/policy/egress/tests.rs` · `egress/tests/slack.rs` | CREATE | The binding proofs moved out of `mod.rs`, and the write-reach proofs for a Slack-requested lease. |
+| `rustd/crates/afd_fleet/tests/integration_lease_gates.rs` · `integration_lease_gates/slack.rs` | EDIT · CREATE | One Slack request is one lease: the ledger's key, the stream backlog, the branch. |
 | `rustd/crates/afd_gate/src/policy/egress/mod.rs` | EDIT | Declares the test module. |
 | `docs/architecture/scenarios/slack-incident-responder.md` | EDIT | §8 and §10 statuses when this ships. |
 
@@ -87,23 +88,23 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The request side names permissions with `GithubPermission { Actions, Checks, Contents, PullRequests }`, serialised `snake_case`. `for_binding` asks for `contents`, `actions` and `checks` read; a write binding keeps those reads and adds `contents` and `pull_requests` write. `Granted::verify` requires exactly that set and still refuses a widened token.
 
-- **Dimension 1.1** — a read binding requests `{contents, actions, checks}` read and nothing else → Test `read_mint_requests_ci_evidence_reads`
-- **Dimension 1.2** — a grant missing `actions`, or carrying `actions: write` or `workflows`, is refused → Test `verify_refuses_a_ci_scope_mismatch`
-- **Dimension 1.3** — a write binding requests the three reads plus `contents` and `pull_requests` write → Test `write_mint_keeps_the_evidence_reads`
+- **Dimension 1.1** DONE — a read binding requests `{contents, actions, checks}` read and nothing else → Test `read_mint_requests_ci_evidence_reads`
+- **Dimension 1.2** DONE — a grant missing `actions`, or carrying `actions: write` or `workflows`, is refused → Test `verify_refuses_a_ci_scope_mismatch`
+- **Dimension 1.3** DONE — a write binding requests the three reads plus `contents` and `pull_requests` write → Test `write_mint_keeps_the_evidence_reads`
 
 ### §2 — The fleet reads the run over HTTP
 
 No new daemon step and no runner change. The read rule is a GET and HEAD prefix on `/repos/{repository}/`, which the runner matches with `startsWith` (`http_request_policy.zig:90-95`). The test runs the CI paths the ci-responder's SKILL.md reads (M206_004 §1) against that prefix, and a neighbouring repository's same paths against it, so a future change to the rule that drops a CI path or widens past the slash fails here.
 
-- **Dimension 2.1** — for `acme/widgets`, GET `/actions/runs/123`, `/actions/runs/123/jobs`, `/actions/jobs/456`, `/actions/jobs/456/logs` and `/check-runs/789/annotations` under `/repos/acme/widgets/` are admitted; the same paths under `/repos/acme/widgets-private/` and `/repos/other/repo/` are not → Test `read_rules_cover_ci_evidence_paths`
+- **Dimension 2.1** DONE — for `acme/widgets`, GET `/actions/runs/123`, `/actions/runs/123/jobs`, `/actions/jobs/456`, `/actions/jobs/456/logs` and `/check-runs/789/annotations` under `/repos/acme/widgets/` are admitted; the same paths under `/repos/acme/widgets-private/` and `/repos/other/repo/` are not → Test `read_rules_cover_ci_evidence_paths`
 
 ### §3 — A write fleet reached from Slack opens at most one draft PR
 
 No approval step: attaching a write fleet to the channel is the authority (Discovery). The lease for a Slack-requested event on a write-bound fleet carries the fleet's own rules, and the proofs pin their reach: one ref, `refs/heads/agentsfleet-repair/<base64 of the event id>` (`afd_gate/src/policy/repair.rs:44-68`); a pull request only with that head, the trusted base and `draft: true`; no PUT, PATCH or DELETE rule and no `/graphql` path; a token with no `workflows` permission. One Slack event is one event (M206_002's producer key), so one request is one branch.
 
-- **Dimension 3.1** — the assembled rules admit a ref only for the event's branch and a pull request only as a draft from it against the trusted base → Test `slack_write_lease_admits_one_branch_and_one_draft`
-- **Dimension 3.2** — no rule admits PUT, PATCH, DELETE or a `/graphql` path, so a merge, a ready-for-review, a ref update or a deletion is denied → Test `slack_write_lease_has_no_merge_or_ref_update_path`
-- **Dimension 3.3** — a Slack retry of one request yields one lease and one branch name; a second request yields a different branch → Test `one_slack_request_is_one_attempt`
+- **Dimension 3.1** DONE — the assembled rules admit a ref only for the event's branch and a pull request only as a draft from it against the trusted base → Test `slack_write_lease_admits_one_branch_and_one_draft`
+- **Dimension 3.2** DONE — no rule admits PUT, PATCH, DELETE or a `/graphql` path, so a merge, a ready-for-review, a ref update or a deletion is denied → Test `slack_write_lease_has_no_merge_or_ref_update_path`
+- **Dimension 3.3** DONE — a Slack retry of one request yields one lease and one branch name; a second request yields a different branch → Test `one_slack_request_is_one_attempt`
 
 ## Interfaces
 
@@ -149,7 +150,7 @@ N/A — no new metric or event: the fleet's reads already appear as its tool-cal
 | 2.1 | unit | `read_rules_cover_ci_evidence_paths` | The five CI paths under `/repos/acme/widgets/` start with the rule's prefix; under `/repos/acme/widgets-private/` and `/repos/other/repo/` none does; the rule's methods are GET and HEAD only. |
 | 3.1 | unit | `slack_write_lease_admits_one_branch_and_one_draft` | For event `1700000000000-7` on a write binding, the only ref rule locks `refs/heads/agentsfleet-repair/<its base64>`, and the only pull rule locks head, base `main`, and `draft: true`. |
 | 3.2 | unit | `slack_write_lease_has_no_merge_or_ref_update_path` | The assembled rules contain no PUT, PATCH or DELETE method and no path ending `/graphql`, `/merge` or `/pulls/{n}`. |
-| 3.3 | integration | `one_slack_request_is_one_attempt` | The same signed mention delivered twice issues one lease whose branch names that event; a second mention's lease names a different branch. |
+| 3.3 | integration | `one_slack_request_is_one_attempt` | The same Slack mention admitted twice leaves one stream entry and one lease, with no approval asked, on the branch named for that event; a second mention is a second entry whose branch differs. |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -218,3 +219,4 @@ N/A — no new metric or event: the fleet's reads already appear as its tool-cal
 - **Metrics review** — no new events; no analytics or funnel playbook update.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
 - **Deferrals** — the job log's storage hop, owner-held per the quote above.
+- **Pending with Indy (Sep 24, 2026)** — the platform App registration grants no Checks permission (`playbooks/operations/github_app_registration/001_playbook.md:33-38`), and `Granted::verify` requires the exact requested set, so the read mint now asks for a permission the App does not hold. unverified: GitHub refuses such a mint (422); if it does, every GitHub-bound fleet's mint fails until the App adds Checks: read and each installation accepts. The Failure Modes row "App lacks Actions or Checks → the fleet's GET answers 403" assumes the mint still succeeds.

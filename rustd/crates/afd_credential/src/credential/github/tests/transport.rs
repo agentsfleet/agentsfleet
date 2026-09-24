@@ -50,7 +50,7 @@ fn binding() -> RepositoryBinding {
 
 #[tokio::test]
 async fn a_narrowed_response_is_delivered_with_the_local_expiry_ceiling() {
-    let body = br#"{"token":"ghs_fixture","expires_at":"2026-01-01T00:00:00Z","permissions":{"contents":"read","metadata":"read"},"repositories":[{"full_name":"acme/widgets"}]}"#;
+    let body = br#"{"token":"ghs_fixture","expires_at":"2026-01-01T00:00:00Z","permissions":{"contents":"read","actions":"read","checks":"read","metadata":"read"},"repositories":[{"full_name":"acme/widgets"}]}"#;
     let outcome = request_token(&client(&serve("201 Created", body)), 42, &binding(), NOW_MS).await;
     let minted = outcome.minted().expect("the narrow response mints");
 
