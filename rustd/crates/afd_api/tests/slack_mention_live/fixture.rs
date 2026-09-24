@@ -103,6 +103,23 @@ impl Fixture {
         self.instance().router()
     }
 
+    /// The production ingress over this fixture's database, for a case that
+    /// drives one of its statements directly rather than through a delivery.
+    /// Its vault key and queue are never reached by the statements it runs.
+    pub(super) fn ingress(&self) -> afd_ingress::Ingress {
+        let queue = Dragonfly::unreachable(&harness::unreachable_queue())
+            .expect("a lazy manager opens no socket, so it cannot fail to open one");
+        afd_ingress::Ingress::new(
+            self.database.clone(),
+            afd_vault::Vault::new(
+                self.database.clone(),
+                std::sync::Arc::new(afd_crypto::secret::Kek::from_bytes([0x11; 32])),
+                afd_crypto::entropy::Entropy::new(),
+            ),
+            afd_admission::Admissions::for_tests(self.database.clone(), queue),
+        )
+    }
+
     /// The same router with a live fleet queue, for a mention that installs
     /// the channel's resident: an install creates the fleet's stream.
     pub(super) async fn resident_router(&self) -> axum::Router {
