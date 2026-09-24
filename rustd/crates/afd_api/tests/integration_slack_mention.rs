@@ -251,5 +251,8 @@ mod resident_bound;
 #[path = "integration_slack_mention/resident_race.rs"]
 mod resident_race;
 
+#[path = "integration_slack_mention/resident_privileges.rs"]
+mod resident_privileges;
+
 #[path = "integration_slack_mention/thread.rs"]
 mod thread;

@@ -1,0 +1,21 @@
+-- Slot 560 granted api_runtime SELECT and INSERT on core.connector_channels
+-- and called the binding insert-once: "it is never updated (api_runtime is
+-- granted no UPDATE)". Routing Slack mentions to a channel's resident
+-- superseded that, and this slot is the grant the change needed.
+--
+-- A Slack team that moves to another workspace keeps its channel bindings.
+-- The next mention installs a resident in the workspace the team maps to now,
+-- and the resident bind (`afd_ingress::sql::INSERT_RESIDENT`) re-points the
+-- binding with ON CONFLICT ... DO UPDATE, so the old workspace's fleet never
+-- runs it. Postgres requires UPDATE on every column that clause assigns
+-- whether or not a row conflicts, so without this grant every resident bind,
+-- and with it every mention a channel's resident takes and every notice, was
+-- refused with "permission denied" under api_runtime. The integration lane
+-- connects as the database owner, which bypasses grants; the suite's
+-- `resident_privileges` case runs the bind as api_runtime.
+--
+-- Exactly the three columns the re-point assigns, and nothing wider: a
+-- binding's id and its identity (provider, account, channel) stay insert-only.
+-- VERSION is 0.50.0, above the 0.30.0 anchor, so slot 560 stays frozen
+-- history, its comment included.
+GRANT UPDATE (fleet_id, kind, created_at) ON core.connector_channels TO api_runtime;
