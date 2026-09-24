@@ -20,7 +20,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Priority:** P0 — no connector answer can reach its thread, and every non-empty answer from every producer is owed to a model provider and re-offered to the queue without end.
 **Categories:** API, SQL
 **Batch:** B1 — first on the critical path, beside M206_003 §1 and §3 and M206_004 §1–§2; M206_002 adds the only producer that records a destination, and an approval continuation inherits one wherever a fleet's own gate rules park an event.
-**Branch:** feat/m206-slack-incident-responder
+**Branch:** `feat/m206-slack-incident-responder`
 **Baseline revision:** f3edd3c17062087a6db7f7e271606bf0c3901259
 **Test Baseline:** `unit=2662 integration=572` at the comparison revision, measured on an isolated checkout of it (Rust unit 2662 passed / 0 failed / 592 ignored; integration 571 + 1 exclusive, 0 failed; TypeScript app 2976 · website 142 · cli 1755 · design-system 634).
 **Baseline evidence:** `playbooks/operations/acceptance/baselines/M206_001-f3edd3c17.md`

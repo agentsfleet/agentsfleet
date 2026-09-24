@@ -20,7 +20,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Priority:** P0 — the drill's diagnosis needs Continuous Integration (CI) evidence no fleet token can read today, and under the Claude Tag authority model the write fleet's reach is the only boundary a channel member's request meets.
 **Categories:** API
 **Batch:** B1 for §1, §2, and Dimensions 3.1–3.2, which need no other workstream; Dimension 3.3 after M206_002 admits a mention. Ships in M206_002's Pull Request.
-**Branch:** feat/m206-slack-incident-responder
+**Branch:** `feat/m206-slack-incident-responder`
 **Folded-into:** `M206_001`
 **Baseline revision:** f3edd3c17062087a6db7f7e271606bf0c3901259
 **Test Baseline:** `unit=2662 integration=572` at the comparison revision, inherited from `M206_001` — one branch, measured once.
