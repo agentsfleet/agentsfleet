@@ -10,7 +10,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
   sequencing signal. A section that contradicts these rules loses — delete it.
 -->
 
-# M206_004: In #ci-dev, then #ci-prod, a failed run's thread gets an evidence-cited diagnosis and, on request, one draft fix PR
+# M206_004: In #ci-dev, then #ci-prod, a failed Linkwarden run gets an evidence-cited diagnosis and one draft fix PR on request
 
 **Prototype:** v2.0.0
 **Milestone:** M206
@@ -32,17 +32,17 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** in `#ci-dev` a mention in a failed run's thread gets one threaded answer citing the run, its failed job and step, a log line, and Grafana readings over the run's window, or naming each source it could not read; `@agentsfleet ci-dev-repairer open the fix` yields exactly one draft Pull Request (PR) whose link lands in the thread, and nothing merges; the same holds in `#ci-prod` after the development drill is recorded.
+**Goal (testable):** in `#ci-dev` a mention in a failed run's thread gets one threaded answer citing the run, its failed job and step, a log line, and Grafana readings over the run's window, or naming each source it could not read; `@agentsfleet-dev ci-dev-repairer open the fix` yields exactly one draft Pull Request (PR) whose link lands in the thread, and nothing merges; the same holds in `#ci-prod` after the development drill is recorded.
 
-**Problem:** nothing written down gets a team from "Slack is connected" to "a failed run's thread gets a real answer". The shipped responder posts to Slack itself through a pasted bot token (`tests/fixtures/fleetbundle/incident-responder/TRIGGER.md:25-39`) and reads Loki rather than job logs; no bundle answers a mention. The App registration grants Contents read-only and no Checks permission (`playbooks/operations/github_app_registration/001_playbook.md:33-38`), while a write mint asks for `contents: write` and M206_003's read mint asks for `checks: read`; unverified: the live App's settings, settled by reading its permissions page. A draft fix opens without a per-request approval under the owner's Claude Tag decision, and a branch pushed into the same repository runs that repository's workflows, so which workflows can reach deploy secrets from `agentsfleet-repair/*` decides the blast radius; unverified: the current workflows' triggers and secret scopes.
+**Problem:** nothing written down gets a team from "Slack is connected" to "a failed run's thread gets a real answer" for `agentsfleet/linkwarden`. The shipped responder posts to Slack itself through a pasted bot token (`tests/fixtures/fleetbundle/incident-responder/TRIGGER.md:25-39`) and reads Loki rather than job logs; no bundle answers a mention. The App registration grants Contents read-only and no Checks permission (`playbooks/operations/github_app_registration/001_playbook.md:33-38`), while a write mint asks for `contents: write` and M206_003's read mint asks for `checks: read`; unverified: the live App's settings, settled by reading its permissions page. A draft fix opens without a per-request approval under the owner's Claude Tag decision, and a branch pushed into Linkwarden runs that repository's workflows, so its triggers and secret scopes decide the blast radius.
 
-**Solution summary:** two bundles join the fixture corpus: `ci-responder`, read-only with no Slack credential, and `ci-repairer`, write-bound to one repository and base. A playbook carries every external step apart from product code, including the App permission change and keeping deploy secrets off repair branches. The drills run on `api-dev` first and production after, with evidence recorded per stage.
+**Solution summary:** two bundles join the fixture corpus: `ci-responder`, read-only with no Slack credential, and `ci-repairer`, write-bound to `agentsfleet/linkwarden` with trusted base `dev`. A playbook carries every external step apart from product code, including the App permission change and an audit of Linkwarden's repair-branch secret reach. The drills run on `api-dev` first and production after, with evidence recorded per stage.
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** `feat(drill): a CI failure's Slack thread gets a cited diagnosis and one draft fix on request`
+- **PR title (eventual):** `feat(drill): diagnose a Linkwarden CI failure and draft one fix on request`
 - **Intent (one sentence):** the team's own failed runs are diagnosed where they are announced, from evidence the fleet actually read, and a fix is one draft PR away.
-- **Handshake** — pending until the implementing agent performs PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake (Sep 24, 2026)** — A failed Linkwarden Continuous Integration (CI) run announced in Slack should receive a diagnosis grounded in readings from that run; a person can then ask one tightly scoped repair fleet for one draft Pull Request. **ASSUMPTIONS I'M MAKING:** the bundles are published through the workspace library; install adds the channel-specific mention trigger; the repair target is `agentsfleet/linkwarden` at base `dev`; the exact job-log reader follows the revised M206_003; the development drill precedes production. These match the clarified Intent above.
 
 ## Implementing agent — read these first
 
@@ -60,6 +60,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `tests/fixtures/fleetbundle/trigger/mention_valid.md` | CREATE | A parser fixture for the `mention` trigger; the bundles ship without a channel and gain one at install. |
 | `rustd/crates/afd_fleet_runtime/tests/support/mod.rs` | EDIT | Both bundles join `FIRST_PARTY` and the corpus. |
 | `playbooks/operations/slack_incident_drill/001_playbook.md` | CREATE | Every external step, the secret hardening, evidence capture, and the negative drills. |
+| `playbooks/README.md` | EDIT | Inventory parity for the new operations playbook directory. |
 | `playbooks/operations/github_app_registration/001_playbook.md` | EDIT | Checks read-only; Contents read and write. |
 | `playbooks/operations/acceptance/drills/ci-incident-dev.md` · `ci-incident-prod.md` | CREATE | Recorded evidence per stage. |
 | `docs/architecture/scenarios/slack-incident-responder.md` · `scenarios/production-deploy-repair.md` | EDIT | Proof status, one line per proven stage; the bundle location. |
@@ -87,7 +88,7 @@ Cross-repository, on its own branch: `~/Projects/docs/fleets/library.mdx` (the b
 
 ### §1 — Two drill bundles
 
-`ci-responder`: tools `http_request`, `memory_store`, `memory_recall`; credentials `github` and `grafana` only; a read binding on `agentsfleet/agentsfleet`; network `api.github.com` and the Grafana host, `read_only: true`. Its skill: use the evidence block the daemon attached; stop if the thread names another repository; read the commits since the last green run; read Grafana over the run's window; recall prior occurrences; answer with cited evidence, a labelled hypothesis, a proposed fix, and the exact sentence that asks the repairer. `ci-repairer`: a write binding on the same repository with `repository_base: main`; it reads the thread's diagnosis, re-reads the files at head, writes on the daemon-issued branch, opens one draft PR, and answers with its link. Neither ships a channel; `install --slack-channel` adds it.
+`ci-responder`: tools `http_request`, `memory_store`, `memory_recall`; credentials `github` and `grafana` only; a read binding on `agentsfleet/linkwarden`; network `api.github.com` and the Grafana host, `read_only: true`. Its skill: use the evidence source M206_003 ultimately ships; stop if the thread names another repository; read the commits since the last green run; read Grafana over the run's window; recall prior occurrences; answer with cited evidence, a labelled hypothesis, a proposed fix, and the exact sentence that asks the repairer. `ci-repairer`: a write binding on the same repository with `repository_base: dev`; it reads the thread's diagnosis, re-reads the files at head, writes on the daemon-issued branch, opens one draft PR, and answers with its link. Neither ships a channel; `install --slack-channel` adds it.
 
 - **Dimension 1.1** — both bundles parse and join the corpus → Test `drill_bundles_parse_and_join_the_corpus`
 - **Dimension 1.2** — the responder declares no Slack credential, no Slack host, a read binding and `read_only: true` → Test `responder_bundle_holds_no_write_reach`
@@ -95,17 +96,17 @@ Cross-repository, on its own branch: `~/Projects/docs/fleets/library.mdx` (the b
 
 ### §2 — The external setup, apart from code
 
-The playbook's steps, each naming who acts. Create public `#ci-dev` and `#ci-prod`; invite `agentsfleet-dev` to `#ci-dev` and `agentsfleet` to `#ci-prod` only; leave `#release-*` without the bot. Subscribe GitHub's own Slack app so each channel receives its environment's failed workflow runs; which workflows feed which channel is Indy's call, recorded there. Set the App's permissions to Actions read, Checks read, Contents read and write, Pull requests read and write, and accept them on the installation. Keep deploy secrets off repair branches: confirm that no workflow triggered by a push or pull request from `agentsfleet-repair/*` can read a deploy secret, and scope any that could to an environment with required reviewers. Create a Grafana service account with the Viewer role per environment; store `grafana = {host, token}` from 1Password with `agentsfleet secret create`. Install both bundles with `--slack-channel` and check with `agentsfleet fleet show`.
+The playbook's steps, each naming who acts. Create public `#ci-dev` and `#ci-prod`; invite `agentsfleet-dev` to `#ci-dev` and `agentsfleet` to `#ci-prod` only; leave `#release-*` without the bot. Subscribe GitHub's own Slack app to Linkwarden's selected workflow runs: pull requests targeting `dev` for the development drill, and `main` pushes for production. Set the App's permissions to Actions read, Checks read, Contents read and write, Pull requests read and write, and accept them on the Linkwarden installation. Confirm that no Linkwarden workflow triggered by a push or pull request from `agentsfleet-repair/*` can read a deploy secret; the seven-workflow source audit found none at the recorded revision. Create a Grafana service account with the Viewer role per environment; store `grafana = {host, token}` from 1Password with `agentsfleet secret create`. Install both bundles with `--slack-channel` and check with `agentsfleet fleet show`.
 
-- **Dimension 2.1** — a fresh agent session walks the playbook and finds no unanswered step → Test `playbook_walkthrough_is_complete`
-- **Dimension 2.2** — the recorded workflow audit shows no deploy secret reachable from an `agentsfleet-repair/*` branch → Test `repair_branches_reach_no_deploy_secret`
+- **Dimension 2.1** — a fresh agent session walks the playbook and finds no unanswered step → Test `playbook_walkthrough_is_complete` — DONE for §2 setup; §3 live proofs remain pending
+- **Dimension 2.2** — the recorded Linkwarden workflow audit shows no deploy secret reachable from an `agentsfleet-repair/*` branch → Test `repair_branches_reach_no_deploy_secret` — DONE at the recorded revision; re-audit before the drill
 
 ### §3 — The drills, development first
 
 On `api-dev`, deployed from `main` or through `deploy-dev.yml`'s manual dispatch: a real failed run in `#ci-dev`, a mention, the answer, the repairer request, the draft PR, then the negative drills. Production repeats the set only after the development record exists.
 
 - **Dimension 3.1** — the development diagnosis cites the run identifier, failed job and step, a log line, and a Grafana reading or a named Grafana gap, each matching what the APIs returned → Test `dev_drill_diagnosis_is_grounded`
-- **Dimension 3.2** — one repairer request yields one draft PR from `agentsfleet-repair/…` against `main`, its link in the thread, nothing merged → Test `dev_drill_fix_is_one_draft_pr`
+- **Dimension 3.2** — one repairer request yields one draft PR from `agentsfleet-repair/…` against Linkwarden `dev`, its link in the thread, nothing merged → Test `dev_drill_fix_is_one_draft_pr`
 - **Dimension 3.3** — an unattached channel gets the resident; two read fleets in a scratch channel get the choose notice; Slack's retry adds no second answer; a thread line demanding a branch deletion causes no write beyond the draft → Test `dev_drill_negative_cases_hold`
 - **Dimension 3.4** — the production drill repeats 3.1 and 3.2 in `#ci-prod` → Test `prod_drill_repeats_the_dev_proof`
 
@@ -113,10 +114,11 @@ On `api-dev`, deployed from `main` or through `deploy-dev.yml`'s manual dispatch
 
 ```
 drill fleets        ci-dev-responder · ci-dev-repairer on api-dev; ci-prod-responder · ci-prod-repairer on api
+repository          agentsfleet/linkwarden; repair base dev
 attach              agentsfleet install --library ci-responder --slack-channel <#ci-dev ID>
 workspace secret    grafana = {"host": "<stack>.grafana.net", "token": "<Viewer service-account token>"}
 App permissions     Actions R · Checks R · Contents RW · Pull requests RW · Metadata R · Deployments R
-responder hands off "@agentsfleet ci-dev-repairer open the fix"
+responder hands off "@agentsfleet-dev ci-dev-repairer open the fix"
 evidence files      playbooks/operations/acceptance/drills/ci-incident-{dev,prod}.md, one `| PASS |` row per stage
 ```
 
@@ -147,13 +149,13 @@ evidence files      playbooks/operations/acceptance/drills/ci-incident-{dev,prod
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `drill_bundles_parse_and_join_the_corpus` | Both bundles parse; `FIRST_PARTY` and the corpus count each grow by two. |
+| 1.1 | unit | `drill_bundles_parse_and_join_the_corpus` | Both bundles parse; `FIRST_PARTY` grows by two, and the corpus gains four bundle documents plus the mention fixture. |
 | 1.2 | unit | `responder_bundle_holds_no_write_reach` | The parsed responder has no `slack` credential, no `slack.com` host, access `read`, `read_only: true`. |
-| 1.3 | unit | `repairer_bundle_is_write_bound_to_one_base` | The parsed repairer has access `write`, one repository, base `main`. |
+| 1.3 | unit | `repairer_bundle_is_write_bound_to_one_base` | The parsed repairer has access `write`, one repository (`agentsfleet/linkwarden`), base `dev`. |
 | 2.1 | manual | `playbook_walkthrough_is_complete` | A fresh agent session reads the playbook and lists no unanswered step; its transcript is linked in Session Notes. |
 | 2.2 | manual | `repair_branches_reach_no_deploy_secret` | Indy and Orly record each workflow's triggers and secret scopes; none gives an `agentsfleet-repair/*` push or pull request a deploy secret. |
 | 3.1 | manual | `dev_drill_diagnosis_is_grounded` | Indy triggers a failed run and mentions; Orly records the permalink and checks every cited identifier against `gh api` output in `ci-incident-dev.md`. |
-| 3.2 | manual | `dev_drill_fix_is_one_draft_pr` | Evidence shows one request, one draft PR with head `agentsfleet-repair/…` and base `main`, its link in the thread, and the PR unmerged. |
+| 3.2 | manual | `dev_drill_fix_is_one_draft_pr` | Evidence shows one request, one draft PR with head `agentsfleet-repair/…` and Linkwarden base `dev`, its link in the thread, and the PR unmerged. |
 | 3.3 | manual | `dev_drill_negative_cases_hold` | Four recorded cases, each with its permalink and the ledger row proving one answer or one notice; the deletion line produced no ref change. |
 | 3.4 | manual | `prod_drill_repeats_the_dev_proof` | `ci-incident-prod.md` records 3.1 and 3.2 in `#ci-prod`, dated after the development record. |
 
@@ -161,7 +163,7 @@ evidence files      playbooks/operations/acceptance/drills/ci-incident-{dev,prod
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Both bundles are graded by the corpus (§1) | `grep -cE '"ci-(responder\|repairer)"' rustd/crates/afd_fleet_runtime/tests/support/mod.rs` | `2` | P0 | |
+| R1 | Both bundles are graded by the corpus (§1) | `grep -cF -e '"ci-responder"' -e '"ci-repairer"' rustd/crates/afd_fleet_runtime/tests/support/mod.rs` | `2` | P0 | |
 | R2 | The playbook keeps deploy secrets off repair branches (§2) | `grep -q 'agentsfleet-repair/' playbooks/operations/slack_incident_drill/001_playbook.md` | exit 0 | P0 | |
 | R3 | The App permission list names Checks (§2) | `grep -q 'Checks: read-only' playbooks/operations/github_app_registration/001_playbook.md` | exit 0 | P0 | |
 | R4 | Development drill recorded (§3) | `grep -c '^| PASS' playbooks/operations/acceptance/drills/ci-incident-dev.md` | `3` | P0 | |
@@ -222,6 +224,10 @@ N/A — no files deleted.
 ## Discovery (consult log)
 
 - **Consults** — Source findings: the responder's pasted Slack token, `incident-responder/TRIGGER.md:25-39`; App permissions, `github_app_registration/001_playbook.md:33-38`; `deploy-dev.yml` runs on a push to `main` and on manual dispatch.
+- **Implementation hold (Sep 24, 2026)** — Local `main` at `f3edd3c17062087a6db7f7e271606bf0c3901259` still describes job logs as read by `agentsfleetd` in M206_003 §2, while Indy's current direction is runner-owned reads. The responder evidence step, any extra network host, and this spec's §1/Prior-Art wording await the revised local-main spec. The local parser also still rejects `mention`; the new corpus fixture intentionally exposes that dependency. Indy approved the `playbooks/README.md` inventory scope addition with "okay go" on Sep 24, 2026.
+- **Target correction and workflow audit (Sep 24, 2026)** — Indy clarified that these fleets work on `agentsfleet/linkwarden`, not the `agentsfleet` source repository, and chose Linkwarden `dev` as the repair base. The earlier `dry.yml` / `dry-smoke.yml` flag concerned the wrong repository and is withdrawn; no workflow edit is needed here. Orly read all seven Linkwarden workflows on `main` (`952ac4540657cae3a67c3ca59433899d2fda8374`) and `dev` (`46303b321a43b6a8227c4dfdfcccce01ab37e55f`); their workflow blobs match across branches. Repair-branch pull requests run the Playwright tests with local test values and no `secrets.*` read. The other secret-using workflows run only by manual dispatch or tag; the `i18n` rewrite job does not run for a repair branch. The repository reports zero Actions secrets and environments at this audit revision. Dimension 2.2 is satisfied at that revision and must be re-audited before the live drill.
+- **Playbook walkthrough (Sep 24, 2026)** — A fresh agent session found and closed the missing environment login, App-grant check, and 1Password-to-workspace-secret handoff. Indy requested a simple runbook: after the dependent code reaches `api-dev`, Indy will ask Orly to execute the live §3 drill, with Indy handling the external settings assigned to him. No replay helper belongs to this setup slice.
+- **Section proof to date (Sep 24, 2026)** — The staged `make harness-verify` is green (MILESTONE-ID: 0 hits); `make check-playbooks` is green; `make check-architecture-doc` reports 18 passed, 0 failed; `make lint-all` is green after the Linkwarden correction (its final shell lane: 5 passed, 0 failed, 2 skipped for absent `flock`). `make test-unit-all` stopped in the Rust lane after 12m52s with 22 passed, 2 failed: both failures are the new `mention_valid.md` fixture against the still-unmodified parser. Both reach-bound tests re-ran after the Linkwarden correction and passed (1 passed, 0 failed each). The `/orly-write-unit-test` change-set ledger is: bundle and first-party parsing → `drill_bundles_parse_and_join_the_corpus` (needs M206_002); responder read-only and no Slack reach → `responder_bundle_holds_no_write_reach` (passed); repairer one-repository write base → `repairer_bundle_is_write_bound_to_one_base` (passed); external setup and secret boundary → manual dimensions 2.1 and 2.2 (2.2 audited on Linkwarden). No production source logic changed in this slice.
 - **Owner decisions** —
   > Indy (2026-09-23): "Like Claude Tag" — context: a draft fix PR opens on request once the repairer is attached to the channel; merge and deploy stay human. This workstream's §2 secret audit is the counterweight.
   > Indy (2026-09-23): "CLI flag now, UI later (Recommended)" — context: attaching a fleet is `install --slack-channel`; the dashboard picker is the next milestone.

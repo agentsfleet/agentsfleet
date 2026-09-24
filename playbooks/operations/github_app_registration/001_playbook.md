@@ -2,7 +2,7 @@
 
 **Owners:** 🤠 Indy for GitHub settings and 1Password; 🦉 Orly for secret sync
 and verification
-**Updated:** Aug 16, 2026
+**Updated:** Sep 24, 2026
 **Prerequisite:** the target environment's admin bootstrap is complete, its API
 host passes `/readyz`, and its dashboard is reachable
 
@@ -32,10 +32,15 @@ In GitHub **Settings → Developer settings → GitHub Apps**, create the app:
 - Subscribe to **Pull request**, **Workflow run**, and **Deployment status**.
 - Set the minimum repository permissions:
   - Metadata: read-only.
-  - Contents: read-only.
+  - Contents: read and write.
   - Pull requests: read and write.
   - Actions: read-only.
+  - Checks: read-only.
   - Deployments: read-only.
+
+Indy accepts the changed permissions on each existing installation before the
+incident drill. The development installation goes first. A pending permission
+request leaves the fleet unable to read checks or open a draft fix.
 
 Add another permission only when a shipped fleet requires it. GitHub's current
 registration and least-privilege guidance is in

@@ -102,6 +102,7 @@ These routes deploy an installation that already passed the rebuild sequence.
 - `operations/qstash_registration` — register QStash schedule credentials.
 - `operations/runner_onboarding` — prepare and enroll a runner.
 - `operations/slack_app_registration` — register the platform Slack app.
+- `operations/slack_incident_drill` — set up and audit the development-first Linkwarden Slack incident drill.
 - `operations/teardown/database` — destructively empty a database.
 - `operations/teardown/dragonfly` — destructively empty the Dragonfly cluster.
 - `operations/teardown/user` — delete a development user and verify purge.
