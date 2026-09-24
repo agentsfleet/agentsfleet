@@ -50,8 +50,10 @@ use crate::slack::READ_DEADLINE;
 /// The path Slack serves thread reads on — the vendor's own, which a pinned
 /// exchange keeps.
 const REPLIES_PATH: &str = "/api/conversations.replies";
-/// The path the poster posts to, relative to the base it is given.
-const POST_MESSAGE_PATH: &str = "/chat.postMessage";
+/// The path Slack serves posts on.
+const POST_MESSAGE_PATH: &str = "/api/chat.postMessage";
+/// Where Slack's methods hang off the origin, as `SLACK_API_BASE` spells it.
+const API_ROOT: &str = "/api";
 /// The form field naming the thread's root.
 const FIELD_TS: &str = "ts";
 /// What an unscripted thread answers: Slack's answer for a thread holding
@@ -83,14 +85,24 @@ impl Reply {
 /// One request as the fake received it, on either path.
 #[derive(Debug, Clone)]
 pub struct Request {
+    /// Which method it called: [`Request::is_post`] tells them apart.
+    path: &'static str,
     /// The `Authorization` header, verbatim.
     pub authorization: String,
     /// The form fields a read posted, or the string fields of a post's JSON
     /// body.
     pub fields: HashMap<String, String>,
+    /// A post's whole JSON body; `Null` for a thread read.
+    pub body: Value,
 }
 
 impl Request {
+    /// Whether this was a `chat.postMessage` rather than a thread read.
+    #[must_use]
+    pub fn is_post(&self) -> bool {
+        self.path == POST_MESSAGE_PATH
+    }
+
     /// One field, by name.
     #[must_use]
     pub fn field(&self, name: &str) -> Option<&str> {
@@ -187,10 +199,17 @@ impl FakeSlack {
         }
     }
 
-    /// The origin to pin an exchange at, or to hand a poster as its base.
+    /// The origin, for an exchange pinned here: a pin keeps the vendor's own
+    /// path.
     #[must_use]
     pub fn base(&self) -> &str {
         &self.base
+    }
+
+    /// The API root a poster is handed, in place of `SLACK_API_BASE`.
+    #[must_use]
+    pub fn api_base(&self) -> String {
+        format!("{}{API_ROOT}", self.base)
     }
 
     /// `thread_ts` answers `status` with `body`.
@@ -246,7 +265,7 @@ fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 async fn read(shared: &Shared, headers: &HeaderMap, fields: HashMap<String, String>) -> Response {
     shared.reads.fetch_add(1, Ordering::SeqCst);
     let thread = fields.get(FIELD_TS).cloned();
-    record(shared, headers, fields);
+    record(shared, REPLIES_PATH, headers, fields, Value::Null);
     // `None` scripts by thread; `Some(None)` is an ordered script run out.
     let ordered = locked(&shared.in_order).as_mut().map(VecDeque::pop_front);
     let reply = match ordered {
@@ -270,27 +289,35 @@ async fn read(shared: &Shared, headers: &HeaderMap, fields: HashMap<String, Stri
 
 /// Records a post and answers what the suite set.
 fn posted(shared: &Shared, headers: &HeaderMap, sent: &str) -> Response {
-    let fields = match serde_json::from_str::<Value>(sent) {
-        Ok(Value::Object(body)) => body
-            .into_iter()
-            .filter_map(|(name, value)| value.as_str().map(|text| (name, text.to_owned())))
-            .collect(),
-        _unreadable => HashMap::new(),
-    };
-    record(shared, headers, fields);
+    let body = serde_json::from_str::<Value>(sent).unwrap_or(Value::Null);
+    let fields = body
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter_map(|(name, value)| value.as_str().map(|text| (name.clone(), text.to_owned())))
+        .collect();
+    record(shared, POST_MESSAGE_PATH, headers, fields, body);
     let (status, body) = locked(&shared.post).clone();
     json(status, body)
 }
 
-fn record(shared: &Shared, headers: &HeaderMap, fields: HashMap<String, String>) {
+fn record(
+    shared: &Shared,
+    path: &'static str,
+    headers: &HeaderMap,
+    fields: HashMap<String, String>,
+    body: Value,
+) {
     let authorization = headers
         .get(AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .unwrap_or_default()
         .to_owned();
     locked(&shared.requests).push(Request {
+        path,
         authorization,
         fields,
+        body,
     });
 }
 

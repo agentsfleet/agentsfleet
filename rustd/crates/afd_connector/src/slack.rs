@@ -8,8 +8,10 @@
 
 use serde::{Deserialize, Serialize};
 
+mod answered;
 mod replies;
 
+pub use self::answered::{ANSWER_EVENT_TYPE, AnswerMarker, Stamp, holds_answer};
 pub use self::replies::{MAX_MESSAGES, Message, READ_DEADLINE, Replies, Unavailable, replies};
 
 /// The Slack Web API root, which every Slack method this daemon calls hangs

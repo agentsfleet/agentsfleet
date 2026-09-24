@@ -27,7 +27,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use afd_dragonfly::OutboundDelivery;
 use afd_dragonfly::streams::EventId;
 use afd_outbound::retry::DELIVERY_ATTEMPTS;
-use afd_outbound::{Deliver, Posters, Verdict, dispatch};
+use afd_outbound::{Attempt, Deliver, Posters, Verdict, dispatch};
 
 /// The thread an owed answer is addressed to, as a Slack producer records it.
 const DESTINATION: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
@@ -115,7 +115,7 @@ async fn test_a_delivered_answer_is_offered_exactly_once() {
         slack: Scripted::new(&[Verdict::Delivered]),
     };
 
-    let verdict = dispatch(&posters, &job()).await;
+    let verdict = dispatch(&posters, &job(), Attempt::First).await;
 
     assert_eq!(verdict, Verdict::Delivered);
     assert_eq!(
@@ -137,7 +137,9 @@ async fn test_a_retryable_destination_is_offered_the_budget_and_no_more() {
         slack: Scripted::new(&[Verdict::Retryable]),
     };
 
-    let verdict = afd_outbound::deliver_with_retry(&posters, &job(), &never_cancelled()).await;
+    let verdict =
+        afd_outbound::deliver_with_retry(&posters, &job(), &never_cancelled(), Attempt::First)
+            .await;
 
     assert_eq!(
         verdict,
@@ -160,7 +162,9 @@ async fn test_a_destination_that_recovers_is_not_offered_again() {
         slack: Scripted::new(&[Verdict::Retryable, Verdict::Delivered]),
     };
 
-    let verdict = afd_outbound::deliver_with_retry(&posters, &job(), &never_cancelled()).await;
+    let verdict =
+        afd_outbound::deliver_with_retry(&posters, &job(), &never_cancelled(), Attempt::First)
+            .await;
 
     assert_eq!(verdict, Verdict::Delivered);
     assert_eq!(
@@ -181,7 +185,9 @@ async fn test_a_permanent_refusal_is_offered_once() {
         slack: Scripted::new(&[Verdict::Permanent]),
     };
 
-    let verdict = afd_outbound::deliver_with_retry(&posters, &job(), &never_cancelled()).await;
+    let verdict =
+        afd_outbound::deliver_with_retry(&posters, &job(), &never_cancelled(), Attempt::First)
+            .await;
 
     assert_eq!(verdict, Verdict::Permanent);
     assert_eq!(
@@ -210,7 +216,7 @@ async fn test_a_shutdown_stops_the_retry_without_abandoning_the_attempt() {
         slack: Scripted::cancelling(&[Verdict::Retryable], 0, token.clone()),
     };
 
-    let verdict = afd_outbound::deliver_with_retry(&posters, &job(), &token).await;
+    let verdict = afd_outbound::deliver_with_retry(&posters, &job(), &token, Attempt::First).await;
 
     assert_eq!(
         verdict,
@@ -238,7 +244,7 @@ async fn test_a_shutdown_during_a_successful_delivery_still_reports_it() {
         slack: Scripted::cancelling(&[Verdict::Delivered], 0, token.clone()),
     };
 
-    let verdict = afd_outbound::deliver_with_retry(&posters, &job(), &token).await;
+    let verdict = afd_outbound::deliver_with_retry(&posters, &job(), &token, Attempt::First).await;
 
     assert_eq!(
         verdict,
