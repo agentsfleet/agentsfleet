@@ -77,9 +77,6 @@ tracing.workspace = true
 [dev-dependencies]
 # The admission ledger every producer seam in the harness writes through.
 afd_admission = { workspace = true, features = ["test-util"] }
-# `form` for the loopback Slack, which reads the thread a mention's re-read
-# posts the way Slack's own API would.
-axum = { workspace = true, features = ["form"] }
 # The signup fixture signs a Svix delivery, whose tag is base64 over the
 # HMAC. Encoding it is the only way the suite can present a signature the
 # vendored verifier accepts, which is what makes a passing case a round trip.

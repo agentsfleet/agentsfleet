@@ -235,16 +235,26 @@ impl Deliver for SlackPoster {
         )
         .await;
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+        let workspace_id = job.workspace_id.as_str();
         let fleet_id = job.fleet_id.as_str();
         match held {
             Ok(true) => {
-                tracing::info!(fleet_id, event = EVENT_ALREADY_IN_THREAD);
+                tracing::info!(workspace_id, fleet_id, event = EVENT_ALREADY_IN_THREAD);
                 Verdict::Delivered
             }
             Ok(false) => self.post(job, &inputs).await,
             Err(unavailable) => {
+                // The code `failed` stamps on every other vendor failure, so
+                // this line joins them for the same workspace.
+                let error_code = afd_core::error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
                 let reason = unavailable.as_str();
-                tracing::warn!(fleet_id, reason, event = EVENT_THREAD_CHECK_FAILED);
+                tracing::warn!(
+                    error_code,
+                    workspace_id,
+                    fleet_id,
+                    reason,
+                    event = EVENT_THREAD_CHECK_FAILED
+                );
                 self.post(job, &inputs).await
             }
         }
