@@ -162,8 +162,7 @@ describe("useFleetEventStream", () => {
         text: "world.",
       });
     });
-    await waitFor(() => expect(result.current.events).toHaveLength(1));
-    expect(result.current.events[0]!.reply).toBe("Hello, world.");
+    await waitFor(() => expect(result.current.events[0]?.reply).toBe("Hello, world."));
     expect(result.current.events[0]!.role).toBe("assistant");
   });
 
@@ -229,7 +228,7 @@ describe("useFleetEventStream", () => {
     expect(result.current.convertEvent(result.current.events[0]!).metadata?.custom?.["queued"]).toBe(false);
   });
 
-  it("keeps a later steer queued while the first run streams, then starts it without mixing replies", () => {
+  it("keeps a later steer queued while the first run streams, then starts it without mixing replies", async () => {
     const { result } = mount();
     let first = "";
     let second = "";
@@ -244,7 +243,7 @@ describe("useFleetEventStream", () => {
       source.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_first", actor: "steer:alice@example.com", created_at: 1 });
       source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_first", text: "Saved." });
     });
-    expect(result.current.events.map((event) => event.reply)).toEqual(["Saved.", ""]);
+    await waitFor(() => expect(result.current.events.map((event) => event.reply)).toEqual(["Saved.", ""]));
     expect(result.current.convertEvent(result.current.events[1]!).metadata?.custom?.["queued"]).toBe(true);
 
     act(() => {
@@ -252,7 +251,7 @@ describe("useFleetEventStream", () => {
       source.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_second", actor: "steer:alice@example.com", created_at: 2 });
       source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_second", text: "You said remember me." });
     });
-    expect(result.current.events.map((event) => event.reply)).toEqual(["Saved.", "You said remember me."]);
+    await waitFor(() => expect(result.current.events.map((event) => event.reply)).toEqual(["Saved.", "You said remember me."]));
     expect(result.current.convertEvent(result.current.events[1]!).metadata?.custom?.["queued"]).toBe(false);
   });
 

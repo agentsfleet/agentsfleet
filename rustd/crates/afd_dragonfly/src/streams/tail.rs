@@ -42,6 +42,28 @@ impl FleetStreams {
             .await
     }
 
+    /// Publishes one runner activity batch in wire order with one network wait.
+    /// All commands use the same sharded channel, hence the same cluster slot.
+    ///
+    /// # Errors
+    /// As [`Self::publish_tail`]. A failed batch is cosmetic; the caller owns
+    /// its logging and the durable run is unaffected.
+    pub async fn publish_tail_batch(&self, fleet_id: &str, payloads: &[String]) -> Result<()> {
+        if payloads.is_empty() {
+            return Ok(());
+        }
+        let channel = fleet_activity_channel(fleet_id);
+        let mut pipeline = redis::pipe();
+        for payload in payloads {
+            pipeline.cmd(CMD_PUBLISH).arg(&channel).arg(payload);
+        }
+        let _: Vec<i64> = self
+            .redis
+            .pipeline(CMD_PUBLISH, &channel, &pipeline)
+            .await?;
+        Ok(())
+    }
+
     /// Publishes one of the daemon's own frames on `fleet_id`'s tail,
     /// best-effort.
     ///

@@ -25,6 +25,8 @@
 //! the build until somebody decides what the dashboard calls it.
 
 use afd_core::id::Uuid7;
+use afd_observability::metrics::label::fleet::DeliveryStage;
+use afd_observability::producers;
 use afd_wire::activity::ActivityFrame;
 use serde::Serialize;
 use serde_json::value::RawValue;
@@ -47,6 +49,14 @@ pub struct Target {
     pub fleet_id: Uuid7,
     /// The event the frames describe.
     pub event_id: String,
+    /// Both instants are stamped by the control plane, so their differences
+    /// from activity receipt do not compare clocks across hosts.
+    pub lease_created_at: i64,
+    /// Producer event timestamp in epoch milliseconds.
+    pub event_created_at: i64,
+    /// Expired or superseded holders can publish cosmetic frames but cannot
+    /// contribute a latency sample to the active-lease histogram.
+    pub timing_eligible: bool,
 }
 
 /// One frame as the dashboard reads it.
@@ -69,7 +79,16 @@ enum Published<'a> {
     },
     /// The one rename in the bridge: `fleet_response_chunk` on the wire.
     #[serde(rename = "chunk")]
-    Chunk { event_id: &'a str, text: &'a str },
+    Chunk {
+        event_id: &'a str,
+        text: &'a str,
+        /// A subscriber trusts raw model text only from this first frame.
+        stream_start: bool,
+        /// A dropped runner chunk makes later bytes unsafe to classify.
+        stream_contiguous: bool,
+        /// Zero-based output position, retained across lossy forwarding.
+        stream_seq: u64,
+    },
     ToolCallCompleted {
         event_id: &'a str,
         name: &'a str,
@@ -80,12 +99,14 @@ enum Published<'a> {
 impl Leases {
     /// Publish one batch of frames to `target`'s channel.
     ///
-    /// Never fails the verb. Each frame is published independently so one
-    /// unencodable frame does not silence the rest of the batch, and a Dragonfly
-    /// outage costs the tail rather than the run.
+    /// Never fails the verb. Each frame is encoded independently so one
+    /// unencodable frame does not silence the rest of the batch. The encodable
+    /// frames are published together in order; a Dragonfly outage costs the
+    /// tail rather than the run.
     pub async fn publish_activity(&self, target: &Target, frames: &[ActivityFrame<'_>]) {
         let fleet = target.fleet_id.as_str();
         let streams = self.streams();
+        let mut payloads = Vec::with_capacity(frames.len());
         for frame in frames {
             // `args_redacted` arrives as a STRING holding JSON, and the Zig
             // parses it into a `std.json.Value` purely to splice it back out
@@ -112,15 +133,16 @@ impl Leases {
             let Ok(payload) = serde_json::to_string(published) else {
                 continue;
             };
-            if let Err(unreachable_queue) = streams.publish_tail(fleet, &payload).await {
-                let reason = unreachable_queue.to_string();
-                tracing::debug!(
-                    fleet_id = fleet,
-                    reason,
-                    event = EVENT_DROPPED,
-                    "the queue would not take a live-tail frame; the run is unaffected"
-                );
-            }
+            payloads.push(payload);
+        }
+        if let Err(unreachable_queue) = streams.publish_tail_batch(fleet, &payloads).await {
+            let reason = unreachable_queue.to_string();
+            tracing::debug!(
+                fleet_id = fleet,
+                reason,
+                event = EVENT_DROPPED,
+                "the queue would not take a live-tail batch; the run is unaffected"
+            );
         }
     }
 
@@ -152,10 +174,18 @@ impl Leases {
         };
         let fleet: String = row.try_get(0).map_err(query(CONTEXT_TARGET))?;
         let event_id: String = row.try_get(1).map_err(query(CONTEXT_TARGET))?;
+        let lease_created_at: i64 = row.try_get(2).map_err(query(CONTEXT_TARGET))?;
+        let event_created_at: i64 = row.try_get(3).map_err(query(CONTEXT_TARGET))?;
+        let status: String = row.try_get(4).map_err(query(CONTEXT_TARGET))?;
+        let lease_expires_at: i64 = row.try_get(5).map_err(query(CONTEXT_TARGET))?;
         Ok(Some(Target {
             fleet_id: Uuid7::parse(&fleet)
                 .map_err(row_malformed("fleet.runner_leases", "fleet_id"))?,
             event_id,
+            lease_created_at,
+            event_created_at,
+            timing_eligible: status == sql::LEASE_STATUS_ACTIVE
+                && lease_expires_at > afd_core::clock::now().as_millis(),
         }))
     }
 }
@@ -190,6 +220,9 @@ impl<'a> Published<'a> {
             ActivityFrame::FleetResponseChunk(body) => Self::Chunk {
                 event_id,
                 text: &body.text,
+                stream_start: body.stream_start && body.stream_seq == 0 && target.timing_eligible,
+                stream_contiguous: body.stream_contiguous && target.timing_eligible,
+                stream_seq: body.stream_seq,
             },
             ActivityFrame::ToolCallCompleted(body) => Self::ToolCallCompleted {
                 event_id,
@@ -220,7 +253,127 @@ impl crate::lease::pull::Plane {
         else {
             return Err(crate::error::lease_not_found());
         };
+        record_first_chunk(&target, frames);
         self.leases.publish_activity(&target, frames).await;
         Ok(())
+    }
+}
+
+/// The first chunk carries the Zig duration once; all later chunks carry none.
+/// Rust wall times come from the same clock and are skipped if it moved back.
+fn record_first_chunk(target: &Target, frames: &[ActivityFrame<'_>]) {
+    if !target.timing_eligible {
+        return;
+    }
+    let Some(first_ms) = first_visible_candidate_ms(frames) else {
+        return;
+    };
+    let received_at = afd_core::clock::now().as_millis();
+    for (stage, since) in [
+        (DeliveryStage::LeaseToFirstChunk, target.lease_created_at),
+        (DeliveryStage::EventToFirstChunk, target.event_created_at),
+    ] {
+        if let Ok(millis) = u64::try_from(received_at.saturating_sub(since)) {
+            producers::fleet::delivery_stage(stage, core::time::Duration::from_millis(millis));
+        }
+    }
+    producers::fleet::delivery_stage(
+        DeliveryStage::ZombieToFirstChunk,
+        core::time::Duration::from_millis(first_ms),
+    );
+}
+
+fn first_visible_candidate_ms(frames: &[ActivityFrame<'_>]) -> Option<u64> {
+    frames.iter().find_map(|frame| match frame {
+        ActivityFrame::FleetResponseChunk(body)
+            if body.stream_start && body.stream_contiguous && body.stream_seq == 0 =>
+        {
+            body.first_chunk_after_ms
+        }
+        _ => None,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        reason = "the serialization fixture should fail loudly on a missing field"
+    )]
+
+    use std::borrow::Cow;
+
+    use afd_core::clock::UnixMillis;
+    use afd_core::id::{ENTROPY_LEN, Uuid7};
+    use afd_wire::activity::{ActivityFrame, FleetResponseChunk};
+
+    use super::{Published, Target, first_visible_candidate_ms};
+
+    #[test]
+    fn first_chunk_timing_excludes_frames_a_viewer_must_suppress() {
+        let chunk = |stream_start, stream_contiguous, stream_seq| {
+            ActivityFrame::FleetResponseChunk(FleetResponseChunk {
+                text: Cow::Borrowed("answer"),
+                first_chunk_after_ms: Some(42),
+                stream_start,
+                stream_contiguous,
+                stream_seq,
+            })
+        };
+        let dropped_first = chunk(false, false, 1);
+        let repeated_start = chunk(true, true, 1);
+        let valid = chunk(true, true, 0);
+        assert_eq!(first_visible_candidate_ms(&[dropped_first]), None);
+        assert_eq!(first_visible_candidate_ms(&[repeated_start]), None);
+        assert_eq!(first_visible_candidate_ms(&[valid]), Some(42));
+    }
+
+    #[test]
+    fn first_chunk_marker_distinguishes_the_only_safe_stream_entry() {
+        const FIXTURE_MILLIS: i64 = 1_000;
+        let target = Target {
+            fleet_id: Uuid7::encode(UnixMillis::from_millis(FIXTURE_MILLIS), [0; ENTROPY_LEN])
+                .expect("fixture fleet id"),
+            event_id: "event".to_owned(),
+            lease_created_at: 0,
+            event_created_at: 0,
+            timing_eligible: true,
+        };
+        for (first_chunk_after_ms, stream_start, stream_contiguous, stream_seq) in [
+            (Some(42), true, true, 0),
+            (None, false, true, 1),
+            (Some(50), false, false, 1),
+        ] {
+            let frame = ActivityFrame::FleetResponseChunk(FleetResponseChunk {
+                text: Cow::Borrowed("answer"),
+                first_chunk_after_ms,
+                stream_start,
+                stream_contiguous,
+                stream_seq,
+            });
+            let published = Published::of(&target, &frame).expect("chunk has no fallible fields");
+            let value = serde_json::to_value(published).expect("published chunk serializes");
+            assert_eq!(value["kind"], "chunk");
+            assert_eq!(value["stream_start"], stream_start);
+            assert_eq!(value["stream_contiguous"], stream_contiguous);
+            assert_eq!(value["stream_seq"], stream_seq);
+            assert_eq!(value["text"], "answer");
+        }
+        let expired = Target {
+            timing_eligible: false,
+            ..target
+        };
+        let frame = ActivityFrame::FleetResponseChunk(FleetResponseChunk {
+            text: Cow::Borrowed("stale"),
+            first_chunk_after_ms: Some(42),
+            stream_start: true,
+            stream_contiguous: true,
+            stream_seq: 0,
+        });
+        let published = Published::of(&expired, &frame).expect("chunk has no fallible fields");
+        let value = serde_json::to_value(published).expect("published chunk serializes");
+        assert_eq!(value["stream_start"], false);
+        assert_eq!(value["stream_contiguous"], false);
     }
 }

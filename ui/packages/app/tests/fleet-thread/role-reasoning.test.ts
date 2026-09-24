@@ -1,15 +1,15 @@
-import { ev, mockStream, renderThread } from "./harness";
-import { describe, expect, it } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { ev, mockStream, renderThread, threadElement, toThreadMessage } from "./harness";
+import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { createElement, Fragment } from "react";
+import type { MessageState } from "@assistant-ui/react";
+import { FleetReply } from "@/components/domain/FleetReplyBody";
 
 /**
- * The `<think>` disclosure.
+ * The typed reasoning disclosure.
  *
- * Some models reason out loud inline. The durable row keeps only the answer, so
- * before the split the same turn read one way live and another way after a
- * navigation — a paragraph of the model talking to itself mid-stream, gone on
- * reload. These pin the two states the fold has and the operator's control over
- * it.
+ * The stream decoder separates reasoning from the answer before rendering.
+ * These pin the two states of the fold and the operator's control over it.
  */
 describe("FleetThread — reasoning disclosure", () => {
   it("folds finished reasoning away and shows the answer", () => {
@@ -17,7 +17,8 @@ describe("FleetThread — reasoning disclosure", () => {
       ev({
         role: "assistant",
         actor: "fleet",
-        reply: "<think>weighing the blast radius</think>Opened the PR.",
+        reasoning: "weighing the blast radius",
+        reply: "Opened the PR.",
       }),
     ]);
     renderThread();
@@ -29,10 +30,9 @@ describe("FleetThread — reasoning disclosure", () => {
   });
 
   it("opens the fold while the block is still arriving", () => {
-    // An unclosed `<think>` IS the model thinking this frame — watching it is
-    // the only signal there is during a long turn.
+    // The decoder marks an open thinking block until its closing tag arrives.
     mockStream([
-      ev({ role: "assistant", actor: "fleet", reply: "<think>still weighing it" }),
+      ev({ role: "assistant", actor: "fleet", reasoning: "still weighing it", thinking: true }),
     ]);
     renderThread();
 
@@ -45,7 +45,8 @@ describe("FleetThread — reasoning disclosure", () => {
       ev({
         role: "assistant",
         actor: "fleet",
-        reply: "<think>checked the diff twice</think>Done.",
+        reasoning: "checked the diff twice",
+        reply: "Done.",
       }),
     ]);
     renderThread();
@@ -59,7 +60,8 @@ describe("FleetThread — reasoning disclosure", () => {
       ev({
         role: "assistant",
         actor: "fleet",
-        reply: '<think>Recalling. <tool_call>{"name":"memory_recall","arguments":{"query":"private"}}</tool_call> Done.</think>Remembered.',
+        reasoning: "Recalling. Done.",
+        reply: "Remembered.",
       }),
     ]);
     renderThread();
@@ -79,21 +81,137 @@ describe("FleetThread — reasoning disclosure", () => {
   });
 
   it("shows the fold but no answer while only reasoning has arrived", () => {
-    // Mid-stream the model has opened `<think>` and said nothing else yet. The
-    // reply is NOT empty — so the working indicator does not apply — but the
-    // answer is, and an empty bubble under the fold would read as a reply the
-    // fleet never gave.
+    // A reasoning-only delta opens the fold without inventing an answer.
     mockStream([
       ev({
         role: "assistant",
         actor: "fleet",
         status: "received",
-        reply: "<think>reading the diff",
+        reasoning: "reading the diff",
+        thinking: true,
       }),
     ]);
     renderThread();
 
     expect(screen.getByText("Thinking…")).toBeTruthy();
     expect(screen.getByText("reading the diff")).toBeTruthy();
+  });
+
+  it("withholds Copy reply while the durable final reply is being recovered", () => {
+    mockStream([ev({ role: "assistant", actor: "fleet", reply: "Partial draft", replyRecovering: true })]);
+    renderThread();
+    expect(screen.getByText("Loading final reply; retrying if needed…")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Copy reply" })).toBeNull();
+  });
+
+  it("measures local submission through the first browser paint of reply text", () => {
+    let nextFrame = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      const id = ++nextFrame;
+      frames.set(id, callback);
+      return id;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => { frames.delete(id); });
+    const measure = vi.spyOn(performance, "measure").mockImplementation(() => ({} as PerformanceMeasure));
+    try {
+      mockStream([ev({ role: "assistant", actor: "fleet", reply: "First visible words", submittedAtMs: 1 })]);
+      renderThread();
+      expect(measure).not.toHaveBeenCalled();
+      act(() => {
+        for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); }
+      });
+      expect(measure).not.toHaveBeenCalled();
+      act(() => {
+        for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); }
+      });
+      expect(measure).toHaveBeenCalledWith("agentsfleet.chat.submit_to_first_visible", expect.objectContaining({ start: 1 }));
+    } finally {
+      measure.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("measures a tool-first response as the first visible fleet activity", () => {
+    let nextFrame = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      const id = ++nextFrame;
+      frames.set(id, callback);
+      return id;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => { frames.delete(id); });
+    const measure = vi.spyOn(performance, "measure").mockImplementation(() => ({} as PerformanceMeasure));
+    try {
+      mockStream([ev({ role: "assistant", actor: "fleet", status: "received", submittedAtMs: 1,
+        tools: [{ name: "memory_recall", ms: null, done: false }] })]);
+      renderThread();
+      expect(screen.getByText("memory_recall")).toBeTruthy();
+      act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
+      act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
+      expect(measure).toHaveBeenCalledWith("agentsfleet.chat.submit_to_first_visible", expect.objectContaining({ start: 1 }));
+    } finally {
+      measure.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("measures a user turn only once when its tool-first reply splits into an answer row", () => {
+    let nextFrame = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      const id = ++nextFrame;
+      frames.set(id, callback);
+      return id;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => { frames.delete(id); });
+    const measure = vi.spyOn(performance, "measure").mockImplementation(() => ({} as PerformanceMeasure));
+    const event = ev({ id: "evt_tool_then_answer", role: "user", actor: "operator", text: "Check memory",
+      status: "received", submittedAtMs: 1, tools: [{ name: "memory_recall", ms: null, done: false }] });
+    try {
+      mockStream([event]);
+      const view = renderThread();
+      act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
+      act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
+      expect(measure).toHaveBeenCalledTimes(1);
+      mockStream([{ ...event, reply: "Answer", status: "processed" }]);
+      view.rerender(threadElement());
+      act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
+      act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
+      expect(screen.getByText("Answer")).toBeTruthy();
+      expect(measure).toHaveBeenCalledTimes(1);
+    } finally {
+      measure.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("deduplicates simultaneous mounts while distinguishing a second local submission", () => {
+    let nextFrame = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      const id = ++nextFrame;
+      frames.set(id, callback);
+      return id;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => { frames.delete(id); });
+    const measure = vi.spyOn(performance, "measure").mockImplementation(() => ({} as PerformanceMeasure));
+    const message = (submittedAtMs: number) => toThreadMessage(ev({
+      id: "evt_same_id_two_fleets", role: "assistant", actor: "fleet", reply: "Visible",
+      submittedAtMs,
+    })) as unknown as MessageState;
+    try {
+      render(createElement(Fragment, null,
+        createElement(FleetReply, { message: message(2), senderLabel: "Fleet A", tools: [], status: "processed" }),
+        createElement(FleetReply, { message: message(2), senderLabel: "Fleet A", tools: [], status: "processed" }),
+        createElement(FleetReply, { message: message(3), senderLabel: "Fleet B", tools: [], status: "processed" }),
+      ));
+      act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
+      act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
+      expect(measure).toHaveBeenCalledTimes(2);
+    } finally {
+      measure.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 });

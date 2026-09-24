@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 
 use redis::cluster_async::ClusterConnection;
 use redis::cluster_routing::{RoutingInfo, SingleNodeRoutingInfo};
-use redis::{Cmd, FromRedisValue, Value};
+use redis::{Cmd, FromRedisValue, Pipeline, Value};
 
 use crate::config::{DragonflyConfig, DragonflyRole};
 use crate::error::{self, Result};
@@ -182,6 +182,26 @@ impl Dragonfly {
         let mut connection = self.connection.clone();
         self.bounded(name, context, cmd.query_async::<Value>(&mut connection))
             .await
+    }
+
+    /// Runs an ordered, single-slot command batch under one deadline.
+    ///
+    /// # Errors
+    /// As [`Self::command`]. Callers must put every command on the same
+    /// cluster slot; this API does not scatter a batch across shards.
+    pub async fn pipeline<T: FromRedisValue>(
+        &self,
+        name: &'static str,
+        context: &str,
+        pipeline: &Pipeline,
+    ) -> Result<T> {
+        let mut connection = self.connection.clone();
+        self.bounded(
+            name,
+            context,
+            pipeline.query_async::<Value>(&mut connection),
+        )
+        .await
     }
 
     /// One `INFO <section>` reply per PRIMARY, in the order the topology names

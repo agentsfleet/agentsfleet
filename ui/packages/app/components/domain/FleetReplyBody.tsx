@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import {
   Accordion,
   AccordionContent,
@@ -12,17 +12,17 @@ import type { MessageState } from "@assistant-ui/react";
 import { PawPrintIcon } from "lucide-react";
 
 import { FleetMarkdown } from "./FleetMarkdown";
+import { RecentPaints } from "./RecentPaints";
 import { FleetMessageRow, ROW_TONE } from "./FleetMessageRow";
 import { ToolCalls, type readTools } from "./FleetToolCalls";
 import { messageOutcome } from "./fleetFailureCopy";
-import { readQueued, readReply } from "./fleetMessageReaders";
+import { readQueued, readReasoning, readReply, readReplyRecovering, readSubmittedAtMs, readThinking } from "./fleetMessageReaders";
 import {
   STATUS_AGENT_ERROR,
   STATUS_FAILED,
   STATUS_IN_FLIGHT,
   STATUS_OPTIMISTIC,
 } from "./fleetMessageStatus";
-import { splitReasoning } from "@/lib/events/reasoning";
 
 const STREAM_CURSOR = "▍";
 const WORKING_LABEL = "Working";
@@ -31,6 +31,11 @@ const COPY_REPLY_LABEL = "Copy reply";
 const REASONING_VALUE = "reasoning";
 const REASONING_LABEL = "Reasoning";
 const REASONING_LIVE_LABEL = "Thinking…";
+const RECOVERING_LABEL = "Loading final reply; retrying if needed…";
+const FIRST_VISIBLE_MEASURE = "agentsfleet.chat.submit_to_first_visible";
+// A user turn moves from an unsplit message to `:reply` when answer text
+// arrives. The component remounts, but that is still one visible response.
+const measuredPaints = new RecentPaints(400);
 
 /**
  * A trigger and its fleet answer are separate rows, so a reply never appears
@@ -50,11 +55,13 @@ export function FleetReply({
   const reply = readReply(message);
   const errored = status === STATUS_AGENT_ERROR;
   const streaming = status === STATUS_IN_FLIGHT || status === STATUS_OPTIMISTIC;
+  const reasoning = readReasoning(message);
+  const thinking = readThinking(message);
+  const recovering = readReplyRecovering(message);
+  const answer = reply.trim();
+  const eventId = message.id.endsWith(":reply") ? message.id.slice(0, -":reply".length) : message.id;
+  useFirstVisiblePaint(eventId, readSubmittedAtMs(message), status !== STATUS_FAILED && (answer.length > 0 || reasoning.length > 0 || tools.length > 0));
   if (status === STATUS_FAILED) return null;
-  // Models that reason out loud wrap it in `<think>`. The durable row keeps
-  // only the answer, so leaving the raw text in place made a turn read one way
-  // live and another way after a navigation.
-  const { reasoning, answer, thinking } = splitReasoning(reply);
   // Keep the same reply-side cue while delivery is pending and until the
   // first response arrives, so acknowledgement does not flash a second label.
   const awaitingFirstWord = streaming && answer.length === 0 && reasoning.length === 0 && tools.length === 0;
@@ -77,9 +84,33 @@ export function FleetReply({
           streaming={streaming}
         />
       )}
-      <ReplyActions answer={answer} settled={!streaming && !errored} />
+      {recovering ? <output aria-label={RECOVERING_LABEL} className="text-body-sm text-text-subtle">{RECOVERING_LABEL}</output> : null}
+      <ReplyActions answer={answer} settled={!streaming && !errored && !recovering} />
     </FleetMessageRow>
   );
+}
+
+/** Record browser submit-to-visible time after the first reply, reasoning, or tool paint. */
+function useFirstVisiblePaint(eventId: string, submittedAtMs: number | null, visible: boolean): void {
+  const measuredEvent = useRef<string | null>(null);
+  useEffect(() => {
+    if (!visible || submittedAtMs === null || measuredEvent.current === eventId) return;
+    const key = `${eventId}:${submittedAtMs}`;
+    if (measuredPaints.has(key)) return;
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        if (measuredPaints.has(key)) return;
+        measuredEvent.current = eventId;
+        measuredPaints.add(key);
+        performance.measure(FIRST_VISIBLE_MEASURE, { start: submittedAtMs, end: performance.now() });
+      });
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+    };
+  }, [eventId, submittedAtMs, visible]);
 }
 
 /**

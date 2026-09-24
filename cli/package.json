@@ -37,17 +37,17 @@
     "@effect/platform-bun": "4.0.0-rc.116",
     "@vercel/detect-agent": "^1.2.5",
     "effect": "4.0.0-rc.116",
-    "posthog-node": "^5.52.4",
+    "posthog-node": "^5.53.0",
     "uuid": "^14.0.2"
   },
   "license": "MIT",
   "devDependencies": {
-    "@clerk/testing": "^2.2.36",
+    "@clerk/testing": "^2.2.38",
     "@playwright/test": "1.63.0",
-    "@types/node": "^26.6.1",
+    "@types/node": "^26.6.2",
     "@types/uuid": "^11.0.0",
     "bun-types": "^1.4.2",
-    "oxlint": "^1.83.0",
+    "oxlint": "^1.85.0",
     "playwright": "^1.63.0",
     "typescript": "7.0.2"
   }

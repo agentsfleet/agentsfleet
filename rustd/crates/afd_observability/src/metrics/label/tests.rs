@@ -49,6 +49,10 @@ fn label_products() -> Vec<(&'static str, usize)> {
             fleet_labels::RunStart::ALL.len(),
         ),
         (
+            fleet::FLEET_DELIVERY_STAGE_SECONDS.wire_name(),
+            fleet_labels::DeliveryStage::ALL.len(),
+        ),
+        (
             fleet::ADMISSION_REPLAYS_TOTAL.wire_name(),
             fleet_labels::ReplayOutcome::ALL.len(),
         ),

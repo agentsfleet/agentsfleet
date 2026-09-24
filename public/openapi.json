@@ -13985,6 +13985,29 @@
           "text"
         ],
         "properties": {
+          "first_chunk_after_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Present only on the first safe output chunk; relative to agent runtime invocation.",
+            "minimum": 0
+          },
+          "stream_contiguous": {
+            "type": "boolean",
+            "description": "False once a runner lost an earlier chunk in this model pass."
+          },
+          "stream_seq": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Zero-based output position for detecting loss after the child pipe.",
+            "minimum": 0
+          },
+          "stream_start": {
+            "type": "boolean",
+            "description": "True only for the first delivered chunk of an intact model pass."
+          },
           "text": {
             "type": "string",
             "description": "The text produced."

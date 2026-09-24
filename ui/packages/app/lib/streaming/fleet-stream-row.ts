@@ -67,6 +67,11 @@ export type FleetEvent = {
    * then renders `outcome` in the reply's place.
    */
   reply: string;
+  /** Incremental reasoning, kept apart from the answer and tool protocol. */
+  reasoning?: string;
+  thinking?: boolean;
+  /** The streamed draft awaits the durable final event detail. */
+  replyRecovering?: boolean;
   /**
    * What the reply bubble says when `reply` is empty — the honest floor that
    * keeps a completed turn from rendering blank. Recomputed on status change.
@@ -90,6 +95,8 @@ export type FleetEvent = {
   /** True while this locally submitted row still carries the browser clock.
    * The first server timestamp clears it so backfill can order the turn. */
   clientTimestamp?: boolean;
+  /** Monotonic browser clock at local submission, for first visible paint. */
+  submittedAtMs?: number;
   /**
    * The run's figures, as the daemon reported them: tokens spent, wall time,
    * and the summed telemetry cost. Absent on a row the browser assembled from

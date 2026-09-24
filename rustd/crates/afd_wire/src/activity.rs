@@ -32,6 +32,18 @@ pub struct FleetResponseChunk<'a> {
     /// The text produced.
     #[serde(borrow)]
     pub text: Cow<'a, str>,
+    /// Present only on the first safe output chunk; relative to agent runtime invocation.
+    #[serde(default)]
+    pub first_chunk_after_ms: Option<u64>,
+    /// True only for the first delivered chunk of an intact model pass.
+    #[serde(default)]
+    pub stream_start: bool,
+    /// False once a runner lost an earlier chunk in this model pass.
+    #[serde(default)]
+    pub stream_contiguous: bool,
+    /// Zero-based output position for detecting loss after the child pipe.
+    #[serde(default)]
+    pub stream_seq: u64,
 }
 
 /// A tool call finished.

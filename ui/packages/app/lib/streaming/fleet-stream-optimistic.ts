@@ -22,6 +22,7 @@ export function optimisticRow(tempId: string, text: string, actor: string): Flee
     createdAt: new Date(),
     status: AGENTSFLEET_EVENT_STATUS.OPTIMISTIC,
     clientTimestamp: true,
+    submittedAtMs: performance.now(),
   };
 }
 
@@ -47,10 +48,9 @@ export function reconcileRows(
   const serverEvent = prev.find((event) => event.id === realEventId);
   if (serverEvent) {
     const temp = prev.find((event) => event.id === tempId);
-    const grafted =
-      temp !== undefined && serverEvent.text.length === 0
-        ? prev.map((event) => (event === serverEvent ? { ...event, text: temp.text } : event))
-        : prev;
+    const grafted = temp === undefined ? prev : prev.map((event) => event === serverEvent
+      ? { ...event, text: serverEvent.text.length === 0 ? temp.text : serverEvent.text, submittedAtMs: temp.submittedAtMs }
+      : event);
     return {
       events: grafted.filter((event) => event.id !== tempId),
       alreadyComplete: serverEvent.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED,

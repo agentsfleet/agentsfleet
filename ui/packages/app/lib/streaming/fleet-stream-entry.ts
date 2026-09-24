@@ -14,6 +14,7 @@ import {
 } from "@/lib/events/run-summary";
 import { maxServerCreatedAt, mergeBackfill } from "./fleet-stream-frames";
 import type { FleetEvent } from "./fleet-stream-row";
+import type { ReplyStreamDecoder } from "./reply-stream-decoder";
 import type { InstallStepId } from "./install-steps";
 import { StreamRecoveryWindow } from "./stream-recovery-window";
 
@@ -56,6 +57,10 @@ export type Listener = () => void;
 export type Entry = {
   workspaceId: string;
   snapshot: FleetStreamSnapshot;
+  replyStreams: Map<string, ReplyStreamDecoder>;
+  replyNextSeq: Map<string, number>;
+  replyGaps: Set<string>;
+  replyRecoveries: Set<string>;
   listeners: Set<Listener>;
   refCount: number;
   eventSource: EventSource | null;
@@ -102,6 +107,10 @@ export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
       factsSeq: 0,
       latest: latestFigures(events),
     },
+    replyStreams: new Map(),
+    replyNextSeq: new Map(),
+    replyGaps: new Set(),
+    replyRecoveries: new Set(),
     listeners: new Set(),
     refCount: 0,
     eventSource: null,

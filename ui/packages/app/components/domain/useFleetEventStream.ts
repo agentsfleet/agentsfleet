@@ -134,9 +134,13 @@ function convertEvent(event: FleetEvent): ThreadMessageLike {
         requestJson: event.custom?.requestJson,
         status: event.status,
         queued: event.clientTimestamp === true,
+        submittedAtMs: event.submittedAtMs,
         // The fleet's reply on this same durable row, and the sentence to show
         // in its place when the reply is empty (still working, blocked, failed).
         reply: event.reply,
+        reasoning: event.reasoning,
+        thinking: event.thinking,
+        replyRecovering: event.replyRecovering,
         outcome: event.outcome,
         // The failure CLASS, not the sentence — the renderer picks remediation
         // guidance off it (a sentence cannot be matched against reliably).

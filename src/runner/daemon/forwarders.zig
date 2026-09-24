@@ -10,6 +10,7 @@ const logging = @import("log");
 const contract = @import("contract");
 
 const client_mod = @import("control_plane_client.zig");
+const ActivitySender = @import("ActivitySender.zig");
 const client_errors = @import("../engine/client_errors.zig");
 const protocol = contract.protocol;
 
@@ -19,7 +20,7 @@ const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
 /// Activity frames batch per POST: flush at this many frames…
 pub const ACTIVITY_BATCH_MAX_FRAMES: usize = 16;
 /// …or this many buffered bytes (caps retained memory for chatty frames)…
-const ACTIVITY_BATCH_MAX_BYTES: usize = 64 * 1024;
+const ACTIVITY_BATCH_MAX_BYTES: usize = ActivitySender.MAX_BATCH_BYTES;
 /// …or when the oldest buffered frame is this stale (live-tail latency budget).
 pub const ACTIVITY_FLUSH_WINDOW_MS: i64 = 1_000;
 /// Deadline cap for the one-shot eager ships — pinned to the staleness window
@@ -41,6 +42,7 @@ pub const ActivityForwarder = struct {
     runner_token: []const u8,
     lease_id: []const u8,
     deadline_ms: u31,
+    transport: union(enum) { direct, queued: *ActivitySender, off } = .direct,
     // BUFFER GATE: ArrayList(u8) — append-as-you-go accumulation of serialized
     // frames, read once per flush.
     buf: std.ArrayList(u8) = .empty,
@@ -56,17 +58,26 @@ pub const ActivityForwarder = struct {
 
     pub fn forward(ctx: *anyopaque, frame: contract.activity.ActivityFrame) void {
         const self: *ActivityForwarder = @ptrCast(@alignCast(ctx));
-        const json = std.json.Stringify.valueAlloc(self.alloc, frame, .{}) catch return;
-        defer self.alloc.free(json);
+        switch (self.transport) {
+            .off => return,
+            else => {},
+        }
+        // Serialize directly into the retained batch buffer. `valueAlloc`
+        // followed by `appendSlice` copied every chunk and allocated a second
+        // buffer on the hottest path; this writer only borrows `buf`'s storage.
+        {
+            var out = std.Io.Writer.Allocating.fromArrayList(self.alloc, &self.buf);
+            defer self.buf = out.toArrayList();
+            const valid_len = out.written().len;
+            if (self.count > 0) out.writer.writeByte(',') catch return;
+            std.json.Stringify.value(frame, .{}, &out.writer) catch {
+                // A half-written frame (including its comma) must not poison
+                // the next batch when this allocation fails.
+                out.shrinkRetainingCapacity(valid_len);
+                return;
+            };
+        }
         if (self.count == 0) self.first_buffered_ms = clock.nowMillis();
-        const valid_len = self.buf.items.len;
-        if (self.count > 0) self.buf.append(self.alloc, ',') catch return;
-        self.buf.appendSlice(self.alloc, json) catch {
-            // roll the orphan comma back — a half-appended frame would poison
-            // the whole batch into invalid JSON, not just drop this frame
-            self.buf.shrinkRetainingCapacity(valid_len);
-            return;
-        };
         self.count += 1;
         var eager = false;
         if (!self.eager_first_frame_done) {
@@ -104,7 +115,11 @@ pub const ActivityForwarder = struct {
 
     pub fn flush(self: *ActivityForwarder) void {
         if (self.count == 0) return;
-        self.cp.activityFramesJson(self.alloc, self.runner_token, self.lease_id, self.buf.items, self.deadline_ms);
+        switch (self.transport) {
+            .direct => self.cp.activityFramesJson(self.alloc, self.runner_token, self.lease_id, self.buf.items, self.deadline_ms),
+            .queued => |sender| sender.enqueue(self.buf.items),
+            .off => {},
+        }
         self.buf.clearRetainingCapacity();
         self.count = 0;
     }
@@ -154,5 +169,6 @@ pub const MemoryForwarder = struct {
 
 test {
     _ = @import("forwarders_test.zig");
+    _ = @import("forwarders_serialization_test.zig");
     _ = @import("forwarders_memory_test.zig");
 }
