@@ -36,7 +36,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Problem:** the responder cannot see why a run failed. A read mint asks GitHub for `contents: read` and nothing else (`rustd/crates/afd_credential/src/credential/github.rs:107-119`), so runs, jobs and annotations refuse the token. Those permission names are `&'static str` constants keyed into a map (`github.rs:47-53,101`), so each new permission is one more string a typo can miss. Separately, Indy chose Claude Tag's authority model: attaching a write fleet to a channel authorises draft PRs, with no per-request approval. That leaves the write fleet's own reach as the only boundary between any channel member's words and the repository, and nothing proves that reach for a Slack-requested lease.
 
-**Solution summary:** a read mint asks for `contents`, `actions` and `checks` read, and a write mint keeps those and adds `contents` and `pull_requests` write; the request side names permissions with an enum. No daemon evidence step: the fleet reads the run itself, the same way fleets read repository files today, under the read rule the daemon already issues — GET and HEAD under `/repos/{repository}/` on `api.github.com` (`rustd/crates/afd_gate/src/policy/egress/read.rs:19-27`). §2 pins that the rule covers the CI paths and stops at the repository. The write boundary needs no new gate: the existing rules (`afd_gate/src/policy/egress/write.rs:54-91`) admit Git objects, the one daemon-issued ref and a draft PR against the trusted base, and the runner denies anything else on a ruled host (`src/runner/engine/runtime/http_request_policy.zig:22-30`). §3 proves that for Slack-requested leases. The job log's second hop, to GitHub's storage, is held by the owner (Out of Scope).
+**Solution summary:** a read mint asks for `contents` read plus whichever of `actions` and `checks` read the installation holds, and a write mint keeps those and adds `contents` and `pull_requests` write; the request side names permissions with an enum. No daemon evidence step: the fleet reads the run itself, the same way fleets read repository files today, under the read rule the daemon already issues — GET and HEAD under `/repos/{repository}/` on `api.github.com` (`rustd/crates/afd_gate/src/policy/egress/read.rs:19-27`). §2 pins that the rule covers the CI paths and stops at the repository. The write boundary needs no new gate: the existing rules (`afd_gate/src/policy/egress/write.rs:54-91`) admit Git objects, the one daemon-issued ref and a draft PR against the trusted base, and the runner denies anything else on a ruled host (`src/runner/engine/runtime/http_request_policy.zig:22-30`). §3 proves that for Slack-requested leases. The job log's second hop, to GitHub's storage, is held by the owner (Out of Scope).
 
 ## PR Intent & comprehension handshake
 
@@ -56,7 +56,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/crates/afd_credential/src/credential/github.rs` · `github/exchange.rs` · `github/tests.rs` · `github/tests/transport.rs` | EDIT | Permission names become an enum; the read mint adds `actions` and `checks` read; `Granted::verify` expects them. |
+| `rustd/crates/afd_credential/src/credential/github.rs` · `github/exchange.rs` · `github/tests.rs` · `github/tests/transport.rs` | EDIT | Permission names become an enum; the exchange reads the installation first, and the read mint adds `actions` and `checks` read where it holds them; `Granted::verify` expects exactly the request. |
+| `rustd/crates/afd_credential/src/credential/github/request.rs` · `github/tests/request.rs` | CREATE | The request side, split out of `github.rs` at the length cap, and its cases. |
+| `rustd/crates/afd_credential/Cargo.toml` · `rustd/Cargo.lock` | EDIT | `axum` as a dev-dependency: a loopback GitHub that routes both calls and parses the token request. |
 | `rustd/crates/afd_gate/src/policy/egress/read.rs` | EDIT | A test pins that the prefix covers the CI evidence paths and no neighbour. |
 | `rustd/crates/afd_gate/src/policy/egress/tests.rs` · `egress/tests/slack.rs` | CREATE | The binding proofs moved out of `mod.rs`, and the write-reach proofs for a Slack-requested lease. |
 | `rustd/crates/afd_fleet/tests/integration_lease_gates.rs` · `integration_lease_gates/slack.rs` | EDIT · CREATE | One Slack request is one lease: the ledger's key, the stream backlog, the branch. |
@@ -86,11 +88,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — The read token reaches CI evidence
 
-The request side names permissions with `GithubPermission { Actions, Checks, Contents, PullRequests }`, serialised `snake_case`. `for_binding` asks for `contents`, `actions` and `checks` read; a write binding keeps those reads and adds `contents` and `pull_requests` write. `Granted::verify` requires exactly that set and still refuses a widened token.
+The request side names permissions with `GithubPermission { Actions, Checks, Contents, PullRequests }`, serialised `snake_case`. The exchange first reads the installation (`GET /app/installations/{id}`), because a token cannot carry a permission its App was never granted. `for_binding` asks for `contents` read, and `actions` and `checks` read where the installation holds them; a write binding keeps those reads and adds `contents` and `pull_requests` write whether held or not, so a repair the installation cannot make fails at the mint. `Granted::verify` requires exactly the request and still refuses a widened token.
 
-- **Dimension 1.1** DONE — a read binding requests `{contents, actions, checks}` read and nothing else → Test `read_mint_requests_ci_evidence_reads`
+- **Dimension 1.1** DONE — a read binding on an installation holding the evidence reads requests `{contents, actions, checks}` read and nothing else → Test `read_mint_requests_ci_evidence_reads`
 - **Dimension 1.2** DONE — a grant missing `actions`, or carrying `actions: write` or `workflows`, is refused → Test `verify_refuses_a_ci_scope_mismatch`
 - **Dimension 1.3** DONE — a write binding requests the three reads plus `contents` and `pull_requests` write → Test `write_mint_keeps_the_evidence_reads`
+- **Dimension 1.4** DONE — an evidence read the installation does not hold, or holds at a level the daemon does not model, is left out of the request → Test `evidence_reads_follow_what_the_installation_holds`
+- **Dimension 1.5** DONE — a write binding's own reach is asked for even where the installation lacks it, so the repair fails at the mint rather than narrowing → Test `write_reach_is_asked_for_where_the_installation_lacks_it`
+- **Dimension 1.6** DONE — against an installation holding no Checks, the token request leaves `checks` out and the mint succeeds → Test `an_installation_without_checks_mints_without_asking_for_them`
+- **Dimension 1.7** DONE — a failed installation read keeps its retry posture and no token is asked for → Test `an_installation_read_failure_keeps_its_retry_posture`
 
 ### §2 — The fleet reads the run over HTTP
 
@@ -110,7 +116,8 @@ No approval step: attaching a write fleet to the channel is the authority (Disco
 
 ```
 permission names     enum GithubPermission { Actions, Checks, Contents, PullRequests }  (serde snake_case)
-GitHub read mint     {contents: read, actions: read, checks: read}
+installation read    GET /app/installations/{id} → the permissions the installation holds
+GitHub read mint     {contents: read} + {actions, checks: read} where held
 GitHub write mint    + {contents: write, pull_requests: write}; never workflows
 fleet's CI reads     GET under /repos/{repository}/ on api.github.com:
                      actions/runs/{run_id} · actions/runs/{run_id}/jobs · actions/jobs/{job_id}
@@ -123,7 +130,8 @@ write reach          POST /repos/{r}/git/{blobs,trees,commits} · POST /repos/{r
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
-| App lacks Actions or Checks | permission not accepted on the installation | The fleet's GET answers 403; its skill names the missing permission (M206_004 playbook step). |
+| App lacks Actions or Checks | permission not accepted on the installation | The mint leaves that read out and still succeeds; the fleet's GET answers 403 and its skill names the missing permission (M206_004 playbook step). |
+| Installation read fails | App uninstalled, GitHub down, unreadable body | Classified as the token request is: 401/404 → reconnect, 5xx or unreadable → retry; no token is asked for. |
 | Log request answers 302 | GitHub serves logs from storage | The tool reports `HTTP 302` with no location (`http_request.zig:173-190`); the skill answers from jobs, steps and annotations and says the log was not read. |
 | Run in another repository | thread links elsewhere | The path misses the prefix; the runner answers `request_policy_not_allowed` (`policy_http_request.zig:127-134`). |
 | Injected instructions in an annotation | hostile test output | Data; the fleet's policy and rules are unchanged. |
@@ -147,6 +155,10 @@ N/A — no new metric or event: the fleet's reads already appear as its tool-cal
 | 1.1 | unit | `read_mint_requests_ci_evidence_reads` | A read binding on `acme/widgets` yields exactly `{actions: read, checks: read, contents: read}`. |
 | 1.2 | unit | `verify_refuses_a_ci_scope_mismatch` | Grants missing `actions`, with `actions: write`, or with `workflows: write` each fail verification. |
 | 1.3 | unit | `write_mint_keeps_the_evidence_reads` | A write binding yields the three reads plus `contents: write` and `pull_requests: write`. |
+| 1.4 | unit | `evidence_reads_follow_what_the_installation_holds` | No `checks` held → `{actions, contents}` read; neither → `{contents}`; `checks: maintain` → left out; evidence held at write → asked at read. |
+| 1.5 | unit | `write_reach_is_asked_for_where_the_installation_lacks_it` | A write binding on a `contents: read` installation asks `{contents: write, pull_requests: write}`. |
+| 1.6 | unit | `an_installation_without_checks_mints_without_asking_for_them` | A loopback GitHub holding no Checks receives a token request for `{actions, contents}` read, and the mint succeeds. |
+| 1.7 | unit | `an_installation_read_failure_keeps_its_retry_posture` | An installation read answering 401 or 404 reconnects, 503 or `not-json` retries, and no token request arrives. |
 | 2.1 | unit | `read_rules_cover_ci_evidence_paths` | The five CI paths under `/repos/acme/widgets/` start with the rule's prefix; under `/repos/acme/widgets-private/` and `/repos/other/repo/` none does; the rule's methods are GET and HEAD only. |
 | 3.1 | unit | `slack_write_lease_admits_one_branch_and_one_draft` | For event `1700000000000-7` on a write binding, the only ref rule locks `refs/heads/agentsfleet-repair/<its base64>`, and the only pull rule locks head, base `main`, and `draft: true`. |
 | 3.2 | unit | `slack_write_lease_has_no_merge_or_ref_update_path` | The assembled rules contain no PUT, PATCH or DELETE method and no path ending `/graphql`, `/merge` or `/pulls/{n}`. |
@@ -219,4 +231,6 @@ N/A — no new metric or event: the fleet's reads already appear as its tool-cal
 - **Metrics review** — no new events; no analytics or funnel playbook update.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
 - **Deferrals** — the job log's storage hop, owner-held per the quote above.
-- **Pending with Indy (Sep 24, 2026)** — the platform App registration grants no Checks permission (`playbooks/operations/github_app_registration/001_playbook.md:33-38`), and `Granted::verify` requires the exact requested set, so the read mint now asks for a permission the App does not hold. unverified: GitHub refuses such a mint (422); if it does, every GitHub-bound fleet's mint fails until the App adds Checks: read and each installation accepts. The Failure Modes row "App lacks Actions or Checks → the fleet's GET answers 403" assumes the mint still succeeds.
+- **GitHub App permissions (Sep 24, 2026)** — the platform App registration grants no Checks permission (`playbooks/operations/github_app_registration/001_playbook.md:33-38`), and GitHub's token documentation says "The installation access token cannot be granted permissions that the app was not granted." `Granted::verify` refuses a token narrower than its request, so asking for Checks unconditionally failed every mint on every fleet. Options put: (A) ask only for what the installation holds, (B) add Checks: read to the App and have every installation accept before deploy, (C) drop Checks.
+  > Indy (2026-09-24): "A" — context: chose to read the installation's permissions at mint and ask for evidence reads only where held.
+- **Flagged, not in scope** — a write mint has asked for `contents: write` since before this milestone (`f3edd3c17` `github.rs:108-110`), while the registration playbook grants Contents read-only (`001_playbook.md:35`). unverified: whether the playbook or the live App is stale; the App's settings page settles it.

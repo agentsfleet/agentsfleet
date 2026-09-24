@@ -64,5 +64,8 @@ test-util = [
 ]
 
 [dev-dependencies]
+# A loopback GitHub for the mint's two calls, so the token request's body is
+# read by a real HTTP server rather than searched for in socket bytes.
+axum.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tracing-subscriber.workspace = true

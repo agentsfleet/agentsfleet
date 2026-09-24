@@ -357,6 +357,7 @@ dependencies = [
  "afd_fleet_runtime",
  "afd_vault",
  "afd_wire",
+ "axum",
  "http",
  "jsonwebtoken",
  "moka",
