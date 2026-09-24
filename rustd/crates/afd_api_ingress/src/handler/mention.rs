@@ -51,6 +51,9 @@ pub(super) const REASON_TEAM_NOT_MAPPED: &str = "team_not_mapped";
 /// yet deleted; deletion releases the binding and the next mention installs
 /// a new one.
 pub(super) const REASON_RESIDENT_KILLED: &str = "resident_killed";
+/// See [`REASON_BOT_MESSAGE`]. A fleet somebody installed under the resident's
+/// name, with its own configuration, holds the channel's resident name.
+pub(super) const REASON_RESIDENT_NAME_TAKEN: &str = "resident_name_taken";
 
 /// The event a datastore failure on this path is refused under.
 const EVENT_MENTION: &str = "slack_mention_failed";

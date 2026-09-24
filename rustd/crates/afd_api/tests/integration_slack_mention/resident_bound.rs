@@ -219,3 +219,47 @@ async fn a_killed_resident_owes_no_notice() {
 
     fixture.cleanup().await;
 }
+
+/// A fleet somebody installed under the resident's name, with repository write
+/// access of its own, is never adopted: the unnamed mention it would have
+/// taken is dropped, and nothing is bound to the channel.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn a_fleet_holding_the_residents_name_is_never_adopted() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    // Attached elsewhere, so it is no subscriber of this channel and the
+    // unnamed mention goes looking for the resident.
+    fixture
+        .fleet(
+            &document(&resident_name(&fixture), "C0987654321", Some("write")),
+            FleetStatus::Active.as_str(),
+        )
+        .await;
+    let router = fixture.resident_router().await;
+
+    let body = mention(&fixture.team, "EvSquat01", PERSON, &asking());
+    let answered = json_body(deliver(&router, &body).await).await;
+
+    assert_eq!(
+        answered.get("ignored").and_then(Value::as_str),
+        Some("resident_name_taken"),
+        "{answered}"
+    );
+    assert_eq!(fixture.admissions().await, 0, "the squatter runs nothing");
+    let mut connection = fixture.database().acquire().await.expect("a connection");
+    let bindings: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM core.connector_channels \
+         WHERE provider = $1 AND external_account_id = $2 AND external_channel_id = $3",
+    )
+    .bind(PROVIDER.id())
+    .bind(&fixture.team)
+    .bind(CHANNEL)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("the bindings count");
+    drop(connection);
+    assert_eq!(bindings, 0, "and is never bound as the resident");
+
+    fixture.cleanup().await;
+}

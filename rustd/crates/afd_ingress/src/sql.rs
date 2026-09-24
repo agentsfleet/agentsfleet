@@ -154,8 +154,13 @@ JOIN core.fleets f ON f.id = c.fleet_id AND f.workspace_id = $8::uuid
 WHERE c.provider = $2 AND c.external_account_id = $3 AND c.external_channel_id = $4
 LIMIT 1";
 
-/// The fleet a workspace holds under one name.
+/// The fleet a workspace holds under a resident's name, and its status.
 ///
-/// `$1` workspace, `$2` name.
-pub const SELECT_FLEET_NAMED: &str = "\
-SELECT id::text FROM core.fleets WHERE workspace_id = $1::uuid AND name = $2";
+/// The third column says whether it IS that resident: its stored configuration
+/// equals the one the daemon writes, compared as JSON so formatting cannot
+/// make a difference.
+///
+/// `$1` workspace, `$2` name, `$3` the resident's configuration.
+pub const SELECT_RESIDENT_NAMED: &str = "\
+SELECT id::text, status, config_json = $3::jsonb
+FROM core.fleets WHERE workspace_id = $1::uuid AND name = $2";
