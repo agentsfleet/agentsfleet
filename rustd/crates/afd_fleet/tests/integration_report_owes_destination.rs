@@ -18,191 +18,27 @@
 
 use std::borrow::Cow;
 
-use afd_admission::{Admission, Key, Producer, Reply};
+use afd_admission::{Producer, Reply};
 use afd_connector::Provider;
 use afd_core::clock::UnixMillis;
-use afd_core::id::Uuid7;
-use afd_dragonfly::EventId;
-use afd_fleet::lease::{Billed, Committed, Leases, Owing, Reported};
+use afd_fleet::lease::Committed;
 use afd_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
-use sqlx::Row as _;
 
-use crate::integration_admission_recovery::{admission, ledger, producer_key};
 use crate::report_commit::{
-    RESPONSE_ACCEPTED, RESPONSE_POSTGRES_REFUSES, RESUME_EVENT_ID, RESUME_RESPONSE, report,
+    RESPONSE_ACCEPTED, RESPONSE_POSTGRES_REFUSES, RESUME_EVENT_ID, RESUME_RESPONSE,
 };
-use crate::report_seed::{DEEP_POOL, SLICE_MS};
+use crate::report_seed::SLICE_MS;
 use crate::requests::ENROLLED_AT;
-use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts};
-use crate::support::Fixtures;
+use crate::seed::PROVIDER;
+
+#[path = "integration_report_owes_destination/stage.rs"]
+mod stage;
+
+use self::stage::{Obligation, obligations, owed_by, stage};
 
 /// The thread the asking event was admitted with.
 const THREAD: &str =
     r#"{"team_id":"T024BE7LD","channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
-
-/// How far apart consecutive runs on one fleet are stamped, so each lease is
-/// issued after the one before it settled.
-const RUN_SPACING_MS: i64 = 10 * SLICE_MS;
-
-/// One owed row, as the ledger holds it.
-#[derive(Debug, PartialEq, Eq)]
-struct Obligation {
-    provider: String,
-    destination: Option<String>,
-    event_id: String,
-}
-
-/// Every obligation this fleet holds, oldest first.
-async fn obligations(fixtures: &Fixtures, fleet: &str) -> Vec<Obligation> {
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query(
-        "SELECT provider, destination, event_id FROM core.fleet_obligations \
-         WHERE fleet_id = $1::uuid ORDER BY created_at, seq",
-    )
-    .bind(fleet)
-    .fetch_all(&mut *connection)
-    .await
-    .expect("the ledger answers")
-    .into_iter()
-    .map(|row| Obligation {
-        provider: row.try_get(0).expect("provider is text"),
-        destination: row.try_get(1).expect("destination is nullable text"),
-        event_id: row.try_get(2).expect("event_id is text"),
-    })
-    .collect()
-}
-
-/// One fleet with a funded tenant and a runner to lease on it.
-struct Stage {
-    fixtures: Fixtures,
-    leases: Leases,
-    fleet: String,
-    workspace: String,
-    tenant: Uuid7,
-    runner: Uuid7,
-}
-
-async fn stage() -> Stage {
-    let fixtures = Fixtures::create_with_queue().await;
-    let (fleet, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
-    fixtures.seed_wallet(&tenant, DEEP_POOL, ENROLLED_AT).await;
-    let leases = fixtures.leases();
-    let tenant = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
-    Stage {
-        fixtures,
-        leases,
-        fleet,
-        workspace,
-        tenant,
-        runner,
-    }
-}
-
-impl Stage {
-    /// Admits one event from `producer`, stating `reply`.
-    async fn admit(&self, producer: Producer, delivery: &str, reply: Reply<'_>) -> String {
-        let key = producer_key(&self.fleet, delivery);
-        ledger(&self.fixtures)
-            .admit(Admission {
-                producer,
-                key: Key::Repeated(&key),
-                reply,
-                ..admission(&self.fleet, &self.workspace, &key)
-            })
-            .await
-            .expect("the ledger admits")
-            .id
-    }
-
-    /// Leases this fleet's next event at `now` and loads the lease a report
-    /// addresses.
-    async fn lease_next(&self, now: UnixMillis) -> (String, Reported) {
-        let acquired = crate::seed::select_fleet_within_rotations(
-            &self.leases,
-            &self.runner,
-            now,
-            &self.fleet,
-        )
-        .await
-        .expect("one rotation of polls must reach the fleet holding admitted work");
-        self.leases
-            .record_received(&acquired, now)
-            .await
-            .expect("the narrative log must open");
-        let issued = self
-            .leases
-            .issue(
-                &self.runner,
-                &acquired,
-                Billed {
-                    tenant_id: &self.tenant,
-                    posture: POSTURE,
-                    provider: PROVIDER,
-                    model: MODEL,
-                },
-                now,
-            )
-            .await
-            .expect("the lease row must be written");
-        let lease = self
-            .leases
-            .load_for_report(issued.lease_id.as_str(), &self.runner)
-            .await
-            .expect("the lease load must reach the datastore")
-            .expect("the lease belongs to this runner");
-        (issued.lease_id.as_str().to_owned(), lease)
-    }
-
-    /// Reports `response` on a lease, a slice after it was issued.
-    async fn report(
-        &self,
-        lease_id: &str,
-        lease: &Reported,
-        response: &str,
-        issued_at: UnixMillis,
-    ) -> afd_fleet::Result<Committed> {
-        self.leases
-            .commit_report(report(
-                lease_id,
-                &self.runner,
-                lease,
-                response,
-                issued_at.saturating_add_millis(SLICE_MS),
-            ))
-            .await
-    }
-
-    /// Leases and reports this fleet's next event, answering what was owed.
-    ///
-    /// Acknowledges the entry afterwards, as the plane's report does once the
-    /// commit lands: `commit_report` alone leaves it pending, and the next poll
-    /// would hand the same event back instead of the next one.
-    async fn run_next(&self, run: i64) -> Committed {
-        let now = UnixMillis::from_millis(ENROLLED_AT + run * RUN_SPACING_MS);
-        let (lease_id, lease) = self.lease_next(now).await;
-        let committed = self
-            .report(&lease_id, &lease, RESPONSE_ACCEPTED, now)
-            .await
-            .expect("the report must reach the datastore");
-        self.leases
-            .acknowledge(&lease.fleet_id, &EventId::of(&lease.receipt))
-            .await
-            .expect("the settled entry is acknowledged");
-        committed
-    }
-}
-
-/// What a settled report newly owed, failing loudly on any other ending.
-fn owed_by(committed: Committed) -> Option<Owing> {
-    let Committed::Settled { owed, .. } = committed else {
-        unreachable!("the only holder of this fleet cannot be fenced out of its own report")
-    };
-    owed
-}
 
 /// Dimension 2.1 — non-empty answers from a steer, an App webhook and a cron
 /// fire owe nothing: none of them was asked from a thread.
