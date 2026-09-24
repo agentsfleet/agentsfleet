@@ -55,27 +55,65 @@ fn repositories() -> serde_json::Value {
     json!([{"full_name": DECLARED}])
 }
 
+/// Dimension 1.1 — a read mint asks for the repository and the CI evidence,
+/// all at read, and nothing else: no write, no `pull_requests`, no `workflows`.
 #[test]
-fn test_a_read_binding_asks_for_contents_read_and_nothing_else() {
+fn read_mint_requests_ci_evidence_reads() {
     let request = ScopedRequest::for_binding(&binding(Access::Read));
 
     // The owner is stripped, because GitHub scopes by bare name.
     let body = serde_json::to_value(&request).expect("the request serialises");
     assert_eq!(body["repositories"], json!(["widgets"]));
-    assert_eq!(body["permissions"], json!({"contents": "read"}));
-    // No `pull_requests` entry: its ABSENCE is the read scope.
-    assert!(body["permissions"].get("pull_requests").is_none());
+    assert_eq!(
+        body["permissions"],
+        json!({"actions": "read", "checks": "read", "contents": "read"})
+    );
 }
 
+/// Dimension 1.3 — a write mint keeps the evidence reads, raises `contents` to
+/// write and adds `pull_requests` write, and still asks for no `workflows`.
 #[test]
-fn test_a_write_binding_additionally_asks_for_pull_requests_write() {
+fn write_mint_keeps_the_evidence_reads() {
     let request = ScopedRequest::for_binding(&binding(Access::Write));
 
     let body = serde_json::to_value(&request).expect("the request serialises");
     assert_eq!(
         body["permissions"],
-        json!({"contents": "write", "pull_requests": "write"})
+        json!({
+            "actions": "read",
+            "checks": "read",
+            "contents": "write",
+            "pull_requests": "write",
+        })
     );
+}
+
+/// Dimension 1.2 — a read token missing `actions`, carrying `actions: write`,
+/// or carrying `workflows` is refused rather than delivered.
+#[test]
+fn verify_refuses_a_ci_scope_mismatch() {
+    let binding = binding(Access::Read);
+    let request = ScopedRequest::for_binding(&binding);
+    for (case, permissions) in [
+        (
+            "missing actions",
+            json!({"contents": "read", "checks": "read"}),
+        ),
+        (
+            "actions at write",
+            json!({"contents": "read", "checks": "read", "actions": "write"}),
+        ),
+        (
+            "workflows",
+            json!({"contents": "read", "checks": "read", "actions": "read", "workflows": "write"}),
+        ),
+    ] {
+        assert_eq!(
+            granted(permissions, repositories()).verify(&binding, request.permissions()),
+            Err(Overreach::Permissions),
+            "{case}"
+        );
+    }
 }
 
 #[test]
@@ -85,7 +123,7 @@ fn test_a_token_reaching_exactly_the_declaration_is_accepted() {
     // `metadata` rides on every installation token GitHub mints. A read-level
     // extra is ambient and must pass, or no mint would ever succeed.
     let granted = granted(
-        json!({"contents": "read", "metadata": "read"}),
+        json!({"contents": "read", "actions": "read", "checks": "read", "metadata": "read"}),
         repositories(),
     );
 

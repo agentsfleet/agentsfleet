@@ -70,4 +70,42 @@ mod tests {
             assert!("/repos/acme/widgets/contents/README.md".starts_with(rule.path.as_ref()));
         }
     }
+
+    /// The CI evidence a responder's skill reads: a run, its jobs, one job and
+    /// its log request, and a check run's annotations.
+    const CI_PATHS: [&str; 5] = [
+        "actions/runs/123",
+        "actions/runs/123/jobs",
+        "actions/jobs/456",
+        "actions/jobs/456/logs",
+        "check-runs/789/annotations",
+    ];
+
+    /// Dimension 2.1 — the read rule admits the CI evidence of the bound
+    /// repository and the same paths in no other: not a repository whose name
+    /// extends it, and not another owner's.
+    #[test]
+    fn read_rules_cover_ci_evidence_paths() {
+        let rules = rules("acme/widgets");
+
+        for rule in &rules {
+            assert!(
+                matches!(rule.method, HttpMethod::Get | HttpMethod::Head),
+                "{:?}",
+                rule.method
+            );
+            for path in CI_PATHS {
+                assert!(
+                    format!("/repos/acme/widgets/{path}").starts_with(rule.path.as_ref()),
+                    "{path} is out of reach"
+                );
+                for elsewhere in ["acme/widgets-private", "other/repo"] {
+                    assert!(
+                        !format!("/repos/{elsewhere}/{path}").starts_with(rule.path.as_ref()),
+                        "{elsewhere}/{path} is in reach"
+                    );
+                }
+            }
+        }
+    }
 }
