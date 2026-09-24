@@ -205,7 +205,7 @@ async fn legacy_rows_are_never_reoffered() {
 }
 
 /// Sets the row's spent delivery cycles, as that many re-offers would leave it.
-async fn set_attempts(harness: &OutboundHarness, event: &str, cycles: i64) {
+pub(super) async fn set_attempts(harness: &OutboundHarness, event: &str, cycles: i64) {
     let mut connection = harness
         .database
         .acquire()

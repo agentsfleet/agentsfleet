@@ -17,7 +17,7 @@ use afd_dragonfly::OutboundDelivery;
 use afd_dragonfly::streams::EventId;
 use afd_vault::{SecretBody, SecretName, Vault};
 
-use super::{ANSWER, CHANNEL, THREAD};
+use super::{ANSWER, BOT_USER, CHANNEL, THREAD};
 
 /// The key every fixture seals under — the harness's own, not a deployment's.
 const FIXTURE_KEK: [u8; 32] = [7u8; 32];
@@ -112,9 +112,24 @@ impl Fixture {
         .expect("the tenant, workspace and fleet seed");
     }
 
-    /// Seals a Slack grant carrying `token`.
+    /// Seals a Slack grant carrying `token` and the bot user it posts as.
     pub(super) async fn seal_grant(&self, token: &str) {
-        let body = format!(r#"{{"integration":"slack","bot_token":"{token}"}}"#);
+        self.seal(format!(
+            r#"{{"integration":"slack","bot_token":"{token}","bot_user_id":"{BOT_USER}"}}"#
+        ))
+        .await;
+    }
+
+    /// Seals a Slack grant carrying `token` and no bot user, as a grant
+    /// written before the connect recorded one is.
+    pub(super) async fn seal_grant_naming_no_bot_user(&self, token: &str) {
+        self.seal(format!(
+            r#"{{"integration":"slack","bot_token":"{token}"}}"#
+        ))
+        .await;
+    }
+
+    async fn seal(&self, body: String) {
         let raw = serde_json::value::RawValue::from_string(body)
             .expect("the fixture handle is an object");
         let sealed = self

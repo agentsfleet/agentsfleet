@@ -58,9 +58,10 @@ const METHOD_POST_MESSAGE: &str = "/chat.postMessage";
 /// How long one post may take before it is abandoned as retryable.
 ///
 /// Invariant 4 — the deadline is at the call site. It also bounds a shutdown:
-/// the worker finishes the attempt in flight before it stops, so this is what
-/// the supervisor's join waits out in the worst case, and it has to leave room
-/// inside `JOIN_TIMEOUT`.
+/// the worker finishes the attempt in flight before it stops, so the
+/// supervisor's join waits out a repeat in the worst case — the thread check's
+/// `afd_connector::slack::ANSWER_CHECK_DEADLINE` and then this — and the pair
+/// has to leave room inside `JOIN_TIMEOUT`.
 const POST_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// What a JSON request body is sent as.
@@ -93,6 +94,10 @@ const EVENT_ALREADY_IN_THREAD: &str = "slack_post_already_in_thread";
 
 /// Logged when a repeat could not read the thread and posted anyway.
 const EVENT_THREAD_CHECK_FAILED: &str = "slack_post_thread_check_failed";
+
+/// Why a repeat could not check: the grant recorded no bot user, so no marker
+/// in the thread can be proven this daemon's own.
+const REASON_BOT_USER_UNRECORDED: &str = "bot_user_unrecorded";
 
 /// What Slack answers a `chat.postMessage` with.
 ///
@@ -157,8 +162,8 @@ impl SlackPoster {
             return Err(failed(job, "identifier_unparseable", Verdict::Permanent));
         };
 
-        let token = match self.grants.bot_token(&workspace, Provider::Slack).await {
-            Ok(Some(token)) => token,
+        let identity = match self.grants.bot_identity(&workspace, Provider::Slack).await {
+            Ok(Some(identity)) => identity,
             // No handle, or one carrying no token: uninstalled, disconnected,
             // or a grant that landed malformed. Reconnecting is the only fix.
             Ok(None) => {
@@ -175,7 +180,8 @@ impl SlackPoster {
         };
         Ok(Inputs {
             destination,
-            token,
+            token: identity.token,
+            author: identity.user_id,
             marker,
         })
     }
@@ -226,14 +232,19 @@ impl Deliver for SlackPoster {
             Ok(inputs) => inputs,
             Err(verdict) => return verdict,
         };
-        let held = afd_connector::slack::holds_answer(
-            &self.http,
-            &self.api_base,
-            &inputs.token,
-            &inputs.destination,
-            &inputs.marker,
-        )
-        .await;
+        let held = match inputs.author.as_deref() {
+            Some(author) => afd_connector::slack::holds_answer(
+                &self.http,
+                &self.api_base,
+                &inputs.token,
+                &inputs.destination,
+                &inputs.marker,
+                author,
+            )
+            .await
+            .map_err(afd_connector::slack::Unavailable::as_str),
+            None => Err(REASON_BOT_USER_UNRECORDED),
+        };
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let workspace_id = job.workspace_id.as_str();
         let fleet_id = job.fleet_id.as_str();
@@ -243,11 +254,10 @@ impl Deliver for SlackPoster {
                 Verdict::Delivered
             }
             Ok(false) => self.post(job, &inputs).await,
-            Err(unavailable) => {
+            Err(reason) => {
                 // The code `failed` stamps on every other vendor failure, so
                 // this line joins them for the same workspace.
                 let error_code = afd_core::error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
-                let reason = unavailable.as_str();
                 tracing::warn!(
                     error_code,
                     workspace_id,
@@ -267,6 +277,8 @@ struct Inputs {
     destination: Thread,
     /// Still wrapped, so it zeroes on drop — see `Grants::bot_token`.
     token: SecretString,
+    /// The bot user the grant recorded: a marker counts only from it.
+    author: Option<String>,
     /// Which answer this is, as the post carries it and a repeat looks for it.
     marker: AnswerMarker,
 }

@@ -61,6 +61,9 @@ const FIELD_TS: &str = "ts";
 const FIELD_LIMIT: &str = "limit";
 /// See [`FIELD_CHANNEL`].
 const FIELD_CURSOR: &str = "cursor";
+/// See [`FIELD_CHANNEL`]. Sent by the answer check alone, so its read starts
+/// at the question rather than at the thread's first message.
+const FIELD_OLDEST: &str = "oldest";
 /// See [`FIELD_CHANNEL`]. Asked on every page, so the answer check reads the
 /// marker a posted answer carries; the mention's read ignores it.
 const FIELD_INCLUDE_METADATA: &str = "include_all_metadata";
@@ -142,7 +145,8 @@ struct Metadata {
 pub(super) struct Posted {
     #[serde(default)]
     ts: String,
-    user: Option<String>,
+    /// Who posted it; the answer check trusts a marker only from its own bot.
+    pub(super) user: Option<String>,
     bot_id: Option<String>,
     #[serde(default)]
     text: String,
@@ -200,7 +204,7 @@ async fn pages(
     thread: &Thread,
 ) -> Result<Replies, Unavailable> {
     let mut window = Window::default();
-    walk(client, endpoint, token, thread, |posted| {
+    walk(client, endpoint, token, thread, None, |posted| {
         window.push(flatten(posted));
         ControlFlow::Continue(())
     })
@@ -211,6 +215,9 @@ async fn pages(
 /// Hands every message of the thread to `visit`, oldest first and a page at
 /// a time, until the thread ends or `visit` breaks.
 ///
+/// `oldest`, a Slack timestamp, starts the read there instead of at the
+/// thread's first message.
+///
 /// The one cursor loop both readers share: the mention's, which keeps a
 /// window, and the answer check, which stops at the first marker it knows.
 pub(super) async fn walk(
@@ -218,11 +225,12 @@ pub(super) async fn walk(
     endpoint: &str,
     token: &str,
     thread: &Thread,
+    oldest: Option<&str>,
     mut visit: impl FnMut(Posted) -> ControlFlow<()>,
 ) -> Result<(), Unavailable> {
     let mut cursor = String::new();
     loop {
-        let page = page(client, endpoint, token, thread, &cursor).await?;
+        let page = page(client, endpoint, token, thread, oldest, &cursor).await?;
         if page
             .messages
             .into_iter()
@@ -245,6 +253,7 @@ async fn page(
     endpoint: &str,
     token: &str,
     thread: &Thread,
+    oldest: Option<&str>,
     cursor: &str,
 ) -> Result<Page, Unavailable> {
     let mut form = vec![
@@ -253,6 +262,9 @@ async fn page(
         (FIELD_LIMIT, PAGE_LIMIT),
         (FIELD_INCLUDE_METADATA, FORM_TRUE),
     ];
+    if let Some(oldest) = oldest {
+        form.push((FIELD_OLDEST, oldest));
+    }
     if !cursor.is_empty() {
         form.push((FIELD_CURSOR, cursor));
     }
