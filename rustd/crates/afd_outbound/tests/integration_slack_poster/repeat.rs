@@ -138,10 +138,10 @@ async fn a_repeat_that_cannot_read_the_thread_posts_anyway() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_repeat_for_a_workspace_holding_no_grant_is_permanent_and_asks_nothing() {
+async fn a_repeat_for_a_workspace_holding_no_grant_is_retryable_and_asks_nothing() {
     // A repeat needs the same two inputs as a first attempt. Without a grant
     // there is no token to read the thread with or to post with, so the
-    // repeat ends where a first attempt would, before any request.
+    // repeat ends where a first attempt would: retryable, before any request.
     let fixture = Fixture::create().await;
     fixture.seed().await;
 
@@ -151,7 +151,7 @@ async fn a_repeat_for_a_workspace_holding_no_grant_is_permanent_and_asks_nothing
         .redeliver(&fixture.job())
         .await;
 
-    assert_eq!(verdict, Verdict::Permanent);
+    assert_eq!(verdict, Verdict::Retryable);
     assert!(slack.requests().is_empty(), "nothing was asked of Slack");
 
     fixture.cleanup().await;

@@ -111,21 +111,26 @@ async fn poster_posts_to_the_jobs_address() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_workspace_holding_no_grant_is_permanent_rather_than_retried() {
-    // Uninstalled, disconnected, or a grant that landed malformed. Reconnecting
-    // is the only fix, so a retry budget spent here is a queue head blocked on
-    // an answer that can never go out.
+async fn a_workspace_holding_no_grant_is_retried_until_it_reconnects() {
+    // Disconnected, uninstalled, or a grant that landed malformed. Permanent
+    // would abandon the answer for good, so a reconnect could never deliver
+    // it; retryable, the lanes offer it again inside their cycle budget.
+    // Nothing is asked of Slack while there is no token to ask with.
     let fixture = Fixture::create().await;
     fixture.seed().await;
 
     let slack = slack_answering(200, r#"{"ok":true}"#).await;
-    let verdict = fixture
-        .poster(&slack.api_base())
-        .deliver(&fixture.job())
-        .await;
-    assert_eq!(verdict, Verdict::Permanent);
+    let poster = fixture.poster(&slack.api_base());
+    assert_eq!(poster.deliver(&fixture.job()).await, Verdict::Retryable);
+    assert!(slack.requests().is_empty(), "no token, no request");
 
-    drop(slack);
+    fixture.seal_grant(BOT_TOKEN).await;
+    assert_eq!(
+        poster.deliver(&fixture.job()).await,
+        Verdict::Delivered,
+        "once Slack is connected again the same job goes out"
+    );
+
     fixture.cleanup().await;
 }
 
