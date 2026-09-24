@@ -17,6 +17,7 @@ use afd_ingress::slack::KIND_RESIDENT;
 use afd_wire::memory::MemoryDelta;
 
 use super::fixture::Admitted;
+use super::resident_bound::{resident_document, resident_name};
 use super::*;
 
 /// A second channel in the same team, with no fleet attached either.
@@ -121,19 +122,9 @@ async fn concurrent_first_mentions_make_one_resident() {
 async fn a_first_mention_that_loses_the_name_converges_on_the_winner() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let name = format!(
-        "{RESIDENT_PREFIX}{}-{}",
-        fixture.team.to_ascii_lowercase(),
-        CHANNEL.to_ascii_lowercase()
-    );
+    let name = resident_name(&fixture);
     let winner = fixture
-        .fleet(
-            &format!(
-                "---\nname: {name}\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools: []\n  \
-                 budget:\n    daily_dollars: 1.0\n---\n"
-            ),
-            FleetStatus::Active.as_str(),
-        )
+        .fleet(&resident_document(&name), FleetStatus::Active.as_str())
         .await;
     let router = fixture.resident_router().await;
 
@@ -250,17 +241,9 @@ async fn a_resident_that_cannot_be_installed_refuses_for_a_retry() {
 async fn a_name_gone_after_the_race_refuses_for_a_retry() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let name = format!(
-        "{RESIDENT_PREFIX}{}-{}",
-        fixture.team.to_ascii_lowercase(),
-        CHANNEL.to_ascii_lowercase()
-    );
     fixture
         .fleet(
-            &format!(
-                "---\nname: {name}\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools: []\n  \
-                 budget:\n    daily_dollars: 1.0\n---\n"
-            ),
+            &resident_document(&resident_name(&fixture)),
             FleetStatus::Active.as_str(),
         )
         .await;
