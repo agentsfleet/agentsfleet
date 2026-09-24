@@ -21,9 +21,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Categories:** API, CLI, DOCS
 **Batch:** B2 — after M206_001, whose destination this producer is the first to write; runs beside M206_003, which shares its Pull Request.
 **Branch:** feat/m206-slack-incident-responder
+**Folded-into:** `M206_001`
 **Baseline revision:** f3edd3c17062087a6db7f7e271606bf0c3901259
-**Test Baseline:** pending — measured before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** `unit=2662 integration=572` at the comparison revision, inherited from `M206_001` — one branch, measured once.
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M206_001-f3edd3c17.md`
 **Depends on:** M206_001 — an admission's reply destination and the obligation address this producer writes and its notices use.
 **Provenance:** LLM-drafted (Claude Opus 5.5, Sep 23, 2026) from source reads at `b1bc6f0c4` and the retired Zig daemon at `1ad07eb2` in `~/Projects/oss/zig/agentsfleet_zig`
 **Canonical architecture:** `docs/architecture/scenarios/slack-incident-responder.md` §2–§5
@@ -316,5 +317,4 @@ CLI                                agentsfleet install --library <id> --slack-ch
   > Indy (2026-09-24): "go" — context: the reply to "model answers (Recommended)" or a fixed setup notice for a channel with no attached fleet; the resident answers with a model.
 - **Decisions pending with Indy** — recorded as agent recommendations, not approvals: (2) one channel per fleet (default) or several; (3) an unaddressed mention with several eligible subscribers → a notice (default), never fan-out.
 - **Metrics review** — three operator events, one of them existing; no analytics or funnel playbook update, because no product event is counted until the drill proves the path.
-- **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
-- **Deferrals** — none at authoring.
+- **Skill-chain outcomes** — in the milestone Pull Request's Session notes, shared with M206_001 and M206_003. **Deferrals** — none.
