@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M206
 **Workstream:** 004
 **Date:** Sep 23, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE — §3 parked by owner decision (Discovery)
 **Priority:** P1 — the operator-facing proof of the milestone; nothing before it touches a real Slack thread, a real failed run, or a real Grafana stack.
 **Categories:** DOCS, INFRA, SKILL
 **Batch:** B1 for §1–§2, which share no source file with M206_001–003; §3's drills in B3, after B2 reaches `api-dev`. Its own Pull Request, the milestone's follow-up.
@@ -111,10 +111,10 @@ The draft-fix drill requires M206_003 to put the daemon-issued repair branch in
 trusted fleet-visible context. Until that input exists, the repairer stops
 without guessing a branch; Dimension 3.2 cannot pass.
 
-- **Dimension 3.1** — the development diagnosis cites the run identifier, failed job and step, a GitHub Actions job-log line and a Grafana Loki log line over the run window, each matching what the APIs returned; a named gap is honest but not a pass → Test `dev_drill_diagnosis_is_grounded`
-- **Dimension 3.2** — one repairer request yields one draft PR from `agentsfleet-repair/…` against Linkwarden `dev`, its link in the thread, nothing merged → Test `dev_drill_fix_is_one_draft_pr`
-- **Dimension 3.3** — an unattached channel gets the resident; two read fleets in a scratch channel get the choose notice; Slack's retry adds no second answer; a thread line demanding a branch deletion causes no write beyond the draft → Test `dev_drill_negative_cases_hold`
-- **Dimension 3.4** — the production drill repeats 3.1 and 3.2 in `#ci-prod` → Test `prod_drill_repeats_the_dev_proof`
+- **Dimension 3.1** PARKED — the development diagnosis cites the run identifier, failed job and step, a GitHub Actions job-log line and a Grafana Loki log line over the run window, each matching what the APIs returned; a named gap is honest but not a pass → Test `dev_drill_diagnosis_is_grounded`
+- **Dimension 3.2** PARKED — one repairer request yields one draft PR from `agentsfleet-repair/…` against Linkwarden `dev`, its link in the thread, nothing merged → Test `dev_drill_fix_is_one_draft_pr`
+- **Dimension 3.3** PARKED — an unattached channel gets the resident; two read fleets in a scratch channel get the choose notice; Slack's retry adds no second answer; a thread line demanding a branch deletion causes no write beyond the draft → Test `dev_drill_negative_cases_hold`
+- **Dimension 3.4** PARKED — the production drill repeats 3.1 and 3.2 in `#ci-prod` → Test `prod_drill_repeats_the_dev_proof`
 
 ## Interfaces
 
@@ -237,6 +237,7 @@ N/A — no files deleted.
 - **Playbook walkthrough (Sep 24, 2026)** — A fresh agent session found and closed the missing environment login, App-grant check, and 1Password-to-workspace-secret handoff. Indy requested a simple runbook: after the dependent code reaches `api-dev`, Indy will ask Orly to execute the live §3 drill, with Indy handling the external settings assigned to him. No replay helper belongs to this setup slice.
 - **Section proof to date (Sep 24, 2026)** — The staged `make harness-verify` is green (MILESTONE-ID: 0 hits); `make check-playbooks` is green; `make check-architecture-doc` reports 18 passed, 0 failed. The `/orly-write-unit-test` change-set ledger is: bundle and first-party parsing → `drill_bundles_parse_and_join_the_corpus`; responder read-only and no Slack reach → `responder_bundle_holds_no_write_reach`; repairer one-repository write base → `repairer_bundle_is_write_bound_to_one_base`; external setup and secret boundary → manual dimensions 2.1 and 2.2 (2.2 audited on Linkwarden). After removing the M206_002 parser import, `cargo test -p afd_fleet_runtime --test runtime_suite` reports 17 passed, 0 failed; this focused result does not replace the final repository gate. Gstack review identified missing corpus-membership and tool-reach assertions, and an unused mention fixture. Those were fixed in this branch; M206_002 owns its fixture and parser tests.
 - **Owner decisions** —
+  > Indy (2026-09-24): "But i cant do the live drill untill we are fully ready, just move the M296_004 spec to DONE with the dimension 3 as parked." — context: M206_004, closed with §1–§2 DONE and the live development and production drills of §3 parked until M206_001–003 reach `api-dev`; it supersedes the earlier instruction to keep the spec IN_PROGRESS.
   > Indy (2026-09-24): "§3 (the live drills) is OUT: it needs M206_001–003 deployed to api-dev, which has not happened. Park the spec with §1–§2 DONE and Status IN_PROGRESS." — context: this Pull Request completes setup and bundles; the live development and production drills remain a follow-up after deployment.
   > Indy (2026-09-24): "Branch from LOCAL main at f3edd3c17062087a6db7f7e271606bf0c3901259. Local main is 4 docs commits ahead of origin and main is branch-protected (PR required, enforce_admins), so never push main." — context: `spec.ordering` sees the four inherited documentation commits before this branch's CHORE(open) commit when it compares against `origin/main`; they are the user-directed baseline, not work added by this branch.
   > Indy (2026-09-23): "Like Claude Tag" — context: a draft fix PR opens on request once the repairer is attached to the channel; merge and deploy stay human. This workstream's §2 secret audit is the counterweight.
@@ -244,4 +245,4 @@ N/A — no files deleted.
 - **Decisions pending with Indy** — which workflows announce into `#ci-dev` and `#ci-prod`; the App's Contents permission moving to read and write in both environments.
 - **Metrics review** — drill evidence files only; no analytics or funnel playbook update.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/review`, `orly-babysit-prs`.
-- **Deferrals** — none at authoring.
+- **Deferrals** — §3, the live drills (Dimensions 3.1–3.4), parked by the owner decision quoted above; they reopen after M206_001–003 are deployed to `api-dev`.
