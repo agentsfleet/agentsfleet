@@ -10,7 +10,7 @@
 // carries its documents because the variant holds them, and a github source
 // carries its repository because the variant holds it.
 
-import { readdirSync } from "node:fs";
+import { readdirSync, type Dirent } from "node:fs";
 
 import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
@@ -109,17 +109,21 @@ const uploadProvenance = (path: string): string => {
  * A github source fetches attachments server-side, which is why the refusal
  * names it.
  */
-const supportFilesIn = (dir: string): ReadonlyArray<string> => {
-  const entries = readdirSync(dir, { withFileTypes: true });
-  return entries
-    .filter(
-      (entry) =>
-        !entry.name.startsWith(DOTFILE_PREFIX) &&
-        entry.name !== BUNDLE_SKILL_FILE &&
-        entry.name !== BUNDLE_TRIGGER_FILE,
-    )
-    .map((entry) => (entry.isDirectory() ? `${entry.name}/` : entry.name));
-};
+export const listBundleSupportFiles = (
+  dir: string,
+  readEntries: (path: string) => Dirent[] = (path) => readdirSync(path, { withFileTypes: true }),
+): Effect.Effect<ReadonlyArray<string>, ValidationError> =>
+  Effect.try({
+    try: () => readEntries(dir)
+      .filter(
+        (entry) =>
+          !entry.name.startsWith(DOTFILE_PREFIX) &&
+          entry.name !== BUNDLE_SKILL_FILE &&
+          entry.name !== BUNDLE_TRIGGER_FILE,
+      )
+      .map((entry) => (entry.isDirectory() ? `${entry.name}/` : entry.name)),
+    catch: () => new ValidationError({ detail: UNREADABLE_BUNDLE, suggestion: CREATE_USAGE }),
+  });
 
 const reject = (detail: string, suggestion: string) =>
   Effect.fail(new ValidationError({ detail, suggestion }));
@@ -173,12 +177,7 @@ const bodyForSource = (
       };
     }
     const bundle = yield* loadBundle(source.ref);
-    const extras = yield* Effect.try({
-      try: () => supportFilesIn(source.ref),
-      // A directory that cannot be listed is the bundle loader's problem, and
-      // it already failed above if the path is unusable.
-      catch: () => new ValidationError({ detail: UNREADABLE_BUNDLE, suggestion: CREATE_USAGE }),
-    });
+    const extras = yield* listBundleSupportFiles(source.ref);
     if (extras.length > 0) {
       return yield* reject(
         `${UPLOAD_DROPS_FILES}: ${extras.join(", ")}`,

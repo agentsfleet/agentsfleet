@@ -3,7 +3,7 @@
 # function-style Context.Service declarations so Bun's JavaScriptCore (JSC)
 # coverage can credit the tag site without production-source ignores.
 #
-# Enforced by scripts/enforce-coverage.mjs (bun 1.3.x parses but does not
+# Enforced by scripts/enforce-coverage.mjs (Bun 1.4.x parses but does not
 # enforce the bunfig threshold itself).
 #
 # The acceptance suite (`test/acceptance/*.spec.js`) runs under the

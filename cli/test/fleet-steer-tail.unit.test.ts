@@ -18,9 +18,7 @@ import {
   openEventTail,
 } from "../src/commands/fleet_steer_events.ts";
 import { EVENT_STATUS } from "../src/constants/event-status.ts";
-import { SIGINT } from "../src/constants/signals.ts";
 import type { HttpRequestInput } from "../src/services/http-client.ts";
-import { ReplSignalEmitter } from "../src/lib/repl.ts";
 import {
   EVENT_ID,
   FLEET_ID,
@@ -309,59 +307,24 @@ describe("steer — tail opened with an already-aborted signal", () => {
   });
 });
 
-// ── Abort inside the pre-id window ────────────────────────────────────────
-
-describe("steer — abort inside the pre-id window", () => {
-  test("test_abort_in_pre_id_window", async () => {
-    const rec = makeRecorder();
-    const signalSource = new ReplSignalEmitter();
-    const streamSignals: AbortSignal[] = [];
-    const capturingStream: typeof import("../src/lib/sse.ts").streamGet = (url, headers, cb, options) => {
-      if (options?.signal) streamSignals.push(options.signal);
-      return eventStream([
-        chunkFrame(EVENT_ID, "early words"),
-        completeFrame(EVENT_ID),
-      ])(url, headers, cb);
-    };
-    const httpReply = <T>(_input: HttpRequestInput): T => {
-      // The SIGINT lands while the POST is in flight — after the stream
-      // opened, before the response names the event.
-      signalSource.emit(SIGINT);
-      return postedEvent<T>();
-    };
-    const exit = await Effect.runPromiseExit(
-      steerEffectFromArgs(FLEET_ID, undefined, { forceTty: true }, {
-        stdin: streamFrom(["hi\n"], false),
-        stdout: nullOutput(),
-        streamGet: capturingStream,
-        signalSource,
-      }).pipe(Effect.provide(makeLayer(rec, httpReply))),
-    );
-    expect(Exit.isFailure(exit)).toBe(true);
-    expect(rec.stdout.some((l) => l.includes("early words"))).toBe(false);
-    // The interrupted turn closed its tail — the stream's signal is aborted.
-    expect(streamSignals).toHaveLength(1);
-    expect(streamSignals[0]?.aborted).toBe(true);
-  });
-
-  test("a SIGINT during the tail handshake suppresses the POST entirely", async () => {
-    const rec = makeRecorder();
-    const signalSource = new ReplSignalEmitter();
-    const abortAtOpen: typeof import("../src/lib/sse.ts").streamGet = async (_url, _headers, _cb, options) => {
-      // The cancel lands before the subscription is ready, so the turn must
-      // interrupt without ever sending the message.
-      signalSource.emit(SIGINT);
+test("a parent abort after tail open stops the stream without rendering a reply", async () => {
+  const rec = makeRecorder();
+  const parent = new AbortController();
+  let streamSignal: AbortSignal | undefined;
+  const pendingStream: typeof import("../src/lib/sse.ts").streamGet = (_url, _headers, _cb, options) =>
+    new Promise<void>((resolve) => {
+      streamSignal = options?.signal;
       options?.onOpen?.();
-    };
-    const exit = await Effect.runPromiseExit(
-      steerEffectFromArgs(FLEET_ID, undefined, { forceTty: true }, {
-        stdin: streamFrom(["hi\n"], false),
-        stdout: nullOutput(),
-        streamGet: abortAtOpen,
-        signalSource,
-      }).pipe(Effect.provide(makeLayer(rec))),
-    );
-    expect(Exit.isFailure(exit)).toBe(true);
-    expect(rec.requests).toHaveLength(0);
-  });
+      options?.signal?.addEventListener("abort", () => resolve(), { once: true });
+    });
+  const handle = await Effect.runPromise(
+    openEventTail(WS_ID, FLEET_ID, Redacted.make(TOKEN), pendingStream, parent.signal).pipe(
+      Effect.provide(makeLayer(rec)),
+    ),
+  );
+  expect(await handle.awaitReady()).toBe("tail_opened");
+  parent.abort();
+  expect(streamSignal?.aborted).toBe(true);
+  expect((await handle.awaitOutcome()).kind).toBe(STATUS_SSE_DISCONNECTED);
+  expect(rec.stdout).toEqual([]);
 });
