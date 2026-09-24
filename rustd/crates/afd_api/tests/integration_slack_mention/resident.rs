@@ -207,3 +207,73 @@ async fn resident_memory_is_the_channel() {
 
     fixture.cleanup().await;
 }
+
+/// A resident whose install fails for any reason but a taken name refuses the
+/// mention with the install's own answer, and leaves no fleet or binding
+/// behind. Here the fleet's stream cannot be created, because this router's
+/// queue is not there, so the install rolls back: the lifecycle's 500
+/// (`InstallRolledBack`), which Slack retries like any 5xx.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_resident_that_cannot_be_installed_refuses_for_a_retry() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+
+    let body = mention_at(&fixture.team, "EvRes20", CHANNEL, THREAD_TS);
+    let status = deliver(&fixture.router(), &body).await.status();
+
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(
+        residents(&fixture).await.is_empty(),
+        "the install rolled back"
+    );
+    assert_eq!(bindings(&fixture, CHANNEL).await, 0, "nothing was bound");
+    assert!(
+        fixture
+            .admission(&key(&fixture.team, "EvRes20"))
+            .await
+            .is_none(),
+        "nothing was admitted"
+    );
+
+    fixture.cleanup().await;
+}
+
+/// The install lost the name, and the read that follows finds nothing under
+/// it: the winner was deleted between the two. No fleet can answer, so the
+/// mention is refused as an outage and Slack's retry starts over.
+///
+/// Scripted rather than raced: the ingress answers the name read with
+/// nothing, while the name really is taken in the live fleets store.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_name_gone_after_the_race_refuses_for_a_retry() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let name = format!(
+        "{RESIDENT_PREFIX}{}-{}",
+        fixture.team.to_ascii_lowercase(),
+        CHANNEL.to_ascii_lowercase()
+    );
+    fixture
+        .fleet(
+            &format!(
+                "---\nname: {name}\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools: []\n  \
+                 budget:\n    daily_dollars: 1.0\n---\n"
+            ),
+            FleetStatus::Active.as_str(),
+        )
+        .await;
+    let ingress =
+        std::sync::Arc::new(harness::Scripted::new().installed_in(fixture.workspace().clone()));
+
+    let body = mention_at(&fixture.team, "EvRes21", CHANNEL, THREAD_TS);
+    let status = deliver(&fixture.scripted_router(&ingress), &body)
+        .await
+        .status();
+
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(ingress.deliveries().is_empty(), "nothing was admitted");
+
+    fixture.cleanup().await;
+}

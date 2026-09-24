@@ -118,6 +118,15 @@ impl Fixture {
             .router()
     }
 
+    /// The same router over a scripted ingress, for a ledger state a live
+    /// datastore cannot be put in on demand; every other store stays live.
+    pub(super) fn scripted_router(
+        &self,
+        ingress: &std::sync::Arc<harness::Scripted>,
+    ) -> axum::Router {
+        self.instance().with_ingress(ingress).router()
+    }
+
     fn instance(&self) -> harness::Fleet {
         let queue = Dragonfly::unreachable(&harness::unreachable_queue())
             .expect("a lazy manager opens no socket, so it cannot fail to open one");
