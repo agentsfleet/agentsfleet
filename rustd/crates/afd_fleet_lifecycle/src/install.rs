@@ -39,6 +39,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::FleetName;
+use afd_fleet_runtime::config::Mention;
 
 use backon::{ExponentialBuilder, Retryable as _};
 
@@ -107,6 +108,9 @@ pub struct Install<'a> {
     /// this path carries no validation arm. Absent means the bundle's own name,
     /// re-drawn with a suffix if it collides.
     pub name: Option<FleetName>,
+    /// The chat channel to attach it to, written into the stored `TRIGGER.md`
+    /// as its `mention` trigger. Absent leaves the document as authored.
+    pub mention: Option<Mention>,
 }
 
 /// What an install answers with.
@@ -192,7 +196,7 @@ impl Fleets {
         let entry = self
             .resolve(&mut connection, workspace, &request.source)
             .await?;
-        let authored = authored::read(entry)?;
+        let authored = authored::read(entry, request.mention.as_ref())?;
         // Released BEFORE the vault read, and reacquired for the write. The
         // pre-flight takes a pool connection of its own, so holding this one
         // across it would let N concurrent installs each hold one and wait for

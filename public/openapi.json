@@ -8500,7 +8500,7 @@
           "Fleets"
         ],
         "summary": "Create a fleet",
-        "description": "Creates a fleet from one library entry. Use either `platform_library_id` or `tenant_library_id`. The service creates a default API trigger when the library has no trigger. ",
+        "description": "Creates a fleet from one library entry. Use either `platform_library_id` or `tenant_library_id`. The service creates a default API trigger when the library has no trigger. Set `slack_channel_id` so the fleet answers mentions in that Slack channel. ",
         "operationId": "create_fleet",
         "parameters": [
           {
@@ -14466,6 +14466,13 @@
               "null"
             ],
             "description": "A published platform entry, by slug."
+          },
+          "slack_channel_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A Slack channel identifier, such as `C0123456789`, to attach the fleet\nto.\n\n`agentsfleet` adds a `mention` trigger for that channel to the fleet's\n`TRIGGER.md`, so a mention there reaches this fleet. Omit it to keep the\nlibrary entry's triggers."
           },
           "tenant_library_id": {
             "type": [
