@@ -77,7 +77,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_wire/src/ingress.rs` · `ingress/{schema.rs,tests.rs}` | EDIT | The mention's `request_json` shape and the events route's accepted answer. |
 | `rustd/crates/afd_http/src/services/{connector.rs,ingress.rs,ingress/tests.rs}` | EDIT · CREATE | The seams the route calls: bot identity, subscriber read, mention admission; inline tests move out for the length cap. |
 | `rustd/crates/afd_api_tenant/src/handler/fleet/{mod.rs,install_request.rs}` · `afd_wire/src/fleet.rs` · `rustd/crates/afd_fleet_lifecycle/src/install.rs` · `install/authored.rs` · `afd_fleet_lifecycle/tests/integration_{install_credentials,wall_counters,patch_visibility,install_grants,install_rollback}.rs` · `integration_install_grants/recovery.rs` | EDIT · CREATE | `slack_channel_id` on the install request adds the `mention` trigger to the stored `TRIGGER.md`; the install body's parsing moves beside the handler for the length cap. |
-| `cli/src/program/tree/{fleet.command.ts,flags.ts}` · `cli/src/commands/fleet_install_source.ts` · their tests | EDIT | `agentsfleet install --slack-channel <ID>`. |
+| `cli/src/program/tree/{fleet.command.ts,flags.ts}` · `cli/src/commands/{fleet_install.ts,fleet_install_source.ts}` · `cli/test/{entry-flag-validation.unit.test.ts,fleet-install.integration.test.ts,acceptance/options-metavar.spec.ts}` | EDIT | `agentsfleet install --slack-channel <ID>`. |
 | `public/openapi.json` | EDIT | Regenerated for the install field. |
 | `rustd/crates/afd_api/tests/integration_connector_events.rs` · `integration_slack_mention.rs` · `integration_slack_mention/{drops,subscribers,thread}.rs` · `slack_mention_live/fixture.rs` · `integration_fleet_lifecycle.rs` · `fleet_lifecycle_live/slack_channel.rs` · `workspace_fleets_input.rs` · `support/fake_slack.rs` · `ingress_plane_suite.rs` · `harness/{mod.rs,readiness.rs,stubs_ingress.rs,stubs_ingress/answers.rs}` · `afd_api/{Cargo.toml,src/lib.rs}` · `rustd/Cargo.lock` | EDIT · CREATE | Signed deliveries end to end against real Postgres and Dragonfly, the thread read on a loopback Slack; the harness answers the two new seams. |
 | `schema/560_connector_channels.sql` | reference | Resident bindings use it unchanged: one row per channel, insert-once. |
@@ -130,7 +130,7 @@ After the wall, `decide` recognises `event_callback` whose `event.type` is `app_
 - **Dimension 2.2** DONE — the subscribed-fleet read returns every fleet whose trigger names the channel, with status and addressed-only flag → Test `subscribers_are_read_from_the_document`
 - **Dimension 2.3** DONE — renaming the Slack channel changes nothing; editing the identifier moves the subscription → Test `subscription_follows_the_channel_id`
 - **Dimension 2.4** DONE — an install carrying `slack_channel_id` stores a `TRIGGER.md` whose `mention` trigger names it, and `fleet update` round-trips it → Test `install_with_a_channel_writes_the_mention_trigger`
-- **Dimension 2.5** — `agentsfleet install --library ci-responder --slack-channel C0123456789` attaches the fleet; a malformed identifier fails before any request → Test `cli_install_attaches_a_channel`
+- **Dimension 2.5** DONE — `agentsfleet install --library ci-responder --slack-channel C0123456789` attaches the fleet; a malformed identifier fails before any request → Test `cli_install_attaches_a_channel`
 
 ### §3 — Routing picks one fleet or one notice
 
@@ -227,7 +227,7 @@ CLI                                agentsfleet install --library <id> --slack-ch
 | 2.2 | integration | `subscribers_are_read_from_the_document` | Three fleets, two naming `C01` (one write-bound, one paused), one naming `C02`: the read for `C01` returns exactly the two with correct flags. |
 | 2.3 | unit | `subscription_follows_the_channel_id` | A stored document attached to `C0123456789` is reached there and not at `C0987654321`; the same document edited to `C0987654321` moves the fleet; no channel name is stored, so a rename changes nothing. |
 | 2.4 | integration | `install_with_a_channel_writes_the_mention_trigger` | Installing `ci-responder` with `slack_channel_id: C01` stores a document whose triggers include `mention` for `C01`; a `fleet update` with that document back leaves the subscription intact. |
-| 2.5 | e2e | `cli_install_attaches_a_channel` | The CLI subprocess with `--slack-channel C0123456789` exits 0 and the fleet's document names the channel; `--slack-channel c01` exits non-zero with the identifier rule and sends no request. |
+| 2.5 | integration | `cli_install_attaches_a_channel` | `install --library ci-responder --slack-channel C0123456789` against a mock API exits 0 and posts `slack_channel_id`; `--slack-channel c01` exits 4 with the identifier rule and sends no request. |
 | 3.1 | unit | `routing_table_is_total` | One case per scenario §4 cell returns the listed verdict. |
 | 3.2 | unit | `case_folded_duplicates_never_route` | Subscribers `Incident` and `incident` with text `incident why` yield `Notice(ambiguous)` listing both. |
 | 3.3 | unit | `write_bound_fleets_take_addressed_mentions_only` | A lone write-bound subscriber and an unaddressed mention yield `Notice(address_it)`; addressed, it yields `Addressed`. |

@@ -52,6 +52,7 @@ import {
   githubFlag,
   installLibraryDescription,
   libraryFlag,
+  slackChannelFlag,
   listLimitFlag,
   messageArgument,
   modelFlag,
@@ -128,10 +129,11 @@ export const modelsCommand = Command.make("models", { provider: providerFlag }).
 export const installCommand = Command.make("install", {
   library: libraryFlag,
   name: nameFlag,
+  slackChannel: slackChannelFlag,
 }).pipe(
   Command.withDescription(installLibraryDescription),
-  guardedHandler(({ library, name }) =>
-    installEffectFromFlags({ libraryId: opt(library), name: opt(name) }),
+  guardedHandler(({ library, name, slackChannel }) =>
+    installEffectFromFlags({ libraryId: opt(library), name: opt(name), slackChannel: opt(slackChannel) }),
   ),
 );
 

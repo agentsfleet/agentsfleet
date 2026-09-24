@@ -33,6 +33,7 @@ const FLAG = {
   model: "model",
   name: "name",
   provider: "provider",
+  slackChannel: "slack-channel",
   timezone: "timezone",
 } as const;
 
@@ -64,6 +65,7 @@ const METAVAR = {
   when: "<when>",
   path: "<path>",
   libraryId: "<library_id>",
+  channelId: "<channel_id>",
   json: "<json>",
   expression: "<expr>",
   timezone: "<tz>",
@@ -112,6 +114,19 @@ const idFlag = (name: string, description: string) =>
     Flag.withMetavar(METAVAR.id),
     Flag.optional,
   );
+
+/**
+ * A Slack channel identifier: `C` for a public channel or `G` for a private
+ * one, then at least `CHANNEL_MIN_BODY` upper-case letters or digits.
+ *
+ * The server's `ChannelId` checks the same shape, and the constant carries the
+ * Rust name. Refused here so a typo never reaches a request; a direct
+ * message's `D…` id is refused too, because a fleet answers in a channel.
+ */
+const CHANNEL_MIN_BODY = 8;
+const SLACK_CHANNEL_ID_PATTERN = new RegExp(`^[CG][A-Z0-9]{${CHANNEL_MIN_BODY},}$`);
+export const NOT_A_SLACK_CHANNEL_ID =
+  "must be a Slack channel ID: C or G, then upper-case letters and digits" as const;
 
 const textFlag = (name: string, description: string, metavar: string = METAVAR.text) =>
   Flag.String(name).pipe(
@@ -198,6 +213,12 @@ export const nameFlag = textFlag(
   METAVAR.name,
 );
 export const libraryFlag = textFlag("library", "Library id from `agentsfleet library`", METAVAR.libraryId);
+export const slackChannelFlag = Flag.String(FLAG.slackChannel).pipe(
+  Flag.withDescription("Slack channel ID whose mentions the fleet answers"),
+  Flag.filter((value: string) => SLACK_CHANNEL_ID_PATTERN.test(value), () => NOT_A_SLACK_CHANNEL_ID),
+  Flag.withMetavar(METAVAR.channelId),
+  Flag.optional,
+);
 export const fromPathFlag = textFlag(FLAG.from, "Skill bundle path", METAVAR.path);
 export const githubFlag = textFlag(
   "github",
