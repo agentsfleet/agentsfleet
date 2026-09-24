@@ -123,7 +123,7 @@ describe("--help bodies use angle-bracket metavar convention", () => {
     ["agentsfleet list --help",                 ["list", "--help"],                 ["--limit <n>", "--starting-after <id>", "--workspace <id>"]],
     ["agentsfleet logs --help",                 ["logs", "--help"],                 ["--limit <n>", "--cursor <token>", "--fleet <id>"]],
     ["agentsfleet events --help",               ["events", "--help"],               ["--limit <n>", "--since <when>", "--actor <glob>", "--cursor <token>"]],
-    ["agentsfleet install --help",              ["install", "--help"],              ["--library <library_id>", "--name <name>"]],
+    ["agentsfleet install --help",              ["install", "--help"],              ["--library <library_id>", "--name <name>", "--slack-channel <channel_id>"]],
     ["agentsfleet login --help",                ["login", "--help"],                ["--token-name <label>"]],
     ["agentsfleet billing show --help",         ["billing", "show", "--help"],      ["--limit <n>", "--cursor <token>"]],
     ["agentsfleet tenant provider create --help",  ["tenant", "provider", "create", "--help"], ["--secret <name>", "--model <name>"]],

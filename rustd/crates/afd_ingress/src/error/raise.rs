@@ -5,7 +5,10 @@
 //! the ways to produce one. A reader asking "what can go wrong here" and a
 //! reader asking "where does this get raised" are looking for different things.
 
-use super::{Error, ErrorKind};
+use afd_core::id::Uuid7;
+use afd_fleet_lifecycle::FleetStatus;
+
+use super::{COLUMN_FLEET, COLUMN_STATUS, Error, ErrorKind, Result};
 
 // Every lift is a `From`, so `?` does the conversion at the call site and no
 // `map_err` appears on a path that adds nothing (`RUST_ERROR_STANDARD` rule 2).
@@ -17,6 +20,9 @@ afd_core::error_lifts!(Error, ErrorKind:
     afd_vault::Error => Vault,
     afd_admission::Error => Admission,
     afd_fleet_runtime::Error => ConfigUnreadable,
+    afd_crypto::error::Error => Entropy,
+    afd_core::error::Error => Identifier,
+    afd_outbound::error::Error => Obligation,
 );
 
 /// Reports a statement that failed, naming what it was doing.
@@ -37,6 +43,17 @@ pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
 /// refused and the column is named, so an operator has somewhere to look.
 pub(crate) fn row_unreadable(column: &'static str) -> Error {
     ErrorKind::RowUnreadable { column }.into()
+}
+
+/// A fleet id as a row stores it.
+pub(crate) fn stored_fleet(stored: &str) -> Result<Uuid7> {
+    Uuid7::parse(stored).map_err(|_shape| row_unreadable(COLUMN_FLEET))
+}
+
+/// A fleet status as a row stores it, refused rather than defaulted — see
+/// [`row_unreadable`].
+pub(crate) fn stored_status(stored: &str) -> Result<FleetStatus> {
+    FleetStatus::parse(stored).ok_or_else(|| row_unreadable(COLUMN_STATUS))
 }
 
 /// One [`Error`] of every kind, labelled, for a suite that grades the surface.
@@ -69,12 +86,33 @@ pub(crate) fn row_unreadable(column: &'static str) -> Error {
     reason = "a sample builder whose own preconditions fail should stop the suite"
 )]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
-    use super::{COLUMN_STATUS, COLUMN_WORKSPACE};
+    use super::COLUMN_WORKSPACE;
 
     let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
     let vault = afd_vault::SecretName::parse("").expect_err("an empty secret name is refused");
     let config =
         afd_fleet_runtime::FleetName::parse("").expect_err("an empty fleet name is refused");
+    let identifier = afd_core::id::Uuid7::parse("").expect_err("an empty identifier is refused");
+    let (entropy, control) = afd_crypto::entropy::Entropy::new_mocked();
+    control.fail_next();
+    let entropy = entropy
+        .uuid_randomness()
+        .expect_err("a mocked source told to fail refuses the draw");
+    let (mut ledger_outages, ledger_answered): (Vec<_>, Vec<_>) =
+        afd_outbound::error::one_of_each_kind()
+            .into_iter()
+            .partition(|(_label, error)| {
+                error.code() == afd_core::error_code::INTERNAL_DB_UNAVAILABLE
+            });
+    let ledger_outage = ledger_outages
+        .pop()
+        .expect("afd_outbound declares an outage kind")
+        .1;
+    let ledger_answered = ledger_answered
+        .into_iter()
+        .next()
+        .expect("afd_outbound declares a kind that is not an outage")
+        .1;
 
     // Partitioned in one pass rather than searched twice: `afd_admission::Error`
     // is not `Clone`, so a second search over the same vector would have to
@@ -125,5 +163,24 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ),
         ("row unreadable status", row_unreadable(COLUMN_STATUS)),
         ("row unreadable workspace", row_unreadable(COLUMN_WORKSPACE)),
+        ("entropy", ErrorKind::Entropy { source: entropy }.into()),
+        (
+            "identifier",
+            ErrorKind::Identifier { source: identifier }.into(),
+        ),
+        (
+            "obligation unreachable",
+            ErrorKind::Obligation {
+                source: ledger_outage,
+            }
+            .into(),
+        ),
+        (
+            "obligation answered",
+            ErrorKind::Obligation {
+                source: ledger_answered,
+            }
+            .into(),
+        ),
     ]
 }

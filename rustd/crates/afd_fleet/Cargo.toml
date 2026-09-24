@@ -66,9 +66,14 @@ afd_dragonfly.workspace = true
 # Owns `core.fleet_obligations`: the report path commits an obligation through
 # it. The edge runs fleet -> outbound and never back.
 afd_outbound.workspace = true
-# The admission ledger, asked one question: where a fleet's lost consumer
-# group resumes. The answer is a join only the ledger's owner may write.
+# The admission ledger, asked two questions: where a fleet's lost consumer
+# group resumes, and where a settled event's answer goes. Each is a read only
+# the ledger's owner may write.
 afd_admission.workspace = true
+# The connector a reply destination names, parsed from the admission row
+# once, so an obligation carries the type and never a model provider's
+# string. Already in this crate's graph through `afd_outbound`.
+afd_connector.workspace = true
 # The HOST's plane. The lease is issued TO a runner, so the lease statements
 # bind runner rows through its `Bound`, and finalize writes the one
 # `lease_released` audit row using its vocabulary — the single point the two

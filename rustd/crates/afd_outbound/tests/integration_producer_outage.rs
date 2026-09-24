@@ -20,6 +20,7 @@
 
 use std::time::Duration;
 
+use afd_connector::Provider;
 use afd_core::clock::UnixMillis;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::streams::ACKNOWLEDGED_HISTORY;
@@ -41,10 +42,13 @@ mod seed;
 )]
 mod support;
 
-use seed::{FLEET, SEEDED_AT, WORKSPACE, clear_obligations, obligation_id, seed_parents};
+use seed::{
+    DESTINATION, FLEET, SEEDED_AT, WORKSPACE, clear_obligations, obligation_id, seed_parents,
+};
 use support::{OUTBOUND_LANE, OutboundHarness};
 
-const PROVIDER: &str = "slack";
+const PROVIDER: &str = Provider::Slack.id();
+
 const ANSWER: &str = "Aurora is healthy.";
 const EVENT_ID: &str = "1760000000001-0";
 /// The stem the trim proof numbers its answers off, so every entry it appends
@@ -87,7 +91,8 @@ async fn owe_committed(harness: &OutboundHarness, row: &str, answer: &str) -> bo
         Delivery {
             fleet_id: FLEET,
             workspace_id: WORKSPACE,
-            provider: PROVIDER,
+            provider: Provider::Slack,
+            destination: DESTINATION,
             event_id: EVENT_ID,
             answer,
         },
@@ -219,6 +224,7 @@ async fn a_trim_keeps_the_answers_the_group_has_not_taken() {
             .queue
             .enqueue(OutboundJob {
                 provider: PROVIDER,
+                destination: DESTINATION,
                 workspace_id: WORKSPACE,
                 fleet_id: FLEET,
                 event_id: &event_id,

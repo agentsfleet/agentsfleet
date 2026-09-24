@@ -2,7 +2,7 @@
 
 > Parent: [`README.md`](./README.md) · References: [`slack-channel-resident.md`](./slack-channel-resident.md) (the channel's resident), [`github-pr-reviewer.md`](./github-pr-reviewer.md) (the repository subscription this mirrors), [`production-deploy-repair.md`](./production-deploy-repair.md) (the repair crew), [`../connectors.md`](../connectors.md), [`../data_flow.md`](../data_flow.md), [`../memory.md`](../memory.md).
 >
-> **Specified, not built.** M206_001–003 live in `docs/v2/pending/`; M206_004 lives in `docs/v2/active/` while its drill is planned. Every "today" claim below was read from source at `b1bc6f0c4`; the retired Zig daemon was read at `1ad07eb2` in `~/Projects/oss/zig/agentsfleet_zig`.
+> **Built; the drill is pending.** M206_001–003 live in `docs/v2/done/`; M206_004 is in `docs/v2/done/` with its live drills (§3) parked until 001–003 reach `api-dev`. Status rows cite source on the M206 branch; the scenario's original "today" claims were read at `b1bc6f0c4`, and the retired Zig daemon at `1ad07eb2` in `~/Projects/oss/zig/agentsfleet_zig`.
 
 Legend: ✅ in the Rust daemon · 🟡 in the Rust daemon, broken · 🔨 specified, not built · ⛔ only in the retired Zig daemon.
 
@@ -106,7 +106,7 @@ The runner reads the request's `message` string and falls back to the whole body
 
 ## 6. How the answer comes back
 
-The producer that owns a reply surface records the reply destination on the admission: provider `slack` and the address `{team_id, channel_id, thread_ts}`, where `thread_ts` is the mention's `thread_ts`, or its `ts` when it started the thread. The destination travels with the event, and an approval continuation inherits it from the event it resumes. The report transaction owes a delivery only when the event carries a destination, addressed by it. The Slack poster reads the address from the delivery obligation.
+The producer that owns a reply surface records the reply destination on the admission: provider `slack` and the address `{team_id, channel_id, thread_ts}` (the poster requires `channel_id` and `thread_ts`), where `thread_ts` is the mention's `thread_ts`, or its `ts` when it started the thread. The destination travels with the event, and an approval continuation inherits it from the event it resumes. The report transaction owes a delivery only when the event carries a destination, addressed by it. The Slack poster reads the address from the delivery obligation.
 
 Today every non-empty answer is owed to the lease's **model** provider: `commit.rs:198-210` passes `lease.provider`, which is the provider resolved at billing (`schema/610_runner_leases.sql:35-39`). The dispatcher cannot parse `anthropic` as a connector and drops the job as permanent (`afd_outbound/src/poster.rs:77-92`). Nothing stamps the row, so the recovery scan re-appends it every `LOST_AFTER` of 300 seconds without end (`afd_outbound/src/obligation/sql.rs:111-116`, `producer.rs:59-66`). The Zig daemon took the provider from the channel binding and owed nothing for an unbound fleet (`src/agentsfleetd/fleet/service_report_outbound.zig:25-46` at `1ad07eb2`).
 
@@ -125,7 +125,7 @@ A Slack-requested run can do exactly what the attached fleet's own policy allows
 
 | Source | How a fleet reads it | Known gaps |
 |---|---|---|
-| GitHub run | the fleet reads the linked run, failed jobs, steps and annotations through `http_request` under the repository's read prefix (M206_003 §2); it also reads commits and compare there | A read mint currently requests `contents: read` only (`afd_credential/src/credential/github.rs:107-119`), so Actions and Checks reads await M206_003 §1. The App permission update is in the M206_004 playbook. Job logs answer with a redirect to storage outside the exact-host allowlist (`src/runner/network/AllowList.zig:154`); the tool does not follow it, so the fleet names a job-log gap. The storage hop is owner-held. |
+| GitHub run | the fleet reads the linked run, failed jobs, steps and annotations through `http_request` under the repository's read prefix, as its SKILL.md directs (M206_003 §2); it also reads commits and compare there (`afd_gate/src/policy/egress/read.rs:14-27`) | A mint reads the installation's permissions first and asks for `contents` read plus whichever of `actions` and `checks` read it holds (`afd_credential/src/credential/github/request.rs:85`). The App registration lists Checks: read-only and each installation accepts it before the drill (`playbooks/operations/github_app_registration/001_playbook.md:38-43`); until one does, the mint succeeds without it and the fleet's annotation read answers 403. Job logs answer with a redirect to storage outside the exact-host allowlist (`src/runner/network/AllowList.zig:154`); the tool does not follow it, so the fleet names a job-log gap. The storage hop is owner-held. |
 | Grafana | workspace secret `grafana = {host, token}`; `Bearer ${secrets.grafana.token}`; Loki and alert reads over GET | No connector, by design ([connector archetypes](../connectors.md#archetypes)). The host must resolve publicly, because the tool rejects private addresses. Read-only is enforced by `network.read_only`, which is otherwise off by default (`afd_fleet_runtime/src/config/policy.rs:154-157`). |
 | Memory | the fleet's own namespace, hydrated only under a live lease for that fleet (`afd_fleet/src/lease/memory.rs:45-50`) | none for this journey |
 
@@ -147,14 +147,14 @@ A Slack-requested run can do exactly what the attached fleet's own policy allows
 | Capability | Rust daemon today | Required | Workstream |
 |---|---|---|---|
 | Signed Slack delivery | ✅ signature, 5-minute window, `url_verification` echo (`afd_api_ingress/src/handler/events.rs:192-217`) | unchanged | — |
-| Mention becomes an event | 🟡 dropped as `event_producer_not_ported` (`events.rs:88,125-134`); no Slack producer (`afd_admission/src/lib.rs:78-106`) | one admission per Slack event | M206_002 |
-| Channel → fleet | ⛔ `core.connector_channels` has no Rust reader or writer | resident binding plus subscriptions | M206_002 |
-| Thread context | ⛔ Zig re-read the thread; Rust has none | bounded re-read into `message` | M206_002 |
-| Answer delivery | 🟡 owed to the model provider, dropped, re-offered forever | owed only to a recorded destination; abandoned when undeliverable | M206_001 |
-| Slack poster | ✅ `chat.postMessage` with verdicts (`afd_outbound/src/slack.rs`) | reads its address from the obligation | M206_001 |
-| Write reach from Slack | ✅ write rules admit one ref and one draft PR (`afd_gate/src/policy/egress/write.rs:54-91`) | proven for Slack-requested leases; no per-request approval, by owner decision | M206_003 |
+| Mention becomes an event | ✅ one `slack_mention` admission per Slack event, keyed `<team_id>:<event_id>` (`afd_api_ingress/src/handler/mention.rs:195`, `afd_admission/src/lib.rs:110`) | — | M206_002 |
+| Channel → fleet | ✅ subscriptions: a `mention` trigger names the channel, written by `install --slack-channel` (`afd_fleet_runtime/src/config/attach.rs:39`) and read per mention (`afd_ingress/src/slack/mod.rs:67`); the resident: installed on the first unattached mention and bound once (`afd_api_ingress/src/handler/mention/resident.rs:42`) | — | M206_002 |
+| Thread context | ✅ `conversations.replies` under 1.5 s, parent plus latest replies, capped, under a fixed untrusted-data heading (`afd_connector/src/slack/replies.rs:179`, `afd_ingress/src/slack/message.rs:52`) | — | M206_002 |
+| Answer delivery | ✅ owed only to a recorded destination; abandoned when refused or out of cycles (slots 918–920) | — | M206_001 |
+| Slack poster | ✅ `chat.postMessage` from the job's own address; reads no event row (`afd_outbound/src/slack.rs`) | — | M206_001 |
+| Write reach from Slack | ✅ one ref and one draft PR, proven for a Slack-requested lease with no approval asked (`afd_gate/src/policy/egress/tests/slack.rs`, `afd_fleet/tests/integration_lease_gates/slack.rs`) | — | M206_003 |
 | One run per approval | unverified: the parked delivery passes once approved (`afd_gate/src/gate/pass.rs:162-163`) while approval also admits a continuation (`afd_approval/src/inbox/resolve.rs:154-155`) | exactly one run | its own spec; off this path, since Slack requests do not park |
-| Continuous Integration (CI) evidence reach | 🟡 token lacks `actions`/`checks`; logs unreachable | read token reaches runs, jobs and annotations for the fleet to fetch; the job-log storage hop is owner-held | M206_003 |
+| Continuous Integration (CI) evidence reach | 🟡 the read mint asks for `actions` and `checks` read where the installation holds them, and the read rule covers the CI paths (M206_003 §1–§2); logs unreachable | every installation accepts the App's Checks permission; the job-log storage hop is owner-held | M206_003 |
 | Grafana read-only | ✅ when the fleet declares `network.read_only` | declared by the drill bundle | M206_004 |
 | External setup | not in code | playbook: apps, channels, subscriptions, App permissions, Grafana token | M206_004 |
 
@@ -178,6 +178,7 @@ Both channels subscribe to `agentsfleet/linkwarden`: development selects pull re
 - The resident's memory is the channel's; a subscribed fleet never reads another fleet's memory.
 - A Slack-requested write run reaches one daemon-issued branch and one draft PR, and never merges or deploys.
 - A write-bound fleet never receives an unaddressed mention.
+- A fleet reads CI evidence only inside its bound repository.
 - A fleet cites a job log line only if its own `http_request` returned that text; a redirect it cannot follow becomes a named gap.
 - No fleet holds the Slack bot token; the daemon posts.
 

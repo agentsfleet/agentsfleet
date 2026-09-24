@@ -76,10 +76,14 @@ mod integration_recovery_progress;
 mod integration_renew_clamp;
 #[path = "integration_renew_coverage.rs"]
 mod integration_renew_coverage;
+#[path = "integration_reply_destination.rs"]
+mod integration_reply_destination;
 #[path = "integration_report_commit.rs"]
 mod integration_report_commit;
 #[path = "integration_report_fence.rs"]
 mod integration_report_fence;
+#[path = "integration_report_owes_destination.rs"]
+mod integration_report_owes_destination;
 #[path = "integration_report_settle.rs"]
 mod integration_report_settle;
 #[path = "integration_runner_admin.rs"]

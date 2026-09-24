@@ -160,6 +160,7 @@ async fn a_neighbours_fleet_is_not_answered_for() {
             &Install {
                 source: LibrarySource::Platform(LIBRARY_ID),
                 name: None,
+                mention: None,
             },
             Lane::now(),
         )

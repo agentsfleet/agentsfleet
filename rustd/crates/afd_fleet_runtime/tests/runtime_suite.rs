@@ -21,6 +21,8 @@ mod support;
 mod frontmatter_corpus;
 #[path = "frontmatter_fields.rs"]
 mod frontmatter_fields;
+#[path = "frontmatter_mention.rs"]
+mod frontmatter_mention;
 
 #[path = "error_surface.rs"]
 mod error_surface;

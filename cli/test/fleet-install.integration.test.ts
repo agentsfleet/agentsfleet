@@ -8,6 +8,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { runCli } from "../src/cli.ts";
+import { NOT_A_SLACK_CHANNEL_ID } from "../src/program/tree/flags.ts";
 import { bufferStream, cliEnv } from "./helpers-cli-state.ts";
 import {
   WS_ID,
@@ -164,6 +165,50 @@ describe("install — webhook URL output", () => {
         );
         expect(code).toBe(0);
         expect(out.read()).toContain(fallbackTemplateId);
+      });
+    });
+  });
+});
+
+// ── install: --slack-channel ────────────────────────────────────────────────
+
+// Dimension 2.5 — `--slack-channel` rides the create body as `slack_channel_id`,
+// which the server writes into the fleet's TRIGGER.md; the install still exits 0.
+describe("install — --slack-channel attaches the fleet", () => {
+  test("cli_install_attaches_a_channel", async () => {
+    const channel = "C0123456789";
+    await authedScope(async () => {
+      const routes: MockRoutes = {
+        ...galleryRoute(TEMPLATE_ID, "ci-responder"),
+        [`POST /v1/workspaces/${WS_ID}/fleets`]: () =>
+          jsonResponse(201, { fleet_id: FLEET_ID, name: "ci-responder" }),
+      };
+      await withMockApi(routes, async (apiUrl, calls) => {
+        const code = await runCli(
+          ["install", "--library", TEMPLATE_ID, "--slack-channel", channel],
+          { stdout: bufferStream().stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
+        );
+        expect(code).toBe(0);
+        const create = calls.find((call) => call.method === "POST");
+        expect(JSON.parse(create?.body ?? "{}")).toEqual({
+          platform_library_id: TEMPLATE_ID,
+          slack_channel_id: channel,
+        });
+      });
+    });
+  });
+
+  test("a malformed channel exits before any request", async () => {
+    await authedScope(async () => {
+      await withMockApi({}, async (apiUrl, calls) => {
+        const err = bufferStream();
+        const code = await runCli(
+          ["install", "--library", TEMPLATE_ID, "--slack-channel", "c01"],
+          { stdout: bufferStream().stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
+        );
+        expect(code).toBe(4);
+        expect(err.read()).toContain(NOT_A_SLACK_CHANNEL_ID);
+        expect(calls).toHaveLength(0);
       });
     });
   });

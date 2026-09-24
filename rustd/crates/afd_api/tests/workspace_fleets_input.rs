@@ -152,6 +152,25 @@ async fn an_install_refuses_a_name_it_could_not_store() {
     );
 }
 
+/// Dimension 2.4 — a Slack channel that is not a channel identifier is refused
+/// before any library entry is read: lower case, a direct message's `D…` id,
+/// and one too short to be Slack's.
+#[tokio::test]
+async fn an_install_refuses_a_slack_channel_that_is_not_an_identifier() {
+    for channel in ["c0123456789", "D0123456789", "C01"] {
+        let body =
+            format!(r#"{{"platform_library_id":"daily-digest","slack_channel_id":"{channel}"}}"#);
+        let response = authorised(Method::POST, &collection(), &body).await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{channel}");
+        assert_eq!(
+            detail_of(response).await,
+            afd_api::handler::fleet::DETAIL_SLACK_CHANNEL_ID,
+            "{channel}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn an_empty_patch_answers_without_touching_a_row() {
     // The one success this suite can prove with no datastore in it, and it is a

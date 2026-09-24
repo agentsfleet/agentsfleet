@@ -64,6 +64,7 @@ export interface CreateFleetBody {
   readonly source_markdown?: string;
   readonly trigger_markdown?: string;
   readonly name?: string;
+  readonly slack_channel_id?: string;
 }
 
 // Predicate (not an inline `isString(x)`) so TypeScript narrows at
@@ -126,6 +127,13 @@ export const withName = (
   const trimmed = isString(name) ? name.trim() : "";
   return trimmed.length > 0 ? { ...body, name: trimmed } : body;
 };
+
+// Fold an optional Slack channel into a create body. The flag already refused a
+// malformed id, so an absent value is the only case left to leave out.
+export const withSlackChannel = (
+  body: CreateFleetBody,
+  channel: string | null | undefined,
+): CreateFleetBody => (isString(channel) ? { ...body, slack_channel_id: channel } : body);
 
 // Install preview — the credential/tool/host requirements the operator must
 // wire before the Fleet can run. Mirrors the dashboard's connect-to-continue.

@@ -11,22 +11,24 @@ use std::collections::BTreeSet;
 
 use afd_wire::event::EventType;
 
+use super::admit::ReplyBinds;
 use super::budget::{FLEET_BACKLOG_BUDGET, REPLAY_BACKLOG_BUDGET};
 use super::sql;
-use super::{Admission, BudgetScope, Budgets, Key, Producer, Replayed, logical_id};
+use super::{Admission, BudgetScope, Budgets, Key, Producer, Replayed, Reply, logical_id};
 
 /// Every producer, so a test cannot silently cover five of six.
 ///
 /// Written out rather than derived: a variant added without a spelling here
 /// fails to compile at the `match` in [`Producer::as_str`] and fails the
 /// count below, which is two failures naming the same omission.
-const EVERY_PRODUCER: [Producer; 6] = [
+const EVERY_PRODUCER: [Producer; 7] = [
     Producer::Steer,
     Producer::Webhook,
     Producer::WebhookApp,
     Producer::ScheduleFire,
     Producer::GateContinuation,
     Producer::RepairVerification,
+    Producer::SlackMention,
 ];
 
 /// An admission whose fields a test then varies one at a time.
@@ -39,6 +41,7 @@ fn sample() -> Admission<'static> {
         actor: "steer:user_1",
         event_type: EventType::Webhook,
         request_json: r#"{"message":"hello"}"#,
+        reply: Reply::None,
     }
 }
 
@@ -258,3 +261,6 @@ fn the_replay_scan_keeps_the_lock_that_keeps_replicas_disjoint() {
         sql::SELECT_UNRECEIPTED
     );
 }
+
+#[path = "tests/reply.rs"]
+mod reply;

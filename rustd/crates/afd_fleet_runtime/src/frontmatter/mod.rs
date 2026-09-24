@@ -45,7 +45,7 @@ pub use self::trigger::{ParsedTrigger, parse_trigger};
 pub(crate) const TRIMMED: [char; 4] = [' ', '\t', '\r', '\n'];
 
 /// The frontmatter fence, opening and closing.
-const FENCE: &str = "---";
+pub(crate) const FENCE: &str = "---";
 
 /// The closing fence as it appears mid-document, at the start of its own line.
 const CLOSING: &str = "\n---";

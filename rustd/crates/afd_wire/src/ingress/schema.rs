@@ -8,7 +8,7 @@
 
 use std::borrow::Cow;
 
-use super::{EchoAnswer, EventsAnswer, Ignored};
+use super::{Accepted, EchoAnswer, EventsAnswer, Ignored};
 
 impl utoipa::PartialSchema for EventsAnswer<'_> {
     fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
@@ -17,9 +17,11 @@ impl utoipa::PartialSchema for EventsAnswer<'_> {
             utoipa::openapi::schema::AnyOfBuilder::new()
                 .item(utoipa::openapi::Ref::from_schema_name(EchoAnswer::name()))
                 .item(utoipa::openapi::Ref::from_schema_name(Ignored::name()))
+                .item(utoipa::openapi::Ref::from_schema_name(Accepted::name()))
                 .description(Some(
-                    "A handshake echoed under the provider's own field name, or a \
-                     delivery acknowledged and not acted on, with the reason",
+                    "A handshake echo under the provider's field name, an ignored \
+                     delivery with its reason, or an accepted delivery with its \
+                     event identifier",
                 ))
                 .build(),
         ))
@@ -40,7 +42,9 @@ impl utoipa::ToSchema for EventsAnswer<'_> {
         use utoipa::PartialSchema as _;
         schemas.push((EchoAnswer::name().into_owned(), EchoAnswer::schema()));
         schemas.push((Ignored::name().into_owned(), Ignored::schema()));
+        schemas.push((Accepted::name().into_owned(), Accepted::schema()));
         EchoAnswer::schemas(schemas);
         Ignored::schemas(schemas);
+        Accepted::schemas(schemas);
     }
 }

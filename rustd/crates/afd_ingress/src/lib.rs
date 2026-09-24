@@ -58,12 +58,14 @@ mod app;
 mod binding;
 mod deliver;
 mod secret;
+pub mod slack;
 
 pub mod error;
 pub mod sql;
 
 use afd_admission::Admissions;
 use afd_core::id::Uuid7;
+use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_vault::Vault;
 use sqlx::Row as _;
@@ -99,16 +101,19 @@ pub struct Ingress {
     vault: Vault,
     /// Where the verified delivery is accepted, before anything is queued.
     pub(crate) admissions: Admissions,
+    /// What a channel binding's identifier is minted from.
+    entropy: Entropy,
 }
 
 impl Ingress {
     /// Binds the ingress to an already-connected pool, vault and ledger.
     #[must_use]
-    pub const fn new(database: Db, vault: Vault, admissions: Admissions) -> Self {
+    pub fn new(database: Db, vault: Vault, admissions: Admissions) -> Self {
         Self {
             database,
             vault,
             admissions,
+            entropy: Entropy::new(),
         }
     }
 

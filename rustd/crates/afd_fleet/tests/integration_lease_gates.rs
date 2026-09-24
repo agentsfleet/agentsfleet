@@ -42,6 +42,8 @@ mod bindings;
 mod cases;
 #[path = "integration_lease_gates/seed.rs"]
 mod seed;
+#[path = "integration_lease_gates/slack.rs"]
+mod slack;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
