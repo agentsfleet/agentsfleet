@@ -11,24 +11,6 @@ use super::*;
 /// so a row the scans return is one they would offer at any cutoff.
 const FAR_FUTURE: i64 = i64::MAX / 2;
 
-/// The row's abandonment, as the ledger holds it: `(abandoned_at, reason)`.
-async fn abandonment(harness: &OutboundHarness, event: &str) -> (Option<i64>, Option<String>) {
-    let mut connection = harness
-        .database
-        .acquire()
-        .await
-        .expect("the ledger answers");
-    sqlx::query_as(
-        "SELECT abandoned_at, abandon_reason FROM core.fleet_obligations
-          WHERE fleet_id = $1::uuid AND event_id = $2::text",
-    )
-    .bind(FLEET)
-    .bind(event)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("reading the obligation")
-}
-
 /// Every event either recovery scan would offer, at any cutoff.
 async fn offered(harness: &OutboundHarness) -> Vec<String> {
     let cutoff = UnixMillis::from_millis(FAR_FUTURE);
@@ -75,7 +57,7 @@ async fn permanent_refusal_abandons_the_obligation() {
 
     one_cycle(&harness, entry, event, Verdict::Permanent).await;
 
-    let (abandoned_at, reason) = abandonment(&harness, event).await;
+    let (abandoned_at, reason) = abandonment(&harness.database, event).await;
     assert!(abandoned_at.is_some(), "a refusal for good is abandoned");
     assert_eq!(reason.as_deref(), Some(AbandonReason::Refused.as_str()));
     assert!(
@@ -163,7 +145,7 @@ async fn exhausted_cycles_abandon_the_obligation() {
 
     one_cycle(&harness, entry, event, Verdict::Retryable).await;
     assert_eq!(
-        abandonment(&harness, event).await,
+        abandonment(&harness.database, event).await,
         (None, None),
         "one cycle is still left, so the answer is still owed"
     );
@@ -185,7 +167,7 @@ async fn exhausted_cycles_abandon_the_obligation() {
         "the capping cycle was counted"
     );
     assert_eq!(delivered_at, None);
-    let (abandoned_at, reason) = abandonment(&harness, event).await;
+    let (abandoned_at, reason) = abandonment(&harness.database, event).await;
     assert!(
         abandoned_at.is_some(),
         "the cycle that reached the cap abandoned it"
@@ -244,28 +226,15 @@ async fn set_attempts(harness: &OutboundHarness, event: &str, cycles: i64) {
 /// Writes a row the way the report path did before it read a destination:
 /// owed to the model provider, naming nowhere.
 async fn seed_legacy(harness: &OutboundHarness, nth: u8, event: &str, receipt: Option<&str>) {
-    let mut connection = harness
-        .database
-        .acquire()
-        .await
-        .expect("the ledger answers");
-    sqlx::query(
-        "INSERT INTO core.fleet_obligations
-           (id, fleet_id, workspace_id, provider, event_id, answer, receipt,
-            attempt_count, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, 0, $8, $8)",
-    )
-    .bind(obligation_id(nth))
-    .bind(FLEET)
-    .bind(WORKSPACE)
-    .bind(LEGACY_PROVIDER)
-    .bind(event)
-    .bind(ANSWER)
-    .bind(receipt)
-    .bind(SEEDED_AT)
-    .execute(&mut *connection)
-    .await
-    .expect("seeding a row the old report path wrote");
+    let row = OwedRow {
+        nth,
+        event,
+        provider: LEGACY_PROVIDER,
+        destination: None,
+        receipt,
+        answer: ANSWER,
+    };
+    seed_owed_row(&harness.database, row).await;
 }
 
 /// What the report path wrote into `provider` before it read a destination:

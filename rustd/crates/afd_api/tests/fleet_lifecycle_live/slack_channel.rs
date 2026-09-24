@@ -7,10 +7,7 @@
 
 #![cfg(feature = "test-util")]
 
-use afd_admission::Admissions;
 use afd_connector::Provider;
-use afd_dragonfly::Dragonfly;
-use afd_ingress::Ingress;
 use afd_ingress::slack::ChannelId;
 
 use super::*;
@@ -21,14 +18,7 @@ const CHANNEL: &str = "C0123456789";
 /// The fleets a mention in [`CHANNEL`] would reach, as the mention path reads
 /// them.
 async fn subscribers(fixture: &Fixture) -> Vec<Uuid7> {
-    let database = fixture.database.clone();
-    let queue = Dragonfly::unreachable(&harness::unreachable_queue())
-        .expect("a lazy manager opens no socket");
-    let ingress = Ingress::new(
-        database.clone(),
-        harness::vault(database.clone()),
-        Admissions::for_tests(database, queue),
-    );
+    let ingress = harness::unreachable_ingress(fixture.database.clone());
     let channel: ChannelId = CHANNEL.parse().expect("a well-formed channel");
     ingress
         .mention_subscribers(&fixture.workspace, Provider::Slack.id(), &channel)

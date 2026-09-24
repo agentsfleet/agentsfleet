@@ -34,7 +34,7 @@ use crate::harness;
 use afd_connector::Provider;
 use afd_core::error_code;
 use afd_webhook::Scheme;
-use http::{HeaderName, Method, StatusCode};
+use http::{Method, StatusCode};
 use serde_json::Value;
 
 use self::harness::{json_body, send_with_headers};
@@ -86,23 +86,8 @@ fn path() -> String {
 async fn deliver(router: &axum::Router, secret: &[u8], body: &str) -> axum::response::Response {
     let at = harness::frozen_unix_seconds().to_string();
     let proof = harness::webhook::signature_at(SCHEME, secret, Some(&at), body.as_bytes());
-    let headers = vec![
-        (name(SCHEME.signature_header()), proof.as_str()),
-        (
-            name(
-                SCHEME
-                    .timestamp_header()
-                    .expect("the timestamped scheme names its timestamp header"),
-            ),
-            at.as_str(),
-        ),
-    ];
+    let headers = harness::webhook::slack_headers(&proof, &at);
     send_with_headers(router, Method::POST, &path(), None, body, &headers).await
-}
-
-/// One header name, as the request builder takes it.
-fn name(header: &str) -> HeaderName {
-    HeaderName::from_bytes(header.as_bytes()).expect("the scheme's header names are well formed")
 }
 
 #[tokio::test]

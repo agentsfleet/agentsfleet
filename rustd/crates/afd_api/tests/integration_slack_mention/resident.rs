@@ -28,9 +28,8 @@ const RESIDENT_PREFIX: &str = "slack-channel-";
 
 /// One `app_mention` in `channel`, in the thread rooted at `thread_ts`.
 fn mention_at(team: &str, event_id: &str, channel: &str, thread_ts: &str) -> String {
-    format!(
-        r#"{{"type":"event_callback","team_id":"{team}","event_id":"{event_id}","event":{{"type":"app_mention","user":"{PERSON}","text":"<@{BOT_USER}> who owns the deploy?","ts":"{MENTION_TS}","thread_ts":"{thread_ts}","channel":"{channel}"}}}}"#
-    )
+    let asked = format!("<@{BOT_USER}> who owns the deploy?");
+    app_mention(team, event_id, PERSON, &asked, channel, thread_ts)
 }
 
 /// The resident fleets this workspace holds, by name.

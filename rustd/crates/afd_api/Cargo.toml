@@ -97,7 +97,9 @@ jsonwebtoken.workspace = true
 # The `body` claim a scheduler token carries is a SHA-256 of the delivery,
 # base64url-unpadded. Minting one means computing it.
 sha2.workspace = true
-afd_connector.workspace = true
+# `test_util::FakeSlack`, the loopback Slack a mention's thread read is
+# answered by.
+afd_connector = { workspace = true, features = ["test-util"] }
 # The harness assembles the production schedules plane over stores that are not
 # there, which needs the client type its constructor takes.
 reqwest.workspace = true

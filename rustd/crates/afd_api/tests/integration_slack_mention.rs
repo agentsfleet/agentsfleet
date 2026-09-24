@@ -21,9 +21,8 @@ use afd_webhook::Scheme;
 use http::{HeaderName, Method, StatusCode};
 use serde_json::Value;
 
+use self::harness::webhook::name;
 use self::harness::{json_body, send_with_headers};
-#[path = "support/fake_slack.rs"]
-mod fake_slack;
 #[path = "slack_mention_live/fixture.rs"]
 mod fixture;
 
@@ -75,8 +74,21 @@ fn mention(team: &str, event_id: &str, user: &str, text: &str) -> String {
 
 /// The same, asked in the thread rooted at `thread_ts`.
 fn mention_in(team: &str, event_id: &str, user: &str, text: &str, thread_ts: &str) -> String {
+    app_mention(team, event_id, user, text, CHANNEL, thread_ts)
+}
+
+/// The one spelling of Slack's `app_mention` envelope every case sends: `user`
+/// saying `text` in `channel`, in the thread rooted at `thread_ts`.
+fn app_mention(
+    team: &str,
+    event_id: &str,
+    user: &str,
+    text: &str,
+    channel: &str,
+    thread_ts: &str,
+) -> String {
     format!(
-        r#"{{"type":"event_callback","team_id":"{team}","event_id":"{event_id}","event":{{"type":"app_mention","user":"{user}","text":"{text}","ts":"{MENTION_TS}","thread_ts":"{thread_ts}","channel":"{CHANNEL}"}}}}"#
+        r#"{{"type":"event_callback","team_id":"{team}","event_id":"{event_id}","event":{{"type":"app_mention","user":"{user}","text":"{text}","ts":"{MENTION_TS}","thread_ts":"{thread_ts}","channel":"{channel}"}}}}"#
     )
 }
 
@@ -89,17 +101,7 @@ async fn deliver_at(
     extra: &[(HeaderName, &str)],
 ) -> axum::response::Response {
     let proof = harness::webhook::signature_at(SCHEME, secret, Some(at), body.as_bytes());
-    let mut headers = vec![
-        (name(SCHEME.signature_header()), proof.as_str()),
-        (
-            name(
-                SCHEME
-                    .timestamp_header()
-                    .expect("the timestamped scheme names its timestamp header"),
-            ),
-            at,
-        ),
-    ];
+    let mut headers = harness::webhook::slack_headers(&proof, at);
     headers.extend(extra.iter().cloned());
     send_with_headers(router, Method::POST, &path(), None, body, &headers).await
 }
@@ -108,10 +110,6 @@ async fn deliver_at(
 async fn deliver(router: &axum::Router, body: &str) -> axum::response::Response {
     let at = harness::frozen_unix_seconds().to_string();
     deliver_at(router, SIGNING_SECRET, &at, body, &[]).await
-}
-
-fn name(header: &str) -> HeaderName {
-    HeaderName::from_bytes(header.as_bytes()).expect("the header names are well formed")
 }
 
 /// The key a mention from `team` with `event_id` is admitted under.

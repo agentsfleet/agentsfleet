@@ -58,17 +58,15 @@ mod seed;
 mod support;
 
 use seed::{
-    FLEET, SEEDED_AT, WORKSPACE, clear_obligations, destinations_naming, entries_naming,
-    entries_on, forget_group, forget_stream, obligation_id, reader_named, seed_parents,
+    DESTINATION, FLEET, OwedRow, SEEDED_AT, WORKSPACE, abandonment, clear_obligations,
+    destinations_naming, entries_naming, entries_on, forget_group, forget_stream, obligation_id,
+    reader_named, seed_owed_row, seed_parents,
 };
 use support::{OUTBOUND_LANE, OutboundHarness};
 
 /// The connector every fixture answer goes back through.
 const PROVIDER: &str = Provider::Slack.id();
 
-/// The thread every owed answer here is addressed to.
-const DESTINATION: &str =
-    r#"{"team_id":"T024BE7LD","channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
 /// What the fixture answers say.
 const ANSWER: &str = "Aurora is healthy.";
 /// A cutoff every seeded row is older than, so a scan sees all of them.

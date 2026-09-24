@@ -6,9 +6,6 @@
 
 #![cfg(feature = "test-util")]
 
-use afd_dragonfly::Dragonfly;
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_ingress::Ingress;
 use afd_ingress::slack::ChannelId;
 
 use super::*;
@@ -43,17 +40,7 @@ async fn subscribers_are_read_from_the_document() {
         )
         .await;
 
-    let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
-        DragonflyRole::Default,
-        "redis://127.0.0.1:1/".to_owned(),
-    ))
-    .expect("a lazy manager opens no socket");
-    let database = fixture.database();
-    let ingress = Ingress::new(
-        database.clone(),
-        harness::vault(database.clone()),
-        afd_admission::Admissions::for_tests(database.clone(), queue),
-    );
+    let ingress = harness::unreachable_ingress(fixture.database());
     let channel: ChannelId = CHANNEL.parse().expect("a well-formed channel");
     let mut read = ingress
         .mention_subscribers(fixture.workspace(), PROVIDER.id(), &channel)

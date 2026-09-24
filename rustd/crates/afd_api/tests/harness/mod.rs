@@ -190,6 +190,21 @@ pub(crate) fn vault(database: Db) -> SecretVault {
     )
 }
 
+/// The production ingress over `database`, for a suite that drives one of its
+/// reads directly rather than through a delivery.
+///
+/// Its vault seals under [`FIXTURE_KEK`] and its queue is
+/// [`unreachable_queue`]; the reads a suite runs through it reach neither.
+pub(crate) fn unreachable_ingress(database: Db) -> afd_ingress::Ingress {
+    let queue = Dragonfly::unreachable(&unreachable_queue())
+        .expect("a lazy manager opens no socket, so it cannot fail to open one");
+    afd_ingress::Ingress::new(
+        database.clone(),
+        vault(database.clone()),
+        afd_admission::Admissions::for_tests(database, queue),
+    )
+}
+
 /// The pepper the device-flow code digest is computed under, for the same reason.
 const FIXTURE_PEPPER: &[u8] = b"fixture-session-code-pepper";
 
