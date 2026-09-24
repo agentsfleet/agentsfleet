@@ -30,15 +30,17 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use afd_fleet_runtime::config::{Access, RepositoryBinding};
+use afd_fleet_runtime::config::RepositoryBinding;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::credential::outcome::{Outcome, Retry};
 
 mod exchange;
+mod request;
 
 pub use self::exchange::{Exchange, mint};
+pub use self::request::{Installed, ScopedRequest};
 
 /// One repository permission a mint may ask GitHub for.
 ///
@@ -80,15 +82,6 @@ impl From<GithubPermission> for &'static str {
     }
 }
 
-/// What every mint reads, write included: the repository, and the evidence a
-/// failed run leaves — its runs, jobs and job-log requests, and its check
-/// annotations.
-const EVIDENCE_READS: [GithubPermission; 3] = [
-    GithubPermission::Contents,
-    GithubPermission::Actions,
-    GithubPermission::Checks,
-];
-
 /// How far one permission reaches.
 ///
 /// Ordered, and that ordering is the whole check: "granted more than was asked
@@ -115,72 +108,6 @@ pub enum Permission {
     /// admitting the token it could not read.
     #[serde(other)]
     Unknown,
-}
-
-/// The body that narrows an installation token to one fleet's declared reach.
-///
-/// # Repositories go by BARE name, and that is GitHub's rule, not a choice
-///
-/// GitHub scopes an installation token by repository name WITHIN the
-/// installation's own account, so the owner never reaches the wire. A binding
-/// naming `acme/payments` is therefore sent as `payments`, and GitHub will
-/// happily grant `<installed-account>/payments` if a repository by that bare
-/// name exists there. It cannot cross a tenant — an installation belongs to one
-/// account — but it is a real mis-scope inside an operator's own installation,
-/// and nothing on the request side can prevent it.
-///
-/// That is why [`Granted::verify`] exists and why it checks the RESPONSE.
-#[derive(Debug, Serialize)]
-pub struct ScopedRequest {
-    /// Bare repository names, owner stripped.
-    repositories: Vec<String>,
-    /// Exactly the permissions this access level needs, and no others.
-    permissions: BTreeMap<GithubPermission, Permission>,
-}
-
-impl ScopedRequest {
-    /// The narrowest request that satisfies `binding`.
-    ///
-    /// Every mint reads [`EVIDENCE_READS`]. A write mint raises `contents` to
-    /// write and adds `pull_requests` write, and asks for nothing else: never
-    /// `workflows`, so a repair cannot change what CI runs.
-    #[must_use]
-    pub fn for_binding(binding: &RepositoryBinding) -> Self {
-        let mut permissions: BTreeMap<GithubPermission, Permission> = EVIDENCE_READS
-            .into_iter()
-            .map(|permission| (permission, Permission::Read))
-            .collect();
-        if binding.access() == Access::Write {
-            // `pull_requests` is asked for ONLY at write. A read mint sends no
-            // entry at all, because the absence is the read scope.
-            permissions.insert(GithubPermission::Contents, Permission::Write);
-            permissions.insert(GithubPermission::PullRequests, Permission::Write);
-        }
-        Self {
-            repositories: binding
-                .repositories()
-                .iter()
-                .map(|repository| bare_name(repository))
-                .collect(),
-            permissions,
-        }
-    }
-
-    /// What this request asked for, for the response to be checked against.
-    #[must_use]
-    pub const fn permissions(&self) -> &BTreeMap<GithubPermission, Permission> {
-        &self.permissions
-    }
-}
-
-/// The bare repository name GitHub scopes by, from a qualified `owner/name`.
-///
-/// Splits on the LAST separator: a repository name cannot contain one, so
-/// whatever follows it is the name even when an owner does something unusual.
-fn bare_name(qualified: &str) -> String {
-    qualified
-        .rsplit_once('/')
-        .map_or_else(|| qualified.to_owned(), |(_owner, name)| name.to_owned())
 }
 
 /// One repository a minted token turned out to reach.
