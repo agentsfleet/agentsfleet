@@ -19,7 +19,7 @@ use super::*;
 const RESIDENT_PREFIX: &str = "slack-channel-";
 
 /// The name [`CHANNEL`]'s resident carries in `fixture`'s team.
-fn resident_name(fixture: &Fixture) -> String {
+pub(super) fn resident_name(fixture: &Fixture) -> String {
     format!(
         "{RESIDENT_PREFIX}{}-{}",
         fixture.team.to_ascii_lowercase(),
@@ -28,7 +28,7 @@ fn resident_name(fixture: &Fixture) -> String {
 }
 
 /// A resident's document, as the daemon writes one.
-fn resident_document(name: &str) -> String {
+pub(super) fn resident_document(name: &str) -> String {
     format!(
         "---\nname: {name}\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools: []\n  \
          budget:\n    daily_dollars: 1.0\n---\n"
