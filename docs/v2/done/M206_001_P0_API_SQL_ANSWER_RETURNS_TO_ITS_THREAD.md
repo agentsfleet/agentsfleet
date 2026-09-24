@@ -70,6 +70,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/tests/integration_report_commit.rs` | EDIT | A charged report over an event with no destination owes nothing. |
 | `rustd/crates/afd_outbound/src/{obligation.rs,obligation/sql.rs,producer.rs,lanes.rs,poster.rs,slack.rs,worker.rs}` | EDIT | Typed provider and destination on `Delivery`/`Owed`; scans skip abandoned and destination-less rows; abandon on a permanent or exhausted verdict; the poster reads the address from the job. |
 | `rustd/crates/afd_outbound/src/abandon.rs` · `src/lib.rs` | CREATE · EDIT | The abandon stamp and its event, shared by the lanes (a queued job) and the producer (a scanned row), keeping `lanes.rs` under the cap; the event's fields are a type with no field for the answer or the address. |
+| `rustd/crates/afd_connector/src/slack/{answered.rs,answered/tests.rs,replies.rs,replies/shown.rs}` · `afd_connector/tests/slack_answered.rs` · `afd_outbound/src/poster/tests.rs` · `afd_outbound/tests/integration_slack_poster/repeat.rs` | CREATE · EDIT | A posted answer carries its obligation as Slack message metadata; a repeat reads the thread first and posts nothing when its marker is there (§3). |
 | `rustd/crates/afd_dragonfly/src/{outbound.rs,outbound/reader.rs}` | EDIT | The queue entry carries the destination; an entry without one is dropped as undecodable. |
 | `rustd/crates/agentsfleetd/src/outbound.rs` | EDIT | The poster is built without a pool: it reads no event row. |
 | `rustd/crates/afd_bench/src/lane/outbound.rs` · `outbound/poster.rs` · `outbound/tests.rs` · `outbound/poster/tests.rs` | EDIT | Bench jobs carry a destination. |
@@ -126,6 +127,9 @@ Inside the report transaction, after the settle and before commit, the owe step 
 - **Dimension 3.1** DONE — the poster posts to the job's channel and thread → Test `poster_posts_to_the_jobs_address`
 - **Dimension 3.2** DONE — an address missing `channel_id` or `thread_ts` is permanent with zero HTTP calls → Test `unreadable_address_is_permanent_without_a_request`
 - **Dimension 3.3** DONE — an unreceipted and an undelivered row are re-appended carrying their stored destination → Test `requeued_obligation_keeps_its_destination`
+- **Dimension 3.4** DONE — every post carries its obligation as Slack message metadata, and a first attempt reads no thread → Test `a_first_attempt_posts_its_marker_and_reads_nothing`
+- **Dimension 3.5** DONE — a repeat whose marker is already in the thread posts nothing; one whose thread lacks it, or cannot be read, posts once → Test `a_repeat_that_finds_its_answer_posts_nothing`
+- **Dimension 3.6** DONE — every retry after a cycle's first attempt, and every cycle but the answer's first, is a repeat → Test `a_retry_after_a_first_attempt_is_a_repeat`
 
 ### §4 — An answer nobody can take is abandoned
 
@@ -169,7 +173,7 @@ OutboundJob → From<Delivery> (one conversion for the report's append and the p
 | Continuation of an unknown event | lineage race | No destination; nothing owed. |
 | Abandon stamp fails | datastore | Reported as `outbound_obligation_abandon_failed`; the job is still acknowledged; the row stays in the lost set and is re-offered after the window (the at-least-once direction). |
 | Stored connector names no connector | a connector removed from the catalogue, or an out-of-band edit | The producer abandons the row with reason `unaddressable` rather than skip it, so a batch of such rows cannot fill `BATCH_LIMIT` and starve the answers behind it. |
-| Acknowledgement lost after delivery | at-least-once | The thread may show the answer twice; recorded, not prevented. |
+| Acknowledgement lost after delivery | Slack took the post, the reply was lost | The repeat reads the thread for the answer's metadata marker and posts nothing when it is there (`slack_post_already_in_thread`). A thread it cannot read — a private channel without `groups:history`, an outage — is posted to anyway (`slack_post_thread_check_failed`), so only there can the answer show twice. |
 
 ## Invariants
 
@@ -202,6 +206,9 @@ OutboundJob → From<Delivery> (one conversion for the report's append and the p
 | 3.1 | integration | `poster_posts_to_the_jobs_address` | A loopback Slack receives `{channel:"C0123456789", thread_ts:"1700000000.000100", text}` from the job alone, with no `core.fleet_events` row present. |
 | 3.2 | unit | `unreadable_address_is_permanent_without_a_request` | Addresses lacking either field, empty strings, and non-JSON give `Permanent`; the fake records zero requests. |
 | 3.3 | integration | `requeued_obligation_keeps_its_destination` | After the queue loses an entry, the re-appended job's destination equals the row's. |
+| 3.4 | integration | `a_first_attempt_posts_its_marker_and_reads_nothing` | One post, no thread read; the post's `metadata.event_payload` equals the job's fleet and event. |
+| 3.5 | integration | `a_repeat_that_finds_its_answer_posts_nothing` | A thread holding the marker: one read, zero posts, `Delivered`. Siblings: a thread without it reads then posts once; `ok:false` on the read still posts. |
+| 3.6 | unit | `a_retry_after_a_first_attempt_is_a_repeat` | A poster failing its first attempt sees `[First, Repeat]`; a cycle opened as `Repeat` sees `[Repeat, Repeat]`; only a ledger count of 1 opens as `First`. |
 | 4.1 | integration | `permanent_refusal_abandons_the_obligation` | `ok:false` stamps `abandoned_at` and reason; a scan with the cutoff past `LOST_AFTER` returns nothing. |
 | 4.2 | integration | `exhausted_cycles_abandon_the_obligation` | A 503-only destination is re-offered on successive passes until the count reaches the cap, then abandoned with reason `cycles_exhausted`. |
 | 4.3 | integration | `legacy_rows_are_never_reoffered` | Rows seeded with NULL destination, receipted and not, are absent from both scans at any cutoff. |
@@ -274,4 +281,7 @@ OutboundJob → From<Delivery> (one conversion for the report's append and the p
 - **Consults** — `ARCH: grounded in data_flow.md §C "Slack-resident answer round-trip" | proposal: the producer records the destination; the report owes only to it | status: conflicts — the page described the Zig binding lookup, which the Rust port did not keep | landing: a` (doc-only commit beside this spec corrects the page to today's code and names this design). Source findings: `commit.rs:198-210` passes the lease provider; `settle.rs:69-70` documents it as the provider resolved at issue; `poster.rs:77-92` drops an unparseable provider as permanent; `lanes.rs:223-228` stamps only on delivered; `obligation/sql.rs:111-116` re-offers after `LOST_AFTER`. Agent choice: destination on admissions only (§1 default).
 - **Metrics review** — two operator events added, one existing event expected to fall silent for report-owed jobs; no analytics or funnel playbook update required, because nothing user-facing is counted.
 - **Skill-chain outcomes** — `/orly-write-unit-test` (Sep 24, 2026): diff ledger 16/16 resolved; patch coverage 223/238 → 267/267 added lines; mutation not run (live-datastore proofs), carried to the PR. `/orly-write-integration-test`, `/review` and `orly-babysit-prs` run at the milestone Pull Request.
-- **Deferrals** — none at authoring.
+- **Deferrals** — none at authoring. The pre-landing review's three open findings, decided by the owner:
+  > Indy (2026-09-24): "Fix in this PR" — context: a lost `chat.postMessage` acknowledgement retried into a second post; fixed here as Dimensions 3.4–3.6.
+  > Indy (2026-09-24): "Keep fail-closed (Recommended)" — context: one unparseable fleet document fails every mention in its workspace, the GitHub App path's choice (`afd_ingress/src/app.rs:122-125`); kept as built.
+  > Indy (2026-09-24): "Keep, documented (Recommended)" — context: an owed notice posts 30–60 s after its mention, sent by the recovery pass (`afd_outbound/src/producer.rs:57,79`); kept as built and documented on the Slack page.
