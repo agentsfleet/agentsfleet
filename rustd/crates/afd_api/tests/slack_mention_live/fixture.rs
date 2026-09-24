@@ -7,6 +7,10 @@
 //! stored documents are what `parse_trigger` produced. Only the queue is
 //! absent, and a mention admitted without it is exactly the deferral the
 //! ledger promises: the row commits and the sweeper appends later.
+//!
+//! Slack is a loopback. A routed mention reads its thread back before it is
+//! admitted, and the connectors' exchange is pinned at [`FakeSlack`] so that
+//! read — carrying the fixture grant's bearer — never leaves the machine.
 
 use afd_admission::Producer;
 use afd_connector::Provider;
@@ -15,8 +19,10 @@ use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
+use afd_dragonfly::Dragonfly;
 use afd_vault::{SecretBody, SecretName};
 
+use super::fake_slack::FakeSlack;
 use super::harness;
 
 /// The field a connector's app bag carries its inbound signing secret in.
@@ -54,14 +60,23 @@ pub(super) struct Fixture {
     /// The Slack team this fixture's install maps, unique per fixture so two
     /// suites in one database never resolve each other's workspace.
     pub(super) team: String,
+    /// Where the router reads a thread back.
+    pub(super) slack: FakeSlack,
 }
 
 impl Fixture {
     pub(super) async fn create() -> Self {
+        Self::create_with(&[]).await
+    }
+
+    /// A fixture whose pool is opened with `extra` environment, such as a
+    /// pool size a suite needs to prove what one request holds.
+    pub(super) async fn create_with(extra: &[(&str, &str)]) -> Self {
         let lane = TestDatabase::shared();
         let tenant = mint_id();
         Self {
-            database: lane.open(DbRole::Api, &[]).await,
+            database: lane.open(DbRole::Api, extra).await,
+            slack: FakeSlack::start().await,
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
             team: format!("T{}", tenant.replace('-', "").to_ascii_uppercase()),
             tenant,
@@ -82,14 +97,18 @@ impl Fixture {
         &self.workspace
     }
 
-    /// The production router over this deployment's live stores.
+    /// The production router over this deployment's live stores, its vendor
+    /// calls pinned at the loopback Slack.
     pub(super) fn router(&self) -> axum::Router {
+        let queue = Dragonfly::unreachable(&harness::unreachable_queue())
+            .expect("a lazy manager opens no socket, so it cannot fail to open one");
         harness::Fleet::live(
             self.database.clone(),
             &self.subject,
             afd_auth::scope::ScopeSet::from_scopes(&afd_auth::scope::Scope::ALL),
         )
         .with_platform_admin(self.admin.clone())
+        .with_live_connectors(self.database.clone(), queue, self.slack.base())
         .router()
     }
 

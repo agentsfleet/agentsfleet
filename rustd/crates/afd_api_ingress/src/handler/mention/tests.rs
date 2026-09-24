@@ -21,24 +21,29 @@ const TOP_LEVEL: &str = r#"{"type":"app_mention","user":"U01","text":"<@UBOT> st
 /// that starts a thread replies under itself.
 #[test]
 fn a_persons_mention_parses_with_its_thread() {
-    let asked = |text: &str, thread_ts: &str| {
+    let asked = |text: &str, ts: &str, thread_ts: &str| {
         Parsed::Asked(Asked {
             team_id: "T024BE7LD".to_owned(),
             event_id: "Ev01".to_owned(),
             user: "U01".to_owned(),
             text: text.to_owned(),
             channel: "C0123456789".parse().unwrap_or_else(|_| unreachable!()),
+            ts: ts.to_owned(),
             thread_ts: thread_ts.to_owned(),
         })
     };
     assert_eq!(
         parse(envelope(IN_A_THREAD)),
-        asked("<@UBOT> why did it fail?", "1700000000.000100"),
+        asked(
+            "<@UBOT> why did it fail?",
+            "1700000000.000200",
+            "1700000000.000100"
+        ),
         "a mention in a thread replies to the thread's root"
     );
     assert_eq!(
         parse(envelope(TOP_LEVEL)),
-        asked("<@UBOT> status?", "1700000000.000300"),
+        asked("<@UBOT> status?", "1700000000.000300", "1700000000.000300"),
         "a top-level mention replies under itself"
     );
 }

@@ -81,7 +81,7 @@ pub async fn spawn(
             slack: SlackPoster::new(
                 grants,
                 vendor_client,
-                afd_outbound::slack::SLACK_API_BASE.to_owned(),
+                afd_connector::slack::SLACK_API_BASE.to_owned(),
             ),
         },
     );
