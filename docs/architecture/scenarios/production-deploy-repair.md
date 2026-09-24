@@ -10,6 +10,14 @@
 
 Legend: ✅ implemented and tested · 🟡 being hardened · 🔨 specified, not built.
 
+> **Where the Rust daemon differs from this page (read at `b1bc6f0c4`).**
+> 1. There is no repository-write card and no 32-request ceiling. M202 retired both; the install-time `github` grant authorises a write (`rustd/crates/afd_gate/src/gate/first.rs:8-17`). §2 describes the retired card.
+> 2. The repair branch is `agentsfleet-repair/` plus the URL-safe base64 of the leased **event** identifier, whose length varies, not a gate's 16 bytes (`rustd/crates/afd_gate/src/policy/repair.rs:1-22,44-68`).
+> 3. The repair-evidence writer and `deployment_status` intake are not ported: the App ingress drops both as unsupported (`rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs:22-32`), so no production result reaches the verifier.
+> 4. The three bundles are test fixtures under `tests/fixtures/fleetbundle/` since `e621d7262`, not folders under `library/`.
+>
+> A Slack-requested repair runs under the same grant, the way Claude Tag's attached bundles do; see [`slack-incident-responder.md`](./slack-incident-responder.md) §7.
+
 ```text
                    Grafana + Elasticsearch
                     ^          ^          ^

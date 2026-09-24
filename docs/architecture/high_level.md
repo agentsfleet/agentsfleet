@@ -193,7 +193,7 @@ All three flow through the same reasoning loop. The fleet does not branch on act
 
 ### 5.2 Slack-resident channel bot — the on-ramp (M106)
 
-The first surface that meets non-terminal users — support, ops — where they already work. A first-party multi-tenant `@agentsfleet` Slack app: one OAuth (Open Authorization) install per workspace, and in any channel it's invited to, an `@mention` is answered in-thread, read-only, learning that channel over time (the channel's memory namespace is a per-channel resident fleet, keyed by its `fleet_id`). It is **reactive** — it answers, never acts unattended — which is the deliberate boundary to the durable hired teammate (§5.1's platform-ops is the active form). This is acquisition, not a second product: the reactive bot's job is to convert to a durable teammate, so it does **not** make v2 "just a chat UI over tools" — agency, not memory, is the line. Specced in `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`; the hired-teammate Rung 1 is the follow-on.
+The first surface that meets non-terminal users — support, ops — where they already work. A first-party multi-tenant `@agentsfleet` Slack app: one OAuth (Open Authorization) install per workspace, and in any channel it's invited to, an `@mention` is answered in-thread, read-only, learning that channel over time (the channel's memory namespace is a per-channel resident fleet, keyed by its `fleet_id`). It is **reactive** — it answers, never acts unattended — which is the deliberate boundary to the durable hired teammate (§5.1's platform-ops is the active form). This is acquisition, not a second product: the reactive bot's job is to convert to a durable teammate, so it does **not** make v2 "just a chat UI over tools" — agency, not memory, is the line. Specced in `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md` and shipped in the retired Zig daemon; the Rust daemon drops mentions until M206_002 restores them. The hired-teammate Rung 1 is the follow-on, and M206's channel subscription is its first slice: an installed fleet answering mentions in one channel ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md)).
 
 ## 6. Where this points after v2
 
@@ -217,9 +217,9 @@ What does not change: the runtime architecture, the sandbox boundary, the trigge
 
 ### 6.2 Slack Rung 1 — hired durable teammates
 
-Where the human front door points after the CLI/dashboard wedge. Rung 0 shipped as `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`; the hired-teammate follow-on is not yet specced. **The follow-on is direction, not a commitment.**
+Where the human front door points after the CLI/dashboard wedge. Rung 0 shipped in the retired Zig daemon as `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`, and the Rust daemon has not ported it. M206 specs the first hired-teammate slice: a fleet attached to one channel, whose writes are bounded to one draft Pull Request per request. **The follow-on is direction, not a commitment.**
 
-The ladder's boundary is **agency, not memory**. Rung 0 shipped and is described in [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md).
+The ladder's boundary is **agency, not memory**. Rung 0 is described in [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md).
 
 - **Rung 1 — hired durable teammates (follow-on).** From the same Slack surface, a recurring need converts into a durable teammate that subscribes to a real source (e.g. Zoho Desk), wakes unattended, and takes **gated** write actions with approval — the existing event-driven runtime. The Slack surface adds library-install + per-integration OAuth connectors + the Slack-user → `approval:resolve` allowlist. Depends on M103 (Fleet library) + M105 (schedules).
 

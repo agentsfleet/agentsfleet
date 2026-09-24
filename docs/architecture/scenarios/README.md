@@ -6,7 +6,8 @@ Each scenario follows one user outcome from its trigger to its result. Each page
 |---|---|
 | [`github-pr-reviewer.md`](./github-pr-reviewer.md) | Install the `github-pr-reviewer` library and receive review comments on a Pull Request (PR). |
 | [`production-deploy-repair.md`](./production-deploy-repair.md) | Diagnose a failed production deployment, prepare a bounded fix, and hold the draft PR for human review. |
-| [`slack-channel-resident.md`](./slack-channel-resident.md) | **The Rung-0 on-ramp (M106).** A fact told to `@agentsfleet` in one Slack thread is recalled in a different thread of the same channel — because the memory namespace is the per-channel resident fleet, not the thread. Reactive (read-only, mention-only); the acquisition on-ramp to the durable hired teammate. |
+| [`slack-channel-resident.md`](./slack-channel-resident.md) | **The Rung-0 on-ramp (M106).** A fact told to `@agentsfleet` in one Slack thread is recalled in a different thread of the same channel — because the memory namespace is the per-channel resident fleet, not the thread. Reactive (read-only, mention-only); the acquisition on-ramp to the durable hired teammate. Shipped in the retired Zig daemon; the Rust daemon drops every mention until M206_002 restores it. |
+| [`slack-incident-responder.md`](./slack-incident-responder.md) | A mention in a failed Continuous Integration (CI) run's Slack thread reaches exactly one fleet, which answers in that thread with GitHub and Grafana evidence; asked to, the channel's repairer opens one draft fix Pull Request (PR). Zero, one, and several fleets per channel. Specified in M206, not built. |
 
 > Earlier platform-operations walkthroughs repeated facts from topic pages. The current scenarios link to those pages instead of copying their details.
 >
@@ -14,7 +15,7 @@ Each scenario follows one user outcome from its trigger to its result. Each page
 
 ## Invariants every scenario is readable against
 
-Five decisions shape all three walkthroughs. Each is stated in full on the page
+Five decisions shape every walkthrough. Each is stated in full on the page
 that owns it; these are pointers, not second copies.
 
 | Invariant | Canonical home |
