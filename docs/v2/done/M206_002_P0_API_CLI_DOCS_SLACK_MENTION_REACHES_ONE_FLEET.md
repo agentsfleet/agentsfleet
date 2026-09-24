@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M206
 **Workstream:** 002
 **Date:** Sep 23, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — the incident journey starts with a mention, and the Rust daemon drops every mention it receives.
 **Categories:** API, CLI, DOCS
 **Batch:** B2 — after M206_001, whose destination this producer is the first to write; runs beside M206_003, which shares its Pull Request.
