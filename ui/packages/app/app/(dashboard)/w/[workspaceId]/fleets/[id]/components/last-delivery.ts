@@ -25,6 +25,8 @@ export function actorGlobFor(t: FleetTrigger): string | null {
       return `${AGENT_TRIGGER_TYPE.cron}:*`;
     case AGENT_TRIGGER_TYPE.api:
       return null;
+    case AGENT_TRIGGER_TYPE.mention:
+      return `${t.source}:*`;
   }
 }
 
@@ -32,8 +34,9 @@ export function actorGlobFor(t: FleetTrigger): string | null {
  * Per-trigger "last delivery" lookup. One lightweight server-side call
  * per declared trigger, in parallel; failures degrade to `null` so the
  * TriggerPanel renders the "never" badge. Webhook actors are namespaced
- * as `webhook:<source>:*`; cron as `cron:*`; api triggers always land
- * as `null` (no stable namespace).
+ * as `webhook:<source>:*`; cron as `cron:*`; a chat mention as
+ * `<source>:<user>`, so `<source>:*`; api triggers always land as `null`
+ * (no stable namespace).
  */
 export async function resolveLastDeliveries(
   workspaceId: string,
