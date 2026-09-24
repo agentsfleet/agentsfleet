@@ -41,7 +41,7 @@ fn asking() -> String {
 }
 
 /// Binds `fleet` as [`CHANNEL`]'s resident, as an earlier first mention did.
-async fn bind(fixture: &Fixture, fleet: &Uuid7) {
+pub(super) async fn bind(fixture: &Fixture, fleet: &Uuid7) {
     let mut connection = fixture.database().acquire().await.expect("a connection");
     sqlx::query(
         "INSERT INTO core.connector_channels \
