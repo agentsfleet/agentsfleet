@@ -17,6 +17,7 @@ const clock = common.clock;
 const nullclaw = @import("nullclaw");
 const observability = nullclaw.observability;
 const providers = nullclaw.providers;
+const contract = @import("contract");
 
 const pipe_proto = @import("../pipe_proto.zig");
 const runner_progress = @import("runner_progress.zig");
@@ -131,6 +132,8 @@ test "stream chunk is dropped (not emitted raw) when redaction OOMs, secret neve
     try std.testing.expect(!seen.any_frame);
     try std.testing.expect(!seen.secret_on_wire);
     try std.testing.expect(fa.allocations == 0);
+    try std.testing.expect(!adapter.stream_contiguous);
+    try std.testing.expectEqual(@as(u64, 1), adapter.next_stream_seq);
 }
 
 test "a secret split across two stream chunks never reaches the pipe through the live adapter (M100 §1)" {
@@ -173,4 +176,127 @@ test "a secret split across two stream chunks never reaches the pipe through the
     // never appears on the wire; the placeholder does.
     try std.testing.expect(std.mem.indexOf(u8, seen.text.items, SECRET) == null);
     try std.testing.expect(std.mem.indexOf(u8, seen.text.items, PLACEHOLDER) != null);
+}
+
+test "first safe stream chunk alone carries the monotonic runtime duration" {
+    const alloc = std.testing.allocator;
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
+    var writer = runner_progress.ProgressWriter{ .fd = fds[1], .alloc = alloc };
+    var adapter = runner_progress.Adapter{
+        .writer = &writer,
+        .alloc = alloc,
+        .secrets = &.{},
+        .agent_runtime_started_ms = clock.nowMonotonicMillis() - 10,
+    };
+    defer adapter.deinit(alloc);
+
+    const stream = adapter.streamCallback();
+    stream.cb(stream.ctx, providers.StreamChunk.textDelta("first"));
+    stream.cb(stream.ctx, providers.StreamChunk.textDelta("second"));
+    pipe_proto.testOsClose(fds[1]);
+
+    var seen: usize = 0;
+    while (true) {
+        switch (try pipe_proto.readFrame(alloc, fds[0], clock.nowMillis() + 5_000, 1 << 20)) {
+            .eof => break,
+            .timed_out => return error.MissingStreamFrame,
+            .frame => |frame| {
+                defer alloc.free(frame.payload);
+                try std.testing.expectEqual(pipe_proto.FrameType.activity, frame.ftype);
+                const parsed = try std.json.parseFromSlice(contract.activity.ActivityFrame, alloc, frame.payload, .{});
+                defer parsed.deinit();
+                try std.testing.expect(parsed.value == .fleet_response_chunk);
+                if (seen == 0) {
+                    try std.testing.expect(parsed.value.fleet_response_chunk.first_chunk_after_ms.? >= 10);
+                    try std.testing.expect(parsed.value.fleet_response_chunk.stream_start);
+                } else {
+                    try std.testing.expect(parsed.value.fleet_response_chunk.first_chunk_after_ms == null);
+                    try std.testing.expect(!parsed.value.fleet_response_chunk.stream_start);
+                }
+                try std.testing.expect(parsed.value.fleet_response_chunk.stream_contiguous);
+                try std.testing.expectEqual(@as(u64, @intCast(seen)), parsed.value.fleet_response_chunk.stream_seq);
+                seen += 1;
+            },
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 2), seen);
+}
+
+test "failed first activity write retains timing but never grants a stream start" {
+    const alloc = std.testing.allocator;
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
+    var empty: [0]u8 = .{};
+    var exhausted = std.heap.FixedBufferAllocator.init(&empty);
+    var writer = runner_progress.ProgressWriter{ .fd = fds[1], .alloc = exhausted.allocator() };
+    var adapter = runner_progress.Adapter{
+        .writer = &writer,
+        .alloc = alloc,
+        .secrets = &.{},
+        .agent_runtime_started_ms = clock.nowMonotonicMillis() - 10,
+    };
+    defer adapter.deinit(alloc);
+
+    const stream = adapter.streamCallback();
+    stream.cb(stream.ctx, providers.StreamChunk.textDelta("<tool_call>"));
+    try std.testing.expect(!adapter.first_chunk_sent);
+    try std.testing.expect(!adapter.stream_contiguous);
+    writer.alloc = alloc;
+    stream.cb(stream.ctx, providers.StreamChunk.textDelta("PRIVATE tool JSON"));
+    pipe_proto.testOsClose(fds[1]);
+
+    switch (try pipe_proto.readFrame(alloc, fds[0], clock.nowMillis() + 5_000, 1 << 20)) {
+        .eof, .timed_out => return error.MissingStreamFrame,
+        .frame => |frame| {
+            defer alloc.free(frame.payload);
+            const parsed = try std.json.parseFromSlice(contract.activity.ActivityFrame, alloc, frame.payload, .{});
+            defer parsed.deinit();
+            try std.testing.expect(parsed.value == .fleet_response_chunk);
+            try std.testing.expectEqualStrings("PRIVATE tool JSON", parsed.value.fleet_response_chunk.text);
+            try std.testing.expect(parsed.value.fleet_response_chunk.first_chunk_after_ms.? >= 10);
+            try std.testing.expect(!parsed.value.fleet_response_chunk.stream_start);
+            try std.testing.expect(!parsed.value.fleet_response_chunk.stream_contiguous);
+            try std.testing.expectEqual(@as(u64, 1), parsed.value.fleet_response_chunk.stream_seq);
+        },
+    }
+    try std.testing.expect(adapter.first_chunk_sent);
+}
+
+test "a dropped middle chunk marks every later stream frame incomplete" {
+    const alloc = std.testing.allocator;
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
+    var empty: [0]u8 = .{};
+    var exhausted = std.heap.FixedBufferAllocator.init(&empty);
+    var writer = runner_progress.ProgressWriter{ .fd = fds[1], .alloc = alloc };
+    var adapter = runner_progress.Adapter{ .writer = &writer, .alloc = alloc, .secrets = &.{} };
+    defer adapter.deinit(alloc);
+
+    const stream = adapter.streamCallback();
+    stream.cb(stream.ctx, providers.StreamChunk.textDelta("safe <think>"));
+    writer.alloc = exhausted.allocator();
+    stream.cb(stream.ctx, providers.StreamChunk.textDelta("<tool_call>"));
+    writer.alloc = alloc;
+    stream.cb(stream.ctx, providers.StreamChunk.textDelta("PRIVATE tool JSON"));
+    pipe_proto.testOsClose(fds[1]);
+
+    var seen: usize = 0;
+    while (true) {
+        switch (try pipe_proto.readFrame(alloc, fds[0], clock.nowMillis() + 5_000, 1 << 20)) {
+            .eof => break,
+            .timed_out => return error.MissingStreamFrame,
+            .frame => |frame| {
+                defer alloc.free(frame.payload);
+                const parsed = try std.json.parseFromSlice(contract.activity.ActivityFrame, alloc, frame.payload, .{});
+                defer parsed.deinit();
+                try std.testing.expect(parsed.value == .fleet_response_chunk);
+                try std.testing.expectEqual(seen == 0, parsed.value.fleet_response_chunk.stream_contiguous);
+                try std.testing.expectEqual(seen == 0, parsed.value.fleet_response_chunk.stream_start);
+                try std.testing.expectEqual(if (seen == 0) @as(u64, 0) else 2, parsed.value.fleet_response_chunk.stream_seq);
+                seen += 1;
+            },
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 2), seen);
 }

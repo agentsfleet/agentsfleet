@@ -47,6 +47,13 @@ pub const LEASE_POLL_DB_ROUNDTRIPS_TOTAL: Declared<CounterKind> =
 pub const FLEET_RUNS_STARTED_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_fleet_runs_started_total");
 
+/// Time through the fleet delivery path, from server and runner clocks.
+///
+/// Labels: `stage`. Each stage is recorded once for an active lease attempt
+/// that reaches it; a reclaim is a separate attempt on the same event.
+pub const FLEET_DELIVERY_STAGE_SECONDS: Declared<HistogramKind> =
+    Declared::new("agentsfleet_fleet_delivery_stage_seconds");
+
 /// Readiness backlog (not summable across replicas).
 pub const FLEET_READY_DEPTH: Declared<GaugeKind> = Declared::new("agentsfleet_fleet_ready_depth");
 

@@ -84,7 +84,7 @@ const MESSAGE_PREFIX = "acceptance-probe-";
 // Mirrors of tile copy in `fleets/components/FleetTile.tsx`. Importing the
 // constants would pull a "use client" module — React and next/navigation with
 // it — into the Playwright process; the wall's own unit suite pins the copy.
-const TILE_WAITING_COPY = "Waiting for the next event.";
+const TILE_EMPTY_COPY = /Waiting for the next event\.|No live activity\./;
 const MANAGE_FLEET_LABEL = "Manage fleet";
 // Every tile card carries its kind — live, snapshot or drained — as data.
 const TILE_CARD = "[data-kind]";
@@ -97,6 +97,7 @@ const FLEET_STREAM_SEGMENT = "/fleets/";
 const CHAT_LABEL = "Fleet chat";
 const COMPOSER_LABEL = "Chat composer";
 const ASSISTANT_TURN = '[data-role="assistant"]';
+const FIRST_VISIBLE_MEASURE = "agentsfleet.chat.submit_to_first_visible";
 
 function uniqueTag(): string {
   return crypto.randomUUID().slice(0, 8);
@@ -210,7 +211,7 @@ test.describe("fleet execution", () => {
     await wall.goto(workspaceHref(workspaceId, "fleets"));
     await expect(tileFor(wall, name)).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await expect(tileFor(wall, controlName)).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    await expect(tileFor(wall, name)).toContainText(TILE_WAITING_COPY, {
+    await expect(tileFor(wall, name)).toContainText(TILE_EMPTY_COPY, {
       timeout: RENDER_TIMEOUT_MS,
     });
 
@@ -273,12 +274,21 @@ test.describe("fleet execution", () => {
     const reply = page.getByLabel(CHAT_LABEL).locator(ASSISTANT_TURN).last();
     await expect(reply).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await expect(reply).not.toHaveText(/^\s*$/);
+    const submitToVisibleMs = await pollFor(
+      () => page.evaluate((name) => performance.getEntriesByName(name).at(-1)?.duration ?? null, FIRST_VISIBLE_MEASURE),
+      RENDER_TIMEOUT_MS,
+    );
+    expect(submitToVisibleMs, "the browser records submit-to-first-visible latency").not.toBeNull();
+    await testInfo.attach("submit-to-first-visible-ms", {
+      body: JSON.stringify({ duration_ms: submitToVisibleMs }),
+      contentType: "application/json",
+    });
 
     // ── 1.4, second half: the activity reached one tile over one stream ──
-    await expect(tileFor(wall, name)).not.toContainText(TILE_WAITING_COPY, {
+    await expect(tileFor(wall, name)).not.toContainText(TILE_EMPTY_COPY, {
       timeout: RENDER_TIMEOUT_MS,
     });
-    await expect(tileFor(wall, controlName)).toContainText(TILE_WAITING_COPY);
+    await expect(tileFor(wall, controlName)).toContainText(TILE_EMPTY_COPY);
     expect(streams.workspace, "the wall opens the workspace stream once").toBe(1);
     expect(streams.fleet, "the wall opens no per-fleet stream").toBe(0);
     await wall.close();

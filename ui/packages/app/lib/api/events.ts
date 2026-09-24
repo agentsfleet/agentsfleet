@@ -203,7 +203,7 @@ export type ActivityLiveFrame =
       elapsed_ms: number;
     }
 
-  | { kind: typeof FRAME_KIND.CHUNK; event_id: string; text: string }
+  | { kind: typeof FRAME_KIND.CHUNK; event_id: string; text: string; stream_start?: boolean; stream_contiguous?: boolean; stream_seq?: number }
 
   | {
       kind: typeof FRAME_KIND.TOOL_CALL_COMPLETED;

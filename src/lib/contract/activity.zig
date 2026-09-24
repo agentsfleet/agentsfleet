@@ -37,6 +37,14 @@ pub const ActivityFrame = union(enum) {
     };
     pub const FleetResponseChunk = struct {
         text: []const u8,
+        /// Present once per run, measured from the agent runtime invocation start.
+        first_chunk_after_ms: ?u64 = null,
+        /// True only when this is the first chunk and no earlier output was lost.
+        stream_start: bool = false,
+        /// False after any redaction or pipe failure made this model pass incomplete.
+        stream_contiguous: bool = false,
+        /// Zero-based output position; gaps expose losses at later transport hops.
+        stream_seq: u64 = 0,
     };
     pub const ToolCallCompleted = struct {
         name: []const u8,

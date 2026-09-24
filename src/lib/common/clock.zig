@@ -20,7 +20,7 @@ pub fn nowMillis() i64 {
 /// adjustment, so it is the correct source for elapsed-time bounds (a wait
 /// deadline must hold its nominal duration even if the wall clock is set
 /// back). Reads `CLOCK_MONOTONIC` directly, mirroring `nowNanos`.
-fn nowMonotonicMillis() i64 {
+pub fn nowMonotonicMillis() i64 {
     // SAFETY: clock_gettime fully populates ts before sec/nsec are read.
     var ts: std.posix.timespec = undefined;
     return switch (std.posix.errno(std.posix.system.clock_gettime(.MONOTONIC, &ts))) {

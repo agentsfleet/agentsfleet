@@ -12,6 +12,7 @@
 //! on redaction OOM the frame is DROPPED, never emitted raw (M100 §1).
 
 const std = @import("std");
+const clock = @import("common").clock;
 const logging = @import("log");
 const Allocator = std.mem.Allocator;
 const nullclaw = @import("nullclaw");
@@ -35,9 +36,17 @@ pub const ProgressWriter = struct {
     alloc: Allocator,
 
     pub fn write(self: *const ProgressWriter, frame: ActivityFrame) void {
-        const json = std.json.Stringify.valueAlloc(self.alloc, frame, .{}) catch return;
+        _ = self.tryWrite(frame);
+    }
+
+    fn tryWrite(self: *const ProgressWriter, frame: ActivityFrame) bool {
+        const json = std.json.Stringify.valueAlloc(self.alloc, frame, .{}) catch return false;
         defer self.alloc.free(json);
-        pipe_proto.writeFrame(self.fd, .activity, json) catch |err| log.warn("activity_frame_write_failed", .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
+        pipe_proto.writeFrame(self.fd, .activity, json) catch |err| {
+            log.warn("activity_frame_write_failed", .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
+            return false;
+        };
+        return true;
     }
 };
 
@@ -111,6 +120,11 @@ pub const Adapter = struct {
     /// split across two chunks is still redacted (M100 §1). Owned by this
     /// adapter; released by `deinit`.
     redact_carry: std.ArrayListUnmanaged(u8) = .empty,
+    /// Set immediately before `runSingle`; zero in non-streaming tests.
+    agent_runtime_started_ms: i64 = 0,
+    first_chunk_sent: bool = false,
+    stream_contiguous: bool = true,
+    next_stream_seq: u64 = 0,
 
     /// NullClaw Observer view of this adapter. Pass to `Fleet.fromConfig`.
     pub fn observer(self: *Adapter) observability.Observer {
@@ -288,11 +302,29 @@ fn streamCallbackThunk(ctx: *anyopaque, chunk: providers.StreamChunk) void {
     // on OOM it leaves the carry intact and we drop the chunk (M100 §1).
     const emit = stream_redactor.push(self.alloc, &self.redact_carry, chunk.delta, self.secrets) catch |err| {
         log.warn("chunk_redaction_failed_dropped", .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
+        self.stream_contiguous = false;
+        self.next_stream_seq +%= 1;
         return;
     };
     defer self.alloc.free(emit);
     if (emit.len == 0) return;
-    self.writer.write(.{ .fleet_response_chunk = .{ .text = emit } });
+    const first: ?u64 = if (!self.first_chunk_sent and self.agent_runtime_started_ms > 0)
+        @intCast(@max(0, clock.nowMonotonicMillis() - self.agent_runtime_started_ms))
+    else
+        null;
+    const seq = self.next_stream_seq;
+    self.next_stream_seq +%= 1;
+    if (self.writer.tryWrite(.{ .fleet_response_chunk = .{
+        .text = emit,
+        .first_chunk_after_ms = first,
+        .stream_start = !self.first_chunk_sent and self.stream_contiguous,
+        .stream_contiguous = self.stream_contiguous,
+        .stream_seq = seq,
+    } })) {
+        self.first_chunk_sent = true;
+    } else {
+        self.stream_contiguous = false;
+    }
 }
 
 // ── Args redaction ──────────────────────────────────────────────────────────

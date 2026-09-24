@@ -21,6 +21,7 @@ const client_errors = @import("../engine/client_errors.zig");
 const child_supervisor = @import("../child_supervisor.zig");
 const bundle_extract = @import("../bundle_extract.zig");
 const forwarders = @import("forwarders.zig");
+const ActivitySender = @import("ActivitySender.zig");
 const renew_driver = @import("renew_driver.zig");
 const RenewDriver = renew_driver.RenewDriver(*client_mod);
 // splitFields stays in loop.zig (pub, unit-tested there) because the token-split
@@ -137,6 +138,22 @@ pub fn executeAndReport(
     defer if (hydrated) |h| h.deinit();
     const hydrated_memory: []const protocol.MemoryDelta = if (hydrated) |h| h.value.memory else &.{};
 
+    var activity_sender = ActivitySender{
+        .io = cp.io,
+        .sched = cp.sched,
+        .base_url = cp.base_url,
+        .runner_token = runner_token,
+        .lease_id = payload.lease_id,
+        .deadline_ms = cfg.cp_deadlines.activity_ms,
+    };
+    forwarder.transport = .off;
+    if (activity_sender.start()) |_| {
+        forwarder.transport = .{ .queued = &activity_sender };
+    } else |err| {
+        log.warn("activity_sender_start_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
+    }
+    defer activity_sender.finish();
+
     var mem_forwarder = forwarders.MemoryForwarder{
         .alloc = alloc,
         .cp = cp,
@@ -156,7 +173,9 @@ pub fn executeAndReport(
         const detail = result.failureDetail();
         if (detail.len > 0) alloc.free(detail);
     }
-    // Ship whatever the batch still holds before the terminal report.
+    // Queue the last activity batch before reporting the durable outcome.
+    // The sender's cold connect can outlive its socket deadline, so joining it
+    // before the report would let cosmetic live-tail delivery strand the lease.
     forwarder.flush();
 
     log.debug("execute_completed", .{ .lease_id = payload.lease_id, .exit_ok = result.succeeded(), .wall_ms = wall_ms });
@@ -173,6 +192,7 @@ pub fn executeAndReport(
         .checkpoint_response = result.content,
     });
     lease_run_report.submit(io, alloc, cp, runner_token, cfg, payload.lease_id, report, spool);
+    activity_sender.finish();
 }
 
 /// Materialize the leased bundle's support files into `workspace_path` before the

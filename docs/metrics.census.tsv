@@ -56,6 +56,7 @@ agentsfleet_lease_polls_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	th
 agentsfleet_lease_poll_candidates_scanned_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = fan-out per poll
 agentsfleet_lease_poll_db_roundtrips_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = DB cost per poll; idle polls must add zero
 agentsfleet_fleet_runs_started_total	counter	u64	1	cumulative	kind	-	fixed:2	no	traffic	leases granted; fresh ÷ appended admissions is pickup, a rising reclaimed share is runners dying mid-run
+agentsfleet_fleet_delivery_stage_seconds	histogram	f64	s	delta	stage	0.05,0.1,0.25,0.5,1,2,5,10,20,40,80,160,320	fixed:4	no	latency	event-to-lease, lease-to-first-chunk, event-to-first-chunk and zombie-to-first-chunk latency
 agentsfleet_fleet_ready_depth	gauge	u64	{fleet}	-	-	-	fixed:1	no	saturation	readiness backlog (not summable across replicas)
 agentsfleet_fleet_ready_write_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	Redis index writes failing
 agentsfleet_fleets	gauge	u64	{fleet}	-	status	-	fixed:5	yes	traffic	installed fleets by lifecycle status; active is the leasable set, a rising paused count is the anomaly gate holding work

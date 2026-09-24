@@ -1,4 +1,5 @@
 import type { LiveFrame } from "@/lib/api/events";
+import { FRAME_KIND } from "@/lib/api/events-types";
 
 // The one EventSource double for every Server-Sent Events test.
 //
@@ -21,6 +22,8 @@ export class FakeEventSource {
   onerror: ((this: EventSource, ev: Event) => unknown) | null = null;
   closed = false;
   readonly listeners = new Map<string, Set<(ev: MessageEvent) => void>>();
+  readonly startedStreams = new Set<string>();
+  readonly nextStreamSeq = new Map<string, number>();
 
   constructor(url: string) {
     this.url = url;
@@ -58,7 +61,21 @@ export class FakeEventSource {
   emit(frame: LiveFrame): void {
     const named = this.listeners.get(frame.kind);
     if (!named) return;
-    const ev = { data: JSON.stringify(frame) } as MessageEvent;
+    // Most fixtures describe a run from its first chunk. Explicit markers
+    // exercise late subscribers, gaps, and reclaim on the same event.
+    let wire: LiveFrame = frame;
+    if (frame.kind === FRAME_KIND.CHUNK) {
+      const seq = frame.stream_seq ?? this.nextStreamSeq.get(frame.event_id) ?? 0;
+      wire = {
+        ...frame,
+        stream_start: frame.stream_start ?? !this.startedStreams.has(frame.event_id),
+        stream_contiguous: frame.stream_contiguous ?? true,
+        stream_seq: seq,
+      };
+      this.startedStreams.add(frame.event_id);
+      this.nextStreamSeq.set(frame.event_id, seq + 1);
+    }
+    const ev = { data: JSON.stringify(wire) } as MessageEvent;
     for (const fn of named) fn(ev);
   }
 
