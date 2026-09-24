@@ -15,6 +15,7 @@
 
 pub mod detail;
 mod detail_request;
+mod install_request;
 pub mod memory;
 mod memory_request;
 pub mod message;
@@ -24,11 +25,8 @@ use std::sync::Arc;
 
 use afd_core::id::Uuid7;
 use afd_core::paging::Cursor;
-use afd_fleet_lifecycle::{After, FleetPage, FleetRow, Install, Installed, LibrarySource};
-use afd_fleet_runtime::FleetName;
-use afd_wire::fleet::{
-    FleetSummary, FleetsResponse, InstallFleetRequest, InstalledFleetResponse, Triggers, WebhookUrl,
-};
+use afd_fleet_lifecycle::{After, FleetPage, FleetRow, Installed};
+use afd_wire::fleet::{FleetSummary, FleetsResponse, InstalledFleetResponse, Triggers, WebhookUrl};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{RawQuery, State};
@@ -36,6 +34,11 @@ use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 use serde_json::value::RawValue;
 
+pub use self::install_request::{
+    DETAIL_LIBRARY_AMBIGUOUS, DETAIL_LIBRARY_REQUIRED, DETAIL_MALFORMED_JSON, DETAIL_NAME_INVALID,
+    DETAIL_SLACK_CHANNEL_ID, DETAIL_TENANT_LIBRARY_ID,
+};
+use self::install_request::{read_body, read_install};
 use crate::auth::WorkspaceContext;
 use crate::handler::{Refusal, parameter};
 use crate::services::{Services, WorkspaceFleets as _};
@@ -70,26 +73,6 @@ pub const DETAIL_RETIRED_CURSOR: &str = "cursor is retired on this list; page wi
 
 /// The refusal a `starting_after` this daemon never issued earns.
 pub const DETAIL_INVALID_CURSOR: &str = "Invalid cursor format";
-
-/// The refusal an install body this daemon cannot read earns.
-pub const DETAIL_MALFORMED_JSON: &str = "Request body is not valid JSON";
-
-/// The refusal an install naming no library entry earns.
-pub const DETAIL_LIBRARY_REQUIRED: &str =
-    "install requires platform_library_id or tenant_library_id";
-
-/// The refusal an install naming both tiers earns.
-pub const DETAIL_LIBRARY_AMBIGUOUS: &str =
-    "install accepts exactly one of platform_library_id or tenant_library_id";
-
-/// The refusal a name override this daemon will not store earns.
-pub const DETAIL_NAME_INVALID: &str = "name is required (max 64 chars, slug-safe)";
-
-/// The refusal a tenant library id that is not an identifier earns.
-pub const DETAIL_TENANT_LIBRARY_ID: &str = "tenant_library_id must be a valid UUIDv7";
-
-/// The body an empty POST reads as — `req.body() orelse "{}"`, ported.
-const EMPTY_OBJECT: &[u8] = b"{}";
 
 /// `GET /v1/workspaces/{workspace_id}/fleets` — one page, newest first.
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -151,8 +134,9 @@ pub(crate) async fn list<D: Services>(
         "Creates a fleet from one library entry. Use either ",
         "`platform_library_id` or `tenant_library_id`. The service creates a ",
         "default API trigger when the library has no trigger. ",
+        "Set `slack_channel_id` so the fleet answers mentions in that Slack channel. ",
     ),
-    request_body = InstallFleetRequest,
+    request_body = afd_wire::fleet::InstallFleetRequest,
     params(
         afd_http::openapi::path::Workspace,
     ),
@@ -175,21 +159,12 @@ pub(crate) async fn install<D: Services>(
     WorkspaceContext(owned): WorkspaceContext,
     body: Bytes,
 ) -> Result<Response, Refusal> {
-    let body = if body.is_empty() { EMPTY_OBJECT } else { &body };
-    let request = afd_http::handler::read_body::<InstallFleetRequest<'_>>(body)
-        .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
-
-    let source = library_source(&request)?;
-    let name = request
-        .name
-        .as_deref()
-        .map(FleetName::parse)
-        .transpose()
-        .map_err(|_unusable| Refusal::malformed(DETAIL_NAME_INVALID))?;
+    let request = read_body(&body)?;
+    let install = read_install(&request)?;
 
     let installed = services
         .fleets()
-        .install(&owned.workspace, &Install { source, name }, services.now())
+        .install(&owned.workspace, &install, services.now())
         .await
         .map_err(short_a_credential_or(EVENT_INSTALL))?;
     Ok((
@@ -211,25 +186,6 @@ fn short_a_credential_or(
     move |error| match error.missing_secrets() {
         Some(missing) => Refusal::missing_secrets(error.code(), error.detail(), missing.to_vec()),
         None => Refusal::at(event)(error),
-    }
-}
-
-/// Which library tier this install draws from, or the refusal it earns.
-///
-/// The neither-set and both-set cases are two different sentences, which is why
-/// the wire struct carries two optional fields rather than an untagged enum: a
-/// parse failure could not tell a caller which of the two they did.
-fn library_source<'a>(request: &'a InstallFleetRequest<'a>) -> Result<LibrarySource<'a>, Refusal> {
-    match (
-        request.platform_library_id.as_deref(),
-        request.tenant_library_id.as_deref(),
-    ) {
-        (Some(_platform), Some(_tenant)) => Err(Refusal::malformed(DETAIL_LIBRARY_AMBIGUOUS)),
-        (Some(platform), None) => Ok(LibrarySource::Platform(platform)),
-        (None, Some(tenant)) => Uuid7::parse(tenant)
-            .map(LibrarySource::Tenant)
-            .map_err(|_not_an_identifier| Refusal::malformed(DETAIL_TENANT_LIBRARY_ID)),
-        (None, None) => Err(Refusal::malformed(DETAIL_LIBRARY_REQUIRED)),
     }
 }
 

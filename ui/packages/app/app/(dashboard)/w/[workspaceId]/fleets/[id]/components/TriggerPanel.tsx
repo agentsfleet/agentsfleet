@@ -85,6 +85,8 @@ function triggerLabel(trigger: FleetTrigger): string {
       return "Schedule";
     case AGENT_TRIGGER_TYPE.api:
       return "API ingress";
+    case AGENT_TRIGGER_TYPE.mention:
+      return "Chat mention";
   }
 }
 
@@ -98,6 +100,8 @@ function triggerDetail(trigger: FleetTrigger): string {
       return trigger.schedule;
     case AGENT_TRIGGER_TYPE.api:
       return "Accepts events through the fleet API.";
+    case AGENT_TRIGGER_TYPE.mention:
+      return `${trigger.source} · ${trigger.channels.join(", ")}`;
   }
 }
 

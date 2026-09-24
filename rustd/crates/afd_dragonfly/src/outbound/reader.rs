@@ -10,9 +10,9 @@ use redis::ToRedisArgs as _;
 use redis::streams::StreamReadOptions;
 
 use super::{
-    CMD_XACK, CMD_XREADGROUP, FIELD_ANSWER, FIELD_EVENT_ID, FIELD_FLEET_ID, FIELD_PROVIDER,
-    FIELD_WORKSPACE_ID, NEW_ENTRIES, OUTBOUND_CONSUMER_GROUP, OUTBOUND_STREAM_KEY, OWN_PENDING,
-    OutboundDelivery,
+    CMD_XACK, CMD_XREADGROUP, FIELD_ANSWER, FIELD_DESTINATION, FIELD_EVENT_ID, FIELD_FLEET_ID,
+    FIELD_PROVIDER, FIELD_WORKSPACE_ID, NEW_ENTRIES, OUTBOUND_CONSUMER_GROUP, OUTBOUND_STREAM_KEY,
+    OWN_PENDING, OutboundDelivery,
 };
 use crate::dedicated::Dedicated;
 use crate::error::Result;
@@ -187,6 +187,7 @@ fn decode(entry: &redis::streams::StreamId) -> Option<OutboundDelivery> {
     let delivery = OutboundDelivery {
         id: EventId::of(&entry.id),
         provider: field(FIELD_PROVIDER)?,
+        destination: field(FIELD_DESTINATION)?,
         workspace_id: field(FIELD_WORKSPACE_ID)?,
         fleet_id: field(FIELD_FLEET_ID)?,
         event_id: field(FIELD_EVENT_ID)?,
@@ -223,6 +224,10 @@ mod tests {
     fn complete() -> Vec<(&'static str, &'static str)> {
         vec![
             (FIELD_PROVIDER, "slack"),
+            (
+                FIELD_DESTINATION,
+                r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#,
+            ),
             (FIELD_WORKSPACE_ID, "0199a0b0-0000-7000-8000-000000000001"),
             (FIELD_FLEET_ID, "0199a0b0-0000-7000-8000-000000000002"),
             (FIELD_EVENT_ID, "1700000000000-0"),
@@ -242,6 +247,8 @@ mod tests {
             Some(OutboundDelivery {
                 id: EventId::of("1700000000001-0"),
                 provider: "slack".to_owned(),
+                destination: r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#
+                    .to_owned(),
                 workspace_id: "0199a0b0-0000-7000-8000-000000000001".to_owned(),
                 fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),
                 event_id: "1700000000000-0".to_owned(),

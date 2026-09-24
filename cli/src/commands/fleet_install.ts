@@ -45,6 +45,7 @@ import {
   VISIBILITY_PLATFORM,
   VISIBILITY_TENANT,
   withName,
+  withSlackChannel,
   type CreateFleetBody,
   type FleetLibraryGalleryEntry,
   type InstallResponse,
@@ -55,6 +56,7 @@ import { HTTP_METHOD } from "../constants/http-method.ts";
 export interface InstallFlags {
   readonly libraryId?: string | null | undefined;
   readonly name?: string | null | undefined;
+  readonly slackChannel?: string | null | undefined;
 }
 
 // `loader` is injectable (defaults to the real filesystem load) so the
@@ -201,7 +203,7 @@ export const installEffectFromFlags = (
       entry.visibility === VISIBILITY_PLATFORM
         ? { platform_library_id: entry.id }
         : { tenant_library_id: entry.id };
-    const body = withName(idBody, flags.name);
+    const body = withSlackChannel(withName(idBody, flags.name), flags.slackChannel);
     const generatedTrigger = entry.requirements?.trigger_present === false;
     const fallbackName = entry.name || libraryId;
     yield* createAndRender(wsId, token, body, generatedTrigger, fallbackName);

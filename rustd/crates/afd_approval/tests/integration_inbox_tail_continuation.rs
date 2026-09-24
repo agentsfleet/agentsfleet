@@ -188,6 +188,7 @@ async fn a_converged_continuation_announces_nothing() {
             actor: actor.as_str(),
             event_type: EventType::Continuation,
             request_json: CONTINUATION_BODY,
+            reply: afd_admission::Reply::None,
         })
         .await
         .expect("the admission ledger accepts the continuation");

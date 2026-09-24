@@ -100,6 +100,18 @@ impl Connectors {
         self.grants.connection(workspace, provider).await
     }
 
+    /// The bot this workspace's grant for `provider` speaks as.
+    ///
+    /// # Errors
+    /// As [`crate::grant::Grants::bot_identity`].
+    pub async fn bot_identity(
+        &self,
+        workspace: &Uuid7,
+        provider: Provider,
+    ) -> Result<Option<crate::grant::BotIdentity>> {
+        self.grants.bot_identity(workspace, provider).await
+    }
+
     /// Every provider, with what this deployment and this workspace hold.
     ///
     /// In [`Provider::ALL`] order, which is the order a dashboard lists them

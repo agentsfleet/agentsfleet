@@ -16,6 +16,9 @@ use super::record::window_end;
 use super::{DESTINATIONS, Parameters, fraction_of, script};
 use crate::fixture::RunPrefix;
 
+/// The thread an owed answer is addressed to, as a Slack producer records it.
+const DESTINATION: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
+
 fn parameters(slow: f64, retryable: f64) -> Parameters {
     Parameters {
         jobs: 1,
@@ -101,6 +104,7 @@ async fn test_the_window_ends_when_the_last_answer_lands_not_when_it_is_asked_fo
     let job = OutboundDelivery {
         id: EventId::of("1-0"),
         provider: "slack".to_owned(),
+        destination: DESTINATION.to_owned(),
         workspace_id: "w".to_owned(),
         fleet_id: "slow".to_owned(),
         event_id: "e".to_owned(),

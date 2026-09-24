@@ -133,10 +133,10 @@ pub struct EchoAnswer<'a> {
 
 /// What `POST /v1/connectors/{provider}/events` answers with a 200.
 ///
-/// One status, two documents: a handshake is echoed and a delivery that wakes
-/// nothing is acknowledged with its reason. Both are 200 because both are
-/// correct outcomes for a correctly signed request, and a sender treats
-/// anything else as a retry.
+/// One status, three documents: a handshake is echoed, a delivery that wakes
+/// nothing is acknowledged with its reason, and one that wakes a fleet names
+/// its event. All are 200 because all are correct outcomes for a correctly
+/// signed request, and a sender treats anything else as a retry.
 // Untagged, so the bytes are exactly the inner document's. The enum exists so
 // the published contract can say "one of these two" where a single `body =`
 // could only name one, and so the handler's two exits are one type. The schema
@@ -151,6 +151,9 @@ pub enum EventsAnswer<'a> {
     Echo(EchoAnswer<'a>),
     /// A delivery this daemon deliberately did not act on, and why.
     Ignored(Ignored<'a>),
+    /// A delivery that woke a fleet, and the event it runs as. A provider's
+    /// retry answers the first delivery's event, with `replayed` set.
+    Accepted(Accepted<'a>),
 }
 
 /// What `POST /v1/ingress/{provider}` answers with a 200.
@@ -183,6 +186,55 @@ pub enum IdentityAnswer<'a> {
     Opened(AccountOpened<'a>),
     /// A delivery this daemon deliberately did not act on, and why.
     Ignored(Ignored<'a>),
+}
+
+/// What a fleet woken by a chat mention is told: its event's `request_json`.
+///
+/// `message` is the field a chat run reads, the same one a steer carries; the
+/// rest says where the question was asked and how it was routed, so a fleet
+/// and an operator reading the event both see why this fleet answered.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+pub struct MentionRequest<'a> {
+    /// The mention with the bot and any addressed name removed, then the
+    /// thread under a fixed heading when it could be read.
+    #[serde(borrow)]
+    pub message: Cow<'a, str>,
+    /// The channel the mention arrived in.
+    #[serde(borrow)]
+    pub channel_id: Cow<'a, str>,
+    /// The thread an answer is posted under.
+    #[serde(borrow)]
+    pub reply_thread_ts: Cow<'a, str>,
+    /// How routing chose this fleet.
+    #[serde(borrow)]
+    pub route: MentionRoute<'a>,
+    /// What the thread re-read found.
+    pub thread: MentionThread,
+}
+
+/// How a mention reached the fleet it woke.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+pub struct MentionRoute<'a> {
+    /// `addressed`, `sole` or `resident`.
+    #[serde(borrow)]
+    pub verdict: Cow<'a, str>,
+    /// The fleet's name.
+    #[serde(borrow)]
+    pub fleet: Cow<'a, str>,
+}
+
+/// What a mention's thread re-read found.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct MentionThread {
+    /// Whether the thread could be read at all.
+    pub fetched: bool,
+    /// How many of its messages the fleet was told.
+    pub count: usize,
+    /// Whether a cap cut the thread short.
+    pub truncated: bool,
 }
 
 /// The flat object a `workflow_run` becomes on the stream.

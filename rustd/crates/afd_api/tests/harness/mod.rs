@@ -96,7 +96,8 @@ mod stubs_identity;
 mod stubs_ingress;
 mod stubs_provider;
 
-use self::readiness::{NOWHERE_GITHUB, unreachable_pool, unreachable_queue};
+pub(crate) use self::readiness::unreachable_queue;
+use self::readiness::{NOWHERE_GITHUB, unreachable_pool};
 mod stubs_runner;
 mod stubs_tenant;
 mod support;
@@ -186,6 +187,21 @@ pub(crate) fn vault(database: Db) -> SecretVault {
         database,
         Arc::new(Kek::from_bytes(FIXTURE_KEK)),
         Entropy::new(),
+    )
+}
+
+/// The production ingress over `database`, for a suite that drives one of its
+/// reads directly rather than through a delivery.
+///
+/// Its vault seals under [`FIXTURE_KEK`] and its queue is
+/// [`unreachable_queue`]; the reads a suite runs through it reach neither.
+pub(crate) fn unreachable_ingress(database: Db) -> afd_ingress::Ingress {
+    let queue = Dragonfly::unreachable(&unreachable_queue())
+        .expect("a lazy manager opens no socket, so it cannot fail to open one");
+    afd_ingress::Ingress::new(
+        database.clone(),
+        vault(database.clone()),
+        afd_admission::Admissions::for_tests(database, queue),
     )
 }
 

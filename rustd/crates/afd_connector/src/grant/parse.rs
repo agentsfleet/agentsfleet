@@ -31,7 +31,7 @@ pub(crate) const HANDLE_INTEGRATION: &str = "integration";
 /// Handle fields, one spelling each (RULE UFS).
 pub(crate) const HANDLE_BOT_TOKEN: &str = "bot_token";
 /// See [`HANDLE_BOT_TOKEN`].
-const HANDLE_BOT_USER_ID: &str = "bot_user_id";
+pub(crate) const HANDLE_BOT_USER_ID: &str = "bot_user_id";
 /// See [`HANDLE_BOT_TOKEN`].
 const HANDLE_TEAM_ID: &str = "team_id";
 /// See [`HANDLE_BOT_TOKEN`].

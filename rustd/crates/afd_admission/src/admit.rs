@@ -10,7 +10,9 @@ use afd_wire::event::Entry;
 use sqlx::Row as _;
 
 use crate::error::{Error, ErrorKind, Result, query};
-use crate::{Admission, Admissions, Admitted, BudgetScope, Key, logical_id, sql};
+use crate::{
+    Admission, Admissions, Admitted, BudgetScope, Key, Reply, logical_id, logical_parts, sql,
+};
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_ADMIT: &str = "admit an event";
@@ -20,6 +22,40 @@ const CONTEXT_RECEIPT: &str = "record an admission's receipt";
 
 /// A row's `replay_count` on the day it is admitted.
 const NO_REPLAYS: i64 = 0;
+
+/// A [`Reply`] as the four parameters `INSERT_ADMISSION` takes it in.
+///
+/// At most one pair is set, which is what lets the statement `COALESCE` them
+/// without ever mixing a stated half with an inherited one.
+pub(crate) struct ReplyBinds<'a> {
+    /// `$14`, a stated connector.
+    pub(crate) connector: Option<&'a str>,
+    /// `$15`, a stated address.
+    pub(crate) address: Option<&'a str>,
+    /// `$16`, the inherited event's `created_at`.
+    pub(crate) inherit_created_at: Option<i64>,
+    /// `$17`, the inherited event's `seq`.
+    pub(crate) inherit_seq: Option<i64>,
+}
+
+impl<'a> From<Reply<'a>> for ReplyBinds<'a> {
+    fn from(reply: Reply<'a>) -> Self {
+        let (connector, address, inherited) = match reply {
+            Reply::None => (None, None, None),
+            Reply::To { connector, address } => (Some(connector), Some(address), None),
+            // An id this ledger never minted names no row, so it copies none —
+            // the same answer as an event recorded without a destination.
+            Reply::Inherit { event_id } => (None, None, logical_parts(event_id)),
+        };
+        let (inherit_created_at, inherit_seq) = inherited.unzip();
+        Self {
+            connector,
+            address,
+            inherit_created_at,
+            inherit_seq,
+        }
+    }
+}
 
 /// What the ledger answered for one admission.
 struct Ledger {
@@ -147,6 +183,7 @@ impl Admissions {
         now: UnixMillis,
     ) -> Result<Ledger> {
         let estimate = self.deployment_estimate(now).await?;
+        let reply = ReplyBinds::from(admission.reply);
         let mut connection = self.database.acquire().await?;
         let row = sqlx::query(sql::INSERT_ADMISSION)
             .bind(row_id.as_str())
@@ -162,6 +199,10 @@ impl Admissions {
             .bind(NO_REPLAYS)
             .bind(i64::try_from(self.budgets.replay_backlog).unwrap_or(i64::MAX))
             .bind(i64::try_from(estimate).unwrap_or(i64::MAX))
+            .bind(reply.connector)
+            .bind(reply.address)
+            .bind(reply.inherit_created_at)
+            .bind(reply.inherit_seq)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_ADMIT))?

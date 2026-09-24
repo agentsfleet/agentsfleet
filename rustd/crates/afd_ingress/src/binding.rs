@@ -36,7 +36,7 @@ use afd_fleet_lifecycle::FleetStatus;
 use afd_fleet_runtime::config::{FleetConfig, Trigger, Webhook, WebhookSignature};
 use afd_webhook::Scheme;
 
-use crate::error::{COLUMN_STATUS, Result, row_unreadable};
+use crate::error::{self, Result};
 
 /// A fleet that takes signed deliveries, and everything one is checked against.
 #[derive(Debug, Clone)]
@@ -138,8 +138,7 @@ impl Binding {
         document: &str,
         source: Option<&str>,
     ) -> Result<Option<Self>> {
-        let status =
-            FleetStatus::parse(stored_status).ok_or_else(|| row_unreadable(COLUMN_STATUS))?;
+        let status = error::stored_status(stored_status)?;
         let config = FleetConfig::stored(document)?;
 
         Ok(webhook_trigger(&config, source).map(|trigger| Self {
@@ -278,7 +277,7 @@ fn webhook_trigger<'c>(config: &'c FleetConfig, source: Option<&str>) -> Option<
             Some(named) if !hook.source.eq_ignore_ascii_case(named) => None,
             Some(_) | None => Some(hook),
         },
-        Trigger::Cron(_) | Trigger::Api => None,
+        Trigger::Cron(_) | Trigger::Api | Trigger::Mention(_) => None,
     })
 }
 

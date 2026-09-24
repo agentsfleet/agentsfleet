@@ -6,7 +6,7 @@
 //! unusable `TRIGGER.md`, the two naming different fleets, tags a lease could
 //! not match — be proven without a datastore anywhere near it.
 
-use afd_fleet_runtime::config::Trigger;
+use afd_fleet_runtime::config::{Mention, Trigger, attach_mention};
 use afd_fleet_runtime::{FleetName, ParsedTrigger, SkillMetadata};
 
 use crate::error::{self, ErrorKind, Result};
@@ -57,7 +57,7 @@ impl Authored {
             .iter()
             .filter_map(|declared| match declared {
                 Trigger::Webhook(hook) => Some(hook.source.clone()),
-                Trigger::Cron(_) | Trigger::Api => None,
+                Trigger::Cron(_) | Trigger::Api | Trigger::Mention(_) => None,
             })
             .collect()
     }
@@ -72,18 +72,25 @@ impl Authored {
 ///
 /// A `TRIGGER.md` the bundle did not carry is GENERATED from the skill's name,
 /// so a skill-only bundle installs with an API trigger and a default ceiling
-/// rather than being refused for a file its author never had to write.
+/// rather than being refused for a file its author never had to write. A
+/// `mention` the install names is written into whichever of the two it is,
+/// before the one parse that decides what is stored.
 ///
 /// # Errors
 /// Refuses either document being unusable or past its length bound, the two
-/// naming different fleets, and placement tags outside what a lease can match.
-pub(super) fn read(entry: Entry) -> Result<Authored> {
+/// naming different fleets, placement tags outside what a lease can match, and
+/// a document already attached to a different channel than `mention`.
+pub(super) fn read(entry: Entry, mention: Option<&Mention>) -> Result<Authored> {
     let skill_markdown = within_bounds(&entry.skill_markdown, ErrorKind::SkillRejected)?;
     let skill = afd_fleet_runtime::parse_skill(skill_markdown).map_err(error::skill)?;
 
     let trigger_markdown = match entry.trigger_markdown.as_deref() {
         Some(authored) => within_bounds(authored, ErrorKind::TriggerRejected)?.to_owned(),
-        None => generated(skill.name()),
+        None => default_trigger(skill.name()),
+    };
+    let trigger_markdown = match mention {
+        Some(mention) => attach_mention(&trigger_markdown, mention)?,
+        None => trigger_markdown,
     };
     let trigger = afd_fleet_runtime::parse_trigger(&trigger_markdown)?;
 
@@ -116,8 +123,14 @@ fn within_bounds(document: &str, rejected: ErrorKind) -> Result<&str> {
     Ok(document)
 }
 
-/// The `TRIGGER.md` a bundle that carried none installs with.
-fn generated(name: &FleetName) -> String {
+/// The `TRIGGER.md` a bundle that carried none installs with: woken by an API
+/// call, no tools, held to the default daily ceiling.
+///
+/// Public because a fleet the daemon installs for itself (a Slack channel's
+/// resident, `afd_ingress::slack`) is exactly such an install, and two
+/// spellings of the same document would drift.
+#[must_use]
+pub fn default_trigger(name: &FleetName) -> String {
     format!(
         "---\nname: {}\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools: []\n  budget:\n    daily_dollars: {DEFAULT_DAILY_DOLLARS}\n---\n\n",
         name.as_str()
@@ -143,13 +156,13 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the restriction set is for the daemon"
     )]
-    use super::{MAX_TAG_LEN, MAX_TAGS, generated, tags_fit};
+    use super::{MAX_TAG_LEN, MAX_TAGS, default_trigger, tags_fit};
 
     #[test]
     fn a_generated_trigger_declares_an_api_wake_and_a_ceiling() {
         let name = afd_fleet_runtime::FleetName::parse("skill-only-install-pin")
             .expect("a kebab slug parses");
-        let document = generated(&name);
+        let document = default_trigger(&name);
 
         assert!(document.contains("name: skill-only-install-pin"));
         assert!(document.contains("type: api"));
@@ -163,7 +176,7 @@ mod tests {
         // document that generated but did not parse would install a fleet no
         // runner could ever claim.
         let name = afd_fleet_runtime::FleetName::parse("probe").expect("a kebab slug parses");
-        let parsed = afd_fleet_runtime::parse_trigger(&generated(&name));
+        let parsed = afd_fleet_runtime::parse_trigger(&default_trigger(&name));
 
         assert!(parsed.is_ok(), "the generated document must round-trip");
     }

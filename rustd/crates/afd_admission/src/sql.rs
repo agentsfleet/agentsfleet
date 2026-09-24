@@ -4,11 +4,11 @@
 //! statement with the parameters in another order. The `$n` order is written
 //! once, here, beside the text it orders.
 //!
-//! [`MARK_DELIVERED`] is public because the lease path runs it on the
-//! connection that just opened the narrative log, and a method here would take
-//! a second connection from the pool to write one column. That is the shape
-//! `afd_events::sql` already uses for the same reason: the table's owner keeps
-//! the text, the writer keeps its `bind` chain.
+//! [`MARK_DELIVERED`] and [`SELECT_REPLY_DESTINATION`] are public because the
+//! lease path runs each on a connection it already holds, and a method here
+//! would take a second one from the pool to touch two columns. That is the
+//! shape `afd_events::sql` already uses for the same reason: the table's owner
+//! keeps the text, the caller keeps its `bind` chain.
 
 /// Commit an admission, or find the one an earlier call committed.
 ///
@@ -35,21 +35,56 @@
 /// in the planner instead, and the `EXISTS` arm below is a point lookup on
 /// the unique key that only runs when the estimate has already refused.
 ///
+/// The destination rides the same statement. A stated one arrives in `$14` and
+/// `$15`; an inherited one names its event in `$16` and `$17`, and the join
+/// copies that row's pair — both halves or neither, which the slot 918 check
+/// then holds — so a continuation cannot read a destination and lose a race to
+/// the write. The caller's [`Reply`](crate::Reply) sets at most one of the two
+/// pairs, so `COALESCE` never mixes them. On the conflict arm nothing but
+/// `updated_at` moves: a retry keeps the first call's destination, as it keeps
+/// its payload.
+///
 /// `$1` id, `$2` fleet, `$3` workspace, `$4` producer, `$5` producer key,
 /// `$6` payload digest, `$7` actor, `$8` event type, `$9` body, `$10` now,
 /// `$11` the initial replay count, `$12` the replay-backlog budget,
-/// `$13` the estimated rows awaiting a receipt.
+/// `$13` the estimated rows awaiting a receipt, `$14` a stated connector,
+/// `$15` a stated address, `$16` and `$17` the inherited event's `created_at`
+/// and `seq`.
 pub(crate) const INSERT_ADMISSION: &str = "\
 INSERT INTO core.fleet_admissions
   (id, fleet_id, workspace_id, producer, producer_key, payload_digest,
    actor, event_type, request_json, event_created_at, replay_count,
-   created_at, updated_at)
-SELECT $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $10, $10
+   reply_provider, reply_address, created_at, updated_at)
+SELECT $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11,
+       COALESCE($14::text, inherited.reply_provider),
+       COALESCE($15::text, inherited.reply_address),
+       $10, $10
+FROM (SELECT) AS this_admission
+LEFT JOIN core.fleet_admissions AS inherited
+  ON inherited.fleet_id = $2::uuid
+ AND inherited.created_at = $16::bigint AND inherited.seq = $17::bigint
+ AND inherited.reply_provider IS NOT NULL
 WHERE $13::bigint < $12
    OR EXISTS (SELECT 1 FROM core.fleet_admissions
               WHERE producer = $4 AND producer_key = $5)
 ON CONFLICT (producer, producer_key) DO UPDATE SET updated_at = EXCLUDED.updated_at
 RETURNING (xmax = 0) AS inserted, created_at, seq, receipt, payload_digest";
+
+/// The destination one event was admitted with, by its logical id's two
+/// integers — the read the report makes inside its own transaction.
+///
+/// Public for the reason [`MARK_DELIVERED`] is: the lease path runs it on the
+/// transaction that settles the lease, and a method here would take a second
+/// connection to read two columns. Rides `idx_fleet_admissions_reply_lookup`;
+/// the `IS NOT NULL` is what lets the planner prove it may, and a row without
+/// a destination answers no row, which is the same answer as none recorded.
+///
+/// `$1` fleet, `$2` the logical id's `created_at`, `$3` its `seq`.
+pub const SELECT_REPLY_DESTINATION: &str = "\
+SELECT reply_provider, reply_address
+FROM core.fleet_admissions
+WHERE fleet_id = $1::uuid AND created_at = $2 AND seq = $3
+  AND reply_provider IS NOT NULL";
 
 /// Record the receipt the queue answered an admission's append with.
 ///

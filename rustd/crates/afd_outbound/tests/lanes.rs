@@ -39,6 +39,9 @@ mod no_ledger;
 use self::gated_poster::Gated;
 use self::hanging_queue::HangingQueue;
 
+/// The thread an owed answer is addressed to, as a Slack producer records it.
+const DESTINATION: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
+
 /// How long a condition is waited for before the test gives up on it.
 ///
 /// Harness patience, NOT a budget any of these tests assert. Nothing here
@@ -73,6 +76,7 @@ fn job(workspace: &str, n: u32) -> Box<OutboundDelivery> {
     Box::new(OutboundDelivery {
         id: EventId::of(&format!("1700000000{n:03}-0")),
         provider: PROVIDER.to_owned(),
+        destination: DESTINATION.to_owned(),
         workspace_id: workspace.to_owned(),
         fleet_id: FLEET_ID.to_owned(),
         event_id: format!("{workspace}-{n}"),

@@ -45,7 +45,12 @@ use afd_ingress::error::{detail, one_of_each_kind};
 /// because the ledger's datastore was gone, which is the same incident as this
 /// crate's own pool being gone and earns the same answer. It replaced
 /// `queue unreachable` when the append stopped being this crate's to make.
-const OUTAGES: &[&str] = &["datastore", "admission unreachable"];
+/// `obligation unreachable` is the same incident for a notice's ledger.
+const OUTAGES: &[&str] = &[
+    "datastore",
+    "admission unreachable",
+    "obligation unreachable",
+];
 
 #[test]
 fn every_kind_renders_leading_with_its_code() {

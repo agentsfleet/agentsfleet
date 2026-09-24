@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
+import { NOT_A_SLACK_CHANNEL_ID } from "../src/program/tree/flags.ts";
 
 const EXIT_VALIDATION = 4;
 
@@ -88,4 +89,16 @@ describe("id flags refuse anything that is not a canonical uuidv7", () => {
     ]);
     expect(code).toBe(EXIT_VALIDATION);
   });
+});
+
+// Dimension 2.5 — a channel id the server would refuse never becomes a request:
+// lower case, a direct message's `D…` id, and one too short to be Slack's.
+describe("--slack-channel refuses anything that is not a Slack channel ID", () => {
+  for (const channel of ["c0123456789", "D0123456789", "C01"]) {
+    test(`${channel} is refused`, async () => {
+      const { code, err } = await reject(["install", "--library", "ci-responder", "--slack-channel", channel]);
+      expect(code).toBe(EXIT_VALIDATION);
+      expect(err).toContain(NOT_A_SLACK_CHANNEL_ID);
+    });
+  }
 });

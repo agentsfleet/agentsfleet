@@ -27,14 +27,15 @@
 //! the route: `/v1/connectors/slack/events` is what Slack posts to today, and
 //! the template that serves it serves the next one too.
 //!
-//! # What this route carries, and what it deliberately does not
+//! # What this route carries
 //!
-//! The wall and the handshake. A delivery whose signature verifies is
-//! acknowledged; what would ACT on it is not built here. That omission is the
-//! spec's rather than an oversight — *"Slack bot behaviour beyond event
-//! ingress (the reactive bot surface is its own product track)"* is Out of
-//! Scope, and Product Clarity §6 says this milestone builds no new event
-//! producers. Resolving a delivery to a fleet is both.
+//! The wall and the handshake for every connector that delivers events, and
+//! the producer its registry entry names. A chat connector's
+//! [`EventProducer::Mention`] hands the proved body to
+//! [`super::mention`], which routes a mention of the bot to one fleet and
+//! admits it; every other event is acknowledged with the reason it was not
+//! acted on. The producer is chosen by the registry entry, not by name, so
+//! this file still names no provider.
 //!
 //! # Why almost every answer is a 200
 //!
@@ -52,7 +53,7 @@
 use std::sync::Arc;
 
 use afd_connector::Provider;
-use afd_connector::registry::{EventIngress, Handshake};
+use afd_connector::registry::{EventIngress, EventProducer, Handshake};
 use afd_core::error_code;
 use axum::Json;
 use axum::body::Bytes;
@@ -60,6 +61,7 @@ use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use http::{HeaderMap, StatusCode};
 
+use crate::handler::mention::{self, Outcome, Parsed};
 use crate::handler::{Refusal, webhook};
 use crate::services::Services;
 
@@ -77,18 +79,8 @@ const EVENT_DROPPED: &str = "connector_events_dropped";
 /// configuration at the wrong connector reads the difference in the code.
 const DETAIL_NO_EVENT_INGRESS: &str = "This connector delivers no events.";
 
-/// The reason a signed delivery this milestone serves no producer for is
-/// dropped.
-///
-/// Distinct from [`webhook::REASON_UNSUPPORTED_EVENT`], which means "a kind no
-/// rule matches". This means the opposite: the delivery is understood, and what
-/// would act on it is a product track this milestone does not build. An
-/// operator reading the two apart is the difference between "check your
-/// subscription" and "that feature is not here yet".
-const REASON_NO_PRODUCER: &str = "event_producer_not_ported";
-
 /// The reason a signed body that is not a JSON object is dropped.
-const REASON_UNREADABLE: &str = "unreadable_body";
+pub(super) const REASON_UNREADABLE: &str = "unreadable_body";
 
 /// The reason a handshake carrying no value to echo is dropped.
 ///
@@ -125,12 +117,12 @@ enum Answer<'a> {
 fn decide<'e>(ingress: &EventIngress, envelope: &'e serde_json::Value) -> Answer<'e> {
     let Handshake::Echo(echo) = ingress.handshake else {
         // The provider performs no handshake, so every delivery it sends is a
-        // real one — and this milestone builds nothing that acts on one.
-        return Answer::Drop(REASON_NO_PRODUCER);
+        // real one, and deciding what a real one becomes is the producer's.
+        return Answer::Drop(webhook::REASON_UNSUPPORTED_EVENT);
     };
 
     if field(envelope, echo.type_field) != Some(echo.type_value) {
-        return Answer::Drop(REASON_NO_PRODUCER);
+        return Answer::Drop(webhook::REASON_UNSUPPORTED_EVENT);
     }
 
     // The handshake kind with no value under it proves nothing either way, and
@@ -171,8 +163,10 @@ fn field<'e>(envelope: &'e serde_json::Value, name: &str) -> Option<&'e str> {
     summary = "Receive Slack events",
     description = concat!(
         "Slack sends signed events to this route. Users do not call this ",
-        "route. An invalid signature returns 401 `UZ-SLK-010`. A timestamp ",
-        "outside 5 minutes returns 401 `UZ-SLK-011`. ",
+        "route. An invalid signature returns 401 `UZ-WH-010`. A timestamp ",
+        "outside 5 minutes returns 401 `UZ-WH-011`. When `agentsfleet` accepts ",
+        "a mention of the bot, it returns the event identifier. For any other ",
+        "delivery, `agentsfleet` returns the reason it ignored the delivery.",
     ),
     request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
     params(
@@ -181,7 +175,7 @@ fn field<'e>(envelope: &'e serde_json::Value, name: &str) -> Option<&'e str> {
         ("X-Slack-Request-Timestamp" = String, Header, description = "Delivery time in Unix seconds. Values outside 5 minutes are rejected."),
     ),
     responses(
-        (status = 200, description = "A handshake echoed, or a delivery acknowledged and not acted on", body = EventsAnswer),
+        (status = 200, description = "A handshake echo, an ignored delivery with its reason, or an accepted mention with its event identifier", body = EventsAnswer),
         (status = 401, description = afd_http::openapi::UNVERIFIED),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
@@ -213,37 +207,55 @@ pub(crate) async fn receive<D: Services>(
     // Nothing above this line has read the body as anything but bytes.
     let proven = webhook::verified_connector_events(&services, provider, &headers, body).await?;
 
-    Ok(answer(provider, &ingress, &proven.body))
+    match ingress.producer {
+        EventProducer::Mention => mentioned(&*services, provider, &ingress, &proven.body).await,
+    }
 }
 
-/// Renders what a verified delivery earned.
+/// Answers a proved delivery for a connector whose events are mentions.
 ///
-/// Split from [`receive`] so the wall crossing and the reading of a proved body
-/// are the two separate concerns they are: nothing here can reach a body that
-/// has not passed, because [`webhook::verified_connector_events`] is the only
-/// constructor of the type carrying one.
+/// A signed body that will not parse is acknowledged, not refused: the sender
+/// is already authenticated, so a 4xx would retry-loop a delivery that will
+/// parse no better the second time. The handshake is echoed only here, on this
+/// side of the wall, so an unverified echo cannot confirm the path to a prober
+/// or reflect bytes of its choosing. Any other envelope is parsed as a mention
+/// and, past the drops, routed and admitted.
 ///
-/// A handshake is echoed only on this side of the wall. An unverified echo
-/// would confirm the path exists to anybody who guessed it, and would let a
-/// prober use this daemon to reflect bytes of their choosing.
-fn answer(provider: Provider, ingress: &EventIngress, body: &Bytes) -> Response {
-    // A signed body that will not parse is acknowledged, not refused. The
-    // sender is already authenticated, so a 4xx would retry-loop a delivery
-    // that will parse no better the second time.
+/// # Errors
+/// A datastore that would not answer while resolving or admitting.
+async fn mentioned<D: Services>(
+    services: &D,
+    provider: Provider,
+    ingress: &EventIngress,
+    body: &Bytes,
+) -> Result<Response, Refusal> {
     let Ok(envelope) = serde_json::from_slice::<serde_json::Value>(body) else {
-        return dropped(provider, body, REASON_UNREADABLE);
+        return Ok(dropped(provider, body, REASON_UNREADABLE));
     };
-
-    match decide(ingress, &envelope) {
-        Answer::Echo { field, value } => (
-            StatusCode::OK,
-            Json(EventsAnswer::Echo(EchoAnswer {
-                field: std::iter::once((field, value)).collect(),
-            })),
-        )
-            .into_response(),
-        Answer::Drop(reason) => dropped(provider, body, reason),
+    if let Answer::Echo { field, value } = decide(ingress, &envelope) {
+        return Ok(echoed(field, value));
     }
+    let asked = match mention::parse(envelope) {
+        Parsed::Asked(asked) => asked,
+        Parsed::Dropped(reason) => return Ok(dropped(provider, body, reason)),
+    };
+    Ok(match mention::admit(services, provider, &asked).await? {
+        Outcome::Accepted(accepted) => {
+            (StatusCode::OK, Json(EventsAnswer::Accepted(accepted))).into_response()
+        }
+        Outcome::Dropped(reason) => dropped(provider, body, reason),
+    })
+}
+
+/// The 200 a handshake is answered with: the value, under its own field.
+fn echoed(field: &str, value: &str) -> Response {
+    (
+        StatusCode::OK,
+        Json(EventsAnswer::Echo(EchoAnswer {
+            field: std::iter::once((field, value)).collect(),
+        })),
+    )
+        .into_response()
 }
 
 /// The 200 a deliberately-dropped delivery answers with.

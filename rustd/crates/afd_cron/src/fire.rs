@@ -22,7 +22,7 @@
 //! "write" for them to both pass through, and unlike the Lua claim this
 //! replaces, the row does not expire and does not live in the queue.
 
-use afd_admission::{Admission, Admissions, Key, Producer};
+use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_core::id::Uuid7;
 use afd_wire::event::EventType;
 
@@ -89,6 +89,8 @@ impl Fire {
                 actor: ACTOR_SCHEDULE,
                 event_type: EventType::Cron,
                 request_json: &target.message,
+                // A schedule has no one to answer.
+                reply: Reply::None,
             })
             .await?;
 
