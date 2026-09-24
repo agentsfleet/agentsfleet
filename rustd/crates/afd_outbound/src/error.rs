@@ -72,6 +72,26 @@ pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
     move |source| Error::from(ErrorKind::Query { context, source })
 }
 
+/// One sample of each kind a caller can match on, for a crate wrapping this
+/// error to render in its own suite.
+///
+/// The queue kind is left out: it wraps `afd_dragonfly`'s error, and a wrapper
+/// that needs a queue sample takes it from that crate's own builder.
+#[cfg(feature = "test-util")]
+#[must_use]
+pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
+    vec![
+        (
+            "ledger",
+            ErrorKind::Ledger {
+                source: afd_db::error::invalid_bool_knob("MIGRATE_ON_START"),
+            }
+            .into(),
+        ),
+        ("query", query("owe delivery")(sqlx::Error::RowNotFound)),
+    ]
+}
+
 impl Error {
     /// The registry code this failure answers with.
     ///

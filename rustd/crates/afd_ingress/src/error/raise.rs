@@ -19,6 +19,7 @@ afd_core::error_lifts!(Error, ErrorKind:
     afd_fleet_runtime::Error => ConfigUnreadable,
     afd_crypto::error::Error => Entropy,
     afd_core::error::Error => Identifier,
+    afd_outbound::error::Error => Obligation,
 );
 
 /// Reports a statement that failed, naming what it was doing.
@@ -83,6 +84,21 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let entropy = entropy
         .uuid_randomness()
         .expect_err("a mocked source told to fail refuses the draw");
+    let (mut ledger_outages, ledger_answered): (Vec<_>, Vec<_>) =
+        afd_outbound::error::one_of_each_kind()
+            .into_iter()
+            .partition(|(_label, error)| {
+                error.code() == afd_core::error_code::INTERNAL_DB_UNAVAILABLE
+            });
+    let ledger_outage = ledger_outages
+        .pop()
+        .expect("afd_outbound declares an outage kind")
+        .1;
+    let ledger_answered = ledger_answered
+        .into_iter()
+        .next()
+        .expect("afd_outbound declares a kind that is not an outage")
+        .1;
 
     // Partitioned in one pass rather than searched twice: `afd_admission::Error`
     // is not `Clone`, so a second search over the same vector would have to
@@ -137,6 +153,20 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         (
             "identifier",
             ErrorKind::Identifier { source: identifier }.into(),
+        ),
+        (
+            "obligation unreachable",
+            ErrorKind::Obligation {
+                source: ledger_outage,
+            }
+            .into(),
+        ),
+        (
+            "obligation answered",
+            ErrorKind::Obligation {
+                source: ledger_answered,
+            }
+            .into(),
         ),
     ]
 }

@@ -9,7 +9,7 @@ use afd_api::services::WebhookIngress;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
-use afd_ingress::slack::{ChannelId, FleetName, MentionAdmission, Subscriber};
+use afd_ingress::slack::{ChannelId, FleetName, MentionAdmission, NoticeOwed, Subscriber};
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Result as IngressResult, Surface};
 
 use super::{ENTRY_ID_SEQUENCE, HarnessIngress, Recorded, Scripted};
@@ -164,6 +164,13 @@ impl WebhookIngress for HarnessIngress {
         match self {
             Self::Unreachable(ingress) => ingress.fleet_named(workspace, name).await,
             Self::Scripted(_) => Ok(None),
+        }
+    }
+
+    async fn owe_notice(&self, owed: NoticeOwed<'_>, now: UnixMillis) -> IngressResult<bool> {
+        match self {
+            Self::Unreachable(ingress) => ingress.owe_notice(owed, now).await,
+            Self::Scripted(_) => Ok(true),
         }
     }
 }

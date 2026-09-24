@@ -110,6 +110,13 @@ pub(crate) enum ErrorKind {
         #[source]
         source: afd_core::error::Error,
     },
+
+    /// A notice's obligation could not be recorded.
+    #[error("the notice could not be owed")]
+    Obligation {
+        #[source]
+        source: afd_outbound::error::Error,
+    },
 }
 
 /// The columns [`ErrorKind::RowUnreadable`] can name, one spelling each.
@@ -132,6 +139,12 @@ impl Error {
             // constants in `afd_core::error` exist to prevent. It carries the
             // 503-versus-500 distinction the dashboard's retry turns on.
             ErrorKind::Admission { source } => (source.code(), source.detail()),
+            // The ledger decided which of its failures is an outage; the
+            // sentence follows the code it chose.
+            ErrorKind::Obligation { source } if is_outage(source) => (
+                error_code::INTERNAL_DB_UNAVAILABLE,
+                detail::DATABASE_UNAVAILABLE,
+            ),
             ErrorKind::Query { .. } | ErrorKind::RowUnreadable { .. } => {
                 (error_code::INTERNAL_DB_QUERY, detail::DATABASE_ERROR)
             }
@@ -142,7 +155,8 @@ impl Error {
             ErrorKind::Vault { .. }
             | ErrorKind::ConfigUnreadable { .. }
             | ErrorKind::Entropy { .. }
-            | ErrorKind::Identifier { .. } => (
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::Obligation { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 detail::OPERATION_FAILED,
             ),
@@ -172,7 +186,14 @@ impl Error {
         match self.kind() {
             ErrorKind::Datastore { .. } => true,
             ErrorKind::Admission { source } => source.is_datastore_unavailable(),
+            ErrorKind::Obligation { source } => is_outage(source),
             _reachable => false,
         }
     }
+}
+
+/// Whether the obligation ledger failed for want of a datastore rather than on
+/// a statement it answered.
+fn is_outage(source: &afd_outbound::error::Error) -> bool {
+    source.code() == error_code::INTERNAL_DB_UNAVAILABLE
 }

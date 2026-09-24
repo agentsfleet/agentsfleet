@@ -17,6 +17,7 @@ use crate::{Ingress, sql};
 
 mod admit;
 mod message;
+mod notice;
 mod resident;
 mod route;
 
@@ -24,6 +25,7 @@ pub use self::admit::MentionAdmission;
 pub use self::message::{
     Composed, MESSAGE_CAP, THREAD_CAP, THREAD_HEADING, THREAD_UNAVAILABLE, compose,
 };
+pub use self::notice::{NoticeOwed, notice_key, notice_text};
 pub use self::resident::{KIND_RESIDENT, Resident};
 pub use self::route::{Notice, Route, route};
 /// The channel type every mention method takes, and the name a resident is

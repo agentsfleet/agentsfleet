@@ -11,6 +11,12 @@ readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+# M-TEST-UTIL. Unlocks `error::one_of_each_kind`, the samples a crate that
+# wraps this one's error renders in its own error-surface suite, so its idea of
+# a ledger outage cannot drift from this crate's.
+test-util = []
+
 [dependencies]
 # The registry codes a failed delivery is logged under, and the identifiers a
 # job names.
