@@ -263,3 +263,36 @@ async fn a_fleet_holding_the_residents_name_is_never_adopted() {
 
     fixture.cleanup().await;
 }
+
+/// A resident a concurrent first mention is still installing takes the
+/// mention: its row is committed `installing` before its stream exists, and a
+/// losing mention that finds it by name must admit onto it, not owe a notice.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn a_resident_still_installing_takes_the_mention() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let installing = fixture
+        .fleet(
+            &resident_document(&resident_name(&fixture)),
+            FleetStatus::Installing.as_str(),
+        )
+        .await;
+    let router = fixture.resident_router().await;
+
+    let body = mention(&fixture.team, "EvInstalling01", PERSON, &asking());
+    assert_eq!(deliver(&router, &body).await.status(), StatusCode::OK);
+
+    let admitted = fixture
+        .admission(&key(&fixture.team, "EvInstalling01"))
+        .await
+        .expect("the mention was admitted, not answered with a notice");
+    assert_eq!(admitted.fleet, installing.as_str());
+    assert!(
+        owed(&fixture, &notice_key(&fixture.team, "EvInstalling01"))
+            .await
+            .is_empty()
+    );
+
+    fixture.cleanup().await;
+}

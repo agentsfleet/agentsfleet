@@ -20,7 +20,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Priority:** P0 — the incident journey starts with a mention, and the Rust daemon drops every mention it receives.
 **Categories:** API, CLI, DOCS
 **Batch:** B2 — after M206_001, whose destination this producer is the first to write; runs beside M206_003, which shares its Pull Request.
-**Branch:** feat/m206-slack-incident-responder
+**Branch:** `feat/m206-slack-incident-responder`
 **Folded-into:** `M206_001`
 **Baseline revision:** f3edd3c17062087a6db7f7e271606bf0c3901259
 **Test Baseline:** `unit=2662 integration=572` at the comparison revision, inherited from `M206_001` — one branch, measured once.

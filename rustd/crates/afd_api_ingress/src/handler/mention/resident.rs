@@ -145,7 +145,11 @@ pub(super) async fn resident<D: Services>(
     Ok(Found::Resident(Subscriber {
         fleet,
         name: resident.name.as_str().to_owned(),
-        runnable: status == FleetStatus::Active,
+        // `Installing` is a concurrent first mention's install in flight: the
+        // row commits before its stream exists and flips once it does, and a
+        // failed finish deletes the row. So it takes the mention like the
+        // running resident it is about to be, rather than a paused notice.
+        runnable: matches!(status, FleetStatus::Active | FleetStatus::Installing),
         addressed_only: false,
     }))
 }
