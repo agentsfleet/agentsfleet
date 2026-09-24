@@ -138,7 +138,12 @@ This page is the runbook for the later live drill. No Slack, GitHub, Grafana or
 1Password setting is changed while writing it. Once the dependent code reaches
 `api-dev`, 🤠 Indy asks 🦉 Orly to run this playbook. Indy performs the external
 settings changes assigned above; Orly checks them and records the drill
-evidence. The development checklist is one failed Linkwarden run in `#ci-dev`,
+evidence. Before the repair request, Orly checks that the deployed code gives
+the fleet the exact daemon-issued repair branch in trusted input. If that input
+is absent, Orly stops the draft step and records the gap for the M206_003 owner.
+Orly never derives a branch from Slack text.
+
+The development checklist is one failed Linkwarden run in `#ci-dev`,
 one answer in its thread citing both a GitHub Actions job-log line and a
 Grafana Loki log line from the run window, one addressed request yielding one draft PR
 against `dev`, and four negative cases: resident fallback, a choose notice for
