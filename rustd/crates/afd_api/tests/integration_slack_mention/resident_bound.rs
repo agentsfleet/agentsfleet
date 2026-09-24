@@ -179,3 +179,43 @@ async fn a_killed_resident_drops_the_mention() {
 
     fixture.cleanup().await;
 }
+
+/// A notice needs the channel's resident to owe it, so a killed resident drops
+/// a mention that would have been answered with one, and owes nothing.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn a_killed_resident_owes_no_notice() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    for fleet in ["responder", "triage"] {
+        fixture
+            .fleet(
+                &document(fleet, CHANNEL, Some("read")),
+                FleetStatus::Active.as_str(),
+            )
+            .await;
+    }
+    let killed = fixture
+        .fleet(
+            &resident_document(&resident_name(&fixture)),
+            FleetStatus::Killed.as_str(),
+        )
+        .await;
+    bind(&fixture, &killed).await;
+    let router = fixture.resident_router().await;
+
+    let body = mention(&fixture.team, "EvKilled02", PERSON, &asking());
+    let answered = json_body(deliver(&router, &body).await).await;
+
+    assert_eq!(
+        answered.get("ignored").and_then(Value::as_str),
+        Some("resident_killed")
+    );
+    assert!(
+        owed(&fixture, &notice_key(&fixture.team, "EvKilled02"))
+            .await
+            .is_empty()
+    );
+
+    fixture.cleanup().await;
+}

@@ -141,4 +141,72 @@ async fn every_reader_on_the_seam_reaches_a_store() {
     ));
 }
 
+/// The chat-mention half of the seam reaches its store too.
+///
+/// Six more one-line delegations with the same exposure: the workspace
+/// argument threads through `resident` and `bind_resident` by position, and a
+/// swapped pair still type-checks.
+#[tokio::test]
+async fn every_mention_reader_on_the_seam_reaches_a_store() {
+    let ingress = refusing();
+    let fleet = afd_core::id::Uuid7::parse("019329c5-0000-7000-8000-0000000000c1")
+        .expect("the fixture fleet is canonical");
+    let workspace = afd_core::id::Uuid7::parse("019329c5-0000-7000-8000-0000000000c2")
+        .expect("the fixture workspace is canonical");
+    let channel: ChannelId = "C0123456789".parse().expect("the channel is well formed");
+    let name = FleetName::parse("responder").expect("the name is well formed");
+    let now = UnixMillis::from_millis(1);
+
+    assert!(refused(
+        &WebhookIngress::mention_subscribers(&ingress, &workspace, "slack", &channel).await
+    ));
+    assert!(refused(
+        &WebhookIngress::admit_mention(
+            &ingress,
+            MentionAdmission {
+                fleet: &fleet,
+                workspace: &workspace,
+                team_id: "TSEAM",
+                event_id: "EvSeam",
+                user: "U0SEAM",
+                request_json: "{}",
+                connector: "slack",
+                address: "{}",
+            },
+        )
+        .await
+    ));
+    assert!(refused(
+        &WebhookIngress::resident(&ingress, &workspace, "slack", "TSEAM", &channel).await
+    ));
+    assert!(refused(
+        &WebhookIngress::bind_resident(
+            &ingress, &workspace, "slack", "TSEAM", &channel, &fleet, now
+        )
+        .await
+    ));
+    assert!(refused(
+        &WebhookIngress::fleet_named(&ingress, &workspace, &name).await
+    ));
+    assert!(refused(
+        &WebhookIngress::owe_notice(
+            &ingress,
+            NoticeOwed {
+                resident: &fleet,
+                workspace: &workspace,
+                provider: Provider::Slack,
+                key: "TSEAM:EvSeam:notice",
+                address: "{}",
+                text: "notice",
+            },
+            now,
+        )
+        .await
+    ));
+}
+
+use afd_connector::Provider;
+use afd_core::clock::UnixMillis;
+use afd_ingress::slack::{ChannelId, FleetName, MentionAdmission, NoticeOwed};
+
 use super::WebhookIngress;
