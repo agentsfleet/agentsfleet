@@ -86,6 +86,14 @@ const MAX_SIGNATURE_HEADER_LEN: usize = 64;
 const MAX_BASE_BRANCH_LEN: usize = 255;
 /// Longest a fleet or skill reference may be.
 const MAX_REFERENCE_LEN: usize = 255;
+/// How many channels one mention trigger names: exactly one.
+///
+/// One audience per fleet, so a fleet's memory never spans two channels; a
+/// second channel is a second fleet.
+const MENTION_CHANNELS: usize = 1;
+/// Longest a channel identifier may be. Slack's are eleven characters today;
+/// the cap bounds what a document can store, not what Slack may mint.
+const MAX_CHANNEL_ID_LEN: usize = 32;
 
 /// Why an entry was refused.
 const REASON_WHITESPACE: &str = "it contains whitespace";

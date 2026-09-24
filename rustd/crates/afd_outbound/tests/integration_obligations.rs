@@ -34,11 +34,12 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_connector::Provider;
 use afd_core::clock::UnixMillis;
 use afd_dragonfly::{Dragonfly, OutboundJob};
 use std::time::Duration;
 
-use afd_outbound::obligation::{self, Delivery};
+use afd_outbound::obligation::{self, AbandonReason, Delivery};
 use afd_outbound::producer::Producer;
 use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
@@ -57,13 +58,15 @@ mod seed;
 mod support;
 
 use seed::{
-    FLEET, SEEDED_AT, WORKSPACE, clear_obligations, entries_naming, entries_on, forget_group,
-    forget_stream, obligation_id, reader_named, seed_parents,
+    DESTINATION, FLEET, OwedRow, SEEDED_AT, WORKSPACE, abandonment, clear_obligations,
+    destinations_naming, entries_naming, entries_on, forget_group, forget_stream, obligation_id,
+    reader_named, seed_owed_row, seed_parents,
 };
 use support::{OUTBOUND_LANE, OutboundHarness};
 
 /// The connector every fixture answer goes back through.
-const PROVIDER: &str = "slack";
+const PROVIDER: &str = Provider::Slack.id();
+
 /// What the fixture answers say.
 const ANSWER: &str = "Aurora is healthy.";
 /// A cutoff every seeded row is older than, so a scan sees all of them.
@@ -79,142 +82,6 @@ const BLOCK_MS: usize = 200;
 const PRODUCER_PASS: Duration = Duration::from_secs(10);
 /// How often that pass is looked for while it runs.
 const POLL: Duration = Duration::from_millis(25);
-
-/// One owed answer, addressed.
-fn delivery(event_id: &str) -> Delivery<'_> {
-    Delivery {
-        fleet_id: FLEET,
-        workspace_id: WORKSPACE,
-        provider: PROVIDER,
-        event_id,
-        answer: ANSWER,
-    }
-}
-
-/// Owes one delivery the way the report does — in a transaction that commits.
-///
-/// Returns whether this call is the one that created the row, which is what
-/// `owe` answers and what the caller uses to decide whether to append.
-async fn owe_committed(harness: &OutboundHarness, row: &str, event_id: &str) -> bool {
-    use sqlx::Acquire as _;
-
-    let mut connection = harness
-        .database
-        .acquire()
-        .await
-        .expect("the ledger answers");
-    let mut transaction = connection
-        .begin()
-        .await
-        .expect("the report's transaction opens");
-    let written = obligation::owe(
-        &mut transaction,
-        row,
-        delivery(event_id),
-        UnixMillis::from_millis(SEEDED_AT),
-    )
-    .await
-    .expect("owing a delivery");
-    transaction
-        .commit()
-        .await
-        .expect("the report's transaction commits");
-    written
-}
-
-/// A fixture in the state each test starts from: parents seeded, nothing owed.
-async fn ready() -> OutboundHarness {
-    let harness = OutboundHarness::reset().await;
-    seed_parents(&harness.database).await;
-    clear_obligations(&harness.database).await;
-    harness
-}
-
-/// The event ids one scan answers, oldest first.
-///
-/// Both scans take the same three arguments and differ only in WHICH set they
-/// name, so they share a body here for the same reason `obligation::write_receipt`
-/// shares one between its two statements: a pair that binds the same parameters
-/// in the same order is the pair that drifts when each keeps its own copy.
-/// One of the producer's two recovery scans, as a value.
-///
-/// Named because the signature is unreadable inline and clippy says so: both
-/// scans are `async fn`s with identical shapes, and the only way to pass either
-/// to one body is as a function pointer returning a boxed future.
-type Scan = for<'a> fn(
-    &'a afd_db::Db,
-    UnixMillis,
-    i64,
-) -> std::pin::Pin<
-    Box<dyn Future<Output = afd_outbound::Result<Vec<obligation::Owed>>> + Send + 'a>,
->;
-
-async fn owing(harness: &OutboundHarness, scan: Scan) -> Vec<String> {
-    scan(
-        &harness.database,
-        UnixMillis::from_millis(AFTER_EVERYTHING),
-        AMPLE,
-    )
-    .await
-    .expect("the scan answers")
-    .into_iter()
-    .map(|owed| owed.event_id)
-    .collect()
-}
-
-/// Obligations still owed an APPEND — committed, never queued.
-async fn awaiting_append(harness: &OutboundHarness) -> Vec<String> {
-    owing(harness, |db, before, limit| {
-        Box::pin(obligation::unreceipted(db, before, limit))
-    })
-    .await
-}
-
-/// Obligations still owed a DELIVERY — queued, nobody received them.
-async fn awaiting_delivery(harness: &OutboundHarness) -> Vec<String> {
-    owing(harness, |db, before, limit| {
-        Box::pin(obligation::undelivered(db, before, limit))
-    })
-    .await
-}
-
-/// Owes an answer AND puts it on the queue, the way the report's fast path does.
-///
-/// Three steps in the production order: the transaction commits the obligation,
-/// the append follows it, and the receipt records which entry carries it. The
-/// tests below each remove one of those and assert what is left.
-async fn owe_and_queue(harness: &OutboundHarness, nth: u8, event: &str) {
-    assert!(
-        owe_committed(harness, &obligation_id(nth), event).await,
-        "each fixture answer owes its own delivery"
-    );
-    let entry = harness
-        .queue
-        .enqueue(OutboundJob {
-            provider: PROVIDER,
-            workspace_id: WORKSPACE,
-            fleet_id: FLEET,
-            event_id: event,
-            answer: ANSWER,
-        })
-        .await
-        .expect("the queue takes the entry");
-    obligation::receipt(
-        &harness.database,
-        &obligation_id(nth),
-        entry.as_str(),
-        UnixMillis::from_millis(SEEDED_AT),
-    )
-    .await
-    .expect("recording the receipt");
-}
-
-/// A second handle on the lane's datastore, for the faults the queue cannot stage.
-async fn datastore() -> Dragonfly {
-    Dragonfly::connect(&OutboundHarness::config())
-        .await
-        .expect("the lane's Dragonfly must be reachable")
-}
 
 /// A result that committed and never reached the queue is still owed.
 ///
@@ -247,6 +114,7 @@ async fn a_result_committed_without_its_append_is_still_owed() {
         .queue
         .enqueue(OutboundJob {
             provider: PROVIDER,
+            destination: DESTINATION,
             workspace_id: WORKSPACE,
             fleet_id: FLEET,
             event_id: event,
@@ -296,6 +164,7 @@ async fn two_replicas_reporting_one_answer_owe_one_delivery() {
                 .queue
                 .enqueue(OutboundJob {
                     provider: PROVIDER,
+                    destination: DESTINATION,
                     workspace_id: WORKSPACE,
                     fleet_id: FLEET,
                     event_id: event,
@@ -374,226 +243,11 @@ async fn a_destination_that_accepted_an_answer_is_stamped_once() {
     );
 }
 
-/// A worker replaced under a different hostname leaves its answer recoverable.
-///
-/// The dimension's named proof. A consumer name is host-derived and constant for
-/// a process, so the replacement reads a pending list that is EMPTY — the dead
-/// host's entries are not offered to it, and `read_blocking` never re-offers an
-/// entry already handed out. The entry is therefore held by a name that will
-/// never come back, and unreachable by anyone else.
-///
-/// Staged with two explicitly-named readers because one test process has one
-/// hostname: the name is the only thing that differs from what production builds.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Dragonfly: make test-integration-rustd"]
-async fn test_outbound_obligations_survive_worker_replacement() {
-    let _lane = OUTBOUND_LANE.lock().await;
-    let harness = ready().await;
-    let redis = datastore().await;
-    let event = "1700000000-3";
-    owe_and_queue(&harness, 5, event).await;
+#[path = "integration_obligations/destination.rs"]
+mod destination;
+#[path = "integration_obligations/loss.rs"]
+mod loss;
+#[path = "integration_obligations/owed.rs"]
+mod owed;
 
-    // The host that dies, taking the entry into its own pending list.
-    let mut departed = reader_named(&OutboundHarness::config(), "host-that-died").await;
-    let taken = departed
-        .read_blocking(BLOCK_MS)
-        .await
-        .expect("the group offers the entry")
-        .expect("an entry was queued for it");
-    assert_eq!(taken.event_id, event, "the host took this fixture's answer");
-    drop(departed);
-
-    assert_eq!(
-        harness.pending_count().await,
-        1,
-        "the dead host still holds it — an entry delivered and never acknowledged"
-    );
-
-    // Its replacement, under a new hostname.
-    let mut replacement = reader_named(&OutboundHarness::config(), "host-that-replaced-it").await;
-    assert!(
-        replacement
-            .read_pending()
-            .await
-            .expect("the pending read answers")
-            .is_none(),
-        "a new hostname inherits NOTHING: the pending list it reads is its own, \
-         and the dead host's is not offered to it"
-    );
-    assert!(
-        replacement
-            .read_blocking(BLOCK_MS)
-            .await
-            .expect("the blocking read answers")
-            .is_none(),
-        "and the entry is never re-offered as new, so no worker can reach it"
-    );
-
-    assert_eq!(
-        awaiting_delivery(&harness).await,
-        vec![event.to_owned()],
-        "the queue cannot deliver it and the ledger still owes it — which is \
-         the whole claim: the obligation outlives the entry"
-    );
-
-    // Recovery is the producer re-appending. Not free — the destination may see
-    // the answer twice — which is why `delivered_at` is stamped by the poster
-    // and not by the acknowledgement: a row leaves this set only when somebody
-    // actually got it.
-    let again = harness
-        .queue
-        .enqueue(OutboundJob {
-            provider: PROVIDER,
-            workspace_id: WORKSPACE,
-            fleet_id: FLEET,
-            event_id: event,
-            answer: ANSWER,
-        })
-        .await
-        .expect("the re-append is accepted");
-    obligation::record_reappended(
-        &harness.database,
-        &obligation_id(5),
-        again.as_str(),
-        UnixMillis::from_millis(SEEDED_AT),
-    )
-    .await
-    .expect("recording the re-append");
-    obligation::stamp_delivered(
-        &harness.database,
-        FLEET,
-        event,
-        UnixMillis::from_millis(SEEDED_AT + 30),
-    )
-    .await
-    .expect("the re-appended answer is delivered");
-
-    assert!(
-        awaiting_delivery(&harness).await.is_empty(),
-        "re-appended and delivered: the answer survived its worker"
-    );
-    assert!(
-        entries_on(&redis).await >= 1,
-        "the re-append put a real entry on the real stream"
-    );
-}
-
-/// A lost consumer group leaves the answer owed.
-///
-/// Its own test rather than a branch of the one above, because the fault has to
-/// be applied to the whole stream: a group cannot be destroyed for one entry.
-/// The entries SURVIVE here and become unreachable, which is a different shape
-/// from losing the stream — and the point is that the ledger does not care.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Dragonfly: make test-integration-rustd"]
-async fn a_lost_consumer_group_leaves_the_answer_owed() {
-    let _lane = OUTBOUND_LANE.lock().await;
-    let harness = ready().await;
-    let redis = datastore().await;
-    let event = "1700000000-4";
-    owe_and_queue(&harness, 6, event).await;
-
-    forget_group(&redis).await;
-
-    assert_eq!(
-        entries_on(&redis).await,
-        1,
-        "the entry is still there — it is the way to reach it that is gone"
-    );
-    assert_eq!(
-        awaiting_delivery(&harness).await,
-        vec![event.to_owned()],
-        "queued and unreachable reads, to the ledger, as still owed"
-    );
-}
-
-/// A wholly lost stream leaves the answer owed.
-///
-/// The harshest of the three and the one that proves the ledger is the forge:
-/// entries, group and pending lists all gone at once, and the answer is still
-/// owed because PostgreSQL never stopped knowing about it.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Dragonfly: make test-integration-rustd"]
-async fn a_wholly_lost_stream_leaves_the_answer_owed() {
-    let _lane = OUTBOUND_LANE.lock().await;
-    let harness = ready().await;
-    let redis = datastore().await;
-    let event = "1700000000-5";
-    owe_and_queue(&harness, 7, event).await;
-
-    forget_stream(&redis).await;
-
-    assert_eq!(entries_on(&redis).await, 0, "nothing of the queue survives");
-    assert_eq!(
-        awaiting_delivery(&harness).await,
-        vec![event.to_owned()],
-        "losing the cache entirely erases no obligation"
-    );
-}
-
-/// Dimension 7.6 — the DAEMON's producer appends it, and this test does not.
-///
-/// Every other case in this file calls a scan and then enqueues by hand. That
-/// grades `obligation::unreceipted` and the queue, and it is exactly why "a
-/// daemon producer enqueues it" had no proof. `Producer::run` is the loop
-/// `agentsfleetd` spawns (`agentsfleetd/src/outbound.rs:95`); it computes its
-/// OWN cutoffs from `clock::now()` rather than taking them as parameters, it
-/// appends every row a scan answers, and it records each entry as that row's
-/// receipt. None of that is reached by calling a scan directly, and none of it
-/// had a test: nothing under `tests/` named `afd_outbound::producer`, and
-/// `producer.rs` carries no `#[cfg(test)]` module.
-///
-/// Dimensions 4.2 and 4.3 are closed by THIS Dimension on the finding that
-/// nothing in the daemon called `OutboundQueue::enqueue`. This is the test that
-/// fails if that becomes true again.
-///
-/// No clock is waited on. `SEEDED_AT` is older than `producer::MIN_AGE` by
-/// years, so the producer's first pass already finds the row.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Dragonfly: make test-integration-rustd"]
-async fn the_daemon_producer_appends_an_owed_answer_and_receipts_it() {
-    let _lane = OUTBOUND_LANE.lock().await;
-    let harness = ready().await;
-    let redis = datastore().await;
-    let event = "1700000000-6";
-
-    assert!(owe_committed(&harness, &obligation_id(8), event).await);
-    assert_eq!(entries_on(&redis).await, 0, "nothing has appended it yet");
-
-    let token = CancellationToken::new();
-    let running = tokio::spawn(
-        Producer::new(harness.queue.clone(), harness.database.clone()).run(token.clone()),
-    );
-
-    let appended = timeout(PRODUCER_PASS, async {
-        while entries_on(&redis).await == 0 {
-            sleep(POLL).await;
-        }
-    })
-    .await;
-
-    // Cancelled before any assertion, so a failing claim still stops the loop
-    // rather than leaving it appending under the next test's lane lock.
-    token.cancel();
-    running
-        .await
-        .expect("the producer stops when its token is cancelled");
-
-    assert!(
-        appended.is_ok(),
-        "the producer's own pass appended nothing: the daemon path that closes \
-         Dimensions 4.2 and 4.3 never reached `OutboundQueue::enqueue`"
-    );
-    assert_eq!(
-        entries_naming(&redis, event).await,
-        1,
-        "the owed answer was appended exactly once — asked about THIS event \
-         rather than about the stream, which the producer also fills with every \
-         other fleet's owed answers, correctly"
-    );
-    assert!(
-        awaiting_append(&harness).await.is_empty(),
-        "the producer receipted the row it appended, so the next pass does not \
-         append the same answer a second time"
-    );
-}
+use self::owed::*;

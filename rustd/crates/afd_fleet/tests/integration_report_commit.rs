@@ -129,9 +129,10 @@ async fn assert_the_retry_commits_all_four(
         "the retry charges the slice ONCE — the refused attempt charged nothing"
     );
     assert!(
-        owed.is_some(),
-        "the retry that charged is the one that owes the answer: the refused \
-         attempt wrote nothing, so nothing else is going to deliver this run"
+        owed.is_none(),
+        "this lease's event reached the stream without an admission, so it names no \
+         destination and nothing is owed; the report-owes-destination suite proves the \
+         owed branch"
     );
     assert!(
         closed.is_some(),
@@ -226,10 +227,9 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
         "there is no NEW ending to announce, so no completion frame is published for one"
     );
     assert!(
-        owed.is_some(),
-        "charged implies owed. The event row was already terminal, which says an \
-         ending was recorded — not that anybody received the answer, and this run \
-         produced one and was billed for it"
+        owed.is_none(),
+        "charged does not imply owed: an answer is owed only where its question came \
+         from, and this event names no destination"
     );
     assert_eq!(
         held.fixtures

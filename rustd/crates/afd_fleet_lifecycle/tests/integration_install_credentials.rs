@@ -48,6 +48,7 @@ fn request() -> Install<'static> {
     Install {
         source: LibrarySource::Platform(LIBRARY_ID_DEMANDING),
         name: None,
+        mention: None,
     }
 }
 

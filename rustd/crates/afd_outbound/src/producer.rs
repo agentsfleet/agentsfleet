@@ -46,7 +46,7 @@ use afd_db::Db;
 use afd_dragonfly::{OutboundJob, OutboundQueue};
 use tokio_util::sync::CancellationToken;
 
-use crate::obligation::{self, Owed};
+use crate::obligation::{self, AbandonReason, Owed};
 
 /// How long an obligation is left for its own committer before this pass takes
 /// it.
@@ -64,6 +64,13 @@ pub const MIN_AGE: Duration = Duration::from_secs(30);
 /// "still in a lane" stops being the likelier explanation than "the entry is
 /// gone".
 pub const LOST_AFTER: Duration = Duration::from_secs(300);
+
+/// How many delivery cycles an answer is allowed before it is abandoned.
+///
+/// A cycle ends retryable only after its own backoff has run out, and a lost
+/// answer is re-offered once per [`LOST_AFTER`], so this is roughly an hour of
+/// a destination refusing before the answer stops costing the queue anything.
+pub const MAX_DELIVERY_CYCLES: i64 = 12;
 
 /// How many rows one pass takes from each scan.
 pub const BATCH_LIMIT: i64 = 32;
@@ -83,6 +90,10 @@ const _: () = {
         "a queued answer must be given longer than an unqueued one"
     );
     assert!(BATCH_LIMIT > 0, "a pass that takes no rows never drains");
+    assert!(
+        MAX_DELIVERY_CYCLES >= 2,
+        "one cycle is no retry budget: a single outage would abandon the answer"
+    );
     assert!(
         BATCH_LIMIT <= 128,
         "a batch this large holds the queue for a live report"
@@ -179,17 +190,14 @@ impl Producer {
 
         let mut appended = 0;
         for owed in rows {
-            let entry = match self
-                .queue
-                .enqueue(OutboundJob {
-                    provider: &owed.provider,
-                    workspace_id: &owed.workspace_id,
-                    fleet_id: &owed.fleet_id,
-                    event_id: &owed.event_id,
-                    answer: &owed.answer,
-                })
-                .await
-            {
+            // The scans return only rows that name a destination, so a row that
+            // will not address names a connector nobody answers to. No entry
+            // could deliver it, and skipping it would leave it in every scan.
+            let Some(delivery) = owed.addressed() else {
+                crate::abandon::row(&self.database, &owed, AbandonReason::Unaddressable).await;
+                continue;
+            };
+            let entry = match self.queue.enqueue(OutboundJob::from(delivery)).await {
                 Ok(entry) => entry,
                 Err(failure) => {
                     // The queue is refusing. Stop the pass rather than walk the

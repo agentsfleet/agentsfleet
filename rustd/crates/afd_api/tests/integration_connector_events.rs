@@ -34,7 +34,7 @@ use crate::harness;
 use afd_connector::Provider;
 use afd_core::error_code;
 use afd_webhook::Scheme;
-use http::{HeaderName, Method, StatusCode};
+use http::{Method, StatusCode};
 use serde_json::Value;
 
 use self::harness::{json_body, send_with_headers};
@@ -62,11 +62,12 @@ const FIELD_CHALLENGE: &str = "challenge";
 /// A subscription handshake, as a provider opens one with.
 const HANDSHAKE: &str = r#"{"type":"url_verification","challenge":"3eZbrw1aB1CaQdLQCbtx"}"#;
 
-/// A real delivery: understood, and served by no producer this build ships.
-const MESSAGE: &str = r#"{"type":"event_callback","event":{"type":"app_mention"}}"#;
+/// A real delivery the route understands and deliberately does not act on: an
+/// event callback that is not a mention of the bot.
+const MESSAGE: &str = r#"{"type":"event_callback","team_id":"T024BE7LD","event_id":"Ev0NOTMENTION","event":{"type":"reaction_added","user":"U01"}}"#;
 
-/// The reason a delivery this milestone builds no producer for is dropped.
-const REASON_NO_PRODUCER: &str = "event_producer_not_ported";
+/// The reason a signed event the route does not act on is dropped.
+const REASON_UNSUPPORTED: &str = "unsupported_event";
 
 /// The field a dropped delivery names its reason in.
 const FIELD_IGNORED: &str = "ignored";
@@ -85,23 +86,8 @@ fn path() -> String {
 async fn deliver(router: &axum::Router, secret: &[u8], body: &str) -> axum::response::Response {
     let at = harness::frozen_unix_seconds().to_string();
     let proof = harness::webhook::signature_at(SCHEME, secret, Some(&at), body.as_bytes());
-    let headers = vec![
-        (name(SCHEME.signature_header()), proof.as_str()),
-        (
-            name(
-                SCHEME
-                    .timestamp_header()
-                    .expect("the timestamped scheme names its timestamp header"),
-            ),
-            at.as_str(),
-        ),
-    ];
+    let headers = harness::webhook::slack_headers(&proof, &at);
     send_with_headers(router, Method::POST, &path(), None, body, &headers).await
-}
-
-/// One header name, as the request builder takes it.
-fn name(header: &str) -> HeaderName {
-    HeaderName::from_bytes(header.as_bytes()).expect("the scheme's header names are well formed")
 }
 
 #[tokio::test]
@@ -181,11 +167,11 @@ async fn a_connector_configured_without_a_signing_secret_verifies_nothing() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_signed_event_no_producer_serves_is_acknowledged_and_acted_on_by_nothing() {
+async fn a_signed_event_the_route_does_not_act_on_is_acknowledged_and_acted_on_by_nothing() {
     // The fast-ack rule, and the half of it a status code cannot show. A
     // provider retries anything that is not a 2xx and disables an endpoint that
-    // keeps failing, so a real delivery this build serves no producer for is
-    // acknowledged with its reason. That is only correct while nothing acted on
+    // keeps failing, so a real delivery this route does not act on — anything
+    // but a mention of the bot — is acknowledged with its reason. That is only correct while nothing acted on
     // it, which is what the event count is here for.
     let fixture = Fixture::create().await;
     fixture.seed(Configured::Signing).await;
@@ -203,7 +189,7 @@ async fn a_signed_event_no_producer_serves_is_acknowledged_and_acted_on_by_nothi
     );
     assert_eq!(
         document.get(FIELD_IGNORED).and_then(Value::as_str),
-        Some(REASON_NO_PRODUCER),
+        Some(REASON_UNSUPPORTED),
         "the reason is the answer, because the sender is an app that will never \
          read it and an operator asking why nothing happened has only this"
     );
@@ -220,10 +206,9 @@ async fn a_signed_event_no_producer_serves_is_acknowledged_and_acted_on_by_nothi
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_retried_delivery_is_answered_identically_and_still_acts_on_nothing() {
     // A provider's at-least-once delivery, which is the ordinary case rather
-    // than an adversarial one. Idempotence is trivially held here because this
-    // surface writes nothing — and that is worth pinning rather than assuming,
-    // because the day a producer lands behind this route it stops being true
-    // for free and this test is what says so.
+    // than an adversarial one. For an event the route does not act on,
+    // idempotence is held because nothing is written; a mention's retry is
+    // held by the admission ledger, which `integration_slack_mention` proves.
     let fixture = Fixture::create().await;
     fixture.seed(Configured::Signing).await;
     let router = fixture.router();

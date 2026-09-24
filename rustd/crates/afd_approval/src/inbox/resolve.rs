@@ -241,6 +241,9 @@ impl Inbox {
                 actor: actor.as_str(),
                 event_type: afd_wire::event::EventType::Continuation,
                 request_json: CONTINUATION_BODY,
+                // The run a gate parked answers where it would have: a thread
+                // that asked before the gate still gets the answer after it.
+                reply: afd_admission::Reply::Inherit { event_id },
             })
             .await?;
 

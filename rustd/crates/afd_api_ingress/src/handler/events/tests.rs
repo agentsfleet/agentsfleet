@@ -5,9 +5,10 @@
 //! and the envelope, which is exactly why it was written as one.
 
 use afd_connector::Provider;
-use afd_connector::registry::{Echo, EventIngress, Handshake};
+use afd_connector::registry::{Echo, EventIngress, EventProducer, Handshake};
 
-use super::{Answer, REASON_HANDSHAKE_EMPTY, REASON_NO_PRODUCER, decide};
+use super::{Answer, REASON_HANDSHAKE_EMPTY, decide};
+use crate::handler::webhook::REASON_UNSUPPORTED_EVENT;
 
 /// The envelope a case hands the decision.
 ///
@@ -74,12 +75,10 @@ fn test_no_valueless_handshake_is_answered_as_one() {
     }
 }
 
-/// A real delivery is acknowledged and dropped, naming the absent producer.
-///
-/// The reason is the load-bearing half: an operator asking why a mention
-/// did nothing needs to read "not built yet" rather than "not subscribed".
+/// A real delivery is not the handshake, and `decide` drops it as a kind it
+/// serves no rule for; what a producer makes of one is decided past here.
 #[test]
-fn test_a_real_delivery_is_dropped_for_the_producer_that_is_not_ported() {
+fn test_a_real_delivery_is_not_answered_as_the_handshake() {
     let deliveries = [
         r#"{"type":"event_callback","event":{"type":"app_mention"}}"#,
         r#"{"type":"event_callback"}"#,
@@ -93,7 +92,7 @@ fn test_a_real_delivery_is_dropped_for_the_producer_that_is_not_ported() {
         let body = envelope(raw);
         assert_eq!(
             slack().map(|ingress| decide(&ingress, &body)),
-            Some(Answer::Drop(REASON_NO_PRODUCER)),
+            Some(Answer::Drop(REASON_UNSUPPORTED_EVENT)),
             "`{raw}` is a delivery, not the handshake"
         );
     }
@@ -108,12 +107,13 @@ fn test_a_real_delivery_is_dropped_for_the_producer_that_is_not_ported() {
 fn test_a_provider_with_no_handshake_echoes_nothing() {
     let silent = EventIngress {
         handshake: Handshake::None,
+        producer: EventProducer::Mention,
     };
     let body = envelope(r#"{"type":"url_verification","challenge":"3eZbrw1a"}"#);
 
     assert_eq!(
         decide(&silent, &body),
-        Answer::Drop(REASON_NO_PRODUCER),
+        Answer::Drop(REASON_UNSUPPORTED_EVENT),
         "a provider that proves nothing at setup has no handshake to answer"
     );
 }
@@ -132,6 +132,7 @@ fn test_the_decision_reads_whatever_fields_the_descriptor_names() {
             type_value: "verify_endpoint",
             echo_field: "nonce",
         }),
+        producer: EventProducer::Mention,
     };
 
     let its_own = envelope(r#"{"kind":"verify_endpoint","nonce":"abc123"}"#);
@@ -146,7 +147,7 @@ fn test_the_decision_reads_whatever_fields_the_descriptor_names() {
     let slacks = envelope(r#"{"type":"url_verification","challenge":"x"}"#);
     assert_eq!(
         decide(&elsewhere, &slacks),
-        Answer::Drop(REASON_NO_PRODUCER),
+        Answer::Drop(REASON_UNSUPPORTED_EVENT),
         "Slack's field names mean nothing to a descriptor naming others"
     );
 }

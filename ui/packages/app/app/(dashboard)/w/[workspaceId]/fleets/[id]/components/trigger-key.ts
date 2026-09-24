@@ -4,6 +4,7 @@ export const AGENT_TRIGGER_TYPE = {
   webhook: "webhook",
   cron: "cron",
   api: "api",
+  mention: "mention",
 } as const;
 
 export function triggerKey(t: FleetTrigger): string {
@@ -14,5 +15,7 @@ export function triggerKey(t: FleetTrigger): string {
       return `${AGENT_TRIGGER_TYPE.cron}:${t.schedule}`;
     case AGENT_TRIGGER_TYPE.api:
       return AGENT_TRIGGER_TYPE.api;
+    case AGENT_TRIGGER_TYPE.mention:
+      return `${AGENT_TRIGGER_TYPE.mention}:${t.source}:${t.channels.join(",")}`;
   }
 }

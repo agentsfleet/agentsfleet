@@ -709,10 +709,12 @@ not authority by itself.
    SKILL.md prose and the user's history filter.
 
    > [!NOTE]
-   > SLACK — the retired Zig daemon's producer, not ported. The Rust daemon
-   > verifies the signature, echoes url_verification, and drops every mention
-   > as event_producer_not_ported (afd_api_ingress/src/handler/events.rs:88).
-   > M206_002 restores it as `slack_mention` with channel subscriptions; the
+   > SLACK — producer `slack_mention` (M206_002). The Rust daemon verifies the
+   > signature, echoes url_verification, routes a mention to the fleet whose
+   > TRIGGER.md names its channel, re-reads the thread into `message`, and
+   > admits one event keyed by Slack's event id
+   > (afd_api_ingress/src/handler/mention.rs:195). A mention no subscriber
+   > takes reaches the channel's resident, installed on the first one; the
    > routing lives in scenarios/slack-incident-responder.md §4. What the Zig
    > daemon did, for the record (M106): the Slack-resident
    > bot lands an actor=slack:<user> event on fleet:{channel_fleet_id}:events
@@ -911,9 +913,9 @@ The deleted worker's single in-process `processEvent` loop is now split across t
    dead runner is fenced out at claimReport (UZ-RUN-005).
 ```
 
-**Answer round-trip to a connector thread.** Two connector-specific hops bracket this generic trace without altering it. *At ingress:* the producer that owns a reply surface re-reads the thread (Slack `conversations.replies`, bounded) into the event's `message` and records the event's reply destination — provider plus an opaque address — on the admission. A failed re-read degrades to the mention alone. *On the way out:* the report transaction owes a delivery (`core.fleet_obligations`) only when the event, or the event an approval continuation resumes, carries a destination, addressed by that destination's connector; an empty answer owes nothing. The outbound worker (the one blocking Dragonfly consumer sized in [`scaling.md`](./scaling.md)) routes the job by provider and posts from the obligation's own address with bounded retry; a permanent refusal abandons the obligation so recovery stops re-offering it. The core report path stays provider-agnostic: the worker is the only place a connector poster is imported. Specified in M206_001 and M206_002; walkthrough in [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §5–§6.
+**Answer round-trip to a connector thread.** Two connector-specific hops bracket this generic trace without altering it. *At ingress:* the producer that owns a reply surface re-reads the thread (Slack `conversations.replies`, bounded) into the event's `message` and records the event's reply destination — provider plus an opaque address — on the admission. A failed re-read degrades to the mention alone. *On the way out:* the report transaction owes a delivery (`core.fleet_obligations`) only when the event, or the event an approval continuation resumes, carries a destination, addressed by that destination's connector; an empty answer owes nothing. The outbound worker (the one blocking Dragonfly consumer sized in [`scaling.md`](./scaling.md)) routes the job by provider and posts from the obligation's own address with bounded retry; a permanent refusal abandons the obligation so recovery stops re-offering it. The core report path stays provider-agnostic: the worker is the only place a connector poster is imported. Delivery shipped in M206_001; the Slack producer is M206_002; walkthrough in [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §5–§6.
 
-*Today* the Rust report path owes every non-empty answer, from any producer, to the lease's model provider (`rustd/crates/afd_fleet/src/lease/commit.rs:198-210`); the worker drops it as `unknown_provider` (`afd_outbound/src/poster.rs:77-92`) and the undelivered scan re-appends it every 300 seconds (`afd_outbound/src/obligation/sql.rs:111-116`). The retired Zig daemon took the provider from the fleet's `core.connector_channels` binding and owed nothing for an unbound fleet.
+*Shipped* (M206_001): `afd_admission::Reply` records the destination — `&'static` connector, so no runtime string can be one — and a continuation copies it inside its own insert; the report reads it in its transaction (`afd_fleet/src/lease/obligation.rs`) and owes `afd_connector::Provider`, never the lease's model provider; the queue job carries the address; a `Permanent` verdict or `MAX_DELIVERY_CYCLES` spent abandons the row (`afd_outbound/src/abandon.rs`), and both recovery scans skip abandoned and destination-less rows (slots 918–920). Before it, every non-empty answer was owed to the model provider and re-appended every 300 seconds; the retired Zig daemon took the provider from the fleet's `core.connector_channels` binding and owed nothing for an unbound fleet.
 
 ### D. WATCH  (user-side: how the live tail surfaces)
 

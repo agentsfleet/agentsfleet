@@ -15,7 +15,9 @@
 use afd_fleet_runtime::config::{Access, RepositoryBinding};
 use serde_json::json;
 
-use super::{Exchange, Granted, Overreach, Permission, ScopedRequest, installation_id, mint};
+use super::{
+    Exchange, Granted, Installed, Overreach, Permission, ScopedRequest, installation_id, mint,
+};
 use crate::credential::outcome::{Outcome, Retry};
 use crate::credential::platform::GithubApp;
 
@@ -27,6 +29,9 @@ use crate::credential::platform::GithubApp;
 /// would make an overreach case assert against a repository the binding never
 /// declared, and it would still pass.
 const DECLARED: &str = "acme/widgets";
+
+/// The key GitHub reports permissions under, in a token and an installation.
+const PERMISSIONS: &str = "permissions";
 
 /// A binding over [`DECLARED`] at `access`.
 ///
@@ -44,7 +49,7 @@ fn granted(permissions: serde_json::Value, repositories: serde_json::Value) -> G
     serde_json::from_value(json!({
         "token": "ghs_fixture",
         "expires_at": "2026-06-26T16:30:00Z",
-        "permissions": permissions,
+        PERMISSIONS: permissions,
         "repositories": repositories,
     }))
     .expect("the fixture response is well formed")
@@ -55,37 +60,61 @@ fn repositories() -> serde_json::Value {
     json!([{"full_name": DECLARED}])
 }
 
-#[test]
-fn test_a_read_binding_asks_for_contents_read_and_nothing_else() {
-    let request = ScopedRequest::for_binding(&binding(Access::Read));
-
-    // The owner is stripped, because GitHub scopes by bare name.
-    let body = serde_json::to_value(&request).expect("the request serialises");
-    assert_eq!(body["repositories"], json!(["widgets"]));
-    assert_eq!(body["permissions"], json!({"contents": "read"}));
-    // No `pull_requests` entry: its ABSENCE is the read scope.
-    assert!(body["permissions"].get("pull_requests").is_none());
+/// An installation's permissions, as GitHub reports them.
+fn installed(permissions: serde_json::Value) -> Installed {
+    serde_json::from_value(json!({PERMISSIONS: permissions}))
+        .expect("the fixture installation is well formed")
 }
 
-#[test]
-fn test_a_write_binding_additionally_asks_for_pull_requests_write() {
-    let request = ScopedRequest::for_binding(&binding(Access::Write));
+/// The request for `binding` on an installation holding every evidence read,
+/// so a case about the RESPONSE is not also about which reads were trimmed.
+fn scoped(binding: &RepositoryBinding) -> ScopedRequest {
+    let everything = installed(json!({
+        "actions": Permission::Read,
+        "checks": Permission::Read,
+        "contents": Permission::Write,
+        "pull_requests": Permission::Write,
+        "metadata": Permission::Read,
+    }));
+    ScopedRequest::for_binding(binding, &everything)
+}
 
-    let body = serde_json::to_value(&request).expect("the request serialises");
-    assert_eq!(
-        body["permissions"],
-        json!({"contents": "write", "pull_requests": "write"})
-    );
+/// Dimension 1.2 — a read token missing `actions`, carrying `actions: write`,
+/// or carrying `workflows` is refused rather than delivered.
+#[test]
+fn verify_refuses_a_ci_scope_mismatch() {
+    let binding = binding(Access::Read);
+    let request = scoped(&binding);
+    for (case, permissions) in [
+        (
+            "missing actions",
+            json!({"contents": "read", "checks": "read"}),
+        ),
+        (
+            "actions at write",
+            json!({"contents": "read", "checks": "read", "actions": "write"}),
+        ),
+        (
+            "workflows",
+            json!({"contents": "read", "checks": "read", "actions": "read", "workflows": "write"}),
+        ),
+    ] {
+        assert_eq!(
+            granted(permissions, repositories()).verify(&binding, request.permissions()),
+            Err(Overreach::Permissions),
+            "{case}"
+        );
+    }
 }
 
 #[test]
 fn test_a_token_reaching_exactly_the_declaration_is_accepted() {
     let binding = binding(Access::Read);
-    let request = ScopedRequest::for_binding(&binding);
+    let request = scoped(&binding);
     // `metadata` rides on every installation token GitHub mints. A read-level
     // extra is ambient and must pass, or no mint would ever succeed.
     let granted = granted(
-        json!({"contents": "read", "metadata": "read"}),
+        json!({"contents": "read", "actions": "read", "checks": "read", "metadata": "read"}),
         repositories(),
     );
 
@@ -95,7 +124,7 @@ fn test_a_token_reaching_exactly_the_declaration_is_accepted() {
 #[test]
 fn test_the_bare_name_mis_scope_is_refused() {
     let binding = binding(Access::Read);
-    let request = ScopedRequest::for_binding(&binding);
+    let request = scoped(&binding);
     // The request could only say `widgets`. GitHub resolved it inside a
     // DIFFERENT account that also has a `widgets`, and said so in `full_name`.
     // This is the whole reason the check reads the response.
@@ -113,7 +142,7 @@ fn test_the_bare_name_mis_scope_is_refused() {
 #[test]
 fn test_a_token_reaching_more_repositories_than_declared_is_refused() {
     let binding = binding(Access::Read);
-    let request = ScopedRequest::for_binding(&binding);
+    let request = scoped(&binding);
     let granted = granted(
         json!({"contents": "read"}),
         json!([{"full_name": DECLARED}, {"full_name": "acme/secrets"}]),
@@ -132,7 +161,7 @@ fn test_an_unmodelled_permission_above_read_is_refused() {
     // this and the token would be delivered carrying admin write. The open map
     // is what makes it visible.
     let binding = binding(Access::Read);
-    let request = ScopedRequest::for_binding(&binding);
+    let request = scoped(&binding);
     let granted = granted(
         json!({"contents": "read", "administration": "write"}),
         repositories(),
@@ -149,7 +178,7 @@ fn test_a_permission_level_this_daemon_does_not_model_is_refused() {
     // `Permission::Unknown` sorts above `Write`, so a level GitHub introduces
     // after this was written is refused rather than admitted.
     let binding = binding(Access::Read);
-    let request = ScopedRequest::for_binding(&binding);
+    let request = scoped(&binding);
     let granted = granted(
         json!({"contents": "read", "packages": "maintain"}),
         repositories(),
@@ -166,7 +195,7 @@ fn test_a_write_token_granted_only_read_is_refused() {
     // A token NARROWER than the declaration fails here, where the fleet can be
     // told why, rather than at the vendor where it cannot.
     let binding = binding(Access::Write);
-    let request = ScopedRequest::for_binding(&binding);
+    let request = scoped(&binding);
     let granted = granted(
         json!({"contents": "read", "pull_requests": "read"}),
         repositories(),
@@ -181,7 +210,7 @@ fn test_a_write_token_granted_only_read_is_refused() {
 #[test]
 fn test_a_response_stating_no_reach_is_refused_not_assumed() {
     let binding = binding(Access::Read);
-    let request = ScopedRequest::for_binding(&binding);
+    let request = scoped(&binding);
 
     // No `repositories` array at all.
     let no_repositories: Granted = serde_json::from_value(json!({
@@ -259,4 +288,5 @@ async fn mint_refuses_before_transport_when_narrowing_inputs_are_unusable() {
     assert!(matches!(bad_key, Outcome::MintFailed(Retry::Permanent)));
 }
 
+mod request;
 mod transport;

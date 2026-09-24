@@ -32,6 +32,8 @@ mod grants;
 mod rollback;
 mod row;
 
+pub use self::authored::default_trigger;
+
 use std::collections::BTreeSet;
 use std::time::Duration;
 
@@ -39,6 +41,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::FleetName;
+use afd_fleet_runtime::config::Mention;
 
 use backon::{ExponentialBuilder, Retryable as _};
 
@@ -94,6 +97,15 @@ pub enum LibrarySource<'a> {
     Platform(&'a str),
     /// This workspace's own entry, by identifier.
     Tenant(Uuid7),
+    /// A bundle this daemon wrote in code rather than one a library row holds:
+    /// a Slack channel's resident. It carries no support files, so the fleet
+    /// stores no bundle hash.
+    InCode {
+        /// The `SKILL.md` the fleet runs.
+        skill_markdown: &'a str,
+        /// The `TRIGGER.md` whose policy it is held to.
+        trigger_markdown: &'a str,
+    },
 }
 
 /// One install request, already parsed.
@@ -107,6 +119,9 @@ pub struct Install<'a> {
     /// this path carries no validation arm. Absent means the bundle's own name,
     /// re-drawn with a suffix if it collides.
     pub name: Option<FleetName>,
+    /// The chat channel to attach it to, written into the stored `TRIGGER.md`
+    /// as its `mention` trigger. Absent leaves the document as authored.
+    pub mention: Option<Mention>,
 }
 
 /// What an install answers with.
@@ -192,7 +207,7 @@ impl Fleets {
         let entry = self
             .resolve(&mut connection, workspace, &request.source)
             .await?;
-        let authored = authored::read(entry)?;
+        let authored = authored::read(entry, request.mention.as_ref())?;
         // Released BEFORE the vault read, and reacquired for the write. The
         // pre-flight takes a pool connection of its own, so holding this one
         // across it would let N concurrent installs each hold one and wait for

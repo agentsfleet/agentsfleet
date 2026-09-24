@@ -102,6 +102,67 @@ pub(crate) async fn clear_obligations(database: &Db) {
         .expect("clearing this fixture's obligations");
 }
 
+/// The thread every fixture answer is addressed to, as a Slack producer
+/// records it.
+pub(crate) const DESTINATION: &str =
+    r#"{"team_id":"T024BE7LD","channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
+
+/// One owed row, written straight into the ledger.
+pub(crate) struct OwedRow<'a> {
+    /// Which [`obligation_id`] the row takes.
+    pub(crate) nth: u8,
+    pub(crate) event: &'a str,
+    /// The connector id the row names, which need not be one any connector
+    /// answers to.
+    pub(crate) provider: &'a str,
+    /// `None` for a row naming nowhere.
+    pub(crate) destination: Option<&'a str>,
+    pub(crate) receipt: Option<&'a str>,
+    pub(crate) answer: &'a str,
+}
+
+/// Writes `row` owed by the fixture fleet, bypassing the ledger's own verbs.
+///
+/// For the rows those verbs refuse to write and a deployment can still hold:
+/// one naming a connector the catalogue no longer answers to, or one the report
+/// path wrote before it read a destination.
+pub(crate) async fn seed_owed_row(database: &Db, row: OwedRow<'_>) {
+    let mut connection = database.acquire().await.expect("the ledger answers");
+    sqlx::query(
+        "INSERT INTO core.fleet_obligations
+           (id, fleet_id, workspace_id, provider, destination, event_id, answer,
+            receipt, attempt_count, created_at, updated_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, 0, $9, $9)",
+    )
+    .bind(obligation_id(row.nth))
+    .bind(FLEET)
+    .bind(WORKSPACE)
+    .bind(row.provider)
+    .bind(row.destination)
+    .bind(row.event)
+    .bind(row.answer)
+    .bind(row.receipt)
+    .bind(SEEDED_AT)
+    .execute(&mut *connection)
+    .await
+    .expect("seeding an owed row");
+}
+
+/// The fixture fleet's row for `event`, as its abandonment reads:
+/// `(abandoned_at, abandon_reason)`, both `None` while it is still owed.
+pub(crate) async fn abandonment(database: &Db, event: &str) -> (Option<i64>, Option<String>) {
+    let mut connection = database.acquire().await.expect("the ledger answers");
+    sqlx::query_as(
+        "SELECT abandoned_at, abandon_reason FROM core.fleet_obligations
+          WHERE fleet_id = $1::uuid AND event_id = $2::text",
+    )
+    .bind(FLEET)
+    .bind(event)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("reading the obligation")
+}
+
 /// A v7-shaped obligation id, distinct per caller.
 ///
 /// `ck_fleet_obligations_id_uuidv7` reads the version nibble, so the `7` in the
@@ -136,6 +197,8 @@ const RANGE_END: &str = "+";
 /// The entry field naming the logical event an answer belongs to; written by
 /// `OutboundQueue::enqueue`.
 const FIELD_EVENT_ID: &str = "event_id";
+/// The job field the destination is appended under.
+const FIELD_DESTINATION: &str = "destination";
 
 /// Destroys the consumer group, leaving the stream and its entries in place.
 ///
@@ -193,6 +256,30 @@ pub(crate) async fn entries_on(redis: &Dragonfly) -> u64 {
 /// `XRANGE` rather than read through the group, because a read would claim the
 /// entries and change the pending list this suite asserts on.
 pub(crate) async fn entries_naming(redis: &Dragonfly, event: &str) -> u64 {
+    fields_naming(redis, event)
+        .await
+        .len()
+        .try_into()
+        .unwrap_or(u64::MAX)
+}
+
+/// The destination every entry carrying `event` was appended with.
+///
+/// Scoped to this test's own answer for the reason [`entries_naming`] gives.
+pub(crate) async fn destinations_naming(redis: &Dragonfly, event: &str) -> Vec<String> {
+    fields_naming(redis, event)
+        .await
+        .into_iter()
+        .filter_map(|fields| {
+            fields
+                .into_iter()
+                .find_map(|(key, value)| (key == FIELD_DESTINATION).then_some(value))
+        })
+        .collect()
+}
+
+/// Each entry on the stream that carries `event`, as its field pairs.
+async fn fields_naming(redis: &Dragonfly, event: &str) -> Vec<Vec<(String, String)>> {
     let mut cmd = redis::cmd(CMD_XRANGE);
     cmd.arg(OUTBOUND_STREAM_KEY).arg(RANGE_START).arg(RANGE_END);
     let entries: Vec<(String, Vec<String>)> = redis
@@ -201,16 +288,20 @@ pub(crate) async fn entries_naming(redis: &Dragonfly, event: &str) -> u64 {
         .expect("XRANGE answers on a live stream, and a missing key reads as empty");
     entries
         .into_iter()
-        .filter(|(_id, fields)| {
+        .map(|(_id, fields)| {
             fields
                 .as_chunks::<2>()
                 .0
                 .iter()
-                .any(|[key, value]| key == FIELD_EVENT_ID && value == event)
+                .map(|[key, value]| (key.clone(), value.clone()))
+                .collect::<Vec<_>>()
         })
-        .count()
-        .try_into()
-        .unwrap_or(u64::MAX)
+        .filter(|fields| {
+            fields
+                .iter()
+                .any(|(key, value)| key == FIELD_EVENT_ID && value == event)
+        })
+        .collect()
 }
 
 /// A reader under a consumer name of the caller's choosing.

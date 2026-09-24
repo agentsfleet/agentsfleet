@@ -82,7 +82,7 @@ pub mod purge_statements {
 
 pub use self::edit::{ConfigSource, Patch, Patched, Requested};
 pub use self::error::{Error, Result};
-pub use self::install::{Install, Installed, LibrarySource};
+pub use self::install::{Install, Installed, LibrarySource, default_trigger};
 pub use self::read::{After, FleetDetail, FleetPage, FleetRow, Triggers};
 
 /// The workspace's fleets, as one store.

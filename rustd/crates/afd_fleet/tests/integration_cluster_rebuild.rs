@@ -103,6 +103,7 @@ fn admission<'a>(fleet: &'a str, workspace: &'a str, key: &'a str) -> Admission<
         actor: ACTOR,
         event_type: EventType::Webhook,
         request_json: REQUEST_JSON,
+        reply: afd_admission::Reply::None,
     }
 }
 

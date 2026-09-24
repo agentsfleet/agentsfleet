@@ -145,14 +145,9 @@ impl Plane {
             } => {
                 self.announce(runner_id, lease_id, &lease, closed, charged, now)
                     .await;
-                if let Some(obligation) = owed {
-                    self.queue_owed_answer(
-                        &obligation,
-                        &lease,
-                        request.response_text.as_ref(),
-                        now,
-                    )
-                    .await;
+                if let Some(owing) = owed {
+                    self.queue_owed_answer(&owing, &lease, request.response_text.as_ref(), now)
+                        .await;
                 }
                 Ok(reconciled(lease, charged, false))
             }

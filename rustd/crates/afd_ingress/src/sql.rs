@@ -86,3 +86,81 @@ WHERE f.workspace_id = $1::uuid
   AND g.service = $3
   AND g.status = $4
 ORDER BY f.id";
+
+/// The fleets in a workspace a chat mention could reach, for
+/// [`crate::slack::subscribed`] to read.
+///
+/// The relational half only, as [`SELECT_APP_SUBSCRIBERS`] is: whether a
+/// fleet's `mention` trigger names the channel is a question about its
+/// document, answered where a test can reach it. No grant join — a fleet
+/// answering a mention mints no chat credential; the daemon posts for it.
+///
+/// Ordered by id so every replica routes the same set the same way.
+///
+/// `$1` workspace, `$2` the statuses a subscriber can be read in.
+pub const SELECT_MENTION_CANDIDATES: &str = "\
+SELECT f.id::text, f.status, f.config_json::text
+FROM core.fleets f
+WHERE f.workspace_id = $1::uuid
+  AND f.status = ANY($2::text[])
+ORDER BY f.id";
+
+/// The fleet bound as a chat channel's resident in one workspace, and its
+/// status, when one is.
+///
+/// Scoped to the workspace the mention resolved to. A Slack team can move to
+/// another workspace (`InstallClaim::Repoint`) and its binding row does not
+/// move with it; read by channel alone, a mention in the new workspace would
+/// run the old workspace's fleet on that workspace's budget and memory.
+///
+/// `$1` provider, `$2` the provider's account (a Slack team), `$3` the channel,
+/// `$4` the binding kind, `$5` the workspace.
+pub const SELECT_RESIDENT: &str = "\
+SELECT c.fleet_id::text, f.status
+FROM core.connector_channels c
+JOIN core.fleets f ON f.id = c.fleet_id
+WHERE c.provider = $1 AND c.external_account_id = $2 AND c.external_channel_id = $3
+  AND c.kind = $4 AND f.workspace_id = $5::uuid";
+
+/// Binds a channel's resident once per workspace, answering whichever fleet
+/// is bound there.
+///
+/// Insert-once under the channel's unique constraint: a concurrent first mention
+/// that lost the race writes nothing, and the `UNION ALL` reads back the row
+/// the winner wrote, so both callers answer the same fleet. A row whose fleet
+/// sits in another workspace is a team that moved (see [`SELECT_RESIDENT`]),
+/// and is re-pointed rather than kept. The read-back is scoped the same way, so
+/// this never answers another workspace's fleet.
+///
+/// `$1` binding id, `$2` provider, `$3` account, `$4` channel, `$5` fleet,
+/// `$6` kind, `$7` created at, `$8` the workspace.
+pub const INSERT_RESIDENT: &str = "\
+WITH bound AS (
+  INSERT INTO core.connector_channels AS c
+    (id, provider, external_account_id, external_channel_id, fleet_id, kind, created_at)
+  VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, $7)
+  ON CONFLICT (provider, external_account_id, external_channel_id) DO UPDATE
+    SET fleet_id = EXCLUDED.fleet_id, kind = EXCLUDED.kind, created_at = EXCLUDED.created_at
+    WHERE NOT EXISTS (
+      SELECT 1 FROM core.fleets f WHERE f.id = c.fleet_id AND f.workspace_id = $8::uuid
+    )
+  RETURNING fleet_id
+)
+SELECT fleet_id::text FROM bound
+UNION ALL
+SELECT c.fleet_id::text
+FROM core.connector_channels c
+JOIN core.fleets f ON f.id = c.fleet_id AND f.workspace_id = $8::uuid
+WHERE c.provider = $2 AND c.external_account_id = $3 AND c.external_channel_id = $4
+LIMIT 1";
+
+/// The fleet a workspace holds under a resident's name, and its status.
+///
+/// The third column says whether it IS that resident: its stored configuration
+/// equals the one the daemon writes, compared as JSON so formatting cannot
+/// make a difference.
+///
+/// `$1` workspace, `$2` name, `$3` the resident's configuration.
+pub const SELECT_RESIDENT_NAMED: &str = "\
+SELECT id::text, status, config_json = $3::jsonb
+FROM core.fleets WHERE workspace_id = $1::uuid AND name = $2";

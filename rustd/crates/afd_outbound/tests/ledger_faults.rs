@@ -12,6 +12,7 @@
 
 use std::time::Duration;
 
+use afd_connector::Provider;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::{Dragonfly, OutboundQueue};
 use afd_outbound::obligation::Owed;
@@ -41,21 +42,54 @@ fn unreachable_queue() -> OutboundQueue {
 /// than fail to compile.
 #[test]
 fn an_owed_row_addresses_the_delivery_it_came_from() {
-    let owed = Owed {
+    let owed = owed_row(Provider::Slack.id(), Some(DESTINATION));
+
+    let addressed = owed
+        .addressed()
+        .expect("a row naming a connector and a destination is addressable");
+    assert_eq!(addressed.fleet_id, owed.fleet_id);
+    assert_eq!(addressed.workspace_id, owed.workspace_id);
+    assert_eq!(addressed.provider, Provider::Slack);
+    assert_eq!(addressed.destination, DESTINATION);
+    assert_eq!(addressed.event_id, owed.event_id);
+    assert_eq!(addressed.answer, owed.answer);
+}
+
+/// A row written before an obligation had to name where it goes cannot be
+/// addressed: it has no destination, and its provider was the MODEL provider,
+/// which no connector answers to. Either alone is enough.
+#[test]
+fn a_row_owed_nowhere_is_not_addressable() {
+    for (provider, destination) in [
+        (Provider::Slack.id(), None),
+        (MODEL_PROVIDER, Some(DESTINATION)),
+        (MODEL_PROVIDER, None),
+    ] {
+        assert!(
+            owed_row(provider, destination).addressed().is_none(),
+            "({provider}, {destination:?}) names nowhere a poster can deliver"
+        );
+    }
+}
+
+/// The thread an addressable row names.
+const DESTINATION: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
+
+/// What a pre-destination row held in `provider`: the model provider billing
+/// resolved, the defect that made every such row undeliverable.
+const MODEL_PROVIDER: &str = "anthropic";
+
+/// One scanned row, varied by its connector and destination.
+fn owed_row(provider: &str, destination: Option<&str>) -> Owed {
+    Owed {
         id: "01998000-0000-7000-8000-00000000000a".to_owned(),
         fleet_id: "0199a0b0-0000-7000-8000-0000000000f1".to_owned(),
         workspace_id: "workspace-7".to_owned(),
-        provider: "slack".to_owned(),
+        provider: provider.to_owned(),
+        destination: destination.map(str::to_owned),
         event_id: "1700000000123-0".to_owned(),
         answer: "the run finished".to_owned(),
-    };
-
-    let addressed = owed.addressed();
-    assert_eq!(addressed.fleet_id, owed.fleet_id);
-    assert_eq!(addressed.workspace_id, owed.workspace_id);
-    assert_eq!(addressed.provider, owed.provider);
-    assert_eq!(addressed.event_id, owed.event_id);
-    assert_eq!(addressed.answer, owed.answer);
+    }
 }
 
 /// A ledger that will not answer stops the PASS, not the producer: the failure

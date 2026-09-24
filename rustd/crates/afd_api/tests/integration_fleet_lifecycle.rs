@@ -20,6 +20,8 @@ mod fixture;
 mod library_removal;
 #[path = "fleet_lifecycle_live/message.rs"]
 mod message;
+#[path = "fleet_lifecycle_live/slack_channel.rs"]
+mod slack_channel;
 
 const SUBJECT: &str = "user_live_fleet_lifecycle";
 const EVENT: &str = "1760000000000-0";
