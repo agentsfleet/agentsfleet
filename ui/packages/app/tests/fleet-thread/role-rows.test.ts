@@ -135,19 +135,20 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
     ).toBeTruthy();
   });
 
-  it("shows a working reply while the operator message is being sent", () => {
+  it("shows a queued reply while the operator message is being sent", () => {
     mockStream([
       ev({
         role: "user",
         actor: "steer:pending",
         text: "investigate the spike",
         status: "optimistic",
+        clientTimestamp: true,
       }),
     ]);
     renderThread();
     expect(screen.getByText(/investigate the spike/)).toBeTruthy();
-    const working = screen.getByRole("status", { name: "Working" });
-    expect(working.textContent).toBe("Working…");
+    const working = screen.getByRole("status", { name: "Queued" });
+    expect(working.textContent).toBe("Queued…");
     expect(working.closest('[data-role="assistant"]')).toBeTruthy();
     expect(screen.queryByText(/^sending$/i)).toBeNull();
   });

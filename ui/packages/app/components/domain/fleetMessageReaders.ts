@@ -52,6 +52,10 @@ export function readReply(message: MessageState): string {
   return typeof raw === "string" ? raw : "";
 }
 
+export function readQueued(message: MessageState): boolean {
+  return message.metadata.custom["queued"] === true;
+}
+
 export function readOutcome(message: MessageState): string {
   const raw = message.metadata.custom["outcome"];
   return typeof raw === "string" ? raw : "";

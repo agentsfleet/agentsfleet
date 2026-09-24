@@ -54,6 +54,22 @@ describe("FleetThread — reasoning disclosure", () => {
     expect(screen.getByText("checked the diff twice")).toBeTruthy();
   });
 
+  it("uses quiet reasoning text and hides tool payloads from the disclosure", () => {
+    mockStream([
+      ev({
+        role: "assistant",
+        actor: "fleet",
+        reply: '<think>Recalling. <tool_call>{"name":"memory_recall","arguments":{"query":"private"}}</tool_call> Done.</think>Remembered.',
+      }),
+    ]);
+    renderThread();
+    fireEvent.click(screen.getByText("Reasoning"));
+    const reasoning = screen.getByText("Recalling. Done.");
+    expect(reasoning.className).toContain("text-text-subtle");
+    expect(screen.queryByText(/private/)).toBeNull();
+    expect(screen.getByText("Remembered.").closest(".text-text-chat")).toBeTruthy();
+  });
+
   it("renders no fold at all when the model reasoned nowhere", () => {
     mockStream([ev({ role: "assistant", actor: "fleet", reply: "Opened the PR." })]);
     renderThread();

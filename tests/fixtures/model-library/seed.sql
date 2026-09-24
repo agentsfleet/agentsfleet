@@ -519,6 +519,14 @@ ON CONFLICT (provider, model_id) DO UPDATE SET
 
 -- source: https://docs.fireworks.ai/serverless/pricing
 INSERT INTO core.model_library (id, provider, model_id, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) VALUES (
+  'e2c46036-93f0-7985-8458-0134b7f7f946', 'fireworks', 'accounts/fireworks/models/glm-5p3-flash', 1048576, 150000000, 30000000, 500000000, 1786924800000, 1786924800000)
+ON CONFLICT (provider, model_id) DO UPDATE SET
+  context_cap_tokens = EXCLUDED.context_cap_tokens, input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
+  cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok, output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
+  updated_at = EXCLUDED.updated_at;
+
+-- source: https://docs.fireworks.ai/serverless/pricing
+INSERT INTO core.model_library (id, provider, model_id, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) VALUES (
   '9b40be0f-5993-7195-8234-cffa7aa0ef3f', 'fireworks', 'accounts/fireworks/models/glm-5p2', 1048576, 1400000000, 140000000, 4400000000, 1786924800000, 1786924800000)
 ON CONFLICT (provider, model_id) DO UPDATE SET
   context_cap_tokens = EXCLUDED.context_cap_tokens, input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
