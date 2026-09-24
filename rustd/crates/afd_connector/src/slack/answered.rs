@@ -104,13 +104,12 @@ impl Posted {
     }
 }
 
-/// Whether `thread` already holds the answer `marker` names, posted by
-/// `author` — the bot user the grant recorded — read through `api_base`
-/// ([`super::SLACK_API_BASE`] in a deployment) under
-/// [`ANSWER_CHECK_DEADLINE`].
+/// Whether `thread` already holds the answer `marker` names.
 ///
-/// Starts at [`since`] the marker's event, and stops at the first page that
-/// shows the marker.
+/// Only a message `author` posted counts: the bot user the grant recorded.
+/// Read through `api_base` ([`super::SLACK_API_BASE`] in a deployment) under
+/// [`ANSWER_CHECK_DEADLINE`], starting at [`since`] the marker's event, and
+/// stopping at the first page that shows the marker.
 ///
 /// # Errors
 /// The [`Unavailable`] reason the thread could not be read for; the caller
