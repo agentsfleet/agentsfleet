@@ -64,6 +64,14 @@ pub struct InstallFleetRequest<'a> {
     /// and its own webhooks. Absent means the bundle's declared name.
     #[serde(borrow, default)]
     pub name: Option<Cow<'a, str>>,
+    /// A Slack channel identifier, such as `C0123456789`, to attach the fleet
+    /// to.
+    ///
+    /// `agentsfleet` adds a `mention` trigger for that channel to the fleet's
+    /// `TRIGGER.md`, so a mention there reaches this fleet. Omit it to keep the
+    /// library entry's triggers.
+    #[serde(borrow, default)]
+    pub slack_channel_id: Option<Cow<'a, str>>,
 }
 
 /// What an install answers with.

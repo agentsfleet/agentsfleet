@@ -96,8 +96,8 @@ mod stubs_identity;
 mod stubs_ingress;
 mod stubs_provider;
 
-use self::readiness::{NOWHERE_GITHUB, unreachable_pool};
 pub(crate) use self::readiness::unreachable_queue;
+use self::readiness::{NOWHERE_GITHUB, unreachable_pool};
 mod stubs_runner;
 mod stubs_tenant;
 mod support;

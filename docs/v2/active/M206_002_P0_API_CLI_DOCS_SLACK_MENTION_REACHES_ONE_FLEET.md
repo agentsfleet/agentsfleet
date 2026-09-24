@@ -70,16 +70,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_ingress/src/slack/{mod.rs,tests.rs,route.rs,route_tests.rs,admit.rs,message.rs,message_tests.rs,resident.rs,notice.rs}` | CREATE | The subscriber read (`mod.rs`: SQL asks which fleets are alive, a pure `subscribed` reads the document), pure routing, the mention admission, message composition, resident materialisation, notice text. |
 | `rustd/crates/afd_ingress/src/{lib.rs,sql.rs}` | EDIT | Subscribed-fleet read for a workspace; resident binding read and insert. |
 | `rustd/crates/afd_admission/src/lib.rs` · `tests.rs` | EDIT | `Producer::SlackMention`, spelled `slack_mention`. |
-| `rustd/crates/afd_fleet_runtime/src/config/{raw/mod.rs,raw/trigger.rs,trigger.rs,mod.rs}` · `tests/{frontmatter_mention.rs,runtime_suite.rs}` | EDIT · CREATE | The `mention` trigger: `source`, exactly one `channels` entry (schema), and `ChannelId`, whose `FromStr` is the one shape check. |
+| `rustd/crates/afd_fleet_runtime/src/config/{raw/mod.rs,raw/trigger.rs,trigger.rs,mod.rs,attach.rs,attach/tests.rs}` · `src/frontmatter/mod.rs` · `tests/{frontmatter_mention.rs,runtime_suite.rs}` | EDIT · CREATE | The `mention` trigger: `source`, exactly one `channels` entry (schema), and `ChannelId`, whose `FromStr` is the one shape check; `attach_mention` writes one into a document. |
 | `rustd/crates/afd_ingress/src/binding.rs` · `afd_fleet_lifecycle/src/install/authored.rs` | EDIT | Their exhaustive trigger matches name the new variant. |
 | `rustd/crates/afd_fleet_runtime/src/slack_resident.md` | CREATE | The resident's embedded `SKILL.md`. |
 | `rustd/crates/afd_connector/{Cargo.toml,src/lib.rs,src/slack.rs,src/slack/replies.rs,src/slack/replies/tests.rs,tests/slack_replies.rs,src/connection.rs,src/grant.rs,src/grant/holding.rs,src/grant/parse.rs,src/registry.rs,src/registry/tests.rs}` · `afd_outbound/src/slack.rs` · `agentsfleetd/src/outbound.rs` | EDIT · CREATE | The bot user identifier beside the token, for the self and address checks; the bounded re-read on the pinned exchange; one Slack thread address and API base the poster shares; the registry names the mention producer. |
 | `rustd/crates/afd_wire/src/ingress.rs` · `ingress/{schema.rs,tests.rs}` | EDIT | The mention's `request_json` shape and the events route's accepted answer. |
 | `rustd/crates/afd_http/src/services/{connector.rs,ingress.rs,ingress/tests.rs}` | EDIT · CREATE | The seams the route calls: bot identity, subscriber read, mention admission; inline tests move out for the length cap. |
-| `rustd/crates/afd_api_tenant/src/handler/fleet/mod.rs` · `rustd/crates/afd_fleet_lifecycle/src/install.rs` · `install/authored.rs` | EDIT | `slack_channel` on the install request adds the `mention` trigger to the stored `TRIGGER.md`. |
+| `rustd/crates/afd_api_tenant/src/handler/fleet/{mod.rs,install_request.rs}` · `afd_wire/src/fleet.rs` · `rustd/crates/afd_fleet_lifecycle/src/install.rs` · `install/authored.rs` · `afd_fleet_lifecycle/tests/integration_{install_credentials,wall_counters,patch_visibility,install_grants,install_rollback}.rs` · `integration_install_grants/recovery.rs` | EDIT · CREATE | `slack_channel_id` on the install request adds the `mention` trigger to the stored `TRIGGER.md`; the install body's parsing moves beside the handler for the length cap. |
 | `cli/src/program/tree/{fleet.command.ts,flags.ts}` · `cli/src/commands/fleet_install_source.ts` · their tests | EDIT | `agentsfleet install --slack-channel <ID>`. |
 | `public/openapi.json` | EDIT | Regenerated for the install field. |
-| `rustd/crates/afd_api/tests/integration_connector_events.rs` · `integration_slack_mention.rs` · `integration_slack_mention/{drops,subscribers,thread}.rs` · `slack_mention_live/fixture.rs` · `support/fake_slack.rs` · `ingress_plane_suite.rs` · `harness/{mod.rs,readiness.rs,stubs_ingress.rs,stubs_ingress/answers.rs}` · `afd_api/{Cargo.toml,src/lib.rs}` · `rustd/Cargo.lock` | EDIT · CREATE | Signed deliveries end to end against real Postgres and Dragonfly, the thread read on a loopback Slack; the harness answers the two new seams. |
+| `rustd/crates/afd_api/tests/integration_connector_events.rs` · `integration_slack_mention.rs` · `integration_slack_mention/{drops,subscribers,thread}.rs` · `slack_mention_live/fixture.rs` · `integration_fleet_lifecycle.rs` · `fleet_lifecycle_live/slack_channel.rs` · `workspace_fleets_input.rs` · `support/fake_slack.rs` · `ingress_plane_suite.rs` · `harness/{mod.rs,readiness.rs,stubs_ingress.rs,stubs_ingress/answers.rs}` · `afd_api/{Cargo.toml,src/lib.rs}` · `rustd/Cargo.lock` | EDIT · CREATE | Signed deliveries end to end against real Postgres and Dragonfly, the thread read on a loopback Slack; the harness answers the two new seams. |
 | `schema/560_connector_channels.sql` | reference | Resident bindings use it unchanged: one row per channel, insert-once. |
 | `docs/architecture/connectors.md` · `user_flow.md` · `memory.md` · `scenarios/slack-channel-resident.md` · `scenarios/slack-incident-responder.md` | EDIT | Status lines move from "specified" to shipped; the resident page describes the Rust shape. |
 | `playbooks/operations/slack_app_registration/001_playbook.md` | EDIT | Step 4 names the zero-, one- and several-fleet checks. |
@@ -102,7 +102,7 @@ Cross-repository, on its own branch per `AGENTS.orly.md`: `~/Projects/docs/fleet
 | LOGGING / UFS | yes | `slack_mention_routed` and drop reasons are constants; no text, user name or thread content logged. |
 | MILESTONE-ID | yes | No milestone identifiers in source or test names. |
 | File & Function Length (≤350/≤50/≤70) | yes | `events.rs` keeps the wall; parsing, routing, re-read and admission live in `mention.rs` and `afd_ingress/src/slack/`. |
-| write_http | yes — OpenAPI prose and one install field | The description corrects the error codes; `slack_channel` is optional and validated like the trigger; no path or status added. |
+| write_http | yes — OpenAPI prose and one install field | The description corrects the error codes; `slack_channel_id` is optional and validated like the trigger; no path or status added. |
 | write_ts_adhere_bun | yes — CLI | TS FILE SHAPE DECISION at PLAN; the flag sits beside `--library` in `flags.ts`. |
 
 ## Prior-Art / Reference Implementations
@@ -129,7 +129,7 @@ After the wall, `decide` recognises `event_callback` whose `event.type` is `app_
 - **Dimension 2.1** DONE — a document with one valid channel parses; none, two, a lowercase or a `D…` identifier is refused naming the key → Test `mention_trigger_takes_exactly_one_channel_id`
 - **Dimension 2.2** DONE — the subscribed-fleet read returns every fleet whose trigger names the channel, with status and addressed-only flag → Test `subscribers_are_read_from_the_document`
 - **Dimension 2.3** DONE — renaming the Slack channel changes nothing; editing the identifier moves the subscription → Test `subscription_follows_the_channel_id`
-- **Dimension 2.4** — an install carrying `slack_channel` stores a `TRIGGER.md` whose `mention` trigger names it, and `fleet update` round-trips it → Test `install_with_a_channel_writes_the_mention_trigger`
+- **Dimension 2.4** DONE — an install carrying `slack_channel_id` stores a `TRIGGER.md` whose `mention` trigger names it, and `fleet update` round-trips it → Test `install_with_a_channel_writes_the_mention_trigger`
 - **Dimension 2.5** — `agentsfleet install --library ci-responder --slack-channel C0123456789` attaches the fleet; a malformed identifier fails before any request → Test `cli_install_attaches_a_channel`
 
 ### §3 — Routing picks one fleet or one notice
@@ -176,7 +176,7 @@ admission                          producer slack_mention · key <team_id>:<even
 request_json                       {"message", "channel_id", "reply_thread_ts", "route": {"verdict", "fleet"},
                                     "thread": {"fetched", "count", "truncated"}}
 route verdict                      Addressed(fleet) | Sole(fleet) | Resident | Notice(ambiguous|choose|address_it|paused)
-POST /v1/workspaces/{ws}/fleets   + slack_channel?: "C0123456789"   (optional; appends the mention trigger)
+POST /v1/workspaces/{ws}/fleets   + slack_channel_id?: "C0123456789" (optional; appends the mention trigger)
 CLI                                agentsfleet install --library <id> --slack-channel <channel ID>
 
   mention ─► wall ─► parse+filter ─► team→workspace ─► resident ensured ─► subscribers ─► route
@@ -226,7 +226,7 @@ CLI                                agentsfleet install --library <id> --slack-ch
 | 2.1 | unit | `mention_trigger_takes_exactly_one_channel_id` | `[C0123456789]` parses; `[]`, two entries, `c0123456789` and `D0123456789` are refused naming `channels`. |
 | 2.2 | integration | `subscribers_are_read_from_the_document` | Three fleets, two naming `C01` (one write-bound, one paused), one naming `C02`: the read for `C01` returns exactly the two with correct flags. |
 | 2.3 | unit | `subscription_follows_the_channel_id` | A stored document attached to `C0123456789` is reached there and not at `C0987654321`; the same document edited to `C0987654321` moves the fleet; no channel name is stored, so a rename changes nothing. |
-| 2.4 | integration | `install_with_a_channel_writes_the_mention_trigger` | Installing `ci-responder` with `slack_channel: C01` stores a document whose triggers include `mention` for `C01`; a `fleet update` with that document back leaves the subscription intact. |
+| 2.4 | integration | `install_with_a_channel_writes_the_mention_trigger` | Installing `ci-responder` with `slack_channel_id: C01` stores a document whose triggers include `mention` for `C01`; a `fleet update` with that document back leaves the subscription intact. |
 | 2.5 | e2e | `cli_install_attaches_a_channel` | The CLI subprocess with `--slack-channel C0123456789` exits 0 and the fleet's document names the channel; `--slack-channel c01` exits non-zero with the identifier rule and sends no request. |
 | 3.1 | unit | `routing_table_is_total` | One case per scenario §4 cell returns the listed verdict. |
 | 3.2 | unit | `case_folded_duplicates_never_route` | Subscribers `Incident` and `incident` with text `incident why` yield `Notice(ambiguous)` listing both. |

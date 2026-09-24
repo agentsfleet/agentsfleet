@@ -1,7 +1,7 @@
 //! What may wake a fleet, and how a signed delivery proves itself.
 
 use garde::Validate;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::predicate::{is_repository, is_token};
 use super::{
@@ -16,7 +16,11 @@ use super::{
 /// where the compiler can check it. An unrecognised `type` becomes a serde
 /// error that NAMES the accepted variants, which is strictly more than the
 /// Zig's opaque `InvalidTriggerType`.
-#[derive(Debug, Deserialize, Validate)]
+///
+/// `Serialize` too, so a trigger the daemon WRITES into a document — an
+/// install attaching a channel — is spelled by this declaration and cannot
+/// drift from what the parser reads.
+#[derive(Debug, Deserialize, Serialize, Validate)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum Trigger {
     /// Woken by a signed delivery from an external provider.
@@ -78,7 +82,7 @@ pub(crate) enum Trigger {
 }
 
 /// A webhook trigger's signature block.
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Serialize, Validate)]
 pub(crate) struct Signature {
     /// The vault key holding the shared secret.
     #[garde(inner(length(chars, min = 1, max = MAX_CREDENTIAL_LEN)))]

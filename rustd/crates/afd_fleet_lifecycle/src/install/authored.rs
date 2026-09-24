@@ -6,7 +6,7 @@
 //! unusable `TRIGGER.md`, the two naming different fleets, tags a lease could
 //! not match — be proven without a datastore anywhere near it.
 
-use afd_fleet_runtime::config::Trigger;
+use afd_fleet_runtime::config::{Mention, Trigger, attach_mention};
 use afd_fleet_runtime::{FleetName, ParsedTrigger, SkillMetadata};
 
 use crate::error::{self, ErrorKind, Result};
@@ -72,18 +72,25 @@ impl Authored {
 ///
 /// A `TRIGGER.md` the bundle did not carry is GENERATED from the skill's name,
 /// so a skill-only bundle installs with an API trigger and a default ceiling
-/// rather than being refused for a file its author never had to write.
+/// rather than being refused for a file its author never had to write. A
+/// `mention` the install names is written into whichever of the two it is,
+/// before the one parse that decides what is stored.
 ///
 /// # Errors
 /// Refuses either document being unusable or past its length bound, the two
-/// naming different fleets, and placement tags outside what a lease can match.
-pub(super) fn read(entry: Entry) -> Result<Authored> {
+/// naming different fleets, placement tags outside what a lease can match, and
+/// a document already attached to a different channel than `mention`.
+pub(super) fn read(entry: Entry, mention: Option<&Mention>) -> Result<Authored> {
     let skill_markdown = within_bounds(&entry.skill_markdown, ErrorKind::SkillRejected)?;
     let skill = afd_fleet_runtime::parse_skill(skill_markdown).map_err(error::skill)?;
 
     let trigger_markdown = match entry.trigger_markdown.as_deref() {
         Some(authored) => within_bounds(authored, ErrorKind::TriggerRejected)?.to_owned(),
         None => generated(skill.name()),
+    };
+    let trigger_markdown = match mention {
+        Some(mention) => attach_mention(&trigger_markdown, mention)?,
+        None => trigger_markdown,
     };
     let trigger = afd_fleet_runtime::parse_trigger(&trigger_markdown)?;
 

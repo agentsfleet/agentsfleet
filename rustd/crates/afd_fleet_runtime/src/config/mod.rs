@@ -18,6 +18,7 @@
 //! per request, on a path that already holds the answer.
 
 mod anomaly;
+mod attach;
 mod binding_match;
 mod condition;
 mod gates;
@@ -35,6 +36,7 @@ use crate::name::{CredentialName, FleetName};
 use crate::provider::{ProviderRegistry, StaticRegistry};
 
 pub use self::anomaly::{AnomalyRule, Pattern};
+pub use self::attach::attach_mention;
 pub use self::condition::Condition;
 pub use self::gates::{Behavior, DEFAULT_TIMEOUT_MS, GatePolicy, GateRule};
 pub use self::policy::{Budget, ContextBudget, Dollars, Network};
