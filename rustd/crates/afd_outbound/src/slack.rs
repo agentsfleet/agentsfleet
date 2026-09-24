@@ -164,10 +164,10 @@ impl SlackPoster {
 
         let identity = match self.grants.bot_identity(&workspace, Provider::Slack).await {
             Ok(Some(identity)) => identity,
-            // No handle, or one carrying no token: uninstalled, disconnected,
-            // or a grant that landed malformed. Reconnecting is the only fix.
+            // No handle, or no token in it: disconnected, uninstalled, malformed.
+            // Retryable, so a reconnect inside the lanes' cycle budget delivers.
             Ok(None) => {
-                return Err(failed(job, REASON_TOKEN_LOAD_FAILED, Verdict::Permanent));
+                return Err(failed(job, REASON_TOKEN_LOAD_FAILED, Verdict::Retryable));
             }
             Err(_unreadable) => {
                 return Err(failed(job, REASON_TOKEN_LOAD_FAILED, Verdict::Retryable));
