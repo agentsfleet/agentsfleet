@@ -227,14 +227,6 @@ impl Trigger {
             }
         }
     }
-
-    /// The source this trigger answers to, for the uniqueness check.
-    fn source(&self) -> Option<&str> {
-        match self {
-            Self::Webhook(hook) => Some(&hook.source),
-            Self::Cron(_) | Self::Api | Self::Mention(_) => None,
-        }
-    }
 }
 
 /// Takes ownership of an already-bounded list.
@@ -282,8 +274,8 @@ fn prove_unique(triggers: &[Trigger]) -> Result<()> {
                     | (Trigger::Mention(_), Trigger::Mention(_)) => true,
                     // Two webhooks clash only on one source. Different sources
                     // are the whole point of declaring more than one.
-                    (Trigger::Webhook(_), Trigger::Webhook(_)) => {
-                        trigger.source() == later.source()
+                    (Trigger::Webhook(first), Trigger::Webhook(second)) => {
+                        first.source == second.source
                     }
                     _ => false,
                 }

@@ -29,9 +29,9 @@
 //!
 //! # What this route carries
 //!
-//! The wall and the handshake for every connector that delivers events, and,
-//! for one whose registry entry names an [`EventProducer`], the producer. A
-//! chat connector's [`EventProducer::Mention`] hands the proved body to
+//! The wall and the handshake for every connector that delivers events, and
+//! the producer its registry entry names. A chat connector's
+//! [`EventProducer::Mention`] hands the proved body to
 //! [`super::mention`], which routes a mention of the bot to one fleet and
 //! admits it; every other event is acknowledged with the reason it was not
 //! acted on. The producer is chosen by the registry entry, not by name, so
@@ -208,18 +208,18 @@ pub(crate) async fn receive<D: Services>(
     let proven = webhook::verified_connector_events(&services, provider, &headers, body).await?;
 
     match ingress.producer {
-        Some(EventProducer::Mention) => {
-            mentioned(&*services, provider, &ingress, &proven.body).await
-        }
-        None => Ok(answer(provider, &ingress, &proven.body)),
+        EventProducer::Mention => mentioned(&*services, provider, &ingress, &proven.body).await,
     }
 }
 
 /// Answers a proved delivery for a connector whose events are mentions.
 ///
-/// The handshake is answered first, exactly as [`answer`] answers it; any
-/// other envelope is parsed as a mention and, past the drops, routed and
-/// admitted.
+/// A signed body that will not parse is acknowledged, not refused: the sender
+/// is already authenticated, so a 4xx would retry-loop a delivery that will
+/// parse no better the second time. The handshake is echoed only here, on this
+/// side of the wall, so an unverified echo cannot confirm the path to a prober
+/// or reflect bytes of its choosing. Any other envelope is parsed as a mention
+/// and, past the drops, routed and admitted.
 ///
 /// # Errors
 /// A datastore that would not answer while resolving or admitting.
@@ -256,30 +256,6 @@ fn echoed(field: &str, value: &str) -> Response {
         })),
     )
         .into_response()
-}
-
-/// Renders what a verified delivery earned.
-///
-/// Split from [`receive`] so the wall crossing and the reading of a proved body
-/// are the two separate concerns they are: nothing here can reach a body that
-/// has not passed, because [`webhook::verified_connector_events`] is the only
-/// constructor of the type carrying one.
-///
-/// A handshake is echoed only on this side of the wall. An unverified echo
-/// would confirm the path exists to anybody who guessed it, and would let a
-/// prober use this daemon to reflect bytes of their choosing.
-fn answer(provider: Provider, ingress: &EventIngress, body: &Bytes) -> Response {
-    // A signed body that will not parse is acknowledged, not refused. The
-    // sender is already authenticated, so a 4xx would retry-loop a delivery
-    // that will parse no better the second time.
-    let Ok(envelope) = serde_json::from_slice::<serde_json::Value>(body) else {
-        return dropped(provider, body, REASON_UNREADABLE);
-    };
-
-    match decide(ingress, &envelope) {
-        Answer::Echo { field, value } => echoed(field, value),
-        Answer::Drop(reason) => dropped(provider, body, reason),
-    }
 }
 
 /// The 200 a deliberately-dropped delivery answers with.

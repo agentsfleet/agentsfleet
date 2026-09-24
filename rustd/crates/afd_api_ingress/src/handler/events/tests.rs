@@ -5,7 +5,7 @@
 //! and the envelope, which is exactly why it was written as one.
 
 use afd_connector::Provider;
-use afd_connector::registry::{Echo, EventIngress, Handshake};
+use afd_connector::registry::{Echo, EventIngress, EventProducer, Handshake};
 
 use super::{Answer, REASON_HANDSHAKE_EMPTY, decide};
 use crate::handler::webhook::REASON_UNSUPPORTED_EVENT;
@@ -107,7 +107,7 @@ fn test_a_real_delivery_is_not_answered_as_the_handshake() {
 fn test_a_provider_with_no_handshake_echoes_nothing() {
     let silent = EventIngress {
         handshake: Handshake::None,
-        producer: None,
+        producer: EventProducer::Mention,
     };
     let body = envelope(r#"{"type":"url_verification","challenge":"3eZbrw1a"}"#);
 
@@ -132,7 +132,7 @@ fn test_the_decision_reads_whatever_fields_the_descriptor_names() {
             type_value: "verify_endpoint",
             echo_field: "nonce",
         }),
-        producer: None,
+        producer: EventProducer::Mention,
     };
 
     let its_own = envelope(r#"{"kind":"verify_endpoint","nonce":"abc123"}"#);
