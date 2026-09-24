@@ -182,6 +182,17 @@ impl Fixture {
     /// A fleet in the team's workspace, stored from `trigger_markdown` exactly
     /// as an install would store it, with `status`.
     pub(super) async fn fleet(&self, trigger_markdown: &str, status: &str) -> Uuid7 {
+        self.fleet_in(&self.workspace, trigger_markdown, status)
+            .await
+    }
+
+    /// The same fleet in the tenant's other workspace: the one a Slack team
+    /// that moved has left behind.
+    pub(super) async fn fleet_elsewhere(&self, trigger_markdown: &str, status: &str) -> Uuid7 {
+        self.fleet_in(&self.admin, trigger_markdown, status).await
+    }
+
+    async fn fleet_in(&self, workspace: &Uuid7, trigger_markdown: &str, status: &str) -> Uuid7 {
         let parsed = afd_fleet_runtime::parse_trigger(trigger_markdown)
             .expect("the fixture document parses");
         let fleet = Uuid7::parse(&mint_id()).expect("a minted fleet is canonical");
@@ -193,7 +204,7 @@ impl Fixture {
              VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::jsonb, $7, 1, 1)",
         )
         .bind(fleet.as_str())
-        .bind(self.workspace.as_str())
+        .bind(workspace.as_str())
         .bind(&self.tenant)
         .bind(parsed.config().name().as_str())
         .bind(trigger_markdown)

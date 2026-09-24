@@ -17,6 +17,13 @@
 //! the name and the loser finds the winner by it. The binding row is
 //! insert-once on the channel, so both then read back the same fleet.
 //!
+//! # One workspace's resident
+//!
+//! A Slack team can move to another workspace, and the binding row stays
+//! behind. Every read and write here is scoped to the workspace the mention
+//! resolved to, so a moved team's first mention installs and binds a resident
+//! of its own instead of running the one it left.
+//!
 //! # Its memory is the channel's
 //!
 //! Memory is keyed by fleet. One fleet per channel means every thread in the
@@ -24,10 +31,12 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_fleet_lifecycle::FleetStatus;
 use afd_fleet_runtime::FleetName;
+use sqlx::Row as _;
 
 use super::ChannelId;
-use crate::error::{self, COLUMN_FLEET, Result, row_unreadable};
+use crate::error::{self, COLUMN_FLEET, COLUMN_STATUS, Result, row_unreadable};
 use crate::{Ingress, sql};
 
 /// The skill every resident runs, before its placeholders are filled.
@@ -91,39 +100,62 @@ impl Resident {
     }
 }
 
+/// A channel's resident, as its binding reads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BoundResident {
+    /// The resident fleet.
+    pub fleet: Uuid7,
+    /// Whether it can run, which the binding alone does not say.
+    pub status: FleetStatus,
+}
+
 impl Ingress {
     /// The fleet bound as `channel`'s resident in `team` on `provider`, if one
-    /// is.
+    /// is bound in `workspace`.
     ///
     /// # Errors
     /// Reports a datastore that would not answer and a row this build cannot
     /// read.
     pub async fn resident(
         &self,
+        workspace: &Uuid7,
         provider: &str,
         team: &str,
         channel: &ChannelId,
-    ) -> Result<Option<Uuid7>> {
+    ) -> Result<Option<BoundResident>> {
         let mut connection = self.database.acquire().await?;
-        let found: Option<String> = sqlx::query_scalar(sql::SELECT_RESIDENT)
+        let found = sqlx::query(sql::SELECT_RESIDENT)
             .bind(provider)
             .bind(team)
             .bind(channel.as_str())
             .bind(KIND_RESIDENT)
+            .bind(workspace.as_str())
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_RESIDENT))?;
-        found.as_deref().map(fleet_id).transpose()
+        found
+            .map(|row| {
+                let unreadable = error::query(CONTEXT_RESIDENT);
+                let fleet: String = row.try_get(0).map_err(&unreadable)?;
+                let status: String = row.try_get(1).map_err(&unreadable)?;
+                Ok(BoundResident {
+                    fleet: fleet_id(&fleet)?,
+                    status: FleetStatus::parse(&status)
+                        .ok_or_else(|| row_unreadable(COLUMN_STATUS))?,
+                })
+            })
+            .transpose()
     }
 
-    /// Binds `fleet` as `channel`'s resident unless one already is, and
-    /// answers whichever fleet is bound.
+    /// Binds `fleet` as `channel`'s resident unless `workspace` already has
+    /// one bound, and answers whichever fleet is bound there.
     ///
     /// # Errors
     /// Reports entropy or an instant that would not mint the binding's id, a
     /// datastore that would not answer, and a row this build cannot read.
     pub async fn bind_resident(
         &self,
+        workspace: &Uuid7,
         provider: &str,
         team: &str,
         channel: &ChannelId,
@@ -140,6 +172,7 @@ impl Ingress {
             .bind(fleet.as_str())
             .bind(KIND_RESIDENT)
             .bind(now.as_millis())
+            .bind(workspace.as_str())
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_BIND))?;
@@ -149,8 +182,9 @@ impl Ingress {
             // The insert waited on a concurrent one and did nothing, and its
             // own read was taken before that commit; a fresh statement sees it.
             None => self
-                .resident(provider, team, channel)
+                .resident(workspace, provider, team, channel)
                 .await?
+                .map(|bound| bound.fleet)
                 .ok_or_else(|| row_unreadable(COLUMN_FLEET)),
         }
     }

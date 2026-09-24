@@ -12,15 +12,15 @@ use super::*;
 
 /// One owed notice, as the ledger holds it.
 #[derive(Debug)]
-struct Owed {
-    owner: String,
+pub(super) struct Owed {
+    pub(super) owner: String,
     provider: String,
     destination: Option<String>,
-    answer: String,
+    pub(super) answer: String,
 }
 
 /// Every obligation owed under `event_id`, with the name of the fleet owing it.
-async fn owed(fixture: &Fixture, event_id: &str) -> Vec<Owed> {
+pub(super) async fn owed(fixture: &Fixture, event_id: &str) -> Vec<Owed> {
     let mut connection = fixture.database().acquire().await.expect("a connection");
     sqlx::query_as::<_, (String, String, Option<String>, String)>(
         "SELECT f.name, o.provider, o.destination, o.answer \

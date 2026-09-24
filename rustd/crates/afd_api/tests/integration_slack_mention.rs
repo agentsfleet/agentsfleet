@@ -244,5 +244,8 @@ mod notice;
 #[path = "integration_slack_mention/resident.rs"]
 mod resident;
 
+#[path = "integration_slack_mention/resident_bound.rs"]
+mod resident_bound;
+
 #[path = "integration_slack_mention/thread.rs"]
 mod thread;

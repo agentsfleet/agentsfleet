@@ -16,7 +16,9 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
-use afd_ingress::slack::{ChannelId, FleetName, MentionAdmission, NoticeOwed, Subscriber};
+use afd_ingress::slack::{
+    BoundResident, ChannelId, FleetName, MentionAdmission, NoticeOwed, Subscriber,
+};
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
 
 /// Everything the signed-ingress routes act through.
@@ -129,26 +131,29 @@ pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
         mention: MentionAdmission<'_>,
     ) -> impl Future<Output = IngressResult<Admitted>> + Send;
 
-    /// The fleet bound as a chat channel's resident, when one is.
+    /// The fleet bound as a chat channel's resident in `workspace`, and its
+    /// status, when one is.
     ///
     /// # Errors
     /// Reports a datastore that would not answer and a row this build cannot
     /// read.
     fn resident(
         &self,
+        workspace: &Uuid7,
         provider: &str,
         team: &str,
         channel: &ChannelId,
-    ) -> impl Future<Output = IngressResult<Option<Uuid7>>> + Send;
+    ) -> impl Future<Output = IngressResult<Option<BoundResident>>> + Send;
 
-    /// Binds `fleet` as the channel's resident unless one already is, and
-    /// answers whichever fleet is bound.
+    /// Binds `fleet` as the channel's resident unless `workspace` already has
+    /// one bound, and answers whichever fleet is bound there.
     ///
     /// # Errors
     /// Reports an identifier that would not mint, a datastore that would not
     /// answer, and a row this build cannot read.
     fn bind_resident(
         &self,
+        workspace: &Uuid7,
         provider: &str,
         team: &str,
         channel: &ChannelId,
@@ -257,22 +262,24 @@ impl WebhookIngress for Ingress {
 
     fn resident(
         &self,
+        workspace: &Uuid7,
         provider: &str,
         team: &str,
         channel: &ChannelId,
-    ) -> impl Future<Output = IngressResult<Option<Uuid7>>> + Send {
-        Self::resident(self, provider, team, channel)
+    ) -> impl Future<Output = IngressResult<Option<BoundResident>>> + Send {
+        Self::resident(self, workspace, provider, team, channel)
     }
 
     fn bind_resident(
         &self,
+        workspace: &Uuid7,
         provider: &str,
         team: &str,
         channel: &ChannelId,
         fleet: &Uuid7,
         now: UnixMillis,
     ) -> impl Future<Output = IngressResult<Uuid7>> + Send {
-        Self::bind_resident(self, provider, team, channel, fleet, now)
+        Self::bind_resident(self, workspace, provider, team, channel, fleet, now)
     }
 
     fn fleet_named(

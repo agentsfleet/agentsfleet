@@ -13,14 +13,22 @@
 //! is refused as a taken name; the loser finds the winner by that name. The
 //! binding is insert-once, so whichever of them binds first, both read back
 //! the same fleet (RULE IDMP).
+//!
+//! # A resident that cannot run
+//!
+//! A stopped resident answers with the paused notice and its resume command,
+//! as an attached fleet that is paused does; admitting onto it would leave the
+//! person with no answer at all. A killed one is on its way to deletion, which
+//! takes the binding with it, so its mention is dropped until then.
 
 use afd_connector::Provider;
 use afd_core::id::Uuid7;
-use afd_fleet_lifecycle::{Install, LibrarySource};
-use afd_ingress::slack::{Resident, Subscriber};
+use afd_fleet_lifecycle::{FleetStatus, Install, LibrarySource};
+use afd_ingress::slack::{Notice, Resident, Subscriber};
 
-use super::{Asked, EVENT_MENTION};
+use super::{Asked, EVENT_MENTION, Outcome, REASON_RESIDENT_KILLED, notice};
 use crate::handler::Refusal;
+use crate::handler::events::REASON_UNREADABLE;
 use crate::services::{Services, WebhookIngress as _, WorkspaceFleets as _};
 
 /// The event a newly installed resident is logged under.
@@ -30,11 +38,64 @@ const EVENT_MATERIALIZED: &str = "slack_resident_materialized";
 /// no name taken and installs.
 const DETAIL_RESIDENT_RACE: &str = afd_core::error::DETAIL_DATABASE_UNAVAILABLE;
 
-/// The resident `asked`'s channel answers with, installing it on the first
-/// mention.
+/// What a mention routed to the channel's resident comes to.
+pub(super) enum Answering {
+    /// The resident runs it.
+    Resident(Subscriber),
+    /// Settled without a run: dropped, or answered with a notice.
+    Settled(Outcome),
+}
+
+/// The channel's resident, or where a mention for it goes instead.
+pub(super) enum Found {
+    /// Bound in the mention's workspace, installed first when it was not.
+    Resident(Subscriber),
+    /// The team's identifier cannot form a fleet name.
+    Unnamed,
+    /// Bound, and killed.
+    Killed,
+}
+
+impl Found {
+    /// The outcome a mention whose resident will not run comes to, or the
+    /// resident.
+    pub(super) fn resident(self) -> Result<Subscriber, Outcome> {
+        match self {
+            Self::Resident(found) => Ok(found),
+            Self::Unnamed => Err(Outcome::Dropped(REASON_UNREADABLE)),
+            Self::Killed => Err(Outcome::Dropped(REASON_RESIDENT_KILLED)),
+        }
+    }
+}
+
+/// Runs a mention on the channel's resident when it can run, and answers the
+/// paused notice when it cannot.
 ///
-/// `None` when the team's identifier cannot form a fleet name, which the caller
-/// drops as a mention it cannot read.
+/// # Errors
+/// A datastore, an install or a ledger that would not answer, as the refusal a
+/// provider retries.
+pub(super) async fn answering<D: Services>(
+    services: &D,
+    provider: Provider,
+    workspace: &Uuid7,
+    asked: &Asked,
+) -> Result<Answering, Refusal> {
+    let found = match resident(services, provider, workspace, asked)
+        .await?
+        .resident()
+    {
+        Ok(found) if found.runnable => return Ok(Answering::Resident(found)),
+        Ok(found) => found,
+        Err(settled) => return Ok(Answering::Settled(settled)),
+    };
+    let paused = Notice::Paused { fleet: &found };
+    notice::owe(services, provider, workspace, asked, &paused)
+        .await
+        .map(Answering::Settled)
+}
+
+/// The resident `asked`'s channel answers with in `workspace`, installing it
+/// on the first mention there.
 ///
 /// # Errors
 /// A datastore or an install that would not answer, as the refusal a provider
@@ -44,22 +105,23 @@ pub(super) async fn resident<D: Services>(
     provider: Provider,
     workspace: &Uuid7,
     asked: &Asked,
-) -> Result<Option<Subscriber>, Refusal> {
+) -> Result<Found, Refusal> {
     let Some(resident) = Resident::for_channel(&asked.team_id, &asked.channel) else {
-        return Ok(None);
+        return Ok(Found::Unnamed);
     };
     let bound = services
         .ingress()
-        .resident(provider.id(), &asked.team_id, &asked.channel)
+        .resident(workspace, provider.id(), &asked.team_id, &asked.channel)
         .await
         .map_err(Refusal::at(EVENT_MENTION))?;
-    let fleet = if let Some(fleet) = bound {
-        fleet
+    let (fleet, status) = if let Some(bound) = bound {
+        (bound.fleet, bound.status)
     } else {
         let installed = materialise(services, workspace, &resident).await?;
-        services
+        let fleet = services
             .ingress()
             .bind_resident(
+                workspace,
                 provider.id(),
                 &asked.team_id,
                 &asked.channel,
@@ -67,12 +129,16 @@ pub(super) async fn resident<D: Services>(
                 services.now(),
             )
             .await
-            .map_err(Refusal::at(EVENT_MENTION))?
+            .map_err(Refusal::at(EVENT_MENTION))?;
+        (fleet, FleetStatus::Active)
     };
-    Ok(Some(Subscriber {
+    if status == FleetStatus::Killed {
+        return Ok(Found::Killed);
+    }
+    Ok(Found::Resident(Subscriber {
         fleet,
         name: resident.name.as_str().to_owned(),
-        runnable: true,
+        runnable: status == FleetStatus::Active,
         addressed_only: false,
     }))
 }
