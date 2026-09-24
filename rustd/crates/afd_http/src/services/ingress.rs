@@ -17,7 +17,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
 use afd_ingress::slack::{
-    BoundResident, ChannelId, FleetName, MentionAdmission, NoticeOwed, Subscriber,
+    BoundResident, ChannelId, MentionAdmission, Named, NoticeOwed, Resident, Subscriber,
 };
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
 
@@ -161,16 +161,17 @@ pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
         now: UnixMillis,
     ) -> impl Future<Output = IngressResult<Uuid7>> + Send;
 
-    /// The fleet a workspace holds under `name`, when it holds one.
+    /// What a workspace holds under a resident's name, when it holds anything:
+    /// the resident itself, or a fleet somebody else named that way.
     ///
     /// # Errors
     /// Reports a datastore that would not answer and a row this build cannot
     /// read.
-    fn fleet_named(
+    fn resident_named(
         &self,
         workspace: &Uuid7,
-        name: &FleetName,
-    ) -> impl Future<Output = IngressResult<Option<Uuid7>>> + Send;
+        resident: &Resident,
+    ) -> impl Future<Output = IngressResult<Option<Named>>> + Send;
 
     /// Owes a notice to a mention's thread, once however often the mention
     /// arrives. `true` when this call wrote it.
@@ -282,12 +283,12 @@ impl WebhookIngress for Ingress {
         Self::bind_resident(self, workspace, provider, team, channel, fleet, now)
     }
 
-    fn fleet_named(
+    fn resident_named(
         &self,
         workspace: &Uuid7,
-        name: &FleetName,
-    ) -> impl Future<Output = IngressResult<Option<Uuid7>>> + Send {
-        Self::fleet_named(self, workspace, name)
+        resident: &Resident,
+    ) -> impl Future<Output = IngressResult<Option<Named>>> + Send {
+        Self::resident_named(self, workspace, resident)
     }
 
     fn owe_notice(

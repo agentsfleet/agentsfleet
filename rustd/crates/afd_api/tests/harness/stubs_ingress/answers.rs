@@ -10,7 +10,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
 use afd_ingress::slack::{
-    BoundResident, ChannelId, FleetName, MentionAdmission, NoticeOwed, Subscriber,
+    BoundResident, ChannelId, MentionAdmission, Named, NoticeOwed, Resident, Subscriber,
 };
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Result as IngressResult, Surface};
 
@@ -162,13 +162,13 @@ impl WebhookIngress for HarnessIngress {
         }
     }
 
-    async fn fleet_named(
+    async fn resident_named(
         &self,
         workspace: &Uuid7,
-        name: &FleetName,
-    ) -> IngressResult<Option<Uuid7>> {
+        resident: &Resident,
+    ) -> IngressResult<Option<Named>> {
         match self {
-            Self::Unreachable(ingress) => ingress.fleet_named(workspace, name).await,
+            Self::Unreachable(ingress) => ingress.resident_named(workspace, resident).await,
             Self::Scripted(_) => Ok(None),
         }
     }

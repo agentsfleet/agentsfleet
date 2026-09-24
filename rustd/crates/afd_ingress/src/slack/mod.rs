@@ -26,7 +26,7 @@ pub use self::message::{
     Composed, MESSAGE_CAP, THREAD_CAP, THREAD_HEADING, THREAD_UNAVAILABLE, compose,
 };
 pub use self::notice::{NoticeOwed, notice_key, notice_text};
-pub use self::resident::{BoundResident, KIND_RESIDENT, Resident};
+pub use self::resident::{BoundResident, KIND_RESIDENT, Named, Resident};
 pub use self::route::{Notice, Route, route};
 /// The channel type every mention method takes, and the name a resident is
 /// found by, re-exported so a caller of this module needs no dependency on the

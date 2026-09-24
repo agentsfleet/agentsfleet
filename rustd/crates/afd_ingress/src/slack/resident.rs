@@ -72,6 +72,21 @@ pub struct Resident {
     pub skill_markdown: String,
     /// The policy, built here rather than read from anything a person wrote.
     pub trigger_markdown: String,
+    /// [`Self::trigger_markdown`] as the fleet row stores it, which is how a
+    /// fleet already holding the name is recognised as this resident.
+    pub config_json: String,
+}
+
+/// What a workspace holds under a resident's name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Named {
+    /// The resident itself: installed by a concurrent first mention, or left
+    /// unbound by a team that moved away and back.
+    Resident(BoundResident),
+    /// A fleet somebody installed under that name, with a configuration of its
+    /// own. Never adopted: the resident's policy is the daemon's to write, and
+    /// adopting would hand unaddressed mentions to whatever that fleet may do.
+    Other,
 }
 
 impl Resident {
@@ -92,10 +107,15 @@ impl Resident {
             "---\nname: {}\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools: []\n  budget:\n    daily_dollars: {DAILY_DOLLARS}\n---\n",
             name.as_str()
         );
+        let config_json = afd_fleet_runtime::parse_trigger(&trigger_markdown)
+            .ok()?
+            .config_json()
+            .to_owned();
         Some(Self {
             name,
             skill_markdown,
             trigger_markdown,
+            config_json,
         })
     }
 }
@@ -189,22 +209,42 @@ impl Ingress {
         }
     }
 
-    /// The fleet `workspace` holds under `name`, if any: the resident a
-    /// concurrent first mention installed, found after this one's install lost
-    /// the race for the name.
+    /// What `workspace` holds under `resident`'s name, if anything: read after
+    /// an install lost the name, to tell the resident a concurrent first
+    /// mention installed from a fleet somebody else named that way.
     ///
     /// # Errors
     /// Reports a datastore that would not answer and a row this build cannot
     /// read.
-    pub async fn fleet_named(&self, workspace: &Uuid7, name: &FleetName) -> Result<Option<Uuid7>> {
+    pub async fn resident_named(
+        &self,
+        workspace: &Uuid7,
+        resident: &Resident,
+    ) -> Result<Option<Named>> {
         let mut connection = self.database.acquire().await?;
-        let found: Option<String> = sqlx::query_scalar(sql::SELECT_FLEET_NAMED)
+        let found = sqlx::query(sql::SELECT_RESIDENT_NAMED)
             .bind(workspace.as_str())
-            .bind(name.as_str())
+            .bind(resident.name.as_str())
+            .bind(&resident.config_json)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_NAMED))?;
-        found.as_deref().map(fleet_id).transpose()
+        found
+            .map(|row| {
+                let unreadable = error::query(CONTEXT_NAMED);
+                let is_resident: bool = row.try_get(2).map_err(&unreadable)?;
+                if !is_resident {
+                    return Ok(Named::Other);
+                }
+                let fleet: String = row.try_get(0).map_err(&unreadable)?;
+                let status: String = row.try_get(1).map_err(&unreadable)?;
+                Ok(Named::Resident(BoundResident {
+                    fleet: fleet_id(&fleet)?,
+                    status: FleetStatus::parse(&status)
+                        .ok_or_else(|| row_unreadable(COLUMN_STATUS))?,
+                }))
+            })
+            .transpose()
     }
 }
 

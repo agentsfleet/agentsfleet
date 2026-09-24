@@ -154,7 +154,7 @@ async fn every_mention_reader_on_the_seam_reaches_a_store() {
     let workspace = afd_core::id::Uuid7::parse("019329c5-0000-7000-8000-0000000000c2")
         .expect("the fixture workspace is canonical");
     let channel: ChannelId = "C0123456789".parse().expect("the channel is well formed");
-    let name = FleetName::parse("responder").expect("the name is well formed");
+    let resident = Resident::for_channel("TSEAM", &channel).expect("the resident is named");
     let now = UnixMillis::from_millis(1);
 
     assert!(refused(
@@ -186,7 +186,7 @@ async fn every_mention_reader_on_the_seam_reaches_a_store() {
         .await
     ));
     assert!(refused(
-        &WebhookIngress::fleet_named(&ingress, &workspace, &name).await
+        &WebhookIngress::resident_named(&ingress, &workspace, &resident).await
     ));
     assert!(refused(
         &WebhookIngress::owe_notice(
@@ -207,6 +207,6 @@ async fn every_mention_reader_on_the_seam_reaches_a_store() {
 
 use afd_connector::Provider;
 use afd_core::clock::UnixMillis;
-use afd_ingress::slack::{ChannelId, FleetName, MentionAdmission, NoticeOwed};
+use afd_ingress::slack::{ChannelId, MentionAdmission, NoticeOwed, Resident};
 
 use super::WebhookIngress;

@@ -24,9 +24,11 @@
 use afd_connector::Provider;
 use afd_core::id::Uuid7;
 use afd_fleet_lifecycle::{FleetStatus, Install, LibrarySource};
-use afd_ingress::slack::{Notice, Resident, Subscriber};
+use afd_ingress::slack::{BoundResident, Named, Notice, Resident, Subscriber};
 
-use super::{Asked, EVENT_MENTION, Outcome, REASON_RESIDENT_KILLED, notice};
+use super::{
+    Asked, EVENT_MENTION, Outcome, REASON_RESIDENT_KILLED, REASON_RESIDENT_NAME_TAKEN, notice,
+};
 use crate::handler::Refusal;
 use crate::handler::events::REASON_UNREADABLE;
 use crate::services::{Services, WebhookIngress as _, WorkspaceFleets as _};
@@ -54,6 +56,8 @@ pub(super) enum Found {
     Unnamed,
     /// Bound, and killed.
     Killed,
+    /// A fleet that is not the resident already holds the resident's name.
+    NameTaken,
 }
 
 impl Found {
@@ -64,6 +68,7 @@ impl Found {
             Self::Resident(found) => Ok(found),
             Self::Unnamed => Err(Outcome::Dropped(REASON_UNREADABLE)),
             Self::Killed => Err(Outcome::Dropped(REASON_RESIDENT_KILLED)),
+            Self::NameTaken => Err(Outcome::Dropped(REASON_RESIDENT_NAME_TAKEN)),
         }
     }
 }
@@ -117,7 +122,9 @@ pub(super) async fn resident<D: Services>(
     let (fleet, status) = if let Some(bound) = bound {
         (bound.fleet, bound.status)
     } else {
-        let installed = materialise(services, workspace, &resident).await?;
+        let Some(installed) = materialise(services, workspace, &resident).await? else {
+            return Ok(Found::NameTaken);
+        };
         let fleet = services
             .ingress()
             .bind_resident(
@@ -125,12 +132,12 @@ pub(super) async fn resident<D: Services>(
                 provider.id(),
                 &asked.team_id,
                 &asked.channel,
-                &installed,
+                &installed.fleet,
                 services.now(),
             )
             .await
             .map_err(Refusal::at(EVENT_MENTION))?;
-        (fleet, FleetStatus::Active)
+        (fleet, installed.status)
     };
     if status == FleetStatus::Killed {
         return Ok(Found::Killed);
@@ -144,11 +151,15 @@ pub(super) async fn resident<D: Services>(
 }
 
 /// Installs `resident`, or finds the one a concurrent first mention installed.
+///
+/// `None` when the name is held by a fleet that is not the resident: its
+/// configuration is somebody else's, and adopting it would hand every
+/// unaddressed mention to whatever that fleet may do.
 async fn materialise<D: Services>(
     services: &D,
     workspace: &Uuid7,
     resident: &Resident,
-) -> Result<Uuid7, Refusal> {
+) -> Result<Option<BoundResident>, Refusal> {
     let install = Install {
         source: LibrarySource::InCode {
             skill_markdown: &resident.skill_markdown,
@@ -167,19 +178,24 @@ async fn materialise<D: Services>(
             let workspace_id = workspace.as_str();
             let fleet_id = installed.id.as_str();
             tracing::info!(workspace_id, fleet_id, event = EVENT_MATERIALIZED);
-            Ok(installed.id)
+            Ok(Some(BoundResident {
+                fleet: installed.id,
+                status: FleetStatus::Active,
+            }))
         }
-        Err(lost) if lost.is_name_taken() => services
+        Err(lost) if lost.is_name_taken() => match services
             .ingress()
-            .fleet_named(workspace, &resident.name)
+            .resident_named(workspace, resident)
             .await
             .map_err(Refusal::at(EVENT_MENTION))?
-            .ok_or_else(|| {
-                Refusal::coded(
-                    afd_core::error_code::INTERNAL_DB_UNAVAILABLE,
-                    DETAIL_RESIDENT_RACE,
-                )
-            }),
+        {
+            Some(Named::Resident(found)) => Ok(Some(found)),
+            Some(Named::Other) => Ok(None),
+            None => Err(Refusal::coded(
+                afd_core::error_code::INTERNAL_DB_UNAVAILABLE,
+                DETAIL_RESIDENT_RACE,
+            )),
+        },
         Err(failed) => Err(Refusal::at(EVENT_MENTION)(failed)),
     }
 }
