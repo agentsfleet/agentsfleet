@@ -71,7 +71,10 @@ async fn a_bind_that_waited_on_a_concurrent_binding_answers_it() {
             )
             .await
     });
-    waiting_on_a_lock(&fixture).await;
+    assert!(
+        waiting_on_a_lock(&fixture).await,
+        "the bind never waited on the concurrent binding"
+    );
     open.commit().await.expect("the concurrent binding commits");
 
     let bound = bind
@@ -94,8 +97,9 @@ async fn a_bind_that_waited_on_a_concurrent_binding_answers_it() {
 /// A second channel, so the latecomer's own document names somewhere else.
 const OTHER_CHANNEL: &str = "C0987654321";
 
-/// Returns once some backend is waiting on a row lock held by another.
-async fn waiting_on_a_lock(fixture: &Fixture) {
+/// Whether the bind statement came to wait on a row lock held by another,
+/// polled until it does or two seconds pass.
+async fn waiting_on_a_lock(fixture: &Fixture) -> bool {
     for _attempt in 0..200 {
         let mut connection = fixture.database().acquire().await.expect("a connection");
         let waiting: i64 = sqlx::query_scalar(
@@ -106,12 +110,12 @@ async fn waiting_on_a_lock(fixture: &Fixture) {
         .await
         .expect("the activity view reads");
         if waiting > 0 {
-            return;
+            return true;
         }
         drop(connection);
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
-    panic!("the bind never waited on the concurrent binding");
+    false
 }
 
 /// How many bindings [`CHANNEL`] holds in the fixture's team.
