@@ -2,7 +2,7 @@
 
 > Parent: [`README.md`](./README.md) · References: [`slack-channel-resident.md`](./slack-channel-resident.md) (the channel's resident), [`github-pr-reviewer.md`](./github-pr-reviewer.md) (the repository subscription this mirrors), [`production-deploy-repair.md`](./production-deploy-repair.md) (the repair crew), [`../connectors.md`](../connectors.md), [`../data_flow.md`](../data_flow.md), [`../memory.md`](../memory.md).
 >
-> **Built; the drill is pending.** M206_001–003 live in `docs/v2/done/`; M206_004 lives in `docs/v2/active/` while its drill is planned. Status rows cite source on the M206 branch; the scenario's original "today" claims were read at `b1bc6f0c4`, and the retired Zig daemon at `1ad07eb2` in `~/Projects/oss/zig/agentsfleet_zig`.
+> **Built; the drill is pending.** M206_001–003 live in `docs/v2/done/`; M206_004 is in `docs/v2/done/` with its live drills (§3) parked until 001–003 reach `api-dev`. Status rows cite source on the M206 branch; the scenario's original "today" claims were read at `b1bc6f0c4`, and the retired Zig daemon at `1ad07eb2` in `~/Projects/oss/zig/agentsfleet_zig`.
 
 Legend: ✅ in the Rust daemon · 🟡 in the Rust daemon, broken · 🔨 specified, not built · ⛔ only in the retired Zig daemon.
 

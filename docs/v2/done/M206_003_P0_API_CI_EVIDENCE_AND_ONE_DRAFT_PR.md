@@ -230,7 +230,7 @@ N/A — no new metric or event: the fleet's reads already appear as its tool-cal
   > Indy (2026-09-24): "well we will the http way like you do for the files, via the SKILL.md " — context: asked which process fetches; the fleet reads over `http_request` as its SKILL.md directs, as fleets read repository files.
   > Indy (2026-09-24): "this is not a big deal, i think we shouldnt make a holy grail for this " but the runner's allowlist doesn't support wildcards" and move on toe th enext, indy will find a way or simple way." — context: the log's storage hop; held by the owner.
 - **Metrics review** — no new events; no analytics or funnel playbook update.
-- **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
+- **Skill-chain outcomes** — in the milestone Pull Request's Session notes, shared with M206_001 and M206_002.
 - **Deferrals** — the job log's storage hop, owner-held per the quote above.
 - **GitHub App permissions (Sep 24, 2026)** — the platform App registration grants no Checks permission (`playbooks/operations/github_app_registration/001_playbook.md:33-38`), and GitHub's token documentation says "The installation access token cannot be granted permissions that the app was not granted." `Granted::verify` refuses a token narrower than its request, so asking for Checks unconditionally failed every mint on every fleet. Options put: (A) ask only for what the installation holds, (B) add Checks: read to the App and have every installation accept before deploy, (C) drop Checks.
   > Indy (2026-09-24): "A" — context: chose to read the installation's permissions at mint and ask for evidence reads only where held.
