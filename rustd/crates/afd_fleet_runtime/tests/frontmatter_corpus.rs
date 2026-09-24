@@ -216,6 +216,17 @@ fn an_unsubstituted_template_is_refused() {
 fn drill_bundles_parse_and_join_the_corpus() {
     assert_eq!(FIRST_PARTY.len(), 9);
     assert_eq!(CORPUS_CASES.len(), 19);
+    for (relative, kind) in [
+        ("ci-responder/SKILL.md", Kind::Skill),
+        ("ci-responder/TRIGGER.md", Kind::Trigger),
+        ("ci-repairer/SKILL.md", Kind::Skill),
+        ("ci-repairer/TRIGGER.md", Kind::Trigger),
+    ] {
+        assert!(
+            CORPUS_CASES.contains(&(relative, kind, Verdict::Accepts)),
+            "{relative} must be graded by the corpus"
+        );
+    }
     for slug in ["ci-responder", "ci-repairer"] {
         assert!(
             FIRST_PARTY.contains(&slug),
@@ -234,6 +245,13 @@ fn responder_bundle_holds_no_write_reach() {
     let parsed =
         parse_trigger(&fixture("ci-responder/TRIGGER.md")).expect("responder trigger should parse");
     let config = parsed.config();
+    assert_eq!(config.tools().len(), 3);
+    for required in ["http_request", "memory_store", "memory_recall"] {
+        assert!(
+            config.tools().iter().any(|tool| &**tool == required),
+            "responder needs {required}"
+        );
+    }
     let binding = config.repository_binding().expect("a repository binding");
     assert_eq!(binding.access(), Access::Read);
     assert_eq!(binding.repositories().len(), 1);
@@ -284,6 +302,11 @@ fn responder_bundle_holds_no_write_reach() {
 fn repairer_bundle_is_write_bound_to_one_base() {
     let parsed =
         parse_trigger(&fixture("ci-repairer/TRIGGER.md")).expect("repairer trigger should parse");
+    assert_eq!(parsed.config().tools().len(), 1);
+    assert_eq!(
+        parsed.config().tools().first().map(AsRef::as_ref),
+        Some("http_request")
+    );
     let binding = parsed.config().repository_binding().expect("a binding");
     assert_eq!(binding.access(), Access::Write);
     assert_eq!(binding.repositories().len(), 1);
