@@ -174,12 +174,12 @@ pub fn executeAndReport(
         const detail = result.failureDetail();
         if (detail.len > 0) alloc.free(detail);
     }
-    // Ship the last activity batch and give the queue one send cap to post, so
-    // live frames reach the browser ahead of the completion. Bounded, never a
-    // join: a cold connect can outlive its socket deadline, and cosmetic
-    // live-tail delivery must not strand the lease.
+    // Ship the last activity batch and let the queue post, so live frames reach
+    // the browser ahead of the completion. Bounded by one send cap and by the
+    // lease's spare time outside its renewal window, never a join: cosmetic
+    // live-tail delivery must not cost the lease its report.
     forwarder.flush();
-    activity_sender.drainFor(ActivitySender.DRAIN_BEFORE_REPORT_MS);
+    activity_sender.drainFor(ActivitySender.drainBudgetMs(driver.deadline_ms, clock.nowMillis()));
 
     log.debug("execute_completed", .{ .lease_id = payload.lease_id, .exit_ok = result.succeeded(), .wall_ms = wall_ms });
 

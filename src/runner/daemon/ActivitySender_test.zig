@@ -9,6 +9,8 @@ const call_deadline = @import("call_deadline");
 /// A drain budget far shorter than the production one, so the stall test is
 /// quick and still tells the budget apart from the send cap.
 const DRAIN_TEST_BUDGET_MS: u32 = 50;
+/// Spare lease time just outside the renewal window, under one send cap.
+const DRAIN_TEST_SPARE_MS: i64 = 500;
 
 const Probe = struct {
     entered: common.Event = .{},
@@ -226,4 +228,19 @@ test "drainFor on a sender that never started returns at once" {
     const started_ms = common.clock.nowMonotonicMillis();
     sender.drainFor(ActivitySender.DRAIN_BEFORE_REPORT_MS);
     try std.testing.expect(common.clock.nowMonotonicMillis() - started_ms < DRAIN_TEST_BUDGET_MS);
+}
+
+test "the report drain never reaches into the lease's renewal window" {
+    const now_ms: i64 = 1_800_000_000_000;
+    const window_ms = common.RENEWAL_WINDOW_MS;
+    // A healthy lease has far more than the window left: the full send cap.
+    try std.testing.expectEqual(ActivitySender.DRAIN_BEFORE_REPORT_MS, ActivitySender.drainBudgetMs(now_ms + 3 * window_ms, now_ms));
+    // Half a second of spare time outside the window: only that half second.
+    try std.testing.expectEqual(@as(u32, DRAIN_TEST_SPARE_MS), ActivitySender.drainBudgetMs(now_ms + window_ms + DRAIN_TEST_SPARE_MS, now_ms));
+    // Inside the window, or already expired: report at once.
+    try std.testing.expectEqual(@as(u32, 0), ActivitySender.drainBudgetMs(now_ms + window_ms, now_ms));
+    try std.testing.expectEqual(@as(u32, 0), ActivitySender.drainBudgetMs(now_ms - window_ms, now_ms));
+    // A garbage deadline from the wire saturates instead of trapping.
+    try std.testing.expectEqual(ActivitySender.DRAIN_BEFORE_REPORT_MS, ActivitySender.drainBudgetMs(std.math.maxInt(i64), now_ms));
+    try std.testing.expectEqual(@as(u32, 0), ActivitySender.drainBudgetMs(std.math.minInt(i64), now_ms));
 }
