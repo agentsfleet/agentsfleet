@@ -59,7 +59,7 @@ test "a line built from the child's own keys parses back to the same verdicts" {
 }
 
 test "an untested transport is not read as a failed one" {
-    // The two are different operator instructions — "install curl" versus "fix
+    // The two are different operator instructions — "install a shell" versus "fix
     // the bind set" — so the parser must keep them apart. Collapsing them is
     // how `grade` would tell an operator to repair a sandbox that is fine.
     var buf: [128]u8 = undefined;
@@ -82,7 +82,7 @@ test "a probe that never reported a transport key does not certify one" {
     // Fail-closed, the same reading `scratch` and `home` take: an older probe
     // paired with this parser attempted no spawn, and a spawn nobody attempted
     // is not a pass. `testable` stays true so `grade` reports the exec fault
-    // rather than "no curl on this host", which would be a false instruction.
+    // rather than "no shell on this host", which would be a false instruction.
     const o = selftest_exec.outcomeFrom("resolver=1 scratch=1 home=1 dns=1 egress=1 binds=1", false);
     try std.testing.expect(!o.transport_execs);
     try std.testing.expect(o.transport_testable);

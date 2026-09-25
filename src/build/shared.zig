@@ -97,6 +97,7 @@ pub const SharedDeps = struct {
         const nullclaw_dep = b.dependency(S_NULLCLAW, .{
             .target = target,
             .optimize = optimize,
+            .static = target.result.os.tag == .linux and target.result.abi == .musl,
             .channels = @as([]const u8, NULLCLAW_CHANNELS),
             .engines = @as([]const u8, NULLCLAW_ENGINES),
         });

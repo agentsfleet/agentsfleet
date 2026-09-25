@@ -59,8 +59,8 @@ pub const CHECK_HOME = "the child's home accepts a write inside the sandbox";
 pub const CHECK_DEV_FILES = "the writable device files open for writing inside the sandbox";
 pub const CHECK_DNS = "a hostname resolves inside the sandbox";
 pub const CHECK_EGRESS = "the inference endpoint is reachable";
-pub const CHECK_TRANSPORT = "the model transport runs inside the sandbox";
-pub const CHECK_ENGINE_SPAWN = "the engine's spawn path runs the model transport inside the sandbox";
+pub const CHECK_TRANSPORT = "the tool shell runs inside the sandbox";
+pub const CHECK_ENGINE_SPAWN = "the engine can spawn a tool shell inside the sandbox";
 pub const CHECK_SANDBOX = "a sandbox can be established";
 
 /// Every `detail` a check may carry. A fixed vocabulary is what makes
@@ -69,16 +69,16 @@ pub const CHECK_SANDBOX = "a sandbox can be established";
 /// Prose, never empty — the dashboard reads a whitespace-free cause as a leaked
 /// internal identifier and hides it, losing the check's explanation.
 pub const DETAIL_OK = "no fault detected";
-pub const DETAIL_SCRATCH_READONLY = "the sandbox refused a write to its scratch tmpfs — every credentialed dial fails as TempFileCreateFailed until the write floor is granted";
+pub const DETAIL_SCRATCH_READONLY = "the sandbox refused a write to its scratch tmpfs — tools and updates cannot create temporary files";
 pub const DETAIL_HOME_UNREACHABLE = "the sandbox refused a write under the child's HOME — the engine cannot create its configuration directory, and every lease fails as AccessDenied before its first model call";
-pub const DETAIL_DEV_FILES_READONLY = "the sandbox refused an open-for-write on /dev/null — the engine wires its model transport's stdio through it, so every lease fails as AccessDenied before its first model call";
+pub const DETAIL_DEV_FILES_READONLY = "the sandbox refused an open-for-write on /dev/null — subprocess tools cannot wire their stdio";
 pub const DETAIL_RESOLVER_DANGLING = "/etc/resolv.conf does not resolve to a readable file — the systemd-resolved stub is not bound into the sandbox";
 pub const DETAIL_DNS_FAILED = "the resolver did not answer inside the sandbox";
 pub const DETAIL_EGRESS_BLOCKED = "the endpoint did not accept a connection";
 pub const DETAIL_EGRESS_DENIED_EXPECTED = "no egress by assignment (deny_all_egress) — expected, not a fault";
-const DETAIL_TRANSPORT_UNEXECUTABLE = "the sandbox could not execute the model transport — the engine spawns curl for every model call, so every lease dies at execvp before its first one";
-const DETAIL_TRANSPORT_ABSENT = "no curl binary at /usr/bin/curl or /bin/curl on this host — the engine spawns one for every model call, so no lease can reach a model";
-pub const DETAIL_ENGINE_SPAWN_FAILED = "the engine's own spawn machinery could not run the model transport — the raw exec works, so the fault is in the spawn plumbing (process Io wiring or a sandbox rule on its pipes), and every lease dies before its first model call";
+const DETAIL_TRANSPORT_UNEXECUTABLE = "the sandbox could not execute the tool shell";
+const DETAIL_TRANSPORT_ABSENT = "no shell binary at /bin/sh or /usr/bin/sh on this host — shell tools cannot run";
+pub const DETAIL_ENGINE_SPAWN_FAILED = "the engine could not spawn a tool shell — raw exec works, so check process Io wiring and sandbox rules on its pipes";
 pub const DETAIL_TIMEOUT = "the probe exceeded its time bound and was reaped";
 pub const DETAIL_NO_BWRAP = "no bubblewrap binary on this host — a sandboxed tier cannot be established";
 /// An assigned bind resolves onto a path the sandbox protects. Named for the
@@ -161,15 +161,15 @@ const ProbeTargets = struct {
     /// Operator-assigned binds to confirm landed. Borrowed from the config —
     /// the argv builder copies each path before the caller's config can go.
     binds: []const contract.protocol.ExtraBind = &.{},
-    /// Absolute path of the engine's model transport, resolved on the HOST.
+    /// Absolute path of the tool shell, resolved on the host.
     ///
     /// Set by `buildProbeArgv`, which has an `Io` to look with; `targetsFor` is
     /// pure and leaves it null, so the pure argv twin composes a probe that
-    /// reports the transport untested rather than one that guesses a path.
+    /// reports the shell untested rather than one that guesses a path.
     transport: ?[]const u8 = null,
 };
 
-/// The first transport binary present on this host, or null. Re-exported from
+/// The first tool shell present on this host, or null. Re-exported from
 /// `selftest_transport` so the parent and the probe resolve the same list
 /// (RULE UFS) and callers keep one entry point.
 pub const transportPath = selftest_transport.hostPath;
@@ -253,7 +253,7 @@ pub fn composeProbeArgv(alloc: std.mem.Allocator, bwrap: []const u8, self_exe: [
 /// `self_exe` the prefix already `--ro-bind`s, so no mount is added for it.
 /// Deliberately NOT `__execute`: a self-test must never run the real executor
 /// (Invariant 1). Deliberately not a host tool either — see `selftest_probe`'s
-/// header for why `curl`/`getent` cannot be assumed present.
+/// header for why external network probe commands cannot be assumed present.
 fn appendProbeCommand(alloc: std.mem.Allocator, prefix: []const []const u8, self_exe: []const u8, workspace_path: []const u8, targets: ProbeTargets) ![]const []const u8 {
     var list: std.ArrayList([]const u8) = .empty;
     errdefer {
@@ -424,12 +424,8 @@ pub fn grade(alloc: std.mem.Allocator, cfg: Config, outcome: Outcome) !Result {
         });
     }
 
-    // The transport is graded under EVERY posture, including `deny_all_egress`:
-    // "can this sandbox execute the binary the engine spawns" is a filesystem
-    // question, and a lease with no network still dies at `execvp` if the answer
-    // is no. Absence is a fault rather than untested — a host with no transport
-    // runs no lease, and reporting that as "nothing to measure" is exactly the
-    // green-probe/dead-sandbox reading this milestone exists to remove.
+    // Shell tools need a child process under every network posture. This row
+    // checks executability independently from model HTTP reachability.
     if (!outcome.transport_testable) {
         try checks.append(alloc, .{ .name = CHECK_TRANSPORT, .ok = false, .detail = DETAIL_TRANSPORT_ABSENT });
     } else {
@@ -440,7 +436,7 @@ pub fn grade(alloc: std.mem.Allocator, cfg: Config, outcome: Outcome) !Result {
         });
     }
 
-    // The engine-spawn row is graded only when there was a transport to spawn:
+    // The engine-spawn row is graded only when there was a shell to spawn:
     // absence is already the transport row's named fault, and a second row
     // reporting the same missing binary would read as two faults to fix. Under
     // a timeout the probe observed nothing — say that, not "failed".
@@ -510,22 +506,20 @@ pub const Outcome = struct {
     /// true so an existing caller keeps grading DNS as before; the executor
     /// sets it false rather than reporting an untested resolver as broken.
     dns_testable: bool = true,
-    /// Did the transport the engine spawns actually execute inside the sandbox?
+    /// Did the tool shell execute inside the sandbox?
     /// No default, for the reason `scratch_writable` has none: `grade` always
     /// reads it, and a silently-defaulted pass here would re-create the exact
     /// unmeasured claim that removed the executable trees.
     transport_execs: bool,
-    /// False when this host carries no transport binary at all, which `grade`
-    /// reports as a fault distinct from one that failed to run — an operator
-    /// fixes "install curl" and "fix the bind set" differently.
+    /// False when this host carries no shell binary at all, which `grade`
+    /// reports as a fault distinct from one that failed to run.
     transport_testable: bool,
-    /// Did the ENGINE's spawn path (the NullClaw compat layer a lease dials its
-    /// model through) run the transport? No default, same doctrine as
+    /// Did the engine's subprocess tool path run the shell? No default, same doctrine as
     /// `transport_execs`: the raw exec above kept passing while every lease
     /// died inside exactly this plumbing, so no construction site may inherit
     /// a pass it never observed.
     engine_spawns: bool,
-    /// False when there was no transport to spawn — the transport row already
+    /// False when there was no shell to spawn — the transport row already
     /// reports that host state as its own fault, so this row stays silent
     /// instead of doubling it.
     engine_spawn_testable: bool,

@@ -1,5 +1,5 @@
 //! lease_hardening_integration_test.zig — Linux-only, real-process proofs that
-//! a lease can execute its transport under the FULL wall, not merely inside its
+//! a lease can execute a tool shell under the FULL wall, not merely inside its
 //! mounts. Sibling of `lease_transport_integration_test.zig`, split from it on
 //! the file-length bound (RULE FLL) along the mounts/hardening seam: that file
 //! asks what bwrap made reachable, this one asks what the kernel still permits
@@ -7,9 +7,9 @@
 //!
 //! The seam is load-bearing, not filing. Splicing the probe's tail replaces
 //! `--sandboxed` along with it, so every proof in the sibling runs under mounts
-//! ALONE. A lease runs under all three layers and the engine spawns its
-//! transport from inside that wall, so "the mount set carries curl" is a
-//! strictly weaker claim than "a lease can execute curl" — and only the second
+//! ALONE. A lease runs under all three layers and the engine spawns a tool
+//! shell from inside that wall, so "the mount set carries a shell" is a
+//! weaker claim than "a lease can execute a shell" — and only the second
 //! one is what a lease needs (M170 Discovery).
 
 const std = @import("std");
@@ -114,7 +114,7 @@ test "the filesystem wall permits opening the writable device files for writing"
     //
     // `/dev` rides the read-only floor, whose mask carries no WRITE_FILE, while
     // bwrap's `--dev` builds a devtmpfs where `/dev/null` is writable. The
-    // engine's model transport spawns `curl` and wires an ignored stdio stream
+    // subprocess tools wire an ignored stdio stream
     // through that node, so on `zombie-dev-worker-ant` every lease died at
     // `open("/dev/null", O_RDWR) = EACCES` — zero tokens, zero wall seconds,
     // and six green self-test checks.
@@ -259,17 +259,14 @@ test "a binary spawns under the lease's full hardening, not just its mounts" {
     //
     // Splicing the probe's tail replaces `--sandboxed` along with it, so the
     // sibling's proofs run under bwrap's MOUNTS with no landlock ruleset and no
-    // seccomp filter. A lease runs under all three, and the engine spawns its
-    // transport from inside that wall — so "the mount set carries curl" is a
-    // strictly weaker claim than "a lease can execute curl".
+    // seccomp filter. A lease runs under all three, and the engine spawns a
+    // tool shell from inside that wall — a mount check alone cannot prove it.
     //
     // This test keeps the REAL probe tail intact — `--sandboxed` included, so
     // `applySandboxHardening` runs (no_new_privs → landlock → seccomp) — and
     // adds `--transport=`, which makes the probe spawn that binary from behind
-    // the wall and report the result. `/usr/bin/env` rather than `curl`: the
-    // kernel-lane image ships no curl, and a proof that skips in the only
-    // environment CI runs it is not a proof. On a host with curl the daemon
-    // aims the same check at the real transport every heartbeat.
+    // the wall and report the result. `/usr/bin/env` is present in the
+    // kernel-lane image, so this proof runs in continuous integration.
     if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var threaded: std.Io.Threaded = undefined;

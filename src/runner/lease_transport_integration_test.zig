@@ -4,8 +4,8 @@
 //! credentials: that file pins what stayed OUT, this one pins what came back.
 //!
 //! M170 §3 narrowed the lease sandbox on the premise that "no executable is
-//! needed inside a lease at all". The premise was false — the NullClaw engine's
-//! model transport spawns `curl` — and the whole suite stayed green anyway,
+//! needed inside a lease at all". Shell tools still need executables, and the
+//! whole suite stayed green anyway,
 //! because the evidence offered for the premise was the self-test's egress row:
 //! a TCP connect issued from inside the STATICALLY LINKED runner, which spawns
 //! nothing and so measured the one path in the system that needs no executable.
@@ -32,23 +32,19 @@ const spawnIo = fixtures.spawnIo;
 /// A dynamically linked executable every supported host carries, living in the
 /// trees the narrowing removed.
 ///
-/// Deliberately NOT `curl`, even though `curl` is the binary that actually
-/// matters: the kernel-lane image (`ci-zig-alpine`) ships none, so a
-/// curl-only proof would SkipZigTest in the one environment continuous
-/// integration runs this lane in — the silent-skip reading that already cost
-/// this suite six proofs. `curl` gets its own test below, gated and loud.
+/// The kernel-lane image (`ci-zig-alpine`) carries this binary, so this proof
+/// runs in continuous integration rather than silently skipping.
 ///
 /// Alpine reaches this path through a busybox symlink into `/bin`, the
 /// Debian family as a real file under `/usr/bin`. Both resolve only when the
 /// executable AND library trees are bound, which is the property under test.
 const PORTABLE_DYNAMIC_EXE = "/usr/bin/env";
 
-/// Where the engine's model transport lives, in the two locations a host puts
-/// it. Absolute rather than PATH-resolved: the lease's `PATH` is part of what
-/// is under test, and a proof that depends on it cannot report on it.
+/// Where the shell tool lives. Absolute rather than PATH-resolved: the lease's
+/// `PATH` is part of what is under test.
 const TRANSPORT_EXE_CANDIDATES = [_][]const u8{
-    "/usr/bin/curl",
-    "/bin/curl",
+    "/bin/sh",
+    "/usr/bin/sh",
 };
 
 /// The trust store as a FILE, not the directory the baseline binds. Reading it
@@ -196,17 +192,9 @@ test "the same executable fails in a lease stripped of the system trees" {
     try std.testing.expect(code != 0);
 }
 
-test "the engine's model transport is executable inside a real lease sandbox" {
-    // The same property as above, measured against the ACTUAL binary the ten
-    // NullClaw provider modules and the `http_request` tool spawn, rather than
-    // a stand-in. `curl --version` touches loader, every one of its shared
-    // libraries, and nothing else — no network, so a lane without egress still
-    // grades it.
-    //
-    // Skips where the host has no `curl` (the kernel-lane Alpine image is one).
-    // That skip is REPORTED, not silent: the test above holds the line in those
-    // environments, and this one is the sharper proof wherever a transport
-    // exists — the dev host and any Debian-family runner.
+test "the tool shell is executable inside a real lease sandbox" {
+    // A harmless command checks the executable, its loader, and the sandbox
+    // process path without calling a network provider.
     if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var threaded: std.Io.Threaded = undefined;
@@ -218,7 +206,7 @@ test "the engine's model transport is executable inside a real lease sandbox" {
     const lease = try openLease(io, alloc);
     defer lease.deinit(alloc);
 
-    const command = [_][]const u8{ transport, "--version" };
+    const command = [_][]const u8{ transport, "-c", "exit 0" };
     const on_host = try runOnHost(io, alloc, &command);
     if (on_host == null or on_host.? != 0) return error.SkipZigTest;
 
