@@ -75,7 +75,4 @@ const ReportSpool = @import("ReportSpool.zig");
 const protocol = contract.protocol;
 const log = logging.scoped(.fleet_runner);
 const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
-
-fn sleepMs(io: std.Io, ms: u64) void {
-    io.sleep(std.Io.Duration.fromMilliseconds(@intCast(ms)), .awake) catch return;
-}
+const sleepMs = constants.clock.sleepMs;

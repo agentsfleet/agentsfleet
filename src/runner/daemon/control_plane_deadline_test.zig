@@ -63,7 +63,7 @@ test "a pin failure refuses the verb instead of running it unarmed" {
 
     // No pooled handle: the ONLY correct answer is a refusal. Falling through
     // here is the unbounded call deadlines exist to prevent.
-    try testing.expectEqual(deadline.ArmOutcome.pin_failed, attempt.armPinned(&runner.sched.?, null, NEVER_MS));
+    try testing.expectEqual(deadline.ArmOutcome.pin_failed, attempt.armPinned(&runner.sched.?, error.ConnectionRefused, NEVER_MS));
 }
 
 test "an unstartable scheduler refuses the verb fail-closed" {

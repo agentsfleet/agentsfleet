@@ -243,10 +243,7 @@ export const openEventTail = (
     let outcome: SteerOutcome = { kind: STATUS_SSE_DISCONNECTED };
     const ctrl = linkedAbort(signal);
     const buffer = makePreIdBuffer();
-    let markOpened: () => void = () => {};
-    const opened = new Promise<void>((resolve) => {
-      markOpened = resolve;
-    });
+    const { promise: opened, resolve: markOpened } = Promise.withResolvers<void>();
     const finished = streamGet(url, headers, buffer.cb, { signal: ctrl.signal, onOpen: markOpened })
       .then((): SteerOutcome | null => null)
       .catch(

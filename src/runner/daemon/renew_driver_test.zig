@@ -103,6 +103,17 @@ test "onTick keeps (and does not advance) when the renewal call fails transientl
     try testing.expectEqual(@as(usize, 1), fake.calls); // it DID attempt
 }
 
+test "frequent activity flush ticks do not multiply failed renewal attempts" {
+    var fake = FakeClient{ .outcome = client.ClientError.RequestFailed };
+    var driver = driverWith(&fake, NOW_MS + constants.RENEWAL_WINDOW_MS);
+    for (0..25) |at| {
+        try testing.expectEqual(RenewDecision.keep, driver.tick(NOW_MS + @as(i64, @intCast(at)) * 200, .{}));
+    }
+    try testing.expectEqual(@as(usize, 1), fake.calls);
+    try testing.expectEqual(RenewDecision.keep, driver.tick(NOW_MS + constants.RENEWAL_TICK_MS, .{}));
+    try testing.expectEqual(@as(usize, 2), fake.calls);
+}
+
 test "onTick inside the window posts the live cumulative snapshot as the renew body" {
     var fake = FakeClient{ .outcome = .{ .renewed = NOW_MS + ONE_MILLION } };
     var driver = driverWith(&fake, NOW_MS + MS_PER_SECOND);

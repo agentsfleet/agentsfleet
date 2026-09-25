@@ -306,7 +306,7 @@ test "TickFanout fans a renewal tick into flush-then-decision and keeps a fresh 
 
     // The hook rides the supervisor's tick cadence — a drifted tick_ms would
     // silently change both the flush and renewal cadences.
-    try testing.expectEqual(common.RENEWAL_TICK_MS, hook.tick_ms);
+    try testing.expectEqual(@as(i64, forwarders.ACTIVITY_FLUSH_WINDOW_MS), hook.tick_ms);
     // Far-future deadline: the decision is `.keep` with no renew call, and the
     // empty activity batch has nothing stale to flush — no plane contact at all
     // (the dead port above would error loudly if either path dialed out).

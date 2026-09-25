@@ -79,8 +79,7 @@ test "a failed certificate rescan leaves the clock null and refuses the secure p
 
     // The refusal fires on the null clock BEFORE any connect — pre-fix this
     // was the panic site (connect reading client.now.?), not a null return.
-    try testing.expect(http_pin.pinPooledHandle(&client, "https://example.invalid/") == null);
-    try testing.expect(http_pin.connectPinned(&client, "example.invalid", 443, true) == null);
+    try testing.expectError(error.CertificateBundleUnavailable, http_pin.connectPinned(&client, "example.invalid", 443, true));
 }
 
 test "a plain-http pin never touches certificate state" {
@@ -109,12 +108,11 @@ test "an already-primed client refreshes the clock without a rescan" {
     try testing.expect(!failing.has_induced_failure);
 }
 
-test "unusable URLs refuse the pin before any connect" {
+test "an empty host refuses the pin before any connect" {
     var client: std.http.Client = .{ .allocator = testing.allocator, .io = testIo() };
     defer client.deinit();
 
-    try testing.expect(http_pin.pinPooledHandle(&client, "not a url") == null);
-    try testing.expect(http_pin.connectPinned(&client, "", 80, false) == null);
+    try testing.expectError(error.EmptyHost, http_pin.connectPinned(&client, "", 80, false));
 }
 
 // ── Live secure-endpoint sweep ──────────────────────────────────────────────
@@ -185,8 +183,7 @@ test "every production secure endpoint primes its certificate state and pins wit
             var client: std.http.Client = .{ .allocator = testing.allocator, .io = io };
             defer client.deinit();
 
-            const handle = http_pin.connectPinned(&client, host, HTTPS_PORT, true);
-            if (handle == null) continue;
+            _ = http_pin.connectPinned(&client, host, HTTPS_PORT, true) catch continue;
             // Priming populated the validation clock — the null whose dereference
             // in `Connection.Tls.create` was the production panic. A real
             // handshake completed against a real certificate chain.
@@ -225,9 +222,8 @@ test "an unprimed secure pin to a REACHABLE peer never opens the socket (the cra
     var failing = testing.FailingAllocator.init(testing.allocator, .{ .fail_index = 0 });
     var client: std.http.Client = .{ .allocator = failing.allocator(), .io = io };
 
-    const handle = http_pin.connectPinned(&client, "127.0.0.1", port, true);
-
-    try testing.expect(handle == null); // refused
+    // Refused, and refused for the reason that names the fix: the bundle.
+    try testing.expectError(error.CertificateBundleUnavailable, http_pin.connectPinned(&client, "127.0.0.1", port, true));
     try testing.expect(client.now == null); // and the clock really was never primed
 
     client.deinit();

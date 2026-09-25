@@ -10,6 +10,7 @@ const logging = @import("log");
 const contract = @import("contract");
 
 const client_mod = @import("control_plane_client.zig");
+const ActivitySender = @import("ActivitySender.zig");
 const client_errors = @import("../engine/client_errors.zig");
 const protocol = contract.protocol;
 
@@ -19,11 +20,11 @@ const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
 /// Activity frames batch per POST: flush at this many frames…
 pub const ACTIVITY_BATCH_MAX_FRAMES: usize = 16;
 /// …or this many buffered bytes (caps retained memory for chatty frames)…
-const ACTIVITY_BATCH_MAX_BYTES: usize = 64 * 1024;
+const ACTIVITY_BATCH_MAX_BYTES: usize = ActivitySender.MAX_BATCH_BYTES;
 /// …or when the oldest buffered frame is this stale (live-tail latency budget).
-pub const ACTIVITY_FLUSH_WINDOW_MS: i64 = 1_000;
-/// Deadline cap for the one-shot eager ships — pinned to the staleness window
-/// so an eager POST can never block the read loop longer than batching would.
+pub const ACTIVITY_FLUSH_WINDOW_MS: i64 = 200;
+/// Direct transport keeps its eager POST within one batching window. Queued
+/// transport gives the POST its own deadline on the sender thread.
 pub const EAGER_DEADLINE_CAP_MS: u31 = @intCast(ACTIVITY_FLUSH_WINDOW_MS);
 
 /// Batches the `activity` frames the sandboxed child streams and forwards them
@@ -41,6 +42,7 @@ pub const ActivityForwarder = struct {
     runner_token: []const u8,
     lease_id: []const u8,
     deadline_ms: u31,
+    transport: union(enum) { direct, queued: *ActivitySender, off } = .direct,
     // BUFFER GATE: ArrayList(u8) — append-as-you-go accumulation of serialized
     // frames, read once per flush.
     buf: std.ArrayList(u8) = .empty,
@@ -56,18 +58,20 @@ pub const ActivityForwarder = struct {
 
     pub fn forward(ctx: *anyopaque, frame: contract.activity.ActivityFrame) void {
         const self: *ActivityForwarder = @ptrCast(@alignCast(ctx));
-        const json = std.json.Stringify.valueAlloc(self.alloc, frame, .{}) catch return;
-        defer self.alloc.free(json);
-        if (self.count == 0) self.first_buffered_ms = clock.nowMillis();
-        const valid_len = self.buf.items.len;
-        if (self.count > 0) self.buf.append(self.alloc, ',') catch return;
-        self.buf.appendSlice(self.alloc, json) catch {
-            // roll the orphan comma back — a half-appended frame would poison
-            // the whole batch into invalid JSON, not just drop this frame
-            self.buf.shrinkRetainingCapacity(valid_len);
-            return;
-        };
-        self.count += 1;
+        switch (self.transport) {
+            .off => return,
+            else => {},
+        }
+        const before = self.append(frame) orelse return;
+        if (before > 0 and self.buf.items.len > ACTIVITY_BATCH_MAX_BYTES) {
+            // This frame would carry the batch past what one queued POST may
+            // hold, and the sender refuses an oversized batch whole. Ship the
+            // frames before it, then start the next batch with it.
+            self.buf.shrinkRetainingCapacity(before);
+            self.count -= 1;
+            self.flush();
+            _ = self.append(frame) orelse return;
+        }
         var eager = false;
         if (!self.eager_first_frame_done) {
             self.eager_first_frame_done = true;
@@ -85,15 +89,38 @@ pub const ActivityForwarder = struct {
         }
     }
 
-    /// An eager ship rides a deadline capped at the staleness window: the
-    /// perceived-latency win must never spend more of the read loop's renewal
-    /// budget than one batching window would have. A control plane slower than
-    /// the window degrades to the batched cadence instead of stalling renewal.
+    /// Serialize `frame` onto the batch and return the batch length before it,
+    /// or null when allocation failed and the batch is left as it was. Writes
+    /// straight into `buf`, so the hot path makes no second copy of a chunk.
+    fn append(self: *ActivityForwarder, frame: contract.activity.ActivityFrame) ?usize {
+        var out = std.Io.Writer.Allocating.fromArrayList(self.alloc, &self.buf);
+        defer self.buf = out.toArrayList();
+        const valid_len = out.written().len;
+        if (self.count > 0) out.writer.writeByte(',') catch return null;
+        std.json.Stringify.value(frame, .{}, &out.writer) catch {
+            // A half-written frame (including its comma) must not poison
+            // the next batch when this allocation fails.
+            out.shrinkRetainingCapacity(valid_len);
+            return null;
+        };
+        if (self.count == 0) self.first_buffered_ms = clock.nowMillis();
+        self.count += 1;
+        return valid_len;
+    }
+
+    /// The normal queued path ships immediately without doing network work on
+    /// the child reader. Direct mode keeps its synchronous POST bounded by the
+    /// batching window.
     fn flushEager(self: *ActivityForwarder) void {
-        const full = self.deadline_ms;
-        self.deadline_ms = @min(full, EAGER_DEADLINE_CAP_MS);
-        self.flush();
-        self.deadline_ms = full;
+        switch (self.transport) {
+            .queued => self.flush(),
+            else => {
+                const full = self.deadline_ms;
+                self.deadline_ms = @min(full, EAGER_DEADLINE_CAP_MS);
+                self.flush();
+                self.deadline_ms = full;
+            },
+        }
     }
 
     /// Tick-driven flush so a quiet child's tail frames still ship within the
@@ -104,7 +131,11 @@ pub const ActivityForwarder = struct {
 
     pub fn flush(self: *ActivityForwarder) void {
         if (self.count == 0) return;
-        self.cp.activityFramesJson(self.alloc, self.runner_token, self.lease_id, self.buf.items, self.deadline_ms);
+        switch (self.transport) {
+            .direct => self.cp.activityFramesJson(self.alloc, self.runner_token, self.lease_id, self.buf.items, self.deadline_ms),
+            .queued => |sender| sender.enqueue(self.buf.items),
+            .off => {},
+        }
         self.buf.clearRetainingCapacity();
         self.count = 0;
     }
@@ -154,5 +185,7 @@ pub const MemoryForwarder = struct {
 
 test {
     _ = @import("forwarders_test.zig");
+    _ = @import("forwarders_serialization_test.zig");
     _ = @import("forwarders_memory_test.zig");
+    _ = @import("forwarders_split_test.zig");
 }

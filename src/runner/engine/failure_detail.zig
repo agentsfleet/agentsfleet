@@ -35,11 +35,18 @@ const log = logging.scoped(.runner);
 /// dashboard cell, where the first line carries the diagnosis and the rest is
 /// noise. Truncation is marked, never silent.
 pub const MAX_DETAIL_BYTES: usize = 512;
+/// The daemon persists at most this many bytes in one failure detail.
+pub const MAX_REPORTED_DETAIL_BYTES: usize = 512;
 
 /// Longest `@errorName` this composes with, plus the `": "` join. Sized from
 /// the error set rather than guessed: the longest member is
 /// `ProviderDoesNotSupportVision` (28).
 const MAX_NAME_BYTES: usize = 64;
+const DIAGNOSTIC_FORMAT = "stream_enabled={} first_chunk_sent={} stream_frames={d} completed_tool_calls={d} input_tokens={d} output_tokens={d}";
+const MAX_DIAGNOSTIC_BYTES: usize = std.fmt.comptimePrint(
+    DIAGNOSTIC_FORMAT,
+    .{ false, false, std.math.maxInt(u64), std.math.maxInt(u64), std.math.maxInt(u64), std.math.maxInt(u64) },
+).len;
 
 /// Marker replacing a cause line that contained a tenant secret. Fail CLOSED:
 /// the detail is DROPPED whole rather than partially redacted, because a
@@ -61,13 +68,31 @@ const TRUNCATION_MARK = "…";
 
 var detail_buf: [MAX_DETAIL_BYTES]u8 = undefined;
 var detail_len: usize = 0;
-var composed_buf: [MAX_DETAIL_BYTES + MAX_NAME_BYTES + 2]u8 = undefined;
+var diagnostic_buf: [MAX_DIAGNOSTIC_BYTES]u8 = undefined;
+var diagnostic_len: usize = 0;
+var composed_buf: [MAX_REPORTED_DETAIL_BYTES]u8 = undefined;
+
+comptime {
+    if (MAX_NAME_BYTES + 4 + MAX_DIAGNOSTIC_BYTES + TRUNCATION_MARK.len > MAX_REPORTED_DETAIL_BYTES)
+        @compileError("stream diagnostics no longer fit the persisted failure detail");
+}
 
 /// Drop any captured cause line. For tests, and for a caller that wants the
 /// next failure graded on its own evidence rather than a stale snapshot.
 pub fn clear() void {
     detail_len = 0;
+    diagnostic_len = 0;
     nullclaw.providers.clearLastApiErrorDetail();
+}
+
+/// Keep safe stream facts beside the provider's cause in the durable event.
+/// The child handles one run, so this fixed buffer lives through reporting.
+pub fn recordNoResponse(stream_enabled: bool, first_chunk_sent: bool, frames: u64, tool_calls: u64, input_tokens: u64, output_tokens: u64) void {
+    diagnostic_len = 0;
+    const line = std.fmt.bufPrint(&diagnostic_buf, DIAGNOSTIC_FORMAT, .{
+        stream_enabled, first_chunk_sent, frames, tool_calls, input_tokens, output_tokens,
+    }) catch unreachable; // The buffer is sized from these fields' longest values.
+    diagnostic_len = line.len;
 }
 
 /// Capture whatever the engine last recorded about a provider fault, scrubbed
@@ -141,15 +166,26 @@ fn copyBounded(dst: []u8, src: []const u8) usize {
 /// make room for provider prose would break the grep that finds the event.
 pub fn compose(err: anyerror) []const u8 {
     const name = @errorName(err);
-    if (detail_len == 0) return name;
+    if (detail_len == 0 and diagnostic_len == 0) return name;
     if (name.len > MAX_NAME_BYTES) return name;
 
     @memcpy(composed_buf[0..name.len], name);
     composed_buf[name.len] = ':';
     composed_buf[name.len + 1] = ' ';
-    const at = name.len + 2;
-    @memcpy(composed_buf[at..][0..detail_len], detail_buf[0..detail_len]);
-    return composed_buf[0 .. at + detail_len];
+    var at = name.len + 2;
+    if (detail_len > 0) {
+        const reserve = if (diagnostic_len > 0) diagnostic_len + 2 else 0;
+        at += copyBounded(composed_buf[at .. composed_buf.len - reserve], detail_buf[0..detail_len]);
+    }
+    if (diagnostic_len > 0) {
+        if (detail_len > 0) {
+            @memcpy(composed_buf[at..][0..2], "; ");
+            at += 2;
+        }
+        @memcpy(composed_buf[at..][0..diagnostic_len], diagnostic_buf[0..diagnostic_len]);
+        at += diagnostic_len;
+    }
+    return composed_buf[0..at];
 }
 
 /// Record a config-load failure WITH its cause. Lives here because it answers

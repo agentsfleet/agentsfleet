@@ -17,13 +17,46 @@ use std::time::Duration;
 
 use afd_dragonfly::SubscriptionHub;
 use afd_dragonfly::hub::Received;
-use afd_dragonfly::streams::FleetStreams;
+use afd_dragonfly::streams::{FleetStreams, fleet_activity_channel};
 use tokio::sync::Mutex;
 
 use crate::support::DragonflyHarness;
 
 /// Serialises the two hub tests. See the module documentation.
 static HUB_LANE: Mutex<()> = Mutex::const_new(());
+
+/// A cluster pipeline must route every sharded publish to one slot and keep
+/// frame order; a unit test of the serialized pipeline would not prove either.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+async fn test_runner_activity_batch_reaches_the_hub_in_order() {
+    let _lane = HUB_LANE.lock().await;
+    let harness = DragonflyHarness::connect().await;
+    let publisher = FleetStreams::new(harness.redis.clone());
+    let fleet = harness.name("batch-fleet");
+    let channel = fleet_activity_channel(&fleet);
+    let hub = SubscriptionHub::start(DragonflyHarness::config())
+        .await
+        .expect("hub starts");
+    let mut reader = hub.subscribe(&channel);
+    wait_for(|| async { server_subscriber_count(&harness, &channel).await == 1 }).await;
+
+    let frames = vec![String::from("first"), String::from("second")];
+    publisher
+        .publish_tail_batch(&fleet, &frames)
+        .await
+        .expect("same-channel cluster pipeline routes");
+    for expected in frames {
+        let Received::Message(message) = tokio::time::timeout(DELIVERY_BUDGET, reader.recv())
+            .await
+            .expect("batch frame arrives")
+            .expect("hub remains live")
+        else {
+            panic!("a batch frame, not a lag notice");
+        };
+        assert_eq!(message.payload, expected);
+    }
+}
 
 /// How long a message may take to travel publisher → Dragonfly → hub → reader.
 const DELIVERY_BUDGET: Duration = Duration::from_secs(5);

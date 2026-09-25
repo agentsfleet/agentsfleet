@@ -65,6 +65,7 @@ fn should_lead_every_frame_with_its_kind() {
         },
         TailFrame::EventComplete {
             event: Box::new(TailRow::from(row())),
+            final_reply: None,
             fleet_status: Cow::Borrowed("active"),
             pending_approvals: 0,
             counters: Some(COUNTERS),
@@ -97,6 +98,12 @@ fn should_lead_every_frame_with_its_kind() {
             "{kind} must lead its payload: {text}"
         );
         assert_eq!(value["kind"], json!(kind));
+        if kind == "event_complete" {
+            assert!(
+                value.get("final_reply").is_none(),
+                "absent replies use detail fallback"
+            );
+        }
     }
 }
 
@@ -109,6 +116,7 @@ fn should_lead_every_frame_with_its_kind() {
 fn should_carry_the_whole_terminal_row_on_a_completion() {
     let (text, value) = rendered(&TailFrame::EventComplete {
         event: Box::new(TailRow::from(row())),
+        final_reply: Some(Cow::Borrowed("Done.")),
         fleet_status: Cow::Borrowed("paused"),
         pending_approvals: 2,
         counters: Some(COUNTERS),
@@ -127,6 +135,7 @@ fn should_carry_the_whole_terminal_row_on_a_completion() {
     assert_eq!(value["fleet_status"], json!("paused"));
     assert_eq!(value["pending_approvals"], json!(2));
     assert_eq!(value["cost_nanos"], json!(40_000_000));
+    assert_eq!(value["final_reply"], json!("Done."));
 }
 
 /// A gate that held no run says so with `null`, the crate's spelling for
@@ -165,6 +174,7 @@ fn should_carry_the_counters_on_every_frame_kind() {
         },
         TailFrame::EventComplete {
             event: Box::new(TailRow::from(row())),
+            final_reply: None,
             fleet_status: Cow::Borrowed("active"),
             pending_approvals: 0,
             counters: Some(COUNTERS),

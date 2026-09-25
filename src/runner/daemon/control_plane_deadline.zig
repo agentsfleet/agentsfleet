@@ -15,6 +15,7 @@
 const std = @import("std");
 const logging = @import("log");
 const call_deadline = @import("call_deadline");
+const http_pin = @import("http_pin");
 const client_errors = @import("../engine/client_errors.zig");
 
 const log = logging.scoped(.fleet_runner);
@@ -45,12 +46,15 @@ pub const Attempt = struct {
     }
 
     /// Publish the pinned socket and arm the deadline against THIS generation.
-    /// Fails closed: `handle == null` (the pin failed) is a refusal, not a
+    /// Fails closed: an error `handle` (the pin failed) is a refusal, not a
     /// licence to fetch unarmed. Logs the refusal class here, beside the
     /// mechanism, so both are greppable from one event name.
-    pub fn armPinned(self: *Attempt, sched: *Scheduler, handle: ?std.posix.fd_t, deadline_ms: u31) ArmOutcome {
-        const socket = handle orelse {
-            log.warn(EV_ARM_REFUSED, .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .reason = "pin_failed" });
+    pub fn armPinned(self: *Attempt, sched: *Scheduler, handle: http_pin.PinError!std.posix.fd_t, deadline_ms: u31) ArmOutcome {
+        // `err` is the step that failed — DNS, TCP, TLS or the certificate
+        // bundle. Without it every one of them logged as the same `pin_failed`
+        // and an operator could not tell a resolver fault from a refused port.
+        const socket = handle catch |err| {
+            log.warn(EV_ARM_REFUSED, .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .reason = "pin_failed", .err = @errorName(err) });
             return .pin_failed;
         };
         _ = self.owner.attachSocket(self.generation, socket);

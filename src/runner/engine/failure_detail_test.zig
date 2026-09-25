@@ -32,6 +32,30 @@ test "with no provider fault the line is the error name alone" {
     try std.testing.expectEqualStrings("FleetInitFailed", failure_detail.compose(error.FleetInitFailed));
 }
 
+test "no response diagnostics join the provider cause in the event detail" {
+    failure_detail.clear();
+    setProviderDetail("finish_reason=stop reasoning_bytes=12 tool_fragments=0");
+    failure_detail.recordNoResponse(true, false, 2, 0, 41, 7);
+    failure_detail.capture(ALLOC, &.{});
+
+    const line = failure_detail.compose(error.NoResponseContent);
+    try std.testing.expect(std.mem.startsWith(u8, line, "NoResponseContent: compatible:"));
+    try std.testing.expect(std.mem.indexOf(u8, line, "finish_reason=stop") != null);
+    try std.testing.expect(std.mem.indexOf(u8, line, "stream_frames=2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, line, "input_tokens=41") != null);
+    failure_detail.clear();
+    try std.testing.expectEqualStrings("NoResponseContent", failure_detail.compose(error.NoResponseContent));
+}
+
+test "no response diagnostics fit the largest counters without allocation" {
+    failure_detail.clear();
+    const max = std.math.maxInt(u64);
+    failure_detail.recordNoResponse(false, false, max, max, max, max);
+    const line = failure_detail.compose(error.NoResponseContent);
+    try std.testing.expect(std.mem.indexOf(u8, line, "output_tokens=18446744073709551615") != null);
+    try std.testing.expect(std.mem.indexOf(u8, line, "stream_enabled=false") != null);
+}
+
 test "a provider fault is reported with the provider's own words" {
     // The fix itself: `ApiError` alone sent an engineer to strace a host to
     // learn what the API had already said in plain text.
@@ -98,8 +122,26 @@ test "an over-long provider line is truncated with a mark, not silently cut" {
     failure_detail.capture(ALLOC, &.{});
 
     const line = failure_detail.compose(error.ApiError);
-    try std.testing.expect(line.len <= failure_detail.MAX_DETAIL_BYTES + 64);
+    try std.testing.expect(line.len <= failure_detail.MAX_REPORTED_DETAIL_BYTES);
     try std.testing.expect(std.mem.endsWith(u8, line, "…"));
+}
+
+test "large provider errors leave room for every stream diagnostic in the persisted detail" {
+    failure_detail.clear();
+    const long = try ALLOC.alloc(u8, failure_detail.MAX_DETAIL_BYTES * 2);
+    defer ALLOC.free(long);
+    @memset(long, 'x');
+    setProviderDetail(long);
+    failure_detail.recordNoResponse(true, false, 17, 3, 41, 7);
+    failure_detail.capture(ALLOC, &.{});
+
+    const line = failure_detail.compose(error.NoResponseContent);
+    try std.testing.expect(line.len <= failure_detail.MAX_REPORTED_DETAIL_BYTES);
+    try std.testing.expect(std.mem.startsWith(u8, line, "NoResponseContent: compatible:"));
+    try std.testing.expect(std.mem.indexOf(u8, line, "…; stream_enabled=true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, line, "stream_frames=17") != null);
+    try std.testing.expect(std.mem.indexOf(u8, line, "completed_tool_calls=3") != null);
+    try std.testing.expect(std.mem.endsWith(u8, line, "output_tokens=7"));
 }
 
 test "truncation lands on a character boundary, so the stored line stays valid UTF-8" {

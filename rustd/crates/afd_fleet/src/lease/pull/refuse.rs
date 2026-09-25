@@ -102,7 +102,7 @@ impl Plane {
             )
             .await?;
         if let crate::lease::event::Ended::Now(closed) = ended {
-            self.leases.publish_completion(&closed).await;
+            self.leases.publish_completion(&closed, None).await;
         }
         self.leases
             .acknowledge(&acquired.fleet_id, &acquired.receipt)

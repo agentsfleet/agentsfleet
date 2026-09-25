@@ -27,14 +27,40 @@
 //! `sandbox_args` change.
 
 const std = @import("std");
+const common = @import("common");
 const contract = @import("contract");
 const logging = @import("log");
 const control_plane_client = @import("daemon/control_plane_client.zig");
 const client_errors = @import("engine/client_errors.zig");
 
 const protocol = contract.protocol;
+const retry = common.retry;
 const log = logging.scoped(.fleet_runner);
 const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
+
+/// The pre-fork download's retry limits. The bundle is fetched before the
+/// child forks, so nothing renews the lease while this runs: it lives 30 s
+/// (`afd_core::timing::LEASE_TTL_MS`) and the memory hydrate ahead of it may
+/// already have spent its own 10 s deadline. A retry therefore starts only
+/// inside this budget. A connection that never opened fails in milliseconds
+/// and is retried; an attempt that ran out its deadline is not, because a
+/// second wait that long would race the lease.
+const DOWNLOAD_RETRY_BUDGET_MS: u64 = 5_000;
+/// Attempts, including the first.
+const DOWNLOAD_MAX_ATTEMPTS: u32 = 3;
+/// `pub` for the sibling policy test.
+pub const DOWNLOAD_RETRY = retry.Policy{
+    .max_attempts = DOWNLOAD_MAX_ATTEMPTS,
+    .budget_ms = DOWNLOAD_RETRY_BUDGET_MS,
+    .retryable = isTransportFailure,
+};
+
+/// No response arrived, so the daemon never answered and repeating the GET of
+/// an immutable, content-addressed tar is safe. A status it chose to send is
+/// its answer and is not retried.
+fn isTransportFailure(err: anyerror) bool {
+    return err == control_plane_client.ClientError.RequestFailed;
+}
 
 /// Canonical-tar root entries the runner must NOT materialize — the lease's
 /// `instructions`/`policy` are the authoritative behaviour, so the tar's
@@ -123,17 +149,37 @@ fn cacheOrDownload(
         log.debug("bundle_cache_hit", .{ .content_hash = content_hash });
         return cached;
     }
-    const tar = (try downloadBundle(cp, alloc, runner_token, content_hash, deadline_ms)) orelse return null;
+    const download = Download{ .cp = cp, .alloc = alloc, .runner_token = runner_token, .content_hash = content_hash, .deadline_ms = deadline_ms };
+    const tar = (try retry.run(DOWNLOAD_RETRY, download, retry.RealPacer{ .io = io })) orelse return null;
     writeCache(io, storage_home, workspace_path, content_hash, tar) catch |err|
         log.warn("bundle_cache_write_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .content_hash = content_hash, .err = @errorName(err) });
     return tar;
 }
 
+/// One bundle GET as `retry.run` calls it: the fetch, and a log line per
+/// retry that names the bundle and the cause.
+const Download = struct {
+    cp: *control_plane_client,
+    alloc: std.mem.Allocator,
+    runner_token: []const u8,
+    content_hash: []const u8,
+    deadline_ms: u31,
+
+    pub fn fetch(self: Download) !?[]u8 {
+        return downloadBundle(self.cp, self.alloc, self.runner_token, self.content_hash, self.deadline_ms);
+    }
+
+    pub fn onRetry(self: Download, attempt: u32, err: anyerror, delay_ms: u64) void {
+        log.warn("bundle_download_retry", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .content_hash = self.content_hash, .attempt = attempt + 1, .err = @errorName(err), .delay_ms = delay_ms });
+    }
+};
+
 /// GET the bundle's canonical tar via the daemon proxy (`cp.get`, the shared GET
 /// primitive). Returns the tar bytes (caller owns), or `null` for a skill-only
 /// bundle (`404` = no support files were stored). Non-2xx or an over-cap body is
 /// `BadStatus` (fail closed). The tar is daemon-validated (trusted) — untarred
-/// without re-validation; one buffered attempt, retry deferred.
+/// without re-validation. One attempt; `cacheOrDownload` retries it under
+/// `DOWNLOAD_RETRY`.
 fn downloadBundle(cp: *control_plane_client, alloc: std.mem.Allocator, runner_token: []const u8, content_hash: []const u8, deadline_ms: u31) !?[]u8 {
     var buf: [std.fs.max_path_bytes]u8 = undefined;
     const path = std.fmt.bufPrint(&buf, PATH_JOIN_FMT, .{ protocol.PATH_RUNNER_BUNDLES, content_hash }) catch return error.PathTooLong;

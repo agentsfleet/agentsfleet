@@ -10,6 +10,7 @@ const common = @import("common");
 const logging = @import("log");
 const contract = @import("contract");
 const constants = common;
+const sleepMs = common.clock.sleepMs;
 
 const Config = @import("config.zig");
 const AppliedPolicy = @import("AppliedPolicy.zig");
@@ -361,11 +362,6 @@ pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, run
 /// `tokens` total.
 pub fn splitFields(result: contract.execution_result.ExecutionResult) renew_driver.TokenSplits {
     return renew_driver.wireSplits(result.input_tokens, result.cached_input_tokens, result.output_tokens);
-}
-
-/// Sleep for `ms` milliseconds.
-fn sleepMs(io: std.Io, ms: u64) void {
-    io.sleep(std.Io.Duration.fromMilliseconds(@intCast(ms)), .awake) catch return;
 }
 
 // The cadence this host beats at is the daemon's to choose, because the daemon

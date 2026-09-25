@@ -11,13 +11,13 @@ pub mod repair;
 pub mod runner;
 
 use opentelemetry::KeyValue;
-use opentelemetry::metrics::Counter;
+use opentelemetry::metrics::{Counter, Histogram};
 use std::sync::Arc;
 
 use crate::error::Result;
 use crate::metrics::declared::fleet as declared;
 use crate::metrics::instrument::{Instruments, Reading};
-use crate::metrics::label::fleet::{RunStart, SignupFailure};
+use crate::metrics::label::fleet::{DeliveryStage, RunStart, SignupFailure};
 use crate::metrics::observed::Observed;
 use crate::producers::installed;
 use crate::runner::RunnerMetrics;
@@ -85,6 +85,7 @@ pub struct Handles {
     lease_candidates: Counter<u64>,
     lease_roundtrips: Counter<u64>,
     runs_started: Counter<u64>,
+    delivery_stage: Histogram<f64>,
     ready_write_failures: Counter<u64>,
     retention_swept: Counter<u64>,
     retention_failures: Counter<u64>,
@@ -124,6 +125,7 @@ impl Handles {
                 .counter_u64(&declared::LEASE_POLL_CANDIDATES_SCANNED_TOTAL)?,
             lease_roundtrips: instruments.counter_u64(&declared::LEASE_POLL_DB_ROUNDTRIPS_TOTAL)?,
             runs_started: instruments.counter_u64(&declared::FLEET_RUNS_STARTED_TOTAL)?,
+            delivery_stage: instruments.histogram_f64(&declared::FLEET_DELIVERY_STAGE_SECONDS)?,
             ready_write_failures: instruments
                 .counter_u64(&declared::FLEET_READY_WRITE_FAILURES_TOTAL)?,
             retention_swept: instruments.counter_u64(&declared::RUNNER_RETENTION_SWEPT_TOTAL)?,
@@ -250,6 +252,17 @@ pub fn run_started(kind: RunStart) {
             .fleet
             .runs_started
             .add(1, &[KeyValue::new(semconv::LABEL_KIND, kind.as_str())]);
+    }
+}
+
+/// Records one completed delivery stage. A negative cross-clock difference is
+/// omitted by the caller, so Grafana never sees a fabricated zero.
+pub fn delivery_stage(stage: DeliveryStage, elapsed: core::time::Duration) {
+    if let Some(producers) = installed() {
+        producers.fleet.delivery_stage.record(
+            elapsed.as_secs_f64(),
+            &[KeyValue::new(semconv::LABEL_STAGE, stage.as_str())],
+        );
     }
 }
 

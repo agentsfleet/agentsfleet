@@ -200,6 +200,20 @@ impl FleetStatusLabel {
 }
 
 closed_set! {
+    /// One measured boundary from event creation to the first streamed chunk.
+    DeliveryStage {
+        /// Producer event timestamp to durable lease issue.
+        EventToLease => "event_to_lease",
+        /// Lease issue to the first stream frame received by the daemon.
+        LeaseToFirstChunk => "lease_to_first_chunk",
+        /// Producer event timestamp to first stream frame received by the daemon.
+        EventToFirstChunk => "event_to_first_chunk",
+        /// Zombie execution invocation to its first safe stream chunk in Zig.
+        ZombieToFirstChunk => "zombie_to_first_chunk",
+    }
+}
+
+closed_set! {
     /// How a run came to start.
     ///
     /// Two rather than two families: an operator reads them as one line split

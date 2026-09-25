@@ -20,7 +20,7 @@ pub fn nowMillis() i64 {
 /// adjustment, so it is the correct source for elapsed-time bounds (a wait
 /// deadline must hold its nominal duration even if the wall clock is set
 /// back). Reads `CLOCK_MONOTONIC` directly, mirroring `nowNanos`.
-fn nowMonotonicMillis() i64 {
+pub fn nowMonotonicMillis() i64 {
     // SAFETY: clock_gettime fully populates ts before sec/nsec are read.
     var ts: std.posix.timespec = undefined;
     return switch (std.posix.errno(std.posix.system.clock_gettime(.MONOTONIC, &ts))) {
@@ -45,6 +45,11 @@ pub fn nowNanos() i128 {
         // pool's acquire deadline never fire (it loops forever).
         else => |err| std.debug.panic("clock_gettime(CLOCK_REALTIME) failed: {s}", .{@tagName(err)}),
     };
+}
+
+/// Sleep `ms` milliseconds on `io`'s awake clock; a cancelled sleep returns early.
+pub fn sleepMs(io: std.Io, ms: u64) void {
+    io.sleep(std.Io.Duration.fromMilliseconds(@intCast(ms)), .awake) catch return;
 }
 
 /// First instant of the UTC calendar month containing `now_ms`, in epoch ms.

@@ -1,5 +1,4 @@
-//! selftest_transport.zig — the engine's model transport as a self-test
-//! subject: where it lives on the host, and whether a sandbox can execute it.
+//! selftest_transport.zig — prove a tool shell can start inside a lease.
 //!
 //! Shared by the self-test PARENT, which resolves the path on the host and puts
 //! it on the probe's argv, and by the PROBE, which spawns it from behind the
@@ -7,54 +6,38 @@
 //! binary is under test (RULE UFS), and split from both on the file-length
 //! bound (RULE FLL).
 //!
-//! This exists because the egress check cannot answer the question. That check
-//! opens a TCP stream from inside the statically linked runner and spawns
-//! nothing, so it measured the one path in a lease that needs no executable —
-//! and M170 §3 removed the executable trees on the strength of it, which would
-//! have killed every lease at `execve` before its first model call.
-//! Reachability and executability are different facts.
+//! Model HTTP now uses in-process libcurl. Agent shell tools still need a
+//! child process, so network reachability cannot establish tool availability.
 
 const std = @import("std");
 const builtin = @import("builtin");
 const nullclaw = @import("nullclaw");
 
-/// Where the engine's model transport lives, in the two locations a host puts
-/// it. The engine spawns it by NAME through `PATH`; the probe is handed an
+/// Where the shell tool lives on supported hosts. The engine spawns it by name
+/// through `PATH`; the probe is handed an
 /// absolute path instead, because `PATH` inside a lease is part of what the
 /// sandbox decides and a check must not depend on the thing it is checking.
-const TRANSPORT_PATHS = [_][]const u8{ "/usr/bin/curl", "/bin/curl" };
+const SHELL_PATHS = [_][]const u8{ "/bin/sh", "/usr/bin/sh" };
 
-/// The argument the transport is asked for: benign, offline, immediate.
-const VERSION_ARG: [*:0]const u8 = "--version";
+/// A benign, offline command that produces no output.
+const SHELL_COMMAND_ARG: [*:0]const u8 = "-c";
+const SHELL_COMMAND: [*:0]const u8 = "exit 0";
 
-/// What the forked child exits with when `execve` returned instead of replacing
-/// it. 127 is the shell's own "command could not be executed", so a reader
-/// already knows what it means. A transport that legitimately exits 127 would
-/// read as a failed exec — accepted, because no transport does, and the
-/// alternative is a self-pipe this probe deliberately has no allocator for.
-const EXEC_FAILED_EXIT: u8 = 127;
-
-/// The first transport binary present on this host, or null. Null is reported
-/// as its own fault rather than as an untested row: a host with no transport
-/// runs no lease, and "nothing to measure" would be the green-probe/dead-runner
-/// pairing this milestone exists to remove.
+/// The first shell binary present on this host, or null.
 pub fn hostPath(io: std.Io) ?[]const u8 {
-    for (TRANSPORT_PATHS) |p| {
+    for (SHELL_PATHS) |p| {
         std.Io.Dir.accessAbsolute(io, p, .{}) catch continue;
         return p;
     }
     return null;
 }
 
-/// Can this process SPAWN `path`? Graded on the exec, not on the exit code:
-/// what the transport prints is not the probe's business, a usage error still
-/// proves the binary ran, and requiring a particular code would make the check
-/// a hostage to the transport's command-line conventions.
+/// Can this process execute a benign command through the shell at `path`?
 ///
 /// Raw `fork` + `execve` rather than `std.process.spawn`: that helper does
 /// pipe → fork → dup2 → setpgid → execvpe, and inside a lease its extra steps
 /// fail with `AccessDenied` for reasons that have nothing to do with whether
-/// the transport can run — measured, and it made this check report a broken
+/// the shell can run — measured, and it made this check report a broken
 /// sandbox on a working one. A check that cannot tell its own plumbing from the
 /// fault it looks for is worse than no check.
 pub fn execs(path: []const u8) bool {
@@ -72,21 +55,21 @@ pub fn execs(path: []const u8) bool {
         // is multi-threaded and the child holds just this thread.
         //
         // stdout is CLOSED first: the parent's stdout is the pipe carrying the
-        // verdict line, and a transport that printed one word into it would
+        // verdict line, and a shell that printed one word into it would
         // corrupt the very report this check exists to write. stderr goes with
         // it so a usage message cannot reach the daemon's log either.
         _ = std.os.linux.close(1);
         _ = std.os.linux.close(2);
-        const argv = [_:null]?[*:0]const u8{ path_z, VERSION_ARG };
+        const argv = [_:null]?[*:0]const u8{ path_z, SHELL_COMMAND_ARG, SHELL_COMMAND };
         const envp = [_:null]?[*:0]const u8{};
         _ = std.os.linux.execve(path_z, &argv, &envp);
-        std.os.linux.exit(EXEC_FAILED_EXIT);
+        std.os.linux.exit(127);
     }
 
     var status: u32 = 0;
     _ = std.os.linux.wait4(@intCast(forked), &status, 0, null);
     if (!std.posix.W.IFEXITED(status)) return false;
-    return std.posix.W.EXITSTATUS(status) != EXEC_FAILED_EXIT;
+    return std.posix.W.EXITSTATUS(status) == 0;
 }
 
 /// Can the ENGINE's spawn plumbing run `path` from in here? The complement of
@@ -94,43 +77,42 @@ pub fn execs(path: []const u8) bool {
 /// raw `fork`+`execve`, deliberately bypassing `std.process.spawn`'s extra
 /// steps — so it kept passing while every lease died in exactly those steps.
 /// This check drives one spawn through the same NullClaw compat layer the
-/// engine dials its model transport with (all-pipe stdio, pre-fork argv
+/// engine starts subprocess tools with (all-pipe stdio, pre-fork argv
 /// allocation through the process `Io`), so it fails where a lease fails: a
 /// missing `compat.initProcess` leaves the fallback `Io` whose allocator
 /// refuses everything (a synthetic pre-fork `OutOfMemory` the event surface
 /// mislabels `oom_kill`), and a sandbox rule can refuse the spawn's own
 /// plumbing while the naked `execve` still works.
 ///
-/// Graded on the spawn machinery, not the exit code, same as `execs`: any
-/// clean exit proves the engine can spawn its transport here.
+/// The shell must execute the benign command successfully.
 pub fn engineSpawns(path: []const u8) bool {
     if (builtin.os.tag != .linux) return false;
     // Only `Child.init`'s bookkeeping draws on this; the spawn itself
     // allocates through the process `Io` — the very path under test.
     var buf: [512]u8 = undefined;
     var fba = std.heap.FixedBufferAllocator.init(&buf);
-    const argv = [_][]const u8{ path, std.mem.span(VERSION_ARG) };
+    const argv = [_][]const u8{ path, std.mem.span(SHELL_COMMAND_ARG), std.mem.span(SHELL_COMMAND) };
     var child = nullclaw.compat.process.Child.init(&argv, fba.allocator());
     child.stdin_behavior = .Pipe;
     child.stdout_behavior = .Pipe;
     child.stderr_behavior = .Pipe;
     child.spawn() catch return false;
-    // EOF on stdin so a transport that reads it cannot wait on us; stdout and
+    // EOF on stdin so a shell that reads it cannot wait on us; stdout and
     // stderr stay open until `wait` reaps them — closing our read ends early
-    // would SIGPIPE the child mid-`--version` and grade a healthy spawn failed.
+    // would SIGPIPE the child mid-command and grade a healthy spawn failed.
     if (child.stdin) |f| {
         f.close();
         child.stdin = null;
     }
     const term = child.wait() catch return false;
     return switch (term) {
-        .exited => true,
+        .exited => |code| code == 0,
         else => false,
     };
 }
 
-test "every candidate transport path is absolute" {
+test "every candidate shell path is absolute" {
     // The probe is handed this path with `PATH` unresolvable inside the lease,
     // so a relative entry would silently never match.
-    for (TRANSPORT_PATHS) |p| try std.testing.expect(std.fs.path.isAbsolute(p));
+    for (SHELL_PATHS) |p| try std.testing.expect(std.fs.path.isAbsolute(p));
 }

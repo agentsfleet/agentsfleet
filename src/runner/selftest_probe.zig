@@ -48,17 +48,12 @@ pub const RESOLVE_FLAG_PREFIX = "--resolve=";
 /// `host:port` to dial, likewise drawn from the assignment. Absent → untested.
 pub const DIAL_FLAG_PREFIX = "--dial=";
 
-/// Absolute path of the binary the ENGINE's model transport spawns, resolved by
-/// the parent on the host. Absent → untested, never invented: a probe that
-/// guessed a path would report on a transport this host does not have.
+/// Absolute path of the tool shell, resolved by the parent on the host.
+/// Absent → untested, never invented.
 ///
 /// This check exists because the egress check above cannot answer the question.
 /// `endpointAccepts` opens a TCP stream from inside the statically linked
-/// runner and spawns nothing, so it measured the one path in a lease that needs
-/// no executable — and M170 §3 removed the executable trees on the strength of
-/// it, which would have killed every lease at `execvp` before its first model
-/// call. Reachability and executability are different facts; this key is the
-/// second one.
+/// runner and spawns nothing. Shell tools need a separate executability check.
 pub const TRANSPORT_FLAG_PREFIX = "--transport=";
 
 // Operator binds arrive on `child_exec`'s mode-explicit flags — the SAME wire a
@@ -253,8 +248,8 @@ fn homeWritable(io: std.Io, env_map: *const std.process.Environ.Map) bool {
 /// The narrowest check in this probe, and it exists because the widest one
 /// missed it. `CHECK_TRANSPORT` proves the sandbox can EXECUTE the binary the
 /// engine spawns; it never proves the spawn can wire that binary's stdio. The
-/// engine's transport does exactly that — `open("/dev/null", O_RDWR)` on the way
-/// to `curl` — and on a host whose policy layer had `/dev` read-only while
+/// subprocess tools do exactly that — `open("/dev/null", O_RDWR)` — and on a
+/// host whose policy layer had `/dev` read-only while
 /// bwrap's `--dev` had it writable, every lease died there at zero tokens with
 /// six checks green.
 ///
