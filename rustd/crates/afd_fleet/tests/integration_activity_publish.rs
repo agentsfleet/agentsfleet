@@ -38,6 +38,7 @@ use afd_core::event::label;
 use afd_core::id::Uuid7;
 use afd_fleet::lease::Ended;
 use afd_fleet::lease::admit::Refusal;
+use afd_observability::test_util::Capture;
 use afd_wire::activity::{ActivityFrame, FleetResponseChunk};
 
 use self::report_seed::held;
@@ -45,6 +46,89 @@ use self::report_seed::held;
 /// The text the forwarded frame carries. Never read back — the queue it would
 /// have gone to is not answering, which is the point.
 const CHUNK_TEXT: &str = "the fleet said this into a queue that is not there";
+
+/// The four closed stages share one histogram family.
+const DELIVERY_STAGE: &str = "agentsfleet_fleet_delivery_stage_seconds";
+
+/// An active lease's first marked frame records all three receipt/runtime stages.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_first_chunk_records_active_lease_stages() {
+    let capture = Capture::install();
+    let run = held().await;
+    let now = afd_core::clock::now().as_millis();
+    let mut connection = run
+        .fixtures
+        .database
+        .acquire()
+        .await
+        .expect("database connection");
+    sqlx::query(
+        "UPDATE fleet.runner_leases
+         SET created_at = $2, event_created_at = $3, lease_expires_at = $4
+         WHERE id = $1::uuid",
+    )
+    .bind(run.issued.lease_id.as_str())
+    .bind(now - 100)
+    .bind(now - 200)
+    .bind(now + 60_000)
+    .execute(&mut *connection)
+    .await
+    .expect("lease timings are current");
+    drop(connection);
+
+    let stages = [
+        "lease_to_first_chunk",
+        "event_to_first_chunk",
+        "zombie_to_first_chunk",
+    ];
+    let before: Vec<_> = stages
+        .iter()
+        .map(|stage| capture.histogram_count(DELIVERY_STAGE, &[("stage", stage)]))
+        .collect();
+    run.fixtures
+        .plane()
+        .activity(&run.runner, run.issued.lease_id.as_str(), &[chunk()])
+        .await
+        .expect("active holder's frame is accepted");
+    for (stage, baseline) in stages.into_iter().zip(before.iter()) {
+        assert_eq!(
+            capture.histogram_count(DELIVERY_STAGE, &[("stage", stage)]),
+            *baseline + 1,
+            "the active lease records exactly one {stage} sample"
+        );
+    }
+    let expired = held().await;
+    let target = expired
+        .leases
+        .load_activity_target(expired.issued.lease_id.as_str(), &expired.runner)
+        .await
+        .expect("the target lookup succeeds")
+        .expect("the held lease exists");
+    assert!(
+        !target.timing_eligible,
+        "the fixture lease is already expired"
+    );
+    expired
+        .fixtures
+        .plane()
+        .activity(
+            &expired.runner,
+            expired.issued.lease_id.as_str(),
+            &[chunk()],
+        )
+        .await
+        .expect("an expired holder can still publish a cosmetic frame");
+    for (stage, baseline) in stages.into_iter().zip(before) {
+        assert_eq!(
+            capture.histogram_count(DELIVERY_STAGE, &[("stage", stage)]),
+            baseline + 1,
+            "an expired holder adds no {stage} sample"
+        );
+    }
+    run.fixtures.cleanup().await;
+    expired.fixtures.cleanup().await;
+}
 
 /// Dimension 4.1 (failure mode) — an unreachable queue does not fail the verb.
 ///
@@ -129,7 +213,7 @@ async fn test_bracket_publish_redis_down_does_not_fail_the_closing() {
 
     // Returns, rather than erroring or hanging: the queue is asked once and its
     // refusal is accounted in the log, not on the verb.
-    plane.leases.publish_completion(&closed).await;
+    plane.leases.publish_completion(&closed, None).await;
 }
 
 /// Dimension 1.3 — the closing counts the fleet's pending gates, and only
@@ -213,5 +297,10 @@ async fn seed_gate(run: &report_seed::Held, status: &str) {
 fn chunk() -> ActivityFrame<'static> {
     ActivityFrame::FleetResponseChunk(FleetResponseChunk {
         text: Cow::Borrowed(CHUNK_TEXT),
+        text_kind: Some(afd_wire::activity::StreamTextKind::Answer),
+        first_chunk_after_ms: Some(42),
+        stream_start: true,
+        stream_contiguous: true,
+        stream_seq: 0,
     })
 }

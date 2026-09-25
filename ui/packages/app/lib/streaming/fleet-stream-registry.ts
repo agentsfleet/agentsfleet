@@ -12,6 +12,7 @@ import {
   fastBackoffMs,
 } from "./fleet-stream-reconnect";
 import { applyLiveFrame, mergeBackfill, parseLiveFrame } from "./fleet-stream-frames";
+import { dispatchReplyFrame, disposeReplyStreams, markReplyGap, settleRepliesFromBackfill } from "./fleet-stream-reply-registry";
 import { HEARTBEAT_EVENT } from "./stream-recovery-window";
 import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
 import { advanceInstallStep, installStepFromKind } from "./install-steps";
@@ -46,6 +47,15 @@ export {
 const REGISTRY = new Map<string, Entry>();
 
 const IDLE_RELEASE_MS = 30_000;
+const RUNNER_ACTIVITY_KINDS: ReadonlySet<string> = new Set([
+  FRAME_KIND.CHUNK, FRAME_KIND.TOOL_CALL_STARTED,
+  FRAME_KIND.TOOL_CALL_PROGRESS, FRAME_KIND.TOOL_CALL_COMPLETED,
+]);
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
+  AGENTSFLEET_EVENT_STATUS.PROCESSED,
+  AGENTSFLEET_EVENT_STATUS.AGENT_ERROR,
+  AGENTSFLEET_EVENT_STATUS.GATE_BLOCKED,
+]);
 
 // Module-level, not per-entry: a FailedDelivery (and the tempId it stores)
 // deliberately outlives the stream entry, which is torn down after the idle
@@ -122,7 +132,12 @@ function startEventSource(entry: Entry, fleetId: string): void {
     if (needsBackfill) {
       void backfillEntry(entry, fleetId, {
         stillCurrent: () => REGISTRY.get(fleetId) === entry,
-        onPage: (rows) => setEvents(entry, (prev) => mergeBackfill(prev, rows)),
+        onPage: (rows) => {
+          setEvents(entry, (prev) => mergeBackfill(prev, rows));
+          settleRepliesFromBackfill(entry, fleetId, rows,
+            (next, facts) => setEvents(entry, next, facts),
+            () => REGISTRY.get(fleetId) === entry);
+        },
       });
     }
   };
@@ -131,7 +146,7 @@ function startEventSource(entry: Entry, fleetId: string): void {
     const frame = parseLiveFrame(e.data);
     if (!frame) return;
     received();
-    onFrame(entry, frame);
+    onFrame(entry, fleetId, frame);
   };
   // Named frames dispatch only to their matching listener, never onmessage.
   // Keep both paths: the daemon uses message for its no-kind fallback.
@@ -144,7 +159,7 @@ function startEventSource(entry: Entry, fleetId: string): void {
   entry.recoveryWindow.connecting(onTimeout);
 }
 
-function onFrame(entry: Entry, frame: NonNullable<ReturnType<typeof parseLiveFrame>>): void {
+function onFrame(entry: Entry, fleetId: string, frame: NonNullable<ReturnType<typeof parseLiveFrame>>): void {
   // Install frames advance the install step, never the message list. Forking
   // here (rather than inside applyLiveFrame) keeps the chat reducer pure and the
   // two concerns — a long-lived chat timeline vs. a one-shot install beat —
@@ -156,6 +171,13 @@ function onFrame(entry: Entry, frame: NonNullable<ReturnType<typeof parseLiveFra
     });
     return;
   }
+  // Best-effort activity can arrive after the report's durable close. Keep
+  // every late runner frame from mutating the settled answer or tool history.
+  if ("event_id" in frame && RUNNER_ACTIVITY_KINDS.has(frame.kind)
+    && entry.snapshot.events.some((event) => event.id === frame.event_id && TERMINAL_STATUSES.has(event.status))) return;
+  if (dispatchReplyFrame(entry, fleetId, frame,
+    (next, facts) => setEvents(entry, next, facts),
+    () => REGISTRY.get(fleetId) === entry)) return;
   // A completion carries the fleet's status and pending count beside its row;
   // a gate frame carries the count alone and touches no row.
   const facts = factsOf(frame);
@@ -171,6 +193,7 @@ function onFrame(entry: Entry, frame: NonNullable<ReturnType<typeof parseLiveFra
 // the client keeps retrying on an unhurried cadence, so an outage that ends
 // while the operator is reading recovers without them doing anything.
 function onEventSourceError(entry: Entry, fleetId: string): void {
+  markReplyGap(entry);
   entry.eventSource?.close();
   entry.eventSource = null;
   entry.hadConnectionError = true;
@@ -204,6 +227,7 @@ export function retryConnection(fleetId: string): void {
 }
 
 function teardown(entry: Entry, fleetId: string): void {
+  disposeReplyStreams(entry);
   cancelPendingReconnect(entry);
   entry.recoveryWindow.dispose();
   if (entry.idleTimer) clearTimeout(entry.idleTimer);

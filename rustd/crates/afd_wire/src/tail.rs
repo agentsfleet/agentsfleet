@@ -174,6 +174,10 @@ pub enum TailFrame<'a> {
         /// gate paths build on their own hot paths.
         #[serde(flatten)]
         event: Box<TailRow<'a>>,
+        /// Canonical final answer when small enough to ride the live frame.
+        /// Older publishers omit it; clients then read the event detail.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        final_reply: Option<Cow<'a, str>>,
         /// The fleet's lifecycle status after the run.
         fleet_status: Cow<'a, str>,
         /// How many approvals wait on the fleet after the run.

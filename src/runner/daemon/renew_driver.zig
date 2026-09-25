@@ -83,6 +83,9 @@ pub fn RenewDriver(comptime Client: type) type {
         runner_token: []const u8,
         lease_id: []const u8,
         deadline_ms: i64,
+        /// Activity flushes wake the supervisor more often than renewal needs.
+        /// Keep the original renewal retry cadence independent of those wakes.
+        next_attempt_ms: i64 = std.math.minInt(i64),
         /// Read/write bound for each `/renew` call (config-resolved; the
         /// relation to the renewal window is enforced at config load).
         renew_deadline_ms: u31,
@@ -118,6 +121,8 @@ pub fn RenewDriver(comptime Client: type) type {
             // Equivalent to `deadline_ms - now_ms > WINDOW` but overflow-safe: a
             // garbage/extreme deadline from the wire must not panic the tick loop.
             if (self.deadline_ms > now_ms +| constants.RENEWAL_WINDOW_MS) return .keep;
+            if (now_ms < self.next_attempt_ms) return .keep;
+            self.next_attempt_ms = now_ms +| constants.RENEWAL_TICK_MS;
             const res = self.cp.renew(self.alloc, self.runner_token, self.lease_id, renewRequestFrom(usage), self.renew_deadline_ms) catch |err| {
                 log.warn("renew_failed_retry", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .lease_id = self.lease_id, .err = @errorName(err) });
                 return .keep;

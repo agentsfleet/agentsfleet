@@ -66,7 +66,7 @@ export function useFleetThreadEntries(
 
       return entry.kind === ENTRY_KIND.SINGLE
         && entry.event.role !== "assistant"
-        && entry.event.reply.trim().length > 0
+        && (entry.event.reply.trim().length > 0 || (entry.event.reasoning?.length ?? 0) > 0)
         ? withRenderKind(message, RENDER_KIND.TRIGGER)
         : message;
     },
@@ -79,7 +79,7 @@ function expandEntry(entry: ThreadEntry): FleetThreadEntry[] {
   if (entry.kind === ENTRY_KIND.GROUP) return [entry];
 
   const { event } = entry;
-  if (event.role === "assistant" || event.reply.trim().length === 0) {
+  if (event.role === "assistant" || (event.reply.trim().length === 0 && (event.reasoning?.length ?? 0) === 0)) {
     return [entry];
   }
 

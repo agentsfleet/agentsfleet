@@ -245,6 +245,7 @@ pub(super) fn completion(event_id: &str) -> Value {
             updated_at: 11,
             cost_nanos: None,
         }),
+        final_reply: None,
         fleet_status: afd_fleet_lifecycle::FleetStatus::Active.as_str().into(),
         pending_approvals: 0,
         counters: Some(FleetCounters {

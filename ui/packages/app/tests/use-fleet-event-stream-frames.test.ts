@@ -89,6 +89,10 @@ describe("useFleetEventStream — conversion and frame edges", () => {
         kind: FRAME_KIND.CHUNK,
         event_id: "evt_orphan",
         text: "partial body without a header frame",
+        text_kind: "answer",
+        stream_seq: 0,
+        stream_start: true,
+        stream_contiguous: true,
       } as LiveFrame);
     });
     await waitFor(() => {

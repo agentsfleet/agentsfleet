@@ -69,30 +69,38 @@ impl Deliver for Scripted {
     }
 }
 
-/// One captured worker event: its name and the `attempts` it carried.
+/// One captured worker event: its name, the turn it belongs to, and the
+/// `attempts` it carried.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Seen {
     pub(super) event: String,
+    pub(super) event_id: Option<String>,
     pub(super) attempts: Option<i64>,
 }
 
-/// Reads the two fields this file asserts on out of one event.
+/// Reads the three fields this file asserts on out of one event.
 #[derive(Default)]
 pub(super) struct Fields {
     event: Option<String>,
+    event_id: Option<String>,
     attempts: Option<i64>,
 }
 
 impl Visit for Fields {
     fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        let unquoted = || format!("{value:?}").trim_matches('"').to_owned();
         if field.name() == FIELD_EVENT {
-            self.event = Some(format!("{value:?}").trim_matches('"').to_owned());
+            self.event = Some(unquoted());
+        } else if field.name() == FIELD_EVENT_ID {
+            self.event_id = Some(unquoted());
         }
     }
 
     fn record_str(&mut self, field: &Field, value: &str) {
         if field.name() == FIELD_EVENT {
             self.event = Some(value.to_owned());
+        } else if field.name() == FIELD_EVENT_ID {
+            self.event_id = Some(value.to_owned());
         }
     }
 
@@ -123,6 +131,18 @@ impl Capture {
             .filter(|seen| seen.event == event)
             .collect()
     }
+
+    /// The named events belonging to ONE turn.
+    ///
+    /// The capture is global to the binary, so `named` alone answers for every
+    /// test that ran beside this one. An assertion that an event did NOT
+    /// happen is only true of the turn it dispatched, and reads this.
+    pub(super) fn named_for(&self, event: &str, event_id: &str) -> Vec<Seen> {
+        self.named(event)
+            .into_iter()
+            .filter(|seen| seen.event_id.as_deref() == Some(event_id))
+            .collect()
+    }
 }
 
 impl<S: tracing::Subscriber> Layer<S> for Capture {
@@ -135,6 +155,7 @@ impl<S: tracing::Subscriber> Layer<S> for Capture {
                 .unwrap_or_else(PoisonError::into_inner)
                 .push(Seen {
                     event,
+                    event_id: fields.event_id,
                     attempts: fields.attempts,
                 });
         }

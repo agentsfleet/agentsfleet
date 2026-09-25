@@ -1142,6 +1142,49 @@
       ],
       "title": "Oldest thing still waiting",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      },
+      "id": 38,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate({__name__=~\"agentsfleet_fleet_delivery_stage_seconds.*\",le!=\"\"}[$__rate_interval])))",
+          "legendFormat": "{{stage}} p95",
+          "refId": "A"
+        }
+      ],
+      "title": "Time to first runner chunk at daemon by stage",
+      "type": "timeseries",
+      "description": "P95 seconds for each fixed stage, ending when the daemon receives the first intact runner chunk. Event stages begin at the producer event timestamp; lease stage begins when the lease row is written; zombie begins immediately before invoking the fleet execution engine. First chunk may contain reasoning or tool syntax. This is not browser first paint. A missing series means no completed stage was observed."
     }
   ],
   "refresh": "30s",

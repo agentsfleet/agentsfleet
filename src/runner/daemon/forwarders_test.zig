@@ -86,17 +86,19 @@ test "the byte cap auto-flushes before the frame cap" {
 
     // ~8 KiB per frame: the 64 KiB byte bound trips well before the 16-frame
     // bound — this is the clause that caps retained memory for chatty frames.
+    // The frame that would cross it ships the batch before it and then leads
+    // the next one, so a flush shows as the count falling back to 1.
     const big_args = "x" ** (8 * 1024);
     var sent: usize = 0;
     while (sent < forwarders.ACTIVITY_BATCH_MAX_FRAMES) : (sent += 1) {
         forwarders.ActivityForwarder.forward(@ptrCast(&fwd), .{
             .tool_call_started = .{ .name = "probe", .args_redacted = big_args },
         });
-        if (fwd.count == 0) break; // the byte cap flushed the batch
+        if (sent > 0 and fwd.count == 1) break; // the byte cap flushed the batch
     }
     try testing.expect(sent + 1 < forwarders.ACTIVITY_BATCH_MAX_FRAMES);
-    try testing.expectEqual(@as(usize, 0), fwd.count);
-    try testing.expectEqual(@as(usize, 0), fwd.buf.items.len);
+    try testing.expectEqual(@as(usize, 1), fwd.count);
+    try testing.expect(fwd.buf.items.len < 2 * big_args.len); // one frame, not two
 }
 
 test "flushIfStale ships a buffered frame once the window passes" {

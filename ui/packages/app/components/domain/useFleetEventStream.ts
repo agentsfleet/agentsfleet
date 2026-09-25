@@ -17,6 +17,13 @@ import {
 } from "@/lib/streaming/fleet-stream-registry";
 import type { FleetEvent, FleetEventStatus } from "@/lib/streaming/fleet-stream-row";
 import type { InstallStepId } from "@/lib/streaming/install-steps";
+import { setEventDetailReader } from "@/lib/streaming/fleet-stream-reply-registry";
+import { getFleetEventAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
+
+// The chat is the only surface that shows reply text, so it installs the read
+// a reply uses when its stream lost the final words. The wrapper resolves the
+// action at call time, the way the registry's own import used to.
+setEventDetailReader((workspaceId, fleetId, eventId) => getFleetEventAction(workspaceId, fleetId, eventId));
 
 // Public re-exports so existing consumers keep their import surface.
 export {
@@ -133,9 +140,14 @@ function convertEvent(event: FleetEvent): ThreadMessageLike {
         actor: event.actor,
         requestJson: event.custom?.requestJson,
         status: event.status,
+        queued: event.clientTimestamp === true,
+        submittedAtMs: event.submittedAtMs,
         // The fleet's reply on this same durable row, and the sentence to show
         // in its place when the reply is empty (still working, blocked, failed).
         reply: event.reply,
+        reasoning: event.reasoning,
+        thinking: event.thinking,
+        replyRecovering: event.replyRecovering,
         outcome: event.outcome,
         // The failure CLASS, not the sentence — the renderer picks remediation
         // guidance off it (a sentence cannot be matched against reliably).

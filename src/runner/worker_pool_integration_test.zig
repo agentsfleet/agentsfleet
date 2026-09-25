@@ -182,7 +182,7 @@ test "worker pool runs N leases concurrently and reports them all, then drains c
     // The pool borrows the one process scheduler, owned here as main.zig owns it.
     var deadlines: dts.TestScheduler = .{};
     defer deadlines.deinit();
-    var pool = try worker_pool.spawn(io, alloc, try deadlines.start(alloc), cfg, &env_map, &applied, &stop, &drain);
+    var pool = try worker_pool.spawn(io, alloc, try deadlines.start(alloc), cfg, &env_map, &applied, &stop, &drain, null);
 
     // Wait for all N reports (the pool executed and reported N leases), bounded.
     var waited: u64 = 0;

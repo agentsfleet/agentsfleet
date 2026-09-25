@@ -131,8 +131,8 @@ test "the scratch check passes in an unmodified sandbox" {
 
 test "the daemon's credentials are unreachable inside a real lease sandbox" {
     // M170 §3's SURVIVING claim, pinned. The executable trees came back — the
-    // engine's model transport spawns `curl`, so a lease without `/usr` and
-    // `/lib` dies at execvp before its first model call — but the two trees
+    // shell tools still need `/usr` and `/lib` for dynamically linked
+    // executables, but the two trees
     // that carried CREDENTIALS stayed out, and that was always the real
     // exposure: `/opt` holds the daemon's control-plane token in its `.env`,
     // `/etc` holds the host account database. Neither has a lease-side
@@ -255,13 +255,8 @@ test "test_probe_reports_deny_all_as_expected" {
         }
     }
     try std.testing.expect(saw_resolver);
-    // A correctly configured deny_all runner is HEALTHY, not merely tolerated —
-    // on a host that HAS the transport the engine spawns. Where there is none
-    // (the kernel-lane image ships no `curl`) the transport row is CORRECTLY
-    // red: no lease on that host could reach a model, and `allOk` papering over
-    // it would be the green-probe/dead-runner reading this milestone removes.
-    // Gated rather than dropped, so the strong claim still runs wherever a
-    // transport exists — including the deploy target and any Debian-family CI.
+    // A correctly configured deny_all runner is healthy when the tool shell
+    // remains executable under the same sandbox rules used by a lease.
     if (selftest.transportPath(io) != null) try std.testing.expect(r.allOk());
 }
 

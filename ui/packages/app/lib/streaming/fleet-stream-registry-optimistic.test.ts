@@ -2,10 +2,24 @@ import { describe, expect, it, vi } from "vitest";
 import { appendOptimistic, discardOptimistic, getSnapshot, markOptimisticFailed, reconcileOptimistic, reconcileServerRows, subscribe } from "./fleet-stream-registry";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { setupRegistryTests, row, WS, Z_A, NO_SEED, IDLE_RELEASE_MS, sourceAt } from "@/tests/helpers/fleet-stream-registry-fixtures";
+import { optimisticRow, reconcileRows } from "./fleet-stream-optimistic";
 
 setupRegistryTests();
 
 describe("fleet-stream-registry — optimistic mutations", () => {
+  it("keeps a server trigger while carrying local submit timing through a raced reconciliation", () => {
+    const temp = optimisticRow("temp", "local trigger", "steer:operator");
+    const server = { ...temp, id: "real", text: "server trigger", status: "received" as const };
+    const reconciled = reconcileRows([temp, server], "temp", "real");
+    expect(reconciled.events).toHaveLength(1);
+    expect(reconciled.events[0]).toMatchObject({ text: "server trigger", submittedAtMs: temp.submittedAtMs });
+  });
+
+  it("leaves an already present server row alone when the optimistic row has gone", () => {
+    const server = { ...optimisticRow("real", "server trigger", "steer:operator"), status: "received" as const };
+    const reconciled = reconcileRows([server], "missing", "real");
+    expect(reconciled.events).toEqual([server]);
+  });
   it("appendOptimistic adds a 'optimistic' row and returns a tempId", () => {
     const a = subscribe(WS, Z_A, NO_SEED, () => {});
     const tempId = appendOptimistic(Z_A, "deploy canary", "steer:k@e2e.com");

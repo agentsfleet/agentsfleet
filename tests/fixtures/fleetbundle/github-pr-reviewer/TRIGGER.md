@@ -15,6 +15,8 @@ x-agentsfleet:
         - agentsfleet/linkwarden
   tools:
     - http_request
+    - memory_store
+    - memory_recall
   credentials:
     - github
   # Repository EGRESS binding — which repositories this fleet's minted token may

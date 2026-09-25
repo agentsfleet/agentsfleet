@@ -46,7 +46,7 @@ const POISONED: &str = "the captured sums lock was poisoned";
 /// One series: a family and its label pairs, sorted so the spelling is one.
 type Series = (String, Vec<(String, String)>);
 
-/// The last export's `u64` sums, every family, every series.
+/// The last export's `u64` sums and histogram counts, every series.
 #[derive(Debug, Default)]
 struct Captured {
     latest: Mutex<BTreeMap<Series, u64>>,
@@ -79,17 +79,25 @@ impl PushMetricExporter for CapturingExporter {
 }
 
 impl CapturingExporter {
-    /// Take every `u64` sum out of one export batch.
+    /// Take every `u64` sum and `f64` histogram count out of one export batch.
     fn capture(&self, metrics: &ResourceMetrics) -> OTelSdkResult {
         let mut captured = BTreeMap::new();
         for scope in metrics.scope_metrics() {
             for metric in scope.metrics() {
-                let AggregatedMetrics::U64(MetricData::Sum(sum)) = metric.data() else {
-                    continue;
+                let points: Vec<_> = match metric.data() {
+                    AggregatedMetrics::U64(MetricData::Sum(sum)) => sum
+                        .data_points()
+                        .map(|point| (point.attributes().collect::<Vec<_>>(), point.value()))
+                        .collect(),
+                    AggregatedMetrics::F64(MetricData::Histogram(histogram)) => histogram
+                        .data_points()
+                        .map(|point| (point.attributes().collect::<Vec<_>>(), point.count()))
+                        .collect(),
+                    _ => continue,
                 };
-                for point in sum.data_points() {
-                    let mut labels: Vec<(String, String)> = point
-                        .attributes()
+                for (attributes, value) in points {
+                    let mut labels: Vec<(String, String)> = attributes
+                        .into_iter()
                         .map(|attribute| {
                             (
                                 attribute.key.as_str().to_owned(),
@@ -98,7 +106,7 @@ impl CapturingExporter {
                         })
                         .collect();
                     labels.sort();
-                    captured.insert((metric.name().to_owned(), labels), point.value());
+                    captured.insert((metric.name().to_owned(), labels), value);
                 }
             }
         }
@@ -201,5 +209,11 @@ impl Capture {
             .get(&(family.to_owned(), wanted))
             .copied()
             .unwrap_or_default()
+    }
+
+    /// The running observation count of one histogram series.
+    #[must_use]
+    pub fn histogram_count(&self, family: &str, labels: &[(&str, &str)]) -> u64 {
+        self.sum(family, labels)
     }
 }

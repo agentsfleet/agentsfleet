@@ -228,6 +228,7 @@ function applyEventComplete(
     // and moves without a read.
     createdAt: createdAt === null ? existing.createdAt : new Date(createdAt),
     clientTimestamp: createdAt === null ? existing.clientTimestamp : false,
+    thinking: false,
     tokens: figure(frame.tokens),
     wallMs: figure(frame.wall_ms),
     costNanos: figure(frame.cost_nanos),
@@ -302,6 +303,8 @@ export function mergeBackfill(
       ...reconciled,
       text: reconciled.text.length > 0 ? reconciled.text : e.text,
       reply: reconciled.reply.length > 0 ? reconciled.reply : e.reply,
+      reasoning: e.reasoning,
+      thinking: false,
       custom: reconciled.text.length > 0 ? reconciled.custom : e.custom,
     };
     return e.tools ? { ...withBodies, tools: e.tools } : withBodies;

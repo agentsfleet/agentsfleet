@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { type EventRow, type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import type { FleetRunSummary } from "@/lib/events/run-summary";
@@ -83,7 +83,7 @@ afterEach(() => {
 });
 
 describe("useFleetRunSummary — what a streaming reply costs the strip", () => {
-  it.each(WORKLOADS)("%i chunks cost zero strip renders and one completion costs one", (chunks) => {
+  it.each(WORKLOADS)("%i chunks cost zero strip renders and one completion costs one", async (chunks) => {
     render(React.createElement(Harness));
     emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*", created_at: SEED_AT + 1 });
     const settled = renders;
@@ -102,7 +102,7 @@ describe("useFleetRunSummary — what a streaming reply costs the strip", () => 
       fleet_status: "active",
       pending_approvals: 0,
     });
-    expect(renders).toBe(settled + 1);
+    await waitFor(() => expect(renders).toBe(settled + 1));
     expect(seen?.latest).toMatchObject({ tokens: 1200 });
     expect(refreshMock).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();

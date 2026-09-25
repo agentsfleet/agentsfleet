@@ -15,6 +15,7 @@ test {
     _ = @import("common/sync.zig");
     _ = @import("common/env.zig");
     _ = @import("common/backoff.zig");
+    _ = @import("common/retry.zig");
     _ = @import("common/rss.zig");
     _ = @import("http_pin/http_pin.zig");
 }

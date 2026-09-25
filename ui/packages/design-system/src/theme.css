@@ -124,6 +124,7 @@
   --color-text-chat: var(--text-chat);
   --color-text-muted: var(--text-muted);
   --color-text-subtle: var(--text-subtle);
+  --color-text-dim: var(--text-dim);
 
   /* Text scale — extras beyond Tailwind's defaults; consumers can write
    * `text-display-xl`, `text-eyebrow`, `text-mono`, etc. */

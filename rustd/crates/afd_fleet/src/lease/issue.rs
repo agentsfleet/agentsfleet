@@ -20,6 +20,8 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_observability::metrics::label::fleet::DeliveryStage;
+use afd_observability::producers;
 
 use crate::error::{Result, query};
 use crate::lease::envelope::{Acquired, Kind};
@@ -108,6 +110,14 @@ impl Leases {
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT_ISSUE))?;
+
+        let elapsed = afd_core::clock::now().saturating_millis_since(acquired.event_created_at);
+        if let Ok(millis) = u64::try_from(elapsed) {
+            producers::fleet::delivery_stage(
+                DeliveryStage::EventToLease,
+                core::time::Duration::from_millis(millis),
+            );
+        }
 
         // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
         // scores the dead copy.

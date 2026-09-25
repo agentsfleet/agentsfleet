@@ -186,6 +186,7 @@ export const OUTCOME = {
 } as const;
 
 const CAUSE_SEPARATOR = " — ";
+const UNFINISHED_REPLY_SENTENCE = "This fleet couldn’t complete the reply.";
 
 /**
  * What to say about an event from the fields every read carries. Never empty —
@@ -198,8 +199,11 @@ export function outcomeFor(
 ): string {
   if (row.status === EVENT_STATUS.RECEIVED) return OUTCOME.WORKING;
   if (row.failure_label) {
-    const sentence = failureSentenceFor(row.failure_label);
+    // A runner failure may follow completed tool actions. The raw detail belongs
+    // in diagnostics, not in a user-facing sentence or a blind retry prompt.
+    if (row.failure_label === "runner_crash") return UNFINISHED_REPLY_SENTENCE;
     const detail = (row.failure_detail ?? "").trim();
+    const sentence = failureSentenceFor(row.failure_label);
     // A detail that merely restates the sentence would read twice; only a
     // distinct cause earns the second clause.
     if (detail.length > 0 && detail !== sentence) return `${sentence}${CAUSE_SEPARATOR}${detail}`;

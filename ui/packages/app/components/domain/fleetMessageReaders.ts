@@ -52,6 +52,28 @@ export function readReply(message: MessageState): string {
   return typeof raw === "string" ? raw : "";
 }
 
+export function readReasoning(message: MessageState): string {
+  const raw = message.metadata.custom["reasoning"];
+  return typeof raw === "string" ? raw : "";
+}
+
+export function readThinking(message: MessageState): boolean {
+  return message.metadata.custom["thinking"] === true;
+}
+
+export function readReplyRecovering(message: MessageState): boolean {
+  return message.metadata.custom["replyRecovering"] === true;
+}
+
+export function readSubmittedAtMs(message: MessageState): number | null {
+  const raw = message.metadata.custom["submittedAtMs"];
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+}
+
+export function readQueued(message: MessageState): boolean {
+  return message.metadata.custom["queued"] === true;
+}
+
 export function readOutcome(message: MessageState): string {
   const raw = message.metadata.custom["outcome"];
   return typeof raw === "string" ? raw : "";

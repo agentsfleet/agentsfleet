@@ -1,6 +1,6 @@
 # Playbook — CI Zig Base Images
 
-**Updated:** May 07, 2026
+**Updated:** Sep 25, 2026
 **Owner:** Agent (build), Human (one-time GHCR auth)
 **Prerequisite:** `gh auth login` with `write:packages`, Docker Desktop or `docker-buildx-plugin`.
 
@@ -15,7 +15,9 @@ The three images this playbook publishes are:
 | `ghcr.io/agentsfleet/ci-zig-alpine`             | amd64 + arm64     | `release.yml` (both runner build jobs), `deploy-dev-build.yml` |
 | `ghcr.io/agentsfleet/ci-zig-ubuntu`             | amd64             | `bench.yml` |
 
-**Current revision: `r4`** — both images carry `bubblewrap`. The runner spawns
+**Current Alpine revision: `r6`** — it adds static libcurl for the runner's
+in-process provider streams and reuses `wget` to fetch its source during the
+image build. Both images carry `bubblewrap`. The runner spawns
 every sandboxed lease through `bwrap`, so an image without it makes each
 real-sandbox proof resolve `error.BwrapUnavailable` and `SkipZigTest` —
 silently, on every run. That is how a sandbox missing `/run/systemd/resolve`
@@ -119,8 +121,8 @@ list) but `ZIG_VERSION` is unchanged, bump the **revision** so consumers can
 pin to the new tag explicitly:
 
 ```bash
-./build_and_push.sh build --revision r4
-# → ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r4  (and the other two)
+./build_and_push.sh build --image alpine --revision r6
+# → ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r6
 ```
 
 A revision bump is only landed once the tag is pushed AND every consumer is
@@ -187,21 +189,21 @@ gone, and `test-integration` died on `unknown shorthand flag: 'd' in -d`. The
 package is named explicitly now, and this check is what proves it stayed.
 Verify a capability the lanes depend on, not merely the toolchain.
 
-For a revisioned publish (e.g. `--revision r4`), substitute
-`"$ZIG_VERSION"-r4` for `"$ZIG_VERSION"` in the tag above.
+For a revisioned Alpine publish, substitute `"$ZIG_VERSION"-r6` for
+`"$ZIG_VERSION"` in the tag above.
 
 `bwrap` needs both halves checked — the binary alone proves nothing, since a
 present-but-unusable `bwrap` still fails every sandbox spawn:
 
 ```bash
 # binary present (alpine and ubuntu only)
-docker run --rm ghcr.io/agentsfleet/ci-zig-alpine:"$ZIG_VERSION"-r4 bwrap --version
+docker run --rm ghcr.io/agentsfleet/ci-zig-alpine:"$ZIG_VERSION"-r6 bwrap --version
 
 # and it can actually unshare — needs --privileged, as the lanes that spawn
 # sandboxes have. Without it Docker's seccomp profile refuses the namespace
 # and this prints "No permissions to creating new namespace".
 docker run --rm --privileged \
-  ghcr.io/agentsfleet/ci-zig-alpine:"$ZIG_VERSION"-r4 \
+  ghcr.io/agentsfleet/ci-zig-alpine:"$ZIG_VERSION"-r6 \
   bwrap --unshare-all --ro-bind / / -- /bin/busybox echo SANDBOX_OK
 ```
 

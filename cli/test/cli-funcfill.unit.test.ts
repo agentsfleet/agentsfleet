@@ -13,11 +13,13 @@
 // each branch is pinned rather than left to whatever the parser defaults to.
 
 import { describe, test, expect } from "bun:test";
+import { Effect } from "effect";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { runCli } from "../src/cli.ts";
 import { EXIT_CODE } from "../src/errors/index.ts";
+import { CommandExitCode, makeCommandExitCode, withManagedExitCode } from "../src/runtime/exit-code.service.ts";
 import { bufferStream, makeNoop, cliEnv, withAuthedStateDir, withFreshStateDir } from "./helpers-cli-state.ts";
 
 const VALID_ID = "01900000-0000-7000-8000-000000000001";
@@ -136,4 +138,14 @@ describe("runCli exit-code mapping", () => {
       expect(typeof code).toBe("number");
     });
   });
+});
+
+test("managed exit codes stay inside their own CLI invocation", async () => {
+  const first = makeCommandExitCode();
+  const second = makeCommandExitCode();
+  await Effect.runPromise(withManagedExitCode(Effect.succeed(7)).pipe(Effect.provide(first.layer)));
+  const stored = await Effect.runPromise(CommandExitCode.pipe(Effect.flatMap((holder) => holder.get), Effect.provide(first.layer)));
+  expect(stored).toBe(7);
+  expect(first.read()).toBe(7);
+  expect(second.read()).toBe(0);
 });
