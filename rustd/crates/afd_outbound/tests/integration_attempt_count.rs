@@ -113,6 +113,10 @@ const EVENT_ABANDON_FAILED: &str = "outbound_obligation_abandon_failed";
 const FIELD_ATTEMPTS: &str = "attempts";
 /// The field an event is named by.
 const FIELD_EVENT: &str = "event";
+/// The field naming the turn an event belongs to. One global capture serves
+/// every test in this binary, so an assertion that nothing happened has to say
+/// nothing happened TO ITS OWN TURN — a sibling's delivery is not this one's.
+const FIELD_EVENT_ID: &str = "agentsfleet_event_id";
 
 /// How long after the fixture instant the graded delivery cycle starts.
 ///
