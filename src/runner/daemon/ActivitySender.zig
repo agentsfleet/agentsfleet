@@ -33,6 +33,16 @@ pub const SEND_DEADLINE_CAP_MS: u31 = 1_000;
 pub const DRAIN_BEFORE_REPORT_MS: u32 = SEND_DEADLINE_CAP_MS;
 const DRAIN_POLL_NS: u64 = 2 * std.time.ns_per_ms;
 
+/// How long the report may wait for live activity on a lease that expires at
+/// `lease_deadline_ms`. Never into the renewal window: a lease that close to
+/// expiry has missed renewals, and a reclaim during the wait would refuse the
+/// finished run's report. Wall-clock, like the lease deadline it reads.
+pub fn drainBudgetMs(lease_deadline_ms: i64, now_ms: i64) u32 {
+    const spare_ms = lease_deadline_ms -| now_ms -| common.RENEWAL_WINDOW_MS;
+    if (spare_ms <= 0) return 0;
+    return @intCast(@min(spare_ms, DRAIN_BEFORE_REPORT_MS));
+}
+
 /// Owns the ring. Claimed in `start`, released in `finish`, both on the
 /// caller's thread; the sender thread never allocates from it.
 alloc: std.mem.Allocator,
