@@ -21,8 +21,9 @@ import { setEventDetailReader } from "@/lib/streaming/fleet-stream-reply-registr
 import { getFleetEventAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
 
 // The chat is the only surface that shows reply text, so it installs the read
-// a reply uses when its stream lost the final words.
-setEventDetailReader(getFleetEventAction);
+// a reply uses when its stream lost the final words. The wrapper resolves the
+// action at call time, the way the registry's own import used to.
+setEventDetailReader((workspaceId, fleetId, eventId) => getFleetEventAction(workspaceId, fleetId, eventId));
 
 // Public re-exports so existing consumers keep their import surface.
 export {
