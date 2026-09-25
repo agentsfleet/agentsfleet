@@ -35,9 +35,12 @@ RUN test -n "$ZIG_VERSION" \
 # set ship (M167). Alpine's bwrap is only the test harness; production sandboxes
 # run the Debian binary from /Dockerfile.
 RUN apk add --no-cache \
+    build-base \
     git \
     openssl-dev \
     openssl-libs-static \
+    zlib-dev \
+    zlib-static \
     ca-certificates \
     xz \
     binutils \
@@ -46,6 +49,27 @@ RUN apk add --no-cache \
     make \
     bash \
     bubblewrap
+
+# agentsfleet-runner links libcurl into its static musl binary. Alpine's
+# curl-static archive pulls GCC-LTO optional libraries that Zig cannot link,
+# so build a small non-LTO HTTPS/proxy archive from a checksum-pinned release.
+RUN set -eu; \
+    wget -q -T 20 -t 1 -O /tmp/curl.tar.xz https://curl.se/download/curl-8.22.0.tar.xz; \
+    echo 'f7ef3ae8a22e521f289803fe93543eb64c329b58aa73a9e224dfd915a2a5f4f7  /tmp/curl.tar.xz' | sha256sum -c -; \
+    tar -xf /tmp/curl.tar.xz -C /tmp; \
+    cd /tmp/curl-8.22.0; \
+    CFLAGS='-Os -fno-lto -ffunction-sections -fdata-sections' ./configure \
+      --disable-shared --enable-static --with-openssl --without-libpsl \
+      --without-brotli --without-zstd --without-libidn2 --without-nghttp2 \
+      --without-libssh2 --disable-ldap --disable-ldaps --disable-ftp \
+      --disable-rtsp --disable-telnet --disable-tftp --disable-smb \
+      --disable-smtp --disable-pop3 --disable-imap --disable-gopher \
+      --disable-mqtt --disable-dict --disable-file --disable-manual \
+      --prefix=/opt/curl-min >/tmp/curl-configure.log; \
+    make -j4 -C lib >/tmp/curl-make.log; \
+    mkdir -p /opt/curl-min/include /opt/curl-min/lib; \
+    cp lib/.libs/libcurl.a /opt/curl-min/lib/libcurl.a; \
+    cp -R include/curl /opt/curl-min/include/curl
 
 # OpenSSL static-link symlinks. The arch-specific GNU triple paths are what
 # the build.zig static-link helper looks for; without these, zig build fails
@@ -80,7 +104,7 @@ RUN set -eux; \
       "https://zigmirror.hryx.net/zig/${tarball}" \
       "https://ziglang.org/download/${ZIG_VERSION}/${tarball}" ; do \
       echo "  fetching $url" ; \
-      if wget -q "$url" -O /tmp/zig.tar.xz \
+      if wget -q -T 20 -t 1 "$url" -O /tmp/zig.tar.xz \
          && echo "${zig_sha}  /tmp/zig.tar.xz" | sha256sum -c - >/dev/null 2>&1 ; then \
         echo "  ✓ verified from $url" ; break ; \
       fi ; \
@@ -96,5 +120,5 @@ RUN set -eux; \
 ENV PATH=/opt/zig:$PATH
 
 LABEL org.opencontainers.image.title="agentsfleet ci-zig-alpine" \
-      org.opencontainers.image.description="Alpine 3.21 + Zig + static OpenSSL ready for agentsfleet CI cross-compile lanes" \
+      org.opencontainers.image.description="Alpine 3.21 + Zig + static OpenSSL and libcurl for agentsfleet CI" \
       org.opencontainers.image.source="https://github.com/agentsfleet/agentsfleet"
