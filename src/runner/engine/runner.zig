@@ -79,6 +79,7 @@ pub fn execute(
     /// wired (tests). Forwarded to the tool bridge for tool-boundary minting.
     cred_channel: ?credential_request.Channel,
 ) types.ExecutionResult {
+    failure_detail.clear();
     const msg = message orelse {
         log.err("invalid_config", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .reason = "missing_message" });
         return .{ .outcome = .{ .failed = .{ .class = .startup_posture, .detail = DETAIL_MISSING_MESSAGE } } };
@@ -247,6 +248,7 @@ pub fn executeInner(
         const sc = adapter.streamCallback();
         fleet.stream_callback = sc.cb;
         fleet.stream_ctx = sc.ctx;
+        fleet.safe_stream_only = true;
         adapter.fleet = &fleet; // usage frames read the cumulative split accessors
     }
 
@@ -261,6 +263,16 @@ pub fn executeInner(
     if (progress_fd != null) adapter.agent_runtime_started_ms = clock.nowMonotonicMillis();
     // True error propagates — `mapError`'s `else` arm yields the same `.runner_crash` class, so only the detail changes.
     const response = fleet.runSingle(composed) catch |err| {
+        if (err == error.NoResponseContent) {
+            failure_detail.recordNoResponse(
+                progress_fd != null,
+                if (progress_fd != null) adapter.first_chunk_sent else false,
+                if (progress_fd != null) adapter.next_stream_seq else 0,
+                if (progress_fd != null) adapter.tool_call_count else 0,
+                fleet.promptTokensUsed(),
+                fleet.completionTokensUsed(),
+            );
+        }
         log.err("fleet_run_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_RUN, .err = @errorName(err) });
         return err;
     };

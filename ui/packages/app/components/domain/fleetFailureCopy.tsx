@@ -7,7 +7,7 @@ import {
   readFailureLabel,
   readOutcome,
 } from "./fleetMessageReaders";
-import { failureSentenceFor } from "@/lib/events/event-summary";
+import { failureSentenceFor, outcomeFor } from "@/lib/events/event-summary";
 
 const STARTUP_FAILURE_TAG = "startup_posture";
 const CHAT_STARTUP_FAILURE_LABEL =
@@ -26,6 +26,10 @@ export const RUNNER_REFUSAL_DETAILS = [
   "the child could not be enrolled in the resource-control domain",
   "sandbox setup aborted before the fleet started",
   "failed to serialize the lease for the child",
+  // `lease_run.zig` DETAIL_BUNDLE_MATERIALIZE. Missing, it fell through to the
+  // needs-instructions sentence and sent an operator to rewrite a fleet whose
+  // instructions were fine — the runner had failed to fetch its bundle.
+  "fleet bundle download or extraction failed before start",
 ] as const;
 
 // Failure copy for the chat surface. Startup-posture failures get concise
@@ -83,6 +87,9 @@ function formatFailureOutcome(
 ): string {
   const embeddedDetail = rawOutcome.split("—").slice(1).join("—").trim();
   const cause = detail ?? (embeddedDetail.length > 0 ? embeddedDetail : null);
+  if (tag === "runner_crash") {
+    return outcomeFor({ status: "fleet_error", failure_label: tag, failure_detail: cause });
+  }
   const sentence = chatFailureSentenceFor(tag, cause);
   // The sentence is classified from the raw cause, but only prose is shown: an
   // internal identifier appended after an em-dash reads as diagnostic detail

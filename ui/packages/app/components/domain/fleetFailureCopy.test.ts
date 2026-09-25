@@ -18,6 +18,7 @@ import {
 const NEEDS_INSTRUCTIONS =
   "This fleet needs instructions before it can respond.";
 const RUNNER_REFUSED = "The runner refused this run before the fleet started.";
+const UNFINISHED_REPLY = "This fleet couldn’t complete the reply.";
 
 function failedEvent(overrides: Partial<FleetEvent> = {}): FleetEvent {
   return {
@@ -38,11 +39,12 @@ function failedEvent(overrides: Partial<FleetEvent> = {}): FleetEvent {
 function failedMessage(
   failureDetail: string | null,
   outcome = "failed",
+  failureLabel = "startup_posture",
 ): MessageState {
   return {
     content: [],
     metadata: {
-      custom: { outcome, failureLabel: "startup_posture", failureDetail },
+      custom: { outcome, failureLabel, failureDetail },
     },
   } as unknown as MessageState;
 }
@@ -125,6 +127,27 @@ describe("fleetFailureCopy — startup_posture sentences", () => {
     ).toBe("Ran out of memory — killed at 2 GiB");
   });
 
+  it("should keep runner details out of the chat outcome", () => {
+    expect(messageOutcome(failedMessage("NoResponseContent", "failed", "runner_crash"))).toBe(UNFINISHED_REPLY);
+    expect(eventOutcome(failedEvent({
+      failureLabel: "runner_crash",
+      failureDetail: "NoResponseContent",
+    }))).toBe(UNFINISHED_REPLY);
+    expect(eventOutcome(failedEvent({
+      failureLabel: "runner_crash",
+      failureDetail: null,
+      outcome: "The runner crashed — NoResponseContent",
+    }))).toBe(UNFINISHED_REPLY);
+    expect(eventOutcome(failedEvent({
+      failureLabel: "runner_crash",
+      failureDetail: "NoResponseContent: empty after retry",
+    }))).toBe(UNFINISHED_REPLY);
+    expect(eventOutcome(failedEvent({
+      failureLabel: "runner_crash",
+      failureDetail: "UnexpectedFault",
+    }))).toBe(UNFINISHED_REPLY);
+  });
+
   // The refusal list is a hand-copy of cause lines the runner emits, in another
   // language, matched by exact string. Nothing but this test connects the two:
   // reword a line on the runner side and every refusal silently reverts to
@@ -153,10 +176,18 @@ describe("fleetFailureCopy — startup_posture sentences", () => {
     // Only the ones emitted under `.startup_posture`. A cause line raised under
     // another class — `landlock_deny`, say — is not a refusal to start and must
     // NOT appear in the chat copy's list.
+    //
+    // Two emission shapes, and the guard must know both. The supervisor raises
+    // through `failedDetailed(alloc, .startup_posture, DETAIL_X)`; the lease
+    // runner refuses BEFORE the fork through `reportStartupFailure(..., DETAIL_X)`,
+    // which hard-codes the class. Scanning only the first is how the bundle
+    // line went missing: the guard passed while the copy was wrong.
     const refusals = new Set<string>();
-    for (const match of all.matchAll(
+    const emissions = [
       /failedDetailed\([^,]+,\s*\.startup_posture,\s*(?:\w+\.)?(DETAIL_\w+)\s*\)/g,
-    )) {
+      /reportStartupFailure\([^;]*?,\s*(DETAIL_\w+)\s*\)/g,
+    ];
+    for (const match of emissions.flatMap((pattern) => [...all.matchAll(pattern)])) {
       const name = match[1];
       if (name === undefined) continue;
       const literal = literals.get(name);

@@ -69,6 +69,7 @@ const NO_RESULT = "No result recorded";
 const NO_REQUEST_CONTEXT = "No request context recorded";
 const REQUEST_CONTEXT_TITLE = "Request context";
 const REQUEST_CONTEXT_OMITTED = "Additional fields not shown";
+const RUNNER_DIAGNOSTIC_TITLE = "Runner diagnostic";
 
 const WARNING_TONE: EventTone = {
   alertVariant: "warning",
@@ -111,11 +112,11 @@ export function EventDetailsDialog({ row, onOpenChange }: EventDetailsDialogProp
 function EventDetails({ row, detail }: { row: EventRow; detail: EventDetail | null }) {
   const response = boundedResponse(detail?.response_text ?? null);
   const failure = row.failure_label ? failurePresentationFor(row.failure_label) : null;
-  // Inspect is where the operator comes for the whole story, so a failure
-  // renders its sentence AND its recorded cause — the console row shows one
-  // line, this shows the stored value.
+  // The chat and result keep a plain sentence; inspect gives operators the
+  // recorded runner cause without presenting it as retry guidance.
   const recordedResult = response || (failure ? outcomeFor(row) : "") || NO_RESULT;
   const result = truncateResult(recordedResult);
+  const runnerDiagnostic = row.failure_label === "runner_crash" ? row.failure_detail?.trim() : null;
   const tone = EVENT_TONES[row.status] ?? WARNING_TONE;
   const diagnostic = formatEventDetailsForCopy(row, detail, result, response);
   const guidance = response ? null : guidanceFor(row.failure_label);
@@ -125,6 +126,7 @@ function EventDetails({ row, detail }: { row: EventRow; detail: EventDetail | nu
       <EventDetailsHeader row={row} result={result} />
       <div className="space-y-lg pt-lg">
         <EventResult result={result} tone={tone} />
+        {runnerDiagnostic ? <RunnerDiagnostic detail={runnerDiagnostic} /> : null}
         <RequestContext row={row} detail={detail} />
         {guidance ? <StartupFix guidance={guidance} hasCause={hasCause(row)} /> : null}
         <DialogFooter className="border-t border-border pt-lg">
@@ -132,6 +134,18 @@ function EventDetails({ row, detail }: { row: EventRow; detail: EventDetail | nu
         </DialogFooter>
       </div>
     </>
+  );
+}
+
+function RunnerDiagnostic({ detail }: { detail: string }) {
+  const titleId = useId();
+  return (
+    <Section aria-labelledby={titleId} className="gap-md">
+      <h3 id={titleId} className="text-label uppercase tracking-label text-muted-foreground">
+        {RUNNER_DIAGNOSTIC_TITLE}
+      </h3>
+      <RequestContextFallback>{detail}</RequestContextFallback>
+    </Section>
   );
 }
 
@@ -303,6 +317,7 @@ function formatEventDetailsForCopy(row: EventRow, detail: EventDetail | null, re
     request_context: detail === null ? null : copiedRequestContext(detail.request_json),
     internal_diagnostics: {
       failure_class: row.failure_label,
+      failure_detail: row.failure_detail,
       checkpoint_id: row.checkpoint_id,
       resumes_event_id: row.resumes_event_id,
     },
