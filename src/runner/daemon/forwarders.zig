@@ -62,23 +62,16 @@ pub const ActivityForwarder = struct {
             .off => return,
             else => {},
         }
-        // Serialize directly into the retained batch buffer. `valueAlloc`
-        // followed by `appendSlice` copied every chunk and allocated a second
-        // buffer on the hottest path; this writer only borrows `buf`'s storage.
-        {
-            var out = std.Io.Writer.Allocating.fromArrayList(self.alloc, &self.buf);
-            defer self.buf = out.toArrayList();
-            const valid_len = out.written().len;
-            if (self.count > 0) out.writer.writeByte(',') catch return;
-            std.json.Stringify.value(frame, .{}, &out.writer) catch {
-                // A half-written frame (including its comma) must not poison
-                // the next batch when this allocation fails.
-                out.shrinkRetainingCapacity(valid_len);
-                return;
-            };
+        const before = self.append(frame) orelse return;
+        if (before > 0 and self.buf.items.len > ACTIVITY_BATCH_MAX_BYTES) {
+            // This frame would carry the batch past what one queued POST may
+            // hold, and the sender refuses an oversized batch whole. Ship the
+            // frames before it, then start the next batch with it.
+            self.buf.shrinkRetainingCapacity(before);
+            self.count -= 1;
+            self.flush();
+            _ = self.append(frame) orelse return;
         }
-        if (self.count == 0) self.first_buffered_ms = clock.nowMillis();
-        self.count += 1;
         var eager = false;
         if (!self.eager_first_frame_done) {
             self.eager_first_frame_done = true;
@@ -94,6 +87,25 @@ pub const ActivityForwarder = struct {
         } else if (eager) {
             self.flushEager();
         }
+    }
+
+    /// Serialize `frame` onto the batch and return the batch length before it,
+    /// or null when allocation failed and the batch is left as it was. Writes
+    /// straight into `buf`, so the hot path makes no second copy of a chunk.
+    fn append(self: *ActivityForwarder, frame: contract.activity.ActivityFrame) ?usize {
+        var out = std.Io.Writer.Allocating.fromArrayList(self.alloc, &self.buf);
+        defer self.buf = out.toArrayList();
+        const valid_len = out.written().len;
+        if (self.count > 0) out.writer.writeByte(',') catch return null;
+        std.json.Stringify.value(frame, .{}, &out.writer) catch {
+            // A half-written frame (including its comma) must not poison
+            // the next batch when this allocation fails.
+            out.shrinkRetainingCapacity(valid_len);
+            return null;
+        };
+        if (self.count == 0) self.first_buffered_ms = clock.nowMillis();
+        self.count += 1;
+        return valid_len;
     }
 
     /// The normal queued path ships immediately without doing network work on
@@ -175,4 +187,5 @@ test {
     _ = @import("forwarders_test.zig");
     _ = @import("forwarders_serialization_test.zig");
     _ = @import("forwarders_memory_test.zig");
+    _ = @import("forwarders_split_test.zig");
 }

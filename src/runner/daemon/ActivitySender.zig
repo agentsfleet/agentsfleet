@@ -84,7 +84,7 @@ pub fn start(self: *ActivitySender) !void {
 /// sequence numbers let the browser detect the missing bytes, and `dropped`
 /// tells the operator it happened.
 pub fn enqueue(self: *ActivitySender, bytes: []const u8) void {
-    if (bytes.len == 0 or bytes.len > MAX_BATCH_BYTES) return;
+    if (bytes.len == 0) return;
     // Claim under the lock, copy OUTSIDE it, publish under it again. The lock
     // is held for a handful of stores either side of a 64 KiB copy, never for
     // the copy itself, so the sender freeing a slot is never made to wait on
@@ -101,7 +101,7 @@ pub fn enqueue(self: *ActivitySender, bytes: []const u8) void {
         self.mutex.unlock();
         return;
     };
-    if (self.closed or self.queued == MAX_QUEUED_BATCHES) {
+    if (self.closed or self.queued == MAX_QUEUED_BATCHES or bytes.len > MAX_BATCH_BYTES) {
         self.dropped +|= 1;
         self.mutex.unlock();
         return;

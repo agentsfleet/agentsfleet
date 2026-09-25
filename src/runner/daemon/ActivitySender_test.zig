@@ -55,9 +55,11 @@ test "a slow send does not block the reader and bounded batches stay ordered" {
     try std.testing.expectEqual(@as(usize, 5), probe.count);
 }
 
-test "an oversized batch never enters the bounded queue" {
+test "an oversized batch never enters the bounded queue and counts as a drop" {
     var deadlines: dts.TestScheduler = .{};
     defer deadlines.deinit();
+    var probe = Probe{};
+    defer probe.release.set();
     var sender = ActivitySender{
         .alloc = std.testing.allocator,
         .io = common.globalIo(),
@@ -66,11 +68,17 @@ test "an oversized batch never enters the bounded queue" {
         .runner_token = "agt_rtest",
         .lease_id = "lease_test",
         .deadline_ms = 5_000,
+        .test_hook = .{ .ctx = &probe, .send = Probe.send },
     };
+    try sender.start();
+    defer sender.finish();
     const oversized = try std.testing.allocator.alloc(u8, ActivitySender.MAX_BATCH_BYTES + 1);
     defer std.testing.allocator.free(oversized);
     sender.enqueue(oversized);
     try std.testing.expectEqual(@as(usize, 0), sender.queued);
+    // Refused whole, like a full queue: the operator's drop total must see it,
+    // or a lost batch leaves no trace anywhere.
+    try std.testing.expectEqual(@as(u32, 1), sender.dropped);
 }
 
 test "two leases send independently when one control plane call stalls" {
