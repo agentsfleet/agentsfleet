@@ -57,7 +57,7 @@ pub const TickFanout = struct {
     }
 
     pub fn hook(self: *TickFanout) child_supervisor.RenewHook {
-        return .{ .ctx = self, .onTick = onTick, .tick_ms = constants.RENEWAL_TICK_MS };
+        return .{ .ctx = self, .onTick = onTick, .tick_ms = @intCast(forwarders.ACTIVITY_FLUSH_WINDOW_MS) };
     }
 };
 
@@ -111,14 +111,14 @@ pub fn executeAndReport(
     // persistent failure (e.g. an unwritable workspace base) hot-spins the
     // worker's poll loop — amplified ×worker_count under the pool.
     const workspace_path = prepareWorkspace(io, &ws_buf, cfg.storage_home, payload.lease_id) orelse {
-        sleepMs(io, constants.backoff.ms(0));
+        clock.sleepMs(io, constants.backoff.ms(0));
         return;
     };
     defer cleanupWorkspace(io, workspace_path);
 
     // Materialize the installed bundle's support files into the workspace before
     // the fork (no-bundle / skill-only leases are a no-op). A hard failure reports
-    // a startup failure and skips execution (retry deferred — spec Failure Modes).
+    // a startup failure and skips execution (transport blips are retried inside).
     if (!materializeBundle(io, alloc, cp, runner_token, cfg, workspace_path, payload)) return;
 
     var forwarder = forwarders.ActivityForwarder{ .alloc = alloc, .cp = cp, .runner_token = runner_token, .lease_id = payload.lease_id, .deadline_ms = cfg.cp_deadlines.activity_ms };
@@ -139,6 +139,7 @@ pub fn executeAndReport(
     const hydrated_memory: []const protocol.MemoryDelta = if (hydrated) |h| h.value.memory else &.{};
 
     var activity_sender = ActivitySender{
+        .alloc = alloc,
         .io = cp.io,
         .sched = cp.sched,
         .base_url = cp.base_url,
@@ -198,7 +199,7 @@ pub fn executeAndReport(
 /// Materialize the leased bundle's support files into `workspace_path` before the
 /// child forks. Returns true to proceed (no bundle, skill-only, or extracted OK);
 /// false after reporting a startup failure (download/extract failed) so the caller
-/// returns without executing. Retry deferred (spec Failure Modes).
+/// returns without executing. The download retries transport blips first.
 fn materializeBundle(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, cfg: Config, workspace_path: []const u8, payload: protocol.LeasePayload) bool {
     const manifest = payload.bundle orelse return true;
     switch (bundle_extract.materialize(io, alloc, cp, runner_token, cfg.storage_home, workspace_path, manifest, cfg.cp_deadlines.default_ms)) {
@@ -252,11 +253,6 @@ pub fn cleanupWorkspace(io: std.Io, path: []const u8) void {
     std.Io.Dir.cwd().deleteTree(io, path) catch |err| {
         log.warn("workspace_cleanup_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .path = path, .err = @errorName(err) });
     };
-}
-
-/// Sleep for `ms` milliseconds.
-fn sleepMs(io: std.Io, ms: u64) void {
-    io.sleep(std.Io.Duration.fromMilliseconds(@intCast(ms)), .awake) catch return;
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────
