@@ -112,9 +112,16 @@ test "Policy.allows: the budget refuses a pause that would end past it" {
     try testing.expect(!POLICY.allows(error.Transient, std.math.maxInt(u32), 0, 0));
 }
 
+/// 2020-01-01T00:00:00Z in epoch milliseconds. Any wall-clock reading is above
+/// it; a monotonic, boot-relative reading is far below it.
+const WALL_CLOCK_FLOOR_MS: u64 = 1_577_836_800_000;
+
 test "RealPacer reads a non-zero clock, a bounded backoff step, and sleeps" {
     const pacer = retry.RealPacer{ .io = std.testing.io };
     try testing.expect(pacer.nowMs() > 0);
+    // The budget is elapsed time, so it must come from the monotonic clock: a
+    // wall clock set back mid-download would let another attempt start late.
+    try testing.expect(pacer.nowMs() < WALL_CLOCK_FLOOR_MS);
     try testing.expect(pacer.delayMs(0) > 0);
     const before = pacer.nowMs();
     pacer.sleepMs(1);

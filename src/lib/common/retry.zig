@@ -35,13 +35,14 @@ pub const Policy = struct {
     }
 };
 
-/// Production pacing: wall time from `clock`, delays from the shared
-/// `backoff`, and a real sleep on `io`.
+/// Production pacing: elapsed time from the monotonic clock, so a wall-clock
+/// step back cannot stretch the budget; delays from the shared `backoff`; and a
+/// real sleep on `io`.
 pub const RealPacer = struct {
     io: std.Io,
 
     pub fn nowMs(_: RealPacer) u64 {
-        return @intCast(@max(0, clock.nowMillis()));
+        return @intCast(@max(0, clock.nowMonotonicMillis()));
     }
 
     pub fn delayMs(_: RealPacer, attempt: u32) u64 {
