@@ -174,13 +174,11 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
       className="mb-md"
     >
       <AccordionItem value={REASONING_VALUE} className="border-0">
-        <AccordionTrigger className="py-xs text-label text-text-subtle hover:no-underline">
+        <AccordionTrigger className="py-xs text-label text-text-dim hover:no-underline">
           {live ? REASONING_LIVE_LABEL : REASONING_LABEL}
         </AccordionTrigger>
         <AccordionContent>
-          <p className="whitespace-pre-wrap text-body-sm leading-prose text-text-subtle">
-            {text}
-          </p>
+          <p className="whitespace-pre-wrap text-body-sm leading-prose text-text-dim">{text}</p>
         </AccordionContent>
       </AccordionItem>
     </Accordion>
