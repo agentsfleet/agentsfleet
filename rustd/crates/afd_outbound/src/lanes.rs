@@ -324,6 +324,16 @@ impl<S: Deliver + 'static> Inner<S> {
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let provider = job.provider.as_str();
         let fleet_id = job.fleet_id.as_str();
-        tracing::debug!(provider, fleet_id, attempts, event = EVENT_DELIVERED);
+        // The turn this answer belongs to. Every other layer stamps it, and a
+        // delivery line that names only the fleet cannot be joined back to the
+        // turn a reader is tracing — nor tell two turns of one fleet apart.
+        let agentsfleet_event_id = job.event_id.as_str();
+        tracing::debug!(
+            provider,
+            fleet_id,
+            agentsfleet_event_id,
+            attempts,
+            event = EVENT_DELIVERED
+        );
     }
 }

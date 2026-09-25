@@ -214,7 +214,7 @@ async fn bookkeeping_failure_does_not_discard_an_answer() {
         capture.events()
     );
     assert!(
-        capture.named(EVENT_DELIVERED).is_empty(),
+        capture.named_for(EVENT_DELIVERED, event).is_empty(),
         "with the stamp refused, no delivered event claims a count"
     );
 }
