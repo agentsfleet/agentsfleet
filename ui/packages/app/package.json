@@ -28,9 +28,6 @@
   },
   "dependencies": {
     "@agentsfleet/design-system": "workspace:*",
-    "@ai-sdk-tool/parser": "5.1.6",
-    "@ai-sdk/provider": "4.0.18",
-    "@ai-sdk/provider-utils": "5.0.47",
     "@assistant-ui/react": "^0.15.22",
     "@clerk/nextjs": "^7.9.6",
     "@clerk/ui": "^1.35.0",
@@ -45,7 +42,6 @@
     "class-variance-authority": "0.7.1",
     "cron-parser": "^5.10.1",
     "effect": "4.0.0-rc.112",
-    "htmlparser2": "12.0.0",
     "lucide-react": "^1.48.0",
     "next": "^16.3.6",
     "posthog-js": "^1.434.12",

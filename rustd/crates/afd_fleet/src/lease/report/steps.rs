@@ -29,6 +29,7 @@ use afd_core::id::Uuid7;
 use afd_dragonfly::EventId;
 use afd_events::Closed;
 use afd_observability::producers;
+use afd_wire::report::ReportRequest;
 
 use crate::error::Result;
 use crate::lease::obligation::Owing;
@@ -53,12 +54,13 @@ impl Plane {
     pub(super) async fn announce(
         &self,
         runner_id: &Uuid7,
-        lease_id: &str,
+        request: &ReportRequest<'_>,
         lease: &Reported,
         closed: Option<Box<Closed>>,
         charged: Nanos,
         now: UnixMillis,
     ) {
+        let lease_id = request.lease_id.as_ref();
         // Hoisted for the `log` bridge's duplicated field expressions.
         let fleet = lease.fleet_id.as_str();
         let event = lease.event_id.as_str();
@@ -78,7 +80,9 @@ impl Plane {
         producers::fleet::runner::lease_released(runner_id.as_str());
 
         if let Some(closed) = closed {
-            self.leases.publish_completion(&closed).await;
+            self.leases
+                .publish_completion(&closed, Some(request.response_text.as_ref()))
+                .await;
         }
         self.acknowledge_entry(lease, lease_id).await;
         step(

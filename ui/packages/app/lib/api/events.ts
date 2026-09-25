@@ -203,7 +203,7 @@ export type ActivityLiveFrame =
       elapsed_ms: number;
     }
 
-  | { kind: typeof FRAME_KIND.CHUNK; event_id: string; text: string; stream_start?: boolean; stream_contiguous?: boolean; stream_seq?: number }
+  | { kind: typeof FRAME_KIND.CHUNK; event_id: string; text: string; text_kind?: StreamTextKind; stream_start?: boolean; stream_contiguous?: boolean; stream_seq?: number }
 
   | {
       kind: typeof FRAME_KIND.TOOL_CALL_COMPLETED;
@@ -223,6 +223,7 @@ export type ActivityLiveFrame =
     > & {
         fleet_status?: string;
         pending_approvals?: number;
+        final_reply?: string;
       } & FleetCountersSnapshot)
   // A human has been asked about one of the fleet's actions; the count is how
   // many answers are owed, this one included.
@@ -273,6 +274,8 @@ export type WorkspaceCatchingUpFrame = {
 };
 
 export type WorkspaceControlFrame = WorkspaceHelloFrame | WorkspaceCatchingUpFrame;
+
+export type StreamTextKind = "answer" | "reasoning";
 
 export type LiveFrame = ActivityLiveFrame | WorkspaceControlFrame;
 

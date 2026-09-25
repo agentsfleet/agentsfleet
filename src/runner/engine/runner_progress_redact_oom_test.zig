@@ -110,7 +110,7 @@ test "stream chunk is dropped (not emitted raw) when redaction OOMs, secret neve
         .secrets = &secrets,
     };
 
-    const chunk = providers.StreamChunk.textDelta("partial answer leaking " ++ SECRET ++ " mid-token");
+    const chunk = providers.StreamChunk.answerDelta("partial answer leaking " ++ SECRET ++ " mid-token");
     const sc = adapter.streamCallback();
     sc.cb(sc.ctx, chunk);
     pipe_proto.testOsClose(fds[1]);
@@ -136,6 +136,20 @@ test "stream chunk is dropped (not emitted raw) when redaction OOMs, secret neve
     try std.testing.expectEqual(@as(u64, 1), adapter.next_stream_seq);
 }
 
+test "untyped provider bytes never enter the live pipe" {
+    const alloc = std.testing.allocator;
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
+    var writer = runner_progress.ProgressWriter{ .fd = fds[1], .alloc = alloc };
+    var adapter = runner_progress.Adapter{ .writer = &writer, .alloc = alloc, .secrets = &.{} };
+    const stream = adapter.streamCallback();
+    stream.cb(stream.ctx, providers.StreamChunk.textDelta("<tool_call>PRIVATE"));
+    pipe_proto.testOsClose(fds[1]);
+    const read = try pipe_proto.readFrame(alloc, fds[0], clock.nowMillis() + 5_000, 1 << 20);
+    try std.testing.expect(read == .eof);
+    try std.testing.expectEqual(@as(u64, 0), adapter.next_stream_seq);
+}
+
 test "a secret split across two stream chunks never reaches the pipe through the live adapter (M100 §1)" {
     const alloc = std.testing.allocator;
     const fds = try pipe_proto.testOsPipe();
@@ -149,8 +163,8 @@ test "a secret split across two stream chunks never reaches the pipe through the
     const sc = adapter.streamCallback();
     // Split the secret across the seam: "sk-live-SUPER" + "SECRET-007 done".
     const cut = 13; // mid-secret
-    sc.cb(sc.ctx, providers.StreamChunk.textDelta("answer " ++ SECRET[0..cut]));
-    sc.cb(sc.ctx, providers.StreamChunk.textDelta(SECRET[cut..] ++ " done"));
+    sc.cb(sc.ctx, providers.StreamChunk.answerDelta("answer " ++ SECRET[0..cut]));
+    sc.cb(sc.ctx, providers.StreamChunk.answerDelta(SECRET[cut..] ++ " done"));
     pipe_proto.testOsClose(fds[1]);
 
     const Seen = struct {
@@ -192,8 +206,8 @@ test "first safe stream chunk alone carries the monotonic runtime duration" {
     defer adapter.deinit(alloc);
 
     const stream = adapter.streamCallback();
-    stream.cb(stream.ctx, providers.StreamChunk.textDelta("first"));
-    stream.cb(stream.ctx, providers.StreamChunk.textDelta("second"));
+    stream.cb(stream.ctx, providers.StreamChunk.answerDelta("first"));
+    stream.cb(stream.ctx, providers.StreamChunk.reasoningDelta("second"));
     pipe_proto.testOsClose(fds[1]);
 
     var seen: usize = 0;
@@ -207,6 +221,7 @@ test "first safe stream chunk alone carries the monotonic runtime duration" {
                 const parsed = try std.json.parseFromSlice(contract.activity.ActivityFrame, alloc, frame.payload, .{});
                 defer parsed.deinit();
                 try std.testing.expect(parsed.value == .fleet_response_chunk);
+                try std.testing.expectEqual(if (seen == 0) contract.activity.ActivityFrame.TextKind.answer else .reasoning, parsed.value.fleet_response_chunk.text_kind);
                 if (seen == 0) {
                     try std.testing.expect(parsed.value.fleet_response_chunk.first_chunk_after_ms.? >= 10);
                     try std.testing.expect(parsed.value.fleet_response_chunk.stream_start);
@@ -239,11 +254,11 @@ test "failed first activity write retains timing but never grants a stream start
     defer adapter.deinit(alloc);
 
     const stream = adapter.streamCallback();
-    stream.cb(stream.ctx, providers.StreamChunk.textDelta("<tool_call>"));
+    stream.cb(stream.ctx, providers.StreamChunk.answerDelta("first"));
     try std.testing.expect(!adapter.first_chunk_sent);
     try std.testing.expect(!adapter.stream_contiguous);
     writer.alloc = alloc;
-    stream.cb(stream.ctx, providers.StreamChunk.textDelta("PRIVATE tool JSON"));
+    stream.cb(stream.ctx, providers.StreamChunk.answerDelta("later answer"));
     pipe_proto.testOsClose(fds[1]);
 
     switch (try pipe_proto.readFrame(alloc, fds[0], clock.nowMillis() + 5_000, 1 << 20)) {
@@ -253,7 +268,7 @@ test "failed first activity write retains timing but never grants a stream start
             const parsed = try std.json.parseFromSlice(contract.activity.ActivityFrame, alloc, frame.payload, .{});
             defer parsed.deinit();
             try std.testing.expect(parsed.value == .fleet_response_chunk);
-            try std.testing.expectEqualStrings("PRIVATE tool JSON", parsed.value.fleet_response_chunk.text);
+            try std.testing.expectEqualStrings("later answer", parsed.value.fleet_response_chunk.text);
             try std.testing.expect(parsed.value.fleet_response_chunk.first_chunk_after_ms.? >= 10);
             try std.testing.expect(!parsed.value.fleet_response_chunk.stream_start);
             try std.testing.expect(!parsed.value.fleet_response_chunk.stream_contiguous);
@@ -274,11 +289,11 @@ test "a dropped middle chunk marks every later stream frame incomplete" {
     defer adapter.deinit(alloc);
 
     const stream = adapter.streamCallback();
-    stream.cb(stream.ctx, providers.StreamChunk.textDelta("safe <think>"));
+    stream.cb(stream.ctx, providers.StreamChunk.answerDelta("safe"));
     writer.alloc = exhausted.allocator();
-    stream.cb(stream.ctx, providers.StreamChunk.textDelta("<tool_call>"));
+    stream.cb(stream.ctx, providers.StreamChunk.answerDelta("dropped"));
     writer.alloc = alloc;
-    stream.cb(stream.ctx, providers.StreamChunk.textDelta("PRIVATE tool JSON"));
+    stream.cb(stream.ctx, providers.StreamChunk.answerDelta("later"));
     pipe_proto.testOsClose(fds[1]);
 
     var seen: usize = 0;

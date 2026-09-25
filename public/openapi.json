@@ -9199,7 +9199,7 @@
           "Fleets"
         ],
         "summary": "Stream live fleet activity",
-        "description": "Opens a Server-Sent Events (SSE) stream for new fleet activity. Each activity message includes `id`, `event`, and `data`. `event` is the `kind` field that leads `data`. The first frame is `event: hello`, sent as soon as the subscription attaches and before any activity. Its `data` is `{\"kind\":\"hello\",\"fleet_ids\":[\"<fleet_id>\"],\"counters\":{}}` — the one fleet this connection carries. It uses identifier 0 and does not advance the activity sequence, so a client may report the stream live without waiting for a heartbeat. An instance holding no pub/sub connection sends no `hello`. The daemon brackets every run. `event_received` carries `event_id`, `actor`, `event_type` and `created_at` when a run's row is written. `event_complete` carries the terminal row as `GET …/events` lists it, without `fleet_id` and `workspace_id`. The completion adds `fleet_status` and `pending_approvals`. `gate_opened` and `gate_resolved` carry `gate_id`, `event_id` and `pending_approvals`. `event_id` is null for a gate raised outside a run. A resolved gate adds `status` and `resolved_by`. The runner's frames ride the same stream: `fleet_response_chunk`, `tool_call_started`, `tool_call_progress` and `tool_call_completed`. Identifiers restart at 0 for each connection. The route ignores `Last-Event-ID`. At capacity, the route returns 503 `UZ-API-002` with `Retry-After`. Read missed events before reconnecting. After 15 seconds without activity, the stream sends `event: heartbeat` with `data: {\"kind\":\"heartbeat\"}`. Heartbeats have no `id` and do not advance the activity sequence. ",
+        "description": "Opens a Server-Sent Events (SSE) stream for new fleet activity. Each activity message includes `id`, `event`, and `data`. `event` is the `kind` field that leads `data`. The first frame is `event: hello`, sent as soon as the subscription attaches and before any activity. Its `data` is `{\"kind\":\"hello\",\"fleet_ids\":[\"<fleet_id>\"],\"counters\":{}}` — the one fleet this connection carries. It uses identifier 0 and does not advance the activity sequence, so a client may report the stream live without waiting for a heartbeat. An instance holding no pub/sub connection sends no `hello`. The daemon brackets every run. `event_received` carries `event_id`, `actor`, `event_type` and `created_at` when a run's row is written. `event_complete` carries the terminal row as `GET …/events` lists it, without `fleet_id` and `workspace_id`. The completion adds `fleet_status` and `pending_approvals`. It also carries `final_reply`, the reply text, when that text is at most 64 KiB. Without it, read the event detail. `gate_opened` and `gate_resolved` carry `gate_id`, `event_id` and `pending_approvals`. `event_id` is null for a gate raised outside a run. A resolved gate adds `status` and `resolved_by`. The runner's frames ride the same stream: `fleet_response_chunk`, `tool_call_started`, `tool_call_progress` and `tool_call_completed`. Identifiers restart at 0 for each connection. The route ignores `Last-Event-ID`. At capacity, the route returns 503 `UZ-API-002` with `Retry-After`. Read missed events before reconnecting. After 15 seconds without activity, the stream sends `event: heartbeat` with `data: {\"kind\":\"heartbeat\"}`. Heartbeats have no `id` and do not advance the activity sequence. ",
         "operationId": "stream_fleet_events",
         "parameters": [
           {
@@ -14011,6 +14011,17 @@
           "text": {
             "type": "string",
             "description": "The text produced."
+          },
+          "text_kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/StreamTextKind",
+                "description": "Absent on older runners; clients use the saved final reply then."
+              }
+            ]
           }
         },
         "additionalProperties": false
@@ -17230,6 +17241,14 @@
             "description": "The name the secret is stored under."
           }
         }
+      },
+      "StreamTextKind": {
+        "type": "string",
+        "description": "Which part of the model's output a streamed chunk carries: the answer, or\nthe model's reasoning before it.",
+        "enum": [
+          "answer",
+          "reasoning"
+        ]
       },
       "TenantProviderRequest": {
         "type": "object",

@@ -39,6 +39,14 @@ use afd_wire::tail::{FleetCounters, TailFrame, TailRow};
 use crate::lease::envelope::Acquired;
 use crate::lease::store::Leases;
 
+const MAX_INLINE_FINAL_REPLY_BYTES: usize = 64 * 1024;
+
+fn inline_final_reply(reply: Option<&str>) -> Option<Cow<'_, str>> {
+    reply
+        .filter(|text| text.len() <= MAX_INLINE_FINAL_REPLY_BYTES)
+        .map(Cow::Borrowed)
+}
+
 impl Leases {
     /// Announce that `acquired`'s narrative log opened at `now`.
     ///
@@ -64,9 +72,10 @@ impl Leases {
     }
 
     /// Announce that a run ended, carrying the row the ending wrote.
-    pub async fn publish_completion(&self, closed: &Closed) {
+    pub async fn publish_completion(&self, closed: &Closed, final_reply: Option<&str>) {
         let frame = TailFrame::EventComplete {
             event: Box::new(TailRow::from(closed.row.summary())),
+            final_reply: inline_final_reply(final_reply),
             fleet_status: Cow::Borrowed(&closed.fleet_status),
             pending_approvals: closed.pending_approvals,
             counters: Some(closed.counters),
@@ -74,5 +83,23 @@ impl Leases {
         self.streams()
             .publish_frame(&closed.row.fleet_id, &frame)
             .await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_INLINE_FINAL_REPLY_BYTES, inline_final_reply};
+
+    #[test]
+    fn inline_answer_accepts_empty_and_exact_limit_but_skips_oversized() {
+        assert_eq!(inline_final_reply(None), None);
+        assert_eq!(inline_final_reply(Some("")), Some("".into()));
+        let at_limit = "a".repeat(MAX_INLINE_FINAL_REPLY_BYTES);
+        assert_eq!(
+            inline_final_reply(Some(&at_limit)).as_deref(),
+            Some(at_limit.as_str())
+        );
+        let over_limit = format!("{at_limit}a");
+        assert_eq!(inline_final_reply(Some(&over_limit)), None);
     }
 }

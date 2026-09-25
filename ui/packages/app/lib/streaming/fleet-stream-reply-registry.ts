@@ -4,7 +4,7 @@ import { getFleetEventAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/ac
 import type { FleetFacts } from "@/lib/events/run-summary";
 import { factsOf } from "./fleet-stream-facts";
 import { applyLiveFrame } from "./fleet-stream-frames";
-import { applyFinalReply, applyReplyDelta, applyReplyRecovery } from "./fleet-stream-reply-frames";
+import { applyFinalReply, applyFinalReplyText, applyReplyDelta, applyReplyRecovery } from "./fleet-stream-reply-frames";
 import type { Entry } from "./fleet-stream-entry";
 import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
 import { ReplyStreamDecoder } from "./reply-stream-decoder";
@@ -23,8 +23,10 @@ export function dispatchReplyFrame(
     if (entry.replyGaps.has(frame.event_id)) return true;
     let decoder = entry.replyStreams.get(frame.event_id);
     const seq = frame.stream_seq;
+    const textKind = frame.text_kind;
     const expected = entry.replyNextSeq.get(frame.event_id);
-    if (!Number.isSafeInteger(seq) || seq === undefined || seq < 0
+    if ((textKind !== "answer" && textKind !== "reasoning")
+      || !Number.isSafeInteger(seq) || seq === undefined || seq < 0
       || frame.stream_contiguous !== true
       || (decoder !== undefined && (frame.stream_start === true || seq !== expected))
       || (decoder === undefined && (frame.stream_start !== true || seq !== 0))) {
@@ -40,27 +42,40 @@ export function dispatchReplyFrame(
       entry.replyStreams.set(frame.event_id, decoder);
     }
     entry.replyNextSeq.set(frame.event_id, seq + 1);
-    decoder.write(frame.text);
+    decoder.write(frame.text, textKind);
     return true;
   }
   if (frame.kind !== FRAME_KIND.EVENT_COMPLETE) return false;
+  const finalReply = typeof frame.final_reply === "string" ? frame.final_reply : null;
+  const settle = (prev: FleetEvent[]) => {
+    const completed = applyLiveFrame(prev, frame);
+    return finalReply === null
+      ? applyReplyRecovery(completed, frame.event_id, false)
+      : applyFinalReplyText(completed, frame.event_id, finalReply);
+  };
   const decoder = entry.replyStreams.get(frame.event_id);
   if (decoder === undefined) {
-    apply((prev) => applyReplyRecovery(applyLiveFrame(prev, frame), frame.event_id, false), factsOf(frame));
-    // The first and only chunk may have been lost before this close marker.
-    entry.replyGaps.add(frame.event_id);
-    recoverFinalReply(entry, fleetId, frame.event_id, apply, isCurrent);
+    apply(settle, factsOf(frame));
+    if (finalReply === null) {
+      // Older publishers and oversized replies still need the saved detail.
+      entry.replyGaps.add(frame.event_id);
+      recoverFinalReply(entry, fleetId, frame.event_id, apply, isCurrent);
+    } else entry.replyGaps.delete(frame.event_id);
     return true;
   }
   entry.replyStreams.delete(frame.event_id);
   entry.replyNextSeq.delete(frame.event_id);
+  // Completion can overtake queued activity. Close this live pass before the
+  // decoder's asynchronous finish so a late chunk cannot open another one.
+  entry.replyGaps.add(frame.event_id);
   const finished = () => {
     if (!isCurrent()) return;
-    apply((prev) => applyReplyRecovery(applyLiveFrame(prev, frame), frame.event_id, false), factsOf(frame));
-    // A missing final chunk has no later sequence number to expose its gap.
-    // Always settle the visible draft from the durable event detail.
-    entry.replyGaps.add(frame.event_id);
-    recoverFinalReply(entry, fleetId, frame.event_id, apply, isCurrent);
+    apply(settle, factsOf(frame));
+    if (finalReply === null) {
+      // A missing final chunk has no later sequence number to expose its gap.
+      entry.replyGaps.add(frame.event_id);
+      recoverFinalReply(entry, fleetId, frame.event_id, apply, isCurrent);
+    } else entry.replyGaps.delete(frame.event_id);
   };
   void decoder.finish().then(finished, finished);
   return true;

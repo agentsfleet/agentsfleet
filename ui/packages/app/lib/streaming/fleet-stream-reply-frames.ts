@@ -41,7 +41,15 @@ export function applyFinalReply(prev: FleetEvent[], detail: EventDetail): FleetE
   const index = prev.findIndex((event) => event.id === detail.event_id);
   const event = prev[index];
   if (event === undefined) return [...prev, rowToEvent(detail)];
+  return applyFinalReplyText(prev, detail.event_id, detail.response_text ?? "");
+}
+
+/** The completion frame carries the same saved answer as the detail route. */
+export function applyFinalReplyText(prev: FleetEvent[], eventId: string, reply: string): FleetEvent[] {
+  const index = prev.findIndex((event) => event.id === eventId);
+  const event = prev[index];
+  if (event === undefined) return prev;
   const next = [...prev];
-  next[index] = { ...event, reply: detail.response_text?.trim() ?? "", thinking: false, replyRecovering: false };
+  next[index] = { ...event, reply: reply.trim(), thinking: false, replyRecovering: false };
   return next;
 }

@@ -11,6 +11,7 @@ const Config = nullclaw.config.Config;
 
 const run_context = @import("run_context.zig");
 const runner = @import("runner.zig");
+const failure_detail = @import("failure_detail.zig");
 const runner_helpers = @import("runner_helpers.zig");
 const wire = @import("wire.zig");
 const pipe_proto = @import("../pipe_proto.zig");
@@ -151,6 +152,76 @@ test "a run failure propagates its own error instead of collapsing to FleetRunFa
     } else |err| {
         try std.testing.expect(err != runner.RunnerError.FleetRunFailed);
     }
+}
+
+fn stubChatNoResponse(_: *anyopaque, _: std.mem.Allocator, _: providers.ChatRequest, _: []const u8, _: f64) anyerror!providers.ChatResponse {
+    return error.NoResponseContent;
+}
+
+const no_response_vtable = providers.Provider.VTable{
+    .chatWithSystem = stubChatWithSystem,
+    .chat = stubChatNoResponse,
+    .supportsNativeTools = stubSupportsNativeTools,
+    .getName = stubGetName,
+    .deinit = stubProviderDeinit,
+};
+
+fn stubAcquireNoResponseProvider(
+    _: std.mem.Allocator,
+    _: *Config,
+    _: *runner_helpers.ProviderBundle,
+) anyerror!providers.Provider {
+    return .{ .ptr = @ptrCast(&stub_provider_state), .vtable = &no_response_vtable };
+}
+
+test "a model's empty response records safe diagnostics in the durable failure detail" {
+    const alloc = std.testing.allocator;
+    failure_detail.clear();
+    var env_map: std.process.Environ.Map = .init(alloc);
+    defer env_map.deinit();
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, STUB_FLEET_CONFIG, .{});
+    defer parsed.deinit();
+
+    const result = runner.executeInner(
+        .{ .acquireProvider = stubAcquireNoResponseProvider },
+        &env_map,
+        alloc,
+        "/tmp/agentsfleet-runctx-no-response-test",
+        parsed.value,
+        null,
+        "private prompt marker",
+        null,
+        null,
+        null,
+        &.{},
+    );
+    try std.testing.expectError(error.NoResponseContent, result);
+
+    const stored = failure_detail.compose(error.NoResponseContent);
+    try std.testing.expect(std.mem.indexOf(u8, stored, "stream_enabled=false") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stored, "completed_tool_calls=0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stored, "private prompt marker") == null);
+
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
+    defer pipe_proto.testOsClose(fds[1]);
+    const streamed_result = runner.executeInner(
+        .{ .acquireProvider = stubAcquireNoResponseProvider },
+        &env_map,
+        alloc,
+        "/tmp/agentsfleet-runctx-no-response-test",
+        parsed.value,
+        null,
+        "private prompt marker",
+        null,
+        null,
+        fds[1],
+        &.{},
+    );
+    try std.testing.expectError(error.NoResponseContent, streamed_result);
+    const streamed_detail = failure_detail.compose(error.NoResponseContent);
+    try std.testing.expect(std.mem.indexOf(u8, streamed_detail, "stream_enabled=true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, streamed_detail, "first_chunk_sent=false") != null);
 }
 
 // ---------------------------------------------------------------------------
