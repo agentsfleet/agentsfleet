@@ -29,6 +29,13 @@
   --text-chat: #efece8;
   --text-muted: #c6d2d5;
   --text-subtle: #acbec4;
+  /* Quieter than `--text-subtle`, for prose a reader is meant to skip: the
+     model's own working-out beside its answer. `--text-subtle` steps down in
+     lightness but holds its chroma, so against the transcript's warm ink it
+     reads as another colour rather than a lower voice. This drops far enough
+     to skim past and still clears WCAG AA (5.4:1 on `--surface-1`) — the text
+     is optional to read, never optional to see. */
+  --text-dim: #7e9198;
   --avatar-saturation: 35%;
   --avatar-lightness: 28%;
 
@@ -156,6 +163,8 @@
   --text-muted: #435d52;
 
   --text-subtle: #4e655b;
+  /* Light's counterpart, held to the same AA floor (4.6:1 on white). */
+  --text-dim: #627a70;
   --avatar-saturation: 35%;
   --avatar-lightness: 80%;
   --pulse: #06695e;

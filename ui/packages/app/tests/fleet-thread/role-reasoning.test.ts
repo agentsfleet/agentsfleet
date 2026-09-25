@@ -67,7 +67,9 @@ describe("FleetThread — reasoning disclosure", () => {
     renderThread();
     fireEvent.click(screen.getByText("Reasoning"));
     const reasoning = screen.getByText("Recalling. Done.");
-    expect(reasoning.className).toContain("text-text-subtle");
+    // `text-dim`, not `text-subtle`: subtle holds its chroma and reads as a
+    // second colour beside the answer; dim is the voice a reader can skip.
+    expect(reasoning.className).toContain("text-text-dim");
     expect(screen.queryByText(/private/)).toBeNull();
     expect(screen.getByText("Remembered.").closest(".text-text-chat")).toBeTruthy();
   });
