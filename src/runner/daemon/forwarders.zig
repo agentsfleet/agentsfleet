@@ -22,9 +22,9 @@ pub const ACTIVITY_BATCH_MAX_FRAMES: usize = 16;
 /// …or this many buffered bytes (caps retained memory for chatty frames)…
 const ACTIVITY_BATCH_MAX_BYTES: usize = ActivitySender.MAX_BATCH_BYTES;
 /// …or when the oldest buffered frame is this stale (live-tail latency budget).
-pub const ACTIVITY_FLUSH_WINDOW_MS: i64 = 1_000;
-/// Deadline cap for the one-shot eager ships — pinned to the staleness window
-/// so an eager POST can never block the read loop longer than batching would.
+pub const ACTIVITY_FLUSH_WINDOW_MS: i64 = 200;
+/// Direct transport keeps its eager POST within one batching window. Queued
+/// transport gives the POST its own deadline on the sender thread.
 pub const EAGER_DEADLINE_CAP_MS: u31 = @intCast(ACTIVITY_FLUSH_WINDOW_MS);
 
 /// Batches the `activity` frames the sandboxed child streams and forwards them
@@ -96,15 +96,19 @@ pub const ActivityForwarder = struct {
         }
     }
 
-    /// An eager ship rides a deadline capped at the staleness window: the
-    /// perceived-latency win must never spend more of the read loop's renewal
-    /// budget than one batching window would have. A control plane slower than
-    /// the window degrades to the batched cadence instead of stalling renewal.
+    /// The normal queued path ships immediately without doing network work on
+    /// the child reader. Direct mode keeps its synchronous POST bounded by the
+    /// batching window.
     fn flushEager(self: *ActivityForwarder) void {
-        const full = self.deadline_ms;
-        self.deadline_ms = @min(full, EAGER_DEADLINE_CAP_MS);
-        self.flush();
-        self.deadline_ms = full;
+        switch (self.transport) {
+            .queued => self.flush(),
+            else => {
+                const full = self.deadline_ms;
+                self.deadline_ms = @min(full, EAGER_DEADLINE_CAP_MS);
+                self.flush();
+                self.deadline_ms = full;
+            },
+        }
     }
 
     /// Tick-driven flush so a quiet child's tail frames still ship within the

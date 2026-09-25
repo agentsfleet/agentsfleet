@@ -83,8 +83,12 @@ pub const MintHook = struct {
 pub const RenewHook = struct {
     ctx: *anyopaque,
     onTick: *const fn (ctx: *anyopaque, now_ms: i64, usage: pipe_proto.UsageSnapshot) RenewDecision,
-    /// How often (ms) the read loop wakes between frames to consider renewal.
-    /// Production sets `constants.RENEWAL_TICK_MS`; tests inject a small value.
+    /// How often (ms) the read loop wakes between frames when the child is
+    /// quiet. Production sets `forwarders.ACTIVITY_FLUSH_WINDOW_MS` through
+    /// `lease_run.TickFanout`, because the same wake ships a stale activity
+    /// batch and then asks the renewal driver — which paces its own retries on
+    /// `constants.RENEWAL_TICK_MS`, so a faster wake here never means a faster
+    /// retry. Tests inject a small value.
     tick_ms: i64,
 };
 
