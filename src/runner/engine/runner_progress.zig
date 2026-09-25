@@ -119,7 +119,8 @@ pub const Adapter = struct {
     /// (a possible secret head) between `streamCallbackThunk` calls so a secret
     /// split across two chunks is still redacted (M100 §1). Owned by this
     /// adapter; released by `deinit`.
-    redact_carry: std.ArrayListUnmanaged(u8) = .empty,
+    redact_carry_answer: std.ArrayListUnmanaged(u8) = .empty,
+    redact_carry_reasoning: std.ArrayListUnmanaged(u8) = .empty,
     /// Set immediately before `runSingle`; zero in non-streaming tests.
     agent_runtime_started_ms: i64 = 0,
     first_chunk_sent: bool = false,
@@ -161,7 +162,8 @@ pub const Adapter = struct {
     /// held tail (a partial-secret head, if any) is intentionally never emitted
     /// — the redacted final reply carries the complete content.
     pub fn deinit(self: *Adapter, alloc: Allocator) void {
-        self.redact_carry.deinit(alloc);
+        self.redact_carry_answer.deinit(alloc);
+        self.redact_carry_reasoning.deinit(alloc);
     }
 
     fn fromPtr(ptr: *anyopaque) *Adapter {
@@ -297,10 +299,16 @@ fn streamCallbackThunk(ctx: *anyopaque, chunk: providers.StreamChunk) void {
     const self = Adapter.fromPtr(ctx);
     if (chunk.is_final) return; // held tail is dropped; the final reply carries it
     if (chunk.delta.len == 0) return;
+    const text_kind: contract.activity.ActivityFrame.TextKind = switch (chunk.kind) {
+        .answer => .answer,
+        .reasoning => .reasoning,
+        .untrusted => return,
+    };
+    const carry = if (text_kind == .answer) &self.redact_carry_answer else &self.redact_carry_reasoning;
     // Redact across chunk boundaries: a secret split between two deltas must not
     // leak. `push` holds back a partial-secret head and emits only safe bytes;
     // on OOM it leaves the carry intact and we drop the chunk (M100 §1).
-    const emit = stream_redactor.push(self.alloc, &self.redact_carry, chunk.delta, self.secrets) catch |err| {
+    const emit = stream_redactor.push(self.alloc, carry, chunk.delta, self.secrets) catch |err| {
         log.warn("chunk_redaction_failed_dropped", .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
         self.stream_contiguous = false;
         self.next_stream_seq +%= 1;
@@ -316,6 +324,7 @@ fn streamCallbackThunk(ctx: *anyopaque, chunk: providers.StreamChunk) void {
     self.next_stream_seq +%= 1;
     if (self.writer.tryWrite(.{ .fleet_response_chunk = .{
         .text = emit,
+        .text_kind = text_kind,
         .first_chunk_after_ms = first,
         .stream_start = !self.first_chunk_sent and self.stream_contiguous,
         .stream_contiguous = self.stream_contiguous,

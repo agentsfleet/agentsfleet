@@ -82,6 +82,8 @@ enum Published<'a> {
     Chunk {
         event_id: &'a str,
         text: &'a str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        text_kind: Option<afd_wire::activity::StreamTextKind>,
         /// A subscriber trusts raw model text only from this first frame.
         stream_start: bool,
         /// A dropped runner chunk makes later bytes unsafe to classify.
@@ -220,6 +222,7 @@ impl<'a> Published<'a> {
             ActivityFrame::FleetResponseChunk(body) => Self::Chunk {
                 event_id,
                 text: &body.text,
+                text_kind: body.text_kind,
                 stream_start: body.stream_start && body.stream_seq == 0 && target.timing_eligible,
                 stream_contiguous: body.stream_contiguous && target.timing_eligible,
                 stream_seq: body.stream_seq,
@@ -286,7 +289,10 @@ fn record_first_chunk(target: &Target, frames: &[ActivityFrame<'_>]) {
 fn first_visible_candidate_ms(frames: &[ActivityFrame<'_>]) -> Option<u64> {
     frames.iter().find_map(|frame| match frame {
         ActivityFrame::FleetResponseChunk(body)
-            if body.stream_start && body.stream_contiguous && body.stream_seq == 0 =>
+            if body.text_kind.is_some()
+                && body.stream_start
+                && body.stream_contiguous
+                && body.stream_seq == 0 =>
         {
             body.first_chunk_after_ms
         }
@@ -295,85 +301,4 @@ fn first_visible_candidate_ms(frames: &[ActivityFrame<'_>]) -> Option<u64> {
 }
 
 #[cfg(test)]
-mod tests {
-    #![expect(
-        clippy::expect_used,
-        clippy::indexing_slicing,
-        reason = "the serialization fixture should fail loudly on a missing field"
-    )]
-
-    use std::borrow::Cow;
-
-    use afd_core::clock::UnixMillis;
-    use afd_core::id::{ENTROPY_LEN, Uuid7};
-    use afd_wire::activity::{ActivityFrame, FleetResponseChunk};
-
-    use super::{Published, Target, first_visible_candidate_ms};
-
-    #[test]
-    fn first_chunk_timing_excludes_frames_a_viewer_must_suppress() {
-        let chunk = |stream_start, stream_contiguous, stream_seq| {
-            ActivityFrame::FleetResponseChunk(FleetResponseChunk {
-                text: Cow::Borrowed("answer"),
-                first_chunk_after_ms: Some(42),
-                stream_start,
-                stream_contiguous,
-                stream_seq,
-            })
-        };
-        let dropped_first = chunk(false, false, 1);
-        let repeated_start = chunk(true, true, 1);
-        let valid = chunk(true, true, 0);
-        assert_eq!(first_visible_candidate_ms(&[dropped_first]), None);
-        assert_eq!(first_visible_candidate_ms(&[repeated_start]), None);
-        assert_eq!(first_visible_candidate_ms(&[valid]), Some(42));
-    }
-
-    #[test]
-    fn first_chunk_marker_distinguishes_the_only_safe_stream_entry() {
-        const FIXTURE_MILLIS: i64 = 1_000;
-        let target = Target {
-            fleet_id: Uuid7::encode(UnixMillis::from_millis(FIXTURE_MILLIS), [0; ENTROPY_LEN])
-                .expect("fixture fleet id"),
-            event_id: "event".to_owned(),
-            lease_created_at: 0,
-            event_created_at: 0,
-            timing_eligible: true,
-        };
-        for (first_chunk_after_ms, stream_start, stream_contiguous, stream_seq) in [
-            (Some(42), true, true, 0),
-            (None, false, true, 1),
-            (Some(50), false, false, 1),
-        ] {
-            let frame = ActivityFrame::FleetResponseChunk(FleetResponseChunk {
-                text: Cow::Borrowed("answer"),
-                first_chunk_after_ms,
-                stream_start,
-                stream_contiguous,
-                stream_seq,
-            });
-            let published = Published::of(&target, &frame).expect("chunk has no fallible fields");
-            let value = serde_json::to_value(published).expect("published chunk serializes");
-            assert_eq!(value["kind"], "chunk");
-            assert_eq!(value["stream_start"], stream_start);
-            assert_eq!(value["stream_contiguous"], stream_contiguous);
-            assert_eq!(value["stream_seq"], stream_seq);
-            assert_eq!(value["text"], "answer");
-        }
-        let expired = Target {
-            timing_eligible: false,
-            ..target
-        };
-        let frame = ActivityFrame::FleetResponseChunk(FleetResponseChunk {
-            text: Cow::Borrowed("stale"),
-            first_chunk_after_ms: Some(42),
-            stream_start: true,
-            stream_contiguous: true,
-            stream_seq: 0,
-        });
-        let published = Published::of(&expired, &frame).expect("chunk has no fallible fields");
-        let value = serde_json::to_value(published).expect("published chunk serializes");
-        assert_eq!(value["stream_start"], false);
-        assert_eq!(value["stream_contiguous"], false);
-    }
-}
+mod tests;

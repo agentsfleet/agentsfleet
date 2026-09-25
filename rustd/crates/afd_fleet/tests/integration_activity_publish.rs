@@ -213,7 +213,7 @@ async fn test_bracket_publish_redis_down_does_not_fail_the_closing() {
 
     // Returns, rather than erroring or hanging: the queue is asked once and its
     // refusal is accounted in the log, not on the verb.
-    plane.leases.publish_completion(&closed).await;
+    plane.leases.publish_completion(&closed, None).await;
 }
 
 /// Dimension 1.3 — the closing counts the fleet's pending gates, and only
@@ -297,6 +297,7 @@ async fn seed_gate(run: &report_seed::Held, status: &str) {
 fn chunk() -> ActivityFrame<'static> {
     ActivityFrame::FleetResponseChunk(FleetResponseChunk {
         text: Cow::Borrowed(CHUNK_TEXT),
+        text_kind: Some(afd_wire::activity::StreamTextKind::Answer),
         first_chunk_after_ms: Some(42),
         stream_start: true,
         stream_contiguous: true,

@@ -37,6 +37,7 @@ pub const ActivityFrame = union(enum) {
     };
     pub const FleetResponseChunk = struct {
         text: []const u8,
+        text_kind: TextKind = .answer,
         /// Present once per run, measured from the agent runtime invocation start.
         first_chunk_after_ms: ?u64 = null,
         /// True only when this is the first chunk and no earlier output was lost.
@@ -46,6 +47,7 @@ pub const ActivityFrame = union(enum) {
         /// Zero-based output position; gaps expose losses at later transport hops.
         stream_seq: u64 = 0,
     };
+    pub const TextKind = enum { answer, reasoning };
     pub const ToolCallCompleted = struct {
         name: []const u8,
         ms: i64,

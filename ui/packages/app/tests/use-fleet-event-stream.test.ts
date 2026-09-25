@@ -153,6 +153,10 @@ describe("useFleetEventStream", () => {
         kind: FRAME_KIND.CHUNK,
         event_id: "evt_run",
         text: "Hello, ",
+        text_kind: "answer",
+        stream_seq: 0,
+        stream_start: true,
+        stream_contiguous: true,
       });
     });
     act(() => {
@@ -160,6 +164,9 @@ describe("useFleetEventStream", () => {
         kind: FRAME_KIND.CHUNK,
         event_id: "evt_run",
         text: "world.",
+        text_kind: "answer",
+        stream_seq: 1,
+        stream_contiguous: true,
       });
     });
     await waitFor(() => expect(result.current.events[0]?.reply).toBe("Hello, world."));
@@ -241,15 +248,15 @@ describe("useFleetEventStream", () => {
     const source = FakeEventSource.instances[0]!;
     act(() => {
       source.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_first", actor: "steer:alice@example.com", created_at: 1 });
-      source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_first", text: "Saved." });
+      source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_first", text: "Saved.", text_kind: "answer", stream_seq: 0, stream_start: true, stream_contiguous: true });
     });
     await waitFor(() => expect(result.current.events.map((event) => event.reply)).toEqual(["Saved.", ""]));
     expect(result.current.convertEvent(result.current.events[1]!).metadata?.custom?.["queued"]).toBe(true);
 
     act(() => {
-      source.emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_first", status: "processed" });
+      source.emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_first", status: "processed", final_reply: "Saved." });
       source.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_second", actor: "steer:alice@example.com", created_at: 2 });
-      source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_second", text: "You said remember me." });
+      source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_second", text: "You said remember me.", text_kind: "answer", stream_seq: 0, stream_start: true, stream_contiguous: true });
     });
     await waitFor(() => expect(result.current.events.map((event) => event.reply)).toEqual(["Saved.", "You said remember me."]));
     expect(result.current.convertEvent(result.current.events[1]!).metadata?.custom?.["queued"]).toBe(false);

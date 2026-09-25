@@ -143,7 +143,7 @@ impl Plane {
                 closed,
                 owed,
             } => {
-                self.announce(runner_id, lease_id, &lease, closed, charged, now)
+                self.announce(runner_id, request, &lease, closed, charged, now)
                     .await;
                 if let Some(owing) = owed {
                     self.queue_owed_answer(&owing, &lease, request.response_text.as_ref(), now)
