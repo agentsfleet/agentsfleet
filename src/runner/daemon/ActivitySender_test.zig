@@ -4,6 +4,11 @@ const std = @import("std");
 const common = @import("common");
 const ActivitySender = @import("ActivitySender.zig");
 const dts = @import("deadline_test_support.zig");
+const call_deadline = @import("call_deadline");
+
+/// A drain budget far shorter than the production one, so the stall test is
+/// quick and still tells the budget apart from the send cap.
+const DRAIN_TEST_BUDGET_MS: u32 = 50;
 
 const Probe = struct {
     entered: common.Event = .{},
@@ -163,4 +168,62 @@ test "two four and sixteen leases can all send while every control plane call st
             try std.testing.expectEqual(@as(u8, 'x'), probe.sent[0]);
         }
     }
+}
+
+fn testSender(sched: *call_deadline.ProcessScheduler, probe: *Probe) ActivitySender {
+    return .{
+        .alloc = std.testing.allocator,
+        .io = common.globalIo(),
+        .sched = sched,
+        .base_url = "http://127.0.0.1:9",
+        .runner_token = "agt_rtest",
+        .lease_id = "lease_test",
+        .deadline_ms = 5_000,
+        .test_hook = .{ .ctx = probe, .send = Probe.send },
+    };
+}
+
+test "drainFor returns once every queued batch is posted" {
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var probe = Probe{};
+    probe.release.set();
+    var sender = testSender(try deadlines.start(std.testing.allocator), &probe);
+    try sender.start();
+    defer sender.finish();
+    for ([_][]const u8{ "a", "b", "c" }) |item| sender.enqueue(item);
+    sender.drainFor(ActivitySender.DRAIN_BEFORE_REPORT_MS);
+    // Posted before the report would go out: that is the whole point of draining.
+    probe.mutex.lock();
+    defer probe.mutex.unlock();
+    try std.testing.expectEqualSlices(u8, "abc", probe.sent[0..probe.count]);
+}
+
+test "drainFor gives up at its budget when a send stalls" {
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var probe = Probe{};
+    defer probe.release.set();
+    var sender = testSender(try deadlines.start(std.testing.allocator), &probe);
+    try sender.start();
+    defer sender.finish();
+    sender.enqueue("0");
+    try probe.entered.timedWait(std.time.ns_per_s);
+    const started_ms = common.clock.nowMonotonicMillis();
+    sender.drainFor(DRAIN_TEST_BUDGET_MS);
+    const waited_ms = common.clock.nowMonotonicMillis() - started_ms;
+    // A stalled control plane holds the report for the budget, not the send cap.
+    try std.testing.expect(waited_ms >= DRAIN_TEST_BUDGET_MS);
+    try std.testing.expect(waited_ms < ActivitySender.DRAIN_BEFORE_REPORT_MS);
+    try std.testing.expectEqual(@as(usize, 0), probe.count);
+}
+
+test "drainFor on a sender that never started returns at once" {
+    var probe = Probe{};
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var sender = testSender(try deadlines.start(std.testing.allocator), &probe);
+    const started_ms = common.clock.nowMonotonicMillis();
+    sender.drainFor(ActivitySender.DRAIN_BEFORE_REPORT_MS);
+    try std.testing.expect(common.clock.nowMonotonicMillis() - started_ms < DRAIN_TEST_BUDGET_MS);
 }

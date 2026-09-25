@@ -28,6 +28,10 @@ const RING_SLOTS: usize = MAX_QUEUED_BATCHES + 1;
 /// Give a slow control plane room for several round trips without holding a
 /// finished lease for the full configured deadline on every queued batch.
 pub const SEND_DEADLINE_CAP_MS: u31 = 1_000;
+/// Longest the lease report waits for queued live activity: one send cap. A
+/// healthy control plane empties the queue in milliseconds.
+pub const DRAIN_BEFORE_REPORT_MS: u32 = SEND_DEADLINE_CAP_MS;
+const DRAIN_POLL_NS: u64 = 2 * std.time.ns_per_ms;
 
 /// Owns the ring. Claimed in `start`, released in `finish`, both on the
 /// caller's thread; the sender thread never allocates from it.
@@ -48,6 +52,9 @@ slots: ?*[RING_SLOTS][MAX_BATCH_BYTES]u8 = null,
 lens: [RING_SLOTS]?usize = .{null} ** RING_SLOTS,
 head: usize = 0,
 queued: usize = 0,
+/// True while the sender thread posts a batch it has already popped, so a
+/// drain can tell an empty queue from a finished one.
+sending: bool = false,
 closed: bool = false,
 /// Batches the queue could not take, reported once when the lease ends. The
 /// browser recovers the text from `stream_seq`; this is how an OPERATOR finds
@@ -118,6 +125,24 @@ pub fn enqueue(self: *ActivitySender, bytes: []const u8) void {
     self.mutex.unlock();
 }
 
+/// Wait until every queued batch has been posted, or `budget_ms` passes. Runs
+/// once, before the lease report, so live frames reach the browser ahead of
+/// the completion; the budget keeps a slow control plane from holding the
+/// report back. Polls, because `common.Condition` has no timed wait.
+pub fn drainFor(self: *ActivitySender, budget_ms: u32) void {
+    const deadline_ms = common.clock.nowMonotonicMillis() + budget_ms;
+    while (!self.idle()) {
+        if (common.clock.nowMonotonicMillis() >= deadline_ms) return;
+        common.sleepNanos(DRAIN_POLL_NS);
+    }
+}
+
+fn idle(self: *ActivitySender) bool {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+    return self.thread == null or (self.queued == 0 and !self.sending);
+}
+
 /// Drain and join after the durable report has published the completion marker.
 /// Each queued POST uses a bounded activity deadline. Slow sends cannot
 /// block the child reader because this thread owns the network call.
@@ -169,6 +194,7 @@ fn run(self: *ActivitySender) void {
         const slots = self.slots.?;
         self.head = (slot + 1) % RING_SLOTS;
         self.queued -= 1;
+        self.sending = true;
         // The reader must not log — that is I/O on the pipe thread — so the
         // first drop is announced from HERE, the next time the sender wakes.
         const first_drop = self.dropped > 0 and !self.drop_noticed;
@@ -183,6 +209,7 @@ fn run(self: *ActivitySender) void {
         defer {
             self.mutex.lock();
             self.lens[slot] = null;
+            self.sending = false;
             self.mutex.unlock();
         }
         const deadline_ms = @min(self.deadline_ms, SEND_DEADLINE_CAP_MS);
