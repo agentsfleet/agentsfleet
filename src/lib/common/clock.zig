@@ -47,6 +47,11 @@ pub fn nowNanos() i128 {
     };
 }
 
+/// Sleep `ms` milliseconds on `io`'s awake clock; a cancelled sleep returns early.
+pub fn sleepMs(io: std.Io, ms: u64) void {
+    io.sleep(std.Io.Duration.fromMilliseconds(@intCast(ms)), .awake) catch return;
+}
+
 /// First instant of the UTC calendar month containing `now_ms`, in epoch ms.
 ///
 /// A PURE function of its argument — it never reads the clock, so the budget

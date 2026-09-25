@@ -32,6 +32,11 @@ pub const secureRandomBytes = @import("random.zig").secureRandomBytes;
 /// See `backoff.zig`.
 pub const backoff = @import("backoff.zig");
 
+/// The one bounded retry loop for idempotent calls: the caller passes a
+/// `Policy` (retryable errors, attempt cap, time budget) and the loop paces
+/// with `backoff` (`common.retry.run`). See `retry.zig`.
+pub const retry = @import("retry.zig");
+
 /// Shared env-var reads over the 0.16 `Environ.Map` both binaries thread from
 /// `std.process.Init` (`common.env.owned`). See `env.zig`.
 pub const env = @import("env.zig");

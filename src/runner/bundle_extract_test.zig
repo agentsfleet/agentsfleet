@@ -139,3 +139,20 @@ test "accumulateBytes rejects a corrupt/oversized/overflowing size field, no pan
     // A valid in-range fold returns the running total unchanged in shape.
     try std.testing.expectEqual(@as(usize, 100), try bundle_extract.accumulateBytes(40, 60));
 }
+
+const client_errors = @import("daemon/control_plane_client.zig").ClientError;
+/// The shared backoff's first step, un-jittered.
+const FIRST_DELAY_MS: u64 = 2_000;
+/// The control plane's default call deadline: what a slow transport failure spends.
+const SPENT_DEADLINE_MS: u64 = 10_000;
+
+test "the download retries a fast transport blip, never a refusal or a spent deadline" {
+    const policy = bundle_extract.DOWNLOAD_RETRY;
+    // The failure the dev runner logged: the connection never opened.
+    try std.testing.expect(policy.allows(client_errors.RequestFailed, 0, 0, FIRST_DELAY_MS));
+    // A status the daemon sent is its answer.
+    try std.testing.expect(!policy.allows(client_errors.BadStatus, 0, 0, FIRST_DELAY_MS));
+    try std.testing.expect(!policy.allows(client_errors.Unauthorized, 0, 0, FIRST_DELAY_MS));
+    // An attempt that ran out its deadline must not wait again: the lease is not renewed yet.
+    try std.testing.expect(!policy.allows(client_errors.RequestFailed, 0, SPENT_DEADLINE_MS, FIRST_DELAY_MS));
+}

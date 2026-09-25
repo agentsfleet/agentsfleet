@@ -246,7 +246,7 @@ const PostResult = struct { status: u16, body: []u8 };
 /// release back to the free list so the fetch pops the same one) and return
 /// its socket handle for the attempt to arm. Null when the connect fails —
 /// `send` then refuses the verb fail-closed.
-fn pooledHandle(self: *LoopbackClient) ?std.Io.net.Socket.Handle {
+fn pooledHandle(self: *LoopbackClient) http_pin.PinError!std.Io.net.Socket.Handle {
     // Pins the socket the deadline is armed against BEFORE `send`'s fetch;
     // `http_pin` owns the prime-then-connect discipline shared with the
     // daemon's connector/broker sites (an unprimed handshake panics on a null
