@@ -4,18 +4,17 @@ import { getSnapshot, subscribe } from "./fleet-stream-registry";
 import { createEntry } from "./fleet-stream-entry";
 import { applyReplyDelta } from "./fleet-stream-reply-frames";
 import type { FleetEvent } from "./fleet-stream-row";
-import { dispatchReplyFrame, markReplyGap, settleRepliesFromBackfill } from "./fleet-stream-reply-registry";
+import { dispatchReplyFrame, markReplyGap, setEventDetailReader, settleRepliesFromBackfill, type EventDetailReader } from "./fleet-stream-reply-registry";
 import { setupRegistryTests, row, sourceAt, WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import { setupBackfillTests, fetchSpy, flushBackfill, pageWith, reconnect, MISSED_AT_MS, SEED_AT_MS } from "@/tests/helpers/fleet-stream-backfill-fixtures";
-import { getFleetEventActionMock, resetFleetEventAction } from "@/tests/helpers/fleet-stream-reply-action-mock";
-
-vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", async () =>
-  (await import("@/tests/helpers/fleet-stream-reply-action-mock")).fleetActionsMock(),
-);
+import { fleetActionsMock, getFleetEventActionMock, resetFleetEventAction } from "@/tests/helpers/fleet-stream-reply-action-mock";
 
 setupRegistryTests();
 setupBackfillTests();
-beforeEach(resetFleetEventAction);
+beforeEach(() => {
+  resetFleetEventAction();
+  setEventDetailReader(fleetActionsMock().getFleetEventAction as EventDetailReader);
+});
 
 describe("fleet stream durable final read", () => {
   it("ignores activity that arrives after the durable completion", async () => {
@@ -208,5 +207,16 @@ describe("fleet stream durable final read", () => {
     await vi.waitFor(() => expect(getFleetEventActionMock).toHaveBeenCalled());
     expect(JSON.stringify(getSnapshot(Z_A))).not.toContain("PRIVATE");
     release();
+  });
+
+  it("fetches nothing and keeps the gap open when no detail reader is installed", () => {
+    // A bundle without the dashboard (the browser transport probe) never
+    // installs the Server Action; recovery must stay idle rather than throw.
+    setEventDetailReader(null);
+    const entry = createEntry(WS, []);
+    dispatchReplyFrame(entry, Z_A, { kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_no_reader", status: "processed" }, vi.fn(), () => true);
+    expect(getFleetEventActionMock).not.toHaveBeenCalled();
+    expect(entry.replyRecoveries.has("evt_no_reader")).toBe(false);
+    expect(entry.replyGaps.has("evt_no_reader")).toBe(true);
   });
 });

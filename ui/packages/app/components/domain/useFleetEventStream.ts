@@ -17,6 +17,12 @@ import {
 } from "@/lib/streaming/fleet-stream-registry";
 import type { FleetEvent, FleetEventStatus } from "@/lib/streaming/fleet-stream-row";
 import type { InstallStepId } from "@/lib/streaming/install-steps";
+import { setEventDetailReader } from "@/lib/streaming/fleet-stream-reply-registry";
+import { getFleetEventAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
+
+// The chat is the only surface that shows reply text, so it installs the read
+// a reply uses when its stream lost the final words.
+setEventDetailReader(getFleetEventAction);
 
 // Public re-exports so existing consumers keep their import surface.
 export {

@@ -4,18 +4,17 @@ import { getSnapshot, retryConnection, subscribe } from "./fleet-stream-registry
 import { createEntry } from "./fleet-stream-entry";
 import { applyFinalReply, applyFinalReplyText, applyReplyDelta } from "./fleet-stream-reply-frames";
 import type { FleetEvent } from "./fleet-stream-row";
-import { dispatchReplyFrame } from "./fleet-stream-reply-registry";
+import { dispatchReplyFrame, setEventDetailReader, type EventDetailReader } from "./fleet-stream-reply-registry";
 import { setupRegistryTests, row, sourceAt, WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import { setupBackfillTests, fetchSpy, flushBackfill, pageWith, reconnect, MISSED_AT_MS, SEED_AT_MS } from "@/tests/helpers/fleet-stream-backfill-fixtures";
-import { failedAction, getFleetEventActionMock, resetFleetEventAction } from "@/tests/helpers/fleet-stream-reply-action-mock";
-
-vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", async () =>
-  (await import("@/tests/helpers/fleet-stream-reply-action-mock")).fleetActionsMock(),
-);
+import { failedAction, fleetActionsMock, getFleetEventActionMock, resetFleetEventAction } from "@/tests/helpers/fleet-stream-reply-action-mock";
 
 setupRegistryTests();
 setupBackfillTests();
-beforeEach(resetFleetEventAction);
+beforeEach(() => {
+  resetFleetEventAction();
+  setEventDetailReader(fleetActionsMock().getFleetEventAction as EventDetailReader);
+});
 
 describe("fleet stream reply delivery", () => {
   it("ignores a late inline ending after its row was removed", () => {

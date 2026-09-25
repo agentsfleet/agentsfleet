@@ -1,8 +1,8 @@
 import { vi } from "vitest";
 
-// The registry reads a settled reply through the Server Action. Each reply
-// shard's hoisted `vi.mock` delegates here. This module imports nothing under
-// test, so the factory never waits on the registry it is being loaded for.
+// The registry reads a settled reply through an installed reader. Each reply
+// shard installs `fleetActionsMock().getFleetEventAction` as that reader. This
+// module imports nothing under test, so it never waits on the registry.
 export const getFleetEventActionMock = vi.fn();
 export const failedAction = { enabled: false, calls: 0 };
 

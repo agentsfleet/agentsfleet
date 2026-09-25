@@ -1,6 +1,6 @@
-import type { EventRow, LiveFrame } from "@/lib/api/events";
+import type { ActionResult } from "@/lib/actions/with-token";
+import type { EventDetail, EventRow, LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
-import { getFleetEventAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
 import type { FleetFacts } from "@/lib/events/run-summary";
 import { factsOf } from "./fleet-stream-facts";
 import { applyLiveFrame } from "./fleet-stream-frames";
@@ -10,6 +10,17 @@ import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
 import { ReplyStreamDecoder } from "./reply-stream-decoder";
 
 type Apply = (next: (prev: FleetEvent[]) => FleetEvent[], facts: Partial<FleetFacts>) => void;
+
+/** Reads one event's saved detail when a streamed reply needs its final text. */
+export type EventDetailReader = (workspaceId: string, fleetId: string, eventId: string) => Promise<ActionResult<EventDetail>>;
+
+// The dashboard installs its Server Action here. Importing it directly would
+// pull server-only modules into every bundle that loads the registry.
+let readEventDetail: EventDetailReader | null = null;
+
+export function setEventDetailReader(reader: EventDetailReader | null): void {
+  readEventDetail = reader;
+}
 
 /** Owns live decoder lifetimes beside the fleet's one EventSource. */
 export function dispatchReplyFrame(
@@ -93,7 +104,8 @@ function recoverFinalReply(
   apply: Apply,
   isCurrent: () => boolean,
 ): void {
-  if (!isCurrent()) return;
+  const read = readEventDetail;
+  if (read === null || !isCurrent()) return;
   if (entry.replyRecoveries.has(eventId)) return;
   entry.replyRecoveries.add(eventId);
   void (async () => {
@@ -101,7 +113,7 @@ function recoverFinalReply(
       for (let attempt = 0; isCurrent(); attempt += 1) {
         let retryMs: number = FINAL_REPLY_RETRY_MS[attempt] ?? TRANSIENT_MAX_RETRY_MS;
         try {
-          const result = await getFleetEventAction(entry.workspaceId, fleetId, eventId);
+          const result = await read(entry.workspaceId, fleetId, eventId);
           if (result.ok) {
             if (!isCurrent()) return;
             apply((prev) => applyFinalReply(prev, result.data), {});
