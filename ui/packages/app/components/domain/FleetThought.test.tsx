@@ -88,6 +88,15 @@ describe("FleetThought", () => {
     // A reply recovered from detail has no stamp: it folds with no duration.
     render(<Reply live={false} reasoning={REASONING} startedAtMs={null} endedAtMs={null} />);
     expect(chip().textContent).toBe(THOUGHT_LABEL);
+    cleanup();
+    // Live without a start: no clock rather than a clock from zero.
+    render(<Reply live reasoning={REASONING} startedAtMs={null} endedAtMs={null} />);
+    expect(chip().textContent).toContain(THOUGHT_LIVE_LABEL);
+    expect(chip().textContent).not.toContain("·");
+    cleanup();
+    // Folded with a start but no recorded end: no duration is invented.
+    render(<Reply live={false} reasoning={REASONING} startedAtMs={STARTED} endedAtMs={null} />);
+    expect(chip().textContent).toBe(THOUGHT_LABEL);
   });
 
   it("test_latest_sentence_edges", () => {

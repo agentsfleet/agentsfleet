@@ -89,6 +89,27 @@ describe("FleetThread — reply parts", () => {
     expect(replyRow().getAttribute("data-failed")).toBe("true");
   });
 
+  it("should give an integration turn a reply row once it has only called tools", () => {
+    mockStream([ev({
+      id: "evt_hook", role: "system", actor: "webhook:github", text: "PR opened", status: "received",
+      tools: [{ name: "read_file", startedAtMs: TOOL_STARTED_AT_MS, ms: null, done: false }],
+    })]);
+    renderThread();
+    // The tick stays the trigger; the tool row belongs to the fleet's reply.
+    expect(screen.getByText("PR opened")).toBeTruthy();
+    expect(within(replyRow()).getByRole("list", { name: TOOL_CALLS })).toBeTruthy();
+    expect(within(replyRow()).getByText("read_file")).toBeTruthy();
+  });
+
+  it("should render an errored reply's words as written, in the failed tone", () => {
+    mockStream([ev({ role: "assistant", actor: "fleet", status: "fleet_error", reply: "**429** from the provider" })]);
+    renderThread();
+    // The dashboard's own sentence, not the model's markdown: no <strong>.
+    expect(within(replyRow()).getByText("**429** from the provider")).toBeTruthy();
+    expect(replyRow().querySelector("strong")).toBeNull();
+    expect(replyRow().getAttribute("data-failed")).toBe("true");
+  });
+
   it("test_indicator_verb_and_accessible_name", () => {
     mockStream([ev({ id: "evt_working", role: "user", actor: "operator", text: "Run it", status: "received" })]);
     renderThread();
