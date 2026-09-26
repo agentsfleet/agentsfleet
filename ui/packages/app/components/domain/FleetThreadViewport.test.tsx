@@ -79,4 +79,21 @@ describe("FleetThreadViewport layout", () => {
     expect(root.className).toContain("overflow-clip");
     expect(root.className).not.toContain("overflow-hidden");
   });
+
+  // Pin test for a panel shorter than the composer. Live on DEV, a 180 px
+  // root and a full draft put Send at 393-429 px, below the root floor at
+  // 388; with these classes the textarea shrank to 134 px and Send sat at
+  // 335-371. The clipped root cannot scroll, so the footer must shrink and
+  // the textarea must shrink with its row instead of overflowing upward.
+  it("lets a squeezed footer shrink the composer so Send stays in view", () => {
+    const view = render(<View />);
+    const footer = [...view.getByTestId("fleet-chat-footer").classList];
+    expect(footer).toEqual(expect.arrayContaining(["flex", "flex-col", "min-h-0"]));
+    expect(footer).not.toContain("shrink-0");
+    const composer = [...view.getByRole("form", { name: "Chat composer" }).classList];
+    expect(composer).toEqual(expect.arrayContaining(["min-h-0", "overflow-y-auto"]));
+    const row = [...(view.getByRole("textbox").parentElement?.classList ?? [])];
+    expect(row).toContain("items-stretch");
+    expect(row).not.toContain("items-end");
+  });
 });
