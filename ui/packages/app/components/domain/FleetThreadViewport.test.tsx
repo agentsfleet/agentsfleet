@@ -67,3 +67,16 @@ describe("FleetThreadViewport scroll intent", () => {
     expect(onScroll).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("FleetThreadViewport layout", () => {
+  // Pin test: jsdom does no layout, so the scroll itself cannot be reproduced
+  // here. Live, a long streamed reply left the hidden-overflow root at
+  // scrollTop 173 and the composer 181 px above the panel floor; a clipped
+  // root cannot scroll at all, and only the inner viewport may.
+  it("keeps the thread root unscrollable so the composer stays on the floor", () => {
+    const view = render(<View />);
+    const root = view.getByTestId("fleet-thread-root");
+    expect(root.className).toContain("overflow-clip");
+    expect(root.className).not.toContain("overflow-hidden");
+  });
+});
