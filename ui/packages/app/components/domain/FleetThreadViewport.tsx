@@ -50,9 +50,14 @@ export function FleetThreadViewport({
       >
         <ChatHistory eventsCount={eventsCount} connectionStatus={connectionStatus} />
       </ThreadPrimitive.Viewport>
+      {/* The clipped root cannot scroll a tall composer into view, so in a
+          panel shorter than the composer the footer shrinks to fit and the
+          composer's textarea shrinks with it (see SteerComposer), keeping
+          Send in view. The viewport's zero basis absorbs any spare height,
+          so this never shrinks the footer while the composer fits. */}
       <DashboardPanelFooter
         data-testid="fleet-chat-footer"
-        className="relative mx-auto mt-0 w-full max-w-measure shrink-0 border-0 bg-background px-0 pb-md pt-md"
+        className="relative mx-auto mt-0 flex min-h-0 w-full max-w-measure flex-col border-0 bg-background px-0 pb-md pt-md"
       >
         <JumpToLatest />
         <SteerComposer failureKind={failureKind} onRetry={onRetry} />

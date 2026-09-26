@@ -28,7 +28,11 @@ export function SteerComposer({ failureKind, onRetry }: SteerComposerProps) {
     <DashboardPanel
       asChild
       padding="none"
-      className="rounded-xl bg-card p-md focus-within:border-pulse/60 focus-within:ring-1 focus-within:ring-pulse/40"
+      // Scrolls itself when the chat footer is squeezed below its height, the
+      // backstop for a failure notice that leaves no room for the input row.
+      // The scroll sits on this box, not a wrapper, so the focus ring outside
+      // its border is never clipped.
+      className="min-h-0 overflow-y-auto rounded-xl bg-card p-md focus-within:border-pulse/60 focus-within:ring-1 focus-within:ring-pulse/40"
     >
       <ComposerPrimitive.Root
         id="fleet-steer-composer"
@@ -37,9 +41,13 @@ export function SteerComposer({ failureKind, onRetry }: SteerComposerProps) {
       >
         <DeliveryFailureNotice failureKind={failureKind} onRetry={onRetry} />
 
+        {/* Stretch, not end-alignment: when the footer is squeezed this row
+            shrinks, and a stretched textarea shrinks with it and scrolls its
+            own text. End-aligned, it kept its height and overflowed upward,
+            above the clipped thread root. Send keeps `self-end`. */}
         <div
           className={cn(
-            "flex min-h-9 flex-row items-end gap-sm",
+            "flex min-h-9 flex-row items-stretch gap-sm",
             "sm:gap-md",
           )}
         >
