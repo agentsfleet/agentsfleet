@@ -31,7 +31,7 @@ function failedEvent(overrides: Partial<FleetEvent> = {}): FleetEvent {
     failureLabel: "startup_posture",
     failureDetail: null,
     createdAt: new Date(0),
-    status: AGENTSFLEET_EVENT_STATUS.FAILED,
+    status: AGENTSFLEET_EVENT_STATUS.AGENT_ERROR,
     ...overrides,
   };
 }

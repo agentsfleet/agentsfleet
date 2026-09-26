@@ -5,7 +5,7 @@ import { ArrowDownIcon } from "lucide-react";
 import { ThreadPrimitive, useThreadViewportStore } from "@assistant-ui/react";
 import { Button, Skeleton, cn } from "@agentsfleet/design-system";
 import { CONNECTION_STATUS, type ConnectionStatus } from "./useFleetEventStream";
-import type { DeliveryFailureKind } from "./useFleetDeliveryFailure";
+import type { FailedDelivery } from "./useFleetDeliveryFailure";
 import { SteerComposer } from "./SteerComposer";
 import { renderFleetMessage } from "./fleetMessageRenderers";
 
@@ -18,12 +18,11 @@ type FleetThreadViewportProps = {
   eventsCount: number;
   connectionStatus: ConnectionStatus;
   submittedMessageId: string | null;
-  failureKind: DeliveryFailureKind | null;
-  onRetry: () => void;
+  failure: FailedDelivery | null;
 };
 
 export function FleetThreadViewport({
-  eventsCount, connectionStatus, submittedMessageId, failureKind, onRetry,
+  eventsCount, connectionStatus, submittedMessageId, failure,
 }: FleetThreadViewportProps) {
   const viewport = useThreadViewportStore();
   // The external runtime stays steerable while the fleet runs, so its normal
@@ -56,7 +55,7 @@ export function FleetThreadViewport({
           className="sticky bottom-0 mx-auto flex max-h-full w-full max-w-measure flex-col bg-background pb-md pt-md"
         >
           <JumpToLatest />
-          <SteerComposer failureKind={failureKind} onRetry={onRetry} />
+          <SteerComposer failure={failure} />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
     </ThreadPrimitive.Root>

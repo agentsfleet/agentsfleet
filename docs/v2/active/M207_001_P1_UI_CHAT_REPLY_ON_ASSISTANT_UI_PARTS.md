@@ -58,12 +58,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/components/domain/{useFleetThreadEntries,useFleetEventStream}.ts` | EDIT | Operator turns always split; reply rows convert through `fleetReplyMessage`; custom bag drops reasoning/thinking/tools |
 | `ui/packages/app/components/domain/FleetReplyBody.tsx`; `FleetThought.tsx` | EDIT; CREATE | `GroupedParts` switch and outcome floor; the `group-reasoning` chip, leaf clock, sentence ticker |
 | `ui/packages/app/components/domain/FleetToolCalls.tsx` | EDIT | `tool-call` part row on `useToolCallElapsed`; custom-bag reader leaves |
-| `ui/packages/app/components/domain/fleetMessageRenderers.tsx`, `fleetMessageReaders.ts`, `fleetMessageStatus.ts` | EDIT | Failed badge path and moved readers leave; reasoning-span readers |
+| `ui/packages/app/components/domain/fleetMessageRenderers.tsx`, `fleetMessageReaders.ts`, `fleetMessageStatus.ts`, `FleetMessageRow.tsx` | EDIT | Failed badge, orphaned row `annotation` and moved readers leave; status constants alias `AGENTSFLEET_EVENT_STATUS`; reasoning-span readers |
 | `ui/packages/app/components/domain/{FleetThread,FleetThreadViewport,SteerComposer}.tsx`, `useFleetMessageDelivery.ts`, `useFleetDeliveryFailure.ts` | EDIT | Claude.ai resend; `onRetry` chain leaves |
-| `ui/packages/app/components/layout/loading-verbs.ts`; `ui/packages/app/lib/utils.ts` | EDIT | `loadingVerbFor(key)`; `formatSeconds` on `Intl.NumberFormat` |
+| `ui/packages/app/components/layout/loading-verbs.ts`; `ui/packages/app/lib/utils.ts`; `ui/packages/app/lib/api/errors.ts` | EDIT | `loadingVerbFor(key)`; `formatSeconds` on `Intl.NumberFormat`; `HTTP_STATUS_UNAUTHORIZED` beside its siblings |
 | `ui/packages/design-system/src/design-system/{BrailleSpinner,index,DashboardPanel,DashboardPrimitives.test}.ts(x)`, `ui/packages/design-system/src/{index.ts,tokens.css}` | CREATE / EDIT | Decorative CSS-only glyph; exports; `braille-spin` keyframes and `content-auto` utility beside `wake-pulse`; orphaned `DashboardPanelFooter` leaves |
 | `ui/packages/app/components/domain/{fleetReplyMessage.test.ts,FleetThought.test.tsx}`, `ui/packages/app/lib/{streaming/fleet-stream-reply-frames,utils}.test.ts`, `ui/packages/app/components/layout/loading-verbs.test.ts`, `ui/packages/design-system/src/design-system/BrailleSpinner.test.tsx` | CREATE | Unit proofs |
-| `ui/packages/app/tests/fleet-thread/{harness.ts,role-reasoning.test.ts,role-rows.test.ts,steer-submission.test.ts,malformed-metadata.test.ts}`, `ui/packages/app/tests/fleet-tool-calls.test.tsx`, `ui/packages/app/lib/streaming/{fleet-stream-registry-optimistic,fleet-stream-frames.tools}.test.ts`, `ui/packages/app/components/domain/{SteerComposer.test.tsx,FleetThreadViewport.test.tsx,useFleetDeliveryFailure.test.tsx,fleetMessageReaders.test.ts}` | EDIT | Amended to the parts model and resend flow |
+| `ui/packages/app/tests/fleet-thread/{harness.ts,role-reasoning.test.ts,role-rows.test.ts,steer-submission.test.ts,malformed-metadata.test.ts}`, `ui/packages/app/tests/fleet-tool-calls.test.tsx`, `ui/packages/app/lib/streaming/{fleet-stream-registry-optimistic,fleet-stream-registry-backfill,fleet-stream-frames.tools}.test.ts`, `ui/packages/app/lib/events/run-summary.test.ts`, `ui/packages/app/tests/{use-fleet-event-stream,fleets-install-entry-gate,fleets-install-flow,fleets-install-states}.test.ts`, `ui/packages/app/components/domain/{fleetFailureCopy.test.ts,FleetMessageRow.test.tsx}`, `ui/packages/app/components/domain/{SteerComposer.test.tsx,FleetThreadViewport.test.tsx,useFleetDeliveryFailure.test.tsx,fleetMessageReaders.test.ts}` | EDIT | Amended to the parts model and resend flow |
 | `ui/packages/app/tests/e2e/acceptance/{fleet-stream-transport.spec,fleet-thread.spec,fixtures/sse}.ts` | EDIT | Live parts journey, resend journey, long-task probe |
 | `docs/architecture/user_flow.md` | EDIT | Chat surface line: Thought chip, tool rows, resend |
 | PR #717's composer-layout files (`FleetThreadViewport.tsx`, `SteerComposer.tsx`, `ChatView.tsx`, `page.tsx`, their tests) | EDIT | Already committed on the branch by Kishore's call; not re-specified |
@@ -110,16 +110,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — A failed send returns to the composer
 
-Claude.ai's behaviour. On `ok:false` or a thrown POST, `discardOptimistic(tempId)` removes the row and the per-fleet failure record keeps `{ text, kind }`. The composer shows "Message not sent." and restores the text when its draft is empty; **Resend** is `ComposerPrimitive.Send asChild`, so it goes through `onNew` like any send. A 401 keeps the Sign in notice. The POST is never replayed automatically: it carries no idempotency key (`lib/api/retry.ts`). **Implementation default:** the record clears on the next submission, because a new send supersedes the notice.
+Claude.ai's behaviour. On `ok:false` or a thrown POST, `discardOptimistic(tempId)` removes the row and the per-fleet failure record keeps `{ text, kind }`. The composer shows "Message not sent." and restores the text when its draft is empty; **Resend** is `ComposerPrimitive.Send asChild`, so it goes through `onNew` like any send. A 401 keeps the Sign in notice. `FleetMessageRow`'s `failed` tone stays: fleet-error replies use it. The POST is never replayed automatically: it carries no idempotency key (`lib/api/retry.ts`). **Implementation default:** the record clears on the next submission, because a new send supersedes the notice.
 
-- **Dimension 1.1** — A failed POST removes its row and restores the text into an empty composer under "Message not sent." → Test `test_failed_send_leaves_thread_and_restores_draft`
-- **Dimension 1.2** — Resend sends the restored text once (one new pending row, notice cleared); nothing re-sends without that click → Test `test_resend_submits_restored_text_once`
-- **Dimension 1.3** — A remount restores into an empty composer; a non-empty draft is kept and the notice offers Restore, which places the failed text above the draft → Test `test_failure_restore_respects_existing_draft`
-- **Dimension 1.4** — A 401 restores the text and shows Sign in, not Resend → Test `test_session_failure_keeps_sign_in`
+- **Dimension 1.1** — A failed POST removes its row and restores the text into an empty composer under "Message not sent." → Test `test_failed_send_leaves_thread_and_restores_draft` — DONE (steer-submission 10/10; five mutations each turn a pin red)
+- **Dimension 1.2** — Resend sends the restored text once (one new pending row, notice cleared); nothing re-sends without that click → Test `test_resend_submits_restored_text_once` — DONE (steer-submission 10/10; five mutations each turn a pin red)
+- **Dimension 1.3** — A remount restores into an empty composer; a non-empty draft is kept and the notice offers Restore, which places the failed text above the draft → Test `test_failure_restore_respects_existing_draft` — DONE (steer-submission 10/10; five mutations each turn a pin red)
+- **Dimension 1.4** — A 401 restores the text and shows Sign in, not Resend → Test `test_session_failure_keeps_sign_in` — DONE (steer-submission 10/10; five mutations each turn a pin red)
 
 ### §2 — The reply is an assistant-ui message
 
-An operator turn always splits into its trigger and a `:reply` assistant message; an integration turn splits when a reply, reasoning or tool exists (unchanged). The reply's `status` is running while the event is optimistic or received, complete otherwise. Content, in order: a reasoning part with its own status (running while `thinking`), one tool-call part per `FleetToolCall`, a text part — empty pieces omitted. **Implementation default:** tool `toolCallId` is `<eventId>:tool:<index>` (append-only list, stable), `result` is `null` once done because the wire carries no output, and `timing.completedAt` is `startedAt + ms`.
+An operator turn always splits into its trigger and a `:reply` assistant message; an integration turn splits when a reply, reasoning or tool exists (a tools-only turn is new: today it stays unsplit and its tools render under the trigger). The reply's `status` is running while the event is optimistic or received, complete otherwise. Content, in order: a reasoning part with its own status (running while `thinking`), one tool-call part per `FleetToolCall`, a text part — empty pieces omitted. **Implementation default:** tool `toolCallId` is `<eventId>:tool:<index>` (append-only list, stable), `result` is `null` once done because the wire carries no output, and `timing.completedAt` is `startedAt + ms`.
 
 - **Dimension 2.1** — An in-flight operator turn yields a running `:reply` message with no parts — the indicator renders without a remount at the first word, and the thread never reads as running, so the composer stays enabled → Test `test_inflight_turn_has_running_reply`
 - **Dimension 2.2** — A row with reasoning, two tools and an answer converts to ordered parts with the pinned statuses, identifiers and timing → Test `test_reply_parts_from_row`
@@ -171,7 +171,7 @@ Against DEV through the acceptance config: a routed stream delivers reasoning, a
 
 - **Dimension 8.1** — Live "Thinking", a timed tool row, then "Thought ·" folded above the answer → Test `test_stream_reply_parts_live_then_folded`
 - **Dimension 8.2** — An aborted send leaves the thread, its text sits in the composer, Resend lands once → Test `test_failed_send_resend_journey`
-- **Dimension 8.3** — Zero long tasks while the reply streams with the chip live; frame p95 attached as evidence → Test `test_streaming_reply_costs_no_long_tasks`
+- **Dimension 8.3** — Zero long tasks while the reply streams with the chip live, and frame p95 within the pre-change budget (17.6 ms, re-measured on `51656f7ac` before §3 lands) → Test `test_streaming_reply_costs_no_long_tasks`
 
 ## Interfaces
 
@@ -243,7 +243,7 @@ FailedDelivery = { text: string; kind: "send" | "session" };  loadingVerbFor(key
 | 7.2 | unit | `test_loading_verb_for_is_stable` | same key twice → same verb; 50 keys → ≥5 verbs |
 | 8.1 | e2e | `test_stream_reply_parts_live_then_folded` | routed reasoning → "Thinking"; tool pair → timed row; answer → "Thought ·" folded |
 | 8.2 | e2e | `test_failed_send_resend_journey` | abort the action POST → row gone, text in composer; Resend → one row |
-| 8.3 | e2e | `test_streaming_reply_costs_no_long_tasks` | 3 s of live chip and streaming → 0 `longtask` entries |
+| 8.3 | e2e | `test_streaming_reply_costs_no_long_tasks` | 3 s of live chip and streaming → 0 `longtask` entries; attached frame p95 ≤ budget |
 | 4.2 | unit | existing `role-reasoning.test.ts` cases (regression) | fold opens while arriving, closes after the answer, operator can reopen |
 
 ## Acceptance Rubric (single scoring surface)
@@ -252,7 +252,7 @@ FailedDelivery = { text: string; kind: "send" | "session" };  loadingVerbFor(key
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Parts, chip, tools, wait state and resend behave (§1–§5, §7) | `cd ui/packages/app && bunx vitest run components/domain lib/streaming lib/utils.test.ts components/layout tests/fleet-thread tests/fleet-tool-calls.test.tsx` | exit 0 | P0 | |
 | R2 | Spinner is CSS-only with a static reduced-motion frame (§6) | `cd ui/packages/design-system && bunx vitest run src/design-system/BrailleSpinner.test.tsx` | exit 0 | P0 | |
-| R3 | Live parts, resend and zero long tasks on the real app (§8) | `cd ui/packages/app && AGENTSFLEET_UI_ENV_FILE="$HOME/.config/agentsfleet/ui.env.local" bunx playwright test --config=playwright.acceptance.config.ts --project=journeys tests/e2e/acceptance/fleet-stream-transport.spec.ts tests/e2e/acceptance/fleet-thread.spec.ts` | exit 0 | P0 | |
+| R3 | Live parts, resend, zero long tasks and frame p95 within budget on the real app (§8) | `cd ui/packages/app && AGENTSFLEET_UI_ENV_FILE="$HOME/.config/agentsfleet/ui.env.local" bunx playwright test --config=playwright.acceptance.config.ts --project=journeys tests/e2e/acceptance/fleet-stream-transport.spec.ts tests/e2e/acceptance/fleet-thread.spec.ts` | exit 0; attached frame p95 ≤ 17.6 ms | P0 | |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -316,5 +316,5 @@ N/A — no files deleted.
 
 - **Consults** — Kishore (Sep 26, 2026): "Switch to chain of thought, reasoning, reply, tool parts everything to the best practice so assistant-ui, as opposed to us handrolling"; "try and use the standar features of React 19 or Next.js as relevant … to make sure we are performant"; "focussed on robust seamless elegant performant user experience … and the thinking spinner". Chose the Claude.ai resend over Retry and the braille spinner; "I want all in this PR"; "also cleanup any dead orphaned code" — every symbol this PR orphans leaves in it, the Dead Code Sweep table is the ledger, and VERIFY extends it with any newly dead code found after the refactor (`DashboardPanelFooter`: zero production consumers since the composer moved into `ViewportFooter`; the design system is `private`, so no outside consumer). Agent choices, flagged for Kishore: reuse `LOADING_VERBS` instead of a new nautical verb list; leaf-state clock instead of the earlier text-node loop. `spec.ordering` will be red (the branch's first commit is code) — Kishore's override at PR time, not the agent's.
 - **Metrics review** — no events added; `agentsfleet.chat.submit_to_first_visible` keeps its trigger (first answer, reasoning or tool paint).
-- **Skill-chain outcomes** — pending.
+- **Skill-chain outcomes** — pending. Open PR #717 obligations carried in: reply to Greptile P1 `4111114471` (unreachable composer — fixed by `51656f7ac`) and P2 `4111168712` (live chunk masked by completion — fixed by the chunk-only fixture); Session notes 3; `/review` rerun on the final diff; `orly-babysit-prs`.
 - **Deferrals** — none.

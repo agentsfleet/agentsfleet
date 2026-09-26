@@ -8,6 +8,9 @@ export type UzErrorCode = string;
  */
 export const HTTP_STATUS_REQUEST_TIMEOUT = 408;
 
+/** An expired or missing session: the caller signs in again, it does not retry. */
+export const HTTP_STATUS_UNAUTHORIZED = 401;
+
 /**
  * The `ApiError.code` a client-side request timeout carries — the retry
  * layer's own class, distinct from any `UZ-` wire code. The transport, the

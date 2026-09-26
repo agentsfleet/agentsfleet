@@ -153,23 +153,6 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
     expect(screen.queryByText(/^sending$/i)).toBeNull();
   });
 
-  it("renders a failed user message with the destructive failed badge", () => {
-    mockStream([
-      ev({
-        role: "user",
-        actor: "steer:pending",
-        text: "this steer did not land",
-        status: "failed",
-      }),
-    ]);
-    renderThread();
-    expect(screen.getByText(/this steer did not land/)).toBeTruthy();
-    expect(screen.getByText(/^not sent$/i)).toBeTruthy();
-    // The in-flight annotation must not also render for a failed row.
-    expect(screen.queryByText(/^sending$/i)).toBeNull();
-    expect(screen.queryByRole("status", { name: "Working" })).toBeNull();
-  });
-
   it("renders a fleet_error as a destructive fleet reply", () => {
     mockStream([
       ev({

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
-import type { AppendMessage } from "@assistant-ui/react";
 
 // The delivery-failure surface for one fleet's composer.
 //
@@ -13,17 +12,22 @@ import type { AppendMessage } from "@assistant-ui/react";
 // none of them was ever sent.
 //
 // State lives at module scope, keyed by fleet, so a failure survives the
-// component unmounting and remounting across a navigation.
+// component unmounting and remounting across a navigation — the composer puts
+// the refused text back from here when it mounts empty.
 
 const FAILURE_REGISTRY = new Map<string, FailedDelivery>();
 const FAILURE_LISTENERS = new Map<string, Set<() => void>>();
 
-export type DeliveryFailureKind = "send" | "session";
+export const DELIVERY_FAILURE = {
+  SEND: "send",
+  SESSION: "session",
+} as const;
+
+export type DeliveryFailureKind = (typeof DELIVERY_FAILURE)[keyof typeof DELIVERY_FAILURE];
 
 export type FailedDelivery = {
-  message: AppendMessage;
-  /** The failed optimistic row's id — retry discards it before re-submitting. */
-  tempId: string;
+  /** What the operator sent. The thread no longer shows it; the composer does. */
+  text: string;
   kind: DeliveryFailureKind;
 };
 

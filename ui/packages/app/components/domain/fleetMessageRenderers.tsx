@@ -2,7 +2,6 @@
 
 import { useState, type ReactNode } from "react";
 import { MessagePrimitive, type MessageState } from "@assistant-ui/react";
-import { Badge } from "@agentsfleet/design-system";
 import { GitPullRequestIcon } from "lucide-react";
 import { readTools } from "./FleetToolCalls";
 import {
@@ -16,7 +15,6 @@ import { FleetPayloadDisclosure } from "./FleetPayloadDisclosure";
 import { FleetReply } from "./FleetReplyBody";
 import {
   STATUS_AGENT_ERROR,
-  STATUS_FAILED,
   STATUS_IN_FLIGHT,
   STATUS_OPTIMISTIC,
 } from "./fleetMessageStatus";
@@ -40,7 +38,6 @@ import {
   senderLabelFor,
 } from "@/lib/events/event-summary";
 
-const FAILED_LABEL = "not sent";
 const SOURCE_LINK_FALLBACK = "View source";
 
 /**
@@ -61,7 +58,6 @@ function FleetMessage({ message }: { message: MessageState }) {
   const sender = senderLabelFor(readActor(message), senderLabel);
   const status = readCustomStatus(message);
   const optimistic = status === STATUS_OPTIMISTIC;
-  const failed = status === STATUS_FAILED;
   const tools = readTools(message);
   const trigger = readText(message);
   // A turn whose body this read never CARRIED is not a turn that said nothing,
@@ -90,8 +86,6 @@ function FleetMessage({ message }: { message: MessageState }) {
           tone={ROW_TONE.OPERATOR}
           messageRole={message.role}
           dimmed={optimistic}
-          failed={failed}
-          annotation={failed ? <Badge variant="destructive">{FAILED_LABEL}</Badge> : null}
         >
           <span>{trigger}</span>
         </FleetMessageRow>

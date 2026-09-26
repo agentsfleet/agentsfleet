@@ -27,15 +27,14 @@ export function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-// The server's durable statuses plus the two the browser owns: a submission
-// awaiting its server identifier, and one the server refused.
+// The server's durable statuses plus the one the browser owns: a submission
+// awaiting its server identifier. A refused submission leaves the timeline.
 export const AGENTSFLEET_EVENT_STATUS = {
   RECEIVED: EVENT_STATUS.RECEIVED,
   PROCESSED: EVENT_STATUS.PROCESSED,
   AGENT_ERROR: EVENT_STATUS.FLEET_ERROR,
   GATE_BLOCKED: EVENT_STATUS.GATE_BLOCKED,
   OPTIMISTIC: "optimistic",
-  FAILED: "failed",
 } as const;
 
 export type FleetEventStatus =

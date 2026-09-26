@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { appendOptimistic, discardOptimistic, getSnapshot, markOptimisticFailed, reconcileOptimistic, reconcileServerRows, subscribe } from "./fleet-stream-registry";
+import { appendOptimistic, discardOptimistic, getSnapshot, reconcileOptimistic, reconcileServerRows, subscribe } from "./fleet-stream-registry";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { setupRegistryTests, row, WS, Z_A, NO_SEED, IDLE_RELEASE_MS, sourceAt } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import { optimisticRow, reconcileRows } from "./fleet-stream-optimistic";
@@ -105,17 +105,6 @@ describe("fleet-stream-registry — optimistic mutations", () => {
     a();
   });
 
-  it("markOptimisticFailed flips the matching row to 'failed', keeping its tempId", () => {
-    const a = subscribe(WS, Z_A, NO_SEED, () => {});
-    const tempId = appendOptimistic(Z_A, "send that fails", "steer:k@e2e.com");
-    markOptimisticFailed(Z_A, tempId);
-    const snap = getSnapshot(Z_A);
-    expect(snap.events).toHaveLength(1);
-    expect(snap.events[0]?.id).toBe(tempId);
-    expect(snap.events[0]?.status).toBe("failed");
-    a();
-  });
-
   it("appendOptimistic with no active subscription is a no-op (returns empty string)", () => {
     const tempId = appendOptimistic("never_subscribed", "x", "actor");
     expect(tempId).toBe("");
@@ -129,16 +118,10 @@ describe("fleet-stream-registry — mutation edges", () => {
     expect(getSnapshot("never_subscribed").events).toHaveLength(0);
   });
 
-  it("markOptimisticFailed is a no-op for a fleet with no active subscription", () => {
-    markOptimisticFailed("never_subscribed", "temp_x");
-    expect(getSnapshot("never_subscribed").events).toHaveLength(0);
-  });
-
   it("discardOptimistic removes only the matching row", () => {
     const a = subscribe(WS, Z_A, NO_SEED, () => {});
     const keep = appendOptimistic(Z_A, "first", "steer:k");
     const stale = appendOptimistic(Z_A, "second", "steer:k");
-    markOptimisticFailed(Z_A, stale);
     discardOptimistic(Z_A, stale);
     expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual([keep]);
     a();
@@ -150,14 +133,12 @@ describe("fleet-stream-registry — mutation edges", () => {
   });
 
   it("a stale tempId from a torn-down entry can never discard a fresh row", () => {
-    // A FailedDelivery outlives the stream entry: fail, navigate away past
-    // the idle window (entry torn down), come back, send a new message. A
-    // per-entry counter would hand the new row the SAME id the failure
-    // stored, and retry's discard would remove the operator's newest
-    // pending message instead of the stale failed one.
+    // A refusal can land after its stream entry is gone: send, navigate away
+    // past the idle window (entry torn down), come back, send again. A
+    // per-entry counter would hand the new row the SAME id the late refusal
+    // discards, removing the operator's newest pending message.
     const first = subscribe(WS, Z_A, NO_SEED, () => {});
-    const staleTempId = appendOptimistic(Z_A, "old failed send", "steer:k");
-    markOptimisticFailed(Z_A, staleTempId);
+    const staleTempId = appendOptimistic(Z_A, "old send", "steer:k");
     first();
     vi.advanceTimersByTime(IDLE_RELEASE_MS);
     expect(getSnapshot(Z_A).events).toHaveLength(0);
@@ -180,17 +161,6 @@ describe("fleet-stream-registry — mutation edges", () => {
     reconcileOptimistic(Z_A, target, "evt_real");
     const snap = getSnapshot(Z_A);
     expect(snap.events.find((e) => e.id === "evt_real")?.status).toBe("received");
-    expect(snap.events.find((e) => e.id === keep)?.status).toBe("optimistic");
-    a();
-  });
-
-  it("markOptimisticFailed touches only the matching row", () => {
-    const a = subscribe(WS, Z_A, NO_SEED, () => {});
-    const keep = appendOptimistic(Z_A, "first", "steer:k");
-    const target = appendOptimistic(Z_A, "second", "steer:k");
-    markOptimisticFailed(Z_A, target);
-    const snap = getSnapshot(Z_A);
-    expect(snap.events.find((e) => e.id === target)?.status).toBe("failed");
     expect(snap.events.find((e) => e.id === keep)?.status).toBe("optimistic");
     a();
   });

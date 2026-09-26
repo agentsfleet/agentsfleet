@@ -1,19 +1,24 @@
-import { WS, ZID, appendMessage, capturedOnNew, capturedRetry, capturedSubmittedMessageId, ev, mockStream, renderThread, steerFleetActionMock, threadElement } from "./harness";
+import { WS, ZID, appendMessage, capturedOnNew, capturedSubmittedMessageId, ev, mockStream, renderThread, steerFleetActionMock, threadElement } from "./harness";
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { AppendMessage } from "@assistant-ui/react";
-import { FleetThread } from "@/components/domain/FleetThread";
 import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
 
-describe("FleetThread — steer submission", () => {
-  it("ignores Retry when no delivery has failed", () => {
-    mockStream([]);
-    renderThread();
-    expect(capturedRetry.current).toBeTypeOf("function");
-    act(() => capturedRetry.current!());
-    expect(steerFleetActionMock).not.toHaveBeenCalled();
-  });
+const COMPOSER_NAME = "Message this fleet…";
+const SEND_FAILED_TEXT = "Message not sent.";
+const RESEND_LABEL = "Resend";
+const RESTORE_LABEL = "Restore";
+const SIGN_IN_LABEL = "Sign in";
+// Longer than any retry schedule the action could run: a replay would land
+// inside it.
+const NO_REPLAY_WINDOW_MS = 5_000;
+const UNAVAILABLE = { ok: false, error: "Provider unavailable", status: 503, errorCode: "UZ-AGT-503" } as const;
 
+function composerInput(): HTMLTextAreaElement {
+  return screen.getByRole("textbox", { name: COMPOSER_NAME }) as HTMLTextAreaElement;
+}
+
+describe("FleetThread — steer submission", () => {
   it("serialises rapid submissions so their HTTP requests reach the server in order", async () => {
     mockStream([]);
     // Two rapid sends: the first resolves slowly, the second quickly. Without
@@ -55,11 +60,11 @@ describe("FleetThread — steer submission", () => {
     const unsubscribe = subscribeOnboardingRefresh(WS, refreshed);
     const appendOptimistic = vi.fn().mockReturnValue("temp_42");
     const reconcileOptimistic = vi.fn();
-    const markOptimisticFailed = vi.fn();
+    const discardOptimistic = vi.fn();
     mockStream([], {
       appendOptimistic,
       reconcileOptimistic,
-      markOptimisticFailed,
+      discardOptimistic,
     });
     steerFleetActionMock.mockResolvedValueOnce({
       ok: true,
@@ -79,7 +84,7 @@ describe("FleetThread — steer submission", () => {
       "steer:pending",
     );
     expect(reconcileOptimistic).toHaveBeenCalledWith("temp_42", "evt_real_42");
-    expect(markOptimisticFailed).not.toHaveBeenCalled();
+    expect(discardOptimistic).not.toHaveBeenCalled();
     expect(refreshed).toHaveBeenCalledTimes(1);
     unsubscribe();
   });
@@ -121,16 +126,105 @@ describe("FleetThread — steer submission", () => {
     );
   });
 
-  it("marks the optimistic message failed when the action returns ok:false", async () => {
+  it("test_failed_send_leaves_thread_and_restores_draft", async () => {
     const refreshed = vi.fn();
     const unsubscribe = subscribeOnboardingRefresh(WS, refreshed);
-    const appendOptimistic = vi.fn().mockReturnValue("temp_99");
     const reconcileOptimistic = vi.fn();
-    const markOptimisticFailed = vi.fn();
+    const discardOptimistic = vi.fn();
     mockStream([], {
-      appendOptimistic,
+      appendOptimistic: vi.fn().mockReturnValue("temp_t"),
       reconcileOptimistic,
-      markOptimisticFailed,
+      discardOptimistic,
+    });
+    steerFleetActionMock.mockRejectedValueOnce(new Error("Server Component transport failed"));
+    renderThread();
+    await act(async () => {
+      await capturedOnNew.current!(appendMessage("offline send"));
+    });
+    expect(discardOptimistic).toHaveBeenCalledWith("temp_t");
+    await waitFor(() => expect(composerInput().value).toBe("offline send"));
+    expect(screen.getByText(SEND_FAILED_TEXT)).toBeTruthy();
+    expect(screen.getByRole("button", { name: RESEND_LABEL })).toBeTruthy();
+    expect(reconcileOptimistic).not.toHaveBeenCalled();
+    expect(refreshed).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
+  it("test_resend_submits_restored_text_once", async () => {
+    const discardOptimistic = vi.fn();
+    const reconcileOptimistic = vi.fn();
+    mockStream([], {
+      appendOptimistic: vi.fn().mockReturnValueOnce("temp_fail_1").mockReturnValueOnce("temp_resend"),
+      discardOptimistic,
+      reconcileOptimistic,
+    });
+    steerFleetActionMock
+      .mockResolvedValueOnce(UNAVAILABLE)
+      .mockResolvedValueOnce({ ok: true, data: { event_id: "evt_resend_ok" } });
+    // A refused send stays refused until the operator acts. The clock is fake
+    // from before the send, so a replay timer armed by the refusal would fire
+    // inside the window below.
+    vi.useFakeTimers();
+    try {
+      renderThread();
+      await act(async () => {
+        await capturedOnNew.current!(appendMessage("retry this send"));
+      });
+      expect(composerInput().value).toBe("retry this send");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(NO_REPLAY_WINDOW_MS);
+      });
+      expect(steerFleetActionMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: RESEND_LABEL }));
+    await waitFor(() => expect(steerFleetActionMock).toHaveBeenCalledTimes(2));
+    expect(steerFleetActionMock).toHaveBeenLastCalledWith(WS, ZID, "retry this send");
+    await waitFor(() => expect(reconcileOptimistic).toHaveBeenCalledWith("temp_resend", "evt_resend_ok"));
+    expect(screen.queryByText(SEND_FAILED_TEXT)).toBeNull();
+    expect(discardOptimistic).toHaveBeenCalledTimes(1);
+  });
+
+  it("test_failure_restore_respects_existing_draft", async () => {
+    let refuse: () => void = () => {};
+    steerFleetActionMock.mockImplementationOnce(
+      () => new Promise((resolve) => { refuse = () => resolve(UNAVAILABLE); }),
+    );
+    mockStream([], { appendOptimistic: vi.fn().mockReturnValue("temp_old") });
+    const view = renderThread();
+    let sent: Promise<void> = Promise.resolve();
+    act(() => {
+      sent = capturedOnNew.current!(appendMessage("old"));
+    });
+    // The POST is chained behind the delivery tail; refuse it once it is out.
+    await waitFor(() => expect(steerFleetActionMock).toHaveBeenCalledTimes(1));
+    fireEvent.change(composerInput(), { target: { value: "new" } });
+    await act(async () => {
+      refuse();
+      await sent;
+    });
+    // The operator's newer draft is never overwritten by the refused text.
+    expect(composerInput().value).toBe("new");
+    expect(screen.queryByRole("button", { name: RESEND_LABEL })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: RESTORE_LABEL }));
+    expect(composerInput().value).toBe("old\n\nnew");
+    expect(screen.getByRole("button", { name: RESEND_LABEL })).toBeTruthy();
+
+    // A remount starts from an empty composer and gets the refused text back.
+    view.unmount();
+    renderThread();
+    await waitFor(() => expect(composerInput().value).toBe("old"));
+  });
+
+  it("test_session_failure_keeps_sign_in", async () => {
+    const reconcileOptimistic = vi.fn();
+    const discardOptimistic = vi.fn();
+    mockStream([], {
+      appendOptimistic: vi.fn().mockReturnValue("temp_99"),
+      reconcileOptimistic,
+      discardOptimistic,
     });
     steerFleetActionMock.mockResolvedValueOnce({
       ok: false,
@@ -139,71 +233,14 @@ describe("FleetThread — steer submission", () => {
       errorCode: "UZ-AUTH-401",
     });
     renderThread();
-    await capturedOnNew.current!(appendMessage("deploy that fails"));
-    await waitFor(() =>
-      expect(markOptimisticFailed).toHaveBeenCalledWith("temp_99"),
-    );
-    expect(appendOptimistic).toHaveBeenCalledWith(
-      "deploy that fails",
-      "steer:pending",
-    );
-    expect(reconcileOptimistic).not.toHaveBeenCalled();
-    expect(refreshed).not.toHaveBeenCalled();
-    unsubscribe();
-  });
-
-  it("retries a non-session send failure through the queue", async () => {
-    const markOptimisticFailed = vi.fn();
-    const appendOptimistic = vi.fn().mockReturnValue("temp_fail_1");
-    const discardOptimistic = vi.fn();
-    mockStream([], {
-      appendOptimistic,
-      markOptimisticFailed,
-      discardOptimistic,
+    await act(async () => {
+      await capturedOnNew.current!(appendMessage("deploy that fails"));
     });
-    steerFleetActionMock
-      .mockResolvedValueOnce({
-        ok: false,
-        error: "Provider unavailable",
-        status: 503,
-        errorCode: "UZ-AGT-503",
-      })
-      .mockResolvedValueOnce({ ok: true, data: { event_id: "evt_retry_ok" } });
-    renderThread();
-    await capturedOnNew.current!(appendMessage("retry this send"));
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy(),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    await waitFor(() => expect(steerFleetActionMock).toHaveBeenCalledTimes(2));
-    expect(markOptimisticFailed).toHaveBeenCalledTimes(1);
-    // The stale failed row leaves the thread before the fresh optimistic
-    // re-submit — otherwise every retry stacks a duplicate of the message.
-    expect(discardOptimistic).toHaveBeenCalledWith("temp_fail_1");
-  });
-
-  it("marks the optimistic message failed when the action invocation throws", async () => {
-    const refreshed = vi.fn();
-    const unsubscribe = subscribeOnboardingRefresh(WS, refreshed);
-    const appendOptimistic = vi.fn().mockReturnValue("temp_t");
-    const reconcileOptimistic = vi.fn();
-    const markOptimisticFailed = vi.fn();
-    mockStream([], {
-      appendOptimistic,
-      reconcileOptimistic,
-      markOptimisticFailed,
-    });
-    steerFleetActionMock.mockRejectedValueOnce(
-      new Error("Server Component transport failed"),
-    );
-    renderThread();
-    await capturedOnNew.current!(appendMessage("offline send"));
-    await waitFor(() =>
-      expect(markOptimisticFailed).toHaveBeenCalledWith("temp_t"),
-    );
+    expect(discardOptimistic).toHaveBeenCalledWith("temp_99");
+    await waitFor(() => expect(composerInput().value).toBe("deploy that fails"));
+    expect(screen.getByRole("link", { name: SIGN_IN_LABEL }).getAttribute("href")).toBe("/sign-in");
+    expect(screen.queryByRole("button", { name: RESEND_LABEL })).toBeNull();
     expect(reconcileOptimistic).not.toHaveBeenCalled();
-    expect(refreshed).not.toHaveBeenCalled();
-    unsubscribe();
   });
 
   it("does not call the action when the submitted message text is empty", async () => {

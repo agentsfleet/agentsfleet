@@ -262,27 +262,13 @@ describe("useFleetEventStream", () => {
     expect(result.current.convertEvent(result.current.events[1]!).metadata?.custom?.["queued"]).toBe(false);
   });
 
-  it("markOptimisticFailed flips the optimistic message to failed", async () => {
+  it("discardOptimistic removes a refused send's row from the thread", async () => {
     const { result } = mount();
     let tempId = "";
     act(() => {
       tempId = result.current.appendOptimistic("send that fails", "steer:pending");
     });
     await waitFor(() => expect(result.current.events).toHaveLength(1));
-    act(() => result.current.markOptimisticFailed(tempId));
-    await waitFor(() => expect(result.current.events[0]!.status).toBe("failed"));
-    expect(result.current.events[0]!.id).toBe(tempId);
-  });
-
-  it("discardOptimistic removes the failed row so a retry cannot duplicate it", async () => {
-    const { result } = mount();
-    let tempId = "";
-    act(() => {
-      tempId = result.current.appendOptimistic("send that fails", "steer:pending");
-    });
-    await waitFor(() => expect(result.current.events).toHaveLength(1));
-    act(() => result.current.markOptimisticFailed(tempId));
-    await waitFor(() => expect(result.current.events[0]!.status).toBe("failed"));
     act(() => result.current.discardOptimistic(tempId));
     await waitFor(() => expect(result.current.events).toHaveLength(0));
   });
