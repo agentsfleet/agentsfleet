@@ -15,12 +15,12 @@ export type ScheduledStream = {
   url: string;
   /** Resolves once the page's stream request has connected. */
   connected: Promise<void>;
-  /** Writes the schedule in order; resolves after the last frame. */
-  play: () => Promise<void>;
+  /** Writes these frames in order, each after its delay; resolves after the last. */
+  send: (frames: readonly TimedFrame[]) => Promise<void>;
   close: () => Promise<void>;
 };
 
-export async function scheduledSseServer(frames: readonly TimedFrame[]): Promise<ScheduledStream> {
+export async function scheduledSseServer(): Promise<ScheduledStream> {
   const connected = Promise.withResolvers<void>();
   const open: ServerResponse[] = [];
   const server = createServer((_request, response) => {
@@ -34,7 +34,7 @@ export async function scheduledSseServer(frames: readonly TimedFrame[]): Promise
   return {
     url: `http://${LOOPBACK}:${port}/stream`,
     connected: connected.promise,
-    play: async () => {
+    send: async (frames) => {
       for (const frame of frames) {
         await new Promise((resolve) => setTimeout(resolve, frame.afterMs));
         // The first connection is the page's stream; a reconnect gets nothing.

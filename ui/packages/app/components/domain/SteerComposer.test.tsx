@@ -1,7 +1,6 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { SteerComposer } from "./SteerComposer";
 import { DELIVERY_FAILURE } from "./useFleetDeliveryFailure";
 
@@ -63,23 +62,29 @@ describe("SteerComposer", () => {
     expect(screen.queryByText(/will queue/i)).toBeNull();
   });
 
-  it("puts a refused send back into an empty composer and offers Resend", () => {
+  it("puts a refused send back into a composer that mounts empty, and offers Resend", () => {
     const view = render(<SteerComposer failure={SEND_FAILURE} />);
     expect(composer.setText).toHaveBeenCalledExactlyOnceWith("deploy the canary");
     // The runtime re-renders subscribers on a text change; the mock does not.
     view.rerender(<SteerComposer failure={SEND_FAILURE} />);
     expect(screen.getByText("Message not sent.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Resend" }).getAttribute("type")).toBe("submit");
-    expect(screen.queryByRole("button", { name: "Restore" })).toBeNull();
   });
 
-  it("keeps a newer draft and restores the refused text above it on request", async () => {
+  it("leaves a refusal while mounted to assistant-ui, and never overwrites a draft", () => {
+    // Mounted clean: a refusal arriving later is returned by the runtime's
+    // MessageNotSentError handling, not by this component.
+    const view = render(<SteerComposer failure={null} />);
+    view.rerender(<SteerComposer failure={SEND_FAILURE} />);
+    expect(composer.setText).not.toHaveBeenCalled();
+    cleanup();
+    // Mounted over a draft: the draft stays, and with no refused text in it
+    // there is nothing for Resend to send.
     draft("and roll back staging");
     render(<SteerComposer failure={SEND_FAILURE} />);
     expect(composer.setText).not.toHaveBeenCalled();
+    expect(screen.getByText("Message not sent.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Resend" })).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "Restore" }));
-    expect(composer.setText).toHaveBeenCalledExactlyOnceWith("deploy the canary\n\nand roll back staging");
   });
 
   it("sends an expired session to sign in and still restores the text", () => {

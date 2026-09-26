@@ -1,7 +1,7 @@
-/** A reply streamed over time into the real page: reasoning, then a markdown
- * answer, delivered frame by frame from a local server. Measures what the
+/** A reply streamed over time into the real page, frame by frame from a local
+ * server: the Thought chip live then folded, a timed tool row, and what the
  * reply costs the main thread while it streams. */
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import type { EventsPage } from "@/lib/api/events";
 import { expect, test } from "@playwright/test";
 import { FRAME_KIND } from "@/lib/api/events-types";
@@ -11,33 +11,83 @@ import { workspaceHref } from "./fixtures/nav";
 import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { sseFrame as frame } from "./fixtures/sse";
-import { scheduledSseServer, type TimedFrame } from "./fixtures/sse-server";
+import { scheduledSseServer, type ScheduledStream, type TimedFrame } from "./fixtures/sse-server";
 
 const FLEET_PREFIX = "reply-parts-spec-";
-const EVENT_ID = "9100000000000-1";
+const EVENT_ID = "9200000000000-1";
 const ACTOR = "steer:reply-parts@agentsfleet.dev";
 const REASONING_CHUNKS = 60;
 const REASONING_EVERY_MS = 50;
 const ANSWER_CHUNKS = 60;
 const ANSWER_EVERY_MS = 40;
 const LAST_ANSWER_LINE = `Step ${ANSWER_CHUNKS} settled`;
-// The pre-change reply's measured p95 on this lane (PR #717 Session notes 2);
-// re-measured on the pre-change tree before the parts rendering landed.
+const TOOL_NAME = "read_file";
+const TOOL_WALL_MS = 700;
+const LIVE_REASONING = "Checking whether delivery 1 is signed before trusting it.";
+const ANSWER = "Signed by the expected key.";
+// The pre-change reply measured 16.8 ms p95 on this lane (baseline run on
+// 5f236cbcc); the budget is the one PR #717 recorded before that.
 const FRAME_P95_BUDGET_MS = 17.6;
 const P95 = 0.95;
 const PROBE_KEY = "__replyFrameProbe";
 const EMPTY_HISTORY: EventsPage = { items: [], next_cursor: null };
 
 type ProbeResult = { longTasks: number; frames: number; p95FrameMs: number };
+type ReplyPage = { chat: Locator; stream: ScheduledStream };
+
+test("test_stream_reply_parts_live_then_folded", async ({ page }) => {
+  await withReplyPage(page, async ({ chat, stream }) => {
+    let seq = 0;
+    await stream.send([opening(Date.now()), chunk(seq++, "reasoning", LIVE_REASONING)]);
+    const live = chat.getByRole("button", { name: /^Thinking/ });
+    await expect(live).toBeVisible();
+    await expect(live).toContainText(LIVE_REASONING.slice(0, -1));
+
+    await stream.send([toolFrame(FRAME_KIND.TOOL_CALL_STARTED, { args_redacted: {} })]);
+    const tool = chat.getByRole("list", { name: "Tool calls" }).locator(`[data-tool="${TOOL_NAME}"]`);
+    await expect(tool).toBeVisible();
+    await stream.send([toolFrame(FRAME_KIND.TOOL_CALL_COMPLETED, { ms: TOOL_WALL_MS })]);
+    await expect(tool).toHaveAttribute("data-done", "true");
+    // Pin test: the wall time the frame reported, as the row prints it.
+    await expect(tool).toContainText("0.7s");
+
+    await stream.send([chunk(seq++, "answer", ANSWER)]);
+    await expect(chat.getByText(ANSWER)).toBeVisible();
+    const folded = chat.getByRole("button", { name: /^Thought · \d+\.\ds$/ });
+    await expect(folded).toBeVisible();
+    await expect(chat.getByText(LIVE_REASONING)).toHaveCount(0);
+    await folded.click();
+    await expect(chat.getByText(LIVE_REASONING)).toBeVisible();
+  });
+});
 
 test("test_streaming_reply_costs_no_long_tasks", async ({ page }, testInfo) => {
-  const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-  const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, {
-    name: `${FLEET_PREFIX}${crypto.randomUUID()}`,
+  await withReplyPage(page, async ({ chat, stream }) => {
+    await startFrameProbe(page);
+    await stream.send(replySchedule(Date.now()));
+    await expect(chat.getByText(LAST_ANSWER_LINE)).toBeVisible();
+    const probe = await stopFrameProbe(page);
+    await testInfo.attach("streaming-reply-frame-evidence", {
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...probe,
+        budgetMs: FRAME_P95_BUDGET_MS,
+        schedule: { REASONING_CHUNKS, REASONING_EVERY_MS, ANSWER_CHUNKS, ANSWER_EVERY_MS },
+      }),
+    });
+    expect(probe.longTasks).toBe(0);
+    expect(probe.p95FrameMs).toBeLessThanOrEqual(FRAME_P95_BUDGET_MS);
   });
+});
+
+// A seeded fleet whose live stream the local server writes; history reads
+// empty, so every row on screen came from the frames a test sends.
+async function withReplyPage(page: Page, body: (reply: ReplyPage) => Promise<void>): Promise<void> {
+  const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
+  const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, { name: `${FLEET_PREFIX}${crypto.randomUUID()}` });
   const streamPath = `/live/v1/workspaces/${workspaceId}/fleets/${fleet.id}/events/stream`;
   const historyPath = streamPath.replace(/\/stream$/, "");
-  const stream = await scheduledSseServer(replySchedule(Date.now()));
+  const stream = await scheduledSseServer();
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route((url) => url.pathname === streamPath, (route) => route.continue({ url: stream.url }));
@@ -49,51 +99,46 @@ test("test_streaming_reply_costs_no_long_tasks", async ({ page }, testInfo) => {
     const chat = page.getByLabel("Fleet chat");
     await expect(chat).toBeVisible();
     await stream.connected;
-
-    await startFrameProbe(page);
-    await stream.play();
-    await expect(chat.getByText(LAST_ANSWER_LINE)).toBeVisible();
-    const probe = await stopFrameProbe(page);
-
-    await testInfo.attach("streaming-reply-frame-evidence", {
-      contentType: "application/json",
-      body: JSON.stringify({
-        ...probe,
-        budgetMs: FRAME_P95_BUDGET_MS,
-        schedule: { REASONING_CHUNKS, REASONING_EVERY_MS, ANSWER_CHUNKS, ANSWER_EVERY_MS },
-      }),
-    });
+    await body({ chat, stream });
     expect(errors).toEqual([]);
-    expect(probe.longTasks).toBe(0);
-    expect(probe.p95FrameMs).toBeLessThanOrEqual(FRAME_P95_BUDGET_MS);
   } finally {
     await stream.close();
     await page.goto("about:blank");
     await page.unrouteAll({ behavior: "wait" });
     await cleanWorkspaceFleets(FIXTURE_KEY.regular, workspaceId, FLEET_PREFIX);
   }
-});
+}
+
+function opening(createdAt: number): TimedFrame {
+  return { afterMs: 0, body: frame(FRAME_KIND.EVENT_RECEIVED, { event_id: EVENT_ID, actor: ACTOR, created_at: createdAt }) };
+}
 
 // One reply as the runner streams it: typed chunks on one contiguous
 // sequence, reasoning first, then a markdown answer the page parses as it grows.
 function replySchedule(createdAt: number): TimedFrame[] {
-  const opening = { afterMs: 0, body: frame(FRAME_KIND.EVENT_RECEIVED, { event_id: EVENT_ID, actor: ACTOR, created_at: createdAt }) };
   const reasoning = Array.from({ length: REASONING_CHUNKS }, (_, index) => ({
+    ...chunk(index, "reasoning", `Checking whether delivery ${index + 1} is signed before trusting it. `),
     afterMs: REASONING_EVERY_MS,
-    body: chunk(index, "reasoning", `Checking whether delivery ${index + 1} is signed before trusting it. `),
   }));
   const answer = Array.from({ length: ANSWER_CHUNKS }, (_, index) => ({
+    ...chunk(REASONING_CHUNKS + index, "answer", `- Step ${index + 1} settled with \`verify_signature\` and **no retries**\n`),
     afterMs: ANSWER_EVERY_MS,
-    body: chunk(REASONING_CHUNKS + index, "answer", `- Step ${index + 1} settled with \`verify_signature\` and **no retries**\n`),
   }));
-  return [opening, ...reasoning, ...answer];
+  return [opening(createdAt), ...reasoning, ...answer];
 }
 
-function chunk(seq: number, kind: "reasoning" | "answer", text: string): string {
-  return frame(FRAME_KIND.CHUNK, {
-    event_id: EVENT_ID, text, text_kind: kind,
-    stream_seq: seq, stream_start: seq === 0, stream_contiguous: true,
-  });
+function chunk(seq: number, kind: "reasoning" | "answer", text: string): TimedFrame {
+  return {
+    afterMs: 0,
+    body: frame(FRAME_KIND.CHUNK, {
+      event_id: EVENT_ID, text, text_kind: kind,
+      stream_seq: seq, stream_start: seq === 0, stream_contiguous: true,
+    }),
+  };
+}
+
+function toolFrame(kind: string, extra: Record<string, unknown>): TimedFrame {
+  return { afterMs: 0, body: frame(kind, { event_id: EVENT_ID, name: TOOL_NAME, ...extra }) };
 }
 
 // Long tasks from the browser's own observer; frame gaps from consecutive

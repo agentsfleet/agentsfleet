@@ -7,7 +7,7 @@ import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
 const COMPOSER_NAME = "Message this fleet…";
 const SEND_FAILED_TEXT = "Message not sent.";
 const RESEND_LABEL = "Resend";
-const RESTORE_LABEL = "Restore";
+const SEND_LABEL = "Send";
 const SIGN_IN_LABEL = "Sign in";
 // Longer than any retry schedule the action could run: a replay would land
 // inside it.
@@ -16,6 +16,16 @@ const UNAVAILABLE = { ok: false, error: "Provider unavailable", status: 503, err
 
 function composerInput(): HTMLTextAreaElement {
   return screen.getByRole("textbox", { name: COMPOSER_NAME }) as HTMLTextAreaElement;
+}
+
+// Through the composer, not `onNew`: the draft return under test is the
+// composer's own.
+async function send(text: string): Promise<void> {
+  fireEvent.change(composerInput(), { target: { value: text } });
+  await act(async () => {
+    // A string name matches whole, so this never picks Resend.
+    fireEvent.click(screen.getByRole("button", { name: SEND_LABEL }));
+  });
 }
 
 describe("FleetThread — steer submission", () => {
@@ -138,10 +148,10 @@ describe("FleetThread — steer submission", () => {
     });
     steerFleetActionMock.mockRejectedValueOnce(new Error("Server Component transport failed"));
     renderThread();
-    await act(async () => {
-      await capturedOnNew.current!(appendMessage("offline send"));
-    });
-    expect(discardOptimistic).toHaveBeenCalledWith("temp_t");
+    await send("offline send");
+    await waitFor(() => expect(discardOptimistic).toHaveBeenCalledWith("temp_t"));
+    // assistant-ui hands the draft back when the handler rejects with
+    // MessageNotSentError.
     await waitFor(() => expect(composerInput().value).toBe("offline send"));
     expect(screen.getByText(SEND_FAILED_TEXT)).toBeTruthy();
     expect(screen.getByRole("button", { name: RESEND_LABEL })).toBeTruthy();
@@ -167,13 +177,11 @@ describe("FleetThread — steer submission", () => {
     vi.useFakeTimers();
     try {
       renderThread();
-      await act(async () => {
-        await capturedOnNew.current!(appendMessage("retry this send"));
-      });
-      expect(composerInput().value).toBe("retry this send");
+      await send("retry this send");
       await act(async () => {
         await vi.advanceTimersByTimeAsync(NO_REPLAY_WINDOW_MS);
       });
+      expect(composerInput().value).toBe("retry this send");
       expect(steerFleetActionMock).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
@@ -184,6 +192,7 @@ describe("FleetThread — steer submission", () => {
     expect(steerFleetActionMock).toHaveBeenLastCalledWith(WS, ZID, "retry this send");
     await waitFor(() => expect(reconcileOptimistic).toHaveBeenCalledWith("temp_resend", "evt_resend_ok"));
     expect(screen.queryByText(SEND_FAILED_TEXT)).toBeNull();
+    expect(composerInput().value).toBe("");
     expect(discardOptimistic).toHaveBeenCalledTimes(1);
   });
 
@@ -194,22 +203,16 @@ describe("FleetThread — steer submission", () => {
     );
     mockStream([], { appendOptimistic: vi.fn().mockReturnValue("temp_old") });
     const view = renderThread();
-    let sent: Promise<void> = Promise.resolve();
-    act(() => {
-      sent = capturedOnNew.current!(appendMessage("old"));
-    });
+    await send("old");
     // The POST is chained behind the delivery tail; refuse it once it is out.
     await waitFor(() => expect(steerFleetActionMock).toHaveBeenCalledTimes(1));
     fireEvent.change(composerInput(), { target: { value: "new" } });
     await act(async () => {
       refuse();
-      await sent;
     });
-    // The operator's newer draft is never overwritten by the refused text.
-    expect(composerInput().value).toBe("new");
-    expect(screen.queryByRole("button", { name: RESEND_LABEL })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: RESTORE_LABEL }));
-    expect(composerInput().value).toBe("old\n\nnew");
+    // Nothing the operator typed since is lost: the refused text returns
+    // ahead of it.
+    await waitFor(() => expect(composerInput().value).toBe("old\nnew"));
     expect(screen.getByRole("button", { name: RESEND_LABEL })).toBeTruthy();
 
     // A remount starts from an empty composer and gets the refused text back.
@@ -233,10 +236,8 @@ describe("FleetThread — steer submission", () => {
       errorCode: "UZ-AUTH-401",
     });
     renderThread();
-    await act(async () => {
-      await capturedOnNew.current!(appendMessage("deploy that fails"));
-    });
-    expect(discardOptimistic).toHaveBeenCalledWith("temp_99");
+    await send("deploy that fails");
+    await waitFor(() => expect(discardOptimistic).toHaveBeenCalledWith("temp_99"));
     await waitFor(() => expect(composerInput().value).toBe("deploy that fails"));
     expect(screen.getByRole("link", { name: SIGN_IN_LABEL }).getAttribute("href")).toBe("/sign-in");
     expect(screen.queryByRole("button", { name: RESEND_LABEL })).toBeNull();
