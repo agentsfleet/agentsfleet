@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { ComposerPrimitive, useAui, useAuiState } from "@assistant-ui/react";
 import { Alert, Button, DashboardPanel, Textarea, cn } from "@agentsfleet/design-system";
@@ -14,10 +14,6 @@ const SESSION_EXPIRED = "Your session expired. Sign in again before sending this
 const SEND_FAILED = "Message not sent.";
 const SIGN_IN_LABEL = "Sign in";
 const RESEND_LABEL = "Resend";
-const RESTORE_LABEL = "Restore";
-// Restore puts the refused text above a draft typed since, a blank line
-// apart, so neither is lost.
-const DRAFT_SEPARATOR = "\n\n";
 
 // The composer is a persistent part of the transcript: a compact, bordered
 // field that grows with the message while leaving the visible conversation in
@@ -28,7 +24,7 @@ export type SteerComposerProps = {
 };
 
 export function SteerComposer({ failure }: SteerComposerProps) {
-  useRestoreRefusedText(failure);
+  useRestoreRefusedTextOnMount(failure);
   return (
     <DashboardPanel
       asChild
@@ -102,16 +98,19 @@ export function SteerComposer({ failure }: SteerComposerProps) {
   );
 }
 
-// The composer clears on send, so a refusal lands in an empty field and the
-// text goes back where the operator typed it; a mount after navigating away
-// does the same. A draft started since is never overwritten.
-function useRestoreRefusedText(failure: FailedDelivery | null): void {
+// A refusal while mounted needs nothing here: the handler rejects with
+// `MessageNotSentError` and assistant-ui returns the draft itself. A remount
+// starts a fresh composer, so the refused text comes back from the per-fleet
+// record — once, on mount, and only into an empty composer.
+function useRestoreRefusedTextOnMount(failure: FailedDelivery | null): void {
   const aui = useAui();
+  const atMount = useRef(failure);
   useEffect(() => {
-    if (failure === null) return;
+    const refused = atMount.current;
+    if (refused === null) return;
     const composer = aui.composer();
-    if (composer.getState().isEmpty) composer.setText(failure.text);
-  }, [aui, failure]);
+    if (composer.getState().isEmpty) composer.setText(refused.text);
+  }, [aui]);
 }
 
 function DeliveryFailureNotice({ failure }: { failure: FailedDelivery | null }) {
@@ -135,29 +134,17 @@ function DeliveryFailureNotice({ failure }: { failure: FailedDelivery | null }) 
 }
 
 // Resend is the composer's own Send, so it takes the one path every message
-// takes. It shows once the composer holds the refused text; until then the
-// operator is offered Restore, which puts it back without losing a new draft.
+// takes. It shows while the composer holds the refused text; once the operator
+// has cleared it, the notice only reports what happened.
 function SendFailureAction({ text }: { text: string }) {
-  const aui = useAui();
   // A boolean, not the draft: typing does not re-render the notice.
   const holdsRefusedText = useAuiState((s) => s.composer.text.includes(text));
-  if (holdsRefusedText) {
-    return (
-      <ComposerPrimitive.Send asChild>
-        <Button type="submit" variant="outline" size="sm">
-          {RESEND_LABEL}
-        </Button>
-      </ComposerPrimitive.Send>
-    );
-  }
-  const restore = () => {
-    const composer = aui.composer();
-    const draft = composer.getState().text;
-    composer.setText(draft.length === 0 ? text : `${text}${DRAFT_SEPARATOR}${draft}`);
-  };
+  if (!holdsRefusedText) return null;
   return (
-    <Button type="button" variant="outline" size="sm" onClick={restore}>
-      {RESTORE_LABEL}
-    </Button>
+    <ComposerPrimitive.Send asChild>
+      <Button type="submit" variant="outline" size="sm">
+        {RESEND_LABEL}
+      </Button>
+    </ComposerPrimitive.Send>
   );
 }

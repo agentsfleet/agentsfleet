@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef } from "react";
-import type { AppendMessage } from "@assistant-ui/react";
+import { MessageNotSentError, type AppendMessage } from "@assistant-ui/react";
 
 import { DELIVERY_FAILURE, type DeliveryFailureKind, type FailedDelivery } from "./useFleetDeliveryFailure";
 import type { useFleetEventStream } from "./useFleetEventStream";
@@ -12,8 +12,9 @@ import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 // The tail of the steer delivery chain, lifted out of `FleetThread` at its
 // length cap. Self-contained: optimistic append, the serialized POST, and the
 // refusal path. A refused send leaves the thread and its text goes back to the
-// composer, the way Claude.ai does it; nothing re-posts it without a click,
-// because the POST carries no idempotency key.
+// composer, the way Claude.ai does it: the handler rejects with assistant-ui's
+// `MessageNotSentError`, and the composer restores the draft it cleared.
+// Nothing re-posts it without a click; the POST carries no idempotency key.
 
 // Placeholder actor on an optimistic row until the stream's matching
 // `EVENT_RECEIVED` lands and reconciliation replaces it with the real
@@ -59,13 +60,13 @@ export function useNewMessageHandler({
         discardOptimistic(tempId);
         onFailure({ text, kind });
       };
-      const send = async () => {
+      const send = async (): Promise<boolean> => {
         try {
           const result = await steerFleetAction(workspaceId, fleetId, text);
           if (result.ok) {
             reconcileOptimistic(tempId, result.data.event_id);
             requestOnboardingRefresh(workspaceId);
-            return;
+            return true;
           }
           refuse(result.status === HTTP_STATUS_UNAUTHORIZED ? DELIVERY_FAILURE.SESSION : DELIVERY_FAILURE.SEND);
         } catch {
@@ -73,13 +74,14 @@ export function useNewMessageHandler({
           // (offline, or the action invocation errored): the same refusal.
           refuse(DELIVERY_FAILURE.SEND);
         }
+        return false;
       };
       // Chain this POST after the previous one. `send` reports its own failure
       // and never rejects, so the tail never rejects — the next message always
       // gets its slot whether this one succeeded or failed.
       const slot = deliveryTail.current.then(send);
-      deliveryTail.current = slot;
-      await slot;
+      deliveryTail.current = slot.then(() => undefined);
+      if (!(await slot)) throw new MessageNotSentError();
     },
     [
       workspaceId,
