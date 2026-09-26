@@ -48,7 +48,6 @@ function stubStream(installStep: string | null) {
     installStep,
     appendOptimistic: vi.fn(),
     reconcileOptimistic: vi.fn(),
-    markOptimisticFailed: vi.fn(),
     discardOptimistic: vi.fn(),
     convertEvent: vi.fn(),
   });

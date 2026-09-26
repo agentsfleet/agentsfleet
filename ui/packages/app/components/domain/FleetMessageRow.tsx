@@ -73,8 +73,6 @@ export type FleetMessageRowProps = {
   sender: string;
   tone: RowTone;
   children: ReactNode;
-  /** Transient delivery state rendered above the operator bubble. */
-  annotation?: ReactNode;
   /** The message's conversational role. Named apart from the ARIA `role`
    * attribute it would otherwise be mistaken for; it lands on `data-role`. */
   messageRole: string;
@@ -86,7 +84,6 @@ export function FleetMessageRow({
   sender,
   tone,
   children,
-  annotation,
   messageRole,
   dimmed,
   failed,
@@ -122,11 +119,6 @@ export function FleetMessageRow({
             isOperator ? "max-w-prose items-end" : "w-full items-start",
           )}
         >
-          {annotation ? (
-            <div className="font-sans text-label text-muted-foreground">
-              {annotation}
-            </div>
-          ) : null}
           <div
             className={cn(
               // Both turns read at `reading`. The operator's message used to be

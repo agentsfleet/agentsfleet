@@ -1,24 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { AppendMessage } from "@assistant-ui/react";
 import {
+  DELIVERY_FAILURE,
   useFleetDeliveryFailure,
   __resetFleetDeliveryFailuresForTests,
 } from "./useFleetDeliveryFailure";
-
-function message(text: string): AppendMessage {
-  return {
-    role: "user",
-    content: [{ type: "text", text }],
-    attachments: [],
-    metadata: { custom: {} },
-    parentId: null,
-    sourceId: null,
-    runConfig: {},
-    startRun: true,
-  } as unknown as AppendMessage;
-}
 
 afterEach(() => {
   cleanup();
@@ -35,18 +22,12 @@ describe("useFleetDeliveryFailure", () => {
   it("preserves a failed delivery across Chat unmount and remount", () => {
     const first = renderHook(() => useFleetDeliveryFailure("fleet_failed"));
     act(() => {
-      first.result.current.setFailedDelivery({
-        message: message("retry after navigation"),
-        tempId: "optim-1",
-        kind: "send",
-      });
+      first.result.current.setFailedDelivery({ text: "retry after navigation", kind: DELIVERY_FAILURE.SEND });
     });
     first.unmount();
 
     const second = renderHook(() => useFleetDeliveryFailure("fleet_failed"));
-    expect(second.result.current.failedDelivery?.message).toEqual(
-      message("retry after navigation"),
-    );
+    expect(second.result.current.failedDelivery?.text).toBe("retry after navigation");
     act(() => second.result.current.clearFailedDelivery());
     expect(second.result.current.failedDelivery).toBeNull();
   });
@@ -55,7 +36,7 @@ describe("useFleetDeliveryFailure", () => {
     const mine = renderHook(() => useFleetDeliveryFailure("fleet_a"));
     const other = renderHook(() => useFleetDeliveryFailure("fleet_b"));
     act(() => {
-      mine.result.current.setFailedDelivery({ message: message("mine"), tempId: "optim-1", kind: "send" });
+      mine.result.current.setFailedDelivery({ text: "mine", kind: DELIVERY_FAILURE.SEND });
     });
     expect(mine.result.current.failedDelivery).not.toBeNull();
     expect(other.result.current.failedDelivery).toBeNull();
@@ -67,16 +48,12 @@ describe("useFleetDeliveryFailure", () => {
     const writeAfterUnmount = first.result.current.setFailedDelivery;
     first.unmount();
     act(() => {
-      second.result.current.setFailedDelivery({
-        message: message("one listener remains"),
-        tempId: "optim-2",
-        kind: "session",
-      });
+      second.result.current.setFailedDelivery({ text: "one listener remains", kind: DELIVERY_FAILURE.SESSION });
     });
-    expect(second.result.current.failedDelivery?.kind).toBe("session");
+    expect(second.result.current.failedDelivery?.kind).toBe(DELIVERY_FAILURE.SESSION);
     second.unmount();
     act(() => {
-      writeAfterUnmount({ message: message("no listeners"), tempId: "optim-3", kind: "send" });
+      writeAfterUnmount({ text: "no listeners", kind: DELIVERY_FAILURE.SEND });
     });
   });
 
@@ -93,11 +70,7 @@ describe("useFleetDeliveryFailure", () => {
   it("notifies mounted failure consumers when the test registry resets", () => {
     const hook = renderHook(() => useFleetDeliveryFailure("fleet_reset"));
     act(() => {
-      hook.result.current.setFailedDelivery({
-        message: message("clear me"),
-        tempId: "optim-4",
-        kind: "send",
-      });
+      hook.result.current.setFailedDelivery({ text: "clear me", kind: DELIVERY_FAILURE.SEND });
     });
     expect(hook.result.current.failedDelivery).not.toBeNull();
     act(() => __resetFleetDeliveryFailuresForTests());

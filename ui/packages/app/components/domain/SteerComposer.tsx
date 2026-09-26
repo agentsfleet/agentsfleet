@@ -1,10 +1,11 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
-import { ComposerPrimitive } from "@assistant-ui/react";
+import { ComposerPrimitive, useAui, useAuiState } from "@assistant-ui/react";
 import { Alert, Button, DashboardPanel, Textarea, cn } from "@agentsfleet/design-system";
 import { ArrowUpIcon } from "lucide-react";
-import type { DeliveryFailureKind } from "./useFleetDeliveryFailure";
+import { DELIVERY_FAILURE, type FailedDelivery } from "./useFleetDeliveryFailure";
 
 const PLACEHOLDER = "Message this fleet…";
 const SEND_LABEL = "Send";
@@ -12,18 +13,22 @@ const COMPOSER_LABEL = "Chat composer";
 const SESSION_EXPIRED = "Your session expired. Sign in again before sending this message.";
 const SEND_FAILED = "Message not sent.";
 const SIGN_IN_LABEL = "Sign in";
-const RETRY_LABEL = "Retry";
+const RESEND_LABEL = "Resend";
+const RESTORE_LABEL = "Restore";
+// Restore puts the refused text above a draft typed since, a blank line
+// apart, so neither is lost.
+const DRAFT_SEPARATOR = "\n\n";
 
 // The composer is a persistent part of the transcript: a compact, bordered
 // field that grows with the message while leaving the visible conversation in
 // place. It never disables itself on the live feed's state — sending is an
 // authenticated write that does not touch the stream.
 export type SteerComposerProps = {
-  failureKind: DeliveryFailureKind | null;
-  onRetry: () => void;
+  failure: FailedDelivery | null;
 };
 
-export function SteerComposer({ failureKind, onRetry }: SteerComposerProps) {
+export function SteerComposer({ failure }: SteerComposerProps) {
+  useRestoreRefusedText(failure);
   return (
     <DashboardPanel
       asChild
@@ -39,7 +44,7 @@ export function SteerComposer({ failureKind, onRetry }: SteerComposerProps) {
         className="flex flex-col gap-sm"
         aria-label={COMPOSER_LABEL}
       >
-        <DeliveryFailureNotice failureKind={failureKind} onRetry={onRetry} />
+        <DeliveryFailureNotice failure={failure} />
 
         {/* Stretch, not end-alignment: when the footer is capped this row
             shrinks, and a stretched textarea shrinks with it and scrolls its
@@ -97,14 +102,21 @@ export function SteerComposer({ failureKind, onRetry }: SteerComposerProps) {
   );
 }
 
-function DeliveryFailureNotice({
-  failureKind,
-  onRetry,
-}: {
-  failureKind: DeliveryFailureKind | null;
-  onRetry: () => void;
-}) {
-  if (failureKind === "session") {
+// The composer clears on send, so a refusal lands in an empty field and the
+// text goes back where the operator typed it; a mount after navigating away
+// does the same. A draft started since is never overwritten.
+function useRestoreRefusedText(failure: FailedDelivery | null): void {
+  const aui = useAui();
+  useEffect(() => {
+    if (failure === null) return;
+    const composer = aui.composer();
+    if (composer.getState().isEmpty) composer.setText(failure.text);
+  }, [aui, failure]);
+}
+
+function DeliveryFailureNotice({ failure }: { failure: FailedDelivery | null }) {
+  if (failure === null) return null;
+  if (failure.kind === DELIVERY_FAILURE.SESSION) {
     return (
       <Alert variant="destructive" className="items-center justify-between">
         <span>{SESSION_EXPIRED}</span>
@@ -114,15 +126,38 @@ function DeliveryFailureNotice({
       </Alert>
     );
   }
-  if (failureKind === "send") {
+  return (
+    <Alert variant="destructive" className="items-center justify-between">
+      <span>{SEND_FAILED}</span>
+      <SendFailureAction text={failure.text} />
+    </Alert>
+  );
+}
+
+// Resend is the composer's own Send, so it takes the one path every message
+// takes. It shows once the composer holds the refused text; until then the
+// operator is offered Restore, which puts it back without losing a new draft.
+function SendFailureAction({ text }: { text: string }) {
+  const aui = useAui();
+  // A boolean, not the draft: typing does not re-render the notice.
+  const holdsRefusedText = useAuiState((s) => s.composer.text.includes(text));
+  if (holdsRefusedText) {
     return (
-      <Alert variant="destructive" className="items-center justify-between">
-        <span>{SEND_FAILED}</span>
-        <Button type="button" variant="outline" size="sm" onClick={onRetry}>
-          {RETRY_LABEL}
+      <ComposerPrimitive.Send asChild>
+        <Button type="submit" variant="outline" size="sm">
+          {RESEND_LABEL}
         </Button>
-      </Alert>
+      </ComposerPrimitive.Send>
     );
   }
-  return null;
+  const restore = () => {
+    const composer = aui.composer();
+    const draft = composer.getState().text;
+    composer.setText(draft.length === 0 ? text : `${text}${DRAFT_SEPARATOR}${draft}`);
+  };
+  return (
+    <Button type="button" variant="outline" size="sm" onClick={restore}>
+      {RESTORE_LABEL}
+    </Button>
+  );
 }

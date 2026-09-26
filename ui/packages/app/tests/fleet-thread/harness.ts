@@ -13,7 +13,6 @@ const {
   steerFleetActionMock,
   useFleetEventStreamMock,
   capturedOnNew,
-  capturedRetry,
   capturedSubmittedMessageId,
 } = vi.hoisted(() => ({
   routerRefreshMock: vi.fn(),
@@ -25,7 +24,6 @@ const {
   capturedOnNew: {
     current: null as ((msg: AppendMessage) => Promise<void>) | null,
   },
-  capturedRetry: { current: null as (() => void) | null },
   capturedSubmittedMessageId: { current: null as string | null },
 }));
 
@@ -59,21 +57,6 @@ vi.mock("@/components/domain/useFleetEventStream", async () => {
   return {
     ...actual,
     useFleetEventStream: useFleetEventStreamMock,
-  };
-});
-
-vi.mock("@/components/domain/SteerComposer", async () => {
-  const actual = await vi.importActual<
-    typeof import("@/components/domain/SteerComposer")
-  >("@/components/domain/SteerComposer");
-  return {
-    ...actual,
-    SteerComposer: (
-      props: React.ComponentProps<typeof actual.SteerComposer>,
-    ) => {
-      capturedRetry.current = props.onRetry;
-      return React.createElement(actual.SteerComposer, props);
-    },
   };
 });
 
@@ -161,7 +144,6 @@ export type StreamMockOverrides = {
   connectionStatus?: (typeof CONNECTION_STATUS)[keyof typeof CONNECTION_STATUS];
   appendOptimistic?: ReturnType<typeof vi.fn>;
   reconcileOptimistic?: ReturnType<typeof vi.fn>;
-  markOptimisticFailed?: ReturnType<typeof vi.fn>;
   discardOptimistic?: ReturnType<typeof vi.fn>;
   retryConnection?: ReturnType<typeof vi.fn>;
 };
@@ -177,7 +159,6 @@ export function mockStream(
     appendOptimistic:
       opts?.appendOptimistic ?? vi.fn().mockReturnValue("temp_1"),
     reconcileOptimistic: opts?.reconcileOptimistic ?? vi.fn(),
-    markOptimisticFailed: opts?.markOptimisticFailed ?? vi.fn(),
     discardOptimistic: opts?.discardOptimistic ?? vi.fn(),
     retryConnection: opts?.retryConnection ?? vi.fn(),
     convertEvent: toThreadMessage,
@@ -242,14 +223,13 @@ beforeEach(() => {
   steerFleetActionMock.mockReset();
   useFleetEventStreamMock.mockReset();
   // The delivery-failure registry is module-scoped by design (it survives
-  // remounts); without this reset a failure recorded in one test leaks a
-  // Retry banner — and its stale message — into the next.
+  // remounts); without this reset a failure recorded in one test leaks its
+  // notice — and its restored text — into the next.
   __resetFleetDeliveryFailuresForTests();
   capturedOnNew.current = null;
-  capturedRetry.current = null;
   capturedSubmittedMessageId.current = null;
 });
 
 afterEach(() => cleanup());
 
-export { routerRefreshMock, steerFleetActionMock, useFleetEventStreamMock, capturedOnNew, capturedRetry, capturedSubmittedMessageId };
+export { routerRefreshMock, steerFleetActionMock, useFleetEventStreamMock, capturedOnNew, capturedSubmittedMessageId };

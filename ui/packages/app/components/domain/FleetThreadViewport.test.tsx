@@ -13,7 +13,6 @@ import { CONNECTION_STATUS } from "./useFleetEventStream";
 const FIRST_MESSAGE = "optim-first";
 const SECOND_MESSAGE = "optim-second";
 const onScroll = vi.fn();
-const onRetry = vi.fn();
 
 afterEach(() => {
   cleanup();
@@ -42,8 +41,7 @@ function View({ submittedMessageId = null, eventsCount = 0 }: {
         submittedMessageId={submittedMessageId}
         eventsCount={eventsCount}
         connectionStatus={CONNECTION_STATUS.LIVE}
-        failureKind={null}
-        onRetry={onRetry}
+        failure={null}
       />
     </AssistantRuntimeProvider>
   );

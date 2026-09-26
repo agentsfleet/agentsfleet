@@ -19,7 +19,6 @@ import { messageOutcome } from "./fleetFailureCopy";
 import { readQueued, readReasoning, readReply, readReplyRecovering, readSubmittedAtMs, readThinking } from "./fleetMessageReaders";
 import {
   STATUS_AGENT_ERROR,
-  STATUS_FAILED,
   STATUS_IN_FLIGHT,
   STATUS_OPTIMISTIC,
 } from "./fleetMessageStatus";
@@ -60,8 +59,7 @@ export function FleetReply({
   const recovering = readReplyRecovering(message);
   const answer = reply.trim();
   const eventId = message.id.endsWith(":reply") ? message.id.slice(0, -":reply".length) : message.id;
-  useFirstVisiblePaint(eventId, readSubmittedAtMs(message), status !== STATUS_FAILED && (answer.length > 0 || reasoning.length > 0 || tools.length > 0));
-  if (status === STATUS_FAILED) return null;
+  useFirstVisiblePaint(eventId, readSubmittedAtMs(message), answer.length > 0 || reasoning.length > 0 || tools.length > 0);
   // Keep the same reply-side cue while delivery is pending and until the
   // first response arrives, so acknowledgement does not flash a second label.
   const awaitingFirstWord = streaming && answer.length === 0 && reasoning.length === 0 && tools.length === 0;

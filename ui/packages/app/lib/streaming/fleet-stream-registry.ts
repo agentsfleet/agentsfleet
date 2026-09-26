@@ -332,28 +332,12 @@ export function reconcileOptimistic(
   return alreadyComplete;
 }
 
-// A failed optimistic row being retried leaves the thread here: the retry
-// re-submits the same text as a fresh optimistic row, so keeping the stale
-// failed copy would stack a duplicate of the same operator message on every
-// attempt.
+// A refused send leaves the thread here. Its text goes back to the composer,
+// so the row would only duplicate what the operator is about to resend.
 export function discardOptimistic(fleetId: string, tempId: string): void {
   const entry = REGISTRY.get(fleetId);
   if (!entry) return;
   setEvents(entry, (prev) => prev.filter((event) => event.id !== tempId));
-}
-
-// A steer that failed server-side (the Server Action returned ok:false
-// after its retries). The optimistic row keeps its tempId but flips to
-// `failed` so the renderer can paint a destructive badge instead of the
-// `queued` one — the user sees the send did not land.
-export function markOptimisticFailed(fleetId: string, tempId: string): void {
-  const entry = REGISTRY.get(fleetId);
-  if (!entry) return;
-  setEvents(entry, (prev) =>
-    prev.map((ev) =>
-      ev.id === tempId ? { ...ev, status: AGENTSFLEET_EVENT_STATUS.FAILED } : ev,
-    ),
-  );
 }
 
 // Test surface — vitest must reset between tests; nothing in production

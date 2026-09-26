@@ -8,7 +8,6 @@ import {
   CONNECTION_STATUS,
   discardOptimistic as registryDiscardOptimistic,
   getSnapshot,
-  markOptimisticFailed as registryMarkOptimisticFailed,
   reconcileOptimistic as registryReconcileOptimistic,
   reconcileServerRows,
   retryConnection as registryRetryConnection,
@@ -43,7 +42,6 @@ export type UseFleetEventStreamResult = {
   installStep: InstallStepId | null;
   appendOptimistic: (text: string, actor: string) => string;
   reconcileOptimistic: (tempId: string, realEventId: string) => boolean;
-  markOptimisticFailed: (tempId: string) => void;
   discardOptimistic: (tempId: string) => void;
   retryConnection: () => void;
   convertEvent: (event: FleetEvent) => ThreadMessageLike;
@@ -95,10 +93,6 @@ export function useFleetEventStream(
       registryReconcileOptimistic(fleetId, tempId, realEventId),
     [fleetId],
   );
-  const markOptimisticFailed = useCallback(
-    (tempId: string) => registryMarkOptimisticFailed(fleetId, tempId),
-    [fleetId],
-  );
   const discardOptimistic = useCallback(
     (tempId: string) => registryDiscardOptimistic(fleetId, tempId),
     [fleetId],
@@ -119,7 +113,6 @@ export function useFleetEventStream(
     installStep: snapshot.installStep,
     appendOptimistic,
     reconcileOptimistic,
-    markOptimisticFailed,
     discardOptimistic,
     retryConnection,
     convertEvent,

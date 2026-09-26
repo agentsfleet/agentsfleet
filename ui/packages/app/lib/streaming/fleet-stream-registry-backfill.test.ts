@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CONNECTION_STATUS, appendOptimistic, getSnapshot, markOptimisticFailed, reconcileServerRows, subscribe } from "./fleet-stream-registry";
+import { CONNECTION_STATUS, appendOptimistic, getSnapshot, reconcileServerRows, subscribe } from "./fleet-stream-registry";
 import { setupRegistryTests, row, WS, Z_A, IDLE_RELEASE_MS, sourceAt } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import { setupBackfillTests, RECONNECT_ADVANCE_MS, SEED_AT_MS, MISSED_AT_MS, SEED_SINCE_PARAM, fetchSpy, pageWith, queryOf, flushBackfill, reconnect } from "@/tests/helpers/fleet-stream-backfill-fixtures";
 
@@ -140,15 +140,14 @@ describe("fleet-stream-registry — backfill", () => {
     a();
   });
 
-  it("keys the backfill off the last server event, skipping a newer failed row", async () => {
+  it("keys the backfill off the last server event, skipping a newer browser-made row", async () => {
     fetchSpy.mockResolvedValueOnce(pageWith([]));
     const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
     const es0 = sourceAt(0);
     es0.open();
     es0.heartbeat();
     es0.fail();
-    const tempId = appendOptimistic(Z_A, "steer that fails mid-outage", "steer:k@e2e.com");
-    markOptimisticFailed(Z_A, tempId);
+    appendOptimistic(Z_A, "steer sent mid-outage", "steer:k@e2e.com");
     vi.advanceTimersByTime(RECONNECT_ADVANCE_MS);
     const es1 = sourceAt(1);
     es1.open();

@@ -3,14 +3,17 @@
 import { useCallback, useRef } from "react";
 import type { AppendMessage } from "@assistant-ui/react";
 
-import type { FailedDelivery } from "./useFleetDeliveryFailure";
+import { DELIVERY_FAILURE, type DeliveryFailureKind, type FailedDelivery } from "./useFleetDeliveryFailure";
 import type { useFleetEventStream } from "./useFleetEventStream";
 import { steerFleetAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
+import { HTTP_STATUS_UNAUTHORIZED } from "@/lib/api/errors";
 import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 
 // The tail of the steer delivery chain, lifted out of `FleetThread` at its
 // length cap. Self-contained: optimistic append, the serialized POST, and the
-// two failure paths that put a `failed` row back on screen.
+// refusal path. A refused send leaves the thread and its text goes back to the
+// composer, the way Claude.ai does it; nothing re-posts it without a click,
+// because the POST carries no idempotency key.
 
 // Placeholder actor on an optimistic row until the stream's matching
 // `EVENT_RECEIVED` lands and reconciliation replaces it with the real
@@ -23,7 +26,7 @@ type NewHandlerCtx = {
   fleetId: string;
   appendOptimistic: StreamApi["appendOptimistic"];
   reconcileOptimistic: StreamApi["reconcileOptimistic"];
-  markOptimisticFailed: StreamApi["markOptimisticFailed"];
+  discardOptimistic: StreamApi["discardOptimistic"];
   onSubmitted: (tempId: string) => void;
   onFailure: (failure: FailedDelivery) => void;
 };
@@ -33,7 +36,7 @@ export function useNewMessageHandler({
   fleetId,
   appendOptimistic,
   reconcileOptimistic,
-  markOptimisticFailed,
+  discardOptimistic,
   onSubmitted,
   onFailure,
 }: NewHandlerCtx): (msg: AppendMessage) => Promise<void> {
@@ -52,6 +55,10 @@ export function useNewMessageHandler({
       // both messages immediately, before any POST resolves.
       const tempId = appendOptimistic(text, OPTIMISTIC_ACTOR);
       if (tempId) onSubmitted(tempId);
+      const refuse = (kind: DeliveryFailureKind) => {
+        discardOptimistic(tempId);
+        onFailure({ text, kind });
+      };
       const send = async () => {
         try {
           const result = await steerFleetAction(workspaceId, fleetId, text);
@@ -60,14 +67,11 @@ export function useNewMessageHandler({
             requestOnboardingRefresh(workspaceId);
             return;
           }
-          markOptimisticFailed(tempId);
-          onFailure({ message: msg, tempId, kind: result.status === 401 ? "session" : "send" });
+          refuse(result.status === HTTP_STATUS_UNAUTHORIZED ? DELIVERY_FAILURE.SESSION : DELIVERY_FAILURE.SEND);
         } catch {
-          // The Server Action's Remote Procedure Call (RPC) transport failed (offline, or the
-          // action invocation errored) — surface the same `failed` row the
-          // ok:false path produces so the user knows the steer didn't land.
-          markOptimisticFailed(tempId);
-          onFailure({ message: msg, tempId, kind: "send" });
+          // The Server Action's Remote Procedure Call (RPC) transport failed
+          // (offline, or the action invocation errored): the same refusal.
+          refuse(DELIVERY_FAILURE.SEND);
         }
       };
       // Chain this POST after the previous one. `send` reports its own failure
@@ -82,7 +86,7 @@ export function useNewMessageHandler({
       fleetId,
       appendOptimistic,
       reconcileOptimistic,
-      markOptimisticFailed,
+      discardOptimistic,
       onSubmitted,
       onFailure,
     ],

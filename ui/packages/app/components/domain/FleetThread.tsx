@@ -77,20 +77,10 @@ export function FleetThread({
     fleetId,
     appendOptimistic: stream.appendOptimistic,
     reconcileOptimistic: stream.reconcileOptimistic,
-    markOptimisticFailed: stream.markOptimisticFailed,
+    discardOptimistic: stream.discardOptimistic,
     onSubmitted,
     onFailure: setFailedDelivery,
   });
-  const { discardOptimistic } = stream;
-  const retryFailedDelivery = useCallback(() => {
-    if (!failedDelivery) return;
-    const { message, tempId } = failedDelivery;
-    clearFailedDelivery();
-    // The retry re-submits as a fresh optimistic row; the stale failed row
-    // must leave first or each attempt stacks a duplicate of the message.
-    discardOptimistic(tempId);
-    void deliverMessage(message);
-  }, [clearFailedDelivery, deliverMessage, discardOptimistic, failedDelivery]);
   // Runs of identical activity render as one expandable row. Grouping is a
   // pure view over the array the stream already ordered — it never reorders,
   // drops, or renames an event, so a group can always hand back what it hid.
@@ -99,7 +89,10 @@ export function FleetThread({
   const runtime = useExternalStoreRuntime<FleetThreadEntry>({
     messages: entries,
     convertMessage: convertEntry,
+    // A new send supersedes the last refusal, whether it is the Resend of
+    // that text or something else the operator typed.
     onNew: async (message) => {
+      clearFailedDelivery();
       await deliverMessage(message);
     },
   });
@@ -141,8 +134,7 @@ export function FleetThread({
             eventsCount={stream.events.length}
             submittedMessageId={submittedMessageId}
             connectionStatus={stream.connectionStatus}
-            failureKind={failedDelivery?.kind ?? null}
-            onRetry={retryFailedDelivery}
+            failure={failedDelivery}
           />
         </DashboardPanel>
       </SenderLabelProvider>
