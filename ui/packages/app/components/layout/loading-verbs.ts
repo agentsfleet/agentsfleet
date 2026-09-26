@@ -38,6 +38,23 @@ export function pickLoadingVerb(): LoadingVerb {
   return LOADING_VERBS[index] ?? LOADING_VERBS[0];
 }
 
+// 32-bit FNV-1a: a stable, well-spread index from a string key. Math.imul
+// keeps the multiply in 32 bits; `>>> 0` reads it unsigned.
+const FNV_OFFSET_BASIS = 0x811c9dc5;
+const FNV_PRIME = 0x01000193;
+
+/**
+ * One verb per key, the same on every render — a streaming reply re-renders
+ * many times a second, and a verb that changed with each would flicker.
+ */
+export function loadingVerbFor(key: string): LoadingVerb {
+  let hash = FNV_OFFSET_BASIS;
+  for (let index = 0; index < key.length; index += 1) {
+    hash = Math.imul(hash ^ key.charCodeAt(index), FNV_PRIME);
+  }
+  return LOADING_VERBS[(hash >>> 0) % LOADING_VERBS.length] ?? LOADING_VERBS[0];
+}
+
 /**
  * The visible loader copy. `title` present → "Wrangling Fleets…"; absent → the
  * bare "Wrangling…" the multi-route dashboard fallback uses, since it stands in

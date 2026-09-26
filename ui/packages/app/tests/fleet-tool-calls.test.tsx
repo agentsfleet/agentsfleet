@@ -1,83 +1,56 @@
-import React from "react";
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
-import type { MessageState } from "@assistant-ui/react";
-import { readTools, ToolCalls } from "../components/domain/FleetToolCalls";
+import { ev, mockStream, renderThread, threadElement } from "./fleet-thread/harness";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, screen, within } from "@testing-library/react";
 
-afterEach(cleanup);
+// Tool rows as assistant-ui tool-call parts: the library's `useToolCallElapsed`
+// reads each part's timing and ticks only while the part runs.
 
-// readTools narrows an `unknown` metadata bag. The custom bag crosses the
-// assistant-ui boundary untyped, so a malformed entry must be dropped — never
-// crash the thread, never render a nameless tool.
-function messageWith(tools: unknown): MessageState {
-  return { metadata: { custom: { tools } } } as unknown as MessageState;
-}
+const NOW = 10_000;
+const RUNNING_FOR_MS = 2_000;
+const TICK_MS = 1_000;
+const DONE_MS = 700;
+const TOOL_CALLS = "Tool calls";
 
-describe("readTools", () => {
-  it("returns the tools array when every entry is well-formed", () => {
-    const tools = [{ name: "grep", ms: 90, done: true }];
-    expect(readTools(messageWith(tools))).toEqual(tools);
-  });
-
-  it("returns empty for a bag that carries no array", () => {
-    expect(readTools(messageWith(undefined))).toEqual([]);
-    expect(readTools(messageWith("not-an-array"))).toEqual([]);
-    expect(readTools(messageWith({ name: "grep" }))).toEqual([]);
-  });
-
-  it("filters malformed entries instead of crashing the thread", () => {
-    const mixed = [
-      { name: "grep", ms: null, done: false },
-      { name: 42, done: true },
-      null,
-      "tool",
-      { done: true },
-    ];
-    expect(readTools(messageWith(mixed))).toEqual([{ name: "grep", ms: null, done: false }]);
-  });
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(NOW);
 });
 
-describe("ToolCalls", () => {
-  it("renders nothing at all for an event with no tool calls", () => {
-    const { container } = render(<ToolCalls tools={[]} />);
-    expect(container.firstChild).toBeNull();
-  });
+afterEach(() => {
+  vi.useRealTimers();
+});
 
-  it("shows a running tool with its elapsed time, and a done tool with its final time", () => {
-    render(
-      <ToolCalls
-        tools={[
-          { name: "search_repo", ms: 1_400, done: false },
-          { name: "read_file", ms: 200, done: true },
-        ]}
-      />,
-    );
-    const list = screen.getByRole("list", { name: "Tool calls" });
-    expect(list).toBeTruthy();
-    expect(screen.getByText("search_repo").closest("li")?.getAttribute("data-done")).toBeNull();
-    expect(screen.getByText("read_file").closest("li")?.getAttribute("data-done")).toBe("true");
-    expect(screen.getByText("1.4s")).toBeTruthy();
-    expect(screen.getByText("200ms")).toBeTruthy();
-  });
+describe("FleetThread — tool rows", () => {
+  it("test_tool_row_reads_part_timing", () => {
+    const working = ev({
+      id: "evt_tools", role: "user", actor: "operator", text: "Look it up", status: "received",
+      tools: [
+        { name: "read_file", startedAtMs: NOW - 5_000, ms: DONE_MS, done: true },
+        { name: "search_repo", startedAtMs: NOW - RUNNING_FOR_MS, ms: null, done: false },
+      ],
+    });
+    mockStream([working]);
+    const view = renderThread();
+    // Adjacent calls share one list.
+    const lists = screen.getAllByRole("list", { name: TOOL_CALLS });
+    expect(lists).toHaveLength(1);
+    const running = within(lists[0]!).getByText("search_repo").closest("li")!;
+    const done = within(lists[0]!).getByText("read_file").closest("li")!;
+    // Pin test: the literals are the rendered clocks.
+    expect(done.getAttribute("data-done")).toBe("true");
+    expect(done.textContent).toContain("✓");
+    expect(done.textContent).toContain("0.7s");
+    expect(running.getAttribute("data-done")).toBeNull();
+    expect(running.textContent).toContain("2.0s");
+    act(() => {
+      vi.advanceTimersByTime(TICK_MS);
+    });
+    expect(running.textContent).toContain("3.0s");
 
-  // A just-started tool has no timing yet — the row renders without inventing one.
-  it("renders a started tool with no time rather than a placeholder", () => {
-    render(<ToolCalls tools={[{ name: "cordon", ms: null, done: false }]} />);
-    expect(screen.getByText("cordon")).toBeTruthy();
-    expect(screen.queryByText(/ms$|s$/)).toBeNull();
-  });
-
-  // The ms/s formatting boundary, both sides of it.
-  it("formats the second boundary on both sides", () => {
-    render(
-      <ToolCalls
-        tools={[
-          { name: "fast", ms: 999, done: true },
-          { name: "slow", ms: 1_000, done: true }, // pin test: literal is the contract
-        ]}
-      />,
-    );
-    expect(screen.getByText("999ms")).toBeTruthy();
-    expect(screen.getByText("1.0s")).toBeTruthy();
+    // The turn settles with the call never reported done: no clock claims it runs.
+    mockStream([{ ...working, status: "processed", reply: "Found it." }]);
+    view.rerender(threadElement());
+    const stranded = screen.getByText("search_repo").closest("li")!;
+    expect(stranded.textContent).not.toMatch(/\d\.\ds/);
   });
 });

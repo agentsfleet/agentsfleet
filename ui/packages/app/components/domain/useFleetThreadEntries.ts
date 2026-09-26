@@ -5,6 +5,7 @@ import type { ThreadMessageLike } from "@assistant-ui/react";
 
 import { ENTRY_KIND, groupThreadEvents, type ThreadEntry } from "@/lib/events/event-grouping";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import { toReplyMessage } from "./fleetReplyMessage";
 
 // What the thread actually renders: the stream's events with each run of
 // identical activity folded into one entry. Kept out of `FleetThread` because
@@ -20,12 +21,20 @@ export const GROUP_META = {
 export const RENDER_KIND_KEY = "renderKind";
 export const RENDER_KIND = {
   TRIGGER: "trigger",
+} as const;
+
+/** A reply row's id is its trigger's id with this suffix. */
+export const REPLY_ID_SUFFIX = ":reply";
+
+const SPLIT = {
+  TRIGGER: "trigger",
   REPLY: "reply",
 } as const;
 
 export type FleetThreadEntry =
   | ThreadEntry
-  | { kind: "reply"; key: string; event: FleetEvent };
+  | { kind: typeof SPLIT.TRIGGER; key: string; event: FleetEvent }
+  | { kind: typeof SPLIT.REPLY; key: string; event: FleetEvent };
 
 export type FleetThreadEntries = {
   entries: FleetThreadEntry[];
@@ -55,20 +64,19 @@ export function useFleetThreadEntries(
   );
   const convertEntry = useCallback(
     (entry: FleetThreadEntry): ThreadMessageLike => {
-      if (entry.kind === "reply") {
-        return withRenderKind(convertEvent(entry.event), RENDER_KIND.REPLY);
+      switch (entry.kind) {
+        case SPLIT.TRIGGER:
+          return withRenderKind(convertEvent(entry.event), RENDER_KIND.TRIGGER);
+        case SPLIT.REPLY:
+          return toReplyMessage(convertEvent(entry.event), entry.event);
+        case ENTRY_KIND.GROUP:
+          return groupMessage(entry.events, entry.key, convertEvent);
+        default:
+          // A row the fleet itself wrote is already its own reply.
+          return entry.event.role === "assistant"
+            ? toReplyMessage(convertEvent(entry.event), entry.event)
+            : convertEvent(entry.event);
       }
-
-      const message =
-        entry.kind === ENTRY_KIND.SINGLE
-          ? convertEvent(entry.event)
-          : groupMessage(entry.events, entry.key, convertEvent);
-
-      return entry.kind === ENTRY_KIND.SINGLE
-        && entry.event.role !== "assistant"
-        && (entry.event.reply.trim().length > 0 || (entry.event.reasoning?.length ?? 0) > 0)
-        ? withRenderKind(message, RENDER_KIND.TRIGGER)
-        : message;
     },
     [convertEvent],
   );
@@ -76,31 +84,34 @@ export function useFleetThreadEntries(
 }
 
 function expandEntry(entry: ThreadEntry): FleetThreadEntry[] {
-  if (entry.kind === ENTRY_KIND.GROUP) return [entry];
-
+  if (entry.kind === ENTRY_KIND.GROUP || !hasReplyRow(entry.event)) return [entry];
   const { event } = entry;
-  if (event.role === "assistant" || (event.reply.trim().length === 0 && (event.reasoning?.length ?? 0) === 0)) {
-    return [entry];
-  }
-
   return [
-    entry,
+    { kind: SPLIT.TRIGGER, key: entry.key, event },
     {
-      kind: "reply",
-      key: `${entry.key}:reply`,
+      kind: SPLIT.REPLY,
+      key: `${entry.key}${REPLY_ID_SUFFIX}`,
       event: {
         ...event,
-        id: `${event.id}:reply`,
+        id: `${event.id}${REPLY_ID_SUFFIX}`,
         role: "assistant",
         actor: "fleet",
         text: event.reply,
-        reply: event.reply,
-        outcome: "",
-        failureLabel: null,
-        failureDetail: null,
       },
     },
   ];
+}
+
+// An operator turn always answers in its own row, so the wait state and the
+// reply's parts sit on one assistant message from the first frame — no remount
+// when the first word lands. An integration turn earns a reply row only once
+// the fleet produced something; until then its tick carries the state.
+function hasReplyRow(event: FleetEvent): boolean {
+  if (event.role === "assistant") return false;
+  if (event.role === "user") return true;
+  return event.reply.trim().length > 0
+    || (event.reasoning?.length ?? 0) > 0
+    || (event.tools?.length ?? 0) > 0;
 }
 
 function withRenderKind(

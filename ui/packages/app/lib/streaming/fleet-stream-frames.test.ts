@@ -92,7 +92,7 @@ describe("mergeBackfill", () => {
   });
 
   it("retains live tool evidence when a terminal row is reconciled", () => {
-    const tools = [{ name: "inspect", ms: 12, done: true }];
+    const tools = [{ name: "inspect", startedAtMs: 1_000, ms: 12, done: true }];
     const prev = [evt({ id: "e1", status: "received", tools })];
     const merged = mergeBackfill(prev, [
       row({ event_id: "e1", status: "processed", response_text: "done" }),

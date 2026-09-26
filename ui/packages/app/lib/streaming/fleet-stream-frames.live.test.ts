@@ -166,18 +166,19 @@ describe("applyLiveFrame", () => {
   });
 
   it("a completion carrying no timing does not erase the elapsed a progress frame reported", () => {
+    const progressAt = 1_000;
     let out = applyLiveFrame([evt({ id: "e1" })], {
       kind: FRAME_KIND.TOOL_CALL_PROGRESS,
       event_id: "e1",
       name: "slow",
       elapsed_ms: 5_000,
-    });
+    }, progressAt);
     out = applyLiveFrame(out, {
       kind: FRAME_KIND.TOOL_CALL_COMPLETED,
       event_id: "e1",
       name: "slow",
       ms: null as unknown as number,
-    });
-    expect(out[0]?.tools).toEqual([{ name: "slow", ms: 5_000, done: true }]);
+    }, progressAt + 5_000);
+    expect(out[0]?.tools).toEqual([{ name: "slow", startedAtMs: progressAt, ms: 5_000, done: true }]);
   });
 });

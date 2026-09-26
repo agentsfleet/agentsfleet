@@ -45,6 +45,8 @@ export type FleetEventStatus =
 // completed with the final wall time.
 export type FleetToolCall = {
   name: string;
+  /** Browser clock at this call's first frame; the wire carries no start instant. */
+  startedAtMs: number;
   /** Wall time so far (from a progress frame) or final (from a completion). */
   ms: number | null;
   done: boolean;
@@ -69,6 +71,11 @@ export type FleetEvent = {
   /** Incremental reasoning, kept apart from the answer and tool protocol. */
   reasoning?: string;
   thinking?: boolean;
+  /** Browser clock at the first reasoning text, and when the answer, the
+   * completion or a recovery ended it. On the row, not the chip, so a chat
+   * that remounts mid-thought resumes the same clock. */
+  reasoningStartedAtMs?: number;
+  reasoningEndedAtMs?: number;
   /** The streamed draft awaits the durable final event detail. */
   replyRecovering?: boolean;
   /**
@@ -109,6 +116,13 @@ export type FleetEvent = {
   tools?: FleetToolCall[];
   custom?: { requestJson?: string | null };
 };
+
+/** Ends an open reasoning span once; a span never opened stays unopened. */
+export function closeReasoningSpan(event: FleetEvent, nowMs: number): FleetEvent {
+  return event.reasoningStartedAtMs === undefined || event.reasoningEndedAtMs !== undefined
+    ? event
+    : { ...event, reasoningEndedAtMs: nowMs };
+}
 
 /// The payload stand-in for a turn whose body is not on hand — a live frame
 /// carries none, and a list row no longer does either.

@@ -43,11 +43,12 @@ export type FleetThreadProps = {
  * Server Action; `fleetMessageRenderers` paints each durable event as the
  * approved conversation row.
  *
- * The runtime is deliberately never told the thread is running. In this
- * library `isRunning` means "disable the composer", and a working fleet is
- * not a reason to stop an operator from steering it — the fleet's own event
- * stream serialises what arrives. The working state is rendered from our own
- * event statuses instead.
+ * The runtime is told the thread is never running. In this library
+ * `isRunning` means "disable the composer", and a working fleet is not a
+ * reason to stop an operator from steering it — the fleet's own event stream
+ * serialises what arrives. Left unset, the library would infer it from the
+ * last reply's own running status; each reply's status drives its parts and
+ * wait state instead.
  */
 export function FleetThread({
   workspaceId,
@@ -87,6 +88,7 @@ export function FleetThread({
   const { entries, convertEntry } = useFleetThreadEntries(stream.events, stream.convertEvent);
   const submittedMessageId = submission?.fleetId === fleetId ? submission.id : null;
   const runtime = useExternalStoreRuntime<FleetThreadEntry>({
+    isRunning: false,
     messages: entries,
     convertMessage: convertEntry,
     // A new send supersedes the last refusal, whether it is the Resend of
