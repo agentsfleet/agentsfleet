@@ -110,7 +110,7 @@ export function FleetThread({
           id="fleet-chat-transcript"
           aria-label="Fleet chat"
           padding="none"
-          className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-background"
+          className="flex min-h-0 flex-1 flex-col overflow-clip rounded-none border-0 bg-background"
         >
           {/*
             * The header speaks only when the stream is not fine.

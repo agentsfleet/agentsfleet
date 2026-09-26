@@ -80,20 +80,28 @@ describe("FleetThreadViewport layout", () => {
     expect(root.className).not.toContain("overflow-hidden");
   });
 
-  // Pin test for a panel shorter than the composer. Live on DEV, a 180 px
-  // root and a full draft put Send at 393-429 px, below the root floor at
-  // 388; with these classes the textarea shrank to 134 px and Send sat at
-  // 335-371. The clipped root cannot scroll, so the footer must shrink and
-  // the textarea must shrink with its row instead of overflowing upward.
-  it("lets a squeezed footer shrink the composer so Send stays in view", () => {
+  // Pin test for assistant-ui's composer placement. A footer outside the
+  // viewport floated over a blank band and, in a panel shorter than the
+  // composer, left Send below the clipped root. Inside the viewport, stuck to
+  // its bottom and capped at its height, the footer keeps Send in view; the
+  // composer must never scroll itself, or anchoring hides the failure notice.
+  it("keeps the composer in the viewport footer so Send stays in view", () => {
     const view = render(<View />);
-    const footer = [...view.getByTestId("fleet-chat-footer").classList];
-    expect(footer).toEqual(expect.arrayContaining(["flex", "flex-col", "min-h-0"]));
-    expect(footer).not.toContain("shrink-0");
+    const footerElement = view.getByTestId("fleet-chat-footer");
+    expect(view.getByTestId("fleet-thread-root").querySelector('[role="presentation"]')?.contains(footerElement)).toBe(true);
+    const footer = [...footerElement.classList];
+    expect(footer).toEqual(expect.arrayContaining(["sticky", "bottom-0", "max-h-full", "flex-col"]));
     const composer = [...view.getByRole("form", { name: "Chat composer" }).classList];
-    expect(composer).toEqual(expect.arrayContaining(["min-h-0", "overflow-y-auto"]));
-    const row = [...(view.getByRole("textbox").parentElement?.classList ?? [])];
+    expect(composer).toContain("min-h-0");
+    expect(composer).not.toContain("overflow-y-auto");
+    const textbox = view.getByRole("textbox");
+    const row = [...(textbox.parentElement?.classList ?? [])];
     expect(row).toContain("items-stretch");
     expect(row).not.toContain("items-end");
+    // A stretched textarea starts its text at the top, so on touch, where Send
+    // is 44 px, the row floor and textarea padding must grow to keep one line
+    // level with the arrow (measured 7.2 px high without them).
+    expect(row).toContain("pointer-coarse:min-h-11");
+    expect([...textbox.classList]).toContain("pointer-coarse:py-md");
   });
 });
