@@ -125,8 +125,9 @@ function convertEvent(event: FleetEvent): ThreadMessageLike {
     id: event.id,
     createdAt: event.createdAt,
     // Content carries the TRIGGER — the operator's message or the integration
-    // headline. The fleet's reply rides the custom bag; the renderer paints it
-    // as its own bubble so a reply never appears as operator speech.
+    // headline. The fleet's answer, reasoning and tool calls become parts of
+    // the reply message (`toReplyMessage`), so a reply never appears as
+    // operator speech.
     content: [{ type: "text", text: event.text }],
     metadata: {
       custom: {
@@ -138,20 +139,12 @@ function convertEvent(event: FleetEvent): ThreadMessageLike {
         // The fleet's reply on this same durable row, and the sentence to show
         // in its place when the reply is empty (still working, blocked, failed).
         reply: event.reply,
-        reasoning: event.reasoning,
-        thinking: event.thinking,
         replyRecovering: event.replyRecovering,
         outcome: event.outcome,
         // The failure CLASS, not the sentence — the renderer picks remediation
         // guidance off it (a sentence cannot be matched against reliably).
         failureLabel: event.failureLabel,
         failureDetail: event.failureDetail,
-        // The tool calls the fleet made while working this event. They ride the
-        // custom bag rather than assistant-ui's tool-call content parts: the
-        // backend publishes them as sibling frames keyed by event_id, not as
-        // structured parts of the assistant message, and reshaping them into
-        // parts would invent a message boundary the wire does not have.
-        tools: event.tools,
       },
     },
   };

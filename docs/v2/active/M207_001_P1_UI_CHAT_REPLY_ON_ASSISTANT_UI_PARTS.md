@@ -56,15 +56,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/streaming/{fleet-stream-row,fleet-stream-frames,fleet-stream-reply-frames,fleet-stream-registry}.ts` | EDIT | Tool start and reasoning span stamped once with an injected clock; `FAILED` status and `markOptimisticFailed` leave |
 | `ui/packages/app/components/domain/fleetReplyMessage.ts` | CREATE | Pure row → assistant message (status, reasoning/tool-call/text parts) |
 | `ui/packages/app/components/domain/{useFleetThreadEntries,useFleetEventStream}.ts` | EDIT | Operator turns always split; reply rows convert through `fleetReplyMessage`; custom bag drops reasoning/thinking/tools |
-| `ui/packages/app/components/domain/FleetReplyBody.tsx`; `FleetThought.tsx` | EDIT; CREATE | `GroupedParts` switch and outcome floor; the `group-reasoning` chip, leaf clock, sentence ticker |
+| `ui/packages/app/components/domain/FleetReplyBody.tsx`; `FleetThought.tsx`, `useFirstVisiblePaint.ts` | EDIT; CREATE | `GroupedParts` switch and outcome floor; the `group-reasoning` chip, leaf clock, sentence ticker |
 | `ui/packages/app/components/domain/FleetToolCalls.tsx` | EDIT | `tool-call` part row on `useToolCallElapsed`; custom-bag reader leaves |
 | `ui/packages/app/components/domain/fleetMessageRenderers.tsx`, `fleetMessageReaders.ts`, `fleetMessageStatus.ts`, `FleetMessageRow.tsx` | EDIT | Failed badge, orphaned row `annotation` and moved readers leave; status constants alias `AGENTSFLEET_EVENT_STATUS`; reasoning-span readers |
 | `ui/packages/app/components/domain/{FleetThread,FleetThreadViewport,SteerComposer}.tsx`, `useFleetMessageDelivery.ts`, `useFleetDeliveryFailure.ts` | EDIT | Claude.ai resend; `onRetry` chain leaves |
 | `ui/packages/app/components/layout/loading-verbs.ts`; `ui/packages/app/lib/utils.ts`; `ui/packages/app/lib/api/errors.ts` | EDIT | `loadingVerbFor(key)`; `formatSeconds` on `Intl.NumberFormat`; `HTTP_STATUS_UNAUTHORIZED` beside its siblings |
-| `ui/packages/design-system/src/design-system/{BrailleSpinner,index,DashboardPanel,DashboardPrimitives.test}.ts(x)`, `ui/packages/design-system/src/{index.ts,tokens.css}` | CREATE / EDIT | Decorative CSS-only glyph; exports; `braille-spin` keyframes and `content-auto` utility beside `wake-pulse`; orphaned `DashboardPanelFooter` leaves |
-| `ui/packages/app/components/domain/{fleetReplyMessage.test.ts,FleetThought.test.tsx}`, `ui/packages/app/lib/{streaming/fleet-stream-reply-frames,utils}.test.ts`, `ui/packages/app/components/layout/loading-verbs.test.ts`, `ui/packages/design-system/src/design-system/BrailleSpinner.test.tsx` | CREATE | Unit proofs |
-| `ui/packages/app/tests/fleet-thread/{harness.ts,role-reasoning.test.ts,role-rows.test.ts,steer-submission.test.ts,malformed-metadata.test.ts}`, `ui/packages/app/tests/fleet-tool-calls.test.tsx`, `ui/packages/app/lib/streaming/{fleet-stream-registry-optimistic,fleet-stream-registry-backfill,fleet-stream-frames.tools}.test.ts`, `ui/packages/app/lib/events/run-summary.test.ts`, `ui/packages/app/tests/{use-fleet-event-stream,fleets-install-entry-gate,fleets-install-flow,fleets-install-states}.test.ts`, `ui/packages/app/components/domain/{fleetFailureCopy.test.ts,FleetMessageRow.test.tsx}`, `ui/packages/app/components/domain/{SteerComposer.test.tsx,FleetThreadViewport.test.tsx,useFleetDeliveryFailure.test.tsx,fleetMessageReaders.test.ts}` | EDIT | Amended to the parts model and resend flow |
-| `ui/packages/app/tests/e2e/acceptance/{fleet-stream-transport.spec,fleet-thread.spec,fixtures/sse}.ts` | EDIT | Live parts journey, resend journey, long-task probe |
+| `ui/packages/design-system/src/design-system/{BrailleSpinner,index,DashboardPanel,DashboardPrimitives.test}.ts(x)`, `ui/packages/design-system/src/{index.ts,tokens.css}` | CREATE / EDIT | Decorative CSS-only glyph; exports; `braille-spin` keyframes and the `[data-settled]` rule beside `wake-pulse`; orphaned `DashboardPanelFooter` leaves |
+| `ui/packages/app/components/domain/{fleetReplyMessage.test.ts,FleetThought.test.tsx}`, `ui/packages/app/lib/{streaming/fleet-stream-reply-frames,utils}.test.ts`, `ui/packages/app/components/layout/loading-verbs.test.ts`, `ui/packages/design-system/src/design-system/BrailleSpinner.test.tsx`, `ui/packages/app/tests/fleet-thread/role-reply-parts.test.ts` | CREATE | Unit proofs |
+| `ui/packages/app/tests/fleet-thread/{harness.ts,role-reasoning.test.ts,role-rows.test.ts,role-turns.test.ts,steer-submission.test.ts,malformed-metadata.test.ts}`, `ui/packages/design-system/src/tokens.css.test.ts`, `ui/packages/app/tests/fleet-tool-calls.test.tsx`, `ui/packages/app/lib/streaming/{fleet-stream-registry-optimistic,fleet-stream-registry-backfill,fleet-stream-frames,fleet-stream-frames.live,fleet-stream-frames.tools}.test.ts`, `ui/packages/app/lib/events/run-summary.test.ts`, `ui/packages/app/tests/{use-fleet-event-stream,fleets-install-entry-gate,fleets-install-flow,fleets-install-states}.test.ts`, `ui/packages/app/components/domain/{fleetFailureCopy.test.ts,FleetMessageRow.test.tsx}`, `ui/packages/app/components/domain/{SteerComposer.test.tsx,FleetThreadViewport.test.tsx,useFleetDeliveryFailure.test.tsx,fleetMessageReaders.test.ts}` | EDIT | Amended to the parts model and resend flow |
+| `ui/packages/app/tests/e2e/acceptance/{fleet-reply-parts.spec,fixtures/sse-server}.ts`; `{fleet-thread.spec,fixtures/sse}.ts` | CREATE; EDIT | Frame-by-frame reply stream with the long-task and frame probe; live parts and resend journeys |
 | `docs/architecture/user_flow.md` | EDIT | Chat surface line: Thought chip, tool rows, resend |
 | PR #717's composer-layout files (`FleetThreadViewport.tsx`, `SteerComposer.tsx`, `ChatView.tsx`, `page.tsx`, their tests) | EDIT | Already committed on the branch by Kishore's call; not re-specified |
 
@@ -80,7 +80,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----------------------|
 | TS FILE SHAPE DECISION | yes — `fleetReplyMessage.ts`, `FleetThought.tsx`, `BrailleSpinner.tsx` | functions-modules: one pure converter; one chip plus its leaf clock; one stateless glyph |
 | UI GATE | yes | Disclosure stays the design-system `Accordion`; `Spinner` is a `role=status` live region and cannot sit inside the chip's trigger button, so the glyph is a decorative primitive beside `WakePulse` (same precedent) |
-| DESIGN TOKEN GATE | yes | Keyframes and `content-auto` live in `tokens.css`; consumers use utilities only |
+| DESIGN TOKEN GATE | yes | Keyframes and the `[data-settled]` rule live in `tokens.css`, pinned by `tokens.css.test.ts`; consumers set attributes only |
 | UFS GATE | yes | Constants for labels, frames, group keys, 100 ms tick |
 | File & Function Length (≤350/≤50/≤70) | yes | `FleetReplyBody.tsx` (229) sheds the accordion and indicator into `FleetThought.tsx` |
 
@@ -100,7 +100,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | Latest sentence | `Intl.Segmenter` (`granularity: "sentence"`) |
 | Duration text | `Intl.NumberFormat` (`style: "unit"`, `unit: "second"`, narrow) — `Intl.DurationFormat` prints `8s 500ms`, not `8.5s` |
 | Off-screen layout skip | CSS `content-visibility: auto` (kit `thread.aui.tsx` message root) |
-| Render-cost proof | React `<Profiler onRender>` |
+| Render-cost proof | a parent render counter — `<Profiler onRender>` fires for any commit in its subtree, the leaf's own tick included |
 | **Computed here:** reasoning span, tool start | `ReasoningTrigger` takes `duration` from its caller; `MessageTiming` has no reasoning span; tool frames carry no start instant |
 
 - **Rejected:** `useOptimistic` for the pending row — the row must outlive a navigation inside the registry's idle window and carries the only copy of the operator's text for the server-row graft (`fleet-stream-optimistic.ts`). `useStreamingTiming` — it keys off a thread-wide `isRunning` this runtime never sets (`FleetThread.tsx` explains why). Deprecated paths — `MessagePrimitive.Parts` group slots, the `components` prop, `ChainOfThoughtPrimitive` (legacy per `guides/chain-of-thought.mdx`).
@@ -121,49 +121,49 @@ Claude.ai's behaviour. On `ok:false` or a thrown POST, `discardOptimistic(tempId
 
 An operator turn always splits into its trigger and a `:reply` assistant message; an integration turn splits when a reply, reasoning or tool exists (a tools-only turn is new: today it stays unsplit and its tools render under the trigger). The reply's `status` is running while the event is optimistic or received, complete otherwise. Content, in order: a reasoning part with its own status (running while `thinking`), one tool-call part per `FleetToolCall`, a text part — empty pieces omitted. **Implementation default:** tool `toolCallId` is `<eventId>:tool:<index>` (append-only list, stable), `result` is `null` once done because the wire carries no output, and `timing.completedAt` is `startedAt + ms`.
 
-- **Dimension 2.1** — An in-flight operator turn yields a running `:reply` message with no parts — the indicator renders without a remount at the first word, and the thread never reads as running, so the composer stays enabled → Test `test_inflight_turn_has_running_reply`
-- **Dimension 2.2** — A row with reasoning, two tools and an answer converts to ordered parts with the pinned statuses, identifiers and timing → Test `test_reply_parts_from_row`
-- **Dimension 2.3** — A tool's first frame stamps `startedAtMs` from the injected clock; completion keeps it; a repeat call after completion gets its own entry → Test `test_tool_start_stamped_from_first_frame`
-- **Dimension 2.4** — The reasoning span is stamped once: start on the first reasoning text; end on the first answer text, completion or recovery → Test `test_reasoning_span_stamped_once`
-- **Dimension 2.5** — Non-number stamps or a missing tool list read as absent without throwing → Test `test_malformed_reply_metadata_reads_absent`
+- **Dimension 2.1** — An in-flight operator turn yields a running `:reply` message with no parts — the indicator renders without a remount at the first word, and the thread never reads as running, so the composer stays enabled → Test `test_inflight_turn_has_running_reply` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
+- **Dimension 2.2** — A row with reasoning, two tools and an answer converts to ordered parts with the pinned statuses, identifiers and timing → Test `test_reply_parts_from_row` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
+- **Dimension 2.3** — A tool's first frame stamps `startedAtMs` from the injected clock; completion keeps it; a repeat call after completion gets its own entry → Test `test_tool_start_stamped_from_first_frame` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
+- **Dimension 2.4** — The reasoning span is stamped once: start on the first reasoning text; end on the first answer text, completion or recovery → Test `test_reasoning_span_stamped_once` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
+- **Dimension 2.5** — Non-number stamps or a missing tool list read as absent without throwing → Test `test_malformed_reply_metadata_reads_absent` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
 
 ### §3 — Render through GroupedParts, cheaply
 
-`FleetReply` renders `MessagePrimitive.GroupedParts` with a module-constant `groupPartByType({ reasoning: ["group-reasoning"], "tool-call": ["group-tool"] })` and one `switch (part.type)`: `group-reasoning` → Thought chip, `group-tool` → a list named "Tool calls", `text` → markdown, `tool-call` → tool row, `reasoning` → its text, `indicator` → wait state. The text part renders `FleetMarkdown` over `useDeferredValue(text)`, so parsing a growing answer yields to input and scroll. Settled rows carry `content-auto`; the streaming row does not.
+`FleetReply` renders `MessagePrimitive.GroupedParts` with a module-constant `groupPartByType({ reasoning: ["group-reasoning"], "tool-call": ["group-tool"] })` and one `switch (part.type)`: `group-reasoning` → Thought chip, `group-tool` → a list named "Tool calls", `text` → markdown, `tool-call` → tool row, `reasoning` → its text, `indicator` → wait state. The text part renders `FleetMarkdown` over `useDeferredValue(text)`, so parsing a growing answer yields to input and scroll. Settled message roots carry `data-settled="true"`, which tokens.css gives `content-visibility: auto`; the streaming row does not.
 
-- **Dimension 3.1** — Each part type renders through the switch, and no deprecated or custom-bag path remains → Test `test_reply_renders_through_grouped_parts`
-- **Dimension 3.2** — The text part renders deferred markdown with the stream cursor while running; once settled it shows Copy and the row carries `content-auto` → Test `test_text_part_and_settled_row`
-- **Dimension 3.3** — A settled reply with no text part shows its outcome sentence; a fleet error keeps the failed tone → Test `test_outcome_floor_without_text_part`
+- **Dimension 3.1** — Each part type renders through the switch, and no deprecated or custom-bag path remains → Test `test_reply_renders_through_grouped_parts` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
+- **Dimension 3.2** — The text part renders deferred markdown with the stream cursor while running; once settled it shows Copy and the row carries `data-settled` → Test `test_text_part_and_settled_row` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
+- **Dimension 3.3** — A settled reply with no text part shows its outcome sentence; a fleet error keeps the failed tone → Test `test_outcome_floor_without_text_part` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
 
 ### §4 — The Thought chip
 
 Inside `group-reasoning`: live (group running) the trigger reads `<spinner> Thinking · 3.2s` plus the latest sentence on one truncated line, open; folded it reads `Thought · 8.5s`, closed unless the operator opened it, with `useScrollLock` holding the viewport through the fold. Durations print with `formatSeconds` (§4.6). **Implementation default:** the clock is a leaf component with its own state and a 100 ms interval — the `useToolCallElapsed` pattern at the tenths the label shows — so a tick re-renders the leaf only. The sentence comes from `Intl.Segmenter` over the last 400 characters.
 
-- **Dimension 4.1** — A running reasoning group shows spinner, "Thinking", a ticking clock and the latest sentence → Test `test_thought_chip_live`
-- **Dimension 4.2** — On completion it folds to "Thought · 8.5s", closed, content unmounted until opened; an operator-opened chip stays open → Test `test_thought_chip_folds_with_duration`
-- **Dimension 4.3** — A tick leaves the reply's `Profiler` render count unchanged; the interval clears on fold and unmount → Test `test_thought_clock_ticks_only_the_leaf`
-- **Dimension 4.4** — A remount mid-thought resumes from the row's start stamp; no stamp folds to "Thought" without a duration → Test `test_thought_clock_resumes_from_row_stamp`
-- **Dimension 4.5** — The sentence ticker handles empty, boundary-free, trailing-space and non-ASCII text → Test `test_latest_sentence_edges`
-- **Dimension 4.6** — `formatSeconds` is one module-constant `Intl.NumberFormat` (unit `second`, narrow, exactly one fraction digit), so a ticking clock keeps its width; `formatMs` keeps its table callers unchanged → Test `test_format_seconds_fixed_width`
+- **Dimension 4.1** — A running reasoning group shows spinner, "Thinking", a ticking clock and the latest sentence → Test `test_thought_chip_live` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
+- **Dimension 4.2** — On completion it folds to "Thought · 8.5s", closed, content unmounted until opened; an operator-opened chip stays open → Test `test_thought_chip_folds_with_duration` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
+- **Dimension 4.3** — A tick leaves the parent's render count unchanged; the interval clears on fold and unmount → Test `test_thought_clock_ticks_only_the_leaf` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
+- **Dimension 4.4** — A remount mid-thought resumes from the row's start stamp; no stamp folds to "Thought" without a duration → Test `test_thought_clock_resumes_from_row_stamp` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
+- **Dimension 4.5** — The sentence ticker handles empty, boundary-free, trailing-space and non-ASCII text → Test `test_latest_sentence_edges` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
+- **Dimension 4.6** — `formatSeconds` is one module-constant `Intl.NumberFormat` (unit `second`, narrow, exactly one fraction digit), so a ticking clock keeps its width; `formatMs` keeps its table callers unchanged → Test `test_format_seconds_fixed_width` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
 
 ### §5 — Tool rows on part timing
 
 A `tool-call` part renders its name, a running or done glyph, and `useToolCallElapsed()` through `formatSeconds`. The existing glyph vocabulary (`◐`/`✓`) stays.
 
-- **Dimension 5.1** — A running tool ticks from its start, a done tool shows `✓` and its final duration, adjacent tools share one "Tool calls" list, and a tool left unfinished on a settled reply shows no clock → Test `test_tool_row_reads_part_timing`
+- **Dimension 5.1** — A running tool ticks from its start, a done tool shows `✓` and its final duration, adjacent tools share one "Tool calls" list, and a tool left unfinished on a settled reply shows no clock → Test `test_tool_row_reads_part_timing` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
 
 ### §6 — Braille spinner primitive
 
 Ten frames `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏` in one column moved by `translateY` with `steps(10)` over 800 ms (80 ms a frame) — compositor-only, no JavaScript. Reduced motion shows a static `⠶`. `aria-hidden`; the adjacent label carries meaning.
 
-- **Dimension 6.1** — Renders the frames in order inside an `aria-hidden` element carrying the `braille-spin` animation; under reduced motion the column hides and `⠶` shows → Test `test_braille_spinner_frames_and_animation`
+- **Dimension 6.1** — Renders the frames in order inside an `aria-hidden` element carrying the `braille-spin` animation; under reduced motion the column hides and `⠶` shows → Test `test_braille_spinner_frames_and_animation` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
 
 ### §7 — The wait state
 
 The `indicator` part renders `<output>` named "Working" (or "Queued" for a queued turn) with the spinner and `loadingVerbFor(eventId)…` from `LOADING_VERBS`, hashed so a verb never changes across renders.
 
-- **Dimension 7.1** — The indicator keeps `role=status` named Working/Queued and shows the spinner and verb → Test `test_indicator_verb_and_accessible_name`
-- **Dimension 7.2** — The same key always yields the same verb; 50 keys yield at least 5 distinct verbs → Test `test_loading_verb_for_is_stable`
+- **Dimension 7.1** — The indicator keeps `role=status` named Working/Queued and shows the spinner and verb → Test `test_indicator_verb_and_accessible_name` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
+- **Dimension 7.2** — The same key always yields the same verb; 50 keys yield at least 5 distinct verbs → Test `test_loading_verb_for_is_stable` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
 
 ### §8 — Proof on the real app
 
@@ -197,13 +197,12 @@ FailedDelivery = { text: string; kind: "send" | "session" };  loadingVerbFor(key
 | Remount mid-thought, or no stamp | Navigation inside the registry idle window; a reply recovered from detail | Clock resumes from the row stamp; without one it folds to "Thought" with no duration |
 | Answer in the reasoning's first delta | Both kinds in one batch | Start and end at one clock read; duration `0.0s` |
 | Tool never completes | Stream ends mid-tool | Settled reply → part not running → no clock |
-| Tab hidden | Timers throttle | Next tick shows true elapsed; no catch-up burst |
-| Reduced motion | `prefers-reduced-motion` | Static `⠶`; clock text still updates |
+| Tab hidden, or reduced motion | Timers throttle; `prefers-reduced-motion` | Next tick shows true elapsed, no catch-up burst; static `⠶` while the clock text still updates |
 | Huge reasoning | Tens of kilobytes | Ticker scans the tail; closed content unmounted |
 
 ## Invariants
 
-1. A clock tick never re-renders the reply — the clock owns its state; `test_thought_clock_ticks_only_the_leaf` asserts via `Profiler`.
+1. A clock tick never re-renders the reply — the clock owns its state; `test_thought_clock_ticks_only_the_leaf` counts parent renders.
 2. The spinner runs no JavaScript per frame — stateless component, CSS keyframes; `test_braille_spinner_frames_and_animation`.
 3. Stamps are written once — the reducers stamp only an absent field; `test_reasoning_span_stamped_once`, `test_tool_start_stamped_from_first_frame`.
 4. A failed POST is never auto-replayed — the only send path is `onNew`; `test_resend_submits_restored_text_once`.
@@ -229,11 +228,11 @@ FailedDelivery = { text: string; kind: "send" | "session" };  loadingVerbFor(key
 | 2.4 | unit | `test_reasoning_span_stamped_once` | reasoning t=1000, t=1500, answer t=9500 → 1000/9500; answer-only → neither |
 | 2.5 | unit | `test_malformed_reply_metadata_reads_absent` | stamps "x", NaN; tools missing → absent, no throw |
 | 3.1 | unit | `test_reply_renders_through_grouped_parts` | reasoning + tool + text → chip, "Tool calls" list, markdown in order |
-| 3.2 | unit | `test_text_part_and_settled_row` | running → cursor, no Copy, no `content-auto`; complete → Copy and `content-auto` |
+| 3.2 | unit | `test_text_part_and_settled_row` | running → cursor, no Copy, no `data-settled`; complete → Copy and `data-settled="true"` |
 | 3.3 | unit | `test_outcome_floor_without_text_part` | complete, no text → outcome sentence; fleet error → failed tone |
 | 4.1 | unit | `test_thought_chip_live` | running, "A. Checking the header" → "Thinking", "Checking the header", clock |
 | 4.2 | unit | `test_thought_chip_folds_with_duration` | span 1000→9500 → "Thought · 8.5s", closed, text absent until opened |
-| 4.3 | unit | `test_thought_clock_ticks_only_the_leaf` | fake clock +1 s → clock text changes, reply `onRender` count unchanged; unmount clears interval |
+| 4.3 | unit | `test_thought_clock_ticks_only_the_leaf` | fake clock +1 s → clock text changes, parent render count unchanged; fold and unmount leave 0 timers |
 | 4.4 | unit | `test_thought_clock_resumes_from_row_stamp` | remount at now=5000, start 1000 → "4.0s"; no start → "Thought" without "·" |
 | 4.6 | unit | `test_format_seconds_fixed_width` | 400 → "0.4s"; 8000 → "8.0s"; 8500 → "8.5s"; 125300 → "125.3s"; −5 → "0.0s" |
 | 4.5 | unit | `test_latest_sentence_edges` | "" → ""; "no stop" → "no stop"; "A. B.  " → "B."; "Ünï. Ça va" → "Ça va" |
@@ -281,7 +280,7 @@ N/A — no files deleted.
 |-----------------------|------|----------|
 | failed-row path | `git grep -nE "markOptimisticFailed\|retryFailedDelivery\|AGENTSFLEET_EVENT_STATUS\.FAILED" -- ui/packages` | 0 matches |
 | failed badge constant | `git grep -n "STATUS_FAILED" -- ui/packages/app/components` | 0 matches |
-| custom-bag reply readers | `git grep -nE "readTools\|readReasoning\|readThinking" -- ui/packages/app` | 0 matches |
+| custom-bag reply readers | `git grep -nwE "readTools\|readReasoning\|readThinking\|ToolCalls" -- ui/packages/app` | 0 matches |
 | old reasoning and wait surfaces | `git grep -nE "REASONING_LIVE_LABEL\|PawPrintIcon" -- ui/packages/app/components/domain` | 0 matches |
 | deprecated assistant-ui paths | `git grep -nE "MessagePrimitive\.Parts\|ChainOfThoughtPrimitive" -- ui/packages/app` | 0 matches |
 | panel footer orphaned by the composer move | `git grep -n -w "DashboardPanelFooter" -- ui/packages` | 0 matches |
@@ -315,6 +314,7 @@ N/A — no files deleted.
 ## Discovery (consult log)
 
 - **Consults** — Kishore (Sep 26, 2026): "Switch to chain of thought, reasoning, reply, tool parts everything to the best practice so assistant-ui, as opposed to us handrolling"; "try and use the standar features of React 19 or Next.js as relevant … to make sure we are performant"; "focussed on robust seamless elegant performant user experience … and the thinking spinner". Chose the Claude.ai resend over Retry and the braille spinner; "I want all in this PR"; "also cleanup any dead orphaned code" — every symbol this PR orphans leaves in it, the Dead Code Sweep table is the ledger, and VERIFY extends it with any newly dead code found after the refactor (`DashboardPanelFooter`: zero production consumers since the composer moved into `ViewportFooter`; the design system is `private`, so no outside consumer). Agent choices, flagged for Kishore: reuse `LOADING_VERBS` instead of a new nautical verb list; leaf-state clock instead of the earlier text-node loop. `spec.ordering` will be red (the branch's first commit is code) — Kishore's override at PR time, not the agent's.
+- **Findings** — 0.15.22 infers `thread.isRunning` from the last message when the adapter omits it (`thread-runtime.ts:211-221`), which disabled Send under a running reply; `FleetThread` now passes `isRunning: false`. Frame baseline on `5f236cbcc` (pre-parts rendering): 0 long tasks, 334 frames, p95 16.8 ms.
 - **Metrics review** — no events added; `agentsfleet.chat.submit_to_first_visible` keeps its trigger (first answer, reasoning or tool paint).
 - **Skill-chain outcomes** — pending. Open PR #717 obligations carried in: reply to Greptile P1 `4111114471` (unreachable composer — fixed by `51656f7ac`) and P2 `4111168712` (live chunk masked by completion — fixed by the chunk-only fixture); Session notes 3; `/review` rerun on the final diff; `orly-babysit-prs`.
 - **Deferrals** — none.

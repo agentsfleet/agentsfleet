@@ -11,6 +11,7 @@ import {
 import {
   AGENTSFLEET_EVENT_STATUS,
   EMPTY_PAYLOAD,
+  closeReasoningSpan,
   figure,
   rowToEvent,
   text,
@@ -38,9 +39,11 @@ export function parseLiveFrame(data: string): LiveFrame | null {
   }
 }
 
+/** `nowMs` is the browser clock the reducers stamp spans with; tests inject it. */
 export function applyLiveFrame(
   prev: FleetEvent[],
   frame: LiveFrame,
+  nowMs: number = Date.now(),
 ): FleetEvent[] {
   switch (frame.kind) {
     case FRAME_KIND.EVENT_RECEIVED:
@@ -48,13 +51,13 @@ export function applyLiveFrame(
     case FRAME_KIND.CHUNK:
       return applyChunk(prev, frame);
     case FRAME_KIND.EVENT_COMPLETE:
-      return applyEventComplete(prev, frame);
+      return applyEventComplete(prev, frame, nowMs);
     case FRAME_KIND.TOOL_CALL_STARTED:
-      return applyToolCall(prev, frame.event_id, frame.name, null, false);
+      return applyToolCall(prev, frame.event_id, { name: frame.name, ms: null, done: false }, nowMs);
     case FRAME_KIND.TOOL_CALL_PROGRESS:
-      return applyToolCall(prev, frame.event_id, frame.name, frame.elapsed_ms, false);
+      return applyToolCall(prev, frame.event_id, { name: frame.name, ms: frame.elapsed_ms, done: false }, nowMs);
     case FRAME_KIND.TOOL_CALL_COMPLETED:
-      return applyToolCall(prev, frame.event_id, frame.name, frame.ms, true);
+      return applyToolCall(prev, frame.event_id, { name: frame.name, ms: frame.ms, done: true }, nowMs);
     default:
       // Install frames are forked off this path by the registry and never reach
       // the message list. Anything else is a frame the backend shipped ahead of
@@ -64,19 +67,16 @@ export function applyLiveFrame(
   }
 }
 
-/// Fold one tool-call frame onto its event. The three frames are the same tool
-/// seen at three moments, keyed by (event_id, name) — started has no timing yet,
-/// progress carries elapsed, completed carries the final wall time. A frame whose
-/// event has not arrived yet is dropped rather than synthesizing an orphan event:
-/// `event_received` always precedes its tool calls on the wire, and inventing an
-/// event here would put a message in the thread that the backfill would then
-/// duplicate.
+/// Fold one tool-call frame onto its event: started (no timing), progress
+/// (elapsed) and completed (final wall time) are one call keyed by (event_id,
+/// name), and the first frame stamps its start. A frame whose event has not
+/// arrived is dropped: `event_received` always precedes its tool calls, and an
+/// invented event would put a message in the thread the backfill duplicates.
 function applyToolCall(
   prev: FleetEvent[],
   eventId: string,
-  name: string,
-  ms: number | null,
-  done: boolean,
+  { name, ms, done }: Omit<FleetToolCall, "startedAtMs">,
+  nowMs: number,
 ): FleetEvent[] {
   const index = prev.findIndex((e) => e.id === eventId);
   const event = prev[index];
@@ -87,14 +87,13 @@ function applyToolCall(
   const tools = event.tools ?? [];
   const existing = tools.findIndex((t) => t.name === name && !t.done);
 
-  const next: FleetToolCall = { name, ms, done };
   const merged =
     existing === -1
-      ? [...tools, next]
+      ? [...tools, { name, startedAtMs: nowMs, ms, done }]
       : tools.map((t, i) =>
           // A completion with no timing must not erase the elapsed a progress
           // frame already reported.
-          i === existing ? { name, ms: ms ?? t.ms, done } : t,
+          i === existing ? { ...t, ms: ms ?? t.ms, done } : t,
         );
 
   const updated = [...prev];
@@ -198,6 +197,7 @@ function applyChunk(
 function applyEventComplete(
   prev: FleetEvent[],
   frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_COMPLETE }>,
+  nowMs: number,
 ): FleetEvent[] {
   // Locate once, copy once — same shape as `applyToolCall` and `applyChunk`.
   const index = prev.findIndex((e) => e.id === frame.event_id);
@@ -218,7 +218,7 @@ function applyEventComplete(
   const detail = text(frame.failure_detail);
   const createdAt = figure(frame.created_at);
   const updated = [...prev];
-  updated[index] = {
+  updated[index] = closeReasoningSpan({
     ...existing,
     status,
     outcome: outcomeForCompletion(status, label, detail),
@@ -232,7 +232,7 @@ function applyEventComplete(
     tokens: figure(frame.tokens),
     wallMs: figure(frame.wall_ms),
     costNanos: figure(frame.cost_nanos),
-  };
+  }, nowMs);
   return updated;
 }
 

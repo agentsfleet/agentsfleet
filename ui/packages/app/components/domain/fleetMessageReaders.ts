@@ -1,5 +1,6 @@
 import type { MessageState } from "@assistant-ui/react";
 
+import { REASONING_SPAN } from "./fleetReplyMessage";
 import { GROUP_META, RENDER_KIND_KEY } from "./useFleetThreadEntries";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 
@@ -52,13 +53,12 @@ export function readReply(message: MessageState): string {
   return typeof raw === "string" ? raw : "";
 }
 
-export function readReasoning(message: MessageState): string {
-  const raw = message.metadata.custom["reasoning"];
-  return typeof raw === "string" ? raw : "";
-}
-
-export function readThinking(message: MessageState): boolean {
-  return message.metadata.custom["thinking"] === true;
+/** When the reply's thinking started and ended; null for an end not recorded. */
+export function readReasoningSpan(message: MessageState): { startedAtMs: number | null; endedAtMs: number | null } {
+  return {
+    startedAtMs: finiteNumber(message.metadata.custom[REASONING_SPAN.STARTED]),
+    endedAtMs: finiteNumber(message.metadata.custom[REASONING_SPAN.ENDED]),
+  };
 }
 
 export function readReplyRecovering(message: MessageState): boolean {
@@ -66,8 +66,7 @@ export function readReplyRecovering(message: MessageState): boolean {
 }
 
 export function readSubmittedAtMs(message: MessageState): number | null {
-  const raw = message.metadata.custom["submittedAtMs"];
-  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+  return finiteNumber(message.metadata.custom["submittedAtMs"]);
 }
 
 export function readQueued(message: MessageState): boolean {
@@ -100,4 +99,8 @@ export function readRequestJson(message: MessageState): string | null {
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   return trimmed.length > 0 && trimmed !== "{}" ? trimmed : null;
+}
+
+function finiteNumber(raw: unknown): number | null {
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
 }
