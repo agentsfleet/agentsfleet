@@ -78,7 +78,7 @@ export function FleetReply({
   );
 }
 
-type ReplyContext = {
+export type ReplyContext = {
   errored: boolean;
   running: boolean;
   queued: boolean;
@@ -88,7 +88,7 @@ type ReplyContext = {
 };
 
 /** One switch over every node the library hands back: groups, leaves, the indicator. */
-function renderReplyPart(
+export function renderReplyPart(
   { part, children }: MessagePrimitive.GroupedParts.RenderInfo<(typeof GROUP)[keyof typeof GROUP]>,
   reply: ReplyContext,
 ): ReactNode {

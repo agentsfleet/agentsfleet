@@ -101,6 +101,8 @@ describe("FleetThought", () => {
 
   it("test_latest_sentence_edges", () => {
     expect(latestSentence("")).toBe("");
+    // A tail of nothing but whitespace has no sentence to show.
+    expect(latestSentence("   ")).toBe("");
     expect(latestSentence("no stop")).toBe("no stop");
     expect(latestSentence("A. B.  ")).toBe("B.");
     expect(latestSentence("Ünï. Ça va")).toBe("Ça va");
