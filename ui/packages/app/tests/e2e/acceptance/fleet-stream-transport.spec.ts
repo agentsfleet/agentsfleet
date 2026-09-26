@@ -37,7 +37,10 @@ test("native fleet streaming deduplicates completion and backfills after disconn
   const counts = { streamRequests: 0, deliveredStreams: 0, historyReads: 0, pageRefreshes: 0 };
   const errors: string[] = [];
   const row = eventRow(createdAt);
-  const complete = { ...row, fleet_status: STATUS.ACTIVE, pending_approvals: 0 };
+  // The daemon inlines the settled answer on the completion frame
+  // (afd_fleet lease/bracket.rs `publish_completion`); the browser shows it
+  // without a detail read.
+  const complete = { ...row, fleet_status: STATUS.ACTIVE, pending_approvals: 0, final_reply: LIVE_MARKER };
   const overlap: EventRow = { ...row, fleet_id: fleet.id, workspace_id: workspaceId };
   const history: EventsPage = { items: [
     { ...overlap, event_id: MISSED_ID, actor: "webhook:stream-recovered",
@@ -139,7 +142,12 @@ function openingFrames(complete: ReturnType<typeof eventRow>): string {
     frame(FRAME_KIND.EVENT_RECEIVED, {
       event_id: EVENT_ID, actor: complete.actor, created_at: complete.created_at,
     }),
-    frame(FRAME_KIND.CHUNK, { event_id: EVENT_ID, text: LIVE_MARKER }),
+    // The runner's chunk shape since typed streaming: an untyped or
+    // unsequenced chunk is treated as a gap and never painted.
+    frame(FRAME_KIND.CHUNK, {
+      event_id: EVENT_ID, text: LIVE_MARKER, text_kind: "answer",
+      stream_seq: 0, stream_start: true, stream_contiguous: true,
+    }),
     frame(FRAME_KIND.EVENT_COMPLETE, complete),
     frame(FRAME_KIND.EVENT_COMPLETE, complete),
     `event: ${FRAME_KIND.EVENT_COMPLETE}\ndata: {invalid JSON\n\n`,
