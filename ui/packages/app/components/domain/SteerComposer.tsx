@@ -28,11 +28,11 @@ export function SteerComposer({ failureKind, onRetry }: SteerComposerProps) {
     <DashboardPanel
       asChild
       padding="none"
-      // Scrolls itself when the chat footer is squeezed below its height, the
-      // backstop for a failure notice that leaves no room for the input row.
-      // The scroll sits on this box, not a wrapper, so the focus ring outside
-      // its border is never clipped.
-      className="min-h-0 overflow-y-auto rounded-xl bg-card p-md focus-within:border-pulse/60 focus-within:ring-1 focus-within:ring-pulse/40"
+      // `min-h-0` lets a capped chat footer shrink this box, never scroll it:
+      // a scrolling composer anchored its draft and pushed the failure notice
+      // out of view. Hover and focus follow the shared input boundary; the ring
+      // tracks the draft field, so Send's own focus ring never doubles it.
+      className="min-h-0 rounded-xl bg-card p-md hover:border-ring has-[textarea:focus-visible]:border-border-strong has-[textarea:focus-visible]:ring-2 has-[textarea:focus-visible]:ring-ring"
     >
       <ComposerPrimitive.Root
         id="fleet-steer-composer"
@@ -41,22 +41,27 @@ export function SteerComposer({ failureKind, onRetry }: SteerComposerProps) {
       >
         <DeliveryFailureNotice failureKind={failureKind} onRetry={onRetry} />
 
-        {/* Stretch, not end-alignment: when the footer is squeezed this row
+        {/* Stretch, not end-alignment: when the footer is capped this row
             shrinks, and a stretched textarea shrinks with it and scrolls its
             own text. End-aligned, it kept its height and overflowed upward,
-            above the clipped thread root. Send keeps `self-end`. */}
+            out of view. Send keeps `self-end`. On touch, Send grows to 44 px,
+            so the row floor and the textarea padding grow with it to keep one
+            line level with the arrow. */}
         <div
           className={cn(
-            "flex min-h-9 flex-row items-stretch gap-sm",
+            "flex min-h-9 flex-row items-stretch gap-sm pointer-coarse:min-h-11",
             "sm:gap-md",
           )}
         >
+          {/* The draft stops growing at 12rem or 30% of the window, whichever
+              is lower, so on a short screen it yields height before the
+              conversation above it disappears. */}
           <ComposerPrimitive.Input asChild placeholder={PLACEHOLDER} submitMode="enter">
             <Textarea
               aria-label={PLACEHOLDER}
               rows={1}
               className={cn(
-                "field-sizing-content min-h-9 max-h-48 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-sm py-xs",
+                "field-sizing-content min-h-9 max-h-[min(12rem,30dvh)] flex-1 resize-none overflow-y-auto border-0 bg-transparent px-sm py-xs pointer-coarse:py-md",
                 "text-reading leading-reading text-foreground",
                 "placeholder:text-muted-foreground",
                 "focus-visible:border-0 focus-visible:outline-none focus-visible:ring-0",

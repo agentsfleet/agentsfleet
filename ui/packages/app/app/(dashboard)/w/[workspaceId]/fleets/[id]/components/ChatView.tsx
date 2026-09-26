@@ -35,7 +35,7 @@ export function ChatView({
   const summary = useFleetRunSummary(workspaceId, fleetId, initial, initialSummary);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-xs overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col gap-xs overflow-clip">
       <FleetThreadDynamic
         workspaceId={workspaceId}
         fleetId={fleetId}

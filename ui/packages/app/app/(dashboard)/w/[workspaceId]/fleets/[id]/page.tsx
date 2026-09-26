@@ -107,14 +107,16 @@ export default async function FleetDetailPage({
   );
   // The chat is a conversation surface, not a document: it claims the frame so
   // its composer stays on screen and only the message list scrolls. Every
-  // other view is ordinary page content and scrolls with the page.
+  // other view is ordinary page content and scrolls with the page. The frame
+  // clips rather than hides: a hidden box is still a scroll container, and in
+  // a short window focusing the composer scrolled these wrappers.
   const claimsViewport = view === FLEET_VIEW.chat;
 
   return (
     <div
       className={cn(
         "flex min-h-full flex-1 flex-col",
-        claimsViewport && "h-full min-h-0 overflow-hidden",
+        claimsViewport && "h-full min-h-0 overflow-clip",
       )}
     >
       <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
@@ -131,13 +133,13 @@ export default async function FleetDetailPage({
         status={fleet.status}
         className={cn(
           "flex min-h-0 flex-1 flex-col",
-          claimsViewport && "h-full overflow-hidden",
+          claimsViewport && "h-full overflow-clip",
         )}
       >
         <div
           className={cn(
             "flex min-w-0 flex-1 flex-col gap-3xl",
-            claimsViewport && "h-full min-h-0 flex-1 overflow-hidden",
+            claimsViewport && "h-full min-h-0 flex-1 overflow-clip",
           )}
         >
           <FleetSubnavigation
@@ -148,7 +150,7 @@ export default async function FleetDetailPage({
           <div
             className={cn(
               "flex min-w-0 flex-1 flex-col",
-              claimsViewport && "h-full min-h-0 overflow-hidden",
+              claimsViewport && "h-full min-h-0 overflow-clip",
             )}
           >
             {content}
