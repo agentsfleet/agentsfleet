@@ -33,8 +33,13 @@ export function FleetThreadViewport({
     if (submittedMessageId) viewport.getState().scrollToBottom({ behavior: "instant" });
   }, [submittedMessageId, viewport]);
   return (
+    // `overflow-clip`, never `overflow-hidden`: a hidden box is still a scroll
+    // container, and focus or scroll anchoring during a long streamed reply
+    // scrolled it, lifting the composer off the bottom over a blank band.
+    // A clipped box cannot scroll; only the viewport below does.
     <ThreadPrimitive.Root
-      className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background"
+      data-testid="fleet-thread-root"
+      className="relative flex min-h-0 flex-1 flex-col overflow-clip bg-background"
     >
       {/* The conversation is the only thing on this page that scrolls. Its
           own overflow keeps the centered composer visible on screen. */}
