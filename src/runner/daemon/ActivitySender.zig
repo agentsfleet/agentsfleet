@@ -22,8 +22,8 @@ pub const MAX_QUEUED_BATCHES: usize = 4;
 /// Ring capacity: the four WAITING batches plus the one the sender is posting.
 /// `queued` never counts the in-flight slot, so the producer's index
 /// `(head + queued) % RING_SLOTS` cannot reach it while `queued < RING_SLOTS - 1`.
-/// That inequality is the whole protection; it holds because `enqueue` drops
-/// at `MAX_QUEUED_BATCHES`.
+/// That inequality is the whole protection; it holds because `enqueue` stops
+/// claiming slots at `MAX_QUEUED_BATCHES` and folds into the newest instead.
 const RING_SLOTS: usize = MAX_QUEUED_BATCHES + 1;
 /// Give a slow control plane room for several round trips without holding a
 /// finished lease for the full configured deadline on every queued batch.
@@ -97,9 +97,11 @@ pub fn start(self: *ActivitySender) !void {
 }
 
 /// Copy one complete serialized batch without waiting for network I/O.
-/// Oversized or over-capacity batches are lost with the cosmetic tail; stream
-/// sequence numbers let the browser detect the missing bytes, and `dropped`
-/// tells the operator it happened.
+/// A full queue folds the batch into its newest waiting slot, so a slow send
+/// costs latency rather than text. Only a batch that fits nowhere is lost:
+/// oversized, arriving after close, or overflowing the newest slot. Stream
+/// sequence numbers let the browser detect those bytes, and `dropped` tells the
+/// operator it happened.
 pub fn enqueue(self: *ActivitySender, bytes: []const u8) void {
     if (bytes.len == 0) return;
     // Claim under the lock, copy OUTSIDE it, publish under it again. The lock
@@ -112,14 +114,19 @@ pub fn enqueue(self: *ActivitySender, bytes: []const u8) void {
     // and decrements `queued` together, which leaves their sum — and so this
     // slot — exactly where it was. Nothing else can claim it, and the slot the
     // consumer is posting from sits at `head - 1`, which this index reaches
-    // only at `queued == RING_SLOTS - 1`, one past the cap that drops first.
+    // only at `queued == RING_SLOTS - 1`, one past the cap that folds first.
     self.mutex.lock();
     const slots = self.slots orelse {
         self.mutex.unlock();
         return;
     };
-    if (self.closed or self.queued == MAX_QUEUED_BATCHES or bytes.len > MAX_BATCH_BYTES) {
+    if (self.closed or bytes.len > MAX_BATCH_BYTES) {
         self.dropped +|= 1;
+        self.mutex.unlock();
+        return;
+    }
+    if (self.queued == MAX_QUEUED_BATCHES) {
+        self.foldIntoNewest(slots, bytes);
         self.mutex.unlock();
         return;
     }
@@ -133,6 +140,24 @@ pub fn enqueue(self: *ActivitySender, bytes: []const u8) void {
     self.queued += 1;
     self.cond.signal();
     self.mutex.unlock();
+}
+
+/// Append `bytes` to the newest waiting batch as more comma-joined frames.
+/// Caller holds `mutex`. The copy runs under the lock, unlike the normal
+/// path, because the consumer could otherwise pop this slot mid-append; it is
+/// the overflow path only, and the consumer is then stuck in a slow send.
+/// The newest slot sits at `head + queued - 1` with `queued` at the cap, so it
+/// is always a waiting slot and never the one in flight.
+fn foldIntoNewest(self: *ActivitySender, slots: *[RING_SLOTS][MAX_BATCH_BYTES]u8, bytes: []const u8) void {
+    const newest = (self.head + self.queued - 1) % RING_SLOTS;
+    const len = self.lens[newest].?;
+    if (len + 1 + bytes.len > MAX_BATCH_BYTES) {
+        self.dropped +|= 1;
+        return;
+    }
+    slots[newest][len] = ',';
+    @memcpy(slots[newest][len + 1 ..][0..bytes.len], bytes);
+    self.lens[newest] = len + 1 + bytes.len;
 }
 
 /// Wait until every queued batch has been posted, or `budget_ms` passes. Runs
@@ -233,4 +258,5 @@ fn run(self: *ActivitySender) void {
 
 test {
     _ = @import("ActivitySender_test.zig");
+    _ = @import("ActivitySender_fold_test.zig");
 }
