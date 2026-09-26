@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M207
 **Workstream:** 001
 **Date:** Sep 26, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing chat; a long reasoning pass reads as a hung fleet, and a failed send leaves a dead row
 **Categories:** UI
 **Batch:** B1 — sole workstream; rides PR #717 beside its composer-layout commits
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** fix/chat-composer-scroll-clip
+**Baseline revision:** dbd2f32f396c82e7fe0b236d337efba084b133de
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Opus 5.5, Sep 26, 2026) from Kishore's in-session decisions; every assistant-ui claim read from the `@assistant-ui/react@0.15.22` tag (`bun.lock` resolves react 0.15.22, core 0.3.21)
