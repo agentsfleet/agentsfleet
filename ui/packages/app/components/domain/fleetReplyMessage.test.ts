@@ -53,6 +53,16 @@ describe("toReplyMessage", () => {
     expect(toReplyMessage(BASE, { ...row, status: "processed" }).status).toEqual({ type: "complete", reason: "stop" });
   });
 
+  it("should carry no completion instant when a done tool reported no wall time", () => {
+    // Done without `ms`: the library reads a defined result as finished and a
+    // missing completedAt as "duration unknown", so no clock claims a time.
+    const [part] = replyParts(evt({ id: "e1:reply", tools: [{ name: "late", startedAtMs: STARTED, ms: null, done: true }] }));
+    expect(part).toEqual({
+      type: "tool-call", toolCallId: "e1:reply:tool:0", toolName: "late", args: {},
+      result: null, timing: { startedAt: STARTED },
+    });
+  });
+
   it("test_malformed_reply_metadata_reads_absent", () => {
     // A row with nothing yet has no parts, not empty ones.
     expect(replyParts(evt({ reply: "   ", reasoning: "", tools: undefined }))).toEqual([]);
