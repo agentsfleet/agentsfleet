@@ -67,6 +67,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/e2e/acceptance/{fleet-reply-parts.spec,fleet-resend.spec,fixtures/sse-server}.ts`; `{fleet-thread.spec,fixtures/sse}.ts` | CREATE; EDIT | Frame-by-frame reply stream with the long-task and frame probe; live parts and resend journeys |
 | `docs/architecture/user_flow.md` | EDIT | Chat surface line: Thought chip, tool rows, resend |
 | PR #717's composer-layout files (`FleetThreadViewport.tsx`, `SteerComposer.tsx`, `ChatView.tsx`, `page.tsx`, their tests) | EDIT | Already committed on the branch by Kishore's call; not re-specified |
+| `rustd/crates/afd_dragonfly/tests/hub_socket_faults.rs` | EDIT | The unit lane's one flake, fixed here by Kishore's call: progress polled inside the budget instead of a fixed 100 ms window; the test redial schedule drops `backon`'s three-attempt default, as production does |
 
 ## Applicable Rules
 
@@ -270,9 +271,7 @@ FailedDelivery = { text: string; kind: "send" | "session" };  loadingVerbFor(key
 
 ## Dead Code Sweep
 
-**1. Orphaned files — deleted from disk and git.**
-
-N/A — no files deleted.
+**1. Orphaned files — deleted from disk and git.** N/A — no files deleted.
 
 **2. Orphaned references — zero remaining imports/uses.**
 
@@ -317,4 +316,5 @@ N/A — no files deleted.
 - **Findings** — 0.15.22 infers `thread.isRunning` from the last message when the adapter omits it (`thread-runtime.ts:211-221`), which disabled Send under a running reply; `FleetThread` now passes `isRunning: false`. A refused send uses the library's own draft return (`MessageNotSentError`, `types/error.ts:55-72`), which replaced the hand-built restore effect and a Restore button. Frame baseline on `5f236cbcc` (pre-parts rendering): 0 long tasks, 334 frames, p95 16.8 ms.
 - **Metrics review** — no events added; `agentsfleet.chat.submit_to_first_visible` keeps its trigger (first answer, reasoning or tool paint).
 - **Skill-chain outcomes** — pending. Open PR #717 obligations carried in: reply to Greptile P1 `4111114471` (unreachable composer — fixed by `51656f7ac`) and P2 `4111168712` (live chunk masked by completion — fixed by the chunk-only fixture); Session notes 3; `/review` rerun on the final diff; `orly-babysit-prs`.
+- **Consults (Sep 27, 2026)** — the Rust flake that kept `make test-unit-all` red: Kishore, "fix in this PR". The changelog `<Update>` in `~/Projects/docs`: Kishore, "No, I'll override" — he records the `docs.updated` override at PR time. Flake finding: `hub_socket_faults::test_a_resubscribe_onto_a_dead_socket_is_logged_and_survived` asserted a further redial inside a fixed 100 ms sleep. 48 parallel runs on 8 cores: 12 failed at `hub_socket_faults.rs:183:5`, every one a slow redial, none a stuck pump. The sibling refused-redial test passed with its pump dead: the test schedule kept `backon`'s default of three attempts, so the redial reached `pump.rs:135`'s unreachable arm and panicked. After the fix: 0 of 96 of the same shape, 0 of 48 whole-module runs, 0 pump panics. `integration_hub_exclusive.rs:87` builds the same schedule, but its server stays up, so the limit is never reached; it is left as it is.
 - **Deferrals** — none.

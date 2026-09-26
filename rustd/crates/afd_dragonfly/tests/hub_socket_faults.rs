@@ -37,11 +37,14 @@ const BUDGET: Duration = Duration::from_secs(10);
 ///
 /// No jitter, unlike production: a test asserting that a reconnect happened
 /// inside [`BUDGET`] should not have a random offset between it and the
-/// assertion.
+/// assertion. No attempt limit, like production: at `backon`'s default of three
+/// the redial reaches `pump.rs`'s unreachable arm and the pump dies, which a
+/// test counting connections would read as a pump that stopped counting.
 fn impatient() -> ExponentialBuilder {
     ExponentialBuilder::new()
         .with_min_delay(Duration::from_millis(5))
         .with_max_delay(Duration::from_millis(20))
+        .without_max_times()
 }
 
 /// The rule table for a fake that speaks enough pub/sub to hold a hub.
@@ -179,11 +182,11 @@ async fn test_a_resubscribe_onto_a_dead_socket_is_logged_and_survived() {
 
     // Still pumping: it keeps redialling rather than giving up on the channel.
     let before = hub.connections_opened();
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    assert!(
-        hub.connections_opened() > before,
-        "the pump must keep redialling after a failed resubscribe"
-    );
+    until(
+        "the pump to keep redialling after a failed resubscribe",
+        || hub.connections_opened() > before,
+    )
+    .await;
 
     drop(subscription);
 }
