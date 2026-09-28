@@ -1,6 +1,6 @@
-import { SUBJECT, WS, ZID, mockStream, renderThread, steerFleetActionMock } from "./harness";
+import { SUBJECT, WS, ZID, clientUser, mockStream, renderThread, steerFleetActionMock, threadElement } from "./harness";
 import {
-  ACCEPTED, REFUSED, RESEND_LABEL, SEND_LABEL, UNAVAILABLE, composerInput, heldRefusal, operationIdOf, send,
+  ACCEPTED, REFUSED, RESEND_LABEL, SEND_LABEL, SEND_UNCONFIRMED_TEXT, UNAVAILABLE, composerInput, heldRefusal, operationIdOf, send,
 } from "./steer-helpers";
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
@@ -89,6 +89,26 @@ describe("FleetThread — operation id reuse", () => {
     await send("y");
     await waitFor(() => expect(steerFleetActionMock).toHaveBeenCalledTimes(2));
     expect(operationIdOf(1)).not.toBe(operationIdOf(0));
+  });
+
+  it("keeps a send made before the client knows the user, and its id, once it does", async () => {
+    clientUser.userId = null;
+    steerFleetActionMock.mockResolvedValueOnce(UNAVAILABLE).mockResolvedValueOnce(ACCEPTED("evt_once"));
+    mockStream([], { appendOptimistic: vi.fn().mockReturnValue("temp_early") });
+    const view = renderThread();
+    await send("early");
+    await waitFor(() => expect(screen.getByText(SEND_UNCONFIRMED_TEXT)).toBeTruthy());
+    // The auth script loads: the same person the server already named.
+    clientUser.userId = SUBJECT;
+    view.rerender(threadElement());
+    expect(screen.getByText(SEND_UNCONFIRMED_TEXT)).toBeTruthy();
+    expect(getPendingSends(SCOPE).map((entry) => entry.state)).toEqual([PENDING_SEND_STATE.UNKNOWN]);
+    // The returned draft, sent unchanged, is that same send.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: SEND_LABEL }));
+    });
+    await waitFor(() => expect(steerFleetActionMock).toHaveBeenCalledTimes(2));
+    expect(operationIdOf(1)).toBe(operationIdOf(0));
   });
 
   it("keeps the fleet's queue moving after a send throws past its acknowledgement", async () => {

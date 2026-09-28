@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { requireCredential } from "@/lib/auth/credential";
+import { claims, requireCredential } from "@/lib/auth/credential";
 import { notFound, redirect } from "next/navigation";
 import { cn } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
@@ -198,6 +198,9 @@ async function loadChatView(
   // the live tail moves both from there.
   const threadResult = await data.thread;
   const turns = threadResult?.items ?? [];
+  // Who is signed in, from the verified claims this request already holds:
+  // the thread keys its unsent messages by it before the client knows.
+  const subject = (await claims())?.sub;
   const approvalsHref = `${workspacePath(workspaceId, "approvals")}?fleetId=${encodeURIComponent(fleet.id)}`;
   return (
     <ChatView
@@ -207,6 +210,7 @@ async function loadChatView(
       initial={turns}
       initialSummary={buildRunSummary(fleet.status, threadResult, fleet.pending_approvals)}
       approvalsHref={approvalsHref}
+      viewer={typeof subject === "string" ? subject : null}
     />
   );
 }
