@@ -156,6 +156,25 @@ async fn test_replay_bypasses_ingress_refusal() {
         Some(error_code::AGENTSFLEET_PAUSED_INGRESS.as_str())
     );
 
+    // Without an id there is no earlier admission to answer: new work, refused.
+    let keyless = serde_json::json!({ "message": MESSAGE }).to_string();
+    let unnamed = send(
+        &router,
+        Method::POST,
+        &thread,
+        Some(&fixture.token),
+        &keyless,
+    )
+    .await;
+    assert_eq!(unnamed.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        json_body(unnamed)
+            .await
+            .get("error_code")
+            .and_then(Value::as_str),
+        Some(error_code::AGENTSFLEET_PAUSED_INGRESS.as_str())
+    );
+
     fixture.cleanup().await;
 }
 

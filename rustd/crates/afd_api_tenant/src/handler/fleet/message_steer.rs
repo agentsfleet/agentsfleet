@@ -120,7 +120,7 @@ pub(crate) async fn steer<D: Services>(
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
     let steer = read_steer(&body)?;
-    let actor = actor_for(&person);
+    let actor = actor_for(person.person());
 
     // Ownership first: a fleet this workspace does not hold is a 404 before any
     // operation id is looked at, so a guessed id can never probe another
@@ -208,14 +208,14 @@ fn refuse_steer(error: afd_events::Error) -> Refusal {
 /// presence test would record every machine-driven wake as that human — worse
 /// than recording nobody, because it lets an actor-shaped assertion certify "a
 /// person woke this fleet" while automation did.
-fn actor_for(person: &PersonIdentity) -> String {
+fn actor_for(person: &afd_auth::principal::Person) -> String {
     use afd_auth::principal::PersonCredential;
-    match person.person().credential() {
+    match person.credential() {
         // A terminal credential and a browser session both name their human:
         // the whole point of a user-scoped credential is that a steer from a
         // terminal is attributable to one.
         PersonCredential::SessionToken { .. } | PersonCredential::CliCredential => {
-            format!("{}{}", afd_events::ACTOR_PREFIX, person.subject())
+            format!("{}{}", afd_events::ACTOR_PREFIX, person.subject().as_str())
         }
         PersonCredential::TenantApiKey => afd_events::ACTOR_MACHINE.to_owned(),
     }

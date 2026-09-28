@@ -15,7 +15,40 @@ use axum::body::Bytes;
 use axum::response::IntoResponse as _;
 use http::StatusCode;
 
-use super::{read_steer, refuse_steer};
+use afd_auth::principal::{Person, PersonCredential, Subject};
+use afd_auth::scope::ScopeSet;
+use afd_core::id::Uuid7;
+
+use super::{actor_for, read_steer, refuse_steer};
+
+const TENANT: &str = "01924f4e-0000-7000-8000-00000000a0a1";
+const HUMAN: &str = "user_2steerer";
+
+fn person(credential: PersonCredential) -> Person {
+    Person::new(
+        credential,
+        Uuid7::parse(TENANT).expect("a canonical tenant id"),
+        Subject::new(HUMAN).expect("a non-blank subject"),
+        ScopeSet::EMPTY,
+    )
+}
+
+/// A steer from a browser session or a terminal credential names its human; a
+/// tenant api-key names the machine, because a key is automation even though
+/// a person created it.
+#[test]
+fn a_steer_is_attributed_to_a_person_only_when_one_sent_it() {
+    let human = format!("{}{HUMAN}", afd_events::ACTOR_PREFIX);
+    let session = person(PersonCredential::SessionToken {
+        workspace_scope: None,
+    });
+    assert_eq!(actor_for(&session), human);
+    assert_eq!(actor_for(&person(PersonCredential::CliCredential)), human);
+    assert_eq!(
+        actor_for(&person(PersonCredential::TenantApiKey)),
+        afd_events::ACTOR_MACHINE
+    );
+}
 
 /// Only a reused operation id is answered as a 409 naming the id's state; every
 /// other steer failure keeps the status its plane decided.
