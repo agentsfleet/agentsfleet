@@ -34,6 +34,13 @@ export type FleetThreadProps = {
    * prop; live updates arrive over the cookie-authed SSE route handler.
    */
   initial: EventRow[];
+  /**
+   * The signed-in user as the server rendered the page. The pending-send
+   * ledger is keyed by user, and the client learns the user only once its
+   * auth script loads: a send made before then went to a ledger that vanished
+   * when it did, taking its Resend with it.
+   */
+  viewer: string | null;
 };
 
 /**
@@ -54,6 +61,7 @@ export function FleetThread({
   fleetId,
   senderLabel,
   initial,
+  viewer,
 }: FleetThreadProps) {
   const stream = useFleetEventStream(workspaceId, fleetId, initial);
   const [submission, setSubmission] = useState<{ fleetId: string; id: string } | null>(null);
@@ -70,7 +78,7 @@ export function FleetThread({
   // Keyed by the signed-in user as well, so the next person on a shared
   // browser never sees, or resends as themselves, what this one typed.
   const { userId } = useCurrentUser();
-  const ledger = useFleetPendingSends({ subject: userId, workspaceId, fleetId });
+  const ledger = useFleetPendingSends({ subject: userId ?? viewer, workspaceId, fleetId });
   // Pass the registry methods (each `useCallback([fleetId])`-stable), not
   // the whole `stream` object — `stream` is a fresh reference on every SSE
   // frame, so listing it would rebuild `onNew` per frame for no benefit.

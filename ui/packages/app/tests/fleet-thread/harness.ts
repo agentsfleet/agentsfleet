@@ -16,6 +16,7 @@ const {
   useFleetEventStreamMock,
   capturedOnNew,
   capturedSubmittedMessageId,
+  signedIn,
 } = vi.hoisted(() => ({
   routerRefreshMock: vi.fn(),
   steerFleetActionMock: vi.fn(),
@@ -27,6 +28,8 @@ const {
     current: null as ((msg: AppendMessage) => Promise<void>) | null,
   },
   capturedSubmittedMessageId: { current: null as string | null },
+  // Who the client's auth script says is signed in: null until it loads.
+  signedIn: { userId: "user_fleet_thread" as string | null },
 }));
 
 vi.mock("next/navigation", () => ({
@@ -36,7 +39,13 @@ vi.mock("next/navigation", () => ({
 // The thread keys its pending-send ledger by the signed-in user; the suite
 // signs in one fixed person.
 vi.mock("@/lib/auth/client", () => ({
-  useCurrentUser: () => ({ isLoaded: true, isSignedIn: true, userId: TEST_SUBJECT, emailAddress: null, hasImage: false }),
+  useCurrentUser: () => ({
+    isLoaded: signedIn.userId !== null,
+    isSignedIn: signedIn.userId !== null,
+    userId: signedIn.userId,
+    emailAddress: null,
+    hasImage: false,
+  }),
 }));
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
@@ -94,6 +103,8 @@ import {
 
 export const WS = "ws_test";
 export const SUBJECT = TEST_SUBJECT;
+/** Whom the client's auth script reports; set `userId` to null for "not loaded yet". */
+export const clientUser = signedIn;
 export const ZID = "zomb_test";
 export const FLEET_NAME = "github-pr-reviewer";
 
@@ -191,6 +202,7 @@ export function threadElement(initial: EventRow[] = []) {
     fleetId: ZID,
     senderLabel: FLEET_NAME,
     initial,
+    viewer: TEST_SUBJECT,
   });
 }
 
@@ -236,6 +248,7 @@ beforeEach(() => {
   __resetPendingSendsForTests();
   capturedOnNew.current = null;
   capturedSubmittedMessageId.current = null;
+  signedIn.userId = TEST_SUBJECT;
 });
 
 afterEach(() => cleanup());
