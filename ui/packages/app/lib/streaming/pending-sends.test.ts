@@ -22,6 +22,7 @@ const OTHER_FLEET: LedgerScope = { ...SCOPE, fleetId: "fleet_other" };
 const OTHER_USER: LedgerScope = { ...SCOPE, subject: OTHER_SUBJECT };
 const SIGNED_OUT: LedgerScope = { ...SCOPE, subject: null };
 const STORAGE_KEY = `agentsfleet:pending-sends:${SUBJECT}:ws_ledger:fleet_ledger`;
+const OTHER_FLEET_KEY = `agentsfleet:pending-sends:${SUBJECT}:ws_ledger:fleet_other`;
 const FOREIGN_KEY = "agentsfleet:pending-sends:user_gone:ws_x:fleet_x";
 const UNRELATED_KEY = "someone-else:setting";
 const NOW_MS = 1_790_553_600_000;
@@ -173,24 +174,27 @@ describe("pending-sends ledger", () => {
   it("keys the ledger by user, and mirrors nothing until the user is known", () => {
     beginPendingSend(SCOPE, send("op-1", "mine"));
     failPendingSend(SCOPE, "op-1", PENDING_SEND_STATE.REFUSED);
-    // The next person on this browser sees none of it.
-    expect(getPendingSends(OTHER_USER)).toEqual([]);
-    // Nor does the same person's other fleet.
+    // The same person's other fleet sees none of it.
     expect(getPendingSends(OTHER_FLEET)).toEqual([]);
 
     beginPendingSend(SIGNED_OUT, send("op-2", "early"));
     const mirrored = Object.keys(window.localStorage).filter((key) => key.startsWith("agentsfleet:pending-sends"));
     expect(mirrored).toEqual([STORAGE_KEY]);
+
+    // Nor does the next person on this browser, whose first read removes it
+    // from storage — in the same document, as a sign-in without a reload.
+    expect(getPendingSends(OTHER_USER)).toEqual([]);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 
   it("expires entries after a day, and sweeps ledgers whose entries all expired", () => {
     const old: PendingSend = { operationId: "op-old", text: "yesterday", state: PENDING_SEND_STATE.REFUSED, submittedAtMs: NOW_MS - PENDING_SEND_TTL_MS };
     const fresh: PendingSend = { operationId: "op-fresh", text: "today", state: PENDING_SEND_STATE.REFUSED, submittedAtMs: NOW_MS - HOUR_MS };
     window.localStorage.setItem(STORAGE_KEY, stored([old, fresh]));
-    window.localStorage.setItem(FOREIGN_KEY, stored([old]));
+    window.localStorage.setItem(OTHER_FLEET_KEY, stored([old]));
     window.localStorage.setItem(UNRELATED_KEY, "kept");
     expect(states()).toEqual([["op-fresh", PENDING_SEND_STATE.REFUSED]]);
-    expect(window.localStorage.getItem(FOREIGN_KEY)).toBeNull();
+    expect(window.localStorage.getItem(OTHER_FLEET_KEY)).toBeNull();
     expect(window.localStorage.getItem(UNRELATED_KEY)).toBe("kept");
   });
 
