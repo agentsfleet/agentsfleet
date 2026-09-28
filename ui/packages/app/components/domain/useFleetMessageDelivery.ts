@@ -19,6 +19,10 @@ import { mintOperationId } from "@/lib/streaming/operation-id";
 // its text goes back to the composer the way Claude.ai does it — the handler
 // rejects with assistant-ui's `MessageNotSentError` and the composer restores
 // the draft it cleared — and its ledger entry keeps the recovery.
+//
+// Every send ends: one with no answer by `SEND_TIMEOUT_MS` ends unknown and
+// frees the fleet's queue. A reused id the daemon refuses as another message's
+// ends in `conflict`, and its text goes out again only under a new id.
 
 // Placeholder actor on an optimistic row until the stream's matching
 // `EVENT_RECEIVED` lands and reconciliation replaces it with the real
@@ -29,11 +33,18 @@ const UTF8 = new TextEncoder();
 // bytes are two per unit), so most drafts are settled by their length alone.
 const MAX_UTF8_BYTES_PER_UNIT = 3;
 const settledEitherWay = (): void => undefined;
+/** How long a send waits for its Server Action: above the server's own 20 s
+ * retry deadline (`lib/api/retry-config.ts`), so a slow send that is still
+ * alive is never abandoned. */
+export const SEND_TIMEOUT_MS = 30_000;
+/** The daemon's refusal of an operation id that already names another message. */
+const OPERATION_CONFLICT_CODE = "UZ-AGT-016";
 
 // One queue per fleet, in module state, so a composer that remounts mid-send
 // queues behind the send still out instead of overtaking it.
 const DELIVERY_TAILS = new Map<string, Promise<void>>();
 
+type SteerResult = Awaited<ReturnType<typeof steerFleetAction>>;
 type StreamApi = ReturnType<typeof useFleetEventStream>;
 type DeliveryCtx = {
   workspaceId: string;
@@ -52,8 +63,9 @@ type Restored = { operationId: string; text: string; ledger: PendingSendWriters;
 export type MessageDelivery = {
   /** assistant-ui's `onNew`: a message the composer submitted. */
   onNew: (msg: AppendMessage) => Promise<void>;
-  /** A ledger entry sent again under its own operation id. The send reports
-   * through the ledger, so a click has nothing to await. */
+  /** A ledger entry sent again: under its own operation id, or under a new
+   * one when the daemon refused that id as another message's. The send
+   * reports through the ledger, so a click has nothing to await. */
   resend: (operationId: string) => void;
   /** The composer put this send's text back on mount. */
   noteRestored: (operationId: string, text: string) => void;
@@ -71,10 +83,7 @@ export function exceedsSteerLimit(text: string): boolean {
 export function useMessageDelivery(ctx: DeliveryCtx): MessageDelivery {
   const deliver = useSerializedDelivery(ctx);
   const { writers } = ctx;
-  // The draft a failure put back, and the id it was sent under. Only that
-  // draft, sent unchanged, reuses the id: the same words typed later are a new
-  // message, and an old id would replay an old admission and run nothing.
-  const restored = useRef<Restored | null>(null);
+  const { take, forget, remember, noteDraft } = useRestoredDraft(writers);
   // Every submit the composer made, counted the way assistant-ui counts them:
   // it returns a failed send's draft only when no newer send started since.
   const sends = useRef(0);
@@ -87,21 +96,16 @@ export function useMessageDelivery(ctx: DeliveryCtx): MessageDelivery {
       // Refused before it is named or recorded: the daemon would refuse it, and
       // the composer keeps the draft while its hint says why.
       if (exceedsSteerLimit(text)) throw new MessageNotSentError();
-      const back = restored.current;
-      restored.current = null;
-      let operationId: string;
-      try {
-        operationId = back?.text === text && back.ledger === writers ? back.operationId : mintOperationId();
-      } catch {
-        throw new MessageNotSentError();
-      }
+      const back = take();
+      const operationId = back?.text === text && back.ledger === writers ? back.operationId : mintOrNull();
+      if (operationId === null) throw new MessageNotSentError();
       if (await deliver(operationId, text)) return;
       // A draft assistant-ui did not return is not this send's to reuse: the
       // same words typed later are a new message.
-      if (sends.current === send) restored.current = { operationId, text, ledger: writers, shown: false, cleared: false };
+      if (sends.current === send) remember(operationId, text);
       throw new MessageNotSentError();
     },
-    [deliver, writers],
+    [deliver, writers, take, remember],
   );
 
   const resend = useCallback(
@@ -109,14 +113,45 @@ export function useMessageDelivery(ctx: DeliveryCtx): MessageDelivery {
       const entry = writers.find(operationId);
       if (entry === undefined) return;
       // Resent from the notice: the composer's copy is no longer a recovery.
-      if (restored.current?.operationId === operationId) restored.current = null;
-      void deliver(entry.operationId, entry.text);
+      forget(operationId);
+      // A conflict's id is spent: it is dismissed, and the text goes out as new.
+      const spent = entry.state === PENDING_SEND_STATE.CONFLICT;
+      const sendAs = spent ? mintOrNull() : operationId;
+      if (sendAs === null) return;
+      if (spent) writers.dismiss(operationId);
+      void deliver(sendAs, entry.text);
     },
-    [deliver, writers],
+    [deliver, writers, forget],
   );
 
-  const noteRestored = useCallback((operationId: string, text: string) => {
-    restored.current = { operationId, text, ledger: writers, shown: false, cleared: false };
+  return useMemo(
+    () => ({ onNew, resend, noteRestored: remember, noteDraft }),
+    [onNew, resend, remember, noteDraft],
+  );
+}
+
+// The draft a failure put back, and the id it was sent under. Only that draft,
+// sent unchanged, reuses the id: the same words typed later are a new message,
+// and an old id would replay an old admission and run nothing.
+function useRestoredDraft(writers: PendingSendWriters) {
+  const restored = useRef<Restored | null>(null);
+
+  /** The recovery, if any, handed to the send that reads it — and ended. */
+  const take = useCallback((): Restored | null => {
+    const back = restored.current;
+    restored.current = null;
+    return back;
+  }, []);
+
+  const forget = useCallback((operationId: string) => {
+    if (restored.current?.operationId === operationId) restored.current = null;
+  }, []);
+
+  // A conflict's id already names another message, so its draft is never
+  // remembered under it.
+  const remember = useCallback((operationId: string, text: string) => {
+    const spent = writers.find(operationId)?.state === PENDING_SEND_STATE.CONFLICT;
+    restored.current = spent ? null : { operationId, text, ledger: writers, shown: false, cleared: false };
   }, [writers]);
 
   // An edit ends the recovery: the words the operator puts in the composer
@@ -131,10 +166,7 @@ export function useMessageDelivery(ctx: DeliveryCtx): MessageDelivery {
     else restored.current = null;
   }, []);
 
-  return useMemo(
-    () => ({ onNew, resend, noteRestored, noteDraft }),
-    [onNew, resend, noteRestored, noteDraft],
-  );
+  return { take, forget, remember, noteDraft };
 }
 
 // One send: recorded, painted, then POSTed behind the fleet's previous send.
@@ -157,15 +189,9 @@ function useSerializedDelivery({
         return false;
       };
       const send = async (): Promise<boolean> => {
-        let result: Awaited<ReturnType<typeof steerFleetAction>>;
-        try {
-          result = await steerFleetAction(workspaceId, fleetId, text, operationId);
-        } catch {
-          // The Server Action's transport failed: nothing answered, so the
-          // daemon may or may not hold the message.
-          return ended(PENDING_SEND_STATE.UNKNOWN);
-        }
-        if (!result.ok) return ended(outcomeOf(result.status));
+        const result = await steerWithin(workspaceId, fleetId, text, operationId, writers);
+        if (result === null) return ended(PENDING_SEND_STATE.UNKNOWN);
+        if (!result.ok) return ended(outcomeOf(result));
         // Settled before the cosmetic reconcile: the daemon holds it, whatever
         // the painting does next.
         writers.settle(operationId);
@@ -189,12 +215,41 @@ function useSerializedDelivery({
   );
 }
 
-// A 401 asks for a sign-in. A client refusal other than a timeout means the
-// server saw the request and said no. Anything else — a timeout, a 5xx after
-// the row committed, no status at all — leaves delivery unconfirmed.
-function outcomeOf(status: number | undefined): PendingSendOutcome {
+// The Server Action's answer, or null when nothing answered: its transport
+// failed, or `SEND_TIMEOUT_MS` passed first. Either way the daemon may or may
+// not hold the message. An answer after the timeout only settles the entry —
+// its row is gone, and the stream shows the message if it landed.
+async function steerWithin(
+  workspaceId: string, fleetId: string, text: string, operationId: string, writers: PendingSendWriters,
+): Promise<SteerResult | null> {
+  const action = steerFleetAction(workspaceId, fleetId, text, operationId);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), SEND_TIMEOUT_MS);
+  });
+  const result = await Promise.race([action, timeout]).catch(() => null).finally(() => clearTimeout(timer));
+  if (result === null) action.then((late) => (late.ok ? writers.settle(operationId) : undefined), settledEitherWay);
+  return result;
+}
+
+// A 401 asks for a sign-in. A reused id is refused for good. Any other client
+// refusal but a timeout means the server saw the request and said no. Anything
+// else — a timeout, a 5xx after the row committed, no status at all — leaves
+// delivery unconfirmed.
+function outcomeOf({ status, errorCode }: { status?: number; errorCode?: string }): PendingSendOutcome {
   if (status === HTTP_STATUS_UNAUTHORIZED) return PENDING_SEND_STATE.SESSION;
+  if (errorCode === OPERATION_CONFLICT_CODE) return PENDING_SEND_STATE.CONFLICT;
   return isDefiniteRefusal(status) ? PENDING_SEND_STATE.REFUSED : PENDING_SEND_STATE.UNKNOWN;
+}
+
+// A fresh operation id, or null on a platform with no generator: the send is
+// then not made.
+function mintOrNull(): string | null {
+  try {
+    return mintOperationId();
+  } catch {
+    return null;
+  }
 }
 
 function extractMessageText(msg: AppendMessage): string {

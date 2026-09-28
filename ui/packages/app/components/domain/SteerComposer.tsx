@@ -15,11 +15,15 @@ const COMPOSER_LABEL = "Chat composer";
 const SESSION_EXPIRED = "Your session expired. Sign in again before sending this message.";
 const SEND_FAILED = "Message not sent.";
 const SEND_UNCONFIRMED = "Couldn't confirm this message was sent.";
+const SEND_CONFLICT = "This message conflicts with one already sent.";
 const SIGN_IN_LABEL = "Sign in";
 const RESEND_LABEL = "Resend";
+const SEND_AS_NEW_LABEL = "Send as new";
 const NOTICES_LABEL = "Unsent messages";
 const BYTE_COUNT = new Intl.NumberFormat("en-US");
 const TOO_LONG = `Messages can be at most ${BYTE_COUNT.format(STEER_MESSAGE_MAX_BYTES)} bytes.`;
+// In flight, or dismissed: neither is the operator's to act on here.
+const NOT_NOTICED: ReadonlySet<PendingSend["state"]> = new Set([PENDING_SEND_STATE.SENDING, PENDING_SEND_STATE.DISMISSED]);
 
 // The composer is a persistent part of the transcript: a compact, bordered
 // field that grows with the message while leaving the visible conversation in
@@ -38,7 +42,7 @@ export type SteerComposerProps = {
 
 export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraft }: SteerComposerProps) {
   const unresolved = useMemo(
-    () => pending.filter((entry) => entry.state !== PENDING_SEND_STATE.SENDING),
+    () => pending.filter((entry) => !NOT_NOTICED.has(entry.state)),
     [pending],
   );
   useRestoreRefusedTextOnMount(unresolved, onRestored);
@@ -194,7 +198,9 @@ function PendingSendNotices({ entries, ...actions }: { entries: readonly Pending
 // id — never the composer's text — and clears a draft that is exactly that
 // text, so Enter cannot send it a second time. A refused send and an
 // unconfirmed one read differently, because they are: the server said no to
-// the first, and nothing answered for the second.
+// the first, and nothing answered for the second. A conflict's id is spent, so
+// its button sends the text as a new message rather than offering a Resend
+// that could only be refused again.
 function PendingSendNotice({ entry, onResend, onDismiss, draftRef }: { entry: PendingSend } & NoticeProps) {
   const aui = useAui();
   const textId = useId();
@@ -229,7 +235,7 @@ function PendingSendNotice({ entry, onResend, onDismiss, draftRef }: { entry: Pe
       {/* Offered after a sign-in too: once the session is back, a Resend is
           the way out, and a fresh 401 simply marks it again. */}
       <Button type="button" variant="outline" size="sm" onClick={resend} aria-describedby={textId}>
-        {RESEND_LABEL}
+        {entry.state === PENDING_SEND_STATE.CONFLICT ? SEND_AS_NEW_LABEL : RESEND_LABEL}
       </Button>
     </Alert>
   );
@@ -241,6 +247,8 @@ function sentenceFor(state: PendingSend["state"]): string {
       return SESSION_EXPIRED;
     case PENDING_SEND_STATE.UNKNOWN:
       return SEND_UNCONFIRMED;
+    case PENDING_SEND_STATE.CONFLICT:
+      return SEND_CONFLICT;
     default:
       return SEND_FAILED;
   }

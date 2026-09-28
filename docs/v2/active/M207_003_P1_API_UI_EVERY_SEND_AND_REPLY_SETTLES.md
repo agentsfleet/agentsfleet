@@ -55,6 +55,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `ui/packages/app/lib/streaming/{pending-sends,pending-sends-storage}.ts` | EDIT | Web Lock liveness for a foreign `sending`; a `dismissed` tombstone state that wins every merge |
+| `ui/packages/app/lib/streaming/pending-sends-locks.ts` | CREATE | The Web Lock hold/watch, split out so `pending-sends.ts` stays under its cap |
 | `ui/packages/app/components/domain/useFleetMessageDelivery.ts` | EDIT | Send timeout, bounded queue wait, the reused-id outcome, reading a replayed answer's state |
 | `ui/packages/app/components/domain/useFleetPendingSends.ts` | EDIT | Exposes the conflict state and the owner-gone reading |
 | `ui/packages/app/components/domain/SteerComposer.tsx` | EDIT | Conflict notice without Resend, `redirect_url` on Sign in, byte counter, Send disabled over the limit |
@@ -65,10 +66,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/utils.ts` | EDIT | Durations of a minute or more read with minutes |
 | `ui/packages/design-system/src/design-system/Alert.tsx`, `ui/packages/design-system/src/tokens.css` | EDIT | Dismiss target at least 24 px; settled rows keep focus rings |
 | Tests beside each file above, plus `ui/packages/app/tests/fleet-thread/*.test.ts` and `ui/packages/app/tests/e2e/acceptance/fleet-resend.spec.ts` | CREATE / EDIT | One test per Dimension |
+| `ui/packages/app/tests/fleet-thread/{ledger-fixtures,steer-copy}.ts` | CREATE / EDIT | One shared ledger fixture and fake lock manager for the pending-sends suites; conflict copy |
 | `rustd/crates/afd_admission/src/{lib,admit,sql}.rs` (+ its tests) | EDIT | `Admitted` carries the stored digest and fleet; no drift warn for a steer |
 | `rustd/crates/afd_events/src/steer.rs`, `rustd/crates/afd_events/tests/integration_steer_{replay,races}.rs` | EDIT | Append decides from the insert; `replayed` travels to the handler |
 | `rustd/crates/afd_wire/src/event/steer.rs`, `rustd/crates/afd_wire/tests/validation.rs` | EDIT | `SteerAccepted.replayed`; NUL refused; the request doc matches `deny_unknown_fields` |
 | `rustd/crates/afd_api_tenant/src/handler/fleet/message_steer.rs` (+ `message_steer/tests.rs`), `rustd/crates/afd_api/tests/fleet_messages_steer.rs` | EDIT | 400 for NUL; `accepted` carries `replayed` |
+| `rustd/crates/afd_http/src/services/event.rs` (+ every `FleetSteering` test double) | EDIT | `append` and `replayed` answer whether the 202 is a replay — the trait is how `replayed` reaches the handler |
 | `rustd/crates/afd_wire/src/activity.rs`, `rustd/crates/afd_fleet/src/lease/activity.rs`, `rustd/crates/agentsfleetd/tests/integration_runner_activity.rs` | EDIT | Optional `call_id` accepted and republished |
 | `rustd/crates/afd_api_tenant/src/handler/stream.rs`, `public/openapi.json` | EDIT | Server-Sent Events (SSE) kind list says `chunk`; 202 schema gains `replayed` |
 | `rustd/crates/afd_api/tests/harness/stubs_ingress/answers.rs` | EDIT | `Admitted` literals gain the new fields |
@@ -104,17 +107,17 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 A send is bounded, and another tab's send is visible once its tab is gone. **Implementation default:** `SEND_TIMEOUT_MS = 30_000`, above the server's 20 s daemon deadline (`lib/api/retry-config.ts`), so a slow but alive send is never abandoned. A send holds a Web Lock named for its operation id from `begin` to its end; a tab reading a foreign `sending` with no held lock reads it `unknown`. Without Web Locks the behaviour stays as today.
 
-- **Dimension 1.1** — a Server Action with no answer by the timeout ends `unknown` with Resend; a late answer only settles the ledger entry → Test `test_hung_send_times_out_to_unknown`
-- **Dimension 1.2** — a send queued behind a hung one runs once the timeout frees the queue → Test `test_queue_survives_a_hung_send`
-- **Dimension 1.3** — another tab's `sending` stays hidden while its lock is held, and reads `unknown` with Resend once it is not → Test `test_foreign_sending_surfaces_when_its_tab_is_gone`
-- **Dimension 1.4** — a dismissed send stays dismissed in every tab: a `dismissed` tombstone wins every merge and expires with the one-day time to live (TTL) → Test `test_dismissed_send_never_returns`
+- **Dimension 1.1** — a Server Action with no answer by the timeout ends `unknown` with Resend; a late answer only settles the ledger entry → Test `test_hung_send_times_out_to_unknown` — DONE (chat suites 69 files / 580 tests green; ledger, delivery and composer files at 100% coverage)
+- **Dimension 1.2** — a send queued behind a hung one runs once the timeout frees the queue → Test `test_queue_survives_a_hung_send` — DONE (chat suites 69 files / 580 tests green; ledger, delivery and composer files at 100% coverage)
+- **Dimension 1.3** — another tab's `sending` stays hidden while its lock is held, and reads `unknown` with Resend once it is not → Test `test_foreign_sending_surfaces_when_its_tab_is_gone` — DONE (chat suites 69 files / 580 tests green; ledger, delivery and composer files at 100% coverage)
+- **Dimension 1.4** — a dismissed send stays dismissed in every tab: a `dismissed` tombstone wins every merge and expires with the one-day time to live (TTL) → Test `test_dismissed_send_never_returns` — DONE (chat suites 69 files / 580 tests green; ledger, delivery and composer files at 100% coverage)
 
 ### §2 — A refused reuse is final
 
 `UZ-AGT-016` is a deterministic refusal, so the browser gives it its own state, `conflict`: the notice says the message conflicts with one already sent and offers Dismiss and "Send as new", which mints a new id. Separately, a NUL in `operation_id`, which Postgres refuses as 500 today, is refused up front with the existing 400 sentence.
 
-- **Dimension 2.1** — a 409 `UZ-AGT-016` ends in `conflict`, with no Resend offered → Test `test_operation_conflict_offers_no_resend`
-- **Dimension 2.2** — the draft a conflict returns sends under a new operation id → Test `test_conflict_draft_mints_a_new_id`
+- **Dimension 2.1** — a 409 `UZ-AGT-016` ends in `conflict`, with no Resend offered → Test `test_operation_conflict_offers_no_resend` — DONE (chat suites 69 files / 580 tests green; ledger, delivery and composer files at 100% coverage)
+- **Dimension 2.2** — the draft a conflict returns sends under a new operation id → Test `test_conflict_draft_mints_a_new_id` — DONE (chat suites 69 files / 580 tests green; ledger, delivery and composer files at 100% coverage)
 - **Dimension 2.3** — an `operation_id` containing NUL is refused 400 before any ledger write → Test `test_nul_operation_id_is_refused`
 - **Dimension 2.4** — the `SteerRequest` doc (and OpenAPI) says unknown fields are refused, as `deny_unknown_fields` does → Test `test_steer_request_doc_matches_its_parser`
 

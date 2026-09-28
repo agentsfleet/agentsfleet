@@ -16,6 +16,12 @@
 // a tab never drops its own in-flight send because another tab's write did
 // not know about it yet.
 //
+// Two more keep every send visible to the end, and gone once dismissed.
+// Another tab's `sending` is hidden while that tab holds the send's lock and
+// reads as unknown once it does not (`pending-sends-locks.ts`). A dismissal is
+// a tombstone, not a removal, so a tab that has not heard of it cannot write
+// the send back (`tombstoneRank`).
+//
 // The key names the signed-in user, so the next person on a shared browser
 // never sees — or resends as themselves — what the last one typed, and once
 // that person's page shows a ledger, the last one's leave storage and stay
@@ -35,10 +41,12 @@ import {
   removeMirrored,
   storage,
   storedReader,
+  tombstoneRank,
   type LedgerScope,
   type PendingSend,
   type PendingSendOutcome,
 } from "./pending-sends-storage";
+import { SendLocks } from "./pending-sends-locks";
 
 export { PENDING_SEND_STATE, type LedgerScope, type PendingSend, type PendingSendOutcome };
 
@@ -52,6 +60,7 @@ export const MAX_PENDING_SENDS = 20;
 const EMPTY: readonly PendingSend[] = Object.freeze([]);
 
 const LEDGERS = new Map<string, readonly PendingSend[]>();
+const LOCKS = new SendLocks();
 const LISTENERS = new Map<string, Set<() => void>>();
 // Operation ids this document has sent and not yet heard back on. Another
 // tab's write cannot know about them, so a merge keeps them.
@@ -74,13 +83,15 @@ function live(entries: readonly PendingSend[], nowMs: number): PendingSend[] {
   return entries.filter((entry) => nowMs - entry.submittedAtMs < PENDING_SEND_TTL_MS);
 }
 
-// This document's first read of a key. An entry still `sending` was owned by a
-// document that is gone — its POST may or may not have landed — so it reads as
-// unknown here, which is the state that offers a safe Resend.
+// This document's first read of a key. An entry still `sending` belongs to
+// another document, which may be gone — its POST may or may not have landed.
+// With locks, `adopt` asks; without, it reads as unknown here, the state that
+// offers a safe Resend.
 function hydrate(scope: LedgerScope): readonly PendingSend[] {
   sweepExpired();
+  const asked = LOCKS.supported();
   return live(readStored(mirror(scope), ledgerKey(scope)) ?? [], Date.now()).map((entry) =>
-    entry.state === PENDING_SEND_STATE.SENDING ? { ...entry, state: PENDING_SEND_STATE.UNKNOWN } : entry,
+    entry.state === PENDING_SEND_STATE.SENDING && !asked ? { ...entry, state: PENDING_SEND_STATE.UNKNOWN } : entry,
   );
 }
 
@@ -89,10 +100,31 @@ function read(scope: LedgerScope): readonly PendingSend[] {
   const held = LEDGERS.get(key);
   if (held !== undefined) return held;
   const hydrated = hydrate(scope);
-  LEDGERS.set(key, hydrated);
+  adopt(key, hydrated);
   if (mirror(scope) !== null) MIRRORED.add(key);
   listenToStorage();
   return hydrated;
+}
+
+// Every ledger this document holds goes through here, so each `sending` it did
+// not start is watched until its owner lets go.
+function adopt(key: string, entries: readonly PendingSend[]): void {
+  LEDGERS.set(key, entries);
+  for (const entry of entries) {
+    if (entry.state !== PENDING_SEND_STATE.SENDING || OWN_IN_FLIGHT.has(entry.operationId)) continue;
+    LOCKS.watch(entry.operationId, () => ownerGone(key, entry.operationId));
+  }
+}
+
+// Nobody holds the send's lock: if this document still reads it `sending`, no
+// ending was ever written, and it reads as unknown — in memory only, as a
+// reload would, because its owner may yet write the real ending.
+function ownerGone(key: string, operationId: string): void {
+  const held = LEDGERS.get(key);
+  const orphan = held?.find((entry) => entry.operationId === operationId);
+  if (held === undefined || orphan?.state !== PENDING_SEND_STATE.SENDING || OWN_IN_FLIGHT.has(operationId)) return;
+  LEDGERS.set(key, held.map((entry) => (entry === orphan ? { ...entry, state: PENDING_SEND_STATE.UNKNOWN } : entry)));
+  notify(key);
 }
 
 // What storage says now, plus this document's own sends it has not seen yet:
@@ -106,9 +138,9 @@ function mergeIncoming(incoming: readonly PendingSend[], held: readonly PendingS
   const heldById = new Map(held.map((entry) => [entry.operationId, entry]));
   const merged = incoming.map((entry) => {
     const mine = heldById.get(entry.operationId);
-    const staleSending = entry.state === PENDING_SEND_STATE.SENDING
-      && mine !== undefined && mine.state !== PENDING_SEND_STATE.SENDING;
-    return staleSending ? mine : entry;
+    if (mine === undefined) return entry;
+    const staleSending = entry.state === PENDING_SEND_STATE.SENDING && mine.state !== PENDING_SEND_STATE.SENDING;
+    return tombstoneRank(entry, mine) ?? (staleSending ? mine : entry);
   });
   const known = new Set(incoming.map((entry) => entry.operationId));
   const ownId = (id: string) => OWN_IN_FLIGHT.has(id) || unsaved.has(id);
@@ -129,7 +161,7 @@ function mutate(
   const stored = store === null ? null : readStored(store, key);
   const base = stored === null ? held : mergeIncoming(live(stored, Date.now()), held, UNSAVED.get(key) ?? NONE_UNSAVED);
   const next = capped(change(base));
-  LEDGERS.set(key, next);
+  adopt(key, next);
   if (store !== null) writeMirror(store, key, operationId, next);
   notify(key);
 }
@@ -183,7 +215,7 @@ function onStorage(event: StorageEvent): void {
     const incoming = event.key === null ? readStored(storage(), key) : parseEntries(event.newValue);
     // A read that throws is not an empty ledger, here as in `mutate`.
     if (incoming === null) continue;
-    LEDGERS.set(key, mergeIncoming(live(incoming, nowMs), held, UNSAVED.get(key) ?? NONE_UNSAVED));
+    adopt(key, mergeIncoming(live(incoming, nowMs), held, UNSAVED.get(key) ?? NONE_UNSAVED));
     notify(key);
   }
 }
@@ -230,36 +262,48 @@ export function subscribePendingSends(scope: LedgerScope, listener: () => void):
   };
 }
 
-/** A send leaves: as `sending`, or back to `sending` when it is sent again. */
+/** A send leaves: as `sending`, or back to `sending` when it is sent again.
+ * Its lock is asked for before the entry is written, so no other tab looks
+ * before the request is queued. */
 export function beginPendingSend(scope: LedgerScope, send: Omit<PendingSend, "state">): void {
   OWN_IN_FLIGHT.add(send.operationId);
+  LOCKS.hold(send.operationId);
   const entry: PendingSend = { ...send, state: PENDING_SEND_STATE.SENDING };
   mutate(scope, send.operationId, (entries) => [...entries.filter((held) => held.operationId !== send.operationId), entry]);
 }
 
-/** The daemon acknowledged it: nothing is left to recover. */
+/** The daemon acknowledged it: nothing is left to recover, tombstone included. */
 export function settlePendingSend(scope: LedgerScope, operationId: string): void {
-  OWN_IN_FLIGHT.delete(operationId);
-  mutate(scope, operationId, (entries) => entries.filter((entry) => entry.operationId !== operationId));
+  end(scope, operationId, (entries) => entries.filter((entry) => entry.operationId !== operationId));
 }
 
-/** The operator gave up on it. */
+/** The operator gave up on it: a tombstone, stamped now and without its text,
+ * that expires a day later like any entry. */
 export function dismissPendingSend(scope: LedgerScope, operationId: string): void {
-  OWN_IN_FLIGHT.delete(operationId);
-  mutate(scope, operationId, (entries) => entries.filter((entry) => entry.operationId !== operationId));
+  const tombstone: PendingSend = { operationId, text: "", state: PENDING_SEND_STATE.DISMISSED, submittedAtMs: Date.now() };
+  end(scope, operationId, (entries) => entries.map((entry) => (entry.operationId === operationId ? tombstone : entry)));
 }
 
-/** How the send ended without an acknowledgement. */
+/** How the send ended without an acknowledgement — unless it was dismissed
+ * meanwhile, in this tab or another, and then it stays dismissed. */
 export function failPendingSend(scope: LedgerScope, operationId: string, state: PendingSendOutcome): void {
-  // Still this document's own while the ending is written: a concurrent write
-  // from another tab that never saw this send must not merge it away.
-  mutate(scope, operationId, (entries) => entries.map((entry) => (entry.operationId === operationId ? { ...entry, state } : entry)));
-  OWN_IN_FLIGHT.delete(operationId);
+  end(scope, operationId, (entries) => entries.map((entry) =>
+    entry.operationId === operationId && entry.state !== PENDING_SEND_STATE.DISMISSED ? { ...entry, state } : entry));
 }
 
-/** One entry by operation id — read from the ledger, not from a render. */
+// A send's ending, written while the send is still this document's own — a
+// concurrent write from a tab that never saw it must not merge it away — and
+// its lock let go only after, so a tab granted the lock reads the ending.
+function end(scope: LedgerScope, operationId: string, change: (entries: readonly PendingSend[]) => PendingSend[]): void {
+  mutate(scope, operationId, change);
+  OWN_IN_FLIGHT.delete(operationId);
+  LOCKS.release(operationId);
+}
+
+/** One entry an operator can act on, by operation id — read from the ledger,
+ * not from a render. A tombstone is not one. */
 export function findPendingSend(scope: LedgerScope, operationId: string): PendingSend | undefined {
-  return read(scope).find((entry) => entry.operationId === operationId);
+  return read(scope).find((entry) => entry.operationId === operationId && entry.state !== PENDING_SEND_STATE.DISMISSED);
 }
 
 /** The snapshot a server render reads: nothing, because no browser wrote here. */
@@ -270,6 +314,7 @@ export const NO_PENDING_SENDS = EMPTY;
 // last one mirrored.
 export function __resetPendingSendsForTests({ keepStorage = false }: { keepStorage?: boolean } = {}): void {
   LEDGERS.clear();
+  LOCKS.clear();
   OWN_IN_FLIGHT.clear();
   MIRRORED.clear();
   UNSAVED.clear();
