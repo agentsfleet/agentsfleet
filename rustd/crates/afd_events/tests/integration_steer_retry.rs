@@ -67,7 +67,7 @@ const DISTINCT_OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0998";
 /// Joins the fleet to the operation id in the ledger key — `afd_events::steer`'s
 /// separator, mirrored so a key shape that moved fails here instead of
 /// following.
-const KEY_SEPARATOR: &str = ":";
+pub(crate) const KEY_SEPARATOR: &str = ":";
 
 /// How the ledger spells this producer, for the row count below.
 const PRODUCER_STEER: &str = "steer";

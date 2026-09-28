@@ -1,10 +1,10 @@
-//! A key a producer repeats, read back before a new admission is judged.
+//! The row a producer's key already holds, read back.
 //!
-//! [`crate::Admissions::admit`] already answers a repeat — its insert conflicts
-//! on `UNIQUE (producer, producer_key)` and hands back the first row — but only
-//! after the fleet budget has had its say, and only after whatever the caller
-//! checked first. A retry of work already accepted is not new work, so a
-//! producer that must answer it ahead of those gates reads it here.
+//! [`crate::Admissions::admit`] answers a repeat itself — its insert conflicts
+//! on `UNIQUE (producer, producer_key)` and hands back the first row — but it
+//! does not say whose payload that row holds, and a spent fleet budget or the
+//! caller's own check refuses before the insert is reached. A producer that
+//! must compare the payload, or answer a repeat a gate refused, reads it here.
 
 use sqlx::Row as _;
 

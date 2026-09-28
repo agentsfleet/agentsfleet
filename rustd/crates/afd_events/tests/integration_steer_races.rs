@@ -20,7 +20,9 @@ use afd_events::{ACTOR_MACHINE, Steer};
 use afd_wire::event::EventType;
 
 use crate::integration_steer_replay::{CHANGED_JSON, OPERATION};
-use crate::integration_steer_retry::{REQUEST_JSON, admissions_for, append_with, clean};
+use crate::integration_steer_retry::{
+    KEY_SEPARATOR, REQUEST_JSON, admissions_for, append_with, clean,
+};
 use crate::support::EventsLane;
 
 /// Rounds of two concurrent sends per race test: enough that the two reach
@@ -29,9 +31,6 @@ const RACE_ROUNDS: usize = 16;
 
 /// Another person in the same workspace, reusing an id someone else sent.
 const OTHER_ACTOR: &str = "steer:user_other";
-
-/// Joins a fleet to an operation id the way the steer layer keys it.
-const KEY_SEPARATOR: &str = ":";
 
 /// Two sends with one id and one payload racing to the insert admit once, and
 /// both are answered with that one event.

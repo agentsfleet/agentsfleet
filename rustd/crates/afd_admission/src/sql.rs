@@ -302,11 +302,11 @@ WHERE id = $1::uuid AND receipt = $3::text AND delivered_at IS NULL";
 /// The admission a producer already recorded under its key, if any: its
 /// logical id's two integers and the digest it was admitted with.
 ///
-/// The lookup a repeat answers from BEFORE the gates a new admission meets —
-/// a spent fleet budget, or the caller's own checks — because a key already
-/// admitted is work already accepted, and refusing its retry would tell the
-/// sender a message it owns never landed. Rides
-/// `uq_fleet_admissions_producer_key`.
+/// Read after the insert or a gate has spoken: when the insert met a row under
+/// the key, so its digest and fleet can be compared, and when a spent fleet
+/// budget or the caller's own check refused, because a key already admitted is
+/// work already accepted and refusing its retry would tell the sender a message
+/// it owns never landed. Rides `uq_fleet_admissions_producer_key`.
 ///
 /// `$1` producer, `$2` producer key. The fleet comes back too, so a caller
 /// can refuse a key some other fleet's row holds rather than answer with it.

@@ -150,8 +150,9 @@ pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
     ) -> impl Future<Output = EventResult<String>> + Send;
 
     /// The event a caller's operation already became on `fleet`, or `None`
-    /// when the operation id is new — asked before the fleet's own checks, so
-    /// a retry of an admitted message is never refused as undelivered.
+    /// when the operation id is new — asked when the fleet refuses new work, so
+    /// a retry of a message admitted before it stopped is answered, never
+    /// refused as undelivered.
     ///
     /// # Errors
     /// Refuses an id already admitted with a different message; reports a

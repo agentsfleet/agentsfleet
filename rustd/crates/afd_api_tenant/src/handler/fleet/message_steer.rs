@@ -36,7 +36,7 @@ use afd_fleet_lifecycle::FleetStatus;
 
 use crate::auth::{PersonIdentity, WorkspaceContext};
 use crate::handler::Refusal;
-use crate::services::{FleetSteering, Services, WorkspaceFleets as _};
+use crate::services::{FleetSteering as _, Services, WorkspaceFleets as _};
 
 use super::detail::{FleetPath, parse_fleet_id};
 
@@ -89,9 +89,10 @@ const STATUS_ACCEPTED: &str = "accepted";
         "Send `operation_id` to make a retry safe: repeat the same value and ",
         "this endpoint returns the first run's event, never a second run. ",
         "A lost response then costs nothing, even if the fleet stopped or ",
-        "paused since. The same value from another caller, or with a different ",
-        "message, is refused with 409 `UZ-AGT-016`. Omit it and every call is a ",
-        "new message, which is what a person sending twice means. ",
+        "paused since. The same value with a different message, or from another ",
+        "sender, is refused with 409 `UZ-AGT-016`: each signed-in person is one ",
+        "sender, and a workspace's API keys are one between them. Omit it and ",
+        "every call is a new message, which is what a person sending twice means. ",
     ),
     request_body = SteerRequest,
     params(
@@ -135,8 +136,18 @@ pub(crate) async fn steer<D: Services>(
     let (fleet, workspace) = (fleet.as_str(), owned.workspace.as_str());
     let steering = services.steering();
     if !status.is_runnable() {
-        let steer = [fleet, workspace, actor.as_str(), request_json.as_str()];
-        return refuse_unless_repeat(steering, steer, operation_id, status).await;
+        // A fleet that will not take work refuses new messages — but answers a
+        // retry of one it admitted while it did, with that message's event:
+        // refusing the retry would report as never sent a message that is
+        // going to run.
+        let replayed = match operation_id {
+            Some(operation) => steering
+                .replayed(fleet, workspace, &actor, &request_json, operation)
+                .await
+                .map_err(refuse_steer)?,
+            None => None,
+        };
+        return replayed.map(accepted).ok_or_else(|| not_runnable(status));
     }
     let event_id = steering
         .append(fleet, workspace, &actor, &request_json, operation_id)
@@ -159,29 +170,13 @@ fn stored_payload(message: Cow<'_, str>) -> Result<String, Refusal> {
     .map_err(|_unencodable| Refusal::malformed(DETAIL_MALFORMED_JSON))
 }
 
-/// A fleet that will not take work refuses new messages — but answers a retry
-/// of one it admitted while it did, with that message's event: refusing the
-/// retry would report as never sent a message that is going to run.
-async fn refuse_unless_repeat<S: FleetSteering>(
-    steering: &S,
-    [fleet, workspace, actor, request_json]: [&str; 4],
-    operation_id: Option<&str>,
-    status: FleetStatus,
-) -> Result<Response, Refusal> {
-    if let Some(operation) = operation_id {
-        let replayed = steering
-            .replayed(fleet, workspace, actor, request_json, operation)
-            .await
-            .map_err(refuse_steer)?;
-        if let Some(event_id) = replayed {
-            return Ok(accepted(event_id));
-        }
-    }
-    Err(Refusal::conflict(
+/// The 409 a new message meets on a fleet that will not take work.
+fn not_runnable(status: FleetStatus) -> Refusal {
+    Refusal::conflict(
         error_code::AGENTSFLEET_PAUSED_INGRESS,
         DETAIL_NOT_ACTIVE,
         status.as_str(),
-    ))
+    )
 }
 
 /// The 202 a steer answers with, for a new message or a repeat alike.
