@@ -79,6 +79,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_api_tenant/src/handler/stream.rs`, `public/openapi.json` | EDIT | Server-Sent Events (SSE) kind list says `chunk`; 202 schema gains `replayed` |
 | `rustd/crates/afd_api/tests/harness/stubs_ingress/answers.rs` | EDIT | `Admitted` literals gain the new fields |
 | `src/lib/contract/activity.zig`, `src/runner/engine/runner_progress.zig` | EDIT | Tool frames carry a per-event call id |
+| `src/runner/engine/runner_progress_tools.zig` (+ `runner_progress_tools_test.zig`, registered in `src/runner/tests.zig`) | CREATE | A tool call's frames and its call id, split out so `runner_progress.zig` (374 lines at `5a68c5518`) returns under the cap |
 | `docs/architecture/user_flow.md`, `docs/architecture/runner_fleet.md` | EDIT | Steer outcomes and tool frame fields |
 
 ## Applicable Rules
@@ -145,7 +146,7 @@ The conflict insert already returns the stored `payload_digest` (`afd_admission/
 NullClaw runs a batch's calls one at a time, so two calls of one name are never open together; the defect is that a missed or ambiguous frame cannot be paired. **Implementation default:** the runner mints `call_id` as a per-event counter at `tool_call_start` and repeats it on that call's frames; the daemon accepts it as optional (≤`CALL_ID_MAX_BYTES`) and republishes it; the browser keys by it, keeping the timing rule only for frames without one. The daemon's acceptance ships before any runner sends it, because activity structs are `deny_unknown_fields`.
 
 - **Dimension 5.1** — the daemon accepts, bounds and republishes an optional `call_id` on the three tool frames; frames without it are unchanged → Test `test_activity_carries_an_optional_call_id` — DONE (live `daemon_suite` `integration_runner_activity` 3 passed; bridge unit test `tool_frames_republish_their_call_id_and_never_invent_one`)
-- **Dimension 5.2** — the runner stamps each call's started and completed frames with one call id, distinct per call in an event → Test `test_runner_stamps_one_call_id_per_call`
+- **Dimension 5.2** — the runner stamps each call's started and completed frames with one call id, distinct per call in an event → Test `test_runner_stamps_one_call_id_per_call` — DONE (`zig build --build-file build_runner.zig test`: macOS 747/750 passed, 3 skipped; `ci-zig-alpine:0.16.0-r6` native aarch64 Linux 742/750 passed, 8 skipped)
 - **Dimension 5.3** — the browser pairs a frame to its call by `call_id`, including a second same-name call whose start was missed → Test `test_tool_frames_pair_by_call_id`
 - **Dimension 5.4** — the SSE kind list names `chunk`, and `runner_fleet.md` lists each tool frame's fields → Test `test_sse_kind_list_matches_published_kinds` — DONE (`afd_fleet` lib; reads the regenerated `public/openapi.json`)
 
@@ -304,6 +305,7 @@ PendingSend.state += "conflict" | "dismissed"            (browser ledger)
 - **Consults** — scope set by Kishore's deferral below. Clerk DEV runs one session per browser (`single_session_mode: true`, public `/v1/environment`, Sep 28); production is unverified and matters for §1's lock names only in that one user owns a tab. Source facts read at `5a68c5518` for every item.
 - **Metrics review** — no new events; the reused-id warn is reclassified (Metrics table). No analytics/funnel playbook update required: no funnel step changes.
 - **Skill-chain outcomes** — pending.
+- **Runner Zig tests have no `make` lane** (Out of Scope): `test_runner_stamps_one_call_id_per_call` ran through `zig build --build-file build_runner.zig test` on macOS (747/750 passed, 3 skipped) and natively on aarch64 Linux in `ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r6` (742/750 passed, 8 skipped). The x86_64-linux cross-build reaches link on both hosts and stops there only because each host's static curl is for another architecture (`/opt/curl-min/lib/libcurl.a` missing on macOS; arm64-only in the image). For Kishore: no repository lane runs these tests.
 - **Deferrals** — this spec carries the items deferred from M207_001 and M207_002:
 
 > Indy (2026-09-28 10:51): "go" — context: answer to an AskUserQuestion recommending that the M207 edge cases (F6, F7, F12, F13, dismissed-send tombstones, the 409 Resend loop, `Admitted` carrying the digest, the drift warn's class, polish and render cost) move to follow-up spec M207_003.

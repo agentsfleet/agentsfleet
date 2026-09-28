@@ -34,6 +34,9 @@ pub const ActivityFrame = union(enum) {
     pub const ToolCallStarted = struct {
         name: []const u8,
         args_redacted: []const u8,
+        /// The run's number for this call, shared by every frame of it, so a
+        /// reader pairs them by identity. Borrowed for the frame's write.
+        call_id: ?[]const u8 = null,
     };
     pub const FleetResponseChunk = struct {
         text: []const u8,
@@ -51,10 +54,12 @@ pub const ActivityFrame = union(enum) {
     pub const ToolCallCompleted = struct {
         name: []const u8,
         ms: i64,
+        call_id: ?[]const u8 = null,
     };
     pub const ToolCallProgress = struct {
         name: []const u8,
         elapsed_ms: i64,
+        call_id: ?[]const u8 = null,
     };
 };
 
