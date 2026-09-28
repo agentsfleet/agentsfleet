@@ -9,17 +9,20 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 import { workspaceHref } from "./fixtures/nav";
 import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
+import { SSE_CONTENT_TYPE, sseFrame as frame } from "./fixtures/sse";
 
 const FLEET_PREFIX = "stream-transport-spec-";
 const EVENT_ID = "9000000000000-1";
 const MISSED_ID = "9000000000000-2";
+const STREAMING_ID = "9000000000000-3";
 const LIVE_MARKER = "Live completion delivered once.";
+const STREAMING_MARKER = "Live chunk painted before any completion.";
+const STREAMING_SENDER = "stream-still-running";
 const MISSED_MARKER = "The publication missed during disconnect is recovered.";
 const LIVE_SENDER = "stream-transport";
 const MISSED_OUTCOME = `Lost connection to the runner — ${MISSED_MARKER}`;
 const STATUS = { ACTIVE: "active", PROCESSED: "processed", FAILED: "fleet_error" } as const;
 const FUTURE_RUN_OFFSET_MS = 60_000;
-const SSE_CONTENT_TYPE = "text/event-stream";
 
 test("native fleet streaming deduplicates completion and backfills after disconnect within its request budget", async ({ page }, testInfo) => {
   const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
@@ -37,7 +40,10 @@ test("native fleet streaming deduplicates completion and backfills after disconn
   const counts = { streamRequests: 0, deliveredStreams: 0, historyReads: 0, pageRefreshes: 0 };
   const errors: string[] = [];
   const row = eventRow(createdAt);
-  const complete = { ...row, fleet_status: STATUS.ACTIVE, pending_approvals: 0 };
+  // The daemon inlines the settled answer on the completion frame
+  // (afd_fleet lease/bracket.rs `publish_completion`); the browser shows it
+  // without a detail read.
+  const complete = { ...row, fleet_status: STATUS.ACTIVE, pending_approvals: 0, final_reply: LIVE_MARKER };
   const overlap: EventRow = { ...row, fleet_id: fleet.id, workspace_id: workspaceId };
   const history: EventsPage = { items: [
     { ...overlap, event_id: MISSED_ID, actor: "webhook:stream-recovered",
@@ -81,6 +87,9 @@ test("native fleet streaming deduplicates completion and backfills after disconn
     recordRefreshes(page, href, counts);
     mounted.resolve();
     await expect(chat.getByText(LIVE_MARKER, { exact: true })).toHaveCount(1);
+    // The completion inlines LIVE_MARKER, so it could paint on its own. This
+    // run never completes: only the live chunk path can put its text on screen.
+    await expect(chat.getByText(STREAMING_MARKER, { exact: true })).toHaveCount(1);
     // Pin test: these literals are the completion's user-visible figures.
     await expect(summary.getByText("12,345", { exact: true })).toBeVisible();
     await expect(summary.getByRole("link", { name: /^1 approval waiting/ })).toBeVisible();
@@ -139,20 +148,30 @@ function openingFrames(complete: ReturnType<typeof eventRow>): string {
     frame(FRAME_KIND.EVENT_RECEIVED, {
       event_id: EVENT_ID, actor: complete.actor, created_at: complete.created_at,
     }),
-    frame(FRAME_KIND.CHUNK, { event_id: EVENT_ID, text: LIVE_MARKER }),
+    // The runner's chunk shape since typed streaming: an untyped or
+    // unsequenced chunk is treated as a gap and never painted.
+    frame(FRAME_KIND.CHUNK, {
+      event_id: EVENT_ID, text: LIVE_MARKER, text_kind: "answer",
+      stream_seq: 0, stream_start: true, stream_contiguous: true,
+    }),
     frame(FRAME_KIND.EVENT_COMPLETE, complete),
     frame(FRAME_KIND.EVENT_COMPLETE, complete),
     `event: ${FRAME_KIND.EVENT_COMPLETE}\ndata: {invalid JSON\n\n`,
     frame(FRAME_KIND.EVENT_COMPLETE, { event_id: "thin-completion", status: STATUS.PROCESSED }),
+    // Older than the completed run, so the summary keeps reading that run's
+    // figures instead of this one's empty "still working" line.
+    frame(FRAME_KIND.EVENT_RECEIVED, {
+      event_id: STREAMING_ID, actor: `webhook:${STREAMING_SENDER}`, created_at: complete.created_at - 1,
+    }),
+    frame(FRAME_KIND.CHUNK, {
+      event_id: STREAMING_ID, text: STREAMING_MARKER, text_kind: "answer",
+      stream_seq: 0, stream_start: true, stream_contiguous: true,
+    }),
     // This final count proves every preceding malformed frame was consumed.
     frame(FRAME_KIND.GATE_OPENED, {
       event_id: EVENT_ID, gate_id: "opening-gate", pending_approvals: 1,
     }),
   ].join("");
-}
-
-function frame(kind: string, payload: Record<string, unknown>): string {
-  return `event: ${kind}\ndata: ${JSON.stringify({ kind, ...payload })}\n\n`;
 }
 
 function recordRefreshes(page: Page, pathname: string, counts: { pageRefreshes: number }): void {

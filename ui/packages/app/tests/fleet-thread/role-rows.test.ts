@@ -24,6 +24,7 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
         fleetId: ZID,
         senderLabel: "",
         initial: [],
+        viewer: null,
       }),
     );
     expect(screen.queryByText("Fleet")).toBeNull();
@@ -148,26 +149,11 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
     renderThread();
     expect(screen.getByText(/investigate the spike/)).toBeTruthy();
     const working = screen.getByRole("status", { name: "Queued" });
-    expect(working.textContent).toBe("Queued…");
+    // The glyph beside it is decorative; the visible words say queued.
+    expect(working.querySelector("[data-braille-spinner]")?.getAttribute("aria-hidden")).toBe("true");
+    expect(working.lastElementChild?.textContent).toBe("Queued…");
     expect(working.closest('[data-role="assistant"]')).toBeTruthy();
     expect(screen.queryByText(/^sending$/i)).toBeNull();
-  });
-
-  it("renders a failed user message with the destructive failed badge", () => {
-    mockStream([
-      ev({
-        role: "user",
-        actor: "steer:pending",
-        text: "this steer did not land",
-        status: "failed",
-      }),
-    ]);
-    renderThread();
-    expect(screen.getByText(/this steer did not land/)).toBeTruthy();
-    expect(screen.getByText(/^not sent$/i)).toBeTruthy();
-    // The in-flight annotation must not also render for a failed row.
-    expect(screen.queryByText(/^sending$/i)).toBeNull();
-    expect(screen.queryByRole("status", { name: "Working" })).toBeNull();
   });
 
   it("renders a fleet_error as a destructive fleet reply", () => {

@@ -113,6 +113,7 @@ impl Problem {
 }
 
 mod auth;
+mod bundle;
 mod fleet;
 mod integration;
 mod request;
@@ -123,15 +124,20 @@ mod request;
 /// describing it live in comparable files. The order is load-bearing: it is
 /// what lets [`ENTRIES`] be flattened from the parts rather than written out
 /// a second time that could disagree with them.
-const FAMILIES: [&[Problem]; 4] = [
+const FAMILIES: [&[Problem]; 5] = [
     self::request::REQUEST,
     self::auth::AUTH,
     self::fleet::FLEET,
+    self::bundle::BUNDLE,
     self::integration::INTEGRATION,
 ];
 
 /// How many entries the families hold between them.
-const TOTAL: usize = FAMILIES[0].len() + FAMILIES[1].len() + FAMILIES[2].len() + FAMILIES[3].len();
+const TOTAL: usize = FAMILIES[0].len()
+    + FAMILIES[1].len()
+    + FAMILIES[2].len()
+    + FAMILIES[3].len()
+    + FAMILIES[4].len();
 
 /// One entry per code this workspace declares, in `REGISTRY` order.
 ///

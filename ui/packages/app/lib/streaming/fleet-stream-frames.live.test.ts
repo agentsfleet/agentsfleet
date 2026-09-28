@@ -124,7 +124,7 @@ describe("applyLiveFrame", () => {
   // here as the fleet runs." The frames arrived; nothing kept them.
 
   // The merges locate their event once and copy the array once, the
-  // shape `applyToolCall` already used. Reference identity is the observable
+  // shape `applyToolStep` already used. Reference identity is the observable
   // proof: a second pass would rebuild every element, not just the target.
   it("a chunk rebuilds only its own event and leaves every sibling reference intact", () => {
     const seed = [evt({ id: "a" }), evt({ id: "b", reply: "hi" }), evt({ id: "c" })];
@@ -166,18 +166,19 @@ describe("applyLiveFrame", () => {
   });
 
   it("a completion carrying no timing does not erase the elapsed a progress frame reported", () => {
+    const progressAt = 1_000;
     let out = applyLiveFrame([evt({ id: "e1" })], {
       kind: FRAME_KIND.TOOL_CALL_PROGRESS,
       event_id: "e1",
       name: "slow",
       elapsed_ms: 5_000,
-    });
+    }, progressAt);
     out = applyLiveFrame(out, {
       kind: FRAME_KIND.TOOL_CALL_COMPLETED,
       event_id: "e1",
       name: "slow",
       ms: null as unknown as number,
-    });
-    expect(out[0]?.tools).toEqual([{ name: "slow", ms: 5_000, done: true }]);
+    }, progressAt + 5_000);
+    expect(out[0]?.tools).toEqual([{ name: "slow", startedAtMs: progressAt, ms: 5_000, done: true }]);
   });
 });

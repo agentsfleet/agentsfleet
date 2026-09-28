@@ -1,9 +1,9 @@
-//! A fleet's message thread over HTTP: read the turns, or say something.
+//! A fleet's message thread over HTTP: read the turns.
 //!
-//! The port of `fleets/messages_list.zig` and `fleets/messages.zig`. Two verbs
-//! on one template, and they are not symmetric — the read pages history the
-//! event routes already serve, and the write is the only place in this daemon
-//! where a person puts work onto a fleet's stream.
+//! The port of `fleets/messages_list.zig`. The read pages history the event
+//! routes already serve; the write on the same template — the only place in
+//! this daemon where a person puts work onto a fleet's stream — is
+//! `message_steer.rs`.
 //!
 //! # The page is byte-budgeted, not byte-refused
 //!
@@ -14,36 +14,26 @@
 //! row ships whatever it costs: a single oversized turn must not brick the
 //! thread it sits at the top of.
 //!
-//! # A steer to a stopped fleet is refused, never accepted
-//!
-//! The ingress check is the difference between a 409 a person can act on and a
-//! 202 whose run never happens. It reads the status alone rather than the
-//! fleet, because deciding whether a message may be posted is not worth
-//! loading two authored documents.
+//! The write lives in `message_steer.rs`, split at the length cap.
 
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_core::error_code;
 use afd_events::{Cursor, EventDetailRow, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT};
-use afd_wire::event::{OPERATION_ID_MAX_BYTES, SteerAccepted, SteerRequest, ThreadResponse};
+use afd_wire::event::ThreadResponse;
 use axum::Json;
-use axum::body::Bytes;
 use axum::extract::{Path, RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
-use garde::Validate as _;
-use http::StatusCode;
 
-use crate::auth::{PersonIdentity, WorkspaceContext};
+use crate::auth::WorkspaceContext;
 use crate::handler::event::expanded;
 use crate::handler::{Refusal, parameter};
-use crate::services::{FleetSteering as _, Services, WorkspaceEvents as _, WorkspaceFleets as _};
+use crate::services::{Services, WorkspaceEvents as _};
 
 use super::detail::{FleetPath, parse_fleet_id};
 
-/// The scoped events each verb's failures are logged under.
+/// The scoped event a failed thread read is logged under.
 const EVENT_THREAD: &str = "fleet_thread_list_failed";
-const EVENT_STEER: &str = "fleet_steer_failed";
 
 /// The `starting_after` parameter's name — this surface's cursor spelling.
 const QUERY_STARTING_AFTER: &str = "starting_after";
@@ -57,39 +47,10 @@ const DETAIL_LIMIT: &str = "limit must be between 1 and 25";
 /// The refusal a continuation this walk did not issue earns.
 const DETAIL_CURSOR: &str = "invalid starting_after cursor";
 
-/// The refusal a steer with no body earns.
-const DETAIL_BODY_REQUIRED: &str = "request body required";
-
-/// The refusal a body this daemon cannot read earns.
-const DETAIL_MALFORMED_JSON: &str = "Request body is not valid JSON";
-
-/// The refusal an empty message earns.
-const DETAIL_MESSAGE_EMPTY: &str = "message must not be empty";
-
-/// The refusal an over-long message earns.
-const DETAIL_MESSAGE_LONG: &str = "message must not exceed 8192 bytes";
-
-/// The refusal an unusable client operation identity earns.
-///
-/// One sentence for both ends of the bound: a caller that sent an empty string
-/// and one that sent a novel are making the same mistake about the same field,
-/// and the field is optional, so omitting it is always valid.
-const DETAIL_OPERATION_ID_INVALID: &str =
-    "operation_id must be between 1 and 200 bytes when present";
-
-/// The refusal a fleet this workspace does not hold earns.
-const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
-
-/// The refusal a fleet that will not take work earns.
-const DETAIL_NOT_ACTIVE: &str = "Fleet is not active";
-
 /// The soft ceiling on one thread page's encoded bytes.
 ///
 /// `THREAD_PAGE_BODY_BUDGET_BYTES`, mirrored.
 const PAGE_BUDGET_BYTES: usize = 512 * 1024;
-
-/// The word a steer's reply carries in `status`.
-const STATUS_ACCEPTED: &str = "accepted";
 
 /// The page size, or the refusal a caller outside the band earns.
 ///
@@ -166,157 +127,6 @@ pub(crate) async fn thread<D: Services>(
         .map_err(Refusal::at(EVENT_THREAD))?;
 
     Ok(Json(page(&fetched, limit)).into_response())
-}
-
-/// `POST /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages`.
-#[cfg_attr(feature = "openapi", utoipa::path(
-    post,
-    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages",
-    tag = afd_http::openapi::tag::FLEETS,
-    operation_id = "post_fleet_message",
-    summary = "Post a chat message to a fleet",
-    description = concat!(
-        "Starts a fleet run with a chat event. Returns an event identifier ",
-        "for tracking in the activity stream. ",
-        "Send `operation_id` to make a retry safe: repeat the same value and ",
-        "this endpoint returns the first run's event, never a second run. ",
-        "A lost response then costs nothing. Omit it and every call is a new ",
-        "message, which is what a person sending twice means. ",
-    ),
-    request_body = SteerRequest,
-    params(
-        afd_http::openapi::path::Fleet,
-    ),
-    responses(
-        (status = 202, description = afd_http::openapi::ACCEPTED, body = SteerAccepted),
-        (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
-        (status = 404, description = afd_http::openapi::NOT_FOUND),
-        (status = 409, description = afd_http::openapi::CONFLICT),
-        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
-    ),
-))]
-pub(crate) async fn steer<D: Services>(
-    State(services): State<Arc<D>>,
-    WorkspaceContext(owned): WorkspaceContext,
-    person: PersonIdentity,
-    Path(FleetPath { fleet_id }): Path<FleetPath>,
-    body: Bytes,
-) -> Result<Response, Refusal> {
-    let fleet = parse_fleet_id(&fleet_id)?;
-    let steer = read_steer(&body)?;
-
-    let status = services
-        .fleets()
-        .ingress_status(&owned.workspace, &fleet)
-        .await
-        .map_err(Refusal::at(EVENT_STEER))?
-        .ok_or_else(|| Refusal::coded(error_code::AGENTSFLEET_NOT_FOUND, DETAIL_FLEET_NOT_FOUND))?;
-    if !status.is_runnable() {
-        return Err(Refusal::conflict(
-            error_code::AGENTSFLEET_PAUSED_INGRESS,
-            DETAIL_NOT_ACTIVE,
-            status.as_str(),
-        ));
-    }
-
-    // The stored payload deliberately carries NO operation id. It is a
-    // transport fact — how the CALLER names its retry — and not something the
-    // fleet reads, so putting it in the body would hand every run a field it
-    // has no use for and change the bytes a replay re-appends. The ledger holds
-    // it where it belongs, as `producer_key`.
-    let request_json = serde_json::to_string(&SteerRequest {
-        message: steer.message,
-        operation_id: None,
-    })
-    .map_err(|_unencodable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
-
-    let event_id = services
-        .steering()
-        .append(
-            fleet.as_str(),
-            owned.workspace.as_str(),
-            &actor_for(&person),
-            &request_json,
-            steer.operation_id.as_deref(),
-        )
-        .await
-        .map_err(Refusal::at(EVENT_STEER))?;
-
-    Ok((
-        StatusCode::ACCEPTED,
-        Json(SteerAccepted {
-            status: Cow::Borrowed(STATUS_ACCEPTED),
-            event_id: Cow::Owned(event_id),
-        }),
-    )
-        .into_response())
-}
-
-/// The actor this credential records, decided by its CLASS.
-///
-/// Never by whether a subject is present. An `agt_t` api-key resolves to the
-/// capabilities of the person who minted it and carries their subject, so a
-/// presence test would record every machine-driven wake as that human — worse
-/// than recording nobody, because it lets an actor-shaped assertion certify "a
-/// person woke this fleet" while automation did.
-fn actor_for(person: &PersonIdentity) -> String {
-    use afd_auth::principal::PersonCredential;
-    match person.person().credential() {
-        // A terminal credential and a browser session both name their human:
-        // the whole point of a user-scoped credential is that a steer from a
-        // terminal is attributable to one.
-        PersonCredential::SessionToken { .. } | PersonCredential::CliCredential => {
-            format!("{}{}", afd_events::ACTOR_PREFIX, person.subject())
-        }
-        PersonCredential::TenantApiKey => afd_events::ACTOR_MACHINE.to_owned(),
-    }
-}
-
-/// The message a steer carries, or the refusal its body earns.
-///
-/// # An escaped message is a message, not a malformed body
-///
-/// `serde` hands back `Cow::Owned` whenever a JSON string carries an escape,
-/// so a borrow-only reader would refuse every message containing a newline, a
-/// quote or an emoji — which is most of what a person actually types into a
-/// chat box. The sibling refusal on the approval note gets away with that
-/// because an operator's note is a short justification; a steer is prose. So
-/// this hands back the `Cow` and the caller re-serializes it, which is also
-/// what makes the escaping on the way OUT the same library's problem rather
-/// than a format string's.
-fn read_steer(body: &Bytes) -> Result<SteerRequest<'_>, Refusal> {
-    if body.is_empty() {
-        return Err(Refusal::malformed(DETAIL_BODY_REQUIRED));
-    }
-    let request: SteerRequest<'_> = afd_http::handler::read_body(body)
-        .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
-    // One bound, two sentences: an empty message and an oversized one are
-    // different mistakes to whoever has to fix them, and the wording is a
-    // public contract. The cap lives on the wire type; which end broke it is
-    // read back off the report here.
-    if request.validate().is_err() {
-        // Three sentences read back off one report, because they are three
-        // different mistakes to whoever has to fix them. The operation id is
-        // tested FIRST: a caller that sent a bad one and was told its message
-        // was empty would go looking at the wrong field.
-        let operation_unusable = request
-            .operation_id
-            .as_deref()
-            .is_some_and(|id| id.is_empty() || id.len() > OPERATION_ID_MAX_BYTES);
-        return Err(Refusal::malformed(if operation_unusable {
-            DETAIL_OPERATION_ID_INVALID
-        } else if request.message.is_empty() {
-            DETAIL_MESSAGE_EMPTY
-        } else {
-            DETAIL_MESSAGE_LONG
-        }));
-    }
-    Ok(request)
 }
 
 /// One page, cut at the row cap or the byte budget, whichever comes first.

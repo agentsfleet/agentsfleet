@@ -148,6 +148,23 @@ pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
         request_json: &str,
         operation_id: Option<&str>,
     ) -> impl Future<Output = EventResult<String>> + Send;
+
+    /// The event a caller's operation already became on `fleet`, or `None`
+    /// when the operation id is new — asked when the fleet refuses new work, so
+    /// a retry of a message admitted before it stopped is answered, never
+    /// refused as undelivered.
+    ///
+    /// # Errors
+    /// Refuses an id already admitted with a different message; reports a
+    /// ledger that would not answer.
+    fn replayed(
+        &self,
+        fleet: &str,
+        workspace: &str,
+        actor: &str,
+        request_json: &str,
+        operation_id: &str,
+    ) -> impl Future<Output = EventResult<Option<String>>> + Send;
 }
 
 /// The production ingress answers directly.
@@ -161,5 +178,16 @@ impl FleetSteering for Steer {
         operation_id: Option<&str>,
     ) -> impl Future<Output = EventResult<String>> + Send {
         Self::append(self, fleet, workspace, actor, request_json, operation_id)
+    }
+
+    fn replayed(
+        &self,
+        fleet: &str,
+        workspace: &str,
+        actor: &str,
+        request_json: &str,
+        operation_id: &str,
+    ) -> impl Future<Output = EventResult<Option<String>>> + Send {
+        Self::replayed(self, fleet, workspace, actor, request_json, operation_id)
     }
 }

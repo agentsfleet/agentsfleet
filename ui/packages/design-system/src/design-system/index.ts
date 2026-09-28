@@ -27,7 +27,6 @@ export {
   DashboardPanelTitle,
   DashboardPanelDescription,
   DashboardPanelContent,
-  DashboardPanelFooter,
   dashboardPanelVariants,
   type DashboardPanelProps,
 } from "./DashboardPanel";
@@ -56,6 +55,7 @@ export { default as Grid } from "./Grid";
 export { default as Section } from "./Section";
 export { default as InstallBlock } from "./InstallBlock";
 export { WakePulse, type WakePulseProps } from "./WakePulse";
+export { BrailleSpinner, type BrailleSpinnerProps } from "./BrailleSpinner";
 export {
   Badge,
   badgeVariants,

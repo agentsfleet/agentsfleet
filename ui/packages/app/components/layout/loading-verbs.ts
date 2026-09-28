@@ -30,12 +30,32 @@ export type LoadingVerb = (typeof LOADING_VERBS)[number];
 
 /** Uniformly picks one waiting verb. Impure by design — callers freeze it in mount state. */
 export function pickLoadingVerb(): LoadingVerb {
-  const index = Math.floor(Math.random() * LOADING_VERBS.length);
-  // The `as const` tuple makes index 0 statically known, so this coalesce is a
-  // real total-function fallback rather than a non-null assertion in disguise:
-  // a future out-of-range index degrades to a valid verb instead of `undefined`
-  // leaking into the rendered phrase.
+  return verbAt(Math.floor(Math.random() * LOADING_VERBS.length));
+}
+
+// The `as const` tuple makes index 0 statically known, so this coalesce is a
+// real total-function fallback rather than a non-null assertion in disguise:
+// a future out-of-range index degrades to a valid verb instead of `undefined`
+// leaking into the rendered phrase. Both pickers go through it.
+function verbAt(index: number): LoadingVerb {
   return LOADING_VERBS[index] ?? LOADING_VERBS[0];
+}
+
+// 32-bit FNV-1a: a stable, well-spread index from a string key. Math.imul
+// keeps the multiply in 32 bits; `>>> 0` reads it unsigned.
+const FNV_OFFSET_BASIS = 0x811c9dc5;
+const FNV_PRIME = 0x01000193;
+
+/**
+ * One verb per key, the same on every render — a streaming reply re-renders
+ * many times a second, and a verb that changed with each would flicker.
+ */
+export function loadingVerbFor(key: string): LoadingVerb {
+  let hash = FNV_OFFSET_BASIS;
+  for (let index = 0; index < key.length; index += 1) {
+    hash = Math.imul(hash ^ key.charCodeAt(index), FNV_PRIME);
+  }
+  return verbAt((hash >>> 0) % LOADING_VERBS.length);
 }
 
 /**

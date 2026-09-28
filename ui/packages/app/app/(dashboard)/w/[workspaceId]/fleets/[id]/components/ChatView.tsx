@@ -15,6 +15,8 @@ type Props = {
   /** The status line's figures as the server rendered them. */
   initialSummary: FleetRunSummary;
   approvalsHref: string;
+  /** The signed-in user as the server saw them; the thread's ledger is keyed by it. */
+  viewer: string | null;
 };
 
 // The chat surface: the thread with its status line under the composer, both
@@ -31,16 +33,18 @@ export function ChatView({
   initial,
   initialSummary,
   approvalsHref,
+  viewer,
 }: Props) {
   const summary = useFleetRunSummary(workspaceId, fleetId, initial, initialSummary);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-xs overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col gap-xs overflow-clip">
       <FleetThreadDynamic
         workspaceId={workspaceId}
         fleetId={fleetId}
         senderLabel={senderLabel}
         initial={initial}
+        viewer={viewer}
       />
       <div className="mx-auto w-full max-w-measure shrink-0">
         <FleetStatusLine

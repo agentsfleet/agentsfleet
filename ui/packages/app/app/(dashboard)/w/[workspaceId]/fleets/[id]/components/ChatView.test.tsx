@@ -110,6 +110,7 @@ function view(initialSummary: FleetRunSummary, initial: EventDetail[] = [turn()]
       initial,
       initialSummary,
       approvalsHref: APPROVALS_HREF,
+      viewer: null,
     }),
   );
 }

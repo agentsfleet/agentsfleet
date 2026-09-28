@@ -130,3 +130,24 @@ describe("tokens.css — the onboarding beckon [data-beckon] selector contract",
     expect(reduced).toMatch(/\[data-beckon-text="true"\]\s*\{[^}]*animation: none/);
   });
 });
+
+describe("tokens.css — the braille spinner and settled-row contracts", () => {
+  const css = readFileSync(TOKENS_CSS_PATH, "utf8");
+
+  it("steps ten frames in 800 ms by transform, with no script", () => {
+    expect(css).toMatch(/@keyframes braille-spin\s*\{[^@]*transform: translateY\(-100%\)/);
+    expect(css).toMatch(/\[data-braille-frames\]\s*\{[^}]*animation: braille-spin 800ms steps\(10\) infinite/);
+    expect(css).toMatch(/\[data-braille-spinner\]\s*\{[^}]*height: 1lh;[^}]*overflow: hidden/);
+  });
+
+  it("swaps the column for the rest frame under reduced motion", () => {
+    const reduced = css.split("prefers-reduced-motion: reduce").slice(1).join("");
+    expect(reduced).toMatch(/\[data-braille-frames\]\s*\{[^}]*display: none;[^}]*animation: none/);
+    expect(reduced).toMatch(/\[data-braille-rest\]\s*\{[^}]*display: inline/);
+  });
+
+  it("skips off-screen layout only for the literal settled value", () => {
+    expect(css).toMatch(/\[data-settled="true"\]\s*\{[^}]*content-visibility: auto;[^}]*contain-intrinsic-size: auto/);
+    expect(css).not.toMatch(/\[data-settled\]\s*\{/);
+  });
+});

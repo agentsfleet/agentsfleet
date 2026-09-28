@@ -10,7 +10,6 @@ const PENDING = 3;
 const OLDER_AT = 1_000;
 const TIED_AT = 2_000;
 const OPTIMISTIC_AT = 9_000;
-const FAILED_AT = 9_500;
 
 function row(over: Partial<EventRow> = {}): EventRow {
   return {
@@ -89,12 +88,11 @@ describe("latestFigures", () => {
     expect(latestFigures([newest, older, tied])?.tokens).toBe(3);
   });
 
-  it("skips the rows the browser made: an optimistic steer or a refused send", () => {
+  it("skips the row the browser made: an optimistic steer", () => {
     const server = event({ id: "srv", createdAt: new Date(OLDER_AT) });
     const optimistic = event({ id: "optim-1", status: "optimistic", createdAt: new Date(OPTIMISTIC_AT) });
-    const failed = event({ id: "optim-2", status: "failed", createdAt: new Date(FAILED_AT) });
-    expect(latestFigures([server, optimistic, failed])?.created_at).toBe(OLDER_AT);
-    expect(latestFigures([optimistic, failed])).toBeNull();
+    expect(latestFigures([server, optimistic])?.created_at).toBe(OLDER_AT);
+    expect(latestFigures([optimistic])).toBeNull();
     expect(latestFigures([])).toBeNull();
   });
 

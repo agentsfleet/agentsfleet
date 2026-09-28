@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { requireCredential } from "@/lib/auth/credential";
+import { claims, requireCredential } from "@/lib/auth/credential";
 import { notFound, redirect } from "next/navigation";
 import { cn } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
@@ -107,14 +107,16 @@ export default async function FleetDetailPage({
   );
   // The chat is a conversation surface, not a document: it claims the frame so
   // its composer stays on screen and only the message list scrolls. Every
-  // other view is ordinary page content and scrolls with the page.
+  // other view is ordinary page content and scrolls with the page. The frame
+  // clips rather than hides: a hidden box is still a scroll container, and in
+  // a short window focusing the composer scrolled these wrappers.
   const claimsViewport = view === FLEET_VIEW.chat;
 
   return (
     <div
       className={cn(
         "flex min-h-full flex-1 flex-col",
-        claimsViewport && "h-full min-h-0 overflow-hidden",
+        claimsViewport && "h-full min-h-0 overflow-clip",
       )}
     >
       <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
@@ -131,13 +133,13 @@ export default async function FleetDetailPage({
         status={fleet.status}
         className={cn(
           "flex min-h-0 flex-1 flex-col",
-          claimsViewport && "h-full overflow-hidden",
+          claimsViewport && "h-full overflow-clip",
         )}
       >
         <div
           className={cn(
             "flex min-w-0 flex-1 flex-col gap-3xl",
-            claimsViewport && "h-full min-h-0 flex-1 overflow-hidden",
+            claimsViewport && "h-full min-h-0 flex-1 overflow-clip",
           )}
         >
           <FleetSubnavigation
@@ -148,7 +150,7 @@ export default async function FleetDetailPage({
           <div
             className={cn(
               "flex min-w-0 flex-1 flex-col",
-              claimsViewport && "h-full min-h-0 overflow-hidden",
+              claimsViewport && "h-full min-h-0 overflow-clip",
             )}
           >
             {content}
@@ -196,6 +198,9 @@ async function loadChatView(
   // the live tail moves both from there.
   const threadResult = await data.thread;
   const turns = threadResult?.items ?? [];
+  // Who is signed in, from the verified claims this request already holds:
+  // the thread keys its unsent messages by it before the client knows.
+  const subject = (await claims())?.sub;
   const approvalsHref = `${workspacePath(workspaceId, "approvals")}?fleetId=${encodeURIComponent(fleet.id)}`;
   return (
     <ChatView
@@ -205,6 +210,7 @@ async function loadChatView(
       initial={turns}
       initialSummary={buildRunSummary(fleet.status, threadResult, fleet.pending_approvals)}
       approvalsHref={approvalsHref}
+      viewer={typeof subject === "string" ? subject : null}
     />
   );
 }

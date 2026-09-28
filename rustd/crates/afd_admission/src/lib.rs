@@ -49,6 +49,7 @@ pub mod budget;
 mod cursor;
 pub mod error;
 mod reconcile;
+mod repeat;
 mod replay;
 pub mod sql;
 
@@ -65,6 +66,7 @@ pub use self::budget::{BudgetScope, Budgets};
 pub use self::cursor::LedgerBacklog;
 pub use self::error::{Error, Result};
 pub use self::reconcile::{DEFAULT_REPAIR_CAPACITY, Progress, Reconciled};
+pub use self::repeat::Repeated;
 pub use self::replay::Replayed;
 
 /// Who is asking a fleet to run something.
@@ -76,8 +78,8 @@ pub use self::replay::Replayed;
 /// An enum owned by the table's owner is what makes both impossible.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Producer {
-    /// An operator's message. Its key is minted per call: a steer has no
-    /// natural retry identity, and never did.
+    /// An operator's message, keyed `<fleet_id>:<operation_id>` when the caller
+    /// names its operation and minted per call when it does not.
     Steer,
     /// A signed delivery to one fleet's own route, keyed by the sender's
     /// delivery id.

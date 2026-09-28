@@ -57,11 +57,11 @@ const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   AGENTSFLEET_EVENT_STATUS.GATE_BLOCKED,
 ]);
 
-// Module-level, not per-entry: a FailedDelivery (and the tempId it stores)
-// deliberately outlives the stream entry, which is torn down after the idle
-// window and recreated with fresh state. A per-entry counter restarting at 1
-// would let a stale stored tempId collide with a new row's id — and retry's
-// discard would then remove the operator's newest pending message.
+// Module-level, not per-entry: a pending send's optimistic row deliberately
+// outlives the stream entry, which is torn down after the idle window and
+// recreated with fresh state. A per-entry counter restarting at 1 would let a
+// stale tempId collide with a new row's id — and a refusal's discard would
+// then remove the operator's newest pending message.
 let tempCounter = 0;
 
 function notify(entry: Entry): void {
@@ -78,16 +78,16 @@ function setEvents(
   next: (prev: FleetEvent[]) => FleetEvent[],
   spoken: Partial<FleetFacts> = {},
 ): void {
-  // The one choke point every mutation flows through, so the cap lives here
-  // once rather than at all eight call sites — and so does the strip's
-  // `latest`, recomputed from the rows and kept by identity when unchanged.
-  // A completion's fleet facts fold into the same write, so the frame costs
-  // its subscribers one notification, not two.
+  // The one choke point every mutation flows through: the cap and the strip's
+  // `latest` live here once, a completion's facts fold into the same write, and
+  // a frame that changed nothing (a duplicate, a malformed one) notifies no one.
   const events = capEvents(next(entry.snapshot.events));
+  const facts = spokenFacts(entry, spoken);
+  if (events === entry.snapshot.events && facts.fleet === undefined) return;
   const latest = latestFigures(events);
   entry.snapshot = {
     ...entry.snapshot,
-    ...spokenFacts(entry, spoken),
+    ...facts,
     events,
     latest: sameFigures(latest, entry.snapshot.latest) ? entry.snapshot.latest : latest,
   };
@@ -332,28 +332,12 @@ export function reconcileOptimistic(
   return alreadyComplete;
 }
 
-// A failed optimistic row being retried leaves the thread here: the retry
-// re-submits the same text as a fresh optimistic row, so keeping the stale
-// failed copy would stack a duplicate of the same operator message on every
-// attempt.
+// A refused send leaves the thread here. Its text goes back to the composer,
+// so the row would only duplicate what the operator is about to resend.
 export function discardOptimistic(fleetId: string, tempId: string): void {
   const entry = REGISTRY.get(fleetId);
   if (!entry) return;
   setEvents(entry, (prev) => prev.filter((event) => event.id !== tempId));
-}
-
-// A steer that failed server-side (the Server Action returned ok:false
-// after its retries). The optimistic row keeps its tempId but flips to
-// `failed` so the renderer can paint a destructive badge instead of the
-// `queued` one — the user sees the send did not land.
-export function markOptimisticFailed(fleetId: string, tempId: string): void {
-  const entry = REGISTRY.get(fleetId);
-  if (!entry) return;
-  setEvents(entry, (prev) =>
-    prev.map((ev) =>
-      ev.id === tempId ? { ...ev, status: AGENTSFLEET_EVENT_STATUS.FAILED } : ev,
-    ),
-  );
 }
 
 // Test surface — vitest must reset between tests; nothing in production

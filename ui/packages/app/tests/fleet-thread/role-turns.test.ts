@@ -1,6 +1,7 @@
 import { FLEET_NAME, ev, mockStream, renderThread, threadElement } from "./harness";
 import { describe, expect, it } from "vitest";
 import { act, render, screen } from "@testing-library/react";
+import { LOADING_VERBS } from "@/components/layout/loading-verbs";
 import { OUTCOME } from "@/lib/events/event-summary";
 import { FleetThread } from "@/components/domain/FleetThread";
 import { CONNECTION_STATUS } from "@/components/domain/useFleetEventStream";
@@ -148,7 +149,9 @@ describe("FleetThread — role rendering: turns and connection", () => {
 
     // "Still working." reads the same at one second and at five minutes.
     expect(screen.getByTestId("fleet-working")).toBeTruthy();
-    expect(screen.getByRole("status", { name: "Working" }).textContent).toBe("Working…");
+    // The accessible name stays "Working"; the visible words are one waiting verb.
+    const label = screen.getByRole("status", { name: "Working" }).lastElementChild?.textContent ?? "";
+    expect(LOADING_VERBS.map((verb) => `${verb}…`)).toContain(label);
     expect(screen.queryByText(OUTCOME.WORKING)).toBeNull();
   });
 

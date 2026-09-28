@@ -165,3 +165,23 @@ fn test_an_unregistered_code_degrades_to_the_unknown_entry() {
     assert!(problem.user_message().is_none());
     assert!(!problem.hint().is_empty());
 }
+
+/// A reused steer operation id answers 409 with prose that names the field.
+///
+/// The status is the claim: a 409 is "the state refuses you, stop retrying",
+/// and a steer client that retried a conflict would never succeed.
+#[test]
+fn test_operation_conflict_code_registered() {
+    let problem = Problem::of(error_code::AGENTSFLEET_OPERATION_CONFLICT);
+    // pin test: literal is the contract
+    assert_eq!(problem.code().as_str(), "UZ-AGT-016");
+    assert_eq!(problem.status(), 409);
+    assert!(!problem.title().is_empty());
+    assert!(
+        problem.hint().contains("operation_id"),
+        "{}",
+        problem.hint()
+    );
+    assert!(problem.user_message().is_some());
+    assert!(REGISTRY.contains(&error_code::AGENTSFLEET_OPERATION_CONFLICT));
+}

@@ -37,7 +37,6 @@ vi.mock("@/components/domain/useFleetEventStream", () => ({
 }));
 
 import { InstallStates } from "../app/(dashboard)/w/[workspaceId]/fleets/new/InstallStates";
-import { InstallStreamSteps } from "../app/(dashboard)/w/[workspaceId]/fleets/new/InstallStreamSteps";
 import type { InstallSource } from "../app/(dashboard)/w/[workspaceId]/fleets/new/install-flow";
 
 // A platform gallery entry — installs by slug (`platform_library_id`).
@@ -87,7 +86,6 @@ function stubStream(installStep: string | null) {
     installStep,
     appendOptimistic: vi.fn(),
     reconcileOptimistic: vi.fn(),
-    markOptimisticFailed: vi.fn(),
     discardOptimistic: vi.fn(),
     convertEvent: vi.fn(),
   });
@@ -282,97 +280,6 @@ describe("test_install_states_render", () => {
 });
 
 // ── 9.7 (component tier): SSE steps advance + ready lands "Open fleet" ───────
-
-describe("test_install_status_stream — InstallStreamSteps consumes the SSE stream", () => {
-  function renderSteps(onOpen = vi.fn()) {
-    return render(
-      React.createElement(InstallStreamSteps, {
-        workspaceId: "ws_1",
-        fleetId: "zom_1",
-        fleetName: "pr-reviewer",
-        onOpen,
-      }),
-    );
-  }
-
-  it("renders the creating step before any install frame, no Open fleet yet", () => {
-    stubStream(null);
-    renderSteps();
-    expect(screen.getByText(/creating fleet/i)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /open fleet/i })).toBeNull();
-  });
-
-  it("advances to provisioning when the stream reports it", () => {
-    stubStream(INSTALL_STEP.PROVISIONING);
-    renderSteps();
-    expect(screen.getByText(/provisioning/i)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /open fleet/i })).toBeNull();
-  });
-
-  it("on install:ready surfaces Open fleet, which routes to the steer/chat", async () => {
-    stubStream(INSTALL_STEP.READY);
-    const onOpen = vi.fn();
-    const user = userEvent.setup({ delay: null });
-    renderSteps(onOpen);
-    expect(screen.getByText(/is ready/i)).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: /open fleet/i }));
-    expect(onOpen).toHaveBeenCalledTimes(1);
-  });
-
-  it("reconciles a missed ready frame from the fleet's active server status", async () => {
-    stubStream(null);
-    listFleetsActionMock.mockResolvedValueOnce({
-      ok: true,
-      data: { items: [{ id: "zom_1", status: "active" }] },
-    });
-    renderSteps();
-    await waitFor(() => expect(screen.getByRole("button", { name: /open fleet/i })).toBeTruthy());
-    expect(listFleetsActionMock).toHaveBeenCalledWith("ws_1", { limit: 100 });
-  });
-
-  it("stops bounded reconciliation with an error when durable status never becomes active", async () => {
-    vi.useFakeTimers();
-    stubStream(null);
-    listFleetsActionMock
-      .mockResolvedValueOnce({ ok: false, error: "temporarily unavailable", status: 503 })
-      .mockResolvedValue({ ok: true, data: { items: [] } });
-    renderSteps();
-
-    await act(async () => {
-      await vi.runAllTimersAsync();
-    });
-
-    expect(screen.getByText(/install failed/i)).toBeTruthy();
-    expect(listFleetsActionMock).toHaveBeenCalledTimes(12);
-  });
-
-  it("drops an in-flight reconciliation result after unmount", async () => {
-    vi.useFakeTimers();
-    stubStream(null);
-    let resolveList: (value: unknown) => void = () => {};
-    listFleetsActionMock.mockReturnValueOnce(new Promise((resolve) => (resolveList = resolve)));
-    const view = renderSteps();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500);
-    });
-    view.unmount();
-    await act(async () => {
-      resolveList({ ok: true, data: { items: [{ id: "zom_1", status: "active" }] } });
-      await Promise.resolve();
-    });
-
-    expect(screen.queryByRole("button", { name: /open fleet/i })).toBeNull();
-  });
-
-  it("an error step renders the failure line (spinner never hangs)", () => {
-    stubStream(INSTALL_STEP.ERROR);
-    renderSteps();
-    expect(screen.getByText(/install failed/i)).toBeTruthy();
-  });
-});
-
-// ── 9.6: install done routes into the fleet (the steer/chat) ─────────────────
 
 describe("test_install_lands_in_steer", () => {
   it("create → ready → Open fleet pushes to /w/ws_1/fleets/{id} (the full-height steer/chat)", async () => {

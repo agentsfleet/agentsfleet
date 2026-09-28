@@ -4,17 +4,19 @@ import { cleanup, render } from "@testing-library/react";
 
 import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
 import { GUIDANCE, OUTCOME, outcomeFor } from "@/lib/events/event-summary";
-import { __resetFleetDeliveryFailuresForTests } from "@/components/domain/useFleetDeliveryFailure";
+import { __resetPendingSendsForTests } from "@/lib/streaming/pending-sends";
 
 // ── Hoisted mocks ────────────────────────────────────────────────────────
+
+const TEST_SUBJECT = "user_fleet_thread";
 
 const {
   routerRefreshMock,
   steerFleetActionMock,
   useFleetEventStreamMock,
   capturedOnNew,
-  capturedRetry,
   capturedSubmittedMessageId,
+  signedIn,
 } = vi.hoisted(() => ({
   routerRefreshMock: vi.fn(),
   steerFleetActionMock: vi.fn(),
@@ -25,12 +27,25 @@ const {
   capturedOnNew: {
     current: null as ((msg: AppendMessage) => Promise<void>) | null,
   },
-  capturedRetry: { current: null as (() => void) | null },
   capturedSubmittedMessageId: { current: null as string | null },
+  // Who the client's auth script says is signed in: null until it loads.
+  signedIn: { userId: "user_fleet_thread" as string | null },
 }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: routerRefreshMock }),
+}));
+
+// The thread keys its pending-send ledger by the signed-in user; the suite
+// signs in one fixed person.
+vi.mock("@/lib/auth/client", () => ({
+  useCurrentUser: () => ({
+    isLoaded: signedIn.userId !== null,
+    isSignedIn: signedIn.userId !== null,
+    userId: signedIn.userId,
+    emailAddress: null,
+    hasImage: false,
+  }),
 }));
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
@@ -62,21 +77,6 @@ vi.mock("@/components/domain/useFleetEventStream", async () => {
   };
 });
 
-vi.mock("@/components/domain/SteerComposer", async () => {
-  const actual = await vi.importActual<
-    typeof import("@/components/domain/SteerComposer")
-  >("@/components/domain/SteerComposer");
-  return {
-    ...actual,
-    SteerComposer: (
-      props: React.ComponentProps<typeof actual.SteerComposer>,
-    ) => {
-      capturedRetry.current = props.onRetry;
-      return React.createElement(actual.SteerComposer, props);
-    },
-  };
-});
-
 vi.mock("@/components/domain/FleetThreadViewport", async () => {
   const actual = await vi.importActual<
     typeof import("@/components/domain/FleetThreadViewport")
@@ -102,6 +102,9 @@ import {
 // ── Fixture builders ─────────────────────────────────────────────────────
 
 export const WS = "ws_test";
+export const SUBJECT = TEST_SUBJECT;
+/** Whom the client's auth script reports; set `userId` to null for "not loaded yet". */
+export const clientUser = signedIn;
 export const ZID = "zomb_test";
 export const FLEET_NAME = "github-pr-reviewer";
 
@@ -116,6 +119,8 @@ export function ev(
     reply: over.reply ?? "",
     reasoning: over.reasoning,
     thinking: over.thinking,
+    reasoningStartedAtMs: over.reasoningStartedAtMs,
+    reasoningEndedAtMs: over.reasoningEndedAtMs,
     tools: over.tools,
     replyRecovering: over.replyRecovering,
     outcome: over.outcome ?? OUTCOME.COMPLETED,
@@ -143,9 +148,6 @@ export function toThreadMessage(e: FleetEvent): ThreadMessageLike {
         queued: e.clientTimestamp === true,
         submittedAtMs: e.submittedAtMs,
         reply: e.reply,
-        reasoning: e.reasoning,
-        thinking: e.thinking,
-        tools: e.tools,
         replyRecovering: e.replyRecovering,
         outcome: e.outcome,
         failureLabel: e.failureLabel,
@@ -161,7 +163,6 @@ export type StreamMockOverrides = {
   connectionStatus?: (typeof CONNECTION_STATUS)[keyof typeof CONNECTION_STATUS];
   appendOptimistic?: ReturnType<typeof vi.fn>;
   reconcileOptimistic?: ReturnType<typeof vi.fn>;
-  markOptimisticFailed?: ReturnType<typeof vi.fn>;
   discardOptimistic?: ReturnType<typeof vi.fn>;
   retryConnection?: ReturnType<typeof vi.fn>;
 };
@@ -177,7 +178,6 @@ export function mockStream(
     appendOptimistic:
       opts?.appendOptimistic ?? vi.fn().mockReturnValue("temp_1"),
     reconcileOptimistic: opts?.reconcileOptimistic ?? vi.fn(),
-    markOptimisticFailed: opts?.markOptimisticFailed ?? vi.fn(),
     discardOptimistic: opts?.discardOptimistic ?? vi.fn(),
     retryConnection: opts?.retryConnection ?? vi.fn(),
     convertEvent: toThreadMessage,
@@ -202,6 +202,7 @@ export function threadElement(initial: EventRow[] = []) {
     fleetId: ZID,
     senderLabel: FLEET_NAME,
     initial,
+    viewer: TEST_SUBJECT,
   });
 }
 
@@ -241,15 +242,15 @@ beforeEach(() => {
   routerRefreshMock.mockReset();
   steerFleetActionMock.mockReset();
   useFleetEventStreamMock.mockReset();
-  // The delivery-failure registry is module-scoped by design (it survives
-  // remounts); without this reset a failure recorded in one test leaks a
-  // Retry banner — and its stale message — into the next.
-  __resetFleetDeliveryFailuresForTests();
+  // The pending-send ledger is module-scoped and storage-mirrored by design
+  // (it survives remounts and reloads); without this reset an entry recorded
+  // in one test leaks its notice — and its restored text — into the next.
+  __resetPendingSendsForTests();
   capturedOnNew.current = null;
-  capturedRetry.current = null;
   capturedSubmittedMessageId.current = null;
+  signedIn.userId = TEST_SUBJECT;
 });
 
 afterEach(() => cleanup());
 
-export { routerRefreshMock, steerFleetActionMock, useFleetEventStreamMock, capturedOnNew, capturedRetry, capturedSubmittedMessageId };
+export { routerRefreshMock, steerFleetActionMock, useFleetEventStreamMock, capturedOnNew, capturedSubmittedMessageId };

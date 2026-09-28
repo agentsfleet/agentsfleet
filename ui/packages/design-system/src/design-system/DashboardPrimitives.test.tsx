@@ -5,7 +5,6 @@ import {
   DashboardPanel,
   DashboardPanelContent,
   DashboardPanelDescription,
-  DashboardPanelFooter,
   DashboardPanelHeader,
   DashboardPanelTitle,
 } from "./DashboardPanel";
@@ -15,7 +14,7 @@ import { StatusPill } from "./StatusPill";
 import { TerminalPanel } from "./TerminalPanel";
 
 describe("dashboard primitives", () => {
-  it("renders a dashboard panel with header, content, and footer slots", () => {
+  it("renders a dashboard panel with header and content slots", () => {
     render(
       <DashboardPanel data-testid="panel">
         <DashboardPanelHeader>
@@ -25,7 +24,6 @@ describe("dashboard primitives", () => {
           </div>
         </DashboardPanelHeader>
         <DashboardPanelContent>Panel body</DashboardPanelContent>
-        <DashboardPanelFooter>Panel foot</DashboardPanelFooter>
       </DashboardPanel>,
     );
 
@@ -34,7 +32,6 @@ describe("dashboard primitives", () => {
     expect(screen.getByRole("heading", { level: 2, name: "Panel title" })).toBeTruthy();
     expect(screen.getByText("Panel copy")).toBeTruthy();
     expect(screen.getByText("Panel body")).toBeTruthy();
-    expect(screen.getByText("Panel foot")).toBeTruthy();
   });
 
   it("renders operational rows as one bordered group", () => {

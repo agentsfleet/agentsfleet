@@ -104,12 +104,6 @@ describe("FleetMessageRow", () => {
     expect(row.getAttribute("data-failed")).toBe("true");
     expect(row.className).not.toMatch(/opacity-60/);
   });
-
-  it("renders a transient annotation without restoring sender chrome", () => {
-    renderRow({ annotation: <span>sending</span> });
-    expect(screen.getByText("sending")).toBeTruthy();
-    expect(screen.queryByText("Operator")).toBeNull();
-  });
 });
 
 describe("FleetActivityRow", () => {

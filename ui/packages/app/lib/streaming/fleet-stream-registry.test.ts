@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { __resetRegistryForTests, CONNECTION_STATUS, appendOptimistic, getSnapshot, reconcileServerRows, subscribe } from "./fleet-stream-registry";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
+import { FRAME_KIND } from "@/lib/api/events-types";
+import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
 import { setupRegistryTests, row, WS, Z_A, Z_B, NO_SEED, IDLE_RELEASE_MS, sourceAt } from "@/tests/helpers/fleet-stream-registry-fixtures";
 
 setupRegistryTests();
@@ -28,6 +30,29 @@ describe("fleet-stream-registry — subscribe lifecycle", () => {
     expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.LIVE);
     a();
     b();
+  });
+});
+
+describe("fleet-stream-registry — frames that change nothing", () => {
+  it("notifies no one for a duplicate or malformed tool frame", () => {
+    const listener = vi.fn();
+    // A running turn: a settled one drops every tool frame before the registry
+    // compares anything, and the silence below would then prove nothing.
+    const running = row({ event_id: "evt_tool", status: AGENTSFLEET_EVENT_STATUS.RECEIVED });
+    const release = subscribe(WS, Z_A, [running], listener);
+    const es = sourceAt(0);
+    es.open();
+    const opened = listener.mock.calls.length;
+    es.emit({ kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "evt_tool", name: "read_file", args_redacted: {} });
+    es.emit({ kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "evt_tool", name: "read_file", ms: 7 });
+    const settled = getSnapshot(Z_A);
+    const notified = listener.mock.calls.length;
+    expect(notified).toBeGreaterThan(opened);
+    es.emit({ kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "evt_tool", name: "read_file", ms: 7 });
+    es.emitRaw(JSON.stringify({ kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "evt_tool", name: { bad: "name" } }));
+    expect(getSnapshot(Z_A)).toBe(settled);
+    expect(listener).toHaveBeenCalledTimes(notified);
+    release();
   });
 });
 

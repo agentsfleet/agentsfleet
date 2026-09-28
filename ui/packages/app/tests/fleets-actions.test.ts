@@ -164,11 +164,11 @@ describe("fleet server actions — thin token-forwarders", () => {
     expect(installFleetMock).toHaveBeenCalledWith("ws1", body, "tok");
   });
 
-  it("steerFleetAction forwards ws, id, message with token last", async () => {
+  it("steerFleetAction forwards ws, id, and one request carrying the operation id, token last", async () => {
     steerFleetMock.mockResolvedValueOnce({ event_id: "evt-1" });
-    const r = await steerFleetAction("ws1", "z1", "ship it");
+    const r = await steerFleetAction("ws1", "z1", "ship it", "op-ship-1");
     expect(r).toEqual({ ok: true, data: { event_id: "evt-1" } });
-    expect(steerFleetMock).toHaveBeenCalledWith("ws1", "z1", "ship it", "tok");
+    expect(steerFleetMock).toHaveBeenCalledWith("ws1", "z1", { message: "ship it", operation_id: "op-ship-1" }, "tok");
   });
 
   it("test_onboard_action_maps_apierror_to_errorcode: forwards the template onboard body through withToken", async () => {
