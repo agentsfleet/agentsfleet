@@ -50,6 +50,11 @@
 /// `$13` the estimated rows awaiting a receipt, `$14` a stated connector,
 /// `$15` a stated address, `$16` and `$17` the inherited event's `created_at`
 /// and `seq`.
+///
+/// It returns the row's own digest and fleet — the first call's, on the
+/// conflict arm — so a producer that must compare a repeat's payload reads it
+/// from this statement rather than a second one a deleted row could answer
+/// empty.
 pub(crate) const INSERT_ADMISSION: &str = "\
 INSERT INTO core.fleet_admissions
   (id, fleet_id, workspace_id, producer, producer_key, payload_digest,
@@ -68,7 +73,7 @@ WHERE $13::bigint < $12
    OR EXISTS (SELECT 1 FROM core.fleet_admissions
               WHERE producer = $4 AND producer_key = $5)
 ON CONFLICT (producer, producer_key) DO UPDATE SET updated_at = EXCLUDED.updated_at
-RETURNING (xmax = 0) AS inserted, created_at, seq, receipt, payload_digest";
+RETURNING (xmax = 0) AS inserted, created_at, seq, receipt, payload_digest, fleet_id::text";
 
 /// The destination one event was admitted with, by its logical id's two
 /// integers — the read the report makes inside its own transaction.

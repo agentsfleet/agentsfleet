@@ -24,7 +24,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_core::error_code;
-use afd_wire::event::{OPERATION_ID_MAX_BYTES, SteerAccepted, SteerRequest};
+use afd_wire::event::{SteerAccepted, SteerRequest, operation_id_usable};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -61,9 +61,10 @@ const DETAIL_MESSAGE_LONG: &str = "message must not exceed 8192 bytes";
 
 /// The refusal an unusable client operation identity earns.
 ///
-/// One sentence for both ends of the bound: a caller that sent an empty string
-/// and one that sent a novel are making the same mistake about the same field,
-/// and the field is optional, so omitting it is always valid.
+/// One sentence for both ends of the bound, and for a NUL inside it: a caller
+/// that sent an empty string and one that sent a novel are making the same
+/// mistake about the same field, and the field is optional, so omitting it is
+/// always valid.
 const DETAIL_OPERATION_ID_INVALID: &str =
     "operation_id must be between 1 and 200 bytes when present";
 
@@ -147,13 +148,15 @@ pub(crate) async fn steer<D: Services>(
                 .map_err(refuse_steer)?,
             None => None,
         };
-        return replayed.map(accepted).ok_or_else(|| not_runnable(status));
+        return replayed
+            .map(|event_id| accepted(event_id, true))
+            .ok_or_else(|| not_runnable(status));
     }
-    let event_id = steering
+    let steered = steering
         .append(fleet, workspace, &actor, &request_json, operation_id)
         .await
         .map_err(refuse_steer)?;
-    Ok(accepted(event_id))
+    Ok(accepted(steered.event_id, steered.replayed))
 }
 
 /// The body the ledger stores for a message.
@@ -179,13 +182,15 @@ fn not_runnable(status: FleetStatus) -> Refusal {
     )
 }
 
-/// The 202 a steer answers with, for a new message or a repeat alike.
-fn accepted(event_id: String) -> Response {
+/// The 202 a steer answers with, for a new message or a repeat alike — and
+/// which of the two it is.
+fn accepted(event_id: String, replayed: bool) -> Response {
     (
         StatusCode::ACCEPTED,
         Json(SteerAccepted {
             status: Cow::Borrowed(STATUS_ACCEPTED),
             event_id: Cow::Owned(event_id),
+            replayed,
         }),
     )
         .into_response()
@@ -247,7 +252,7 @@ fn read_steer(body: &Bytes) -> Result<SteerRequest<'_>, Refusal> {
         let operation_unusable = request
             .operation_id
             .as_deref()
-            .is_some_and(|id| id.is_empty() || id.len() > OPERATION_ID_MAX_BYTES);
+            .is_some_and(|id| !operation_id_usable(id));
         return Err(Refusal::malformed(if operation_unusable {
             DETAIL_OPERATION_ID_INVALID
         } else if request.message.is_empty() {

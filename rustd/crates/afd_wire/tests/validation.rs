@@ -263,6 +263,37 @@ fn a_steer_request_bounds_its_message_and_its_optional_operation_id() {
         operation_id: Some(Cow::Borrowed("")),
     };
     assert!(empty_id.validate().is_err(), "a present but empty id");
+
+    let nul_id = SteerRequest {
+        message: Cow::Borrowed("restart the run"),
+        operation_id: Some(Cow::Borrowed("op\u{0}1")),
+    };
+    assert!(nul_id.validate().is_err(), "an id holding NUL");
+}
+
+/// The request's documentation and its parser agree: unknown fields are
+/// refused, and the published description says so.
+#[test]
+fn test_steer_request_doc_matches_its_parser() {
+    let unknown =
+        serde_json::from_str::<SteerRequest<'_>>(r#"{"message":"restart","priority":"high"}"#);
+    assert!(unknown.is_err(), "an unknown field is refused");
+
+    let openapi = include_str!("../../../../public/openapi.json");
+    let description = serde_json::from_str::<serde_json::Value>(openapi)
+        .ok()
+        .and_then(|document| {
+            document
+                .pointer("/components/schemas/SteerRequest/description")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        });
+    assert!(
+        description
+            .as_deref()
+            .is_some_and(|text| text.contains("Unknown fields are refused")),
+        "the published SteerRequest says what its parser does: {description:?}"
+    );
 }
 
 /// A fixed-seed xorshift64*, so every run sees the same corpus.
@@ -423,10 +454,9 @@ fn a_mutation_that_parses_is_still_held_to_its_bounds() {
 
         if let Ok(steer) = serde_json::from_slice::<SteerRequest<'_>>(&probe) {
             let within = (1..=STEER_MESSAGE_MAX_BYTES).contains(&steer.message.len())
-                && steer
-                    .operation_id
-                    .as_ref()
-                    .is_none_or(|id| (1..=OPERATION_ID_MAX_BYTES).contains(&id.len()));
+                && steer.operation_id.as_ref().is_none_or(|id| {
+                    (1..=OPERATION_ID_MAX_BYTES).contains(&id.len()) && !id.contains('\0')
+                });
             assert_eq!(
                 steer.validate().is_ok(),
                 within,

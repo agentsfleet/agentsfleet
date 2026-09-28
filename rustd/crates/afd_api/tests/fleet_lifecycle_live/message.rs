@@ -86,12 +86,9 @@ async fn steer(
     (status, json_body(response).await)
 }
 
-/// Dimension 4.3 — a retry of an admitted steer is answered with its event
-/// even after the fleet stops taking work; new work and a changed message are
-/// refused.
-#[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn test_replay_bypasses_ingress_refusal() {
+/// A seeded fixture with one installed fleet, its router, and the fleet's item
+/// and message paths.
+async fn installed() -> (Fixture, axum::Router, String, String) {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let router = super::live_router(&fixture).await;
@@ -99,6 +96,44 @@ async fn test_replay_bypasses_ingress_refusal() {
     let fleet = super::install(&router, &fixture, &workspace).await;
     let item = format!("{workspace}/fleets/{}", fleet.as_str());
     let thread = format!("{item}/messages");
+    (fixture, router, item, thread)
+}
+
+/// Stops the fleet at `item`. `paused` is the anomaly gate's to set; an
+/// operator stops a fleet, and a stopped fleet meets the same ingress refusal.
+async fn stop(router: &axum::Router, fixture: &Fixture, item: &str) {
+    let body = serde_json::json!({ "status": "stopped" }).to_string();
+    let stopped = send(router, Method::PATCH, item, Some(&fixture.token), &body).await;
+    assert_eq!(stopped.status(), StatusCode::OK);
+}
+
+/// The 202 says whether it answered an earlier send: `false` for the send that
+/// admitted the message, `true` for a repeat while the fleet runs and after it
+/// stopped.
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn test_steer_202_names_a_replay() {
+    let (fixture, router, item, thread) = installed().await;
+    let replayed = |body: &Value| body.get("replayed").and_then(Value::as_bool);
+
+    let (_, fresh) = steer(&router, &fixture, &thread, OPERATION, MESSAGE).await;
+    assert_eq!(replayed(&fresh), Some(false), "{fresh}");
+    let (_, repeat) = steer(&router, &fixture, &thread, OPERATION, MESSAGE).await;
+    assert_eq!(replayed(&repeat), Some(true), "{repeat}");
+    stop(&router, &fixture, &item).await;
+    let (_, stopped) = steer(&router, &fixture, &thread, OPERATION, MESSAGE).await;
+    assert_eq!(replayed(&stopped), Some(true), "{stopped}");
+    assert_eq!(fresh.get("event_id"), stopped.get("event_id"));
+
+    fixture.cleanup().await;
+}
+
+/// A retry of an admitted steer is answered with its event even after the
+/// fleet stops taking work; new work and a changed message are refused.
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn test_replay_bypasses_ingress_refusal() {
+    let (fixture, router, item, thread) = installed().await;
 
     let (status, first) = steer(&router, &fixture, &thread, OPERATION, MESSAGE).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{first}");
@@ -108,17 +143,7 @@ async fn test_replay_bypasses_ingress_refusal() {
         .expect("a 202 names its event")
         .to_owned();
 
-    let stopped = send(
-        &router,
-        Method::PATCH,
-        &item,
-        Some(&fixture.token),
-        // `paused` is the anomaly gate's to set; an operator stops a fleet,
-        // and a stopped fleet meets the same ingress refusal.
-        &serde_json::json!({ "status": "stopped" }).to_string(),
-    )
-    .await;
-    assert_eq!(stopped.status(), StatusCode::OK);
+    stop(&router, &fixture, &item).await;
 
     let (status, retried) = steer(&router, &fixture, &thread, OPERATION, MESSAGE).await;
     assert_eq!(

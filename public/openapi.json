@@ -17146,12 +17146,17 @@
         "description": "What a steer returns once agentsfleet accepts the request.\n\nThe response carries the id the run is found under. Filter the live event\ntail on `event_id` to follow the message you just sent.",
         "required": [
           "status",
-          "event_id"
+          "event_id",
+          "replayed"
         ],
         "properties": {
           "event_id": {
             "type": "string",
             "description": "The canonical event id the steer became."
+          },
+          "replayed": {
+            "type": "boolean",
+            "description": "Whether an earlier send of the same `operation_id` already admitted this\nmessage, so `event_id` is that send's event — which may have run\nalready. `false` when this call admitted it."
           },
           "status": {
             "type": "string",
@@ -17162,7 +17167,7 @@
       },
       "SteerRequest": {
         "type": "object",
-        "description": "`POST /v1/workspaces/{ws}/fleets/{id}/messages` — an operator's steer.\n\nUnknown fields are ignored rather than refused, which is what\n`parseFromSlice(.{ .ignore_unknown_fields = true })` does. A client sending\na field this build does not read is not making a mistake it needs telling\nabout.",
+        "description": "`POST /v1/workspaces/{ws}/fleets/{id}/messages` — an operator's steer.\n\nUnknown fields are refused with 400. A field this endpoint does not read is\na typo or a feature it does not have, and ignoring it would let a client\nbelieve a setting took effect.",
         "required": [
           "message"
         ],

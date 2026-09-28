@@ -67,6 +67,20 @@ struct Ledger {
     receipt: Option<String>,
     /// The digest the row was admitted with.
     digest: String,
+    /// The fleet the row was admitted for.
+    fleet: String,
+}
+
+impl Ledger {
+    /// The answer this row gives a producer.
+    fn admitted(self, replayed: bool) -> Admitted {
+        Admitted {
+            id: self.id,
+            replayed,
+            stored_digest: self.digest,
+            stored_fleet: self.fleet,
+        }
+    }
 }
 
 impl Admissions {
@@ -123,7 +137,7 @@ impl Admissions {
                 return Err(refused);
             }
         };
-        if ledger.digest != digest {
+        if ledger.digest != digest && !admission.producer.is_caller_keyed() {
             // The key is the identity and the first payload stands. Logged
             // at warn because a body this daemon renders differently than it
             // did is a deploy that changed a handler, and somebody should
@@ -147,13 +161,10 @@ impl Admissions {
                 event_id = ledger.id,
                 event = "admission_replayed",
             );
-            return Ok(Admitted {
-                id: ledger.id,
-                replayed: true,
-            });
+            return Ok(ledger.admitted(true));
         }
 
-        self.queue_entry(&row_id, ledger.id, &admission, now).await
+        self.queue_entry(&row_id, ledger, &admission, now).await
     }
 
     /// The fleet budget, then the row: the queue is asked first because a
@@ -222,11 +233,13 @@ impl Admissions {
         let seq: i64 = row.try_get(2).map_err(query(CONTEXT_ADMIT))?;
         let receipt: Option<String> = row.try_get(3).map_err(query(CONTEXT_ADMIT))?;
         let stored: String = row.try_get(4).map_err(query(CONTEXT_ADMIT))?;
+        let fleet: String = row.try_get(5).map_err(query(CONTEXT_ADMIT))?;
         Ok(Ledger {
             id: logical_id(created_at, seq),
             inserted,
             receipt,
             digest: stored,
+            fleet,
         })
     }
 
@@ -240,12 +253,12 @@ impl Admissions {
     async fn queue_entry(
         &self,
         row_id: &Uuid7,
-        id: String,
+        ledger: Ledger,
         admission: &Admission<'_>,
         now: UnixMillis,
     ) -> Result<Admitted> {
         let producer = admission.producer.as_str();
-        let event_id = id.as_str();
+        let event_id = ledger.id.as_str();
         let created_at = now.as_millis().to_string();
         let entry = Entry {
             actor: admission.actor,
@@ -279,10 +292,7 @@ impl Admissions {
                     reason,
                     event,
                 );
-                return Ok(Admitted {
-                    id,
-                    replayed: false,
-                });
+                return Ok(ledger.admitted(false));
             }
         };
 
@@ -316,10 +326,7 @@ impl Admissions {
             event = "admission_completed",
         );
         self.mark_ready(admission.fleet).await;
-        Ok(Admitted {
-            id,
-            replayed: false,
-        })
+        Ok(ledger.admitted(false))
     }
 
     /// Marks the fleet leasable, best-effort.

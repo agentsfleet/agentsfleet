@@ -74,6 +74,7 @@ pub use self::entry::{ENTRY_FIELD_COUNT, Entry, QUEUED_FIELD_COUNT};
 
 pub use self::steer::{
     OPERATION_ID_MAX_BYTES, STEER_MESSAGE_MAX_BYTES, SteerAccepted, SteerRequest,
+    operation_id_usable,
 };
 
 /// One event on the wire, flat by convention.

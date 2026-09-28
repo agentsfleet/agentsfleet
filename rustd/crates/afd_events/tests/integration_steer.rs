@@ -95,7 +95,7 @@ async fn test_steer_append_event_id() {
 
     assert_eq!(
         leased.field(field::EVENT_ID),
-        Some(answered.as_str()),
+        Some(answered.event_id.as_str()),
         "the id answered to the client must BE the id the runner sees — a \
          client filters its SSE frames by this value and the lease path reads \
          it back off the entry, so two spellings would be two events. It is \
@@ -218,8 +218,14 @@ async fn test_steer_repeats_are_two_messages_not_one() {
         .expect("the read reaches the queue")
         .expect("the second entry is deliverable");
 
-    assert_eq!(leased_first.field(field::EVENT_ID), Some(first.as_str()));
-    assert_eq!(leased_second.field(field::EVENT_ID), Some(second.as_str()));
+    assert_eq!(
+        leased_first.field(field::EVENT_ID),
+        Some(first.event_id.as_str())
+    );
+    assert_eq!(
+        leased_second.field(field::EVENT_ID),
+        Some(second.event_id.as_str())
+    );
 
     ReadyIndex::new(lane.queue.clone())
         .force_clear(&lane.fleet)
