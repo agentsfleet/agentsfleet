@@ -17,8 +17,9 @@
 // not know about it yet.
 //
 // The key names the signed-in user, so the next person on a shared browser
-// never sees — or resends as themselves — what the last one typed, and that
-// person's first read removes it from storage. Nothing is mirrored until the
+// never sees — or resends as themselves — what the last one typed, and once
+// that person's page shows a ledger, the last one's leave storage and stay
+// out, in every tab. Nothing is mirrored until the
 // user is known, entries expire after a day, and a fleet holds at most
 // `MAX_PENDING_SENDS`. The stored shape and every storage call live in
 // `pending-sends-storage.ts`.
@@ -28,10 +29,12 @@ import {
   ledgerKey,
   mirror,
   parseEntries,
+  claimReader,
   purgeOtherUsers,
   readStored,
   removeMirrored,
   storage,
+  storedReader,
   type LedgerScope,
   type PendingSend,
   type PendingSendOutcome,
@@ -64,8 +67,8 @@ const UNSAVED = new Map<string, Set<string>>();
 const NONE_UNSAVED: ReadonlySet<string> = new Set();
 let storageListening = false;
 let swept = false;
-// The user whose read last purged everyone else's ledgers from storage.
-let purgedFor: string | null = null;
+// The user this page last showed a ledger for.
+let claimedFor: string | null = null;
 
 function live(entries: readonly PendingSend[], nowMs: number): PendingSend[] {
   return entries.filter((entry) => nowMs - entry.submittedAtMs < PENDING_SEND_TTL_MS);
@@ -76,7 +79,6 @@ function live(entries: readonly PendingSend[], nowMs: number): PendingSend[] {
 // unknown here, which is the state that offers a safe Resend.
 function hydrate(scope: LedgerScope): readonly PendingSend[] {
   sweepExpired();
-  if (scope.subject !== null) purgeOnce(scope.subject);
   return live(readStored(mirror(scope), ledgerKey(scope)) ?? [], Date.now()).map((entry) =>
     entry.state === PENDING_SEND_STATE.SENDING ? { ...entry, state: PENDING_SEND_STATE.UNKNOWN } : entry,
   );
@@ -132,12 +134,13 @@ function mutate(
   notify(key);
 }
 
-// A send still in flight when the next person signed in ends after their
-// first read purged it. Its ending stays in memory: writing it would put the
-// last user's text back in the storage the purge just cleared.
+// A send still in flight when the next person signed in — on this page or in
+// another tab — ends after their page claimed the browser and purged it. Its
+// ending stays in memory: writing it would put the last user's text back in
+// the storage the purge just cleared.
 function writable(scope: LedgerScope): Storage | null {
-  const superseded = purgedFor !== null && scope.subject !== purgedFor;
-  return superseded ? null : mirror(scope);
+  const reader = storedReader() ?? claimedFor;
+  return reader !== null && scope.subject !== reader ? null : mirror(scope);
 }
 
 function writeMirror(store: Storage, key: string, operationId: string, next: readonly PendingSend[]): void {
@@ -201,11 +204,13 @@ function sweepExpired(): void {
   removeMirrored((store, key) => live(readStored(store, key) ?? [], nowMs).length === 0);
 }
 
-// Once per user per document, so a sign-in that swaps the user without a
-// reload still clears the last one's ledgers.
-function purgeOnce(subject: string): void {
-  if (purgedFor === subject) return;
-  purgedFor = subject;
+// The page shows `subject`'s ledger. On a change of user — a first render, or
+// a sign-in that swaps the user without a reload, either way round — the
+// browser's reader becomes them and every other user's ledgers leave storage.
+function claim(subject: string): void {
+  if (claimedFor === subject) return;
+  claimedFor = subject;
+  claimReader(subject);
   purgeOtherUsers(subject);
 }
 
@@ -214,6 +219,7 @@ export function getPendingSends(scope: LedgerScope): readonly PendingSend[] {
 }
 
 export function subscribePendingSends(scope: LedgerScope, listener: () => void): () => void {
+  if (scope.subject !== null) claim(scope.subject);
   const key = ledgerKey(scope);
   const listeners = LISTENERS.get(key) ?? new Set<() => void>();
   listeners.add(listener);
@@ -268,7 +274,10 @@ export function __resetPendingSendsForTests({ keepStorage = false }: { keepStora
   MIRRORED.clear();
   UNSAVED.clear();
   swept = false;
-  purgedFor = null;
-  if (!keepStorage) removeMirrored(() => true);
+  claimedFor = null;
+  if (!keepStorage) {
+    removeMirrored(() => true);
+    claimReader(null);
+  }
   for (const key of LISTENERS.keys()) notify(key);
 }
