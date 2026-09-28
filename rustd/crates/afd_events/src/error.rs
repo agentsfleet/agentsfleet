@@ -85,8 +85,8 @@ pub(crate) enum ErrorKind {
         source: afd_admission::Error,
     },
 
-    /// The caller's operation id already names a different message, or a
-    /// message another caller sent.
+    /// The caller's operation id already names a different message, or one
+    /// another sender sent — a workspace's API keys are one sender.
     ///
     /// A caller fault with no source, like [`Self::CursorMalformed`]: nothing
     /// failed underneath, the id was reused.
@@ -173,4 +173,4 @@ const DETAIL_CURSOR: &str = "The cursor is not valid";
 /// Names the field and the rule, the validation shape the REST guide asks a
 /// `detail` to take, and nothing about which message came first.
 const DETAIL_OPERATION_CONFLICT: &str =
-    "operation_id must not be reused by another caller or with a different message";
+    "operation_id must not be reused with a different message or by another sender";

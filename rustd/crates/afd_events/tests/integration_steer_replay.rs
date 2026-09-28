@@ -5,7 +5,7 @@
 //!
 //! - the id is scoped to the fleet, so one client reusing ids across fleets
 //!   never gets another fleet's event back;
-//! - a repeat is answered before the fleet budget, so a message already
+//! - a repeat is answered despite the fleet budget, so a message already
 //!   admitted is not refused as undelivered when the fleet fills up behind it;
 //! - the same id with a different message is refused, and nothing is admitted,
 //!   rather than answered with the first message's event.
@@ -70,7 +70,7 @@ async fn test_operation_ids_are_scoped_to_the_fleet() {
     clean(&second, &FleetStreams::new(second.queue.clone())).await;
 }
 
-/// A repeat is answered ahead of the fleet budget; new work is still refused.
+/// A repeat is answered despite a spent fleet budget; new work is still refused.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_replay_bypasses_fleet_budget() {
@@ -140,6 +140,40 @@ async fn test_replay_bypasses_fleet_budget() {
     clean(&lane, &streams).await;
 }
 
+/// Under a spent budget, the same id with a changed message is still a
+/// conflict: the capacity refusal the sender would retry must not stand in for
+/// the 409 that tells it to stop.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_drift_under_spent_budget_is_a_conflict() {
+    let lane = EventsLane::open().await;
+    let streams = FleetStreams::new(lane.queue.clone());
+    streams
+        .ensure_group(&lane.fleet)
+        .await
+        .expect("the consumer group is created");
+    let steer = Steer::new(lane.admissions().with_budgets(Budgets {
+        fleet_backlog: ONE_ENTRY,
+        replay_backlog: u64::MAX,
+    }));
+
+    append_with(&steer, &lane, Some(OPERATION)).await;
+    let refused = steer
+        .append(
+            &lane.fleet,
+            &lane.workspace,
+            ACTOR_MACHINE,
+            CHANGED_JSON,
+            Some(OPERATION),
+        )
+        .await
+        .expect_err("a changed message under a reused id is refused");
+    assert!(refused.is_operation_conflict(), "{refused}");
+    assert_eq!(admissions_for(&lane, OPERATION).await, 1);
+
+    clean(&lane, &streams).await;
+}
+
 /// The same id with a changed message is refused and admits nothing.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -164,7 +198,8 @@ async fn test_payload_drift_is_refused() {
         )
         .await
         .expect_err("a reused id with another message is refused");
-    // One warn, carrying the code, and neither the message nor the key.
+    // One conflict warn, carrying the code, and neither the message nor the
+    // key. The ledger's own `admission_payload_drifted` warn fires beside it.
     let conflicts: Vec<_> = logs
         .events()
         .into_iter()

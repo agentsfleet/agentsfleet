@@ -45,7 +45,7 @@
 //! one id both reached the insert. And when a spent budget refuses the insert,
 //! a repeat is still answered: a message already admitted is not new work.
 //!
-//! The same id with a different payload — another message, or another caller
+//! The same id with a different payload — another message, or another sender
 //! — is refused rather than answered: the first message's event would tell the
 //! sender the second one landed.
 
