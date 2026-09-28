@@ -17,53 +17,28 @@
 // not know about it yet.
 //
 // The key names the signed-in user, so the next person on a shared browser
-// never sees — or resends as themselves — what the last one typed. Nothing is
-// mirrored until the user is known, entries expire after a day, and a fleet
-// holds at most `MAX_PENDING_SENDS`.
+// never sees — or resends as themselves — what the last one typed, and that
+// person's first read removes it from storage. Nothing is mirrored until the
+// user is known, entries expire after a day, and a fleet holds at most
+// `MAX_PENDING_SENDS`. The stored shape and every storage call live in
+// `pending-sends-storage.ts`.
 
-import { z } from "zod";
+import {
+  PENDING_SEND_STATE,
+  ledgerKey,
+  mirror,
+  parseEntries,
+  purgeOtherUsers,
+  readStored,
+  removeMirrored,
+  storage,
+  type LedgerScope,
+  type PendingSend,
+  type PendingSendOutcome,
+} from "./pending-sends-storage";
 
-export const PENDING_SEND_STATE = {
-  /** The POST is out; the optimistic row already shows the message. */
-  SENDING: "sending",
-  /** The server answered no. */
-  REFUSED: "refused",
-  /** The server answered 401. */
-  SESSION: "session",
-  /** Nothing answered: the transport failed, or the document that sent it is gone. */
-  UNKNOWN: "unknown",
-} as const;
+export { PENDING_SEND_STATE, type LedgerScope, type PendingSend, type PendingSendOutcome };
 
-type PendingSendState = (typeof PENDING_SEND_STATE)[keyof typeof PENDING_SEND_STATE];
-
-/** How a send ended without an acknowledgement. */
-export type PendingSendOutcome = Exclude<PendingSendState, typeof PENDING_SEND_STATE.SENDING>;
-
-// The stored shape, parsed rather than trusted: another tab or an older build
-// wrote it.
-const PendingSendSchema = z.object({
-  operationId: z.string(),
-  text: z.string(),
-  state: z.enum([
-    PENDING_SEND_STATE.SENDING,
-    PENDING_SEND_STATE.REFUSED,
-    PENDING_SEND_STATE.SESSION,
-    PENDING_SEND_STATE.UNKNOWN,
-  ]),
-  submittedAtMs: z.number(),
-});
-
-export type PendingSend = z.infer<typeof PendingSendSchema>;
-
-/** Whose ledger, for which fleet. `subject` is null until the user is known. */
-export type LedgerScope = {
-  subject: string | null;
-  workspaceId: string;
-  fleetId: string;
-};
-
-const STORAGE_KEY_PREFIX = "agentsfleet:pending-sends";
-const KEY_SEPARATOR = ":";
 const STORAGE_EVENT = "storage";
 const MS_PER_HOUR = 3_600_000;
 const HOURS_PER_DAY = 24;
@@ -89,51 +64,8 @@ const UNSAVED = new Map<string, Set<string>>();
 const NONE_UNSAVED: ReadonlySet<string> = new Set();
 let storageListening = false;
 let swept = false;
-
-function ledgerKey({ subject, workspaceId, fleetId }: LedgerScope): string {
-  return [STORAGE_KEY_PREFIX, subject ?? "", workspaceId, fleetId].join(KEY_SEPARATOR);
-}
-
-// `localStorage` can be absent or throw in locked-down privacy modes, so every
-// mirror operation is best-effort despite the non-null lib.dom type.
-function storage(): Storage | null {
-  try {
-    return (globalThis as { window?: { localStorage?: Storage } }).window?.localStorage ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/** The mirror for this scope: none until the user is known. */
-function mirror(scope: LedgerScope): Storage | null {
-  return scope.subject === null ? null : storage();
-}
-
-/** What storage holds for `key`, or null when the read itself threw. */
-function readStored(store: Storage | null, key: string): PendingSend[] | null {
-  if (store === null) return [];
-  try {
-    return parseEntries(store.getItem(key));
-  } catch {
-    return null;
-  }
-}
-
-// A malformed entry is dropped on its own; a value that is not a list, or not
-// JSON at all, reads as an empty ledger.
-function parseEntries(raw: string | null): PendingSend[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw ?? "[]");
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(parsed)) return [];
-  return parsed.flatMap((value) => {
-    const entry = PendingSendSchema.safeParse(value);
-    return entry.success ? [entry.data] : [];
-  });
-}
+// The user whose read last purged everyone else's ledgers from storage.
+let purgedFor: string | null = null;
 
 function live(entries: readonly PendingSend[], nowMs: number): PendingSend[] {
   return entries.filter((entry) => nowMs - entry.submittedAtMs < PENDING_SEND_TTL_MS);
@@ -144,6 +76,7 @@ function live(entries: readonly PendingSend[], nowMs: number): PendingSend[] {
 // unknown here, which is the state that offers a safe Resend.
 function hydrate(scope: LedgerScope): readonly PendingSend[] {
   sweepExpired();
+  if (scope.subject !== null) purgeOnce(scope.subject);
   return live(readStored(mirror(scope), ledgerKey(scope)) ?? [], Date.now()).map((entry) =>
     entry.state === PENDING_SEND_STATE.SENDING ? { ...entry, state: PENDING_SEND_STATE.UNKNOWN } : entry,
   );
@@ -250,7 +183,7 @@ function listenToStorage(): void {
 }
 
 // Once per document: remove mirrored ledgers whose every entry has expired —
-// fleets never revisited, and users who signed out on this browser.
+// fleets never revisited, whoever's they were.
 function sweepExpired(): void {
   if (swept) return;
   swept = true;
@@ -258,20 +191,12 @@ function sweepExpired(): void {
   removeMirrored((store, key) => live(readStored(store, key) ?? [], nowMs).length === 0);
 }
 
-// Removes every mirrored ledger `doomed` names. Best-effort, like every other
-// mirror operation.
-function removeMirrored(doomed: (store: Storage, key: string) => boolean): void {
-  const store = storage();
-  if (store === null) return;
-  try {
-    const keys = Array.from({ length: store.length }, (_, index) => store.key(index))
-      .filter((key): key is string => key !== null && key.startsWith(STORAGE_KEY_PREFIX));
-    for (const key of keys) {
-      if (doomed(store, key)) store.removeItem(key);
-    }
-  } catch {
-    // A storage that stops answering mid-sweep keeps what it holds.
-  }
+// Once per user per document, so a sign-in that swaps the user without a
+// reload still clears the last one's ledgers.
+function purgeOnce(subject: string): void {
+  if (purgedFor === subject) return;
+  purgedFor = subject;
+  purgeOtherUsers(subject);
 }
 
 export function getPendingSends(scope: LedgerScope): readonly PendingSend[] {
@@ -333,6 +258,7 @@ export function __resetPendingSendsForTests({ keepStorage = false }: { keepStora
   MIRRORED.clear();
   UNSAVED.clear();
   swept = false;
+  purgedFor = null;
   if (!keepStorage) removeMirrored(() => true);
   for (const key of LISTENERS.keys()) notify(key);
 }
