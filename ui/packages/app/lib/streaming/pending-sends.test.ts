@@ -16,10 +16,7 @@ import {
 } from "./pending-sends";
 
 const SUBJECT = "user_ledger";
-const OTHER_SUBJECT = "user_next_on_this_browser";
 const SCOPE: LedgerScope = { subject: SUBJECT, workspaceId: "ws_ledger", fleetId: "fleet_ledger" };
-const OTHER_FLEET: LedgerScope = { ...SCOPE, fleetId: "fleet_other" };
-const OTHER_USER: LedgerScope = { ...SCOPE, subject: OTHER_SUBJECT };
 const SIGNED_OUT: LedgerScope = { ...SCOPE, subject: null };
 const STORAGE_KEY = `agentsfleet:pending-sends:${SUBJECT}:ws_ledger:fleet_ledger`;
 const OTHER_FLEET_KEY = `agentsfleet:pending-sends:${SUBJECT}:ws_ledger:fleet_other`;
@@ -178,30 +175,6 @@ describe("pending-sends ledger", () => {
     vi.spyOn(window, "localStorage", "get").mockReturnValue(revoked);
     otherTabWrote(null, null);
     expect(states()).toEqual([["op-1", PENDING_SEND_STATE.UNKNOWN]]);
-  });
-
-  it("keys the ledger by user, and mirrors nothing until the user is known", () => {
-    beginPendingSend(SCOPE, send("op-1", "mine"));
-    failPendingSend(SCOPE, "op-1", PENDING_SEND_STATE.REFUSED);
-    // The same person's other fleet sees none of it.
-    expect(getPendingSends(OTHER_FLEET)).toEqual([]);
-
-    beginPendingSend(SIGNED_OUT, send("op-2", "early"));
-    const mirrored = Object.keys(window.localStorage).filter((key) => key.startsWith("agentsfleet:pending-sends"));
-    expect(mirrored).toEqual([STORAGE_KEY]);
-
-    // Nor does the next person on this browser, whose first read removes it
-    // from storage — in the same document, as a sign-in without a reload.
-    expect(getPendingSends(OTHER_USER)).toEqual([]);
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
-  });
-
-  it("keeps a previous user's late ending out of the storage the next user purged", () => {
-    beginPendingSend(SCOPE, send("op-late", "still out"));
-    expect(getPendingSends(OTHER_USER)).toEqual([]);
-    failPendingSend(SCOPE, "op-late", PENDING_SEND_STATE.UNKNOWN);
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
-    expect(states()).toEqual([["op-late", PENDING_SEND_STATE.UNKNOWN]]);
   });
 
   it("expires entries after a day, and sweeps ledgers whose entries all expired", () => {

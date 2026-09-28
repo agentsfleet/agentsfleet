@@ -112,3 +112,26 @@ export function purgeOtherUsers(subject: string): void {
   const own = [STORAGE_KEY_PREFIX, subject, ""].join(KEY_SEPARATOR);
   removeMirrored((_, key) => !key.startsWith(own));
 }
+
+// The user whose page last showed a ledger in this browser, shared by every
+// tab. Outside `STORAGE_KEY_PREFIX` on purpose: a sweep or a purge reads every
+// key under that prefix as a ledger, and this one is not. Clerk keeps one
+// session per browser, so there is one such user at a time.
+const READER_KEY = "agentsfleet:ledger-reader";
+
+export function storedReader(): string | null {
+  try {
+    return storage()?.getItem(READER_KEY) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function claimReader(subject: string | null): void {
+  try {
+    if (subject === null) storage()?.removeItem(READER_KEY);
+    else storage()?.setItem(READER_KEY, subject);
+  } catch {
+    // A storage that refuses the claim leaves each tab its own view.
+  }
+}
