@@ -1,8 +1,9 @@
 import { SUBJECT, WS, ZID, appendMessage, capturedOnNew, capturedSubmittedMessageId, ev, mockStream, renderThread, steerFleetActionMock, threadElement } from "./harness";
 import { ACCEPTED, OPERATION_ID, REFUSED, TOO_LONG_TEXT, UUID_V7, composerInput, heldRefusal, operationIdOf, send } from "./steer-helpers";
+import { SEND_LABEL } from "./steer-copy";
 import { STEER_MESSAGE_MAX_BYTES } from "@/lib/api/fleets-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { AppendMessage } from "@assistant-ui/react";
 import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
 import { getPendingSends } from "@/lib/streaming/pending-sends";
@@ -158,7 +159,12 @@ describe("FleetThread — steer submission", () => {
     mockStream([], { appendOptimistic });
     renderThread();
     const oversized = "a".repeat(STEER_MESSAGE_MAX_BYTES + 1);
-    await send(oversized);
+    fireEvent.change(composerInput(), { target: { value: oversized } });
+    // Send is disabled; Enter, which does not go through it, is refused too.
+    expect((screen.getByRole("button", { name: SEND_LABEL }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => {
+      fireEvent.keyDown(composerInput(), { key: "Enter" });
+    });
     await waitFor(() => expect(composerInput().value).toBe(oversized));
     expect(screen.getByText(TOO_LONG_TEXT)).toBeTruthy();
     expect(appendOptimistic).not.toHaveBeenCalled();
