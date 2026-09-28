@@ -32,6 +32,8 @@ vi.mock("@assistant-ui/react", () => ({
 import {
   DISMISS_LABEL as DISMISS,
   RESEND_LABEL as RESEND,
+  SEND_AS_NEW_LABEL as SEND_AS_NEW,
+  SEND_CONFLICT_TEXT as SEND_CONFLICT,
   SEND_FAILED_TEXT as SEND_FAILED,
   SEND_UNCONFIRMED_TEXT as SEND_UNCONFIRMED,
   TOO_LONG_TEXT,
@@ -207,6 +209,22 @@ describe("SteerComposer", () => {
     resend.focus();
     fireEvent.click(screen.getByRole("button", { name: DISMISS }));
     expect(document.activeElement).toBe(screen.getByRole("textbox"));
+  });
+
+  it("offers a conflict no Resend, only Dismiss or Send as new", () => {
+    const onResend = vi.fn();
+    render(view([entry({ operationId: "op-spent", state: PENDING_SEND_STATE.CONFLICT })], { onResend }));
+    expect(screen.getByText(SEND_CONFLICT)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: RESEND })).toBeNull();
+    expect(screen.getByRole("button", { name: DISMISS })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: SEND_AS_NEW }));
+    expect(onResend).toHaveBeenCalledExactlyOnceWith("op-spent");
+  });
+
+  it("shows nothing for a dismissed send, and never restores its text", () => {
+    render(view([entry({ operationId: "op-gone", text: "", state: PENDING_SEND_STATE.DISMISSED })]));
+    expect(screen.queryByRole("list")).toBeNull();
+    expect(composer.setText).not.toHaveBeenCalled();
   });
 
   it("test_dismiss_removes_one_entry", () => {

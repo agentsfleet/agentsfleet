@@ -14,28 +14,13 @@ import {
   type LedgerScope,
   type PendingSend,
 } from "./pending-sends";
+import { NOW_MS, SCOPE, STORAGE_KEY, SUBJECT, otherTabWrote, send, states, stored } from "@/tests/fleet-thread/ledger-fixtures";
 
-const SUBJECT = "user_ledger";
-const SCOPE: LedgerScope = { subject: SUBJECT, workspaceId: "ws_ledger", fleetId: "fleet_ledger" };
 const SIGNED_OUT: LedgerScope = { ...SCOPE, subject: null };
-const STORAGE_KEY = `agentsfleet:pending-sends:${SUBJECT}:ws_ledger:fleet_ledger`;
 const OTHER_FLEET_KEY = `agentsfleet:pending-sends:${SUBJECT}:ws_ledger:fleet_other`;
 const FOREIGN_KEY = "agentsfleet:pending-sends:user_gone:ws_x:fleet_x";
 const UNRELATED_KEY = "someone-else:setting";
-const NOW_MS = 1_790_553_600_000;
 const HOUR_MS = 3_600_000;
-
-function send(operationId: string, text: string, submittedAtMs = NOW_MS) {
-  return { operationId, text, submittedAtMs };
-}
-
-function stored(entries: PendingSend[]): string {
-  return JSON.stringify(entries);
-}
-
-function states(scope: LedgerScope = SCOPE): [string, string][] {
-  return getPendingSends(scope).map((entry) => [entry.operationId, entry.state]);
-}
 
 // A Storage over a Map, with any method replaced. The test DOM's own
 // localStorage is a proxy a spy cannot be taken back off, so a misbehaving
@@ -51,11 +36,6 @@ function fakeStorage(overrides: Partial<Pick<Storage, "getItem" | "setItem" | "r
     clear: () => { held.clear(); },
   };
   return { ...base, ...overrides, get length() { return held.size; } } as Storage;
-}
-
-// Another tab's write, as the browser reports it to this one.
-function otherTabWrote(key: string | null, newValue: string | null): void {
-  window.dispatchEvent(new StorageEvent("storage", { key, newValue }));
 }
 
 beforeEach(() => {
@@ -93,8 +73,9 @@ describe("pending-sends ledger", () => {
     // Sending again puts the same id back in flight, at the tail, once.
     beginPendingSend(SCOPE, send("op-a", "a"));
     expect(states()).toEqual([["op-b", PENDING_SEND_STATE.SESSION], ["op-a", PENDING_SEND_STATE.SENDING]]);
+    // Dismissed, it stays as a tombstone no Resend can find.
     dismissPendingSend(SCOPE, "op-b");
-    expect(states()).toEqual([["op-a", PENDING_SEND_STATE.SENDING]]);
+    expect(states()).toEqual([["op-b", PENDING_SEND_STATE.DISMISSED], ["op-a", PENDING_SEND_STATE.SENDING]]);
     expect(findPendingSend(SCOPE, "op-a")?.text).toBe("a");
     expect(findPendingSend(SCOPE, "op-b")).toBeUndefined();
   });

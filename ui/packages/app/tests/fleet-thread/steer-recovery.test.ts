@@ -17,6 +17,8 @@ import { PENDING_SEND_STATE, dismissPendingSend, getPendingSends } from "@/lib/s
 const NO_REPLAY_WINDOW_MS = 5_000;
 const TRANSPORT_FAILED = new Error("Server Component transport failed");
 const SCOPE = { subject: SUBJECT, workspaceId: WS, fleetId: ZID };
+// The entries the notice can show: a dismissal stays behind as a tombstone.
+const noticed = () => getPendingSends(SCOPE).filter((entry) => entry.state !== PENDING_SEND_STATE.DISMISSED);
 // Answers that settle nothing: a client timeout, a server error after the row
 // may have committed, and a failure with no status at all.
 const UNSETTLED_ANSWERS = [
@@ -169,7 +171,7 @@ describe("FleetThread — steer recovery", () => {
     const [dismissFirst] = screen.getAllByRole("button", { name: DISMISS_LABEL });
     fireEvent.click(dismissFirst as HTMLElement);
     await waitFor(() => expect(screen.getAllByRole("button", { name: RESEND_LABEL })).toHaveLength(1));
-    expect(getPendingSends(SCOPE).map((entry) => entry.text)).toEqual(["second message"]);
+    expect(noticed().map((entry) => entry.text)).toEqual(["second message"]);
     expect(composerInput().value).toBe(draftBefore);
   });
 
@@ -203,7 +205,7 @@ describe("FleetThread — steer recovery", () => {
       await send("maybe landed");
       await waitFor(() => expect(screen.getByText(SEND_UNCONFIRMED_TEXT)).toBeTruthy());
       expect(screen.queryByText(SEND_FAILED_TEXT)).toBeNull();
-      expect(getPendingSends(SCOPE).map((entry) => entry.state)).toEqual([PENDING_SEND_STATE.UNKNOWN]);
+      expect(noticed().map((entry) => entry.state)).toEqual([PENDING_SEND_STATE.UNKNOWN]);
       view.unmount();
       getPendingSends(SCOPE).forEach((entry) => dismissPendingSend(SCOPE, entry.operationId));
     }

@@ -14,12 +14,20 @@ export const PENDING_SEND_STATE = {
   SESSION: "session",
   /** Nothing answered: the transport failed, or the document that sent it is gone. */
   UNKNOWN: "unknown",
+  /** The server refused the operation id itself: it already names another
+   * message, so no Resend under it can ever land. */
+  CONFLICT: "conflict",
+  /** The operator dismissed it. A tombstone, text dropped, that outranks every
+   * older state for its id in every tab until it expires. */
+  DISMISSED: "dismissed",
 } as const;
 
-type PendingSendState = (typeof PENDING_SEND_STATE)[keyof typeof PENDING_SEND_STATE];
-
 /** How a send ended without an acknowledgement. */
-export type PendingSendOutcome = Exclude<PendingSendState, typeof PENDING_SEND_STATE.SENDING>;
+export type PendingSendOutcome =
+  | typeof PENDING_SEND_STATE.REFUSED
+  | typeof PENDING_SEND_STATE.SESSION
+  | typeof PENDING_SEND_STATE.UNKNOWN
+  | typeof PENDING_SEND_STATE.CONFLICT;
 
 // The stored shape, parsed rather than trusted.
 const PendingSendSchema = z.object({
@@ -30,6 +38,8 @@ const PendingSendSchema = z.object({
     PENDING_SEND_STATE.REFUSED,
     PENDING_SEND_STATE.SESSION,
     PENDING_SEND_STATE.UNKNOWN,
+    PENDING_SEND_STATE.CONFLICT,
+    PENDING_SEND_STATE.DISMISSED,
   ]),
   submittedAtMs: z.number(),
 });
@@ -134,4 +144,16 @@ export function claimReader(subject: string | null): void {
   } catch {
     // A storage that refuses the claim leaves each tab its own view.
   }
+}
+
+// A dismissal against any other state for one id: the later of the two by
+// `submittedAtMs`, the tombstone on a tie. A tombstone therefore outranks every
+// state its dismissal saw — a Resend another tab had in flight ends hidden —
+// and only a send begun after it, which an operator started on purpose, takes
+// the id back. `null` when neither is a tombstone.
+export function tombstoneRank(incoming: PendingSend, mine: PendingSend): PendingSend | null {
+  const dismissed = PENDING_SEND_STATE.DISMISSED;
+  if (incoming.state !== dismissed && mine.state !== dismissed) return null;
+  const [tombstone, other] = incoming.state === dismissed ? [incoming, mine] : [mine, incoming];
+  return other.state !== dismissed && other.submittedAtMs > tombstone.submittedAtMs ? other : tombstone;
 }
