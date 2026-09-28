@@ -19,6 +19,7 @@ import { SenderLabelProvider } from "./FleetMessageRow";
 import { FleetConnectionNotice } from "./FleetConnectionNotice";
 import { FleetConnectionIndicator, useArrivalCue } from "./FleetConnectionIndicator";
 import { useFleetPendingSends } from "./useFleetPendingSends";
+import { useCurrentUser } from "@/lib/auth/client";
 import { useMessageDelivery } from "./useFleetMessageDelivery";
 import { FleetThreadViewport } from "./FleetThreadViewport";
 
@@ -66,7 +67,10 @@ export function FleetThread({
   // Every send this fleet has not heard back on, from submit to the 202 — and
   // what Resend and the notice work from. Module state with a storage mirror,
   // so it outlives this component and this document.
-  const ledger = useFleetPendingSends(workspaceId, fleetId);
+  // Keyed by the signed-in user as well, so the next person on a shared
+  // browser never sees, or resends as themselves, what this one typed.
+  const { userId } = useCurrentUser();
+  const ledger = useFleetPendingSends({ subject: userId, workspaceId, fleetId });
   // Pass the registry methods (each `useCallback([fleetId])`-stable), not
   // the whole `stream` object — `stream` is a fresh reference on every SSE
   // frame, so listing it would rebuild `onNew` per frame for no benefit.
@@ -77,7 +81,7 @@ export function FleetThread({
     reconcileOptimistic: stream.reconcileOptimistic,
     discardOptimistic: stream.discardOptimistic,
     onSubmitted,
-    ledger,
+    writers: ledger.writers,
   });
   // Runs of identical activity render as one expandable row. Grouping is a
   // pure view over the array the stream already ordered — it never reorders,
@@ -130,7 +134,8 @@ export function FleetThread({
             connectionStatus={stream.connectionStatus}
             pending={ledger.pending}
             onResend={delivery.resend}
-            onDismiss={ledger.dismiss}
+            onDismiss={ledger.writers.dismiss}
+            onRestored={delivery.noteRestored}
           />
         </DashboardPanel>
       </SenderLabelProvider>

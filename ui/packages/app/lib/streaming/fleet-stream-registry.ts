@@ -78,16 +78,16 @@ function setEvents(
   next: (prev: FleetEvent[]) => FleetEvent[],
   spoken: Partial<FleetFacts> = {},
 ): void {
-  // The one choke point every mutation flows through, so the cap lives here
-  // once rather than at all eight call sites — and so does the strip's
-  // `latest`, recomputed from the rows and kept by identity when unchanged.
-  // A completion's fleet facts fold into the same write, so the frame costs
-  // its subscribers one notification, not two.
+  // The one choke point every mutation flows through: the cap and the strip's
+  // `latest` live here once, a completion's facts fold into the same write, and
+  // a frame that changed nothing (a duplicate, a malformed one) notifies no one.
   const events = capEvents(next(entry.snapshot.events));
+  const facts = spokenFacts(entry, spoken);
+  if (events === entry.snapshot.events && facts.fleet === undefined) return;
   const latest = latestFigures(events);
   entry.snapshot = {
     ...entry.snapshot,
-    ...spokenFacts(entry, spoken),
+    ...facts,
     events,
     latest: sameFigures(latest, entry.snapshot.latest) ? entry.snapshot.latest : latest,
   };

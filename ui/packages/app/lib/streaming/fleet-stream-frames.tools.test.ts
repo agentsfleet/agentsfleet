@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
-import { applyLiveFrame } from "./fleet-stream-frames";
+import { applyLiveFrame, parseLiveFrame } from "./fleet-stream-frames";
 import type { FleetEvent } from "./fleet-stream-row";
 import { evt } from "@/tests/helpers/fleet-stream-fixtures";
 
@@ -24,6 +24,14 @@ function progressed(name: string, elapsed: number): LiveFrame {
 
 function completed(name: string, ms: number): LiveFrame {
   return { kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "e1", name, ms };
+}
+
+// Hostile wire input, through the real parser: it checks only `kind`, which is
+// why the reducer reads every other field itself.
+function wire(payload: Record<string, unknown>): LiveFrame {
+  const frame = parseLiveFrame(JSON.stringify(payload));
+  if (frame === null) throw new Error("the parser refused a frame it should let through");
+  return frame;
 }
 
 describe("applyLiveFrame — tool frames", () => {
@@ -87,21 +95,21 @@ describe("applyLiveFrame — tool frames", () => {
     // `parseLiveFrame` checks only `kind`; the tool row renders `name` as a
     // React child, so an object there would throw on render.
     const seed = [evt({ id: "e1" })];
-    const badName = { kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "e1", name: { bad: "name" } } as unknown as LiveFrame;
+    const badName = wire({ kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "e1", name: { bad: "name" } });
     expect(applyLiveFrame(seed, badName, STARTED_AT)).toBe(seed);
-    const emptyName = { kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "e1", name: "" } as unknown as LiveFrame;
+    const emptyName = wire({ kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "e1", name: "" });
     expect(applyLiveFrame(seed, emptyName, STARTED_AT)).toBe(seed);
 
     const open = applyLiveFrame(seed, started("shell"), STARTED_AT);
-    const textMs = { kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "e1", name: "shell", ms: "7" } as unknown as LiveFrame;
+    const textMs = wire({ kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "e1", name: "shell", ms: "7" });
     expect(applyLiveFrame(open, textMs, COMPLETED_AT)).toBe(open);
-    const negative = { kind: FRAME_KIND.TOOL_CALL_PROGRESS, event_id: "e1", name: "shell", elapsed_ms: -1 } as unknown as LiveFrame;
+    const negative = wire({ kind: FRAME_KIND.TOOL_CALL_PROGRESS, event_id: "e1", name: "shell", elapsed_ms: -1 });
     expect(applyLiveFrame(open, negative, PROGRESS_AT)).toBe(open);
 
     // A completion with no figure is not malformed: it closes the call and
     // keeps the elapsed a progress frame reported.
     const progressed400 = applyLiveFrame(open, progressed("shell", 400), PROGRESS_AT);
-    const bare = { kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "e1", name: "shell" } as unknown as LiveFrame;
+    const bare = wire({ kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "e1", name: "shell" });
     expect(applyLiveFrame(progressed400, bare, COMPLETED_AT)[0]?.tools).toEqual([
       { name: "shell", startedAtMs: STARTED_AT, ms: 400, done: true },
     ]);

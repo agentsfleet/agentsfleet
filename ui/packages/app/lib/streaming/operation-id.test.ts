@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MintUnavailable, mintOperationId } from "./operation-id";
 
-// The shape the daemon stores as `producer_key`, and the two RFC 9562 marks a
-// v7 carries: version nibble `7`, variant in `[89ab]`.
-const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+// The shape the daemon stores inside `producer_key`: version nibble `7`, variant in `[89ab]`.
+import { UUID_V7 } from "@/tests/fleet-thread/steer-copy";
 // 2026-09-28T00:00:00Z, and its 48-bit big-endian spelling as the first
 // twelve hex digits of the id.
 const INSTANT_MS = 1_790_553_600_000;

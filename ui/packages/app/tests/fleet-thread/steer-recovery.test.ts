@@ -1,12 +1,12 @@
-import { WS, ZID, mockStream, renderThread, steerFleetActionMock } from "./harness";
+import { SUBJECT, WS, ZID, mockStream, renderThread, steerFleetActionMock } from "./harness";
 import {
-  ACCEPTED, DISMISS_LABEL, NOTICES_LABEL, RESEND_LABEL, SEND_FAILED_TEXT, SEND_UNCONFIRMED_TEXT, SIGN_IN_LABEL, UNAVAILABLE,
+  ACCEPTED, DISMISS_LABEL, NOTICES_LABEL, REFUSED, RESEND_LABEL, SEND_FAILED_TEXT, SEND_UNCONFIRMED_TEXT, SIGN_IN_LABEL, UNAVAILABLE,
   composerInput, heldRefusal, operationIdOf, send,
 } from "./steer-helpers";
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
-import { PENDING_SEND_STATE, getPendingSends } from "@/lib/streaming/pending-sends";
+import { PENDING_SEND_STATE, dismissPendingSend, getPendingSends } from "@/lib/streaming/pending-sends";
 
 // A send that did not come back: refused, unconfirmed, or refused after the
 // composer that sent it was gone. Every case ends in one ledger entry per
@@ -16,6 +16,14 @@ import { PENDING_SEND_STATE, getPendingSends } from "@/lib/streaming/pending-sen
 // inside it.
 const NO_REPLAY_WINDOW_MS = 5_000;
 const TRANSPORT_FAILED = new Error("Server Component transport failed");
+const SCOPE = { subject: SUBJECT, workspaceId: WS, fleetId: ZID };
+// Answers that settle nothing: a client timeout, a server error after the row
+// may have committed, and a failure with no status at all.
+const UNSETTLED_ANSWERS = [
+  UNAVAILABLE,
+  { ok: false, error: "Request timed out", status: 408, errorCode: "UZ-REQ-408" },
+  { ok: false, error: "Something failed", status: undefined, errorCode: undefined },
+] as const;
 
 describe("FleetThread — steer recovery", () => {
   it("test_failed_send_leaves_thread_and_restores_draft", async () => {
@@ -24,7 +32,7 @@ describe("FleetThread — steer recovery", () => {
     const reconcileOptimistic = vi.fn();
     const discardOptimistic = vi.fn();
     mockStream([], { appendOptimistic: vi.fn().mockReturnValue("temp_t"), reconcileOptimistic, discardOptimistic });
-    steerFleetActionMock.mockResolvedValueOnce(UNAVAILABLE);
+    steerFleetActionMock.mockResolvedValueOnce(REFUSED);
     renderThread();
     await send("refused send");
     await waitFor(() => expect(discardOptimistic).toHaveBeenCalledWith("temp_t"));
@@ -35,7 +43,7 @@ describe("FleetThread — steer recovery", () => {
     expect(screen.getByRole("button", { name: RESEND_LABEL })).toBeTruthy();
     expect(reconcileOptimistic).not.toHaveBeenCalled();
     expect(refreshed).not.toHaveBeenCalled();
-    expect(getPendingSends(WS, ZID).map((entry) => entry.state)).toEqual([PENDING_SEND_STATE.REFUSED]);
+    expect(getPendingSends(SCOPE).map((entry) => entry.state)).toEqual([PENDING_SEND_STATE.REFUSED]);
     unsubscribe();
   });
 
@@ -52,13 +60,13 @@ describe("FleetThread — steer recovery", () => {
     await waitFor(() => expect(composerInput().value).toBe("offline send"));
     expect(screen.getByText(SEND_UNCONFIRMED_TEXT)).toBeTruthy();
     expect(screen.queryByText(SEND_FAILED_TEXT)).toBeNull();
-    expect(getPendingSends(WS, ZID).map((entry) => entry.state)).toEqual([PENDING_SEND_STATE.UNKNOWN]);
+    expect(getPendingSends(SCOPE).map((entry) => entry.state)).toEqual([PENDING_SEND_STATE.UNKNOWN]);
 
     fireEvent.click(screen.getByRole("button", { name: RESEND_LABEL }));
     await waitFor(() => expect(steerFleetActionMock).toHaveBeenCalledTimes(2));
     expect(operationIdOf(1)).toBe(operationIdOf(0));
     await waitFor(() => expect(screen.queryByText(SEND_UNCONFIRMED_TEXT)).toBeNull());
-    expect(getPendingSends(WS, ZID)).toEqual([]);
+    expect(getPendingSends(SCOPE)).toEqual([]);
   });
 
   it("test_resend_submits_restored_text_once", async () => {
@@ -69,7 +77,7 @@ describe("FleetThread — steer recovery", () => {
       discardOptimistic,
       reconcileOptimistic,
     });
-    steerFleetActionMock.mockResolvedValueOnce(UNAVAILABLE).mockResolvedValueOnce(ACCEPTED("evt_resend_ok"));
+    steerFleetActionMock.mockResolvedValueOnce(REFUSED).mockResolvedValueOnce(ACCEPTED("evt_resend_ok"));
     // A refused send stays refused until the operator acts. The clock is fake
     // from before the send, so a replay timer armed by the refusal would fire
     // inside the window below.
@@ -100,7 +108,7 @@ describe("FleetThread — steer recovery", () => {
 
   it("test_draft_matching_pending_entry_reuses_its_id", async () => {
     mockStream([], { appendOptimistic: vi.fn().mockReturnValueOnce("temp_old").mockReturnValueOnce("temp_again") });
-    steerFleetActionMock.mockResolvedValueOnce(UNAVAILABLE).mockResolvedValueOnce(ACCEPTED("evt_old_ok"));
+    steerFleetActionMock.mockResolvedValueOnce(REFUSED).mockResolvedValueOnce(ACCEPTED("evt_old_ok"));
     renderThread();
     await send("old");
     await waitFor(() => expect(composerInput().value).toBe("old"));
@@ -109,7 +117,7 @@ describe("FleetThread — steer recovery", () => {
     await send("old");
     await waitFor(() => expect(steerFleetActionMock).toHaveBeenCalledTimes(2));
     expect(operationIdOf(1)).toBe(operationIdOf(0));
-    await waitFor(() => expect(getPendingSends(WS, ZID)).toEqual([]));
+    await waitFor(() => expect(getPendingSends(SCOPE)).toEqual([]));
   });
 
   it("test_failure_restore_respects_existing_draft", async () => {
@@ -136,7 +144,7 @@ describe("FleetThread — steer recovery", () => {
 
   it("test_two_refused_sends_keep_two_entries", async () => {
     const held = heldRefusal();
-    steerFleetActionMock.mockResolvedValueOnce(UNAVAILABLE);
+    steerFleetActionMock.mockResolvedValueOnce(REFUSED);
     mockStream([], { appendOptimistic: vi.fn().mockReturnValueOnce("temp_a").mockReturnValueOnce("temp_b") });
     renderThread();
     await send("first message");
@@ -154,13 +162,15 @@ describe("FleetThread — steer recovery", () => {
     const notices = within(screen.getByRole("list", { name: NOTICES_LABEL }));
     expect(notices.getByText("first message")).toBeTruthy();
     expect(notices.getByText("second message")).toBeTruthy();
-    expect(getPendingSends(WS, ZID).map((entry) => entry.text)).toEqual(["first message", "second message"]);
+    expect(getPendingSends(SCOPE).map((entry) => entry.text)).toEqual(["first message", "second message"]);
 
     // Dismiss takes one entry and nothing else.
+    const draftBefore = composerInput().value;
     const [dismissFirst] = screen.getAllByRole("button", { name: DISMISS_LABEL });
     fireEvent.click(dismissFirst as HTMLElement);
     await waitFor(() => expect(screen.getAllByRole("button", { name: RESEND_LABEL })).toHaveLength(1));
-    expect(getPendingSends(WS, ZID).map((entry) => entry.text)).toEqual(["second message"]);
+    expect(getPendingSends(SCOPE).map((entry) => entry.text)).toEqual(["second message"]);
+    expect(composerInput().value).toBe(draftBefore);
   });
 
   it("test_failure_after_remount_is_resendable", async () => {
@@ -184,6 +194,21 @@ describe("FleetThread — steer recovery", () => {
     expect(operationIdOf(1)).toBe(operationIdOf(0));
   });
 
+  it("reads an answer that settles nothing as unconfirmed, never as refused", async () => {
+    for (const answer of UNSETTLED_ANSWERS) {
+      steerFleetActionMock.mockReset();
+      steerFleetActionMock.mockResolvedValueOnce(answer);
+      mockStream([], { appendOptimistic: vi.fn().mockReturnValue("temp_x") });
+      const view = renderThread();
+      await send("maybe landed");
+      await waitFor(() => expect(screen.getByText(SEND_UNCONFIRMED_TEXT)).toBeTruthy());
+      expect(screen.queryByText(SEND_FAILED_TEXT)).toBeNull();
+      expect(getPendingSends(SCOPE).map((entry) => entry.state)).toEqual([PENDING_SEND_STATE.UNKNOWN]);
+      view.unmount();
+      getPendingSends(SCOPE).forEach((entry) => dismissPendingSend(SCOPE, entry.operationId));
+    }
+  });
+
   it("test_session_failure_keeps_sign_in", async () => {
     const reconcileOptimistic = vi.fn();
     const discardOptimistic = vi.fn();
@@ -194,8 +219,9 @@ describe("FleetThread — steer recovery", () => {
     await waitFor(() => expect(discardOptimistic).toHaveBeenCalledWith("temp_99"));
     await waitFor(() => expect(composerInput().value).toBe("deploy that fails"));
     expect(screen.getByRole("link", { name: SIGN_IN_LABEL }).getAttribute("href")).toBe("/sign-in");
-    expect(screen.queryByRole("button", { name: RESEND_LABEL })).toBeNull();
+    // Once signed back in, Resend is the way out; a fresh 401 marks it again.
+    expect(screen.getByRole("button", { name: RESEND_LABEL })).toBeTruthy();
     expect(reconcileOptimistic).not.toHaveBeenCalled();
-    expect(getPendingSends(WS, ZID).map((entry) => entry.state)).toEqual([PENDING_SEND_STATE.SESSION]);
+    expect(getPendingSends(SCOPE).map((entry) => entry.state)).toEqual([PENDING_SEND_STATE.SESSION]);
   });
 });

@@ -5,17 +5,14 @@ import { steerFleetActionMock } from "./harness";
 // What the steer suites share: the composer's names and copy, the action's
 // answers, and the moves a person makes in the composer.
 
-export const COMPOSER_NAME = "Message this fleet…";
-export const SEND_FAILED_TEXT = "Message not sent.";
-export const SEND_UNCONFIRMED_TEXT = "Couldn't confirm this message was sent.";
-export const RESEND_LABEL = "Resend";
-export const SEND_LABEL = "Send";
-export const SIGN_IN_LABEL = "Sign in";
-export const DISMISS_LABEL = "Dismiss";
-export const NOTICES_LABEL = "Unsent messages";
-export const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+import { COMPOSER_NAME, SEND_LABEL, UUID_V7 } from "./steer-copy";
+
+export * from "./steer-copy";
 export const OPERATION_ID = expect.stringMatching(UUID_V7);
-export const UNAVAILABLE = { ok: false, error: "Provider unavailable", status: 503, errorCode: "UZ-AGT-503" } as const;
+// A definite refusal: the fleet will not take work, so nothing was admitted.
+export const REFUSED = { ok: false, error: "Fleet is paused", status: 409, errorCode: "UZ-AGT-012" } as const;
+// An answer that settles nothing: the daemon may hold the message.
+export const UNAVAILABLE = { ok: false, error: "Provider unavailable", status: 503, errorCode: "UZ-API-002" } as const;
 export const ACCEPTED = (eventId: string) => ({ ok: true, data: { event_id: eventId } });
 
 export function composerInput(): HTMLTextAreaElement {
@@ -41,7 +38,7 @@ export function operationIdOf(index: number): string {
 export function heldRefusal(): { refuse: () => void } {
   const held = { refuse: () => {} };
   steerFleetActionMock.mockImplementationOnce(
-    () => new Promise((resolve) => { held.refuse = () => resolve(UNAVAILABLE); }),
+    () => new Promise((resolve) => { held.refuse = () => resolve(REFUSED); }),
   );
   return held;
 }

@@ -126,7 +126,7 @@ function applyChunk(
   prev: FleetEvent[],
   frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.CHUNK }>,
 ): FleetEvent[] {
-  // Locate once and copy once, matching `applyToolFrame` — a streaming reply
+  // Locate once and copy once, matching `applyToolStep` — a streaming reply
   // fires this per chunk, so a second full pass per frame is pure waste.
   const index = prev.findIndex((e) => e.id === frame.event_id);
   const existing = prev[index];
@@ -163,7 +163,7 @@ function applyEventComplete(
   frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_COMPLETE }>,
   nowMs: number,
 ): FleetEvent[] {
-  // Locate once, copy once — same shape as `applyToolFrame` and `applyChunk`.
+  // Locate once, copy once — same shape as `applyToolStep` and `applyChunk`.
   const index = prev.findIndex((e) => e.id === frame.event_id);
   const existing = prev[index];
   // A completion for a row the timeline never opened — a subscriber that
