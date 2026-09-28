@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { __resetPendingSendsForTests } from "@/lib/streaming/pending-sends";
+import { __resetPendingSendsForTests, beginPendingSend } from "@/lib/streaming/pending-sends";
 import { PENDING_SEND_STATE, useFleetPendingSends, type LedgerScope } from "./useFleetPendingSends";
 
 const SUBMITTED_AT_MS = 1_700_000_000_000;
@@ -60,7 +60,9 @@ describe("useFleetPendingSends", () => {
 
   it("test_ledger_reads_empty_on_server", () => {
     // The ledger is browser state. Server-rendering must not read it — one
-    // request's unresolved sends would leak into another's markup.
+    // request's unresolved sends would leak into another's markup. The ledger
+    // holds an entry, so a leak is what the markup would show.
+    beginPendingSend(scope("fleet_ssr"), { operationId: "op-ssr", text: "typed in a browser", submittedAtMs: SUBMITTED_AT_MS });
     function Probe() {
       const { pending } = useFleetPendingSends(scope("fleet_ssr"));
       return <span>{pending.length === 0 ? "no pending" : "leaked"}</span>;

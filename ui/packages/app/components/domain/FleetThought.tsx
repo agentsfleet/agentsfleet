@@ -78,14 +78,17 @@ function LiveLabel({ reasoning, startedAtMs }: { reasoning: string; startedAtMs:
       <BrailleSpinner className="text-pulse" />
       <span className="shrink-0">
         {THOUGHT_LIVE_LABEL}
+        {/* The clock and the sentence are for the eye. The chip sits in the
+            transcript's live log, so a ticking name would be read out ten
+            times a second; the button's name stays "Thinking". */}
         {startedAtMs !== null ? (
-          <>
+          <span aria-hidden="true">
             {DURATION_SEPARATOR}
             <ThoughtClock startedAtMs={startedAtMs} />
-          </>
+          </span>
         ) : null}
       </span>
-      <span className="truncate text-text-subtle">{latestSentence(reasoning)}</span>
+      <span aria-hidden="true" className="truncate text-text-subtle">{latestSentence(reasoning)}</span>
     </span>
   );
 }

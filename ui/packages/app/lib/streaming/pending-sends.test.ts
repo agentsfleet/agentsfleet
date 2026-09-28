@@ -240,11 +240,27 @@ describe("pending-sends ledger", () => {
   });
 
   it("keeps the ledger in memory when a write is refused for quota", () => {
-    const full = fakeStorage({ setItem: () => { throw new DOMException("full", "QuotaExceededError"); } });
-    vi.spyOn(window, "localStorage", "get").mockReturnValue(full);
+    let full = true;
+    const room = fakeStorage();
+    const quota = fakeStorage({
+      getItem: (key) => room.getItem(key),
+      setItem: (key, value) => {
+        if (full) throw new DOMException("full", "QuotaExceededError");
+        room.setItem(key, value);
+      },
+    });
+    vi.spyOn(window, "localStorage", "get").mockReturnValue(quota);
     beginPendingSend(SCOPE, send("op-1", "deploy"));
     expect(states()).toEqual([["op-1", PENDING_SEND_STATE.SENDING]]);
-    expect(full.getItem(STORAGE_KEY)).toBeNull();
+    expect(room.getItem(STORAGE_KEY)).toBeNull();
+    // The next write builds on this tab's copy: storage never saw op-1 end.
+    failPendingSend(SCOPE, "op-1", PENDING_SEND_STATE.UNKNOWN);
+    beginPendingSend(SCOPE, send("op-2", "stop"));
+    expect(states()).toEqual([["op-1", PENDING_SEND_STATE.UNKNOWN], ["op-2", PENDING_SEND_STATE.SENDING]]);
+    // A write that lands puts the whole ledger back in storage.
+    full = false;
+    failPendingSend(SCOPE, "op-2", PENDING_SEND_STATE.REFUSED);
+    expect(JSON.parse(room.getItem(STORAGE_KEY) ?? "[]")).toHaveLength(2);
   });
 
   it("survives a storage whose reads and removals throw after it was found", () => {
@@ -258,6 +274,11 @@ describe("pending-sends ledger", () => {
     // are best-effort, so the ledger is simply empty.
     expect(getPendingSends(SCOPE)).toEqual([]);
     expect(findPendingSend(SCOPE, "op-1")).toBeUndefined();
+    // A read that throws is not an empty ledger: the ended send survives the next write.
+    beginPendingSend(SCOPE, send("op-1", "deploy"));
+    failPendingSend(SCOPE, "op-1", PENDING_SEND_STATE.UNKNOWN);
+    beginPendingSend(SCOPE, send("op-2", "stop"));
+    expect(states()).toEqual([["op-1", PENDING_SEND_STATE.UNKNOWN], ["op-2", PENDING_SEND_STATE.SENDING]]);
   });
 
   it("notifies subscribers on every write and stops after unsubscribe", () => {

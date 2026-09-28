@@ -45,6 +45,7 @@ function View({ submittedMessageId = null, eventsCount = 0 }: {
         onResend={() => {}}
         onDismiss={() => {}}
         onRestored={() => {}}
+        onDraft={() => {}}
       />
     </AssistantRuntimeProvider>
   );
