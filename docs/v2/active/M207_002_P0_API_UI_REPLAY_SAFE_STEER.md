@@ -16,12 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M207
 **Workstream:** 002
 **Date:** Sep 28, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — one click can create two durable fleet runs today; the operator pays and reads twice
 **Categories:** API, UI
 **Batch:** B1 — rides PR #717 beside M207_001 by Kishore's call
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
+**Branch:** fix/chat-composer-scroll-clip
+**Folded-into:** `M207_001`
+**Baseline revision:** dbd2f32f396c82e7fe0b236d337efba084b133de
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M207_001 — the composer, the refusal notice and the resend flow this workstream makes replay-safe
