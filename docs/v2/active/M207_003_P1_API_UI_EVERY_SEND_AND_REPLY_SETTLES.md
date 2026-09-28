@@ -65,6 +65,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/api/{events,events-types}.ts` | EDIT | Optional `call_id` on the three tool frames |
 | `ui/packages/app/lib/streaming/fleet-stream-row.ts` | EDIT | A tool call keeps the `callId` its frames name |
 | `ui/packages/app/components/domain/{useFleetThreadEntries,useFleetEventStream,FleetReplyBody}.ts(x)` | EDIT | Trigger wrapper reuse; `reply` leaves the trigger's bag; wait verb hidden from assistive tech |
+| `ui/packages/app/components/domain/{fleetMessageRenderers.tsx,fleetMessageReaders.ts}`, `ui/packages/app/tests/use-fleet-event-stream-frames.test.ts` | EDIT | The activity tick stops reading `reply` from the bag, its only reader, so `readReply` goes |
 | `ui/packages/app/lib/utils.ts` | EDIT | Durations of a minute or more read with minutes |
 | `ui/packages/design-system/src/design-system/Alert.tsx`, `ui/packages/design-system/src/tokens.css` | EDIT | Dismiss target at least 24 px; settled rows keep focus rings |
 | Tests beside each file above, plus `ui/packages/app/tests/fleet-thread/*.test.ts` and `ui/packages/app/tests/e2e/acceptance/fleet-resend.spec.ts` | CREATE / EDIT | One test per Dimension |
@@ -164,8 +165,8 @@ NullClaw runs a batch's calls one at a time, so two calls of one name are never 
 ### §7 — Streaming stays cheap
 
 - **Dimension 7.1** — a progress frame for a running tool returns the same timeline array; only a completion changes it → Test `test_progress_frame_keeps_identity` — DONE (app coverage 100%: 8,104/8,104 statements, 4,861/4,861 branches; 343 files / 3,137 tests)
-- **Dimension 7.2** — a backfill page returns the same row objects for unchanged terminal rows, and the same array when nothing changed → Test `test_backfill_keeps_unchanged_identity`
-- **Dimension 7.3** — a reply delta leaves its trigger message's identity alone (`reply` leaves the trigger's bag) → Test `test_reply_delta_keeps_trigger_identity`
+- **Dimension 7.2** — a backfill page returns the same row objects for unchanged terminal rows, and the same array when nothing changed → Test `test_backfill_keeps_unchanged_identity` — DONE (app coverage 100%: 8,118/8,118 statements, 4,890/4,890 branches; 232 app suites / 2,100 tests)
+- **Dimension 7.3** — a reply delta leaves its trigger message's identity alone (`reply` leaves the trigger's bag) → Test `test_reply_delta_keeps_trigger_identity` — DONE (app coverage 100%: 8,118/8,118 statements, 4,890/4,890 branches; 232 app suites / 2,100 tests)
 
 ## Interfaces
 

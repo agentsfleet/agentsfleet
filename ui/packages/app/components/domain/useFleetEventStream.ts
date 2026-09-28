@@ -136,9 +136,10 @@ function convertEvent(event: FleetEvent): ThreadMessageLike {
         status: event.status,
         queued: event.clientTimestamp === true,
         submittedAtMs: event.submittedAtMs,
-        // The fleet's reply on this same durable row, and the sentence to show
-        // in its place when the reply is empty (still working, blocked, failed).
-        reply: event.reply,
+        // The reply itself is not here: it is the reply message's content
+        // (`toReplyMessage`), and carrying it would change this message on
+        // every streamed word. What is here is the sentence to show when there
+        // is no reply (still working, blocked, failed).
         replyRecovering: event.replyRecovering,
         outcome: event.outcome,
         // The failure CLASS, not the sentence — the renderer picks remediation
@@ -148,4 +149,14 @@ function convertEvent(event: FleetEvent): ThreadMessageLike {
       },
     },
   };
+}
+
+/** Whether two events convert to the same trigger message: every field
+ * `convertEvent` reads is equal. A streamed reply changes none of them. */
+export function sameTrigger(a: FleetEvent, b: FleetEvent): boolean {
+  return a.role === b.role && a.id === b.id && a.createdAt.getTime() === b.createdAt.getTime()
+    && a.text === b.text && a.actor === b.actor && a.custom?.requestJson === b.custom?.requestJson
+    && a.status === b.status && a.clientTimestamp === b.clientTimestamp && a.submittedAtMs === b.submittedAtMs
+    && a.replyRecovering === b.replyRecovering && a.outcome === b.outcome
+    && a.failureLabel === b.failureLabel && a.failureDetail === b.failureDetail;
 }

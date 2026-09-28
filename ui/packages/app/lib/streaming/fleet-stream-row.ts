@@ -159,3 +159,12 @@ export function rowToEvent(row: EventRow | EventDetail): FleetEvent {
     custom: { requestJson: request_json },
   };
 }
+
+/** Whether two rows render alike: every field equal, `createdAt` by its
+ * instant and `custom` by the payload it carries. */
+export function sameEvent(a: FleetEvent, b: FleetEvent): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)] as (keyof FleetEvent)[]);
+  return [...keys].every((key) => a[key] === b[key]
+    || (key === "createdAt" && a.createdAt.getTime() === b.createdAt.getTime())
+    || (key === "custom" && a.custom?.requestJson === b.custom?.requestJson));
+}

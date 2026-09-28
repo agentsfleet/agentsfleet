@@ -62,10 +62,26 @@ describe("useFleetThreadEntries", () => {
     for (let index = 0; index < settledCount; index += 1) {
       expect(after[index]).toBe(before[index]);
     }
-    expect(after[settledCount]).not.toBe(before[settledCount]);
 
     mirror.pass(after);
-    // Only the streaming turn's trigger and reply convert again.
-    expect(mirror.conversions - first).toBe(ENTRIES_PER_TURN);
+    // Only the streaming turn's reply converts again.
+    expect(mirror.conversions - first).toBe(1);
+  });
+
+  it("test_reply_delta_keeps_trigger_identity", () => {
+    const streaming = evt({ id: "live", role: "user", actor: "steer:user_1", text: "go", reply: "wor", status: "received" });
+    const hook = renderHook(({ events }) => useFleetThreadEntries(events, convertEvent), {
+      initialProps: { events: [streaming] },
+    });
+    const [trigger, reply] = hook.result.current.entries;
+
+    hook.rerender({ events: [{ ...streaming, reply: "world", reasoning: "thinking", thinking: true }] });
+    const [sameTrigger, nextReply] = hook.result.current.entries;
+    expect(sameTrigger).toBe(trigger);
+    expect(nextReply).not.toBe(reply);
+
+    // A change the trigger renders gives it a new object.
+    hook.rerender({ events: [{ ...streaming, reply: "world", status: "processed" }] });
+    expect(hook.result.current.entries[0]).not.toBe(trigger);
   });
 });

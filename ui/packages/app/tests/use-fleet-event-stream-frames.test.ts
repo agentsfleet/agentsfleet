@@ -22,7 +22,7 @@ describe("useFleetEventStream — conversion and frame edges", () => {
     FakeEventSource.uninstall();
   });
 
-  it("convertEvent carries the trigger in content and the reply/outcome in metadata", () => {
+  it("convertEvent carries the trigger in content and the outcome, never the reply, in metadata", () => {
     const { result } = mount();
     const msg = result.current.convertEvent({
       id: "evt_silent",
@@ -36,10 +36,11 @@ describe("useFleetEventStream — conversion and frame edges", () => {
       createdAt: new Date(0),
       status: "processed",
     });
-    // Content is the trigger; the reply bubble reads reply/outcome from metadata,
-    // so a reply-less turn still says what happened without clobbering the trigger.
+    // Content is the trigger and the outcome is metadata, so a reply-less turn
+    // still says what happened. The reply is the reply message's content, and
+    // carrying it here would change the trigger on every streamed word.
     expect(msg.content).toEqual([{ type: "text", text: "opened · owner/repo#7" }]);
-    expect(msg.metadata?.custom?.["reply"]).toBe("");
+    expect(msg.metadata?.custom).not.toHaveProperty("reply");
     expect(msg.metadata?.custom?.["outcome"]).toBe(OUTCOME.COMPLETED);
   });
 

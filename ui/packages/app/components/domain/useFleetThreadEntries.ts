@@ -6,6 +6,7 @@ import type { ThreadMessageLike } from "@assistant-ui/react";
 import { ENTRY_KIND, groupThreadEvents, type ThreadEntry } from "@/lib/events/event-grouping";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import { toReplyMessage } from "./fleetReplyMessage";
+import { sameTrigger } from "./useFleetEventStream";
 
 // What the thread actually renders: the stream's events with each run of
 // identical activity folded into one entry. Kept out of `FleetThread` because
@@ -31,9 +32,11 @@ const SPLIT = {
   REPLY: "reply",
 } as const;
 
+type TriggerEntry = { kind: typeof SPLIT.TRIGGER; key: string; event: FleetEvent };
+
 export type FleetThreadEntry =
   | ThreadEntry
-  | { kind: typeof SPLIT.TRIGGER; key: string; event: FleetEvent }
+  | TriggerEntry
   | { kind: typeof SPLIT.REPLY; key: string; event: FleetEvent };
 
 export type FleetThreadEntries = {
@@ -58,10 +61,18 @@ export function useFleetThreadEntries(
     previous.current = next;
     return next;
   }, [events]);
-  const entries = useMemo(
-    () => groupedEntries.flatMap(expandedOnce),
-    [groupedEntries],
-  );
+  // The trigger each split turn rendered last, by key: a streamed reply
+  // replaces its event, and the trigger keeps its object while nothing it
+  // renders changed.
+  const triggers = useRef(new Map<string, TriggerEntry>());
+  const entries = useMemo(() => {
+    const held = triggers.current;
+    const next = new Map<string, TriggerEntry>();
+    const expanded = groupedEntries.flatMap((entry) => expandedOnce(entry, held));
+    for (const entry of expanded) if (entry.kind === SPLIT.TRIGGER) next.set(entry.key, entry);
+    triggers.current = next;
+    return expanded;
+  }, [groupedEntries]);
   const convertEntry = useCallback(
     (entry: FleetThreadEntry): ThreadMessageLike => {
       switch (entry.kind) {
@@ -91,19 +102,22 @@ export function useFleetThreadEntries(
 // weakly, so an entry the stream replaced takes its expansion with it.
 const EXPANDED = new WeakMap<ThreadEntry, FleetThreadEntry[]>();
 
-function expandedOnce(entry: ThreadEntry): FleetThreadEntry[] {
+function expandedOnce(entry: ThreadEntry, triggers: ReadonlyMap<string, TriggerEntry>): FleetThreadEntry[] {
   const held = EXPANDED.get(entry);
   if (held !== undefined) return held;
-  const expanded = expandEntry(entry);
+  const expanded = expandEntry(entry, triggers.get(entry.key));
   EXPANDED.set(entry, expanded);
   return expanded;
 }
 
-function expandEntry(entry: ThreadEntry): FleetThreadEntry[] {
+function expandEntry(entry: ThreadEntry, previous: TriggerEntry | undefined): FleetThreadEntry[] {
   if (entry.kind === ENTRY_KIND.GROUP || !hasReplyRow(entry.event)) return [entry];
   const { event } = entry;
+  const trigger = previous !== undefined && sameTrigger(previous.event, event)
+    ? previous
+    : { kind: SPLIT.TRIGGER, key: entry.key, event };
   return [
-    { kind: SPLIT.TRIGGER, key: entry.key, event },
+    trigger,
     {
       kind: SPLIT.REPLY,
       key: `${entry.key}${REPLY_ID_SUFFIX}`,
