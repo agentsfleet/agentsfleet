@@ -33,7 +33,15 @@ function sameOriginDestination(destination: string): string {
  * sign-in must never be steerable off-origin.
  */
 export function buildSignInUrl(requestUrl: string, destination: string): string {
-  const signInUrl = new URL(SIGN_IN_PATH, requestUrl);
-  signInUrl.searchParams.set(REDIRECT_URL_PARAM, sameOriginDestination(destination));
-  return signInUrl.toString();
+  return new URL(signInPath(destination), requestUrl).toString();
+}
+
+/**
+ * The same sign-in destination as a same-origin path, for a link a page
+ * renders: `signInPath("/w/ws_1/fleets/f_1")` →
+ * `/sign-in?redirect_url=%2Fw%2Fws_1%2Ffleets%2Ff_1`.
+ */
+export function signInPath(destination: string): string {
+  const query = new URLSearchParams({ [REDIRECT_URL_PARAM]: sameOriginDestination(destination) });
+  return `${SIGN_IN_PATH}?${query.toString()}`;
 }

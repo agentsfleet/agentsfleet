@@ -2,12 +2,14 @@
 
 import { useEffect, useId, useMemo, useRef, type RefObject } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ComposerPrimitive, useAui, useAuiState } from "@assistant-ui/react";
 import { Alert, Button, DashboardPanel, List, ListItem, Textarea, cn } from "@agentsfleet/design-system";
 import { ArrowUpIcon } from "lucide-react";
 import { PENDING_SEND_STATE, type PendingSend } from "./useFleetPendingSends";
 import { exceedsSteerLimit } from "./useFleetMessageDelivery";
 import { STEER_MESSAGE_MAX_BYTES } from "@/lib/api/fleets-types";
+import { signInPath } from "@/lib/auth/sign-in-redirect";
 
 const PLACEHOLDER = "Message this fleet…";
 const SEND_LABEL = "Send";
@@ -204,6 +206,8 @@ function PendingSendNotices({ entries, ...actions }: { entries: readonly Pending
 function PendingSendNotice({ entry, onResend, onDismiss, draftRef }: { entry: PendingSend } & NoticeProps) {
   const aui = useAui();
   const textId = useId();
+  // Sign-in returns to this fleet, where the notice's Resend is waiting.
+  const pathname = usePathname();
   const resend = () => {
     const composer = aui.composer();
     if (composer.getState().text === entry.text) composer.setText("");
@@ -229,7 +233,7 @@ function PendingSendNotice({ entry, onResend, onDismiss, draftRef }: { entry: Pe
       </span>
       {entry.state === PENDING_SEND_STATE.SESSION ? (
         <Button asChild type="button" variant="outline" size="sm">
-          <Link href="/sign-in">{SIGN_IN_LABEL}</Link>
+          <Link href={signInPath(pathname)}>{SIGN_IN_LABEL}</Link>
         </Button>
       ) : null}
       {/* Offered after a sign-in too: once the session is back, a Resend is

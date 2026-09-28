@@ -69,7 +69,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/utils.ts` | EDIT | Durations of a minute or more read with minutes |
 | `ui/packages/design-system/src/design-system/Alert.tsx`, `ui/packages/design-system/src/tokens.css` | EDIT | Dismiss target at least 24 px; settled rows keep focus rings |
 | Tests beside each file above, plus `ui/packages/app/tests/fleet-thread/*.test.ts` and `ui/packages/app/tests/e2e/acceptance/fleet-resend.spec.ts` | CREATE / EDIT | One test per Dimension |
-| `ui/packages/app/tests/fleet-thread/{ledger-fixtures,steer-copy}.ts` | CREATE / EDIT | One shared ledger fixture and fake lock manager for the pending-sends suites; conflict copy |
+| `ui/packages/app/tests/fleet-thread/{ledger-fixtures,steer-copy,steer-helpers,harness}.ts` | CREATE / EDIT | One shared ledger fixture and fake lock manager for the pending-sends suites; conflict copy; the 202 fixture's `replayed`; the thread page's path |
+| `ui/packages/app/lib/auth/sign-in-redirect.ts` | EDIT | `signInPath`, the same guarded destination as a same-origin link, and `buildSignInUrl` built on it |
 | `rustd/crates/afd_admission/src/{lib,admit,sql}.rs` (+ its tests) | EDIT | `Admitted` carries the stored digest and fleet; no drift warn for a steer |
 | `rustd/crates/afd_events/src/{steer,lib}.rs`, `rustd/crates/afd_events/tests/{events_suite,integration_steer,integration_steer_replay,integration_steer_retry}.rs` | EDIT | Append decides from the insert; `replayed` travels to the handler as `Steered` |
 | `rustd/crates/afd_events/tests/integration_steer_insert.rs` | CREATE | The §4 tests, split from the replay suite at its length cap |
@@ -154,8 +155,8 @@ NullClaw runs a batch's calls one at a time, so two calls of one name are never 
 
 ### §6 — Chat polish
 
-- **Dimension 6.1** — durations of a minute or more read with minutes ("2m 05s"), everywhere `formatSeconds` and `formatMs` render → Test `test_durations_show_minutes`
-- **Dimension 6.2** — Sign in from the session notice returns to the fleet (`buildSignInUrl`) → Test `test_sign_in_returns_to_the_fleet`
+- **Dimension 6.1** — durations of a minute or more read with minutes ("2m 05s"), everywhere `formatSeconds` and `formatMs` render → Test `test_durations_show_minutes` — DONE (`lib/utils.test.ts`; app 343 files / 3,141 tests green)
+- **Dimension 6.2** — Sign in from the session notice returns to the fleet (`buildSignInUrl`) → Test `test_sign_in_returns_to_the_fleet` — DONE (`SteerComposer.test.tsx`, `steer-recovery.test.ts`; `signInPath` beside `buildSignInUrl`)
 - **Dimension 6.3** — a live byte count shows from 90% of the limit, and Send is disabled over it → Test `test_byte_limit_counter_and_disabled_send`
 - **Dimension 6.4** — Alert's Dismiss is at least 24×24 CSS px (Web Content Accessibility Guidelines (WCAG) 2.2 target size) → Test `test_dismiss_target_is_24px`
 - **Dimension 6.5** — the wait verb is hidden from assistive tech; the status is still named "Working" or "Queued" → Test `test_wait_verb_is_not_announced`
@@ -307,6 +308,7 @@ PendingSend.state += "conflict" | "dismissed"            (browser ledger)
 - **Consults** — scope set by Kishore's deferral below. Clerk DEV runs one session per browser (`single_session_mode: true`, public `/v1/environment`, Sep 28); production is unverified and matters for §1's lock names only in that one user owns a tab. Source facts read at `5a68c5518` for every item.
 - **Metrics review** — no new events; the reused-id warn is reclassified (Metrics table). No analytics/funnel playbook update required: no funnel step changes.
 - **Skill-chain outcomes** — pending.
+- **Coverage, per Kishore's bar (TypeScript 100%, Rust patch > 99%)** — app package 100% (8,118/8,118 statements, 4,890/4,890 branches, 2,193/2,193 functions, 7,179/7,179 lines; `vitest --coverage` JSON summary). Rust patch 110/110 instrumented added lines = 100.00%: `make test-coverage-rustd` (exit 0; workspace 97.8505%, 42,883/43,825) wrote `rustd/lcov.info`, crossed with `git diff -U0 origin/main...HEAD -- '*.rs'`.
 - **Runner Zig tests have no `make` lane** (Out of Scope): `test_runner_stamps_one_call_id_per_call` ran through `zig build --build-file build_runner.zig test` on macOS (747/750 passed, 3 skipped) and natively on aarch64 Linux in `ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r6` (742/750 passed, 8 skipped). The x86_64-linux cross-build reaches link on both hosts and stops there only because each host's static curl is for another architecture (`/opt/curl-min/lib/libcurl.a` missing on macOS; arm64-only in the image). For Kishore: no repository lane runs these tests.
 - **Deferrals** — this spec carries the items deferred from M207_001 and M207_002:
 

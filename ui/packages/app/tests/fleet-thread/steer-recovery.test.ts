@@ -1,4 +1,4 @@
-import { SUBJECT, WS, ZID, mockStream, renderThread, steerFleetActionMock } from "./harness";
+import { SUBJECT, THREAD_PATH, WS, ZID, mockStream, renderThread, steerFleetActionMock } from "./harness";
 import {
   ACCEPTED, DISMISS_LABEL, NOTICES_LABEL, REFUSED, RESEND_LABEL, SEND_FAILED_TEXT, SEND_UNCONFIRMED_TEXT, SIGN_IN_LABEL, UNAVAILABLE,
   composerInput, heldRefusal, operationIdOf, send,
@@ -220,7 +220,7 @@ describe("FleetThread — steer recovery", () => {
     await send("deploy that fails");
     await waitFor(() => expect(discardOptimistic).toHaveBeenCalledWith("temp_99"));
     await waitFor(() => expect(composerInput().value).toBe("deploy that fails"));
-    expect(screen.getByRole("link", { name: SIGN_IN_LABEL }).getAttribute("href")).toBe("/sign-in");
+    expect(screen.getByRole("link", { name: SIGN_IN_LABEL }).getAttribute("href")).toBe(`/sign-in?redirect_url=${encodeURIComponent(THREAD_PATH)}`);
     // Once signed back in, Resend is the way out; a fresh 401 marks it again.
     expect(screen.getByRole("button", { name: RESEND_LABEL })).toBeTruthy();
     expect(reconcileOptimistic).not.toHaveBeenCalled();

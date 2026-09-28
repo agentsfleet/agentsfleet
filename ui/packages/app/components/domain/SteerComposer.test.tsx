@@ -18,6 +18,9 @@ const { composer, aui } = vi.hoisted(() => {
   };
 });
 
+const FLEET_PATH = "/w/ws_1/fleets/fleet_1";
+vi.mock("next/navigation", () => ({ usePathname: () => FLEET_PATH }));
+
 vi.mock("@assistant-ui/react", () => ({
   ComposerPrimitive: {
     Root: ({ children, ...rest }: { children: React.ReactNode }) => <div {...rest}>{children}</div>,
@@ -159,9 +162,9 @@ describe("SteerComposer", () => {
     expect(screen.getByRole("alert")).toBeTruthy();
   });
 
-  it("sends an expired session to sign in, still restores the text, and offers Resend for after", () => {
+  it("test_sign_in_returns_to_the_fleet: an expired session signs in back to this fleet, restores the text, and offers Resend", () => {
     render(view([entry({ operationId: "op-session", state: PENDING_SEND_STATE.SESSION })]));
-    expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe("/sign-in");
+    expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe(`/sign-in?redirect_url=${encodeURIComponent(FLEET_PATH)}`);
     expect(screen.getByRole("button", { name: RESEND })).toBeTruthy();
     expect(composer.setText).toHaveBeenCalledExactlyOnceWith("deploy the canary");
   });

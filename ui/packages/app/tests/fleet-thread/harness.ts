@@ -17,7 +17,10 @@ const {
   capturedOnNew,
   capturedSubmittedMessageId,
   signedIn,
+  threadPath,
 } = vi.hoisted(() => ({
+  // The page the thread renders on, as `usePathname` reports it.
+  threadPath: "/w/ws_thread/fleets/fleet_thread",
   routerRefreshMock: vi.fn(),
   steerFleetActionMock: vi.fn(),
   useFleetEventStreamMock: vi.fn(),
@@ -34,6 +37,7 @@ const {
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: routerRefreshMock }),
+  usePathname: () => threadPath,
 }));
 
 // The thread keys its pending-send ledger by the signed-in user; the suite
@@ -106,6 +110,7 @@ export const SUBJECT = TEST_SUBJECT;
 /** Whom the client's auth script reports; set `userId` to null for "not loaded yet". */
 export const clientUser = signedIn;
 export const ZID = "zomb_test";
+export const THREAD_PATH = threadPath;
 export const FLEET_NAME = "github-pr-reviewer";
 
 export function ev(
