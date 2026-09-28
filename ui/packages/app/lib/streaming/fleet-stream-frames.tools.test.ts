@@ -130,6 +130,28 @@ describe("applyLiveFrame — tool frames", () => {
     // A progress frame restating the elapsed changes nothing.
     const at400 = applyLiveFrame(running, progressed("grep", 400), PROGRESS_AT);
     expect(applyLiveFrame(at400, progressed("grep", 400), COMPLETED_AT)).toBe(at400);
+    // A completion with no figure could be the finished call's, and a call that
+    // finished without one cannot be told from a new one.
+    const bare = wire({ kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "e1", name: "read_file" });
+    expect(applyLiveFrame(settled, bare, REPEAT_AT)).toBe(settled);
+    const unmeasured = applyLiveFrame(running, wire({ ...bare, name: "grep" }), COMPLETED_AT);
+    expect(applyLiveFrame(unmeasured, completed("grep", 900), REPEAT_AT)).toBe(unmeasured);
+  });
+
+  it("shows a second call whose start a reconnect missed, once its timing proves it new", () => {
+    let out = applyLiveFrame([evt({ id: "e1" })], started("read_file"), STARTED_AT);
+    out = applyLiveFrame(out, completed("read_file", 700), COMPLETED_AT);
+    const first = { name: "read_file", startedAtMs: STARTED_AT, ms: 700, done: true };
+    // Progress past where the first call ended is a second call...
+    expect(applyLiveFrame(out, progressed("read_file", 900), REPEAT_AT)[0]?.tools).toEqual([
+      first,
+      { name: "read_file", startedAtMs: REPEAT_AT, ms: 900, done: false },
+    ]);
+    // ...and so is a completion with a figure of its own.
+    expect(applyLiveFrame(out, completed("read_file", 250), REPEAT_AT)[0]?.tools).toEqual([
+      first,
+      { name: "read_file", startedAtMs: REPEAT_AT, ms: 250, done: true },
+    ]);
   });
 
   // event_received always precedes its tool frames on the wire. Synthesizing an

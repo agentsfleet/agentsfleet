@@ -147,7 +147,7 @@ A `tool-call` part renders its name, a running or done glyph, and `useToolCallEl
 
 - **Dimension 5.1** — A running tool ticks from its start, a done tool shows `✓` and its final duration, adjacent tools share one "Tool calls" list, and a tool left unfinished on a settled reply shows no clock → Test `test_tool_row_reads_part_timing` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
 - **Dimension 5.2** — A tool frame whose `name` is not a string, or whose timing is not a number, is dropped at ingress and never reaches a row → Test `test_malformed_tool_frame_dropped` — DONE (app 68 files / 601 tests green; removing the fix turns its test red)
-- **Dimension 5.3** — A completion or progress frame for a call this event already finished, or a repeated start while the call is open, changes nothing; a name never seen still opens (its start was missed) → Test `test_late_tool_frame_opens_nothing` — DONE (app 68 files / 601 tests green; removing the fix turns its test red)
+- **Dimension 5.3** — A completion or progress frame that could restate a call this event already finished (its figure, no figure, progress no further than it ended), or a repeated start while the call is open, changes nothing; a name never seen, or timing past the finished call, opens a call (its start was missed; the second-call case is pinned beside it) → Test `test_late_tool_frame_opens_nothing` — DONE (app 68 files / 601 tests green; removing the fix turns its test red)
 
 ### §6 — Braille spinner primitive
 
@@ -191,7 +191,7 @@ mergeBackfill(prev, rows, nowMs = Date.now());  loadingVerbFor(key): LoadingVerb
 | Draft present on failure | Operator typed while the POST failed | assistant-ui returns the refused text ahead of the draft; nothing typed is lost |
 | Two queued sends fail | Serialized POSTs both refused | The composer returns the latest send's text; M207_002's ledger keeps both with their own Resend |
 | Remount mid-thought, no stamp, or a terminal backfill | Navigation inside the registry idle window; a reply recovered from detail; reconciliation over a live row | Clock resumes from the row stamp; without one it folds to "Thought" with no duration; the backfill merge keeps both stamps and closes an open span once |
-| Malformed or repeated tool frame | `name` not a string; a completion with no open call; a late progress frame | Dropped at ingress; the row and its parts are unchanged, nothing is rendered from it |
+| Malformed or repeated tool frame | `name` not a string; a completion restating a finished call; a late progress frame | Dropped at ingress; the row and its parts are unchanged, nothing is rendered from it |
 | Answer in the reasoning's first delta | Both kinds in one batch | Start and end at one clock read; duration `0.0s` |
 | Tool never completes | Stream ends mid-tool | Settled reply → part not running → no clock |
 | Tab hidden, or reduced motion | Timers throttle; `prefers-reduced-motion` | Next tick shows true elapsed, no catch-up burst; static `⠶` while the clock text still updates |
