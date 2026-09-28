@@ -19,6 +19,7 @@
 
 use afd_admission::Budgets;
 use afd_core::error_code;
+use afd_db::test_util::mint_id;
 use afd_dragonfly::streams::FleetStreams;
 use afd_events::{ACTOR_MACHINE, Steer};
 use tracing::Level;
@@ -122,6 +123,22 @@ async fn test_replay_bypasses_fleet_budget() {
         "a spent budget invites the retry an outage does: {refused}"
     );
     assert_eq!(admissions_for(&lane, FRESH_OPERATION).await, 0);
+    // A steer without an id names no admission to repeat, so the capacity
+    // refusal stands.
+    let keyless = steer
+        .append(
+            &lane.fleet,
+            &lane.workspace,
+            ACTOR_MACHINE,
+            REQUEST_JSON,
+            None,
+        )
+        .await
+        .expect_err("the fleet holds its budget");
+    assert!(
+        keyless.is_datastore_unavailable(),
+        "a keyless steer over budget is refused like new work: {keyless}"
+    );
     assert!(
         steer
             .replayed(
@@ -170,6 +187,30 @@ async fn test_drift_under_spent_budget_is_a_conflict() {
         .expect_err("a changed message under a reused id is refused");
     assert!(refused.is_operation_conflict(), "{refused}");
     assert_eq!(admissions_for(&lane, OPERATION).await, 1);
+
+    clean(&lane, &streams).await;
+}
+
+/// A row the ledger will not take is the caller's error: neither a capacity
+/// refusal to retry nor a repeat to answer.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_an_admission_the_ledger_refuses_is_an_error() {
+    let lane = EventsLane::open().await;
+    let streams = FleetStreams::new(lane.queue.clone());
+    let steer = Steer::new(lane.admissions());
+
+    // No fleet row holds this id, so the admission's foreign key refuses it.
+    let unheld = mint_id();
+    let refused = steer
+        .append(&unheld, &lane.workspace, ACTOR_MACHINE, REQUEST_JSON, None)
+        .await
+        .expect_err("an admission for a fleet the ledger does not hold is refused");
+    assert!(!refused.is_operation_conflict(), "{refused}");
+    assert!(
+        !refused.is_datastore_unavailable(),
+        "not a retryable capacity refusal: {refused}"
+    );
 
     clean(&lane, &streams).await;
 }
