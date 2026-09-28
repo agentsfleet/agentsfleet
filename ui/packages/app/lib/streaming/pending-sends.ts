@@ -123,13 +123,21 @@ function mutate(
 ): void {
   const key = ledgerKey(scope);
   const held = read(scope);
-  const store = mirror(scope);
+  const store = writable(scope);
   const stored = store === null ? null : readStored(store, key);
   const base = stored === null ? held : mergeIncoming(live(stored, Date.now()), held, UNSAVED.get(key) ?? NONE_UNSAVED);
   const next = capped(change(base));
   LEDGERS.set(key, next);
   if (store !== null) writeMirror(store, key, operationId, next);
   notify(key);
+}
+
+// A send still in flight when the next person signed in ends after their
+// first read purged it. Its ending stays in memory: writing it would put the
+// last user's text back in the storage the purge just cleared.
+function writable(scope: LedgerScope): Storage | null {
+  const superseded = purgedFor !== null && scope.subject !== purgedFor;
+  return superseded ? null : mirror(scope);
 }
 
 function writeMirror(store: Storage, key: string, operationId: string, next: readonly PendingSend[]): void {
