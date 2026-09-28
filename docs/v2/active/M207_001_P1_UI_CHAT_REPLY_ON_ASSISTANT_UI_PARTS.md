@@ -22,8 +22,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — sole workstream; rides PR #717 beside its composer-layout commits
 **Branch:** fix/chat-composer-scroll-clip
 **Baseline revision:** dbd2f32f396c82e7fe0b236d337efba084b133de
-**Test Baseline:** pending — measured before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** at `dbd2f32f3` — unit: cargo 2746 passed / 0 failed / 650 ignored (156 binaries); app 3025 · website 142 · cli 1777 pass / 16 skip · design-system 634; integration: 629 + 1 exclusive = 630 passed, 0 failed
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M207_001-dbd2f32f3.md` (revision, commands, counts, environment)
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Opus 5.5, Sep 26, 2026) from Kishore's in-session decisions; every assistant-ui claim read from the `@assistant-ui/react@0.15.22` tag (`bun.lock` resolves react 0.15.22, core 0.3.21)
 **Canonical architecture:** `docs/architecture/runner_fleet.md` §Live activity (frame kinds, chunk sequencing, the reply decoder); `docs/architecture/user_flow.md` §chat surface
