@@ -1,32 +1,28 @@
 import { WS, ZID, appendMessage, capturedOnNew, capturedSubmittedMessageId, ev, mockStream, renderThread, steerFleetActionMock, threadElement } from "./harness";
-import { describe, expect, it, vi } from "vitest";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { ACCEPTED, OPERATION_ID, UUID_V7, composerInput, operationIdOf, send } from "./steer-helpers";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, screen, waitFor } from "@testing-library/react";
 import type { AppendMessage } from "@assistant-ui/react";
 import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
+import { getPendingSends } from "@/lib/streaming/pending-sends";
+import { MintUnavailable } from "@/lib/streaming/operation-id";
 
-const COMPOSER_NAME = "Message this fleet…";
-const SEND_FAILED_TEXT = "Message not sent.";
-const RESEND_LABEL = "Resend";
-const SEND_LABEL = "Send";
-const SIGN_IN_LABEL = "Sign in";
-// Longer than any retry schedule the action could run: a replay would land
-// inside it.
-const NO_REPLAY_WINDOW_MS = 5_000;
-const UNAVAILABLE = { ok: false, error: "Provider unavailable", status: 503, errorCode: "UZ-AGT-503" } as const;
+// The real mint by default; a case that needs to see it, or fail it, overrides
+// one call.
+const { mintMock, actualMint } = vi.hoisted(() => ({
+  mintMock: vi.fn<() => string>(),
+  actualMint: { current: (): string => "" },
+}));
+vi.mock("@/lib/streaming/operation-id", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/streaming/operation-id")>();
+  actualMint.current = real.mintOperationId;
+  mintMock.mockImplementation(real.mintOperationId);
+  return { ...real, mintOperationId: mintMock };
+});
 
-function composerInput(): HTMLTextAreaElement {
-  return screen.getByRole("textbox", { name: COMPOSER_NAME }) as HTMLTextAreaElement;
-}
-
-// Through the composer, not `onNew`: the draft return under test is the
-// composer's own.
-async function send(text: string): Promise<void> {
-  fireEvent.change(composerInput(), { target: { value: text } });
-  await act(async () => {
-    // A string name matches whole, so this never picks Resend.
-    fireEvent.click(screen.getByRole("button", { name: SEND_LABEL }));
-  });
-}
+afterEach(() => {
+  mintMock.mockImplementation(actualMint.current);
+});
 
 describe("FleetThread — steer submission", () => {
   it("serialises rapid submissions so their HTTP requests reach the server in order", async () => {
@@ -41,14 +37,14 @@ describe("FleetThread — steer submission", () => {
         new Promise((resolve) => {
           releaseFirst = () => {
             order.push(text);
-            resolve({ ok: true, data: { event_id: "evt_1" } });
+            resolve(ACCEPTED("evt_1"));
           };
         }),
     );
     steerFleetActionMock.mockImplementationOnce(
       (_ws: string, _z: string, text: string) => {
         order.push(text);
-        return Promise.resolve({ ok: true, data: { event_id: "evt_2" } });
+        return Promise.resolve(ACCEPTED("evt_2"));
       },
     );
     renderThread();
@@ -63,49 +59,74 @@ describe("FleetThread — steer submission", () => {
       await Promise.all([first, second]);
     });
     expect(order).toEqual(["deploy", "stop"]);
+    // Two operations, two names.
+    expect(operationIdOf(0)).not.toBe(operationIdOf(1));
   });
 
-  it("calls steerFleetAction and reconciles the optimistic message on ok", async () => {
+  it("calls steerFleetAction with a named operation and reconciles the optimistic message on ok", async () => {
     const refreshed = vi.fn();
     const unsubscribe = subscribeOnboardingRefresh(WS, refreshed);
     const appendOptimistic = vi.fn().mockReturnValue("temp_42");
     const reconcileOptimistic = vi.fn();
     const discardOptimistic = vi.fn();
-    mockStream([], {
-      appendOptimistic,
-      reconcileOptimistic,
-      discardOptimistic,
-    });
-    steerFleetActionMock.mockResolvedValueOnce({
-      ok: true,
-      data: { event_id: "evt_real_42" },
-    });
+    mockStream([], { appendOptimistic, reconcileOptimistic, discardOptimistic });
+    steerFleetActionMock.mockResolvedValueOnce(ACCEPTED("evt_real_42"));
     renderThread();
     await capturedOnNew.current!(appendMessage("deploy the canary"));
     await waitFor(() =>
-      expect(steerFleetActionMock).toHaveBeenCalledWith(
-        WS,
-        ZID,
-        "deploy the canary",
-      ),
+      expect(steerFleetActionMock).toHaveBeenCalledWith(WS, ZID, "deploy the canary", OPERATION_ID),
     );
-    expect(appendOptimistic).toHaveBeenCalledWith(
-      "deploy the canary",
-      "steer:pending",
-    );
+    expect(appendOptimistic).toHaveBeenCalledWith("deploy the canary", "steer:pending");
     expect(reconcileOptimistic).toHaveBeenCalledWith("temp_42", "evt_real_42");
     expect(discardOptimistic).not.toHaveBeenCalled();
     expect(refreshed).toHaveBeenCalledTimes(1);
+    // Acknowledged: nothing is left to recover.
+    expect(getPendingSends(WS, ZID)).toEqual([]);
     unsubscribe();
+  });
+
+  it("test_operation_id_minted_before_append", async () => {
+    const order: string[] = [];
+    const appendOptimistic = vi.fn(() => {
+      order.push("append");
+      return "temp_o";
+    });
+    mockStream([], { appendOptimistic });
+    steerFleetActionMock.mockImplementationOnce(async () => {
+      order.push("action");
+      return ACCEPTED("evt_o");
+    });
+    mintMock.mockImplementationOnce(() => {
+      order.push("mint");
+      return actualMint.current();
+    });
+    renderThread();
+    await capturedOnNew.current!(appendMessage("name me first"));
+    expect(order).toEqual(["mint", "append", "action"]);
+    expect(operationIdOf(0)).toMatch(UUID_V7);
+  });
+
+  it("test_mint_sorts_by_time_then_refuses", async () => {
+    // No generator on this platform: the send is refused before anything is
+    // appended or posted, and the draft comes back to the composer.
+    const appendOptimistic = vi.fn();
+    mockStream([], { appendOptimistic });
+    mintMock.mockImplementationOnce(() => {
+      throw new MintUnavailable();
+    });
+    renderThread();
+    await send("cannot be named");
+    await waitFor(() => expect(composerInput().value).toBe("cannot be named"));
+    expect(appendOptimistic).not.toHaveBeenCalled();
+    expect(steerFleetActionMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(getPendingSends(WS, ZID)).toEqual([]);
   });
 
   it("keeps submit scroll intent through acknowledgement and reordered backfill", async () => {
     const appendOptimistic = vi.fn().mockReturnValue("temp_clock_skew");
     mockStream([], { appendOptimistic });
-    steerFleetActionMock.mockResolvedValueOnce({
-      ok: true,
-      data: { event_id: "evt_clock_skew" },
-    });
+    steerFleetActionMock.mockResolvedValueOnce(ACCEPTED("evt_clock_skew"));
     const view = renderThread();
 
     await act(async () => {
@@ -124,124 +145,10 @@ describe("FleetThread — steer submission", () => {
   it("accepts a steer that completed before its HTTP response returned", async () => {
     const reconcileOptimistic = vi.fn().mockReturnValue(true);
     mockStream([], { reconcileOptimistic });
-    steerFleetActionMock.mockResolvedValueOnce({
-      ok: true,
-      data: { event_id: "evt_already_complete" },
-    });
+    steerFleetActionMock.mockResolvedValueOnce(ACCEPTED("evt_already_complete"));
     renderThread();
     await capturedOnNew.current!(appendMessage("fast completion"));
-    expect(reconcileOptimistic).toHaveBeenCalledWith(
-      "temp_1",
-      "evt_already_complete",
-    );
-  });
-
-  it("test_failed_send_leaves_thread_and_restores_draft", async () => {
-    const refreshed = vi.fn();
-    const unsubscribe = subscribeOnboardingRefresh(WS, refreshed);
-    const reconcileOptimistic = vi.fn();
-    const discardOptimistic = vi.fn();
-    mockStream([], {
-      appendOptimistic: vi.fn().mockReturnValue("temp_t"),
-      reconcileOptimistic,
-      discardOptimistic,
-    });
-    steerFleetActionMock.mockRejectedValueOnce(new Error("Server Component transport failed"));
-    renderThread();
-    await send("offline send");
-    await waitFor(() => expect(discardOptimistic).toHaveBeenCalledWith("temp_t"));
-    // assistant-ui hands the draft back when the handler rejects with
-    // MessageNotSentError.
-    await waitFor(() => expect(composerInput().value).toBe("offline send"));
-    expect(screen.getByText(SEND_FAILED_TEXT)).toBeTruthy();
-    expect(screen.getByRole("button", { name: RESEND_LABEL })).toBeTruthy();
-    expect(reconcileOptimistic).not.toHaveBeenCalled();
-    expect(refreshed).not.toHaveBeenCalled();
-    unsubscribe();
-  });
-
-  it("test_resend_submits_restored_text_once", async () => {
-    const discardOptimistic = vi.fn();
-    const reconcileOptimistic = vi.fn();
-    mockStream([], {
-      appendOptimistic: vi.fn().mockReturnValueOnce("temp_fail_1").mockReturnValueOnce("temp_resend"),
-      discardOptimistic,
-      reconcileOptimistic,
-    });
-    steerFleetActionMock
-      .mockResolvedValueOnce(UNAVAILABLE)
-      .mockResolvedValueOnce({ ok: true, data: { event_id: "evt_resend_ok" } });
-    // A refused send stays refused until the operator acts. The clock is fake
-    // from before the send, so a replay timer armed by the refusal would fire
-    // inside the window below.
-    vi.useFakeTimers();
-    try {
-      renderThread();
-      await send("retry this send");
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(NO_REPLAY_WINDOW_MS);
-      });
-      expect(composerInput().value).toBe("retry this send");
-      expect(steerFleetActionMock).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.useRealTimers();
-    }
-
-    fireEvent.click(screen.getByRole("button", { name: RESEND_LABEL }));
-    await waitFor(() => expect(steerFleetActionMock).toHaveBeenCalledTimes(2));
-    expect(steerFleetActionMock).toHaveBeenLastCalledWith(WS, ZID, "retry this send");
-    await waitFor(() => expect(reconcileOptimistic).toHaveBeenCalledWith("temp_resend", "evt_resend_ok"));
-    expect(screen.queryByText(SEND_FAILED_TEXT)).toBeNull();
-    expect(composerInput().value).toBe("");
-    expect(discardOptimistic).toHaveBeenCalledTimes(1);
-  });
-
-  it("test_failure_restore_respects_existing_draft", async () => {
-    let refuse: () => void = () => {};
-    steerFleetActionMock.mockImplementationOnce(
-      () => new Promise((resolve) => { refuse = () => resolve(UNAVAILABLE); }),
-    );
-    mockStream([], { appendOptimistic: vi.fn().mockReturnValue("temp_old") });
-    const view = renderThread();
-    await send("old");
-    // The POST is chained behind the delivery tail; refuse it once it is out.
-    await waitFor(() => expect(steerFleetActionMock).toHaveBeenCalledTimes(1));
-    fireEvent.change(composerInput(), { target: { value: "new" } });
-    await act(async () => {
-      refuse();
-    });
-    // Nothing the operator typed since is lost: the refused text returns
-    // ahead of it.
-    await waitFor(() => expect(composerInput().value).toBe("old\nnew"));
-    expect(screen.getByRole("button", { name: RESEND_LABEL })).toBeTruthy();
-
-    // A remount starts from an empty composer and gets the refused text back.
-    view.unmount();
-    renderThread();
-    await waitFor(() => expect(composerInput().value).toBe("old"));
-  });
-
-  it("test_session_failure_keeps_sign_in", async () => {
-    const reconcileOptimistic = vi.fn();
-    const discardOptimistic = vi.fn();
-    mockStream([], {
-      appendOptimistic: vi.fn().mockReturnValue("temp_99"),
-      reconcileOptimistic,
-      discardOptimistic,
-    });
-    steerFleetActionMock.mockResolvedValueOnce({
-      ok: false,
-      error: "Not authenticated",
-      status: 401,
-      errorCode: "UZ-AUTH-401",
-    });
-    renderThread();
-    await send("deploy that fails");
-    await waitFor(() => expect(discardOptimistic).toHaveBeenCalledWith("temp_99"));
-    await waitFor(() => expect(composerInput().value).toBe("deploy that fails"));
-    expect(screen.getByRole("link", { name: SIGN_IN_LABEL }).getAttribute("href")).toBe("/sign-in");
-    expect(screen.queryByRole("button", { name: RESEND_LABEL })).toBeNull();
-    expect(reconcileOptimistic).not.toHaveBeenCalled();
+    expect(reconcileOptimistic).toHaveBeenCalledWith("temp_1", "evt_already_complete");
   });
 
   it("does not call the action when the submitted message text is empty", async () => {

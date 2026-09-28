@@ -4,7 +4,7 @@ import { cleanup, render } from "@testing-library/react";
 
 import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
 import { GUIDANCE, OUTCOME, outcomeFor } from "@/lib/events/event-summary";
-import { __resetFleetDeliveryFailuresForTests } from "@/components/domain/useFleetDeliveryFailure";
+import { __resetPendingSendsForTests } from "@/lib/streaming/pending-sends";
 
 // ── Hoisted mocks ────────────────────────────────────────────────────────
 
@@ -221,10 +221,10 @@ beforeEach(() => {
   routerRefreshMock.mockReset();
   steerFleetActionMock.mockReset();
   useFleetEventStreamMock.mockReset();
-  // The delivery-failure registry is module-scoped by design (it survives
-  // remounts); without this reset a failure recorded in one test leaks its
-  // notice — and its restored text — into the next.
-  __resetFleetDeliveryFailuresForTests();
+  // The pending-send ledger is module-scoped and storage-mirrored by design
+  // (it survives remounts and reloads); without this reset an entry recorded
+  // in one test leaks its notice — and its restored text — into the next.
+  __resetPendingSendsForTests();
   capturedOnNew.current = null;
   capturedSubmittedMessageId.current = null;
 });

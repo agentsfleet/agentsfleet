@@ -41,7 +41,9 @@ function View({ submittedMessageId = null, eventsCount = 0 }: {
         submittedMessageId={submittedMessageId}
         eventsCount={eventsCount}
         connectionStatus={CONNECTION_STATUS.LIVE}
-        failure={null}
+        pending={[]}
+        onResend={() => {}}
+        onDismiss={() => {}}
       />
     </AssistantRuntimeProvider>
   );

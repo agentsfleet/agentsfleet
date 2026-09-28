@@ -1,30 +1,39 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
-import { ComposerPrimitive, useAui, useAuiState } from "@assistant-ui/react";
+import { ComposerPrimitive, useAui } from "@assistant-ui/react";
 import { Alert, Button, DashboardPanel, Textarea, cn } from "@agentsfleet/design-system";
 import { ArrowUpIcon } from "lucide-react";
-import { DELIVERY_FAILURE, type FailedDelivery } from "./useFleetDeliveryFailure";
+import { PENDING_SEND_STATE, type PendingSend } from "./useFleetPendingSends";
 
 const PLACEHOLDER = "Message this fleet…";
 const SEND_LABEL = "Send";
 const COMPOSER_LABEL = "Chat composer";
 const SESSION_EXPIRED = "Your session expired. Sign in again before sending this message.";
 const SEND_FAILED = "Message not sent.";
+const SEND_UNCONFIRMED = "Couldn't confirm this message was sent.";
 const SIGN_IN_LABEL = "Sign in";
 const RESEND_LABEL = "Resend";
+const NOTICES_LABEL = "Unsent messages";
 
 // The composer is a persistent part of the transcript: a compact, bordered
 // field that grows with the message while leaving the visible conversation in
 // place. It never disables itself on the live feed's state — sending is an
 // authenticated write that does not touch the stream.
 export type SteerComposerProps = {
-  failure: FailedDelivery | null;
+  /** The fleet's ledger of unresolved sends; the notice lists every one not in flight. */
+  pending: readonly PendingSend[];
+  onResend: (operationId: string) => void;
+  onDismiss: (operationId: string) => void;
 };
 
-export function SteerComposer({ failure }: SteerComposerProps) {
-  useRestoreRefusedTextOnMount(failure);
+export function SteerComposer({ pending, onResend, onDismiss }: SteerComposerProps) {
+  const unresolved = useMemo(
+    () => pending.filter((entry) => entry.state !== PENDING_SEND_STATE.SENDING),
+    [pending],
+  );
+  useRestoreRefusedTextOnMount(unresolved);
   return (
     <DashboardPanel
       asChild
@@ -40,7 +49,7 @@ export function SteerComposer({ failure }: SteerComposerProps) {
         className="flex flex-col gap-sm"
         aria-label={COMPOSER_LABEL}
       >
-        <DeliveryFailureNotice failure={failure} />
+        <PendingSendNotices entries={unresolved} onResend={onResend} onDismiss={onDismiss} />
 
         {/* Stretch, not end-alignment: when the footer is capped this row
             shrinks, and a stretched textarea shrinks with it and scrolls its
@@ -100,51 +109,83 @@ export function SteerComposer({ failure }: SteerComposerProps) {
 
 // A refusal while mounted needs nothing here: the handler rejects with
 // `MessageNotSentError` and assistant-ui returns the draft itself. A remount
-// starts a fresh composer, so the refused text comes back from the per-fleet
-// record — once, on mount, and only into an empty composer.
-function useRestoreRefusedTextOnMount(failure: FailedDelivery | null): void {
+// starts a fresh composer, so the newest unresolved text comes back from the
+// ledger — once, on mount, and only into an empty composer. Older entries stay
+// in the notice, each with its own Resend.
+function useRestoreRefusedTextOnMount(unresolved: readonly PendingSend[]): void {
   const aui = useAui();
-  const atMount = useRef(failure);
+  const atMount = useRef(unresolved);
   useEffect(() => {
-    const refused = atMount.current;
-    if (refused === null) return;
+    const newest = atMount.current.at(-1);
+    if (newest === undefined) return;
     const composer = aui.composer();
-    if (composer.getState().isEmpty) composer.setText(refused.text);
+    if (composer.getState().isEmpty) composer.setText(newest.text);
   }, [aui]);
 }
 
-function DeliveryFailureNotice({ failure }: { failure: FailedDelivery | null }) {
-  if (failure === null) return null;
-  if (failure.kind === DELIVERY_FAILURE.SESSION) {
-    return (
-      <Alert variant="destructive" className="items-center justify-between">
-        <span>{SESSION_EXPIRED}</span>
+function PendingSendNotices({
+  entries,
+  onResend,
+  onDismiss,
+}: { entries: readonly PendingSend[] } & Pick<SteerComposerProps, "onResend" | "onDismiss">) {
+  if (entries.length === 0) return null;
+  return (
+    <ul className="flex flex-col gap-xs" aria-label={NOTICES_LABEL}>
+      {entries.map((entry) => (
+        <li key={entry.operationId}>
+          <PendingSendNotice entry={entry} onResend={onResend} onDismiss={onDismiss} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// One unresolved send. Resend posts the ledger record under its own operation
+// id — never the composer's text — and clears a draft that is exactly that
+// text, so Enter cannot send it a second time. A refused send and an
+// unconfirmed one read differently, because they are: the server said no to
+// the first, and nothing answered for the second.
+function PendingSendNotice({
+  entry,
+  onResend,
+  onDismiss,
+}: { entry: PendingSend } & Pick<SteerComposerProps, "onResend" | "onDismiss">) {
+  const aui = useAui();
+  const resend = () => {
+    const composer = aui.composer();
+    if (composer.getState().text === entry.text) composer.setText("");
+    onResend(entry.operationId);
+  };
+  const unconfirmed = entry.state === PENDING_SEND_STATE.UNKNOWN;
+  return (
+    <Alert
+      variant={unconfirmed ? "warning" : "destructive"}
+      className="items-center gap-sm"
+      onDismiss={() => onDismiss(entry.operationId)}
+    >
+      <span className="min-w-0 flex-1 truncate">
+        {sentenceFor(entry.state)} <span className="text-foreground">{entry.text}</span>
+      </span>
+      {entry.state === PENDING_SEND_STATE.SESSION ? (
         <Button asChild type="button" variant="outline" size="sm">
           <Link href="/sign-in">{SIGN_IN_LABEL}</Link>
         </Button>
-      </Alert>
-    );
-  }
-  return (
-    <Alert variant="destructive" className="items-center justify-between">
-      <span>{SEND_FAILED}</span>
-      <SendFailureAction text={failure.text} />
+      ) : (
+        <Button type="button" variant="outline" size="sm" onClick={resend}>
+          {RESEND_LABEL}
+        </Button>
+      )}
     </Alert>
   );
 }
 
-// Resend is the composer's own Send, so it takes the one path every message
-// takes. It shows while the composer holds the refused text; once the operator
-// has cleared it, the notice only reports what happened.
-function SendFailureAction({ text }: { text: string }) {
-  // A boolean, not the draft: typing does not re-render the notice.
-  const holdsRefusedText = useAuiState((s) => s.composer.text.includes(text));
-  if (!holdsRefusedText) return null;
-  return (
-    <ComposerPrimitive.Send asChild>
-      <Button type="submit" variant="outline" size="sm">
-        {RESEND_LABEL}
-      </Button>
-    </ComposerPrimitive.Send>
-  );
+function sentenceFor(state: PendingSend["state"]): string {
+  switch (state) {
+    case PENDING_SEND_STATE.SESSION:
+      return SESSION_EXPIRED;
+    case PENDING_SEND_STATE.UNKNOWN:
+      return SEND_UNCONFIRMED;
+    default:
+      return SEND_FAILED;
+  }
 }

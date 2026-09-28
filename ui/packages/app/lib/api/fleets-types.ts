@@ -19,3 +19,12 @@ export const AGENTSFLEET_STATUS = {
   INSTALLING: "installing",
 } as const;
 export type FleetStatus = typeof AGENTSFLEET_STATUS[keyof typeof AGENTSFLEET_STATUS];
+
+// The body of `POST /v1/workspaces/{ws}/fleets/{id}/messages`. Mirrors
+// `afd_wire::event::SteerRequest`. `operation_id` is required here although
+// the daemon accepts its absence: the dashboard always has an operation to
+// name, and a send without one would run twice on a retried socket drop.
+export type SteerRequest = {
+  message: string;
+  operation_id: string;
+};

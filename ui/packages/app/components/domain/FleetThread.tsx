@@ -18,10 +18,8 @@ import type { EventRow } from "@/lib/api/events";
 import { SenderLabelProvider } from "./FleetMessageRow";
 import { FleetConnectionNotice } from "./FleetConnectionNotice";
 import { FleetConnectionIndicator, useArrivalCue } from "./FleetConnectionIndicator";
-import {
-  useFleetDeliveryFailure,
-} from "./useFleetDeliveryFailure";
-import { useNewMessageHandler } from "./useFleetMessageDelivery";
+import { useFleetPendingSends } from "./useFleetPendingSends";
+import { useMessageDelivery } from "./useFleetMessageDelivery";
 import { FleetThreadViewport } from "./FleetThreadViewport";
 
 export type FleetThreadProps = {
@@ -65,22 +63,21 @@ export function FleetThread({
   // its disappearance being the steady-state signal that nothing is wrong.
   const arrived = useArrivalCue(stream.connectionStatus);
   const settledLive = stream.connectionStatus === CONNECTION_STATUS.LIVE && !arrived;
-  const {
-    failedDelivery,
-    setFailedDelivery,
-    clearFailedDelivery,
-  } = useFleetDeliveryFailure(fleetId);
+  // Every send this fleet has not heard back on, from submit to the 202 — and
+  // what Resend and the notice work from. Module state with a storage mirror,
+  // so it outlives this component and this document.
+  const ledger = useFleetPendingSends(workspaceId, fleetId);
   // Pass the registry methods (each `useCallback([fleetId])`-stable), not
   // the whole `stream` object — `stream` is a fresh reference on every SSE
   // frame, so listing it would rebuild `onNew` per frame for no benefit.
-  const deliverMessage = useNewMessageHandler({
+  const delivery = useMessageDelivery({
     workspaceId,
     fleetId,
     appendOptimistic: stream.appendOptimistic,
     reconcileOptimistic: stream.reconcileOptimistic,
     discardOptimistic: stream.discardOptimistic,
     onSubmitted,
-    onFailure: setFailedDelivery,
+    ledger,
   });
   // Runs of identical activity render as one expandable row. Grouping is a
   // pure view over the array the stream already ordered — it never reorders,
@@ -91,12 +88,7 @@ export function FleetThread({
     isRunning: false,
     messages: entries,
     convertMessage: convertEntry,
-    // A new send supersedes the last refusal, whether it is the Resend of
-    // that text or something else the operator typed.
-    onNew: async (message) => {
-      clearFailedDelivery();
-      await deliverMessage(message);
-    },
+    onNew: delivery.onNew,
   });
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -136,7 +128,9 @@ export function FleetThread({
             eventsCount={stream.events.length}
             submittedMessageId={submittedMessageId}
             connectionStatus={stream.connectionStatus}
-            failure={failedDelivery}
+            pending={ledger.pending}
+            onResend={delivery.resend}
+            onDismiss={ledger.dismiss}
           />
         </DashboardPanel>
       </SenderLabelProvider>
