@@ -30,6 +30,13 @@ const ANSWER = "Signed by the expected key.";
 const FRAME_P95_BUDGET_MS = 17.6;
 const P95 = 0.95;
 const PROBE_KEY = "__replyFrameProbe";
+// The settled turns above the streaming reply while it is measured. Each is an
+// operator turn, so each renders as two messages — the history a streaming
+// frame must not re-convert.
+const HISTORY_TURNS = 100;
+const HISTORY_ID_BASE = 9_100_000_000_000;
+const HISTORY_STATUS = "processed";
+const LAST_HISTORY_ANSWER = `Settled answer ${HISTORY_TURNS}`;
 const EMPTY_HISTORY: EventsPage = { items: [], next_cursor: null };
 
 type ProbeResult = { longTasks: number; frames: number; p95FrameMs: number };
@@ -63,8 +70,12 @@ test("test_stream_reply_parts_live_then_folded", async ({ page }) => {
 
 test("test_streaming_reply_costs_no_long_tasks", async ({ page }, testInfo) => {
   await withReplyPage(page, async ({ chat, stream }) => {
+    // A thread with a real history first, then the measured reply beneath it.
+    const now = Date.now();
+    await stream.send(settledHistory(now - HISTORY_TURNS));
+    await expect(chat.getByText(LAST_HISTORY_ANSWER)).toBeVisible();
     await startFrameProbe(page);
-    await stream.send(replySchedule(Date.now()));
+    await stream.send(replySchedule(now));
     await expect(chat.getByText(LAST_ANSWER_LINE)).toBeVisible();
     const probe = await stopFrameProbe(page);
     await testInfo.attach("streaming-reply-frame-evidence", {
@@ -72,7 +83,7 @@ test("test_streaming_reply_costs_no_long_tasks", async ({ page }, testInfo) => {
       body: JSON.stringify({
         ...probe,
         budgetMs: FRAME_P95_BUDGET_MS,
-        schedule: { REASONING_CHUNKS, REASONING_EVERY_MS, ANSWER_CHUNKS, ANSWER_EVERY_MS },
+        schedule: { HISTORY_TURNS, REASONING_CHUNKS, REASONING_EVERY_MS, ANSWER_CHUNKS, ANSWER_EVERY_MS },
       }),
     });
     expect(probe.longTasks).toBe(0);
@@ -107,6 +118,25 @@ async function withReplyPage(page: Page, body: (reply: ReplyPage) => Promise<voi
     await page.unrouteAll({ behavior: "wait" });
     await cleanWorkspaceFleets(FIXTURE_KEY.regular, workspaceId, FLEET_PREFIX);
   }
+}
+
+// Settled operator turns, each opened and completed with its answer inline, the
+// way the daemon publishes a finished turn (`final_reply` on the completion).
+function settledHistory(firstCreatedAt: number): TimedFrame[] {
+  return Array.from({ length: HISTORY_TURNS }, (_, index) => {
+    const eventId = `${HISTORY_ID_BASE + index}-1`;
+    const createdAt = firstCreatedAt + index;
+    return [
+      { afterMs: 0, body: frame(FRAME_KIND.EVENT_RECEIVED, { event_id: eventId, actor: ACTOR, created_at: createdAt }) },
+      {
+        afterMs: 0,
+        body: frame(FRAME_KIND.EVENT_COMPLETE, {
+          event_id: eventId, actor: ACTOR, created_at: createdAt, status: HISTORY_STATUS,
+          final_reply: `Settled answer ${index + 1}`,
+        }),
+      },
+    ];
+  }).flat();
 }
 
 function opening(createdAt: number): TimedFrame {
