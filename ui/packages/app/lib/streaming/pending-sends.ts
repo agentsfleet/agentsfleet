@@ -301,15 +301,6 @@ export function findPendingSend(scope: LedgerScope, operationId: string): Pendin
   return read(scope).find((entry) => entry.operationId === operationId);
 }
 
-/**
- * The failed send whose text is exactly `text`, if any. A send still in flight
- * never matches: the same words typed again while the first is out are a
- * second message, and must get their own operation id.
- */
-export function findUnresolvedSendByText(scope: LedgerScope, text: string): PendingSend | undefined {
-  return read(scope).find((entry) => entry.text === text && entry.state !== PENDING_SEND_STATE.SENDING);
-}
-
 /** The snapshot a server render reads: nothing, because no browser wrote here. */
 export const NO_PENDING_SENDS = EMPTY;
 

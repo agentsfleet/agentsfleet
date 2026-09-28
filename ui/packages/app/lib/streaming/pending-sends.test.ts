@@ -8,7 +8,6 @@ import {
   dismissPendingSend,
   failPendingSend,
   findPendingSend,
-  findUnresolvedSendByText,
   getPendingSends,
   settlePendingSend,
   subscribePendingSends,
@@ -102,16 +101,6 @@ describe("pending-sends ledger", () => {
     expect(findPendingSend(SCOPE, "op-b")).toBeUndefined();
   });
 
-  it("reuses only a failed send's id for the same text, never one still in flight", () => {
-    beginPendingSend(SCOPE, send("op-1", "yes"));
-    // The same words typed again while the first is out are a second message.
-    expect(findUnresolvedSendByText(SCOPE, "yes")).toBeUndefined();
-    failPendingSend(SCOPE, "op-1", PENDING_SEND_STATE.UNKNOWN);
-    expect(findUnresolvedSendByText(SCOPE, "yes")?.operationId).toBe("op-1");
-    expect(findUnresolvedSendByText(SCOPE, "yes\nand more")).toBeUndefined();
-    expect(findUnresolvedSendByText(OTHER_FLEET, "yes")).toBeUndefined();
-  });
-
   it("test_ledger_survives_reload_and_syncs_tabs", () => {
     beginPendingSend(SCOPE, send("op-1", "deploy"));
     beginPendingSend(SCOPE, send("op-2", "stop"));
@@ -186,7 +175,8 @@ describe("pending-sends ledger", () => {
     failPendingSend(SCOPE, "op-1", PENDING_SEND_STATE.REFUSED);
     // The next person on this browser sees none of it.
     expect(getPendingSends(OTHER_USER)).toEqual([]);
-    expect(findUnresolvedSendByText(OTHER_USER, "mine")).toBeUndefined();
+    // Nor does the same person's other fleet.
+    expect(getPendingSends(OTHER_FLEET)).toEqual([]);
 
     beginPendingSend(SIGNED_OUT, send("op-2", "early"));
     const mirrored = Object.keys(window.localStorage).filter((key) => key.startsWith("agentsfleet:pending-sends"));
