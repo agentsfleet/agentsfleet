@@ -218,7 +218,7 @@ pub(super) const FLEET: &[Problem] = &[
         code: error_code::AGENTSFLEET_OPERATION_CONFLICT,
         status: 409,
         title: "Operation already used",
-        hint: "This operation_id was already sent with a different message. Retry with the message you first sent, or send a new message under a new operation_id.",
+        hint: "This operation_id was already sent by another caller or with a different message. Retry exactly what you first sent, or send a new message under a new operation_id.",
         user_message: Some(
             "This message conflicts with one already sent. Send it again as a new message.",
         ),

@@ -21,8 +21,10 @@ use afd_admission::Budgets;
 use afd_core::error_code;
 use afd_dragonfly::streams::FleetStreams;
 use afd_events::{ACTOR_MACHINE, Steer};
+use tracing::Level;
 
 use crate::integration_steer_retry::{REQUEST_JSON, admissions_for, append_with, clean};
+use crate::recorder::Recorder;
 use crate::support::EventsLane;
 
 /// The consumer name the test reads the stream back under; distinct from the
@@ -30,16 +32,21 @@ use crate::support::EventsLane;
 const CONSUMER: &str = "steer-replay-integration-reader";
 
 /// One operation id, used on two fleets and against a changed message.
-const OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0a01";
+pub(crate) const OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0a01";
 
 /// A second operation id, for the new work a spent budget must still refuse.
 const FRESH_OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0a02";
 
 /// The same operation id's message, changed after the first send.
-const CHANGED_JSON: &str = r#"{"message":"redeploy production"}"#;
+pub(crate) const CHANGED_JSON: &str = r#"{"message":"redeploy production"}"#;
 
 /// A fleet budget one entry deep: the first admission spends it.
 const ONE_ENTRY: u64 = 1;
+
+/// The warn a refused reuse leaves, and the fields it must carry.
+const CONFLICT_EVENT: &str = "steer_operation_conflict";
+const FIELD_EVENT: &str = "event";
+const FIELD_ERROR_CODE: &str = "error_code";
 
 /// The same id on two fleets is two operations, each answering its own fleet.
 #[tokio::test(flavor = "multi_thread")]
@@ -146,6 +153,7 @@ async fn test_payload_drift_is_refused() {
     let steer = Steer::new(lane.admissions());
 
     let admitted = append_with(&steer, &lane, Some(OPERATION)).await;
+    let logs = Recorder::install();
     let refused = steer
         .append(
             &lane.fleet,
@@ -156,6 +164,31 @@ async fn test_payload_drift_is_refused() {
         )
         .await
         .expect_err("a reused id with another message is refused");
+    // One warn, carrying the code, and neither the message nor the key.
+    let conflicts: Vec<_> = logs
+        .events()
+        .into_iter()
+        .filter(|record| record.fields.get(FIELD_EVENT).map(String::as_str) == Some(CONFLICT_EVENT))
+        .collect();
+    assert_eq!(conflicts.len(), 1, "one conflict warn: {conflicts:?}");
+    for conflict in &conflicts {
+        assert_eq!(conflict.level, Level::WARN);
+        assert_eq!(
+            conflict.fields.get(FIELD_ERROR_CODE).map(String::as_str),
+            Some(error_code::AGENTSFLEET_OPERATION_CONFLICT.as_str())
+        );
+        for value in conflict.fields.values() {
+            assert!(
+                !value.contains("redeploy"),
+                "the warn leaks the message: {value}"
+            );
+            assert!(
+                !value.contains(OPERATION),
+                "the warn leaks the key: {value}"
+            );
+        }
+    }
+    drop(logs);
     assert!(
         refused.is_operation_conflict(),
         "not the conflict: {refused}"

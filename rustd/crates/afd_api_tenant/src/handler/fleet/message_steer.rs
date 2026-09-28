@@ -11,13 +11,14 @@
 //! fleet, because deciding whether a message may be posted is not worth
 //! loading two authored documents.
 //!
-//! # A repeat is answered before the fleet is asked whether it takes work
+//! # A repeat is answered even by a fleet that stopped taking work
 //!
 //! A caller that names its operation and never saw the 202 sends again. If the
 //! first send was admitted, the answer is that send's event — even when the
-//! fleet has paused since, because the message is already on its way to run.
-//! Ownership is checked first, so the lookup only ever reads this workspace's
-//! fleet.
+//! fleet has stopped or paused since, because the message is already on its
+//! way to run. Ownership is checked first, so the lookup only ever reads this
+//! workspace's fleet, and a runnable fleet pays no lookup at all: the ledger's
+//! own insert answers a repeat (`afd_events::steer`).
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -31,9 +32,11 @@ use axum::response::{IntoResponse as _, Response};
 use garde::Validate as _;
 use http::StatusCode;
 
+use afd_fleet_lifecycle::FleetStatus;
+
 use crate::auth::{PersonIdentity, WorkspaceContext};
 use crate::handler::Refusal;
-use crate::services::{FleetSteering as _, Services, WorkspaceFleets as _};
+use crate::services::{FleetSteering, Services, WorkspaceFleets as _};
 
 use super::detail::{FleetPath, parse_fleet_id};
 
@@ -85,10 +88,10 @@ const STATUS_ACCEPTED: &str = "accepted";
         "for tracking in the activity stream. ",
         "Send `operation_id` to make a retry safe: repeat the same value and ",
         "this endpoint returns the first run's event, never a second run. ",
-        "A lost response then costs nothing, even if the fleet paused since. ",
-        "The same value with a different message is refused with 409 ",
-        "`UZ-AGT-016`. Omit it and every call is a new message, which is what ",
-        "a person sending twice means. ",
+        "A lost response then costs nothing, even if the fleet stopped or ",
+        "paused since. The same value from another caller, or with a different ",
+        "message, is refused with 409 `UZ-AGT-016`. Omit it and every call is a ",
+        "new message, which is what a person sending twice means. ",
     ),
     request_body = SteerRequest,
     params(
@@ -127,59 +130,58 @@ pub(crate) async fn steer<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_STEER))?
         .ok_or_else(|| Refusal::coded(error_code::AGENTSFLEET_NOT_FOUND, DETAIL_FLEET_NOT_FOUND))?;
+    let request_json = stored_payload(steer.message)?;
+    let operation_id = steer.operation_id.as_deref();
+    let (fleet, workspace) = (fleet.as_str(), owned.workspace.as_str());
+    let steering = services.steering();
+    if !status.is_runnable() {
+        let steer = [fleet, workspace, actor.as_str(), request_json.as_str()];
+        return refuse_unless_repeat(steering, steer, operation_id, status).await;
+    }
+    let event_id = steering
+        .append(fleet, workspace, &actor, &request_json, operation_id)
+        .await
+        .map_err(refuse_steer)?;
+    Ok(accepted(event_id))
+}
 
-    // The stored payload deliberately carries NO operation id. It is a
-    // transport fact — how the CALLER names its retry — and not something the
-    // fleet reads, so putting it in the body would hand every run a field it
-    // has no use for and change the bytes a replay re-appends. The ledger holds
-    // it where it belongs, as `producer_key`.
-    let request_json = serde_json::to_string(&SteerRequest {
-        message: steer.message,
+/// The body the ledger stores for a message.
+///
+/// It deliberately carries NO operation id. That is a transport fact — how the
+/// CALLER names its retry — and not something the fleet reads, so putting it in
+/// the body would hand every run a field it has no use for and change the bytes
+/// a replay re-appends. The ledger holds it where it belongs, as `producer_key`.
+fn stored_payload(message: Cow<'_, str>) -> Result<String, Refusal> {
+    serde_json::to_string(&SteerRequest {
+        message,
         operation_id: None,
     })
-    .map_err(|_unencodable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
-    let operation_id = steer.operation_id.as_deref();
+    .map_err(|_unencodable| Refusal::malformed(DETAIL_MALFORMED_JSON))
+}
 
-    // A retry of a message already admitted is answered with that message's
-    // event, whatever the fleet's state now: it was accepted while the fleet
-    // took work, and refusing its retry would report it as never sent.
+/// A fleet that will not take work refuses new messages — but answers a retry
+/// of one it admitted while it did, with that message's event: refusing the
+/// retry would report as never sent a message that is going to run.
+async fn refuse_unless_repeat<S: FleetSteering>(
+    steering: &S,
+    [fleet, workspace, actor, request_json]: [&str; 4],
+    operation_id: Option<&str>,
+    status: FleetStatus,
+) -> Result<Response, Refusal> {
     if let Some(operation) = operation_id {
-        let replayed = services
-            .steering()
-            .replayed(
-                fleet.as_str(),
-                owned.workspace.as_str(),
-                &actor,
-                &request_json,
-                operation,
-            )
+        let replayed = steering
+            .replayed(fleet, workspace, actor, request_json, operation)
             .await
             .map_err(refuse_steer)?;
         if let Some(event_id) = replayed {
             return Ok(accepted(event_id));
         }
     }
-
-    if !status.is_runnable() {
-        return Err(Refusal::conflict(
-            error_code::AGENTSFLEET_PAUSED_INGRESS,
-            DETAIL_NOT_ACTIVE,
-            status.as_str(),
-        ));
-    }
-
-    let event_id = services
-        .steering()
-        .append(
-            fleet.as_str(),
-            owned.workspace.as_str(),
-            &actor,
-            &request_json,
-            operation_id,
-        )
-        .await
-        .map_err(refuse_steer)?;
-    Ok(accepted(event_id))
+    Err(Refusal::conflict(
+        error_code::AGENTSFLEET_PAUSED_INGRESS,
+        DETAIL_NOT_ACTIVE,
+        status.as_str(),
+    ))
 }
 
 /// The 202 a steer answers with, for a new message or a repeat alike.
@@ -242,10 +244,6 @@ fn read_steer(body: &Bytes) -> Result<SteerRequest<'_>, Refusal> {
     }
     let request: SteerRequest<'_> = afd_http::handler::read_body(body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
-    // One bound, two sentences: an empty message and an oversized one are
-    // different mistakes to whoever has to fix them, and the wording is a
-    // public contract. The cap lives on the wire type; which end broke it is
-    // read back off the report here.
     if request.validate().is_err() {
         // Three sentences read back off one report, because they are three
         // different mistakes to whoever has to fix them. The operation id is

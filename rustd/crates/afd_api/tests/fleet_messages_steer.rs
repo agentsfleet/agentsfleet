@@ -8,7 +8,7 @@
 //! store.
 //!
 //! The parsing itself is unit-tested beside the code, in
-//! `handler/fleet/message/tests.rs`. What this adds is that the refusal
+//! `handler/fleet/message_steer/tests.rs`. What this adds is that the refusal
 //! survives the whole layer stack and arrives as the envelope and status a
 //! client branches on.
 #![expect(

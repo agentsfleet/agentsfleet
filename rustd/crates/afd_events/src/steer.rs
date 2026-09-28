@@ -32,16 +32,22 @@
 //! timeout does not prove an operation failed, but neither does it prove one
 //! happened, and a human typing in a terminal has no operation to identify.
 //!
-//! # The key is scoped to the fleet, and a repeat is answered first
+//! # The key is scoped to the fleet, and a repeat is answered, never re-run
 //!
 //! `UNIQUE (producer, producer_key)` is global, so the key is
 //! `<fleet_id>:<operation_id>` — the composition the webhook producer already
-//! uses — and one client's id can never answer with another fleet's event. A
-//! repeat is read back before the ledger's own gates: a message already
-//! admitted is not new work, and a spent fleet budget refusing its retry would
-//! report as undelivered a message that is going to run. The same id with a
-//! different message is refused rather than answered: the first message's
-//! event would tell the sender the second one landed.
+//! uses — and one client's id can never answer with another fleet's event.
+//!
+//! The happy path costs no extra read: the ledger's insert conflicts on a key
+//! already held and answers the first row. Only two edges look the key up.
+//! When the insert met an existing row, the row is read back so its payload
+//! can be checked — that is also what closes the race where two sends with
+//! one id both reached the insert. And when a spent budget refuses the insert,
+//! a repeat is still answered: a message already admitted is not new work.
+//!
+//! The same id with a different payload — another message, or another caller
+//! — is refused rather than answered: the first message's event would tell the
+//! sender the second one landed.
 
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_core::error_code;
@@ -102,10 +108,19 @@ impl Steer {
     ) -> Result<String> {
         let key = operation_id.map(|operation| scoped_key(fleet, operation));
         let admission = steer_admission(fleet, workspace, actor, request_json, key.as_deref());
-        if let Some(repeat) = self.repeat_of(&admission).await? {
-            return Ok(repeat);
+        let admitted = match self.admissions.admit(admission).await {
+            Ok(admitted) => admitted,
+            Err(refused) if refused.is_over_capacity() => {
+                return self.repeat_despite(&admission, refused).await;
+            }
+            Err(failed) => return Err(failed.into()),
+        };
+        if admitted.replayed {
+            // The insert met a row already under this key: a retry, or a send
+            // with the same id that won the race to the insert. Its event is
+            // this caller's answer only if the payload is this caller's too.
+            return Ok(self.repeat_of(&admission).await?.unwrap_or(admitted.id));
         }
-        let admitted = self.admissions.admit(admission).await?;
 
         // Hoisted rather than spelled inside the macro: the log bridge
         // duplicates every field expression, and coverage instrumentation
@@ -124,9 +139,9 @@ impl Steer {
     /// The event a caller's operation already became on `fleet`, or `None`
     /// when this operation id is new.
     ///
-    /// The handler asks this BEFORE it checks whether the fleet takes work: a
-    /// retry of a message admitted before the fleet paused is answered with
-    /// that message's event, not refused as if it never landed.
+    /// The handler asks this when the fleet will not take work: a retry of a
+    /// message admitted before the fleet stopped is answered with that
+    /// message's event, not refused as if it never landed.
     ///
     /// # Errors
     /// Refuses an id already admitted with a different message, and reports a
@@ -150,11 +165,27 @@ impl Steer {
         .await
     }
 
+    /// A capacity refusal, unless the key is a repeat: then its event.
+    async fn repeat_despite(
+        &self,
+        admission: &Admission<'_>,
+        refused: afd_admission::Error,
+    ) -> Result<String> {
+        match self.repeat_of(admission).await {
+            Ok(Some(id)) => Ok(id),
+            Err(conflict) if conflict.is_operation_conflict() => Err(conflict),
+            // New work, an unkeyed send, or a lookup that failed too: the
+            // refusal the caller retries against stands.
+            _new_work => Err(refused.into()),
+        }
+    }
+
     /// The first admission's event for a keyed steer with the same payload.
     ///
     /// The digest covers actor, workspace and body (`Admission::payload_digest`),
     /// so a different person reusing the id is a conflict too, never a read of
-    /// somebody else's event.
+    /// somebody else's event; and a row some other fleet holds under this key
+    /// is refused the same way rather than answered.
     async fn repeat_of(&self, admission: &Admission<'_>) -> Result<Option<String>> {
         let Key::Repeated(key) = admission.key else {
             return Ok(None);
@@ -166,7 +197,7 @@ impl Steer {
         else {
             return Ok(None);
         };
-        if repeated.digest == admission.payload_digest() {
+        if repeated.fleet == admission.fleet && repeated.digest == admission.payload_digest() {
             return Ok(Some(repeated.id));
         }
         // A client that reused its own id is a defect somebody should see; the

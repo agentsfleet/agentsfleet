@@ -1,5 +1,5 @@
 //! Successful message and public-library routes over the parent live fixture,
-//! and a steer's operation id across a pause.
+//! and a steer's operation id across a stop and across a workspace boundary.
 
 use afd_core::error_code;
 use afd_core::id::Uuid7;
@@ -91,7 +91,7 @@ async fn steer(
 /// refused.
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn test_replay_bypasses_paused_ingress() {
+async fn test_replay_bypasses_ingress_refusal() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let router = super::live_router(&fixture).await;
@@ -124,7 +124,7 @@ async fn test_replay_bypasses_paused_ingress() {
     assert_eq!(
         status,
         StatusCode::ACCEPTED,
-        "a retry of an admitted message is answered, paused or not: {retried}"
+        "a retry of an admitted message is answered, stopped or not: {retried}"
     );
     assert_eq!(
         retried.get("event_id").and_then(Value::as_str),
@@ -157,4 +157,40 @@ async fn test_replay_bypasses_paused_ingress() {
     );
 
     fixture.cleanup().await;
+}
+
+/// A guessed operation id on a fleet this workspace does not hold is a 404,
+/// the same answer an unknown fleet gets — never a 409 that would tell the
+/// caller the id exists in another tenant's ledger.
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn test_foreign_fleet_replay_is_not_found() {
+    let owner = Fixture::create().await;
+    owner.seed().await;
+    let owner_router = super::live_router(&owner).await;
+    let owner_workspace = format!("/v1/workspaces/{}", owner.workspace.as_str());
+    let fleet = super::install(&owner_router, &owner, &owner_workspace).await;
+    let owned_thread = format!("{owner_workspace}/fleets/{}/messages", fleet.as_str());
+    let (status, first) = steer(&owner_router, &owner, &owned_thread, OPERATION, MESSAGE).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{first}");
+
+    // Another tenant, naming the owner's fleet under its own workspace, with
+    // the same id and the same message.
+    let prober = Fixture::create().await;
+    prober.seed().await;
+    let prober_router = super::live_router(&prober).await;
+    let probe = format!(
+        "/v1/workspaces/{}/fleets/{}/messages",
+        prober.workspace.as_str(),
+        fleet.as_str()
+    );
+    let (status, answer) = steer(&prober_router, &prober, &probe, OPERATION, MESSAGE).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{answer}");
+    assert_eq!(
+        answer.get("error_code").and_then(Value::as_str),
+        Some(error_code::AGENTSFLEET_NOT_FOUND.as_str())
+    );
+
+    prober.cleanup().await;
+    owner.cleanup().await;
 }

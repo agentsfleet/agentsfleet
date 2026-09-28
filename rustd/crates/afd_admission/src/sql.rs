@@ -308,8 +308,9 @@ WHERE id = $1::uuid AND receipt = $3::text AND delivered_at IS NULL";
 /// sender a message it owns never landed. Rides
 /// `uq_fleet_admissions_producer_key`.
 ///
-/// `$1` producer, `$2` producer key.
+/// `$1` producer, `$2` producer key. The fleet comes back too, so a caller
+/// can refuse a key some other fleet's row holds rather than answer with it.
 pub(crate) const SELECT_REPEATED: &str = "\
-SELECT created_at, seq, payload_digest
+SELECT created_at, seq, payload_digest, fleet_id::text
 FROM core.fleet_admissions
 WHERE producer = $1 AND producer_key = $2";

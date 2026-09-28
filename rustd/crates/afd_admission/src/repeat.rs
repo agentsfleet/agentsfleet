@@ -22,6 +22,8 @@ pub struct Repeated {
     /// The payload digest it was admitted with, which a retry is checked
     /// against ([`crate::Admission::payload_digest`]).
     pub digest: String,
+    /// The fleet the row was admitted for.
+    pub fleet: String,
 }
 
 impl Admissions {
@@ -43,9 +45,11 @@ impl Admissions {
             let created_at: i64 = row.try_get(0).map_err(query(CONTEXT_FIND_REPEATED))?;
             let seq: i64 = row.try_get(1).map_err(query(CONTEXT_FIND_REPEATED))?;
             let digest: String = row.try_get(2).map_err(query(CONTEXT_FIND_REPEATED))?;
+            let fleet: String = row.try_get(3).map_err(query(CONTEXT_FIND_REPEATED))?;
             Ok(Repeated {
                 id: logical_id(created_at, seq),
                 digest,
+                fleet,
             })
         })
         .transpose()

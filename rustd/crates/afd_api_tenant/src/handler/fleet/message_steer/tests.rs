@@ -1,4 +1,4 @@
-//! What a steer's body is allowed to be.
+//! What a steer's body is allowed to be, and how a failed steer is answered.
 //!
 //! The write decides whether the bytes a client sent are a message at all
 //! before any datastore is reached, so it is proven here;
@@ -12,8 +12,28 @@
 
 use afd_wire::event::STEER_MESSAGE_MAX_BYTES;
 use axum::body::Bytes;
+use axum::response::IntoResponse as _;
+use http::StatusCode;
 
-use super::read_steer;
+use super::{read_steer, refuse_steer};
+
+/// Only a reused operation id is answered as a 409 naming the id's state; every
+/// other steer failure keeps the status its plane decided.
+///
+/// The claim is that the two arms stay apart: a datastore outage rendered as
+/// "admitted" would tell a caller to stop retrying a message that never landed.
+#[test]
+fn only_a_reused_id_is_answered_as_admitted() {
+    for (label, error) in afd_events::error::one_of_each_kind() {
+        let conflict = error.is_operation_conflict();
+        let status = refuse_steer(error).into_response().status();
+        assert_eq!(
+            status == StatusCode::CONFLICT,
+            conflict,
+            "{label} answered {status}"
+        );
+    }
+}
 
 /// A steer with nothing in it is refused before the parser runs.
 #[test]
