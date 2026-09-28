@@ -75,6 +75,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_api_tenant/src/handler/fleet/message_steer.rs` (+ `message_steer/tests.rs`), `rustd/crates/afd_api/tests/{fleet_messages_steer,fleet_lifecycle_live/message}.rs` | EDIT | 400 for NUL; `accepted` carries `replayed` |
 | `rustd/crates/afd_http/src/services/event.rs` (+ every `FleetSteering` test double) | EDIT | `append` and `replayed` answer whether the 202 is a replay — the trait is how `replayed` reaches the handler |
 | `rustd/crates/afd_wire/src/activity.rs`, `rustd/crates/afd_fleet/src/lease/activity.rs`, `rustd/crates/agentsfleetd/tests/integration_runner_activity.rs` | EDIT | Optional `call_id` accepted and republished |
+| `rustd/crates/afd_api_runner/src/handler/runner/activity.rs` | EDIT | An empty or over-long `call_id` refuses the batch with the existing 400 |
 | `rustd/crates/afd_api_tenant/src/handler/stream.rs`, `public/openapi.json` | EDIT | Server-Sent Events (SSE) kind list says `chunk`; 202 schema gains `replayed` |
 | `rustd/crates/afd_api/tests/harness/stubs_ingress/answers.rs` | EDIT | `Admitted` literals gain the new fields |
 | `src/lib/contract/activity.zig`, `src/runner/engine/runner_progress.zig` | EDIT | Tool frames carry a per-event call id |
@@ -143,10 +144,10 @@ The conflict insert already returns the stored `payload_digest` (`afd_admission/
 
 NullClaw runs a batch's calls one at a time, so two calls of one name are never open together; the defect is that a missed or ambiguous frame cannot be paired. **Implementation default:** the runner mints `call_id` as a per-event counter at `tool_call_start` and repeats it on that call's frames; the daemon accepts it as optional (≤`CALL_ID_MAX_BYTES`) and republishes it; the browser keys by it, keeping the timing rule only for frames without one. The daemon's acceptance ships before any runner sends it, because activity structs are `deny_unknown_fields`.
 
-- **Dimension 5.1** — the daemon accepts, bounds and republishes an optional `call_id` on the three tool frames; frames without it are unchanged → Test `test_activity_carries_an_optional_call_id`
+- **Dimension 5.1** — the daemon accepts, bounds and republishes an optional `call_id` on the three tool frames; frames without it are unchanged → Test `test_activity_carries_an_optional_call_id` — DONE (live `daemon_suite` `integration_runner_activity` 3 passed; bridge unit test `tool_frames_republish_their_call_id_and_never_invent_one`)
 - **Dimension 5.2** — the runner stamps each call's started and completed frames with one call id, distinct per call in an event → Test `test_runner_stamps_one_call_id_per_call`
 - **Dimension 5.3** — the browser pairs a frame to its call by `call_id`, including a second same-name call whose start was missed → Test `test_tool_frames_pair_by_call_id`
-- **Dimension 5.4** — the SSE kind list names `chunk`, and `runner_fleet.md` lists each tool frame's fields → Test `test_sse_kind_list_matches_published_kinds`
+- **Dimension 5.4** — the SSE kind list names `chunk`, and `runner_fleet.md` lists each tool frame's fields → Test `test_sse_kind_list_matches_published_kinds` — DONE (`afd_fleet` lib; reads the regenerated `public/openapi.json`)
 
 ### §6 — Chat polish
 

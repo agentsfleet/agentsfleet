@@ -71,11 +71,15 @@ enum Published<'a> {
         name: &'a str,
         /// Spliced in verbatim, NOT re-encoded — see [`Published::of`].
         args_redacted: &'a RawValue,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        call_id: Option<&'a str>,
     },
     ToolCallProgress {
         event_id: &'a str,
         name: &'a str,
         elapsed_ms: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        call_id: Option<&'a str>,
     },
     /// The one rename in the bridge: `fleet_response_chunk` on the wire.
     #[serde(rename = "chunk")]
@@ -95,6 +99,8 @@ enum Published<'a> {
         event_id: &'a str,
         name: &'a str,
         ms: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        call_id: Option<&'a str>,
     },
 }
 
@@ -213,11 +219,13 @@ impl<'a> Published<'a> {
                 event_id,
                 name: &body.name,
                 args_redacted: serde_json::from_str(&body.args_redacted)?,
+                call_id: frame.call_id(),
             },
             ActivityFrame::ToolCallProgress(body) => Self::ToolCallProgress {
                 event_id,
                 name: &body.name,
                 elapsed_ms: body.elapsed_ms,
+                call_id: frame.call_id(),
             },
             ActivityFrame::FleetResponseChunk(body) => Self::Chunk {
                 event_id,
@@ -231,6 +239,7 @@ impl<'a> Published<'a> {
                 event_id,
                 name: &body.name,
                 ms: body.ms,
+                call_id: frame.call_id(),
             },
         })
     }

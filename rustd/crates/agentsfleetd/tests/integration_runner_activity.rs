@@ -31,11 +31,12 @@
     reason = "test target: an unmet precondition should fail the test loudly, and a missing lane knob is one"
 )]
 
-use afd_dragonfly::SubscriptionHub;
+use afd_dragonfly::{Subscription, SubscriptionHub};
+use afd_wire::activity::CALL_ID_MAX_BYTES;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
-use crate::e2e::{dragonfly_config, scenario};
+use crate::e2e::{Scenario, dragonfly_config, scenario};
 use crate::tail::{lease, next_frame, settle, silence};
 use crate::wire::{field, json, post};
 
@@ -49,6 +50,95 @@ const CHUNK_TEXT: &str = "the fleet said this out loud";
 /// the OWNERSHIP check rather than from a parse in front of it.
 const UNHELD_LEASE: &str = "0195b4ba-8d3a-7fff-8abc-ffffffffffff";
 
+/// The call id every frame of one tool call carries.
+const CALL_ID: &str = "3";
+
+/// A leased run whose activity channel was subscribed before the first forward.
+///
+/// Pub/sub keeps nothing for a reader that arrives late, so a subscription
+/// opened after the request would prove a drop that never happened.
+struct Tailed {
+    run: Scenario,
+    http: reqwest::Client,
+    path: String,
+    // Held for the subscription's lifetime: dropping the hub ends the tail.
+    _hub: SubscriptionHub,
+    tail: Subscription,
+}
+
+impl Tailed {
+    async fn open(supervisor: &mut Supervisor) -> Self {
+        let run = scenario(supervisor).await;
+        let http = reqwest::Client::new();
+        let (lease_id, _fence) = lease(&http, &run).await;
+        let hub = SubscriptionHub::start(dragonfly_config())
+            .await
+            .expect("the lane's Dragonfly accepts a subscriber");
+        let tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));
+        settle().await;
+        Self {
+            path: format!("/v1/runners/me/leases/{lease_id}/activity"),
+            run,
+            http,
+            _hub: hub,
+            tail,
+        }
+    }
+
+    async fn forward(&self, body: &serde_json::Value) -> reqwest::Response {
+        post(&self.http, &self.run, &self.path, body).await
+    }
+}
+
+/// A tool frame's `call_id` is optional, bounded, and republished as sent; a
+/// frame without one publishes as it always did; any other unknown field still
+/// refuses the batch.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn test_activity_carries_an_optional_call_id() {
+    let mut supervisor = Supervisor::new();
+    let mut tailed = Tailed::open(&mut supervisor).await;
+
+    let named = json!({"frames": [{"tool_call_completed": {"name": TOOL_NAME, "ms": 5, "call_id": CALL_ID}}]});
+    assert_eq!(tailed.forward(&named).await.status().as_u16(), 202);
+    let frame = next_frame(&mut tailed.tail)
+        .await
+        .expect("the named frame publishes");
+    assert_eq!(field(&frame, "call_id"), &json!(CALL_ID));
+
+    let unnamed = json!({"frames": [{"tool_call_progress": {"name": TOOL_NAME, "elapsed_ms": 5}}]});
+    assert_eq!(tailed.forward(&unnamed).await.status().as_u16(), 202);
+    let frame = next_frame(&mut tailed.tail)
+        .await
+        .expect("the unnamed frame publishes");
+    assert!(
+        frame.get("call_id").is_none(),
+        "no call id is invented: {frame}"
+    );
+
+    for refused in [
+        json!({"frames": [{"tool_call_started": {"name": TOOL_NAME, "args_redacted": "{}", "call_id": ""}}]}),
+        json!({"frames": [{"tool_call_started": {"name": TOOL_NAME, "args_redacted": "{}", "call_id": "c".repeat(CALL_ID_MAX_BYTES + 1)}}]}),
+        json!({"frames": [{"tool_call_completed": {"name": TOOL_NAME, "ms": 5, "call_id": CALL_ID, "retries": 1}}]}),
+    ] {
+        let answer = tailed.forward(&refused).await;
+        assert_eq!(answer.status().as_u16(), 400, "{refused}");
+        assert_eq!(
+            code_of(answer).await,
+            afd_core::error_code::INVALID_REQUEST.as_str()
+        );
+    }
+    assert_eq!(
+        silence(&mut tailed.tail).await,
+        None,
+        "no refused batch published"
+    );
+
+    drop(tailed.tail);
+    supervisor.shutdown().await;
+    tailed.run.cleanup().await;
+}
+
 /// Dimension 4.1 — one frame in, one frame on the channel; malformed, nothing.
 ///
 /// Three arms against one scenario, in the order a wiring defect would break
@@ -58,25 +148,19 @@ const UNHELD_LEASE: &str = "0195b4ba-8d3a-7fff-8abc-ffffffffffff";
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_activity_publish() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
-    let http = reqwest::Client::new();
-
-    let (lease_id, _fence) = lease(&http, &run).await;
-
-    // Subscribed BEFORE the first forward. Pub/sub keeps nothing for a reader
-    // that arrives late, so a subscription opened after the request would prove
-    // a drop that never happened.
-    let hub = SubscriptionHub::start(dragonfly_config())
-        .await
-        .expect("the lane's Dragonfly accepts a subscriber");
-    let mut tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));
-    settle().await;
+    let Tailed {
+        run,
+        http,
+        path,
+        _hub,
+        mut tail,
+    } = Tailed::open(&mut supervisor).await;
 
     // ── One frame, one publish ──────────────────────────────────────────────
     let forwarded = post(
         &http,
         &run,
-        &format!("/v1/runners/me/leases/{lease_id}/activity"),
+        &path,
         &json!({"frames": [{"fleet_response_chunk": {"text": CHUNK_TEXT}}]}),
     )
     .await;
@@ -112,7 +196,7 @@ async fn test_activity_publish() {
     let malformed = post(
         &http,
         &run,
-        &format!("/v1/runners/me/leases/{lease_id}/activity"),
+        &path,
         &json!({"frames": [{"no_such_frame": {"text": "?"}}]}),
     )
     .await;
@@ -178,16 +262,13 @@ async fn test_activity_publish() {
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_activity_drops_a_frame_it_cannot_render() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
-    let http = reqwest::Client::new();
-
-    let (lease_id, _fence) = lease(&http, &run).await;
-
-    let hub = SubscriptionHub::start(dragonfly_config())
-        .await
-        .expect("the lane's Dragonfly accepts a subscriber");
-    let mut tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));
-    settle().await;
+    let Tailed {
+        run,
+        http,
+        path,
+        _hub,
+        mut tail,
+    } = Tailed::open(&mut supervisor).await;
 
     // Well-formed at the WIRE — `args_redacted` is a string, as the contract
     // says — and unrenderable at the bridge, because that string does not hold
@@ -195,7 +276,7 @@ async fn test_activity_drops_a_frame_it_cannot_render() {
     let undeliverable = post(
         &http,
         &run,
-        &format!("/v1/runners/me/leases/{lease_id}/activity"),
+        &path,
         &json!({"frames": [{"tool_call_started": {
             "name": TOOL_NAME,
             "args_redacted": "this is not JSON",
@@ -222,7 +303,7 @@ async fn test_activity_drops_a_frame_it_cannot_render() {
     let recovered = post(
         &http,
         &run,
-        &format!("/v1/runners/me/leases/{lease_id}/activity"),
+        &path,
         &json!({"frames": [{"fleet_response_chunk": {"text": CHUNK_TEXT}}]}),
     )
     .await;

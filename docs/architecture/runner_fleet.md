@@ -516,6 +516,15 @@ NullClaw emits progress frames mid-run (tool started, response chunk, tool compl
 NullClaw child ─pipe(A frames)─► runner parent ─POST .../activity (no ack)─► agentsfleetd ─PUBLISH─► SSE
 ```
 
+The runner's frames reach the channel in this shape (`afd_fleet::lease::activity`), each stamped with the `event_id` its lease runs:
+
+- `tool_call_started` — `name`, `args_redacted` spliced in as JSON, and `call_id`.
+- `tool_call_progress` — `name`, `elapsed_ms`, and `call_id`.
+- `tool_call_completed` — `name`, `ms`, and `call_id`.
+- `chunk` — the runner's `fleet_response_chunk`, renamed: `text`, `text_kind`, `stream_start`, `stream_contiguous`, and `stream_seq`.
+
+`call_id` is the runner's own counter for the run, minted when a call starts and repeated on each of its frames. NullClaw's observer drops the provider's `tool_call_id`, so the runner cannot forward that one. The daemon accepts `call_id` as optional and bounded by `CALL_ID_MAX_BYTES`, then republishes it unchanged. That acceptance ships before any runner sends it, because the activity structs refuse unknown fields. A browser pairs a call's frames by `call_id`; a frame from an older runner has none and pairs by name and timing.
+
 Two planes, kept apart on purpose: **activity** is ephemeral and best-effort (a dropped frame is cosmetic); **report** is the durable system of record. The live tail is never the source of truth. The runner reports the durable outcome before waiting for its activity sender to drain, so a cold activity connection cannot delay settlement; a late activity frame may arrive after completion. A cold DNS or TCP connect still precedes the sender's socket deadline and can hold a worker at the post-report join. Runner chunks carry a pass start marker, contiguous-delivery flag, and sequence number. The browser rejects a gap, ignores activity after completion, and reads the durable event detail to settle the final answer. Its reply decoder uses Hermes protocol parsing and incremental HTML tokenization to keep reasoning and tool protocol out of the visible answer; after the first visible delta, it batches display updates at a 50 ms interval. The bracket frames are published by `agentsfleetd` itself (`afd_fleet::lease::bracket`, shapes in `afd_wire::tail::TailFrame`), so the tail has open/close markers even before the runner forwards a single mid-run frame:
 
 - `event_received` — when the lease verb writes the row, and when an approval's resolve writes the continuation row (the runner's pull finds that one already there, so the resolve is its one announcer): `event_id`, `actor`, `event_type`, and the row's own `created_at`, so a watcher never stamps a live turn with its clock.
