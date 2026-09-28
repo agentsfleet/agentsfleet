@@ -13,11 +13,13 @@ import type { FleetEvent, FleetToolCall } from "./fleet-stream-row";
 //
 // The wire carries no call identity, so a call is keyed by (event, name) and
 // matched to the open call of that name. A started frame opens a call; progress
-// and completion move the open one. With no open call, a name this event has
-// already finished means the frame is a duplicate or arrived late, and it
-// changes nothing — a fabricated second call is worse than a missed update. A
-// name never seen here means the start was missed (a subscriber that joined
-// mid-call), and the call opens as before.
+// and completion move the open one. With no open call, a frame for a name this
+// event already finished is weighed by its timing: one that could restate the
+// finished call — its figure, no figure, or progress no further along than it
+// ended — changes nothing, since a fabricated second call is worse than a
+// missed update. One past that is a second call whose start this subscriber
+// missed after a reconnect, and it shows. A name never seen here means the
+// start was missed (a subscriber that joined mid-call), and the call opens.
 
 type ToolFrame = Extract<
   LiveFrame,
@@ -82,8 +84,14 @@ function applyToolStep(
 }
 
 function opened(tools: FleetToolCall[], { name, ms, done, opens }: ToolStep, nowMs: number): FleetToolCall[] {
-  if (!opens && tools.some((t) => t.name === name)) return tools;
+  if (!opens && restatesFinished(tools, name, ms, done)) return tools;
   return [...tools, { name, startedAtMs: nowMs, ms, done }];
+}
+
+// Whether a frame could have come from a finished call of this name. A call
+// that finished without a figure cannot be told from a new one, so it is.
+function restatesFinished(tools: FleetToolCall[], name: string, ms: number | null, done: boolean): boolean {
+  return tools.some((t) => t.name === name && (ms === null || t.ms === null || (done ? ms === t.ms : ms <= t.ms)));
 }
 
 function moved(tools: FleetToolCall[], open: number, ms: number | null, done: boolean): FleetToolCall[] {
