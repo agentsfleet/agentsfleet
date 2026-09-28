@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M207
 **Workstream:** 003
 **Date:** Sep 28, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing: a hung send blocks a fleet's chat until reload, a Thought clock can run forever, and a refused reuse invites a Resend that can never land
 **Categories:** API, UI
 **Batch:** B1 — sole workstream; the follow-up that M207_001 and M207_002 deferred to
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** feat/m207-003-every-send-settles
+**Baseline revision:** 2651207a43e807f850b7ea91c5da2d2885f7da71
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** none — M207_001 and M207_002 merged in PR #717 (`5a68c5518`)
 **Provenance:** LLM-drafted (Claude Opus 5.5, Sep 28, 2026) from the M207 review and Greptile follow-ups; every behaviour claim read from source at `5a68c5518`
