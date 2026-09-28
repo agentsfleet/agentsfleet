@@ -176,7 +176,9 @@ const ReplyActions = memo(function ReplyActions({
   );
 });
 
-/** The library's `indicator` part: the reply is running and has nothing to show yet. */
+/** The library's `indicator` part: the reply is running and has nothing to show yet.
+ * The status is named "Working" or "Queued"; the visible verb is whimsy, and a
+ * live region reads its content, so the verb is hidden from assistive tech. */
 function Waiting({ queued, eventId }: { queued: boolean; eventId: string }) {
   const label = queued ? QUEUED_LABEL : WORKING_LABEL;
   return (
@@ -186,7 +188,7 @@ function Waiting({ queued, eventId }: { queued: boolean; eventId: string }) {
       data-testid="fleet-working"
     >
       <BrailleSpinner className="text-pulse" />
-      <span>{loadingPhrase(queued ? QUEUED_LABEL : loadingVerbFor(eventId))}</span>
+      <span aria-hidden="true">{loadingPhrase(queued ? QUEUED_LABEL : loadingVerbFor(eventId))}</span>
     </output>
   );
 }

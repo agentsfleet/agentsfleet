@@ -32,6 +32,10 @@ const UTF8 = new TextEncoder();
 // UTF-8 spends one to three bytes per UTF-16 unit (a surrogate pair's four
 // bytes are two per unit), so most drafts are settled by their length alone.
 const MAX_UTF8_BYTES_PER_UNIT = 3;
+// The composer counts bytes from nine tenths of the limit, near enough to
+// matter and far enough to be read before Send stops working.
+const COUNT_FROM_SHARE = 0.9;
+const COUNT_FROM_BYTES = Math.ceil(STEER_MESSAGE_MAX_BYTES * COUNT_FROM_SHARE);
 const settledEitherWay = (): void => undefined;
 /** How long a send waits for its Server Action: above the server's own 20 s
  * retry deadline (`lib/api/retry-config.ts`), so a slow send that is still
@@ -72,6 +76,14 @@ export type MessageDelivery = {
   /** The composer's draft changed: whether a failed send's text came back. */
   noteDraft: (text: string) => void;
 };
+
+/** `text`'s size in UTF-8 bytes once it is within reach of the limit; null
+ * below that, which most drafts settle by their length alone. */
+export function bytesNearSteerLimit(text: string): number | null {
+  if (text.length * MAX_UTF8_BYTES_PER_UNIT < COUNT_FROM_BYTES) return null;
+  const bytes = UTF8.encode(text).length;
+  return bytes < COUNT_FROM_BYTES ? null : bytes;
+}
 
 /** Whether `text` is longer than the daemon takes. */
 export function exceedsSteerLimit(text: string): boolean {

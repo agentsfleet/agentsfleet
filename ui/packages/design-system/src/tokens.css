@@ -225,8 +225,22 @@
 }
 
 /* A settled transcript row skips layout while off screen; the streaming row is
- * still growing, and a remembered placeholder height would misstate the scroll. */
-[data-settled="true"] { content-visibility: auto; contain-intrinsic-size: auto 12rem; }
+ * still growing, and a remembered placeholder height would misstate the scroll.
+ *
+ * Skipping layout contains paint, which clips at the row's box, and a focused
+ * control near its edge rings outside it: the reply's Copy sits one small step
+ * left of the text, under the shared 2px ring on a 2px offset. The box grows by
+ * that much each way against an equal negative margin, so the ring paints
+ * whole and no content moves. `width: auto` lets the stretched row take the
+ * margin, where a full width would narrow its content instead. */
+[data-settled="true"] {
+  --settled-ring-room: calc(var(--sp-sm) + 4px);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 12rem;
+  width: auto;
+  padding: var(--settled-ring-room);
+  margin: calc(-1 * var(--settled-ring-room));
+}
 
 /* The beckon — the one call to action on a surface that has exactly one.
  *
