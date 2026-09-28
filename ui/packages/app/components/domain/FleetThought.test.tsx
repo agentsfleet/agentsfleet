@@ -43,6 +43,12 @@ describe("FleetThought", () => {
     expect(chip().textContent).toContain("4.0s");
     expect(chip().textContent).toContain("Checking the header");
     expect(chip().querySelector("[data-braille-spinner]")).toBeTruthy();
+    // The chip sits in the transcript's live log: its name never ticks.
+    expect(screen.getByRole("button", { name: THOUGHT_LIVE_LABEL })).toBe(chip());
+    act(() => {
+      vi.advanceTimersByTime(TICK_MS);
+    });
+    expect(screen.getByRole("button", { name: THOUGHT_LIVE_LABEL })).toBe(chip());
     // Open while it streams: the thought itself is on screen.
     expect(screen.getByText(REASONING, { selector: "p" })).toBeTruthy();
   });

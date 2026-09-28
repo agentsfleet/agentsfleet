@@ -17,11 +17,12 @@ export type BrailleSpinnerProps = Omit<ComponentProps<"span">, "children">;
  *
  * CSS-only: the `[data-braille-*]` rules in tokens.css step the column with
  * `transform`, so the compositor animates it and no script runs per frame.
- * Reduced motion hides the column and shows the rest frame.
+ * Reduced motion hides the column and shows the rest frame. The glyphs are
+ * text, so they are unselectable: copying a streaming reply never picks them up.
  */
 export function BrailleSpinner({ className, ...rest }: BrailleSpinnerProps) {
   return (
-    <span aria-hidden="true" data-braille-spinner="" className={cn(className)} {...rest}>
+    <span aria-hidden="true" data-braille-spinner="" className={cn("select-none", className)} {...rest}>
       <span data-braille-frames="">
         {BRAILLE_FRAMES.map((frame) => (
           <span key={frame}>{frame}</span>

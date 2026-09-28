@@ -25,6 +25,10 @@ import { mintOperationId } from "@/lib/streaming/operation-id";
 // authenticated principal.
 const OPTIMISTIC_ACTOR = "steer:pending";
 const UTF8 = new TextEncoder();
+// UTF-8 spends one to three bytes per UTF-16 unit (a surrogate pair's four
+// bytes are two per unit), so most drafts are settled by their length alone.
+const MAX_UTF8_BYTES_PER_UNIT = 3;
+const settledEitherWay = (): void => undefined;
 
 // One queue per fleet, in module state, so a composer that remounts mid-send
 // queues behind the send still out instead of overtaking it.
@@ -41,8 +45,8 @@ type DeliveryCtx = {
   writers: PendingSendWriters;
 };
 
-/** A failed send's text, as it went back into the composer. */
-type Restored = { operationId: string; text: string };
+/** A failed send's text and id, and the ledger it belongs to. */
+type Restored = { operationId: string; text: string; ledger: PendingSendWriters };
 
 export type MessageDelivery = {
   /** assistant-ui's `onNew`: a message the composer submitted. */
@@ -52,10 +56,14 @@ export type MessageDelivery = {
   resend: (operationId: string) => void;
   /** The composer put this send's text back on mount. */
   noteRestored: (operationId: string, text: string) => void;
+  /** The composer's draft changed: whether a failed send's text came back. */
+  noteDraft: (text: string) => void;
 };
 
 /** Whether `text` is longer than the daemon takes. */
 export function exceedsSteerLimit(text: string): boolean {
+  if (text.length > STEER_MESSAGE_MAX_BYTES) return true;
+  if (text.length * MAX_UTF8_BYTES_PER_UNIT <= STEER_MESSAGE_MAX_BYTES) return false;
   return UTF8.encode(text).length > STEER_MESSAGE_MAX_BYTES;
 }
 
@@ -66,9 +74,13 @@ export function useMessageDelivery(ctx: DeliveryCtx): MessageDelivery {
   // draft, sent unchanged, reuses the id: the same words typed later are a new
   // message, and an old id would replay an old admission and run nothing.
   const restored = useRef<Restored | null>(null);
+  // Every submit the composer made, counted the way assistant-ui counts them:
+  // it returns a failed send's draft only when no newer send started since.
+  const sends = useRef(0);
 
   const onNew = useCallback(
     async (msg: AppendMessage) => {
+      const send = ++sends.current;
       const text = extractMessageText(msg);
       if (text.length === 0) return;
       // Refused before it is named or recorded: the daemon would refuse it, and
@@ -78,15 +90,17 @@ export function useMessageDelivery(ctx: DeliveryCtx): MessageDelivery {
       restored.current = null;
       let operationId: string;
       try {
-        operationId = back?.text === text ? back.operationId : mintOperationId();
+        operationId = back?.text === text && back.ledger === writers ? back.operationId : mintOperationId();
       } catch {
         throw new MessageNotSentError();
       }
       if (await deliver(operationId, text)) return;
-      restored.current = { operationId, text };
+      // A draft assistant-ui did not return is not this send's to reuse: the
+      // same words typed later are a new message.
+      if (sends.current === send) restored.current = { operationId, text, ledger: writers };
       throw new MessageNotSentError();
     },
-    [deliver],
+    [deliver, writers],
   );
 
   const resend = useCallback(
@@ -101,10 +115,20 @@ export function useMessageDelivery(ctx: DeliveryCtx): MessageDelivery {
   );
 
   const noteRestored = useCallback((operationId: string, text: string) => {
-    restored.current = { operationId, text };
+    restored.current = { operationId, text, ledger: writers };
+  }, [writers]);
+
+  // An edit ends the recovery: the words the operator types next are theirs,
+  // even when they come back round to the same text. An empty composer settles
+  // nothing — it is the draft before a restore lands.
+  const noteDraft = useCallback((text: string) => {
+    if (text.length > 0 && restored.current !== null && restored.current.text !== text) restored.current = null;
   }, []);
 
-  return useMemo(() => ({ onNew, resend, noteRestored }), [onNew, resend, noteRestored]);
+  return useMemo(
+    () => ({ onNew, resend, noteRestored, noteDraft }),
+    [onNew, resend, noteRestored, noteDraft],
+  );
 }
 
 // One send: recorded, painted, then POSTed behind the fleet's previous send.
@@ -144,10 +168,11 @@ function useSerializedDelivery({
         return true;
       };
       const key = `${workspaceId}:${fleetId}`;
-      // `send` reports its own failure and never rejects, so the tail never
-      // rejects — the next message always gets its slot.
+      // `send` reports its own failure through the ledger. The tail settles
+      // either way, so a throw after the acknowledgement cannot stall every
+      // later send on this fleet — the next message always gets its slot.
       const slot = (DELIVERY_TAILS.get(key) ?? Promise.resolve()).then(send);
-      const tail = slot.then(() => undefined);
+      const tail = slot.then(settledEitherWay, settledEitherWay);
       DELIVERY_TAILS.set(key, tail);
       void tail.then(() => {
         if (DELIVERY_TAILS.get(key) === tail) DELIVERY_TAILS.delete(key);

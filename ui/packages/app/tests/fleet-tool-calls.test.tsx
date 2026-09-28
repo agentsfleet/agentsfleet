@@ -46,6 +46,10 @@ describe("FleetThread — tool rows", () => {
       vi.advanceTimersByTime(TICK_MS);
     });
     expect(running.textContent).toContain("3.0s");
+    // The ticking clock is hidden from assistive tech; a finished one is read.
+    const clockOf = (row: Element) => row.querySelector(".tabular-nums")!;
+    expect(clockOf(running).getAttribute("aria-hidden")).toBe("true");
+    expect(clockOf(done).getAttribute("aria-hidden")).toBeNull();
 
     // The turn settles with the call never reported done: no clock claims it runs.
     mockStream([{ ...working, status: "processed", reply: "Found it." }]);

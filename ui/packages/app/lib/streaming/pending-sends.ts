@@ -81,6 +81,10 @@ const OWN_IN_FLIGHT = new Set<string>();
 // Keys this document mirrors to storage; a memory-only ledger (user not yet
 // known) is never re-read from storage, because storage never held it.
 const MIRRORED = new Set<string>();
+// Keys whose stored copy fell behind this document's: a write refused for
+// quota, or a read that threw. Until a write lands, a merge keeps everything
+// this tab holds — storage never saw the ended sends it would otherwise drop.
+const BEHIND = new Set<string>();
 let storageListening = false;
 let swept = false;
 
@@ -103,12 +107,13 @@ function mirror(scope: LedgerScope): Storage | null {
   return scope.subject === null ? null : storage();
 }
 
-function readStored(store: Storage | null, key: string): PendingSend[] {
+/** What storage holds for `key`, or null when the read itself threw. */
+function readStored(store: Storage | null, key: string): PendingSend[] | null {
   if (store === null) return [];
   try {
     return parseEntries(store.getItem(key));
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -137,7 +142,7 @@ function live(entries: readonly PendingSend[], nowMs: number): PendingSend[] {
 // unknown here, which is the state that offers a safe Resend.
 function hydrate(scope: LedgerScope): readonly PendingSend[] {
   sweepExpired();
-  return live(readStored(mirror(scope), ledgerKey(scope)), Date.now()).map((entry) =>
+  return live(readStored(mirror(scope), ledgerKey(scope)) ?? [], Date.now()).map((entry) =>
     entry.state === PENDING_SEND_STATE.SENDING ? { ...entry, state: PENDING_SEND_STATE.UNKNOWN } : entry,
   );
 }
@@ -154,12 +159,13 @@ function read(scope: LedgerScope): readonly PendingSend[] {
 }
 
 // What storage says now, plus this document's own in-flight sends it has not
-// seen yet. Entries other tabs removed stay removed. A `sending` this document
+// seen yet — or, while storage is behind, everything this document holds.
+// Otherwise entries other tabs removed stay removed. A `sending` this document
 // did not start never overrides an ending it already knows: storage keeps the
 // `sending` a closed tab left behind, and taking it back would hide that
 // send's Resend for good — while showing Resend over a live send is safe,
 // because it carries the same operation id.
-function mergeIncoming(incoming: readonly PendingSend[], held: readonly PendingSend[]): PendingSend[] {
+function mergeIncoming(incoming: readonly PendingSend[], held: readonly PendingSend[], behind: boolean): PendingSend[] {
   const heldById = new Map(held.map((entry) => [entry.operationId, entry]));
   const merged = incoming.map((entry) => {
     const mine = heldById.get(entry.operationId);
@@ -168,26 +174,32 @@ function mergeIncoming(incoming: readonly PendingSend[], held: readonly PendingS
     return staleSending ? mine : entry;
   });
   const known = new Set(incoming.map((entry) => entry.operationId));
-  const ownMissing = held.filter((entry) => OWN_IN_FLIGHT.has(entry.operationId) && !known.has(entry.operationId));
-  return [...merged, ...ownMissing];
+  const kept = held.filter((entry) => (behind || OWN_IN_FLIGHT.has(entry.operationId)) && !known.has(entry.operationId));
+  return [...merged, ...kept];
 }
 
 function mutate(scope: LedgerScope, change: (entries: readonly PendingSend[]) => PendingSend[]): void {
   const key = ledgerKey(scope);
   const held = read(scope);
   const store = mirror(scope);
-  const base = store === null ? held : mergeIncoming(live(readStored(store, key), Date.now()), held);
+  const stored = store === null ? null : readStored(store, key);
+  if (store !== null && stored === null) BEHIND.add(key);
+  const base = stored === null ? held : mergeIncoming(live(stored, Date.now()), held, BEHIND.has(key));
   const next = capped(change(base));
   LEDGERS.set(key, next);
-  if (store !== null) {
-    try {
-      if (next.length === 0) store.removeItem(key);
-      else store.setItem(key, JSON.stringify(next));
-    } catch {
-      // Quota or a revoked permission: the ledger stays in memory for this tab.
-    }
-  }
+  if (store !== null) writeMirror(store, key, next);
   notify(key);
+}
+
+function writeMirror(store: Storage, key: string, next: readonly PendingSend[]): void {
+  try {
+    if (next.length === 0) store.removeItem(key);
+    else store.setItem(key, JSON.stringify(next));
+    BEHIND.delete(key);
+  } catch {
+    // Quota or a revoked permission: this tab's copy is now the whole ledger.
+    BEHIND.add(key);
+  }
 }
 
 // The newest `MAX_PENDING_SENDS`, never dropping a send still in flight.
@@ -216,8 +228,8 @@ function onStorage(event: StorageEvent): void {
   for (const key of keys) {
     const held = MIRRORED.has(key) ? LEDGERS.get(key) : undefined;
     if (held === undefined) continue;
-    const incoming = event.key === null ? readStored(storage(), key) : parseEntries(event.newValue);
-    LEDGERS.set(key, mergeIncoming(live(incoming, nowMs), held));
+    const incoming = event.key === null ? readStored(storage(), key) ?? [] : parseEntries(event.newValue);
+    LEDGERS.set(key, mergeIncoming(live(incoming, nowMs), held, BEHIND.has(key)));
     notify(key);
   }
 }
@@ -235,7 +247,7 @@ function sweepExpired(): void {
   if (swept) return;
   swept = true;
   const nowMs = Date.now();
-  removeMirrored((store, key) => live(readStored(store, key), nowMs).length === 0);
+  removeMirrored((store, key) => live(readStored(store, key) ?? [], nowMs).length === 0);
 }
 
 // Removes every mirrored ledger `doomed` names. Best-effort, like every other
@@ -311,6 +323,7 @@ export function __resetPendingSendsForTests({ keepStorage = false }: { keepStora
   LEDGERS.clear();
   OWN_IN_FLIGHT.clear();
   MIRRORED.clear();
+  BEHIND.clear();
   swept = false;
   if (!keepStorage) removeMirrored(() => true);
   for (const key of LISTENERS.keys()) notify(key);

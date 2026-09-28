@@ -4,16 +4,17 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { SteerComposer } from "./SteerComposer";
 import { PENDING_SEND_STATE, type PendingSend } from "./useFleetPendingSends";
 
-const { composer } = vi.hoisted(() => {
+const { composer, aui } = vi.hoisted(() => {
   const state = { text: "", isEmpty: true };
+  const setText = vi.fn((text: string) => {
+    state.text = text;
+    state.isEmpty = text.length === 0;
+  });
+  // One client for every render, as the runtime's is: an effect keyed on it
+  // must not re-run merely because the component rendered.
   return {
-    composer: {
-      state,
-      setText: vi.fn((text: string) => {
-        state.text = text;
-        state.isEmpty = text.length === 0;
-      }),
-    },
+    composer: { state, setText },
+    aui: { composer: () => ({ getState: () => state, setText }) },
   };
 });
 
@@ -24,7 +25,7 @@ vi.mock("@assistant-ui/react", () => ({
       React.cloneElement(children, { placeholder, "data-submit-mode": submitMode } as Record<string, unknown>),
     Send: ({ children }: { children: React.ReactElement }) => children,
   },
-  useAui: () => ({ composer: () => ({ getState: () => composer.state, setText: composer.setText }) }),
+  useAui: () => aui,
   useAuiState: <T,>(selector: (s: { composer: typeof composer.state }) => T) => selector({ composer: composer.state }),
 }));
 
@@ -55,6 +56,7 @@ function view(pending: PendingSend[], handlers: Handlers = {}) {
       onResend={handlers.onResend ?? noop}
       onDismiss={handlers.onDismiss ?? noop}
       onRestored={handlers.onRestored ?? noop}
+      onDraft={noop}
     />
   );
 }
@@ -169,6 +171,42 @@ describe("SteerComposer", () => {
     draft("a".repeat(STEER_MESSAGE_MAX_BYTES + 1));
     viewed.rerender(view([]));
     expect(screen.getByText(TOO_LONG_TEXT)).toBeTruthy();
+    // Bytes, not characters: three-byte "€" crosses the limit at 2,731.
+    draft("€".repeat(2_730));
+    viewed.rerender(view([]));
+    expect(screen.queryByText(TOO_LONG_TEXT)).toBeNull();
+    draft("€".repeat(2_731));
+    viewed.rerender(view([]));
+    expect(screen.getByText(TOO_LONG_TEXT)).toBeTruthy();
+  });
+
+  it("restores once per ledger, so the signed-in user's own ledger is restored when it arrives", () => {
+    // Before the user is known the ledger is memory-only and empty.
+    const signedOut = vi.fn();
+    const viewed = render(view([], { onRestored: signedOut }));
+    expect(composer.setText).not.toHaveBeenCalled();
+    const signedIn = vi.fn();
+    viewed.rerender(view([REFUSED], { onRestored: signedIn }));
+    expect(composer.setText).toHaveBeenCalledExactlyOnceWith(REFUSED.text);
+    expect(signedIn).toHaveBeenCalledExactlyOnceWith("op-refused", REFUSED.text);
+    // A later refusal on the same ledger is assistant-ui's to return, not this.
+    draft("");
+    viewed.rerender(view([REFUSED, entry({ operationId: "op-later", text: "later" })], { onRestored: signedIn }));
+    expect(composer.setText).toHaveBeenCalledTimes(1);
+    expect(signedOut).not.toHaveBeenCalled();
+  });
+
+  it("returns focus to the draft after Resend or Dismiss, and names the message Resend acts on", () => {
+    draft("typing on");
+    render(view([REFUSED]));
+    const resend = screen.getByRole("button", { name: RESEND });
+    const described = document.getElementById(resend.getAttribute("aria-describedby") ?? "");
+    expect(described?.textContent).toBe(REFUSED.text);
+    fireEvent.click(resend);
+    expect(document.activeElement).toBe(screen.getByRole("textbox"));
+    resend.focus();
+    fireEvent.click(screen.getByRole("button", { name: DISMISS }));
+    expect(document.activeElement).toBe(screen.getByRole("textbox"));
   });
 
   it("test_dismiss_removes_one_entry", () => {

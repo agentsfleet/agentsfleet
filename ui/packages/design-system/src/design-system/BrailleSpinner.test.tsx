@@ -13,7 +13,8 @@ describe("BrailleSpinner", () => {
     const root = container.firstElementChild as HTMLElement;
     expect(root.getAttribute("aria-hidden")).toBe("true");
     expect(root.hasAttribute("data-braille-spinner")).toBe(true);
-    expect(root.className).toBe("text-pulse");
+    // Unselectable, so a copied reply never carries the glyphs.
+    expect(root.className).toBe("select-none text-pulse");
     const column = root.querySelector("[data-braille-frames]");
     // Pin test: the frames and their order are the animation.
     expect([...(column?.children ?? [])].map((frame) => frame.textContent)).toEqual([

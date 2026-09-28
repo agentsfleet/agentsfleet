@@ -136,6 +136,7 @@ export function FleetThread({
             onResend={delivery.resend}
             onDismiss={ledger.writers.dismiss}
             onRestored={delivery.noteRestored}
+            onDraft={delivery.noteDraft}
           />
         </DashboardPanel>
       </SenderLabelProvider>
