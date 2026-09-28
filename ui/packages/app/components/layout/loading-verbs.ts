@@ -30,11 +30,14 @@ export type LoadingVerb = (typeof LOADING_VERBS)[number];
 
 /** Uniformly picks one waiting verb. Impure by design — callers freeze it in mount state. */
 export function pickLoadingVerb(): LoadingVerb {
-  const index = Math.floor(Math.random() * LOADING_VERBS.length);
-  // The `as const` tuple makes index 0 statically known, so this coalesce is a
-  // real total-function fallback rather than a non-null assertion in disguise:
-  // a future out-of-range index degrades to a valid verb instead of `undefined`
-  // leaking into the rendered phrase.
+  return verbAt(Math.floor(Math.random() * LOADING_VERBS.length));
+}
+
+// The `as const` tuple makes index 0 statically known, so this coalesce is a
+// real total-function fallback rather than a non-null assertion in disguise:
+// a future out-of-range index degrades to a valid verb instead of `undefined`
+// leaking into the rendered phrase. Both pickers go through it.
+function verbAt(index: number): LoadingVerb {
   return LOADING_VERBS[index] ?? LOADING_VERBS[0];
 }
 
@@ -52,7 +55,7 @@ export function loadingVerbFor(key: string): LoadingVerb {
   for (let index = 0; index < key.length; index += 1) {
     hash = Math.imul(hash ^ key.charCodeAt(index), FNV_PRIME);
   }
-  return LOADING_VERBS[(hash >>> 0) % LOADING_VERBS.length] ?? LOADING_VERBS[0];
+  return verbAt((hash >>> 0) % LOADING_VERBS.length);
 }
 
 /**
