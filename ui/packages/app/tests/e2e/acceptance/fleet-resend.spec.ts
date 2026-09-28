@@ -122,7 +122,9 @@ test("test_failed_send_resend_journey", async ({ page }) => {
     await expect(composer.getByText(SEND_UNCONFIRMED)).toHaveCount(0);
     await expect(draft).toHaveValue("");
     // One operation, admitted once: Resend carried the first send's id, and
-    // the daemon answered it with the event it had already admitted.
+    // the daemon answered it with the event it had already admitted. The
+    // checks above pass on the optimistic row, before that answer is back.
+    await expect.poll(() => steers.eventIds.length).toBe(2);
     const [firstOperation, resentOperation] = steers.operationIds;
     expect(firstOperation).toMatch(UUID_V7);
     expect(resentOperation).toBe(firstOperation);
@@ -162,6 +164,7 @@ test("test_reload_recovers_unconfirmed_send", async ({ page }) => {
     await notices.getByRole("button", { name: RESEND_LABEL }).click();
     await expect(notices).toHaveCount(0);
     await expect(transcript.getByText(message, { exact: true })).toHaveCount(1);
+    await expect.poll(() => steers.eventIds.length).toBe(1);
     expect(steers.operationIds).toEqual([operationId]);
     expect(steers.eventIds).toEqual([admitted.event_id]);
   });
