@@ -194,6 +194,8 @@ export type ActivityLiveFrame =
       event_id: string;
       name: string;
       args_redacted: unknown;
+      /** Shared by every frame of one call; absent from older runners. */
+      call_id?: string;
     }
 
   | {
@@ -201,6 +203,7 @@ export type ActivityLiveFrame =
       event_id: string;
       name: string;
       elapsed_ms: number;
+      call_id?: string;
     }
 
   | { kind: typeof FRAME_KIND.CHUNK; event_id: string; text: string; text_kind?: StreamTextKind; stream_start?: boolean; stream_contiguous?: boolean; stream_seq?: number }
@@ -210,6 +213,7 @@ export type ActivityLiveFrame =
       event_id: string;
       name: string;
       ms: number;
+      call_id?: string;
     }
 
   // The terminal row as the events list serves it, less the two scope columns

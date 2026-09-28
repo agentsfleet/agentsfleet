@@ -63,6 +63,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/streaming/{fleet-stream-reply-registry,fleet-stream-registry,fleet-stream-optimistic,fleet-stream-frames,fleet-stream-tool-frames}.ts` | EDIT | Stall-triggered settle, identity-stable backfill and progress, call-id pairing |
 | `ui/packages/app/lib/streaming/{fleet-stream-entry,stream-recovery-window}.ts`, `ui/packages/app/lib/api/fleets-types.ts` | EDIT | Each running event's last-heard time; the silence window shared as `REPLY_STALL_MS`; the 202's `SteerAccepted` type |
 | `ui/packages/app/lib/api/{events,events-types}.ts` | EDIT | Optional `call_id` on the three tool frames |
+| `ui/packages/app/lib/streaming/fleet-stream-row.ts` | EDIT | A tool call keeps the `callId` its frames name |
 | `ui/packages/app/components/domain/{useFleetThreadEntries,useFleetEventStream,FleetReplyBody}.ts(x)` | EDIT | Trigger wrapper reuse; `reply` leaves the trigger's bag; wait verb hidden from assistive tech |
 | `ui/packages/app/lib/utils.ts` | EDIT | Durations of a minute or more read with minutes |
 | `ui/packages/design-system/src/design-system/Alert.tsx`, `ui/packages/design-system/src/tokens.css` | EDIT | Dismiss target at least 24 px; settled rows keep focus rings |
@@ -147,7 +148,7 @@ NullClaw runs a batch's calls one at a time, so two calls of one name are never 
 
 - **Dimension 5.1** — the daemon accepts, bounds and republishes an optional `call_id` on the three tool frames; frames without it are unchanged → Test `test_activity_carries_an_optional_call_id` — DONE (live `daemon_suite` `integration_runner_activity` 3 passed; bridge unit test `tool_frames_republish_their_call_id_and_never_invent_one`)
 - **Dimension 5.2** — the runner stamps each call's started and completed frames with one call id, distinct per call in an event → Test `test_runner_stamps_one_call_id_per_call` — DONE (`zig build --build-file build_runner.zig test`: macOS 747/750 passed, 3 skipped; `ci-zig-alpine:0.16.0-r6` native aarch64 Linux 742/750 passed, 8 skipped)
-- **Dimension 5.3** — the browser pairs a frame to its call by `call_id`, including a second same-name call whose start was missed → Test `test_tool_frames_pair_by_call_id`
+- **Dimension 5.3** — the browser pairs a frame to its call by `call_id`, including a second same-name call whose start was missed → Test `test_tool_frames_pair_by_call_id` — DONE (app coverage 100%: 8,104/8,104 statements, 4,861/4,861 branches; 343 files / 3,137 tests)
 - **Dimension 5.4** — the SSE kind list names `chunk`, and `runner_fleet.md` lists each tool frame's fields → Test `test_sse_kind_list_matches_published_kinds` — DONE (`afd_fleet` lib; reads the regenerated `public/openapi.json`)
 
 ### §6 — Chat polish
@@ -162,7 +163,7 @@ NullClaw runs a batch's calls one at a time, so two calls of one name are never 
 
 ### §7 — Streaming stays cheap
 
-- **Dimension 7.1** — a progress frame for a running tool returns the same timeline array; only a completion changes it → Test `test_progress_frame_keeps_identity`
+- **Dimension 7.1** — a progress frame for a running tool returns the same timeline array; only a completion changes it → Test `test_progress_frame_keeps_identity` — DONE (app coverage 100%: 8,104/8,104 statements, 4,861/4,861 branches; 343 files / 3,137 tests)
 - **Dimension 7.2** — a backfill page returns the same row objects for unchanged terminal rows, and the same array when nothing changed → Test `test_backfill_keeps_unchanged_identity`
 - **Dimension 7.3** — a reply delta leaves its trigger message's identity alone (`reply` leaves the trigger's bag) → Test `test_reply_delta_keeps_trigger_identity`
 
