@@ -7,7 +7,7 @@ import { ComposerPrimitive, useAui, useAuiState } from "@assistant-ui/react";
 import { Alert, Button, DashboardPanel, List, ListItem, Textarea, cn } from "@agentsfleet/design-system";
 import { ArrowUpIcon } from "lucide-react";
 import { PENDING_SEND_STATE, type PendingSend } from "./useFleetPendingSends";
-import { exceedsSteerLimit } from "./useFleetMessageDelivery";
+import { bytesNearSteerLimit, exceedsSteerLimit } from "./useFleetMessageDelivery";
 import { STEER_MESSAGE_MAX_BYTES } from "@/lib/api/fleets-types";
 import { signInPath } from "@/lib/auth/sign-in-redirect";
 
@@ -24,6 +24,7 @@ const SEND_AS_NEW_LABEL = "Send as new";
 const NOTICES_LABEL = "Unsent messages";
 const BYTE_COUNT = new Intl.NumberFormat("en-US");
 const TOO_LONG = `Messages can be at most ${BYTE_COUNT.format(STEER_MESSAGE_MAX_BYTES)} bytes.`;
+const BYTES_OF_LIMIT = (bytes: number) => `${BYTE_COUNT.format(bytes)} / ${BYTE_COUNT.format(STEER_MESSAGE_MAX_BYTES)} bytes`;
 // In flight, or dismissed: neither is the operator's to act on here.
 const NOT_NOTICED: ReadonlySet<PendingSend["state"]> = new Set([PENDING_SEND_STATE.SENDING, PENDING_SEND_STATE.DISMISSED]);
 
@@ -68,6 +69,7 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
       >
         <PendingSendNotices entries={unresolved} onResend={onResend} onDismiss={onDismiss} draftRef={draftRef} />
         <DraftTooLongHint />
+        <DraftByteCount />
         <DraftReporter onDraft={onDraft} />
 
         {/* Stretch, not end-alignment: when the footer is capped this row
@@ -98,29 +100,7 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
               )}
             />
           </ComposerPrimitive.Input>
-          {/*
-            * Send is an icon, and the word moves to the accessible name.
-            *
-            * A labelled button took ~86px of a 720px composer to say what the
-            * arrow says in 36 — and the submit path an operator actually uses
-            * is Enter, which `submitMode="enter"` already binds. Both ChatGPT
-            * and Claude land on the same shape: measured on chatgpt.com, a
-            * 36x36 round icon inset from the right edge of the composer.
-            *
-            * The name is unchanged for anyone not looking at it: the button
-            * still answers to "Send".
-            */}
-          <ComposerPrimitive.Send asChild>
-            <Button
-              type="submit"
-              variant="default"
-              size="icon"
-              aria-label={SEND_LABEL}
-              className="shrink-0 self-end rounded-full"
-            >
-              <ArrowUpIcon size={16} aria-hidden="true" />
-            </Button>
-          </ComposerPrimitive.Send>
+          <SendButton />
         </div>
       </ComposerPrimitive.Root>
     </DashboardPanel>
@@ -152,6 +132,38 @@ function useRestoreRefusedTextOnMount(
   }, [aui, onRestored, unresolved]);
 }
 
+/*
+ * Send is an icon, and the word moves to the accessible name.
+ *
+ * A labelled button took ~86px of a 720px composer to say what the arrow says
+ * in 36 — and the submit path an operator actually uses is Enter, which
+ * `submitMode="enter"` already binds. Both ChatGPT and Claude land on the same
+ * shape: measured on chatgpt.com, a 36x36 round icon inset from the right edge
+ * of the composer. The name is unchanged for anyone not looking at it: the
+ * button still answers to "Send".
+ *
+ * Over the limit it is disabled, so the refusal is visible before a press. The
+ * prop is passed only then: the primitive's slot lets a child's `disabled`
+ * override its own, and `false` would enable Send on an empty draft.
+ */
+function SendButton() {
+  const tooLong = useAuiState((s) => exceedsSteerLimit(s.composer.text));
+  return (
+    <ComposerPrimitive.Send asChild>
+      <Button
+        type="submit"
+        variant="default"
+        size="icon"
+        aria-label={SEND_LABEL}
+        className="shrink-0 self-end rounded-full"
+        {...(tooLong ? { disabled: true } : {})}
+      >
+        <ArrowUpIcon size={16} aria-hidden="true" />
+      </Button>
+    </ComposerPrimitive.Send>
+  );
+}
+
 // Its own leaf, like the hint below: it reads the draft, so typing re-renders
 // only this.
 function DraftReporter({ onDraft }: Pick<SteerComposerProps, "onDraft">) {
@@ -170,6 +182,17 @@ function DraftTooLongHint() {
   return (
     // `info`, so it is announced politely: it appears while the operator types.
     <Alert variant="info">{TOO_LONG}</Alert>
+  );
+}
+
+// How much of the limit the draft uses, shown from nine tenths of it. A number,
+// not the draft: typing below the window does not re-render it. Not a live
+// region — a count read out on every keystroke would drown the draft.
+function DraftByteCount() {
+  const bytes = useAuiState((s) => bytesNearSteerLimit(s.composer.text));
+  if (bytes === null) return null;
+  return (
+    <span className="self-end text-label tabular-nums text-muted-foreground">{BYTES_OF_LIMIT(bytes)}</span>
   );
 }
 

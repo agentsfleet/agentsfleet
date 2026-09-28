@@ -35,6 +35,7 @@ vi.mock("@assistant-ui/react", () => ({
 import {
   DISMISS_LABEL as DISMISS,
   RESEND_LABEL as RESEND,
+  SEND_LABEL as SEND,
   SEND_AS_NEW_LABEL as SEND_AS_NEW,
   SEND_CONFLICT_TEXT as SEND_CONFLICT,
   SEND_FAILED_TEXT as SEND_FAILED,
@@ -167,6 +168,22 @@ describe("SteerComposer", () => {
     expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe(`/sign-in?redirect_url=${encodeURIComponent(FLEET_PATH)}`);
     expect(screen.getByRole("button", { name: RESEND })).toBeTruthy();
     expect(composer.setText).toHaveBeenCalledExactlyOnceWith("deploy the canary");
+  });
+
+  it("test_byte_limit_counter_and_disabled_send", () => {
+    const send = () => screen.getByRole("button", { name: SEND }) as HTMLButtonElement;
+    // Short of nine tenths: no count, even for a draft whose length alone could reach it.
+    draft("a".repeat(3_000));
+    const viewed = render(view([]));
+    expect(screen.queryByText(/ \/ 8,192 bytes$/)).toBeNull();
+    draft("a".repeat(7_400));
+    viewed.rerender(view([]));
+    expect(screen.getByText("7,400 / 8,192 bytes")).toBeTruthy();
+    expect(send().disabled).toBe(false);
+    draft("a".repeat(STEER_MESSAGE_MAX_BYTES + 1));
+    viewed.rerender(view([]));
+    expect(screen.getByText("8,193 / 8,192 bytes")).toBeTruthy();
+    expect(send().disabled).toBe(true);
   });
 
   it("says why a draft longer than the daemon takes will not send", () => {

@@ -155,6 +155,19 @@ describe("FleetThread — role rendering: turns and connection", () => {
     expect(screen.queryByText(OUTCOME.WORKING)).toBeNull();
   });
 
+  it("test_wait_verb_is_not_announced", () => {
+    const waiting = (clientTimestamp: boolean) =>
+      ev({ role: "user", actor: "steer:user_abc", text: "Howdy", reply: "", status: "received", clientTimestamp });
+    for (const [queued, name] of [[false, "Working"], [true, "Queued"]] as const) {
+      mockStream([waiting(queued)]);
+      const view = renderThread();
+      // Named for what it is; the visible verb is hidden from assistive tech.
+      const status = screen.getByRole("status", { name });
+      expect(status.lastElementChild?.getAttribute("aria-hidden")).toBe("true");
+      view.unmount();
+    }
+  });
+
   // The copy affordance is deliberately absent mid-turn: the text it would put
   // on the clipboard is still arriving, and the transcript re-renders per chunk.
   it("offers no copy action while the reply is still streaming", () => {

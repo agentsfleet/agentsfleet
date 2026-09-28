@@ -68,6 +68,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/components/domain/{fleetMessageRenderers.tsx,fleetMessageReaders.ts}`, `ui/packages/app/tests/use-fleet-event-stream-frames.test.ts` | EDIT | The activity tick stops reading `reply` from the bag, its only reader, so `readReply` goes |
 | `ui/packages/app/lib/utils.ts` | EDIT | Durations of a minute or more read with minutes |
 | `ui/packages/design-system/src/design-system/Alert.tsx`, `ui/packages/design-system/src/tokens.css` | EDIT | Dismiss target at least 24 px; settled rows keep focus rings |
+| `ui/packages/app/tests/e2e/acceptance/fleet-reply-parts.spec.ts` | EDIT | The settled-row focus ring, measured in a real browser on a streamed settled turn |
 | Tests beside each file above, plus `ui/packages/app/tests/fleet-thread/*.test.ts` and `ui/packages/app/tests/e2e/acceptance/fleet-resend.spec.ts` | CREATE / EDIT | One test per Dimension |
 | `ui/packages/app/tests/fleet-thread/{ledger-fixtures,steer-copy,steer-helpers,harness}.ts` | CREATE / EDIT | One shared ledger fixture and fake lock manager for the pending-sends suites; conflict copy; the 202 fixture's `replayed`; the thread page's path |
 | `ui/packages/app/lib/auth/sign-in-redirect.ts` | EDIT | `signInPath`, the same guarded destination as a same-origin link, and `buildSignInUrl` built on it |
@@ -157,10 +158,10 @@ NullClaw runs a batch's calls one at a time, so two calls of one name are never 
 
 - **Dimension 6.1** — durations of a minute or more read with minutes ("2m 05s"), everywhere `formatSeconds` and `formatMs` render → Test `test_durations_show_minutes` — DONE (`lib/utils.test.ts`; app 343 files / 3,141 tests green)
 - **Dimension 6.2** — Sign in from the session notice returns to the fleet (`buildSignInUrl`) → Test `test_sign_in_returns_to_the_fleet` — DONE (`SteerComposer.test.tsx`, `steer-recovery.test.ts`; `signInPath` beside `buildSignInUrl`)
-- **Dimension 6.3** — a live byte count shows from 90% of the limit, and Send is disabled over it → Test `test_byte_limit_counter_and_disabled_send`
-- **Dimension 6.4** — Alert's Dismiss is at least 24×24 CSS px (Web Content Accessibility Guidelines (WCAG) 2.2 target size) → Test `test_dismiss_target_is_24px`
-- **Dimension 6.5** — the wait verb is hidden from assistive tech; the status is still named "Working" or "Queued" → Test `test_wait_verb_is_not_announced`
-- **Dimension 6.6** — a focused control on a settled row shows its whole focus ring → Test `test_settled_row_keeps_its_focus_ring`
+- **Dimension 6.3** — a live byte count shows from 90% of the limit, and Send is disabled over it → Test `test_byte_limit_counter_and_disabled_send` — DONE (`SteerComposer.test.tsx`)
+- **Dimension 6.4** — Alert's Dismiss is at least 24×24 CSS px (Web Content Accessibility Guidelines (WCAG) 2.2 target size) → Test `test_dismiss_target_is_24px` — DONE (design-system coverage 100%: 497/497 statements, 513/513 branches; 60 files / 639 tests)
+- **Dimension 6.5** — the wait verb is hidden from assistive tech; the status is still named "Working" or "Queued" → Test `test_wait_verb_is_not_announced` — DONE (`tests/fleet-thread/role-turns.test.ts`)
+- **Dimension 6.6** — a focused control on a settled row shows its whole focus ring → Test `test_settled_row_keeps_its_focus_ring` — IMPLEMENTED; the e2e runs in the DEV acceptance lane (`fleet-reply-parts.spec.ts`). Local Chromium geometry check of the `tokens.css` rule under Tailwind's layering: content x and width unchanged, ring inside the painted box, no horizontal scroll
 - **Dimension 6.7** — a `/design-review` pass on the notice and reply rows records its ink-hierarchy findings, each fixed or listed → Test `manual_ink_hierarchy_review`
 
 ### §7 — Streaming stays cheap
