@@ -45,6 +45,8 @@ export type FleetEventStatus =
 // completed with the final wall time.
 export type FleetToolCall = {
   name: string;
+  /** The runner's id for this call, when its frames carry one. */
+  callId?: string;
   /** Browser clock at this call's first frame; the wire carries no start instant. */
   startedAtMs: number;
   /** Wall time so far (from a progress frame) or final (from a completion). */
