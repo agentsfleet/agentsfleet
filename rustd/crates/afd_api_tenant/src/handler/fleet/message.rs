@@ -1,9 +1,9 @@
 //! A fleet's message thread over HTTP: read the turns.
 //!
-//! The port of `fleets/messages_list.zig` and `fleets/messages.zig`. Two verbs
-//! on one template, and they are not symmetric — the read pages history the
-//! event routes already serve, and the write is the only place in this daemon
-//! where a person puts work onto a fleet's stream.
+//! The port of `fleets/messages_list.zig`. The read pages history the event
+//! routes already serve; the write on the same template — the only place in
+//! this daemon where a person puts work onto a fleet's stream — is
+//! `message_steer.rs`.
 //!
 //! # The page is byte-budgeted, not byte-refused
 //!

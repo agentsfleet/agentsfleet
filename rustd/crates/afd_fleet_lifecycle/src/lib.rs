@@ -216,7 +216,7 @@ impl FleetStatus {
     /// `active` and nothing else, exactly as `isRunnable`. The distinction is
     /// load-bearing on the steer: a message accepted for a stopped fleet is a
     /// 202 whose run never happens, so the surface refuses loudly instead —
-    /// see the ingress refusal in `handler::fleet::message`.
+    /// see the ingress refusal in `handler::fleet::message_steer`.
     #[must_use]
     pub const fn is_runnable(self) -> bool {
         matches!(self, Self::Active)

@@ -225,7 +225,7 @@ pub const AGENTSFLEET_PAUSED_INGRESS: ErrorCode = ErrorCode::declare("UZ-AGT-012
 pub const EVENT_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-015");
 
 /// A steer's `operation_id` names a message this fleet already admitted with
-/// different text.
+/// different text, or from a different caller.
 ///
 /// A 409 carrying `current_state: "admitted"`. The id is the caller's name for
 /// ONE message, repeated only on its retries, so the same id with another body
