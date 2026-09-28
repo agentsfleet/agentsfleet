@@ -59,7 +59,7 @@ export function useFleetThreadEntries(
     return next;
   }, [events]);
   const entries = useMemo(
-    () => groupedEntries.flatMap(expandEntry),
+    () => groupedEntries.flatMap(expandedOnce),
     [groupedEntries],
   );
   const convertEntry = useCallback(
@@ -81,6 +81,22 @@ export function useFleetThreadEntries(
     [convertEvent],
   );
   return { entries, convertEntry };
+}
+
+// The expansion of each grouped entry, kept for as long as that entry object
+// lives. `groupThreadEvents` hands back an unchanged entry by reference, and
+// assistant-ui caches each converted message by the object it was handed
+// (core `thread-message-converter.ts`); building fresh trigger and reply
+// wrappers per frame would re-convert every settled turn on every chunk. Keyed
+// weakly, so an entry the stream replaced takes its expansion with it.
+const EXPANDED = new WeakMap<ThreadEntry, FleetThreadEntry[]>();
+
+function expandedOnce(entry: ThreadEntry): FleetThreadEntry[] {
+  const held = EXPANDED.get(entry);
+  if (held !== undefined) return held;
+  const expanded = expandEntry(entry);
+  EXPANDED.set(entry, expanded);
+  return expanded;
 }
 
 function expandEntry(entry: ThreadEntry): FleetThreadEntry[] {

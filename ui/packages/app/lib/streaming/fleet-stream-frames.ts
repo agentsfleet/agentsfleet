@@ -17,8 +17,8 @@ import {
   text,
   type FleetEvent,
   type FleetEventStatus,
-  type FleetToolCall,
 } from "./fleet-stream-row";
+import { applyToolFrame } from "./fleet-stream-tool-frames";
 
 // Pure frame-transform helpers shared by the streaming registry: how each
 // live frame folds into the timeline, and how a page of durable rows merges
@@ -53,11 +53,9 @@ export function applyLiveFrame(
     case FRAME_KIND.EVENT_COMPLETE:
       return applyEventComplete(prev, frame, nowMs);
     case FRAME_KIND.TOOL_CALL_STARTED:
-      return applyToolCall(prev, frame.event_id, { name: frame.name, ms: null, done: false }, nowMs);
     case FRAME_KIND.TOOL_CALL_PROGRESS:
-      return applyToolCall(prev, frame.event_id, { name: frame.name, ms: frame.elapsed_ms, done: false }, nowMs);
     case FRAME_KIND.TOOL_CALL_COMPLETED:
-      return applyToolCall(prev, frame.event_id, { name: frame.name, ms: frame.ms, done: true }, nowMs);
+      return applyToolFrame(prev, frame, nowMs);
     default:
       // Install frames are forked off this path by the registry and never reach
       // the message list. Anything else is a frame the backend shipped ahead of
@@ -65,40 +63,6 @@ export function applyLiveFrame(
       // A frame we know about and drop here is the bug this switch just fixed.
       return prev;
   }
-}
-
-/// Fold one tool-call frame onto its event: started (no timing), progress
-/// (elapsed) and completed (final wall time) are one call keyed by (event_id,
-/// name), and the first frame stamps its start. A frame whose event has not
-/// arrived is dropped: `event_received` always precedes its tool calls, and an
-/// invented event would put a message in the thread the backfill duplicates.
-function applyToolCall(
-  prev: FleetEvent[],
-  eventId: string,
-  { name, ms, done }: Omit<FleetToolCall, "startedAtMs">,
-  nowMs: number,
-): FleetEvent[] {
-  const index = prev.findIndex((e) => e.id === eventId);
-  const event = prev[index];
-  // Narrowed, not asserted: `index === -1` and `event === undefined` are the same
-  // fact, and letting the type system see it is cheaper than promising it.
-  if (event === undefined) return prev;
-
-  const tools = event.tools ?? [];
-  const existing = tools.findIndex((t) => t.name === name && !t.done);
-
-  const merged =
-    existing === -1
-      ? [...tools, { name, startedAtMs: nowMs, ms, done }]
-      : tools.map((t, i) =>
-          // A completion with no timing must not erase the elapsed a progress
-          // frame already reported.
-          i === existing ? { ...t, ms: ms ?? t.ms, done } : t,
-        );
-
-  const updated = [...prev];
-  updated[index] = { ...event, tools: merged };
-  return updated;
 }
 
 // ── internals ────────────────────────────────────────────────────────────
@@ -162,7 +126,7 @@ function applyChunk(
   prev: FleetEvent[],
   frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.CHUNK }>,
 ): FleetEvent[] {
-  // Locate once and copy once, matching `applyToolCall` — a streaming reply
+  // Locate once and copy once, matching `applyToolFrame` — a streaming reply
   // fires this per chunk, so a second full pass per frame is pure waste.
   const index = prev.findIndex((e) => e.id === frame.event_id);
   const existing = prev[index];
@@ -199,7 +163,7 @@ function applyEventComplete(
   frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_COMPLETE }>,
   nowMs: number,
 ): FleetEvent[] {
-  // Locate once, copy once — same shape as `applyToolCall` and `applyChunk`.
+  // Locate once, copy once — same shape as `applyToolFrame` and `applyChunk`.
   const index = prev.findIndex((e) => e.id === frame.event_id);
   const existing = prev[index];
   // A completion for a row the timeline never opened — a subscriber that
@@ -277,6 +241,7 @@ function openFromCompletion(
 export function mergeBackfill(
   prev: FleetEvent[],
   rows: EventRow[],
+  nowMs: number = Date.now(),
 ): FleetEvent[] {
   const seen = new Set(prev.map((e) => e.id));
   // A terminal backfill row is authoritative over a live row with the same
@@ -299,14 +264,19 @@ export function mergeBackfill(
     const replacement = authoritative.get(e.id);
     if (!replacement) return e;
     const reconciled = rowToEvent(replacement);
-    const withBodies = {
+    // The reasoning span is the browser's own measure — no row carries it — so
+    // it is kept, and a span still open closes here once: a terminal row is
+    // the end of the turn, whether or not the answer's first word was seen.
+    const withBodies = closeReasoningSpan({
       ...reconciled,
       text: reconciled.text.length > 0 ? reconciled.text : e.text,
       reply: reconciled.reply.length > 0 ? reconciled.reply : e.reply,
       reasoning: e.reasoning,
+      reasoningStartedAtMs: e.reasoningStartedAtMs,
+      reasoningEndedAtMs: e.reasoningEndedAtMs,
       thinking: false,
       custom: reconciled.text.length > 0 ? reconciled.custom : e.custom,
-    };
+    }, nowMs);
     return e.tools ? { ...withBodies, tools: e.tools } : withBodies;
   });
   const fromBackfill = rows.filter((r) => !seen.has(r.event_id)).map(rowToEvent);

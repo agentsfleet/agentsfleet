@@ -52,7 +52,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `ui/packages/app/lib/streaming/{fleet-stream-row,fleet-stream-frames,fleet-stream-reply-frames,fleet-stream-registry}.ts`, `ui/packages/app/lib/events/event-grouping.ts` | EDIT | Tool start and reasoning span stamped once with an injected clock; `FAILED` status and `markOptimisticFailed` leave; tool frames validated and deduplicated at ingress; backfill keeps the span; turns with parts never group |
+| `ui/packages/app/lib/streaming/{fleet-stream-row,fleet-stream-frames,fleet-stream-reply-frames,fleet-stream-registry,fleet-stream-tool-frames}.ts`, `ui/packages/app/lib/events/event-grouping.ts` | EDIT / CREATE | Tool start and reasoning span stamped once with an injected clock; `FAILED` status and `markOptimisticFailed` leave; tool frames validated and deduplicated at ingress; backfill keeps the span; turns with parts never group |
 | `ui/packages/app/components/domain/fleetReplyMessage.ts` | CREATE | Pure row → assistant message (status, reasoning/tool-call/text parts) |
 | `ui/packages/app/components/domain/{useFleetThreadEntries,useFleetEventStream}.ts` | EDIT | Operator turns always split; reply rows convert through `fleetReplyMessage`; custom bag drops reasoning/thinking/tools; expanded entries cached per source entry |
 | `ui/packages/app/components/domain/FleetReplyBody.tsx`; `FleetThought.tsx`, `useFirstVisiblePaint.ts` | EDIT; CREATE | `GroupedParts` switch and outcome floor; the `group-reasoning` chip, leaf clock, sentence ticker |
@@ -118,7 +118,7 @@ An operator turn always splits into its trigger and a `:reply` assistant message
 - **Dimension 2.3** — A tool's first frame stamps `startedAtMs` from the injected clock; completion keeps it; a repeat call after completion gets its own entry → Test `test_tool_start_stamped_from_first_frame` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
 - **Dimension 2.4** — The reasoning span is stamped once: start on the first reasoning text; end on the first answer text, completion or recovery → Test `test_reasoning_span_stamped_once` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
 - **Dimension 2.5** — Non-number stamps or a missing tool list read as absent without throwing → Test `test_malformed_reply_metadata_reads_absent` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
-- **Dimension 2.6** — Two adjacent integration events carrying reasoning or tools never coalesce into an activity group, so their parts stay reachable → Test `test_turns_with_parts_never_group`
+- **Dimension 2.6** — Two adjacent integration events carrying reasoning or tools never coalesce into an activity group, so their parts stay reachable → Test `test_turns_with_parts_never_group` — DONE (app 68 files / 601 tests green; removing the fix turns its test red)
 
 ### §3 — Render through GroupedParts, cheaply
 
@@ -127,7 +127,7 @@ An operator turn always splits into its trigger and a `:reply` assistant message
 - **Dimension 3.1** — Each part type renders through the switch, and no deprecated or custom-bag path remains → Test `test_reply_renders_through_grouped_parts` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
 - **Dimension 3.2** — The text part renders deferred markdown with the stream cursor while running; once settled it shows Copy and the row carries `data-settled` → Test `test_text_part_and_settled_row` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
 - **Dimension 3.3** — A settled reply with no text part shows its outcome sentence; a fleet error keeps the failed tone → Test `test_outcome_floor_without_text_part` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
-- **Dimension 3.4** — A streaming frame hands back the same trigger and reply entry objects for every unchanged event, so the library's conversion cache holds across the whole history → Test `test_settled_entries_keep_identity_across_frames`
+- **Dimension 3.4** — A streaming frame hands back the same trigger and reply entry objects for every unchanged event, so the library's conversion cache holds across the whole history → Test `test_settled_entries_keep_identity_across_frames` — DONE (app 68 files / 601 tests green; removing the fix turns its test red)
 
 ### §4 — The Thought chip
 
@@ -139,15 +139,15 @@ Inside `group-reasoning`: live (group running) the trigger reads `<spinner> Thin
 - **Dimension 4.4** — A remount mid-thought resumes from the row's start stamp; no stamp folds to "Thought" without a duration → Test `test_thought_clock_resumes_from_row_stamp` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
 - **Dimension 4.5** — The sentence ticker handles empty, boundary-free, trailing-space and non-ASCII text → Test `test_latest_sentence_edges` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
 - **Dimension 4.6** — `formatSeconds` is one module-constant `Intl.NumberFormat` (unit `second`, narrow, exactly one fraction digit), so a ticking clock keeps its width; `formatMs` keeps its table callers unchanged → Test `test_format_seconds_fixed_width` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
-- **Dimension 4.7** — A terminal backfill row keeps the live row's reasoning stamps and closes an open span once, so "Thought · 8.5s" survives reconciliation → Test `test_backfill_keeps_reasoning_span`
+- **Dimension 4.7** — A terminal backfill row keeps the live row's reasoning stamps and closes an open span once, so "Thought · 8.5s" survives reconciliation → Test `test_backfill_keeps_reasoning_span` — DONE (app 68 files / 601 tests green; removing the fix turns its test red)
 
 ### §5 — Tool rows on part timing
 
 A `tool-call` part renders its name, a running or done glyph, and `useToolCallElapsed()` through `formatSeconds`. The existing glyph vocabulary (`◐`/`✓`) stays.
 
 - **Dimension 5.1** — A running tool ticks from its start, a done tool shows `✓` and its final duration, adjacent tools share one "Tool calls" list, and a tool left unfinished on a settled reply shows no clock → Test `test_tool_row_reads_part_timing` — DONE (app 3,038 tests green; a mutation of its subject turns it red)
-- **Dimension 5.2** — A tool frame whose `name` is not a string, or whose timing is not a number, is dropped at ingress and never reaches a row → Test `test_malformed_tool_frame_dropped`
-- **Dimension 5.3** — A completion or progress frame with no open call of that name changes nothing; only a started frame opens a call → Test `test_late_tool_frame_opens_nothing`
+- **Dimension 5.2** — A tool frame whose `name` is not a string, or whose timing is not a number, is dropped at ingress and never reaches a row → Test `test_malformed_tool_frame_dropped` — DONE (app 68 files / 601 tests green; removing the fix turns its test red)
+- **Dimension 5.3** — A completion or progress frame for a call this event already finished, or a repeated start while the call is open, changes nothing; a name never seen still opens (its start was missed) → Test `test_late_tool_frame_opens_nothing` — DONE (app 68 files / 601 tests green; removing the fix turns its test red)
 
 ### §6 — Braille spinner primitive
 
@@ -229,7 +229,7 @@ mergeBackfill(prev, rows, nowMs = Date.now());  loadingVerbFor(key): LoadingVerb
 | 3.4 | unit | `test_settled_entries_keep_identity_across_frames` | 100 settled operator turns + one streaming reply; apply a chunk → every settled trigger/reply entry `===` its previous object; only the streaming entry is new; `convertMessage` called once per changed entry |
 | 4.7 | unit | `test_backfill_keeps_reasoning_span` | live row start 1000, no end; terminal backfill row at now=9500 → start 1000, end 9500; a row already closed keeps its end |
 | 5.2 | unit | `test_malformed_tool_frame_dropped` | `tool_call_started` with `name: {bad:"name"}` → same array reference back; `ms: "7"` on completion → dropped |
-| 5.3 | unit | `test_late_tool_frame_opens_nothing` | started, completed, completed again → one tool; progress with no open call → same reference back; started twice → two tools |
+| 5.3 | unit | `test_late_tool_frame_opens_nothing` | started, completed, then completed again or a late progress → same array back; started twice while open → one call; a restated progress → same array back |
 | 3.1 | unit | `test_reply_renders_through_grouped_parts` | reasoning + tool + text → chip, "Tool calls" list, markdown in order |
 | 3.2 | unit | `test_text_part_and_settled_row` | running → cursor, no Copy, no `data-settled`; complete → Copy and `data-settled="true"` |
 | 3.3 | unit | `test_outcome_floor_without_text_part` | complete, no text → outcome sentence; fleet error → failed tone |

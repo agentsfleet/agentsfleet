@@ -154,6 +154,30 @@ describe("mergeBackfill", () => {
     expect(merged).toHaveLength(1);
     expect(merged[0]?.reply).toBe("live chunks so far");
   });
+
+  it("test_backfill_keeps_reasoning_span", () => {
+    // A streamed reply that read "Thought · 8.5s" must still read so after a
+    // reconnect reconciles it: the durable row carries no span, so the live
+    // stamps are kept, and a span still open closes once at the merge.
+    const REASONING_STARTED_AT = 1_000;
+    const REASONING_ENDED_AT = 9_500;
+    const MERGED_AT = 12_000;
+    const open = evt({ id: "e1", status: "received", reasoning: "weighing it", reasoningStartedAtMs: REASONING_STARTED_AT });
+    const [closed] = mergeBackfill([open], [row({ event_id: "e1", status: "processed" })], MERGED_AT);
+    expect(closed?.reasoning).toBe("weighing it");
+    expect(closed?.reasoningStartedAtMs).toBe(REASONING_STARTED_AT);
+    expect(closed?.reasoningEndedAtMs).toBe(MERGED_AT);
+
+    const ended = evt({ id: "e2", status: "received", reasoning: "done weighing", reasoningStartedAtMs: REASONING_STARTED_AT, reasoningEndedAtMs: REASONING_ENDED_AT });
+    const [kept] = mergeBackfill([ended], [row({ event_id: "e2", status: "processed" })], MERGED_AT);
+    expect(kept?.reasoningEndedAtMs).toBe(REASONING_ENDED_AT);
+
+    // A span never opened stays unopened: an answer-only turn gets no chip.
+    const plain = evt({ id: "e3", status: "received", reply: "just the answer" });
+    const [unopened] = mergeBackfill([plain], [row({ event_id: "e3", status: "processed" })], MERGED_AT);
+    expect(unopened?.reasoningStartedAtMs).toBeUndefined();
+    expect(unopened?.reasoningEndedAtMs).toBeUndefined();
+  });
 });
 
 describe("maxServerCreatedAt", () => {

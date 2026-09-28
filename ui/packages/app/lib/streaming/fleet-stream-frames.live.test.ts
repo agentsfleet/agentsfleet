@@ -124,7 +124,7 @@ describe("applyLiveFrame", () => {
   // here as the fleet runs." The frames arrived; nothing kept them.
 
   // The merges locate their event once and copy the array once, the
-  // shape `applyToolCall` already used. Reference identity is the observable
+  // shape `applyToolFrame` already used. Reference identity is the observable
   // proof: a second pass would rebuild every element, not just the target.
   it("a chunk rebuilds only its own event and leaves every sibling reference intact", () => {
     const seed = [evt({ id: "a" }), evt({ id: "b", reply: "hi" }), evt({ id: "c" })];

@@ -24,6 +24,8 @@ function evt(over: Partial<FleetEvent> = {}): FleetEvent {
     createdAt: over.createdAt ?? new Date(Date.UTC(2026, 6, 22, 11, 38, 0)),
     status: over.status ?? "fleet_error",
     ...(over.custom ? { custom: over.custom } : {}),
+    ...(over.tools ? { tools: over.tools } : {}),
+    ...(over.reasoning ? { reasoning: over.reasoning } : {}),
   };
 }
 
@@ -65,6 +67,18 @@ describe("groupThreadEvents", () => {
     // Four rows in, four rows out: a person's words never become a count.
     expect(entries).toHaveLength(4);
     expect(entries.every((entry) => entry.kind === "single")).toBe(true);
+  });
+
+  it("test_turns_with_parts_never_group", () => {
+    // Integration turns that reasoned or called a tool carry a reply row of
+    // their own; a group shows members as ticks with no parts, so grouping
+    // them would hide what the fleet did.
+    const withTools = run(2, { tools: [{ name: "read_file", startedAtMs: 1, ms: 5, done: true }] });
+    expect(groupThreadEvents(withTools).map((entry) => entry.kind)).toEqual(["single", "single"]);
+    const withReasoning = run(2, { reasoning: "checked the signature" });
+    expect(groupThreadEvents(withReasoning).map((entry) => entry.kind)).toEqual(["single", "single"]);
+    // Bare activity still coalesces.
+    expect(groupThreadEvents(run(2)).map((entry) => entry.kind)).toEqual(["group"]);
   });
 
   it("breaks a run when the operator speaks in the middle of a burst", () => {
