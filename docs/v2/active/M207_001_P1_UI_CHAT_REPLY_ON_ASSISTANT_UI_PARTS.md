@@ -168,7 +168,7 @@ Against DEV through the acceptance config: a routed stream delivers reasoning, a
 
 - **Dimension 8.1** — Live "Thinking", a timed tool row, then "Thought ·" folded above the answer → Test `test_stream_reply_parts_live_then_folded` — DONE (acceptance on DEV, passed)
 - **Dimension 8.2** — An aborted send leaves the thread, its text sits in the composer, Resend lands once → Test `test_failed_send_resend_journey` — DONE (acceptance on DEV, passed: refused once, delivered once)
-- **Dimension 8.3** — Zero long tasks while the reply streams with the chip live over a history of 100 settled turns, and frame p95 within the pre-change budget (17.6 ms; the pre-parts tree measured 16.8 ms on `5f236cbcc` over an empty history) → Test `test_streaming_reply_costs_no_long_tasks` — re-proved with the populated history after 3.4
+- **Dimension 8.3** — Zero long tasks while the reply streams with the chip live over a history of 100 settled turns, and frame p95 within the pre-change budget (17.6 ms; the pre-parts tree measured 16.8 ms on `5f236cbcc` over an empty history) → Test `test_streaming_reply_costs_no_long_tasks` — re-proved with the populated history after 3.4 — DONE (DEV acceptance Sep 28, 2026: green over the populated history at 2e4f93170)
 
 ## Interfaces
 
