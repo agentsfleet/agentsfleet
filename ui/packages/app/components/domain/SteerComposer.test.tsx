@@ -25,12 +25,18 @@ vi.mock("@assistant-ui/react", () => ({
     Send: ({ children }: { children: React.ReactElement }) => children,
   },
   useAui: () => ({ composer: () => ({ getState: () => composer.state, setText: composer.setText }) }),
+  useAuiState: <T,>(selector: (s: { composer: typeof composer.state }) => T) => selector({ composer: composer.state }),
 }));
 
-const SEND_FAILED = "Message not sent.";
-const SEND_UNCONFIRMED = "Couldn't confirm this message was sent.";
-const RESEND = "Resend";
-const DISMISS = "Dismiss";
+import {
+  DISMISS_LABEL as DISMISS,
+  RESEND_LABEL as RESEND,
+  SEND_FAILED_TEXT as SEND_FAILED,
+  SEND_UNCONFIRMED_TEXT as SEND_UNCONFIRMED,
+  TOO_LONG_TEXT,
+} from "@/tests/fleet-thread/steer-copy";
+import { STEER_MESSAGE_MAX_BYTES } from "@/lib/api/fleets-types";
+
 const SUBMITTED_AT_MS = 1_700_000_000_000;
 
 function entry(over: Partial<PendingSend> & { operationId: string }): PendingSend {
@@ -40,8 +46,17 @@ function entry(over: Partial<PendingSend> & { operationId: string }): PendingSen
 const REFUSED = entry({ operationId: "op-refused" });
 const noop = () => {};
 
-function view(pending: PendingSend[], handlers: { onResend?: (id: string) => void; onDismiss?: (id: string) => void } = {}) {
-  return <SteerComposer pending={pending} onResend={handlers.onResend ?? noop} onDismiss={handlers.onDismiss ?? noop} />;
+type Handlers = { onResend?: (id: string) => void; onDismiss?: (id: string) => void; onRestored?: (id: string, text: string) => void };
+
+function view(pending: PendingSend[], handlers: Handlers = {}) {
+  return (
+    <SteerComposer
+      pending={pending}
+      onResend={handlers.onResend ?? noop}
+      onDismiss={handlers.onDismiss ?? noop}
+      onRestored={handlers.onRestored ?? noop}
+    />
+  );
 }
 
 function draft(text: string) {
@@ -80,8 +95,12 @@ describe("SteerComposer", () => {
 
   it("puts the newest unresolved text back into a composer that mounts empty, and lists every send with Resend", () => {
     const pending = [entry({ operationId: "op-a", text: "first refused" }), entry({ operationId: "op-b", text: "second refused" })];
-    const viewed = render(view(pending));
+    const onRestored = vi.fn();
+    const viewed = render(view(pending, { onRestored }));
     expect(composer.setText).toHaveBeenCalledExactlyOnceWith("second refused");
+    // The delivery layer is told which send the draft is, so an unchanged Send
+    // of it reuses that send's id.
+    expect(onRestored).toHaveBeenCalledExactlyOnceWith("op-b", "second refused");
     // The runtime re-renders subscribers on a text change; the mock does not.
     viewed.rerender(view(pending));
     expect(screen.getAllByText(SEND_FAILED)).toHaveLength(2);
@@ -136,11 +155,20 @@ describe("SteerComposer", () => {
     expect(screen.getByRole("alert")).toBeTruthy();
   });
 
-  it("sends an expired session to sign in and still restores the text", () => {
+  it("sends an expired session to sign in, still restores the text, and offers Resend for after", () => {
     render(view([entry({ operationId: "op-session", state: PENDING_SEND_STATE.SESSION })]));
     expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe("/sign-in");
-    expect(screen.queryByRole("button", { name: RESEND })).toBeNull();
+    expect(screen.getByRole("button", { name: RESEND })).toBeTruthy();
     expect(composer.setText).toHaveBeenCalledExactlyOnceWith("deploy the canary");
+  });
+
+  it("says why a draft longer than the daemon takes will not send", () => {
+    draft("a".repeat(STEER_MESSAGE_MAX_BYTES));
+    const viewed = render(view([]));
+    expect(screen.queryByText(TOO_LONG_TEXT)).toBeNull();
+    draft("a".repeat(STEER_MESSAGE_MAX_BYTES + 1));
+    viewed.rerender(view([]));
+    expect(screen.getByText(TOO_LONG_TEXT)).toBeTruthy();
   });
 
   it("test_dismiss_removes_one_entry", () => {

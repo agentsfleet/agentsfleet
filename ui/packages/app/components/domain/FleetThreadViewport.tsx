@@ -20,7 +20,7 @@ type FleetThreadViewportProps = SteerComposerProps & {
 };
 
 export function FleetThreadViewport({
-  eventsCount, connectionStatus, submittedMessageId, pending, onResend, onDismiss,
+  eventsCount, connectionStatus, submittedMessageId, pending, onResend, onDismiss, onRestored,
 }: FleetThreadViewportProps) {
   const viewport = useThreadViewportStore();
   // The external runtime stays steerable while the fleet runs, so its normal
@@ -53,7 +53,7 @@ export function FleetThreadViewport({
           className="sticky bottom-0 mx-auto flex max-h-full w-full max-w-measure flex-col bg-background pb-md pt-md"
         >
           <JumpToLatest />
-          <SteerComposer pending={pending} onResend={onResend} onDismiss={onDismiss} />
+          <SteerComposer pending={pending} onResend={onResend} onDismiss={onDismiss} onRestored={onRestored} />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
     </ThreadPrimitive.Root>

@@ -44,6 +44,7 @@ function View({ submittedMessageId = null, eventsCount = 0 }: {
         pending={[]}
         onResend={() => {}}
         onDismiss={() => {}}
+        onRestored={() => {}}
       />
     </AssistantRuntimeProvider>
   );

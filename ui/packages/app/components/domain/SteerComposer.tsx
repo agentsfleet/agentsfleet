@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
-import { ComposerPrimitive, useAui } from "@assistant-ui/react";
+import { ComposerPrimitive, useAui, useAuiState } from "@assistant-ui/react";
 import { Alert, Button, DashboardPanel, Textarea, cn } from "@agentsfleet/design-system";
 import { ArrowUpIcon } from "lucide-react";
 import { PENDING_SEND_STATE, type PendingSend } from "./useFleetPendingSends";
+import { exceedsSteerLimit } from "./useFleetMessageDelivery";
+import { STEER_MESSAGE_MAX_BYTES } from "@/lib/api/fleets-types";
 
 const PLACEHOLDER = "Message this fleet…";
 const SEND_LABEL = "Send";
@@ -16,6 +18,8 @@ const SEND_UNCONFIRMED = "Couldn't confirm this message was sent.";
 const SIGN_IN_LABEL = "Sign in";
 const RESEND_LABEL = "Resend";
 const NOTICES_LABEL = "Unsent messages";
+const BYTE_COUNT = new Intl.NumberFormat("en-US");
+const TOO_LONG = `Messages can be at most ${BYTE_COUNT.format(STEER_MESSAGE_MAX_BYTES)} bytes.`;
 
 // The composer is a persistent part of the transcript: a compact, bordered
 // field that grows with the message while leaving the visible conversation in
@@ -26,14 +30,16 @@ export type SteerComposerProps = {
   pending: readonly PendingSend[];
   onResend: (operationId: string) => void;
   onDismiss: (operationId: string) => void;
+  /** The composer put this send's text back on mount, so a Send of it unchanged is that send again. */
+  onRestored: (operationId: string, text: string) => void;
 };
 
-export function SteerComposer({ pending, onResend, onDismiss }: SteerComposerProps) {
+export function SteerComposer({ pending, onResend, onDismiss, onRestored }: SteerComposerProps) {
   const unresolved = useMemo(
     () => pending.filter((entry) => entry.state !== PENDING_SEND_STATE.SENDING),
     [pending],
   );
-  useRestoreRefusedTextOnMount(unresolved);
+  useRestoreRefusedTextOnMount(unresolved, onRestored);
   return (
     <DashboardPanel
       asChild
@@ -50,6 +56,7 @@ export function SteerComposer({ pending, onResend, onDismiss }: SteerComposerPro
         aria-label={COMPOSER_LABEL}
       >
         <PendingSendNotices entries={unresolved} onResend={onResend} onDismiss={onDismiss} />
+        <DraftTooLongHint />
 
         {/* Stretch, not end-alignment: when the footer is capped this row
             shrinks, and a stretched textarea shrinks with it and scrolls its
@@ -112,15 +119,32 @@ export function SteerComposer({ pending, onResend, onDismiss }: SteerComposerPro
 // starts a fresh composer, so the newest unresolved text comes back from the
 // ledger — once, on mount, and only into an empty composer. Older entries stay
 // in the notice, each with its own Resend.
-function useRestoreRefusedTextOnMount(unresolved: readonly PendingSend[]): void {
+function useRestoreRefusedTextOnMount(
+  unresolved: readonly PendingSend[],
+  onRestored: SteerComposerProps["onRestored"],
+): void {
   const aui = useAui();
-  const atMount = useRef(unresolved);
+  const atMount = useRef({ unresolved, onRestored });
   useEffect(() => {
-    const newest = atMount.current.at(-1);
+    const { unresolved: atMountEntries, onRestored: restoredAtMount } = atMount.current;
+    const newest = atMountEntries.at(-1);
     if (newest === undefined) return;
     const composer = aui.composer();
-    if (composer.getState().isEmpty) composer.setText(newest.text);
+    if (!composer.getState().isEmpty) return;
+    composer.setText(newest.text);
+    restoredAtMount(newest.operationId, newest.text);
   }, [aui]);
+}
+
+// Shown while the draft is longer than the daemon takes, so a Send that does
+// nothing says why. A boolean, not the draft: typing does not re-render it.
+function DraftTooLongHint() {
+  const tooLong = useAuiState((s) => exceedsSteerLimit(s.composer.text));
+  if (!tooLong) return null;
+  return (
+    // `info`, so it is announced politely: it appears while the operator types.
+    <Alert variant="info">{TOO_LONG}</Alert>
+  );
 }
 
 function PendingSendNotices({
@@ -170,11 +194,12 @@ function PendingSendNotice({
         <Button asChild type="button" variant="outline" size="sm">
           <Link href="/sign-in">{SIGN_IN_LABEL}</Link>
         </Button>
-      ) : (
-        <Button type="button" variant="outline" size="sm" onClick={resend}>
-          {RESEND_LABEL}
-        </Button>
-      )}
+      ) : null}
+      {/* Offered after a sign-in too: once the session is back, a Resend is
+          the way out, and a fresh 401 simply marks it again. */}
+      <Button type="button" variant="outline" size="sm" onClick={resend}>
+        {RESEND_LABEL}
+      </Button>
     </Alert>
   );
 }

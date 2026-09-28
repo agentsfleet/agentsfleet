@@ -1,5 +1,6 @@
-import { WS, ZID, appendMessage, capturedOnNew, capturedSubmittedMessageId, ev, mockStream, renderThread, steerFleetActionMock, threadElement } from "./harness";
-import { ACCEPTED, OPERATION_ID, UUID_V7, composerInput, operationIdOf, send } from "./steer-helpers";
+import { SUBJECT, WS, ZID, appendMessage, capturedOnNew, capturedSubmittedMessageId, ev, mockStream, renderThread, steerFleetActionMock, threadElement } from "./harness";
+import { ACCEPTED, OPERATION_ID, REFUSED, TOO_LONG_TEXT, UUID_V7, composerInput, heldRefusal, operationIdOf, send } from "./steer-helpers";
+import { STEER_MESSAGE_MAX_BYTES } from "@/lib/api/fleets-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, screen, waitFor } from "@testing-library/react";
 import type { AppendMessage } from "@assistant-ui/react";
@@ -81,7 +82,7 @@ describe("FleetThread — steer submission", () => {
     expect(discardOptimistic).not.toHaveBeenCalled();
     expect(refreshed).toHaveBeenCalledTimes(1);
     // Acknowledged: nothing is left to recover.
-    expect(getPendingSends(WS, ZID)).toEqual([]);
+    expect(getPendingSends({ subject: SUBJECT, workspaceId: WS, fleetId: ZID })).toEqual([]);
     unsubscribe();
   });
 
@@ -120,7 +121,49 @@ describe("FleetThread — steer submission", () => {
     expect(appendOptimistic).not.toHaveBeenCalled();
     expect(steerFleetActionMock).not.toHaveBeenCalled();
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(getPendingSends(WS, ZID)).toEqual([]);
+    expect(getPendingSends({ subject: SUBJECT, workspaceId: WS, fleetId: ZID })).toEqual([]);
+  });
+
+  it("gives the same words sent again while the first is out their own operation", async () => {
+    // "yes", then "yes" again before the first answer: two messages, two ids.
+    const held = heldRefusal();
+    steerFleetActionMock.mockResolvedValueOnce(ACCEPTED("evt_second_yes"));
+    mockStream([], { appendOptimistic: vi.fn().mockReturnValueOnce("temp_yes_1").mockReturnValueOnce("temp_yes_2") });
+    renderThread();
+    await send("yes");
+    await send("yes");
+    await act(async () => {
+      held.refuse();
+    });
+    await waitFor(() => expect(steerFleetActionMock).toHaveBeenCalledTimes(2));
+    expect(operationIdOf(1)).not.toBe(operationIdOf(0));
+  });
+
+  it("never lends an old failed send's id to a new message with the same words", async () => {
+    steerFleetActionMock.mockResolvedValueOnce(REFUSED).mockResolvedValueOnce(ACCEPTED("evt_other")).mockResolvedValueOnce(ACCEPTED("evt_new_yes"));
+    mockStream([], { appendOptimistic: vi.fn().mockReturnValue("temp_any") });
+    renderThread();
+    await send("yes");
+    await waitFor(() => expect(composerInput().value).toBe("yes"));
+    // Something else is sent from the restored draft's place, then "yes" is
+    // typed fresh: that is a new message, not the refused one.
+    await send("something else");
+    await send("yes");
+    await waitFor(() => expect(steerFleetActionMock).toHaveBeenCalledTimes(3));
+    expect(operationIdOf(2)).not.toBe(operationIdOf(0));
+  });
+
+  it("refuses a draft longer than the daemon takes before it is named or recorded, and says why", async () => {
+    const appendOptimistic = vi.fn();
+    mockStream([], { appendOptimistic });
+    renderThread();
+    const oversized = "a".repeat(STEER_MESSAGE_MAX_BYTES + 1);
+    await send(oversized);
+    await waitFor(() => expect(composerInput().value).toBe(oversized));
+    expect(screen.getByText(TOO_LONG_TEXT)).toBeTruthy();
+    expect(appendOptimistic).not.toHaveBeenCalled();
+    expect(steerFleetActionMock).not.toHaveBeenCalled();
+    expect(getPendingSends({ subject: SUBJECT, workspaceId: WS, fleetId: ZID })).toEqual([]);
   });
 
   it("keeps submit scroll intent through acknowledgement and reordered backfill", async () => {

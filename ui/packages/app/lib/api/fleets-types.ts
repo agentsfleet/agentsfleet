@@ -28,3 +28,7 @@ export type SteerRequest = {
   message: string;
   operation_id: string;
 };
+
+/** The longest message a steer may carry, in UTF-8 bytes. Mirrors
+ * `afd_wire::event::STEER_MESSAGE_MAX_BYTES`; the daemon refuses one byte more. */
+export const STEER_MESSAGE_MAX_BYTES = 8192;

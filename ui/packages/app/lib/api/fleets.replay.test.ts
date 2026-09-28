@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { ApiError } from "./errors";
 import { steerFleet } from "./fleets";
 import type { SteerRequest } from "./fleets-types";
@@ -68,11 +68,10 @@ describe("steerFleet — replay", () => {
   });
 
   it("test_steer_request_requires_operation_id", () => {
-    // pin test: literal is the contract — the type refuses a steer with no
-    // operation id, so no caller can send one the daemon would run twice.
-    // @ts-expect-error a SteerRequest without operation_id is not a SteerRequest
-    const incomplete: SteerRequest = { message: "deploy" };
-    expect(incomplete.message).toBe("deploy");
+    // The type refuses a steer with no operation id, so no caller can send one
+    // the daemon would run twice on a replayed socket drop.
+    expectTypeOf<{ message: string }>().not.toMatchTypeOf<SteerRequest>();
+    expectTypeOf<SteerRequest>().toHaveProperty("operation_id").toEqualTypeOf<string>();
     expect(JSON.parse(JSON.stringify(REQUEST))).toHaveProperty("operation_id", REQUEST.operation_id);
   });
 });

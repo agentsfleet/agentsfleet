@@ -8,6 +8,8 @@ import { __resetPendingSendsForTests } from "@/lib/streaming/pending-sends";
 
 // ── Hoisted mocks ────────────────────────────────────────────────────────
 
+const TEST_SUBJECT = "user_fleet_thread";
+
 const {
   routerRefreshMock,
   steerFleetActionMock,
@@ -29,6 +31,12 @@ const {
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: routerRefreshMock }),
+}));
+
+// The thread keys its pending-send ledger by the signed-in user; the suite
+// signs in one fixed person.
+vi.mock("@/lib/auth/client", () => ({
+  useCurrentUser: () => ({ isLoaded: true, isSignedIn: true, userId: TEST_SUBJECT, emailAddress: null, hasImage: false }),
 }));
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
@@ -85,6 +93,7 @@ import {
 // ── Fixture builders ─────────────────────────────────────────────────────
 
 export const WS = "ws_test";
+export const SUBJECT = TEST_SUBJECT;
 export const ZID = "zomb_test";
 export const FLEET_NAME = "github-pr-reviewer";
 

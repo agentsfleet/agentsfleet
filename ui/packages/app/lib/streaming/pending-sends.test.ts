@@ -1,154 +1,289 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  MAX_PENDING_SENDS,
   PENDING_SEND_STATE,
+  PENDING_SEND_TTL_MS,
   __resetPendingSendsForTests,
   beginPendingSend,
   dismissPendingSend,
   failPendingSend,
-  findPendingSendByText,
+  findPendingSend,
+  findUnresolvedSendByText,
   getPendingSends,
   settlePendingSend,
   subscribePendingSends,
+  type LedgerScope,
+  type PendingSend,
 } from "./pending-sends";
 
-const WS = "ws_ledger";
-const FLEET = "fleet_ledger";
-const OTHER_FLEET = "fleet_other";
-const STORAGE_KEY = `agentsfleet:pending-sends:${WS}:${FLEET}`;
-const SUBMITTED_AT_MS = 1_700_000_000_000;
+const SUBJECT = "user_ledger";
+const OTHER_SUBJECT = "user_next_on_this_browser";
+const SCOPE: LedgerScope = { subject: SUBJECT, workspaceId: "ws_ledger", fleetId: "fleet_ledger" };
+const OTHER_FLEET: LedgerScope = { ...SCOPE, fleetId: "fleet_other" };
+const OTHER_USER: LedgerScope = { ...SCOPE, subject: OTHER_SUBJECT };
+const SIGNED_OUT: LedgerScope = { ...SCOPE, subject: null };
+const STORAGE_KEY = `agentsfleet:pending-sends:${SUBJECT}:ws_ledger:fleet_ledger`;
+const FOREIGN_KEY = "agentsfleet:pending-sends:user_gone:ws_x:fleet_x";
+const UNRELATED_KEY = "someone-else:setting";
+const NOW_MS = 1_790_553_600_000;
+const HOUR_MS = 3_600_000;
 
-function send(operationId: string, text: string) {
-  return { operationId, text, submittedAtMs: SUBMITTED_AT_MS };
+function send(operationId: string, text: string, submittedAtMs = NOW_MS) {
+  return { operationId, text, submittedAtMs };
+}
+
+function stored(entries: PendingSend[]): string {
+  return JSON.stringify(entries);
+}
+
+function states(scope: LedgerScope = SCOPE): [string, string][] {
+  return getPendingSends(scope).map((entry) => [entry.operationId, entry.state]);
+}
+
+// A Storage over a Map, with any method replaced. The test DOM's own
+// localStorage is a proxy a spy cannot be taken back off, so a misbehaving
+// storage is swapped in whole through the window getter instead.
+function fakeStorage(overrides: Partial<Pick<Storage, "getItem" | "setItem" | "removeItem">> = {}): Storage {
+  const held = new Map<string, string>();
+  const base: Storage = {
+    get length() { return held.size; },
+    key: (index) => [...held.keys()][index] ?? null,
+    getItem: (key) => held.get(key) ?? null,
+    setItem: (key, value) => { held.set(key, value); },
+    removeItem: (key) => { held.delete(key); },
+    clear: () => { held.clear(); },
+  };
+  return { ...base, ...overrides, get length() { return held.size; } } as Storage;
+}
+
+// Another tab's write, as the browser reports it to this one.
+function otherTabWrote(key: string | null, newValue: string | null): void {
+  window.dispatchEvent(new StorageEvent("storage", { key, newValue }));
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({ now: NOW_MS, toFake: ["Date"] });
   __resetPendingSendsForTests();
 });
 
 afterEach(() => {
   __resetPendingSendsForTests();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
 describe("pending-sends ledger", () => {
   it("test_ledger_entry_lives_from_submit_to_ack", () => {
-    beginPendingSend(WS, FLEET, send("op-1", "deploy"));
-    expect(getPendingSends(WS, FLEET)).toEqual([
-      { operationId: "op-1", text: "deploy", state: PENDING_SEND_STATE.SENDING, submittedAtMs: SUBMITTED_AT_MS },
+    beginPendingSend(SCOPE, send("op-1", "deploy"));
+    expect(getPendingSends(SCOPE)).toEqual([
+      { operationId: "op-1", text: "deploy", state: PENDING_SEND_STATE.SENDING, submittedAtMs: NOW_MS },
     ]);
     // Mirrored while unresolved, so a reload can find it.
     expect(window.localStorage.getItem(STORAGE_KEY)).toContain("op-1");
 
-    settlePendingSend(WS, FLEET, "op-1");
-    expect(getPendingSends(WS, FLEET)).toEqual([]);
+    settlePendingSend(SCOPE, "op-1");
+    expect(getPendingSends(SCOPE)).toEqual([]);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 
   it("keeps one entry per operation id and moves its state", () => {
-    beginPendingSend(WS, FLEET, send("op-a", "a"));
-    beginPendingSend(WS, FLEET, send("op-b", "b"));
-    failPendingSend(WS, FLEET, "op-a", PENDING_SEND_STATE.REFUSED);
-    failPendingSend(WS, FLEET, "op-b", PENDING_SEND_STATE.SESSION);
-    expect(getPendingSends(WS, FLEET).map((entry) => [entry.operationId, entry.state])).toEqual([
-      ["op-a", PENDING_SEND_STATE.REFUSED],
-      ["op-b", PENDING_SEND_STATE.SESSION],
-    ]);
+    beginPendingSend(SCOPE, send("op-a", "a"));
+    beginPendingSend(SCOPE, send("op-b", "b"));
+    failPendingSend(SCOPE, "op-a", PENDING_SEND_STATE.REFUSED);
+    failPendingSend(SCOPE, "op-b", PENDING_SEND_STATE.SESSION);
+    expect(states()).toEqual([["op-a", PENDING_SEND_STATE.REFUSED], ["op-b", PENDING_SEND_STATE.SESSION]]);
     // Sending again puts the same id back in flight, at the tail, once.
-    beginPendingSend(WS, FLEET, send("op-a", "a"));
-    expect(getPendingSends(WS, FLEET).map((entry) => [entry.operationId, entry.state])).toEqual([
-      ["op-b", PENDING_SEND_STATE.SESSION],
-      ["op-a", PENDING_SEND_STATE.SENDING],
-    ]);
-    dismissPendingSend(WS, FLEET, "op-b");
-    expect(getPendingSends(WS, FLEET).map((entry) => entry.operationId)).toEqual(["op-a"]);
-    // Dismissing what is not there changes nothing, and notifies nobody.
-    const before = getPendingSends(WS, FLEET);
-    dismissPendingSend(WS, FLEET, "op-missing");
-    expect(getPendingSends(WS, FLEET)).toBe(before);
+    beginPendingSend(SCOPE, send("op-a", "a"));
+    expect(states()).toEqual([["op-b", PENDING_SEND_STATE.SESSION], ["op-a", PENDING_SEND_STATE.SENDING]]);
+    dismissPendingSend(SCOPE, "op-b");
+    expect(states()).toEqual([["op-a", PENDING_SEND_STATE.SENDING]]);
+    expect(findPendingSend(SCOPE, "op-a")?.text).toBe("a");
+    expect(findPendingSend(SCOPE, "op-b")).toBeUndefined();
   });
 
-  it("finds an unresolved send by its exact text, per fleet", () => {
-    beginPendingSend(WS, FLEET, send("op-1", "old"));
-    beginPendingSend(WS, OTHER_FLEET, send("op-2", "old"));
-    expect(findPendingSendByText(WS, FLEET, "old")?.operationId).toBe("op-1");
-    expect(findPendingSendByText(WS, FLEET, "old\nnew")).toBeUndefined();
-    expect(findPendingSendByText(WS, OTHER_FLEET, "old")?.operationId).toBe("op-2");
+  it("reuses only a failed send's id for the same text, never one still in flight", () => {
+    beginPendingSend(SCOPE, send("op-1", "yes"));
+    // The same words typed again while the first is out are a second message.
+    expect(findUnresolvedSendByText(SCOPE, "yes")).toBeUndefined();
+    failPendingSend(SCOPE, "op-1", PENDING_SEND_STATE.UNKNOWN);
+    expect(findUnresolvedSendByText(SCOPE, "yes")?.operationId).toBe("op-1");
+    expect(findUnresolvedSendByText(SCOPE, "yes\nand more")).toBeUndefined();
+    expect(findUnresolvedSendByText(OTHER_FLEET, "yes")).toBeUndefined();
   });
 
-  it("test_ledger_survives_reload_and_syncs_tabs", async () => {
-    beginPendingSend(WS, FLEET, send("op-1", "deploy"));
-    beginPendingSend(WS, FLEET, send("op-2", "stop"));
-    failPendingSend(WS, FLEET, "op-2", PENDING_SEND_STATE.REFUSED);
+  it("test_ledger_survives_reload_and_syncs_tabs", () => {
+    beginPendingSend(SCOPE, send("op-1", "deploy"));
+    beginPendingSend(SCOPE, send("op-2", "stop"));
+    failPendingSend(SCOPE, "op-2", PENDING_SEND_STATE.REFUSED);
 
-    // A fresh module is a fresh document: the entry still `sending` was owned
-    // by a document that is gone, so it reads as unknown; a refusal keeps
-    // its state.
-    vi.resetModules();
-    const fresh = await import("./pending-sends");
-    expect(fresh.getPendingSends(WS, FLEET).map((entry) => [entry.operationId, entry.state])).toEqual([
-      ["op-1", PENDING_SEND_STATE.UNKNOWN],
-      ["op-2", PENDING_SEND_STATE.REFUSED],
-    ]);
+    // A fresh document: the entry still `sending` was owned by a document that
+    // is gone, so it reads as unknown; a refusal keeps its state.
+    __resetPendingSendsForTests({ keepStorage: true });
+    expect(states()).toEqual([["op-1", PENDING_SEND_STATE.UNKNOWN], ["op-2", PENDING_SEND_STATE.REFUSED]]);
 
-    // Another tab writes the key: this one takes the value as it stands.
+    // Another tab writes the key: this one takes its value.
     const listener = vi.fn();
-    const unsubscribe = fresh.subscribePendingSends(WS, FLEET, listener);
-    const written = [{ operationId: "op-3", text: "from tab b", state: PENDING_SEND_STATE.SENDING, submittedAtMs: SUBMITTED_AT_MS }];
-    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY, newValue: JSON.stringify(written) }));
+    subscribePendingSends(SCOPE, listener);
+    const written: PendingSend[] = [{ operationId: "op-3", text: "from tab b", state: PENDING_SEND_STATE.REFUSED, submittedAtMs: NOW_MS }];
+    otherTabWrote(STORAGE_KEY, stored(written));
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(fresh.getPendingSends(WS, FLEET)).toEqual(written);
-    // A key nobody here reads is ignored.
-    window.dispatchEvent(new StorageEvent("storage", { key: "agentsfleet:pending-sends:ws_x:fleet_x", newValue: "[]" }));
+    expect(getPendingSends(SCOPE)).toEqual(written);
+    // A key this document never read is ignored.
+    otherTabWrote(FOREIGN_KEY, "[]");
     expect(listener).toHaveBeenCalledTimes(1);
-    unsubscribe();
-    fresh.__resetPendingSendsForTests();
   });
 
-  it("reads a malformed or foreign stored value as nothing", async () => {
-    window.localStorage.setItem(STORAGE_KEY, "{not json");
-    vi.resetModules();
-    let fresh = await import("./pending-sends");
-    expect(fresh.getPendingSends(WS, FLEET)).toEqual([]);
+  it("applies another tab's write to a ledger no composer is showing, so a remount is current", () => {
+    const off = subscribePendingSends(SCOPE, () => {});
+    beginPendingSend(SCOPE, send("op-1", "a"));
+    failPendingSend(SCOPE, "op-1", PENDING_SEND_STATE.REFUSED);
+    off();
+    // Another tab resent and settled it, then removed the key.
+    otherTabWrote(STORAGE_KEY, null);
+    expect(getPendingSends(SCOPE)).toEqual([]);
+  });
 
+  it("keeps this tab's own in-flight send when another tab's write had not seen it", () => {
+    beginPendingSend(SCOPE, send("op-mine", "mine"));
+    const theirs: PendingSend = { operationId: "op-theirs", text: "theirs", state: PENDING_SEND_STATE.REFUSED, submittedAtMs: NOW_MS };
+    otherTabWrote(STORAGE_KEY, stored([theirs]));
+    expect(states()).toEqual([["op-theirs", PENDING_SEND_STATE.REFUSED], ["op-mine", PENDING_SEND_STATE.SENDING]]);
+    // The next write merges with storage, so neither tab's entry is lost.
+    window.localStorage.setItem(STORAGE_KEY, stored([theirs]));
+    failPendingSend(SCOPE, "op-mine", PENDING_SEND_STATE.UNKNOWN);
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "[]").map((e: PendingSend) => e.operationId)).toEqual(["op-theirs", "op-mine"]);
+  });
+
+  it("never takes a closed tab's stale `sending` back over an ending this tab knows", () => {
+    // A tab that died mid-send left `sending` in storage; this document read
+    // it as unknown, which is what shows Resend.
+    const orphan: PendingSend = { operationId: "op-orphan", text: "lost", state: PENDING_SEND_STATE.SENDING, submittedAtMs: NOW_MS };
+    window.localStorage.setItem(STORAGE_KEY, stored([orphan]));
+    expect(states()).toEqual([["op-orphan", PENDING_SEND_STATE.UNKNOWN]]);
+    // An unrelated write here merges with storage, which still says `sending`.
+    beginPendingSend(SCOPE, send("op-new", "new"));
+    expect(states()).toEqual([["op-orphan", PENDING_SEND_STATE.UNKNOWN], ["op-new", PENDING_SEND_STATE.SENDING]]);
+  });
+
+  it("re-reads every mirrored ledger when another tab clears storage", () => {
+    beginPendingSend(SCOPE, send("op-1", "a"));
+    failPendingSend(SCOPE, "op-1", PENDING_SEND_STATE.REFUSED);
+    beginPendingSend(SIGNED_OUT, send("op-memory", "typed before sign-in finished"));
+    failPendingSend(SIGNED_OUT, "op-memory", PENDING_SEND_STATE.REFUSED);
+    const listener = vi.fn();
+    subscribePendingSends(SCOPE, listener);
+    window.localStorage.clear();
+    otherTabWrote(null, null);
+    expect(getPendingSends(SCOPE)).toEqual([]);
+    expect(listener).toHaveBeenCalledTimes(1);
+    // A memory-only ledger was never in storage, so a clear leaves it alone.
+    expect(states(SIGNED_OUT)).toEqual([["op-memory", PENDING_SEND_STATE.REFUSED]]);
+  });
+
+  it("keys the ledger by user, and mirrors nothing until the user is known", () => {
+    beginPendingSend(SCOPE, send("op-1", "mine"));
+    failPendingSend(SCOPE, "op-1", PENDING_SEND_STATE.REFUSED);
+    // The next person on this browser sees none of it.
+    expect(getPendingSends(OTHER_USER)).toEqual([]);
+    expect(findUnresolvedSendByText(OTHER_USER, "mine")).toBeUndefined();
+
+    beginPendingSend(SIGNED_OUT, send("op-2", "early"));
+    const mirrored = Object.keys(window.localStorage).filter((key) => key.startsWith("agentsfleet:pending-sends"));
+    expect(mirrored).toEqual([STORAGE_KEY]);
+  });
+
+  it("expires entries after a day, and sweeps ledgers whose entries all expired", () => {
+    const old: PendingSend = { operationId: "op-old", text: "yesterday", state: PENDING_SEND_STATE.REFUSED, submittedAtMs: NOW_MS - PENDING_SEND_TTL_MS };
+    const fresh: PendingSend = { operationId: "op-fresh", text: "today", state: PENDING_SEND_STATE.REFUSED, submittedAtMs: NOW_MS - HOUR_MS };
+    window.localStorage.setItem(STORAGE_KEY, stored([old, fresh]));
+    window.localStorage.setItem(FOREIGN_KEY, stored([old]));
+    window.localStorage.setItem(UNRELATED_KEY, "kept");
+    expect(states()).toEqual([["op-fresh", PENDING_SEND_STATE.REFUSED]]);
+    expect(window.localStorage.getItem(FOREIGN_KEY)).toBeNull();
+    expect(window.localStorage.getItem(UNRELATED_KEY)).toBe("kept");
+  });
+
+  it("caps a fleet's ledger, dropping the oldest ended sends and never one in flight", () => {
+    beginPendingSend(SCOPE, send("op-flying", "still out"));
+    for (let index = 0; index < MAX_PENDING_SENDS; index += 1) {
+      beginPendingSend(SCOPE, send(`op-${index}`, `refused ${index}`));
+      failPendingSend(SCOPE, `op-${index}`, PENDING_SEND_STATE.REFUSED);
+    }
+    const ids = getPendingSends(SCOPE).map((entry) => entry.operationId);
+    expect(ids).toHaveLength(MAX_PENDING_SENDS);
+    expect(ids).toContain("op-flying");
+    expect(ids).not.toContain("op-0");
+  });
+
+  it("reads a malformed or foreign stored value as nothing", () => {
+    for (const raw of ["{not json", JSON.stringify({ an: "object" })]) {
+      __resetPendingSendsForTests();
+      window.localStorage.setItem(STORAGE_KEY, raw);
+      expect(getPendingSends(SCOPE)).toEqual([]);
+    }
+    __resetPendingSendsForTests();
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify([{ operationId: 7 }, { operationId: "op-ok", text: "t", state: "refused", submittedAtMs: 1 }, { operationId: "op-bad", text: "t", state: "lost", submittedAtMs: 1 }]),
+      JSON.stringify([7, { operationId: 7 }, { operationId: "op-ok", text: "t", state: "refused", submittedAtMs: NOW_MS }, { operationId: "op-bad", text: "t", state: "lost", submittedAtMs: NOW_MS }]),
     );
-    vi.resetModules();
-    fresh = await import("./pending-sends");
-    expect(fresh.getPendingSends(WS, FLEET).map((entry) => entry.operationId)).toEqual(["op-ok"]);
-    fresh.__resetPendingSendsForTests();
+    expect(getPendingSends(SCOPE).map((entry) => entry.operationId)).toEqual(["op-ok"]);
   });
 
   it("test_ledger_without_storage", () => {
-    const original = Object.getOwnPropertyDescriptor(window, "localStorage");
-    Object.defineProperty(window, "localStorage", {
-      configurable: true,
-      get() {
-        throw new Error("storage denied");
-      },
-    });
-    try {
-      beginPendingSend(WS, FLEET, send("op-1", "deploy"));
-      failPendingSend(WS, FLEET, "op-1", PENDING_SEND_STATE.UNKNOWN);
-      expect(getPendingSends(WS, FLEET).map((entry) => entry.state)).toEqual([PENDING_SEND_STATE.UNKNOWN]);
-      settlePendingSend(WS, FLEET, "op-1");
-      expect(getPendingSends(WS, FLEET)).toEqual([]);
-    } finally {
-      if (original) Object.defineProperty(window, "localStorage", original);
-      else Reflect.deleteProperty(window, "localStorage");
+    const cases: Array<() => void> = [
+      () => vi.spyOn(window, "localStorage", "get").mockImplementation(() => { throw new Error("storage denied"); }),
+      () => vi.spyOn(window, "localStorage", "get").mockReturnValue(undefined as unknown as Storage),
+      () => vi.stubGlobal("window", undefined),
+    ];
+    for (const withoutStorage of cases) {
+      __resetPendingSendsForTests();
+      withoutStorage();
+      beginPendingSend(SCOPE, send("op-1", "deploy"));
+      failPendingSend(SCOPE, "op-1", PENDING_SEND_STATE.UNKNOWN);
+      expect(states()).toEqual([["op-1", PENDING_SEND_STATE.UNKNOWN]]);
+      settlePendingSend(SCOPE, "op-1");
+      expect(getPendingSends(SCOPE)).toEqual([]);
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
     }
+  });
+
+  it("keeps the ledger in memory when a write is refused for quota", () => {
+    const full = fakeStorage({ setItem: () => { throw new DOMException("full", "QuotaExceededError"); } });
+    vi.spyOn(window, "localStorage", "get").mockReturnValue(full);
+    beginPendingSend(SCOPE, send("op-1", "deploy"));
+    expect(states()).toEqual([["op-1", PENDING_SEND_STATE.SENDING]]);
+    expect(full.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it("survives a storage whose reads and removals throw after it was found", () => {
+    const revoked = fakeStorage({
+      getItem: () => { throw new Error("revoked"); },
+      removeItem: () => { throw new Error("revoked"); },
+    });
+    revoked.setItem(FOREIGN_KEY, stored([]));
+    vi.spyOn(window, "localStorage", "get").mockReturnValue(revoked);
+    // The first read sweeps (removal throws) and hydrates (read throws): both
+    // are best-effort, so the ledger is simply empty.
+    expect(getPendingSends(SCOPE)).toEqual([]);
+    expect(findPendingSend(SCOPE, "op-1")).toBeUndefined();
   });
 
   it("notifies subscribers on every write and stops after unsubscribe", () => {
     const listener = vi.fn();
-    const unsubscribe = subscribePendingSends(WS, FLEET, listener);
-    beginPendingSend(WS, FLEET, send("op-1", "deploy"));
-    failPendingSend(WS, FLEET, "op-1", PENDING_SEND_STATE.REFUSED);
-    settlePendingSend(WS, FLEET, "op-1");
+    const bystander = vi.fn();
+    const unsubscribe = subscribePendingSends(SCOPE, listener);
+    const unsubscribeBystander = subscribePendingSends(SCOPE, bystander);
+    beginPendingSend(SCOPE, send("op-1", "deploy"));
+    failPendingSend(SCOPE, "op-1", PENDING_SEND_STATE.REFUSED);
+    settlePendingSend(SCOPE, "op-1");
     expect(listener).toHaveBeenCalledTimes(3);
     unsubscribe();
-    beginPendingSend(WS, FLEET, send("op-2", "again"));
+    beginPendingSend(SCOPE, send("op-2", "again"));
     expect(listener).toHaveBeenCalledTimes(3);
+    // The other subscriber is still told.
+    expect(bystander).toHaveBeenCalledTimes(4);
+    unsubscribeBystander();
   });
 });
