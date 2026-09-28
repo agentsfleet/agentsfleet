@@ -83,6 +83,47 @@ describe("applyLiveFrame — tool frames", () => {
     ]);
   });
 
+  it("test_malformed_tool_frame_dropped", () => {
+    // `parseLiveFrame` checks only `kind`; the tool row renders `name` as a
+    // React child, so an object there would throw on render.
+    const seed = [evt({ id: "e1" })];
+    const badName = { kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "e1", name: { bad: "name" } } as unknown as LiveFrame;
+    expect(applyLiveFrame(seed, badName, STARTED_AT)).toBe(seed);
+    const emptyName = { kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "e1", name: "" } as unknown as LiveFrame;
+    expect(applyLiveFrame(seed, emptyName, STARTED_AT)).toBe(seed);
+
+    const open = applyLiveFrame(seed, started("shell"), STARTED_AT);
+    const textMs = { kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "e1", name: "shell", ms: "7" } as unknown as LiveFrame;
+    expect(applyLiveFrame(open, textMs, COMPLETED_AT)).toBe(open);
+    const negative = { kind: FRAME_KIND.TOOL_CALL_PROGRESS, event_id: "e1", name: "shell", elapsed_ms: -1 } as unknown as LiveFrame;
+    expect(applyLiveFrame(open, negative, PROGRESS_AT)).toBe(open);
+
+    // A completion with no figure is not malformed: it closes the call and
+    // keeps the elapsed a progress frame reported.
+    const progressed400 = applyLiveFrame(open, progressed("shell", 400), PROGRESS_AT);
+    const bare = { kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "e1", name: "shell" } as unknown as LiveFrame;
+    expect(applyLiveFrame(progressed400, bare, COMPLETED_AT)[0]?.tools).toEqual([
+      { name: "shell", startedAtMs: STARTED_AT, ms: 400, done: true },
+    ]);
+  });
+
+  it("test_late_tool_frame_opens_nothing", () => {
+    let out = applyLiveFrame([evt({ id: "e1" })], started("read_file"), STARTED_AT);
+    out = applyLiveFrame(out, completed("read_file", 700), COMPLETED_AT);
+    // The same completion again, and a progress frame that arrived after it:
+    // neither invents a second call.
+    const settled = out;
+    expect(applyLiveFrame(settled, completed("read_file", 700), REPEAT_AT)).toBe(settled);
+    expect(applyLiveFrame(settled, progressed("read_file", 300), REPEAT_AT)).toBe(settled);
+    // A repeated start while the call is open moves nothing either.
+    const running = applyLiveFrame([evt({ id: "e1" })], started("grep"), STARTED_AT);
+    expect(applyLiveFrame(running, started("grep"), PROGRESS_AT)).toBe(running);
+    expect(running[0]?.tools).toHaveLength(1);
+    // A progress frame restating the elapsed changes nothing.
+    const at400 = applyLiveFrame(running, progressed("grep", 400), PROGRESS_AT);
+    expect(applyLiveFrame(at400, progressed("grep", 400), COMPLETED_AT)).toBe(at400);
+  });
+
   // event_received always precedes its tool frames on the wire. Synthesizing an
   // event here would put a message in the thread that the backfill then duplicates.
   it("drops a tool frame whose event has not arrived, rather than inventing an event", () => {
