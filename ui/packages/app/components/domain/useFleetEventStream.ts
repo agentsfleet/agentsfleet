@@ -41,7 +41,7 @@ export type UseFleetEventStreamResult = {
   // installing→active flip.
   installStep: InstallStepId | null;
   appendOptimistic: (text: string, actor: string) => string;
-  reconcileOptimistic: (tempId: string, realEventId: string) => boolean;
+  reconcileOptimistic: (tempId: string, realEventId: string, replayed?: boolean) => boolean;
   discardOptimistic: (tempId: string) => void;
   retryConnection: () => void;
   convertEvent: (event: FleetEvent) => ThreadMessageLike;
@@ -89,8 +89,8 @@ export function useFleetEventStream(
     [fleetId],
   );
   const reconcileOptimistic = useCallback(
-    (tempId: string, realEventId: string) =>
-      registryReconcileOptimistic(fleetId, tempId, realEventId),
+    (tempId: string, realEventId: string, replayed?: boolean) =>
+      registryReconcileOptimistic(fleetId, tempId, realEventId, replayed),
     [fleetId],
   );
   const discardOptimistic = useCallback(

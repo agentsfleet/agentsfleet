@@ -29,6 +29,15 @@ export type SteerRequest = {
   operation_id: string;
 };
 
+// The 202 a steer is answered with. Mirrors `afd_wire::event::SteerAccepted`:
+// `replayed` is true when an earlier send of the same operation id already
+// admitted the message, so `event_id` is that send's event and may have run.
+export type SteerAccepted = {
+  status: string;
+  event_id: string;
+  replayed: boolean;
+};
+
 /** The longest message a steer may carry, in UTF-8 bytes. Mirrors
  * `afd_wire::event::STEER_MESSAGE_MAX_BYTES`; the daemon refuses one byte more. */
 export const STEER_MESSAGE_MAX_BYTES = 8192;

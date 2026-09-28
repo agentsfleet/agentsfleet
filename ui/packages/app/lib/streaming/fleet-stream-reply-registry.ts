@@ -3,11 +3,12 @@ import type { EventDetail, EventRow, LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import type { FleetFacts } from "@/lib/events/run-summary";
 import { factsOf } from "./fleet-stream-facts";
-import { applyLiveFrame } from "./fleet-stream-frames";
+import { applyLiveFrame, mergeBackfill } from "./fleet-stream-frames";
 import { applyFinalReply, applyFinalReplyText, applyReplyDelta, applyReplyRecovery } from "./fleet-stream-reply-frames";
 import type { Entry } from "./fleet-stream-entry";
 import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
 import { ReplyStreamDecoder } from "./reply-stream-decoder";
+import { STREAM_SILENCE_TIMEOUT_MS } from "./stream-recovery-window";
 
 type Apply = (next: (prev: FleetEvent[]) => FleetEvent[], facts: Partial<FleetFacts>) => void;
 
@@ -22,6 +23,11 @@ export function setEventDetailReader(reader: EventDetailReader | null): void {
   readEventDetail = reader;
 }
 
+/** How long a running event may go without a frame before its row is read
+ * again: the stream's own silence window, so a quiet tool is never taken for a
+ * lost ending sooner than a quiet stream would be. */
+export const REPLY_STALL_MS = STREAM_SILENCE_TIMEOUT_MS;
+
 /** Owns live decoder lifetimes beside the fleet's one EventSource. */
 export function dispatchReplyFrame(
   entry: Entry,
@@ -30,6 +36,8 @@ export function dispatchReplyFrame(
   apply: Apply,
   isCurrent: () => boolean,
 ): boolean {
+  if (frame.kind === FRAME_KIND.EVENT_COMPLETE) entry.replyHeard.delete(frame.event_id);
+  else if ("event_id" in frame && typeof frame.event_id === "string") watchReply(entry, fleetId, frame.event_id, apply, isCurrent);
   if (frame.kind === FRAME_KIND.CHUNK) {
     if (entry.replyGaps.has(frame.event_id)) return true;
     let decoder = entry.replyStreams.get(frame.event_id);
@@ -116,7 +124,7 @@ function recoverFinalReply(
           const result = await read(entry.workspaceId, fleetId, eventId);
           if (result.ok) {
             if (!isCurrent()) return;
-            apply((prev) => applyFinalReply(prev, result.data), {});
+            apply((prev) => applyDetail(prev, result.data), {});
             entry.replyGaps.delete(eventId);
             return;
           }
@@ -155,9 +163,7 @@ export function settleRepliesFromBackfill(
   for (const row of rows) {
     if (row.status === AGENTSFLEET_EVENT_STATUS.RECEIVED) continue;
     if (entry.replyGaps.has(row.event_id)) {
-      entry.replyStreams.get(row.event_id)?.dispose();
-      entry.replyStreams.delete(row.event_id);
-      entry.replyNextSeq.delete(row.event_id);
+      closeLivePass(entry, row.event_id);
       apply((prev) => applyReplyRecovery(prev, row.event_id, false), {});
       recoverFinalReply(entry, fleetId, row.event_id, apply, isCurrent);
       continue;
@@ -181,4 +187,66 @@ export function disposeReplyStreams(entry: Entry): void {
   entry.replyNextSeq.clear();
   entry.replyGaps.clear();
   entry.replyRecoveries.clear();
+  entry.replyHeard.clear();
+}
+
+// A running event the stream stopped telling this tab about — its completion
+// dropped while the stream stayed up — would keep its row running and its
+// Thought clock ticking. Each frame for the event marks it heard; the stream's
+// own traffic, every frame and heartbeat, sweeps for events unheard for
+// `REPLY_STALL_MS` and reads each one's saved row once. No timer: a stream that
+// falls silent altogether is the recovery window's to reopen. `readNow` reads
+// at once as well — a replayed send whose event may have run before this page
+// saw it — and the sweep retries a read that failed.
+export function watchReply(
+  entry: Entry,
+  fleetId: string,
+  eventId: string,
+  apply: Apply,
+  isCurrent: () => boolean,
+  readNow = false,
+): void {
+  entry.replyHeard.set(eventId, Date.now());
+  if (readNow) void settleFromDetail(entry, fleetId, eventId, apply, isCurrent);
+}
+
+/** Reads, once, every running event this tab has not heard from in `REPLY_STALL_MS`. */
+export function readStalledReplies(entry: Entry, fleetId: string, apply: Apply, isCurrent: () => boolean): void {
+  const nowMs = Date.now();
+  for (const [eventId, heardAtMs] of entry.replyHeard) {
+    if (nowMs - heardAtMs < REPLY_STALL_MS) continue;
+    entry.replyHeard.delete(eventId);
+    void settleFromDetail(entry, fleetId, eventId, apply, isCurrent);
+  }
+}
+
+// One read of an event this tab still shows running. An ended run settles its
+// row — status and figures from the row, the answer from its text, its live
+// pass closed. A failed read, or a run still going, changes nothing.
+async function settleFromDetail(
+  entry: Entry,
+  fleetId: string,
+  eventId: string,
+  apply: Apply,
+  isCurrent: () => boolean,
+): Promise<void> {
+  const read = readEventDetail;
+  const shown = entry.snapshot.events.find((event) => event.id === eventId);
+  if (read === null || shown?.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED) return;
+  const result = await read(entry.workspaceId, fleetId, eventId).catch(() => null);
+  if (!result?.ok || !isCurrent() || result.data.status === AGENTSFLEET_EVENT_STATUS.RECEIVED) return;
+  const detail = result.data;
+  closeLivePass(entry, eventId);
+  apply((prev) => applyDetail(prev, detail), {});
+}
+
+// A saved row over the live one: its status and figures, then its answer.
+function applyDetail(prev: FleetEvent[], detail: EventDetail): FleetEvent[] {
+  return applyFinalReply(mergeBackfill(prev, [detail]), detail);
+}
+
+function closeLivePass(entry: Entry, eventId: string): void {
+  entry.replyStreams.get(eventId)?.dispose();
+  entry.replyStreams.delete(eventId);
+  entry.replyNextSeq.delete(eventId);
 }

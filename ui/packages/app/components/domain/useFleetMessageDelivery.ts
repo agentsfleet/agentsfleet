@@ -195,7 +195,7 @@ function useSerializedDelivery({
         // Settled before the cosmetic reconcile: the daemon holds it, whatever
         // the painting does next.
         writers.settle(operationId);
-        reconcileOptimistic(tempId, result.data.event_id);
+        reconcileOptimistic(tempId, result.data.event_id, result.data.replayed);
         requestOnboardingRefresh(workspaceId);
         return true;
       };

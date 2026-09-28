@@ -78,7 +78,7 @@ describe("FleetThread — steer submission", () => {
       expect(steerFleetActionMock).toHaveBeenCalledWith(WS, ZID, "deploy the canary", OPERATION_ID),
     );
     expect(appendOptimistic).toHaveBeenCalledWith("deploy the canary", "steer:pending");
-    expect(reconcileOptimistic).toHaveBeenCalledWith("temp_42", "evt_real_42");
+    expect(reconcileOptimistic).toHaveBeenCalledWith("temp_42", "evt_real_42", false);
     expect(discardOptimistic).not.toHaveBeenCalled();
     expect(refreshed).toHaveBeenCalledTimes(1);
     // Acknowledged: nothing is left to recover.
@@ -191,7 +191,7 @@ describe("FleetThread — steer submission", () => {
     steerFleetActionMock.mockResolvedValueOnce(ACCEPTED("evt_already_complete"));
     renderThread();
     await capturedOnNew.current!(appendMessage("fast completion"));
-    expect(reconcileOptimistic).toHaveBeenCalledWith("temp_1", "evt_already_complete");
+    expect(reconcileOptimistic).toHaveBeenCalledWith("temp_1", "evt_already_complete", false);
   });
 
   it("does not call the action when the submitted message text is empty", async () => {

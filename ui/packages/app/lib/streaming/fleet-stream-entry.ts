@@ -61,6 +61,8 @@ export type Entry = {
   replyNextSeq: Map<string, number>;
   replyGaps: Set<string>;
   replyRecoveries: Set<string>;
+  /** Per running event, when this tab last heard a frame for it. */
+  replyHeard: Map<string, number>;
   listeners: Set<Listener>;
   refCount: number;
   eventSource: EventSource | null;
@@ -111,6 +113,7 @@ export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
     replyNextSeq: new Map(),
     replyGaps: new Set(),
     replyRecoveries: new Set(),
+    replyHeard: new Map(),
     listeners: new Set(),
     refCount: 0,
     eventSource: null,
