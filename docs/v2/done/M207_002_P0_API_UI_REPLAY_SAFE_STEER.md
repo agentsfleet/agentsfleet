@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M207
 **Workstream:** 002
 **Date:** Sep 28, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — one click can create two durable fleet runs today; the operator pays and reads twice
 **Categories:** API, UI
 **Batch:** B1 — rides PR #717 beside M207_001 by Kishore's call
