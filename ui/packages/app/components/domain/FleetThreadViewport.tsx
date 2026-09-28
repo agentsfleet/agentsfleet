@@ -5,8 +5,7 @@ import { ArrowDownIcon } from "lucide-react";
 import { ThreadPrimitive, useThreadViewportStore } from "@assistant-ui/react";
 import { Button, Skeleton, cn } from "@agentsfleet/design-system";
 import { CONNECTION_STATUS, type ConnectionStatus } from "./useFleetEventStream";
-import type { FailedDelivery } from "./useFleetDeliveryFailure";
-import { SteerComposer } from "./SteerComposer";
+import { SteerComposer, type SteerComposerProps } from "./SteerComposer";
 import { renderFleetMessage } from "./fleetMessageRenderers";
 
 const PANEL_TITLE = "Chat";
@@ -14,15 +13,14 @@ const EMPTY_HINT = "Message this fleet or wait for its next trigger. Activity an
 const JUMP_TO_LATEST = "Jump to latest";
 const BACKFILL_LABEL = "Loading recent activity";
 
-type FleetThreadViewportProps = {
+type FleetThreadViewportProps = SteerComposerProps & {
   eventsCount: number;
   connectionStatus: ConnectionStatus;
   submittedMessageId: string | null;
-  failure: FailedDelivery | null;
 };
 
 export function FleetThreadViewport({
-  eventsCount, connectionStatus, submittedMessageId, failure,
+  eventsCount, connectionStatus, submittedMessageId, pending, onResend, onDismiss,
 }: FleetThreadViewportProps) {
   const viewport = useThreadViewportStore();
   // The external runtime stays steerable while the fleet runs, so its normal
@@ -55,7 +53,7 @@ export function FleetThreadViewport({
           className="sticky bottom-0 mx-auto flex max-h-full w-full max-w-measure flex-col bg-background pb-md pt-md"
         >
           <JumpToLatest />
-          <SteerComposer failure={failure} />
+          <SteerComposer pending={pending} onResend={onResend} onDismiss={onDismiss} />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
     </ThreadPrimitive.Root>

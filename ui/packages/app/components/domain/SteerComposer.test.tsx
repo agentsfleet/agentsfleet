@@ -1,8 +1,8 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { SteerComposer } from "./SteerComposer";
-import { DELIVERY_FAILURE } from "./useFleetDeliveryFailure";
+import { PENDING_SEND_STATE, type PendingSend } from "./useFleetPendingSends";
 
 const { composer } = vi.hoisted(() => {
   const state = { text: "", isEmpty: true };
@@ -25,10 +25,24 @@ vi.mock("@assistant-ui/react", () => ({
     Send: ({ children }: { children: React.ReactElement }) => children,
   },
   useAui: () => ({ composer: () => ({ getState: () => composer.state, setText: composer.setText }) }),
-  useAuiState: <T,>(selector: (s: { composer: typeof composer.state }) => T) => selector({ composer: composer.state }),
 }));
 
-const SEND_FAILURE = { text: "deploy the canary", kind: DELIVERY_FAILURE.SEND };
+const SEND_FAILED = "Message not sent.";
+const SEND_UNCONFIRMED = "Couldn't confirm this message was sent.";
+const RESEND = "Resend";
+const DISMISS = "Dismiss";
+const SUBMITTED_AT_MS = 1_700_000_000_000;
+
+function entry(over: Partial<PendingSend> & { operationId: string }): PendingSend {
+  return { text: "deploy the canary", state: PENDING_SEND_STATE.REFUSED, submittedAtMs: SUBMITTED_AT_MS, ...over };
+}
+
+const REFUSED = entry({ operationId: "op-refused" });
+const noop = () => {};
+
+function view(pending: PendingSend[], handlers: { onResend?: (id: string) => void; onDismiss?: (id: string) => void } = {}) {
+  return <SteerComposer pending={pending} onResend={handlers.onResend ?? noop} onDismiss={handlers.onDismiss ?? noop} />;
+}
 
 function draft(text: string) {
   composer.state.text = text;
@@ -43,7 +57,7 @@ afterEach(() => {
 
 describe("SteerComposer", () => {
   it("renders the approved composer surface", () => {
-    render(<SteerComposer failure={null} />);
+    render(view([]));
     const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
     expect(textarea.disabled).toBe(false);
     expect(textarea.placeholder).toBe("Message this fleet…");
@@ -56,41 +70,84 @@ describe("SteerComposer", () => {
   it("exposes no pending hold — a submitted message is sent, never parked", () => {
     // The browser-side queue is gone: ordering belongs to the fleet's own
     // event stream, and a held message was indistinguishable from a lost one.
-    render(<SteerComposer failure={null} />);
+    render(view([entry({ operationId: "op-flight", state: PENDING_SEND_STATE.SENDING })]));
     expect(screen.queryByText(/queued/i)).toBeNull();
     expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
-    expect(screen.queryByText(/will queue/i)).toBeNull();
+    // A send still in flight is the optimistic row's to show, not the notice's.
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(composer.setText).not.toHaveBeenCalled();
   });
 
-  it("puts a refused send back into a composer that mounts empty, and offers Resend", () => {
-    const view = render(<SteerComposer failure={SEND_FAILURE} />);
-    expect(composer.setText).toHaveBeenCalledExactlyOnceWith("deploy the canary");
+  it("puts the newest unresolved text back into a composer that mounts empty, and lists every send with Resend", () => {
+    const pending = [entry({ operationId: "op-a", text: "first refused" }), entry({ operationId: "op-b", text: "second refused" })];
+    const viewed = render(view(pending));
+    expect(composer.setText).toHaveBeenCalledExactlyOnceWith("second refused");
     // The runtime re-renders subscribers on a text change; the mock does not.
-    view.rerender(<SteerComposer failure={SEND_FAILURE} />);
-    expect(screen.getByText("Message not sent.")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Resend" }).getAttribute("type")).toBe("submit");
+    viewed.rerender(view(pending));
+    expect(screen.getAllByText(SEND_FAILED)).toHaveLength(2);
+    expect(screen.getByText("first refused")).toBeTruthy();
+    expect(screen.getByText("second refused")).toBeTruthy();
+    const resends = screen.getAllByRole("button", { name: RESEND });
+    expect(resends).toHaveLength(2);
+    // Resend posts the ledger record itself; it is not the composer's submit.
+    for (const button of resends) expect(button.getAttribute("type")).toBe("button");
   });
 
   it("leaves a refusal while mounted to assistant-ui, and never overwrites a draft", () => {
     // Mounted clean: a refusal arriving later is returned by the runtime's
     // MessageNotSentError handling, not by this component.
-    const view = render(<SteerComposer failure={null} />);
-    view.rerender(<SteerComposer failure={SEND_FAILURE} />);
+    const viewed = render(view([]));
+    viewed.rerender(view([REFUSED]));
     expect(composer.setText).not.toHaveBeenCalled();
+    expect(screen.getByText(SEND_FAILED)).toBeTruthy();
+    expect(screen.getByRole("button", { name: RESEND })).toBeTruthy();
     cleanup();
-    // Mounted over a draft: the draft stays, and with no refused text in it
-    // there is nothing for Resend to send.
+    // Mounted over a draft: the draft stays. Resend still works — it sends
+    // the ledger record, not the draft.
     draft("and roll back staging");
-    render(<SteerComposer failure={SEND_FAILURE} />);
+    render(view([REFUSED]));
     expect(composer.setText).not.toHaveBeenCalled();
-    expect(screen.getByText("Message not sent.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Resend" })).toBeNull();
+    expect(screen.getByRole("button", { name: RESEND })).toBeTruthy();
+  });
+
+  it("test_resend_posts_ledger_record_once", () => {
+    const onResend = vi.fn();
+    draft(REFUSED.text);
+    render(view([REFUSED], { onResend }));
+    fireEvent.click(screen.getByRole("button", { name: RESEND }));
+    expect(onResend).toHaveBeenCalledExactlyOnceWith("op-refused");
+    // The draft WAS the refused text, so it is cleared: Enter must not send
+    // the same words again under a second id.
+    expect(composer.setText).toHaveBeenLastCalledWith("");
+    composer.setText.mockClear();
+
+    // A draft that moved on is the operator's; Resend leaves it alone.
+    draft("something else");
+    fireEvent.click(screen.getByRole("button", { name: RESEND }));
+    expect(onResend).toHaveBeenCalledTimes(2);
+    expect(composer.setText).not.toHaveBeenCalledWith("");
+  });
+
+  it("test_unknown_delivery_notice", () => {
+    render(view([entry({ operationId: "op-lost", state: PENDING_SEND_STATE.UNKNOWN })]));
+    expect(screen.getByText(SEND_UNCONFIRMED)).toBeTruthy();
+    expect(screen.queryByText(SEND_FAILED)).toBeNull();
+    expect(screen.getByRole("button", { name: RESEND })).toBeTruthy();
+    expect(screen.getByRole("alert")).toBeTruthy();
   });
 
   it("sends an expired session to sign in and still restores the text", () => {
-    render(<SteerComposer failure={{ text: "deploy the canary", kind: DELIVERY_FAILURE.SESSION }} />);
+    render(view([entry({ operationId: "op-session", state: PENDING_SEND_STATE.SESSION })]));
     expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe("/sign-in");
-    expect(screen.queryByRole("button", { name: "Resend" })).toBeNull();
+    expect(screen.queryByRole("button", { name: RESEND })).toBeNull();
     expect(composer.setText).toHaveBeenCalledExactlyOnceWith("deploy the canary");
+  });
+
+  it("test_dismiss_removes_one_entry", () => {
+    const onDismiss = vi.fn();
+    render(view([entry({ operationId: "op-a", text: "a" }), entry({ operationId: "op-b", text: "b" })], { onDismiss }));
+    const [first] = screen.getAllByRole("button", { name: DISMISS });
+    fireEvent.click(first as HTMLElement);
+    expect(onDismiss).toHaveBeenCalledExactlyOnceWith("op-a");
   });
 });

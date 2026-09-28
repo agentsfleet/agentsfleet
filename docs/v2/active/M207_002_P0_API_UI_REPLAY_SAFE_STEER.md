@@ -35,7 +35,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** A steer whose response is lost — socket reset, tab closed, page reloaded, fleet paused in between — is admitted exactly once when sent again, and the dashboard never reports a delivered message as unsent without offering a safe way to confirm it.
 **Problem:** The steer POST replays on a dropped socket (`lib/api/retry.ts` lets a transport drop through for every method) and Resend posts the composer's text as a new message, while the body carries no identity. A message the daemon accepted can therefore run twice. Two fast sends that both fail lose the first one, because the composer keeps one failure slot and assistant-ui restores only the newest draft. A refusal that lands after a navigation leaves the new composer with a notice and nothing to resend.
-**Solution summary:** The browser mints a UUID v4 operation id before it appends the optimistic row, sends it as the endpoint's existing `operation_id` field, and keeps every unresolved send in a per-fleet ledger mirrored to `localStorage`. The notice lists each unresolved send with its own Resend, which posts the ledger record under the same id. The daemon, which already deduplicates on `operation_id`, scopes the key to the fleet, answers a repeat before the paused and budget gates, and refuses a key reused with a different message. The operator sees one row per message, always.
+**Solution summary:** The browser mints a UUID v7 operation id before it appends the optimistic row, sends it as the endpoint's existing `operation_id` field, and keeps every unresolved send in a per-fleet ledger mirrored to `localStorage`. The notice lists each unresolved send with its own Resend, which posts the ledger record under the same id. The daemon, which already deduplicates on `operation_id`, scopes the key to the fleet, answers a repeat before the paused and budget gates, and refuses a key reused with a different message. The operator sees one row per message, always.
 
 ## PR Intent & comprehension handshake
 
@@ -58,11 +58,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `ui/packages/app/lib/api/{fleets,fleets-types}.ts`, `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/actions.ts` | EDIT | `steerFleet` takes a `SteerRequest` with a required `operation_id`; the Server Action forwards it |
 | `ui/packages/app/lib/streaming/pending-sends.ts` | CREATE | The per-fleet ledger of unresolved sends: module state, `localStorage` mirror, `storage`-event sync, listeners |
-| `ui/packages/app/lib/streaming/operation-id.ts` | CREATE | `mintOperationId`: UUID v4 from `crypto.randomUUID`, else `crypto.getRandomValues` |
+| `ui/packages/app/lib/streaming/operation-id.ts`, `ui/packages/app/package.json`, `bun.lock` | CREATE / EDIT | `mintOperationId`: UUID v7 from the `uuid` package (^14, the command line's version) |
 | `ui/packages/app/components/domain/useFleetPendingSends.ts` | CREATE | The React boundary over the ledger (`useSyncExternalStore`) |
-| `ui/packages/app/components/domain/useFleetDeliveryFailure.ts` | DELETE | Superseded by the ledger; one slot per fleet was the defect |
-| `ui/packages/app/components/domain/{useFleetMessageDelivery,SteerComposer,FleetThread,FleetThreadViewport}.ts(x)` | EDIT | Mint before append; ledger from submit to acknowledgement; per-entry Resend and Dismiss; the unknown-delivery notice |
-| `ui/packages/app/lib/streaming/{pending-sends,operation-id}.test.ts`, `ui/packages/app/components/domain/{useFleetPendingSends.test.tsx,SteerComposer.test.tsx}`, `ui/packages/app/tests/fleet-thread/{harness.ts,steer-submission.test.ts}`, `ui/packages/app/lib/api/{fleets.replay.test.ts,client.retry.test.ts}` | CREATE / EDIT | Browser proofs, through the real retry policy and the real composer |
+| `ui/packages/app/components/domain/useFleetDeliveryFailure{.ts,.test.tsx}` | DELETE | Superseded by the ledger; one slot per fleet was the defect |
+| `ui/packages/app/components/domain/{useFleetMessageDelivery,SteerComposer,FleetThread,FleetThreadViewport}.ts(x)`, `ui/packages/app/lib/streaming/fleet-stream-registry.ts` | EDIT | Mint before append; ledger from submit to acknowledgement; per-entry Resend and Dismiss; the unknown-delivery notice; a comment that named the old record |
+| `ui/packages/app/lib/streaming/{pending-sends,operation-id}.test.ts`, `ui/packages/app/components/domain/{useFleetPendingSends,SteerComposer,FleetThreadViewport}.test.tsx`, `ui/packages/app/tests/fleet-thread/{harness,steer-helpers}.ts`, `ui/packages/app/tests/fleet-thread/{steer-submission,steer-recovery}.test.ts`, `ui/packages/app/tests/fleets-actions.test.ts`, `ui/packages/app/lib/api/{fleets.replay,fleets}.test.ts` | CREATE / EDIT | Browser proofs, through the real retry policy and the real composer; recovery cases split from submission at the length cap |
 | `ui/packages/app/tests/e2e/acceptance/fleet-resend.spec.ts` | EDIT | Both Server Action bodies carry one operation id; reload recovery |
 | `rustd/crates/afd_events/src/steer.rs` | EDIT | Composes the fleet-scoped key; `replayed` lookup for the handler |
 | `rustd/crates/afd_http/src/services/event.rs` | EDIT | `FleetSteering::replayed` |
@@ -105,33 +105,33 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — Every browser steer carries an operation id
 
-The id is minted synchronously at the top of `onNew`, before the optimistic append and before any `await`, so a mint failure rejects before the composer's draft is at risk. It rides the Server Action and `steerFleet` into the body's `operation_id`. The retry policy is untouched: the socket-drop replay is now safe because both attempts carry the same body. **Implementation default:** `crypto.randomUUID`, then `crypto.getRandomValues` because an HTTP origin on a LAN has the second and not the first; neither present → `MessageNotSentError`.
+The id is minted synchronously at the top of `onNew`, before the optimistic append and before any `await`, so a mint failure rejects before the composer's draft is at risk. It rides the Server Action and `steerFleet` into the body's `operation_id`. The retry policy is untouched: the socket-drop replay is now safe because both attempts carry the same body. **Implementation default:** UUID v7 from `uuid`'s `v7()` — the package `cli/src/lib/id.ts` already imports, the shape the daemon mints its own row ids in — so keys sort by send time and stay strictly increasing in one document; its random bits come from `crypto.getRandomValues`, which every origin has; no generator → `MessageNotSentError`.
 
-- **Dimension 1.1** — the id is minted before the append and rides the action → Test `test_operation_id_minted_before_append`
-- **Dimension 1.2** — the fallback generator and the mint failure path → Test `test_mint_falls_back_then_refuses`
-- **Dimension 1.3** — a socket drop replays the identical body through the real policy; a 503 does not → Test `test_socket_drop_replays_same_operation_id`
-- **Dimension 1.4** — `steerFleet` refuses a call without an id at the type level → Test `test_steer_request_requires_operation_id`
+- **Dimension 1.1** — the id is minted before the append and rides the action → Test `test_operation_id_minted_before_append` — DONE (app browser suites 18 files green; steer-submission + steer-recovery through the real composer)
+- **Dimension 1.2** — the id is time-ordered, and a platform without a generator refuses the send → Test `test_mint_sorts_by_time_then_refuses` — DONE (app browser suites 18 files green; steer-submission + steer-recovery through the real composer)
+- **Dimension 1.3** — a socket drop replays the identical body through the real policy; a 503 does not → Test `test_socket_drop_replays_same_operation_id` — DONE (app browser suites 18 files green; steer-submission + steer-recovery through the real composer)
+- **Dimension 1.4** — `steerFleet` refuses a call without an id at the type level → Test `test_steer_request_requires_operation_id` — DONE (app browser suites 18 files green; steer-submission + steer-recovery through the real composer)
 
 ### §2 — The pending-send ledger
 
 One entry per unresolved send, keyed by operation id, from submit until the 202 is reconciled. State moves `sending → refused | session | unknown`; an entry hydrated from storage still `sending` reads as `unknown`, because the tab that owned it is gone. Mirrored to `localStorage` under a workspace-and-fleet key, read once per key on first subscribe, written through on every change, re-read on the `storage` event. **Implementation default:** exact-text match against the ledger reuses that entry's id when the operator presses Send on restored text, because a second id for the same unresolved text is the duplicate this spec exists to end.
 
-- **Dimension 2.1** — an entry lives from submit to acknowledgement and no longer → Test `test_ledger_entry_lives_from_submit_to_ack`
-- **Dimension 2.2** — two sends both refused keep two entries → Test `test_two_refused_sends_keep_two_entries`
-- **Dimension 2.3** — persistence: a fresh module reads what the last one wrote; a `storage` event notifies → Test `test_ledger_survives_reload_and_syncs_tabs`
-- **Dimension 2.4** — storage absent or throwing → in-memory only, no throw → Test `test_ledger_without_storage`
-- **Dimension 2.5** — server render reads empty → Test `test_ledger_reads_empty_on_server`
+- **Dimension 2.1** — an entry lives from submit to acknowledgement and no longer → Test `test_ledger_entry_lives_from_submit_to_ack` — DONE (app browser suites 18 files green; steer-submission + steer-recovery through the real composer)
+- **Dimension 2.2** — two sends both refused keep two entries → Test `test_two_refused_sends_keep_two_entries` — DONE (app browser suites 18 files green; steer-submission + steer-recovery through the real composer)
+- **Dimension 2.3** — persistence: a fresh module reads what the last one wrote; a `storage` event notifies → Test `test_ledger_survives_reload_and_syncs_tabs` — DONE (app browser suites 18 files green; steer-submission + steer-recovery through the real composer)
+- **Dimension 2.4** — storage absent or throwing → in-memory only, no throw → Test `test_ledger_without_storage` — DONE (app browser suites 18 files green; steer-submission + steer-recovery through the real composer)
+- **Dimension 2.5** — server render reads empty → Test `test_ledger_reads_empty_on_server` — DONE (app browser suites 18 files green; steer-submission + steer-recovery through the real composer)
 
 ### §3 — The notice: one row per unresolved send
 
 The notice lists every entry with its own Resend (or Sign in) and Dismiss. Resend posts the record's text under its id through the same serialised tail as a new send; if the composer holds exactly that text, it is cleared so Enter cannot send it again. The mount-time restore of the newest refused text into an empty composer stays. Copy: refused → "Message not sent."; unknown → "Couldn't confirm this message was sent."
 
-- **Dimension 3.1** — Resend posts the record under its id and clears a matching draft → Test `test_resend_posts_ledger_record_once`
-- **Dimension 3.2** — the unknown state has its own sentence and still offers Resend → Test `test_unknown_delivery_notice`
-- **Dimension 3.3** — Dismiss removes the entry and nothing else → Test `test_dismiss_removes_one_entry`
-- **Dimension 3.4** — a refusal arriving after a remount shows with Resend → Test `test_failure_after_remount_is_resendable`
-- **Dimension 3.5** — Send on a draft equal to an entry's text reuses its id → Test `test_draft_matching_pending_entry_reuses_its_id`
-- **Dimension 3.6** — a session failure offers Sign in, no Resend, text restored → Test `test_session_failure_keeps_sign_in` (M207_001 1.4, amended)
+- **Dimension 3.1** — Resend posts the record under its id and clears a matching draft → Test `test_resend_posts_ledger_record_once` — DONE (app browser suites 18 files green; steer-submission + steer-recovery through the real composer)
+- **Dimension 3.2** — the unknown state has its own sentence and still offers Resend → Test `test_unknown_delivery_notice` — DONE (app browser suites 18 files green; steer-submission + steer-recovery through the real composer)
+- **Dimension 3.3** — Dismiss removes the entry and nothing else → Test `test_dismiss_removes_one_entry` — DONE (app browser suites 18 files green; steer-submission + steer-recovery through the real composer)
+- **Dimension 3.4** — a refusal arriving after a remount shows with Resend → Test `test_failure_after_remount_is_resendable` — DONE (app browser suites 18 files green; steer-submission + steer-recovery through the real composer)
+- **Dimension 3.5** — Send on a draft equal to an entry's text reuses its id → Test `test_draft_matching_pending_entry_reuses_its_id` — DONE (app browser suites 18 files green; steer-submission + steer-recovery through the real composer)
+- **Dimension 3.6** — a session failure offers Sign in, no Resend, text restored → Test `test_session_failure_keeps_sign_in` (M207_001 1.4, amended) — DONE (app browser suites 18 files green; steer-submission + steer-recovery through the real composer)
 
 ### §4 — The daemon answers a repeat before it judges a new message
 
@@ -162,7 +162,7 @@ SteerRequest = { message: string; operation_id: string }   steerFleet(ws, fleet,
 PendingSend = { operationId: string; text: string; state: "sending" | "refused" | "session" | "unknown"; submittedAtMs: number }
 pending-sends.ts: begin(ws, fleet, send) · settle(ws, fleet, operationId) · fail(ws, fleet, operationId, state) · dismiss(ws, fleet, operationId) · byText(ws, fleet, text) · subscribe/getSnapshot
 Storage: localStorage["agentsfleet:pending-sends:<workspaceId>:<fleetId>"] = JSON PendingSend[]
-mintOperationId(): string                                    UUID v4; throws MintUnavailable when no generator exists
+mintOperationId(): string                                    UUID v7 (`uuid` v7); throws MintUnavailable when no generator exists
 SteerComposer props: { pending: PendingSend[]; onResend(operationId): void; onDismiss(operationId): void }
 ```
 
@@ -175,7 +175,7 @@ SteerComposer props: { pending: PendingSend[]; onResend(operationId): void; onDi
 | Two sends both refused | serialised POSTs both fail | two entries, two Resend buttons; the composer holds the latest draft, the notice holds both |
 | Refusal after remount | POST fails after a navigation inside the idle window | the new composer subscribes to the ledger; the entry appears with Resend |
 | Reload or second tab mid-send | document gone before the 202 | hydrated `sending` reads as `unknown`; Resend is safe |
-| Insecure origin | `crypto.randomUUID` undefined | `getRandomValues` fallback; neither → `MessageNotSentError` before the append; draft returns |
+| No generator | `crypto.getRandomValues` undefined | `MessageNotSentError` before the append; the draft returns, nothing is posted |
 | Storage unavailable | private mode, quota, disabled | in-memory ledger; no throw; no cross-tab sync |
 | Draft edited after the refusal | composer holds `A\nB` | no exact match → new id → one new message `A\nB`; A's entry keeps its own Resend and Dismiss |
 | Repeat on a paused fleet | admitted, then paused | `replayed` finds the key → 202 before the ingress check |
@@ -206,7 +206,7 @@ SteerComposer props: { pending: PendingSend[]; onResend(operationId): void; onDi
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
 | 1.1 | unit | `test_operation_id_minted_before_append` | Send "deploy" → action called with a 36-char UUID; `appendOptimistic` called after the mint; the same id on the ledger entry |
-| 1.2 | unit | `test_mint_falls_back_then_refuses` | `randomUUID` absent → id from `getRandomValues` matches `/^[0-9a-f]{8}-…-[0-9a-f]{12}$/`; both absent → `onNew` rejects `MessageNotSentError`, no append, no action |
+| 1.2 | unit | `test_mint_sorts_by_time_then_refuses` | clock `1790553600000` → id opens `01a0e54f-b000-7`; 50 mints in one millisecond are distinct and sorted; a later millisecond sorts later; no `getRandomValues` → `MintUnavailable` with the platform error as cause; through the composer: `onNew` rejects `MessageNotSentError`, no append, no action |
 | 1.3 | unit | `test_socket_drop_replays_same_operation_id` | real `requestWithRetry`: attempt 1 rejects with cause `ECONNRESET` after send, attempt 2 → 202: two POSTs, byte-equal bodies with one `operation_id`; 503 → one POST |
 | 1.4 | unit | `test_steer_request_requires_operation_id` | `steerFleet(…, { message })` is a type error (`// @ts-expect-error` pin); body JSON carries both fields |
 | 2.1 | unit | `test_ledger_entry_lives_from_submit_to_ack` | `begin` → one `sending` entry; `ok` → `settle` → empty; storage mirror empty too |

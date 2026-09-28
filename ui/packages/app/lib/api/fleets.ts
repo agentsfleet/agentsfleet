@@ -1,6 +1,6 @@
 import { request, requestWithEtag, requestWithRetry } from "./client";
 import type { RetryOptions } from "./retry";
-import type { FleetStatus } from "./fleets-types";
+import type { FleetStatus, SteerRequest } from "./fleets-types";
 import { QUERY_STARTING_AFTER } from "./runners";
 import type {
   InstallFleetRequest,
@@ -151,11 +151,13 @@ export async function deleteFleet(
 // Submits a steer message — the user's natural-language nudge during a
 // running stage or to start a new one. Returns the synthesized event_id
 // so the caller can reconcile its optimistic UI frame against the live
-// SSE stream's matching EVENT_RECEIVED.
+// SSE stream's matching EVENT_RECEIVED. The body carries the caller's
+// operation id, so the policy's socket-drop replay (`retry.ts`) re-sends the
+// same operation and the daemon answers the first admission.
 export async function steerFleet(
   workspaceId: string,
   fleetId: string,
-  message: string,
+  request: SteerRequest,
   token: string,
   retry?: RetryOptions,
 ): Promise<{ event_id: string }> {
@@ -164,7 +166,7 @@ export async function steerFleet(
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify(request),
     },
     token,
     retry,

@@ -57,11 +57,11 @@ const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   AGENTSFLEET_EVENT_STATUS.GATE_BLOCKED,
 ]);
 
-// Module-level, not per-entry: a FailedDelivery (and the tempId it stores)
-// deliberately outlives the stream entry, which is torn down after the idle
-// window and recreated with fresh state. A per-entry counter restarting at 1
-// would let a stale stored tempId collide with a new row's id — and retry's
-// discard would then remove the operator's newest pending message.
+// Module-level, not per-entry: a pending send's optimistic row deliberately
+// outlives the stream entry, which is torn down after the idle window and
+// recreated with fresh state. A per-entry counter restarting at 1 would let a
+// stale tempId collide with a new row's id — and a refusal's discard would
+// then remove the operator's newest pending message.
 let tempCounter = 0;
 
 function notify(entry: Entry): void {

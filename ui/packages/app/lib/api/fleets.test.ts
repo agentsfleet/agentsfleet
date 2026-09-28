@@ -224,20 +224,21 @@ describe("deleteFleet", () => {
 });
 
 describe("steerFleet", () => {
-  it("POSTs {message} to /v1/workspaces/:ws/fleets/:id/messages and returns event_id", async () => {
+  it("POSTs {message, operation_id} to /v1/workspaces/:ws/fleets/:id/messages and returns event_id", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 202,
       json: async () => ({ event_id: "evt_steer_1" }),
     });
     const { steerFleet } = await import("./fleets");
-    const result = await steerFleet("ws_1", "zom_1", "howdy", "tok");
+    const request = { message: "howdy", operation_id: "op-howdy-1" };
+    const result = await steerFleet("ws_1", "zom_1", request, "tok");
     expect(result).toEqual({ event_id: "evt_steer_1" });
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/v1/workspaces/ws_1/fleets/zom_1/messages"),
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ message: "howdy" }),
+        body: JSON.stringify(request),
       }),
     );
   });
@@ -249,7 +250,7 @@ describe("steerFleet", () => {
       json: async () => ({ detail: "empty message", error_code: "UZ-AGT-020" }),
     });
     const { steerFleet } = await import("./fleets");
-    const err = await steerFleet("ws_1", "zom_1", "", "tok").catch((e) => e) as ApiError;
+    const err = await steerFleet("ws_1", "zom_1", { message: "", operation_id: "op-empty" }, "tok").catch((e) => e) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(400);
   });
