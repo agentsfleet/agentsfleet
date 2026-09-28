@@ -24,11 +24,11 @@ use std::error::Error as _;
 use afd_events::error::one_of_each_kind;
 
 /// How many kinds the sample declares.
-const SAMPLES: usize = 6;
+const SAMPLES: usize = 7;
 /// How many carry a `source()` — the chain an operator follows to the cause.
 const WITH_SOURCE: usize = 5;
 /// How many distinct registry codes the kinds report between them.
-const DISTINCT_CODES: usize = 3;
+const DISTINCT_CODES: usize = 4;
 
 #[test]
 fn the_sample_declares_every_kind_under_a_distinct_label() {
@@ -150,7 +150,7 @@ fn every_kind_hands_the_caller_a_sentence() {
     }
 }
 
-/// The caller-facing vocabulary is exactly these 3 sentences.
+/// The caller-facing vocabulary is exactly these 4 sentences.
 ///
 /// Pinned as a SET, not as a function of the code: kinds sharing a code may
 /// still say different things here, and in this crate some do. What must not
@@ -165,7 +165,7 @@ fn the_caller_facing_vocabulary_does_not_drift() {
         .collect();
     assert_eq!(
         sentences.len(),
-        3,
+        4,
         "the sentences handed to callers are now {sentences:?}"
     );
 }
@@ -186,6 +186,17 @@ fn each_predicate_answers_for_exactly_the_kinds_it_owns() {
         is_datastore_unavailable.len(),
         3,
         "`is_datastore_unavailable` now answers for {is_datastore_unavailable:?}, not 3 kinds"
+    );
+
+    let is_operation_conflict: Vec<&str> = one_of_each_kind()
+        .iter()
+        .filter(|(_, error)| error.is_operation_conflict())
+        .map(|(label, _)| *label)
+        .collect();
+    assert_eq!(
+        is_operation_conflict,
+        ["operation conflict"],
+        "`is_operation_conflict` now answers for {is_operation_conflict:?}, not the one kind"
     );
 
     let is_pool_unavailable: Vec<&str> = one_of_each_kind()

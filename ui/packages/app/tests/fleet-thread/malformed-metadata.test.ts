@@ -41,7 +41,6 @@ describe("FleetThread — robustness against malformed metadata", () => {
       isRunning: false,
       appendOptimistic: vi.fn(),
       reconcileOptimistic: vi.fn(),
-      markOptimisticFailed: vi.fn(),
       convertEvent: customAnyConverter,
     });
     expect(() => renderThread()).not.toThrow();
@@ -63,7 +62,6 @@ describe("FleetThread — robustness against malformed metadata", () => {
       isRunning: false,
       appendOptimistic: vi.fn(),
       reconcileOptimistic: vi.fn(),
-      markOptimisticFailed: vi.fn(),
       convertEvent: (m: FleetEvent) => ({
         role: m.role,
         id: m.id,
@@ -95,7 +93,6 @@ describe("FleetThread — robustness against malformed metadata", () => {
       isRunning: false,
       appendOptimistic: vi.fn(),
       reconcileOptimistic: vi.fn(),
-      markOptimisticFailed: vi.fn(),
       convertEvent: (m: FleetEvent) => ({
         role: m.role,
         id: m.id,
@@ -129,7 +126,6 @@ describe("FleetThread — robustness against malformed metadata", () => {
       isRunning: false,
       appendOptimistic: vi.fn(),
       reconcileOptimistic: vi.fn(),
-      markOptimisticFailed: vi.fn(),
       convertEvent: (m: FleetEvent) => ({
         role: m.role,
         id: m.id,

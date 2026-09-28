@@ -30,16 +30,7 @@ const EVENT: &str = "1760000000000-0";
 async fn fleet_and_event_http_lifecycles_use_the_live_stores() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let queue = harness::connect_redis().await;
-    let router = Fleet::live(
-        fixture.database.clone(),
-        &fixture.subject,
-        ScopeSet::from_scopes(&Scope::ALL),
-    )
-    .with_owned_workspace(fixture.workspace.clone())
-    .with_fleet_queue(fixture.database.clone(), queue.clone())
-    .with_steering_queue(fixture.database.clone(), queue)
-    .router();
+    let router = live_router(&fixture).await;
     let workspace = format!("/v1/workspaces/{}", fixture.workspace.as_str());
 
     let fleet = install(&router, &fixture, &workspace).await;
@@ -51,6 +42,20 @@ async fn fleet_and_event_http_lifecycles_use_the_live_stores() {
 
     fixture.cleanup().await;
 }
+/// A router over the live stores, able to install, steer and edit a fleet.
+async fn live_router(fixture: &Fixture) -> axum::Router {
+    let queue = harness::connect_redis().await;
+    Fleet::live(
+        fixture.database.clone(),
+        &fixture.subject,
+        ScopeSet::from_scopes(&Scope::ALL),
+    )
+    .with_owned_workspace(fixture.workspace.clone())
+    .with_fleet_queue(fixture.database.clone(), queue.clone())
+    .with_steering_queue(fixture.database.clone(), queue)
+    .router()
+}
+
 async fn exercise_grants(router: &axum::Router, fixture: &Fixture, workspace: &str, fleet: &Uuid7) {
     let collection = format!("{workspace}/fleets/{}/integration-grants", fleet.as_str());
     let listed = send(router, Method::GET, &collection, Some(&fixture.token), "").await;

@@ -100,18 +100,4 @@ export function DashboardPanelContent({
   return <div ref={ref} className={cn("mt-lg", className)} {...props} />;
 }
 
-export function DashboardPanelFooter({
-  className,
-  ref,
-  ...props
-}: ComponentProps<"div">) {
-  return (
-    <div
-      ref={ref}
-      className={cn("mt-lg border-t border-border pt-lg", className)}
-      {...props}
-    />
-  );
-}
-
 export { dashboardPanelVariants };

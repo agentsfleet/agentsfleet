@@ -80,9 +80,8 @@ export function figuresOfRow(row: EventRow): RunFigures {
 }
 
 // The statuses the server writes. A row the browser made — an optimistic
-// steer awaiting its identifier, a send the server refused — carries the
-// composer's vocabulary instead, and is not the fleet's latest run: the server
-// never saw it.
+// steer awaiting its identifier — carries the composer's vocabulary instead,
+// and is not the fleet's latest run: the server never saw it.
 const SERVER_STATUSES: ReadonlySet<string> = new Set(Object.values(EVENT_STATUS));
 
 /**

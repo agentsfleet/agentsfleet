@@ -31,13 +31,18 @@ export type ThreadEntry =
   | { kind: typeof ENTRY_KIND.GROUP; key: string; events: FleetEvent[] };
 
 /**
- * Only integration activity ever coalesces. An operator's message and the
+ * Only bare integration activity ever coalesces. An operator's message and the
  * fleet's reply are the conversation the thread exists to show — collapsing
- * either would hide a person's own words, and a failed optimistic send would
- * vanish into a count (Invariant 1).
+ * either would hide a person's own words, and a pending optimistic send would
+ * vanish into a count (Invariant 1). An integration turn that reasoned or
+ * called a tool has a reply row of its own, and a group renders members as
+ * activity ticks with no parts, so grouping it would hide what the fleet did.
  */
 function groupable(event: FleetEvent): boolean {
-  return event.role === "system" && event.reply.trim().length === 0;
+  return event.role === "system"
+    && event.reply.trim().length === 0
+    && (event.reasoning?.length ?? 0) === 0
+    && (event.tools?.length ?? 0) === 0;
 }
 
 /**

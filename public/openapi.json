@@ -10052,7 +10052,7 @@
           "Fleets"
         ],
         "summary": "Post a chat message to a fleet",
-        "description": "Starts a fleet run with a chat event. Returns an event identifier for tracking in the activity stream. Send `operation_id` to make a retry safe: repeat the same value and this endpoint returns the first run's event, never a second run. A lost response then costs nothing. Omit it and every call is a new message, which is what a person sending twice means. ",
+        "description": "Starts a fleet run with a chat event. Returns an event identifier for tracking in the activity stream. Send `operation_id` to make a retry safe: repeat the same value and this endpoint returns the first run's event, never a second run. A lost response then costs nothing, even if the fleet stopped or paused since. The same value with a different message, or from another sender, is refused with 409 `UZ-AGT-016`. Each signed-in person is one sender; a workspace's API keys are one between them. Omit it and every call is a new message, which is what a person sending twice means. ",
         "operationId": "post_fleet_message",
         "parameters": [
           {
@@ -17176,7 +17176,7 @@
               "string",
               "null"
             ],
-            "description": "The caller's own name for this operation, repeated across its retries.\n\nDimension 7.5. A timeout does not prove an operation failed. A client\nthat never saw a response must be able to ask again, and asking again\nmust not risk a second run.\n\nThis value is what tells the two apart, and only the CALLER can supply\nit. A server cannot tell a retried POST from a person pressing send\ntwice, because the bytes are identical.\n\nPresent, it becomes the admission ledger's `producer_key`. The retry\nconflicts on `UNIQUE (producer, producer_key)` and is answered with the\nfirst admission's event — one run, one charge.\n\nAbsent, the ledger mints a key. Two identical messages stay two\noperations, which is the behaviour a person pressing send twice expects.\n\nOptional on purpose rather than required. A human typing in a terminal\nhas no operation to identify. Forcing one would make every caller\ninvent a value whose only job is to be unique."
+            "description": "Your own name for this message, repeated on its retries.\n\nScoped to the fleet. Send the same value again with the same message and\nthe answer is the first send's `event_id`: one run, one charge. That holds\neven if the fleet has stopped or paused since. The same value with a\ndifferent message, or from another sender, is refused with 409\n`UZ-AGT-016`. Each signed-in person is one sender; a workspace's API keys\nare one between them.\n\nOmit it and every call is a new message, which is what a person pressing\nsend twice means."
           }
         },
         "additionalProperties": false

@@ -1,187 +1,149 @@
 "use client";
 
-import { memo, useEffect, useRef, useState } from "react";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-  CopyButton,
-} from "@agentsfleet/design-system";
-import type { MessageState } from "@assistant-ui/react";
-import { PawPrintIcon } from "lucide-react";
+import { memo, useDeferredValue, type ReactNode } from "react";
+import { BrailleSpinner, CopyButton } from "@agentsfleet/design-system";
+import { MessagePrimitive, groupPartByType, type MessageState } from "@assistant-ui/react";
 
+import { loadingPhrase, loadingVerbFor } from "@/components/layout/loading-verbs";
 import { FleetMarkdown } from "./FleetMarkdown";
-import { RecentPaints } from "./RecentPaints";
 import { FleetMessageRow, ROW_TONE } from "./FleetMessageRow";
-import { ToolCalls, type readTools } from "./FleetToolCalls";
+import { FleetThought } from "./FleetThought";
+import { ToolCallList, ToolCallRow } from "./FleetToolCalls";
 import { messageOutcome } from "./fleetFailureCopy";
-import { readQueued, readReasoning, readReply, readReplyRecovering, readSubmittedAtMs, readThinking } from "./fleetMessageReaders";
-import {
-  STATUS_AGENT_ERROR,
-  STATUS_FAILED,
-  STATUS_IN_FLIGHT,
-  STATUS_OPTIMISTIC,
-} from "./fleetMessageStatus";
+import { readQueued, readReasoningSpan, readReplyRecovering, readSubmittedAtMs, readText } from "./fleetMessageReaders";
+import { STATUS_AGENT_ERROR } from "./fleetMessageStatus";
+import { REPLY_ID_SUFFIX } from "./useFleetThreadEntries";
+import { useFirstVisiblePaint } from "./useFirstVisiblePaint";
 
 const STREAM_CURSOR = "▍";
 const WORKING_LABEL = "Working";
 const QUEUED_LABEL = "Queued";
 const COPY_REPLY_LABEL = "Copy reply";
-const REASONING_VALUE = "reasoning";
-const REASONING_LABEL = "Reasoning";
-const REASONING_LIVE_LABEL = "Thinking…";
 const RECOVERING_LABEL = "Loading final reply; retrying if needed…";
-const FIRST_VISIBLE_MEASURE = "agentsfleet.chat.submit_to_first_visible";
-// A user turn moves from an unsplit message to `:reply` when answer text
-// arrives. The component remounts, but that is still one visible response.
-const measuredPaints = new RecentPaints(400);
+const DEFAULT_SENDER = "Fleet";
+// An outcome and an error are the dashboard's own sentences, not the model's
+// markdown, so they render as written.
+const ERRORED_TEXT_CLASS = "text-label font-medium leading-label text-foreground";
+
+// The library groups the parts: the reasoning becomes one Thought chip, and
+// adjacent tool calls one list. Module scope keeps the grouping's memo
+// fingerprint stable across renders.
+const GROUP = {
+  REASONING: "group-reasoning",
+  TOOL: "group-tool",
+} as const;
+const REPLY_GROUP_BY = groupPartByType({
+  reasoning: [GROUP.REASONING],
+  "tool-call": [GROUP.TOOL],
+});
 
 /**
- * A trigger and its fleet answer are separate rows, so a reply never appears
- * beneath the operator or integration identity that woke the fleet.
+ * The fleet's answer as assistant-ui message parts, in its own row beneath the
+ * trigger that woke the fleet. Whether it is still running is the message's
+ * status; what it contains is its parts.
  */
 export function FleetReply({
   message,
   senderLabel,
-  tools,
   status,
 }: {
   message: MessageState;
   senderLabel: string;
-  tools: ReturnType<typeof readTools>;
   status: string;
 }) {
-  const reply = readReply(message);
   const errored = status === STATUS_AGENT_ERROR;
-  const streaming = status === STATUS_IN_FLIGHT || status === STATUS_OPTIMISTIC;
-  const reasoning = readReasoning(message);
-  const thinking = readThinking(message);
+  const running = message.status?.type === "running";
   const recovering = readReplyRecovering(message);
-  const answer = reply.trim();
-  const eventId = message.id.endsWith(":reply") ? message.id.slice(0, -":reply".length) : message.id;
-  useFirstVisiblePaint(eventId, readSubmittedAtMs(message), status !== STATUS_FAILED && (answer.length > 0 || reasoning.length > 0 || tools.length > 0));
-  if (status === STATUS_FAILED) return null;
-  // Keep the same reply-side cue while delivery is pending and until the
-  // first response arrives, so acknowledgement does not flash a second label.
-  const awaitingFirstWord = streaming && answer.length === 0 && reasoning.length === 0 && tools.length === 0;
+  const answer = readText(message).trim();
+  const span = readReasoningSpan(message);
+  const queued = readQueued(message);
+  const eventId = message.id.endsWith(REPLY_ID_SUFFIX) ? message.id.slice(0, -REPLY_ID_SUFFIX.length) : message.id;
+  useFirstVisiblePaint(eventId, readSubmittedAtMs(message), message.content.length > 0);
   return (
     <FleetMessageRow
-      sender={senderLabel || "Fleet"}
+      sender={senderLabel || DEFAULT_SENDER}
       tone={ROW_TONE.FLEET}
       messageRole="assistant"
       failed={errored}
     >
-      <ToolCalls tools={tools} />
-      {reasoning.length > 0 ? <Reasoning text={reasoning} live={thinking} /> : null}
-      {awaitingFirstWord ? (
-        <WorkingIndicator queued={readQueued(message)} />
-      ) : (
-        <Spoken
-          answer={answer}
-          outcome={messageOutcome(message)}
-          errored={errored}
-          streaming={streaming}
-        />
-      )}
+      <MessagePrimitive.GroupedParts groupBy={REPLY_GROUP_BY}>
+        {(info) => renderReplyPart(info, { errored, running, queued, eventId, reasoning: reasoningText(message), span })}
+      </MessagePrimitive.GroupedParts>
+      {answer.length === 0 && !running ? (
+        <span className={errored ? ERRORED_TEXT_CLASS : undefined}>{messageOutcome(message)}</span>
+      ) : null}
       {recovering ? <output aria-label={RECOVERING_LABEL} className="text-body-sm text-text-subtle">{RECOVERING_LABEL}</output> : null}
-      <ReplyActions answer={answer} settled={!streaming && !errored && !recovering} />
+      <ReplyActions answer={answer} settled={!running && !errored && !recovering} />
     </FleetMessageRow>
   );
 }
 
-/** Record browser submit-to-visible time after the first reply, reasoning, or tool paint. */
-function useFirstVisiblePaint(eventId: string, submittedAtMs: number | null, visible: boolean): void {
-  const measuredEvent = useRef<string | null>(null);
-  useEffect(() => {
-    if (!visible || submittedAtMs === null || measuredEvent.current === eventId) return;
-    const key = `${eventId}:${submittedAtMs}`;
-    if (measuredPaints.has(key)) return;
-    let secondFrame = 0;
-    const firstFrame = requestAnimationFrame(() => {
-      secondFrame = requestAnimationFrame(() => {
-        if (measuredPaints.has(key)) return;
-        measuredEvent.current = eventId;
-        measuredPaints.add(key);
-        performance.measure(FIRST_VISIBLE_MEASURE, { start: submittedAtMs, end: performance.now() });
-      });
-    });
-    return () => {
-      cancelAnimationFrame(firstFrame);
-      cancelAnimationFrame(secondFrame);
-    };
-  }, [eventId, submittedAtMs, visible]);
+export type ReplyContext = {
+  errored: boolean;
+  running: boolean;
+  queued: boolean;
+  eventId: string;
+  reasoning: string;
+  span: ReturnType<typeof readReasoningSpan>;
+};
+
+/** One switch over every node the library hands back: groups, leaves, the indicator. */
+export function renderReplyPart(
+  { part, children }: MessagePrimitive.GroupedParts.RenderInfo<(typeof GROUP)[keyof typeof GROUP]>,
+  reply: ReplyContext,
+): ReactNode {
+  switch (part.type) {
+    case GROUP.REASONING:
+      return (
+        <FleetThought
+          live={part.status.type === "running"}
+          reasoning={reply.reasoning}
+          startedAtMs={reply.span.startedAtMs}
+          endedAtMs={reply.span.endedAtMs}
+        >
+          {children}
+        </FleetThought>
+      );
+    case GROUP.TOOL:
+      return <ToolCallList>{children}</ToolCallList>;
+    case "reasoning":
+      return <p className="whitespace-pre-wrap text-body-sm leading-prose text-text-dim">{part.text}</p>;
+    case "tool-call":
+      return <ToolCallRow name={part.toolName} done={part.result !== undefined} />;
+    case "text":
+      return <ReplyText text={part.text} errored={reply.errored} streaming={reply.running} />;
+    case "indicator":
+      return <Waiting queued={reply.queued} eventId={reply.eventId} />;
+    default:
+      // A leaf that returns null gets the library's fallback UI; an empty
+      // fragment keeps parts this reply never carries invisible.
+      return <></>;
+  }
+}
+
+function reasoningText(message: MessageState): string {
+  for (const part of message.content) {
+    if (part.type === "reasoning") return part.text;
+  }
+  return "";
 }
 
 /**
- * What the fleet actually said.
- *
- * An empty answer while the turn is still open means the model has reasoned but
- * not spoken; the disclosure above is already carrying that, and printing an
- * outcome there would announce an ending that has not happened.
+ * What the fleet said. Parsing a growing answer is the reply's heaviest
+ * render, so it is deferred: React 19 `useDeferredValue` lets typing and
+ * scrolling interrupt it, and the markdown catches up on the next idle frame.
  */
-function Spoken({
-  answer,
-  outcome,
-  errored,
-  streaming,
-}: {
-  answer: string;
-  outcome: string;
-  errored: boolean;
-  streaming: boolean;
-}) {
-  if (answer.length === 0 && streaming) return null;
-  const body = answer.length > 0 ? answer : outcome;
+function ReplyText({ text, errored, streaming }: { text: string; errored: boolean; streaming: boolean }) {
+  const deferred = useDeferredValue(text);
   return (
     <>
-      {errored || answer.length === 0 ? (
-        // An outcome and an error are the dashboard's own sentences, not the
-        // model's markdown, so they render as written.
-        <span
-          className={errored ? "text-label font-medium leading-label text-foreground" : undefined}
-        >
-          {body}
-        </span>
-      ) : (
-        <FleetMarkdown>{body}</FleetMarkdown>
-      )}
+      {errored ? <span className={ERRORED_TEXT_CLASS}>{deferred}</span> : <FleetMarkdown>{deferred}</FleetMarkdown>}
       {streaming ? (
         <span className="ml-xs animate-pulse text-pulse" aria-label="streaming">
           {STREAM_CURSOR}
         </span>
       ) : null}
     </>
-  );
-}
-
-/**
- * The model's reasoning, folded away.
- *
- * Open while it is still arriving, because watching a fleet think is the only
- * signal there is during a long turn; closed once the answer lands, because by
- * then it is working-out the operator did not ask for.
- */
-function Reasoning({ text, live }: { text: string; live: boolean }) {
-  const [opened, setOpened] = useState<string | null>(null);
-  const value = opened ?? (live ? REASONING_VALUE : "");
-  return (
-    <Accordion
-      type="single"
-      collapsible
-      value={value}
-      onValueChange={setOpened}
-      className="mb-md"
-    >
-      <AccordionItem value={REASONING_VALUE} className="border-0">
-        <AccordionTrigger className="py-xs text-label text-text-dim hover:no-underline">
-          {live ? REASONING_LIVE_LABEL : REASONING_LABEL}
-        </AccordionTrigger>
-        <AccordionContent>
-          <p className="whitespace-pre-wrap text-body-sm leading-prose text-text-dim">{text}</p>
-        </AccordionContent>
-      </AccordionItem>
-    </Accordion>
   );
 }
 
@@ -214,7 +176,8 @@ const ReplyActions = memo(function ReplyActions({
   );
 });
 
-function WorkingIndicator({ queued }: { queued: boolean }) {
+/** The library's `indicator` part: the reply is running and has nothing to show yet. */
+function Waiting({ queued, eventId }: { queued: boolean; eventId: string }) {
   const label = queued ? QUEUED_LABEL : WORKING_LABEL;
   return (
     <output
@@ -222,8 +185,8 @@ function WorkingIndicator({ queued }: { queued: boolean }) {
       aria-label={label}
       data-testid="fleet-working"
     >
-      <PawPrintIcon aria-hidden="true" className="size-4 motion-safe:animate-pulse" />
-      <span>{label}…</span>
+      <BrailleSpinner className="text-pulse" />
+      <span>{loadingPhrase(queued ? QUEUED_LABEL : loadingVerbFor(eventId))}</span>
     </output>
   );
 }

@@ -8,6 +8,8 @@
 //! suites has nothing to race on. The support module is declared once and
 //! reached as `crate::support`.
 
+#[path = "support/recorder.rs"]
+mod recorder;
 #[path = "support/events_lane.rs"]
 mod support;
 
@@ -28,6 +30,10 @@ mod integration_budgets;
 mod integration_continuation_lineage;
 #[path = "integration_steer.rs"]
 mod integration_steer;
+#[path = "integration_steer_races.rs"]
+mod integration_steer_races;
+#[path = "integration_steer_replay.rs"]
+mod integration_steer_replay;
 #[path = "integration_steer_retry.rs"]
 mod integration_steer_retry;
 

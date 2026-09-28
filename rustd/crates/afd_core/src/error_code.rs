@@ -87,11 +87,13 @@ const fn is_registry_spelling(code: &str) -> bool {
 // tables are walked against each other by a test, and a family that lives in
 // comparable files is a family somebody can actually compare.
 mod auth;
+mod bundle;
 mod fleet;
 mod integration;
 mod request;
 
 pub use self::auth::*;
+pub use self::bundle::*;
 pub use self::fleet::*;
 pub use self::integration::*;
 pub use self::request::*;
@@ -185,6 +187,7 @@ pub const REGISTRY: &[ErrorCode] = &[
     AGENTSFLEET_SOURCE_STALE,
     AGENTSFLEET_PAUSED_INGRESS,
     EVENT_NOT_FOUND,
+    AGENTSFLEET_OPERATION_CONFLICT,
     MEM_AGENTSFLEET_NOT_FOUND,
     MEM_UNAVAILABLE,
     MEM_ENTRY_NOT_FOUND,

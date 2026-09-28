@@ -18,10 +18,9 @@ import type { EventRow } from "@/lib/api/events";
 import { SenderLabelProvider } from "./FleetMessageRow";
 import { FleetConnectionNotice } from "./FleetConnectionNotice";
 import { FleetConnectionIndicator, useArrivalCue } from "./FleetConnectionIndicator";
-import {
-  useFleetDeliveryFailure,
-} from "./useFleetDeliveryFailure";
-import { useNewMessageHandler } from "./useFleetMessageDelivery";
+import { useFleetPendingSends } from "./useFleetPendingSends";
+import { useCurrentUser } from "@/lib/auth/client";
+import { useMessageDelivery } from "./useFleetMessageDelivery";
 import { FleetThreadViewport } from "./FleetThreadViewport";
 
 export type FleetThreadProps = {
@@ -35,6 +34,13 @@ export type FleetThreadProps = {
    * prop; live updates arrive over the cookie-authed SSE route handler.
    */
   initial: EventRow[];
+  /**
+   * The signed-in user as the server rendered the page. The pending-send
+   * ledger is keyed by user, and the client learns the user only once its
+   * auth script loads: a send made before then went to a ledger that vanished
+   * when it did, taking its Resend with it.
+   */
+  viewer: string | null;
 };
 
 /**
@@ -43,17 +49,19 @@ export type FleetThreadProps = {
  * Server Action; `fleetMessageRenderers` paints each durable event as the
  * approved conversation row.
  *
- * The runtime is deliberately never told the thread is running. In this
- * library `isRunning` means "disable the composer", and a working fleet is
- * not a reason to stop an operator from steering it — the fleet's own event
- * stream serialises what arrives. The working state is rendered from our own
- * event statuses instead.
+ * The runtime is told the thread is never running. In this library
+ * `isRunning` means "disable the composer", and a working fleet is not a
+ * reason to stop an operator from steering it — the fleet's own event stream
+ * serialises what arrives. Left unset, the library would infer it from the
+ * last reply's own running status; each reply's status drives its parts and
+ * wait state instead.
  */
 export function FleetThread({
   workspaceId,
   fleetId,
   senderLabel,
   initial,
+  viewer,
 }: FleetThreadProps) {
   const stream = useFleetEventStream(workspaceId, fleetId, initial);
   const [submission, setSubmission] = useState<{ fleetId: string; id: string } | null>(null);
@@ -64,44 +72,35 @@ export function FleetThread({
   // its disappearance being the steady-state signal that nothing is wrong.
   const arrived = useArrivalCue(stream.connectionStatus);
   const settledLive = stream.connectionStatus === CONNECTION_STATUS.LIVE && !arrived;
-  const {
-    failedDelivery,
-    setFailedDelivery,
-    clearFailedDelivery,
-  } = useFleetDeliveryFailure(fleetId);
+  // Every send this fleet has not heard back on, from submit to the 202 — and
+  // what Resend and the notice work from. Module state with a storage mirror,
+  // so it outlives this component and this document.
+  // Keyed by the signed-in user as well, so the next person on a shared
+  // browser never sees, or resends as themselves, what this one typed.
+  const { userId } = useCurrentUser();
+  const ledger = useFleetPendingSends({ subject: userId ?? viewer, workspaceId, fleetId });
   // Pass the registry methods (each `useCallback([fleetId])`-stable), not
   // the whole `stream` object — `stream` is a fresh reference on every SSE
   // frame, so listing it would rebuild `onNew` per frame for no benefit.
-  const deliverMessage = useNewMessageHandler({
+  const delivery = useMessageDelivery({
     workspaceId,
     fleetId,
     appendOptimistic: stream.appendOptimistic,
     reconcileOptimistic: stream.reconcileOptimistic,
-    markOptimisticFailed: stream.markOptimisticFailed,
+    discardOptimistic: stream.discardOptimistic,
     onSubmitted,
-    onFailure: setFailedDelivery,
+    writers: ledger.writers,
   });
-  const { discardOptimistic } = stream;
-  const retryFailedDelivery = useCallback(() => {
-    if (!failedDelivery) return;
-    const { message, tempId } = failedDelivery;
-    clearFailedDelivery();
-    // The retry re-submits as a fresh optimistic row; the stale failed row
-    // must leave first or each attempt stacks a duplicate of the message.
-    discardOptimistic(tempId);
-    void deliverMessage(message);
-  }, [clearFailedDelivery, deliverMessage, discardOptimistic, failedDelivery]);
   // Runs of identical activity render as one expandable row. Grouping is a
   // pure view over the array the stream already ordered — it never reorders,
   // drops, or renames an event, so a group can always hand back what it hid.
   const { entries, convertEntry } = useFleetThreadEntries(stream.events, stream.convertEvent);
   const submittedMessageId = submission?.fleetId === fleetId ? submission.id : null;
   const runtime = useExternalStoreRuntime<FleetThreadEntry>({
+    isRunning: false,
     messages: entries,
     convertMessage: convertEntry,
-    onNew: async (message) => {
-      await deliverMessage(message);
-    },
+    onNew: delivery.onNew,
   });
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -110,7 +109,7 @@ export function FleetThread({
           id="fleet-chat-transcript"
           aria-label="Fleet chat"
           padding="none"
-          className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-background"
+          className="flex min-h-0 flex-1 flex-col overflow-clip rounded-none border-0 bg-background"
         >
           {/*
             * The header speaks only when the stream is not fine.
@@ -141,8 +140,11 @@ export function FleetThread({
             eventsCount={stream.events.length}
             submittedMessageId={submittedMessageId}
             connectionStatus={stream.connectionStatus}
-            failureKind={failedDelivery?.kind ?? null}
-            onRetry={retryFailedDelivery}
+            pending={ledger.pending}
+            onResend={delivery.resend}
+            onDismiss={ledger.writers.dismiss}
+            onRestored={delivery.noteRestored}
+            onDraft={delivery.noteDraft}
           />
         </DashboardPanel>
       </SenderLabelProvider>

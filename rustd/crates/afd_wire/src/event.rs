@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 
-use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 /// How an event entered the system.
@@ -67,116 +66,15 @@ impl EventType {
     }
 }
 
-/// The field names an event carries as a Dragonfly stream entry.
-///
-/// Declared here for the reason [`EventType`]'s spellings are: they cross a
-/// boundary. A producer writes them and the runner's pull reads them back, so
-/// a pair that drifted would make an event one plane wrote one the other
-/// cannot recognise — and there are three producers now (the steer, the
-/// approval continuation, the repair sweeper), which is two more than a
-/// hand-spelled literal survives.
-pub mod field {
-    /// Who or what produced the event.
-    pub const ACTOR: &str = "actor";
-    /// How the event entered the system.
-    ///
-    /// The constant is named for the concept and its VALUE is the wire
-    /// spelling, which are deliberately different words. `event_envelope.zig`
-    /// shipped `type`, entries written under that name are what a stream can
-    /// still hold, and a reader is not free to prefer a nicer name — the pair
-    /// below is the same shape for the same reason.
-    pub const EVENT_TYPE: &str = "type";
-    /// The workspace the fleet belongs to.
-    pub const WORKSPACE_ID: &str = "workspace_id";
-    /// The trigger payload, carried verbatim. See [`EVENT_TYPE`] on the
-    /// name/value split.
-    pub const REQUEST_JSON: &str = "request";
-    /// The producer's instant, in milliseconds since the epoch.
-    ///
-    /// Written by the producer rather than derived from the entry id, because
-    /// the lease path bills against it: a value the ingress stamped is the one
-    /// a tenant is charged for, and Dragonfly assigning a second opinion at append
-    /// time would make the charge depend on queue latency.
-    pub const CREATED_AT: &str = "created_at";
-    /// The logical event id the admission ledger assigned.
-    ///
-    /// The entry id Dragonfly mints is a RECEIPT, not an identity: after a
-    /// replay one logical event can have had two entries, and it is this
-    /// field — not the entry id — that `core.fleet_events`, the usage ledger
-    /// and every read address. Written by the ledger's append alone; a
-    /// producer never spells it.
-    pub const EVENT_ID: &str = "event_id";
-}
+mod entry;
+pub mod field;
+mod steer;
 
-/// Every field a fleet-stream entry carries, assembled in one place.
-///
-/// The reason this type exists rather than an array spelled at each producer:
-/// the reader refuses an entry missing ANY of these, so a producer that writes
-/// four of five appends work nothing can lease — silently, because the entry
-/// is durable, delivered, and undecodable. That is not hypothetical. It shipped:
-/// the producers wrote `event_type`/`request_json` and no `created_at` while
-/// the reader asked for `type`/`request`/`created_at`, and every event appended
-/// after the cutover was unleasable until this type made the set indivisible.
-///
-/// Named fields rather than positional arguments, because five strings in a row
-/// is a swap waiting to happen and an actor written into the type field is a
-/// refusal that names the wrong thing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Entry<'a> {
-    /// Who or what produced the event.
-    pub actor: &'a str,
-    /// How the event entered the system — an [`EventType`] spelling.
-    pub event_type: &'a str,
-    /// The workspace the fleet belongs to.
-    pub workspace_id: &'a str,
-    /// The trigger payload, already serialized.
-    pub request_json: &'a str,
-    /// The producer's instant, already rendered as milliseconds.
-    pub created_at: &'a str,
-}
+pub use self::entry::{ENTRY_FIELD_COUNT, Entry, QUEUED_FIELD_COUNT};
 
-/// How many fields an entry carries. One number, so a reader counting them and
-/// a producer writing them cannot disagree.
-pub const ENTRY_FIELD_COUNT: usize = 5;
-
-/// How many fields a QUEUED entry carries: the five, plus the ledger's id.
-pub const QUEUED_FIELD_COUNT: usize = ENTRY_FIELD_COUNT + 1;
-
-impl<'a> Entry<'a> {
-    /// The field pairs an append writes, in wire order.
-    #[must_use]
-    pub const fn pairs(&self) -> [(&'static str, &'a str); ENTRY_FIELD_COUNT] {
-        [
-            (field::ACTOR, self.actor),
-            (field::EVENT_TYPE, self.event_type),
-            (field::WORKSPACE_ID, self.workspace_id),
-            (field::REQUEST_JSON, self.request_json),
-            (field::CREATED_AT, self.created_at),
-        ]
-    }
-
-    /// The field pairs the ledger's append writes: [`Self::pairs`] plus the
-    /// logical id, last.
-    ///
-    /// Only the ledger calls this. A producer holds no id of its own — the id
-    /// is the ledger row's — so an entry appended by anything else would be
-    /// one the reader refuses for want of this field, which is the intended
-    /// outcome: nothing reaches a runner without being admitted first.
-    #[must_use]
-    pub const fn queued_pairs(
-        &self,
-        event_id: &'a str,
-    ) -> [(&'static str, &'a str); QUEUED_FIELD_COUNT] {
-        [
-            (field::ACTOR, self.actor),
-            (field::EVENT_TYPE, self.event_type),
-            (field::WORKSPACE_ID, self.workspace_id),
-            (field::REQUEST_JSON, self.request_json),
-            (field::CREATED_AT, self.created_at),
-            (field::EVENT_ID, event_id),
-        ]
-    }
-}
+pub use self::steer::{
+    OPERATION_ID_MAX_BYTES, STEER_MESSAGE_MAX_BYTES, SteerAccepted, SteerRequest,
+};
 
 /// One event on the wire, flat by convention.
 ///
@@ -383,83 +281,6 @@ pub struct ThreadResponse<'a> {
     /// Where the next page resumes, or `null` when this one ends the walk.
     #[serde(borrow)]
     pub next_cursor: Option<Cow<'a, str>>,
-}
-
-/// `POST /v1/workspaces/{ws}/fleets/{id}/messages` — an operator's steer.
-///
-/// Unknown fields are ignored rather than refused, which is what
-/// `parseFromSlice(.{ .ignore_unknown_fields = true })` does. A client sending
-/// a field this build does not read is not making a mistake it needs telling
-/// about.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct SteerRequest<'a> {
-    /// What to say to the fleet.
-    ///
-    /// Bounded on the decoded bytes, which is what reaches the stream. The
-    /// escaped form a client sends is not what counts against the limit.
-    #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = STEER_MESSAGE_MAX_BYTES))]
-    pub message: Cow<'a, str>,
-
-    /// The caller's own name for this operation, repeated across its retries.
-    ///
-    /// Dimension 7.5. A timeout does not prove an operation failed. A client
-    /// that never saw a response must be able to ask again, and asking again
-    /// must not risk a second run.
-    ///
-    /// This value is what tells the two apart, and only the CALLER can supply
-    /// it. A server cannot tell a retried POST from a person pressing send
-    /// twice, because the bytes are identical.
-    ///
-    /// Present, it becomes the admission ledger's `producer_key`. The retry
-    /// conflicts on `UNIQUE (producer, producer_key)` and is answered with the
-    /// first admission's event — one run, one charge.
-    ///
-    /// Absent, the ledger mints a key. Two identical messages stay two
-    /// operations, which is the behaviour a person pressing send twice expects.
-    ///
-    /// Optional on purpose rather than required. A human typing in a terminal
-    /// has no operation to identify. Forcing one would make every caller
-    /// invent a value whose only job is to be unique.
-    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
-    #[garde(inner(length(bytes, min = 1, max = OPERATION_ID_MAX_BYTES)))]
-    pub operation_id: Option<Cow<'a, str>>,
-}
-
-/// The longest client operation identity a steer may carry.
-///
-/// Generous enough for a UUID, a ULID, a vendor's delivery id or a short
-/// composite, and bounded because it is stored per admission and indexed: an
-/// unbounded key would let a caller decide how much of the ledger's index one
-/// of its retries occupies.
-pub const OPERATION_ID_MAX_BYTES: usize = 200;
-
-/// The longest thing anyone may say to a fleet in one steer.
-///
-/// `MAX_MESSAGE_LEN`, mirrored. A steer is a sentence a person typed; past
-/// this it is a payload, and the fleet's own trigger surface is where a
-/// payload belongs.
-pub const STEER_MESSAGE_MAX_BYTES: usize = 8192;
-
-// `event_id` is the stream entry id Dragonfly minted, which IS the canonical
-// event id.
-/// What a steer returns once agentsfleet accepts the request.
-///
-/// The response carries the id the run is found under. Filter the live event
-/// tail on `event_id` to follow the message you just sent.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SteerAccepted<'a> {
-    /// Always `accepted`. A field rather than an implied 202, because that is
-    /// what the daemon this ports writes.
-    #[serde(borrow)]
-    pub status: Cow<'a, str>,
-    /// The canonical event id the steer became.
-    #[serde(borrow)]
-    pub event_id: Cow<'a, str>,
 }
 
 #[cfg(test)]

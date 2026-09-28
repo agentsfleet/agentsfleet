@@ -2,9 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { MessagePrimitive, type MessageState } from "@assistant-ui/react";
-import { Badge } from "@agentsfleet/design-system";
 import { GitPullRequestIcon } from "lucide-react";
-import { readTools } from "./FleetToolCalls";
 import {
   FleetActivityRow,
   FleetGroupRow,
@@ -16,7 +14,6 @@ import { FleetPayloadDisclosure } from "./FleetPayloadDisclosure";
 import { FleetReply } from "./FleetReplyBody";
 import {
   STATUS_AGENT_ERROR,
-  STATUS_FAILED,
   STATUS_IN_FLIGHT,
   STATUS_OPTIMISTIC,
 } from "./fleetMessageStatus";
@@ -40,7 +37,6 @@ import {
   senderLabelFor,
 } from "@/lib/events/event-summary";
 
-const FAILED_LABEL = "not sent";
 const SOURCE_LINK_FALLBACK = "View source";
 
 /**
@@ -49,8 +45,11 @@ const SOURCE_LINK_FALLBACK = "View source";
  * fleet replies stay open on the left (FleetMessageRow).
  */
 export function renderFleetMessage({ message }: { message: MessageState }): ReactNode {
+  // A settled row lets the browser skip its layout while it is off screen
+  // (tokens.css); the running reply is still growing, so it never does.
+  const settled = message.status?.type !== "running";
   return (
-    <MessagePrimitive.Root className="w-full" data-testid="fleet-message">
+    <MessagePrimitive.Root className="w-full" data-testid="fleet-message" data-settled={settled ? "true" : undefined}>
       <FleetMessage message={message} />
     </MessagePrimitive.Root>
   );
@@ -61,8 +60,6 @@ function FleetMessage({ message }: { message: MessageState }) {
   const sender = senderLabelFor(readActor(message), senderLabel);
   const status = readCustomStatus(message);
   const optimistic = status === STATUS_OPTIMISTIC;
-  const failed = status === STATUS_FAILED;
-  const tools = readTools(message);
   const trigger = readText(message);
   // A turn whose body this read never CARRIED is not a turn that said nothing,
   // and an empty operator bubble claims it was. The events list selects no
@@ -90,8 +87,6 @@ function FleetMessage({ message }: { message: MessageState }) {
           tone={ROW_TONE.OPERATOR}
           messageRole={message.role}
           dimmed={optimistic}
-          failed={failed}
-          annotation={failed ? <Badge variant="destructive">{FAILED_LABEL}</Badge> : null}
         >
           <span>{trigger}</span>
         </FleetMessageRow>
@@ -100,7 +95,6 @@ function FleetMessage({ message }: { message: MessageState }) {
         <FleetReply
           message={message}
           senderLabel={senderLabel}
-          tools={tools}
           status={status}
         />
       )}

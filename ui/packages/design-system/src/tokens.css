@@ -208,6 +208,26 @@
   }
 }
 
+/* The braille spinner: ten frames in a one-line window, stepped every 80 ms by
+ * `transform`, so no script runs per frame. Reduced motion shows the rest frame. */
+@keyframes braille-spin {
+  from { transform: translateY(0); }
+  to { transform: translateY(-100%); }
+}
+
+[data-braille-spinner] { display: inline-block; height: 1lh; overflow: hidden; vertical-align: bottom; }
+[data-braille-frames] { display: flex; flex-direction: column; animation: braille-spin 800ms steps(10) infinite; }
+[data-braille-rest] { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-braille-frames] { display: none; animation: none; }
+  [data-braille-rest] { display: inline; }
+}
+
+/* A settled transcript row skips layout while off screen; the streaming row is
+ * still growing, and a remembered placeholder height would misstate the scroll. */
+[data-settled="true"] { content-visibility: auto; contain-intrinsic-size: auto 12rem; }
+
 /* The beckon — the one call to action on a surface that has exactly one.
  *
  * Distinct from wake-pulse on purpose: that ring means "this entity is live

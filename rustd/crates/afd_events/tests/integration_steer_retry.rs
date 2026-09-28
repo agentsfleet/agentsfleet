@@ -49,16 +49,25 @@ use crate::support::EventsLane;
 const CONSUMER: &str = "steer-retry-integration-reader";
 
 /// The payload a caller's steer carries, already serialized by the handler.
-const REQUEST_JSON: &str = r#"{"message":"redeploy staging"}"#;
+pub(crate) const REQUEST_JSON: &str = r#"{"message":"redeploy staging"}"#;
 
-/// Marks the identity a client repeats across its retries.
-const RETRY_SUFFIX: &str = "-retried";
+/// The identity a client repeats across its retries.
+///
+/// A literal is safe now that the steer layer scopes the key to the fleet: the
+/// lane mints a fresh fleet per `open`, so this id can meet neither a
+/// neighbour in the same binary nor a row an earlier run left behind.
+const OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0999";
 
-/// Marks a second, DIFFERENT identity carrying the same text.
+/// A second, DIFFERENT identity carrying the same text.
 ///
 /// The other edge of the same rule: equal bodies are not equal operations, so
 /// this one must admit on its own.
-const DISTINCT_SUFFIX: &str = "-distinct";
+const DISTINCT_OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0998";
+
+/// Joins the fleet to the operation id in the ledger key — `afd_events::steer`'s
+/// separator, mirrored so a key shape that moved fails here instead of
+/// following.
+pub(crate) const KEY_SEPARATOR: &str = ":";
 
 /// How the ledger spells this producer, for the row count below.
 const PRODUCER_STEER: &str = "steer";
@@ -79,11 +88,10 @@ async fn test_steer_retry_reuses_its_admission() {
         .await
         .expect("the consumer group is created");
 
-    let repeated = operation(&lane, RETRY_SUFFIX);
-    let answered = append_with(&steer, &lane, Some(&repeated)).await;
+    let answered = append_with(&steer, &lane, Some(OPERATION)).await;
     // The retry: same identity, same text, as a client that never saw its 202
     // would send it.
-    let retried = append_with(&steer, &lane, Some(&repeated)).await;
+    let retried = append_with(&steer, &lane, Some(OPERATION)).await;
 
     assert_eq!(
         answered, retried,
@@ -92,7 +100,7 @@ async fn test_steer_retry_reuses_its_admission() {
          handed would otherwise watch an event that never runs"
     );
     assert_eq!(
-        admissions_for(&lane, &repeated).await,
+        admissions_for(&lane, OPERATION).await,
         1,
         "one ledger row for the key: the UNIQUE (producer, producer_key) on \
          core.fleet_admissions is what makes the retry free, and a second row \
@@ -146,8 +154,8 @@ async fn test_two_operation_ids_with_equal_text_admit_twice() {
         .await
         .expect("the consumer group is created");
 
-    let first = append_with(&steer, &lane, Some(&operation(&lane, RETRY_SUFFIX))).await;
-    let second = append_with(&steer, &lane, Some(&operation(&lane, DISTINCT_SUFFIX))).await;
+    let first = append_with(&steer, &lane, Some(OPERATION)).await;
+    let second = append_with(&steer, &lane, Some(DISTINCT_OPERATION)).await;
 
     assert_ne!(
         first, second,
@@ -173,21 +181,12 @@ async fn test_two_operation_ids_with_equal_text_admit_twice() {
     clean(&lane, &streams).await;
 }
 
-/// An operation id scoped to this lane's fleet.
-///
-/// `UNIQUE (producer, producer_key)` on `core.fleet_admissions` is GLOBAL --
-/// not per fleet, and not per run. A literal id would therefore deduplicate
-/// this test against its own neighbour in the same binary, and against the row
-/// every earlier run left behind: the first assertion would still pass, and the
-/// entry read back would belong to somebody else's stream. The lane mints a
-/// fresh fleet id per `open`, which makes it the one value in scope that is
-/// unique on both axes.
-fn operation(lane: &EventsLane, suffix: &str) -> String {
-    format!("{}{suffix}", lane.fleet)
-}
-
 /// One steer through the production path, answering its event id.
-async fn append_with(steer: &Steer, lane: &EventsLane, operation: Option<&str>) -> String {
+pub(crate) async fn append_with(
+    steer: &Steer,
+    lane: &EventsLane,
+    operation: Option<&str>,
+) -> String {
     steer
         .append(
             &lane.fleet,
@@ -200,12 +199,13 @@ async fn append_with(steer: &Steer, lane: &EventsLane, operation: Option<&str>) 
         .expect("the append reaches the datastore")
 }
 
-/// Ledger rows this producer holds under `key`.
+/// Ledger rows the steer producer holds for `operation` on the lane's fleet.
 ///
 /// Counted on `(producer, producer_key)` -- the pair the unique constraint is
-/// declared over -- rather than on the fleet, so a second row under the same
-/// identity is caught even if it were written against another fleet.
-async fn admissions_for(lane: &EventsLane, key: &str) -> i64 {
+/// declared over -- with the key spelled the way the steer layer composes it,
+/// so a key shape that drifted counts zero here and fails the assertion.
+pub(crate) async fn admissions_for(lane: &EventsLane, operation: &str) -> i64 {
+    let key = [lane.fleet.as_str(), operation].join(KEY_SEPARATOR);
     let mut connection = lane.connection().await;
     sqlx::query(
         "SELECT count(*) FROM core.fleet_admissions \
@@ -221,7 +221,7 @@ async fn admissions_for(lane: &EventsLane, key: &str) -> i64 {
 }
 
 /// Returns the lane's shared state to where the next suite expects it.
-async fn clean(lane: &EventsLane, streams: &FleetStreams) {
+pub(crate) async fn clean(lane: &EventsLane, streams: &FleetStreams) {
     ReadyIndex::new(lane.queue.clone())
         .force_clear(&lane.fleet)
         .await

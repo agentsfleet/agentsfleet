@@ -19,6 +19,7 @@ mod install_request;
 pub mod memory;
 mod memory_request;
 pub mod message;
+pub mod message_steer;
 
 use std::borrow::Cow;
 use std::sync::Arc;

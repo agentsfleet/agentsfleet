@@ -49,9 +49,10 @@ export default defineConfig({
       include: [
         'app/**/*.tsx',
         'app/**/*.ts',
-        'components/analytics/**/*.tsx',
-        'components/domain/**/*.tsx',
-        'components/layout/**/*.tsx',
+        // Hooks and helpers under components/ are `.ts`: a `.tsx`-only glob
+        // left the chat's delivery, ledger and thread hooks out of the count.
+        'components/**/*.tsx',
+        'components/**/*.ts',
         'lib/**/*.ts',
         'instrumentation-client.ts',
       ],
