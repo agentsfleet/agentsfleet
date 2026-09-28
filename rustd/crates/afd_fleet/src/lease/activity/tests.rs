@@ -10,9 +10,106 @@ use std::borrow::Cow;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
-use afd_wire::activity::{ActivityFrame, FleetResponseChunk};
+use afd_wire::activity::{
+    ActivityFrame, FleetResponseChunk, ToolCallCompleted, ToolCallProgress, ToolCallStarted,
+};
 
 use super::{Published, Target, first_visible_candidate_ms};
+
+/// The published stream route whose description lists the frame kinds.
+const STREAM_DESCRIPTION: &str =
+    "/paths/~1v1~1workspaces~1{workspace_id}~1fleets~1{fleet_id}~1events~1stream/get/description";
+
+/// The tool every fixture frame names.
+const TOOL: &str = "shell";
+
+/// A lease holder's target, eligible for timing.
+fn target() -> Target {
+    const FIXTURE_MILLIS: i64 = 1_000;
+    Target {
+        fleet_id: Uuid7::encode(UnixMillis::from_millis(FIXTURE_MILLIS), [0; ENTROPY_LEN])
+            .expect("fixture fleet id"),
+        event_id: "event".to_owned(),
+        lease_created_at: 0,
+        event_created_at: 0,
+        timing_eligible: true,
+    }
+}
+
+/// One frame of every kind, each tool frame naming `call_id`.
+fn every_frame(call_id: Option<&'static str>) -> [ActivityFrame<'static>; 4] {
+    let call_id = call_id.map(Cow::Borrowed);
+    [
+        ActivityFrame::ToolCallStarted(ToolCallStarted {
+            name: Cow::Borrowed(TOOL),
+            args_redacted: Cow::Borrowed("{}"),
+            call_id: call_id.clone(),
+        }),
+        ActivityFrame::ToolCallProgress(ToolCallProgress {
+            name: Cow::Borrowed(TOOL),
+            elapsed_ms: 1,
+            call_id: call_id.clone(),
+        }),
+        ActivityFrame::ToolCallCompleted(ToolCallCompleted {
+            name: Cow::Borrowed(TOOL),
+            ms: 2,
+            call_id,
+        }),
+        ActivityFrame::FleetResponseChunk(FleetResponseChunk {
+            text: Cow::Borrowed("answer"),
+            text_kind: None,
+            first_chunk_after_ms: None,
+            stream_start: false,
+            stream_contiguous: false,
+            stream_seq: 0,
+        }),
+    ]
+}
+
+fn published(frame: &ActivityFrame<'_>) -> serde_json::Value {
+    let target = target();
+    let published = Published::of(&target, frame).expect("every fixture frame renders");
+    serde_json::to_value(published).expect("a published frame serializes")
+}
+
+#[test]
+fn tool_frames_republish_their_call_id_and_never_invent_one() {
+    for frame in every_frame(Some("3")) {
+        let value = published(&frame);
+        let expected = frame.call_id().map(serde_json::Value::from);
+        assert_eq!(value.get("call_id").cloned(), expected, "{value}");
+    }
+    for frame in every_frame(None) {
+        assert!(published(&frame).get("call_id").is_none());
+    }
+}
+
+#[test]
+fn test_sse_kind_list_matches_published_kinds() {
+    let openapi = include_str!("../../../../../../public/openapi.json");
+    let document: serde_json::Value =
+        serde_json::from_str(openapi).expect("the published spec parses");
+    let description = document
+        .pointer(STREAM_DESCRIPTION)
+        .and_then(serde_json::Value::as_str)
+        .expect("the stream route is described");
+    for frame in every_frame(Some("3")) {
+        let value = published(&frame);
+        let kind = value["kind"].as_str().expect("every frame has a kind");
+        assert!(
+            description.contains(&format!("`{kind}`")),
+            "`{kind}` is undocumented"
+        );
+    }
+    assert!(
+        !description.contains("`fleet_response_chunk`"),
+        "the stream publishes `chunk`, never the runner's own name for it"
+    );
+    assert!(
+        description.contains("`call_id`"),
+        "the tool frames' call id is documented"
+    );
+}
 
 #[test]
 fn first_chunk_timing_excludes_frames_a_viewer_must_suppress() {
@@ -45,15 +142,7 @@ fn first_chunk_timing_excludes_frames_a_viewer_must_suppress() {
 
 #[test]
 fn first_chunk_marker_distinguishes_the_only_safe_stream_entry() {
-    const FIXTURE_MILLIS: i64 = 1_000;
-    let target = Target {
-        fleet_id: Uuid7::encode(UnixMillis::from_millis(FIXTURE_MILLIS), [0; ENTROPY_LEN])
-            .expect("fixture fleet id"),
-        event_id: "event".to_owned(),
-        lease_created_at: 0,
-        event_created_at: 0,
-        timing_eligible: true,
-    };
+    let target = target();
     for (first_chunk_after_ms, stream_start, stream_contiguous, stream_seq) in [
         (Some(42), true, true, 0),
         (None, false, true, 1),

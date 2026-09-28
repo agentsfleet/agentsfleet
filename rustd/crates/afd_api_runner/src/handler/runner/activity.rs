@@ -10,16 +10,17 @@
 //! earlier revision answered a bare status instead, and the document gate is
 //! what noticed.
 //!
-//! # The only hard check is authorization
+//! # The only hard checks are the body's shape and authorization
 //!
-//! A lease that does not resolve, or resolves to another runner, is a 404 — a
-//! runner must not be able to write into a fleet's live tail by naming a lease
-//! id it does not hold. Everything after that check is cosmetic and cannot fail
-//! the request.
+//! A body that does not parse, or names a call with an empty or over-long
+//! `call_id`, is a 400. A lease that does not resolve, or resolves to another
+//! runner, is a 404 — a runner must not be able to write into a fleet's live
+//! tail by naming a lease id it does not hold. Everything after that check is
+//! cosmetic and cannot fail the request.
 
 use std::sync::Arc;
 
-use afd_wire::activity::{ActivityAccepted, ActivityRequest};
+use afd_wire::activity::{ActivityAccepted, ActivityFrame, ActivityRequest};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -54,6 +55,7 @@ const DETAIL_MALFORMED: &str = "Malformed activity body";
     ),
     responses(
         (status = 202, description = afd_http::openapi::ACCEPTED, body = ActivityAccepted),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
@@ -71,7 +73,11 @@ pub(crate) async fn handle<D: Services>(
     // Borrowed out of `body`: every frame's text and arguments are re-emitted
     // into the published payload unchanged, so owning them would copy a run's
     // entire output stream one chunk at a time.
-    let Ok(request) = afd_http::handler::read_body::<ActivityRequest<'_>>(&body) else {
+    let parsed = afd_http::handler::read_body::<ActivityRequest<'_>>(&body);
+    let Some(request) = parsed
+        .ok()
+        .filter(|request| request.frames.iter().all(ActivityFrame::call_id_usable))
+    else {
         return crate::envelope::ProblemResponse::new(
             afd_core::error_code::INVALID_REQUEST,
             DETAIL_MALFORMED,
