@@ -38,20 +38,8 @@ pub const ENTRY_FIELD_COUNT: usize = 5;
 pub const QUEUED_FIELD_COUNT: usize = ENTRY_FIELD_COUNT + 1;
 
 impl<'a> Entry<'a> {
-    /// The field pairs an append writes, in wire order.
-    #[must_use]
-    pub const fn pairs(&self) -> [(&'static str, &'a str); ENTRY_FIELD_COUNT] {
-        [
-            (field::ACTOR, self.actor),
-            (field::EVENT_TYPE, self.event_type),
-            (field::WORKSPACE_ID, self.workspace_id),
-            (field::REQUEST_JSON, self.request_json),
-            (field::CREATED_AT, self.created_at),
-        ]
-    }
-
-    /// The field pairs the ledger's append writes: [`Self::pairs`] plus the
-    /// logical id, last.
+    /// The field pairs the ledger's append writes, in wire order: the entry's
+    /// five, then the logical id.
     ///
     /// Only the ledger calls this. A producer holds no id of its own — the id
     /// is the ledger row's — so an entry appended by anything else would be
