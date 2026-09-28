@@ -10052,7 +10052,7 @@
           "Fleets"
         ],
         "summary": "Post a chat message to a fleet",
-        "description": "Starts a fleet run with a chat event. Returns an event identifier for tracking in the activity stream. Send `operation_id` to make a retry safe: repeat the same value and this endpoint returns the first run's event, never a second run. A lost response then costs nothing, even if the fleet stopped or paused since. The same value with a different message, or from another sender, is refused with 409 `UZ-AGT-016`: each signed-in person is one sender, and a workspace's API keys are one between them. Omit it and every call is a new message, which is what a person sending twice means. ",
+        "description": "Starts a fleet run with a chat event. Returns an event identifier for tracking in the activity stream. Send `operation_id` to make a retry safe: repeat the same value and this endpoint returns the first run's event, never a second run. A lost response then costs nothing, even if the fleet stopped or paused since. The same value with a different message, or from another sender, is refused with 409 `UZ-AGT-016`. Each signed-in person is one sender; a workspace's API keys are one between them. Omit it and every call is a new message, which is what a person sending twice means. ",
         "operationId": "post_fleet_message",
         "parameters": [
           {
@@ -17176,7 +17176,7 @@
               "string",
               "null"
             ],
-            "description": "Your own name for this message, repeated on its retries.\n\nScoped to the fleet. Send the same value again with the same message and\nthe answer is the first send's `event_id` — one run, one charge — even if\nthe fleet has stopped or paused since. The same value with a different\nmessage, or from another sender, is refused with 409 `UZ-AGT-016`: each\nsigned-in person is one sender, and a workspace's API keys are one\nbetween them.\n\nOmit it and every call is a new message, which is what a person pressing\nsend twice means."
+            "description": "Your own name for this message, repeated on its retries.\n\nScoped to the fleet. Send the same value again with the same message and\nthe answer is the first send's `event_id`: one run, one charge. That holds\neven if the fleet has stopped or paused since. The same value with a\ndifferent message, or from another sender, is refused with 409\n`UZ-AGT-016`. Each signed-in person is one sender; a workspace's API keys\nare one between them.\n\nOmit it and every call is a new message, which is what a person pressing\nsend twice means."
           }
         },
         "additionalProperties": false

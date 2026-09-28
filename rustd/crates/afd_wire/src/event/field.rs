@@ -1,6 +1,6 @@
 //! The field names an event carries as a Dragonfly stream entry.
 //!
-//! Declared here for the reason [`EventType`]'s spellings are: they cross a
+//! Declared here for the reason [`EventType`](super::EventType)'s spellings are: they cross a
 //! boundary. A producer writes them and the runner's pull reads them back, so
 //! a pair that drifted would make an event one plane wrote one the other
 //! cannot recognise — and there are three producers now (the steer, the

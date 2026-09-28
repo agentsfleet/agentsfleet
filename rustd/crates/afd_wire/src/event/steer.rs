@@ -27,11 +27,11 @@ pub struct SteerRequest<'a> {
     /// Your own name for this message, repeated on its retries.
     ///
     /// Scoped to the fleet. Send the same value again with the same message and
-    /// the answer is the first send's `event_id` — one run, one charge — even if
-    /// the fleet has stopped or paused since. The same value with a different
-    /// message, or from another sender, is refused with 409 `UZ-AGT-016`: each
-    /// signed-in person is one sender, and a workspace's API keys are one
-    /// between them.
+    /// the answer is the first send's `event_id`: one run, one charge. That holds
+    /// even if the fleet has stopped or paused since. The same value with a
+    /// different message, or from another sender, is refused with 409
+    /// `UZ-AGT-016`. Each signed-in person is one sender; a workspace's API keys
+    /// are one between them.
     ///
     /// Omit it and every call is a new message, which is what a person pressing
     /// send twice means.

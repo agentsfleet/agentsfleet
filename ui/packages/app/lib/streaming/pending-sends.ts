@@ -81,10 +81,12 @@ const OWN_IN_FLIGHT = new Set<string>();
 // Keys this document mirrors to storage; a memory-only ledger (user not yet
 // known) is never re-read from storage, because storage never held it.
 const MIRRORED = new Set<string>();
-// Keys whose stored copy fell behind this document's: a write refused for
-// quota, or a read that threw. Until a write lands, a merge keeps everything
-// this tab holds — storage never saw the ended sends it would otherwise drop.
-const BEHIND = new Set<string>();
+// Per key, the sends this document changed that storage never saw: a write
+// refused for quota or a revoked permission. A merge keeps them until a write
+// lands — storage would otherwise drop ended sends it never heard end — and
+// nothing else, so what other tabs removed stays removed.
+const UNSAVED = new Map<string, Set<string>>();
+const NONE_UNSAVED: ReadonlySet<string> = new Set();
 let storageListening = false;
 let swept = false;
 
@@ -158,14 +160,14 @@ function read(scope: LedgerScope): readonly PendingSend[] {
   return hydrated;
 }
 
-// What storage says now, plus this document's own in-flight sends it has not
-// seen yet — or, while storage is behind, everything this document holds.
-// Otherwise entries other tabs removed stay removed. A `sending` this document
+// What storage says now, plus this document's own sends it has not seen yet:
+// those still in flight, and those whose change never reached storage. Entries
+// other tabs removed stay removed. A `sending` this document
 // did not start never overrides an ending it already knows: storage keeps the
 // `sending` a closed tab left behind, and taking it back would hide that
 // send's Resend for good — while showing Resend over a live send is safe,
 // because it carries the same operation id.
-function mergeIncoming(incoming: readonly PendingSend[], held: readonly PendingSend[], behind: boolean): PendingSend[] {
+function mergeIncoming(incoming: readonly PendingSend[], held: readonly PendingSend[], unsaved: ReadonlySet<string>): PendingSend[] {
   const heldById = new Map(held.map((entry) => [entry.operationId, entry]));
   const merged = incoming.map((entry) => {
     const mine = heldById.get(entry.operationId);
@@ -174,31 +176,37 @@ function mergeIncoming(incoming: readonly PendingSend[], held: readonly PendingS
     return staleSending ? mine : entry;
   });
   const known = new Set(incoming.map((entry) => entry.operationId));
-  const kept = held.filter((entry) => (behind || OWN_IN_FLIGHT.has(entry.operationId)) && !known.has(entry.operationId));
+  const ownId = (id: string) => OWN_IN_FLIGHT.has(id) || unsaved.has(id);
+  const kept = held.filter((entry) => ownId(entry.operationId) && !known.has(entry.operationId));
   return [...merged, ...kept];
 }
 
-function mutate(scope: LedgerScope, change: (entries: readonly PendingSend[]) => PendingSend[]): void {
+// A read that throws is not an empty ledger: the merge is skipped, and this
+// document's copy is the base.
+function mutate(
+  scope: LedgerScope,
+  operationId: string,
+  change: (entries: readonly PendingSend[]) => PendingSend[],
+): void {
   const key = ledgerKey(scope);
   const held = read(scope);
   const store = mirror(scope);
   const stored = store === null ? null : readStored(store, key);
-  if (store !== null && stored === null) BEHIND.add(key);
-  const base = stored === null ? held : mergeIncoming(live(stored, Date.now()), held, BEHIND.has(key));
+  const base = stored === null ? held : mergeIncoming(live(stored, Date.now()), held, UNSAVED.get(key) ?? NONE_UNSAVED);
   const next = capped(change(base));
   LEDGERS.set(key, next);
-  if (store !== null) writeMirror(store, key, next);
+  if (store !== null) writeMirror(store, key, operationId, next);
   notify(key);
 }
 
-function writeMirror(store: Storage, key: string, next: readonly PendingSend[]): void {
+function writeMirror(store: Storage, key: string, operationId: string, next: readonly PendingSend[]): void {
   try {
     if (next.length === 0) store.removeItem(key);
     else store.setItem(key, JSON.stringify(next));
-    BEHIND.delete(key);
+    UNSAVED.delete(key);
   } catch {
-    // Quota or a revoked permission: this tab's copy is now the whole ledger.
-    BEHIND.add(key);
+    // Quota or a revoked permission: this send's change lives in this tab only.
+    UNSAVED.set(key, new Set(UNSAVED.get(key)).add(operationId));
   }
 }
 
@@ -229,7 +237,7 @@ function onStorage(event: StorageEvent): void {
     const held = MIRRORED.has(key) ? LEDGERS.get(key) : undefined;
     if (held === undefined) continue;
     const incoming = event.key === null ? readStored(storage(), key) ?? [] : parseEntries(event.newValue);
-    LEDGERS.set(key, mergeIncoming(live(incoming, nowMs), held, BEHIND.has(key)));
+    LEDGERS.set(key, mergeIncoming(live(incoming, nowMs), held, UNSAVED.get(key) ?? NONE_UNSAVED));
     notify(key);
   }
 }
@@ -285,26 +293,26 @@ export function subscribePendingSends(scope: LedgerScope, listener: () => void):
 export function beginPendingSend(scope: LedgerScope, send: Omit<PendingSend, "state">): void {
   OWN_IN_FLIGHT.add(send.operationId);
   const entry: PendingSend = { ...send, state: PENDING_SEND_STATE.SENDING };
-  mutate(scope, (entries) => [...entries.filter((held) => held.operationId !== send.operationId), entry]);
+  mutate(scope, send.operationId, (entries) => [...entries.filter((held) => held.operationId !== send.operationId), entry]);
 }
 
 /** The daemon acknowledged it: nothing is left to recover. */
 export function settlePendingSend(scope: LedgerScope, operationId: string): void {
   OWN_IN_FLIGHT.delete(operationId);
-  mutate(scope, (entries) => entries.filter((entry) => entry.operationId !== operationId));
+  mutate(scope, operationId, (entries) => entries.filter((entry) => entry.operationId !== operationId));
 }
 
 /** The operator gave up on it. */
 export function dismissPendingSend(scope: LedgerScope, operationId: string): void {
   OWN_IN_FLIGHT.delete(operationId);
-  mutate(scope, (entries) => entries.filter((entry) => entry.operationId !== operationId));
+  mutate(scope, operationId, (entries) => entries.filter((entry) => entry.operationId !== operationId));
 }
 
 /** How the send ended without an acknowledgement. */
 export function failPendingSend(scope: LedgerScope, operationId: string, state: PendingSendOutcome): void {
   // Still this document's own while the ending is written: a concurrent write
   // from another tab that never saw this send must not merge it away.
-  mutate(scope, (entries) => entries.map((entry) => (entry.operationId === operationId ? { ...entry, state } : entry)));
+  mutate(scope, operationId, (entries) => entries.map((entry) => (entry.operationId === operationId ? { ...entry, state } : entry)));
   OWN_IN_FLIGHT.delete(operationId);
 }
 
@@ -323,7 +331,7 @@ export function __resetPendingSendsForTests({ keepStorage = false }: { keepStora
   LEDGERS.clear();
   OWN_IN_FLIGHT.clear();
   MIRRORED.clear();
-  BEHIND.clear();
+  UNSAVED.clear();
   swept = false;
   if (!keepStorage) removeMirrored(() => true);
   for (const key of LISTENERS.keys()) notify(key);

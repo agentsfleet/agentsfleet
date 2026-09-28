@@ -24,6 +24,7 @@ const SEND_UNCONFIRMED = "Couldn't confirm this message was sent.";
 const SERVER_ACTION_HEADER = "next-action";
 const POST = "POST";
 const UUID_V7 = /[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/;
+const UUID_V7_ALL = new RegExp(UUID_V7.source, "g");
 // A logical event id as the daemon spells it: `<millis>-<seq>`.
 const EVENT_ID = /\d{13}-\d+/;
 const STORAGE_KEY_PREFIX = "agentsfleet:pending-sends";
@@ -51,7 +52,7 @@ async function withResendPage(
   await page.route((url) => url.pathname === href, async (route) => {
     const request = route.request();
     if (!isSteer(request, message)) return route.fallback();
-    steers.operationIds.push(operationIdOf(request));
+    steers.operationIds.push(operationIdOf(request, [workspaceId, fleet.id]));
     return answerThrough(route, steers, loseFirstAnswer);
   });
   try {
@@ -81,8 +82,12 @@ function isSteer(request: Request, message: string): boolean {
     && (request.postData() ?? "").includes(message);
 }
 
-function operationIdOf(request: Request): string {
-  return (request.postData() ?? "").match(UUID_V7)?.[0] ?? "";
+// The Server Action's arguments are the workspace, the fleet, the text and the
+// operation id — and the first two are UUID v7 too, so the id is the one v7
+// that names neither.
+function operationIdOf(request: Request, named: readonly string[]): string {
+  const ids = (request.postData() ?? "").match(UUID_V7_ALL) ?? [];
+  return ids.find((id) => !named.includes(id)) ?? "";
 }
 
 function chatParts(page: Page) {

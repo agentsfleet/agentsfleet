@@ -263,6 +263,30 @@ describe("pending-sends ledger", () => {
     expect(JSON.parse(room.getItem(STORAGE_KEY) ?? "[]")).toHaveLength(2);
   });
 
+  it("brings back only its own unsaved sends, never what another tab removed", () => {
+    let full = false;
+    const room = fakeStorage();
+    const quota = fakeStorage({
+      getItem: (key) => room.getItem(key),
+      setItem: (key, value) => {
+        if (full) throw new DOMException("full", "QuotaExceededError");
+        room.setItem(key, value);
+      },
+    });
+    vi.spyOn(window, "localStorage", "get").mockReturnValue(quota);
+    room.setItem(STORAGE_KEY, stored([{ operationId: "op-x", text: "x", state: PENDING_SEND_STATE.REFUSED, submittedAtMs: NOW_MS }]));
+    expect(states()).toEqual([["op-x", PENDING_SEND_STATE.REFUSED]]);
+    full = true;
+    beginPendingSend(SCOPE, send("op-a", "a"));
+    // Another tab dismisses op-x while this one cannot write.
+    room.removeItem(STORAGE_KEY);
+    otherTabWrote(STORAGE_KEY, null);
+    expect(states()).toEqual([["op-a", PENDING_SEND_STATE.SENDING]]);
+    full = false;
+    failPendingSend(SCOPE, "op-a", PENDING_SEND_STATE.UNKNOWN);
+    expect(JSON.parse(room.getItem(STORAGE_KEY) ?? "[]").map((entry: PendingSend) => entry.operationId)).toEqual(["op-a"]);
+  });
+
   it("survives a storage whose reads and removals throw after it was found", () => {
     const revoked = fakeStorage({
       getItem: () => { throw new Error("revoked"); },

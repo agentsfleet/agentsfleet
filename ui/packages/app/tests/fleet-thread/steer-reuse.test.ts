@@ -78,6 +78,19 @@ describe("FleetThread — operation id reuse", () => {
     expect(operationIdOf(1)).not.toBe(operationIdOf(0));
   });
 
+  it("gives a returned draft cleared and put back whole a new id", async () => {
+    steerFleetActionMock.mockResolvedValueOnce(REFUSED).mockResolvedValueOnce(ACCEPTED("evt_retyped"));
+    mockStream([], { appendOptimistic: vi.fn().mockReturnValue("temp_any") });
+    renderThread();
+    await send("y");
+    await waitFor(() => expect(composerInput().value).toBe("y"));
+    // A clear, then the same words in one input: a paste, or a one-letter reply.
+    fireEvent.change(composerInput(), { target: { value: "" } });
+    await send("y");
+    await waitFor(() => expect(steerFleetActionMock).toHaveBeenCalledTimes(2));
+    expect(operationIdOf(1)).not.toBe(operationIdOf(0));
+  });
+
   it("keeps the fleet's queue moving after a send throws past its acknowledgement", async () => {
     const reconcileOptimistic = vi.fn().mockImplementationOnce(() => {
       throw new Error("paint failed");
