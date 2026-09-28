@@ -169,7 +169,9 @@ function onStorage(event: StorageEvent): void {
   for (const key of keys) {
     const held = MIRRORED.has(key) ? LEDGERS.get(key) : undefined;
     if (held === undefined) continue;
-    const incoming = event.key === null ? readStored(storage(), key) ?? [] : parseEntries(event.newValue);
+    const incoming = event.key === null ? readStored(storage(), key) : parseEntries(event.newValue);
+    // A read that throws is not an empty ledger, here as in `mutate`.
+    if (incoming === null) continue;
     LEDGERS.set(key, mergeIncoming(live(incoming, nowMs), held, UNSAVED.get(key) ?? NONE_UNSAVED));
     notify(key);
   }
