@@ -178,7 +178,7 @@ describe("FleetThread — reasoning disclosure", () => {
     }
   });
 
-  it("measures a user turn only once when its tool-first reply splits into an answer row", () => {
+  it("measures a user turn only once when its tool-first reply gains an answer", () => {
     let nextFrame = 0;
     const frames = new Map<number, FrameRequestCallback>();
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {

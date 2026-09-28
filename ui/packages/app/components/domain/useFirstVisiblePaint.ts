@@ -8,8 +8,8 @@ import { RecentPaints } from "./RecentPaints";
 // the first painted answer, reasoning or tool row.
 
 export const FIRST_VISIBLE_MEASURE = "agentsfleet.chat.submit_to_first_visible";
-// A turn's reply row is renamed once, when the pending id becomes the server's.
-// The component remounts, but that is still one visible response.
+// Module-level rather than per component: a reply row remounts (a regroup, a
+// navigation back) with a fresh ref, and it is still one visible response.
 const RECENT_PAINTS = 400;
 const measuredPaints = new RecentPaints(RECENT_PAINTS);
 

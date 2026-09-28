@@ -15,10 +15,9 @@ import {
   type LedgerScope,
   type PendingSend,
   type PendingSendOutcome,
-  type PendingSendState,
 } from "@/lib/streaming/pending-sends";
 
-export { PENDING_SEND_STATE, type LedgerScope, type PendingSend, type PendingSendOutcome, type PendingSendState };
+export { PENDING_SEND_STATE, type LedgerScope, type PendingSend, type PendingSendOutcome };
 
 /** The ledger's writers, bound to one user's fleet. Stable for a scope, so a
  * callback that depends on them is not rebuilt by every ledger write. */
