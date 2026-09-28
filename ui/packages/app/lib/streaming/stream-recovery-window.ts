@@ -5,7 +5,7 @@ const STABLE_CONNECTION_MS = 30_000;
 const RENEWAL_GRACE_MS = 25_000;
 const CONNECTION_ATTEMPT_TIMEOUT_MS = 30_000;
 // Three missed 15-second server keepalives tolerate ordinary scheduling jitter.
-const STREAM_SILENCE_TIMEOUT_MS = 45_000;
+export const STREAM_SILENCE_TIMEOUT_MS = 45_000;
 
 export class StreamRecoveryWindow {
   #firstArrival: number | null = null;

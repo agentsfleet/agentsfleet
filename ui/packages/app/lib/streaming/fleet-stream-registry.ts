@@ -12,7 +12,7 @@ import {
   fastBackoffMs,
 } from "./fleet-stream-reconnect";
 import { applyLiveFrame, mergeBackfill, parseLiveFrame } from "./fleet-stream-frames";
-import { dispatchReplyFrame, disposeReplyStreams, markReplyGap, settleRepliesFromBackfill } from "./fleet-stream-reply-registry";
+import { dispatchReplyFrame, disposeReplyStreams, markReplyGap, readStalledReplies, settleRepliesFromBackfill, watchReply } from "./fleet-stream-reply-registry";
 import { HEARTBEAT_EVENT } from "./stream-recovery-window";
 import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
 import { advanceInstallStep, installStepFromKind } from "./install-steps";
@@ -63,6 +63,10 @@ const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
 // stale tempId collide with a new row's id — and a refusal's discard would
 // then remove the operator's newest pending message.
 let tempCounter = 0;
+
+// The write every reply helper makes, and its check that this entry still owns the fleet.
+const writer = (entry: Entry) => (next: (prev: FleetEvent[]) => FleetEvent[], facts: Partial<FleetFacts>) => setEvents(entry, next, facts);
+const owns = (entry: Entry, fleetId: string) => () => REGISTRY.get(fleetId) === entry;
 
 function notify(entry: Entry): void {
   for (const l of entry.listeners) l();
@@ -116,6 +120,7 @@ function startEventSource(entry: Entry, fleetId: string): void {
   entry.eventSource = es;
   const onTimeout = () => { if (entry.eventSource === es) onEventSourceError(entry, fleetId); };
   const received = () => {
+    readStalledReplies(entry, fleetId, writer(entry), owns(entry, fleetId));
     entry.recoveryWindow.received(onTimeout);
     if (entry.recoveryWindow.isStable()) entry.reconnectAttempts = 0;
     if (entry.snapshot.connectionStatus !== CONNECTION_STATUS.LIVE) {
@@ -131,12 +136,10 @@ function startEventSource(entry: Entry, fleetId: string): void {
     // An open alone does not reset failure history: accept-close loops back off.
     if (needsBackfill) {
       void backfillEntry(entry, fleetId, {
-        stillCurrent: () => REGISTRY.get(fleetId) === entry,
+        stillCurrent: owns(entry, fleetId),
         onPage: (rows) => {
           setEvents(entry, (prev) => mergeBackfill(prev, rows));
-          settleRepliesFromBackfill(entry, fleetId, rows,
-            (next, facts) => setEvents(entry, next, facts),
-            () => REGISTRY.get(fleetId) === entry);
+          settleRepliesFromBackfill(entry, fleetId, rows, writer(entry), owns(entry, fleetId));
         },
       });
     }
@@ -175,9 +178,7 @@ function onFrame(entry: Entry, fleetId: string, frame: NonNullable<ReturnType<ty
   // every late runner frame from mutating the settled answer or tool history.
   if ("event_id" in frame && RUNNER_ACTIVITY_KINDS.has(frame.kind)
     && entry.snapshot.events.some((event) => event.id === frame.event_id && TERMINAL_STATUSES.has(event.status))) return;
-  if (dispatchReplyFrame(entry, fleetId, frame,
-    (next, facts) => setEvents(entry, next, facts),
-    () => REGISTRY.get(fleetId) === entry)) return;
+  if (dispatchReplyFrame(entry, fleetId, frame, writer(entry), owns(entry, fleetId))) return;
   // A completion carries the fleet's status and pending count beside its row;
   // a gate frame carries the count alone and touches no row.
   const facts = factsOf(frame);
@@ -320,15 +321,15 @@ export function reconcileOptimistic(
   fleetId: string,
   tempId: string,
   realEventId: string,
+  replayed = false,
 ): boolean {
   const entry = REGISTRY.get(fleetId);
   if (!entry) return false;
-  let alreadyComplete = false;
-  setEvents(entry, (prev) => {
-    const reconciled = reconcileRows(prev, tempId, realEventId);
-    alreadyComplete = reconciled.alreadyComplete;
-    return reconciled.events;
-  });
+  const { events, alreadyComplete, loaded } = reconcileRows(entry.snapshot.events, tempId, realEventId);
+  setEvents(entry, () => events);
+  // A replay's event may have run before this page held it: no frame is left to
+  // settle its row, so it is read now.
+  watchReply(entry, fleetId, realEventId, writer(entry), owns(entry, fleetId), replayed && (!loaded || alreadyComplete));
   return alreadyComplete;
 }
 

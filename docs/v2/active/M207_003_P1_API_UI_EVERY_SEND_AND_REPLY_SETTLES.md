@@ -61,6 +61,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/components/domain/SteerComposer.tsx` | EDIT | Conflict notice without Resend, `redirect_url` on Sign in, byte counter, Send disabled over the limit |
 | `ui/packages/app/lib/api/fleets.ts`, `ui/packages/app/lib/api/errors.ts`, `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/actions.ts` | EDIT | The 202's `replayed` flag reaches the hook; the error code reaches the outcome |
 | `ui/packages/app/lib/streaming/{fleet-stream-reply-registry,fleet-stream-registry,fleet-stream-optimistic,fleet-stream-frames,fleet-stream-tool-frames}.ts` | EDIT | Stall-triggered settle, identity-stable backfill and progress, call-id pairing |
+| `ui/packages/app/lib/streaming/{fleet-stream-entry,stream-recovery-window}.ts`, `ui/packages/app/lib/api/fleets-types.ts` | EDIT | Each running event's last-heard time; the silence window shared as `REPLY_STALL_MS`; the 202's `SteerAccepted` type |
 | `ui/packages/app/lib/api/{events,events-types}.ts` | EDIT | Optional `call_id` on the three tool frames |
 | `ui/packages/app/components/domain/{useFleetThreadEntries,useFleetEventStream,FleetReplyBody}.ts(x)` | EDIT | Trigger wrapper reuse; `reply` leaves the trigger's bag; wait verb hidden from assistive tech |
 | `ui/packages/app/lib/utils.ts` | EDIT | Durations of a minute or more read with minutes |
@@ -124,11 +125,11 @@ A send is bounded, and another tab's send is visible once its tab is gone. **Imp
 
 ### §3 — Every reply clock ends
 
-The 202 says whether it answered an earlier admission. **Implementation default:** a replayed answer whose event is not loaded, or already complete, triggers one detail read for that event instead of waiting for frames. A reply still running with no frame for `REPLY_STALL_MS` (the stream's 45 s silence window) triggers one backfill read, through the existing settle path. The public API docs gain `replayed` on a `~/Projects/docs` branch at CHORE(close).
+The 202 says whether it answered an earlier admission. **Implementation default:** a replayed answer whose event is not loaded, or already complete, triggers one detail read for that event instead of waiting for frames. A running event this tab has not heard a frame for in `REPLY_STALL_MS` (the stream's 45 s silence window) gets one detail read, swept on the stream's own frames and heartbeats, so no timer is added. Changed from a backfill read at EXECUTE: backfill reads `since` the newest row seen, so it cannot return an older replayed event, and one detail read settles status and answer through the same `mergeBackfill` reducer the backfill path uses. The public API docs gain `replayed` on a `~/Projects/docs` branch at CHORE(close).
 
 - **Dimension 3.1** — the steer 202 carries `replayed: true` on both replay paths and `false` on a fresh admission → Test `test_steer_202_names_a_replay` — DONE (live `tenant_plane` `integration_fleet_lifecycle::message` 3 passed)
-- **Dimension 3.2** — a replayed answer for an unloaded or completed event settles its row from the detail, leaving no "Queued" row → Test `test_replayed_answer_settles_from_detail`
-- **Dimension 3.3** — a reply whose completion frame was lost on a live stream stops its Thought clock after the stall read → Test `test_lost_completion_stops_the_thought_clock`
+- **Dimension 3.2** — a replayed answer for an unloaded or completed event settles its row from the detail, leaving no "Queued" row → Test `test_replayed_answer_settles_from_detail` — DONE (app coverage gate 343 files / 3135 tests green at 100%; `fleet-stream-registry.stall.test.ts`)
+- **Dimension 3.3** — a reply whose completion frame was lost on a live stream stops its Thought clock after the stall read → Test `test_lost_completion_stops_the_thought_clock` — DONE (app coverage gate 343 files / 3135 tests green at 100%; `fleet-stream-registry.stall.test.ts`)
 
 ### §4 — Admission decides from its own insert
 
@@ -223,7 +224,7 @@ PendingSend.state += "conflict" | "dismissed"            (browser ledger)
 | 2.4 | unit | `test_steer_request_doc_matches_its_parser` | doc text says unknown fields are refused; an unknown field → 400 |
 | 3.1 | integration | `test_steer_202_names_a_replay` | fresh → `replayed:false`; repeat → `true`; repeat on a stopped fleet → `true` |
 | 3.2 | unit | `test_replayed_answer_settles_from_detail` | replayed id not loaded → one detail read → terminal row, no "Queued"; the read fails → the row keeps its state and the stall read retries once |
-| 3.3 | unit | `test_lost_completion_stops_the_thought_clock` | thinking, no frame for the stall window → backfill says complete → Thought with a total |
+| 3.3 | unit | `test_lost_completion_stops_the_thought_clock` | thinking, no frame for the stall window → the detail says complete → Thought with a total |
 | 4.1 | integration | `test_replayed_append_decides_from_its_insert` | same id and body twice → first event, no `find_repeated` call |
 | 4.2 | integration | `test_replayed_append_never_answers_unchecked` | the conflict returns a foreign digest or fleet → 409, never 202 |
 | 4.3 | integration | `test_steer_reuse_is_not_an_internal_failure` | reuse with a new message → one `steer_operation_conflict`, zero `admission_payload_drifted`; webhook drift → one warn |
