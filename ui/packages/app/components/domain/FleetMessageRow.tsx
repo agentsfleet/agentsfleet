@@ -121,10 +121,9 @@ export function FleetMessageRow({
         >
           <div
             className={cn(
-              // Both turns read at `reading`. The operator's message used to be
-            // `body-sm` (14px) while the fleet's ran 16px, so your own words
-            // came back smaller than the reply to them — one conversation set
-            // in two sizes.
+            // Both turns read at `reading`. The operator's message used to be
+            // `body-sm` (14px) against the fleet's 16px, so your own words came
+            // back smaller than the reply to them: one conversation, two sizes.
             "min-w-0 max-w-full break-words font-sans text-reading leading-reading text-foreground",
               isOperator
                 ? "w-fit rounded-lg rounded-br-sm border border-border-strong bg-accent px-md py-sm"

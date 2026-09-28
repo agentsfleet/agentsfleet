@@ -34,7 +34,7 @@ export const PENDING_SEND_STATE = {
   UNKNOWN: "unknown",
 } as const;
 
-export type PendingSendState = (typeof PENDING_SEND_STATE)[keyof typeof PENDING_SEND_STATE];
+type PendingSendState = (typeof PENDING_SEND_STATE)[keyof typeof PENDING_SEND_STATE];
 
 /** How a send ended without an acknowledgement. */
 export type PendingSendOutcome = Exclude<PendingSendState, typeof PENDING_SEND_STATE.SENDING>;

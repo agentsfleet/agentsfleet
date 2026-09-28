@@ -33,7 +33,7 @@ export type ThreadEntry =
 /**
  * Only bare integration activity ever coalesces. An operator's message and the
  * fleet's reply are the conversation the thread exists to show — collapsing
- * either would hide a person's own words, and a failed optimistic send would
+ * either would hide a person's own words, and a pending optimistic send would
  * vanish into a count (Invariant 1). An integration turn that reasoned or
  * called a tool has a reply row of its own, and a group renders members as
  * activity ticks with no parts, so grouping it would hide what the fleet did.
