@@ -57,19 +57,19 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `ui/packages/app/lib/api/{fleets,fleets-types}.ts`, `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/actions.ts` | EDIT | `steerFleet` takes a `SteerRequest` with a required `operation_id`; the Server Action forwards it |
-| `ui/packages/app/lib/streaming/pending-sends.ts` | CREATE | The per-fleet ledger of unresolved sends: module state, `localStorage` mirror, `storage`-event sync, listeners |
+| `ui/packages/app/lib/streaming/pending-sends.ts` | CREATE | The ledger of unresolved sends, keyed by user, workspace and fleet: module state, `localStorage` mirror merged on every write, `storage`-event sync, 24 h expiry, 20 entries per fleet, a zod schema at the storage boundary |
 | `ui/packages/app/lib/streaming/operation-id.ts`, `ui/packages/app/package.json`, `bun.lock` | CREATE / EDIT | `mintOperationId`: UUID v7 from the `uuid` package (^14, the command line's version) |
 | `ui/packages/app/components/domain/useFleetPendingSends.ts` | CREATE | The React boundary over the ledger (`useSyncExternalStore`) |
 | `ui/packages/app/components/domain/useFleetDeliveryFailure{.ts,.test.tsx}` | DELETE | Superseded by the ledger; one slot per fleet was the defect |
-| `ui/packages/app/components/domain/{useFleetMessageDelivery,SteerComposer,FleetThread,FleetThreadViewport}.ts(x)`, `ui/packages/app/lib/streaming/fleet-stream-registry.ts` | EDIT | Mint before append; ledger from submit to acknowledgement; per-entry Resend and Dismiss; the unknown-delivery notice; a comment that named the old record |
-| `ui/packages/app/lib/streaming/{pending-sends,operation-id}.test.ts`, `ui/packages/app/components/domain/{useFleetPendingSends,SteerComposer,FleetThreadViewport}.test.tsx`, `ui/packages/app/tests/fleet-thread/{harness,steer-helpers}.ts`, `ui/packages/app/tests/fleet-thread/{steer-submission,steer-recovery}.test.ts`, `ui/packages/app/tests/fleets-actions.test.ts`, `ui/packages/app/lib/api/{fleets.replay,fleets}.test.ts` | CREATE / EDIT | Browser proofs, through the real retry policy and the real composer; recovery cases split from submission at the length cap |
+| `ui/packages/app/components/domain/{useFleetMessageDelivery,SteerComposer,FleetThread,FleetThreadViewport}.ts(x)`, `ui/packages/app/lib/streaming/fleet-stream-registry.ts` | EDIT | Mint before append; ledger from submit to acknowledgement; per-entry Resend and Dismiss; the unknown-delivery notice read off `isDefiniteRefusal`; one delivery queue per fleet; the 8,192-byte guard and hint; `setEvents` skips a notify when nothing changed |
+| `ui/packages/app/lib/streaming/{pending-sends,operation-id}.test.ts`, `ui/packages/app/components/domain/{useFleetPendingSends,SteerComposer,FleetThreadViewport}.test.tsx`, `ui/packages/app/tests/fleet-thread/{harness,steer-helpers,steer-copy}.ts`, `ui/packages/app/tests/fleet-thread/{steer-submission,steer-recovery}.test.ts`, `ui/packages/app/lib/streaming/fleet-stream-registry.test.ts`, `ui/packages/app/tests/fleets-actions.test.ts`, `ui/packages/app/lib/api/{fleets.replay,fleets}.test.ts` | CREATE / EDIT | Browser proofs, through the real retry policy and the real composer; recovery cases split from submission at the length cap |
 | `ui/packages/app/tests/e2e/acceptance/fleet-resend.spec.ts` | EDIT | Both Server Action bodies carry one operation id; reload recovery |
-| `rustd/crates/afd_events/src/{steer,error}.rs`, `rustd/crates/afd_events/src/error/raise.rs` | EDIT | Fleet-scoped key; repeat answered before admitting; `replayed` for the handler; `OperationConflict` kind |
+| `rustd/crates/afd_events/src/{steer,error}.rs`, `rustd/crates/afd_events/src/error/raise.rs` | EDIT | Fleet-scoped key; a repeat answered off the insert's conflict, read back and checked; `replayed` for a fleet that takes no work; `OperationConflict` kind |
 | `rustd/crates/afd_http/src/services/event.rs` | EDIT | `FleetSteering::replayed` |
-| `rustd/crates/afd_admission/src/{repeat,sql,lib}.rs` | CREATE / EDIT | `find_repeated`, the point read on `uq_fleet_admissions_producer_key`; `admit` unchanged |
+| `rustd/crates/afd_admission/src/{repeat,sql,lib}.rs` | CREATE / EDIT | `find_repeated`, the point read on `uq_fleet_admissions_producer_key`, returning the row's fleet; `admit` unchanged |
 | `rustd/crates/afd_core/src/{error_code,error_code/fleet,problem/fleet}.rs` | EDIT | `AGENTSFLEET_OPERATION_CONFLICT` (`UZ-AGT-016`, 409) in the registry and its problem table |
-| `rustd/crates/afd_api_tenant/src/{lib,openapi}.rs`, `rustd/crates/afd_api_tenant/src/handler/fleet/{mod,message,message_steer}.rs`, `rustd/crates/afd_api_tenant/src/handler/fleet/{message,message_steer}/tests.rs` | EDIT / CREATE | The steer handler and its body tests move to their own files (the parent was over the length cap); ownership, then repeat, then the ingress check |
-| `rustd/crates/afd_events/tests/{integration_steer_retry,integration_steer_replay,events_suite,error_surface}.rs`, `rustd/crates/afd_core/tests/problem.rs`, `rustd/crates/afd_api/tests/{integration_fleet_lifecycle.rs,fleet_lifecycle_live/message.rs}` | EDIT / CREATE | Daemon proofs, live-lane and unit |
+| `rustd/crates/afd_api_tenant/src/{lib,openapi}.rs`, `rustd/crates/afd_api_tenant/src/handler/fleet/{mod,message,message_steer}.rs`, `rustd/crates/afd_api_tenant/src/handler/fleet/{message,message_steer}/tests.rs` | EDIT / CREATE | The steer handler and its body tests move to their own files (the parent was over the length cap); ownership, then the ingress check with a repeat lookup only when it refuses, then `append`; `afd_fleet_lifecycle/src/lib.rs` doc link follows the move |
+| `rustd/crates/afd_events/tests/{integration_steer_retry,integration_steer_replay,integration_steer_races,events_suite,error_surface}.rs`, `rustd/crates/afd_events/tests/support/recorder.rs`, `rustd/crates/afd_core/tests/problem.rs`, `rustd/crates/afd_api/tests/{integration_fleet_lifecycle.rs,fleet_lifecycle_live/message.rs,fleet_messages_steer.rs}` | EDIT / CREATE | Daemon proofs, live-lane and unit; the races split from the replay file at the length cap; a log recorder proves the refusal's fields |
 | `public/openapi.json` | EDIT | Regenerated: the steer description names the pause and the conflict |
 | `docs/architecture/user_flow.md` | EDIT | User steer line names the operation id and the ledger |
 | `docs/v2/active/M207_001_P1_UI_CHAT_REPLY_ON_ASSISTANT_UI_PARTS.md` | EDIT | Invariant 4 and Out of Scope point here |
@@ -114,7 +114,7 @@ The id is minted synchronously at the top of `onNew`, before the optimistic appe
 
 ### §2 — The pending-send ledger
 
-One entry per unresolved send, keyed by operation id, from submit until the 202 is reconciled. State moves `sending → refused | session | unknown`; an entry hydrated from storage still `sending` reads as `unknown`, because the tab that owned it is gone. Mirrored to `localStorage` under a workspace-and-fleet key, read once per key on first subscribe, written through on every change, re-read on the `storage` event. **Implementation default:** exact-text match against the ledger reuses that entry's id when the operator presses Send on restored text, because a second id for the same unresolved text is the duplicate this spec exists to end.
+One entry per unresolved send, keyed by operation id, from submit until the 202 is reconciled. State moves `sending → refused | session | unknown`; an entry hydrated from storage still `sending` reads as `unknown`, because the tab that owned it is gone. Mirrored to `localStorage` under a user-workspace-fleet key, nothing mirrored before the user is known; each write merges with fresh storage, a tab keeps its own in-flight sends, and a stale `sending` never overrides an ending the tab knows. **Implementation default:** only the draft restored from a failed send, sent unchanged, reuses that send's id; there is no text matching, because the same words typed later are a new message and an old id would replay an old admission.
 
 - **Dimension 2.1** — an entry lives from submit to acknowledgement and no longer → Test `test_ledger_entry_lives_from_submit_to_ack` — DONE (app browser suites 18 files green; steer-submission + steer-recovery through the real composer)
 - **Dimension 2.2** — two sends both refused keep two entries → Test `test_two_refused_sends_keep_two_entries` — DONE (app browser suites 18 files green; steer-submission + steer-recovery through the real composer)
@@ -135,12 +135,12 @@ The notice lists every entry with its own Resend (or Sign in) and Dismiss. Resen
 
 ### §4 — The daemon answers a repeat before it judges a new message
 
-`Steer::append` composes `producer_key = "<fleet_id>:<operation_id>"` and reads it back with `Admissions::find_repeated` before admitting, so the fleet budget never sees a repeat: same digest → the first event; another digest → `OperationConflict`; absent → `admit` as before. The handler checks ownership (`ingress_status`, 404 for another workspace's fleet), then asks `FleetSteering::replayed`, then the paused check — so a guessed id never reads another tenant's ledger, and a paused fleet answers a repeat with its first event. **Implementation default:** the drift refusal lives in the steer layer and `admit`'s conflict arm keeps its warn, because for a webhook the daemon renders the body and a deploy that changed the rendering must still answer a redelivery; one registry code, `UZ-AGT-016` 409 `current_state: "admitted"`.
+`Steer::append` composes `producer_key = "<fleet_id>:<operation_id>"` and admits: the happy path pays no extra read. When the insert meets a row under the key, `Admissions::find_repeated` reads it back — same fleet and digest → the first event; anything else → `OperationConflict`, which also closes the race of two sends with one id. A spent fleet budget still answers a repeat through the same lookup. The handler checks ownership (`ingress_status`, 404 for another workspace's fleet); a fleet that takes no work asks `FleetSteering::replayed` before its 409, so a stopped or paused fleet answers a repeat with its first event. **Implementation default:** the drift refusal lives in the steer layer and `admit`'s conflict arm keeps its warn, because for a webhook the daemon renders the body and a deploy that changed the rendering must still answer a redelivery; one registry code, `UZ-AGT-016` 409 `current_state: "admitted"`.
 
 - **Dimension 4.1** — the key is fleet-scoped; equal ids on two fleets admit twice → Test `test_operation_ids_are_scoped_to_the_fleet`
 - **Dimension 4.2** — a repeat bypasses a spent fleet budget → Test `test_replay_bypasses_fleet_budget`
-- **Dimension 4.3** — a repeat bypasses a paused fleet's 409 → Test `test_replay_bypasses_paused_ingress`
-- **Dimension 4.4** — same key, different message → 409 `UZ-AGT-016`, nothing admitted → Test `test_payload_drift_is_refused`
+- **Dimension 4.3** — a repeat bypasses a stopped fleet's 409; another workspace's fleet answers 404 before any lookup → Test `test_replay_bypasses_ingress_refusal`
+- **Dimension 4.4** — same key with a different message, another caller, or another fleet's row → 409 `UZ-AGT-016`, nothing admitted, racing sends included → Test `test_payload_drift_is_refused`
 - **Dimension 4.5** — the registry entry is reachable and the regenerated artifact carries it → Test `test_operation_conflict_code_registered` — DONE (unit, green)
 - **Dimension 4.6** — the steer handler moves to `message_steer.rs`; behaviour unchanged → Test `should_refuse_a_steer_that_carries_no_body` (existing, relocated) — DONE (unit, green)
 
@@ -156,14 +156,15 @@ POST /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages   body { message, 
   202 { status: "accepted", event_id }                          first admission, or the same event for a repeat
   409 UZ-AGT-016 AGENTSFLEET_OPERATION_CONFLICT, current_state "admitted"   operation_id seen before with another message
 Ledger key: producer "steer", producer_key "<fleet_id>:<operation_id>"     (afd_events::steer composes it; KEY_SEPARATOR ":")
-Admissions::find_repeated(producer, key) -> Result<Option<Repeated { id, digest }>>
+Admissions::find_repeated(producer, key) -> Result<Option<Repeated { id, digest, fleet }>>
 FleetSteering::replayed(fleet, workspace, actor, request_json, operation_id) -> Result<Option<String>>   (Steer::replayed; Err is_operation_conflict on drift)
 SteerRequest = { message: string; operation_id: string }   steerFleet(ws, fleet, request, token, retry?)   steerFleetAction(ws, fleet, message, operationId)
 PendingSend = { operationId: string; text: string; state: "sending" | "refused" | "session" | "unknown"; submittedAtMs: number }
-pending-sends.ts: begin(ws, fleet, send) · settle(ws, fleet, operationId) · fail(ws, fleet, operationId, state) · dismiss(ws, fleet, operationId) · byText(ws, fleet, text) · subscribe/getSnapshot
-Storage: localStorage["agentsfleet:pending-sends:<workspaceId>:<fleetId>"] = JSON PendingSend[]
+LedgerScope = { subject: string | null; workspaceId: string; fleetId: string }   (subject = the signed-in user; null mirrors nothing)
+pending-sends.ts: beginPendingSend(scope, send) · settlePendingSend(scope, id) · failPendingSend(scope, id, state) · dismissPendingSend(scope, id) · findPendingSend(scope, id) · getPendingSends/subscribePendingSends
+Storage: localStorage["agentsfleet:pending-sends:<userId>:<workspaceId>:<fleetId>"] = JSON PendingSend[]   (24 h expiry, 20 per fleet)
 mintOperationId(): string                                    UUID v7 (`uuid` v7); throws MintUnavailable when no generator exists
-SteerComposer props: { pending: PendingSend[]; onResend(operationId): void; onDismiss(operationId): void }
+SteerComposer props: { pending: PendingSend[]; onResend(operationId): void; onDismiss(operationId): void; onRestored(operationId, text): void }
 ```
 
 ## Failure Modes
@@ -178,9 +179,9 @@ SteerComposer props: { pending: PendingSend[]; onResend(operationId): void; onDi
 | No generator | `crypto.getRandomValues` undefined | `MessageNotSentError` before the append; the draft returns, nothing is posted |
 | Storage unavailable | private mode, quota, disabled | in-memory ledger; no throw; no cross-tab sync |
 | Draft edited after the refusal | composer holds `A\nB` | no exact match → new id → one new message `A\nB`; A's entry keeps its own Resend and Dismiss |
-| Repeat on a paused fleet | admitted, then paused | `replayed` finds the key → 202 before the ingress check |
-| Repeat under a spent fleet budget | backlog at its cap | `Steer::append` finds the key before `admit` meets the budget |
-| Same key, different message | client defect or forgery | 409 `UZ-AGT-016`, nothing admitted, `steer_operation_conflict` warn without the body; two such sends racing past the read land on `admit`'s conflict arm, first wins, `admission_payload_drifted` warns |
+| Repeat on a fleet that refuses new work | admitted, then stopped or paused; or backlog at its cap | the ingress check or `admit`'s capacity refusal is followed by the key lookup → 202 with the first event |
+| Same key, different message or caller | client defect or forgery | 409 `UZ-AGT-016`, nothing admitted, `steer_operation_conflict` warn without the body; two such sends racing: one inserts, the other's read-back meets a foreign digest → 409 |
+| Shared browser | the next person signs in on the same browser | the ledger key carries the user id; they see none of it, and nothing is mirrored before the user is known |
 | Guessed id on another workspace's fleet | a caller probing | `ingress_status` answers 404 before any lookup |
 | Same id on two fleets | a client reusing ids across fleets | fleet-scoped key → two rows, each answers its own fleet |
 | Mixed daemon versions during deploy | an old daemon stored a raw key | at most one duplicate per retry crossing the deploy; no raw keys exist beforehand |
@@ -189,17 +190,17 @@ SteerComposer props: { pending: PendingSend[]; onResend(operationId): void; onDi
 
 1. Every dashboard steer carries an operation id — `SteerRequest.operation_id` is a required string; `test_steer_request_requires_operation_id`.
 2. One durable admission per (fleet, operation id) — `UNIQUE (producer, producer_key)` with the fleet inside the key; `test_steer_retry_reuses_its_admission`.
-3. A repeat runs no gate its first admission passed — lookup precedes `is_runnable` and `admit`; `test_replay_bypasses_paused_ingress`, `test_replay_bypasses_fleet_budget`.
+3. A repeat runs no gate its first admission passed — an ingress or capacity refusal is followed by the key lookup before it is returned; `test_replay_bypasses_ingress_refusal`, `test_replay_bypasses_fleet_budget`.
 4. A key never answers with another payload's event — digest compared on every read-back; `test_payload_drift_is_refused`.
 5. The ledger holds no resolved send — `settle` runs on every `ok`; `test_ledger_entry_lives_from_submit_to_ack`.
-6. No second id for text the ledger already holds — `byText` before `mint`; `test_draft_matching_pending_entry_reuses_its_id`.
+6. No second id for a restored draft sent unchanged, and no old id for new words — `useMessageDelivery` keeps the restored send, never a text match; `test_draft_matching_pending_entry_reuses_its_id`.
 
 ## Metrics & Observability
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
 | `steer_operation_conflict` (warn, `error_code=UZ-AGT-016`) | ops | a steer's digest differs from the admitted row's | fleet_id, event_id | no body, no key, no actor | `test_payload_drift_is_refused` |
-| `admission_replayed` / `AdmissionOutcome::Replayed` (existing) | ops | unchanged: fires only when `admit` itself meets the conflict; a steer answered by the read-back emits `steer_appended` no second time | unchanged | unchanged | `test_replay_bypasses_fleet_budget` |
+| `admission_replayed` / `AdmissionOutcome::Replayed` (existing) | ops | unchanged: fires for every keyed repeat that reaches the insert; a repeat answered by the lookup after a refusal emits neither it nor `steer_appended` | unchanged | unchanged | `test_replay_bypasses_fleet_budget` |
 | product analytics | not applicable — `agentsfleet.chat.submit_to_first_visible` unchanged; no funnel change | | | | `test_failed_send_resend_journey` |
 
 ## Test Specification (tiered)
@@ -213,6 +214,7 @@ SteerComposer props: { pending: PendingSend[]; onResend(operationId): void; onDi
 | 2.1 | unit | `test_ledger_entry_lives_from_submit_to_ack` | `begin` → one `sending` entry; `ok` → `settle` → empty; storage mirror empty too |
 | 2.2 | unit | `test_two_refused_sends_keep_two_entries` | real composer, A then B before A resolves, both refused → two `refused` entries, two Resend buttons, notice texts A and B |
 | 2.3 | unit | `test_ledger_survives_reload_and_syncs_tabs` | write, `vi.resetModules`, re-import → entry present as `unknown`; dispatch `storage` event with a new value → listener fired, snapshot updated |
+| 2.3 | unit | `keys the ledger by user, and mirrors nothing until the user is known` | refused as user A → user B and A's other fleet read empty; a signed-out send stays in memory; only A's key is mirrored |
 | 2.4 | unit | `test_ledger_without_storage` | `localStorage` getter throws → `begin`/`fail`/`settle` work in memory; no throw; `test_ledger_reads_empty_on_server` covers `window` undefined |
 | 2.5 | unit | `test_ledger_reads_empty_on_server` | `renderToStaticMarkup` → "no pending" |
 | 3.1 | unit | `test_resend_posts_ledger_record_once` | entry {id X, "retry this"} + draft "retry this" → Resend → action called with ("retry this", X) once; draft ""; one optimistic row; entry gone on ok |
@@ -223,8 +225,13 @@ SteerComposer props: { pending: PendingSend[]; onResend(operationId): void; onDi
 | 3.6 | unit | `test_session_failure_keeps_sign_in` | 401 → `session` entry, Sign in link, no Resend, text restored |
 | 4.1 | integration | `test_operation_ids_are_scoped_to_the_fleet` | same `operation_id` on fleets A and B → two event ids, two ledger rows, `producer_key` = `<fleet>:<id>` |
 | 4.2 | integration | `test_replay_bypasses_fleet_budget` | fleet budget 1: steer K → id A spends it; steer K again → A; `replayed(K)` → A; fresh key → capacity refusal, no row; `replayed(fresh)` → none |
-| 4.3 | integration | `test_replay_bypasses_paused_ingress` | live HTTP: steer K → 202 E; PATCH paused; steer K → 202 E; K with another message → 409 `UZ-AGT-016`, `current_state` "admitted"; fresh key → 409 `UZ-AGT-012` |
+| 4.3 | integration | `test_replay_bypasses_ingress_refusal` | live HTTP: steer K → 202 E; PATCH stopped; steer K → 202 E; K with another message → 409 `UZ-AGT-016`, `current_state` "admitted"; fresh key → 409 `UZ-AGT-012` |
+| 4.3 | integration | `test_foreign_fleet_replay_is_not_found` | workspace A steers K on its fleet → 202; workspace B sends K to A's fleet → 404, never a 409 naming the id |
 | 4.4 | integration | `test_payload_drift_is_refused` | admit K "a", admit K "b" → `OperationConflict`, `code() == UZ-AGT-016`, one ledger row, one stream entry; refusal logged with `error_code` |
+| 4.4 | integration | `test_racing_repeats_admit_once` | 16 rounds, two concurrent `append` of K with one payload → both answer one event; one ledger row |
+| 4.4 | integration | `test_racing_drift_is_refused` | 16 rounds, two concurrent `append` of K with different messages → one admitted, one `OperationConflict`; one ledger row |
+| 4.4 | integration | `test_reused_id_by_another_caller_is_refused` | actor A admits K; actor B sends K with the same message → `OperationConflict` from `append` and from `replayed`; one row |
+| 4.4 | integration | `test_a_key_another_fleet_holds_is_refused` | a row fleet Y holds under `<X>:K`; fleet X steers K → `OperationConflict`, never Y's event |
 | 4.5 | unit | `test_operation_conflict_code_registered` | `UZ-AGT-016` resolves to status 409, title, hint; the existing `test_openapi_build_is_the_source` stays green after regeneration |
 | 4.6 | unit | `should_refuse_a_steer_that_carries_no_body` | relocated with its siblings; `read_steer` behaviour unchanged |
 | 4.1 | regression | `test_steer_retry_reuses_its_admission` | the existing three-depth proof holds under the fleet-scoped key; `test_two_operation_ids_with_equal_text_admit_twice` too |
@@ -274,7 +281,7 @@ A MOVED row is never rendered ✅. The criterion has not been met; it has change
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
 | the one-slot failure record | `git grep -nwE "useFleetDeliveryFailure\|FailedDelivery\|DELIVERY_FAILURE\|__resetFleetDeliveryFailuresForTests" -- ui/packages` | 0 matches |
-| the draft-text Resend | `git grep -nw "SendFailureAction" -- ui/packages/app` | 0 matches |
+| the draft-text Resend and the text-matched id | `git grep -nwE "SendFailureAction\|findUnresolvedSendByText" -- ui/packages/app` | 0 matches |
 | the unscoped key helper in the retry test | `git grep -n "fn operation(" -- rustd/crates/afd_events/tests/integration_steer_retry.rs` | 0 matches |
 
 ## Out of Scope
