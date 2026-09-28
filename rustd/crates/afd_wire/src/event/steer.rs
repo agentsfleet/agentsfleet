@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 /// `POST /v1/workspaces/{ws}/fleets/{id}/messages` — an operator's steer.
 ///
 /// Unknown fields are refused with 400. A field this endpoint does not read is
-/// a typo or a feature it does not have, and ignoring it would let a client
-/// believe a setting took effect.
+/// a typo, or a feature it lacks. Ignoring it would let a client believe a
+/// setting took effect.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
@@ -108,7 +108,7 @@ pub struct SteerAccepted<'a> {
     #[serde(borrow)]
     pub event_id: Cow<'a, str>,
     /// Whether an earlier send of the same `operation_id` already admitted this
-    /// message, so `event_id` is that send's event — which may have run
-    /// already. `false` when this call admitted it.
+    /// message. When `true`, `event_id` is that send's event, which may have
+    /// run already. `false` when this call admitted it.
     pub replayed: bool,
 }
