@@ -45,8 +45,9 @@ type DeliveryCtx = {
   writers: PendingSendWriters;
 };
 
-/** A failed send's text and id, and the ledger it belongs to. */
-type Restored = { operationId: string; text: string; ledger: PendingSendWriters };
+/** A failed send's text and id, the ledger it belongs to, and what the
+ * composer has done with it since: shown it, and emptied it after. */
+type Restored = { operationId: string; text: string; ledger: PendingSendWriters; shown: boolean; cleared: boolean };
 
 export type MessageDelivery = {
   /** assistant-ui's `onNew`: a message the composer submitted. */
@@ -97,7 +98,7 @@ export function useMessageDelivery(ctx: DeliveryCtx): MessageDelivery {
       if (await deliver(operationId, text)) return;
       // A draft assistant-ui did not return is not this send's to reuse: the
       // same words typed later are a new message.
-      if (sends.current === send) restored.current = { operationId, text, ledger: writers };
+      if (sends.current === send) restored.current = { operationId, text, ledger: writers, shown: false, cleared: false };
       throw new MessageNotSentError();
     },
     [deliver, writers],
@@ -115,14 +116,19 @@ export function useMessageDelivery(ctx: DeliveryCtx): MessageDelivery {
   );
 
   const noteRestored = useCallback((operationId: string, text: string) => {
-    restored.current = { operationId, text, ledger: writers };
+    restored.current = { operationId, text, ledger: writers, shown: false, cleared: false };
   }, [writers]);
 
-  // An edit ends the recovery: the words the operator types next are theirs,
-  // even when they come back round to the same text. An empty composer settles
-  // nothing — it is the draft before a restore lands.
+  // An edit ends the recovery: the words the operator puts in the composer
+  // are theirs, even the same words put back after a clear. An empty composer
+  // ends nothing by itself — a Send empties it before `onNew` reads this, and
+  // before the restore lands it is simply empty.
   const noteDraft = useCallback((text: string) => {
-    if (text.length > 0 && restored.current !== null && restored.current.text !== text) restored.current = null;
+    const back = restored.current;
+    if (back === null) return;
+    if (text.length === 0) back.cleared = back.shown;
+    else if (text === back.text && !back.cleared) back.shown = true;
+    else restored.current = null;
   }, []);
 
   return useMemo(
