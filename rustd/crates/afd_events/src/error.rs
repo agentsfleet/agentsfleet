@@ -28,7 +28,7 @@ mod raise;
 
 #[cfg(feature = "test-util")]
 pub use self::raise::one_of_each_kind;
-pub(crate) use self::raise::{cursor_malformed, query, row_malformed};
+pub(crate) use self::raise::{cursor_malformed, operation_conflict, query, row_malformed};
 
 /// The result every fallible function in this crate returns.
 ///
@@ -84,6 +84,13 @@ pub(crate) enum ErrorKind {
         #[source]
         source: afd_admission::Error,
     },
+
+    /// The caller's operation id already names a different message.
+    ///
+    /// A caller fault with no source, like [`Self::CursorMalformed`]: nothing
+    /// failed underneath, the id was reused.
+    #[error("the operation id was already admitted with a different message")]
+    OperationConflict,
 }
 
 impl Error {
@@ -99,6 +106,10 @@ impl Error {
                 DETAIL_DATABASE_UNAVAILABLE,
             ),
             ErrorKind::Admission { source } => (source.code(), source.detail()),
+            ErrorKind::OperationConflict => (
+                error_code::AGENTSFLEET_OPERATION_CONFLICT,
+                DETAIL_OPERATION_CONFLICT,
+            ),
         }
     }
 
@@ -139,6 +150,15 @@ impl Error {
     pub fn is_pool_unavailable(&self) -> bool {
         matches!(self.kind(), ErrorKind::Datastore { .. })
     }
+
+    /// Whether a steer reused an operation id with a different message.
+    ///
+    /// The handler's question: this refusal is a 409 that names the state the
+    /// id is in, where every other one here renders plain.
+    #[must_use]
+    pub fn is_operation_conflict(&self) -> bool {
+        matches!(self.kind(), ErrorKind::OperationConflict)
+    }
 }
 
 /// The sentence a cursor this daemon did not mint earns.
@@ -146,3 +166,9 @@ impl Error {
 /// This crate's own, because no other plane answers it: every sibling's
 /// caller-fault sentence is about a different thing.
 const DETAIL_CURSOR: &str = "The cursor is not valid";
+
+/// The sentence a reused operation id earns.
+///
+/// Names the field and the rule, the validation shape the REST guide asks a
+/// `detail` to take, and nothing about which message came first.
+const DETAIL_OPERATION_CONFLICT: &str = "operation_id must not be reused with a different message";

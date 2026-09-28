@@ -28,6 +28,8 @@ mod integration_budgets;
 mod integration_continuation_lineage;
 #[path = "integration_steer.rs"]
 mod integration_steer;
+#[path = "integration_steer_replay.rs"]
+mod integration_steer_replay;
 #[path = "integration_steer_retry.rs"]
 mod integration_steer_retry;
 

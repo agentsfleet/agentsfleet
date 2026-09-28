@@ -203,7 +203,7 @@ A Fleet's `TRIGGER.md` declares `triggers: [...]` — an array of 1–8 trigger 
 
 In addition to the declared triggers, every Fleet always accepts:
 
-- **User steer.** The user, while in Claude, asks to run an operational task. Claude invokes `agentsfleet steer {id} "<message>"` or types into the dashboard's chat composer on `/fleets/{id}`, which POSTs to `/v1/workspaces/{ws}/fleets/{id}/messages` and `XADD`s directly to `fleet:{id}:events` with `actor=steer:<user>` — the same single-ingress path webhook and cron use.
+- **User steer.** The user, while in Claude, asks to run an operational task. Claude invokes `agentsfleet steer {id} "<message>"` or types into the dashboard's chat composer on `/fleets/{id}`, which POSTs to `/v1/workspaces/{ws}/fleets/{id}/messages` and `XADD`s directly to `fleet:{id}:events` with `actor=steer:<user>` — the same single-ingress path webhook and cron use. The dashboard names every send with an `operation_id` (a UUID v7) and keeps it in a per-fleet ledger of unresolved sends, mirrored to `localStorage`, until the 202 arrives; a retry, a Resend, or a Resend after reload carries the same id. The daemon keys it as `<fleet_id>:<operation_id>`, answers a repeat with the first event before the paused and budget checks, and refuses the same id with a different message (`UZ-AGT-016`).
 
 All actors flow through the same runtime path. The Fleet's in-run fleet loop does not branch on actor type — the same `http_request`-driven evidence gathering and Slack post happen regardless of how the work was triggered. The "morning health check" steer that ships as the create-time smoke test produces a real first-pass evidence sweep, not a canned response — the SKILL.md prose is what dictates behaviour, not the actor field.
 

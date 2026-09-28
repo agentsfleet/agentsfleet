@@ -223,6 +223,16 @@ pub const AGENTSFLEET_PAUSED_INGRESS: ErrorCode = ErrorCode::declare("UZ-AGT-012
 /// empty result for all three. A code that told them apart would be disclosing
 /// across a tenant boundary what a caller is not entitled to ask.
 pub const EVENT_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-015");
+
+/// A steer's `operation_id` names a message this fleet already admitted with
+/// different text.
+///
+/// A 409 carrying `current_state: "admitted"`. The id is the caller's name for
+/// ONE message, repeated only on its retries, so the same id with another body
+/// is a client that reused it — and answering the first message's event would
+/// tell that client its second message was delivered when it never ran. No
+/// Zig predecessor: the retired daemon had no operation id.
+pub const AGENTSFLEET_OPERATION_CONFLICT: ErrorCode = ErrorCode::declare("UZ-AGT-016");
 /// The fleet a memory request names is not one this workspace holds.
 ///
 /// `ERR_MEM_AGENTSFLEET_NOT_FOUND` (`error_registry.zig:154`).

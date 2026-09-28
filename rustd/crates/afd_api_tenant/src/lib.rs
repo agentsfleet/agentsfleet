@@ -110,7 +110,8 @@ pub fn fleet_handler_for<D: Services>(verb: FleetRoute) -> Option<MethodRouter<A
         FleetRoute::Memories => Some(get(handler::fleet::memory::list::<D>)),
         FleetRoute::Memory => Some(delete(handler::fleet::memory::forget::<D>)),
         FleetRoute::Messages => Some(
-            get(handler::fleet::message::thread::<D>).post(handler::fleet::message::steer::<D>),
+            get(handler::fleet::message::thread::<D>)
+                .post(handler::fleet::message_steer::steer::<D>),
         ),
         FleetRoute::EventsStream => Some(get(handler::stream::fleet::<D>)),
         // No PUT beside the PATCH: a schedule is edited field by field, and a
