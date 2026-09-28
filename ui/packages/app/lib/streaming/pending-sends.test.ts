@@ -196,6 +196,14 @@ describe("pending-sends ledger", () => {
     expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 
+  it("keeps a previous user's late ending out of the storage the next user purged", () => {
+    beginPendingSend(SCOPE, send("op-late", "still out"));
+    expect(getPendingSends(OTHER_USER)).toEqual([]);
+    failPendingSend(SCOPE, "op-late", PENDING_SEND_STATE.UNKNOWN);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(states()).toEqual([["op-late", PENDING_SEND_STATE.UNKNOWN]]);
+  });
+
   it("expires entries after a day, and sweeps ledgers whose entries all expired", () => {
     const old: PendingSend = { operationId: "op-old", text: "yesterday", state: PENDING_SEND_STATE.REFUSED, submittedAtMs: NOW_MS - PENDING_SEND_TTL_MS };
     const fresh: PendingSend = { operationId: "op-fresh", text: "today", state: PENDING_SEND_STATE.REFUSED, submittedAtMs: NOW_MS - HOUR_MS };

@@ -181,7 +181,7 @@ SteerComposer props: { pending: PendingSend[]; onResend(operationId): void; onDi
 | Draft edited after the refusal | composer holds `A\nB` | no exact match → new id → one new message `A\nB`; A's entry keeps its own Resend and Dismiss |
 | Repeat on a fleet that refuses new work | admitted, then stopped or paused; or backlog at its cap | the ingress check or `admit`'s capacity refusal is followed by the key lookup → 202 with the first event |
 | Same key, different message or caller | client defect or forgery | 409 `UZ-AGT-016`, nothing admitted, `steer_operation_conflict` warn without the body; two such sends racing: one inserts, the other's read-back meets a foreign digest → 409 |
-| Shared browser | the next person signs in on the same browser | the ledger key carries the user id; they see none of it, nothing is mirrored before the user is known, and their first read removes every other user's ledger from storage |
+| Shared browser | the next person signs in on the same browser | the ledger key carries the user id; they see none of it, nothing is mirrored before the user is known, and their first read removes every other user's ledger from storage; a send of the last user's that ends after that read stays in memory |
 | Guessed id on another workspace's fleet | a caller probing | `ingress_status` answers 404 before any lookup |
 | Same id on two fleets | a client reusing ids across fleets | fleet-scoped key → two rows, each answers its own fleet |
 | Mixed daemon versions during deploy | an old daemon stored a raw key | at most one duplicate per retry crossing the deploy; no raw keys exist beforehand |
