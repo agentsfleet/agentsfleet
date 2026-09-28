@@ -171,6 +171,15 @@ describe("pending-sends ledger", () => {
     expect(states(SIGNED_OUT)).toEqual([["op-memory", PENDING_SEND_STATE.REFUSED]]);
   });
 
+  it("keeps its copy when a clear arrives and storage will not be read", () => {
+    beginPendingSend(SCOPE, send("op-1", "a"));
+    failPendingSend(SCOPE, "op-1", PENDING_SEND_STATE.UNKNOWN);
+    const revoked = fakeStorage({ getItem: () => { throw new Error("revoked"); } });
+    vi.spyOn(window, "localStorage", "get").mockReturnValue(revoked);
+    otherTabWrote(null, null);
+    expect(states()).toEqual([["op-1", PENDING_SEND_STATE.UNKNOWN]]);
+  });
+
   it("keys the ledger by user, and mirrors nothing until the user is known", () => {
     beginPendingSend(SCOPE, send("op-1", "mine"));
     failPendingSend(SCOPE, "op-1", PENDING_SEND_STATE.REFUSED);
