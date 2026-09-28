@@ -68,9 +68,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | Tests beside each file above, plus `ui/packages/app/tests/fleet-thread/*.test.ts` and `ui/packages/app/tests/e2e/acceptance/fleet-resend.spec.ts` | CREATE / EDIT | One test per Dimension |
 | `ui/packages/app/tests/fleet-thread/{ledger-fixtures,steer-copy}.ts` | CREATE / EDIT | One shared ledger fixture and fake lock manager for the pending-sends suites; conflict copy |
 | `rustd/crates/afd_admission/src/{lib,admit,sql}.rs` (+ its tests) | EDIT | `Admitted` carries the stored digest and fleet; no drift warn for a steer |
-| `rustd/crates/afd_events/src/steer.rs`, `rustd/crates/afd_events/tests/integration_steer_{replay,races}.rs` | EDIT | Append decides from the insert; `replayed` travels to the handler |
-| `rustd/crates/afd_wire/src/event/steer.rs`, `rustd/crates/afd_wire/tests/validation.rs` | EDIT | `SteerAccepted.replayed`; NUL refused; the request doc matches `deny_unknown_fields` |
-| `rustd/crates/afd_api_tenant/src/handler/fleet/message_steer.rs` (+ `message_steer/tests.rs`), `rustd/crates/afd_api/tests/fleet_messages_steer.rs` | EDIT | 400 for NUL; `accepted` carries `replayed` |
+| `rustd/crates/afd_events/src/{steer,lib}.rs`, `rustd/crates/afd_events/tests/{events_suite,integration_steer,integration_steer_replay,integration_steer_retry}.rs` | EDIT | Append decides from the insert; `replayed` travels to the handler as `Steered` |
+| `rustd/crates/afd_events/tests/integration_steer_insert.rs` | CREATE | The §4 tests, split from the replay suite at its length cap |
+| `rustd/crates/afd_wire/src/{event,event/steer}.rs`, `rustd/crates/afd_wire/tests/validation.rs` | EDIT | `SteerAccepted.replayed`; NUL refused; the request doc matches `deny_unknown_fields` |
+| `rustd/crates/afd_api_tenant/src/handler/fleet/message_steer.rs` (+ `message_steer/tests.rs`), `rustd/crates/afd_api/tests/{fleet_messages_steer,fleet_lifecycle_live/message}.rs` | EDIT | 400 for NUL; `accepted` carries `replayed` |
 | `rustd/crates/afd_http/src/services/event.rs` (+ every `FleetSteering` test double) | EDIT | `append` and `replayed` answer whether the 202 is a replay — the trait is how `replayed` reaches the handler |
 | `rustd/crates/afd_wire/src/activity.rs`, `rustd/crates/afd_fleet/src/lease/activity.rs`, `rustd/crates/agentsfleetd/tests/integration_runner_activity.rs` | EDIT | Optional `call_id` accepted and republished |
 | `rustd/crates/afd_api_tenant/src/handler/stream.rs`, `public/openapi.json` | EDIT | Server-Sent Events (SSE) kind list says `chunk`; 202 schema gains `replayed` |
@@ -118,14 +119,14 @@ A send is bounded, and another tab's send is visible once its tab is gone. **Imp
 
 - **Dimension 2.1** — a 409 `UZ-AGT-016` ends in `conflict`, with no Resend offered → Test `test_operation_conflict_offers_no_resend` — DONE (chat suites 69 files / 580 tests green; ledger, delivery and composer files at 100% coverage)
 - **Dimension 2.2** — the draft a conflict returns sends under a new operation id → Test `test_conflict_draft_mints_a_new_id` — DONE (chat suites 69 files / 580 tests green; ledger, delivery and composer files at 100% coverage)
-- **Dimension 2.3** — an `operation_id` containing NUL is refused 400 before any ledger write → Test `test_nul_operation_id_is_refused`
-- **Dimension 2.4** — the `SteerRequest` doc (and OpenAPI) says unknown fields are refused, as `deny_unknown_fields` does → Test `test_steer_request_doc_matches_its_parser`
+- **Dimension 2.3** — an `operation_id` containing NUL is refused 400 before any ledger write → Test `test_nul_operation_id_is_refused` — DONE (`tenant_plane` 245 passed; the refusal precedes the store, whose outage stub would answer 503)
+- **Dimension 2.4** — the `SteerRequest` doc (and OpenAPI) says unknown fields are refused, as `deny_unknown_fields` does → Test `test_steer_request_doc_matches_its_parser` — DONE (`afd_wire` wire suite 41 passed; reads the regenerated `public/openapi.json`)
 
 ### §3 — Every reply clock ends
 
 The 202 says whether it answered an earlier admission. **Implementation default:** a replayed answer whose event is not loaded, or already complete, triggers one detail read for that event instead of waiting for frames. A reply still running with no frame for `REPLY_STALL_MS` (the stream's 45 s silence window) triggers one backfill read, through the existing settle path. The public API docs gain `replayed` on a `~/Projects/docs` branch at CHORE(close).
 
-- **Dimension 3.1** — the steer 202 carries `replayed: true` on both replay paths and `false` on a fresh admission → Test `test_steer_202_names_a_replay`
+- **Dimension 3.1** — the steer 202 carries `replayed: true` on both replay paths and `false` on a fresh admission → Test `test_steer_202_names_a_replay` — DONE (live `tenant_plane` `integration_fleet_lifecycle::message` 3 passed)
 - **Dimension 3.2** — a replayed answer for an unloaded or completed event settles its row from the detail, leaving no "Queued" row → Test `test_replayed_answer_settles_from_detail`
 - **Dimension 3.3** — a reply whose completion frame was lost on a live stream stops its Thought clock after the stall read → Test `test_lost_completion_stops_the_thought_clock`
 
@@ -133,9 +134,9 @@ The 202 says whether it answered an earlier admission. **Implementation default:
 
 The conflict insert already returns the stored `payload_digest` (`afd_admission/src/sql.rs` `INSERT_ADMISSION`). **Implementation default:** it also returns `fleet_id`, and `Admitted` carries both, so `Steer::append` compares without `find_repeated`. The paths with no insert (`replayed`, `repeat_despite`) keep their lookup. The drift warn stays for producers whose drift is a deploy, not a caller.
 
-- **Dimension 4.1** — a replayed append compares the digest and fleet from the insert and issues no second statement → Test `test_replayed_append_decides_from_its_insert`
-- **Dimension 4.2** — a replayed append can no longer answer 202 unchecked when its row is gone (the fail-open at `unwrap_or(admitted.id)` is closed) → Test `test_replayed_append_never_answers_unchecked`
-- **Dimension 4.3** — a steer reuse with a different message logs `steer_operation_conflict` with `UZ-AGT-016` and no `admission_payload_drifted`; a webhook redelivery drift still warns → Test `test_steer_reuse_is_not_an_internal_failure`
+- **Dimension 4.1** — a replayed append compares the digest and fleet from the insert and issues no second statement → Test `test_replayed_append_decides_from_its_insert` — DONE (live `events_suite` steer tests 16 passed; "no second statement" is the append path's shape, proven by the Dead Code Sweep grep, since a statement count is not observable in the lane)
+- **Dimension 4.2** — a replayed append can no longer answer 202 unchecked when its row is gone (the fail-open at `unwrap_or(admitted.id)` is closed) → Test `test_replayed_append_never_answers_unchecked` — DONE (live `events_suite` 16 passed; the stored digest and fleet are rewritten between sends)
+- **Dimension 4.3** — a steer reuse with a different message logs `steer_operation_conflict` with `UZ-AGT-016` and no `admission_payload_drifted`; a webhook redelivery drift still warns → Test `test_steer_reuse_is_not_an_internal_failure` — DONE (live `events_suite` 16 passed)
 
 ### §5 — Tool frames pair with their call
 

@@ -155,6 +155,17 @@ async fn an_unusable_operation_id_is_refused_ahead_of_the_message() {
     }
 }
 
+/// An operation id holding NUL, which the ledger's `text` column cannot store,
+/// is refused with the operation-id sentence. The store behind this router only
+/// reports an outage, so a 400 proves the refusal came before anything was
+/// admitted.
+#[tokio::test]
+async fn test_nul_operation_id_is_refused() {
+    let refused = steering(&steer_with("op\u{0}1", "ship it")).await;
+    assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(field_of(refused, "detail").await, OPERATION_ID_DETAIL);
+}
+
 /// A message past the bound is refused, and the bound is on DECODED bytes.
 ///
 /// The pair is the claim: one byte past the ceiling is refused, and a message

@@ -38,18 +38,20 @@
 //! `<fleet_id>:<operation_id>` — the composition the webhook producer already
 //! uses — and one client's id can never answer with another fleet's event.
 //!
-//! The happy path costs no extra read: the ledger's insert conflicts on a key
-//! already held and answers the first row. Only two edges look the key up.
-//! When the insert met an existing row, the row is read back so its payload
-//! can be checked — that is also what closes the race where two sends with
-//! one id both reached the insert. And when a spent budget refuses the insert,
-//! a repeat is still answered: a message already admitted is not new work.
+//! No path through the insert costs an extra read: the ledger's insert
+//! conflicts on a key already held and answers the first row, with the digest
+//! and fleet that row holds, and the repeat is checked against those. That is
+//! also what closes the race where two sends with one id both reached the
+//! insert, and no row deleted in between can make the check pass unchecked.
+//! Only the paths that never reach the insert look the key up: a spent budget,
+//! and a fleet that stopped taking work, both still answer a repeat — a
+//! message already admitted is not new work.
 //!
 //! The same id with a different payload — another message, or another sender
 //! — is refused rather than answered: the first message's event would tell the
 //! sender the second one landed.
 
-use afd_admission::{Admission, Admissions, Key, Producer, Reply};
+use afd_admission::{Admission, Admissions, Key, Producer, Repeated, Reply};
 use afd_core::error_code;
 use afd_wire::event::EventType;
 
@@ -73,6 +75,25 @@ pub const ACTOR_PREFIX: &str = "steer:";
 /// while automation did.
 pub const ACTOR_MACHINE: &str = "steer:api";
 
+/// What a steer was answered with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Steered {
+    /// The event the message became.
+    pub event_id: String,
+    /// Whether an earlier send of the same operation id already admitted it.
+    pub replayed: bool,
+}
+
+impl Steered {
+    /// The answer to a repeat: the first send's event.
+    const fn repeat(event_id: String) -> Self {
+        Self {
+            event_id,
+            replayed: true,
+        }
+    }
+}
+
 /// The ingress side of the narrative log.
 #[derive(Debug, Clone)]
 pub struct Steer {
@@ -86,7 +107,8 @@ impl Steer {
         Self { admissions }
     }
 
-    /// Puts one message on the fleet's stream, answering with its event id.
+    /// Puts one message on the fleet's stream, answering with its event id and
+    /// whether an earlier send of the same operation id already admitted it.
     ///
     /// `request_json` is the already-serialized payload; this layer does not
     /// build it, because the shape a producer sends is the producer's
@@ -105,21 +127,29 @@ impl Steer {
         actor: &str,
         request_json: &str,
         operation_id: Option<&str>,
-    ) -> Result<String> {
+    ) -> Result<Steered> {
         let key = operation_id.map(|operation| scoped_key(fleet, operation));
         let admission = steer_admission(fleet, workspace, actor, request_json, key.as_deref());
         let admitted = match self.admissions.admit(admission).await {
             Ok(admitted) => admitted,
             Err(refused) if refused.is_over_capacity() => {
-                return self.repeat_despite(&admission, refused).await;
+                return self
+                    .repeat_despite(&admission, refused)
+                    .await
+                    .map(Steered::repeat);
             }
             Err(failed) => return Err(failed.into()),
         };
         if admitted.replayed {
             // The insert met a row already under this key: a retry, or a send
             // with the same id that won the race to the insert. Its event is
-            // this caller's answer only if the payload is this caller's too.
-            return Ok(self.repeat_of(&admission).await?.unwrap_or(admitted.id));
+            // this caller's answer only if the row holds this caller's payload.
+            let stored = Repeated {
+                id: admitted.id,
+                digest: admitted.stored_digest,
+                fleet: admitted.stored_fleet,
+            };
+            return answer_repeat(&admission, stored).map(Steered::repeat);
         }
 
         // Hoisted rather than spelled inside the macro: the log bridge
@@ -133,7 +163,10 @@ impl Steer {
             event_id = id,
             event = "steer_appended",
         );
-        Ok(admitted.id)
+        Ok(Steered {
+            event_id: admitted.id,
+            replayed: false,
+        })
     }
 
     /// The event a caller's operation already became on `fleet`, or `None`
@@ -180,39 +213,43 @@ impl Steer {
         }
     }
 
-    /// The first admission's event for a keyed steer with the same payload.
-    ///
-    /// The digest covers actor, workspace and body (`Admission::payload_digest`),
-    /// so a different person reusing the id is a conflict too, never a read of
-    /// somebody else's event; and a row some other fleet holds under this key
-    /// is refused the same way rather than answered.
+    /// The first admission's event for a keyed steer with the same payload,
+    /// looked up for the paths that never reached the insert.
     async fn repeat_of(&self, admission: &Admission<'_>) -> Result<Option<String>> {
         let Key::Repeated(key) = admission.key else {
             return Ok(None);
         };
-        let Some(repeated) = self
-            .admissions
+        self.admissions
             .find_repeated(admission.producer, key)
             .await?
-        else {
-            return Ok(None);
-        };
-        if repeated.fleet == admission.fleet && repeated.digest == admission.payload_digest() {
-            return Ok(Some(repeated.id));
-        }
-        // A client that reused its own id is a defect somebody should see; the
-        // refusal itself logs at debug like every other caller fault.
-        let code = error_code::AGENTSFLEET_OPERATION_CONFLICT.as_str();
-        let fleet_id = admission.fleet;
-        let event_id = repeated.id.as_str();
-        tracing::warn!(
-            error_code = code,
-            fleet_id,
-            event_id,
-            event = "steer_operation_conflict",
-        );
-        Err(operation_conflict())
+            .map(|repeated| answer_repeat(admission, repeated))
+            .transpose()
     }
+}
+
+/// The row a steer's key already holds, as this caller's answer: its event when
+/// the payload and fleet are this caller's, a conflict otherwise.
+///
+/// The digest covers actor, workspace and body (`Admission::payload_digest`),
+/// so a different person reusing the id is a conflict too, never a read of
+/// somebody else's event; and a row some other fleet holds under this key is
+/// refused the same way rather than answered.
+fn answer_repeat(admission: &Admission<'_>, repeated: Repeated) -> Result<String> {
+    if repeated.fleet == admission.fleet && repeated.digest == admission.payload_digest() {
+        return Ok(repeated.id);
+    }
+    // A client that reused its own id is a defect somebody should see; the
+    // refusal itself logs at debug like every other caller fault.
+    let code = error_code::AGENTSFLEET_OPERATION_CONFLICT.as_str();
+    let fleet_id = admission.fleet;
+    let event_id = repeated.id.as_str();
+    tracing::warn!(
+        error_code = code,
+        fleet_id,
+        event_id,
+        event = "steer_operation_conflict",
+    );
+    Err(operation_conflict())
 }
 
 /// The ledger key a caller's operation id becomes on one fleet.

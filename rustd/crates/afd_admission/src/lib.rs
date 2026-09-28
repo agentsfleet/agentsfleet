@@ -112,6 +112,18 @@ impl Producer {
             Self::SlackMention => "slack_mention",
         }
     }
+
+    /// Whether a caller chooses this producer's key.
+    ///
+    /// Only a steer's is: its operation id is whatever the client sent, so a
+    /// different payload under it is that client's mistake, which the steer
+    /// refuses and logs as its own. Every other key is repeated by a sender
+    /// this daemon trusts, and a payload that changed under one is a deploy
+    /// that renders it differently.
+    #[must_use]
+    pub const fn is_caller_keyed(self) -> bool {
+        matches!(self, Self::Steer)
+    }
 }
 
 /// What a producer is deduplicated on.
@@ -248,6 +260,11 @@ pub struct Admitted {
     pub id: String,
     /// Whether an earlier call already admitted this key.
     pub replayed: bool,
+    /// The payload digest the row holds: the earlier call's on a replay, so a
+    /// producer can tell a retry from a different payload under one key.
+    pub stored_digest: String,
+    /// The fleet the row holds, read from the same statement.
+    pub stored_fleet: String,
 }
 
 /// The admission ledger over the database that holds it and the queue it

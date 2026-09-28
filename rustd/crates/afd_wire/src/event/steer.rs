@@ -8,10 +8,9 @@ use serde::{Deserialize, Serialize};
 
 /// `POST /v1/workspaces/{ws}/fleets/{id}/messages` — an operator's steer.
 ///
-/// Unknown fields are ignored rather than refused, which is what
-/// `parseFromSlice(.{ .ignore_unknown_fields = true })` does. A client sending
-/// a field this build does not read is not making a mistake it needs telling
-/// about.
+/// Unknown fields are refused with 400. A field this endpoint does not read is
+/// a typo or a feature it does not have, and ignoring it would let a client
+/// believe a setting took effect.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
@@ -45,9 +44,38 @@ pub struct SteerRequest<'a> {
     // forcing one would make every caller invent a value whose only job is to
     // be unique.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
-    #[garde(inner(length(bytes, min = 1, max = OPERATION_ID_MAX_BYTES)))]
+    #[garde(inner(custom(usable_operation_id)))]
     pub operation_id: Option<Cow<'a, str>>,
 }
+
+/// Whether `id` can name an operation: 1 to [`OPERATION_ID_MAX_BYTES`] bytes,
+/// none of them NUL.
+///
+/// NUL is refused here because the ledger stores the id in a Postgres `text`
+/// column, which cannot hold it: accepted, it failed the insert as a 500.
+#[must_use]
+pub fn operation_id_usable(id: &str) -> bool {
+    (1..=OPERATION_ID_MAX_BYTES).contains(&id.len()) && !id.contains(NUL)
+}
+
+/// The one character a Postgres `text` value cannot hold.
+const NUL: char = '\0';
+
+/// The garde rule over [`operation_id_usable`].
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "garde fixes the custom-validator signature at `fn(&T, &C) -> Result`; the `()` context arrives by reference because the derive passes it that way"
+)]
+fn usable_operation_id(id: &str, (): &()) -> garde::Result {
+    if operation_id_usable(id) {
+        Ok(())
+    } else {
+        Err(garde::Error::new(OPERATION_ID_UNUSABLE))
+    }
+}
+
+/// What garde reports for an unusable operation id.
+const OPERATION_ID_UNUSABLE: &str = "operation id is empty, too long, or holds NUL";
 
 /// The longest client operation identity a steer may carry.
 ///
@@ -79,4 +107,8 @@ pub struct SteerAccepted<'a> {
     /// The canonical event id the steer became.
     #[serde(borrow)]
     pub event_id: Cow<'a, str>,
+    /// Whether an earlier send of the same `operation_id` already admitted this
+    /// message, so `event_id` is that send's event — which may have run
+    /// already. `false` when this call admitted it.
+    pub replayed: bool,
 }

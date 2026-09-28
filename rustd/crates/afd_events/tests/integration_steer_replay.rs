@@ -240,7 +240,7 @@ async fn test_payload_drift_is_refused() {
         .await
         .expect_err("a reused id with another message is refused");
     // One conflict warn, carrying the code, and neither the message nor the
-    // key. The ledger's own `admission_payload_drifted` warn fires beside it.
+    // key.
     let conflicts: Vec<_> = logs
         .events()
         .into_iter()
