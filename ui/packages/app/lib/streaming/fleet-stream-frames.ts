@@ -14,6 +14,7 @@ import {
   closeReasoningSpan,
   figure,
   rowToEvent,
+  sameEvent,
   text,
   type FleetEvent,
   type FleetEventStatus,
@@ -274,22 +275,27 @@ export function mergeBackfill(
       reasoning: e.reasoning,
       reasoningStartedAtMs: e.reasoningStartedAtMs,
       reasoningEndedAtMs: e.reasoningEndedAtMs,
-      thinking: false,
+      // Unset stays unset, so a page restating the row compares equal to it.
+      thinking: e.thinking === undefined ? undefined : false,
       custom: reconciled.text.length > 0 ? reconciled.custom : e.custom,
     }, nowMs);
-    return e.tools ? { ...withBodies, tools: e.tools } : withBodies;
+    const settled = e.tools ? { ...withBodies, tools: e.tools } : withBodies;
+    // A page restating a row this thread already settled leaves its object alone.
+    return sameEvent(settled, e) ? e : settled;
   });
   const fromBackfill = rows.filter((r) => !seen.has(r.event_id)).map(rowToEvent);
   // The client's clock can trail the server's. Keep locally submitted turns
   // at the visual tail until an opening or completion frame supplies the
   // server timestamp, even when the Server Action already acknowledged them.
-  return [...fromBackfill, ...kept].sort((a, b) => {
+  const merged = [...fromBackfill, ...kept].sort((a, b) => {
     if (a.clientTimestamp) {
       return b.clientTimestamp ? 0 : 1;
     }
     if (b.clientTimestamp) return -1;
     return a.createdAt.getTime() - b.createdAt.getTime();
   });
+  // Nothing new, nothing moved: the same array, so no subscriber re-renders.
+  return merged.length === prev.length && merged.every((event, at) => event === prev[at]) ? prev : merged;
 }
 
 // The newest server-confirmed `created_at` across the rows, folded into the
