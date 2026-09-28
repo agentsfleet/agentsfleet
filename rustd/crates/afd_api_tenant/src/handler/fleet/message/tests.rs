@@ -1,11 +1,9 @@
-//! What a thread page cuts at, and what a steer's body is allowed to be.
+//! What a thread page cuts at.
 //!
-//! Both halves of this surface decide something before any datastore is
-//! reached: the read decides how many rows a page carries and which row the
-//! cursor names, and the write decides whether the bytes a client sent are a
-//! message at all. Neither decision needs Postgres or Dragonfly, so both are proven
-//! here; `fleet_messages.rs` is left proving the credential, the two rungs and
-//! the ownership layer over HTTP.
+//! The read decides how many rows a page carries and which row the cursor
+//! names before any datastore is reached, so it is proven here;
+//! `fleet_messages.rs` is left proving the credential, the two rungs and the
+//! ownership layer over HTTP. The write's body is `message_steer/tests.rs`.
 
 #![expect(
     clippy::expect_used,
@@ -14,12 +12,8 @@
 )]
 
 use afd_events::{Cursor, EventDetailRow, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT};
-use afd_wire::event::STEER_MESSAGE_MAX_BYTES;
-use axum::body::Bytes;
 
-use super::{
-    PAGE_BUDGET_BYTES, included_under_budget, page, parse_cursor, parse_limit, read_steer,
-};
+use super::{PAGE_BUDGET_BYTES, included_under_budget, page, parse_cursor, parse_limit};
 
 /// The millisecond the fixture thread's oldest row was stamped.
 const FIRST_MS: i64 = 1_700_000_000_000;
@@ -98,83 +92,6 @@ fn should_refuse_a_continuation_this_walk_did_not_issue() {
             "{forged} is not a cursor this daemon minted"
         );
     }
-}
-
-/// A steer with nothing in it is refused before the parser runs.
-#[test]
-fn should_refuse_a_steer_that_carries_no_body() {
-    read_steer(&Bytes::new()).unwrap_err();
-}
-
-/// A body this daemon cannot read is refused.
-#[test]
-fn should_refuse_a_body_that_is_not_a_message() {
-    for body in [
-        "",
-        "{",
-        "null",
-        "[]",
-        r#""hello""#,
-        "{}",
-        r#"{"message":null}"#,
-        r#"{"message":7}"#,
-    ] {
-        assert!(
-            read_steer(&Bytes::from(body.as_bytes().to_vec())).is_err(),
-            "{body} is not a steer this surface accepts"
-        );
-    }
-}
-
-/// An empty message is refused: a person pressed send on nothing.
-#[test]
-fn should_refuse_an_empty_message() {
-    read_steer(&Bytes::from_static(br#"{"message":""}"#)).unwrap_err();
-}
-
-/// An escaped message is a message, not a malformed body.
-///
-/// The regression this file exists for on the write side. `serde` hands back
-/// `Cow::Owned` for any string carrying an escape, so a reader that accepted
-/// only a borrow would refuse a newline, a quote and an emoji — which is most
-/// of what a person types into a chat box.
-#[test]
-fn should_read_a_message_that_carries_escapes() {
-    let body = Bytes::from_static(br#"{"message":"line one\nline \"two\"\tand \u2728 done"}"#);
-    assert_eq!(
-        read_steer(&body).unwrap().message,
-        "line one\nline \"two\"\tand \u{2728} done",
-    );
-}
-
-/// The length bound is on the DECODED bytes, not on what a client sent.
-///
-/// A message of newlines doubles in the encoded form: bounding the escaped
-/// bytes would refuse a message half the documented size, and the runner reads
-/// the decoded text.
-#[test]
-fn should_bound_the_decoded_bytes_and_not_the_escaped_ones() {
-    let escaped = format!(
-        r#"{{"message":"{}"}}"#,
-        r"\n".repeat(STEER_MESSAGE_MAX_BYTES)
-    );
-    let body = Bytes::from(escaped.into_bytes());
-    let read = read_steer(&body).expect("a message of newlines is under the bound once decoded");
-    assert_eq!(read.message.len(), STEER_MESSAGE_MAX_BYTES);
-}
-
-/// The bound admits its own ceiling and refuses one byte past it.
-#[test]
-fn should_admit_the_ceiling_and_refuse_one_byte_past_it() {
-    let at_the_ceiling = format!(r#"{{"message":"{}"}}"#, "a".repeat(STEER_MESSAGE_MAX_BYTES));
-    read_steer(&Bytes::from(at_the_ceiling.into_bytes()))
-        .expect("the documented ceiling is a message this surface takes");
-
-    let one_past = format!(
-        r#"{{"message":"{}"}}"#,
-        "a".repeat(STEER_MESSAGE_MAX_BYTES + 1)
-    );
-    read_steer(&Bytes::from(one_past.into_bytes())).unwrap_err();
 }
 
 /// A thread with nothing in it includes nothing.

@@ -298,3 +298,18 @@ pub(crate) const VOID_LOST_RECEIPT: &str = "\
 UPDATE core.fleet_admissions
 SET receipt = NULL, updated_at = $2
 WHERE id = $1::uuid AND receipt = $3::text AND delivered_at IS NULL";
+
+/// The admission a producer already recorded under its key, if any: its
+/// logical id's two integers and the digest it was admitted with.
+///
+/// The lookup a repeat answers from BEFORE the gates a new admission meets —
+/// a spent fleet budget, or the caller's own checks — because a key already
+/// admitted is work already accepted, and refusing its retry would tell the
+/// sender a message it owns never landed. Rides
+/// `uq_fleet_admissions_producer_key`.
+///
+/// `$1` producer, `$2` producer key.
+pub(crate) const SELECT_REPEATED: &str = "\
+SELECT created_at, seq, payload_digest
+FROM core.fleet_admissions
+WHERE producer = $1 AND producer_key = $2";

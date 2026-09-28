@@ -49,6 +49,7 @@ pub mod budget;
 mod cursor;
 pub mod error;
 mod reconcile;
+mod repeat;
 mod replay;
 pub mod sql;
 
@@ -65,6 +66,7 @@ pub use self::budget::{BudgetScope, Budgets};
 pub use self::cursor::LedgerBacklog;
 pub use self::error::{Error, Result};
 pub use self::reconcile::{DEFAULT_REPAIR_CAPACITY, Progress, Reconciled};
+pub use self::repeat::Repeated;
 pub use self::replay::Replayed;
 
 /// Who is asking a fleet to run something.

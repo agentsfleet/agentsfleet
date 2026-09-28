@@ -40,6 +40,14 @@ pub(crate) fn cursor_malformed() -> Error {
     ErrorKind::CursorMalformed.into()
 }
 
+/// Refuses an operation id already admitted with a different message.
+///
+/// A function for the reason [`cursor_malformed`] is one: the kind stays
+/// crate-private and there is nothing to bind into it.
+pub(crate) fn operation_conflict() -> Error {
+    ErrorKind::OperationConflict.into()
+}
+
 /// One [`Error`] of every kind, labelled, for a suite that grades the surface.
 ///
 /// The seam `afd_db`, `afd_dragonfly`, `afd_ingress` and `afd_cron` already
@@ -86,6 +94,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             row_malformed("event_type")(sqlx::Error::ColumnNotFound("event_type".into())),
         ),
         ("cursor malformed", cursor_malformed()),
+        ("operation conflict", operation_conflict()),
         ("queue", ErrorKind::Queue { source: queue }.into()),
         (
             "admission",

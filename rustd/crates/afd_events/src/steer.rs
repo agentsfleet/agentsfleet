@@ -31,11 +31,26 @@
 //! The absent case is a real answer and not a default nobody thought about: a
 //! timeout does not prove an operation failed, but neither does it prove one
 //! happened, and a human typing in a terminal has no operation to identify.
+//!
+//! # The key is scoped to the fleet, and a repeat is answered first
+//!
+//! `UNIQUE (producer, producer_key)` is global, so the key is
+//! `<fleet_id>:<operation_id>` — the composition the webhook producer already
+//! uses — and one client's id can never answer with another fleet's event. A
+//! repeat is read back before the ledger's own gates: a message already
+//! admitted is not new work, and a spent fleet budget refusing its retry would
+//! report as undelivered a message that is going to run. The same id with a
+//! different message is refused rather than answered: the first message's
+//! event would tell the sender the second one landed.
 
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
+use afd_core::error_code;
 use afd_wire::event::EventType;
 
-use crate::error::Result;
+use crate::error::{Result, operation_conflict};
+
+/// Joins the fleet to the caller's operation id in the ledger key.
+const KEY_SEPARATOR: &str = ":";
 
 /// The prefix every operator-driven message carries in its actor.
 ///
@@ -72,7 +87,8 @@ impl Steer {
     /// contract and not the ledger's.
     ///
     /// # Errors
-    /// Reports a database that would not record the acceptance. A queue that
+    /// Refuses an operation id already admitted with a different message, and
+    /// reports a database that would not record the acceptance. A queue that
     /// would not take the append is NOT an error — the message is already
     /// durable and the replay sweeper delivers it, which is exactly the
     /// failure the ledger exists to absorb.
@@ -84,27 +100,12 @@ impl Steer {
         request_json: &str,
         operation_id: Option<&str>,
     ) -> Result<String> {
-        let admitted = self
-            .admissions
-            .admit(Admission {
-                producer: Producer::Steer,
-                // Mapped explicitly, never by `unwrap_or`-ing into a default:
-                // `Key`'s own note warns that an `Option` lets a caller which
-                // HAS an identity lose deduplication by omission, and this is
-                // the call site that would do it.
-                key: match operation_id {
-                    Some(operation) => Key::Repeated(operation),
-                    None => Key::Unrepeatable,
-                },
-                fleet,
-                workspace,
-                actor,
-                event_type: EventType::Chat,
-                request_json,
-                // A steer is read on the event tail that carried it, never posted to a thread.
-                reply: Reply::None,
-            })
-            .await?;
+        let key = operation_id.map(|operation| scoped_key(fleet, operation));
+        let admission = steer_admission(fleet, workspace, actor, request_json, key.as_deref());
+        if let Some(repeat) = self.repeat_of(&admission).await? {
+            return Ok(repeat);
+        }
+        let admitted = self.admissions.admit(admission).await?;
 
         // Hoisted rather than spelled inside the macro: the log bridge
         // duplicates every field expression, and coverage instrumentation
@@ -118,5 +119,101 @@ impl Steer {
             event = "steer_appended",
         );
         Ok(admitted.id)
+    }
+
+    /// The event a caller's operation already became on `fleet`, or `None`
+    /// when this operation id is new.
+    ///
+    /// The handler asks this BEFORE it checks whether the fleet takes work: a
+    /// retry of a message admitted before the fleet paused is answered with
+    /// that message's event, not refused as if it never landed.
+    ///
+    /// # Errors
+    /// Refuses an id already admitted with a different message, and reports a
+    /// ledger that would not answer.
+    pub async fn replayed(
+        &self,
+        fleet: &str,
+        workspace: &str,
+        actor: &str,
+        request_json: &str,
+        operation_id: &str,
+    ) -> Result<Option<String>> {
+        let key = scoped_key(fleet, operation_id);
+        self.repeat_of(&steer_admission(
+            fleet,
+            workspace,
+            actor,
+            request_json,
+            Some(&key),
+        ))
+        .await
+    }
+
+    /// The first admission's event for a keyed steer with the same payload.
+    ///
+    /// The digest covers actor, workspace and body (`Admission::payload_digest`),
+    /// so a different person reusing the id is a conflict too, never a read of
+    /// somebody else's event.
+    async fn repeat_of(&self, admission: &Admission<'_>) -> Result<Option<String>> {
+        let Key::Repeated(key) = admission.key else {
+            return Ok(None);
+        };
+        let Some(repeated) = self
+            .admissions
+            .find_repeated(admission.producer, key)
+            .await?
+        else {
+            return Ok(None);
+        };
+        if repeated.digest == admission.payload_digest() {
+            return Ok(Some(repeated.id));
+        }
+        // A client that reused its own id is a defect somebody should see; the
+        // refusal itself logs at debug like every other caller fault.
+        let code = error_code::AGENTSFLEET_OPERATION_CONFLICT.as_str();
+        let fleet_id = admission.fleet;
+        let event_id = repeated.id.as_str();
+        tracing::warn!(
+            error_code = code,
+            fleet_id,
+            event_id,
+            event = "steer_operation_conflict",
+        );
+        Err(operation_conflict())
+    }
+}
+
+/// The ledger key a caller's operation id becomes on one fleet.
+fn scoped_key(fleet: &str, operation: &str) -> String {
+    [fleet, operation].join(KEY_SEPARATOR)
+}
+
+/// The admission a steer asks for: the same fields on the first send and on
+/// every repeat, which is what makes the digest comparison mean anything.
+fn steer_admission<'a>(
+    fleet: &'a str,
+    workspace: &'a str,
+    actor: &'a str,
+    request_json: &'a str,
+    key: Option<&'a str>,
+) -> Admission<'a> {
+    Admission {
+        producer: Producer::Steer,
+        // Mapped explicitly, never by `unwrap_or`-ing into a default: `Key`'s
+        // own note warns that an `Option` lets a caller which HAS an identity
+        // lose deduplication by omission, and this is the call site that would
+        // do it.
+        key: match key {
+            Some(repeated) => Key::Repeated(repeated),
+            None => Key::Unrepeatable,
+        },
+        fleet,
+        workspace,
+        actor,
+        event_type: EventType::Chat,
+        request_json,
+        // A steer is read on the event tail that carried it, never posted to a thread.
+        reply: Reply::None,
     }
 }
