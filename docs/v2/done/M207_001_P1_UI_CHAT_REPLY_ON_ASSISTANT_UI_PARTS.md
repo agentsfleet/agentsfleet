@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M207
 **Workstream:** 001
 **Date:** Sep 26, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing chat; a long reasoning pass reads as a hung fleet, and a failed send leaves a dead row
 **Categories:** UI
 **Batch:** B1 — sole workstream; rides PR #717 beside its composer-layout commits
