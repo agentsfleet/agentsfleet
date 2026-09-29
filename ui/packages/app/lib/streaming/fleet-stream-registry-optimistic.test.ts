@@ -35,7 +35,7 @@ describe("fleet-stream-registry — optimistic mutations", () => {
   it("reconcileOptimistic swaps tempId for the real event_id and clears optimistic", () => {
     const a = subscribe(WS, Z_A, NO_SEED, () => {});
     const tempId = appendOptimistic(Z_A, "x", "steer:k@e2e.com");
-    expect(reconcileOptimistic(Z_A, tempId, "evt_real")).toBe(false);
+    expect(reconcileOptimistic(Z_A, tempId, "evt_real", false)).toBe(false);
     const snap = getSnapshot(Z_A);
     expect(snap.events).toHaveLength(1);
     expect(snap.events[0]?.id).toBe("evt_real");
@@ -48,7 +48,7 @@ describe("fleet-stream-registry — optimistic mutations", () => {
     vi.setSystemTime(clientInstant);
     const release = subscribe(WS, Z_A, NO_SEED, () => {});
     const tempId = appendOptimistic(Z_A, "keep this turn visible", "steer:k@e2e.com");
-    reconcileOptimistic(Z_A, tempId, "evt_ack");
+    reconcileOptimistic(Z_A, tempId, "evt_ack", false);
     const newerRow = row({ event_id: "evt_other", status: "processed", created_at: Date.UTC(2026, 4, 15) });
 
     reconcileServerRows(Z_A, [newerRow]);
@@ -79,7 +79,7 @@ describe("fleet-stream-registry — optimistic mutations", () => {
       event_id: "evt_early",
       actor: "steer:k@e2e.com",
     });
-    expect(reconcileOptimistic(Z_A, tempId, "evt_early")).toBe(false);
+    expect(reconcileOptimistic(Z_A, tempId, "evt_early", false)).toBe(false);
     const events = getSnapshot(Z_A).events;
     expect(events).toHaveLength(1);
     expect(events[0]?.id).toBe("evt_early");
@@ -97,7 +97,7 @@ describe("fleet-stream-registry — optimistic mutations", () => {
       () => {},
     );
     const tempId = appendOptimistic(Z_A, "fast task", "steer:k@e2e.com");
-    expect(reconcileOptimistic(Z_A, tempId, "evt_fast")).toBe(true);
+    expect(reconcileOptimistic(Z_A, tempId, "evt_fast", false)).toBe(true);
     const events = getSnapshot(Z_A).events;
     expect(events).toHaveLength(1);
     expect(events[0]?.id).toBe("evt_fast");
@@ -114,7 +114,7 @@ describe("fleet-stream-registry — optimistic mutations", () => {
 
 describe("fleet-stream-registry — mutation edges", () => {
   it("reconcileOptimistic is a no-op for a fleet with no active subscription", () => {
-    reconcileOptimistic("never_subscribed", "temp_x", "evt_x");
+    reconcileOptimistic("never_subscribed", "temp_x", "evt_x", false);
     expect(getSnapshot("never_subscribed").events).toHaveLength(0);
   });
 
@@ -158,7 +158,7 @@ describe("fleet-stream-registry — mutation edges", () => {
     const a = subscribe(WS, Z_A, NO_SEED, () => {});
     const keep = appendOptimistic(Z_A, "first", "steer:k");
     const target = appendOptimistic(Z_A, "second", "steer:k");
-    reconcileOptimistic(Z_A, target, "evt_real");
+    reconcileOptimistic(Z_A, target, "evt_real", false);
     const snap = getSnapshot(Z_A);
     expect(snap.events.find((e) => e.id === "evt_real")?.status).toBe("received");
     expect(snap.events.find((e) => e.id === keep)?.status).toBe("optimistic");
