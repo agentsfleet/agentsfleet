@@ -1,23 +1,26 @@
-import type { ActionResult } from "@/lib/actions/with-token";
-import type { EventDetail, EventRow, LiveFrame } from "@/lib/api/events";
+import type { EventRow, LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
-import type { FleetFacts } from "@/lib/events/run-summary";
 import { factsOf } from "./fleet-stream-facts";
-import { applyLiveFrame, mergeBackfill } from "./fleet-stream-frames";
-import { applyFinalReply, applyFinalReplyText, applyReplyDelta, applyReplyGone, applyReplyRecovery } from "./fleet-stream-reply-frames";
+import {
+  applyDetail,
+  closeLivePass,
+  isGone,
+  readMissingBodies,
+  recoverFinalReply,
+  type ApplyEvents,
+  type EventDetailReader,
+} from "./fleet-stream-detail-recovery";
+import { applyLiveFrame } from "./fleet-stream-frames";
+import { applyFinalReplyText, applyReplyDelta, applyReplyGone, applyReplyRecovery } from "./fleet-stream-reply-frames";
 import type { Entry } from "./fleet-stream-entry";
-import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
+import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
 import { ReplyStreamDecoder } from "./reply-stream-decoder";
 import { STREAM_SILENCE_TIMEOUT_MS } from "./stream-recovery-window";
-
-/** A write to an entry's rows, with what the same frame said about its fleet. */
-export type ApplyEvents = (next: (prev: FleetEvent[]) => FleetEvent[], facts: Partial<FleetFacts>) => void;
 
 type ChunkFrame = Extract<LiveFrame, { kind: typeof FRAME_KIND.CHUNK }>;
 type CompleteFrame = Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_COMPLETE }>;
 
-/** Reads one event's saved detail when a streamed reply needs its final text. */
-export type EventDetailReader = (workspaceId: string, fleetId: string, eventId: string) => Promise<ActionResult<EventDetail>>;
+export type { ApplyEvents, EventDetailReader } from "./fleet-stream-detail-recovery";
 
 // The chat installs its reader here, so the registry names no transport and a
 // test can answer for it.
@@ -53,8 +56,17 @@ export function dispatchReplyFrame(
 // A completion ends the watch on its event; any other frame naming an event
 // marks it heard now.
 function markHeard(entry: Entry, frame: LiveFrame): void {
-  if (frame.kind === FRAME_KIND.EVENT_COMPLETE) entry.replyHeard.delete(frame.event_id);
-  else if ("event_id" in frame && typeof frame.event_id === "string") entry.replyHeard.set(frame.event_id, Date.now());
+  if (frame.kind === FRAME_KIND.EVENT_COMPLETE) endWatch(entry, frame.event_id);
+  else if ("event_id" in frame && typeof frame.event_id === "string") {
+    // The daemon publishes an event's frames only after writing its row.
+    entry.replyHeard.set(frame.event_id, Date.now());
+    entry.replyExists.add(frame.event_id);
+  }
+}
+
+function endWatch(entry: Entry, eventId: string): void {
+  entry.replyHeard.delete(eventId);
+  entry.replyExists.delete(eventId);
 }
 
 // One piece of a streamed reply, written through its event's decoder. A piece
@@ -106,7 +118,7 @@ function completeReply(
       // Older publishers and oversized replies still need the saved detail, and
       // a missing final chunk has no later sequence number to expose its gap.
       entry.replyGaps.add(frame.event_id);
-      recoverFinalReply(entry, fleetId, frame.event_id, apply, isCurrent);
+      recoverFinalReply(entry, fleetId, frame.event_id, apply, isCurrent, readEventDetail);
     } else entry.replyGaps.delete(frame.event_id);
   };
   const decoder = entry.replyStreams.get(frame.event_id);
@@ -125,60 +137,6 @@ function completeReply(
   void decoder.finish().then(finished, finished);
 }
 
-const TRANSIENT_MAX_RETRY_MS = 5_000;
-const FINAL_REPLY_RETRY_MS = [100, 300, TRANSIENT_MAX_RETRY_MS] as const;
-const PERMANENT_DETAIL_RETRY_MS = 60_000;
-// A read answered 404 or 410 names an event that no longer exists: the stall
-// watch and final-reply recovery both end there. The other permanent statuses
-// can heal — a fresh session, a repaired row — so recovery backs off on them.
-const HTTP_STATUS_NOT_FOUND = 404;
-const HTTP_STATUS_GONE = 410;
-const EVENT_GONE_STATUSES: ReadonlySet<number> = new Set([HTTP_STATUS_NOT_FOUND, HTTP_STATUS_GONE]);
-const PERMANENT_DETAIL_STATUSES: ReadonlySet<number> = new Set([400, 401, 403, 422]);
-
-function recoverFinalReply(
-  entry: Entry,
-  fleetId: string,
-  eventId: string,
-  apply: ApplyEvents,
-  isCurrent: () => boolean,
-): void {
-  const read = readEventDetail;
-  if (read === null || !isCurrent()) return;
-  if (entry.replyRecoveries.has(eventId)) return;
-  entry.replyRecoveries.add(eventId);
-  void (async () => {
-    try {
-      for (let attempt = 0; isCurrent(); attempt += 1) {
-        let retryMs: number = FINAL_REPLY_RETRY_MS[attempt] ?? TRANSIENT_MAX_RETRY_MS;
-        try {
-          const result = await read(entry.workspaceId, fleetId, eventId);
-          if (result.ok) {
-            if (!isCurrent()) return;
-            apply((prev) => applyDetail(prev, result.data), {});
-            entry.replyGaps.delete(eventId);
-            return;
-          }
-          // A stale session or missing event cannot heal at the transient
-          // retry cadence. Keep the draft unavailable, but check again after
-          // reauthentication or eventual detail repair without request churn.
-          if (result.status !== undefined && EVENT_GONE_STATUSES.has(result.status)) {
-            apply((prev) => applyReplyGone(prev, eventId), {});
-            return;
-          }
-          if (result.status !== undefined && PERMANENT_DETAIL_STATUSES.has(result.status)) {
-            retryMs = PERMANENT_DETAIL_RETRY_MS;
-          }
-        } catch {
-          // A transient detail failure can clear while the live stream stays up.
-        }
-        await new Promise<void>((resolve) => setTimeout(resolve, retryMs));
-      }
-    } finally {
-      entry.replyRecoveries.delete(eventId);
-    }
-  })();
-}
 
 export function markReplyGap(entry: Entry): void {
   for (const [eventId, decoder] of entry.replyStreams) {
@@ -200,18 +158,21 @@ export function settleRepliesFromBackfill(
     if (entry.replyGaps.has(row.event_id)) {
       closeLivePass(entry, row.event_id);
       apply((prev) => applyReplyRecovery(prev, row.event_id, false), {});
-      recoverFinalReply(entry, fleetId, row.event_id, apply, isCurrent);
+      recoverFinalReply(entry, fleetId, row.event_id, apply, isCurrent, readEventDetail);
       continue;
     }
     const decoder = entry.replyStreams.get(row.event_id);
-    if (decoder === undefined) continue;
+    if (decoder === undefined) {
+      readMissingBodies(entry, fleetId, row.event_id, apply, isCurrent, readEventDetail);
+      continue;
+    }
     entry.replyStreams.delete(row.event_id);
     entry.replyNextSeq.delete(row.event_id);
     void decoder.finish().then(() => {
       if (!isCurrent()) return;
       entry.replyGaps.add(row.event_id);
       apply((prev) => applyReplyRecovery(prev, row.event_id, false), {});
-      recoverFinalReply(entry, fleetId, row.event_id, apply, isCurrent);
+      recoverFinalReply(entry, fleetId, row.event_id, apply, isCurrent, readEventDetail);
     });
   }
 }
@@ -223,6 +184,8 @@ export function disposeReplyStreams(entry: Entry): void {
   entry.replyGaps.clear();
   entry.replyRecoveries.clear();
   entry.replyHeard.clear();
+  entry.replyExists.clear();
+  entry.bodyReads.clear();
 }
 
 // A running event the stream stopped telling this tab about — its completion
@@ -253,8 +216,10 @@ export function watchReply(
 export function watchRunningRows(entry: Entry, rows: readonly EventRow[]): void {
   const nowMs = Date.now();
   for (const row of rows) {
-    if (row.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED || entry.replyHeard.has(row.event_id)) continue;
-    entry.replyHeard.set(row.event_id, nowMs);
+    if (row.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED) continue;
+    // A server read showed it running, so its row exists.
+    entry.replyExists.add(row.event_id);
+    if (!entry.replyHeard.has(row.event_id)) entry.replyHeard.set(row.event_id, nowMs);
   }
 }
 
@@ -275,7 +240,9 @@ export function readStalledReplies(entry: Entry, fleetId: string, apply: ApplyEv
 // row — status and figures from the row, the answer from its text, its live
 // pass closed — and leaves the watch, as does a row something else settled or
 // an event the read found gone. Any other failed read, or a run still going,
-// changes nothing: the watch reads it again.
+// changes nothing: the watch reads it again. A 404 for an event whose row was
+// never known to exist is one still queued behind its admission — a replayed
+// send read before a runner took it — and is read again like any other miss.
 async function settleFromDetail(
   entry: Entry,
   fleetId: string,
@@ -285,7 +252,7 @@ async function settleFromDetail(
 ): Promise<void> {
   const shown = entry.snapshot.events.find((event) => event.id === eventId);
   if (shown?.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED) {
-    entry.replyHeard.delete(eventId);
+    endWatch(entry, eventId);
     return;
   }
   const read = readEventDetail;
@@ -295,27 +262,20 @@ async function settleFromDetail(
   if (!result?.ok) {
     // A failed read keeps the row as it is and reads again; a gone event ends
     // the reads and settles the row, since nothing is left to wait for.
-    if (result?.status !== undefined && EVENT_GONE_STATUSES.has(result.status)) {
-      entry.replyHeard.delete(eventId);
+    if (isGone(entry, eventId, result?.status)) {
+      endWatch(entry, eventId);
       closeLivePass(entry, eventId);
       apply((prev) => applyReplyGone(prev, eventId), {});
     }
     return;
   }
-  if (result.data.status === AGENTSFLEET_EVENT_STATUS.RECEIVED) return;
+  if (result.data.status === AGENTSFLEET_EVENT_STATUS.RECEIVED) {
+    entry.replyExists.add(eventId);
+    return;
+  }
   const detail = result.data;
-  entry.replyHeard.delete(eventId);
+  endWatch(entry, eventId);
   closeLivePass(entry, eventId);
   apply((prev) => applyDetail(prev, detail), {});
 }
 
-// A saved row over the live one: its status and figures, then its answer.
-function applyDetail(prev: FleetEvent[], detail: EventDetail): FleetEvent[] {
-  return applyFinalReply(mergeBackfill(prev, [detail]), detail);
-}
-
-function closeLivePass(entry: Entry, eventId: string): void {
-  entry.replyStreams.get(eventId)?.dispose();
-  entry.replyStreams.delete(eventId);
-  entry.replyNextSeq.delete(eventId);
-}
