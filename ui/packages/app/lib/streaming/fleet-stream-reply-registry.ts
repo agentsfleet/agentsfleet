@@ -10,13 +10,17 @@ import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
 import { ReplyStreamDecoder } from "./reply-stream-decoder";
 import { STREAM_SILENCE_TIMEOUT_MS } from "./stream-recovery-window";
 
-type Apply = (next: (prev: FleetEvent[]) => FleetEvent[], facts: Partial<FleetFacts>) => void;
+/** A write to an entry's rows, with what the same frame said about its fleet. */
+export type ApplyEvents = (next: (prev: FleetEvent[]) => FleetEvent[], facts: Partial<FleetFacts>) => void;
+
+type ChunkFrame = Extract<LiveFrame, { kind: typeof FRAME_KIND.CHUNK }>;
+type CompleteFrame = Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_COMPLETE }>;
 
 /** Reads one event's saved detail when a streamed reply needs its final text. */
 export type EventDetailReader = (workspaceId: string, fleetId: string, eventId: string) => Promise<ActionResult<EventDetail>>;
 
-// The dashboard installs its Server Action here. Importing it directly would
-// pull server-only modules into every bundle that loads the registry.
+// The chat installs its reader here, so the registry names no transport and a
+// test can answer for it.
 let readEventDetail: EventDetailReader | null = null;
 
 export function setEventDetailReader(reader: EventDetailReader | null): void {
@@ -33,54 +37,82 @@ export function dispatchReplyFrame(
   entry: Entry,
   fleetId: string,
   frame: LiveFrame,
-  apply: Apply,
+  apply: ApplyEvents,
   isCurrent: () => boolean,
 ): boolean {
-  if (frame.kind === FRAME_KIND.EVENT_COMPLETE) entry.replyHeard.delete(frame.event_id);
-  else if ("event_id" in frame && typeof frame.event_id === "string") watchReply(entry, fleetId, frame.event_id, apply, isCurrent);
+  markHeard(entry, frame);
   if (frame.kind === FRAME_KIND.CHUNK) {
-    if (entry.replyGaps.has(frame.event_id)) return true;
-    let decoder = entry.replyStreams.get(frame.event_id);
-    const seq = frame.stream_seq;
-    const textKind = frame.text_kind;
-    const expected = entry.replyNextSeq.get(frame.event_id);
-    if ((textKind !== "answer" && textKind !== "reasoning")
-      || !Number.isSafeInteger(seq) || seq === undefined || seq < 0
-      || frame.stream_contiguous !== true
-      || (decoder !== undefined && (frame.stream_start === true || seq !== expected))
-      || (decoder === undefined && (frame.stream_start !== true || seq !== 0))) {
-      decoder?.markGap();
-      entry.replyGaps.add(frame.event_id);
-      apply((prev) => applyReplyRecovery(prev, frame.event_id, frame.stream_start === true && decoder !== undefined), {});
-      return true;
-    }
-    if (decoder === undefined) {
-      decoder = new ReplyStreamDecoder((delta) => {
-        if (isCurrent()) apply((prev) => applyReplyDelta(prev, frame.event_id, delta), {});
-      });
-      entry.replyStreams.set(frame.event_id, decoder);
-    }
-    entry.replyNextSeq.set(frame.event_id, seq + 1);
-    decoder.write(frame.text, textKind);
+    writeChunk(entry, frame, apply, isCurrent);
     return true;
   }
   if (frame.kind !== FRAME_KIND.EVENT_COMPLETE) return false;
-  const finalReply = typeof frame.final_reply === "string" ? frame.final_reply : null;
-  const settle = (prev: FleetEvent[]) => {
-    const completed = applyLiveFrame(prev, frame);
-    return finalReply === null
-      ? applyReplyRecovery(completed, frame.event_id, false)
-      : applyFinalReplyText(completed, frame.event_id, finalReply);
-  };
-  const decoder = entry.replyStreams.get(frame.event_id);
+  completeReply(entry, fleetId, frame, apply, isCurrent);
+  return true;
+}
+
+// A completion ends the watch on its event; any other frame naming an event
+// marks it heard now.
+function markHeard(entry: Entry, frame: LiveFrame): void {
+  if (frame.kind === FRAME_KIND.EVENT_COMPLETE) entry.replyHeard.delete(frame.event_id);
+  else if ("event_id" in frame && typeof frame.event_id === "string") entry.replyHeard.set(frame.event_id, Date.now());
+}
+
+// One piece of a streamed reply, written through its event's decoder. A piece
+// out of sequence closes the live pass; the saved detail supplies the rest.
+function writeChunk(entry: Entry, frame: ChunkFrame, apply: ApplyEvents, isCurrent: () => boolean): void {
+  if (entry.replyGaps.has(frame.event_id)) return;
+  let decoder = entry.replyStreams.get(frame.event_id);
+  const seq = frame.stream_seq;
+  const textKind = frame.text_kind;
+  const expected = entry.replyNextSeq.get(frame.event_id);
+  if ((textKind !== "answer" && textKind !== "reasoning")
+    || !Number.isSafeInteger(seq) || seq === undefined || seq < 0
+    || frame.stream_contiguous !== true
+    || (decoder !== undefined && (frame.stream_start === true || seq !== expected))
+    || (decoder === undefined && (frame.stream_start !== true || seq !== 0))) {
+    decoder?.markGap();
+    entry.replyGaps.add(frame.event_id);
+    apply((prev) => applyReplyRecovery(prev, frame.event_id, frame.stream_start === true && decoder !== undefined), {});
+    return;
+  }
   if (decoder === undefined) {
-    apply(settle, factsOf(frame));
+    decoder = new ReplyStreamDecoder((delta) => {
+      if (isCurrent()) apply((prev) => applyReplyDelta(prev, frame.event_id, delta), {});
+    });
+    entry.replyStreams.set(frame.event_id, decoder);
+  }
+  entry.replyNextSeq.set(frame.event_id, seq + 1);
+  decoder.write(frame.text, textKind);
+}
+
+// A completion settles its row: at once when no live pass is open, else once
+// the open pass's decoder has drained.
+function completeReply(
+  entry: Entry,
+  fleetId: string,
+  frame: CompleteFrame,
+  apply: ApplyEvents,
+  isCurrent: () => boolean,
+): void {
+  const finalReply = typeof frame.final_reply === "string" ? frame.final_reply : null;
+  const settle = () => {
+    apply((prev) => {
+      const completed = applyLiveFrame(prev, frame);
+      return finalReply === null
+        ? applyReplyRecovery(completed, frame.event_id, false)
+        : applyFinalReplyText(completed, frame.event_id, finalReply);
+    }, factsOf(frame));
     if (finalReply === null) {
-      // Older publishers and oversized replies still need the saved detail.
+      // Older publishers and oversized replies still need the saved detail, and
+      // a missing final chunk has no later sequence number to expose its gap.
       entry.replyGaps.add(frame.event_id);
       recoverFinalReply(entry, fleetId, frame.event_id, apply, isCurrent);
     } else entry.replyGaps.delete(frame.event_id);
-    return true;
+  };
+  const decoder = entry.replyStreams.get(frame.event_id);
+  if (decoder === undefined) {
+    settle();
+    return;
   }
   entry.replyStreams.delete(frame.event_id);
   entry.replyNextSeq.delete(frame.event_id);
@@ -88,28 +120,24 @@ export function dispatchReplyFrame(
   // decoder's asynchronous finish so a late chunk cannot open another one.
   entry.replyGaps.add(frame.event_id);
   const finished = () => {
-    if (!isCurrent()) return;
-    apply(settle, factsOf(frame));
-    if (finalReply === null) {
-      // A missing final chunk has no later sequence number to expose its gap.
-      entry.replyGaps.add(frame.event_id);
-      recoverFinalReply(entry, fleetId, frame.event_id, apply, isCurrent);
-    } else entry.replyGaps.delete(frame.event_id);
+    if (isCurrent()) settle();
   };
   void decoder.finish().then(finished, finished);
-  return true;
 }
 
 const TRANSIENT_MAX_RETRY_MS = 5_000;
 const FINAL_REPLY_RETRY_MS = [100, 300, TRANSIENT_MAX_RETRY_MS] as const;
 const PERMANENT_DETAIL_RETRY_MS = 60_000;
-const PERMANENT_DETAIL_STATUSES: ReadonlySet<number> = new Set([400, 401, 403, 404, 410, 422]);
+// A read answered 404 names an event that no longer exists. The stall watch
+// ends there; final-reply recovery backs off with the other permanent statuses.
+const HTTP_STATUS_NOT_FOUND = 404;
+const PERMANENT_DETAIL_STATUSES: ReadonlySet<number> = new Set([400, 401, 403, HTTP_STATUS_NOT_FOUND, 410, 422]);
 
 function recoverFinalReply(
   entry: Entry,
   fleetId: string,
   eventId: string,
-  apply: Apply,
+  apply: ApplyEvents,
   isCurrent: () => boolean,
 ): void {
   const read = readEventDetail;
@@ -157,7 +185,7 @@ export function settleRepliesFromBackfill(
   entry: Entry,
   fleetId: string,
   rows: EventRow[],
-  apply: Apply,
+  apply: ApplyEvents,
   isCurrent: () => boolean,
 ): void {
   for (const row of rows) {
@@ -194,48 +222,64 @@ export function disposeReplyStreams(entry: Entry): void {
 // dropped while the stream stayed up — would keep its row running and its
 // Thought clock ticking. Each frame for the event marks it heard; the stream's
 // own traffic, every frame and heartbeat, sweeps for events unheard for
-// `REPLY_STALL_MS` and reads each one's saved row once. No timer: a stream that
-// falls silent altogether is the recovery window's to reopen. `readNow` reads
-// at once as well — a replayed send whose event may have run before this page
-// saw it — and the sweep retries a read that failed.
+// `REPLY_STALL_MS` and reads each one's saved row, once per silence window,
+// until the row ends. No timer: a stream that falls silent altogether is the
+// recovery window's to reopen. `readNow` reads at once as well — a replayed
+// send whose event may have run before this page saw it.
 export function watchReply(
   entry: Entry,
   fleetId: string,
   eventId: string,
-  apply: Apply,
+  apply: ApplyEvents,
   isCurrent: () => boolean,
-  readNow = false,
+  readNow: boolean,
 ): void {
   entry.replyHeard.set(eventId, Date.now());
   if (readNow) void settleFromDetail(entry, fleetId, eventId, apply, isCurrent);
 }
 
-/** Reads, once, every running event this tab has not heard from in `REPLY_STALL_MS`. */
-export function readStalledReplies(entry: Entry, fleetId: string, apply: Apply, isCurrent: () => boolean): void {
+/** Reads every running event this tab has not heard from in `REPLY_STALL_MS`,
+ * once per silence window. */
+export function readStalledReplies(entry: Entry, fleetId: string, apply: ApplyEvents, isCurrent: () => boolean): void {
   const nowMs = Date.now();
   for (const [eventId, heardAtMs] of entry.replyHeard) {
     if (nowMs - heardAtMs < REPLY_STALL_MS) continue;
-    entry.replyHeard.delete(eventId);
+    // Re-armed before the read: a read that fails, or finds the run still
+    // going, is tried again one silence window later, never sooner.
+    entry.replyHeard.set(eventId, nowMs);
     void settleFromDetail(entry, fleetId, eventId, apply, isCurrent);
   }
 }
 
 // One read of an event this tab still shows running. An ended run settles its
 // row — status and figures from the row, the answer from its text, its live
-// pass closed. A failed read, or a run still going, changes nothing.
+// pass closed — and leaves the watch, as does a row something else settled or
+// an event the read found gone. Any other failed read, or a run still going,
+// changes nothing: the watch reads it again.
 async function settleFromDetail(
   entry: Entry,
   fleetId: string,
   eventId: string,
-  apply: Apply,
+  apply: ApplyEvents,
   isCurrent: () => boolean,
 ): Promise<void> {
-  const read = readEventDetail;
   const shown = entry.snapshot.events.find((event) => event.id === eventId);
-  if (read === null || shown?.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED) return;
+  if (shown?.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED) {
+    entry.replyHeard.delete(eventId);
+    return;
+  }
+  const read = readEventDetail;
+  if (read === null) return;
   const result = await read(entry.workspaceId, fleetId, eventId).catch(() => null);
-  if (!result?.ok || !isCurrent() || result.data.status === AGENTSFLEET_EVENT_STATUS.RECEIVED) return;
+  if (!isCurrent()) return;
+  if (!result?.ok) {
+    // The row keeps its state either way; only a gone event stops the reads.
+    if (result?.status === HTTP_STATUS_NOT_FOUND) entry.replyHeard.delete(eventId);
+    return;
+  }
+  if (result.data.status === AGENTSFLEET_EVENT_STATUS.RECEIVED) return;
   const detail = result.data;
+  entry.replyHeard.delete(eventId);
   closeLivePass(entry, eventId);
   apply((prev) => applyDetail(prev, detail), {});
 }

@@ -119,7 +119,7 @@ The 202 says whether it answered an earlier admission. **Implementation default:
 - **Dimension 3.1** — the steer 202 carries `replayed: true` on both replay paths and `false` on a fresh admission → Test `test_steer_202_names_a_replay` — DONE (live `tenant_plane` `integration_fleet_lifecycle::message` 3 passed)
 - **Dimension 3.2** — a replayed answer for an event the page has not loaded settles its row from the detail, leaving no "Queued" row; one the page holds reads nothing → Test `test_replayed_answer_settles_from_detail` — DONE (app coverage gate 343 files / 3135 tests green at 100%; `fleet-stream-registry.stall.test.ts`)
 - **Dimension 3.3** — a reply whose completion frame was lost on a live stream stops its Thought clock after the stall read → Test `test_lost_completion_stops_the_thought_clock` — DONE (app coverage gate 343 files / 3135 tests green at 100%; `fleet-stream-registry.stall.test.ts`)
-- **Dimension 3.4** — a stall read that fails or finds the run still going reads again one silence window later; a 404 ends the watch → Test `test_stall_read_retries_each_silence_window`
+- **Dimension 3.4** — a stall read that fails or finds the run still going reads again one silence window later; a 404 ends the watch → Test `test_stall_read_retries_each_silence_window` — DONE (`make test-unit-all` ✓ app 3,216 tests, 100% coverage)
 
 ### §4 — Admission decides from its own insert
 The conflict insert already returns the stored `payload_digest` (`afd_admission/src/sql.rs` `INSERT_ADMISSION`). **Implementation default:** it also returns `fleet_id`, and `Admitted` carries both, so `Steer::append` compares without `find_repeated`. The paths with no insert (`replayed`, `repeat_despite`) keep their lookup. The drift warn stays for producers whose drift is a deploy, not a caller.
@@ -151,7 +151,7 @@ NullClaw runs a batch's calls one at a time, so two calls of one name are never 
 - **Dimension 7.2** — a backfill page returns the same row objects for unchanged terminal rows, and the same array when nothing changed → Test `test_backfill_keeps_unchanged_identity` — DONE (app coverage 100%: 8,118/8,118 statements, 4,890/4,890 branches; 232 app suites / 2,100 tests)
 - **Dimension 7.3** — a reply delta leaves its trigger message's identity alone (`reply` leaves the trigger's bag) → Test `test_reply_delta_keeps_trigger_identity` — DONE (app coverage 100%: 8,118/8,118 statements, 4,890/4,890 branches; 232 app suites / 2,100 tests)
 - **Dimension 7.4** — the composer encodes a draft once per distinct text, however often the store notifies → Test `test_draft_encoded_once_per_text` — DONE (`make test-unit-all` ✓ app 3,216 tests, 100% coverage)
-- **Dimension 7.5** — a frame is recorded before the stall sweep, so a frame ending a silence never reads its own event → Test `test_frame_ending_silence_reads_nothing`
+- **Dimension 7.5** — a frame is recorded before the stall sweep, so a frame ending a silence never reads its own event → Test `test_frame_ending_silence_reads_nothing` — DONE (`make test-unit-all` ✓ app 3,216 tests, 100% coverage)
 
 ## Interfaces
 ```
