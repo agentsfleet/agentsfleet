@@ -14,6 +14,7 @@
 
 import { credential } from "@/lib/auth/credential";
 import { API_ORIGIN } from "@/lib/api/client";
+import { ERROR_CODE } from "@/lib/errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,14 +35,21 @@ const CACHE_CONTROL_NO_STORE = "no-store";
 // other than the one this proxy exists to reach.
 const DOT_ONLY_SEGMENT = /^\.+$/;
 
+const HTTP_STATUS = {
+  OK: 200,
+  BAD_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  BAD_GATEWAY: 502,
+} as const;
+
 export async function GET(req: Request, { params }: Params) {
   const { workspaceId, fleetId, eventId } = await params;
   if ([workspaceId, fleetId, eventId].some((segment) => DOT_ONLY_SEGMENT.test(segment))) {
-    return jsonResponse(400, JSON.stringify({ error: "Invalid path parameter" }));
+    return jsonResponse(HTTP_STATUS.BAD_REQUEST, JSON.stringify({ error: "Invalid path parameter" }));
   }
 
   const token = await credential();
-  if (!token) return jsonResponse(401, JSON.stringify({ error: "Unauthorized", code: "UZ-401" }));
+  if (!token) return jsonResponse(HTTP_STATUS.UNAUTHORIZED, JSON.stringify({ error: "Unauthorized", code: ERROR_CODE.AUTH_401 }));
 
   const upstreamUrl =
     `${API_ORIGIN}/v1/workspaces/${encodeURIComponent(workspaceId)}` +
@@ -60,11 +68,11 @@ export async function GET(req: Request, { params }: Params) {
   } catch {
     // Backend unreachable (or the browser aborted mid-flight): a pinned 502
     // envelope, not an unhandled framework 500.
-    return jsonResponse(502, JSON.stringify({ error: "Upstream unreachable" }));
+    return jsonResponse(HTTP_STATUS.BAD_GATEWAY, JSON.stringify({ error: "Upstream unreachable" }));
   }
 
   if (!upstream.ok) return upstreamError(upstream);
-  return jsonResponse(200, upstream.body);
+  return jsonResponse(HTTP_STATUS.OK, upstream.body);
 }
 
 function jsonResponse(status: number, body: BodyInit | null): Response {

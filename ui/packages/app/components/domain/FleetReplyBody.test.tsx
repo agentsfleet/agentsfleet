@@ -6,7 +6,7 @@ import type { Options } from "react-markdown";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-row";
 import { FleetMarkdown } from "./FleetMarkdown";
-import { renderReplyPart, SETTLED_REPLY_STATUS, type ReplyContext } from "./FleetReplyBody";
+import { renderReplyPart, SETTLED_REPLY_STATUS, SPOKEN_REPLY_MAX_CHARS, spokenSummary, type ReplyContext } from "./FleetReplyBody";
 import { renderFleetMessage } from "./fleetMessageRenderers";
 import { toReplyMessage } from "./fleetReplyMessage";
 import { convertEvent } from "./useFleetEventStream";
@@ -108,6 +108,35 @@ describe("a reply's settling", () => {
     view.rerender(<Transcriptless status={AGENTSFLEET_EVENT_STATUS.PROCESSED} />);
     expect(screen.getByText(REPLY_TEXT)).toBeTruthy();
     expect(screen.queryByTestId(SETTLED_REPLY_STATUS)).toBeNull();
+  });
+});
+
+describe("spokenSummary", () => {
+  it("reads markdown as plain words", () => {
+    const markdown = [
+      "# Deployed",
+      "",
+      "> Ran **all** the `checks` on _main_ ~~twice~~.",
+      "",
+      "- Opened [the PR](https://example.test/pr/1) ![chart](c.png)",
+      "1. Kept `fleet_id` and __init__ as written",
+      "",
+      "---",
+      "```ts",
+      "const ok = true;",
+      "```",
+      "| a | b |",
+    ].join("\n");
+    expect(spokenSummary(markdown)).toBe(
+      "Deployed Ran all the checks on main twice. Opened the PR chart Kept fleet_id and init as written const ok = true; a b",
+    );
+  });
+
+  it("bounds a long reply at the cap", () => {
+    const long = "word ".repeat(SPOKEN_REPLY_MAX_CHARS);
+    const spoken = spokenSummary(long);
+    expect(spoken).toBe(`${long.slice(0, SPOKEN_REPLY_MAX_CHARS)}…`);
+    expect(spokenSummary("  Done.  ")).toBe("Done.");
   });
 });
 

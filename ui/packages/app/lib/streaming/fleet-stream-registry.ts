@@ -20,6 +20,7 @@ import {
   readStalledReplies,
   settleRepliesFromBackfill,
   watchReply,
+  watchRunningRows,
   type ApplyEvents,
 } from "./fleet-stream-reply-registry";
 import { HEARTBEAT_EVENT } from "./stream-recovery-window";
@@ -83,6 +84,7 @@ function adopt(workspaceId: string, fleetId: string, initial: EventRow[]): LiveE
     apply: (next, facts) => setEvents(entry, next, facts),
     isCurrent: () => REGISTRY.get(fleetId) === entry,
   };
+  watchRunningRows(entry, initial);
   REGISTRY.set(fleetId, entry);
   return entry;
 }
@@ -141,6 +143,7 @@ function recoverGap(entry: LiveEntry, fleetId: string): void {
     stillCurrent: entry.isCurrent,
     onPage: (rows) => {
       setEvents(entry, (prev) => mergeBackfill(prev, rows));
+      watchRunningRows(entry, rows);
       settleRepliesFromBackfill(entry, fleetId, rows, entry.apply, entry.isCurrent);
     },
   });
@@ -266,6 +269,7 @@ export function reconcileServerRows(fleetId: string, rows: EventRow[]): void {
   const entry = REGISTRY.get(fleetId);
   if (!entry || rows.length === 0) return;
   setEvents(entry, (prev) => mergeBackfill(prev, rows));
+  watchRunningRows(entry, rows);
 }
 
 // A server render's word on the fleet, as the page just read it. It overwrites

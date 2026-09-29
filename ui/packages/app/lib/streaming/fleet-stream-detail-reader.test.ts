@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { row } from "@/tests/helpers/fleet-stream-registry-fixtures";
+import { HTTP_STATUS_UNAUTHORIZED } from "@/lib/api/errors";
+import { ERROR_CODE } from "@/lib/errors";
 import { EVENT_DETAIL_TIMEOUT_MS, readEventDetailRoute } from "./fleet-stream-detail-reader";
 
 // The chat's detail read rides a same-origin GET, never a Server Action, so a
@@ -48,6 +50,19 @@ describe("readEventDetailRoute", () => {
   it("reports the route's status on a refusal, so a stale session or a missing event backs off", async () => {
     fetchSpy.mockResolvedValueOnce(json({ error: "not found" }, HTTP_NOT_FOUND));
     await expect(readEventDetailRoute(WS, FLEET, EVENT)).resolves.toMatchObject({ ok: false, status: HTTP_NOT_FOUND });
+  });
+
+  it("reads a signed-out redirect as a 401, never following it to the sign-in page", async () => {
+    // A fetch under `redirect: "manual"` answers a redirect as an opaque one.
+    const redirected = new Response(null, { status: 200 });
+    Object.defineProperty(redirected, "type", { value: "opaqueredirect" });
+    fetchSpy.mockResolvedValueOnce(redirected);
+    await expect(readEventDetailRoute(WS, FLEET, EVENT)).resolves.toMatchObject({
+      ok: false,
+      status: HTTP_STATUS_UNAUTHORIZED,
+      errorCode: ERROR_CODE.AUTH_401,
+    });
+    expect(fetchSpy.mock.calls[0]?.[1]?.redirect).toBe("manual");
   });
 
   it("refuses a body that is not a row", async () => {
