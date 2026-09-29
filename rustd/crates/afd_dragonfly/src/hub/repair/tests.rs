@@ -1,6 +1,6 @@
 //! The slot hash and the range lookup a repair groups channels by.
 
-use super::{SLOTS, holds, slot};
+use super::{SLOTS, holds, joined, slot};
 use crate::topology::SlotRange;
 
 /// The slots Dragonfly's `CLUSTER KEYSLOT` answered on the lane for these
@@ -37,4 +37,26 @@ fn a_range_holds_exactly_its_own_slots() {
     };
     assert!(holds(&range, 8_192) && holds(&range, 16_000));
     assert!(!holds(&range, 8_191) && !holds(&range, 16_001));
+}
+
+/// A channel a reader took up after the repair's list was read is repaired
+/// too, and one already on the list is not subscribed twice.
+#[test]
+fn a_channel_joined_since_the_list_was_read_is_repaired_once() {
+    let held = ["fleet:a:activity".to_owned(), "fleet:b:activity".to_owned()];
+    let live = vec![
+        "fleet:b:activity".to_owned(),
+        "fleet:late:activity".to_owned(),
+        "fleet:a:activity".to_owned(),
+    ];
+    assert_eq!(joined(&held, live), ["fleet:late:activity"]);
+    assert!(
+        joined(&held, Vec::new()).is_empty(),
+        "a release adds nothing"
+    );
+    assert_eq!(
+        joined(&[], vec!["fleet:late:activity".to_owned()]),
+        ["fleet:late:activity"],
+        "a hub that held nothing repairs whatever joined"
+    );
 }

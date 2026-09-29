@@ -103,6 +103,8 @@ mod hub_connect_deadline;
 mod hub_gap_faults;
 #[path = "hub_repair_faults.rs"]
 mod hub_repair_faults;
+#[path = "hub_repair_hold.rs"]
+mod hub_repair_hold;
 #[path = "hub_socket_faults.rs"]
 mod hub_socket_faults;
 #[path = "index_addressing.rs"]

@@ -11,7 +11,8 @@
 
 use afd_core::clock::UnixMillis;
 
-use afd_approval::{Decision, Resolution};
+use afd_admission::{Admissions, Budgets};
+use afd_approval::{Decision, Inbox, Resolution};
 
 use crate::lane::{Lane, NOW_MS, WINDOW_MS, sweeper_exclusive};
 
@@ -252,4 +253,73 @@ async fn a_gate_answered_long_after_its_window_still_resumes_the_run() {
         resolved.event_id,
         "the continuation names the blocked event it resumes"
     );
+}
+
+/// An approval whose continuation could not be admitted is settled by the
+/// retry: exactly one continuation lands, and a third answer lands none.
+///
+/// The first answer moves the row and then fails, so every later answer
+/// takes the already-resolved path. Without the retry landing it, the run a
+/// person approved would never restart.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_retry_lands_the_continuation_the_first_answer_could_not() {
+    let lane = Lane::isolated().await;
+    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let now = UnixMillis::from_millis(NOW_MS);
+    let before = lane.event_count().await;
+
+    // A ledger with no room refuses the continuation after the row moved.
+    let full = Budgets {
+        replay_backlog: 0,
+        ..Budgets::default()
+    };
+    let refusing = Inbox::new(
+        lane.pool.clone(),
+        lane.queue.clone(),
+        Admissions::for_tests(lane.pool.clone(), lane.queue.clone()).with_budgets(full),
+    );
+    refusing
+        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None, now)
+        .await
+        .expect_err("the continuation's admission is refused");
+    assert_eq!(lane.status_of(&action).await, "approved");
+    assert_eq!(lane.event_count().await, before, "nothing continued yet");
+
+    let retried = lane
+        .inbox
+        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None, now)
+        .await
+        .expect("the retry settles the standing approval");
+    let Resolution::AlreadyResolved(retried) = retried else {
+        unreachable!("the first answer already moved the row, got {retried:?}");
+    };
+    let continuation = retried
+        .continuation_event_id
+        .expect("the retry lands the continuation the first answer owed");
+    assert_eq!(
+        lane.event_count().await,
+        before + 1,
+        "exactly one continuation"
+    );
+    assert_eq!(
+        lane.event_column(&continuation, "resumes_event_id").await,
+        retried.event_id,
+        "the continuation names the blocked event it resumes"
+    );
+
+    let third = lane
+        .inbox
+        .resolve(&action, Decision::Approved, OTHER_OPERATOR, NOTE, None, now)
+        .await
+        .expect("a third answer reads the standing decision");
+    let Resolution::AlreadyResolved(third) = third else {
+        unreachable!("the row stays answered, got {third:?}");
+    };
+    assert_eq!(
+        third.continuation_event_id.as_deref(),
+        Some(continuation.as_str()),
+        "the third answer finds the continuation already landed"
+    );
+    assert_eq!(lane.event_count().await, before + 1, "and lands none");
 }

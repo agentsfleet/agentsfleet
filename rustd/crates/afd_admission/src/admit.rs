@@ -111,23 +111,40 @@ impl Admissions {
             );
         }
         if ledger.receipt.is_some() || !ledger.inserted {
-            // Seen before, or another daemon is inserting this very key and
-            // owns its append. Either way the first call's id stands.
-            metrics::admitted(AdmissionOutcome::Replayed);
-            tracing::debug!(
-                producer,
-                fleet_id = admission.fleet,
-                event_id,
-                event = "admission_replayed",
-            );
-            return Ok(Admitted {
-                replayed: true,
-                stored: ledger.stored,
-            });
+            return Ok(self.replayed(ledger, &admission).await);
         }
 
         self.queue_entry(&row_id, ledger.stored, &admission, now)
             .await
+    }
+
+    /// Answers a key an earlier call admitted, or one another daemon is
+    /// inserting and owns the append of. Either way the first call's id
+    /// stands.
+    ///
+    /// A receipted entry is marked again. The first call's mark is
+    /// best-effort, and a producer resending is the one caller left who can
+    /// notice it never landed: without this, a lost mark strands the entry
+    /// until the reclaim sweep reaches its fleet. The index mints a fresh
+    /// token, so a repeat is harmless. An entry with no receipt is not marked
+    /// — its append is still owed, and whoever appends it marks it.
+    async fn replayed(&self, ledger: Ledger, admission: &Admission<'_>) -> Admitted {
+        metrics::admitted(AdmissionOutcome::Replayed);
+        let producer = admission.producer.as_str();
+        let event_id = ledger.stored.id.as_str();
+        tracing::debug!(
+            producer,
+            fleet_id = admission.fleet,
+            event_id,
+            event = "admission_replayed",
+        );
+        if ledger.receipt.is_some() {
+            self.mark_ready(&ledger.stored.fleet).await;
+        }
+        Admitted {
+            replayed: true,
+            stored: ledger.stored,
+        }
     }
 
     /// The fleet budget, then the row: the queue is asked first because a
