@@ -6,6 +6,7 @@ import { MessagePrimitive, groupPartByType, type MessageState } from "@assistant
 
 import { loadingPhrase, loadingVerbFor } from "@/components/layout/loading-verbs";
 import { truncate } from "@/lib/utils";
+import { FleetFailedOutcome } from "./FleetFailedOutcome";
 import { FleetMarkdown, FleetStreamingMarkdown } from "./FleetMarkdown";
 import { FleetMessageRow, ROW_TONE } from "./FleetMessageRow";
 import { FleetThought } from "./FleetThought";
@@ -41,10 +42,6 @@ const MARKDOWN_TO_SPOKEN: ReadonlyArray<readonly [RegExp, string]> = [
   [/\|/g, " "],
   [/\s+/g, " "],
 ];
-// An outcome and an error are the dashboard's own sentences, not the model's
-// markdown, so they render as written.
-const ERRORED_TEXT_CLASS = "text-label font-medium leading-label text-foreground";
-
 // The library groups the parts: the reasoning becomes one Thought chip, and
 // adjacent tool calls one list. Module scope keeps the grouping's memo
 // fingerprint stable across renders.
@@ -93,7 +90,7 @@ export function FleetReply({
         {(info) => renderReplyPart(info, { errored, running, queued, eventId, reasoning: reasoningText(message), span })}
       </MessagePrimitive.GroupedParts>
       {answer.length === 0 && !running ? (
-        <span className={errored ? ERRORED_TEXT_CLASS : undefined}>{messageOutcome(message)}</span>
+        errored ? <FleetFailedOutcome>{messageOutcome(message)}</FleetFailedOutcome> : <span>{messageOutcome(message)}</span>
       ) : null}
       {recovering ? <output aria-label={RECOVERING_LABEL} className="text-body-sm text-text-subtle">{RECOVERING_LABEL}</output> : null}
       <ReplyActions answer={answer} settled={!running && !errored && !recovering} />
@@ -169,7 +166,7 @@ function ReplyText({ text, errored, streaming }: { text: string; errored: boolea
   );
   return (
     <>
-      {errored ? <span className={ERRORED_TEXT_CLASS}>{deferred}</span> : markdown}
+      {errored ? <FleetFailedOutcome>{deferred}</FleetFailedOutcome> : markdown}
       {streaming ? (
         <span className="ml-xs animate-pulse text-pulse" aria-label="streaming">
           {STREAM_CURSOR}
