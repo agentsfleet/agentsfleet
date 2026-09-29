@@ -21,6 +21,9 @@ use crate::support::Fixtures;
 /// The `fleet.runner_affinity` column a claim's expiry lives in.
 pub(crate) const COLUMN_LEASED_UNTIL: &str = "leased_until";
 
+/// The `fleet.runner_affinity` sticky hint: which runner last leased the fleet.
+pub(crate) const COLUMN_LAST_RUNNER: &str = "last_runner_id";
+
 /// The `fleet.runner_affinity` metering column a fresh lease resets.
 pub(crate) const COLUMN_METERED_INPUT: &str = "metered_input_tokens";
 
@@ -163,7 +166,8 @@ impl Fixtures {
         .expect("the fleet row must insert");
     }
 
-    /// One column of a `fleet.runner_affinity` row, as text.
+    /// One column of a `fleet.runner_affinity` row, as text; `None` for no row
+    /// or a NULL.
     pub(crate) async fn affinity_column(&self, fleet: &str, column: &str) -> Option<String> {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         let statement = AssertSqlSafe(format!(
@@ -174,7 +178,7 @@ impl Fixtures {
             .fetch_optional(&mut *connection)
             .await
             .expect("the affinity read must run")
-            .map(|row| row.try_get(0).expect("the column must be readable as text"))
+            .and_then(|row| row.try_get(0).expect("the column must be readable as text"))
     }
 }
 

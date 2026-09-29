@@ -60,6 +60,14 @@ pub const RELEASE_AFFINITY_SLOT: &str = "\
 UPDATE fleet.runner_affinity SET leased_until = $2, updated_at = $2
 WHERE fleet_id = $1::uuid AND fencing_seq = $3";
 
+/// [`RELEASE_AFFINITY_SLOT`] for a claim that leased nothing.
+///
+/// It drops the sticky hint too, or a fleet whose pass keeps stopping sorts
+/// first for that runner on every poll of its partition, starving the rest.
+pub const RELEASE_UNLEASED_SLOT: &str = "\
+UPDATE fleet.runner_affinity SET leased_until = $2, updated_at = $2, last_runner_id = NULL
+WHERE fleet_id = $1::uuid AND fencing_seq = $3";
+
 /// Open a lease, record the event that opened it, bump the runner's lifetime
 /// acquired tally, and — on a fresh lease — reset the slot's metering cursor,
 /// atomically.
@@ -71,14 +79,10 @@ WHERE fleet_id = $1::uuid AND fencing_seq = $3";
 ///
 /// # The meter reset rides the insert
 ///
-/// A FRESH lease starts a new billing slice, so the slot's cursor goes back to
-/// zero; a RECLAIM leaves it, because the re-leased run meters forward from
-/// where the dead holder stopped. The renewal CTE reads the cursor for each
-/// slice's delta, so a lease issued over a stale one over-charges the first
-/// renewal. In here the reset cannot fail apart from the lease — both land or
-/// neither does — and an issue pays one round trip, not two. A data-modifying
-/// CTE runs whether or not anything reads it, so the fresh flag, `$25`, is in
-/// its `WHERE`: a reclaim's reset matches no row.
+/// A FRESH lease zeroes the slot's cursor; a RECLAIM meters forward from the
+/// dead holder's, and a stale cursor over-charges the first renewal. Here the
+/// reset cannot fail apart from the lease. A data-modifying CTE runs whether
+/// or not anything reads it, so the fresh flag, `$25`, is in its `WHERE`.
 ///
 /// The lease stores no copy of the event body: the reclaim path reads it by
 /// joining `core.fleet_events` on the `(fleet_id, event_id)` unique key, so the
@@ -290,9 +294,8 @@ JOIN core.fleet_events e
 /// running a long reply keeps its mark the whole time, so without `$5` every
 /// poll that sampled it would spend a claim round trip finding that out. The
 /// comparison is the claim's own, so a slot the claim could win is never
-/// filtered. Ties break on a hash of fleet and runner rather than on age, so
-/// runners polling one partition try different fleets first instead of all
-/// racing the oldest.
+/// filtered. Ties break at random, so runners do not all race the oldest fleet
+/// and no fleet whose pass keeps stopping is tried first on every poll.
 ///
 /// The runner's labels (stored JSONB) bind as a constant `TEXT[]` via the
 /// uncorrelated subquery, so `<@` stays a `column <@ constant` shape the
@@ -316,7 +319,7 @@ WHERE z.status = $1
                 FROM fleet.runners WHERE id = $2::uuid)
              ) AS e
       )
-ORDER BY (a.last_runner_id = $2::uuid) DESC NULLS LAST, md5(z.id::text || $2::text)
+ORDER BY (a.last_runner_id = $2::uuid) DESC NULLS LAST, random()
 LIMIT $4";
 
 /// What one lease authorises a mint to reach.

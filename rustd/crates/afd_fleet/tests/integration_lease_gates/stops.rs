@@ -9,7 +9,7 @@ use afd_approval::{Decision, Inbox, Resolution};
 use afd_crypto::entropy::Entropy;
 use afd_dragonfly::ReadyIndex;
 
-use crate::lease_reads::COLUMN_LEASED_UNTIL;
+use crate::lease_reads::{COLUMN_LAST_RUNNER, COLUMN_LEASED_UNTIL};
 
 /// An event type this build does not know, refused before any money is read.
 const EVENT_TYPE_UNKNOWN: &str = "fixture-unknown";
@@ -46,6 +46,14 @@ async fn test_stop_releases_the_claim() {
             .await,
         Some(ENROLLED_AT.to_string()),
         "the refusal freed the claim at its own instant, not a claim's lifetime later"
+    );
+    assert_eq!(
+        fixtures
+            .affinity_column(&seeded.fleet, COLUMN_LAST_RUNNER)
+            .await,
+        None,
+        "a claim that ran nothing leaves no sticky hint, or a fleet that keeps \
+         stopping would be tried first for this runner on every poll"
     );
 
     // One millisecond on is the next poll; a held claim would refuse it.
