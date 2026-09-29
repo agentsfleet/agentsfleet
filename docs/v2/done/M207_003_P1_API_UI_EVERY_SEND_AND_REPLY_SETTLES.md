@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M207
 **Workstream:** 003
 **Date:** Sep 28, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing: a hung send blocks a fleet's chat until reload, a Thought clock can run forever, and a refused reuse invites a Resend that can never land
 **Categories:** API, UI
 **Batch:** B1 — sole workstream; the follow-up that M207_001 and M207_002 deferred to
@@ -143,8 +143,8 @@ NullClaw runs a batch's calls one at a time, so two calls of one name are never 
 - **Dimension 6.3** — a live byte count shows from 90% of the limit, and Send is disabled over it → Test `test_byte_limit_counter_and_disabled_send` — DONE (`SteerComposer.test.tsx`)
 - **Dimension 6.4** — Alert's Dismiss is at least 24×24 CSS px (Web Content Accessibility Guidelines (WCAG) 2.2 target size) → Test `test_dismiss_target_is_24px` — DONE (design-system coverage 100%: 497/497 statements, 513/513 branches; 60 files / 639 tests)
 - **Dimension 6.5** — the wait verb is hidden from assistive tech; the status is still named "Working" or "Queued" → Test `test_wait_verb_is_not_announced` — DONE (`tests/fleet-thread/role-turns.test.ts`)
-- **Dimension 6.6** — a focused control on a settled row shows its whole focus ring → Test `test_settled_row_keeps_its_focus_ring` — IMPLEMENTED; the e2e runs in the DEV acceptance lane (`fleet-reply-parts.spec.ts`). Local Chromium geometry check of the `tokens.css` rule under Tailwind's layering: content x and width unchanged, ring inside the painted box, no horizontal scroll
-- **Dimension 6.7** — a `/design-review` pass on the notice and reply rows records its ink-hierarchy findings, each fixed or listed → Test `manual_ink_hierarchy_review`
+- **Dimension 6.6** — a focused control on a settled row shows its whole focus ring → Test `test_settled_row_keeps_its_focus_ring` — DONE; **VERIFY AFTER DEV DEPLOY:** run `fleet-reply-parts.spec.ts` in the DEV acceptance lane once this branch is on DEV (Indy's call, Discovery §Deferrals, 2026-09-29). The e2e runs in the DEV acceptance lane (`fleet-reply-parts.spec.ts`). Local Chromium geometry check of the `tokens.css` rule under Tailwind's layering: content x and width unchanged, ring inside the painted box, no horizontal scroll
+- **Dimension 6.7** — a `/design-review` pass on the notice and reply rows records its ink-hierarchy findings, each fixed or listed → Test `manual_ink_hierarchy_review` — DONE; **VERIFY AFTER DEV DEPLOY:** Kishore runs `/design-review` on the notice and reply rows on DEV and fixes or lists each finding (Indy's call, Discovery §Deferrals, 2026-09-29)
 
 ### §7 — Streaming stays cheap
 - **Dimension 7.1** — a progress frame for a running tool returns the same timeline array; only a completion changes it → Test `test_progress_frame_keeps_identity` — DONE (app coverage 100%: 8,104/8,104 statements, 4,861/4,861 branches; 343 files / 3,137 tests)
@@ -159,7 +159,7 @@ POST /live/v1/workspaces/{ws}/fleets/{fleet}/messages   same-origin; body {messa
 GET  /live/v1/workspaces/{ws}/fleets/{fleet}/events/{event_id}   same-origin detail read; upstream status passed through
 POST /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages
   202 { "status": "accepted", "event_id": "<millis>-<seq>", "replayed": false }   (true on either replay path)
-  400 operation_id containing NUL — existing sentence, "operation_id must be between 1 and 200 bytes …"
+  400 operation_id containing NUL — one sentence naming every rule, "operation_id, when sent, must be 1 to 200 bytes with no NUL character; omit it to send without retry protection" (Indy, 2026-09-29: "let the error text be meaningful")
   400 message over 8192 bytes or containing NUL — "message must not exceed 8192 bytes or contain a NUL character"
   409 UZ-AGT-016 unchanged
 Runner activity (POST /v1/runners/me/leases/{lease_id}/activity) and SSE tool frames:
@@ -297,8 +297,12 @@ PendingSend.state += "conflict" | "dismissed"            (browser ledger)
 ## Discovery (consult log)
 - **Consults** — scope set by Kishore's deferral below. Clerk DEV runs one session per browser (`single_session_mode: true`, public `/v1/environment`, Sep 28); production is unverified and matters for §1's lock names only in that one user owns a tab. Source facts read at `5a68c5518` for every item.
 - **Metrics review** — no new events; the reused-id warn is reclassified (Metrics table). No analytics/funnel playbook update required: no funnel step changes.
-- **Skill-chain outcomes** — pending.
+- **Skill-chain outcomes** — gstack `/review` ran Sep 29, 2026 over the whole branch (392 files) with five reviewers: Rust runtime, security/SQL/API, UI, tests/maintainability, adversarial. Fixed on this branch: the double lease (lease insert fenced on the claim, `4f5c20abb`); a claim held 30 s after a post-claim fault; the approval sweep stranding decoded rows; a subscribe during a node repair going silent; an idle-hub blip forcing a redial; a lost readiness mark on a replayed send; a retried resolve not waking or not landing its continuation (`c6cad15b9`); a server-rendered running reply never stall-watched, a gone reply loading forever, signed-out recovery polling sign-in, Working/Queued unannounced, raw-markdown announcements (`e1e5206b4`); the `operation_id` 400 naming every rule (`c52ff6180`); seven test-quality fixes (`3a07491aa`). Kept by decision: a node blip gaps every channel (Dimension 5.2, option A); a failed wall backfill keeps "catching up" until the next reconnect (tests from `28c25baec`). Listed, not fixed: four sibling routes still answer `UZ-401`; five near-identical tracing recorders across test trees; `Handles::claim` over the 70-line cap (pre-existing); a spurious gap when a channel is unsubscribed and resubscribed before the echo; streaming markdown re-parses finished blocks after a discarded render. `/orly-write-unit-test` was not run as its own pass: the per-file coverage bar (Rust >99% outside `afd_bench`, TypeScript 100%) and a failing-first test per review fix stand in. Final `verify.*` lanes run in Continuous Integration (CI), per Indy (2026-09-29): "dont run repeatedly, if you are done with push the PR with /review and so on, let the CI hand it."
 - **Coverage, per Kishore's bar (TypeScript 100%, Rust patch > 99%)** — app package 100% (8,118/8,118 statements, 4,890/4,890 branches, 2,193/2,193 functions, 7,179/7,179 lines; `vitest --coverage` JSON summary). Rust patch 110/110 instrumented added lines = 100.00%: `make test-coverage-rustd` (exit 0; workspace 97.8505%, 42,883/43,825) wrote `rustd/lcov.info`, crossed with `git diff -U0 origin/main...HEAD -- '*.rs'`.
+- **Post-deploy verification (6.6, 6.7)** — both need the branch on DEV, which only a merge puts there. Indy closed the spec with a prompt to verify after the DEV deploy:
+
+> Indy (2026-09-29 21:42): "Move M207_004 to done, and M207_003 with a prompt to verify after DEV is deploy. I want all specs you worked on to be done. Record the update that Indy mentioned." — context: answer to an AskUserQuestion on shipping the PR with Dimensions 6.6 (focus-ring e2e on DEV) and 6.7 (`/design-review` on DEV) open
+
 - **Deferrals** — this spec carries the items deferred from M207_001 and M207_002:
 
 > Indy (2026-09-28 10:51): "go" — context: answer to an AskUserQuestion recommending that the M207 edge cases (F6, F7, F12, F13, dismissed-send tombstones, the 409 Resend loop, `Admitted` carrying the digest, the drift warn's class, polish and render cost) move to follow-up spec M207_003.
