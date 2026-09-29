@@ -67,16 +67,20 @@ describe("fleet-stream-registry — watermark", () => {
     a();
   });
 
-  it("holds a single backfill in flight across overlapping reconnect opens", async () => {
+  it("holds a single backfill in flight across overlapping reconnect opens, then walks once more", async () => {
     const pendingFetch = Promise.withResolvers<unknown>();
     fetchSpy.mockReturnValueOnce(pendingFetch.promise);
+    fetchSpy.mockResolvedValueOnce(pageWith([]));
     const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
     const es1 = reconnect();
     reconnectAgain(es1);
     await flushBackfill();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+    // The second open may have lost frames after the first walk read its
+    // window, so one more walk follows it.
     pendingFetch.resolve(pageWith([]));
     await flushBackfill();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
     a();
   });
 

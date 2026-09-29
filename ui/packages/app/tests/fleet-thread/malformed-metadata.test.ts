@@ -138,12 +138,14 @@ describe("FleetThread — robustness against malformed metadata", () => {
     expect(container.querySelector('[data-role="user"]')).toBeNull();
   });
 
-  it("viewport carries role=log, aria-live=polite, aria-label", () => {
+  // A streamed reply rewrites the log on every flush, so it is not a live
+  // region; a settled reply is announced by the status beside it.
+  it("viewport carries role=log, aria-live=off, aria-label", () => {
     mockStream([ev({ role: "system", actor: "config_reload", text: "ok" })]);
     const { container } = renderThread();
     const viewport = container.querySelector('[role="log"]');
     expect(viewport).toBeTruthy();
-    expect(viewport?.getAttribute("aria-live")).toBe("polite");
+    expect(viewport?.getAttribute("aria-live")).toBe("off");
     expect(viewport?.getAttribute("aria-label")).toBe("Chat");
   });
 

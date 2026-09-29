@@ -1,12 +1,12 @@
 import type {
   EventRow,
-  FleetCountersSnapshot,
   WorkspaceControlFrame,
   WorkspaceLiveFrame,
 } from "@/lib/api/events";
 import type { ConnectionStatus } from "@/lib/streaming/fleet-stream-registry";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import type { WorkspaceConnectionStatus } from "@/lib/streaming/workspace-stream";
+import type { TileCounters, WorkspaceTileSnapshot } from "@/lib/streaming/workspace-tile";
 
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { capEvents } from "@/lib/streaming/fleet-stream-cap";
@@ -23,32 +23,13 @@ import {
   subscribeWorkspaceFrames,
   WORKSPACE_CONNECTION_STATUS,
 } from "@/lib/streaming/workspace-stream";
+import { feedOf, isMidRunFrame, mergeCounters, sameTile } from "@/lib/streaming/workspace-tile";
 
 export type Listener = () => void;
-
-/**
- * The tile footer: where the fleet stands, as the last frame said.
- *
- * Server truth, assigned from whichever frame arrived last and never added
- * to. `undefined` until the stream has said anything about the fleet, so the
- * tile keeps rendering the server-rendered figures rather than a zero.
- */
-export type TileCounters = {
-  spentNanos: number;
-  eventsProcessed: number;
-};
-
-export type WorkspaceTileSnapshot = {
-  events: FleetEvent[];
-  connectionStatus: ConnectionStatus;
-  helloReceived: boolean;
-  isLive: boolean;
-  catchingUp: boolean;
-  counters: TileCounters | undefined;
-};
+export type { TileCounters, WorkspaceTileSnapshot };
 
 const EMPTY_TILE: WorkspaceTileSnapshot = Object.freeze({
-  events: [],
+  feed: undefined,
   connectionStatus: CONNECTION_STATUS.CONNECTING,
   helloReceived: false,
   isLive: true,
@@ -68,31 +49,6 @@ const EMPTY_WORKSPACE: WorkspaceStreamSnapshot = Object.freeze({
   catchingUp: false,
 });
 
-/**
- * A counter as the daemon writes one: a whole, non-negative number a JSON
- * payload can carry exactly. Anything else is not a counter, whatever the
- * frame calls it.
- */
-function isCounter(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-}
-
-/**
- * The snapshot a frame carries, or nothing. Both fields or neither: the
- * daemon flattens an optional pair, so a frame with one number and not the
- * other is malformed and is treated as carrying none — the figures already
- * standing stay, and nothing is guessed. The wire is untrusted, so the carrier
- * itself is checked before it is read: a hello whose map holds `null` for a
- * fleet must not throw halfway through applying the greeting.
- */
-function readCounters(carried: unknown): TileCounters | undefined {
-  if (typeof carried !== "object" || carried === null) return undefined;
-  const { events_processed: eventsProcessed, budget_used_nanos: spentNanos } =
-    carried as FleetCountersSnapshot;
-  if (!isCounter(eventsProcessed) || !isCounter(spentNanos)) return undefined;
-  return { eventsProcessed, spentNanos };
-}
-
 export { EMPTY_TILE, EMPTY_WORKSPACE };
 
 export class WorkspaceStore {
@@ -104,7 +60,9 @@ export class WorkspaceStore {
   // Bounded on both axes: a key only for a subscribed fleet, since frames and
   // backfill rows reach the store through the subscriptions `connect` opened
   // and nothing else; and `capEvents` on every write, so a tab left open on a
-  // busy fleet keeps a window rather than a history.
+  // busy fleet keeps a window rather than a history. The wall's own rows: they
+  // order the feed and hold nothing a tile does not show, so a reply's chunks
+  // and tool calls never land here once their row is open.
   #eventsByFleet = new Map<string, FleetEvent[]>();
   #countersByFleet = new Map<string, TileCounters>();
   #snapshots = new Map<string, WorkspaceTileSnapshot>();
@@ -178,16 +136,28 @@ export class WorkspaceStore {
   snapshot(fleetId: string): WorkspaceTileSnapshot {
     const cached = this.#snapshots.get(fleetId);
     if (cached) return cached;
-    const next: WorkspaceTileSnapshot = {
-      events: this.#eventsByFleet.get(fleetId) ?? [],
+    const next = this.#project(fleetId);
+    this.#snapshots.set(fleetId, next);
+    return next;
+  }
+
+  #project(fleetId: string): WorkspaceTileSnapshot {
+    return {
+      feed: feedOf(this.#eventsByFleet.get(fleetId)),
       connectionStatus: this.#status,
       helloReceived: this.#helloReceived,
       isLive: !this.#helloReceived || this.#liveFleetIds.has(fleetId),
       catchingUp: this.#catchingUp,
       counters: this.#countersByFleet.get(fleetId),
     };
-    this.#snapshots.set(fleetId, next);
-    return next;
+  }
+
+  // A tile is told only when what it shows moved; otherwise it keeps the
+  // snapshot it holds, and `useSyncExternalStore` renders nothing.
+  #retile(fleetId: string) {
+    const cached = this.#snapshots.get(fleetId);
+    if (cached !== undefined && sameTile(cached, this.#project(fleetId))) return;
+    this.#notifySoon(fleetId);
   }
 
   #invalidateWorkspace() {
@@ -259,43 +229,35 @@ export class WorkspaceStore {
         }
       }
     } else {
-      const catchingUp = frame.dropped > 0;
-      if (catchingUp === this.#catchingUp) return;
-      this.#catchingUp = catchingUp;
+      // Every catching-up frame is a gap: frames dropped behind a slow tab, or
+      // a subscription lost and re-established, whose missed count is
+      // unknowable and arrives as 0. The backfill it starts, or the next
+      // greeting, clears it.
+      if (this.#catchingUp) return;
+      this.#catchingUp = true;
     }
     this.#notifySoon();
   }
 
   #applyFleetFrame(fleetId: string, frame: WorkspaceLiveFrame) {
-    const events = capEvents(applyLiveFrame(this.#eventsByFleet.get(fleetId) ?? [], frame));
-    this.#eventsByFleet.set(fleetId, events);
+    const held = this.#eventsByFleet.get(fleetId) ?? [];
+    // A chunk or a tool call for a row the wall already holds changes nothing
+    // a tile shows. Anything else is folded as before: a chunk for a row the
+    // wall has not seen opens it, so the feed line reads as it always did.
+    if (isMidRunFrame(frame) && held.some((event) => event.id === frame.event_id)) return;
+    this.#eventsByFleet.set(fleetId, capEvents(applyLiveFrame(held, frame)));
     // Only the four daemon-authored frames carry the snapshot; a runner's
     // mid-run frame says nothing about where the fleet stands.
     if ("events_processed" in frame || "budget_used_nanos" in frame) {
       this.#assignCounters(fleetId, frame);
     }
-    this.#notifySoon(fleetId);
+    this.#retile(fleetId);
   }
 
-  // ASSIGNED, never added to. Every daemon frame carries the whole truth, so
-  // the same frame twice leaves the tile where it was — the reason no frame
-  // owns an increment. Both counters only ever grow on the server, so what
-  // is kept is the GREATER of the standing figure and the carried one: a
-  // frame that crossed a `hello` in flight, or two publishers whose reads
-  // and publishes interleaved, cannot walk a tile backwards.
   #assignCounters(fleetId: string, carried: unknown) {
-    const counters = readCounters(carried);
-    if (counters === undefined) return;
     const standing = this.#countersByFleet.get(fleetId);
-    this.#countersByFleet.set(
-      fleetId,
-      standing === undefined
-        ? counters
-        : {
-            eventsProcessed: Math.max(standing.eventsProcessed, counters.eventsProcessed),
-            spentNanos: Math.max(standing.spentNanos, counters.spentNanos),
-          },
-    );
+    const merged = mergeCounters(standing, carried);
+    if (merged !== undefined && merged !== standing) this.#countersByFleet.set(fleetId, merged);
   }
 
   async #backfill(workspaceId: string, anchorMs: number | null, generation: number) {
@@ -304,7 +266,7 @@ export class WorkspaceStore {
         workspaceId,
         anchorMs,
         stillCurrent: () => this.#generation === generation,
-        onPage: (rows) => this.#applyBackfillPage(rows),
+        onPage: (rows) => this.#applyBackfillRows(rows),
       });
       if (outcome.ok && this.#generation === generation) {
         if (outcome.watermark !== null) noteServerFrameTime(workspaceId, outcome.watermark);
@@ -318,7 +280,7 @@ export class WorkspaceStore {
     }
   }
 
-  #applyBackfillPage(rows: EventRow[]) {
+  #applyBackfillRows(rows: EventRow[]) {
     const rowsByFleet = new Map<string, EventRow[]>();
     for (const row of rows) {
       if (!this.#subscribedFleetIds.has(row.fleet_id)) continue;
@@ -329,7 +291,7 @@ export class WorkspaceStore {
     for (const [fleetId, fleetRows] of rowsByFleet) {
       const events = capEvents(mergeBackfill(this.#eventsByFleet.get(fleetId) ?? [], fleetRows));
       this.#eventsByFleet.set(fleetId, events);
-      this.#notifySoon(fleetId);
+      this.#retile(fleetId);
     }
   }
 

@@ -1,11 +1,11 @@
 "use client";
 
-import { memo, useDeferredValue, type ReactNode } from "react";
+import { createContext, memo, useContext, useDeferredValue, useEffect, useRef, useState, type ReactNode } from "react";
 import { BrailleSpinner, CopyButton } from "@agentsfleet/design-system";
 import { MessagePrimitive, groupPartByType, type MessageState } from "@assistant-ui/react";
 
 import { loadingPhrase, loadingVerbFor } from "@/components/layout/loading-verbs";
-import { FleetMarkdown } from "./FleetMarkdown";
+import { FleetMarkdown, FleetStreamingMarkdown } from "./FleetMarkdown";
 import { FleetMessageRow, ROW_TONE } from "./FleetMessageRow";
 import { FleetThought } from "./FleetThought";
 import { ToolCallList, ToolCallRow } from "./FleetToolCalls";
@@ -21,6 +21,10 @@ const QUEUED_LABEL = "Queued";
 const COPY_REPLY_LABEL = "Copy reply";
 const RECOVERING_LABEL = "Loading final reply; retrying if needed…";
 const DEFAULT_SENDER = "Fleet";
+export const SETTLED_REPLY_STATUS = "settled-reply-status";
+// Long enough for a screen reader to queue what the status says; any longer and
+// the copy only repeats the reply to someone browsing the page.
+export const ANNOUNCEMENT_HOLD_MS = 7_000;
 // An outcome and an error are the dashboard's own sentences, not the model's
 // markdown, so they render as written.
 const ERRORED_TEXT_CLASS = "text-label font-medium leading-label text-foreground";
@@ -59,9 +63,12 @@ export function FleetReply({
   const queued = readQueued(message);
   const eventId = message.id.endsWith(REPLY_ID_SUFFIX) ? message.id.slice(0, -REPLY_ID_SUFFIX.length) : message.id;
   useFirstVisiblePaint(eventId, readSubmittedAtMs(message), message.content.length > 0);
+  const sender = senderLabel || DEFAULT_SENDER;
+  // Spoken the way the row reads: who replied, then what they said.
+  useSettleAnnouncement(!running && !recovering, `${sender}: ${answer.length > 0 ? answer : messageOutcome(message)}`);
   return (
     <FleetMessageRow
-      sender={senderLabel || DEFAULT_SENDER}
+      sender={sender}
       tone={ROW_TONE.FLEET}
       messageRole="assistant"
       failed={errored}
@@ -132,12 +139,21 @@ function reasoningText(message: MessageState): string {
  * What the fleet said. Parsing a growing answer is the reply's heaviest
  * render, so it is deferred: React 19 `useDeferredValue` lets typing and
  * scrolling interrupt it, and the markdown catches up on the next idle frame.
+ * While it streams, only its open block is parsed per flush; once settled it
+ * is parsed whole, once. `streaming` is deferred with the text, so the settled
+ * parse reads the final answer rather than the flush before it.
  */
 function ReplyText({ text, errored, streaming }: { text: string; errored: boolean; streaming: boolean }) {
   const deferred = useDeferredValue(text);
+  const deferredStreaming = useDeferredValue(streaming);
+  const markdown = deferredStreaming ? (
+    <FleetStreamingMarkdown text={deferred} />
+  ) : (
+    <FleetMarkdown>{deferred}</FleetMarkdown>
+  );
   return (
     <>
-      {errored ? <span className={ERRORED_TEXT_CLASS}>{deferred}</span> : <FleetMarkdown>{deferred}</FleetMarkdown>}
+      {errored ? <span className={ERRORED_TEXT_CLASS}>{deferred}</span> : markdown}
       {streaming ? (
         <span className="ml-xs animate-pulse text-pulse" aria-label="streaming">
           {STREAM_CURSOR}
@@ -175,6 +191,49 @@ const ReplyActions = memo(function ReplyActions({
     </div>
   );
 });
+
+// A reply reports its own settling: only it knows it was seen running. The
+// default does nothing, for a reply drawn outside a transcript.
+const AnnounceSettled = createContext<(text: string) => void>(() => {});
+
+/**
+ * The transcript's one polite status. The log itself stays silent, since a
+ * streamed reply rewrites it on every flush; a reply that settles while on
+ * screen is read out here once, then cleared. `children` pass through
+ * untouched, so an announcement re-renders this status and nothing in the log.
+ */
+export function SettledReplyStatus({ children }: { children: ReactNode }) {
+  const [announcement, setAnnouncement] = useState("");
+  useEffect(() => {
+    if (announcement.length === 0) return;
+    const cleared = setTimeout(() => setAnnouncement(""), ANNOUNCEMENT_HOLD_MS);
+    return () => clearTimeout(cleared);
+  }, [announcement]);
+  return (
+    <AnnounceSettled value={setAnnouncement}>
+      {children}
+      <output className="sr-only" data-testid={SETTLED_REPLY_STATUS}>
+        {announcement}
+      </output>
+    </AnnounceSettled>
+  );
+}
+
+// A reply that mounts settled is history and stays unannounced; one seen open
+// is announced when it settles, and never again.
+function useSettleAnnouncement(settled: boolean, text: string) {
+  const announce = useContext(AnnounceSettled);
+  const seenOpen = useRef(false);
+  useEffect(() => {
+    if (!settled) {
+      seenOpen.current = true;
+      return;
+    }
+    if (!seenOpen.current) return;
+    seenOpen.current = false;
+    announce(text);
+  }, [settled, text, announce]);
+}
 
 /** The library's `indicator` part: the reply is running and has nothing to show yet.
  * The status is named "Working" or "Queued"; the visible verb is whimsy, and a
