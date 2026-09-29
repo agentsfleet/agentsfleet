@@ -1,11 +1,15 @@
-use super::{Counting, Snapshot, installed};
+use super::{Counting, Snapshot, installed, this_thread};
+
+/// What the counted test holds.
+const HELD_BYTES: usize = 4_096;
 
 /// A heap that shrank below where it started.
 const SHRUNK_BYTES: u64 = 1_000;
 
 // The lib's unit-test binary counts, so `installed` has something to find.
 // Every other unit test in the crate shares this binary and allocates beside
-// these, which is why the assertions below are lower bounds.
+// these, so a process-wide figure is a lower bound and an exact one is read
+// from the test thread's own tally.
 #[global_allocator]
 static COUNTING: Counting = Counting;
 
@@ -17,12 +21,20 @@ fn an_installed_counter_is_found() {
 #[test]
 fn an_allocation_is_counted_and_its_bytes_held_until_freed() {
     let before = Snapshot::now();
-    let held = std::hint::black_box(vec![0_u8; 4_096]);
+    let (thread_allocations, thread_bytes) = this_thread::tally();
+    let held = std::hint::black_box(vec![0_u8; HELD_BYTES]);
+    let (allocations_during, bytes_during) = this_thread::tally();
     let during = Snapshot::now();
-
-    assert!(during.allocations_since(before) >= 1);
-    assert!(during.bytes_gained_since(before) >= 4_096 || held.is_empty());
     drop(held);
+    let (_, bytes_after) = this_thread::tally();
+
+    // The process-wide count only rises, so other tests cannot hide this one.
+    assert!(during.allocations_since(before) >= 1);
+    // Bytes come from this thread's tally alone: another test freeing memory
+    // between two process-wide snapshots would move them under this one.
+    assert_eq!(allocations_during.wrapping_sub(thread_allocations), 1);
+    assert_eq!(bytes_during.wrapping_sub(thread_bytes), HELD_BYTES);
+    assert_eq!(bytes_after, thread_bytes);
 }
 
 #[test]
