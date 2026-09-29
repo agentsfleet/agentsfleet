@@ -45,6 +45,8 @@ export type FleetEventStatus =
 // completed with the final wall time.
 export type FleetToolCall = {
   name: string;
+  /** The runner's id for this call, when its frames carry one. */
+  callId?: string;
   /** Browser clock at this call's first frame; the wire carries no start instant. */
   startedAtMs: number;
   /** Wall time so far (from a progress frame) or final (from a completion). */
@@ -156,4 +158,13 @@ export function rowToEvent(row: EventRow | EventDetail): FleetEvent {
     costNanos: figure(row.cost_nanos),
     custom: { requestJson: request_json },
   };
+}
+
+/** Whether two rows render alike: every field equal, `createdAt` by its
+ * instant and `custom` by the payload it carries. */
+export function sameEvent(a: FleetEvent, b: FleetEvent): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)] as (keyof FleetEvent)[]);
+  return [...keys].every((key) => a[key] === b[key]
+    || (key === "createdAt" && a.createdAt.getTime() === b.createdAt.getTime())
+    || (key === "custom" && a.custom?.requestJson === b.custom?.requestJson));
 }

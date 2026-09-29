@@ -27,9 +27,10 @@
 //! per-tick decisions this type is TOLD the answer to.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use afd_dragonfly::hub::Received;
-use afd_dragonfly::{Subscription, SubscriptionHub};
+use afd_dragonfly::{Message, Subscription, SubscriptionHub};
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream, SelectAll};
 use tokio_util::sync::CancellationToken;
@@ -39,10 +40,16 @@ use crate::error::Error;
 use crate::frame::Frame;
 
 /// One arrival on the shared consumer, before it becomes a frame.
+///
+/// Both halves are shared: the message with every other viewer of the
+/// channel, the fleet id with every other arrival on it.
 #[derive(Debug)]
 enum Arrival {
     /// A payload published on one fleet's channel.
-    Published { fleet_id: String, payload: String },
+    Published {
+        fleet_id: Arc<str>,
+        message: Arc<Message>,
+    },
     /// This connection fell behind and missed messages on one channel.
     Missed(u64),
 }
@@ -156,7 +163,7 @@ impl FanIn {
             let token = CancellationToken::new();
             let subscription = hub.subscribe(&channel::activity(fleet_id));
             self.arrivals
-                .push(arrivals(subscription, fleet_id.clone(), token.clone()).boxed());
+                .push(arrivals(subscription, Arc::from(fleet_id.as_str()), token.clone()).boxed());
             self.attached.insert(fleet_id.clone(), token);
             added += 1;
         }
@@ -179,8 +186,8 @@ impl FanIn {
             match arrival {
                 // A control frame, so it spends no sequence number.
                 Arrival::Missed(missed) => return Frame::catching_up(missed),
-                Arrival::Published { fleet_id, payload } => {
-                    match Frame::tagged(self.seq, &fleet_id, &payload) {
+                Arrival::Published { fleet_id, message } => {
+                    match Frame::tagged(self.seq, &fleet_id, message) {
                         Ok(frame) => {
                             self.seq = self.seq.wrapping_add(1);
                             return frame;
@@ -190,6 +197,7 @@ impl FanIn {
                         Err(Error::Untaggable) => {
                             afd_observability::producers::http::frame_dropped();
                             let reason = Error::Untaggable.to_string();
+                            let fleet_id = &*fleet_id;
                             tracing::debug!(fleet_id, reason, event = "sse_fanin_frame_dropped");
                         }
                     }
@@ -202,7 +210,7 @@ impl FanIn {
 /// One channel's arrivals, ending when `token` is cancelled or the hub closes.
 fn arrivals(
     subscription: Subscription,
-    fleet_id: String,
+    fleet_id: Arc<str>,
     token: CancellationToken,
 ) -> impl stream::Stream<Item = Arrival> + Send {
     stream::unfold(
@@ -217,14 +225,17 @@ fn arrivals(
             match received {
                 Ok(Received::Message(message)) => Some((
                     Arrival::Published {
-                        fleet_id: fleet_id.clone(),
-                        payload: message.payload,
+                        fleet_id: Arc::clone(&fleet_id),
+                        message,
                     },
                     (subscription, fleet_id, token),
                 )),
                 Ok(Received::Lagged(missed)) => {
                     Some((Arrival::Missed(missed), (subscription, fleet_id, token)))
                 }
+                // The hub lost and restored this channel's subscription: no
+                // count, because nobody saw what was published meanwhile.
+                Ok(Received::Gap) => Some((Arrival::Missed(0), (subscription, fleet_id, token))),
                 Err(_closed) => None,
             }
         },
@@ -250,6 +261,45 @@ mod tests {
         assert_eq!(fan_in.sync_to(&wanted).attached, 0);
         assert!(fan_in.fleets().is_empty());
         assert_eq!(format!("{fan_in:?}"), "FanIn { attached: 0, seq: 0, .. }");
+    }
+
+    /// A fleet whose subscription was lost and restored is announced as
+    /// `catching_up` with nothing counted, like the per-fleet tail.
+    #[tokio::test]
+    async fn a_gap_on_one_fleet_is_catching_up_with_nothing_counted() {
+        let (hub, server) = afd_dragonfly::SubscriptionHub::detached();
+        let mut fan_in = FanIn::new(Some(hub));
+        assert_eq!(
+            fan_in.sync_to(&BTreeSet::from(["a".to_owned()])).attached,
+            1
+        );
+        let channel = crate::channel::activity("a");
+        server.confirm(&channel);
+        server.confirm(&channel);
+
+        let frame = fan_in.next_frame().await;
+        assert_eq!(frame.kind, crate::frame::KIND_CATCHING_UP);
+        assert_eq!(frame.data, r#"{"kind":"catching_up","dropped":0}"#);
+    }
+
+    /// A hub that closes ends each channel's stream but not the connection:
+    /// the fan-in parks, as it does with nothing attached, rather than
+    /// ending a tab's stream or spinning on channels that will say nothing.
+    #[tokio::test]
+    async fn a_closed_hub_parks_the_fan_in_instead_of_ending_it() {
+        let (hub, server) = afd_dragonfly::SubscriptionHub::detached();
+        let mut fan_in = FanIn::new(Some(hub.clone()));
+        fan_in.sync_to(&BTreeSet::from(["a".to_owned()]));
+        hub.shutdown();
+        server.publish(&crate::channel::activity("a"), r#"{"kind":"chunk"}"#);
+        tokio::time::timeout(std::time::Duration::from_millis(20), fan_in.next_frame())
+            .await
+            .expect_err("a closed hub leaves nothing to send and nothing to end");
+        assert_eq!(
+            fan_in.fleets(),
+            ["a"],
+            "the set stays what the caller attached"
+        );
     }
 
     #[tokio::test]

@@ -2,6 +2,8 @@ import { ev, mockStream, renderThread, threadElement } from "./harness";
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, renderHook, screen } from "@testing-library/react";
 import { FIRST_VISIBLE_MEASURE, useFirstVisiblePaint } from "@/components/domain/useFirstVisiblePaint";
+import { OUTCOME } from "@/lib/events/event-summary";
+import { applyReplyGone } from "@/lib/streaming/fleet-stream-reply-frames";
 
 const THOUGHT = /^Thought/;
 const THINKING = /^Thinking/;
@@ -123,6 +125,17 @@ describe("FleetThread — reasoning disclosure", () => {
     mockStream([ev({ role: "assistant", actor: "fleet", reply: "Partial draft", replyRecovering: true })]);
     renderThread();
     expect(screen.getByText("Loading final reply; retrying if needed…")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Copy reply" })).toBeNull();
+  });
+
+  it("settles a reply whose event is gone with a line, and no loading label", () => {
+    const recovering = ev({ role: "assistant", actor: "fleet", reply: "Partial draft", replyRecovering: true, status: "processed" });
+    mockStream(applyReplyGone([recovering], recovering.id));
+    renderThread();
+    expect(screen.queryByText("Loading final reply; retrying if needed…")).toBeNull();
+    expect(screen.getByText(OUTCOME.REPLY_GONE)).toBeTruthy();
+    // The unconfirmed draft is not shown as the answer, nor offered to copy.
+    expect(screen.queryByText("Partial draft")).toBeNull();
     expect(screen.queryByRole("button", { name: "Copy reply" })).toBeNull();
   });
 

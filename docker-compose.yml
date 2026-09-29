@@ -31,11 +31,20 @@
 services:
   postgres:
     image: mirror.gcr.io/library/postgres:18-alpine
+    # pg_stat_statements is preloaded so the bench lanes can count the
+    # statements a path executes from the SERVER's side (afd_bench's statement
+    # counter). It only loads at server start, which is why it lives here and
+    # not in a lane's setup. `track=all` counts statements run inside functions
+    # and triggers too; the entry ceiling is raised so no statement a lane
+    # counts is evicted mid-window, which would make a delta go backwards.
     command:
       - sh
       - -c
       - |
-        exec docker-entrypoint.sh postgres
+        exec docker-entrypoint.sh postgres \
+          -c shared_preload_libraries=pg_stat_statements \
+          -c pg_stat_statements.track=all \
+          -c pg_stat_statements.max=10000
     environment:
       POSTGRES_USER: agentsfleet
       POSTGRES_PASSWORD: agentsfleet

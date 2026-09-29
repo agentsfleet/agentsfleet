@@ -255,3 +255,64 @@ async fn test_an_undecodable_entry_is_dropped_so_the_fleet_stays_leasable() {
          again, it was refused without being acknowledged and the fleet is wedged"
     );
 }
+
+/// A fault after the claim is won frees the claim before the poll raises it.
+///
+/// The fault is a stream the takeover cannot read: a string where the fleet's
+/// events belong answers every stream command with a type error. Before the
+/// fix that error left the slot held for the whole claim lifetime, and the
+/// held-slot filter hid the fleet from every runner until it lapsed. One
+/// millisecond later is the earliest a freed slot is winnable again, because
+/// `release` sets `leased_until = now` and the claim admits `leased_until < now`.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_fault_after_the_claim_frees_the_claim() {
+    // Several rotations, for the reason `select_fleet_within_rotations` gives.
+    const ROTATIONS: u16 = 8;
+    let fixtures = Fixtures::create_with_queue().await;
+    let (fleet, _workspace, _tenant, [first, second]) = seeded_parts::<2>(&fixtures).await;
+    let key = afd_dragonfly::fleet_stream_key(&fleet);
+    let mut poison = redis::cmd("SET");
+    poison.arg(&key).arg("not a stream");
+    let () = fixtures
+        .queue()
+        .command("SET", &key, &poison)
+        .await
+        .expect("the lane's Dragonfly takes a plain write");
+    queue::mark_ready(fixtures.queue(), &fleet).await;
+    let leases = fixtures.leases();
+    let now = UnixMillis::from_millis(ENROLLED_AT);
+
+    let mut faulted = false;
+    for _poll in 0..(afd_dragonfly::ready::READY_PARTITIONS * ROTATIONS) {
+        if leases.select(&first, now).await.is_err() {
+            faulted = true;
+            break;
+        }
+    }
+    assert!(
+        faulted,
+        "the poll that wins the fleet must meet the unreadable stream"
+    );
+
+    let fleet_id = afd_core::id::Uuid7::parse(&fleet).expect("a seeded fleet id parses");
+    let later = UnixMillis::from_millis(ENROLLED_AT + 1);
+    let regained = leases
+        .claim(&fleet_id, &second, later, afd_core::timing::LEASE_TTL_MS)
+        .await
+        .expect("the claim statement answers");
+    assert!(
+        regained.is_some(),
+        "the faulted poll must free its claim; a held slot hides the fleet for a full TTL"
+    );
+
+    let mut clear = redis::cmd("DEL");
+    clear.arg(&key);
+    let _removed: i64 = fixtures
+        .queue()
+        .command("DEL", &key, &clear)
+        .await
+        .expect("the poison key is removed");
+    queue::clear_ready(fixtures.queue(), &fleet).await;
+    fixtures.cleanup().await;
+}

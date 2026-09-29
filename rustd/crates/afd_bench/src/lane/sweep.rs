@@ -100,7 +100,7 @@ async fn rows(database: &Db, pattern: &str) -> Result<u64> {
 ///
 /// # Errors
 ///
-/// [`crate::Error::QueueUnavailable`] when the stream will not answer.
+/// `QueueUnavailable` when the stream will not answer.
 pub async fn outbound_entries(queue: &Dragonfly, ids: &[String]) -> Result<u64> {
     if ids.is_empty() {
         return Ok(0);
@@ -123,7 +123,7 @@ pub async fn outbound_entries(queue: &Dragonfly, ids: &[String]) -> Result<u64> 
 ///
 /// # Errors
 ///
-/// [`crate::Error::QueueUnavailable`] when the stream will not answer.
+/// `QueueUnavailable` when the stream will not answer.
 pub async fn outbound_stream(queue: &Dragonfly, prefix: &RunPrefix) -> Result<u64> {
     let mut range = redis::cmd(XRANGE);
     range

@@ -9,19 +9,25 @@
 //!    steady state on any deployment holding more fleets than concurrent
 //!    events.
 //! 2. Run the candidate query, restricted to those fleets and capped. Readiness
-//!    NARROWS the input; it never decides eligibility — the label gate and the
-//!    sticky ordering are properties of the query.
+//!    NARROWS the input; it never decides eligibility — the label gate, the
+//!    held-slot filter and the sticky ordering are properties of the query.
 //! 3. Per candidate: claim it. A loser moves on having read no event, because
 //!    the claim precedes the read.
 //! 4. Won with a prior active lease → RECLAIM that dead holder's event. Won with
-//!    none → FRESH: the consumer's own pending list first, then a new entry.
+//!    none → FRESH: the group's oldest pending entry, taken over from whichever
+//!    consumer holds it, then a new entry.
+//! 5. Won and found nothing → the fleet is DRAINED: free the claim and clear
+//!    its mark with the generation step 1 peeked, so the next poll does not
+//!    pay for it. A mark written since is a newer generation and survives.
 //!
-//! Every non-success exit after a win frees the claim, so an abandoned claim
-//! costs one poll rather than a full TTL of silence on that fleet.
+//! Every non-success exit after a win frees the claim, a fault included, so an
+//! abandoned claim costs one poll rather than a full TTL of silence on that
+//! fleet.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::timing::LEASE_TTL_MS;
+use afd_dragonfly::{Ready, ReadyToken};
 use afd_observability::metrics::label::fleet::RunStart;
 use afd_observability::producers;
 use sqlx::Row as _;
@@ -123,9 +129,10 @@ impl Leases {
 
         let ids: Vec<&str> = ready.iter().map(|entry| entry.fleet_id.as_str()).collect();
         cost.database_roundtrips += 1;
-        for fleet_id in self.candidates(runner_id, &ids).await? {
+        let offered = self.candidates(runner_id, &ids, now).await?;
+        for (fleet_id, token) in peeked(offered, &ready) {
             cost.database_roundtrips += 1;
-            if let Some(acquired) = self.try_candidate(&fleet_id, runner_id, now).await? {
+            if let Some(acquired) = self.try_candidate(&fleet_id, token, runner_id, now).await? {
                 return Ok(Some(acquired));
             }
         }
@@ -135,14 +142,22 @@ impl Leases {
     /// The eligible fleets among `ready`, in the query's own sticky order.
     ///
     /// The ordering must come from the statement and not from the peek, because
-    /// sticky preference lives in its `ORDER BY`.
-    async fn candidates(&self, runner_id: &Uuid7, ready: &[&str]) -> Result<Vec<Uuid7>> {
+    /// sticky preference lives in its `ORDER BY`. `now` is what the held-slot
+    /// filter compares a claim's expiry against, the same instant the claim
+    /// itself would.
+    async fn candidates(
+        &self,
+        runner_id: &Uuid7,
+        ready: &[&str],
+        now: UnixMillis,
+    ) -> Result<Vec<Uuid7>> {
         let mut connection = self.pool().acquire().await?;
         let rows = sqlx::query(sql::lease::SELECT_READY_CANDIDATES)
             .bind(FLEET_STATUS_ACTIVE)
             .bind(runner_id.as_str())
             .bind(ready)
             .bind(i64::try_from(MAX_READY_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
+            .bind(now.as_millis())
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_CANDIDATES))?;
@@ -159,13 +174,14 @@ impl Leases {
     async fn try_candidate(
         &self,
         fleet_id: &Uuid7,
+        token: &ReadyToken,
         runner_id: &Uuid7,
         now: UnixMillis,
     ) -> Result<Option<Acquired>> {
         // Recorded on the ONE exit that hands work out. A `None` — a lost
         // claim, an empty stream, a dropped entry — reaches nothing here,
         // because nothing started.
-        self.try_candidate_unrecorded(fleet_id, runner_id, now)
+        self.try_candidate_unrecorded(fleet_id, token, runner_id, now)
             .await
             .inspect(|found| {
                 if let Some(acquired) = found {
@@ -179,6 +195,7 @@ impl Leases {
     async fn try_candidate_unrecorded(
         &self,
         fleet_id: &Uuid7,
+        token: &ReadyToken,
         runner_id: &Uuid7,
         now: UnixMillis,
     ) -> Result<Option<Acquired>> {
@@ -186,7 +203,30 @@ impl Leases {
             // Taken by a live holder. No event was read, so nothing is orphaned.
             return Ok(None);
         };
+        // A fault between the win and a lease frees the claim before it is
+        // raised, through the release the pull's endings share. Left held, the
+        // held-slot filter would hide the fleet for a full TTL.
+        match self
+            .take_claimed(fleet_id, &claimed, token, runner_id, now)
+            .await
+        {
+            Err(fault) => {
+                self.let_go(fleet_id, claimed.fence, now).await;
+                Err(fault)
+            }
+            outcome => outcome,
+        }
+    }
 
+    /// The work a won claim takes: a lapsed holder's event, else a fresh one.
+    async fn take_claimed(
+        &self,
+        fleet_id: &Uuid7,
+        claimed: &crate::lease::affinity::Claimed,
+        token: &ReadyToken,
+        runner_id: &Uuid7,
+        now: UnixMillis,
+    ) -> Result<Option<Acquired>> {
         // A won claim over a lapsed holder means its lease is still `active`
         // and still names the work it never finished.
         if let Some(prior) = self.reclaim_prior_active(fleet_id, now).await? {
@@ -204,21 +244,22 @@ impl Leases {
                 fencing_token = fence,
                 "re-leasing a lapsed holder's event under a higher fence"
             );
-            return from_reclaim(fleet_id, &claimed, prior).map(Some);
+            return from_reclaim(fleet_id, claimed, token, prior).map(Some);
         }
-        self.acquire_fresh(fleet_id, &claimed, now).await
+        self.acquire_fresh(fleet_id, claimed, token, now).await
     }
 
-    /// Pull the next event for a claimed fleet: this consumer's own pending
-    /// list first, then a new entry.
+    /// Pull the next event for a claimed fleet: the group's oldest pending
+    /// entry first, whichever consumer holds it, then a new entry.
     ///
     /// Pending-first is safe precisely BECAUSE the claim was won: that proves no
-    /// live lease exists, so a pending entry is a re-poll or a recovered strand
-    /// rather than work somebody else is doing.
+    /// live lease exists, so a pending entry is a re-poll, a parked event or a
+    /// dead replica's strand rather than work somebody else is doing.
     async fn acquire_fresh(
         &self,
         fleet_id: &Uuid7,
         claimed: &crate::lease::affinity::Claimed,
+        token: &ReadyToken,
         now: UnixMillis,
     ) -> Result<Option<Acquired>> {
         let streams = self.streams();
@@ -226,11 +267,15 @@ impl Leases {
         let Some(event) = self.read_fresh(fleet, &runner_consumer()).await? else {
             // Both reads answered, and both were empty — the only evidence this
             // code ever has that a fleet holds nothing deliverable. Free the
-            // claim so the next event is not blocked behind it.
+            // claim so the next event is not blocked behind it, then clear the
+            // mark this poll peeked: a drained fleet left marked is a claim,
+            // a read and a release on every poll that samples it, forever.
             self.release(fleet_id, claimed.fence, now).await?;
+            producers::fleet::lease_claimed_empty();
+            self.clear_mark(fleet_id, token).await;
             return Ok(None);
         };
-        match from_fresh(fleet_id, claimed, &event) {
+        match from_fresh(fleet_id, claimed, token, &event) {
             Ok(acquired) => Ok(Some(acquired)),
             Err(undecodable) => {
                 drop_undecodable(&streams, fleet, &event.receipt, &undecodable).await;
@@ -242,6 +287,19 @@ impl Leases {
             }
         }
     }
+}
+
+/// Each candidate beside the generation its fleet's peek saw.
+///
+/// The query only narrows the peek, so every candidate has one; the pairing
+/// keeps the query's order, which is the sticky order.
+fn peeked(candidates: Vec<Uuid7>, ready: &[Ready]) -> impl Iterator<Item = (Uuid7, &ReadyToken)> {
+    candidates.into_iter().filter_map(move |fleet| {
+        ready
+            .iter()
+            .find(|entry| entry.fleet_id == fleet.as_str())
+            .map(|entry| (fleet, &entry.token))
+    })
 }
 
 /// The label a granted lease's kind is counted under.

@@ -38,6 +38,11 @@ const HISTORY_ID_BASE = 9_100_000_000_000;
 const HISTORY_STATUS = "processed";
 const LAST_HISTORY_ANSWER = `Settled answer ${HISTORY_TURNS}`;
 const EMPTY_HISTORY: EventsPage = { items: [], next_cursor: null };
+const COPY_REPLY = "Copy reply";
+// How far the shared focus ring reaches past a control: 2px wide on a 2px offset.
+const RING_REACH_PX = 4;
+// One settled turn is its opening frame and its completion.
+const FRAMES_PER_TURN = 2;
 
 type ProbeResult = { longTasks: number; frames: number; p95FrameMs: number };
 type ReplyPage = { chat: Locator; stream: ScheduledStream };
@@ -88,6 +93,31 @@ test("test_streaming_reply_costs_no_long_tasks", async ({ page }, testInfo) => {
     });
     expect(probe.longTasks).toBe(0);
     expect(probe.p95FrameMs).toBeLessThanOrEqual(FRAME_P95_BUDGET_MS);
+  });
+});
+
+// A settled row skips layout off screen, which contains its paint; a control
+// focused near its edge must still show the whole ring, not a clipped arc.
+test("test_settled_row_keeps_its_focus_ring", async ({ page }) => {
+  await withReplyPage(page, async ({ chat, stream }) => {
+    await stream.send(settledHistory(Date.now()).slice(0, FRAMES_PER_TURN));
+    const copy = chat.getByRole("button", { name: COPY_REPLY });
+    await expect(copy).toBeVisible();
+    // Onto Copy by keyboard, so its focus ring is the one a keyboard user sees.
+    await copy.focus();
+    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.press("Tab");
+    await expect(copy).toBeFocused();
+
+    const row = chat.locator('[data-settled="true"]').filter({ has: copy });
+    const [control, painted] = await Promise.all([copy.boundingBox(), row.boundingBox()]);
+    expect(control).not.toBeNull();
+    expect(painted).not.toBeNull();
+    if (control === null || painted === null) return;
+    expect(control.x - RING_REACH_PX).toBeGreaterThanOrEqual(painted.x);
+    expect(control.y - RING_REACH_PX).toBeGreaterThanOrEqual(painted.y);
+    expect(control.x + control.width + RING_REACH_PX).toBeLessThanOrEqual(painted.x + painted.width);
+    expect(control.y + control.height + RING_REACH_PX).toBeLessThanOrEqual(painted.y + painted.height);
   });
 });
 

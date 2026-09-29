@@ -1,6 +1,6 @@
 //! The two money gates, in the order a refusal must not be charged in.
 //!
-//! Both answer `Option<Admission>`, where `None` continues the pass. That is
+//! Both answer `Option<Declined>`, where `None` continues the pass. That is
 //! the shape the whole sequence composes on: a gate either produces the answer
 //! or it does not, and nothing in here decides what a FAULT means — that is
 //! [`super::fault`]'s, applied through the [`Gate`](super::fault::Gate)
@@ -11,7 +11,7 @@ use afd_core::error_code;
 use afd_core::id::Uuid7;
 
 use crate::lease::admit::fault::{BALANCE, BUDGET};
-use crate::lease::admit::{Admission, Refusal, Request};
+use crate::lease::admit::{Declined, Refusal, Request};
 use afd_billing::Accounts;
 use afd_billing::budget::{self, Verdict};
 
@@ -38,7 +38,7 @@ pub(super) async fn balance(
     accounts: &Accounts,
     request: &Request<'_>,
     tenant_id: &Uuid7,
-) -> Option<Admission> {
+) -> Option<Declined> {
     let estimate = match accounts
         .estimate(request.posture, request.provider, request.model)
         .await
@@ -66,7 +66,7 @@ pub(super) async fn balance(
         estimate_nanos = floor,
         "the tenant's credit pool cannot cover this run's floor cost"
     );
-    Some(Admission::Refuse(Refusal::labelled(
+    Some(Declined::Refuse(Refusal::labelled(
         afd_core::event::label::BALANCE_EXHAUSTED,
     )))
 }
@@ -80,7 +80,7 @@ pub(super) async fn fleet_budget(
     accounts: &Accounts,
     request: &Request<'_>,
     now: UnixMillis,
-) -> Option<Admission> {
+) -> Option<Declined> {
     let spend = match accounts
         .spend(request.workspace_id, request.fleet_id, now)
         .await
@@ -105,7 +105,7 @@ pub(super) async fn fleet_budget(
         verdict = which,
         "the fleet has reached a ceiling its author declared"
     );
-    Some(Admission::Refuse(Refusal::labelled(
+    Some(Declined::Refuse(Refusal::labelled(
         afd_core::event::label::BUDGET_BREACH,
     )))
 }

@@ -29,7 +29,11 @@ mod schema;
 mod strictness;
 #[path = "tenant_provider_shapes.rs"]
 mod tenant_provider_shapes;
-// Declared bounds at their exact limits, and a seeded mutation corpus the
-// parser must survive without panicking.
+// Declared bounds at their exact limits, the steer request's own rows, and a
+// seeded mutation corpus the parser must survive without panicking.
 #[path = "validation.rs"]
 mod validation;
+#[path = "validation_mutation.rs"]
+mod validation_mutation;
+#[path = "validation_steer.rs"]
+mod validation_steer;

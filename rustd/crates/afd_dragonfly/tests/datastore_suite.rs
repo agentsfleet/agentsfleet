@@ -71,6 +71,14 @@ mod recorder;
 )]
 mod support;
 
+#[path = "support/hub_exclusive.rs"]
+#[allow(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test support: an unmet precondition should fail the test loudly"
+)]
+mod hub_exclusive;
+
 #[path = "support/cluster_harness.rs"]
 #[allow(
     clippy::expect_used,
@@ -87,14 +95,24 @@ mod connect_refusals;
 mod dedicated_faults;
 #[path = "error_surface.rs"]
 mod error_surface;
+#[path = "group_create_faults.rs"]
+mod group_create_faults;
 #[path = "hub_connect_deadline.rs"]
 mod hub_connect_deadline;
+#[path = "hub_gap_faults.rs"]
+mod hub_gap_faults;
+#[path = "hub_repair_faults.rs"]
+mod hub_repair_faults;
+#[path = "hub_repair_hold.rs"]
+mod hub_repair_hold;
 #[path = "hub_socket_faults.rs"]
 mod hub_socket_faults;
 #[path = "index_addressing.rs"]
 mod index_addressing;
 #[path = "integration_capacity.rs"]
 mod integration_capacity;
+#[path = "integration_client.rs"]
+mod integration_client;
 #[path = "integration_cluster_prototypes.rs"]
 mod integration_cluster_prototypes;
 #[path = "integration_cluster_readiness.rs"]
@@ -127,5 +145,7 @@ mod keys_and_config;
 mod misbehaving_server;
 #[path = "preflight_refusals.rs"]
 mod preflight_refusals;
+#[path = "retention_faults.rs"]
+mod retention_faults;
 #[path = "verify_outcomes.rs"]
 mod verify_outcomes;

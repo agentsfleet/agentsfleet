@@ -150,4 +150,9 @@ describe("tokens.css — the braille spinner and settled-row contracts", () => {
     expect(css).toMatch(/\[data-settled="true"\]\s*\{[^}]*content-visibility: auto;[^}]*contain-intrinsic-size: auto/);
     expect(css).not.toMatch(/\[data-settled\]\s*\{/);
   });
+
+  it("reserves the focus ring's reach from its one declaration, not a copied length", () => {
+    expect(css.match(/--focus-ring-reach:/g)).toHaveLength(1);
+    expect(css).toMatch(/\[data-settled="true"\]\s*\{[^}]*--settled-ring-room: calc\(var\(--sp-sm\) \+ var\(--focus-ring-reach\)\)/);
+  });
 });

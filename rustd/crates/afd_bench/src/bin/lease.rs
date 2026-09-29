@@ -9,7 +9,8 @@ use std::process::ExitCode;
 use afd_bench::RunPrefix;
 use afd_bench::cli;
 use afd_bench::error::Result;
-use afd_bench::lane::{lease, sweep};
+use afd_bench::lane::lease::{self, drain};
+use afd_bench::lane::sweep;
 use afd_bench::report::Lane;
 use core::time::Duration;
 
@@ -49,7 +50,11 @@ async fn measure() -> Result<String> {
     let prefix = RunPrefix::mint();
     // The sweep runs whether the lane succeeded or not; `cli::finish` reports
     // the lane's failure first when both failed.
-    let measured = lease::run(profile, provenance, parameters, &stores, &prefix).await;
+    let measured = lease::run_both(profile, provenance, parameters, &stores, &prefix).await;
+    if let Ok(report) = &measured {
+        // logging: the make target's output is what the acceptance rubric reads; no daemon runs here to carry an event.
+        println!("{}", drain::summary(report));
+    }
     let swept = sweep::everything(&stores.database, &stores.queue, &prefix).await;
     cli::finish(Lane::Lease, profile, measured, swept)
 }

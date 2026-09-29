@@ -29,62 +29,17 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
-use tokio::net::{TcpListener, TcpStream};
-
-/// The topology question every cluster client asks first.
-const CMD_CLUSTER: &str = "CLUSTER";
+use tokio::net::TcpListener;
 
 pub(crate) use crate::subscriber::install_subscriber;
 
-/// What the fake does when a command arrives.
+/// A frame the server writes unprompted.
 #[derive(Debug, Clone)]
-pub(crate) enum Reply {
-    /// Write these bytes back. RESP, well-formed or not, as the test chooses.
-    Raw(&'static str),
-    /// Answer nothing and close the socket. This is a server dying mid-command,
-    /// which is what the dropped-connection classification is written for.
-    Hangup,
-    /// Keep the socket open and never answer this command.
-    Silent,
-    /// The confirmation a server sends for `SSUBSCRIBE`: a RESP3 push echoing
-    /// the channel the client asked for. Built here rather than written
-    /// literally because the channel name is the test's, not this file's, and
-    /// a push rather than an array because that is what the driver matches to
-    /// the command it is waiting on.
-    SubscribeAck,
-    /// The confirmation for `SUNSUBSCRIBE`, same reasoning.
-    UnsubscribeAck,
-    /// The answer to `CLUSTER SLOTS` a cluster client insists on before it
-    /// sends anything else: this server owns every slot, at its own port. An
-    /// empty hostname tells the driver to keep dialling the address it came
-    /// in on. Installed by default so a test scripting one fault does not
-    /// have to know the handshake. The same rule answers `CLUSTER SHARDS`,
-    /// which is how this crate's per-node walks find the one node to visit.
-    /// A bulk string, framed from its payload.
-    ///
-    /// Its own variant rather than a `Raw` literal carrying its own `$NN`,
-    /// because both `INFO` fixtures in this workspace carried one that
-    /// disagreed with the bytes after it — `$52` over 57, `$41` over 45. A
-    /// short length leaves the client parsing the remainder as the next
-    /// reply and the test hanging on a deadline, which reads like a slow
-    /// datastore rather than a miscounted fixture. Nothing here counts
-    /// bytes by hand any more.
-    Bulk(&'static str),
-    ClusterSlots,
-    /// `INFO cluster` as a server in cluster mode answers it.
-    ///
-    /// Installed by default on the synthetic `INFO CLUSTER` rule key, so a
-    /// test scripting an `INFO` fault for the memory section does not also
-    /// answer the cluster probe with memory text.
-    InCluster,
-    /// `INFO cluster` as a standalone answers it — the seed preflight refuses.
-    ///
-    /// Keyed on `INFO CLUSTER` and not on `INFO`, because preflight asks two
-    /// sections of the same command and the driver's own handshake asks a
-    /// third thing entirely; one rule for the whole command cannot tell them
-    /// apart.
-    NotACluster,
+struct Push {
+    /// The channel it was published on, or `None` for a push every
+    /// connection is sent.
+    channel: Option<Vec<u8>>,
+    frame: Vec<u8>,
 }
 
 /// Shared state the test drives the server through mid-flight.
@@ -103,6 +58,9 @@ struct Control {
     /// Signals live connections to drop. A broadcast because there may be
     /// several and every one of them has to hear it.
     cut: tokio::sync::broadcast::Sender<()>,
+    /// Bytes live connections write unprompted: a published frame, written
+    /// only where its channel is subscribed, or a push for every connection.
+    pushes: tokio::sync::broadcast::Sender<Push>,
     /// Connections currently being served. Counted server-side because it is
     /// the only place that can tell a client which CLOSED its socket from one
     /// that merely stopped using it.
@@ -127,23 +85,6 @@ impl FakeRedis {
     /// Rule keys are matched upper-case, because the client is free to send
     /// either spelling and does not promise which.
     pub(crate) async fn spawn(rules: &[(&str, Reply)]) -> Self {
-        let mut table: HashMap<String, Reply> = rules
-            .iter()
-            .map(|(name, reply)| ((*name).to_uppercase(), reply.clone()))
-            .collect();
-        // The handshake a cluster client performs before its first command:
-        // a test that scripts one fault should not have to know it exists,
-        // and one that wants to break it names `CLUSTER` itself.
-        table
-            .entry(CMD_CLUSTER.to_owned())
-            .or_insert(Reply::ClusterSlots);
-        // `INFO cluster` is how preflight asks what the server IS, and every
-        // fake server in this workspace is a cluster unless a test says
-        // otherwise. Its own key because the memory section shares the command.
-        table
-            .entry(RULE_INFO_CLUSTER.to_owned())
-            .or_insert(Reply::InCluster);
-
         // Port 0: the kernel picks, so parallel tests never contend for a
         // number and no test has to reserve one.
         let listener = TcpListener::bind(("127.0.0.1", 0))
@@ -154,28 +95,17 @@ impl FakeRedis {
             .expect("a bound listener has an address");
 
         let (cut, _first) = tokio::sync::broadcast::channel(16);
+        let (pushes, _none_yet) = tokio::sync::broadcast::channel(64);
         let control = Arc::new(Control {
             port: addr.port(),
-            rules: Mutex::new(table),
+            rules: Mutex::new(rule_table(rules)),
             seen: Mutex::new(Vec::new()),
             cut,
+            pushes,
             live: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         });
-        let (listening, mut stopped) = tokio::sync::watch::channel(true);
-
-        let accepting = Arc::clone(&control);
-        tokio::spawn(async move {
-            loop {
-                let accepted = tokio::select! {
-                    result = listener.accept() => result,
-                    _stop = stopped.changed() => return,
-                };
-                let Ok((socket, _peer)) = accepted else {
-                    return;
-                };
-                tokio::spawn(serve(socket, Arc::clone(&accepting)));
-            }
-        });
+        let (listening, stopped) = tokio::sync::watch::channel(true);
+        tokio::spawn(accept(listener, Arc::clone(&control), stopped));
 
         Self {
             addr,
@@ -222,6 +152,26 @@ impl FakeRedis {
         let _delivered = self.listening.send(false);
     }
 
+    /// Publishes `payload` on `channel` to every live connection, as the
+    /// `smessage` push a subscribed client receives. Unconditional: the fake
+    /// keeps no subscription table, so a client that never subscribed is sent
+    /// the frame too, and a test only asserts on the reader it subscribed.
+    pub(crate) fn publish(&self, channel: &str, payload: &str) {
+        let _delivered = self.control.pushes.send(Push {
+            channel: Some(channel.as_bytes().to_vec()),
+            frame: smessage(channel, payload),
+        });
+    }
+
+    /// Writes `frame` to every live connection unprompted — a push of any
+    /// kind, well-formed or not, as the test builds it.
+    pub(crate) fn push(&self, frame: Vec<u8>) {
+        let _delivered = self.control.pushes.send(Push {
+            channel: None,
+            frame,
+        });
+    }
+
     /// How many connections the server is currently serving.
     pub(crate) fn live_connections(&self) -> usize {
         self.control.live.load(std::sync::atomic::Ordering::Acquire)
@@ -247,143 +197,59 @@ impl Drop for FakeRedis {
     }
 }
 
-/// Answers one connection until it closes, is cut, or a rule says to hang up.
-async fn serve(mut socket: TcpStream, control: Arc<Control>) {
-    control
-        .live
-        .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
-    // The decrement rides a guard so it happens on EVERY exit from this
-    // function, including the early returns a hangup rule takes.
-    let _open = OpenConnection(Arc::clone(&control.live));
-    let mut cut = control.cut.subscribe();
-    let mut buffer = Vec::new();
-    let mut scratch = [0_u8; 4096];
+/// `rules`, keyed upper-case, with the answers every cluster client needs
+/// filled in where a test left them out.
+fn rule_table(rules: &[(&str, Reply)]) -> HashMap<String, Reply> {
+    let mut table: HashMap<String, Reply> = rules
+        .iter()
+        .map(|(name, reply)| ((*name).to_uppercase(), reply.clone()))
+        .collect();
+    // The handshake a cluster client performs before its first command:
+    // a test that scripts one fault should not have to know it exists,
+    // and one that wants to break it names `CLUSTER` itself.
+    table
+        .entry(CMD_CLUSTER.to_owned())
+        .or_insert(Reply::ClusterSlots);
+    // `INFO cluster` is how preflight asks what the server IS, and every
+    // fake server in this workspace is a cluster unless a test says
+    // otherwise. Its own key because the memory section shares the command.
+    table
+        .entry(RULE_INFO_CLUSTER.to_owned())
+        .or_insert(Reply::InCluster);
+    table
+}
 
+/// Accepts connections until told to stop listening, serving each on a task
+/// of its own.
+async fn accept(
+    listener: TcpListener,
+    control: Arc<Control>,
+    mut stopped: tokio::sync::watch::Receiver<bool>,
+) {
     loop {
-        // Parse everything already buffered before asking for more: one read
-        // can carry several pipelined commands, and a server that answered only
-        // the first would hang the client waiting for the rest.
-        while let Some(request) = parse_command(&buffer) {
-            buffer.drain(..request.consumed);
-            control
-                .seen
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .push(request.name.clone());
-
-            let reply = control
-                .rules
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .get(rule_key(&request).as_str())
-                .cloned()
-                .unwrap_or(Reply::Raw("+OK\r\n"));
-            let bytes = match reply {
-                Reply::Raw(raw) => raw.as_bytes().to_vec(),
-                Reply::Hangup => return,
-                Reply::Silent => continue,
-                Reply::SubscribeAck => confirmation("ssubscribe", request.first_argument()),
-                Reply::UnsubscribeAck => confirmation("sunsubscribe", request.first_argument()),
-                Reply::Bulk(payload) => bulk(payload),
-                Reply::ClusterSlots => cluster_topology(control.port, request.first_argument()),
-                Reply::InCluster => bulk(INFO_CLUSTER_ENABLED),
-                Reply::NotACluster => bulk(INFO_CLUSTER_DISABLED),
-            };
-            if socket.write_all(&bytes).await.is_err() {
-                return;
-            }
-        }
-
-        let read = tokio::select! {
-            result = socket.read(&mut scratch) => result,
-            _cut = cut.recv() => return,
+        let accepted = tokio::select! {
+            result = listener.accept() => result,
+            _stop = stopped.changed() => return,
         };
-        match read {
-            Ok(0) | Err(_) => return,
-            Ok(count) => buffer.extend_from_slice(scratch.get(..count).unwrap_or_default()),
-        }
+        let Ok((socket, _peer)) = accepted else {
+            return;
+        };
+        tokio::spawn(serve(socket, Arc::clone(&control)));
     }
-}
-
-/// Decrements the live-connection count when a connection is done.
-#[derive(Debug)]
-struct OpenConnection(Arc<std::sync::atomic::AtomicUsize>);
-
-impl Drop for OpenConnection {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
-    }
-}
-
-/// Builds the `subscribe`/`unsubscribe` confirmation Dragonfly pushes back.
-///
-/// The trailing count is the number of channels the connection now holds. It is
-/// reported as one because nothing in these tests branches on it, and a fixture
-/// that tracked it would be modelling server state this file does not have.
-fn confirmation(kind: &str, channel: &[u8]) -> Vec<u8> {
-    // `>` is RESP3's push marker: the driver routes it to the push receiver
-    // AND treats it as the reply to the subscribe it is waiting on.
-    let mut out = format!(">3\r\n${}\r\n{kind}\r\n${}\r\n", kind.len(), channel.len()).into_bytes();
-    out.extend_from_slice(channel);
-    out.extend_from_slice(b"\r\n:1\r\n");
-    out
-}
-
-/// The subcommand of `CLUSTER` that asks for the shard map.
-const CLUSTER_SHARDS: &[u8] = b"SHARDS";
-
-/// The command whose sections preflight reads, the section that says what the
-/// server IS, and the synthetic rule key the two make together.
-const CMD_INFO: &str = "INFO";
-const SECTION_CLUSTER: &[u8] = b"CLUSTER";
-const RULE_INFO_CLUSTER: &str = "INFO CLUSTER";
-
-/// `INFO cluster` as a server in cluster mode answers it, and as one that is
-/// not. Only the field preflight reads is carried, with the header a real
-/// section leads with: the rest is a dozen counters no caller here looks at.
-///
-/// The section is `INFO cluster` and NOT `CLUSTER INFO` — they are different
-/// replies, and Dragonfly v1.40.2 names `cluster_enabled` in only this one. A
-/// fake that answered the other spelling is what let preflight ship reading a
-/// field the real server never puts there.
-const INFO_CLUSTER_ENABLED: &str = "# Cluster\r\ncluster_enabled:1\r\n";
-const INFO_CLUSTER_DISABLED: &str = "# Cluster\r\ncluster_enabled:0\r\n";
-
-/// The rule table key one request looks up.
-///
-/// Every command is keyed by its name, except `INFO`, whose section decides
-/// which question is being asked: preflight reads `cluster` and `memory` off
-/// the same command and a single rule could not answer both.
-fn rule_key(request: &self::resp::Request) -> String {
-    if request.name == CMD_INFO
-        && request
-            .first_argument()
-            .eq_ignore_ascii_case(SECTION_CLUSTER)
-    {
-        return RULE_INFO_CLUSTER.to_owned();
-    }
-    request.name.clone()
-}
-
-/// Frames `payload` as a RESP bulk string, counting it rather than trusting
-/// a number written beside it.
-fn bulk(payload: &str) -> Vec<u8> {
-    format!("${}\r\n{payload}\r\n", payload.len()).into_bytes()
-}
-
-/// One shard owning slots 0..=16383 at `port` — in the `SLOTS` framing the
-/// driver handshakes with, or the `SHARDS` framing this crate walks nodes by.
-fn cluster_topology(port: u16, subcommand: &[u8]) -> Vec<u8> {
-    if subcommand.eq_ignore_ascii_case(CLUSTER_SHARDS) {
-        return afd_dragonfly::test_util::cluster_shards_reply(port);
-    }
-    afd_dragonfly::test_util::cluster_slots_reply(port)
 }
 
 #[path = "fake_redis/resp.rs"]
 mod resp;
 
-use self::resp::parse_command;
+#[path = "fake_redis/reply.rs"]
+mod reply;
+
+#[path = "fake_redis/serve.rs"]
+mod serve;
+
+use self::reply::{CMD_CLUSTER, RULE_INFO_CLUSTER, smessage};
+pub(crate) use self::reply::{Reply, push_frame};
+use self::serve::serve;
 
 /// A loopback port with nothing listening on it.
 ///

@@ -41,8 +41,8 @@ primary_region = "iad"
 #                      deliberate owner choice: drop it below 64 and redeploy
 #                      to shed load fast during an overload event. Watch
 #                      agentsfleet_api_backpressure_rejections_total.
-#   SSE_MAX_STREAMS  — concurrent event streams per instance (default 64,
-#                      runtime_loader.zig); over-cap streams get 503. Streams
+#   SSE_MAX_STREAMS  — concurrent event streams per instance (default 256,
+#                      agentsfleetd preflight/knobs.rs); over-cap streams get 503. Streams
 #                      run on DEDICATED detached threads (httpz
 #                      startEventStream) so a viewer's lifetime never consumes
 #                      request capacity (the old pool-poisoning defect is also

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSignInUrl, SIGN_IN_PATH } from "./sign-in-redirect";
+import { buildSignInUrl, SIGN_IN_PATH, signInPath } from "./sign-in-redirect";
 
 describe("buildSignInUrl", () => {
   const ORIGIN = "https://app-dev.agentsfleet.net";
@@ -46,5 +46,12 @@ describe("buildSignInUrl", () => {
   it("still keeps a legitimate deep link with a single leading slash", () => {
     const url = new URL(buildSignInUrl(`${ORIGIN}/`, "/w/ws_1/fleets/f_9"));
     expect(url.searchParams.get("redirect_url")).toBe("/w/ws_1/fleets/f_9");
+  });
+});
+
+describe("signInPath", () => {
+  it("is the same destination as a same-origin path, guarded the same way", () => {
+    expect(signInPath("/w/ws_1/fleets/f_1")).toBe(`${SIGN_IN_PATH}?redirect_url=%2Fw%2Fws_1%2Ffleets%2Ff_1`);
+    expect(signInPath("//evil.example")).toBe(`${SIGN_IN_PATH}?redirect_url=%2F`);
   });
 });

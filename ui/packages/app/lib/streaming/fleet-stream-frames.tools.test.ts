@@ -14,16 +14,17 @@ const PROGRESS_AT = 1_500;
 const COMPLETED_AT = 2_000;
 const REPEAT_AT = 3_000;
 
-function started(name: string, eventId = "e1"): LiveFrame {
-  return { kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: eventId, name, args_redacted: {} };
+// Each builder takes an optional `call_id`, as a runner that names its calls sends.
+function started(name: string, eventId = "e1", call_id?: string): LiveFrame {
+  return { kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: eventId, name, args_redacted: {}, call_id };
 }
 
-function progressed(name: string, elapsed: number): LiveFrame {
-  return { kind: FRAME_KIND.TOOL_CALL_PROGRESS, event_id: "e1", name, elapsed_ms: elapsed };
+function progressed(name: string, elapsed: number, call_id?: string): LiveFrame {
+  return { kind: FRAME_KIND.TOOL_CALL_PROGRESS, event_id: "e1", name, elapsed_ms: elapsed, call_id };
 }
 
-function completed(name: string, ms: number): LiveFrame {
-  return { kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "e1", name, ms };
+function completed(name: string, ms: number, call_id?: string): LiveFrame {
+  return { kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "e1", name, ms, call_id };
 }
 
 // Hostile wire input, through the real parser: it checks only `kind`, which is
@@ -45,10 +46,37 @@ describe("applyLiveFrame — tool frames", () => {
     expect(out[0]?.tools).toEqual([{ name: "search_repo", startedAtMs: STARTED_AT, ms: null, done: false }]);
   });
 
-  it("TOOL_CALL_PROGRESS updates the running tool's elapsed time in place", () => {
-    let out = applyLiveFrame([evt({ id: "e1" })], started("search_repo"), STARTED_AT);
-    out = applyLiveFrame(out, progressed("search_repo", 400), PROGRESS_AT);
-    expect(out[0]?.tools).toEqual([{ name: "search_repo", startedAtMs: STARTED_AT, ms: 400, done: false }]);
+  it("test_progress_frame_keeps_identity", () => {
+    const running = applyLiveFrame([evt({ id: "e1" })], started("search_repo"), STARTED_AT);
+    expect(applyLiveFrame(running, progressed("search_repo", 400), PROGRESS_AT)).toBe(running);
+    const named = applyLiveFrame([evt({ id: "e1" })], started("search_repo", "e1", "1"), STARTED_AT);
+    expect(applyLiveFrame(named, progressed("search_repo", 400, "1"), PROGRESS_AT)).toBe(named);
+    // Only the completion changes the timeline.
+    const done = applyLiveFrame(named, completed("search_repo", 900, "1"), COMPLETED_AT);
+    expect(done).not.toBe(named);
+    expect(done[0]?.tools).toEqual([{ name: "search_repo", callId: "1", startedAtMs: STARTED_AT, ms: 900, done: true }]);
+  });
+
+  it("test_tool_frames_pair_by_call_id", () => {
+    let out = applyLiveFrame([evt({ id: "e1" })], started("read_file", "e1", "1"), STARTED_AT);
+    out = applyLiveFrame(out, completed("read_file", 700, "1"), COMPLETED_AT);
+    // A second call's completion, its start missed, restating the first one's
+    // figure: timing would call it a repeat; its own id makes it a new call.
+    out = applyLiveFrame(out, completed("read_file", 700, "2"), REPEAT_AT);
+    expect(out[0]?.tools).toEqual([
+      { name: "read_file", callId: "1", startedAtMs: STARTED_AT, ms: 700, done: true },
+      { name: "read_file", callId: "2", startedAtMs: REPEAT_AT, ms: 700, done: true },
+    ]);
+    // A late frame for a call that finished changes nothing.
+    expect(applyLiveFrame(out, progressed("read_file", 100, "1"), REPEAT_AT)).toBe(out);
+    expect(applyLiveFrame(out, started("read_file", "e1", "2"), REPEAT_AT)).toBe(out);
+  });
+
+  it("pairs a frame whose call id is not a non-empty string by timing, as before", () => {
+    let out = applyLiveFrame([evt({ id: "e1" })], started("grep"), STARTED_AT);
+    out = applyLiveFrame(out, completed("grep", 300, ""), COMPLETED_AT);
+    out = applyLiveFrame(out, wire({ kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "e1", name: "grep", ms: 300, call_id: 7 }), REPEAT_AT);
+    expect(out[0]?.tools).toEqual([{ name: "grep", startedAtMs: STARTED_AT, ms: 300, done: true }]);
   });
 
   it("TOOL_CALL_COMPLETED marks the tool done with its final wall time", () => {
@@ -107,11 +135,12 @@ describe("applyLiveFrame — tool frames", () => {
     expect(applyLiveFrame(open, negative, PROGRESS_AT)).toBe(open);
 
     // A completion with no figure is not malformed: it closes the call and
-    // keeps the elapsed a progress frame reported.
-    const progressed400 = applyLiveFrame(open, progressed("shell", 400), PROGRESS_AT);
+    // keeps the elapsed the call holds — here from the progress frame that
+    // opened it, its start missed.
+    const progressed400 = applyLiveFrame(seed, progressed("shell", 400), PROGRESS_AT);
     const bare = wire({ kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "e1", name: "shell" });
     expect(applyLiveFrame(progressed400, bare, COMPLETED_AT)[0]?.tools).toEqual([
-      { name: "shell", startedAtMs: STARTED_AT, ms: 400, done: true },
+      { name: "shell", startedAtMs: PROGRESS_AT, ms: 400, done: true },
     ]);
   });
 

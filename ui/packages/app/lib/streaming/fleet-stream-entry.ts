@@ -61,6 +61,15 @@ export type Entry = {
   replyNextSeq: Map<string, number>;
   replyGaps: Set<string>;
   replyRecoveries: Set<string>;
+  /** Per running event, when this tab last heard a frame for it. */
+  replyHeard: Map<string, number>;
+  /** Running events whose saved row is known to exist: a frame named it, or a
+   * server read showed it. Only for these does a 404 mean the row is gone; an
+   * event still queued behind its admission has no row yet. */
+  replyExists: Set<string>;
+  /** Settled events a backfill brought in without a body, whose saved row has
+   * been read once for it. */
+  bodyReads: Set<string>;
   listeners: Set<Listener>;
   refCount: number;
   eventSource: EventSource | null;
@@ -81,6 +90,8 @@ export type Entry = {
   // the gap it left).
   serverSinceMs: number | null;
   backfillInFlight: boolean;
+  // A recovery asked for while a walk was in flight: one more walk runs after it.
+  backfillQueued: boolean;
   // Detaches the tab-visible / network-online recovery listeners. Held on the
   // entry so teardown can remove exactly what subscribe attached.
   detachRecovery: (() => void) | null;
@@ -111,6 +122,9 @@ export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
     replyNextSeq: new Map(),
     replyGaps: new Set(),
     replyRecoveries: new Set(),
+    replyHeard: new Map(),
+    replyExists: new Set(),
+    bodyReads: new Set(),
     listeners: new Set(),
     refCount: 0,
     eventSource: null,
@@ -122,6 +136,7 @@ export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
     hadConnectionError: false,
     serverSinceMs: maxServerCreatedAt(null, initial),
     backfillInFlight: false,
+    backfillQueued: false,
     detachRecovery: null,
   };
 }

@@ -183,6 +183,9 @@ export const OUTCOME = {
   // The one surface that holds the body — the event detail dialog — says
   // absence from the body itself, with its own words.
   COMPLETED: "Completed.",
+  // The event's saved row answered 404 or 410: nothing is left to read the
+  // answer from, so the row stops waiting and says so.
+  REPLY_GONE: "The final reply is no longer available.",
 } as const;
 
 const CAUSE_SEPARATOR = " — ";

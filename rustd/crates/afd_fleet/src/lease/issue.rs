@@ -6,17 +6,14 @@
 //! without it: reclaim looks for a still-`active` lease row, and only this
 //! writes one.
 //!
-//! # Fail-closed on the meter reset
+//! # The meter reset rides the row
 //!
-//! A FRESH lease resets the per-fleet metering cursor before the row is
-//! written, and a failed reset fails the issue. That direction is deliberate:
-//! the renewal CTE reads the cursor for each slice's delta, so issuing against
-//! a cursor left over from a previous run over-charges the first renewal. A
-//! lease not issued costs one poll; a lease issued on a stale cursor costs
-//! money and nobody notices.
-//!
-//! A RECLAIM must not reset — the re-leased run meters forward from where the
-//! dead holder stopped, which is the whole reason the cursor survives a claim.
+//! A FRESH lease resets the per-fleet metering cursor in the statement that
+//! writes the row, so no lease can land over a cursor left from a previous
+//! run: the renewal CTE reads it for each slice's delta, and a stale one
+//! over-charges the first renewal. A RECLAIM must not reset — the re-leased
+//! run meters forward from where the dead holder stopped, which is the whole
+//! reason the cursor survives a claim.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
@@ -63,29 +60,29 @@ pub struct Issued {
 impl Leases {
     /// Write the lease row for `acquired`, and the audit row that explains it.
     ///
-    /// One statement lands the lease, its `lease_acquired` event, and the
-    /// runner's lifetime tally, so an observer can never see a lease with no
-    /// audit row or a tally that has drifted from the rows it counts.
+    /// One statement lands the lease, its `lease_acquired` event, the runner's
+    /// lifetime tally and a fresh lease's meter reset, so an observer can never
+    /// see a lease with no audit row, a tally that has drifted from the rows it
+    /// counts, or a fresh lease metering from a previous run's cursor.
+    ///
+    /// `None` when the claim that earned `acquired` is no longer this pass's:
+    /// its fence was superseded or it lapsed, so another runner may already
+    /// hold the same entry. Nothing is written, and the claim is not this
+    /// pass's to release.
     ///
     /// # Errors
-    /// Reports a datastore that would not answer, an entropy source that could
-    /// not produce an identifier, and — deliberately — a failed meter reset on
-    /// a fresh lease.
+    /// Reports a datastore that would not answer, and an entropy source that
+    /// could not produce an identifier.
     pub async fn issue(
         &self,
         runner_id: &Uuid7,
         acquired: &Acquired,
         billed: Billed<'_>,
         now: UnixMillis,
-    ) -> Result<Issued> {
-        // Before the row, and fail-closed: see the module documentation.
-        if acquired.kind == Kind::Fresh {
-            self.reset_meters(&acquired.fleet_id, now).await?;
-        }
-
+    ) -> Result<Option<Issued>> {
         let (lease_id, event_row_id) = self.mint(now)?;
         let mut connection = self.pool().acquire().await?;
-        sql::lease::LeaseRow {
+        let written = sql::lease::LeaseRow {
             lease_id: &lease_id,
             runner_id,
             fleet_id: &acquired.fleet_id,
@@ -105,11 +102,17 @@ impl Leases {
             now,
             event_row_id: &event_row_id,
             kind: acquired.kind.as_str(),
+            reset_meters: acquired.kind == Kind::Fresh,
         }
         .bind()
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT_ISSUE))?;
+        // The tally arm is the statement's own row count, and it writes
+        // exactly when the fenced lease did.
+        if written.rows_affected() == 0 {
+            return Ok(None);
+        }
 
         let elapsed = afd_core::clock::now().saturating_millis_since(acquired.event_created_at);
         if let Ok(millis) = u64::try_from(elapsed) {
@@ -137,7 +140,7 @@ impl Leases {
             kind,
             "a runner now owns this fleet's work"
         );
-        Ok(Issued { lease_id })
+        Ok(Some(Issued { lease_id }))
     }
 
     /// Draws the two identifiers a lease row needs.

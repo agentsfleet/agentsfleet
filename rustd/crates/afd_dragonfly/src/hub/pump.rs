@@ -1,20 +1,26 @@
-//! The task that owns the pub/sub connection.
+//! The control task: the pub/sub connection's commands, and its redial.
 //!
 //! Split from `hub.rs` per RULE FLL, along the seam that matters: `hub.rs` is
 //! the refcount and what a reader sees, this is the connection and what
-//! happens when it dies.
+//! happens when it dies. The pushes are [`dispatch`]'s, on a task of their
+//! own, so a subscribe this task is waiting on never holds a frame.
 //!
-//! # Sharded pub/sub, and the push the cluster sends when a slot moves
+//! # One generation per connection
 //!
-//! Every subscription is `SSUBSCRIBE`: the channel routes by its own slot, so
-//! a publish reaches one node rather than being broadcast to all of them. The
-//! server answers with RESP3 pushes on the same connection — `smessage` for a
-//! frame, and `sunsubscribe` when the node stops serving the channel. That
-//! last one is the case measured on the local cluster: a slot migration
-//! strands the subscription, the old owner pushes `sunsubscribe`, and the new
-//! owner counts zero subscribers until someone subscribes again. So an
-//! `sunsubscribe` for a channel a reader still holds is re-issued here, and
-//! one for a channel nobody holds is the echo of our own `SUNSUBSCRIBE`.
+//! ```text
+//!   connect ─► spawn dispatch(pushes) ─► re-subscribe what readers hold
+//!                    │                          │
+//!                    │ Signal::Resubscribe      ▼
+//!                    ├────────────────────► serve commands + signals
+//!                    │ Signal::Redial               │
+//!                    └────────────────────► abort dispatch, redial ─► next
+//! ```
+//!
+//! A node's lost socket does NOT end a generation. The driver repairs the
+//! node's socket inside the connection it already has — with no attempt cap,
+//! see `transport::connect_with_pushes` — and this task re-subscribes every
+//! channel on it at its owning primary (`repair`), each confirmation a gap.
+//! The driver's own replay cannot be relied on to do it; `gap` says why.
 //!
 //! # The reconnect schedule is `backon`'s
 //!
@@ -24,15 +30,17 @@
 
 use std::sync::Arc;
 
-use backon::{ExponentialBuilder, Retryable as _};
+use backon::{BackoffBuilder as _, ExponentialBuilder, Retryable as _};
+use redis::PushInfo;
 use redis::cluster_async::ClusterConnection;
-use redis::{PushInfo, PushKind, Value};
 use tokio::sync::mpsc;
 
-use super::{Command, HubInner, Message};
+use super::channels::{Command, HubInner};
+use super::dispatch::{self, Signal};
+use super::gap::Loss;
+use super::repair;
 use crate::config::DragonflyConfig;
 use crate::error::{Error, Result};
-use crate::topology::text;
 use crate::transport;
 
 /// Opens the first connection and leaves a task owning it.
@@ -66,152 +74,188 @@ async fn connect(config: &DragonflyConfig) -> Result<Connection> {
     })
 }
 
-/// Pumps messages until the process ends, reconnecting whenever the
-/// connection does.
+/// How one connection's generation ended.
+enum Ended {
+    /// Every handle on the hub dropped; there is nothing left to serve.
+    HubDropped,
+    /// The connection has to be redialled whole.
+    Lost(Loss),
+}
+
+/// Serves connections until the process ends, redialling whenever one is
+/// lost whole.
 async fn run(
     config: DragonflyConfig,
     schedule: ExponentialBuilder,
     inner: Arc<HubInner>,
     mut commands: mpsc::UnboundedReceiver<Command>,
-    mut connection: Connection,
+    first: Connection,
 ) {
+    let Connection {
+        mut connection,
+        mut pushes,
+    } = first;
+    let mut redialled = false;
     loop {
-        // Anything subscribed before this connection existed — the whole map
-        // after a reconnect — is subscribed again here. A reader that never
-        // noticed the drop must not be left listening to nothing.
-        resubscribe(&mut connection.connection, &inner.live_channels()).await;
-
-        let dropped = pump(&inner, &mut commands, &mut connection).await;
-        if !dropped {
-            return; // the hub itself went away
-        }
+        // After a redial, everything readers hold is subscribed again here: a
+        // reader that never noticed the drop must not be left listening to
+        // nothing, and the confirmation each re-subscribe earns is the gap it
+        // is told about. The FIRST connection re-subscribes nothing, because
+        // nothing was subscribed before it: a channel in the map already has
+        // its own `Subscribe` queued, and subscribing it here as well would
+        // confirm it twice — a gap for a reader that has lost nothing.
+        let channels = if redialled {
+            inner.live_channels()
+        } else {
+            Vec::new()
+        };
+        let (loss, unhosted) =
+            match generation(&inner, &mut commands, &mut connection, pushes, channels).await {
+                Ok(Ended::HubDropped) => return,
+                Ok(Ended::Lost(loss)) => (loss, false),
+                Err(Unhosted) => (Loss::CommandFailed, true),
+            };
 
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let error_code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
-        tracing::warn!(error_code, event = "hub_connection_dropped");
+        let cause = loss.as_str();
+        tracing::warn!(cause, error_code, event = "hub_connection_dropped");
+        // A cluster that accepted the dial but could not take the subscribes
+        // would accept the next dial at once too: wait a step first.
+        if unhosted {
+            tokio::time::sleep(schedule.build().next().unwrap_or_default()).await;
+        }
 
-        connection = redial(&config, schedule).await;
+        Connection { connection, pushes } = redial(&config, schedule).await;
+        redialled = true;
         inner.record_connection();
         afd_observability::producers::http::hub_reconnected();
         tracing::info!(event = "hub_reconnected");
     }
 }
 
+/// A redialled connection that could not take back every subscription.
+struct Unhosted;
+
+/// One connection's life: its pushes dispatched, what readers hold subscribed
+/// again, then its commands served until it has to go.
+///
+/// A re-subscribe that fails ends the generation at once. Carrying on would
+/// leave that channel's readers with neither frames nor a gap, which is the
+/// silence the hub exists to prevent; a fresh connection re-subscribes it and
+/// its confirmation is the gap.
+async fn generation(
+    inner: &Arc<HubInner>,
+    commands: &mut mpsc::UnboundedReceiver<Command>,
+    connection: &mut ClusterConnection,
+    pushes: mpsc::UnboundedReceiver<PushInfo>,
+    channels: Vec<String>,
+) -> Result<Ended, Unhosted> {
+    let (signal, mut signals) = mpsc::unbounded_channel();
+    let dispatcher = dispatch::spawn(Arc::clone(inner), pushes, signal, channels.clone());
+    let ended = match resubscribe(connection, &channels).await {
+        Ok(()) => Ok(serve(inner, commands, &mut signals, connection).await),
+        Err(unhosted) => Err(unhosted),
+    };
+    dispatcher.abort();
+    ended
+}
+
 /// Redials until the cluster answers, on the schedule the hub was started
 /// with.
 ///
-/// Infallible by signature, and that is the pub/sub contract: a reader holds a
+/// Infallible by signature, and that is the pub/sub rule: a reader holds a
 /// receiver rather than a connection, so there is no caller to hand a failure
 /// to and nothing sensible to do with one but try again. `production_backoff`
-/// says so with `without_max_times` — the loop ends when the cluster comes
-/// back and at no other point.
+/// sets no attempt limit, but `start_with_backoff` takes the caller's schedule
+/// as given, and a schedule that does set one ends its retry with an error. That
+/// is not the end of the redial: the same schedule starts again, so the loop
+/// ends when the cluster comes back and at no other point.
 async fn redial(config: &DragonflyConfig, schedule: ExponentialBuilder) -> Connection {
     let mut attempt = 0_u32;
-    (|| connect(config))
-        .retry(schedule)
-        .notify(|failure: &Error, _delay| {
-            // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-            let error_code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
-            attempt = attempt.saturating_add(1);
-            let count = attempt;
-            let reason = failure.to_string();
-            tracing::warn!(
-                attempt = count,
-                reason,
-                error_code,
-                event = "hub_reconnect_failed"
-            );
-        })
-        .await
-        // `without_max_times` has no terminal arm, so the only way out is a
-        // connection. The arm exists because the signature still admits an
-        // error, and it re-enters the same wait rather than inventing a
-        // Connection that does not exist.
-        .unwrap_or_else(|_unreachable| unreachable_redial())
-}
-
-/// The branch [`redial`]'s unlimited retry cannot reach.
-fn unreachable_redial() -> ! {
-    unreachable!("a redial with no attempt limit returns only on a connection")
-}
-
-/// Serves one connection. Returns true when the connection died, false when
-/// the hub was dropped and there is nothing left to serve.
-async fn pump(
-    inner: &Arc<HubInner>,
-    commands: &mut mpsc::UnboundedReceiver<Command>,
-    connection: &mut Connection,
-) -> bool {
     loop {
-        tokio::select! {
-            command = commands.recv() => match command {
-                Some(Command::Subscribe(channel)) => {
-                    if connection.connection.ssubscribe(&channel).await.is_err() {
-                        return true;
-                    }
-                }
-                Some(Command::Unsubscribe(channel)) => {
-                    if connection.connection.sunsubscribe(&channel).await.is_err() {
-                        return true;
-                    }
-                }
-                None => return false,
-            },
-            push = connection.pushes.recv() => match push {
-                Some(PushInfo { kind: PushKind::SMessage, data }) => {
-                    if let Some(message) = message_of(data) {
-                        inner.dispatch(message);
-                    }
-                }
-                // The node stopped serving the channel — a slot moved. A reader
-                // still holding it is re-subscribed, which the new owner needs;
-                // a channel nobody holds is the echo of our own SUNSUBSCRIBE.
-                Some(PushInfo { kind: PushKind::SUnsubscribe, data }) => {
-                    if let Some(channel) = channel_of(&data)
-                        && inner.holds_channel(&channel)
-                    {
-                        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-                        let channel_name = channel.as_str();
-                        tracing::info!(channel = channel_name, event = "hub_subscription_moved");
-                        if connection.connection.ssubscribe(&channel).await.is_err() {
-                            return true;
-                        }
-                    }
-                }
-                // The driver reports a node's socket dying as a push; the
-                // subscriptions on it are gone with it, and pub/sub has no
-                // replay, so this is a fresh connection's job.
-                Some(PushInfo { kind: PushKind::Disconnection, .. }) | None => return true,
-                Some(_other_push) => {}
-            },
+        let redialled = (|| connect(config))
+            .retry(schedule)
+            .notify(|failure: &Error, _delay| {
+                // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+                let error_code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
+                attempt = attempt.saturating_add(1);
+                let count = attempt;
+                let reason = failure.to_string();
+                tracing::warn!(
+                    attempt = count,
+                    reason,
+                    error_code,
+                    event = "hub_reconnect_failed"
+                );
+            })
+            .await;
+        if let Ok(connection) = redialled {
+            return connection;
         }
     }
 }
 
-/// Re-issues `SSUBSCRIBE` for every channel a reader still holds.
-async fn resubscribe(connection: &mut ClusterConnection, channels: &[String]) {
-    for channel in channels {
+/// Serves one connection's commands and the dispatch task's signals until the
+/// connection has to go.
+///
+/// A command that fails is a lost connection: the driver has already retried
+/// it through its own redirects and repairs, so what reaches here is a socket
+/// that cannot be used.
+async fn serve(
+    inner: &HubInner,
+    commands: &mut mpsc::UnboundedReceiver<Command>,
+    signals: &mut mpsc::UnboundedReceiver<Signal>,
+    connection: &mut ClusterConnection,
+) -> Ended {
+    loop {
+        let sent = tokio::select! {
+            command = commands.recv() => match command {
+                Some(Command::Subscribe(channel)) => connection.ssubscribe(&channel).await,
+                Some(Command::Unsubscribe(channel)) => connection.sunsubscribe(&channel).await,
+                None => return Ended::HubDropped,
+            },
+            // Dispatch ends only after signalling, so a closed signal channel
+            // is a task that died without one: its pushes are unread either way.
+            signal = signals.recv() => match signal.unwrap_or(Signal::Redial(Loss::Closed)) {
+                Signal::Resubscribe(channel) => connection.ssubscribe(&channel).await,
+                // The waiting a repair may do happens here, never on the
+                // dispatch task: frames keep flowing while it waits, and the
+                // commands queued meanwhile are served only once every owner
+                // is back — see the `repair` module.
+                Signal::Repair(channels) => match repair::resubscribe(connection, inner, &channels).await {
+                    Ok(()) => Ok(()),
+                    Err(loss) => return Ended::Lost(loss),
+                },
+                Signal::Redial(loss) => return Ended::Lost(loss),
+            },
+        };
+        if sent.is_err() {
+            return Ended::Lost(Loss::CommandFailed);
+        }
+    }
+}
+
+/// Re-issues `SSUBSCRIBE` for every channel a reader still holds, stopping at
+/// the first the connection cannot take. The log names how many were left
+/// unsubscribed, never which: a channel name is a fleet id.
+async fn resubscribe(
+    connection: &mut ClusterConnection,
+    channels: &[String],
+) -> Result<(), Unhosted> {
+    for (index, channel) in channels.iter().enumerate() {
         if let Err(failure) = connection.ssubscribe(channel).await {
+            // Hoisted: see the `tracing` note in the workspace Cargo.toml.
             let error_code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
+            let channels = channels.len().saturating_sub(index);
             tracing::warn!(
-                channel,
+                channels,
                 error = %failure,
                 error_code,
                 event = "hub_resubscribe_failed"
             );
+            return Err(Unhosted);
         }
     }
-}
-
-/// An `smessage` push carries `[channel, payload]`.
-fn message_of(data: Vec<Value>) -> Option<Message> {
-    let mut fields = data.into_iter();
-    let channel = text(&fields.next()?)?;
-    let payload = text(&fields.next()?).unwrap_or_default();
-    Some(Message { channel, payload })
-}
-
-/// An `sunsubscribe` push carries `[channel, remaining]`.
-fn channel_of(data: &[Value]) -> Option<String> {
-    text(data.first()?)
+    Ok(())
 }

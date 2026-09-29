@@ -53,6 +53,8 @@ mod integration_inbox_continuation;
 mod integration_inbox_decider_name;
 #[path = "integration_inbox_paging.rs"]
 mod integration_inbox_paging;
+#[path = "integration_inbox_sweep_decode.rs"]
+mod integration_inbox_sweep_decode;
 #[path = "integration_inbox_tail.rs"]
 mod integration_inbox_tail;
 #[path = "integration_inbox_tail_continuation.rs"]

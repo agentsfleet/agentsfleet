@@ -83,7 +83,7 @@ pub(crate) async fn abandoned_mid_flight(fixtures: &Fixtures, leases: &Leases) -
     let acquired = select_fleet_within_rotations(leases, &holder, staged_at, &fleet)
         .await
         .expect("the fleet holding admitted work is offered within the rotations polled");
-    assert_eq!(acquired.event_id, admitted.id);
+    assert_eq!(acquired.event_id, admitted.stored.id);
     assert_eq!(
         leases
             .record_received(&acquired, staged_at)
@@ -106,7 +106,8 @@ pub(crate) async fn abandoned_mid_flight(fixtures: &Fixtures, leases: &Leases) -
             staged_at,
         )
         .await
-        .expect("the lease row is written");
+        .expect("the lease row is written")
+        .expect("the claim is still held");
 
     FleetStreams::new(fixtures.queue().clone())
         .forget(&fleet)
@@ -117,7 +118,7 @@ pub(crate) async fn abandoned_mid_flight(fixtures: &Fixtures, leases: &Leases) -
     Abandoned {
         fleet,
         poller,
-        event_id: admitted.id,
+        event_id: admitted.stored.id,
         lease_id: issued.lease_id.as_str().to_owned(),
     }
 }

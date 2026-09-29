@@ -31,9 +31,11 @@ const SPLIT = {
   REPLY: "reply",
 } as const;
 
+type TriggerEntry = { kind: typeof SPLIT.TRIGGER; key: string; event: FleetEvent };
+
 export type FleetThreadEntry =
   | ThreadEntry
-  | { kind: typeof SPLIT.TRIGGER; key: string; event: FleetEvent }
+  | TriggerEntry
   | { kind: typeof SPLIT.REPLY; key: string; event: FleetEvent };
 
 export type FleetThreadEntries = {
@@ -58,10 +60,18 @@ export function useFleetThreadEntries(
     previous.current = next;
     return next;
   }, [events]);
-  const entries = useMemo(
-    () => groupedEntries.flatMap(expandedOnce),
-    [groupedEntries],
-  );
+  // The trigger each split turn rendered last, by key: a streamed reply
+  // replaces its event, and the trigger keeps its object while `convertEvent`
+  // renders it the same.
+  const triggers = useRef(new Map<string, TriggerEntry>());
+  const entries = useMemo(() => {
+    const held = triggers.current;
+    const next = new Map<string, TriggerEntry>();
+    const expanded = groupedEntries.flatMap((entry) => expandedOnce(entry, held, convertEvent));
+    for (const entry of expanded) if (entry.kind === SPLIT.TRIGGER) next.set(entry.key, entry);
+    triggers.current = next;
+    return expanded;
+  }, [groupedEntries, convertEvent]);
   const convertEntry = useCallback(
     (entry: FleetThreadEntry): ThreadMessageLike => {
       switch (entry.kind) {
@@ -91,19 +101,32 @@ export function useFleetThreadEntries(
 // weakly, so an entry the stream replaced takes its expansion with it.
 const EXPANDED = new WeakMap<ThreadEntry, FleetThreadEntry[]>();
 
-function expandedOnce(entry: ThreadEntry): FleetThreadEntry[] {
+function expandedOnce(
+  entry: ThreadEntry,
+  triggers: ReadonlyMap<string, TriggerEntry>,
+  convertEvent: (event: FleetEvent) => ThreadMessageLike,
+): FleetThreadEntry[] {
   const held = EXPANDED.get(entry);
   if (held !== undefined) return held;
-  const expanded = expandEntry(entry);
+  const expanded = expandEntry(entry, triggers.get(entry.key), convertEvent);
   EXPANDED.set(entry, expanded);
   return expanded;
 }
 
-function expandEntry(entry: ThreadEntry): FleetThreadEntry[] {
+function expandEntry(
+  entry: ThreadEntry,
+  previous: TriggerEntry | undefined,
+  convertEvent: (event: FleetEvent) => ThreadMessageLike,
+): FleetThreadEntry[] {
   if (entry.kind === ENTRY_KIND.GROUP || !hasReplyRow(entry.event)) return [entry];
   const { event } = entry;
+  // Compared on what `convertEvent` renders, never on a list of the fields it
+  // reads: a field it starts reading is compared from that day on.
+  const trigger = previous !== undefined && sameValues(convertEvent(previous.event), convertEvent(event))
+    ? previous
+    : { kind: SPLIT.TRIGGER, key: entry.key, event };
   return [
-    { kind: SPLIT.TRIGGER, key: entry.key, event },
+    trigger,
     {
       kind: SPLIT.REPLY,
       key: `${entry.key}${REPLY_ID_SUFFIX}`,
@@ -116,6 +139,19 @@ function expandEntry(entry: ThreadEntry): FleetThreadEntry[] {
       },
     },
   ];
+}
+
+/** Whether two converted messages hold the same values: dates by instant,
+ * arrays and objects by their entries, anything else by `Object.is`. */
+export function sameValues(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (a instanceof Date || b instanceof Date) {
+    return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();
+  }
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  const left = Object.entries(a);
+  const right = new Map(Object.entries(b));
+  return left.length === right.size && left.every(([key, value]) => right.has(key) && sameValues(value, right.get(key)));
 }
 
 // An operator turn always answers in its own row, so the wait state and the

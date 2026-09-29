@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use super::{Provenance, admitted, finish};
-use crate::error::Error;
+use crate::error::{Error, ErrorKind};
 use crate::profile::{PROFILE_VARIABLE, Profile, Target};
 use crate::report::provenance::{
     DATASTORE_IMAGE_VARIABLE, OWNED_VALUE, OWNED_VARIABLE, REVISION_VARIABLE,
@@ -47,7 +47,7 @@ fn test_a_run_that_cannot_describe_itself_is_refused_before_its_profile_resolves
     // against. Refused in the preamble, so no datastore is opened.
     let refused = admitted(&env_of(&[])).expect_err("an undescribed run refuses");
     assert!(
-        matches!(refused, Error::VariableUnset { variable } if variable == REVISION_VARIABLE),
+        matches!(refused.kind(), ErrorKind::VariableUnset { variable } if *variable == REVISION_VARIABLE),
         "got {refused}"
     );
 }
@@ -59,21 +59,21 @@ fn test_a_named_profile_is_admitted_through_its_own_checks() {
     let refused =
         admitted(&env_of(&environment)).expect_err("prod without its acknowledgement refuses");
     assert!(
-        matches!(refused, Error::AcknowledgementMissing { .. }),
+        matches!(refused.kind(), ErrorKind::AcknowledgementMissing { .. }),
         "got {refused}"
     );
 }
 
 #[test]
 fn test_the_lanes_error_is_reported_before_the_sweeps() {
-    let lane_failed: Result<Report, Error> = Err(Error::TaskLost { role: "runner" });
-    let sweep_failed: Result<u64, Error> = Err(Error::InstrumentPoisoned);
+    let lane_failed: Result<Report, Error> = Err(ErrorKind::TaskLost { role: "runner" }.into());
+    let sweep_failed: Result<u64, Error> = Err(ErrorKind::InstrumentPoisoned.into());
 
     let refused = finish(Lane::Lease, Profile::Rig, lane_failed, sweep_failed)
         .expect_err("two failures still refuse");
 
     assert!(
-        matches!(refused, Error::TaskLost { .. }),
+        matches!(refused.kind(), ErrorKind::TaskLost { .. }),
         "the measurement's failure is the one a reader needs, got {refused}"
     );
 }
@@ -87,11 +87,11 @@ fn test_a_failed_sweep_after_a_good_run_is_still_a_refusal() {
         Lane::Lease,
         Profile::Rig,
         Ok(report),
-        Err(Error::InstrumentPoisoned),
+        Err(ErrorKind::InstrumentPoisoned.into()),
     )
     .expect_err("a run whose fixtures may be left behind is not a clean result");
 
-    assert!(matches!(refused, Error::InstrumentPoisoned));
+    assert!(matches!(refused.kind(), ErrorKind::InstrumentPoisoned));
 }
 
 #[test]

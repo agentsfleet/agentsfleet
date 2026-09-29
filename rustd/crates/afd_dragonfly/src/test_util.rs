@@ -16,6 +16,11 @@ use crate::config::DragonflyConfig;
 use crate::error::{ErrorKind, Result};
 use crate::streams::{EventId, FleetEvent};
 
+/// How long the subscription hub lets a lost node socket go unexplained
+/// before it redials whole. The hub's own value, so a fault test derives its
+/// deadlines from the window rather than restating it.
+pub const NODE_REPAIR_WINDOW: Duration = crate::hub::NODE_REPAIR_WINDOW;
+
 static CONNECT_SERIAL: Semaphore = Semaphore::const_new(1);
 
 /// How many times a lane connection may lose the CPU race before it is a fault.

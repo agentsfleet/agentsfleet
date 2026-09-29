@@ -4,8 +4,8 @@
 //! instance, a legacy throwaway consumer name — sits in that consumer's pending
 //! list forever. `XREADGROUP >` only ever hands out entries nobody has seen, so
 //! nothing re-delivers it and the work simply stops. This sweeper claims those
-//! entries away, into a consumer that is alive, where the lease path's own
-//! pending read finds them on the next poll.
+//! entries away, into a consumer that is alive, and marks the fleet so a lease
+//! poll's takeover of the group's oldest pending entry finds them.
 //!
 //! # It is also the readiness index's backstop
 //!
@@ -231,7 +231,7 @@ impl Reclaim {
     /// above and the ledger question below — so a mark that fails is counted
     /// and logged the same way whichever question raised it.
     async fn mark_ready(&self, fleet_id: &str) -> bool {
-        match self.ready.mark(fleet_id, &self.consumer).await {
+        match self.ready.mark(fleet_id).await {
             Ok(_token) => true,
             Err(failure) => {
                 producers::fleet::ready_write_failed();

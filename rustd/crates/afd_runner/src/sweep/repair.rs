@@ -212,7 +212,7 @@ impl Repairs {
         let recorded = sqlx::query(sql::sweep::COMPLETE_REPAIR_VERIFICATION)
             .bind(intent.id.as_str())
             .bind(token.as_str())
-            .bind(admitted.id.as_str())
+            .bind(admitted.stored.id.as_str())
             .bind(now.as_millis())
             .execute(&mut *connection)
             .await

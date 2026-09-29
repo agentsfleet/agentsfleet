@@ -5,7 +5,7 @@
 # installs it). It measures a URL, which is the only thing hey can measure.
 #
 # What the daemon's paths cost is the THROUGHPUT LANES further down —
-# bench-lease, bench-steer, bench-outbound, bench-cardinality. Those are Rust,
+# bench-lease, bench-steer, bench-outbound, bench-cardinality, bench-tail. Those are Rust,
 # they drive the production types directly rather than a URL, and they are the
 # agentsfleetd benchmarks.
 #
@@ -132,9 +132,12 @@ BENCH_LANE_ENV = BENCH_PROFILE="$(PROFILE)" \
 # build profile rather than of the path.
 BENCH_LANE_RUN := cargo run --release --quiet --manifest-path $(RUSTD_DIR)/Cargo.toml --bin
 
-.PHONY: bench-steer bench-lease bench-outbound bench-cardinality bench-compare
+.PHONY: bench-steer bench-lease bench-outbound bench-cardinality bench-tail bench-compare
 
-bench-lease: _ensure-test-infra  ## Lease throughput: rate, p95, round trips per lease (PROFILE=rig [BENCH_FLEETS=n] [BENCH_RUNNERS=n])
+# The lease lane runs two populations: the contended window it always ran, then
+# a drain through the full lease and report verbs, whose idle cost it prints as
+# `idle_statements_per_poll=` — the line a reader, or a rubric, greps for.
+bench-lease: _ensure-test-infra  ## Lease throughput, then a drain: rate, p95, statements and commits per lease, idle statements per poll (PROFILE=rig [BENCH_FLEETS=n] [BENCH_RUNNERS=n])
 	@echo "→ [bench-lease] profile=$(PROFILE)"
 	@$(BENCH_LANE_ENV) $(BENCH_LANE_RUN) lease
 
@@ -149,6 +152,13 @@ bench-outbound: _ensure-test-infra  ## Delivery ceiling: rate, p95, head-of-line
 bench-cardinality: _ensure-test-infra  ## Cost per idle fleet up a ladder (PROFILE=rig [BENCH_FLEETS=n], rig cap 1000000)
 	@echo "→ [bench-cardinality] profile=$(PROFILE)"
 	@$(BENCH_LANE_ENV) $(BENCH_LANE_RUN) cardinality
+
+# The live tail's ladders: viewers on one fleet × payload size, then open
+# streams. The only lane that also needs the pub/sub hub, which it opens from
+# the same Dragonfly the others use.
+bench-tail: _ensure-test-infra  ## Live tail: allocations, busy time and p95 per delivered frame over a viewer ladder, heap per stream over a stream ladder (PROFILE=rig)
+	@echo "→ [bench-tail] profile=$(PROFILE)"
+	@$(BENCH_LANE_ENV) $(BENCH_LANE_RUN) tail
 
 bench-compare:  ## Delta between a result and its baseline (LANE=lease PROFILE=rig) — always exit 0
 	@$(BENCH_LANE_RUN) compare -- "$(LANE)" "$(PROFILE)"

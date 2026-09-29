@@ -130,7 +130,9 @@ async fn delivery_stamps_before_and_after_a_replayed_receipt() {
         .await
         .expect("the row commits whatever the queue does");
     assert_eq!(
-        fixtures.admission_receipt(&fleet, &unreceipted.id).await,
+        fixtures
+            .admission_receipt(&fleet, &unreceipted.stored.id)
+            .await,
         None,
         "an append that never happened records no receipt"
     );
@@ -142,7 +144,7 @@ async fn delivery_stamps_before_and_after_a_replayed_receipt() {
         .await
         .expect("a live queue admits and receipts");
     let first_receipt = fixtures
-        .admission_receipt(&fleet, &replayed.id)
+        .admission_receipt(&fleet, &replayed.stored.id)
         .await
         .expect("a live append records its receipt");
     streams
@@ -162,7 +164,7 @@ async fn delivery_stamps_before_and_after_a_replayed_receipt() {
         .await
         .expect("the replay pass runs");
     let second_receipt = fixtures
-        .admission_receipt(&fleet, &replayed.id)
+        .admission_receipt(&fleet, &replayed.stored.id)
         .await
         .expect("replay re-appended the row and recorded a new receipt");
     assert_ne!(
@@ -171,7 +173,7 @@ async fn delivery_stamps_before_and_after_a_replayed_receipt() {
     );
 
     // ── The stamp, run as the lease path runs it, against both rows.
-    for event_id in [&unreceipted.id, &replayed.id] {
+    for event_id in [&unreceipted.stored.id, &replayed.stored.id] {
         assert_eq!(
             stamp(&fixtures, &fleet, event_id).await,
             1,

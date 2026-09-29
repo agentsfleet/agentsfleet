@@ -41,12 +41,12 @@ async fn queue_loss_replays_without_duplicate_settlement() {
             .expect("a live queue admits and receipts");
         assert!(
             fixtures
-                .admission_receipt(&fleet, &event.id)
+                .admission_receipt(&fleet, &event.stored.id)
                 .await
                 .is_some(),
             "{key} was receipted before the loss"
         );
-        owed.push(event.id);
+        owed.push(event.stored.id);
     }
 
     // ── The run that completes, driven through the real verbs. Extracted

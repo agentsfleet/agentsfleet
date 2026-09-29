@@ -40,10 +40,16 @@
 mod bindings;
 #[path = "integration_lease_gates/cases.rs"]
 mod cases;
+#[path = "integration_lease_gates/faults.rs"]
+mod faults;
 #[path = "integration_lease_gates/seed.rs"]
 mod seed;
 #[path = "integration_lease_gates/slack.rs"]
 mod slack;
+#[path = "integration_lease_gates/stops.rs"]
+mod stops;
+#[path = "integration_lease_gates/tenant.rs"]
+mod tenant;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;

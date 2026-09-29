@@ -242,7 +242,10 @@ fn test_only_deployed_profiles_reach_over_the_network() {
 fn test_production_is_told_about_the_acknowledgement_before_the_target() {
     let refused = Profile::Prod.admit(&empty_env()).expect_err("refuses");
     assert!(
-        matches!(refused, crate::Error::AcknowledgementMissing { .. }),
+        matches!(
+            refused.kind(),
+            crate::error::ErrorKind::AcknowledgementMissing { .. }
+        ),
         "someone pointing at production is told that first, got {refused}"
     );
 }
@@ -252,7 +255,10 @@ fn test_a_blank_target_is_unset_not_an_address_of_one_space() {
     let blank = env_of(&[(TARGET_VARIABLE, "   ")]);
     let refused = Profile::Dev.target(&blank).expect_err("blank is unset");
     assert!(
-        matches!(refused, crate::Error::TargetMissing { .. }),
+        matches!(
+            refused.kind(),
+            crate::error::ErrorKind::TargetMissing { .. }
+        ),
         "got {refused}"
     );
 }
@@ -273,7 +279,10 @@ fn test_a_window_under_the_warmup_floor_is_refused() {
     let refused = Profile::Rig
         .check_window(core::time::Duration::from_millis(1))
         .expect_err("a rate across a cold cache is not a rate");
-    assert!(matches!(refused, crate::Error::WindowTooShort { .. }));
+    assert!(matches!(
+        refused.kind(),
+        crate::error::ErrorKind::WindowTooShort { .. }
+    ));
     Profile::Rig
         .check_window(Profile::Rig.caps().warmup)
         .expect("the floor itself is allowed");

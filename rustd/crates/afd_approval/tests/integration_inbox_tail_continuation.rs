@@ -194,7 +194,7 @@ async fn a_converged_continuation_announces_nothing() {
         .expect("the admission ledger accepts the continuation");
     let landed: bool = sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
         .bind(lane.fleet.as_str())
-        .bind(admitted.id.as_str())
+        .bind(admitted.stored.id.as_str())
         .bind(lane.workspace.as_str())
         .bind(&actor)
         .bind(EventType::Continuation.as_str())
@@ -233,7 +233,7 @@ async fn a_converged_continuation_announces_nothing() {
     }
     .expect("an approved gate still reports the run it continues");
     assert_eq!(
-        continuation, admitted.id,
+        continuation, admitted.stored.id,
         "the resolve converged on the row the lease path opened, it did not mint a second"
     );
 

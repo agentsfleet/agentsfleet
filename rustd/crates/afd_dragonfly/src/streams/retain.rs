@@ -10,65 +10,57 @@
 //! above that floor is capped, at [`ACKNOWLEDGED_HISTORY`]. A slow consumer
 //! therefore grows its stream instead of losing its work, and the admission
 //! budget in `afd_admission` is what stops that growth — with a refusal the
-//! producer can see, which a trim never was.
-//!
-//! # Every race makes the trim more conservative
-//!
-//! The floor is computed from three reads and applied by one `XTRIM MINID`,
-//! with no script. Between the reads and the trim an append lands above every
-//! id read, a delivery moves `last-delivered-id` forward and never back, and
-//! an acknowledgement raises the oldest pending id. Each leaves the computed
-//! floor at or below the true one, so the trim removes a subset of what it
-//! could have. Nothing it removes was owed. That is why a single-key Lua
-//! script — one round trip instead of five — was not worth its unverified
-//! `XPENDING`-inside-a-script on Dragonfly.
+//! producer can see, which a trim never was. How the floor is found, and why
+//! no race moves it past owed work, is [`floor`]'s to say.
 //!
 //! # Where it runs
 //!
 //! On the acknowledgement path, gated on `XLEN`: a stream at or under the
-//! history bound costs one round trip per acknowledgement, and a longer one
-//! pays the three reads and the trim. Not a sweeper, because a sweep has to
-//! FIND the streams — a walk of every fleet key per pass — while the
-//! acknowledgement already holds the one stream that just grew.
+//! history bound plus [`TRIM_SLACK`] costs one round trip per
+//! acknowledgement, and a longer one pays the owed reads, one bounded range
+//! read and the trim. Not a sweeper, because a sweep has to FIND the streams —
+//! a walk of every fleet key per pass — while the acknowledgement already
+//! holds the one stream that just grew.
 //!
 //! Generic over the key and the group rather than over `FleetStreams`, because
 //! the outbound stream has the same shape and the same obligation, and one
 //! floor computation is one place for the ordering to be right.
 
-use redis::streams::{
-    StreamInfoGroupsReply, StreamInfoStreamReply, StreamPendingReply, StreamRangeReply,
-};
+mod floor;
 
-use super::{ARG_COUNT, FLEET_CONSUMER_GROUP, FleetStreams, fleet_stream_key};
+use redis::streams::{StreamInfoGroupsReply, StreamInfoStreamReply};
+
+pub(crate) use self::floor::trim_history;
+use super::{FLEET_CONSUMER_GROUP, FleetStreams, fleet_stream_key};
 use crate::client::Dragonfly;
 use crate::error::{self, Result};
 
 /// The commands this module issues, named once each (RULE UFS).
 const CMD_XLEN: &str = "XLEN";
 const CMD_XINFO: &str = "XINFO";
-const CMD_XPENDING: &str = "XPENDING";
-const CMD_XREVRANGE: &str = "XREVRANGE";
-const CMD_XTRIM: &str = "XTRIM";
 
 /// `XINFO` subcommands.
 const XINFO_STREAM: &str = "STREAM";
 const XINFO_GROUPS: &str = "GROUPS";
 
-/// `XTRIM`'s strategy: remove every entry whose id is below the one given.
-const XTRIM_MINID: &str = "MINID";
-
-/// `XREVRANGE`'s bounds, newest to oldest. Its cap is the module's
-/// [`ARG_COUNT`], shared with the reads next door.
-const RANGE_NEWEST: &str = "+";
-const RANGE_OLDEST: &str = "-";
-
 /// How many acknowledged entries a stream keeps above its floor.
 ///
 /// Nothing in the product reads acknowledged history off the stream — the
 /// event history is `core.fleet_events`, and the live tail is pub/sub — so the
-/// bound is a diagnostic window, not a contract. It is also the ceiling on
+/// bound is a diagnostic window, not a promise. It is also the ceiling on
 /// what a group restore can re-offer, so it stays small on purpose.
 pub const ACKNOWLEDGED_HISTORY: usize = 1_000;
+
+/// How far past [`ACKNOWLEDGED_HISTORY`] a stream grows before an
+/// acknowledgement trims it back.
+///
+/// With no slack, every acknowledgement past the bound paid the whole trim —
+/// the owed reads, a range read and an `XTRIM` — to remove one entry. A tenth
+/// of the bound makes it one trim per 101 acknowledgements, removing 101
+/// entries and reading 102, and a plain `XLEN` for the other hundred. The
+/// price is at most a tenth more acknowledged history per stream, and each
+/// entry carries its request payload, which is why the slack is not larger.
+pub const TRIM_SLACK: usize = ACKNOWLEDGED_HISTORY / 10;
 
 /// A stream entry's position: the two integers Dragonfly mints an id from.
 ///
@@ -146,6 +138,9 @@ pub struct Trimmed {
     pub removed: u64,
     /// Entries still on the stream afterwards.
     pub retained: u64,
+    /// Entries the floor read returned: at most `removed + 1`, and zero when
+    /// the stream sat inside its bound and no read ran.
+    pub read: u64,
 }
 
 /// The group's state as `XINFO GROUPS` reports it — the public backlog plus
@@ -179,87 +174,11 @@ async fn group_of(redis: &Dragonfly, key: &str, group: &str) -> Result<Option<Gr
         .transpose()
 }
 
-/// The oldest entry any consumer of `group` still holds, if one does.
-async fn oldest_pending(redis: &Dragonfly, key: &str, group: &str) -> Result<Option<Position>> {
-    let mut cmd = redis::cmd(CMD_XPENDING);
-    cmd.arg(key).arg(group);
-    let reply: StreamPendingReply = redis.command(CMD_XPENDING, key, &cmd).await?;
-    match reply {
-        StreamPendingReply::Empty => Ok(None),
-        StreamPendingReply::Data(summary) => Position::parse(&summary.start_id).map(Some),
-        // A shape a newer driver added. Refused rather than read as "nothing
-        // pending": the floor would then cross entries a consumer still owes,
-        // which is the one thing this module exists to never do.
-        _unknown => Err(error::unexpected_reply(CMD_XPENDING)),
-    }
-}
-
-/// The oldest of the newest `keep` entries — the floor of the history window.
-async fn history_floor(redis: &Dragonfly, key: &str, keep: usize) -> Result<Option<Position>> {
-    let mut cmd = redis::cmd(CMD_XREVRANGE);
-    cmd.arg(key)
-        .arg(RANGE_NEWEST)
-        .arg(RANGE_OLDEST)
-        .arg(ARG_COUNT)
-        .arg(keep);
-    let reply: StreamRangeReply = redis.command(CMD_XREVRANGE, key, &cmd).await?;
-    reply
-        .ids
-        .last()
-        .map(|entry| Position::parse(&entry.id))
-        .transpose()
-}
-
 /// How many entries `key` holds.
 pub(crate) async fn length_of(redis: &Dragonfly, key: &str) -> Result<u64> {
     let mut cmd = redis::cmd(CMD_XLEN);
     cmd.arg(key);
     redis.command(CMD_XLEN, key, &cmd).await
-}
-
-/// Trims `key`'s acknowledged history to `keep` entries, never crossing the
-/// oldest entry `group` still owes.
-///
-/// The floor is the least of three positions: the group's last delivered id
-/// (everything after it is undelivered), the oldest pending id (everything
-/// from it on is owed), and the oldest of the newest `keep` entries (the
-/// history window). `XTRIM MINID` then removes what lies below.
-pub(crate) async fn trim_history(
-    redis: &Dragonfly,
-    key: &str,
-    group: &str,
-    keep: usize,
-) -> Result<Trimmed> {
-    let length = length_of(redis, key).await?;
-    let untouched = Trimmed {
-        removed: 0,
-        retained: length,
-    };
-    if length <= as_u64(keep) {
-        return Ok(untouched);
-    }
-    let Some(found) = group_of(redis, key, group).await? else {
-        return Ok(untouched);
-    };
-    let floor = [
-        Some(found.last_delivered),
-        oldest_pending(redis, key, group).await?,
-        history_floor(redis, key, keep).await?,
-    ]
-    .into_iter()
-    .flatten()
-    .min();
-    let Some(floor) = floor else {
-        return Ok(untouched);
-    };
-
-    let mut cmd = redis::cmd(CMD_XTRIM);
-    cmd.arg(key).arg(XTRIM_MINID).arg(floor.render());
-    let removed: u64 = redis.command(CMD_XTRIM, key, &cmd).await?;
-    Ok(Trimmed {
-        removed,
-        retained: length.saturating_sub(removed),
-    })
 }
 
 /// What `group` still owes on `key`, or `None` when the group does not exist.
@@ -299,7 +218,8 @@ impl FleetStreams {
         .await
     }
 
-    /// Trims the fleet's acknowledged history to [`ACKNOWLEDGED_HISTORY`],
+    /// Trims the fleet's acknowledged history back to
+    /// [`ACKNOWLEDGED_HISTORY`] once it is more than [`TRIM_SLACK`] past it,
     /// never crossing the oldest entry the group still owes.
     ///
     /// # Errors

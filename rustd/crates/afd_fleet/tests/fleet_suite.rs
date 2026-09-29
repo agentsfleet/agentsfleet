@@ -7,6 +7,8 @@
 //! declared once here and reached as `crate::<name>` from each suite,
 //! which is the shape `afd_api` already uses for its four planes.
 
+#[path = "support/fleet_log.rs"]
+mod fleet_log;
 #[path = "support/fleet_lease_reads.rs"]
 mod lease_reads;
 #[path = "support/fleet_queue.rs"]
@@ -52,6 +54,8 @@ mod integration_lease_gates;
 mod integration_lease_installed;
 #[path = "integration_lease_issue.rs"]
 mod integration_lease_issue;
+#[path = "integration_lease_ready.rs"]
+mod integration_lease_ready;
 #[path = "integration_lease_started.rs"]
 mod integration_lease_started;
 #[path = "integration_ledger_fleet_name.rs"]
@@ -72,6 +76,14 @@ mod integration_recovery_budget;
 mod integration_recovery_outage;
 #[path = "integration_recovery_progress.rs"]
 mod integration_recovery_progress;
+#[path = "integration_recovery_progress_deleted.rs"]
+mod integration_recovery_progress_deleted;
+#[path = "integration_recovery_progress_live.rs"]
+mod integration_recovery_progress_live;
+#[path = "integration_recovery_progress_restart.rs"]
+mod integration_recovery_progress_restart;
+#[path = "integration_recovery_progress_walk.rs"]
+mod integration_recovery_progress_walk;
 #[path = "integration_renew_clamp.rs"]
 mod integration_renew_clamp;
 #[path = "integration_renew_coverage.rs"]

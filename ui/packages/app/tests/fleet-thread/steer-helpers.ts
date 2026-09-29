@@ -1,8 +1,8 @@
 import { expect } from "vitest";
 import { act, fireEvent, screen } from "@testing-library/react";
-import { steerFleetActionMock } from "./harness";
+import { postSteerMock } from "./harness";
 
-// What the steer suites share: the composer's names and copy, the action's
+// What the steer suites share: the composer's names and copy, the steer's
 // answers, and the moves a person makes in the composer.
 
 import { COMPOSER_NAME, SEND_LABEL, UUID_V7 } from "./steer-copy";
@@ -13,7 +13,8 @@ export const OPERATION_ID = expect.stringMatching(UUID_V7);
 export const REFUSED = { ok: false, error: "Fleet is paused", status: 409, errorCode: "UZ-AGT-012" } as const;
 // An answer that settles nothing: the daemon may hold the message.
 export const UNAVAILABLE = { ok: false, error: "Provider unavailable", status: 503, errorCode: "UZ-API-002" } as const;
-export const ACCEPTED = (eventId: string) => ({ ok: true, data: { event_id: eventId } });
+// The 202 as the daemon answers a fresh admission.
+export const ACCEPTED = (eventId: string) => ({ ok: true, data: { status: "accepted", event_id: eventId, replayed: false } });
 
 export function composerInput(): HTMLTextAreaElement {
   return screen.getByRole("textbox", { name: COMPOSER_NAME }) as HTMLTextAreaElement;
@@ -29,15 +30,15 @@ export async function send(text: string): Promise<void> {
   });
 }
 
-/** The operation id the action received on its `index`th call. */
+/** The operation id the steer carried on its `index`th call. */
 export function operationIdOf(index: number): string {
-  return String(steerFleetActionMock.mock.calls[index]?.[3]);
+  return String(postSteerMock.mock.calls[index]?.[3]);
 }
 
 // A refusal the test releases when it chooses.
 export function heldRefusal(): { refuse: () => void } {
   const held = { refuse: () => {} };
-  steerFleetActionMock.mockImplementationOnce(
+  postSteerMock.mockImplementationOnce(
     () => new Promise((resolve) => { held.refuse = () => resolve(REFUSED); }),
   );
   return held;

@@ -70,7 +70,7 @@ const DISTINCT_OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0998";
 pub(crate) const KEY_SEPARATOR: &str = ":";
 
 /// How the ledger spells this producer, for the row count below.
-const PRODUCER_STEER: &str = "steer";
+pub(crate) const PRODUCER_STEER: &str = "steer";
 
 /// Dimension 7.5 — the same operation id twice admits once.
 #[tokio::test(flavor = "multi_thread")]
@@ -197,6 +197,7 @@ pub(crate) async fn append_with(
         )
         .await
         .expect("the append reaches the datastore")
+        .event_id
 }
 
 /// Ledger rows the steer producer holds for `operation` on the lane's fleet.

@@ -90,6 +90,16 @@ export function backfillFleetEventsUrl(
   );
 }
 
+// Same-origin URL for one event's saved row, bodies included. Intercepted by
+// the Route Handler at app/live/.../events/[eventId]/route.ts, which injects
+// the Bearer token server-side.
+export function fleetEventDetailUrl(workspaceId: string, fleetId: string, eventId: string): string {
+  return (
+    `/live/v1/workspaces/${encodeURIComponent(workspaceId)}` +
+    `/fleets/${encodeURIComponent(fleetId)}/events/${encodeURIComponent(eventId)}`
+  );
+}
+
 // Same-origin URL for the ONE multiplexed workspace SSE stream. Intercepted by
 // the Next Route Handler at app/live/.../events/stream/route.ts, which mints
 // the api-audience Bearer server-side. This is the wall's single connection —

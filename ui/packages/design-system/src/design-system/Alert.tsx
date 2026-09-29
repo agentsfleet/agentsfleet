@@ -2,6 +2,7 @@ import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { type ComponentProps } from "react";
 import { cn } from "../utils";
+import { Button } from "./Button";
 
 /* Inline X — design-system avoids lucide-react as a transitive dep. */
 function DismissIcon() {
@@ -108,17 +109,11 @@ export function Alert({
     <div ref={ref} role={resolvedRole} className={classes} {...props}>
       {children}
       {onDismiss ? (
-        <button
-          type="button"
-          aria-label="Dismiss"
-          onClick={onDismiss}
-          className={cn(
-            "ml-auto shrink-0 rounded-sm opacity-70 transition-opacity",
-            "hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-current",
-          )}
-        >
+        // The shared icon button: a 24 px target (WCAG 2.2 target size), 44 px
+        // on a coarse pointer, and the button's own focus ring.
+        <Button type="button" variant="ghost" size="icon-sm" aria-label="Dismiss" onClick={onDismiss} className="ml-auto">
           <DismissIcon />
-        </button>
+        </Button>
       ) : null}
     </div>
   );

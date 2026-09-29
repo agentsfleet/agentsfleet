@@ -20,6 +20,23 @@ describe("mergeBackfill", () => {
     expect(merged.map((e) => e.id)).toEqual(["e1", "e2"]);
   });
 
+  it("test_backfill_keeps_unchanged_identity", () => {
+    const failed = row({ event_id: "e2", status: "agent_error", created_at: 2 * MS_PER_SECOND, failure_label: "timeout" });
+    const page = [
+      row({ event_id: "e1", status: "processed", created_at: MS_PER_SECOND, request_json: JSON.stringify({ message: "hi" }) }),
+      failed,
+    ];
+    const once = mergeBackfill([], page);
+    const twice = mergeBackfill(once, page);
+    // The same page again: the same array, and every row the same object.
+    expect(twice).toBe(once);
+    // A page that moves one row replaces that row and keeps the other.
+    const moved = mergeBackfill(once, [{ ...failed, failure_label: "cancelled" }]);
+    expect(moved).not.toBe(once);
+    expect(moved[0]).toBe(once[0]);
+    expect(moved[1]?.failureLabel).toBe("cancelled");
+  });
+
   it("keeps multiple pending submissions after settled rows in submission order", () => {
     const merged = mergeBackfill(
       [

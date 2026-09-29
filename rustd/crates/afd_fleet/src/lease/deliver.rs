@@ -20,7 +20,7 @@ use crate::lease::answer::{EVENT_LEASED, no_work, render};
 use crate::lease::envelope::Acquired;
 use crate::lease::installed::Installed;
 use crate::lease::issue::Billed;
-use crate::lease::pull::{Admission2, Plane};
+use crate::lease::pull::{Admission2, Leased, Plane, Step, claim_lost};
 use afd_core::event::label;
 use afd_gate::policy::build::{self, Assembled};
 use afd_gate::policy::repair;
@@ -29,13 +29,14 @@ impl Plane {
     /// Assemble the policy and write the row that makes this runner the holder.
     ///
     /// Named `deliver` rather than `issue`: `Leases::issue` writes the ROW, and
-    /// this is the whole delivery around it.
+    /// this is the whole delivery around it. Answers [`Step::Go`] only when
+    /// that row was written.
     pub(super) async fn deliver(
         &self,
         runner_id: &Uuid7,
         admitted: Admission2,
         now: UnixMillis,
-    ) -> Result<String> {
+    ) -> Result<Step<Leased>> {
         let declared = self
             .vault
             .declared(
@@ -80,7 +81,8 @@ impl Plane {
                         &reason,
                         now,
                     )
-                    .await;
+                    .await
+                    .map(Step::Stop);
             }
         };
         self.issue_ready(runner_id, &admitted, *policy, now).await
@@ -97,8 +99,8 @@ impl Plane {
     ///
     /// A DENIED grant ends the event. The gate that denied it carries no
     /// `event_id` and so could not end anything itself; this is where a
-    /// person's no stops the redelivery, and it is the only outcome here that
-    /// is not a park.
+    /// person's no stops the redelivery. An open card parks the delivery, and
+    /// anything else stops it for the next poll to ask again.
     async fn ungranted(
         &self,
         runner_id: &Uuid7,
@@ -106,7 +108,7 @@ impl Plane {
         credential: &str,
         integration: &str,
         now: UnixMillis,
-    ) -> Result<String> {
+    ) -> Result<Step<Leased>> {
         let asked = self
             .grants
             .request(
@@ -122,11 +124,11 @@ impl Plane {
             .await;
         let reason = format!("{credential} needs a grant for {integration}");
         match answers(written(asked, &acquired.fleet_id, integration)) {
-            Ungranted::Ends => {
-                self.refused(acquired, label::GRANT_DENIED, runner_id, &reason, now)
-                    .await
-            }
-            Ungranted::Waits => no_work(runner_id, &reason),
+            Ungranted::Ends => self
+                .refused(acquired, label::GRANT_DENIED, runner_id, &reason, now)
+                .await
+                .map(Step::Stop),
+            waits => no_work(runner_id, &reason).map(|answer| waits.ending(answer)),
         }
     }
 
@@ -136,9 +138,9 @@ impl Plane {
         admitted: &Admission2,
         policy: ExecutionPolicy<'_>,
         now: UnixMillis,
-    ) -> Result<String> {
+    ) -> Result<Step<Leased>> {
         // LAST, and only once everything above succeeded.
-        let issued = self
+        let Some(issued) = self
             .leases
             .issue(
                 runner_id,
@@ -151,7 +153,10 @@ impl Plane {
                 },
                 now,
             )
-            .await?;
+            .await?
+        else {
+            return claim_lost(runner_id, &admitted.acquired);
+        };
         // Here, and not at the claim: a claim is an affinity token, and the
         // dozen refusals between it and this line — a stopped fleet, an
         // unparseable event, a denied budget, an unauthorised branch — end
@@ -177,6 +182,7 @@ impl Plane {
             &admitted.installed,
             policy,
         )
+        .map(|answer| Step::Go(Leased(answer)))
     }
 
     /// The branch a write-bound lease may author on.
@@ -225,8 +231,8 @@ const EVENT_REQUEST_FAILED: &str = "park_grant_request_failed";
 
 /// The request's answer, with a failure to write one REPORTED before it is dropped.
 ///
-/// The error dies here either way — [`answers`] treats an unwritten request the
-/// same as an open question, because a datastore that would not answer is this
+/// The error dies here either way — [`answers`] never ends a delivery on an
+/// unwritten request, because a datastore that would not answer is this
 /// instance's problem and reading its silence as a refusal would end deliveries
 /// on an outage. What it must not do is die QUIETLY. A park that could not raise
 /// its card answers the same `no_work` with the same reason as a park waiting on
@@ -246,10 +252,13 @@ fn written(
     match asked {
         Ok(answer) => Some(answer),
         Err(unwritten) => {
+            // Hoisted: the `log` bridge duplicates field expressions and
+            // llvm-cov scores the dead copy.
+            let code = unwritten.code().as_str();
             let fleet_id = fleet.as_str();
             let reason = unwritten.to_string();
             tracing::warn!(
-                error_code = unwritten.code().as_str(),
+                error_code = code,
                 event = EVENT_REQUEST_FAILED,
                 fleet_id,
                 service,
@@ -264,29 +273,48 @@ fn written(
 /// What an ungranted delivery does once the grant has been asked for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Ungranted {
-    /// The delivery stays leasable and the next poll tries again.
-    Waits,
+    /// A card is open and a person owes the answer, which re-marks the fleet:
+    /// the delivery parks until then.
+    Parks,
+    /// Nobody owes an answer — the grant just landed, or its card could not
+    /// be written — so the delivery stays leasable and the next poll asks
+    /// again.
+    Retries,
     /// The event ends: nothing about the next poll would be different.
     Ends,
 }
 
-/// Whether a park waits for an answer, or ends on one already given.
+impl Ungranted {
+    /// The step an ungranted delivery takes once its answer is rendered: an
+    /// open card parks it, and anything else stops it — for the next poll to
+    /// ask again, or, for [`Ungranted::Ends`], after the refusal was written.
+    fn ending(self, answer: String) -> Step<Leased> {
+        match self {
+            Self::Parks => Step::Park(answer),
+            Self::Retries | Self::Ends => Step::Stop(answer),
+        }
+    }
+}
+
+/// Whether an ungranted delivery parks, retries, or ends on an answer
+/// already given.
 ///
-/// The one decision this arm adds, and it has exactly one terminal case. A
-/// person's NO is the only outcome that makes the next poll pointless — every
+/// A person's NO is the only outcome that makes the next poll pointless — every
 /// other reading leaves a question a human can still answer, and ending an
 /// event on any of them would throw away work nobody refused.
 ///
-/// `None` is a request that could not be WRITTEN, and it waits. Fail-closed
-/// here means keeping the event alive: a datastore that would not answer is
-/// this instance's problem, and reading its silence as a refusal would end
-/// deliveries on an outage.
+/// Only an OPEN card parks, because parking clears the fleet's mark and only
+/// an answer or an expiry puts it back. A grant approved since the assembly
+/// read has no answer left to wait for, and `None` — a request that could not
+/// be WRITTEN — has no card anyone could answer; either would wait forever on
+/// a park, so both retry on the next poll. Fail-closed here means keeping the
+/// event alive: a datastore that would not answer is this instance's problem,
+/// and reading its silence as a refusal would end deliveries on an outage.
 const fn answers(asked: Option<Requested>) -> Ungranted {
     match asked {
         Some(Requested::Denied) => Ungranted::Ends,
-        Some(Requested::Raised | Requested::Pending | Requested::Approved) | None => {
-            Ungranted::Waits
-        }
+        Some(Requested::Raised | Requested::Pending) => Ungranted::Parks,
+        Some(Requested::Approved) | None => Ungranted::Retries,
     }
 }
 

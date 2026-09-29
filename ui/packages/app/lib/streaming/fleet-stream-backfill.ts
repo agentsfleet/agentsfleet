@@ -39,6 +39,7 @@ export type BackfillRequest = {
   anchorMs: number | null;
   /** False once the owning entry has been torn down mid-flight. */
   stillCurrent: () => boolean;
+  /** Every row the walk fetched, all pages in one call, once per walk. */
   onPage: (rows: EventRow[]) => void;
 };
 
@@ -98,8 +99,21 @@ export async function runWorkspaceBackfill(
   });
 }
 
+// Every page is merged before any is handed over: each hand-over is a merge, a
+// sort and a notify, so a three-page recovery repainted its subscribers three
+// times for one gap. Rows already fetched still land when a later page fails
+// or throws, as they did page by page; a walk whose owner is gone lands none.
 async function runBackfillWalk(req: BackfillWalkRequest): Promise<BackfillOutcome> {
-  const { anchorMs, stillCurrent, onPage, pageUrl } = req;
+  const fetched: EventRow[] = [];
+  try {
+    return await walkPages(req, fetched);
+  } finally {
+    if (fetched.length > 0 && req.stillCurrent()) req.onPage(fetched);
+  }
+}
+
+async function walkPages(req: BackfillWalkRequest, fetched: EventRow[]): Promise<BackfillOutcome> {
+  const { anchorMs, stillCurrent, pageUrl } = req;
   const floorMs = anchorMs === null ? null : Math.max(anchorMs - BACKFILL_OVERLAP_MS, 0);
   let watermark = anchorMs;
   let cursor: string | undefined;
@@ -118,7 +132,7 @@ async function runBackfillWalk(req: BackfillWalkRequest): Promise<BackfillOutcom
     if (!stillCurrent()) return { ok: false };
 
     watermark = maxServerCreatedAt(watermark, body.items);
-    onPage(body.items);
+    fetched.push(...body.items);
 
     const oldest = oldestCreatedAt(body.items);
     if (!body.next_cursor || floorMs === null || oldest === null || oldest <= floorMs) {
@@ -133,20 +147,40 @@ async function runBackfillWalk(req: BackfillWalkRequest): Promise<BackfillOutcom
   return { ok: true, watermark };
 }
 
+type EntryWalk = Pick<BackfillRequest, "stillCurrent" | "onPage">;
+
 /**
- * The reconnect gap-recovery walk for one registry entry. The watermark
- * advances only on a completed (or explicitly-truncated) walk; a failure
- * leaves it at the anchor so the next reconnect retries the same window.
- * Merges are id-deduped, so the retry is idempotent. One walk at a time per
- * entry: a second open during a walk waits for the next.
+ * The gap-recovery walk for one registry entry — after a reconnect, or when
+ * the daemon says frames were lost. The watermark advances only on a
+ * completed (or explicitly-truncated) walk; a failure leaves it at the anchor
+ * so the next recovery retries the same window. Merges are id-deduped, so the
+ * retry is idempotent.
+ *
+ * One walk at a time per entry. A recovery asked for during a walk may cover
+ * frames lost after that walk read its window, so it queues one more walk to
+ * run from the advanced watermark when this one ends; any number of requests
+ * meanwhile share that one.
  */
-export async function backfillEntry(
-  entry: Entry,
-  fleetId: string,
-  walk: Pick<BackfillRequest, "stillCurrent" | "onPage">,
-): Promise<void> {
-  if (entry.backfillInFlight) return;
+export async function backfillEntry(entry: Entry, fleetId: string, walk: EntryWalk): Promise<void> {
+  if (entry.backfillInFlight) {
+    entry.backfillQueued = true;
+    return;
+  }
   entry.backfillInFlight = true;
+  try {
+    do {
+      await walkEntry(entry, fleetId, walk);
+    } while (entry.backfillQueued && walk.stillCurrent());
+  } finally {
+    entry.backfillInFlight = false;
+    entry.backfillQueued = false;
+  }
+}
+
+// A walk reads everything asked for before it starts, so starting one takes
+// whatever was queued; only a request that arrives during it queues another.
+async function walkEntry(entry: Entry, fleetId: string, walk: EntryWalk): Promise<void> {
+  entry.backfillQueued = false;
   try {
     const outcome = await runBackfill({
       workspaceId: entry.workspaceId,
@@ -157,7 +191,5 @@ export async function backfillEntry(
     if (outcome.ok) entry.serverSinceMs = outcome.watermark;
   } catch (err) {
     warnBackfillFailure(err);
-  } finally {
-    entry.backfillInFlight = false;
   }
 }

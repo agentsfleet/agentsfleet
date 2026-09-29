@@ -29,6 +29,7 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
 pub mod abort;
+pub mod allocations;
 pub mod cli;
 pub mod datastores;
 pub mod error;
@@ -38,6 +39,7 @@ pub mod knobs;
 pub mod lane;
 pub mod profile;
 pub mod report;
+pub mod statements;
 
 pub use abort::Abort;
 pub use datastores::Datastores;

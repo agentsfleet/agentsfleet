@@ -1,6 +1,11 @@
 {
   "lane": "lease",
   "profile": "rig",
+  "provenance": {
+    "revision": "e2d250172",
+    "datastore_image": "docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.0",
+    "owned": true
+  },
   "created": true,
   "parameters": {
     "BENCH_FLEETS": 200,
@@ -8,33 +13,51 @@
     "pool_size": 20
   },
   "measurements": {
+    "drain_commits_per_lease": 51.12,
+    "drain_dragonfly_calls_per_lease": 25.96,
+    "drain_event_rows": 200.0,
+    "drain_events": 200.0,
+    "drain_events_processed": 200.0,
+    "drain_failures": 0.0,
+    "drain_idle_dragonfly_calls_per_poll": 26.042622950819673,
+    "drain_idle_polls": 305.0,
+    "drain_lease_p95_ms": 70.207,
+    "drain_leases": 200.0,
+    "drain_leases_per_second": 124.886671823816,
+    "drain_ledger_rows_per_event": 2.0,
+    "drain_polls": 253.0,
+    "drain_ready_depth": 200.0,
+    "drain_report_p95_ms": 15.271,
+    "drain_statements_per_lease": 78.67,
     "error_rate": 0.0,
     "exhausted": 1.0,
     "failures": 0.0,
+    "idle_commits_per_poll": 38.47540983606557,
+    "idle_dragonfly_calls_per_poll": 1.0001715836094758,
     "idle_index_depth": 0.0,
-    "idle_polls": 61562.0,
-    "idle_dragonfly_calls_per_poll": 1.0000162437867515,
+    "idle_polls": 93249.0,
     "idle_roundtrips_per_poll": 0.0,
+    "idle_statements_per_poll": 47.47540983606557,
     "leases": 200.0,
-    "max_ms": 243.199,
-    "p95_ms": 174.847,
-    "p99_ms": 224.639,
-    "polls_per_second": 79.75123978310097,
-    "rate_per_second": 79.75123978310097,
-    "roundtrips_per_lease": 36.58,
-    "wasted_claim_rate": 0.06103286384976526
+    "max_ms": 30.895,
+    "p95_ms": 22.895,
+    "p99_ms": 26.255,
+    "polls_per_second": 582.4682176728962,
+    "rate_per_second": 582.4682176728962,
+    "roundtrips_per_lease": 11.26,
+    "wasted_claim_rate": 0.21875
   },
   "datastores": {
     "dragonfly": {
-      "operations": 616
+      "operations": 661
     },
     "postgres": {
-      "operations": 7316
+      "operations": 2252
     }
   },
   "fixture": {
-    "run_prefix": "bench-1788744597656-90098",
-    "created": 608,
-    "swept": 608
+    "run_prefix": "bench-1790663367831-48341",
+    "created": 1216,
+    "swept": 1216
   }
 }

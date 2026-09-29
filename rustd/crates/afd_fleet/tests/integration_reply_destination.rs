@@ -121,7 +121,7 @@ async fn existing_producers_record_no_reply_destination() {
         )
         .await;
         assert_eq!(
-            destination(&fixtures, &fleet, &admitted.id).await,
+            destination(&fixtures, &fleet, &admitted.stored.id).await,
             None,
             "{producer:?} owns no reply surface and must record none"
         );
@@ -145,12 +145,12 @@ async fn reply_destination_is_both_or_neither() {
 
     let admitted = admit(&fixtures, replying(&fleet, &workspace, &key, stated)).await;
     assert_eq!(
-        destination(&fixtures, &fleet, &admitted.id).await,
+        destination(&fixtures, &fleet, &admitted.stored.id).await,
         Some((CONNECTOR.to_owned(), THREAD_A.to_owned())),
         "the stated pair is stored exactly"
     );
 
-    let (created_at, seq) = logical_parts(&admitted.id).expect("the ledger minted this id");
+    let (created_at, seq) = logical_parts(&admitted.stored.id).expect("the ledger minted this id");
     let mut connection = fixtures
         .database
         .acquire()
@@ -205,10 +205,10 @@ async fn continuation_inherits_the_resumed_destination() {
 
     let resumed = [
         (
-            asked.id.as_str(),
+            asked.stored.id.as_str(),
             Some((CONNECTOR.to_owned(), THREAD_A.to_owned())),
         ),
-        (silent.id.as_str(), None),
+        (silent.stored.id.as_str(), None),
         (FOREIGN_EVENT, None),
     ];
     for (event_id, expected) in resumed {
@@ -225,7 +225,7 @@ async fn continuation_inherits_the_resumed_destination() {
         )
         .await;
         assert_eq!(
-            destination(&fixtures, &fleet, &continuation.id).await,
+            destination(&fixtures, &fleet, &continuation.stored.id).await,
             expected,
             "a continuation of {event_id} answers where it would have"
         );
@@ -259,14 +259,17 @@ async fn retried_key_with_a_new_destination_keeps_the_first() {
     let first = admit(&fixtures, replying(&fleet, &workspace, &key, first_reply)).await;
     let again = admit(&fixtures, retry).await;
     assert!(again.replayed, "the same key is the same event");
-    assert_eq!(again.id, first.id, "the first call's id stands");
     assert_eq!(
-        destination(&fixtures, &fleet, &first.id).await,
+        again.stored.id, first.stored.id,
+        "the first call's id stands"
+    );
+    assert_eq!(
+        destination(&fixtures, &fleet, &first.stored.id).await,
         Some((CONNECTOR.to_owned(), THREAD_A.to_owned())),
         "the first destination stands, as the first payload does"
     );
 
-    let (created_at, seq) = logical_parts(&first.id).expect("the ledger minted this id");
+    let (created_at, seq) = logical_parts(&first.stored.id).expect("the ledger minted this id");
     let mut connection = fixtures
         .database
         .acquire()

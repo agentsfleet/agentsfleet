@@ -28,6 +28,7 @@
 mod support;
 
 use afd_cron::{DesiredStatus, Fire, FireTarget};
+use tracing_subscriber::layer::SubscriberExt as _;
 
 use self::support::CronLane;
 
@@ -211,4 +212,72 @@ async fn one_fleets_fire_does_not_claim_anothers() {
         !theirs.replayed,
         "the claim is scoped by fleet, so one tenant cannot suppress another's fire"
     );
+}
+
+/// The fire's log line names the workspace and the event it appended, so an
+/// operator can find the run a schedule started.
+#[tokio::test]
+#[ignore = "needs the lane's Dragonfly"]
+async fn a_fire_logs_the_workspace_and_event_it_appended() {
+    let lane = CronLane::open().await;
+    let fire = Fire::new(lane.admissions().await);
+    let schedule = CronLane::token();
+    let fields = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+
+    let fired = {
+        let _scoped = tracing::subscriber::set_default(
+            tracing_subscriber::registry().with(FireLog(std::sync::Arc::clone(&fields))),
+        );
+        fire.deliver(&schedule, &target(&lane), "msg_logged")
+            .await
+            .expect("the lane's Dragonfly takes the append")
+    };
+
+    let logged = fields
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    let appended = logged
+        .iter()
+        .find(|line| line.get(FIELD_EVENT).map(String::as_str) == Some(EVENT_APPENDED))
+        .expect("the fire logs the append it made");
+    assert_eq!(appended.get("workspace_id"), Some(&lane.workspace));
+    assert_eq!(appended.get("event_id"), Some(&fired.event_id));
+}
+
+/// The log field every event names its kind under.
+const FIELD_EVENT: &str = "event";
+
+/// The event a fire logs once its append lands.
+const EVENT_APPENDED: &str = "schedule_fire_appended";
+
+/// Records every event's fields as text, under a subscriber scoped to one test.
+struct FireLog(std::sync::Arc<std::sync::Mutex<Vec<std::collections::HashMap<String, String>>>>);
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for FireLog {
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let mut fields = FieldText(std::collections::HashMap::new());
+        event.record(&mut fields);
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(fields.0);
+    }
+}
+
+/// One event's fields, as text.
+struct FieldText(std::collections::HashMap<String, String>);
+
+impl tracing::field::Visit for FieldText {
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        self.0.insert(field.name().to_owned(), value.to_owned());
+    }
+
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.0.insert(field.name().to_owned(), format!("{value:?}"));
+    }
 }

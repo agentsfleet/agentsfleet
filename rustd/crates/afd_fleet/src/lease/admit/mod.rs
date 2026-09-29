@@ -27,9 +27,12 @@
 //! here already resolved, on [`Request`], which is what lets every gate below
 //! be proven against a database with no vault in the picture.
 
+mod declined;
 mod fault;
 mod gates;
 mod verdict;
+
+pub use self::declined::Declined;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -159,10 +162,41 @@ pub struct Request<'a> {
     pub delivery: Delivery,
 }
 
+/// The workspace's payer, as the lease read it: found, unowned, or unread.
+///
+/// Read once by the lease and handed in, because the provider resolves
+/// against the same tenant the gates bill — a second read could only disagree
+/// with the first, and it cost a round trip on every lease.
+pub type Payer = core::result::Result<Option<Uuid7>, afd_billing::Error>;
+
+/// The payer gate: the read the caller made, judged.
+///
+/// Found is the tenant to bill. A workspace naming no tenant is a broken
+/// foreign key: waiting does not fix it, and running work nobody can be
+/// charged for is worse than ending the event. A read that failed retries.
+/// The lease calls this before resolving a provider, because a provider is
+/// resolved for a tenant and there is none to resolve for otherwise.
+///
+/// # Errors
+/// A read fault the payer gate's posture does not absorb — none today;
+/// `.ok_or_else` is what keeps a posture changed to `Admit` from admitting
+/// an event it could not find a payer for.
+pub fn payer_gate(
+    read: Payer,
+    workspace_id: &Uuid7,
+) -> Result<core::result::Result<Uuid7, Declined>> {
+    match read {
+        Ok(Some(found)) => Ok(Ok(found)),
+        Ok(None) => Ok(Err(unowned_workspace(workspace_id))),
+        Err(fault) => PAYER.absorb(&fault).map(Err).ok_or_else(|| fault.into()),
+    }
+}
+
 /// Run the money gates in the worker's order.
 ///
 /// Payer → balance → fleet budget → receipt. Every gate that can refuse
-/// permanently precedes the debit, so a refused event is never charged.
+/// permanently precedes the debit, so a refused event is never charged. The
+/// payer gate judges the read the caller made; it reads nothing itself.
 ///
 /// # Errors
 /// Datastore faults do NOT reach the caller as `Err` — each gate absorbs its
@@ -171,32 +205,25 @@ pub struct Request<'a> {
 /// the ledger row's identifier.
 pub async fn money_gates(
     accounts: &Accounts,
+    payer: Payer,
     request: Request<'_>,
     now: UnixMillis,
 ) -> Result<Admission> {
-    let tenant_id = match accounts.payer(request.workspace_id).await {
-        Ok(Some(found)) => found,
-        // A workspace naming no tenant is a broken foreign key: waiting does
-        // not fix it, and running work nobody can be charged for is worse than
-        // ending the event.
-        Ok(None) => return Ok(unowned_workspace(request.workspace_id)),
-        // `.ok_or(fault)` rather than a match: `PAYER` is a retry gate so this
-        // always answers `Some`, and if that posture is ever changed to `Admit`
-        // the pass propagates the error instead of silently admitting an event
-        // it could not find a payer for.
-        Err(fault) => return PAYER.absorb(&fault).ok_or_else(|| fault.into()),
+    let tenant_id = match payer_gate(payer, request.workspace_id)? {
+        Ok(found) => found,
+        Err(stop) => return Ok(stop.into()),
     };
 
     if let Some(stop) = gates::balance(accounts, &request, &tenant_id).await {
-        return Ok(stop);
+        return Ok(stop.into());
     }
     if let Some(stop) = gates::fleet_budget(accounts, &request, now).await {
-        return Ok(stop);
+        return Ok(stop.into());
     }
 
     let drained = match charge(accounts, &request, &tenant_id, now).await {
         Ok(drained) => drained,
-        Err(stop) => return Ok(stop),
+        Err(stop) => return Ok(stop.into()),
     };
     Ok(Admission::Admit(Billed {
         tenant_id,
@@ -213,7 +240,7 @@ pub async fn money_gates(
 /// charged nothing because an earlier delivery already paid, and the balance
 /// drain is not replay-guarded the way the ledger row is.
 ///
-/// `Err` carries an [`Admission`] rather than an [`Error`](crate::Error): at
+/// `Err` carries a [`Declined`] rather than an [`Error`](crate::Error): at
 /// this point in the pass a fault has already been absorbed into a decision,
 /// and the caller's job is to return it, not to classify it again.
 async fn charge(
@@ -221,7 +248,7 @@ async fn charge(
     request: &Request<'_>,
     tenant_id: &Uuid7,
     now: UnixMillis,
-) -> core::result::Result<Nanos, Admission> {
+) -> core::result::Result<Nanos, Declined> {
     match request.delivery {
         // A finished event never reaches admission — the pull path acknowledges
         // it and stops before here. Spelled out rather than folded under a `_`
@@ -242,78 +269,24 @@ async fn charge(
             accounts.debit_receive(charged, now).await.map_err(|fault| {
                 RECEIPT
                     .absorb(&fault)
-                    .unwrap_or(Admission::Retry(Transient { at: RECEIPT.event }))
+                    .unwrap_or(Declined::Retry(Transient { at: RECEIPT.event }))
             })
         }
     }
 }
 
 /// The refusal for a workspace that resolves to no tenant.
-fn unowned_workspace(workspace_id: &Uuid7) -> Admission {
+fn unowned_workspace(workspace_id: &Uuid7) -> Declined {
     let workspace = workspace_id.as_str();
     tracing::warn!(
         event = EVENT_TENANT_UNRESOLVED,
         workspace_id = workspace,
         "the workspace resolves to no tenant; the event cannot be charged to anyone"
     );
-    Admission::Refuse(Refusal::labelled(
+    Declined::Refuse(Refusal::labelled(
         afd_core::event::label::TENANT_RESOLVE_FAILED,
     ))
 }
 
 #[cfg(test)]
-mod tests {
-    #![expect(
-        clippy::expect_used,
-        reason = "a test asserts by panicking on an unmet precondition"
-    )]
-
-    use super::{Admission, Refusal, unowned_workspace};
-    use afd_core::id::Uuid7;
-
-    /// A workspace identifier. Its VALUE is immaterial here — `unowned_workspace`
-    /// reads it only to name the workspace in the line it logs.
-    fn workspace() -> Uuid7 {
-        Uuid7::parse("019329c5-0000-7000-8000-0000000000f1").expect("the fixture id is canonical")
-    }
-
-    /// A workspace naming no tenant ends the event rather than retrying it.
-    ///
-    /// The distinction the whole [`Admission`] enum exists for: a broken
-    /// foreign key is not a datastore that will answer next time. Waiting does
-    /// not fix it, and answering `Retry` would leave the delivery leasable
-    /// forever — every poll re-reading the same missing row.
-    #[test]
-    fn a_workspace_that_resolves_to_no_tenant_is_refused_terminally() {
-        let decided = unowned_workspace(&workspace());
-
-        assert_eq!(
-            decided,
-            Admission::Refuse(Refusal::labelled(
-                afd_core::event::label::TENANT_RESOLVE_FAILED
-            )),
-            "an unowned workspace must end the event, not leave it leasable"
-        );
-        assert!(
-            !matches!(decided, Admission::Retry(_) | Admission::Await(_)),
-            "a missing foreign key is not something a later poll repairs"
-        );
-    }
-
-    /// The refusal carries the label the events table stores, and no detail.
-    ///
-    /// `failure_label` is what an operator filters a dashboard on, so an empty
-    /// one would make these refusals invisible among every other ended event.
-    #[test]
-    fn the_refusal_carries_the_stored_failure_label() {
-        let expected = Refusal::labelled(afd_core::event::label::TENANT_RESOLVE_FAILED);
-
-        assert_eq!(unowned_workspace(&workspace()), Admission::Refuse(expected));
-        assert!(!expected.label.is_empty());
-        assert!(
-            expected.detail.is_empty(),
-            "this refusal carries no recovery instruction; an operator fixes the \
-             workspace row, which is not something the wire can tell a runner"
-        );
-    }
-}
+mod tests;

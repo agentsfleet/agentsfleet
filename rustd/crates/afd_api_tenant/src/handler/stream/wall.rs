@@ -15,6 +15,15 @@
 //! asks again on the next beat. Ending the stream would turn a two-second
 //! outage into every dashboard in the fleet reconnecting at once — which is the
 //! load the outage was already about.
+//!
+//! # A lagging viewer re-reads the counters at most once per beat
+//!
+//! A `catching_up` frame means the counters a tile shows may be stale, so the
+//! wall re-announces the set with fresh figures. A viewer falling behind
+//! falls behind repeatedly, and one read per lag frame put a slow tab's
+//! backlog straight onto Postgres. [`Recount`] spaces those reads a beat
+//! apart: the `catching_up` frame itself is still forwarded at once, and only
+//! the figures wait.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -61,6 +70,65 @@ struct Wall<D> {
     next_refresh: Instant,
     /// Whether the opening `hello` has been sent.
     announced: bool,
+    /// When a lag may next re-read the counters.
+    recount: Recount,
+}
+
+/// Paces the counter reads a lag asks for: at most one per
+/// [`REFRESH_INTERVAL`].
+///
+/// Only a lag's reads are paced. The opening `hello` and a changed set's do
+/// not arm the pace, because frames lost after them moved the very counters
+/// they announced: the first gap on a fresh connection re-announces at once.
+/// Every `hello` still pays off a read a lag was owed.
+#[derive(Debug, Clone, Copy)]
+struct Recount {
+    /// The earliest moment the counters may be read again.
+    after: Instant,
+    /// Whether a lag asked for a read the pace has not allowed yet.
+    owed: bool,
+}
+
+impl Recount {
+    /// A pace with nothing read yet.
+    const fn new(now: Instant) -> Self {
+        Self {
+            after: now,
+            owed: false,
+        }
+    }
+
+    /// A lag's read is being taken now: the next waits a whole interval.
+    fn paced(&mut self, now: Instant) {
+        self.after = now + REFRESH_INTERVAL;
+        self.owed = false;
+    }
+
+    /// A `hello` read the counters, which settles anything a lag was owed.
+    const fn paid(&mut self) {
+        self.owed = false;
+    }
+
+    /// A lag arrived. `true` means read the counters now, and the pace is
+    /// armed; otherwise the read is owed at [`Recount::deadline`].
+    fn lagged(&mut self, now: Instant) -> bool {
+        if now >= self.after {
+            self.paced(now);
+            return true;
+        }
+        self.owed = true;
+        false
+    }
+
+    /// When an owed read falls due, if one is owed.
+    fn deadline(&self) -> Option<Instant> {
+        self.owed.then_some(self.after)
+    }
+
+    /// Whether an owed read is due at `now`.
+    fn due(&self, now: Instant) -> bool {
+        self.owed && now >= self.after
+    }
 }
 
 /// Every frame one workspace stream sends, starting with its `hello`.
@@ -72,13 +140,15 @@ pub(super) fn frames<D: Services>(
 ) -> BoxStream<'static, Frame> {
     let mut fan_in = services.live().fan_in();
     fan_in.sync_to(opening);
+    let now = Instant::now();
     let wall = Wall {
         services,
         workspace,
         principal,
         fan_in,
-        next_refresh: Instant::now() + REFRESH_INTERVAL,
+        next_refresh: now + REFRESH_INTERVAL,
         announced: false,
+        recount: Recount::new(now),
     };
     stream::unfold(wall, step).boxed()
 }
@@ -89,41 +159,51 @@ async fn step<D: Services>(mut wall: Wall<D>) -> Option<(Frame, Wall<D>)> {
     // to open before the first frame arrives for one of them.
     if !wall.announced {
         wall.announced = true;
-        let carried = wall.fan_in.fleets();
-        let frame = hello(wall.services.as_ref(), &wall.workspace, carried).await;
-        return Some((frame, wall));
+        return Some(announce(wall).await);
     }
     loop {
         if Instant::now() >= wall.next_refresh {
             match refresh(&mut wall).await {
                 Tick::Revoked => return None,
-                Tick::Changed => {
-                    let carried = wall.fan_in.fleets();
-                    let frame = hello(wall.services.as_ref(), &wall.workspace, carried).await;
-                    return Some((frame, wall));
-                }
+                Tick::Changed => return Some(announce(wall).await),
                 Tick::Steady => {}
             }
+        }
+        let now = Instant::now();
+        if wall.recount.due(now) {
+            wall.recount.paced(now);
+            return Some(announce(wall).await);
         }
         // Wake for whichever comes first. Sleeping the whole beat would be
         // fine, but waking on the frame is what keeps latency at the
         // publisher's rather than at the tick's.
-        let deadline = wall.next_refresh;
+        let deadline = wall
+            .recount
+            .deadline()
+            .map_or(wall.next_refresh, |owed| owed.min(wall.next_refresh));
         let arrived = tokio::select! {
             frame = wall.fan_in.next_frame() => Some(frame),
             () = tokio::time::sleep_until(deadline) => None,
         };
         if let Some(frame) = arrived {
             // A gap the server could not carry is exactly the frames that
-            // moved the counters, so the next step re-announces the set with
-            // where every fleet stands now — the backfill recovers the rows,
-            // the fresh `hello` recovers the figures.
-            if frame.kind == KIND_CATCHING_UP {
+            // moved the counters, so the set is re-announced with where every
+            // fleet stands now — the backfill recovers the rows, the fresh
+            // `hello` recovers the figures — at the pace `Recount` allows.
+            if frame.kind == KIND_CATCHING_UP && wall.recount.lagged(Instant::now()) {
                 wall.announced = false;
             }
             return Some((frame, wall));
         }
     }
+}
+
+/// The `hello` for the set the wall carries now, which reads the counters.
+async fn announce<D: Services>(mut wall: Wall<D>) -> (Frame, Wall<D>) {
+    wall.recount.paid();
+    let carried = wall.fan_in.fleets();
+    let frame = hello(wall.services.as_ref(), &wall.workspace, carried).await;
+    (frame, wall)
 }
 
 /// The `hello` for the set the wall carries now, with where each fleet stands.
@@ -190,3 +270,6 @@ async fn refresh<D: Services>(wall: &mut Wall<D>) -> Tick {
         Err(_deferred) => Tick::Steady,
     }
 }
+
+#[cfg(test)]
+mod tests;
