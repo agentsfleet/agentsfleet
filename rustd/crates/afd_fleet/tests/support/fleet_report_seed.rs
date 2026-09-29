@@ -168,7 +168,8 @@ pub(crate) async fn held() -> Held {
             now,
         )
         .await
-        .expect("the lease row must be written");
+        .expect("the lease row must be written")
+        .expect("the claim is still held");
     let event_id = acquired.event_id.clone();
 
     Held {

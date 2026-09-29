@@ -20,8 +20,9 @@
 //!    its mark with the generation step 1 peeked, so the next poll does not
 //!    pay for it. A mark written since is a newer generation and survives.
 //!
-//! Every non-success exit after a win frees the claim, so an abandoned claim
-//! costs one poll rather than a full TTL of silence on that fleet.
+//! Every non-success exit after a win frees the claim, a fault included, so an
+//! abandoned claim costs one poll rather than a full TTL of silence on that
+//! fleet.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -202,7 +203,30 @@ impl Leases {
             // Taken by a live holder. No event was read, so nothing is orphaned.
             return Ok(None);
         };
+        // A fault between the win and a lease frees the claim before it is
+        // raised, through the release the pull's endings share. Left held, the
+        // held-slot filter would hide the fleet for a full TTL.
+        match self
+            .take_claimed(fleet_id, &claimed, token, runner_id, now)
+            .await
+        {
+            Err(fault) => {
+                self.let_go(fleet_id, claimed.fence, now).await;
+                Err(fault)
+            }
+            outcome => outcome,
+        }
+    }
 
+    /// The work a won claim takes: a lapsed holder's event, else a fresh one.
+    async fn take_claimed(
+        &self,
+        fleet_id: &Uuid7,
+        claimed: &crate::lease::affinity::Claimed,
+        token: &ReadyToken,
+        runner_id: &Uuid7,
+        now: UnixMillis,
+    ) -> Result<Option<Acquired>> {
         // A won claim over a lapsed holder means its lease is still `active`
         // and still names the work it never finished.
         if let Some(prior) = self.reclaim_prior_active(fleet_id, now).await? {
@@ -220,9 +244,9 @@ impl Leases {
                 fencing_token = fence,
                 "re-leasing a lapsed holder's event under a higher fence"
             );
-            return from_reclaim(fleet_id, &claimed, token, prior).map(Some);
+            return from_reclaim(fleet_id, claimed, token, prior).map(Some);
         }
-        self.acquire_fresh(fleet_id, &claimed, token, now).await
+        self.acquire_fresh(fleet_id, claimed, token, now).await
     }
 
     /// Pull the next event for a claimed fleet: the group's oldest pending

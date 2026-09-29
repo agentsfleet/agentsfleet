@@ -149,7 +149,8 @@ async fn delivered_and_leased(fixtures: &Fixtures, leases: &Leases, at: UnixMill
             at,
         )
         .await
-        .expect("the lease row is written");
+        .expect("the lease row is written")
+        .expect("the claim is still held");
     Staged {
         fleet,
         poller,

@@ -106,7 +106,8 @@ pub(crate) async fn abandoned_mid_flight(fixtures: &Fixtures, leases: &Leases) -
             staged_at,
         )
         .await
-        .expect("the lease row is written");
+        .expect("the lease row is written")
+        .expect("the claim is still held");
 
     FleetStreams::new(fixtures.queue().clone())
         .forget(&fleet)

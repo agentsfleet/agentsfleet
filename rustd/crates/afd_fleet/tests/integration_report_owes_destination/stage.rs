@@ -131,7 +131,8 @@ impl Stage {
                 now,
             )
             .await
-            .expect("the lease row must be written");
+            .expect("the lease row must be written")
+            .expect("the claim is still held");
         let lease = self
             .leases
             .load_for_report(issued.lease_id.as_str(), &self.runner)

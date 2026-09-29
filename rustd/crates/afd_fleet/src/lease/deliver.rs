@@ -20,7 +20,7 @@ use crate::lease::answer::{EVENT_LEASED, no_work, render};
 use crate::lease::envelope::Acquired;
 use crate::lease::installed::Installed;
 use crate::lease::issue::Billed;
-use crate::lease::pull::{Admission2, Leased, Plane, Step};
+use crate::lease::pull::{Admission2, Leased, Plane, Step, claim_lost};
 use afd_core::event::label;
 use afd_gate::policy::build::{self, Assembled};
 use afd_gate::policy::repair;
@@ -85,9 +85,7 @@ impl Plane {
                     .map(Step::Stop);
             }
         };
-        self.issue_ready(runner_id, &admitted, *policy, now)
-            .await
-            .map(|answer| Step::Go(Leased(answer)))
+        self.issue_ready(runner_id, &admitted, *policy, now).await
     }
 
     /// Ask for the grant this delivery needs, and say what the poll answers.
@@ -140,9 +138,9 @@ impl Plane {
         admitted: &Admission2,
         policy: ExecutionPolicy<'_>,
         now: UnixMillis,
-    ) -> Result<String> {
+    ) -> Result<Step<Leased>> {
         // LAST, and only once everything above succeeded.
-        let issued = self
+        let Some(issued) = self
             .leases
             .issue(
                 runner_id,
@@ -155,7 +153,10 @@ impl Plane {
                 },
                 now,
             )
-            .await?;
+            .await?
+        else {
+            return claim_lost(runner_id, &admitted.acquired);
+        };
         // Here, and not at the claim: a claim is an affinity token, and the
         // dozen refusals between it and this line — a stopped fleet, an
         // unparseable event, a denied budget, an unauthorised branch — end
@@ -181,6 +182,7 @@ impl Plane {
             &admitted.installed,
             policy,
         )
+        .map(|answer| Step::Go(Leased(answer)))
     }
 
     /// The branch a write-bound lease may author on.

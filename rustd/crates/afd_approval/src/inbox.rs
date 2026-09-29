@@ -37,6 +37,8 @@ use afd_db::Db;
 use afd_dragonfly::Dragonfly;
 
 pub use self::row::{Cursor, Filter, GateRow, Resolution, Resolved};
+#[cfg(feature = "test-util")]
+pub use self::sweep::SweptParts;
 
 use self::row::read_gate;
 use crate::gate_status::GateStatus;

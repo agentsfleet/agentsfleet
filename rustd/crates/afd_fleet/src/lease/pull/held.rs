@@ -17,9 +17,6 @@ use crate::error::Result;
 use crate::lease::affinity::Fence;
 use crate::lease::envelope::Acquired;
 
-/// A claim that issued no lease could not be freed; it lapses at its expiry.
-const EVENT_CLAIM_RELEASE_FAILED: &str = "lease_claim_release_failed";
-
 /// What a pass must let go of when it issues no lease.
 struct Held {
     fleet_id: Uuid7,
@@ -71,25 +68,10 @@ impl Plane {
         }
     }
 
-    /// Frees the claim, best-effort.
-    ///
-    /// The pass already has its answer, and a release that fails changes
-    /// nothing the runner can act on: the claim lapses at its expiry, which is
-    /// the cost every stop paid before this existed. So the failure is logged
-    /// and the answer stands.
+    /// Frees the claim through the one best-effort release every
+    /// lease-less ending shares.
     async fn let_go(&self, held: &Held, now: UnixMillis) {
-        if let Err(failure) = self.leases.release(&held.fleet_id, held.fence, now).await {
-            let code = failure.code().as_str();
-            let fleet_id = held.fleet_id.as_str();
-            let reason = failure.to_string();
-            tracing::warn!(
-                error_code = code,
-                event = EVENT_CLAIM_RELEASE_FAILED,
-                fleet_id,
-                reason,
-                "a claim that issued no lease was not freed; it lapses at its expiry"
-            );
-        }
+        self.leases.let_go(&held.fleet_id, held.fence, now).await;
     }
 }
 
@@ -100,7 +82,7 @@ mod tests {
         reason = "a test asserts by panicking; the restriction set is for the daemon"
     )]
 
-    use super::EVENT_CLAIM_RELEASE_FAILED;
+    use crate::lease::affinity::EVENT_CLAIM_RELEASE_FAILED;
     use crate::lease::{test_dead, test_log::Recorder};
 
     /// A fault after the claim reaches the caller as the fault, and the claim

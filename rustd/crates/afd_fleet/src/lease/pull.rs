@@ -59,7 +59,7 @@ mod step;
 #[cfg(all(test, feature = "test-util"))]
 mod tests;
 
-pub(in crate::lease) use self::step::{Leased, Step};
+pub(in crate::lease) use self::step::{Leased, Step, claim_lost};
 
 /// A finished event's redelivery could not be acknowledged.
 const EVENT_TERMINAL_ACK_FAILED: &str = "terminal_redelivery_ack_failed";

@@ -35,6 +35,9 @@ const CONTEXT_CLAIM: &str = "affinity claim";
 /// Statement name, for the context a query failure carries.
 const CONTEXT_RELEASE: &str = "affinity release";
 
+/// A claim that issued no lease could not be freed; it lapses at its expiry.
+pub(crate) const EVENT_CLAIM_RELEASE_FAILED: &str = "lease_claim_release_failed";
+
 /// The `fencing_seq` column, which is the one number that orders lease holders.
 ///
 /// Monotonic per fleet and minted only by [`Leases::claim`]: every winning
@@ -157,6 +160,29 @@ impl Leases {
             .await
             .map_err(query(CONTEXT_RELEASE))?;
         Ok(())
+    }
+
+    /// Frees a claim that issued no lease, best-effort.
+    ///
+    /// The one place every post-claim ending without a lease lets go: the
+    /// assignment pass's faults, and the pull's refusals, retries, parks and
+    /// faults. The caller already has its answer, and a release that fails
+    /// changes nothing it can act on: the claim lapses at its expiry, which is
+    /// the cost every such ending paid before this existed. So the failure is
+    /// logged and the answer stands.
+    pub(crate) async fn let_go(&self, fleet_id: &Uuid7, fence: Fence, now: UnixMillis) {
+        if let Err(failure) = self.release(fleet_id, fence, now).await {
+            let code = failure.code().as_str();
+            let fleet_id = fleet_id.as_str();
+            let reason = failure.to_string();
+            tracing::warn!(
+                error_code = code,
+                event = EVENT_CLAIM_RELEASE_FAILED,
+                fleet_id,
+                reason,
+                "a claim that issued no lease was not freed; it lapses at its expiry"
+            );
+        }
     }
 
     /// The release a finished run owes, on a connection the caller already

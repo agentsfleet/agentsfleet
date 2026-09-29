@@ -16,10 +16,9 @@
 //! orphaned — which is why `test_lease_affinity_race` asserts one lease row and
 //! one no-work reply rather than counting retries.
 
-use afd_core::clock::UnixMillis;
-use afd_core::id::Uuid7;
+mod row;
 
-use afd_runner::sql::runner::Bound;
+pub use self::row::{INSERT_LEASE_WITH_EVENT, LeaseRow};
 
 /// Claim a fleet's lease slot, bumping the monotonic fence.
 ///
@@ -31,7 +30,7 @@ use afd_runner::sql::runner::Bound;
 /// The durable metering cursor is seeded `0`/now on a brand-new slot and is
 /// deliberately ABSENT from the `ON CONFLICT` SET, so it survives a reclaim:
 /// the re-leased run meters forward from the dead holder's progress rather than
-/// from zero. [`INSERT_LEASE_WITH_EVENT`]'s `reset` arm is what clears it, and
+/// from zero. [`INSERT_LEASE_WITH_EVENT`]'s `held` arm is what clears it, and
 /// only a FRESH lease sets the flag that arms it.
 ///
 /// Answers no row when a live runner still holds the slot — that absence is the
@@ -67,167 +66,6 @@ WHERE fleet_id = $1::uuid AND fencing_seq = $3";
 pub const RELEASE_UNLEASED_SLOT: &str = "\
 UPDATE fleet.runner_affinity SET leased_until = $2, updated_at = $2, last_runner_id = NULL
 WHERE fleet_id = $1::uuid AND fencing_seq = $3";
-
-/// Open a lease, record the event that opened it, bump the runner's lifetime
-/// acquired tally, and — on a fresh lease — reset the slot's metering cursor,
-/// atomically.
-///
-/// Writing the lease and its audit trail in one statement means an observer can
-/// never see a lease with no corresponding event, or the reverse; the tally
-/// rides the same statement so the acquired counter can never drift from the
-/// rows it counts.
-///
-/// # The meter reset rides the insert
-///
-/// A FRESH lease zeroes the slot's cursor; a RECLAIM meters forward from the
-/// dead holder's, and a stale cursor over-charges the first renewal. Here the
-/// reset cannot fail apart from the lease. A data-modifying CTE runs whether
-/// or not anything reads it, so the fresh flag, `$25`, is in its `WHERE`.
-///
-/// The lease stores no copy of the event body: the reclaim path reads it by
-/// joining `core.fleet_events` on the `(fleet_id, event_id)` unique key, so the
-/// hottest write in the system stops duplicating the largest value in it.
-pub const INSERT_LEASE_WITH_EVENT: &str = "\
-WITH reset AS (
-  UPDATE fleet.runner_affinity
-  SET metered_input_tokens = 0, metered_cached_tokens = 0,
-      metered_output_tokens = 0, last_metered_at = $16, updated_at = $16
-  WHERE fleet_id = $3::uuid AND $25::boolean
-), inserted AS (
-  INSERT INTO fleet.runner_leases
-  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, receipt,
-   actor, event_type, event_created_at,
-   posture, provider, model,
-   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
-   fencing_token, lease_expires_at, status,
-   created_at, updated_at)
-VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, $24,
-        $7, $8, $9, $10, $11, $12,
-        0, 0, 0, $16,
-        $13, $14, $15, $16, $16)
-  RETURNING id, runner_id, fleet_id, event_id
-), audit AS (
-  INSERT INTO fleet.runner_events
-    (id, runner_id, event_type, metadata, dedup_key, created_at)
-  SELECT $17::uuid, runner_id, $18::text,
-         jsonb_build_object($19::text, id::text, $20::text, fleet_id::text, $21::text, event_id, $22::text, $23::text),
-         NULL, $16::bigint
-  FROM inserted
-  RETURNING id
-)
-INSERT INTO fleet.runner_lifetime_counters
-  (runner_id, acquired, created_at, updated_at)
-SELECT runner_id, 1, $16, $16
-FROM inserted
-ON CONFLICT (runner_id) DO UPDATE
-   SET acquired = fleet.runner_lifetime_counters.acquired + 1,
-       updated_at = EXCLUDED.updated_at";
-
-/// Everything [`INSERT_LEASE_WITH_EVENT`] needs, by name.
-///
-/// Twenty-five positional parameters, `$16` referenced eight times, and the
-/// `VALUES` list mentioning `$13` after `$16` — the same shape, and the same
-/// hazard, that [`super::runner::RegisterRow`] documents. Five of these are
-/// same-typed text that a transposition would compile straight through, and
-/// this workspace disables sqlx's `macros` feature deliberately, so there is no
-/// compile-time query checking to catch it. Naming the fields is what replaces
-/// it: the `$n` order is written ONCE, here, beside the text it orders.
-#[derive(Debug)]
-pub struct LeaseRow<'a> {
-    /// The lease's durable identifier.
-    pub lease_id: &'a Uuid7,
-    /// The runner taking the work.
-    pub runner_id: &'a Uuid7,
-    /// The fleet whose slot was claimed.
-    pub fleet_id: &'a Uuid7,
-    /// The workspace the fleet belongs to.
-    pub workspace_id: &'a Uuid7,
-    /// The tenant whose wallet was gated and debited.
-    pub tenant_id: &'a Uuid7,
-    /// The event being leased — the admission ledger's LOGICAL id. Text, not
-    /// `uuid`: event ids are ledger-shaped and the column takes them as
-    /// written.
-    pub event_id: &'a str,
-    /// The stream entry this lease was handed, which is what its
-    /// acknowledgement addresses. Distinct from [`Self::event_id`] because a
-    /// replayed admission puts one logical event on two entries.
-    pub receipt: &'a str,
-    /// Who or what raised the event.
-    pub actor: &'a str,
-    /// The event's own type, carried so a reclaim need not re-read it.
-    pub event_type: &'a str,
-    /// When the event was raised, by the producer's clock.
-    pub event_created_at: i64,
-    /// The resolved billing posture, as its wire spelling.
-    pub posture: &'a str,
-    /// The provider resolved at billing.
-    ///
-    /// Stored alongside posture and model so the renew credit gate and the
-    /// report settle can key the rate row by `(provider, model)` without
-    /// re-resolving. Empty only on a reclaim, which carries the prior lease's
-    /// billing instead.
-    pub provider: &'a str,
-    /// The model resolved at billing.
-    pub model: &'a str,
-    /// The claim's fencing token — the value every report is checked against.
-    pub fencing_token: i64,
-    /// When this lease stops being the live one.
-    pub leased_until: i64,
-    /// The status the row opens in.
-    pub status: &'a str,
-    /// Issue instant. Seeds `last_metered_at`, `created_at`, `updated_at`, and
-    /// the audit row's `created_at` — one instant, so nothing in the family can
-    /// disagree about when the lease began.
-    pub now: UnixMillis,
-    /// Identifier of the audit row this write also lands.
-    pub event_row_id: &'a Uuid7,
-    /// Whether this lease is a fresh pull or a reclaim, as its wire spelling.
-    ///
-    /// Reaches the audit row's metadata rather than a column: it explains the
-    /// lease's provenance to an operator reading history, and nothing queries
-    /// on it.
-    pub kind: &'a str,
-    /// Whether this lease starts a new billing slice, which resets the slot's
-    /// metering cursor in the same statement. True for a fresh lease only.
-    pub reset_meters: bool,
-}
-
-impl<'a> LeaseRow<'a> {
-    /// Binds this row to [`INSERT_LEASE_WITH_EVENT`], in `$n` order.
-    ///
-    /// The four metadata keys (`$19`–`$22`) are constants rather than caller
-    /// data, so they are supplied here — twenty-five binds, and none a caller
-    /// has to place positionally.
-    pub fn bind(&'a self) -> Bound<'a> {
-        let millis = self.now.as_millis();
-        sqlx::query(INSERT_LEASE_WITH_EVENT)
-            .bind(self.lease_id.as_str())
-            .bind(self.runner_id.as_str())
-            .bind(self.fleet_id.as_str())
-            .bind(self.workspace_id.as_str())
-            .bind(self.tenant_id.as_str())
-            .bind(self.event_id)
-            .bind(self.actor)
-            .bind(self.event_type)
-            .bind(self.event_created_at)
-            .bind(self.posture)
-            .bind(self.provider)
-            .bind(self.model)
-            .bind(self.fencing_token)
-            .bind(self.leased_until)
-            .bind(self.status)
-            .bind(millis)
-            .bind(self.event_row_id.as_str())
-            .bind(afd_runner::sql::event_type::LEASE_ACQUIRED)
-            .bind(afd_runner::sql::meta::LEASE_ID)
-            .bind(afd_runner::sql::meta::FLEET_ID)
-            .bind(afd_runner::sql::meta::AGENTSFLEET_EVENT_ID)
-            .bind(afd_runner::sql::meta::KIND)
-            .bind(self.kind)
-            .bind(self.receipt)
-            .bind(self.reset_meters)
-    }
-}
 
 /// Reclaim the fleet's latest `active` lease: find it, expire it, and return
 /// what it was executing — in ONE statement.
