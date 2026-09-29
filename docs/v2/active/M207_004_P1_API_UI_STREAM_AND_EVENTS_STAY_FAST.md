@@ -73,6 +73,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/{helpers/*,bench/fleet-markdown-stream.bench.tsx,dashboard-fleets-wall.test.tsx,fleet-thread/malformed-metadata.test.ts}` | EDIT / CREATE | Shared wall and store harnesses split under the cap; the streaming corpus and bench; the log's `aria-live` pin |
 | `docs/architecture/{scaling,runner_fleet,data_flow,datastore_scaling,concurrency}.md` | EDIT | Measured rows; the readiness token and clear; sharded pub/sub wording; the hub's gap |
 | `rustd/crates/afd_sse/src/{lib,frame/**}.rs`, `rustd/crates/afd_sse/tests/integration_sequencing.rs`, `rustd/crates/agentsfleetd/src/preflight{.rs,/ceiling_tests.rs}`, `docker-compose.yml`, `docs/metrics.census.tsv` | EDIT / CREATE | The shared-payload frame data; the test that pins `SSE_MAX_STREAMS` to the tail baseline; `pg_stat_statements` preloaded for the statement counter; the claim-empty counter's census row |
+| `deploy/fly/agentsfleetd-{prod,dev}/fly.toml` | EDIT | Comment only: `SSE_MAX_STREAMS` defaults to 256 (Indy approved the deploy-config touch) |
+| `rustd/crates/afd_api/tests/{integration_fleet_streams.rs,support/fleet_stream_transport_fixture.rs}` | EDIT | Test readers buffer an SSE event to its blank line, since the shared-payload body writes one event as several chunks |
 | Tests beside each file above | CREATE / EDIT | One test per Dimension |
 
 ## Applicable Rules

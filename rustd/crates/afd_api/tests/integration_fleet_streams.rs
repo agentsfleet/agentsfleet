@@ -298,15 +298,20 @@ async fn open_stream(router: &axum::Router, fixture: &Fixture) -> axum::body::Bo
     body
 }
 
+/// The next whole SSE event, read to the blank line that ends it: an activity
+/// event arrives in several body chunks, and chunk boundaries carry no
+/// meaning to an SSE client.
 async fn next_chunk(body: &mut axum::body::BodyDataStream) -> String {
-    let chunk = tokio::time::timeout(Duration::from_secs(2), body.next())
-        .await
-        .expect("the expected wall transition is prompt")
-        .expect("the stream stays open for the transition")
-        .expect("the SSE body is infallible");
-    std::str::from_utf8(&chunk)
-        .expect("SSE is UTF-8")
-        .to_owned()
+    let mut event = String::new();
+    while !event.ends_with("\n\n") {
+        let chunk = tokio::time::timeout(Duration::from_secs(2), body.next())
+            .await
+            .expect("the expected wall transition is prompt")
+            .expect("the stream stays open for the transition")
+            .expect("the SSE body is infallible");
+        event.push_str(std::str::from_utf8(&chunk).expect("SSE is UTF-8"));
+    }
+    event
 }
 
 async fn stream_ends(body: &mut axum::body::BodyDataStream) -> bool {

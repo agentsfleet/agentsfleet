@@ -75,7 +75,12 @@ struct Wall<D> {
 }
 
 /// Paces the counter reads a lag asks for: at most one per
-/// [`REFRESH_INTERVAL`], every `hello` counted.
+/// [`REFRESH_INTERVAL`].
+///
+/// Only a lag's reads are paced. The opening `hello` and a changed set's do
+/// not arm the pace, because frames lost after them moved the very counters
+/// they announced: the first gap on a fresh connection re-announces at once.
+/// Every `hello` still pays off a read a lag was owed.
 #[derive(Debug, Clone, Copy)]
 struct Recount {
     /// The earliest moment the counters may be read again.
@@ -93,16 +98,22 @@ impl Recount {
         }
     }
 
-    /// A `hello` just read the counters.
-    fn read(&mut self, now: Instant) {
+    /// A lag's read is being taken now: the next waits a whole interval.
+    fn paced(&mut self, now: Instant) {
         self.after = now + REFRESH_INTERVAL;
         self.owed = false;
     }
 
-    /// A lag arrived. `true` means read the counters now; otherwise the read
-    /// is owed at [`Recount::deadline`].
+    /// A `hello` read the counters, which settles anything a lag was owed.
+    const fn paid(&mut self) {
+        self.owed = false;
+    }
+
+    /// A lag arrived. `true` means read the counters now, and the pace is
+    /// armed; otherwise the read is owed at [`Recount::deadline`].
     fn lagged(&mut self, now: Instant) -> bool {
         if now >= self.after {
+            self.paced(now);
             return true;
         }
         self.owed = true;
@@ -158,7 +169,9 @@ async fn step<D: Services>(mut wall: Wall<D>) -> Option<(Frame, Wall<D>)> {
                 Tick::Steady => {}
             }
         }
-        if wall.recount.due(Instant::now()) {
+        let now = Instant::now();
+        if wall.recount.due(now) {
+            wall.recount.paced(now);
             return Some(announce(wall).await);
         }
         // Wake for whichever comes first. Sleeping the whole beat would be
@@ -187,7 +200,7 @@ async fn step<D: Services>(mut wall: Wall<D>) -> Option<(Frame, Wall<D>)> {
 
 /// The `hello` for the set the wall carries now, which reads the counters.
 async fn announce<D: Services>(mut wall: Wall<D>) -> (Frame, Wall<D>) {
-    wall.recount.read(Instant::now());
+    wall.recount.paid();
     let carried = wall.fan_in.fleets();
     let frame = hello(wall.services.as_ref(), &wall.workspace, carried).await;
     (frame, wall)
