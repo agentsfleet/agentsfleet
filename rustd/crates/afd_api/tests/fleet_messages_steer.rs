@@ -52,7 +52,7 @@ const MAX_MESSAGE_BYTES: usize = 8192;
 const MAX_OPERATION_ID_BYTES: usize = 200;
 
 /// The sentence an operation id outside that bound earns.
-const OPERATION_ID_DETAIL: &str = "operation_id must be between 1 and 200 bytes when present";
+const OPERATION_ID_DETAIL: &str = "operation_id, when sent, must be 1 to 200 bytes with no NUL character; omit it to send without retry protection";
 
 /// The sentence a message past its bound, or holding NUL, earns.
 const MESSAGE_DETAIL: &str = "message must not exceed 8192 bytes or contain a NUL character";

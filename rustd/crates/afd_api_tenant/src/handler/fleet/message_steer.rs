@@ -65,12 +65,11 @@ const DETAIL_MESSAGE_INVALID: &str =
 
 /// The refusal an unusable client operation identity earns.
 ///
-/// One sentence for both ends of the bound, and for a NUL inside it: a caller
-/// that sent an empty string and one that sent a novel are making the same
-/// mistake about the same field, and the field is optional, so omitting it is
-/// always valid.
-const DETAIL_OPERATION_ID_INVALID: &str =
-    "operation_id must be between 1 and 200 bytes when present";
+/// One sentence names every rule the field can break (both ends of the bound
+/// and a NUL inside it), so a caller told only the one it did not break never
+/// goes looking at the wrong limit. It also says omitting the field is valid,
+/// since the field is optional.
+const DETAIL_OPERATION_ID_INVALID: &str = "operation_id, when sent, must be 1 to 200 bytes with no NUL character; omit it to send without retry protection";
 
 /// The refusal a fleet this workspace does not hold earns.
 const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
