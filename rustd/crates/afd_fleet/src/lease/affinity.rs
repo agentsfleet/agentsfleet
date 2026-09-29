@@ -131,7 +131,8 @@ impl Leases {
         }))
     }
 
-    /// Free the slot so the fleet's next event is claimable.
+    /// Free a slot whose claim issued no lease, so the fleet's next event is
+    /// claimable.
     ///
     /// Token-guarded: frees it only while `fence` is still the live token, so a
     /// holder superseded by a reclaim cannot free the CURRENT holder's slot and
@@ -140,17 +141,26 @@ impl Leases {
     ///
     /// Called on every post-claim path that does not issue a lease, so an
     /// abandoned claim costs one poll rather than a full TTL of silence on that
-    /// fleet.
+    /// fleet. It also drops the sticky hint the claim wrote: no run happened on
+    /// this runner, and a hint left behind would sort a fleet that keeps
+    /// stopping first for it on every poll of the partition.
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
     pub async fn release(&self, fleet_id: &Uuid7, fence: Fence, now: UnixMillis) -> Result<()> {
         let mut connection = self.pool().acquire().await?;
-        self.release_through(&mut connection, fleet_id, fence, now)
+        sqlx::query(sql::lease::RELEASE_UNLEASED_SLOT)
+            .bind(fleet_id.as_str())
+            .bind(now.as_millis())
+            .bind(fence.as_i64())
+            .execute(&mut *connection)
             .await
+            .map_err(query(CONTEXT_RELEASE))?;
+        Ok(())
     }
 
-    /// The same release, on a connection the caller already holds.
+    /// The release a finished run owes, on a connection the caller already
+    /// holds. Keeps the sticky hint: this runner did lease the fleet.
     ///
     /// The report path needs it: freeing the slot makes the fleet's next event
     /// claimable, and doing that before the run's result is durable would let a
@@ -159,9 +169,7 @@ impl Leases {
     /// becomes visible at the same instant the terminal row does — which is
     /// what lets this be a guarantee rather than the ordering comment it was.
     ///
-    /// Split from [`Leases::release`] rather than duplicating the statement,
-    /// so the pool-based entry point stays one acquire and this one adds none
-    /// (RULE CNX).
+    /// It takes a connection so it adds no acquire (RULE CNX).
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
