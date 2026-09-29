@@ -4,6 +4,7 @@
 //! is a standing grant raised at install time rather than by an event, so its
 //! answer continues nothing and its whole job is to wake the parked delivery
 //! — a different guarantee from the continuation suite's, proven differently.
+//! A denied run's retry is here too: it wakes a parked delivery the same way.
 
 #![expect(
     clippy::expect_used,
@@ -96,6 +97,46 @@ async fn an_already_resolved_runless_gate_refreshes_readiness() {
     assert!(
         ready_token(&lane).await.is_some(),
         "the already-resolved runless path wakes the parked delivery"
+    );
+}
+
+/// A repeated denial of a gate that held a run wakes the fleet again.
+///
+/// The denial left the run's delivery parked for the poll that ends it, and
+/// the first answer's wake is best-effort. A retry after that wake was lost
+/// is the one caller left to send it, so the already-resolved path wakes the
+/// fleet for every answer that leaves a delivery parked, not only a runless
+/// gate's.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_already_denied_gate_that_held_a_run_refreshes_readiness() {
+    let lane = Lane::isolated().await;
+    let now = UnixMillis::from_millis(NOW_MS);
+    let gate = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+
+    let first = lane
+        .inbox
+        .resolve(&gate, Decision::Denied, OPERATOR, NOTE, None, now)
+        .await
+        .expect("the first answer resolves the gate");
+    assert!(matches!(first, Resolution::Resolved(_)));
+
+    // Stands in for the first answer's wake never landing.
+    ReadyIndex::new(lane.queue.clone())
+        .force_clear(lane.fleet.as_str())
+        .await
+        .expect("the test can clear the ready mark");
+    assert_eq!(ready_token(&lane).await, None);
+
+    let second = lane
+        .inbox
+        .resolve(&gate, Decision::Denied, OPERATOR, NOTE, None, now)
+        .await
+        .expect("the retry reads the standing decision");
+    assert!(matches!(second, Resolution::AlreadyResolved(_)));
+    assert!(
+        ready_token(&lane).await.is_some(),
+        "the retry wakes the parked delivery the denial left"
     );
 }
 

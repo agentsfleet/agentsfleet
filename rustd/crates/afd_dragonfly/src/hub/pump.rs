@@ -154,7 +154,7 @@ async fn generation(
     let (signal, mut signals) = mpsc::unbounded_channel();
     let dispatcher = dispatch::spawn(Arc::clone(inner), pushes, signal, channels.clone());
     let ended = match resubscribe(connection, &channels).await {
-        Ok(()) => Ok(serve(commands, &mut signals, connection).await),
+        Ok(()) => Ok(serve(inner, commands, &mut signals, connection).await),
         Err(unhosted) => Err(unhosted),
     };
     dispatcher.abort();
@@ -203,6 +203,7 @@ async fn redial(config: &DragonflyConfig, schedule: ExponentialBuilder) -> Conne
 /// it through its own redirects and repairs, so what reaches here is a socket
 /// that cannot be used.
 async fn serve(
+    inner: &HubInner,
     commands: &mut mpsc::UnboundedReceiver<Command>,
     signals: &mut mpsc::UnboundedReceiver<Signal>,
     connection: &mut ClusterConnection,
@@ -219,8 +220,10 @@ async fn serve(
             signal = signals.recv() => match signal.unwrap_or(Signal::Redial(Loss::Closed)) {
                 Signal::Resubscribe(channel) => connection.ssubscribe(&channel).await,
                 // The waiting a repair may do happens here, never on the
-                // dispatch task: frames keep flowing while it waits.
-                Signal::Repair(channels) => match repair::resubscribe(connection, &channels).await {
+                // dispatch task: frames keep flowing while it waits, and the
+                // commands queued meanwhile are served only once every owner
+                // is back — see the `repair` module.
+                Signal::Repair(channels) => match repair::resubscribe(connection, inner, &channels).await {
                     Ok(()) => Ok(()),
                     Err(loss) => return Ended::Lost(loss),
                 },

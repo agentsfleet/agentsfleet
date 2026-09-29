@@ -25,6 +25,20 @@
 //! subscribes follow on the same route. An owner lost again in between is a
 //! second `Disconnection`, which the dispatch task turns into a redial.
 //!
+//! # Why every owner, and why the table is read again
+//!
+//! The push does not say which node was lost, so the repair waits for EVERY
+//! range's owner, whether or not the hub holds a channel there. The control
+//! task serves nothing else while it waits, so a reader's `Subscribe` queued
+//! meanwhile is sent only once the driver routes it to its owner. One sent in
+//! the moment before the repair began — after the loss, before the dispatch
+//! task's `Repair` reached the control task — went wherever the driver's
+//! fallback sent it, and it is not in the list the repair was handed. So once
+//! the owners answer, the channel table is read again and every channel that
+//! joined it is subscribed too. A channel whose own `Subscribe` is still
+//! queued is confirmed twice, a gap its reader did not need: over-reporting,
+//! the safe direction the `gap` module chooses.
+//!
 //! # What the window ending means
 //!
 //! The owner never answered in time. That covers a primary that is down, and
@@ -32,12 +46,14 @@
 //! the old primary. Either way the caller redials, and a fresh connection
 //! reads the topology the cluster has now.
 
+use std::collections::HashSet;
 use std::time::Duration;
 
 use redis::cluster_async::ClusterConnection;
 use redis::cluster_routing::{Route, RoutingInfo, SingleNodeRoutingInfo, SlotAddr};
 use tokio::time::Instant;
 
+use super::channels::HubInner;
 use super::gap::{Loss, NODE_REPAIR_WINDOW};
 use crate::topology::{self, SlotRange, text};
 
@@ -49,7 +65,8 @@ const RETRY_INTERVAL: Duration = Duration::from_millis(25);
 /// Cluster slots, as the cluster protocol numbers them.
 const SLOTS: u16 = 16_384;
 
-/// Re-subscribes every one of `channels`, owner by owner.
+/// Waits for every range's owner, then re-subscribes `held` and every
+/// channel a reader took up since `held` was read.
 ///
 /// # Errors
 /// [`Loss::Unexplained`] when an owner is not reachable inside
@@ -58,35 +75,36 @@ const SLOTS: u16 = 16_384;
 /// caller redials either way.
 pub(super) async fn resubscribe(
     connection: &mut ClusterConnection,
-    channels: &[String],
+    inner: &HubInner,
+    held: &[String],
 ) -> Result<(), Loss> {
     let deadline = Instant::now() + NODE_REPAIR_WINDOW;
     let ranges = topology::slot_ranges(connection)
         .await
         .map_err(|_unread| Loss::CommandFailed)?;
     for range in &ranges {
-        let owned: Vec<&String> = channels
-            .iter()
-            .filter(|channel| holds(range, slot(channel)))
-            .collect();
-        if owned.is_empty() {
-            continue;
-        }
         await_owner(connection, range, deadline).await?;
-        for channel in owned {
-            connection
-                .ssubscribe(channel)
-                .await
-                .map_err(|_failed| Loss::CommandFailed)?;
-        }
     }
-    let unowned = channels
-        .iter()
-        .any(|channel| !ranges.iter().any(|range| holds(range, slot(channel))));
-    if unowned {
-        return Err(Loss::CommandFailed);
+    let joined = joined(held, inner.live_channels());
+    for channel in held.iter().chain(&joined) {
+        if !ranges.iter().any(|range| holds(range, slot(channel))) {
+            return Err(Loss::CommandFailed);
+        }
+        connection
+            .ssubscribe(channel)
+            .await
+            .map_err(|_failed| Loss::CommandFailed)?;
     }
     Ok(())
+}
+
+/// The channels in `live` that `held` does not name: taken up by a reader
+/// after the repair's list was read.
+fn joined(held: &[String], live: Vec<String>) -> Vec<String> {
+    let held: HashSet<&str> = held.iter().map(String::as_str).collect();
+    live.into_iter()
+        .filter(|channel| !held.contains(channel.as_str()))
+        .collect()
 }
 
 /// Waits until a command routed to `range`'s slots is answered by the

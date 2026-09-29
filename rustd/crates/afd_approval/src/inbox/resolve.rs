@@ -118,14 +118,7 @@ impl Inbox {
             .map_err(error::query(CONTEXT_RESOLVE))?;
 
         Ok(match existing {
-            Some(row) => {
-                let resolved = read_resolved(&row)?;
-                if resolved.event_id.is_none() {
-                    self.wake_parked_delivery(&resolved.fleet_id, &resolved.gate_id)
-                        .await;
-                }
-                Resolution::AlreadyResolved(resolved)
-            }
+            Some(row) => Resolution::AlreadyResolved(self.stood(&row, now).await?),
             None => Resolution::NotFound,
         })
     }
@@ -297,3 +290,10 @@ impl Inbox {
         Ok(Some(admitted.stored.id))
     }
 }
+
+#[path = "resolve/stood.rs"]
+mod stood;
+
+#[cfg(test)]
+#[path = "resolve/tests.rs"]
+mod tests;

@@ -9,13 +9,19 @@ use super::{Attribution, Burst, Cause, GAP_LOG_BURST, Loss, NODE_REPAIR_WINDOW};
 const CHANNEL: &str = "fleet:a:activity";
 const OTHER: &str = "fleet:b:activity";
 
+/// What the hub holds when a node's socket is lost: one channel, so the loss
+/// has something that can confirm back and explain it.
+fn held() -> [String; 1] {
+    [CHANNEL.to_owned()]
+}
+
 /// A node's loss explained by a confirmation: nothing redials, and the
 /// confirmation is labelled a repair.
 #[test]
 fn a_replay_inside_the_window_explains_the_loss() {
     let now = Instant::now();
     let mut attribution = Attribution::new(Vec::new());
-    assert_eq!(attribution.disconnected(now, &[]), None);
+    assert_eq!(attribution.disconnected(now, &held()), None);
     assert_eq!(attribution.deadline(), Some(now + NODE_REPAIR_WINDOW));
 
     assert_eq!(attribution.replayed(CHANNEL), Cause::NodeRepaired);
@@ -30,7 +36,7 @@ fn a_replay_inside_the_window_explains_the_loss() {
 fn an_unexplained_loss_redials_when_its_window_closes() {
     let now = Instant::now();
     let mut attribution = Attribution::new(Vec::new());
-    assert_eq!(attribution.disconnected(now, &[]), None);
+    assert_eq!(attribution.disconnected(now, &held()), None);
     let inside = now + NODE_REPAIR_WINDOW - Duration::from_millis(1);
     assert_eq!(attribution.expired(inside), None, "still waiting");
     assert_eq!(
@@ -45,9 +51,9 @@ fn an_unexplained_loss_redials_when_its_window_closes() {
 fn a_second_loss_while_the_first_is_pending_redials_at_once() {
     let now = Instant::now();
     let mut attribution = Attribution::new(Vec::new());
-    assert_eq!(attribution.disconnected(now, &[]), None);
+    assert_eq!(attribution.disconnected(now, &held()), None);
     assert_eq!(
-        attribution.disconnected(now + Duration::from_millis(3), &[]),
+        attribution.disconnected(now + Duration::from_millis(3), &held()),
         Some(Loss::Simultaneous)
     );
 }
@@ -57,9 +63,9 @@ fn a_second_loss_while_the_first_is_pending_redials_at_once() {
 fn an_explained_loss_leaves_the_next_one_its_own_window() {
     let now = Instant::now();
     let mut attribution = Attribution::new(Vec::new());
-    assert_eq!(attribution.disconnected(now, &[]), None);
+    assert_eq!(attribution.disconnected(now, &held()), None);
     assert_eq!(attribution.replayed(CHANNEL), Cause::NodeRepaired);
-    assert_eq!(attribution.disconnected(now, &[]), None);
+    assert_eq!(attribution.disconnected(now, &held()), None);
 }
 
 /// A slot move and a redial name themselves, once per channel, ahead of a
@@ -69,7 +75,7 @@ fn moved_and_redialled_channels_name_their_own_cause() {
     let now = Instant::now();
     let mut attribution = Attribution::new(vec![OTHER.to_owned()]);
     attribution.moved(CHANNEL.to_owned());
-    assert_eq!(attribution.disconnected(now, &[]), None);
+    assert_eq!(attribution.disconnected(now, &held()), None);
 
     assert_eq!(attribution.replayed(CHANNEL), Cause::SlotMoved);
     assert_eq!(attribution.replayed(OTHER), Cause::Reconnected);
@@ -154,5 +160,26 @@ fn every_channel_re_subscribed_after_a_loss_is_a_repair() {
         attribution.replayed(CHANNEL),
         Cause::Resubscribed,
         "a channel is labelled once per loss"
+    );
+}
+
+/// A hub holding no channel has nothing that could confirm back, so a lost
+/// socket arms no window: waiting it out could only end in a redial that
+/// fixes nothing, counted as a reconnect.
+#[test]
+fn a_loss_while_nothing_is_held_arms_no_window() {
+    let now = Instant::now();
+    let mut attribution = Attribution::new(Vec::new());
+    assert_eq!(attribution.disconnected(now, &[]), None);
+    assert_eq!(attribution.deadline(), None, "nothing to wait for");
+    assert_eq!(attribution.expired(now + NODE_REPAIR_WINDOW * 2), None);
+    assert_eq!(
+        attribution.disconnected(now + Duration::from_millis(3), &held()),
+        None,
+        "an empty loss leaves nothing pending, so the next is not simultaneous"
+    );
+    assert_eq!(
+        attribution.deadline(),
+        Some(now + Duration::from_millis(3) + NODE_REPAIR_WINDOW)
     );
 }

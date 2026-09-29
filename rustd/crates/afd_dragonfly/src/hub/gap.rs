@@ -40,7 +40,7 @@ use tokio::time::Instant;
 /// re-subscribes are confirmed as soon as it is. Five seconds covers the
 /// restart; past it the whole-connection redial this hub always had is the
 /// fallback, and it too ends in a gap on every channel.
-pub(super) const NODE_REPAIR_WINDOW: Duration = Duration::from_secs(5);
+pub(crate) const NODE_REPAIR_WINDOW: Duration = Duration::from_secs(5);
 
 /// How long one `hub_channel_gap` warning gathers channels before it is
 /// written. A node repair replays its channels one confirmation at a time, and
@@ -124,11 +124,19 @@ impl Attribution {
 
     /// A node's socket died while the hub held `live`, which it is about to
     /// re-subscribe. `Some` means stop and redial now instead.
+    ///
+    /// An empty `live` arms no window. Only a confirmation explains a loss,
+    /// and a hub holding nothing sends nothing to confirm, so the window could
+    /// only close as a redial that repairs nothing. The driver mends the
+    /// socket itself, and the control task still waits for every owner before
+    /// it serves another subscribe (`repair`).
     pub(super) fn disconnected(&mut self, now: Instant, live: &[String]) -> Option<Loss> {
         if self.repair.is_some() {
             return Some(Loss::Simultaneous);
         }
-        self.repair = Some(now + NODE_REPAIR_WINDOW);
+        if !live.is_empty() {
+            self.repair = Some(now + NODE_REPAIR_WINDOW);
+        }
         self.repairing.extend(live.iter().cloned());
         None
     }
