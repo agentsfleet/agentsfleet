@@ -145,7 +145,7 @@ async fn test_fleet_stream_opens_with_hello_before_any_activity() {
          heartbeat interval in `Connecting…`"
     );
     assert!(
-        hello.data.contains(fleet.as_str()),
+        hello.data.text().contains(fleet.as_str()),
         "the opening frame names the fleet it carries: {}",
         hello.data
     );
@@ -282,7 +282,7 @@ async fn assert_fan_in_delivery(
         .expect("the fan-in yields its first frame");
     assert_eq!(first.seq, 0);
     assert!(
-        first.data.contains(beta),
+        first.data.text().contains(beta),
         "the frame is tagged by its fleet"
     );
 
@@ -299,7 +299,7 @@ async fn assert_fan_in_delivery(
         .await
         .expect("the fan-in skips the malformed payload");
     assert_eq!(second.seq, 1);
-    assert!(second.data.contains(alpha));
+    assert!(second.data.text().contains(alpha));
 }
 
 /// The next frame, or a failed test rather than a hung lane.

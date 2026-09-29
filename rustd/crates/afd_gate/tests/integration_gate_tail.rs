@@ -73,13 +73,13 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
         .await
         .expect("the park reaches the fleet's tail")
         .expect("the subscription stays live");
-    // A lag notice is not a frame this test published; failing on one is the
-    // honest outcome rather than a retry that would mask a dropped park.
+    // A lag or gap notice is not a frame this test published; failing on one
+    // is the honest outcome rather than a retry that would mask a dropped park.
     let message = match received {
         Received::Message(message) => Some(message),
-        Received::Lagged(_) => None,
+        Received::Lagged(_) | Received::Gap => None,
     }
-    .expect("the tail carried the park's frame, not a lag notice");
+    .expect("the tail carried the park's frame, not a lag or gap notice");
     let frame: serde_json::Value =
         serde_json::from_str(&message.payload).expect("the frame is JSON");
     assert_eq!(frame.get("kind"), Some(&json!("gate_opened")));

@@ -51,6 +51,9 @@ afd_http.workspace = true
 afd_library.workspace = true
 afd_observability.workspace = true
 afd_sse.workspace = true
+# The published message a live-tail body borrows its payload bytes from; see
+# `handler/stream/body.rs`.
+afd_dragonfly.workspace = true
 afd_tenant.workspace = true
 afd_vault.workspace = true
 afd_wire.workspace = true

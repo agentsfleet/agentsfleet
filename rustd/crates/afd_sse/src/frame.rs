@@ -18,12 +18,22 @@
 //! Delivering an activity frame to the wrong fleet's tile is worse than losing
 //! it: the tile shows another fleet's work as its own, and nothing in the
 //! client can tell. The durable row is still there to be paged.
+//!
+//! # An activity frame shares its payload
+//!
+//! Every viewer of a channel is handed the same published message, and the
+//! frame keeps it rather than copying it out; see [`Data`].
+
+mod data;
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
+use afd_dragonfly::Message;
 use afd_wire::tail::FleetCounters;
 
+pub use self::data::Data;
 use crate::error::{Error, Result};
 
 /// The `event:` name a payload with no readable `kind` is given.
@@ -76,18 +86,18 @@ pub struct Frame {
     /// The `event:` line.
     pub kind: Cow<'static, str>,
     /// The `data:` line, already JSON.
-    pub data: String,
+    pub data: Data,
 }
 
 impl Frame {
-    /// One publisher's payload, forwarded unrewritten.
+    /// One publisher's payload, forwarded unrewritten and uncopied.
     #[must_use]
-    pub fn activity(seq: u64, payload: String) -> Self {
-        let kind = kind_of(&payload).unwrap_or(DEFAULT_KIND).to_owned();
+    pub fn activity(seq: u64, message: Arc<Message>) -> Self {
+        let kind = kind_of(&message.payload).unwrap_or(DEFAULT_KIND).to_owned();
         Self {
             seq,
             kind: Cow::Owned(kind),
-            data: payload,
+            data: Data::published(message),
         }
     }
 
@@ -100,12 +110,13 @@ impl Frame {
     /// [`Error::Untaggable`] when the payload is not a JSON object, which is
     /// the only shape a key can be spliced into. The caller drops the frame
     /// rather than emit one a client could route to the wrong tile.
-    pub fn tagged(seq: u64, fleet_id: &str, payload: &str) -> Result<Self> {
-        let kind = kind_of(payload).unwrap_or(DEFAULT_KIND).to_owned();
-        Self::splice(fleet_id, payload).map(|data| Self {
+    pub fn tagged(seq: u64, fleet_id: &str, message: Arc<Message>) -> Result<Self> {
+        let kind = kind_of(&message.payload).unwrap_or(DEFAULT_KIND).to_owned();
+        let head = Self::tag(fleet_id, &message.payload)?;
+        Ok(Self {
             seq,
             kind: Cow::Owned(kind),
-            data,
+            data: Data::spliced(head, message, OPENING_BRACE.len()),
         })
     }
 
@@ -127,7 +138,7 @@ impl Frame {
         Self {
             seq: SYNTHETIC_SEQ,
             kind: Cow::Borrowed(KIND_HELLO),
-            data: data.to_string(),
+            data: Data::owned(data.to_string()),
         }
     }
 
@@ -141,31 +152,34 @@ impl Frame {
         Self {
             seq: SYNTHETIC_SEQ,
             kind: Cow::Borrowed(KIND_CATCHING_UP),
-            data: data.to_string(),
+            data: Data::owned(data.to_string()),
         }
     }
 
-    /// `{"fleet_id":"…", …the publisher's fields}`, byte for byte.
+    /// The head that turns `{…the publisher's fields}` into
+    /// `{"fleet_id":"…", …the publisher's fields}` when the payload after its
+    /// opening brace follows it, byte for byte.
     ///
     /// The payload is spliced rather than parsed and re-emitted: it is already
     /// valid JSON that this process did not author, and re-serializing it would
     /// reorder keys, reformat numbers, and make every publisher shape change
     /// this crate's problem.
-    fn splice(fleet_id: &str, payload: &str) -> Result<String> {
+    fn tag(fleet_id: &str, payload: &str) -> Result<String> {
         let body = payload
-            .strip_prefix('{')
+            .strip_prefix(OPENING_BRACE)
             .and_then(|open| open.strip_suffix('}'))
             .ok_or(Error::Untaggable)?;
         let tag = serde_json::to_string(fleet_id).map_err(|_unencodable| Error::Untaggable)?;
-        let mut spliced = format!("{{\"{TAG_KEY}\":{tag}");
+        let mut head = format!("{OPENING_BRACE}\"{TAG_KEY}\":{tag}");
         if !body.trim().is_empty() {
-            spliced.push(',');
-            spliced.push_str(body);
+            head.push(',');
         }
-        spliced.push('}');
-        Ok(spliced)
+        Ok(head)
     }
 }
+
+/// What a JSON object opens with, and what a tag replaces.
+const OPENING_BRACE: &str = "{";
 
 /// The `kind` a payload names, when it names one as its leading field.
 ///

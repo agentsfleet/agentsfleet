@@ -71,6 +71,14 @@ mod recorder;
 )]
 mod support;
 
+#[path = "support/hub_exclusive.rs"]
+#[allow(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test support: an unmet precondition should fail the test loudly"
+)]
+mod hub_exclusive;
+
 #[path = "support/cluster_harness.rs"]
 #[allow(
     clippy::expect_used,
@@ -89,6 +97,8 @@ mod dedicated_faults;
 mod error_surface;
 #[path = "hub_connect_deadline.rs"]
 mod hub_connect_deadline;
+#[path = "hub_gap_faults.rs"]
+mod hub_gap_faults;
 #[path = "hub_socket_faults.rs"]
 mod hub_socket_faults;
 #[path = "index_addressing.rs"]

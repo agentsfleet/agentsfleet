@@ -258,7 +258,7 @@ async fn test_a_lagging_reader_is_told_and_a_stopped_hub_closes() {
                 lagged = true;
                 break;
             }
-            Ok(Ok(Received::Message(_))) => {}
+            Ok(Ok(Received::Message(_) | Received::Gap)) => {}
             Ok(Err(failure)) => panic!("the hub closed early: {failure}"),
             Err(_elapsed) => break,
         }

@@ -7,7 +7,9 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
+use afd_dragonfly::Message;
 use afd_wire::tail::FleetCounters;
 
 use super::{DEFAULT_KIND, Frame, KIND_ANCHOR, KIND_CATCHING_UP, KIND_HELLO, KIND_KEY, kind_of};
@@ -18,6 +20,14 @@ const FLEET: &str = "01924f4e-0000-7000-8000-00000000fee7";
 
 /// One publisher's payload, in the shape the runner writes.
 const CHUNK: &str = r#"{"kind":"chunk","text":"hi"}"#;
+
+/// `payload` as the hub hands it to every reader of its channel.
+fn published(payload: &str) -> Arc<Message> {
+    Arc::new(Message {
+        channel: format!("fleet:{FLEET}:activity"),
+        payload: payload.to_owned(),
+    })
+}
 
 /// The leading `kind` field names the frame.
 #[test]
@@ -52,7 +62,7 @@ fn should_read_no_kind_from_anywhere_but_the_leading_field() {
 /// A payload the publisher wrote crosses the wire unrewritten.
 #[test]
 fn should_forward_a_payload_without_rewriting_it() {
-    let frame = Frame::activity(7, CHUNK.to_owned());
+    let frame = Frame::activity(7, published(CHUNK));
     assert_eq!(frame.seq, 7);
     assert_eq!(frame.kind, "chunk");
     assert_eq!(frame.data, CHUNK);
@@ -61,7 +71,7 @@ fn should_forward_a_payload_without_rewriting_it() {
 /// A payload naming no kind still arrives, under the default name.
 #[test]
 fn should_forward_a_payload_that_names_no_kind() {
-    let frame = Frame::activity(1, "{}".to_owned());
+    let frame = Frame::activity(1, published("{}"));
     assert_eq!(frame.kind, Cow::Borrowed(DEFAULT_KIND));
     assert_eq!(frame.data, "{}");
 }
@@ -69,7 +79,7 @@ fn should_forward_a_payload_that_names_no_kind() {
 /// The tag is spliced ahead of the publisher's fields, which stay byte for byte.
 #[test]
 fn should_splice_the_fleet_ahead_of_the_publishers_fields() {
-    let frame = Frame::tagged(3, FLEET, CHUNK).expect("an object takes a tag");
+    let frame = Frame::tagged(3, FLEET, published(CHUNK)).expect("an object takes a tag");
     assert_eq!(frame.seq, 3);
     assert_eq!(
         frame.kind, "chunk",
@@ -84,7 +94,8 @@ fn should_splice_the_fleet_ahead_of_the_publishers_fields() {
 /// An empty object gains the tag and stays valid JSON.
 #[test]
 fn should_tag_an_empty_object_without_a_dangling_separator() {
-    let frame = Frame::tagged(0, FLEET, "{}").expect("an empty object is still an object");
+    let frame =
+        Frame::tagged(0, FLEET, published("{}")).expect("an empty object is still an object");
     assert_eq!(frame.data, format!(r#"{{"fleet_id":"{FLEET}"}}"#));
     assert_eq!(frame.kind, Cow::Borrowed(DEFAULT_KIND));
 }
@@ -98,7 +109,7 @@ fn should_tag_an_empty_object_without_a_dangling_separator() {
 fn should_refuse_to_tag_a_payload_that_is_not_an_object() {
     for payload in ["not json", "[", "[]", "", "{", "}", r#""a string""#, "7"] {
         assert_eq!(
-            Frame::tagged(0, FLEET, payload),
+            Frame::tagged(0, FLEET, published(payload)),
             Err(Error::Untaggable),
             "{payload} is not an object"
         );
@@ -112,9 +123,10 @@ fn should_refuse_to_tag_a_payload_that_is_not_an_object() {
 /// the string and write its own fields into the frame.
 #[test]
 fn should_escape_the_tag_rather_than_trust_the_identifier() {
-    let frame = Frame::tagged(0, r#"a","evil":"1"#, "{}").expect("an object takes a tag");
+    let frame =
+        Frame::tagged(0, r#"a","evil":"1"#, published("{}")).expect("an object takes a tag");
     let parsed: serde_json::Value =
-        serde_json::from_str(&frame.data).expect("the frame is valid JSON");
+        serde_json::from_str(&frame.data.text()).expect("the frame is valid JSON");
     assert_eq!(parsed.get("evil"), None, "the id cannot open a second key");
     assert_eq!(
         parsed.get("fleet_id").and_then(serde_json::Value::as_str),
@@ -147,7 +159,8 @@ fn hello_carries_the_counters_a_late_subscriber_missed() {
         },
     )]);
     let frame = Frame::hello(&["z1".to_owned(), "z2".to_owned()], &counters);
-    let parsed: serde_json::Value = serde_json::from_str(&frame.data).expect("hello is JSON");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&frame.data.text()).expect("hello is JSON");
     assert_eq!(
         parsed.pointer("/counters/z1/events_processed"),
         Some(&serde_json::json!(3)),
@@ -218,9 +231,55 @@ fn should_refuse_a_kind_that_would_break_the_event_line() {
             "{raw:?} must not reach the event: line"
         );
         assert_eq!(
-            Frame::activity(0, payload.clone()).kind,
+            Frame::activity(0, published(&payload)).kind,
             DEFAULT_KIND,
             "the frame still arrives, under the default name"
         );
     }
+}
+
+/// Dimension 5.4, the frame's half: an activity frame and a wall frame built
+/// for three viewers all point at the one payload the hub dispatched, and
+/// only the tag's head is the wall frame's own.
+#[test]
+fn test_frames_share_the_published_payload() {
+    let message = published(CHUNK);
+    let viewers: Vec<Frame> = (0..3)
+        .map(|seq| Frame::activity(seq, Arc::clone(&message)))
+        .collect();
+    for frame in &viewers {
+        let (shared, skip) = frame.data.shared().expect("an activity frame shares");
+        assert!(Arc::ptr_eq(shared, &message) && skip == 0);
+        assert_eq!(frame.data.tail().as_ptr(), message.payload.as_ptr());
+    }
+
+    let wall = Frame::tagged(0, FLEET, Arc::clone(&message)).expect("an object takes a tag");
+    assert_eq!(wall.data.head(), format!(r#"{{"fleet_id":"{FLEET}","#));
+    assert_eq!(
+        wall.data.tail().as_ptr(),
+        message.payload[1..].as_ptr(),
+        "the publisher's fields are the payload's own bytes, after its brace"
+    );
+    assert_eq!(
+        Arc::strong_count(&message),
+        5,
+        "the test, three viewers, the wall"
+    );
+}
+
+/// Text, display and equality all read the line a client would see.
+#[test]
+fn a_shared_line_reads_as_its_text() {
+    let wall = Frame::tagged(0, FLEET, published(CHUNK)).expect("an object takes a tag");
+    let expected = format!(r#"{{"fleet_id":"{FLEET}","kind":"chunk","text":"hi"}}"#);
+    assert_eq!(wall.data.text(), expected);
+    assert_eq!(wall.data.to_string(), expected);
+    assert_eq!(format!("{:?}", wall.data), format!("{expected:?}"));
+    assert_ne!(wall.data, format!(r#"{{"fleet_id":"{FLEET}""#));
+    assert!(!wall.data.is_empty());
+    assert!(Frame::activity(0, published("")).data.is_empty());
+    assert!(matches!(
+        Frame::activity(0, published(CHUNK)).data.text(),
+        Cow::Borrowed(_)
+    ));
 }
