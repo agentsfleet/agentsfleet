@@ -130,7 +130,7 @@ const CONNECT_TIMEOUT_MS_DEFAULT: u64 = 10_000;
 const POOL_SIZE_KNOB: &str = "DATABASE_POOL_SIZE";
 /// The warm floor, overridable for a host that wants a different one.
 const MIN_POOL_SIZE_KNOB: &str = "DATABASE_MIN_POOL_SIZE";
-const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
+pub(crate) const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
 
 /// Which connection a piece of work belongs on.
 ///

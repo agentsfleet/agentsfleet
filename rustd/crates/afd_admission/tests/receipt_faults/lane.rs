@@ -11,7 +11,7 @@ use afd_db::{Db, DbRole};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_wire::event::EventType;
-use sqlx::{AssertSqlSafe, Row as _};
+use sqlx::{AssertSqlSafe, Connection as _, Row as _};
 use tracing::field::{Field, Visit};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt as _};
 
@@ -124,14 +124,21 @@ impl Lane {
     }
 
     /// Stands in for the replay sweeper winning the race: every admission row
-    /// inserted for THIS fleet gets `receipt` the moment it lands.
+    /// inserted for THIS fleet gets `receipt` the moment it lands. The trigger
+    /// and its function go when the returned guard drops.
     pub(crate) async fn sweep_first(&self, receipt: &str) -> Sweeper {
-        let name = format!("afd_it_sweep_{}", self.fleet.replace('-', ""));
-        let admin = sqlx::PgPool::connect(&self.handle.url())
+        let sweeper = Sweeper {
+            url: self.handle.url(),
+            name: format!("afd_it_sweep_{}", self.fleet.replace('-', "")),
+        };
+        let name = &sweeper.name;
+        let mut admin = sqlx::PgConnection::connect(&sweeper.url)
             .await
             .expect("the lane's owner connects");
         // The names are this fixture's own minted ids and a constant receipt,
-        // never input, which is what makes interpolating them safe.
+        // never input, which is what makes interpolating them safe. The guard
+        // exists before the first statement, so a half-installed sweeper is
+        // still removed.
         for statement in [
             format!(
                 "CREATE FUNCTION public.{name}() RETURNS trigger LANGUAGE plpgsql AS $$ \
@@ -145,11 +152,11 @@ impl Lane {
             ),
         ] {
             sqlx::query(AssertSqlSafe(statement))
-                .execute(&admin)
+                .execute(&mut admin)
                 .await
                 .expect("the stand-in sweeper installs");
         }
-        Sweeper { admin, name }
+        sweeper
     }
 
     /// Removes the fleet's rows, parents last.
@@ -171,26 +178,61 @@ impl Lane {
     }
 }
 
-/// The stand-in sweeper's trigger, removed by [`Sweeper::remove`].
+/// The event a sweeper that could not be removed is logged under.
+const SWEEPER_NOT_REMOVED: &str = "test_sweeper_not_removed";
+
+/// The stand-in sweeper's trigger and function on `core.fleet_admissions`,
+/// removed when this guard drops — on success, or while a failed test unwinds,
+/// because a drop runs then too. A trigger left behind would stamp its receipt
+/// on nothing (it names one fleet), but it would outlive the run in a shared
+/// schema.
+#[must_use = "the trigger is removed when the guard drops, so bind it for the test's life"]
 pub(crate) struct Sweeper {
-    admin: sqlx::PgPool,
+    url: String,
     name: String,
 }
 
-impl Sweeper {
-    pub(crate) async fn remove(self) {
-        for statement in [
-            format!(
-                "DROP TRIGGER IF EXISTS {0} ON core.fleet_admissions",
-                self.name
+impl Drop for Sweeper {
+    fn drop(&mut self) {
+        // A thread of its own, with a runtime of its own: a drop cannot await,
+        // and blocking the test's runtime on its own connection would hang a
+        // current-thread test.
+        let (url, name) = (self.url.clone(), self.name.clone());
+        match std::thread::spawn(move || remove(&url, &name)).join() {
+            Ok(Ok(())) => {}
+            Ok(Err(cause)) => tracing::warn!(
+                event = SWEEPER_NOT_REMOVED,
+                trigger = %self.name,
+                error = %cause,
+                "the stand-in sweeper could not be removed; reset the lane"
             ),
-            format!("DROP FUNCTION IF EXISTS public.{0}()", self.name),
-        ] {
-            let _dropped = sqlx::query(AssertSqlSafe(statement))
-                .execute(&self.admin)
-                .await;
+            Err(_panicked) => tracing::warn!(
+                event = SWEEPER_NOT_REMOVED,
+                trigger = %self.name,
+                "the stand-in sweeper's removal thread panicked; reset the lane"
+            ),
         }
     }
+}
+
+/// Drops the trigger `name` and its function, on a connection of its own.
+fn remove(url: &str, name: &str) -> sqlx::Result<()> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("the lane must start a removal runtime");
+    runtime.block_on(async {
+        let mut connection = sqlx::PgConnection::connect(url).await?;
+        for statement in [
+            format!("DROP TRIGGER IF EXISTS {name} ON core.fleet_admissions"),
+            format!("DROP FUNCTION IF EXISTS public.{name}()"),
+        ] {
+            sqlx::query(AssertSqlSafe(statement))
+                .execute(&mut connection)
+                .await?;
+        }
+        Ok(())
+    })
 }
 
 /// Admits one event for `lane`'s fleet against a fake queue answering

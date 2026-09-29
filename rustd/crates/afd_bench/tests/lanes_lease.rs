@@ -44,7 +44,7 @@ const DRAIN_WINDOW: Duration = Duration::from_mins(2);
 const LEDGER_ROWS_PER_EVENT: f64 = 2.0;
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live datastores: cargo test -p afd_bench -- --ignored"]
 async fn bench_lease_drains_through_report() {
     let _serial = LANE.lock().await;
     let stores = datastores().await;
@@ -99,7 +99,7 @@ fn count(value: u64) -> f64 {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live datastores: cargo test -p afd_bench -- --ignored"]
 async fn test_lease_bench_reports_a_rate_and_a_p95() {
     let _serial = LANE.lock().await;
     let stores = datastores().await;
@@ -136,7 +136,7 @@ async fn test_lease_bench_reports_a_rate_and_a_p95() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live datastores: cargo test -p afd_bench -- --ignored"]
 async fn test_lease_bench_reports_roundtrips_per_lease() {
     let _serial = LANE.lock().await;
     let stores = datastores().await;
@@ -172,7 +172,7 @@ async fn test_lease_bench_reports_roundtrips_per_lease() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live datastores: cargo test -p afd_bench -- --ignored"]
 async fn test_lease_bench_reports_wasted_claim_rate() {
     let _serial = LANE.lock().await;
     let stores = datastores().await;
@@ -209,7 +209,7 @@ async fn test_lease_bench_reports_wasted_claim_rate() {
 /// was never cleared by anything else, so every poll that sampled one paid a
 /// claim, a read and a release for a fleet with nothing to do.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live datastores: cargo test -p afd_bench -- --ignored"]
 async fn bench_idle_poll_after_drain() {
     let _serial = LANE.lock().await;
     let stores = datastores().await;
@@ -240,7 +240,7 @@ async fn bench_idle_poll_after_drain() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live datastores: cargo test -p afd_bench -- --ignored"]
 async fn test_a_deployed_run_sweeps_everything_it_created() {
     let _serial = LANE.lock().await;
     let stores = datastores().await;
@@ -288,7 +288,7 @@ async fn test_a_deployed_run_sweeps_everything_it_created() {
 }
 
 #[tokio::test]
-#[ignore = "dials a port nothing listens on: make test-integration-rustd"]
+#[ignore = "dials a port nothing listens on: cargo test -p afd_bench -- --ignored"]
 async fn test_a_run_that_cannot_reach_its_datastore_writes_no_result() {
     let refused = afd_bench::datastores::Datastores::open(
         "postgres://nobody:nobody@127.0.0.1:1/nothing?sslmode=disable",

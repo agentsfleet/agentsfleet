@@ -33,7 +33,7 @@ const HELD_BY: &str = "SELECT count(*) FROM core.platform_provider_defaults \
      WHERE provider = $1 AND source_workspace_id = $2::uuid";
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live datastores: cargo test -p afd_bench -- --ignored"]
 async fn test_a_drain_refuses_a_default_another_run_holds_and_leaves_it_standing() {
     let _serial = LANE.lock().await;
     let stores = datastores().await;

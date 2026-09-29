@@ -13,7 +13,6 @@ use std::sync::Arc;
 
 use afd_billing::Accounts;
 use afd_core::clock::UnixMillis;
-use afd_core::env::MapEnv;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
@@ -22,8 +21,7 @@ use afd_credential::secrets::Registry;
 use afd_credential::vault::Vault;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
-use afd_db::config::DbRole;
-use afd_db::{Db, PoolConfig};
+use afd_db::Db;
 use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole, EventId, ReadyToken};
 use afd_gate::gate::Gates;
 
@@ -33,26 +31,15 @@ use crate::lease::pull::Plane;
 use crate::lease::store::Leases;
 use crate::memory::Memories;
 
-/// A Postgres nobody listens on: port 1 is reserved and unbound.
-const NOWHERE_DATABASE: &str = "postgres://runner:secret@127.0.0.1:1/agentsfleet";
-
-/// A Dragonfly nobody listens on, for the same reason.
+/// A Dragonfly nobody listens on: port 1 is reserved and unbound.
 const NOWHERE_QUEUE: &str = "redis://127.0.0.1:1";
-
-/// The acquire budget, short so a refused acquire costs milliseconds.
-const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
-const ACQUIRE_TIMEOUT_MS: &str = "50";
 
 /// The instant every fixture here is stamped at.
 pub(crate) const AT: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
 
 /// A pool whose every acquire fails as the transport class.
 pub(crate) fn database() -> Db {
-    let env = MapEnv::from_pairs([
-        (DbRole::Api.url_knob(), NOWHERE_DATABASE),
-        (ACQUIRE_TIMEOUT_KNOB, ACQUIRE_TIMEOUT_MS),
-    ]);
-    Db::unreachable(&PoolConfig::resolve(&env, DbRole::Api).expect("a well-formed URL"))
+    afd_db::test_util::unreachable_db()
 }
 
 /// A queue whose every command fails on connection refusal.

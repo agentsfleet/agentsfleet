@@ -4,10 +4,6 @@
 //! The recorder sees only events raised on the current thread, so a suite
 //! driving a current-thread runtime asserts on its own lines and not on a
 //! sibling's.
-#![allow(
-    dead_code,
-    reason = "test support: shared by several suites, each using a subset"
-)]
 #![expect(
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"
@@ -16,28 +12,15 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use afd_core::env::MapEnv;
-use afd_db::config::DbRole;
-use afd_db::{Db, PoolConfig};
+use afd_db::Db;
 use tracing::field::{Field, Visit};
 use tracing::{Event, Subscriber, subscriber};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt as _};
 use tracing_subscriber::registry::Registry;
 
-/// A Postgres nobody listens on: port 1 is reserved and unbound.
-const NOWHERE_DATABASE: &str = "postgres://runner:secret@127.0.0.1:1/agentsfleet";
-
-/// A short acquire budget, so a refused acquire costs milliseconds.
-const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
-const ACQUIRE_TIMEOUT_MS: &str = "50";
-
 /// A pool whose every acquire fails as the transport class.
 pub(crate) fn dead_database() -> Db {
-    let env = MapEnv::from_pairs([
-        (DbRole::Api.url_knob(), NOWHERE_DATABASE),
-        (ACQUIRE_TIMEOUT_KNOB, ACQUIRE_TIMEOUT_MS),
-    ]);
-    Db::unreachable(&PoolConfig::resolve(&env, DbRole::Api).expect("a well-formed URL"))
+    afd_db::test_util::unreachable_db()
 }
 
 /// One recorded event's fields, rendered as text.

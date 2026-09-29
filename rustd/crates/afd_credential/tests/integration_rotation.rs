@@ -28,6 +28,8 @@ mod activation;
 mod provider_resolution;
 #[path = "integration_rotation/registry.rs"]
 mod registry;
+#[path = "integration_rotation/registry_default.rs"]
+mod registry_default;
 #[path = "integration_rotation/registry_page.rs"]
 mod registry_page;
 #[path = "integration_rotation/registry_walk.rs"]

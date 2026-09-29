@@ -38,14 +38,26 @@ async fn past_a_tick() {
     tokio::time::resume();
 }
 
+/// Asserts the tick asked for ownership again since `before` was read: a
+/// quiet stream alone cannot tell a tick that ran from one that never did.
+fn the_tick_re_read_ownership(wall: &Wall, before: usize) {
+    let after = wall.ownership.authorize_calls();
+    assert!(
+        after > before,
+        "the tick re-reads ownership: {before} reads before, {after} after"
+    );
+}
+
 /// A tick that finds the set unchanged and the caller still a member says
 /// nothing, and the stream goes on carrying activity.
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_steady_tick_announces_nothing_and_the_stream_keeps_serving() {
     let mut wall = Wall::open(Fixture::create().await).await;
+    let before = wall.ownership.authorize_calls();
     past_a_tick().await;
     wall.stays_quiet().await;
+    the_tick_re_read_ownership(&wall, before);
     wall.publish(1).await;
     assert!(next_chunk(&mut wall.body).await.contains("event: chunk"));
     wall.close().await;
@@ -58,8 +70,10 @@ async fn a_steady_tick_announces_nothing_and_the_stream_keeps_serving() {
 async fn a_tick_whose_ownership_read_fails_keeps_the_stream_open() {
     let mut wall = Wall::open(Fixture::create().await).await;
     wall.ownership.refuse();
+    let before = wall.ownership.authorize_calls();
     past_a_tick().await;
     wall.stays_quiet().await;
+    the_tick_re_read_ownership(&wall, before);
     wall.publish(1).await;
     assert!(next_chunk(&mut wall.body).await.contains("event: chunk"));
     wall.close().await;

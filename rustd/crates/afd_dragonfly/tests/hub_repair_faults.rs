@@ -12,7 +12,8 @@
 
 use std::time::Duration;
 
-use afd_dragonfly::Subscription;
+use afd_dragonfly::test_util::NODE_REPAIR_WINDOW;
+use afd_dragonfly::{Subscription, SubscriptionHub};
 use backon::ExponentialBuilder;
 use tokio::time::Instant;
 
@@ -65,6 +66,31 @@ fn sent(fake: &FakeRedis, command: &str) -> usize {
 async fn quiet(reader: &mut Subscription) {
     let waiting = tokio::time::timeout(Duration::from_millis(100), reader.recv()).await;
     assert!(waiting.is_err(), "nothing was delivered: {waiting:?}");
+}
+
+/// How far short of the repair window a count must be read to prove the hub
+/// is still inside it. The window opens only once the hub notices the cut, so
+/// it closes no sooner than `cut + NODE_REPAIR_WINDOW`; the margin absorbs the
+/// millisecond rounding of the runtime's timers.
+const WINDOW_MARGIN: Duration = Duration::from_millis(250);
+
+/// Waits for the hub's second connection, which a socket lost at `cut` earns
+/// only once the repair window has closed: never before it, and within the
+/// suite's budget after it.
+async fn redialled_when_the_window_closes(hub: &SubscriptionHub, cut: Instant) {
+    let deadline = cut + NODE_REPAIR_WINDOW + BUDGET;
+    while hub.connections_opened() < 2 {
+        assert!(
+            Instant::now() < deadline,
+            "the window closed without a redial"
+        );
+        tokio::time::sleep(RETRY).await;
+    }
+    assert!(
+        cut.elapsed() >= NODE_REPAIR_WINDOW,
+        "redialled {:?} after the cut, inside the {NODE_REPAIR_WINDOW:?} window",
+        cut.elapsed()
+    );
 }
 
 /// A push of a kind the hub never subscribes with — a plain `message`, as a
@@ -133,9 +159,10 @@ async fn a_channel_no_range_owns_is_redialled_rather_than_guessed() {
 
 /// An owner that never answers as itself is not subscribed through anyone
 /// else: the hub keeps asking until the repair window closes, then redials
-/// whole, and the reader is told about its gap.
-#[tokio::test(flavor = "multi_thread")]
+/// whole, logs the loss as unexplained, and the reader is told about its gap.
+#[tokio::test]
 async fn an_owner_that_never_answers_is_redialled_when_the_window_closes() {
+    let recorder = Recorder::install();
     let (fake, hub) = fake_and_hub().await;
     let mut first = hub.subscribe(FIRST);
     deliver(&fake, FIRST, "primed", &mut first).await;
@@ -150,26 +177,35 @@ async fn an_owner_that_never_answers_is_redialled_when_the_window_closes() {
     fake.set_reply("CLUSTER MYID", Reply::Raw("+someone-else\r\n"));
     let asked = sent(&fake, "CLUSTER");
 
+    let cut = Instant::now();
     fake.cut();
     until("the repair to ask who answers, twice", || {
         sent(&fake, "CLUSTER") > asked + 2
     })
     .await;
     // The driver's own replay may re-send the subscribe on a one-node fake;
-    // what must not happen inside the window is the hub giving up early.
-    tokio::time::sleep(Duration::from_secs(1)).await;
-    assert_eq!(hub.connections_opened(), 1, "still inside the window");
-
-    let window = Instant::now() + Duration::from_secs(8);
-    while hub.connections_opened() < 2 {
-        assert!(
-            Instant::now() < window,
-            "the window closed without a redial"
-        );
+    // what must not happen inside the window is the hub giving up early. The
+    // count is read before the clock, so a read that passes the clock check
+    // was taken inside the window.
+    let inside = cut + NODE_REPAIR_WINDOW - WINDOW_MARGIN;
+    loop {
+        let opened = hub.connections_opened();
+        if Instant::now() >= inside {
+            break;
+        }
+        assert_eq!(opened, 1, "still inside the window");
         tokio::time::sleep(RETRY).await;
     }
+
+    redialled_when_the_window_closes(&hub, cut).await;
     gap_on(&mut first).await;
     deliver(&fake, FIRST, "resumed", &mut first).await;
+    let cause = recorder.events().into_iter().find_map(|event| {
+        (event.fields.get("event")? == "hub_connection_dropped")
+            .then(|| event.fields.get("cause").cloned())
+            .flatten()
+    });
+    assert_eq!(cause.as_deref(), Some("unexplained"));
 }
 
 /// A caller's schedule that gives up after one retry does not end the redial:
@@ -269,28 +305,4 @@ async fn a_node_lost_while_a_gap_warning_gathers_keeps_both_causes() {
     assert!(written.contains(&"slot_moved".to_owned()), "{written:?}");
     assert!(written.contains(&"node_repaired".to_owned()), "{written:?}");
     assert_eq!(hub.connections_opened(), 1, "a repair is not a redial");
-}
-
-/// A lost socket that nothing confirms back — here, a hub holding no channel
-/// has nothing to re-subscribe — is redialled when the repair window closes,
-/// and logged as unexplained.
-#[tokio::test]
-async fn a_loss_nothing_confirms_is_redialled_when_its_window_closes() {
-    let recorder = Recorder::install();
-    let (fake, hub) = fake_and_hub().await;
-    fake.cut();
-    let window = Instant::now() + Duration::from_secs(8);
-    while hub.connections_opened() < 2 {
-        assert!(
-            Instant::now() < window,
-            "the window closed without a redial"
-        );
-        tokio::time::sleep(RETRY).await;
-    }
-    let cause = recorder.events().into_iter().find_map(|event| {
-        (event.fields.get("event")? == "hub_connection_dropped")
-            .then(|| event.fields.get("cause").cloned())
-            .flatten()
-    });
-    assert_eq!(cause.as_deref(), Some("unexplained"));
 }

@@ -35,7 +35,7 @@ const TRANSACTIONS_PER_FRESH_STEER: f64 = 2.0;
 const STREAM_COMMANDS_PER_FRESH_STEER: f64 = 2.0;
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live datastores: cargo test -p afd_bench -- --ignored"]
 async fn test_steer_bench_reports_a_rate_and_a_p95() {
     let _serial = LANE.lock().await;
     let stores = datastores().await;
@@ -65,7 +65,7 @@ async fn test_steer_bench_reports_a_rate_and_a_p95() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live datastores: cargo test -p afd_bench -- --ignored"]
 async fn test_steer_bench_attributes_cost_between_datastores() {
     let _serial = LANE.lock().await;
     let stores = datastores().await;
@@ -110,7 +110,7 @@ async fn test_steer_bench_attributes_cost_between_datastores() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live datastores: cargo test -p afd_bench -- --ignored"]
 async fn test_steer_bench_reports_readiness_depth_over_time() {
     let _serial = LANE.lock().await;
     let stores = datastores().await;
