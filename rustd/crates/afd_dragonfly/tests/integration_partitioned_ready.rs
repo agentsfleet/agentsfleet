@@ -61,19 +61,19 @@ async fn test_ready_races_preserve_work_and_bound_poll_cost() {
     );
 
     for fleet in &fleets {
-        index.mark(fleet, "g0").await.expect("the first mark lands");
+        index.mark(fleet).await.expect("the first mark lands");
     }
 
     let ingress = tokio::spawn(remark_through_generations(index.clone(), fleets.clone()));
     let poller = tokio::spawn(poll_and_clear(index.clone()));
-    ingress.await.expect("ingress does not panic");
+    let finals = ingress.await.expect("ingress does not panic");
     let (cleared, widest) = poller.await.expect("the poller does not panic");
     assert!(
         widest <= CANDIDATE_BUDGET,
         "a poll read {widest} candidates past its budget of {CANDIDATE_BUDGET}"
     );
 
-    let lost = lost_work(&index, &fleets, &cleared).await;
+    let lost = lost_work(&index, &fleets, &cleared, &finals).await;
     assert!(
         lost.is_empty(),
         "fleets re-marked after a poll's read were cleared by that poll: {lost:?}"
@@ -95,11 +95,8 @@ async fn test_private_poll_keeps_another_index_mark() {
     );
     let outside = harness.name("outside-mark");
     let inside = harness.name("private-mark");
-    other
-        .mark(&outside, "outside")
-        .await
-        .expect("mark other index");
-    private.mark(&inside, "inside").await.expect("mark private");
+    let outside_marked = other.mark(&outside).await.expect("mark other index");
+    let inside_marked = private.mark(&inside).await.expect("mark private");
 
     let (cleared, _) = poll_and_clear(private.clone()).await;
     let outside_token = other.token_for(&outside).await.expect("read other index");
@@ -108,26 +105,33 @@ async fn test_private_poll_keeps_another_index_mark() {
         .force_clear(&outside)
         .await
         .expect("cleanup other index");
-    assert_eq!(cleared.get(&inside).map(String::as_str), Some("inside"));
     assert_eq!(
-        outside_token.as_ref().map(ReadyToken::as_str),
-        Some("outside"),
+        cleared.get(&inside).map(String::as_str),
+        Some(inside_marked.as_str())
+    );
+    assert_eq!(
+        outside_token.as_ref(),
+        Some(&outside_marked),
         "the test poller must not clear a mark in another index"
     );
 }
 
 /// Ingress: re-marks every fleet through [`GENERATIONS`] generations,
-/// yielding between marks so the poller interleaves.
-async fn remark_through_generations(index: ReadyIndex, fleets: Vec<String>) {
-    for generation in 1..=GENERATIONS {
+/// yielding between marks so the poller interleaves. Answers the token each
+/// fleet's last mark minted — the final generation.
+async fn remark_through_generations(
+    index: ReadyIndex,
+    fleets: Vec<String>,
+) -> BTreeMap<String, String> {
+    let mut finals = BTreeMap::new();
+    for _generation in 1..=GENERATIONS {
         for fleet in &fleets {
-            index
-                .mark(fleet, &format!("g{generation}"))
-                .await
-                .expect("a re-mark lands");
+            let token = index.mark(fleet).await.expect("a re-mark lands");
+            finals.insert(fleet.clone(), token.as_str().to_owned());
             tokio::task::yield_now().await;
         }
     }
+    finals
 }
 
 /// The poller: [`ROTATIONS`] rotations of bounded peeks, clearing what each
@@ -162,8 +166,8 @@ async fn lost_work(
     index: &ReadyIndex,
     fleets: &[String],
     cleared: &BTreeMap<String, String>,
+    finals: &BTreeMap<String, String>,
 ) -> Vec<(String, Option<String>)> {
-    let final_generation = format!("g{GENERATIONS}");
     let mut lost = Vec::new();
     for fleet in fleets {
         let present = index
@@ -174,7 +178,7 @@ async fn lost_work(
             .any(|ready| &ready.fleet_id == fleet);
         // Absent is fine only when the clear saw the final generation; a
         // fleet cleared on an older token and not re-marked is lost work.
-        if !present && cleared.get(fleet) != Some(&final_generation) {
+        if !present && cleared.get(fleet) != finals.get(fleet) {
             lost.push((fleet.clone(), cleared.get(fleet).cloned()));
         }
         index.force_clear(fleet).await.expect("cleanup");
@@ -216,7 +220,7 @@ async fn test_coordination_recovers_during_partition_movement() {
     assert_eq!(found.token, first, "the mark followed its slot unchanged");
 
     let second = index
-        .mark(&fleet, "after-move")
+        .mark(&fleet)
         .await
         .expect("a re-mark lands on the moved slot");
     assert!(
@@ -241,7 +245,7 @@ async fn test_coordination_recovers_during_partition_movement() {
 /// Marks `fleet`, then plays a poll that read the mark and died before it
 /// could clear. Answers the token the mark minted.
 async fn mark_and_lose_a_poll(index: &ReadyIndex, fleet: &str) -> ReadyToken {
-    let token = index.mark(fleet, "before-move").await.expect("mark");
+    let token = index.mark(fleet).await.expect("mark");
     let lost_poll = index
         .peek(Partition::of(fleet), CANDIDATE_BUDGET)
         .await

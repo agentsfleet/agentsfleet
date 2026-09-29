@@ -3,8 +3,8 @@
 //! Split from [`super`] on the seam between READING the queue and MOVING a
 //! row. The read half is two statements and a decoder; this half is one
 //! guarded UPDATE plus the three things that follow from it — the tail is
-//! told, a runless gate's parked delivery is woken, and an approval that held
-//! a run lands the continuation. They belong together because they share one
+//! told, a parked delivery is woken, and an approval that held a run lands
+//! the continuation. They belong together because they share one
 //! invariant: the row moved first, so none of them may turn a durable
 //! decision back into a retry.
 
@@ -38,8 +38,8 @@ pub(super) const CONTEXT_RESOLVE: &str = "gate.inbox.resolve";
 
 const CONTEXT_CONTINUE: &str = "gate.inbox.continuation";
 
-/// The ready mark that wakes a parked runless gate would not write.
-const EVENT_RUNLESS_READY_MARK_FAILED: &str = "gate_runless_ready_mark_failed";
+/// The ready mark that wakes a parked delivery would not write.
+const EVENT_WAKE_READY_MARK_FAILED: &str = "gate_wake_ready_mark_failed";
 
 /// The column the pending count sits in, after the resolved row's nine.
 const COLUMN_PENDING_APPROVALS: usize = 9;
@@ -121,7 +121,8 @@ impl Inbox {
             Some(row) => {
                 let resolved = read_resolved(&row)?;
                 if resolved.event_id.is_none() {
-                    self.wake_runless_resolution(&resolved).await;
+                    self.wake_parked_delivery(&resolved.fleet_id, &resolved.gate_id)
+                        .await;
                 }
                 Resolution::AlreadyResolved(resolved)
             }
@@ -151,13 +152,17 @@ impl Inbox {
         // The continuation is part of RESOLVING, not something a caller
         // remembers to do afterwards: an approval that landed without one is
         // a run a person unblocked and nothing restarted.
-        let continuation = match (outcome.continues_the_run(), resolved.event_id.as_deref()) {
-            (true, Some(event_id)) => self.continue_from(&resolved, event_id, now).await,
-            (true | false, None) => {
-                self.wake_runless_resolution(&resolved).await;
-                Ok(None)
-            }
-            (false, Some(_event_id)) => Ok(None),
+        let continuation = if outcome.continues_the_run()
+            && let Some(event_id) = resolved.event_id.as_deref()
+        {
+            self.continue_from(&resolved, event_id, now).await
+        } else {
+            // Every other answer leaves a delivery parked on the stream for
+            // the next poll to read — a runless gate's, or a refused run's,
+            // which that poll ends — and the park cleared the fleet's mark.
+            self.wake_parked_delivery(&resolved.fleet_id, &resolved.gate_id)
+                .await;
+            Ok(None)
         };
         // After the continuation, so an approval's frame carries the count the
         // continued run's own row moved — on the connection the resolve still
@@ -178,29 +183,30 @@ impl Inbox {
         Ok(resolved)
     }
 
-    /// Wakes the fleet after a runless gate changes state.
+    /// Wakes a fleet whose delivery is parked on a gate that changed state.
     ///
-    /// Install-time integration grants deliberately carry no `event_id`: the
-    /// original delivery stays on the fleet stream, and the answer changes what
-    /// that same delivery will read on its next poll. Resolving the card must
-    /// therefore wake the ready index without appending a continuation event.
+    /// A parked delivery stays on the fleet stream, and the answer changes
+    /// what that same delivery reads on its next poll — so the answer wakes
+    /// the ready index instead of appending an event. Install-time integration
+    /// grants carry no `event_id` at all; a refused or expired run's parked
+    /// delivery is ended by the poll this sends. Either way the poll that
+    /// parked it cleared the fleet's mark, so nothing else would send one.
     ///
     /// Best-effort for the same reason regular chat ingress is: the database
     /// answer is already durable, and a Dragonfly mark failure should not turn a
     /// completed human decision into a retry that can no longer win the row.
-    async fn wake_runless_resolution(&self, resolved: &Resolved) {
-        let fleet = resolved.fleet_id.as_str();
-        if let Err(error) = ReadyIndex::new(self.queue.clone()).mark(fleet, fleet).await {
+    /// The reclaim sweep re-marks a fleet whose owed entry has sat idle.
+    pub(super) async fn wake_parked_delivery(&self, fleet: &str, gate: &str) {
+        if let Err(error) = ReadyIndex::new(self.queue.clone()).mark(fleet).await {
             let code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-            let gate = resolved.gate_id.as_str();
             let reason = error.to_string();
             tracing::warn!(
                 error_code = code,
-                event = EVENT_RUNLESS_READY_MARK_FAILED,
+                event = EVENT_WAKE_READY_MARK_FAILED,
                 fleet_id = fleet,
                 gate_id = gate,
                 reason,
-                "the gate resolved but the fleet readiness mark could not be refreshed"
+                "the gate changed state but the fleet readiness mark could not be refreshed"
             );
         }
     }

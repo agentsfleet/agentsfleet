@@ -197,7 +197,7 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &str,
 /// `record` derives the key's time-to-live from the REAL clock. A deadline in
 /// fixture time would ask for a negative lifetime. So the deadline is real-now
 /// plus an hour, which is un-lapsed under both readings.
-pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) {
+pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) -> String {
     let workspace = workspace_of(fixtures, &ready.fleet).await;
     let action_id = fixture_id();
     let deadline = afd_core::clock::now().as_millis() + GATE_WINDOW_MS;
@@ -240,6 +240,7 @@ pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) 
         )
         .await
         .expect("the gate reference must be recorded");
+    action_id
 }
 
 /// A fresh version-7 identifier for a fixture row.

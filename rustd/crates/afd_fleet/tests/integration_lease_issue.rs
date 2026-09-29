@@ -126,3 +126,75 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
     queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
 }
+
+/// Tokens a slot's cursor already holds when a lease is written over it.
+const METERED: i64 = 1_234;
+
+/// A fresh lease's row resets the slot's metering cursor; a reclaim's keeps it.
+///
+/// The reset rides the lease insert, armed only for a fresh lease: a
+/// re-leased run meters forward from where the dead holder stopped, and
+/// billing it from zero would charge again for tokens already metered.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_the_lease_row_resets_the_meter_only_when_fresh() {
+    let fixtures = Fixtures::create_with_queue().await;
+    let Seeded {
+        runners: [first, second],
+        fleet,
+        tenant,
+        ..
+    } = seeded::<2>(&fixtures).await;
+    let leases = fixtures.leases();
+    let now = UnixMillis::from_millis(ENROLLED_AT);
+    let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
+    let billed = Billed {
+        tenant_id: &tenant_id,
+        posture: POSTURE,
+        provider: PROVIDER,
+        model: MODEL,
+    };
+
+    let held = crate::seed::select_fleet_within_rotations(&leases, &first, now, &fleet)
+        .await
+        .expect("the fleet is leasable");
+    // An earlier run's cursor, which the fresh lease must not meter from.
+    fixtures.set_metered_input(&fleet, METERED).await;
+    leases
+        .record_received(&held, now)
+        .await
+        .expect("the narrative log must open");
+    leases
+        .issue(&first, &held, billed, now)
+        .await
+        .expect("the fresh lease row must be written");
+    assert_eq!(
+        fixtures
+            .affinity_column(&fleet, crate::lease_reads::COLUMN_METERED_INPUT)
+            .await,
+        Some("0".to_owned()),
+        "a fresh lease meters from zero"
+    );
+
+    // The holder metered some tokens, then died.
+    fixtures.set_metered_input(&fleet, METERED).await;
+    let lapsed = held.leased_until.saturating_add_millis(1);
+    let reclaimed = crate::seed::select_fleet_within_rotations(&leases, &second, lapsed, &fleet)
+        .await
+        .expect("a lapsed claim is winnable");
+    assert_eq!(reclaimed.kind, Kind::Reclaim);
+    leases
+        .issue(&second, &reclaimed, billed, lapsed)
+        .await
+        .expect("the reclaimed lease row must be written");
+    assert_eq!(
+        fixtures
+            .affinity_column(&fleet, crate::lease_reads::COLUMN_METERED_INPUT)
+            .await,
+        Some(METERED.to_string()),
+        "a reclaim meters FORWARD from the dead holder's cursor"
+    );
+
+    queue::clear_ready(fixtures.queue(), &fleet).await;
+    fixtures.cleanup().await;
+}

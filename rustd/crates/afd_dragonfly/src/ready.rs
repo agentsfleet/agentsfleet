@@ -22,9 +22,21 @@
 //! until a sweep. So a clear deletes a field only when the token still matches
 //! the one the caller saw, and the comparison happens inside Dragonfly where there
 //! is no gap.
+//!
+//! # Why this index mints the token
+//!
+//! The comparison is only as strong as the token is fresh. Callers once passed
+//! their own, and two of them passed the fleet id: every mark of that fleet
+//! then wrote the same value, a stale poll's token matched a newer mark, and
+//! the compare-and-clear was an unconditional delete wearing a guard. So
+//! [`ReadyIndex::mark`] draws a version-7 identifier for every write and no
+//! caller can hand it a value to reuse.
 
 pub mod partition;
 
+use afd_core::clock::UnixMillis;
+use afd_core::id::Uuid7;
+use afd_crypto::entropy::Entropy;
 use futures_util::future::try_join_all;
 
 use crate::client::Dragonfly;
@@ -78,6 +90,25 @@ impl ReadyToken {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// A new generation: a version-7 identifier at `now`, its random half drawn
+    /// from `entropy`.
+    ///
+    /// Version 7 for its ten random bytes, not its ordering — two marks in one
+    /// millisecond still differ, which is the only property a compare-and-clear
+    /// reads.
+    ///
+    /// Public so a suite building a claim's envelope without a peek has a
+    /// generation to carry. [`ReadyIndex::mark`] still takes none, so a token
+    /// minted here never reaches the index: at worst it clears nothing.
+    ///
+    /// # Errors
+    /// Returns an unmintable error when `entropy` refuses the draw or `now`
+    /// has no version-7 spelling.
+    pub fn mint(entropy: &Entropy, now: UnixMillis) -> Result<Self> {
+        let minted = Uuid7::encode(now, entropy.uuid_randomness()?)?;
+        Ok(Self(minted.as_str().to_owned()))
+    }
 }
 
 /// One ready fleet and the token its last mark minted.
@@ -90,20 +121,21 @@ pub struct Ready {
 }
 
 /// The readiness index against one connection.
+///
+/// The entropy source is the workspace's one surface for random bytes, so a
+/// mark is not a second `getrandom` call site.
 #[derive(Debug, Clone)]
 pub struct ReadyIndex {
     redis: Dragonfly,
     prefix: ReadyPrefix,
+    entropy: Entropy,
 }
 
 impl ReadyIndex {
     /// Binds index operations to a connection, over the production index.
     #[must_use]
-    pub const fn new(redis: Dragonfly) -> Self {
-        Self {
-            redis,
-            prefix: ReadyPrefix::production(),
-        }
+    pub fn new(redis: Dragonfly) -> Self {
+        Self::under(redis, ReadyPrefix::production())
     }
 
     /// The same, over whichever key family `prefix` names.
@@ -112,8 +144,12 @@ impl ReadyIndex {
     /// [`ReadyPrefix`] is what decides whether a non-production family can be
     /// minted at all.
     #[must_use]
-    pub const fn under(redis: Dragonfly, prefix: ReadyPrefix) -> Self {
-        Self { redis, prefix }
+    pub fn under(redis: Dragonfly, prefix: ReadyPrefix) -> Self {
+        Self {
+            redis,
+            prefix,
+            entropy: Entropy::new(),
+        }
     }
 
     /// Which key family this index reads and writes.
@@ -132,24 +168,24 @@ impl ReadyIndex {
         self.key_of(Partition::of(fleet_id))
     }
 
-    /// Marks a fleet as holding work under `token`.
+    /// Marks a fleet as holding work, under a token minted for this write.
     ///
-    /// The caller mints the token, because the caller is the ingress path that
-    /// already has an identifier to hand and this module has no business
-    /// deciding what generation means. `afd_core::id::Uuid7` parses one today;
-    /// minting arrives with the crate that needs to mint.
+    /// Every call writes a new generation, so a poll that peeked the previous
+    /// one can no longer clear this one — see the module note on why no caller
+    /// supplies the token.
     ///
     /// # Errors
-    /// Returns a command error when the write fails. Callers on the ingress
-    /// path log and continue: the append already succeeded, and the sweeper
-    /// re-derives what a lost mark would have said.
-    pub async fn mark(&self, fleet_id: &str, token: &str) -> Result<ReadyToken> {
-        let value = token.to_owned();
+    /// Returns an unmintable error when no token could be drawn, and a command
+    /// error when the write fails. Callers on the ingress path log and
+    /// continue: the append already succeeded, and the sweeper re-derives what
+    /// a lost mark would have said.
+    pub async fn mark(&self, fleet_id: &str) -> Result<ReadyToken> {
+        let token = ReadyToken::mint(&self.entropy, afd_core::clock::now())?;
         let key = self.key_for(fleet_id);
         let mut cmd = redis::cmd(CMD_HSET);
-        cmd.arg(&key).arg(fleet_id).arg(&value);
+        cmd.arg(&key).arg(fleet_id).arg(token.as_str());
         let _: i64 = self.redis.command(CMD_HSET, &key, &cmd).await?;
-        Ok(ReadyToken(value))
+        Ok(token)
     }
 
     /// The token currently stored for `fleet_id`, if any.
@@ -250,6 +286,10 @@ impl ReadyIndex {
 
     /// Clears a fleet, but only if its mark is still the one observed.
     ///
+    /// The lease calls it with the token its poll peeked, on the two exits
+    /// that prove the fleet owes nothing this poll can deliver: a group-empty
+    /// read, and a park whose answer re-marks.
+    ///
     /// Returns whether the field was actually removed. `false` means an ingress
     /// mark landed in between and the fleet holds newer work — which is the
     /// case this whole design exists for.
@@ -264,3 +304,6 @@ impl ReadyIndex {
         Ok(removed > 0)
     }
 }
+
+#[cfg(test)]
+mod tests;

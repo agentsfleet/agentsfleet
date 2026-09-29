@@ -18,6 +18,12 @@ use sqlx::{AssertSqlSafe, Row as _};
 
 use crate::support::Fixtures;
 
+/// The `fleet.runner_affinity` column a claim's expiry lives in.
+pub(crate) const COLUMN_LEASED_UNTIL: &str = "leased_until";
+
+/// The `fleet.runner_affinity` metering column a fresh lease resets.
+pub(crate) const COLUMN_METERED_INPUT: &str = "metered_input_tokens";
+
 impl Fixtures {
     /// One column of a `fleet.runner_leases` row, as text.
     pub(crate) async fn lease_column(&self, lease: &str, column: &str) -> Option<String> {

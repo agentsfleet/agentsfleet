@@ -16,8 +16,9 @@ categories.workspace = true
 [features]
 # M-TEST-UTIL. Unlocks the map-backed environment source through afd_core, and
 # the constructors that let a test drive a hub's reconnect without waiting out
-# a production backoff.
-test-util = ["afd_core/test-util"]
+# a production backoff, and — through afd_crypto — the refused entropy draw the
+# error samples need.
+test-util = ["afd_core/test-util", "afd_crypto/test-util"]
 
 [dependencies]
 # The families this crate produces. The dependency points this way and not the
@@ -25,6 +26,10 @@ test-util = ["afd_core/test-util"]
 # say that nothing else can is that its pub/sub connection was re-established.
 afd_observability.workspace = true
 afd_core.workspace = true
+# The random half of a readiness token — see `ready::ReadyToken::mint`. The
+# crate every other identifier draws its entropy from, so this one is not a
+# second `getrandom` call site.
+afd_crypto.workspace = true
 # The reconnect loop AND its schedule — see `hub::pump`, which used to carry a
 # hand-rolled `Backoff` beside a jitter source of its own.
 backon.workspace = true

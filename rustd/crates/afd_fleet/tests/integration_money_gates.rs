@@ -117,6 +117,7 @@ async fn a_workspace_naming_no_tenant_ends_the_event() {
 
     let decided = money_gates(
         &accounts,
+        accounts.payer(&id(&workspace)).await,
         request(
             &id(&workspace),
             &id(&fleet),
@@ -157,6 +158,7 @@ async fn a_fleet_past_its_daily_ceiling_is_refused() {
 
     let decided = money_gates(
         &accounts,
+        accounts.payer(&id(&workspace)).await,
         request(
             &id(&workspace),
             &id(&fleet),
@@ -196,6 +198,7 @@ async fn a_fleet_inside_its_ceiling_is_admitted_and_billed() {
 
     let decided = money_gates(
         &accounts,
+        accounts.payer(&id(&workspace)).await,
         request(
             &id(&workspace),
             &id(&fleet),
@@ -241,6 +244,7 @@ async fn a_redelivery_is_admitted_without_being_charged_again() {
 
     let decided = money_gates(
         &accounts,
+        accounts.payer(&id(&workspace)).await,
         request(
             &id(&workspace),
             &id(&fleet),

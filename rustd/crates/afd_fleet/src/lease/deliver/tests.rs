@@ -32,26 +32,34 @@ fn a_denied_grant_is_the_only_outcome_that_ends_the_event() {
 }
 
 #[test]
-fn every_answerable_outcome_leaves_the_delivery_leasable() {
-    // A raised card, a card already open, and a grant approved between the
-    // assembly's read and this request are three different states and one
-    // instruction: wait. The work is not lost, and the next poll runs it.
-    for still_open in [Requested::Raised, Requested::Pending, Requested::Approved] {
+fn only_an_open_card_parks_the_delivery() {
+    // A raised card and a card already open both owe a person's answer, and
+    // that answer — or its expiry — re-marks the fleet, so the delivery parks
+    // until then rather than re-asking every second.
+    for still_open in [Requested::Raised, Requested::Pending] {
         assert_eq!(
             answers(Some(still_open)),
-            Ungranted::Waits,
+            Ungranted::Parks,
             "{still_open:?}"
         );
     }
 }
 
 #[test]
-fn a_request_that_could_not_be_written_waits_rather_than_ending() {
+fn a_grant_approved_since_the_assembly_read_retries_rather_than_parking() {
+    // Nobody owes an answer any more, so nothing would re-mark a parked fleet:
+    // the delivery stays leasable and the next poll's assembly finds the grant.
+    assert_eq!(answers(Some(Requested::Approved)), Ungranted::Retries);
+}
+
+#[test]
+fn a_request_that_could_not_be_written_retries_rather_than_ending() {
     // The fail-closed direction, and the one worth a test of its own: a
     // Postgres that would not answer must never be read as a person's no.
     // Ending here would destroy a delivery on an outage, and the outage is
-    // the one condition guaranteed to pass.
-    assert_eq!(answers(None), Ungranted::Waits);
+    // the one condition guaranteed to pass. Nor may it park: no card exists
+    // for anyone to answer, so the next poll has to ask again.
+    assert_eq!(answers(None), Ungranted::Retries);
 }
 
 /// The error `written` is handed when an identifier will not encode.
@@ -89,7 +97,7 @@ fn an_unwritten_request_reports_and_then_reads_as_no_answer() {
     // own fix: `.ok()` dropped this error, so a Postgres or entropy failure left
     // no line, no error_code, and a `no_work` identical to a healthy park — a
     // failure with no error, redelivering every second. `written` must answer
-    // `None` (so the delivery still waits) AND emit the line that says why.
+    // `None` (so the delivery is retried) AND emit the line that says why.
     assert_eq!(written(Err(unwritable()), &fleet(), "github"), None);
 }
 
@@ -101,7 +109,7 @@ fn an_unwritten_request_never_ends_the_event() {
     // one condition guaranteed to occur.
     assert_eq!(
         answers(written(Err(unwritable()), &fleet(), "github")),
-        Ungranted::Waits
+        Ungranted::Retries
     );
 }
 

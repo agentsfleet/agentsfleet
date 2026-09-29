@@ -12,7 +12,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::event::label;
 use afd_core::id::Uuid7;
 
-use super::step::{AWAITING_APPROVAL, Step};
+use super::step::{Step, waited};
 use super::{Admission2, Plane};
 use crate::error::{Error, Result};
 use crate::lease::admit::{Admission, Refusal};
@@ -41,7 +41,8 @@ impl Plane {
             Ok(Some(installed)) => Ok(Step::Go(installed)),
             // The selection pass filters on status, so reaching here with a
             // stopped fleet means an operator paused it in the window between
-            // selection and this read. The claim lapses on its own.
+            // selection and this read. The pass frees the claim; the pause
+            // already cleared the mark.
             Ok(None) => Ok(Step::Stop(no_work(
                 runner_id,
                 "the fleet stopped between selection and claim",
@@ -57,6 +58,8 @@ impl Plane {
     }
 
     /// Apply a gate's stop, whatever kind it was.
+    ///
+    /// A wait on a person parks; every other stop keeps the fleet's mark.
     pub(super) async fn stopped(
         &self,
         acquired: &Acquired,
@@ -65,12 +68,12 @@ impl Plane {
         now: UnixMillis,
     ) -> Result<Step<Admission2>> {
         let answer = match stop {
+            Admission::Await(waiting) => return waited(runner_id, waiting),
             Admission::Refuse(refusal) => {
                 self.refused(acquired, refusal.label, runner_id, refusal.detail, now)
                     .await?
             }
             Admission::Retry(transient) => no_work(runner_id, transient.at)?,
-            Admission::Await(_waiting) => no_work(runner_id, AWAITING_APPROVAL)?,
             // `of_gate` answers `None` for a pass, so this arm is the enum
             // being exhaustive rather than a state that occurs.
             Admission::Admit(_) => no_work(runner_id, "a passing gate cannot also stop")?,

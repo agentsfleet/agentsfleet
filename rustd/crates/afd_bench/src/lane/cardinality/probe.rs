@@ -148,6 +148,9 @@ pub(super) async fn postgres_at_population(
     .bind(runner)
     .bind(&ready)
     .bind(i64::try_from(MAX_READY_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
+    // The instant the held-slot filter compares against, as the lease path
+    // binds it: now, so the plan is the one a live poll gets.
+    .bind(afd_core::clock::now().as_millis())
     .fetch_all(&mut *connection)
     .await?
     .iter()

@@ -228,7 +228,9 @@ async fn test_a_superseded_holder_cannot_release_the_live_slot() {
         .expect("a guarded release is a no-op, never a fault");
 
     assert_eq!(
-        fixtures.affinity_column(&ids.fleet, "leased_until").await,
+        fixtures
+            .affinity_column(&ids.fleet, crate::lease_reads::COLUMN_LEASED_UNTIL)
+            .await,
         Some(live.leased_until.as_millis().to_string()),
         "the live holder's claim must survive a superseded holder's release"
     );
@@ -239,7 +241,9 @@ async fn test_a_superseded_holder_cannot_release_the_live_slot() {
         .await
         .expect("the current holder's release must run");
     assert_eq!(
-        fixtures.affinity_column(&ids.fleet, "leased_until").await,
+        fixtures
+            .affinity_column(&ids.fleet, crate::lease_reads::COLUMN_LEASED_UNTIL)
+            .await,
         Some(lapsed.as_millis().to_string()),
         "the current holder frees the slot it actually holds"
     );
@@ -247,15 +251,16 @@ async fn test_a_superseded_holder_cannot_release_the_live_slot() {
     fixtures.cleanup().await;
 }
 
-/// A fresh lease resets the metering cursor; the claim itself preserves it.
+/// The claim itself preserves the metering cursor, even when it displaces a
+/// lapsed holder.
 ///
-/// The pairing is the point. `RESET_AFFINITY_METERS` is a separate statement
-/// precisely so that a RECLAIM can skip it and meter forward from the dead
-/// holder's progress — if the claim cleared the cursor itself, a re-leased run
-/// would be billed from zero for work already charged.
+/// The reset belongs to the lease insert, and only a FRESH lease arms it —
+/// `integration_lease_issue.rs` proves both halves of that. If the claim
+/// cleared the cursor itself, a re-leased run would be billed from zero for
+/// work already charged.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_a_reclaim_preserves_the_meter_a_fresh_lease_resets() {
+async fn test_a_reclaiming_claim_preserves_the_meter() {
     let fixtures = Fixtures::create_with_queue().await;
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
@@ -285,23 +290,10 @@ async fn test_a_reclaim_preserves_the_meter_a_fresh_lease_resets() {
 
     assert_eq!(
         fixtures
-            .affinity_column(&ids.fleet, "metered_input_tokens")
+            .affinity_column(&ids.fleet, crate::lease_reads::COLUMN_METERED_INPUT)
             .await,
         Some(METERED.to_string()),
         "a reclaim meters FORWARD, so the claim must not clear the cursor"
-    );
-
-    // A fresh lease is the one that starts the slice over.
-    leases
-        .reset_meters(&fleet, lapsed)
-        .await
-        .expect("the reset must run");
-    assert_eq!(
-        fixtures
-            .affinity_column(&ids.fleet, "metered_input_tokens")
-            .await,
-        Some("0".to_owned()),
-        "a fresh lease meters from zero"
     );
 
     fixtures.cleanup().await;

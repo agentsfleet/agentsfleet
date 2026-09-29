@@ -333,7 +333,7 @@ impl Scenario {
         let Self { booted, fleet, .. } = self;
 
         let index = ReadyIndex::new(booted.queue.clone());
-        if let Ok(token) = index.mark(&fleet, &fleet).await {
+        if let Ok(token) = index.mark(&fleet).await {
             let _cleared = index.clear_if_unchanged(&fleet, &token).await;
         }
         drop(booted);

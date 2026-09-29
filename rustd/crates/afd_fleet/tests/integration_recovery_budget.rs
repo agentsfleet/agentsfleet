@@ -223,7 +223,7 @@ async fn an_empty_poll_reaches_no_database(fixtures: &Fixtures) {
 
     let index = ReadyIndex::under(fixtures.queue().clone(), prefix);
     let token = index
-        .mark(&fleet, &fleet)
+        .mark(&fleet)
         .await
         .expect("the private index takes a mark like any other");
     let cost = poll_until_a_candidate(&leases, &runner)

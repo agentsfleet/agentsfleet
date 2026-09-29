@@ -29,6 +29,7 @@ pub mod fence;
 pub mod finalize;
 pub mod installed;
 pub mod issue;
+mod mark;
 pub mod memory;
 pub mod mint;
 pub mod obligation;

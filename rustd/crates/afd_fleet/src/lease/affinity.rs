@@ -35,9 +35,6 @@ const CONTEXT_CLAIM: &str = "affinity claim";
 /// Statement name, for the context a query failure carries.
 const CONTEXT_RELEASE: &str = "affinity release";
 
-/// Statement name, for the context a query failure carries.
-const CONTEXT_RESET: &str = "affinity meter reset";
-
 /// The `fencing_seq` column, which is the one number that orders lease holders.
 ///
 /// Monotonic per fleet and minted only by [`Leases::claim`]: every winning
@@ -182,31 +179,6 @@ impl Leases {
             .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT_RELEASE))?;
-        Ok(())
-    }
-
-    /// Reset the slot's metering cursor to zero at a FRESH lease issue.
-    ///
-    /// A reclaim must NOT call this: the slot has to keep the dead holder's
-    /// progress so the re-leased run meters forward from where it stopped,
-    /// which is exactly why the cursor is absent from the claim's `ON CONFLICT`
-    /// SET.
-    ///
-    /// Fail-closed by contract — the caller treats an error here as a failed
-    /// lease issue rather than a warning, because the renewal CTE reads this
-    /// cursor for each slice's delta and a stale value would over-charge the
-    /// first renewal.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer.
-    pub async fn reset_meters(&self, fleet_id: &Uuid7, now: UnixMillis) -> Result<()> {
-        let mut connection = self.pool().acquire().await?;
-        sqlx::query(sql::lease::RESET_AFFINITY_METERS)
-            .bind(fleet_id.as_str())
-            .bind(now.as_millis())
-            .execute(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_RESET))?;
         Ok(())
     }
 }

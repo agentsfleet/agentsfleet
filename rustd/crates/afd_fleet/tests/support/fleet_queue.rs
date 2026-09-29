@@ -200,7 +200,7 @@ pub(crate) async fn entries_on(queue: &Dragonfly, fleet: &str) -> Vec<(String, S
 
 pub(crate) async fn mark_ready(queue: &Dragonfly, fleet: &str) {
     ReadyIndex::new(queue.clone())
-        .mark(fleet, fleet)
+        .mark(fleet)
         .await
         .expect("the readiness mark must land");
 }
@@ -210,7 +210,7 @@ pub(crate) async fn mark_ready(queue: &Dragonfly, fleet: &str) {
 pub(crate) async fn clear_ready(queue: &Dragonfly, fleet: &str) {
     let index = ReadyIndex::new(queue.clone());
     let token = index
-        .mark(fleet, fleet)
+        .mark(fleet)
         .await
         .expect("re-marking to obtain the token must succeed");
     let _cleared = index.clear_if_unchanged(fleet, &token).await;

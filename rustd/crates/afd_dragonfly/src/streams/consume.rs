@@ -12,12 +12,17 @@ use redis::streams::{StreamRangeReply, StreamReadOptions, StreamReadReply};
 use super::{
     ARG_COUNT, AUTOCLAIM_MIN_IDLE_MS, AUTOCLAIM_START, CMD_XACK, CMD_XAUTOCLAIM, CMD_XRANGE,
     CMD_XREADGROUP, EventId, FLEET_CONSUMER_GROUP, FleetEvent, FleetStreams, NEW_ENTRIES,
-    OWN_PENDING, fleet_stream_key, stringify,
+    fleet_stream_key, stringify,
 };
 use crate::error::Result;
 
-/// How many entries the existence probe asks for: the one it named.
+/// How many entries the existence probe asks for, and a claim takes: one.
 const JUST_THE_ONE: usize = 1;
+
+/// A takeover's idle floor: none. The won lease claim, not an idle clock, is
+/// what proves nobody is working the entry — see
+/// [`FleetStreams::take_over_oldest`].
+const TAKEOVER_MIN_IDLE_MS: usize = 0;
 
 impl FleetStreams {
     /// Reads the next undelivered event, without blocking.
@@ -35,13 +40,31 @@ impl FleetStreams {
         self.read(fleet_id, consumer, NEW_ENTRIES).await
     }
 
-    /// Reads this consumer's oldest pending entry — one delivered but never
-    /// acknowledged, which is what a re-poll after a crash has to find first.
+    /// Takes the group's oldest pending entry into `consumer`, whichever
+    /// consumer held it, and answers it.
+    ///
+    /// For a caller that has already won the fleet's lease claim, and only
+    /// for one: the win proves no live lease holds the fleet, so an entry
+    /// pending anywhere in the group is stranded rather than in flight — a
+    /// re-poll of this process's own entry, a parked event, or one another
+    /// replica read before it died. Reading only this consumer's own list
+    /// would see the first two and never the third, and a poll that then
+    /// found nothing new would call the fleet drained while the entry sat
+    /// owed on a list no process reads.
+    ///
+    /// Oldest first, so a fleet's events keep their order across replicas.
+    /// `None` means the group has nothing pending at all.
     ///
     /// # Errors
-    /// As [`FleetStreams::read_new`].
-    pub async fn read_pending(&self, fleet_id: &str, consumer: &str) -> Result<Option<FleetEvent>> {
-        self.read(fleet_id, consumer, OWN_PENDING).await
+    /// As [`FleetStreams::read_new`], including the group-missing error a
+    /// restore answers.
+    pub async fn take_over_oldest(
+        &self,
+        fleet_id: &str,
+        consumer: &str,
+    ) -> Result<Option<FleetEvent>> {
+        self.claim_oldest(fleet_id, consumer, TAKEOVER_MIN_IDLE_MS)
+            .await
     }
 
     async fn read(
@@ -125,7 +148,7 @@ impl FleetStreams {
     /// instance, a legacy per-probe consumer name — sit in that consumer's
     /// pending list forever, because `XREADGROUP >` only ever hands out entries
     /// nobody has seen. Nothing recovers them except claiming them away, which
-    /// is what this does; the lease path's own-pending read then re-enters the
+    /// is what this does; the lease path's takeover then re-enters the
     /// entry into the lease flow on the next poll.
     ///
     /// One entry per call, so a pathological stream cannot monopolise a sweep
@@ -135,15 +158,27 @@ impl FleetStreams {
     /// # Errors
     /// Returns a command error, or an unavailable error when Dragonfly is gone.
     pub async fn autoclaim(&self, fleet_id: &str, consumer: &str) -> Result<Option<FleetEvent>> {
+        self.claim_oldest(fleet_id, consumer, AUTOCLAIM_MIN_IDLE_MS)
+            .await
+    }
+
+    /// The one `XAUTOCLAIM` both claims send, from the head of the pending
+    /// list, one entry, idle at least `min_idle_ms`.
+    async fn claim_oldest(
+        &self,
+        fleet_id: &str,
+        consumer: &str,
+        min_idle_ms: usize,
+    ) -> Result<Option<FleetEvent>> {
         let key = fleet_stream_key(fleet_id);
         let mut cmd = redis::cmd(CMD_XAUTOCLAIM);
         cmd.arg(&key)
             .arg(FLEET_CONSUMER_GROUP)
             .arg(consumer)
-            .arg(AUTOCLAIM_MIN_IDLE_MS)
+            .arg(min_idle_ms)
             .arg(AUTOCLAIM_START)
             .arg(ARG_COUNT)
-            .arg(1);
+            .arg(JUST_THE_ONE);
 
         // The typed reply is the driver's. Decoding this nested array by hand
         // is a length check, two index reads and a field walk; taking the type

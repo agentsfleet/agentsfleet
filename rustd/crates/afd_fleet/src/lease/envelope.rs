@@ -18,7 +18,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_dragonfly::{EventId, FleetEvent};
+use afd_dragonfly::{EventId, FleetEvent, ReadyToken};
 
 use crate::error::{Result, envelope_field, envelope_malformed, row_malformed};
 use crate::lease::affinity::{Claimed, Fence};
@@ -100,6 +100,11 @@ pub struct Acquired {
     /// The billing a reclaim carries forward. `None` on a fresh pull, which the
     /// caller bills itself.
     pub reused: Option<Reused>,
+    /// The readiness generation the poll peeked for this fleet.
+    ///
+    /// A park clears the mark with it, so a mark ingress writes while the
+    /// pass runs is a newer generation and survives.
+    pub ready: ReadyToken,
 }
 
 /// Build the acquired envelope from a reclaimed lease.
@@ -110,6 +115,7 @@ pub struct Acquired {
 pub(crate) fn from_reclaim(
     fleet_id: &Uuid7,
     claimed: &Claimed,
+    ready: &ReadyToken,
     prior: Reclaimed,
 ) -> Result<Acquired> {
     Ok(Acquired {
@@ -126,6 +132,7 @@ pub(crate) fn from_reclaim(
             .map_err(row_malformed("fleet.runner_leases", "workspace_id"))?,
         event_created_at: UnixMillis::from_millis(prior.event_created_at),
         reused: Some(prior.reused),
+        ready: ready.clone(),
     })
 }
 
@@ -140,6 +147,7 @@ pub(crate) fn from_reclaim(
 pub(crate) fn from_fresh(
     fleet_id: &Uuid7,
     claimed: &Claimed,
+    ready: &ReadyToken,
     event: &FleetEvent,
 ) -> Result<Acquired> {
     let field = |name: &'static str| {
@@ -169,6 +177,7 @@ pub(crate) fn from_fresh(
             .map(UnixMillis::from_millis)
             .map_err(|_unparseable| envelope_malformed(FIELD_CREATED_AT))?,
         reused: None,
+        ready: ready.clone(),
     })
 }
 
@@ -216,6 +225,15 @@ mod tests {
         }
     }
 
+    /// The generation a poll peeked, carried through unread like the claim.
+    fn ready() -> super::ReadyToken {
+        super::ReadyToken::mint(
+            &afd_crypto::entropy::Entropy::new(),
+            UnixMillis::from_millis(1_788_550_034_853),
+        )
+        .expect("the host has entropy")
+    }
+
     /// Both kinds spell themselves, and differently.
     ///
     /// The value lands in the lease audit row, and it is the only record of
@@ -256,7 +274,8 @@ mod tests {
                 .collect(),
         };
 
-        let acquired = super::from_fresh(&fleet_id(), &claimed(), &event)
+        let ready = ready();
+        let acquired = super::from_fresh(&fleet_id(), &claimed(), &ready, &event)
             .expect("a producer's own entry must be readable by the reader");
 
         assert_eq!(acquired.actor, "steer:user_1");
@@ -266,6 +285,7 @@ mod tests {
         assert_eq!(acquired.event_created_at.as_millis(), 1_788_550_034_853);
         assert_eq!(acquired.event_id, EVENT_ID);
         assert_eq!(acquired.receipt.as_str(), ENTRY_ID);
+        assert_eq!(acquired.ready, ready, "the peeked generation rides along");
     }
 
     /// An entry missing any single field is refused, naming that field.
@@ -298,7 +318,7 @@ mod tests {
                 receipt: afd_dragonfly::EventId::of(ENTRY_ID),
                 fields,
             };
-            let refused = super::from_fresh(&fleet_id(), &claimed(), &event);
+            let refused = super::from_fresh(&fleet_id(), &claimed(), &ready(), &event);
             let name = pairs.get(dropped).map_or("?", |(name, _)| name);
             assert!(refused.is_err(), "dropping {name} must refuse the entry");
             // And refused FOR that field: a reader naming the wrong one sends
