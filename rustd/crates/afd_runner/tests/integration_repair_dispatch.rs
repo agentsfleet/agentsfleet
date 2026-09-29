@@ -16,9 +16,17 @@ use crate::support::connect_redis;
 
 const NOW: i64 = 1_760_000_000_000;
 
+/// Held by every test that runs a repair pass.
+///
+/// A pass claims EVERY due intent in the lane's database, not only its own
+/// fixture's, so two passes in parallel dispatch each other's intents and each
+/// test's assertions describe the other's pass.
+pub(crate) static REPAIR_LANE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn repair_dispatch_records_one_event_under_a_fenced_claim() {
+    let _lane = REPAIR_LANE.lock().await;
     let fixture = Fixture::create().await;
     fixture.seed_intent().await;
     let queue = connect_redis().await;
@@ -42,26 +50,26 @@ async fn repair_dispatch_records_one_event_under_a_fenced_claim() {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct Verification {
-    event_id: Option<String>,
-    attempts: i64,
+pub(crate) struct Verification {
+    pub(crate) event_id: Option<String>,
+    pub(crate) attempts: i64,
 }
 
-struct Fixture {
-    lane: TestDatabase,
-    database: Db,
+pub(crate) struct Fixture {
+    pub(crate) lane: TestDatabase,
+    pub(crate) database: Db,
     tenant: String,
-    workspace: String,
+    pub(crate) workspace: String,
     incident_fleet: String,
-    verifier_fleet: String,
+    pub(crate) verifier_fleet: String,
     incident_event: String,
     repair_link: String,
     production: String,
-    verification: String,
+    pub(crate) verification: String,
 }
 
 impl Fixture {
-    async fn create() -> Self {
+    pub(crate) async fn create() -> Self {
         let lane = TestDatabase::shared();
         Self {
             database: lane.open(DbRole::Api, &[]).await,
@@ -77,7 +85,7 @@ impl Fixture {
         }
     }
 
-    async fn seed_intent(&self) {
+    pub(crate) async fn seed_intent(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         self.seed_scope(&mut connection).await;
         self.seed_incident(&mut connection).await;
@@ -166,7 +174,7 @@ impl Fixture {
         .expect("the repair verification seeds");
     }
 
-    async fn verification(&self) -> Verification {
+    pub(crate) async fn verification(&self) -> Verification {
         use sqlx::Row as _;
 
         let mut connection = self.database.acquire().await.expect("an API connection");
@@ -184,7 +192,7 @@ impl Fixture {
         }
     }
 
-    async fn cleanup(self) {
+    pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         let mut transaction = connection.begin().await.expect("cleanup begins");
         sqlx::query("SET LOCAL fleet.allow_gate_purge = 'on'")

@@ -48,7 +48,7 @@ async fn test_a_fleet_past_its_ceiling_ends_the_event_rather_than_retrying_it() 
     let fixtures = Fixtures::create_with_queue().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
-    seed_provider_resolution(&fixtures, &seeded.fleet).await;
+    let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     seed_spend(&fixtures, &seeded, &seeded.tenant, OVERSPENT_NANOS).await;
 
     let claimed = claim(&fixtures, &seeded).await;
@@ -81,7 +81,7 @@ async fn test_a_denied_gate_ends_the_event_and_names_the_denial() {
     let fixtures = Fixtures::create_with_queue().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
-    seed_provider_resolution(&fixtures, &seeded.fleet).await;
+    let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     seed_gate(&fixtures, &seeded, "denied").await;
 
     let claimed = claim(&fixtures, &seeded).await;
@@ -115,7 +115,7 @@ async fn test_an_unanswered_gate_parks_the_event_without_ending_it() {
     let fixtures = Fixtures::create_with_queue().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
-    seed_provider_resolution(&fixtures, &seeded.fleet).await;
+    let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     seed_gate(&fixtures, &seeded, "pending").await;
 
     let claimed = claim(&fixtures, &seeded).await;

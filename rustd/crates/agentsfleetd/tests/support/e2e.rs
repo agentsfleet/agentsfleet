@@ -215,6 +215,9 @@ pub(crate) struct Scenario {
     pub(crate) token: String,
     /// The instant the seed was stamped with.
     pub(crate) seeded_at: UnixMillis,
+    /// This scenario's hold on the platform default, released after the daemon
+    /// above has stopped and before the stream guard below.
+    _default: afd_db::test_util::PlatformDefault,
     /// Exclusive use of the ready stream, for as long as this scenario lives.
     ///
     /// Last field, so it is released only after the daemon above has been
@@ -265,7 +268,7 @@ pub(crate) async fn scenario_with_provider(
     seed_fleet(&booted, &fleet, &workspace, &tenant, now).await;
     seed_wallet(&booted, &tenant, DEEP_POOL, now).await;
     seed_model_rate(&booted, now).await;
-    seed_platform_default(&booted, &workspace, now).await;
+    let default = seed_platform_default(&booted, &workspace, now).await;
     seed_provider_key(&booted, &workspace, now).await;
 
     // Through the production verb, not an INSERT: enrolment mints the token
@@ -288,6 +291,7 @@ pub(crate) async fn scenario_with_provider(
         token: enrolled.token.expose().to_owned(),
         seeded_at: now,
         booted,
+        _default: default,
         _exclusive: exclusive,
     }
 }

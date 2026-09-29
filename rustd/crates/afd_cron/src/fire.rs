@@ -100,9 +100,10 @@ impl Fire {
         let event_id = admitted.stored.id.as_str();
         let replayed = admitted.replayed;
         let schedule_id = schedule.as_str();
+        let workspace_id = target.workspace.as_str();
         tracing::info!(
             fleet_id = fleet,
-            workspace_id = target.workspace.as_str(),
+            workspace_id,
             schedule_id,
             event_id,
             replayed,

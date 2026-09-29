@@ -21,7 +21,7 @@
 
 use afd_core::error_code;
 
-use crate::lease::admit::{Admission, Transient};
+use crate::lease::admit::{Declined, Transient};
 
 /// What a gate's own failure decides.
 ///
@@ -86,7 +86,7 @@ impl Gate {
     /// spells that `absorb(&fault).ok_or(fault)`: one expression, and if the
     /// posture is ever changed to `Admit` the gate propagates the error instead
     /// of silently admitting — which is the right way for that edit to fail.
-    pub(super) fn absorb(self, fault: &afd_billing::Error) -> Option<Admission> {
+    pub(super) fn absorb(self, fault: &afd_billing::Error) -> Option<Declined> {
         // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
         // scores the dead copy.
         let code = error_code::INTERNAL_DB_QUERY.as_str();
@@ -110,7 +110,7 @@ impl Gate {
                     reason,
                     "the pass ended early; the delivery stays leasable and the next poll retries"
                 );
-                Some(Admission::Retry(Transient { at: event }))
+                Some(Declined::Retry(Transient { at: event }))
             }
         }
     }
@@ -119,7 +119,7 @@ impl Gate {
 #[cfg(test)]
 mod tests {
     use super::{BALANCE, BUDGET, OnFault, PAYER, RECEIPT};
-    use crate::lease::admit::{Admission, Transient};
+    use crate::lease::admit::{Declined, Transient};
     use std::collections::BTreeSet;
 
     /// A billing failure to absorb.
@@ -179,11 +179,11 @@ mod tests {
     fn a_write_gate_answers_a_retry_that_names_which_gate_stopped_it() {
         assert_eq!(
             PAYER.absorb(&fault()),
-            Some(Admission::Retry(Transient { at: PAYER.event }))
+            Some(Declined::Retry(Transient { at: PAYER.event }))
         );
         assert_eq!(
             RECEIPT.absorb(&fault()),
-            Some(Admission::Retry(Transient { at: RECEIPT.event }))
+            Some(Declined::Retry(Transient { at: RECEIPT.event }))
         );
         assert_ne!(
             PAYER.absorb(&fault()),

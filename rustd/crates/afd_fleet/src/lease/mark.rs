@@ -44,3 +44,41 @@ impl Leases {
         }
     }
 }
+
+#[cfg(all(test, feature = "test-util"))]
+mod tests {
+    use afd_core::error_code;
+    use afd_observability::test_util::Capture;
+
+    use super::EVENT_READY_CLEAR_FAILED;
+    use crate::lease::{test_dead, test_log::Recorder};
+
+    /// The family a refused clear is counted under, with every failed mark.
+    const READY_WRITE_FAILURES: &str = "agentsfleet_fleet_ready_write_failures_total";
+
+    /// A clear the index refuses leaves the caller's answer alone, and is
+    /// counted and logged — the mark stays, which costs one more empty claim.
+    #[tokio::test]
+    async fn should_count_and_log_a_clear_the_index_refuses() {
+        let capture = Capture::install();
+        let log = Recorder::install();
+        let acquired = test_dead::acquired();
+        let before = capture.sum(READY_WRITE_FAILURES, &[]);
+
+        test_dead::leases()
+            .clear_mark(&acquired.fleet_id, &acquired.ready)
+            .await;
+
+        let after = capture.sum(READY_WRITE_FAILURES, &[]);
+        assert!(after > before, "the refused clear is counted: {before} -> {after}");
+        let line = log.only(EVENT_READY_CLEAR_FAILED);
+        assert_eq!(
+            line.get("error_code").map(String::as_str),
+            Some(error_code::INTERNAL_OPERATION_FAILED.as_str())
+        );
+        assert_eq!(
+            line.get("fleet_id").map(String::as_str),
+            Some(acquired.fleet_id.as_str())
+        );
+    }
+}

@@ -4,8 +4,12 @@
 mod integration_census;
 #[path = "integration_reclaim.rs"]
 mod integration_reclaim;
+#[path = "integration_reclaim_faults.rs"]
+mod integration_reclaim_faults;
 #[path = "integration_repair_dispatch.rs"]
 mod integration_repair_dispatch;
+#[path = "integration_repair_faults.rs"]
+mod integration_repair_faults;
 #[path = "integration_sweeps.rs"]
 mod integration_sweeps;
 mod support;

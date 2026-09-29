@@ -43,6 +43,9 @@ pub(crate) const DEPLOYMENT: &str = "https://api.fixture.test";
 pub(crate) struct OneWorkspace {
     owned: Uuid7,
     authorized: Arc<AtomicBool>,
+    /// Whether the store answers at all: set, every read is an error, the
+    /// way an ownership store that cannot reach its database answers.
+    refusing: Arc<AtomicBool>,
 }
 
 impl OneWorkspace {
@@ -51,6 +54,7 @@ impl OneWorkspace {
         Self {
             owned: Uuid7::parse(OWNED_WORKSPACE).expect("the fixture workspace is canonical"),
             authorized: Arc::new(AtomicBool::new(true)),
+            refusing: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -59,6 +63,7 @@ impl OneWorkspace {
         Self {
             owned,
             authorized: Arc::new(AtomicBool::new(true)),
+            refusing: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -66,7 +71,15 @@ impl OneWorkspace {
     pub(crate) fn revoke(&self) {
         self.authorized.store(false, Ordering::Release);
     }
+
+    /// From now on every ownership read fails rather than answering.
+    pub(crate) fn refuse(&self) {
+        self.refusing.store(true, Ordering::Release);
+    }
 }
+
+/// An identifier no store accepts, parsed to produce the store's own error.
+const UNREADABLE: &str = "ownership-store-unreachable";
 
 impl WorkspaceOwnership for OneWorkspace {
     fn authorize(
@@ -79,6 +92,10 @@ impl WorkspaceOwnership for OneWorkspace {
         // rather than an error.
         let tenant = principal.tenant().cloned();
         let owned = workspace == &self.owned && self.authorized.load(Ordering::Acquire);
+        if self.refusing.load(Ordering::Acquire) {
+            let refused = Uuid7::parse(UNREADABLE).map(|_| None).map_err(Into::into);
+            return std::future::ready(refused);
+        }
         std::future::ready(Ok(tenant.filter(|_| owned)))
     }
 

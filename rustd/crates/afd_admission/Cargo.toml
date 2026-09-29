@@ -51,7 +51,9 @@ test-util = [
 ]
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+# `net`, `io-util` and `sync` serve the fake queue `tests/receipt_faults.rs`
+# borrows from `afd_dragonfly`'s support tree.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util", "sync"] }
 # The lane fixture: the shared test database and the identifier minting the
 # seeded rows are addressed by.
 afd_db = { workspace = true, features = ["test-util"] }

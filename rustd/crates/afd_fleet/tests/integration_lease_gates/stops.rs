@@ -82,7 +82,7 @@ async fn test_approval_resolution_leases_next_poll() {
     let fixtures = Fixtures::create_with_queue().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
-    seed_provider_resolution(&fixtures, &seeded.fleet).await;
+    let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     let action = seed_gate(&fixtures, &seeded, "pending").await;
 
     let claimed = claim(&fixtures, &seeded).await;

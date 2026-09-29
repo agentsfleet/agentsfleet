@@ -58,6 +58,10 @@ use sqlx::AssertSqlSafe;
 use crate::config::{DbRole, PoolConfig};
 use crate::pool::Db;
 
+mod platform_default;
+
+pub use self::platform_default::{DefaultSeed, PlatformDefault};
+
 /// The environment knob naming the lane's admin connection.
 const LANE_KNOB: &str = "TEST_DATABASE_URL";
 

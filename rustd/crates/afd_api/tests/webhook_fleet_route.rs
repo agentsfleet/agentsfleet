@@ -329,3 +329,5 @@ async fn a_green_run_is_dropped_with_its_reason_rather_than_waking_the_fleet() {
 
 #[path = "webhook_fleet_route/unidentified.rs"]
 mod unidentified;
+#[path = "webhook_fleet_route/unsupported.rs"]
+mod unsupported;

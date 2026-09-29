@@ -63,7 +63,7 @@ async fn test_issue_reads_the_tenant_once() {
     let fixtures = Fixtures::create_with_queue().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, READ_BOUND_CONFIG).await;
-    seed_provider_resolution(&fixtures, &seeded.fleet).await;
+    let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     let claimed = claim(&fixtures, &seeded).await;
     fixtures.set_metered_input(&seeded.fleet, METERED).await;
 

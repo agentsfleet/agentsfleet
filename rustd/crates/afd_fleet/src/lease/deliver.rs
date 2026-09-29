@@ -130,8 +130,7 @@ impl Plane {
                 .refused(acquired, label::GRANT_DENIED, runner_id, &reason, now)
                 .await
                 .map(Step::Stop),
-            Ungranted::Parks => no_work(runner_id, &reason).map(Step::Park),
-            Ungranted::Retries => no_work(runner_id, &reason).map(Step::Stop),
+            waits => no_work(runner_id, &reason).map(|answer| waits.ending(answer)),
         }
     }
 
@@ -251,10 +250,13 @@ fn written(
     match asked {
         Ok(answer) => Some(answer),
         Err(unwritten) => {
+            // Hoisted: the `log` bridge duplicates field expressions and
+            // llvm-cov scores the dead copy.
+            let code = unwritten.code().as_str();
             let fleet_id = fleet.as_str();
             let reason = unwritten.to_string();
             tracing::warn!(
-                error_code = unwritten.code().as_str(),
+                error_code = code,
                 event = EVENT_REQUEST_FAILED,
                 fleet_id,
                 service,
@@ -278,6 +280,18 @@ enum Ungranted {
     Retries,
     /// The event ends: nothing about the next poll would be different.
     Ends,
+}
+
+impl Ungranted {
+    /// The step an ungranted delivery takes once its answer is rendered: an
+    /// open card parks it, and anything else stops it — for the next poll to
+    /// ask again, or, for [`Ungranted::Ends`], after the refusal was written.
+    fn ending(self, answer: String) -> Step<Leased> {
+        match self {
+            Self::Parks => Step::Park(answer),
+            Self::Retries | Self::Ends => Step::Stop(answer),
+        }
+    }
 }
 
 /// Whether an ungranted delivery parks, retries, or ends on an answer
