@@ -18,7 +18,7 @@ use core::time::Duration;
 use afd_core::env::EnvSource;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_dragonfly::{Dedicated, Dragonfly, DragonflyConfig, DragonflyRole};
+use afd_dragonfly::{Dedicated, Dragonfly, DragonflyConfig, DragonflyRole, SubscriptionHub};
 
 use crate::error::Result;
 
@@ -39,6 +39,8 @@ pub mod command {
     pub const XRANGE: &str = "XRANGE";
     /// Delete named entries from a stream.
     pub const XDEL: &str = "XDEL";
+    /// Delete whole keys.
+    pub const DEL: &str = "DEL";
     /// The smallest stream id, so a range reads from the beginning.
     pub const RANGE_START: &str = "-";
     /// The largest stream id, so a range reads to the end.
@@ -148,6 +150,17 @@ impl Datastores {
     /// [`crate::Error::QueueUnavailable`] when it will not open.
     pub async fn dedicated(&self, longest_park: Duration) -> Result<Dedicated> {
         Ok(Dedicated::connect(&self.redis, longest_park).await?)
+    }
+
+    /// The pub/sub hub a replica's live tails read through, opened from the
+    /// same resolution as the queue — the daemon opens one per process, and
+    /// so does a lane.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::Error::QueueUnavailable`] when its connection will not open.
+    pub async fn hub(&self) -> Result<SubscriptionHub> {
+        Ok(SubscriptionHub::start(self.redis.clone()).await?)
     }
 }
 

@@ -147,11 +147,7 @@ pub async fn empty_fleet(
     index: u64,
     now: i64,
 ) -> Result<SeededFleet> {
-    let seeded = SeededFleet {
-        fleet: identifier(KIND_FLEET, index),
-        workspace: identifier(KIND_WORKSPACE, index),
-        tenant: identifier(KIND_TENANT, index),
-    };
+    let seeded = identities(index);
     rows(database, prefix, &seeded, tag, now).await?;
     FleetStreams::new(queue.clone())
         .ensure_group(&seeded.fleet)
@@ -172,18 +168,23 @@ pub async fn ready_fleet(
     index: u64,
     now: i64,
 ) -> Result<SeededFleet> {
-    let seeded = SeededFleet {
-        fleet: identifier(KIND_FLEET, index),
-        workspace: identifier(KIND_WORKSPACE, index),
-        tenant: identifier(KIND_TENANT, index),
-    };
+    let seeded = identities(index);
     rows(database, prefix, &seeded, tag, now).await?;
-    enqueue(queue, &seeded, now).await?;
+    enqueue(queue, &seeded, EVENT_TYPE, now).await?;
     Ok(seeded)
 }
 
+/// The three identifiers one index yields.
+pub(crate) fn identities(index: u64) -> SeededFleet {
+    SeededFleet {
+        fleet: identifier(KIND_FLEET, index),
+        workspace: identifier(KIND_WORKSPACE, index),
+        tenant: identifier(KIND_TENANT, index),
+    }
+}
+
 /// The tenant, workspace and fleet rows, in the order the keys require.
-async fn rows(
+pub(crate) async fn rows(
     database: &Db,
     prefix: &RunPrefix,
     seeded: &SeededFleet,
@@ -213,7 +214,17 @@ async fn rows(
     .bind(now)
     .execute(&mut *connection)
     .await?;
+    fleet_row(&mut connection, prefix, seeded, tag, now).await
+}
 
+/// The fleet row itself, carrying the run's placement tag.
+async fn fleet_row(
+    connection: &mut sqlx::PgConnection,
+    prefix: &RunPrefix,
+    seeded: &SeededFleet,
+    tag: &str,
+    now: i64,
+) -> Result<()> {
     sqlx::query(
         "INSERT INTO core.fleets
            (id, workspace_id, tenant_id, name, source_markdown, config_json,
@@ -230,17 +241,22 @@ async fn rows(
     .bind(FLEET_STATUS)
     .bind(now)
     .bind(vec![tag.to_owned()])
-    .execute(&mut *connection)
+    .execute(connection)
     .await?;
     Ok(())
 }
 
-/// One event on the fleet's stream, and the readiness mark that makes a poll
-/// look at it.
+/// One event of `event_type` on the fleet's stream, and the readiness mark
+/// that makes a poll look at it.
 ///
 /// Both halves, because either alone is a state the daemon never produces:
 /// ingress appends and marks in one path.
-async fn enqueue(queue: &Dragonfly, seeded: &SeededFleet, now: i64) -> Result<()> {
+pub(crate) async fn enqueue(
+    queue: &Dragonfly,
+    seeded: &SeededFleet,
+    event_type: &str,
+    now: i64,
+) -> Result<()> {
     let streams = FleetStreams::new(queue.clone());
     streams.ensure_group(&seeded.fleet).await?;
     let created = now.to_string();
@@ -255,7 +271,7 @@ async fn enqueue(queue: &Dragonfly, seeded: &SeededFleet, now: i64) -> Result<()
     let logical = afd_admission::logical_id(now, next_sequence());
     let entry = Entry {
         actor: BENCH_ACTOR,
-        event_type: EVENT_TYPE,
+        event_type,
         workspace_id: seeded.workspace.as_str(),
         request_json: BENCH_REQUEST_JSON,
         created_at: created.as_str(),

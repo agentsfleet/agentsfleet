@@ -9,9 +9,12 @@
 //! still belongs to the lease lane.
 //!
 //! So the Postgres number this lane reports is the ACCEPTANCE cost, which is
-//! the thing M192 traded queue-only acceptance for; it is read from
-//! `pg_stat_database` rather than assumed, because a number nobody measured
-//! is indistinguishable from a measurement nobody took.
+//! what the admission ledger traded queue-only acceptance for. It is read from
+//! Postgres's own statement and commit tallies (`statements.rs`) rather than
+//! assumed, because a number nobody measured is indistinguishable from a
+//! measurement nobody took. Those tallies are flushed before they are read:
+//! the plain `pg_stat_database` reading this lane took before lagged by up to
+//! ten seconds per connection and under-counted a window's commits.
 //!
 //! # The readiness index is the interesting part
 //!
@@ -40,7 +43,7 @@ use crate::abort::Abort;
 use afd_admission::Admissions;
 use afd_crypto::entropy::Entropy;
 
-use crate::datastores::{Datastores, dragonfly_calls, postgres_transactions};
+use crate::datastores::{Datastores, dragonfly_calls};
 use crate::error::{Error, Result};
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::lane::lease::seed::{
@@ -51,6 +54,7 @@ use crate::profile::{Parameter, Profile};
 use crate::report::{
     DatastoreCost, DatastoreCosts, Fixture, Lane, Provenance, Report, count, ratio,
 };
+use crate::statements::{self, StatementCost};
 
 /// Measurement key: how many steers the window appended in total.
 const ACCEPTED: &str = "accepted";
@@ -66,12 +70,15 @@ const DRAGONFLY_CALLS_PER_STEER: &str = "dragonfly_calls_per_steer";
 
 /// Measurement key: Postgres transactions each accepted steer cost.
 ///
-/// A RATIO, because the total is not zero and a reader deserves to see why:
-/// `pg_stat_database` counts every transaction the database served in the
-/// window, including the pool keeping its connections alive and this lane's
-/// own two readings of the statistic. A few hundred-thousandths per steer is
-/// that residue; the ingress path issuing one would read as 1.0.
+/// Two per fresh steer — the admission insert and the receipt write — plus a
+/// residue that is not per steer at all: each pooled connection prepares a
+/// statement once, and the admission ceiling samples the backlog once per
+/// thousand admissions. The counter subtracts its own readings.
 const POSTGRES_TRANSACTIONS_PER_STEER: &str = "postgres_transactions_per_steer";
+
+/// Measurement key: Postgres statements each accepted steer executed,
+/// transaction control left out.
+const POSTGRES_STATEMENTS_PER_STEER: &str = "postgres_statements_per_steer";
 
 /// Series key: readiness-index depth, sampled through the run.
 const READY_DEPTH: &str = "ready_depth";
@@ -135,6 +142,7 @@ pub async fn run(
         );
         ledger.created(ROWS_PER_FLEET);
     }
+    statements::install(&stores.database).await?;
 
     let measured = submit(stores, &fleets, parameters, &abort).await?;
 
@@ -153,7 +161,7 @@ struct Submitted {
     outcomes: Outcomes,
     length: Duration,
     dragonfly_calls: u64,
-    transactions: u64,
+    postgres: StatementCost,
     depth: Vec<f64>,
 }
 
@@ -175,10 +183,39 @@ async fn submit(
     let stop = CancellationToken::new();
     let sampler = tokio::spawn(sample_depth(stores.queue.clone(), stop.clone()));
     let dragonfly_before = dragonfly_calls(&stores.queue).await?;
-    let transactions_before = postgres_transactions(&stores.database).await?;
+    let postgres_before = statements::read(&stores.database).await?;
     let started = Instant::now();
-    let deadline = started + parameters.window;
+    let outcomes = append_all(stores, slices, started + parameters.window, abort).await?;
+    // The window is the submitters', measured the instant they are all back.
+    let length = started.elapsed();
+    let dragonfly_calls = dragonfly_calls(&stores.queue)
+        .await?
+        .saturating_sub(dragonfly_before);
+    let postgres = statements::read(&stores.database)
+        .await?
+        .since(postgres_before);
+    stop.cancel();
+    let depth = sampler.await.map_err(|_joined| Error::TaskLost {
+        role: "readiness sampler",
+    })?;
 
+    Ok(Submitted {
+        outcomes,
+        length,
+        dragonfly_calls,
+        postgres,
+        depth,
+    })
+}
+
+/// One submitter per slice, all appending at once, answering what they did
+/// together once the last of them is back.
+async fn append_all(
+    stores: &Datastores,
+    slices: Vec<Slice>,
+    deadline: Instant,
+    abort: &Arc<Abort>,
+) -> Result<Outcomes> {
     let mut tasks = Vec::with_capacity(slices.len());
     for mine in slices {
         let steer = Steer::new(Admissions::new(
@@ -198,26 +235,7 @@ async fn submit(
             .map_err(|_joined| Error::TaskLost { role: "submitter" })??;
         outcomes.absorb(&theirs)?;
     }
-    // The window is the submitters', measured the instant they are all back.
-    let length = started.elapsed();
-    let dragonfly_calls = dragonfly_calls(&stores.queue)
-        .await?
-        .saturating_sub(dragonfly_before);
-    let transactions = postgres_transactions(&stores.database)
-        .await?
-        .saturating_sub(transactions_before);
-    stop.cancel();
-    let depth = sampler.await.map_err(|_joined| Error::TaskLost {
-        role: "readiness sampler",
-    })?;
-
-    Ok(Submitted {
-        outcomes,
-        length,
-        dragonfly_calls,
-        transactions,
-        depth,
-    })
+    Ok(outcomes)
 }
 
 /// Deal the population out to `concurrency` submitters, round-robin.
@@ -303,7 +321,11 @@ impl Submitted {
         );
         report.measurement(
             POSTGRES_TRANSACTIONS_PER_STEER,
-            ratio(self.transactions, self.outcomes.successes),
+            ratio(self.postgres.commits, self.outcomes.successes),
+        );
+        report.measurement(
+            POSTGRES_STATEMENTS_PER_STEER,
+            ratio(self.postgres.statements, self.outcomes.successes),
         );
         report
             .series
@@ -314,7 +336,7 @@ impl Submitted {
                 time_ms: None,
             },
             postgres: DatastoreCost {
-                operations: self.transactions,
+                operations: self.postgres.commits,
                 time_ms: None,
             },
         };

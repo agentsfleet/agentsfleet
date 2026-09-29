@@ -83,21 +83,6 @@ impl PollCounters {
             roundtrips: self.roundtrips.saturating_sub(earlier.roundtrips),
         }
     }
-
-    /// Postgres round trips per poll, or zero when nothing polled.
-    #[must_use]
-    pub fn roundtrips_per_poll(self) -> f64 {
-        if self.polls == 0 {
-            return 0.0;
-        }
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "a poll count past f64's exact range is not a run that finished"
-        )]
-        {
-            self.roundtrips as f64 / self.polls as f64
-        }
-    }
 }
 
 /// Keeps the last export's lease counters, and nothing else.

@@ -49,7 +49,8 @@ impl Error {
             | Self::FixtureUnseedable { .. }
             | Self::RunnerUnenrollable { .. }
             | Self::TaskLost { .. }
-            | Self::CounterUnreadable { .. } => false,
+            | Self::CounterUnreadable { .. }
+            | Self::Lane(..) => false,
         }
     }
 }
