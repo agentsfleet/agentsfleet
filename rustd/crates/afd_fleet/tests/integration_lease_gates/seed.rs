@@ -9,6 +9,7 @@ use afd_crypto::aad::Aad;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::envelope::Sealer;
 use afd_crypto::secret::Kek;
+use afd_db::test_util::{DefaultSeed, PlatformDefault};
 use afd_gate::gate::GateRef;
 
 use super::{
@@ -38,11 +39,29 @@ use crate::support::Fixtures;
 /// still leasing against it, which is the shared-mutable-row class
 /// `docs/architecture/testing.md` names ISO-1. Whichever workspace wins holds
 /// the same credential, sealed under the same key.
-pub(super) async fn seed_provider_resolution(fixtures: &Fixtures, fleet: &str) {
+///
+/// # Held, and removed by whoever made it
+///
+/// The answer is a hold on the default: bind it for the test's life. When the
+/// last hold in the process drops — pass or panic — the row is deleted if this
+/// process inserted it, and left alone if it was already there. A row that
+/// outlived its run pointed at a workspace whose key was gone, and the next
+/// run's provider resolution failed on it.
+pub(super) async fn seed_provider_resolution(fixtures: &Fixtures, fleet: &str) -> PlatformDefault {
     let workspace = workspace_of(fixtures, fleet).await;
     seed_model_rate(fixtures).await;
     seed_provider_key(fixtures, &workspace).await;
-    seed_platform_default(fixtures, &workspace).await;
+    PlatformDefault::hold(
+        &fixtures.database,
+        DefaultSeed {
+            provider: PROVIDER,
+            source_workspace_id: &workspace,
+            model: MODEL,
+            context_cap_tokens: CONTEXT_CAP_TOKENS,
+            created_at: ENROLLED_AT,
+        },
+    )
+    .await
 }
 
 /// Prices `(PROVIDER, MODEL)`, which the defaults row's foreign key requires.
@@ -109,30 +128,6 @@ async fn seed_provider_key(fixtures: &Fixtures, workspace: &str) {
     .execute(&mut *connection)
     .await
     .expect("the provider key seed must run");
-}
-
-/// Makes `(PROVIDER, MODEL)` the active platform default. See the note above.
-async fn seed_platform_default(fixtures: &Fixtures, workspace: &str) {
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query(
-        "INSERT INTO core.platform_provider_defaults \
-           (provider, source_workspace_id, active, model, context_cap_tokens, \
-            created_at, updated_at) \
-         VALUES ($1, $2::uuid, TRUE, $3, $4, $5, $5) \
-         ON CONFLICT (provider) DO NOTHING",
-    )
-    .bind(PROVIDER)
-    .bind(workspace)
-    .bind(MODEL)
-    .bind(CONTEXT_CAP_TOKENS)
-    .bind(ENROLLED_AT)
-    .execute(&mut *connection)
-    .await
-    .expect("the platform default seed must run");
 }
 
 /// The workspace a seeded fleet belongs to.

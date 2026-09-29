@@ -40,6 +40,8 @@
 mod bindings;
 #[path = "integration_lease_gates/cases.rs"]
 mod cases;
+#[path = "integration_lease_gates/faults.rs"]
+mod faults;
 #[path = "integration_lease_gates/seed.rs"]
 mod seed;
 #[path = "integration_lease_gates/slack.rs"]

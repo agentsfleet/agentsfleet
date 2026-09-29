@@ -42,6 +42,7 @@ use afd_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTi
 use agentsfleetd::serve::Booted;
 
 use crate::e2e::{GOOD_KEK, MODEL, PROVIDER};
+use afd_db::test_util::{DefaultSeed, PlatformDefault};
 
 /// A pool deep enough that no gate under test clamps against it.
 pub(crate) const DEEP_POOL: i64 = 1_000_000_000_000;
@@ -247,28 +248,29 @@ pub(crate) async fn seed_model_rate(booted: &Booted, now: UnixMillis) {
 /// class `docs/architecture/testing.md` names ISO-1. The value written is a
 /// fixture either way: whichever workspace wins holds the same seeded provider
 /// key, and its rows outlive the run.
-pub(crate) async fn seed_platform_default(booted: &Booted, workspace: &str, now: UnixMillis) {
-    let at = now.as_millis();
-    let mut connection = booted
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query(
-        "INSERT INTO core.platform_provider_defaults
-           (provider, source_workspace_id, active, model, context_cap_tokens,
-            created_at, updated_at)
-         VALUES ($1, $2::uuid, TRUE, $3, $4, $5, $5)
-         ON CONFLICT (provider) DO NOTHING",
+///
+/// # Held, and removed by whoever made it
+///
+/// The answer is a hold the scenario keeps. When the last hold in the process
+/// drops — pass or panic — the row is deleted if this process inserted it and
+/// left alone if it already existed: a row that outlived its run pointed at a
+/// workspace whose key was gone, and the next run failed to resolve a provider.
+pub(crate) async fn seed_platform_default(
+    booted: &Booted,
+    workspace: &str,
+    now: UnixMillis,
+) -> PlatformDefault {
+    PlatformDefault::hold(
+        &booted.database,
+        DefaultSeed {
+            provider: PROVIDER,
+            source_workspace_id: workspace,
+            model: MODEL,
+            context_cap_tokens: CONTEXT_CAP_TOKENS,
+            created_at: now.as_millis(),
+        },
     )
-    .bind(PROVIDER)
-    .bind(workspace)
-    .bind(MODEL)
-    .bind(CONTEXT_CAP_TOKENS)
-    .bind(at)
-    .execute(&mut *connection)
     .await
-    .expect("the platform default seed must run");
 }
 
 /// The vault row a seeded provider key is written under.

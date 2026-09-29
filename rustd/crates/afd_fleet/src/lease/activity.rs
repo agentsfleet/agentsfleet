@@ -99,10 +99,10 @@ impl Leases {
                     continue;
                 }
             };
-            let Ok(payload) = serde_json::to_string(published) else {
-                continue;
-            };
-            payloads.push(payload);
+            // Strings, integers, flags and JSON `Published::of` already
+            // validated: serializing that to a `String` cannot fail, so there is
+            // no drop arm to take.
+            payloads.extend(serde_json::to_string(published).ok());
         }
         if let Err(unreachable_queue) = streams.publish_tail_batch(fleet, &payloads).await {
             let reason = unreachable_queue.to_string();

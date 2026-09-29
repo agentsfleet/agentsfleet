@@ -224,7 +224,7 @@ async fn a_reset_writes_an_explicit_platform_row_copied_from_the_live_default() 
     let provider = unique_provider();
     let model = unique_model();
     fixture.seed_catalogue(&provider, &model, 96_000).await;
-    fixture
+    let platform_default = fixture
         .seed_platform_default(&provider, &model, 96_000)
         .await;
     let store = providers(&fixture);
@@ -267,7 +267,7 @@ async fn a_reset_writes_an_explicit_platform_row_copied_from_the_live_default() 
         "a platform row names no credential of the tenant's"
     );
 
-    fixture.clear_platform_default(&provider).await;
+    drop(platform_default);
     fixture.cleanup().await;
 }
 
@@ -313,7 +313,7 @@ async fn a_tenant_that_never_configured_a_provider_is_composed_from_the_live_def
     let provider = unique_provider();
     let model = unique_model();
     fixture.seed_catalogue(&provider, &model, 64_000).await;
-    fixture
+    let platform_default = fixture
         .seed_platform_default(&provider, &model, 64_000)
         .await;
     let store = providers(&fixture);
@@ -358,6 +358,6 @@ async fn a_tenant_that_never_configured_a_provider_is_composed_from_the_live_def
     // answers `ProviderSecretMissing` without one. Resolution is graded by
     // `provider_resolution.rs`; what the view needs is the two reads above.
 
-    fixture.clear_platform_default(&provider).await;
+    drop(platform_default);
     fixture.cleanup().await;
 }

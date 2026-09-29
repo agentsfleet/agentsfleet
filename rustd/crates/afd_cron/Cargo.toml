@@ -76,6 +76,9 @@ jsonwebtoken.workspace = true
 serde.workspace = true
 sha2.workspace = true
 tokio.workspace = true
+# The thread-scoped recorder `integration_fire.rs` reads the fire's log line
+# back through.
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

@@ -16,6 +16,7 @@ use crate::support::connect_redis;
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn reclaim_restores_only_a_fleet_with_deliverable_work() {
+    let _lane = crate::integration_reclaim_faults::RECLAIM_LANE.lock().await;
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let queue = connect_redis().await;

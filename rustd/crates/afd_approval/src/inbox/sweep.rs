@@ -14,12 +14,12 @@
 //! else gives it: without the mark, no poll reads the lapsed gate and the
 //! parked delivery never ends.
 //!
-//! # Nothing past the statement can fail the sweep
+//! # The rows decode by construction
 //!
-//! The rows are expired when the statement returns. A row this build cannot
-//! decode costs the tail its frame and is logged; it never turns a committed
-//! sweep into a reported failure a caller would retry against rows already
-//! moved.
+//! The statement casts both ids to text from NOT NULL columns, reads the
+//! nullable event as an option and counts with `COUNT(*)`, so every row it
+//! returns decodes. A decode failure could only be this build's statement and
+//! decoder disagreeing, and it is reported rather than skipped.
 
 use std::collections::BTreeMap;
 
@@ -41,17 +41,12 @@ const SWEPT_DETAIL: &str = "the approval window closed with no answer";
 
 const CONTEXT_EXPIRE: &str = "gate.inbox.expire";
 
-/// A swept row could not be decoded after the sweep committed.
-const EVENT_SWEPT_UNREADABLE: &str = "gate_sweep_row_unreadable";
-
 /// What a swept row hands back, and where its announcement goes.
 ///
 /// Read off [`sql::EXPIRE_GATES`]'s select so a sweep of many gates announces
 /// each on its own fleet's tail without a read per row — the count the frame
 /// carries rode the same statement. The event is optional because the column
-/// is: a gate raised on a standing grant rather than on a run parks no event,
-/// and a sweep that refused to decode such a row would report a failure over
-/// rows it had already expired.
+/// is: a gate raised on a standing grant rather than on a run parks no event.
 struct Swept {
     gate: String,
     fleet: String,
@@ -67,7 +62,8 @@ impl Inbox {
     /// clock's.
     ///
     /// # Errors
-    /// Reports a datastore that would not answer.
+    /// Reports a datastore that would not answer, and a row the decoder does
+    /// not match — which only a statement and decoder out of step can cause.
     pub async fn expire(&self, now: UnixMillis) -> Result<u64> {
         let mut connection = self.database.acquire().await?;
         let rows = sqlx::query(sql::EXPIRE_GATES)
@@ -81,14 +77,9 @@ impl Inbox {
             .map_err(error::query(CONTEXT_EXPIRE))?;
         drop(connection);
 
-        // The rows are swept whatever happens past this line, so a row that
-        // will not decode costs the tail its frame and is logged — it never
-        // turns a committed sweep into a reported failure.
+        let decoded = rows.iter().map(Self::swept).collect::<Result<Vec<_>>>()?;
         let mut read: BTreeMap<String, Option<FleetCounters>> = BTreeMap::new();
-        for row in &rows {
-            let Some(swept) = Self::swept(row) else {
-                continue;
-            };
+        for swept in &decoded {
             let counters = if let Some(counters) = read.get(&swept.fleet) {
                 *counters
             } else {
@@ -112,29 +103,14 @@ impl Inbox {
         Ok(rows.len() as u64)
     }
 
-    /// One swept row as the tail hears of it, or nothing for a row this
-    /// build cannot read.
-    fn swept(row: &sqlx::postgres::PgRow) -> Option<Swept> {
+    /// One swept row as the tail hears of it.
+    fn swept(row: &sqlx::postgres::PgRow) -> Result<Swept> {
         let unreadable = error::query(CONTEXT_EXPIRE);
-        let read = || -> Result<Swept> {
-            Ok(Swept {
-                gate: row.try_get(0).map_err(&unreadable)?,
-                fleet: row.try_get(1).map_err(&unreadable)?,
-                event: row.try_get(2).map_err(&unreadable)?,
-                pending: row.try_get(3).map_err(&unreadable)?,
-            })
-        };
-        match read() {
-            Ok(swept) => Some(swept),
-            Err(fault) => {
-                let reason = fault.to_string();
-                tracing::warn!(
-                    event = EVENT_SWEPT_UNREADABLE,
-                    reason,
-                    "a swept gate could not be decoded; it is expired and unannounced"
-                );
-                None
-            }
-        }
+        Ok(Swept {
+            gate: row.try_get(0).map_err(&unreadable)?,
+            fleet: row.try_get(1).map_err(&unreadable)?,
+            event: row.try_get(2).map_err(&unreadable)?,
+            pending: row.try_get(3).map_err(&unreadable)?,
+        })
     }
 }

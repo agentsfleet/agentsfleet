@@ -406,6 +406,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "url",
 ]
 
@@ -768,6 +769,7 @@ dependencies = [
  "afd_state",
  "afd_wire",
  "garde",
+ "redis",
  "serde",
  "serde_json",
  "sqlx",
@@ -775,6 +777,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

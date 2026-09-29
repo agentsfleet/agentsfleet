@@ -98,7 +98,41 @@ fn an_unwritten_request_reports_and_then_reads_as_no_answer() {
     // no line, no error_code, and a `no_work` identical to a healthy park — a
     // failure with no error, redelivering every second. `written` must answer
     // `None` (so the delivery is retried) AND emit the line that says why.
+    let log = crate::lease::test_log::Recorder::install();
     assert_eq!(written(Err(unwritable()), &fleet(), "github"), None);
+
+    let line = log.only(super::EVENT_REQUEST_FAILED);
+    assert_eq!(
+        line.get("error_code").map(String::as_str),
+        Some(unwritable().code().as_str()),
+        "the line names the failure's registry code"
+    );
+    assert_eq!(
+        line.get("fleet_id").map(String::as_str),
+        Some(fleet().as_str())
+    );
+    assert_eq!(line.get("service").map(String::as_str), Some("github"));
+}
+
+/// An open card parks the delivery; every other answer stops it.
+///
+/// Parking clears the fleet's readiness mark, so only a card a person will
+/// answer may park: a retry that parked would wait on nobody.
+#[test]
+fn only_an_open_card_turns_the_answer_into_a_park() {
+    let answer = || "no work".to_owned();
+    assert!(matches!(
+        Ungranted::Parks.ending(answer()),
+        super::Step::Park(bytes) if bytes == answer()
+    ));
+    assert!(matches!(
+        Ungranted::Retries.ending(answer()),
+        super::Step::Stop(bytes) if bytes == answer()
+    ));
+    assert!(matches!(
+        Ungranted::Ends.ending(answer()),
+        super::Step::Stop(bytes) if bytes == answer()
+    ));
 }
 
 #[test]
