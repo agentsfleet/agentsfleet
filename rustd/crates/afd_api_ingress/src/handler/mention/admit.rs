@@ -98,7 +98,7 @@ pub(super) async fn routed<D: Services>(
     // Hoisted: see the `tracing` note in the workspace Cargo.toml.
     let workspace_id = workspace.as_str();
     let fleet_id = fleet.fleet.as_str();
-    let event_id = admitted.id.as_str();
+    let event_id = admitted.stored.id.as_str();
     let thread_unavailable = read.as_ref().err().map(|reason| reason.as_str());
     tracing::info!(
         workspace_id,
@@ -112,7 +112,7 @@ pub(super) async fn routed<D: Services>(
         event = EVENT_ROUTED,
     );
     Ok(Outcome::Accepted(Accepted {
-        event_id: Cow::Owned(admitted.id),
+        event_id: Cow::Owned(admitted.stored.id),
         replayed: admitted.replayed,
     }))
 }

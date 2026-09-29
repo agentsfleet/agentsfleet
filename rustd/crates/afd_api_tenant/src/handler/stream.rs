@@ -96,7 +96,7 @@ const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
         "`chunk`, `tool_call_started`, `tool_call_progress` ",
         "and `tool_call_completed`. Each tool frame carries `event_id` and ",
         "`name`. Newer runners add `call_id`, which every frame of one call ",
-        "shares. Identifiers restart at 0 ",
+        "shares and no other call of the event reuses. Identifiers restart at 0 ",
         "for each connection. The route ignores `Last-Event-ID`. At capacity, ",
         "the route returns 503 `UZ-API-002` with `Retry-After`. Read missed ",
         "events before reconnecting. After 15 seconds without activity, the ",

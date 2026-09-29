@@ -1,24 +1,21 @@
-//! The admit half: commit the row, append the entry, record the receipt.
+//! The admit half: commit the row, then hand a fresh one to the receipt half
+//! (`admit_receipt`), which appends the entry and records the receipt.
 
 use afd_core::clock::{self, UnixMillis};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_dragonfly::{FleetStreams, ReadyIndex};
 use afd_observability::metrics::label::fleet::AdmissionOutcome;
 use afd_observability::producers::fleet::admission as metrics;
-use afd_wire::event::Entry;
 use sqlx::Row as _;
 
 use crate::error::{Error, ErrorKind, Result, query};
 use crate::{
-    Admission, Admissions, Admitted, BudgetScope, Key, Reply, logical_id, logical_parts, sql,
+    Admission, Admissions, Admitted, BudgetScope, Key, Repeated, Reply, logical_id, logical_parts,
+    sql,
 };
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_ADMIT: &str = "admit an event";
-
-/// Statement name, for the context a query failure carries.
-const CONTEXT_RECEIPT: &str = "record an admission's receipt";
 
 /// A row's `replay_count` on the day it is admitted.
 const NO_REPLAYS: i64 = 0;
@@ -59,28 +56,12 @@ impl<'a> From<Reply<'a>> for ReplyBinds<'a> {
 
 /// What the ledger answered for one admission.
 struct Ledger {
-    /// The logical event id.
-    id: String,
+    /// The row the key holds, this statement's or an earlier one's.
+    stored: Repeated,
     /// Whether THIS statement created the row.
     inserted: bool,
     /// The receipt already recorded, if any.
     receipt: Option<String>,
-    /// The digest the row was admitted with.
-    digest: String,
-    /// The fleet the row was admitted for.
-    fleet: String,
-}
-
-impl Ledger {
-    /// The answer this row gives a producer.
-    fn admitted(self, replayed: bool) -> Admitted {
-        Admitted {
-            id: self.id,
-            replayed,
-            stored_digest: self.digest,
-            stored_fleet: self.fleet,
-        }
-    }
 }
 
 impl Admissions {
@@ -110,34 +91,12 @@ impl Admissions {
         let digest = admission.payload_digest();
         let producer = admission.producer.as_str();
 
-        let ledger = match self.commit(&row_id, &admission, key, &digest, now).await {
-            Ok(ledger) => ledger,
-            Err(refused) => {
-                // Two refusals, kept apart on the counter and in the log: a
-                // spent budget is the deployment doing what it was told,
-                // and a database that would not answer is an incident.
-                let (outcome, event) = if refused.is_over_capacity() {
-                    (
-                        AdmissionOutcome::OverBudget,
-                        "admission_refused_over_capacity",
-                    )
-                } else {
-                    (AdmissionOutcome::Refused, "admission_failed")
-                };
-                metrics::admitted(outcome);
-                let code = refused.code().as_str();
-                let reason = refused.to_string();
-                tracing::warn!(
-                    error_code = code,
-                    producer,
-                    fleet_id = admission.fleet,
-                    reason,
-                    event,
-                );
-                return Err(refused);
-            }
-        };
-        if ledger.digest != digest && !admission.producer.is_caller_keyed() {
+        let ledger = self
+            .commit(&row_id, &admission, key, &digest, now)
+            .await
+            .inspect_err(|refused| count_refusal(refused, &admission))?;
+        let event_id = ledger.stored.id.as_str();
+        if ledger.stored.digest != digest && !admission.producer.is_caller_keyed() {
             // The key is the identity and the first payload stands. Logged
             // at warn because a body this daemon renders differently than it
             // did is a deploy that changed a handler, and somebody should
@@ -147,7 +106,7 @@ impl Admissions {
                 error_code = code,
                 producer,
                 fleet_id = admission.fleet,
-                event_id = ledger.id,
+                event_id,
                 event = "admission_payload_drifted",
             );
         }
@@ -158,13 +117,17 @@ impl Admissions {
             tracing::debug!(
                 producer,
                 fleet_id = admission.fleet,
-                event_id = ledger.id,
+                event_id,
                 event = "admission_replayed",
             );
-            return Ok(ledger.admitted(true));
+            return Ok(Admitted {
+                replayed: true,
+                stored: ledger.stored,
+            });
         }
 
-        self.queue_entry(&row_id, ledger, &admission, now).await
+        self.queue_entry(&row_id, ledger.stored, &admission, now)
+            .await
     }
 
     /// The fleet budget, then the row: the queue is asked first because a
@@ -232,121 +195,43 @@ impl Admissions {
         let created_at: i64 = row.try_get(1).map_err(query(CONTEXT_ADMIT))?;
         let seq: i64 = row.try_get(2).map_err(query(CONTEXT_ADMIT))?;
         let receipt: Option<String> = row.try_get(3).map_err(query(CONTEXT_ADMIT))?;
-        let stored: String = row.try_get(4).map_err(query(CONTEXT_ADMIT))?;
+        let digest: String = row.try_get(4).map_err(query(CONTEXT_ADMIT))?;
         let fleet: String = row.try_get(5).map_err(query(CONTEXT_ADMIT))?;
         Ok(Ledger {
-            id: logical_id(created_at, seq),
+            stored: Repeated {
+                id: logical_id(created_at, seq),
+                digest,
+                fleet,
+            },
             inserted,
             receipt,
-            digest: stored,
-            fleet,
         })
     }
+}
 
-    /// Appends the entry this call's row owns and records the receipt.
-    ///
-    /// A queue that refuses is a deferral: the row is committed, the caller
-    /// is answered, and the sweeper appends when the queue is back. A receipt
-    /// the row already carries by the time this writes means the sweeper got
-    /// there first; the extra physical entry is dropped at lease by the
-    /// `core.fleet_events` conflict arm, and the line below says it happened.
-    async fn queue_entry(
-        &self,
-        row_id: &Uuid7,
-        ledger: Ledger,
-        admission: &Admission<'_>,
-        now: UnixMillis,
-    ) -> Result<Admitted> {
-        let producer = admission.producer.as_str();
-        let event_id = ledger.id.as_str();
-        let created_at = now.as_millis().to_string();
-        let entry = Entry {
-            actor: admission.actor,
-            event_type: admission.event_type.as_str(),
-            workspace_id: admission.workspace,
-            request_json: admission.request_json,
-            created_at: &created_at,
-        };
-        let appended = FleetStreams::new(self.queue.clone())
-            .append(admission.fleet, &entry.queued_pairs(event_id))
-            .await;
-        let receipt = match appended {
-            Ok(receipt) => receipt,
-            Err(unreachable_queue) => {
-                metrics::admitted(AdmissionOutcome::Deferred);
-                let code = unreachable_queue.code().as_str();
-                let reason = unreachable_queue.to_string();
-                // A full queue is named as such: the row is just as safe and
-                // the sweeper just as owed, but the cure is capacity rather
-                // than connectivity, and an operator reads the event name.
-                let event = if unreachable_queue.is_full() {
-                    "admission_queue_full"
-                } else {
-                    "admission_append_deferred"
-                };
-                tracing::warn!(
-                    error_code = code,
-                    producer,
-                    fleet_id = admission.fleet,
-                    event_id,
-                    reason,
-                    event,
-                );
-                return Ok(ledger.admitted(false));
-            }
-        };
-
-        let mut connection = self.database.acquire().await?;
-        let recorded = sqlx::query(sql::RECORD_RECEIPT)
-            .bind(row_id.as_str())
-            .bind(receipt.as_str())
-            .bind(now.as_millis())
-            .execute(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_RECEIPT))?;
-        let receipt_field = receipt.as_str();
-        if recorded.rows_affected() == 0 {
-            let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-            tracing::warn!(
-                error_code = code,
-                producer,
-                fleet_id = admission.fleet,
-                event_id,
-                receipt = receipt_field,
-                event = "admission_receipt_superseded",
-            );
-        }
-        metrics::admitted(AdmissionOutcome::Appended);
-        tracing::info!(
-            producer,
-            fleet_id = admission.fleet,
-            workspace_id = admission.workspace,
-            event_id,
-            receipt = receipt_field,
-            event = "admission_completed",
-        );
-        self.mark_ready(admission.fleet).await;
-        Ok(ledger.admitted(false))
-    }
-
-    /// Marks the fleet leasable, best-effort.
-    ///
-    /// The token is the fleet id, as every producer spells it: the clear
-    /// compares it, so a mark written under another value is one nothing can
-    /// remove. A mark that fails is logged rather than raised — the entry is
-    /// already durable, and the streams are the system of record the poll's
-    /// backstop asks.
-    pub(crate) async fn mark_ready(&self, fleet: &str) {
-        if let Err(unmarked) = ReadyIndex::new(self.queue.clone()).mark(fleet, fleet).await {
-            afd_observability::producers::fleet::ready_write_failed();
-            let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-            let reason = unmarked.to_string();
-            tracing::warn!(
-                error_code = code,
-                fleet_id = fleet,
-                reason,
-                event = "admission_ready_mark_failed",
-            );
-        }
-    }
+/// Counts and logs an admission that recorded nothing.
+///
+/// Two refusals, kept apart on the counter and in the log: a spent budget is
+/// the deployment doing what it was told, and a database that would not answer
+/// is an incident.
+fn count_refusal(refused: &Error, admission: &Admission<'_>) {
+    let (outcome, event) = if refused.is_over_capacity() {
+        (
+            AdmissionOutcome::OverBudget,
+            "admission_refused_over_capacity",
+        )
+    } else {
+        (AdmissionOutcome::Refused, "admission_failed")
+    };
+    metrics::admitted(outcome);
+    let code = refused.code().as_str();
+    let reason = refused.to_string();
+    let producer = admission.producer.as_str();
+    tracing::warn!(
+        error_code = code,
+        producer,
+        fleet_id = admission.fleet,
+        reason,
+        event,
+    );
 }

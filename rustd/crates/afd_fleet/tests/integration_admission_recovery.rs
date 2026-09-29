@@ -170,7 +170,7 @@ async fn acceptance_recovers_at_each_crash_boundary() {
         .await
         .expect("a live queue admits and receipts in one call");
     let healthy_receipt = fixtures
-        .admission_receipt(&fleet, &healthy.id)
+        .admission_receipt(&fleet, &healthy.stored.id)
         .await
         .expect("a live append records its receipt");
 
@@ -186,7 +186,9 @@ async fn acceptance_recovers_at_each_crash_boundary() {
         "a first admission is not a replay of itself"
     );
     assert_eq!(
-        fixtures.admission_receipt(&fleet, &deferred.id).await,
+        fixtures
+            .admission_receipt(&fleet, &deferred.stored.id)
+            .await,
         None,
         "an append that never happened records no receipt"
     );
@@ -198,7 +200,8 @@ async fn acceptance_recovers_at_each_crash_boundary() {
         .admit(admission(&fleet, &workspace, &half_key))
         .await
         .expect("the row commits whatever the queue does");
-    let orphan = append_as_the_dead_inserter(&streams, &fleet, &workspace, &half.id, now).await;
+    let orphan =
+        append_as_the_dead_inserter(&streams, &fleet, &workspace, &half.stored.id, now).await;
 
     // The REAL clock, not the fixture's `now`. `replay`'s cutoff is
     // `now - min_age` against `core.fleet_admissions.created_at`, which `admit`
@@ -220,7 +223,7 @@ async fn acceptance_recovers_at_each_crash_boundary() {
         &fixtures,
         &streams,
         &fleet,
-        slice::from_ref(&deferred.id),
+        slice::from_ref(&deferred.stored.id),
         &entries,
         1,
     )
@@ -229,7 +232,7 @@ async fn acceptance_recovers_at_each_crash_boundary() {
         &fixtures,
         &streams,
         &fleet,
-        slice::from_ref(&half.id),
+        slice::from_ref(&half.stored.id),
         &entries,
         2,
     )
@@ -237,12 +240,12 @@ async fn acceptance_recovers_at_each_crash_boundary() {
 
     // The healthy row kept its receipt and was never replayed.
     assert_eq!(
-        fixtures.admission_receipt(&fleet, &healthy.id).await,
+        fixtures.admission_receipt(&fleet, &healthy.stored.id).await,
         Some(healthy_receipt),
         "a receipted admission keeps the receipt it had"
     );
     assert_eq!(
-        fixtures.admission_replays(&fleet, &healthy.id).await,
+        fixtures.admission_replays(&fleet, &healthy.stored.id).await,
         0,
         "a receipted admission is invisible to the replay scan"
     );

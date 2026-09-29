@@ -12,7 +12,9 @@ use serde::{Deserialize, Serialize};
 ///
 /// A runner's own counter needs a few bytes. The bound leaves room for a
 /// provider's call id, should a runner forward one, and keeps one frame from
-/// deciding how much of every subscriber's buffer an identity takes.
+/// deciding how much of every subscriber's buffer an identity takes. The three
+/// `call_id` descriptions spell this number out, because they are published
+/// and a constant's name means nothing to a runner's author.
 pub const CALL_ID_MAX_BYTES: usize = 64;
 
 /// A tool call began.
@@ -29,8 +31,9 @@ pub struct ToolCallStarted<'a> {
     /// The redacted arguments.
     #[serde(borrow)]
     pub args_redacted: Cow<'a, str>,
-    /// Which call of the run this frame belongs to: every frame of one call
-    /// carries the same value. Absent from runners that do not name calls.
+    /// Which call of the run this frame belongs to, 1 to 64 bytes: every frame
+    /// of one call carries the same value. Absent from runners that do not name
+    /// calls.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     pub call_id: Option<Cow<'a, str>>,
 }
@@ -82,8 +85,9 @@ pub struct ToolCallCompleted<'a> {
     pub name: Cow<'a, str>,
     /// How long it took, in milliseconds.
     pub ms: i64,
-    /// Which call of the run this frame belongs to: every frame of one call
-    /// carries the same value. Absent from runners that do not name calls.
+    /// Which call of the run this frame belongs to, 1 to 64 bytes: every frame
+    /// of one call carries the same value. Absent from runners that do not name
+    /// calls.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     pub call_id: Option<Cow<'a, str>>,
 }
@@ -98,8 +102,9 @@ pub struct ToolCallProgress<'a> {
     pub name: Cow<'a, str>,
     /// How long it has been running, in milliseconds.
     pub elapsed_ms: i64,
-    /// Which call of the run this frame belongs to: every frame of one call
-    /// carries the same value. Absent from runners that do not name calls.
+    /// Which call of the run this frame belongs to, 1 to 64 bytes: every frame
+    /// of one call carries the same value. Absent from runners that do not name
+    /// calls.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     pub call_id: Option<Cow<'a, str>>,
 }
@@ -203,7 +208,8 @@ mod tests {
         })
     }
 
-    /// The acknowledgement is the one field `service_activity.zig` writes.
+    /// A tool frame's call id is optional and bounded; a chunk never names one,
+    /// and any other unknown field still refuses the frame.
     #[test]
     fn a_tool_frame_names_its_call_within_the_bound() {
         use super::{CALL_ID_MAX_BYTES, ToolCallCompleted};
@@ -232,6 +238,27 @@ mod tests {
         assert!(foreign.is_err(), "any other unknown field is still refused");
     }
 
+    /// Each tool frame's published `call_id` description states the bound
+    /// `call_id_usable` enforces, so the two cannot drift apart unnoticed.
+    #[test]
+    fn a_published_call_id_description_names_its_bound() {
+        use super::CALL_ID_MAX_BYTES;
+        let openapi = include_str!("../../../../public/openapi.json");
+        let document: serde_json::Value =
+            serde_json::from_str(openapi).expect("the published spec parses");
+        let bound = format!("1 to {CALL_ID_MAX_BYTES} bytes");
+        for frame in ["ToolCallStarted", "ToolCallProgress", "ToolCallCompleted"] {
+            let pointer = format!("/components/schemas/{frame}/properties/call_id/description");
+            let text = document
+                .pointer(&pointer)
+                .and_then(serde_json::Value::as_str)
+                .map(|text| text.split_whitespace().collect::<Vec<_>>().join(" "))
+                .unwrap_or_default();
+            assert!(text.contains(&bound), "{frame}: {text}");
+        }
+    }
+
+    /// The acknowledgement is the one field `service_activity.zig` writes.
     #[test]
     fn test_the_acknowledgement_is_exactly_ok_true() {
         assert_eq!(

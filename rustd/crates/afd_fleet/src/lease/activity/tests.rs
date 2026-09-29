@@ -14,7 +14,14 @@ use afd_wire::activity::{
     ActivityFrame, FleetResponseChunk, ToolCallCompleted, ToolCallProgress, ToolCallStarted,
 };
 
+use super::published::fenced_call_id;
 use super::{Published, Target, first_visible_candidate_ms};
+
+/// The fencing token the fixture lease holds.
+const FENCE: i64 = 7;
+
+/// The call id the runner stamps on every fixture tool frame.
+const RUNNER_CALL: &str = "3";
 
 /// The published stream route whose description lists the frame kinds.
 const STREAM_DESCRIPTION: &str =
@@ -33,6 +40,7 @@ fn target() -> Target {
         lease_created_at: 0,
         event_created_at: 0,
         timing_eligible: true,
+        fence: FENCE,
     }
 }
 
@@ -74,14 +82,38 @@ fn published(frame: &ActivityFrame<'_>) -> serde_json::Value {
 
 #[test]
 fn tool_frames_republish_their_call_id_and_never_invent_one() {
-    for frame in every_frame(Some("3")) {
+    let fenced = serde_json::Value::from(format!("{FENCE}:{RUNNER_CALL}"));
+    for frame in every_frame(Some(RUNNER_CALL)) {
         let value = published(&frame);
-        let expected = frame.call_id().map(serde_json::Value::from);
+        let expected = frame.call_id().map(|_named| fenced.clone());
         assert_eq!(value.get("call_id").cloned(), expected, "{value}");
     }
     for frame in every_frame(None) {
         assert!(published(&frame).get("call_id").is_none());
     }
+}
+
+/// A reclaimed lease re-runs the same event and the runner's counter restarts,
+/// so its call 3 must not publish as the dead lease's call 3.
+#[test]
+fn one_runner_call_id_under_two_fences_publishes_two_ids() {
+    let reclaimed = Target {
+        fence: FENCE + 1,
+        ..target()
+    };
+    let [started, ..] = every_frame(Some(RUNNER_CALL));
+    let first = published(&started);
+    let second = serde_json::to_value(
+        Published::of(&reclaimed, &started).expect("every fixture frame renders"),
+    )
+    .expect("a published frame serializes");
+    assert_ne!(first["call_id"], second["call_id"], "{first} / {second}");
+    assert_eq!(
+        second["call_id"],
+        serde_json::Value::from(format!("{}:{RUNNER_CALL}", FENCE + 1))
+    );
+    // A runner id carrying the separator still reads back past the first one.
+    assert_eq!(fenced_call_id(FENCE, Some("a:b")).as_deref(), Some("7:a:b"));
 }
 
 #[test]
@@ -93,7 +125,7 @@ fn test_sse_kind_list_matches_published_kinds() {
         .pointer(STREAM_DESCRIPTION)
         .and_then(serde_json::Value::as_str)
         .expect("the stream route is described");
-    for frame in every_frame(Some("3")) {
+    for frame in every_frame(Some(RUNNER_CALL)) {
         let value = published(&frame);
         let kind = value["kind"].as_str().expect("every frame has a kind");
         assert!(

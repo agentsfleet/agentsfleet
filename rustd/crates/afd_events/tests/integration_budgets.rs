@@ -159,7 +159,10 @@ async fn a_spent_deployment_budget_refuses_new_work_and_still_answers_a_retry() 
         .await
         .expect("a retry of admitted work is answered whatever the budget");
     assert!(retried.replayed, "the retry is recognised as one");
-    assert_eq!(retried.id, admitted.id, "and answered its original id");
+    assert_eq!(
+        retried.stored.id, admitted.stored.id,
+        "and answered its original id"
+    );
 
     FleetStreams::new(lane.queue.clone())
         .forget(&lane.fleet)

@@ -21,7 +21,7 @@ use afd_admission::Budgets;
 use afd_core::error_code;
 use afd_db::test_util::mint_id;
 use afd_dragonfly::streams::FleetStreams;
-use afd_events::{ACTOR_MACHINE, Steer};
+use afd_events::{ACTOR_MACHINE, Steer, Steered};
 use tracing::Level;
 
 use crate::integration_steer_retry::{REQUEST_JSON, admissions_for, append_with, clean};
@@ -48,6 +48,10 @@ const ONE_ENTRY: u64 = 1;
 const CONFLICT_EVENT: &str = "steer_operation_conflict";
 const FIELD_EVENT: &str = "event";
 const FIELD_ERROR_CODE: &str = "error_code";
+const FIELD_CAUSE: &str = "cause";
+
+/// The cause a changed message under a reused id names: the payload differed.
+pub(crate) const CAUSE_PAYLOAD: &str = "payload";
 
 /// The same id on two fleets is two operations, each answering its own fleet.
 #[tokio::test(flavor = "multi_thread")]
@@ -88,10 +92,23 @@ async fn test_replay_bypasses_fleet_budget() {
 
     let admitted = append_with(&steer, &lane, Some(OPERATION)).await;
     // The budget is now spent. The retry is the same message, already
-    // accepted, and must be answered as such.
-    let retried = append_with(&steer, &lane, Some(OPERATION)).await;
+    // accepted, and must be answered as such: the first event, marked a replay.
+    let retried = steer
+        .append(
+            &lane.fleet,
+            &lane.workspace,
+            ACTOR_MACHINE,
+            REQUEST_JSON,
+            Some(OPERATION),
+        )
+        .await
+        .expect("a retry of an admitted message is answered despite the budget");
     assert_eq!(
-        admitted, retried,
+        retried,
+        Steered {
+            event_id: admitted.clone(),
+            replayed: true,
+        },
         "a retry of an admitted message must not be refused by the budget it \
          already spent -- the sender would read it as never delivered"
     );
@@ -239,8 +256,8 @@ async fn test_payload_drift_is_refused() {
         )
         .await
         .expect_err("a reused id with another message is refused");
-    // One conflict warn, carrying the code, and neither the message nor the
-    // key.
+    // One conflict warn, carrying the code and the half that differed, and
+    // neither the message nor the key.
     let conflicts: Vec<_> = logs
         .events()
         .into_iter()
@@ -252,6 +269,10 @@ async fn test_payload_drift_is_refused() {
         assert_eq!(
             conflict.fields.get(FIELD_ERROR_CODE).map(String::as_str),
             Some(error_code::AGENTSFLEET_OPERATION_CONFLICT.as_str())
+        );
+        assert_eq!(
+            conflict.fields.get(FIELD_CAUSE).map(String::as_str),
+            Some(CAUSE_PAYLOAD)
         );
         for value in conflict.fields.values() {
             assert!(

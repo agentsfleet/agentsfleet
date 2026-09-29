@@ -48,8 +48,8 @@ pub fn completed(self: *Adapter, b: ToolCall) void {
     var id: [CALL_ID_MAX_DIGITS]u8 = undefined;
     const call_id = callId(&id, number);
     if (b.args) |raw| {
-        // Drop the args frame on redaction OOM (raw could carry a secret); the
-        // completed frame below still closes the call (M100 §1).
+        // A failed redaction drops the args frame rather than emit `raw`, which
+        // may carry a secret; the completed frame below still closes the call.
         if (runner_progress.redactBytes(self.alloc, raw, self.secrets)) |redacted| {
             defer if (redacted.ptr != raw.ptr) self.alloc.free(redacted);
             self.writer.write(.{ .tool_call_started = .{ .name = b.tool, .args_redacted = redacted, .call_id = call_id } });

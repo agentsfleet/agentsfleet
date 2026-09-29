@@ -97,7 +97,7 @@ impl Fire {
         // Hoisted rather than spelled inside the macro: the log bridge
         // duplicates every field expression and coverage instrumentation scores
         // the dead copy (`docs/LOGGING_STANDARD.md` §8A).
-        let event_id = admitted.id.as_str();
+        let event_id = admitted.stored.id.as_str();
         let replayed = admitted.replayed;
         let schedule_id = schedule.as_str();
         tracing::info!(
@@ -110,7 +110,7 @@ impl Fire {
         );
 
         Ok(Fired {
-            event_id: admitted.id,
+            event_id: admitted.stored.id,
             replayed,
         })
     }

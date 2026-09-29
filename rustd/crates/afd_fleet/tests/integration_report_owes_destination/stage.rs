@@ -98,6 +98,7 @@ impl Stage {
             })
             .await
             .expect("the ledger admits")
+            .stored
             .id
     }
 

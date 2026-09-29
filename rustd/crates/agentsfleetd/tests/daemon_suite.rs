@@ -60,6 +60,8 @@ mod integration_cluster_outcomes;
 mod integration_readyz;
 #[path = "integration_runner_activity.rs"]
 mod integration_runner_activity;
+#[path = "integration_runner_activity_call_id.rs"]
+mod integration_runner_activity_call_id;
 #[path = "integration_runner_brackets.rs"]
 mod integration_runner_brackets;
 #[path = "integration_runner_e2e.rs"]
