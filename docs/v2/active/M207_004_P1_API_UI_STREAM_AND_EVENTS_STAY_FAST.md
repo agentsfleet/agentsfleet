@@ -96,9 +96,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 No path changes until its lane runs at HEAD. **Implementation default:** count executed statements and committed transactions, not pool acquires, because a report is one acquire for several statements and an acquire count cannot see a rewrite.
 
 - **Dimension 1.1** — every executed statement and every commit increments counters the lanes read → Test `test_statement_counter_counts_each_statement`
-- **Dimension 1.2** — the four existing lanes re-run at HEAD before any §2–§5 code, and their baselines land in a measurement-only commit → Test `bench_rebaseline_at_head`
+- **Dimension 1.2** — the four existing lanes re-run at HEAD before any §2–§5 code, and their baselines land in a measurement-only commit → Test `bench_rebaseline_at_head` — DONE (four lanes re-run at `774f99cbd` on a reset rig: lease 412.98/s, 11.7 round trips per lease; steer 1,638.8/s, 1.94 Postgres transactions per steer; outbound 49.6 jobs/s; cardinality 4,641 B per fleet at 10,000)
 - **Dimension 1.3** — the lease lane drains through the real lease and report path without force-clearing, asserting each event terminal once, two ledger rows per event and a readiness depth of zero → Test `bench_lease_drains_through_report`
-- **Dimension 1.4** — a tail lane reports allocations and CPU per delivered frame over a viewer ladder, and frames lost under a single node kill → Test `bench_tail_reports_fanout_and_faults`
+- **Dimension 1.4** — a tail lane reports allocations, CPU and latency per delivered frame over a viewer ladder, and memory per stream over a stream ladder; a node's loss is proven by §5's integration test, because killing one process of a shared compose container is not a stable bench → Test `bench_tail_reports_fanout_and_faults`
 
 ### §2 — A poll touches only fleets with work, and strands nothing
 
@@ -183,7 +183,7 @@ SSE_MAX_STREAMS default = the tail lane's measured value (knobs.rs), overridable
 | 1.1 | unit | `test_statement_counter_counts_each_statement` | three statements in one transaction → statements 3, commits 1 |
 | 1.2 | bench | `bench_rebaseline_at_head` | four lanes at HEAD → baselines committed with revision and parameters |
 | 1.3 | bench | `bench_lease_drains_through_report` | 200 fleets, 8 runners, no force-clear → every event terminal once, depth 0 |
-| 1.4 | bench | `bench_tail_reports_fanout_and_faults` | viewers 1/64/256/1024 → allocations and CPU per frame; one node killed → frames lost on healthy nodes 0 |
+| 1.4 | bench | `bench_tail_reports_fanout_and_faults` | viewers 1/64/256/1024 × 200 B/4 KiB/64 KiB → every frame delivered, allocations, CPU and p95 per frame; 64–4096 streams → memory per stream |
 | 2.1 | unit | `test_marks_mint_distinct_tokens` | mark twice → two different tokens |
 | 2.2 | integration | `test_mark_written_during_poll_survives` | re-mark between the empty read and the clear, looped → mark present, event leased next poll |
 | 2.3 | integration | `test_entry_pending_elsewhere_is_delivered` | entry pending under consumer A, poll through consumer B → delivered, mark cleared only after |
@@ -212,7 +212,7 @@ SSE_MAX_STREAMS default = the tail lane's measured value (knobs.rs), overridable
 | R1 | Baselines re-measured before code (§1) | `git log --format=%s -- bench/baselines/ \| head -1` | substring `bench` | P0 | |
 | R2 | An idle poll after drain costs no Postgres (§2) | `make bench-lease PROFILE=rig` | substring `idle_statements_per_poll=0` | P0 | |
 | R3 | A stop frees its fleet (§3) | `make test-integration-rustd` | substring `test_stop_releases_the_claim ... ok` | P0 | |
-| R4 | A node blip is a gap, not a reconnect (§5) | `make bench-tail PROFILE=rig` | substring `frames_lost_healthy_nodes=0` | P0 | |
+| R4 | A node blip is a gap, not a reconnect (§5) | `make test-integration-rustd` | substring `test_node_loss_is_a_gap_not_a_reconnect ... ok` | P0 | |
 | R5 | Flush cost is flat in answer length (§6) | `cd ui/packages/app && bunx vitest run components/domain/FleetReplyBody.test.tsx` | exit 0 | P0 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the two specs' Files Changed tables | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
