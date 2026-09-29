@@ -8,9 +8,10 @@
 //! ```text
 //!   Dragonfly closes the socket
 //!        -> TCP/TLS surfaces EOF or reset
-//!             -> the redis-rs cluster driver ends push delivery
-//!                  -> the pump notices
-//!                       -> the hub redials and re-subscribes
+//!             -> the redis-rs cluster driver pushes a Disconnection
+//!                  -> the driver repairs the node and replays its SSUBSCRIBEs,
+//!                     or the hub redials when no replay explains the loss
+//!                       -> every reader of a lost channel is told: a gap
 //! ```
 //!
 //! A test that ends the pump from inside this process starts at the fourth
@@ -43,17 +44,15 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use afd_dragonfly::SubscriptionHub;
-use afd_dragonfly::hub::Received;
-use afd_dragonfly::streams::FleetStreams;
+use afd_dragonfly::streams::{FleetStreams, fleet_activity_channel};
 use backon::ExponentialBuilder;
 
+use crate::cluster::{ClusterHarness, PRIMARY_A, PRIMARY_B};
+use crate::hub_exclusive::{
+    Node, clients_across, deliver, difference, gap_on, kill_each, nodes_of, owner_of,
+    subscribers_on, wait_for,
+};
 use crate::support::DragonflyHarness;
-
-/// How long a redial, a re-subscribe or a delivery is given.
-const RECOVERY_BUDGET: Duration = Duration::from_secs(10);
-
-/// How often the conditions above are re-read while waiting.
-const POLL_INTERVAL: Duration = Duration::from_millis(25);
 
 /// Payload published before the kill, to prove the reader was live first.
 const BEFORE: &str = "before-the-kill";
@@ -62,10 +61,23 @@ const BEFORE: &str = "before-the-kill";
 /// cannot be mistaken for recovery.
 const AFTER: &str = "after-the-kill";
 
-/// One node's address, as `CLUSTER SLOTS` advertises it.
-type Node = String;
+/// How many names are tried for a channel on each primary. Slots spread by
+/// hash, so a handful of candidates lands on both halves of the canonical
+/// split; this many failing to is a broken harness, not bad luck.
+const CANDIDATES: u32 = 64;
+
+/// A redial schedule a test can wait out.
+fn impatient() -> ExponentialBuilder {
+    ExponentialBuilder::new()
+        .with_min_delay(Duration::from_millis(20))
+        .with_max_delay(Duration::from_millis(100))
+}
 
 /// The hub survives the server killing its connection, and keeps delivering.
+///
+/// Every node's socket is killed, one `CLIENT KILL` at a time, so the hub may
+/// see them as one loss it redials or as separate losses the driver repairs:
+/// both are recoveries, and both end with the reader told about its gap.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn a_server_killed_connection_is_redialled_and_its_channels_resubscribed() {
@@ -73,27 +85,16 @@ async fn a_server_killed_connection_is_redialled_and_its_channels_resubscribed()
     let publisher = FleetStreams::new(harness.redis.clone());
     let channel = harness.name("exclusive-channel");
 
-    // Every connection this test owns is opened BEFORE the first snapshot, so
-    // it appears in both and never lands in the diff.
     let nodes = nodes_of(&harness).await;
     assert!(
         !nodes.is_empty(),
         "the cluster advertises at least one node"
     );
-    let before_hub = clients_across(&nodes).await;
-
-    let hub = SubscriptionHub::start_with_backoff(
-        DragonflyHarness::config(),
-        ExponentialBuilder::new()
-            .with_min_delay(Duration::from_millis(20))
-            .with_max_delay(Duration::from_millis(100)),
-    )
-    .await
-    .expect("hub starts");
+    warm(&publisher, [&channel]).await;
+    let (hub, before_hub) = start_hub(&nodes).await;
     let mut reader = hub.subscribe(&channel);
     deliver(&publisher, &channel, BEFORE, &mut reader).await;
 
-    let generation = hub.connections_opened();
     let opened = difference(&clients_across(&nodes).await, &before_hub);
     assert!(
         !opened.is_empty(),
@@ -104,13 +105,9 @@ async fn a_server_killed_connection_is_redialled_and_its_channels_resubscribed()
 
     kill_each(&nodes, &opened).await;
 
-    // Generation, not socket count: `record_connection` fires once at spawn
-    // and once per redial (`hub/pump.rs`), so this counts times the hub has
-    // had a connection, which is the thing recovery advances.
-    wait_for("the hub redials", || async {
-        hub.connections_opened() > generation
-    })
-    .await;
+    // The reader is told before anything else is asserted: a recovery that
+    // re-subscribed silently would pass every count below.
+    gap_on(&mut reader).await;
     // Not "went to zero first": a fast redial can make zero unobservable, and
     // a test that demanded it would fail on a healthy system that recovered
     // too quickly. One subscriber at the end is the claim.
@@ -125,178 +122,98 @@ async fn a_server_killed_connection_is_redialled_and_its_channels_resubscribed()
     deliver(&publisher, &channel, AFTER, &mut reader).await;
 }
 
-/// Every node address the cluster advertises, primaries and replicas.
+/// Dimension 5.2: one primary's socket lost is repaired inside the connection
+/// the hub has. Its channels are re-subscribed and gapped, the other
+/// primary's channel keeps delivering, and no connection is opened.
 ///
-/// Read from `CLUSTER SLOTS` rather than assumed from the seed: the lane's
-/// ports are the compose file's business, and a test that hard-coded them
-/// would pass against the wrong cluster.
-async fn nodes_of(harness: &DragonflyHarness) -> BTreeSet<Node> {
-    let mut cmd = redis::cmd("CLUSTER");
-    cmd.arg("SLOTS");
-    let reply: redis::Value = harness
-        .redis
-        .command("CLUSTER", "slots", &cmd)
+/// The other primary's channel may be gapped too: the hub cannot tell which
+/// node was lost and re-subscribes every channel (see `hub::gap`), which is
+/// an over-report a reader survives by backfilling.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+async fn test_node_loss_is_a_gap_not_a_reconnect() {
+    let harness = DragonflyHarness::connect().await;
+    let publisher = FleetStreams::new(harness.redis.clone());
+    let cluster = ClusterHarness::from_lane();
+    let mut raw = cluster.connect().await;
+    let (lost, kept) = channel_per_primary(&harness, &mut raw).await;
+    let lost_slot = ClusterHarness::keyslot(&mut raw, &lost).await;
+
+    let nodes = nodes_of(&harness).await;
+    let owner = owner_of(&harness, lost_slot).await;
+    warm(&publisher, [&lost, &kept]).await;
+    let (hub, before_hub) = start_hub(&nodes).await;
+    let mut lost_reader = hub.subscribe(&lost);
+    let mut kept_reader = hub.subscribe(&kept);
+    deliver(&publisher, &lost, BEFORE, &mut lost_reader).await;
+    deliver(&publisher, &kept, BEFORE, &mut kept_reader).await;
+
+    let opened = difference(&clients_across(&nodes).await, &before_hub);
+    let victims: BTreeSet<_> = opened
+        .into_iter()
+        .filter(|(node, _)| *node == owner)
+        .collect();
+    assert!(
+        !victims.is_empty(),
+        "the hub holds no socket to {owner}, serving {lost}"
+    );
+    kill_each(&nodes, &victims).await;
+
+    // The other primary's frames flow while the lost one is repaired.
+    deliver(&publisher, &kept, "during-the-repair", &mut kept_reader).await;
+    gap_on(&mut lost_reader).await;
+    deliver(&publisher, &lost, AFTER, &mut lost_reader).await;
+    deliver(&publisher, &kept, AFTER, &mut kept_reader).await;
+    assert_eq!(
+        hub.connections_opened(),
+        1,
+        "a node's repair happens inside the connection the hub has"
+    );
+}
+
+/// The lane's client set, then a hub started on it. Every connection a test
+/// owns is opened BEFORE this snapshot, so it appears in both and the hub's
+/// own sockets are the difference.
+async fn start_hub(nodes: &BTreeSet<Node>) -> (SubscriptionHub, BTreeSet<(Node, i64)>) {
+    let before_hub = clients_across(nodes).await;
+    let hub = SubscriptionHub::start_with_backoff(DragonflyHarness::config(), impatient())
         .await
-        .expect("CLUSTER SLOTS answers");
-    let mut nodes = BTreeSet::new();
-    collect_nodes(&reply, &mut nodes);
-    nodes
+        .expect("hub starts");
+    (hub, before_hub)
 }
 
-/// Walks a `CLUSTER SLOTS` reply for every `[host, port, ...]` triple.
-///
-/// Recursive over the nesting rather than indexed into it: the reply is
-/// `[start, end, [host, port, id], ...]` per range, and a server that adds a
-/// field would break positional reads while leaving this one correct.
-fn collect_nodes(value: &redis::Value, out: &mut BTreeSet<Node>) {
-    let redis::Value::Array(items) = value else {
-        return;
-    };
-    if let [redis::Value::BulkString(host), redis::Value::Int(port), ..] = items.as_slice()
-        && let Ok(host) = std::str::from_utf8(host)
-    {
-        out.insert(format!("{host}:{port}"));
-    }
-    for item in items {
-        collect_nodes(item, out);
-    }
-}
-
-/// The client ids each node currently holds.
-///
-/// A direct, non-cluster connection per node: `CLIENT LIST` names no key, so a
-/// cluster client would route it to a node of the driver's choosing and two
-/// calls could answer about two different servers.
-async fn clients_across(nodes: &BTreeSet<Node>) -> BTreeSet<(Node, i64)> {
-    let mut seen = BTreeSet::new();
-    for node in nodes {
-        for id in client_ids(node).await {
-            seen.insert((node.clone(), id));
-        }
-    }
-    seen
-}
-
-/// `CLIENT LIST` against one node, reduced to its `id=` fields.
-async fn client_ids(node: &Node) -> Vec<i64> {
-    let mut connection = node_connection(node).await;
-    let listing: String = redis::cmd("CLIENT")
-        .arg("LIST")
-        .query_async(&mut connection)
-        .await
-        .expect("CLIENT LIST answers");
-    listing
-        .lines()
-        .filter_map(|row| row.split_whitespace().next())
-        .filter_map(|field| field.strip_prefix("id="))
-        .filter_map(|id| id.parse::<i64>().ok())
-        .collect()
-}
-
-/// Kills each id on the node that holds it.
-///
-/// `CLIENT KILL ID` because Dragonfly implements no narrower selector; see the
-/// module header. A zero reply is not an error -- the connection may already
-/// have gone -- so the assertion that matters is the recovery below, not this.
-async fn kill_each(nodes: &BTreeSet<Node>, victims: &BTreeSet<(Node, i64)>) {
-    for (node, id) in victims {
-        debug_assert!(nodes.contains(node));
-        let mut connection = node_connection(node).await;
-        let _killed: i64 = redis::cmd("CLIENT")
-            .arg("KILL")
-            .arg("ID")
-            .arg(*id)
-            .query_async(&mut connection)
-            .await
-            .expect("CLIENT KILL ID answers");
-    }
-}
-
-/// A plain connection to one node, authenticated the way the lane's seed is.
-async fn node_connection(node: &Node) -> redis::aio::MultiplexedConnection {
-    let config = DragonflyHarness::config();
-    let seed = config.url();
-    let credentials = seed
-        .split_once("//")
-        .and_then(|(_scheme, rest)| rest.split_once('@'))
-        .map_or(String::new(), |(auth, _host)| format!("{auth}@"));
-    let url = format!("redis://{credentials}{node}");
-    redis::Client::open(url.as_str())
-        .expect("the node url is well formed")
-        .get_multiplexed_async_connection()
-        .await
-        .expect("the node answers a direct connection")
-}
-
-/// What the members of `now` are that `before` did not hold.
-fn difference(
-    now: &BTreeSet<(Node, i64)>,
-    before: &BTreeSet<(Node, i64)>,
-) -> BTreeSet<(Node, i64)> {
-    now.difference(before).cloned().collect()
-}
-
-/// Publishes `payload` until the reader sees it, and asserts it arrives once.
-async fn deliver(
-    publisher: &FleetStreams,
-    channel: &str,
-    payload: &str,
-    reader: &mut afd_dragonfly::Subscription,
-) {
-    let deadline = tokio::time::Instant::now() + RECOVERY_BUDGET;
-    loop {
+/// Publishes once to each of `channels`, so the publisher has dialled every
+/// node it will use before the client snapshot. Otherwise its own socket to
+/// the lost node is in the difference, killed with the hub's, and its stalled
+/// recovery reads as frames the hub failed to deliver.
+async fn warm<const N: usize>(publisher: &FleetStreams, channels: [&String; N]) {
+    for channel in channels {
         publisher
-            .publish(channel, payload)
+            .publish(channel, "warm")
             .await
-            .expect("the publish reaches the datastore");
-        match tokio::time::timeout(POLL_INTERVAL, reader.recv()).await {
-            Ok(Ok(Received::Message(message))) => {
-                assert_eq!(message.payload, payload, "the reader saw a stale frame");
-                return;
-            }
-            // A lag notice or an empty poll: publish again and keep waiting.
-            Ok(Ok(Received::Lagged(..))) | Err(..) => {}
-            Ok(Err(closed)) => panic!("the reader's channel closed: {closed}"),
+            .expect("the publisher reaches every primary");
+    }
+}
+
+/// One activity channel served by each canonical primary, lost first.
+async fn channel_per_primary(
+    harness: &DragonflyHarness,
+    raw: &mut redis::cluster_async::ClusterConnection,
+) -> (String, String) {
+    let mut on_a = None;
+    let mut on_b = None;
+    for candidate in 0..CANDIDATES {
+        let channel = fleet_activity_channel(&harness.name(&format!("node-{candidate}")));
+        let slot = ClusterHarness::keyslot(raw, &channel).await;
+        let side = if ClusterHarness::canonical_primary(slot) == PRIMARY_A {
+            &mut on_a
+        } else {
+            &mut on_b
+        };
+        side.get_or_insert(channel);
+        if let (Some(a), Some(b)) = (&on_a, &on_b) {
+            return (a.clone(), b.clone());
         }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "{payload} never reached the reader within {RECOVERY_BUDGET:?}"
-        );
     }
-}
-
-/// How many subscribers the server counts on `channel`.
-async fn subscribers_on(harness: &DragonflyHarness, channel: &str) -> i64 {
-    let mut cmd = redis::cmd("PUBSUB");
-    cmd.arg("NUMSUB").arg(channel);
-    let reply: Vec<redis::Value> = harness
-        .redis
-        .command("PUBSUB", channel, &cmd)
-        .await
-        .expect("PUBSUB NUMSUB");
-    // RESP3 answers a MAP of channel -> count; the flat RESP2 pair this would
-    // otherwise index at 1 renders identically under `redis-cli`.
-    match reply.as_slice() {
-        [redis::Value::Map(entries)] => match entries.as_slice() {
-            [(_, redis::Value::Int(count))] => *count,
-            other => panic!("NUMSUB names one channel, got: {other:?}"),
-        },
-        other => panic!("unexpected NUMSUB reply: {other:?}"),
-    }
-}
-
-/// Waits for `condition`, naming it if the budget runs out.
-async fn wait_for<F, Fut>(what: &str, mut condition: F)
-where
-    F: FnMut() -> Fut,
-    Fut: Future<Output = bool>,
-{
-    let deadline = tokio::time::Instant::now() + RECOVERY_BUDGET;
-    while !condition().await {
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "{what} did not happen within {RECOVERY_BUDGET:?}"
-        );
-        tokio::time::sleep(POLL_INTERVAL).await;
-    }
+    panic!("{CANDIDATES} names never reached both primaries {PRIMARY_A} and {PRIMARY_B}");
 }

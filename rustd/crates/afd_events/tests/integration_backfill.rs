@@ -231,7 +231,7 @@ async fn deliver_live(lane: &EventsLane, ids: &[&str]) -> Vec<String> {
             .await
             .expect("a frame must arrive inside the delivery budget")
             .expect("the tail must not end while a frame is owed");
-        received.push(event_id_of(&frame.data));
+        received.push(event_id_of(&frame.data.text()));
     }
     received
 }

@@ -36,7 +36,8 @@ Every row is extracted from the sections below; the owner column names the secti
 Each trap is enforced in its owner section; this list is the index.
 
 - Never `tokio::spawn` outside the supervisor or the accept loop's per-connection arm — a detached task outlives the pools it reads through (§Thread map).
-- Never issue a `SUBSCRIBE`/`UNSUBSCRIBE` from anywhere but the pump task; a subscriber enqueues a command instead, and the enqueue is what may happen under the channel map's lock because it cannot block (§Lock-invariant registry).
+- Never issue an `SSUBSCRIBE`/`SUNSUBSCRIBE` from anywhere but the hub's control task; a subscriber enqueues a command and the dispatch task sends a signal instead, and the enqueue is what may happen under the channel map's lock because it cannot block (§Lock-invariant registry).
+- Never await a round trip on the hub's dispatch task; a subscribe that waits there holds every frame behind it (§Thread map).
 - Never do a blocking wire send while holding the map lock — the C3 fix that ended the hub hazard (§Lock-invariant registry).
 - A scheduler callback is a bounded, non-reentrant leaf — it must never call back into scheduler barriers (§Lock-invariant registry).
 - Never free shared state before its tasks and threads have joined; a timed-out drain never proceeds to free (§Shutdown choreography).
@@ -104,7 +105,8 @@ a name — or a sweeper that quietly went back to a bare spawn — is a failing 
 | connection (one per socket) | the accept loop | one connection's request stream | none shared mutable; the router is cloned per connection | the same token: `select!` over `cancelled()` and the served connection |
 | SSE response body | HTTP handler | stream permit and hub subscription receivers | owned by the body; no dedicated operating-system thread | dropping the body releases its permit and receivers; hub closure ends a fleet tail |
 | outbound answer worker (`connector:outbound`) | `agentsfleetd::outbound::spawn` when its dedicated Dragonfly connection opens | blocking stream reader and shared writers | one reader owns its socket; it cannot block the shared command connection | cancellation races the read; supervisor joins the worker |
-| SSE hub pump (`hub_pump`) | `afd_dragonfly`'s `SubscriptionHub::start`; stopped by the supervised task `serve::spawn_background` registers | the one shared pub/sub connection + the `channels` map | it owns the socket outright — no lock; the map under its own mutex | the supervised task observes cancellation and calls `hub.shutdown()`, which clears the map so every reader is told; the pump returns when the last command sender drops |
+| SSE hub control task (`hub/pump.rs`) | `afd_dragonfly`'s `SubscriptionHub::start`; stopped by the supervised task `serve::spawn_background` registers | the one shared pub/sub connection's commands, its redial, and a node repair's re-subscribes | it owns the connection outright — no lock; the map under its own sharded lock | the supervised task observes cancellation and calls `hub.shutdown()`, which clears the map so every reader is told; the task returns when the last command sender drops, aborting the dispatch task on its way out |
+| SSE hub dispatch task (`hub/dispatch.rs`) | the control task, once per connection | the connection's pushes: frames out to readers, confirmations into gaps, a lost node's attribution | reads the `channels` map; never touches the connection, so no round trip can hold a frame | aborted by the control task when its connection is redialled or the hub drops |
 | liveness sweeper (`sweeper:liveness`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
 | reclaim sweeper (`sweeper:reclaim`) | `sweepers::spawn` | Postgres + Dragonfly, and the sweep's own keyset cursor | `Mutex<Cursor>` (leaf) | as above |
 | retention sweeper (`sweeper:retention`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | as above |
@@ -144,16 +146,17 @@ below are the concurrency view.
 
 | Channel | Kind | Producer → Consumer | Payload ownership |
 |---|---|---|---|
-| hub commands | unbounded `mpsc` | any subscriber or dropped `Subscription` → the one pump task | `Subscribe`/`Unsubscribe` moves to the pump; unbounded so the enqueue can happen under the channel map's lock without blocking |
-| channel fan-out | `broadcast`, 256 messages per channel | the pump (producer) → every reader subscribed to that channel | each reader receives its own clone; a reader that falls 256 behind is told the count it missed rather than losing them silently (C1) |
+| hub commands | unbounded `mpsc` | any subscriber or dropped `Subscription` → the hub's control task | `Subscribe`/`Unsubscribe` moves to the control task; unbounded so the enqueue can happen under the channel map's lock without blocking |
+| hub signals | unbounded `mpsc` | the hub's dispatch task → its control task | `Resubscribe` (a slot moved), `Repair` (a node's socket was lost: every live channel), `Redial` (a loss the window did not explain); unbounded so a push is never held behind the control task's round trips |
+| channel fan-out | `broadcast`, 256 messages per channel | the dispatch task (producer) → every reader subscribed to that channel | every reader receives the same `Arc<Message>`, so a frame is one allocation however many watch it; a lost subscription is a `Gap` item once it is back; a reader that falls 256 behind is told the count it missed rather than losing them silently (C1) |
 | cancellation | `CancellationToken` | the supervisor → every supervised task and every live connection | edge-triggered; a task selects it against its own I/O, so it is interrupted mid-read |
 | `fleet:{id}:events` | Dragonfly stream + consumer group `fleet_lease` | steer/webhook/cron/continuation `XADD` → `agentsfleetd` non-blocking `XREADGROUP` per lease | durable; `XACK`ed at report, idempotent on replay |
 | `connector:outbound` | Dragonfly stream + consumer group | report producer → dedicated blocking outbound reader | durable queue; worker acknowledges delivered jobs |
-| `fleet:{id}:activity` | Dragonfly pub/sub (ephemeral) | `agentsfleetd` `PUBLISH` (+ runner-forwarded frames) → the hub's one shared `SUBSCRIBE` connection, fanned out by copy | ephemeral; each SSE stream owns its copied frame |
+| `fleet:{id}:activity` | Dragonfly sharded pub/sub (ephemeral) | `agentsfleetd` `SPUBLISH` (+ runner-forwarded frames) → the hub's one shared connection, one `SSUBSCRIBE` per channel, fanned out by reference | ephemeral; every SSE stream shares the published frame, and the response body writes its payload from that one allocation |
 | `fleet:control` | **removed at the M80 cutover** | — | — |
 
 The hub holds exactly **one** pub/sub connection for all viewers, refcounting
-`SUBSCRIBE` per channel-with-viewers — the per-stream connections are gone
+`SSUBSCRIBE` per channel-with-viewers — the per-stream connections are gone
 (`data_flow.md`), and `test_hub_refcount_single_connection` is what holds it. New
 cross-boundary channels declare one producer and one consumer and say who owns
 the payload (C1); reshaping the existing ones is a separate judgment with this
@@ -174,7 +177,7 @@ the count of invariant comments.
 
 | Lock | Declared at | Protects | Ordering |
 |---|---|---|---|
-| hub channel map | `afd_dragonfly`'s `HubInner` | the `channel → (broadcast sender, reader count)` map and **nothing else** | leaf, and never held across an await — the only thing done under it is the command enqueue, which cannot block |
+| hub channel map | `afd_dragonfly`'s `HubInner` | the `channel → (broadcast sender, reader count, confirmed once)` map and **nothing else** | leaf, sharded per key, and never held across an await — the only things done under it are the command enqueue and a broadcast send (a frame, or a gap on a repeated confirmation), neither of which can block |
 | runner series table | `afd_observability`'s `RunnerMetrics` | the `runner_id → counters` map, up to 4096 series | read lock for LOOKUP only; the counters are atomics incremented after the guard is released, so a slow recorder never blocks a fast one |
 | reclaim cursor | `afd_runner`'s reclaim sweeper | the keyset cursor one pass resumes from | leaf — held alone, and only by the single sweeper task |
 | repair pacing | `afd_runner`'s repair-verification dispatcher | the interval the dispatcher shortens while a backlog drains | leaf — held alone |
@@ -186,8 +189,8 @@ the count of invariant comments.
 
 The load-bearing ordering rule (the C3 fix that ended the hub's
 blocking-write-under-the-map-mutex hazard): the pub/sub socket is behind no lock
-at all. One task owns it, and a subscriber that wants a `SUBSCRIBE` or an
-`UNSUBSCRIBE` enqueues a command. The enqueue happens while the channel map is
+at all. The control task owns it, and a subscriber that wants an `SSUBSCRIBE`
+or an `SUNSUBSCRIBE` enqueues a command. The enqueue happens while the channel map is
 still locked, deliberately — that ordering is what stops an `Unsubscribe`
 overtaking the `Subscribe` of a reader arriving on the same channel — and it is
 safe only because the queue is unbounded and the send therefore cannot block.

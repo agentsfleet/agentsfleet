@@ -213,6 +213,7 @@ dependencies = [
  "afd_credential",
  "afd_cron",
  "afd_crypto",
+ "afd_dragonfly",
  "afd_events",
  "afd_fleet",
  "afd_fleet_lifecycle",

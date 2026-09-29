@@ -7,12 +7,15 @@
 //! list would skip a primary that now owns keys.
 
 use redis::Value;
+use redis::cluster_async::ClusterConnection;
+use redis::cluster_routing::{RoutingInfo, SingleNodeRoutingInfo};
 
 use crate::client::Dragonfly;
 use crate::error::{self, Result};
 
 const CMD_CLUSTER: &str = "CLUSTER";
 const ARG_SHARDS: &str = "SHARDS";
+const ARG_SLOTS: &str = "SLOTS";
 const FIELD_NODES: &str = "nodes";
 const FIELD_IP: &str = "ip";
 const FIELD_ENDPOINT: &str = "endpoint";
@@ -74,6 +77,65 @@ pub(crate) async fn primaries(redis: &Dragonfly) -> Result<Vec<NodeAddress>> {
         .filter(|node| node.role == Role::Primary)
         .map(|node| node.address)
         .collect())
+}
+
+/// One contiguous run of slots and the primary serving it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SlotRange {
+    pub(crate) first: u16,
+    pub(crate) last: u16,
+    /// The primary's node id, the answer it gives to `CLUSTER MYID`; `None`
+    /// when the reply leaves it out.
+    pub(crate) id: Option<String>,
+}
+
+/// The slot map as `CLUSTER SLOTS` states it, asked on `connection`.
+///
+/// `SLOTS` rather than `SHARDS` because it is the reply the driver builds its
+/// own routing from: a range here is the range the driver routes by.
+///
+/// # Errors
+/// The driver's error when no node answers.
+pub(crate) async fn slot_ranges(
+    connection: &mut ClusterConnection,
+) -> redis::RedisResult<Vec<SlotRange>> {
+    let mut cmd = redis::cmd(CMD_CLUSTER);
+    cmd.arg(ARG_SLOTS);
+    let routing = RoutingInfo::SingleNode(SingleNodeRoutingInfo::Random);
+    let reply = connection.route_command(cmd, routing).await?;
+    let Value::Array(ranges) = reply else {
+        return Ok(Vec::new());
+    };
+    Ok(ranges.iter().filter_map(range_of).collect())
+}
+
+/// `[first, last, [host, port, id, …], replicas…]`, or `None` for another
+/// shape.
+fn range_of(range: &Value) -> Option<SlotRange> {
+    let Value::Array(fields) = range else {
+        return None;
+    };
+    let mut fields = fields.iter();
+    let first = small(fields.next()?)?;
+    let last = small(fields.next()?)?;
+    let Value::Array(primary) = fields.next()? else {
+        return None;
+    };
+    // `[host, port, id, …]`: the address is read only to reject a shape
+    // that is not a node, because nothing here routes by it.
+    let mut primary = primary.iter();
+    text(primary.next()?)?;
+    small(primary.next()?)?;
+    let id = primary.next().and_then(text);
+    Some(SlotRange { first, last, id })
+}
+
+/// An integer reply that fits a slot number or a port.
+fn small(value: &Value) -> Option<u16> {
+    match value {
+        Value::Int(number) => u16::try_from(*number).ok(),
+        _other => None,
+    }
 }
 
 fn nodes_of(shard: Value) -> Result<Vec<Value>> {

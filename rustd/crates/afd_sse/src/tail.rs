@@ -23,7 +23,9 @@ use crate::frame::Frame;
 ///
 /// A reader that falls behind is told so IN BAND — the dropped count arrives as
 /// a `catching_up` frame rather than as silence, because a gap a client cannot
-/// see is a gap it will not backfill.
+/// see is a gap it will not backfill. A subscription the hub lost and restored
+/// is the same news with no count, because no process saw what it missed:
+/// `catching_up` with `dropped: 0`.
 pub fn tail(subscription: Subscription) -> impl Stream<Item = Frame> + Send {
     stream::unfold(
         (subscription, 0_u64),
@@ -31,13 +33,14 @@ pub fn tail(subscription: Subscription) -> impl Stream<Item = Frame> + Send {
             match subscription.recv().await {
                 Ok(Received::Message(message)) => {
                     let next = seq.wrapping_add(1);
-                    Some((Frame::activity(seq, message.payload), (subscription, next)))
+                    Some((Frame::activity(seq, message), (subscription, next)))
                 }
                 // A control frame, so it does not spend a sequence number: the ids
                 // stay gapless over the frames the client actually received.
                 Ok(Received::Lagged(missed)) => {
                     Some((Frame::catching_up(missed), (subscription, seq)))
                 }
+                Ok(Received::Gap) => Some((Frame::catching_up(0), (subscription, seq))),
                 Err(closed) => {
                     let channel = subscription.channel();
                     let reason = closed.to_string();
