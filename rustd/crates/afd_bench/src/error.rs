@@ -332,6 +332,13 @@ pub enum Error {
         /// The value that selects the local rig.
         rig: &'static str,
     },
+
+    /// A lane's own machinery refused; see [`LaneFault`].
+    #[error(transparent)]
+    Lane(#[from] LaneFault),
 }
 
+mod lane;
 mod pre_flight;
+
+pub use lane::LaneFault;

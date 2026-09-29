@@ -19,6 +19,21 @@ use afd_bench::profile::Profile;
 
 use self::support::{LANE, datastores, measurement, series, swept};
 
+/// Postgres transactions one fresh steer commits: the admission insert, then
+/// the receipt write once the entry is on the stream.
+///
+/// Per-steer transactions come in whole numbers, so the lane's ratio sits in
+/// `[2, 3)`: at two for these writes, and above only by costs that are not
+/// per steer — one prepare per statement per pooled connection, one backlog
+/// sample per thousand admissions. Reaching three would mean ingress gained a
+/// write.
+const TRANSACTIONS_PER_FRESH_STEER: f64 = 2.0;
+
+/// Dragonfly commands one fresh steer issues at the least: the append onto
+/// the fleet's stream and the readiness mark. The backlog check before them,
+/// and the lane's own `INFO` and depth samples, only add to it.
+const STREAM_COMMANDS_PER_FRESH_STEER: f64 = 2.0;
+
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_steer_bench_reports_a_rate_and_a_p95() {
@@ -75,13 +90,22 @@ async fn test_steer_bench_attributes_cost_between_datastores() {
     )
     .await;
 
+    let transactions = measurement(&report, "postgres_transactions_per_steer");
     assert!(
-        report.datastores.dragonfly.operations > 0,
-        "a steer is Dragonfly commands"
+        transactions >= TRANSACTIONS_PER_FRESH_STEER,
+        "every accepted steer committed its admission insert and its receipt \
+         write: {transactions} transactions per steer"
     );
     assert!(
-        measurement(&report, "postgres_transactions_per_steer") < 0.01,
-        "ingress never reaches Postgres; the residue is pool keepalive"
+        transactions < TRANSACTIONS_PER_FRESH_STEER + 1.0,
+        "no third transaction per steer — what sits above two is fixed cost \
+         spread over the window: {transactions} transactions per steer"
+    );
+    let commands = measurement(&report, "dragonfly_calls_per_steer");
+    assert!(
+        commands >= STREAM_COMMANDS_PER_FRESH_STEER,
+        "Dragonfly still carries the stream append and the readiness mark: \
+         {commands} commands per steer"
     );
 }
 

@@ -85,7 +85,7 @@ fn filled_report() -> Report {
 fn test_each_lane_writes_a_parseable_result() {
     let scratch = Scratch::new("parseable");
 
-    for lane in [Lane::Steer, Lane::Lease, Lane::Outbound, Lane::Cardinality] {
+    for lane in Lane::ALL {
         let mut report = Report::new(lane, Profile::Rig, Provenance::for_test());
         report.measurement(RATE_PER_SECOND, 1.0);
         let path = scratch.join(&format!("{}.json", lane.name()));
