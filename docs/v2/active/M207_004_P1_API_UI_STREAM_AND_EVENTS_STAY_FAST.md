@@ -16,15 +16,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M207
 **Workstream:** 004
 **Date:** Sep 28, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — an idle deployment spends Postgres writes on fleets that drained long ago, a refused or waiting event holds its fleet, a node blip freezes the live tail silently, and a long reply re-parses its whole answer on every flush
 **Categories:** API, UI
 **Batch:** B1 — folded into M207_003's branch and Pull Request by Indy's decision; split into its own file only for the spec line cap
-**Branch:** pending — set at CHORE(open)
+**Branch:** feat/m207-003-every-send-settles
 **Folded-into:** `M207_003`
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Baseline revision:** a9424e37029c5557db9471a9356e1d0888122c12 — M207_003's Fix-First tip, the review boundary
+**Test Baseline:** unit `make test-unit-all` exit 0 — Rust 2,760 passed / 0 failed / 666 ignored (156 binaries), app 3,216 (347 files, 100% coverage), website 142, cli 1,777 passed / 16 skipped, design-system 640; integration `make test-integration-rustd` exit 0 — 646 passed / 0 failed over 136 binaries
+**Baseline evidence:** local runs of the tree committed as `a9424e370`, macOS, compose Postgres + four-process Dragonfly, Sep 29, 2026; counts summed from each lane's summary lines. A first unit run failed `afd_outbound --test lanes` under load from the concurrent integration lane; it passed 5/5 alone and the full rerun above is green
 **Depends on:** M207_003 — shares its branch; its Fix-First tip is this workstream's review boundary
 **Provenance:** LLM-drafted (Claude Opus 5.5, Sep 28, 2026) from four read-only performance audits and an adversarial Chief Technology Officer (CTO) review; the load-bearing findings were re-read by the author at the lines cited
 **Canonical architecture:** `docs/architecture/scaling.md` §Where the next ceiling actually lives, §Measured ceilings; `docs/architecture/runner_fleet.md` §Readiness index; `docs/architecture/data_flow.md` §D. WATCH
