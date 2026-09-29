@@ -263,6 +263,45 @@ mod tests {
         assert_eq!(format!("{fan_in:?}"), "FanIn { attached: 0, seq: 0, .. }");
     }
 
+    /// A fleet whose subscription was lost and restored is announced as
+    /// `catching_up` with nothing counted, like the per-fleet tail.
+    #[tokio::test]
+    async fn a_gap_on_one_fleet_is_catching_up_with_nothing_counted() {
+        let (hub, server) = afd_dragonfly::SubscriptionHub::detached();
+        let mut fan_in = FanIn::new(Some(hub));
+        assert_eq!(
+            fan_in.sync_to(&BTreeSet::from(["a".to_owned()])).attached,
+            1
+        );
+        let channel = crate::channel::activity("a");
+        server.confirm(&channel);
+        server.confirm(&channel);
+
+        let frame = fan_in.next_frame().await;
+        assert_eq!(frame.kind, crate::frame::KIND_CATCHING_UP);
+        assert_eq!(frame.data, r#"{"kind":"catching_up","dropped":0}"#);
+    }
+
+    /// A hub that closes ends each channel's stream but not the connection:
+    /// the fan-in parks, as it does with nothing attached, rather than
+    /// ending a tab's stream or spinning on channels that will say nothing.
+    #[tokio::test]
+    async fn a_closed_hub_parks_the_fan_in_instead_of_ending_it() {
+        let (hub, server) = afd_dragonfly::SubscriptionHub::detached();
+        let mut fan_in = FanIn::new(Some(hub.clone()));
+        fan_in.sync_to(&BTreeSet::from(["a".to_owned()]));
+        hub.shutdown();
+        server.publish(&crate::channel::activity("a"), r#"{"kind":"chunk"}"#);
+        tokio::time::timeout(std::time::Duration::from_millis(20), fan_in.next_frame())
+            .await
+            .expect_err("a closed hub leaves nothing to send and nothing to end");
+        assert_eq!(
+            fan_in.fleets(),
+            ["a"],
+            "the set stays what the caller attached"
+        );
+    }
+
     #[tokio::test]
     async fn an_empty_fan_in_parks_instead_of_spinning_or_ending() {
         let mut fan_in = FanIn::new(None);

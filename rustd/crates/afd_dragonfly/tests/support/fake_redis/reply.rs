@@ -5,6 +5,8 @@
 //! each fit the file cap; the vocabulary is what a test names, the loop is
 //! what serves it.
 
+use std::fmt::Write as _;
+
 use super::resp::Request;
 
 /// The topology question every cluster client asks first.
@@ -80,12 +82,16 @@ pub(super) fn confirmation(kind: &str, channel: &[u8]) -> Vec<u8> {
 
 /// The `smessage` push a sharded subscriber receives for one publish.
 pub(super) fn smessage(channel: &str, payload: &str) -> Vec<u8> {
-    format!(
-        ">3\r\n$8\r\nsmessage\r\n${}\r\n{channel}\r\n${}\r\n{payload}\r\n",
-        channel.len(),
-        payload.len()
-    )
-    .into_bytes()
+    push_frame(&["smessage", channel, payload])
+}
+
+/// A RESP3 push of bulk strings: its kind, then its fields.
+pub(crate) fn push_frame(parts: &[&str]) -> Vec<u8> {
+    let mut out = format!(">{}\r\n", parts.len());
+    for part in parts {
+        let _infallible = write!(out, "${}\r\n{part}\r\n", part.len());
+    }
+    out.into_bytes()
 }
 
 /// The subcommand of `CLUSTER` that asks for the shard map.
@@ -120,6 +126,10 @@ pub(super) fn rule_key(request: &Request) -> String {
             .eq_ignore_ascii_case(SECTION_CLUSTER)
     {
         return RULE_INFO_CLUSTER.to_owned();
+    }
+    if request.name == CMD_CLUSTER {
+        let subcommand = String::from_utf8_lossy(request.first_argument()).to_uppercase();
+        return format!("{CMD_CLUSTER} {subcommand}");
     }
     request.name.clone()
 }

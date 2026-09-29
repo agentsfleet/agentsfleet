@@ -172,3 +172,35 @@ async fn test_trim_reads_only_the_floor() {
     the_window_is_read_and_nothing_more(&harness).await;
     the_read_stops_at_an_owed_entry(&harness).await;
 }
+
+/// A group that has been handed nothing owes the whole stream: its last
+/// delivered id is `0-0`, so the read up to it finds no entry below the floor,
+/// and the trim stops there — nothing read, nothing cut, however far past the
+/// bound the stream is.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_group_handed_nothing_reads_and_cuts_nothing() {
+    let harness = DragonflyHarness::connect().await;
+    let streams = FleetStreams::new(harness.redis.clone());
+    let fleet = harness.name("untaken");
+    streams.ensure_group(&fleet).await.expect("group create");
+    let appended = ACKNOWLEDGED_HISTORY + TRIM_SLACK + 1;
+    let receipts = append_many(&streams, &fleet, appended).await;
+
+    let trimmed = streams.trim(&fleet).await.expect("trim");
+    assert_eq!(
+        (trimmed.removed, trimmed.read),
+        (0, 0),
+        "nothing lies below a floor at 0-0: {trimmed:?}"
+    );
+    assert_eq!(trimmed.retained, wide(appended));
+    let oldest = receipts.first().expect("the first receipt");
+    assert!(
+        streams
+            .holds_entry(&fleet, oldest)
+            .await
+            .expect("range read")
+    );
+    assert_owes(&streams, &fleet, 0, appended).await;
+    streams.forget(&fleet).await.expect("cleanup");
+}

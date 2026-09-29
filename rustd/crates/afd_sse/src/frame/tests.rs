@@ -283,3 +283,25 @@ fn a_shared_line_reads_as_its_text() {
         Cow::Borrowed(_)
     ));
 }
+
+/// Two frames are equal when a client reads the same text from them, however
+/// each holds it: separately published copies of one payload are equal, and a
+/// different payload is not.
+#[test]
+fn frames_are_equal_when_a_client_reads_the_same_text() {
+    let one = Frame::activity(0, published(CHUNK));
+    let copy = Frame::activity(0, published(CHUNK));
+    assert_eq!(one, copy);
+    assert_ne!(
+        one,
+        Frame::activity(0, published(r#"{"kind":"chunk","text":"no"}"#))
+    );
+    assert_eq!(
+        Frame::tagged(0, FLEET, published("{}"))
+            .expect("an object takes a tag")
+            .data,
+        Frame::tagged(0, FLEET, published("{}"))
+            .expect("an object takes a tag")
+            .data,
+    );
+}

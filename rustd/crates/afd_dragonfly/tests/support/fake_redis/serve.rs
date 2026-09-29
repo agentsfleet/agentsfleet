@@ -5,6 +5,10 @@
 //! loop each fit the length caps. The write half is shared, because two
 //! things write besides the reply loop: a held acknowledgement that lands
 //! later, and a published frame that lands whenever the test says.
+//!
+//! A published frame reaches only a connection that has subscribed its
+//! channel, as on a real server: a fake that delivered it anywhere let a test
+//! see a frame arrive before its subscription existed.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -14,12 +18,14 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::TcpStream;
 use tokio::net::tcp::OwnedWriteHalf;
 
-use super::Control;
+use std::collections::HashSet;
+
 use super::reply::{
     INFO_CLUSTER_DISABLED, INFO_CLUSTER_ENABLED, Reply, bulk, cluster_topology, confirmation,
     rule_key,
 };
 use super::resp::{Request, parse_command};
+use super::{Control, Push};
 
 /// The write half every writer on one connection shares.
 type Writer = Arc<tokio::sync::Mutex<OwnedWriteHalf>>;
@@ -46,17 +52,19 @@ pub(super) async fn serve(socket: TcpStream, control: Arc<Control>) {
     let writer: Writer = Arc::new(tokio::sync::Mutex::new(writer));
     let mut buffer = Vec::new();
     let mut scratch = [0_u8; 4096];
+    let mut subscribed = HashSet::new();
 
     loop {
-        if !answer_buffered(&mut buffer, &control, &writer).await {
+        if !answer_buffered(&mut buffer, &control, &writer, &mut subscribed).await {
             return;
         }
         let read = tokio::select! {
             result = socket.read(&mut scratch) => result,
             _cut = cut.recv() => return,
             published = pushes.recv() => {
-                if let Ok(bytes) = published
-                    && writer.lock().await.write_all(&bytes).await.is_err()
+                if let Ok(Push { channel, frame }) = published
+                    && channel.is_none_or(|channel| subscribed.contains(&channel))
+                    && writer.lock().await.write_all(&frame).await.is_err()
                 {
                     return;
                 }
@@ -75,9 +83,15 @@ pub(super) async fn serve(socket: TcpStream, control: Arc<Control>) {
 /// Everything buffered is parsed before asking for more: one read can carry
 /// several pipelined commands, and a server that answered only the first
 /// would hang the client waiting for the rest.
-async fn answer_buffered(buffer: &mut Vec<u8>, control: &Control, writer: &Writer) -> bool {
+async fn answer_buffered(
+    buffer: &mut Vec<u8>,
+    control: &Control,
+    writer: &Writer,
+    subscribed: &mut HashSet<Vec<u8>>,
+) -> bool {
     while let Some(request) = parse_command(buffer) {
         buffer.drain(..request.consumed);
+        track(&request, subscribed);
         control
             .seen
             .lock()
@@ -95,15 +109,34 @@ async fn answer_buffered(buffer: &mut Vec<u8>, control: &Control, writer: &Write
     true
 }
 
+/// Keeps the connection's subscribed channels as its requests change them.
+fn track(request: &Request, subscribed: &mut HashSet<Vec<u8>>) {
+    let channel = request.first_argument().to_vec();
+    match request.name.as_str() {
+        "SSUBSCRIBE" => {
+            subscribed.insert(channel);
+        }
+        "SUNSUBSCRIBE" => {
+            subscribed.remove(&channel);
+        }
+        _other => {}
+    }
+}
+
 /// What the rule table says to answer `request` with.
 fn answer(request: &Request, control: &Control, writer: &Writer) -> Answer {
-    let reply = control
+    // The narrowest rule wins: `CLUSTER SLOTS` before `CLUSTER`, so a test can
+    // break one subcommand and leave the handshake the others serve alone.
+    let rules = control
         .rules
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let reply = rules
         .get(rule_key(request).as_str())
+        .or_else(|| rules.get(request.name.as_str()))
         .cloned()
         .unwrap_or(Reply::Raw("+OK\r\n"));
+    drop(rules);
     let argument = request.first_argument();
     Answer::Write(match reply {
         Reply::Raw(raw) => raw.as_bytes().to_vec(),

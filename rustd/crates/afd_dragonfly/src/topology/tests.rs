@@ -160,3 +160,86 @@ fn a_non_string_field_is_shown_rather_than_dropped() {
     assert_eq!(shown(&bulk("text")), "text");
     assert_eq!(shown(&Value::Int(6379)), format!("{:?}", Value::Int(6379)));
 }
+
+/// A `CLUSTER SHARDS` answer that is not a list of shards is a refusal, not
+/// an empty cluster: a scan that read it as "no primaries" would report every
+/// key missing.
+#[test]
+fn a_shards_reply_that_is_not_a_list_is_an_unexpected_reply() {
+    for reply in [Value::Okay, Value::Nil, bulk("shards"), Value::Int(4)] {
+        let refused = nodes_in(reply.clone()).expect_err("not a list of shards");
+        assert!(
+            refused.to_string().contains(CMD_CLUSTER),
+            "{reply:?} is refused naming the command: {refused}"
+        );
+    }
+    assert_eq!(nodes_in(Value::Array(Vec::new())).ok(), Some(Vec::new()));
+}
+
+fn node_triple(host: &str, port: i64, id: &str) -> Value {
+    Value::Array(vec![bulk(host), Value::Int(port), bulk(id)])
+}
+
+fn range(first: Value, last: Value, primary: Value) -> Value {
+    Value::Array(vec![first, last, primary])
+}
+
+/// A `CLUSTER SLOTS` reply with malformed ranges keeps its well-formed ones
+/// and drops each malformed one whole — never a range with a guessed bound or
+/// a primary missing its address.
+#[test]
+fn a_slots_reply_keeps_its_well_formed_ranges_and_drops_the_rest() {
+    let reply = Value::Array(vec![
+        range(
+            Value::Int(0),
+            Value::Int(8_191),
+            node_triple("10.0.0.1", 6379, "dfly-a"),
+        ),
+        Value::Int(7),
+        range(Value::Int(8_192), Value::Int(16_383), Value::Int(6379)),
+        range(
+            bulk("zero"),
+            Value::Int(9),
+            node_triple("10.0.0.2", 6379, "dfly-b"),
+        ),
+        range(
+            Value::Int(0),
+            Value::Int(9),
+            Value::Array(vec![bulk("10.0.0.3")]),
+        ),
+        range(
+            Value::Int(0),
+            Value::Int(70_000),
+            node_triple("10.0.0.4", 6379, "dfly-c"),
+        ),
+        range(
+            Value::Int(9),
+            Value::Int(9),
+            Value::Array(vec![bulk("10.0.0.5"), Value::Int(6379)]),
+        ),
+    ]);
+    assert_eq!(
+        ranges_in(&reply),
+        vec![
+            SlotRange {
+                first: 0,
+                last: 8_191,
+                id: Some("dfly-a".to_owned()),
+            },
+            SlotRange {
+                first: 9,
+                last: 9,
+                id: None,
+            },
+        ],
+        "only the complete ranges survive; a node with no id is kept without one"
+    );
+}
+
+/// A `CLUSTER SLOTS` answer that is not a list names no range at all.
+#[test]
+fn a_slots_reply_that_is_not_a_list_names_no_range() {
+    for reply in [Value::Okay, Value::Nil, bulk("slots")] {
+        assert!(ranges_in(&reply).is_empty(), "{reply:?}");
+    }
+}

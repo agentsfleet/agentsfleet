@@ -294,7 +294,15 @@ async fn diagnose(
         .build()
         .ok()?;
     let dial = client.get_async_connection_with_config(connection_config(response_timeout, None));
-    match tokio::time::timeout(CONNECT_ATTEMPT_TIMEOUT, dial).await {
+    recovered(tokio::time::timeout(CONNECT_ATTEMPT_TIMEOUT, dial).await)
+}
+
+/// The cause a diagnosis dial produced: its error, or nothing when it
+/// connected or ran out of time.
+fn recovered<C>(
+    outcome: std::result::Result<redis::RedisResult<C>, tokio::time::error::Elapsed>,
+) -> Option<redis::RedisError> {
+    match outcome {
         Ok(Err(source)) => Some(source),
         Ok(Ok(_)) | Err(_) => None,
     }
@@ -310,16 +318,28 @@ async fn dial_failure(
     response_timeout: Duration,
     source: redis::RedisError,
 ) -> Error {
+    let recovered = if config.is_tls() && !names_a_certificate(&source) {
+        diagnose(config, response_timeout).await
+    } else {
+        None
+    };
+    judged(config, source, recovered)
+}
+
+/// Which error a failed dial is reported as: a certificate either dial named
+/// is a rejection, and anything else is the first dial's own failure.
+fn judged(
+    config: &DragonflyConfig,
+    source: redis::RedisError,
+    recovered: Option<redis::RedisError>,
+) -> Error {
     if names_a_certificate(&source) {
         return error::certificate_rejected(config.role().tag(), source);
     }
-    if config.is_tls()
-        && let Some(recovered) = diagnose(config, response_timeout).await
-        && names_a_certificate(&recovered)
-    {
-        return error::certificate_rejected(config.role().tag(), recovered);
+    match recovered.filter(names_a_certificate) {
+        Some(recovered) => error::certificate_rejected(config.role().tag(), recovered),
+        None => error::unreachable(config.role().tag(), source),
     }
-    error::unreachable(config.role().tag(), source)
 }
 
 #[cfg(test)]

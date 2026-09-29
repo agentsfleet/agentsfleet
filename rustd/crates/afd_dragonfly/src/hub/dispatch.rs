@@ -77,10 +77,9 @@ async fn run(mut dispatch: Dispatch, mut pushes: mpsc::UnboundedReceiver<PushInf
     let loss = loop {
         let wake = dispatch.wake();
         let redial = tokio::select! {
-            push = pushes.recv() => match push {
-                Some(push) => dispatch.push(push),
-                None => Some(Loss::Closed),
-            },
+            // Pushes end only with the connection, and the control task aborts
+            // this task before it drops one: an end here is a driver that died.
+            push = pushes.recv() => push.map_or(Some(Loss::Closed), |push| dispatch.push(push)),
             () = sleep_until(wake) => dispatch.deadline(Instant::now()),
         };
         if let Some(loss) = redial {
@@ -105,10 +104,11 @@ impl Dispatch {
     /// The next moment a timer needs this task: a pending loss's window, or
     /// the open gap warning.
     fn wake(&self) -> Option<Instant> {
-        match (self.attribution.deadline(), self.burst.due()) {
-            (Some(repair), Some(burst)) => Some(repair.min(burst)),
-            (repair, burst) => repair.or(burst),
-        }
+        self.attribution
+            .deadline()
+            .into_iter()
+            .chain(self.burst.due())
+            .min()
     }
 
     /// Handles one push. `Some` means the connection needs a redial.
@@ -141,10 +141,9 @@ impl Dispatch {
 
     /// A subscription was confirmed; a repeat is a gap for its readers.
     fn confirmed(&mut self, data: &[Value]) {
-        let Some(channel) = channel_of(data) else {
-            return;
-        };
-        if self.inner.confirm(&channel) == Confirmation::Replay {
+        if let Some(channel) = channel_of(data)
+            && self.inner.confirm(&channel) == Confirmation::Replay
+        {
             let cause = self.attribution.replayed(&channel);
             self.burst.record(cause, Instant::now());
         }
@@ -154,12 +153,9 @@ impl Dispatch {
     /// holding it is re-subscribed, which the new owner needs; a channel
     /// nobody holds is the echo of our own `SUNSUBSCRIBE`.
     fn unsubscribed(&mut self, data: &[Value]) {
-        let Some(channel) = channel_of(data) else {
+        let Some(channel) = channel_of(data).filter(|it| self.inner.holds_channel(it)) else {
             return;
         };
-        if !self.inner.holds_channel(&channel) {
-            return;
-        }
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let channel_name = channel.as_str();
         tracing::info!(channel = channel_name, event = "hub_subscription_moved");

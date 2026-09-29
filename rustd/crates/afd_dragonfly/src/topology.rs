@@ -56,6 +56,12 @@ pub(crate) async fn nodes(redis: &Dragonfly) -> Result<Vec<Node>> {
     let mut cmd = redis::cmd(CMD_CLUSTER);
     cmd.arg(ARG_SHARDS);
     let shards: Value = redis.command(CMD_CLUSTER, ARG_SHARDS, &cmd).await?;
+    nodes_in(shards)
+}
+
+/// Every node a `CLUSTER SHARDS` reply names. A reply that is not a list of
+/// shards is refused rather than read as an empty cluster.
+fn nodes_in(shards: Value) -> Result<Vec<Node>> {
     let Value::Array(shards) = shards else {
         return Err(error::unexpected_reply(CMD_CLUSTER));
     };
@@ -102,11 +108,18 @@ pub(crate) async fn slot_ranges(
     let mut cmd = redis::cmd(CMD_CLUSTER);
     cmd.arg(ARG_SLOTS);
     let routing = RoutingInfo::SingleNode(SingleNodeRoutingInfo::Random);
-    let reply = connection.route_command(cmd, routing).await?;
+    Ok(ranges_in(&connection.route_command(cmd, routing).await?))
+}
+
+/// Every well-formed range a `CLUSTER SLOTS` reply names. A malformed range
+/// is skipped rather than guessed at: a slot no range claims is a channel the
+/// caller cannot place, which it treats as a loss it redials, never as a
+/// subscription it sends somewhere arbitrary.
+fn ranges_in(reply: &Value) -> Vec<SlotRange> {
     let Value::Array(ranges) = reply else {
-        return Ok(Vec::new());
+        return Vec::new();
     };
-    Ok(ranges.iter().filter_map(range_of).collect())
+    ranges.iter().filter_map(range_of).collect()
 }
 
 /// `[first, last, [host, port, id, …], replicas…]`, or `None` for another
