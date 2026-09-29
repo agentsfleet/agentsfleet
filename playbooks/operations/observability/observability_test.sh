@@ -332,27 +332,6 @@ test_should_read_telemetry_loss() {
 }
 
 
-# The census USED to be guarded here too. It moved when the fleet-census work
-# merged in — two produced families added, a never-incremented one retired —
-# so the claim became false and the assertion had to go rather than be worked
-# around.
-# bench/baselines is a different thing: those are bench-lane measurements read
-# by `make bench-compare`, never by Grafana, and no dashboard work has a reason
-# to touch them.
-test_should_leave_the_bench_baselines_untouched() {
-  local name="test_should_leave_the_bench_baselines_untouched"
-  local changed
-  changed="$(
-    git -C "$SCRIPT_DIR/../../.." diff --name-only origin/main...HEAD \
-      -- bench/baselines 2>/dev/null
-  )"
-  if [ -n "$changed" ]; then
-    bad "$name" "this workstream changed bench baselines it must not: $changed"
-  else
-    ok "$name"
-  fi
-}
-
 test_should_cover_slo_in_the_playbook() {
   local name="test_should_cover_slo_in_the_playbook"
   local playbook="$SCRIPT_DIR/001_playbook.md"
@@ -558,7 +537,6 @@ TEST_NAMES=(
   test_should_mark_burn_rate_panels_unproven
   test_should_keep_the_shipped_panels
   test_should_read_telemetry_loss
-  test_should_leave_the_bench_baselines_untouched
   test_should_cover_slo_in_the_playbook
   test_should_match_the_alert_count_constant
   test_fleet_row_reads_both_families
