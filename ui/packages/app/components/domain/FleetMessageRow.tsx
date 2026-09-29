@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { BracesIcon, CircleXIcon } from "lucide-react";
+import { BracesIcon } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -20,6 +20,8 @@ import {
   formatTimeAbsolute,
   formatTimeRelative,
 } from "@agentsfleet/design-system";
+
+import { FleetFailedOutcome } from "./FleetFailedOutcome";
 
 const ROW_ENTER =
   "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-stream";
@@ -190,29 +192,11 @@ export function FleetActivityRow({
           </div>
           {outcome ? (
             <div className="mt-xs">
-              <p
-                className={cn(
-                  "font-sans",
-                  failed
-                    ? "flex min-h-6 items-start gap-xs text-label font-medium leading-label text-foreground"
-                    : "text-mono leading-mono text-muted-foreground",
-                )}
-              >
-                {failed ? (
-                  <>
-                    <span className="flex size-4 shrink-0 items-center justify-center">
-                      <CircleXIcon
-                        size={12}
-                        className="text-destructive"
-                        aria-hidden="true"
-                      />
-                    </span>
-                    <span>{outcome}</span>
-                  </>
-                ) : (
-                  outcome
-                )}
-              </p>
+              {failed ? (
+                <FleetFailedOutcome className="font-sans">{outcome}</FleetFailedOutcome>
+              ) : (
+                <p className="font-sans text-mono leading-mono text-muted-foreground">{outcome}</p>
+              )}
             </div>
           ) : null}
           {children ? (

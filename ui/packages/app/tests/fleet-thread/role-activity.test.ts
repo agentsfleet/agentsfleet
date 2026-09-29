@@ -139,9 +139,10 @@ describe("FleetThread — role rendering: activity groups and traces", () => {
     ]);
     renderThread();
     expect(screen.queryByText("Details")).toBeNull();
-    const failure = screen.getByText(
-      /This fleet needs instructions before it can respond/,
-    );
+    // The ink sits on the failure line, beside its mark, not on the words' span.
+    const failure = screen
+      .getByText(/This fleet needs instructions before it can respond/)
+      .closest("[data-failed-outcome]") as HTMLElement;
     expect(failure.className).toMatch(/text-label/);
     expect(failure.className).toMatch(/font-medium/);
     expect(failure.className).toMatch(/leading-label/);

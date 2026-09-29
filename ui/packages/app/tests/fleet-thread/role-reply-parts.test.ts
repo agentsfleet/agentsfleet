@@ -21,6 +21,12 @@ function replyRow(): HTMLElement {
   return row;
 }
 
+// The destructive icon beside a failed reply's own words.
+function failureMark(words: string): SVGElement | null {
+  const line = within(replyRow()).getByText(words).closest("[data-failed-outcome]");
+  return line?.querySelector("svg.text-destructive") ?? null;
+}
+
 function messageRoot(of: HTMLElement): HTMLElement {
   const root = of.closest<HTMLElement>('[data-testid="fleet-message"]');
   if (root === null) throw new Error("row outside a message root");
@@ -82,11 +88,14 @@ describe("FleetThread — reply parts", () => {
     const view = renderThread();
     expect(within(replyRow()).getByText(OUTCOME.COMPLETED)).toBeTruthy();
     expect(replyRow().getAttribute("data-failed")).toBeNull();
+    expect(replyRow().querySelector("[data-failed-outcome]")).toBeNull();
 
     mockStream([ev({ role: "user", actor: "operator", text: "Anything?", status: "fleet_error", outcome: OUTCOME.FAILED })]);
     view.rerender(threadElement());
     expect(within(replyRow()).getByText(OUTCOME.FAILED)).toBeTruthy();
     expect(replyRow().getAttribute("data-failed")).toBe("true");
+    // The failure carries its own mark, so it never reads as a short reply.
+    expect(failureMark(OUTCOME.FAILED)).toBeTruthy();
   });
 
   it("should give an integration turn a reply row once it has only called tools", () => {
@@ -108,6 +117,7 @@ describe("FleetThread — reply parts", () => {
     expect(within(replyRow()).getByText("**429** from the provider")).toBeTruthy();
     expect(replyRow().querySelector("strong")).toBeNull();
     expect(replyRow().getAttribute("data-failed")).toBe("true");
+    expect(failureMark("**429** from the provider")).toBeTruthy();
   });
 
   it("test_indicator_verb_and_accessible_name", () => {
