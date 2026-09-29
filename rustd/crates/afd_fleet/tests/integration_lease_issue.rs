@@ -77,7 +77,8 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
             now,
         )
         .await
-        .expect("the lease row must be written");
+        .expect("the lease row must be written")
+        .expect("the claim is still held");
     let lease = issued.lease_id.as_str();
 
     assert_eq!(
@@ -167,7 +168,8 @@ async fn test_the_lease_row_resets_the_meter_only_when_fresh() {
     leases
         .issue(&first, &held, billed, now)
         .await
-        .expect("the fresh lease row must be written");
+        .expect("the fresh lease row must be written")
+        .expect("the claim is still held");
     assert_eq!(
         fixtures
             .affinity_column(&fleet, crate::lease_reads::COLUMN_METERED_INPUT)
@@ -186,13 +188,91 @@ async fn test_the_lease_row_resets_the_meter_only_when_fresh() {
     leases
         .issue(&second, &reclaimed, billed, lapsed)
         .await
-        .expect("the reclaimed lease row must be written");
+        .expect("the reclaimed lease row must be written")
+        .expect("the claim is still held");
     assert_eq!(
         fixtures
             .affinity_column(&fleet, crate::lease_reads::COLUMN_METERED_INPUT)
             .await,
         Some(METERED.to_string()),
         "a reclaim meters FORWARD from the dead holder's cursor"
+    );
+
+    queue::clear_ready(fixtures.queue(), &fleet).await;
+    fixtures.cleanup().await;
+}
+
+/// A lease insert under a claim this pass no longer holds writes nothing.
+///
+/// The pass that outlived its claim lost the slot to a runner that took the
+/// same entry over. Its insert must write no lease, or two runners execute one
+/// event, and must leave the new holder's meter alone. Both arms of the fence
+/// are driven: a claim that merely lapsed, then one a second runner won.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_stale_claim_writes_no_lease_and_resets_no_meter() {
+    let fixtures = Fixtures::create_with_queue().await;
+    let Seeded {
+        runners: [first, second],
+        fleet,
+        tenant,
+        ..
+    } = seeded::<2>(&fixtures).await;
+    let leases = fixtures.leases();
+    let now = UnixMillis::from_millis(ENROLLED_AT);
+    let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
+    let billed = Billed {
+        tenant_id: &tenant_id,
+        posture: POSTURE,
+        provider: PROVIDER,
+        model: MODEL,
+    };
+    let held = crate::seed::select_fleet_within_rotations(&leases, &first, now, &fleet)
+        .await
+        .expect("the fleet is leasable");
+    let lapsed = held.leased_until.saturating_add_millis(1);
+
+    let expired = leases
+        .issue(&first, &held, billed, lapsed)
+        .await
+        .expect("the fenced insert answers");
+    assert!(expired.is_none(), "a lapsed claim writes no lease");
+
+    let won = leases
+        .claim(
+            &held.fleet_id,
+            &second,
+            lapsed,
+            afd_core::timing::LEASE_TTL_MS,
+        )
+        .await
+        .expect("the claim statement answers");
+    assert!(
+        won.is_some(),
+        "the lapsed slot is winnable by another runner"
+    );
+    // The new holder's run has metered this much.
+    fixtures.set_metered_input(&fleet, METERED).await;
+
+    let superseded = leases
+        .issue(&first, &held, billed, now)
+        .await
+        .expect("the fenced insert answers");
+    assert!(superseded.is_none(), "a superseded fence writes no lease");
+    assert!(
+        leases
+            .reclaim_prior_active(&held.fleet_id, lapsed)
+            .await
+            .expect("the reclaim statement answers")
+            .is_none(),
+        "no active lease row exists for the fleet"
+    );
+    assert_eq!(
+        fixtures
+            .affinity_column(&fleet, crate::lease_reads::COLUMN_METERED_INPUT)
+            .await,
+        Some(METERED.to_string()),
+        "the stale insert's reset must not zero the new holder's meter"
     );
 
     queue::clear_ready(fixtures.queue(), &fleet).await;

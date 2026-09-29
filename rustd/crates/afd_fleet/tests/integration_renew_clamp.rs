@@ -97,7 +97,8 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
             now,
         )
         .await
-        .expect("the lease row must be written");
+        .expect("the lease row must be written")
+        .expect("the claim is still held");
     let lease = issued.lease_id.as_str();
 
     // An ordinary renewal, well inside the ceiling: the TTL arm wins.
@@ -215,7 +216,8 @@ async fn test_renew_after_reclaim_is_lost() {
             now,
         )
         .await
-        .expect("the lease row must be written");
+        .expect("the lease row must be written")
+        .expect("the claim is still held");
     let lease = issued.lease_id.as_str();
 
     // The holder stalls past its TTL and the work is taken back.
@@ -292,7 +294,8 @@ async fn test_renew_coverage_refuses_an_empty_wallet() {
             now,
         )
         .await
-        .expect("the lease row must be written");
+        .expect("the lease row must be written")
+        .expect("the claim is still held");
     let lease = issued.lease_id.as_str();
     let plane = fixtures.plane();
 

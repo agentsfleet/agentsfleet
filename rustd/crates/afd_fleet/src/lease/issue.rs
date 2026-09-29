@@ -65,6 +65,11 @@ impl Leases {
     /// see a lease with no audit row, a tally that has drifted from the rows it
     /// counts, or a fresh lease metering from a previous run's cursor.
     ///
+    /// `None` when the claim that earned `acquired` is no longer this pass's:
+    /// its fence was superseded or it lapsed, so another runner may already
+    /// hold the same entry. Nothing is written, and the claim is not this
+    /// pass's to release.
+    ///
     /// # Errors
     /// Reports a datastore that would not answer, and an entropy source that
     /// could not produce an identifier.
@@ -74,10 +79,10 @@ impl Leases {
         acquired: &Acquired,
         billed: Billed<'_>,
         now: UnixMillis,
-    ) -> Result<Issued> {
+    ) -> Result<Option<Issued>> {
         let (lease_id, event_row_id) = self.mint(now)?;
         let mut connection = self.pool().acquire().await?;
-        sql::lease::LeaseRow {
+        let written = sql::lease::LeaseRow {
             lease_id: &lease_id,
             runner_id,
             fleet_id: &acquired.fleet_id,
@@ -103,6 +108,11 @@ impl Leases {
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT_ISSUE))?;
+        // The tally arm is the statement's own row count, and it writes
+        // exactly when the fenced lease did.
+        if written.rows_affected() == 0 {
+            return Ok(None);
+        }
 
         let elapsed = afd_core::clock::now().saturating_millis_since(acquired.event_created_at);
         if let Ok(millis) = u64::try_from(elapsed) {
@@ -130,7 +140,7 @@ impl Leases {
             kind,
             "a runner now owns this fleet's work"
         );
-        Ok(Issued { lease_id })
+        Ok(Some(Issued { lease_id }))
     }
 
     /// Draws the two identifiers a lease row needs.

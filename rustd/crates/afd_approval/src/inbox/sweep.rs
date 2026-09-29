@@ -19,7 +19,9 @@
 //! The statement casts both ids to text from NOT NULL columns, reads the
 //! nullable event as an option and counts with `COUNT(*)`, so every row it
 //! returns decodes. A decode failure could only be this build's statement and
-//! decoder disagreeing, and it is reported rather than skipped.
+//! decoder disagreeing, and it is reported rather than skipped — after every
+//! row that did decode is woken and announced, since the statement already
+//! expired them all.
 
 use std::collections::BTreeMap;
 
@@ -54,6 +56,11 @@ struct Swept {
     pending: i64,
 }
 
+/// One swept row as a test hands it to [`Inbox::serve_swept`]:
+/// `(gate, fleet, event, pending)`.
+#[cfg(feature = "test-util")]
+pub type SweptParts = (String, String, Option<String>, i64);
+
 impl Inbox {
     /// Expires every gate whose deadline has passed, reporting how many.
     ///
@@ -77,30 +84,74 @@ impl Inbox {
             .map_err(error::query(CONTEXT_EXPIRE))?;
         drop(connection);
 
-        let decoded = rows.iter().map(Self::swept).collect::<Result<Vec<_>>>()?;
-        let mut read: BTreeMap<String, Option<FleetCounters>> = BTreeMap::new();
-        for swept in &decoded {
-            let counters = if let Some(counters) = read.get(&swept.fleet) {
-                *counters
-            } else {
-                self.wake_parked_delivery(&swept.fleet, &swept.gate).await;
-                let counters =
-                    afd_events::fleet_counters_best_effort(&self.database, &swept.fleet).await;
-                read.insert(swept.fleet.clone(), counters);
-                counters
-            };
-            self.announce(Answer {
-                fleet_id: &swept.fleet,
-                gate_id: &swept.gate,
-                event_id: swept.event.as_deref(),
-                status: status::TIMED_OUT,
-                resolved_by: SWEEPER,
-                pending_approvals: swept.pending,
-                counters,
-            })
-            .await;
-        }
+        self.serve(rows.iter().map(Self::swept)).await?;
         Ok(rows.len() as u64)
+    }
+
+    /// Wakes and announces every row that decoded, then answers the first
+    /// that did not.
+    ///
+    /// The gates are already expired when this runs, so a row that fails to
+    /// decode must not strand the ones that did: each of those fleets parked a
+    /// delivery that only this wake ends. The first failure is still raised,
+    /// because a decode mismatch is this build's statement and decoder out of
+    /// step, and every later one is that same cause again.
+    async fn serve(&self, rows: impl IntoIterator<Item = Result<Swept>>) -> Result<()> {
+        let mut undecodable = None;
+        let mut read: BTreeMap<String, Option<FleetCounters>> = BTreeMap::new();
+        for row in rows {
+            match row {
+                Ok(swept) => self.serve_one(&swept, &mut read).await,
+                Err(failure) => {
+                    undecodable.get_or_insert(failure);
+                }
+            }
+        }
+        undecodable.map_or(Ok(()), Err)
+    }
+
+    /// Wakes one swept gate's fleet, once per fleet, and announces the gate.
+    async fn serve_one(&self, swept: &Swept, read: &mut BTreeMap<String, Option<FleetCounters>>) {
+        let counters = if let Some(counters) = read.get(&swept.fleet) {
+            *counters
+        } else {
+            self.wake_parked_delivery(&swept.fleet, &swept.gate).await;
+            let counters =
+                afd_events::fleet_counters_best_effort(&self.database, &swept.fleet).await;
+            read.insert(swept.fleet.clone(), counters);
+            counters
+        };
+        self.announce(Answer {
+            fleet_id: &swept.fleet,
+            gate_id: &swept.gate,
+            event_id: swept.event.as_deref(),
+            status: status::TIMED_OUT,
+            resolved_by: SWEEPER,
+            pending_approvals: swept.pending,
+            counters,
+        })
+        .await;
+    }
+
+    /// [`Self::serve`] over rows a test builds, one of them undecodable.
+    ///
+    /// The statement cannot return an undecodable row by construction, so the
+    /// arm that serves the good rows before raising the bad one is reachable
+    /// only through here.
+    ///
+    /// # Errors
+    /// The first `Err` in `rows`, after every `Ok` row is served.
+    #[cfg(feature = "test-util")]
+    pub async fn serve_swept(&self, rows: Vec<Result<SweptParts>>) -> Result<()> {
+        let rows = rows.into_iter().map(|row| {
+            row.map(|(gate, fleet, event, pending)| Swept {
+                gate,
+                fleet,
+                event,
+                pending,
+            })
+        });
+        self.serve(rows).await
     }
 
     /// One swept row as the tail hears of it.

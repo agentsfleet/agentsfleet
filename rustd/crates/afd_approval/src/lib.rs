@@ -46,6 +46,8 @@ pub use self::decision::Decision;
 pub use self::error::{Error, Result};
 pub use self::gate_status::GateStatus;
 pub use self::grant::{GrantRow, IntegrationGrants, Revocation};
+#[cfg(feature = "test-util")]
+pub use self::inbox::SweptParts;
 pub use self::inbox::{Cursor, Filter, GateRow, Inbox, Resolution, Resolved};
 pub use self::request::{
     KIND_INTEGRATION_GRANT, Origin, REASON_DECLARED_AT_INSTALL, Requested, Wanted,

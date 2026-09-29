@@ -5,6 +5,7 @@ use afd_gate::gate::Waiting;
 
 use crate::error::Result;
 use crate::lease::answer::no_work;
+use crate::lease::envelope::Acquired;
 
 /// The single stable reason logged by both waiting-for-approval paths.
 const AWAITING_APPROVAL: &str = "a human owes an answer";
@@ -61,6 +62,36 @@ pub(super) fn waited<T>(runner_id: &Uuid7, waiting: Waiting) -> Result<Step<T>> 
     })
 }
 
+/// The pass outlived its claim, so the lease was not written.
+const EVENT_CLAIM_LOST: &str = "lease_claim_lost";
+
+/// The no-work answer for a pass whose claim was superseded or lapsed before
+/// its lease was written.
+///
+/// A stop, so the fleet keeps its mark and whoever holds the slot now serves
+/// the entry. The release the stop owes is fenced on this pass's token, so it
+/// cannot free the slot the new holder won.
+pub(in crate::lease) fn claim_lost(runner_id: &Uuid7, acquired: &Acquired) -> Result<Step<Leased>> {
+    // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
+    // scores the dead copy.
+    let runner = runner_id.as_str();
+    let fleet_id = acquired.fleet_id.as_str();
+    let agentsfleet_event_id = acquired.event_id.as_str();
+    let fence = acquired.fence.as_i64();
+    tracing::info!(
+        event = EVENT_CLAIM_LOST,
+        runner_id = runner,
+        fleet_id,
+        agentsfleet_event_id,
+        fencing_token = fence,
+        "the pass outlived its claim; no lease was written"
+    );
+    no_work(runner_id, CLAIM_LOST_REASON).map(Step::Stop)
+}
+
+/// The no-work reason a lost claim answers with.
+const CLAIM_LOST_REASON: &str = "the claim lapsed before the lease was written";
+
 #[cfg(test)]
 mod tests {
     #![expect(
@@ -95,6 +126,23 @@ mod tests {
     fn an_unreadable_wait_stops_without_parking() {
         let step: Step<()> = waited(&runner(), Waiting::Unreadable).expect("the answer renders");
         assert!(matches!(step, Step::Stop(_)));
+    }
+
+    /// A pass whose lease insert lost its fence answers no-work, as a stop:
+    /// the fleet keeps its mark for whoever holds the slot now.
+    #[cfg(feature = "test-util")]
+    #[test]
+    fn a_lost_claim_answers_no_work_as_a_stop() {
+        use crate::lease::answer::no_work;
+        use crate::lease::test_dead;
+
+        let runner = runner();
+        let step = super::claim_lost(&runner, &test_dead::acquired()).expect("the answer renders");
+        let expected = no_work(&runner, super::CLAIM_LOST_REASON).expect("the answer renders");
+        assert!(
+            matches!(step, Step::Stop(answer) if answer == expected),
+            "a lost claim is the no-work answer, and never a lease"
+        );
     }
 
     /// An ending keeps its kind on the way up; a park never becomes a stop.

@@ -124,7 +124,8 @@ pub(super) async fn run_one_to_settlement(
             now,
         )
         .await
-        .expect("the lease row must be written");
+        .expect("the lease row must be written")
+        .expect("the claim is still held");
     let Settled::Claimed(charged) = fixtures
         .settle_alone(
             leases,
