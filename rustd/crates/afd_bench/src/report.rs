@@ -26,18 +26,20 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Error, Result};
+use crate::error::{ErrorKind, Result};
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::profile::Profile;
 
 pub mod compare;
+pub mod lane;
 pub mod latency;
 pub mod provenance;
 
+pub use lane::Lane;
 pub use latency::Latency;
 pub use provenance::Provenance;
 
@@ -48,7 +50,7 @@ pub const RESULTS_DIRECTORY: &str = "bench/results";
 pub const BASELINES_DIRECTORY: &str = "bench/baselines";
 
 /// Extension both a result and a baseline carry.
-const RESULT_EXTENSION: &str = "json";
+pub(crate) const RESULT_EXTENSION: &str = "json";
 
 /// Suffix the in-progress render carries until the run succeeds.
 const PENDING_SUFFIX: &str = ".pending";
@@ -64,70 +66,6 @@ pub const P99_MS: &str = "p99_ms";
 
 /// Measurement key: the slowest single operation.
 pub const MAX_MS: &str = "max_ms";
-
-/// Which question this file answers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Lane {
-    /// What the system accepts, and where a steer costs.
-    Steer,
-    /// Leases per second, and the Postgres cost of each.
-    Lease,
-    /// What one delivery worker sustains, and what a slow destination costs.
-    Outbound,
-    /// What an idle fleet costs when there are a million of them.
-    Cardinality,
-}
-
-impl Lane {
-    /// Every lane, in the order the make targets list them.
-    ///
-    /// The one list a binary iterates and the one a usage line is built from,
-    /// so adding a lane is the enum arm and nothing else.
-    pub const ALL: [Self; 4] = [Self::Steer, Self::Lease, Self::Outbound, Self::Cardinality];
-
-    /// The name this lane is written and asked for under.
-    #[must_use]
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Steer => "steer",
-            Self::Lease => "lease",
-            Self::Outbound => "outbound",
-            Self::Cardinality => "cardinality",
-        }
-    }
-
-    /// Where this lane's result for a profile is written.
-    #[must_use]
-    pub fn result_path(self, profile: Profile) -> PathBuf {
-        Self::path_in(RESULTS_DIRECTORY, self, profile)
-    }
-
-    /// Where this lane's committed baseline for a profile lives.
-    #[must_use]
-    pub fn baseline_path(self, profile: Profile) -> PathBuf {
-        Self::path_in(BASELINES_DIRECTORY, self, profile)
-    }
-
-    /// `<directory>/<lane>.<profile>.json`, the one naming rule both use.
-    fn path_in(directory: &str, lane: Self, profile: Profile) -> PathBuf {
-        Path::new(directory).join(format!("{}.{profile}.{RESULT_EXTENSION}", lane.name()))
-    }
-}
-
-impl core::str::FromStr for Lane {
-    type Err = Error;
-
-    fn from_str(name: &str) -> Result<Self> {
-        Self::ALL
-            .into_iter()
-            .find(|lane| lane.name() == name)
-            .ok_or(Error::UnknownLane { usage: LANE_USAGE })
-    }
-}
-
-/// How the lane names are spelled, for the refusal an unknown one raises.
-const LANE_USAGE: &str = "expected one of steer, lease, outbound, cardinality";
 
 /// What a datastore was asked to do, and how long it spent doing it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
@@ -277,26 +215,28 @@ impl Report {
     ///
     /// # Errors
     ///
-    /// [`Error::ResultUnrenderable`] when the report will not serialise, and
-    /// [`Error::ResultUnwritable`] when the directory cannot be created, the
+    /// `ResultUnrenderable` when the report will not serialise, and
+    /// `ResultUnwritable` when the directory cannot be created, the
     /// pending file cannot be written, or the rename does not land.
     pub fn write(&self, path: &Path) -> Result<()> {
-        let rendered = serde_json::to_string_pretty(self)
-            .map_err(|source| Error::ResultUnrenderable { source })?;
+        let rendered = serde_json::to_string_pretty(self)?;
         if let Some(directory) = path.parent() {
-            fs::create_dir_all(directory).map_err(|source| Error::ResultUnwritable {
+            fs::create_dir_all(directory).map_err(|source| ErrorKind::ResultUnwritable {
                 path: directory.to_path_buf(),
                 source,
             })?;
         }
         let pending = path.with_extension(format!("{RESULT_EXTENSION}{PENDING_SUFFIX}"));
-        fs::write(&pending, rendered).map_err(|source| Error::ResultUnwritable {
+        fs::write(&pending, rendered).map_err(|source| ErrorKind::ResultUnwritable {
             path: pending.clone(),
             source,
         })?;
-        fs::rename(&pending, path).map_err(|source| Error::ResultUnwritable {
-            path: path.to_path_buf(),
-            source,
+        fs::rename(&pending, path).map_err(|source| {
+            ErrorKind::ResultUnwritable {
+                path: path.to_path_buf(),
+                source,
+            }
+            .into()
         })
     }
 
@@ -304,16 +244,19 @@ impl Report {
     ///
     /// # Errors
     ///
-    /// [`Error::ResultUnreadable`] when the file will not open, and
-    /// [`Error::ResultUnparseable`] when its contents are not a report.
+    /// `ResultUnreadable` when the file will not open, and
+    /// `ResultUnparseable` when its contents are not a report.
     pub fn read(path: &Path) -> Result<Self> {
-        let raw = fs::read_to_string(path).map_err(|source| Error::ResultUnreadable {
+        let raw = fs::read_to_string(path).map_err(|source| ErrorKind::ResultUnreadable {
             path: path.to_path_buf(),
             source,
         })?;
-        serde_json::from_str(&raw).map_err(|source| Error::ResultUnparseable {
-            path: path.to_path_buf(),
-            source,
+        serde_json::from_str(&raw).map_err(|source| {
+            ErrorKind::ResultUnparseable {
+                path: path.to_path_buf(),
+                source,
+            }
+            .into()
         })
     }
 }

@@ -12,14 +12,17 @@ use afd_core::clock::UnixMillis;
 use afd_core::event::label;
 use afd_core::id::Uuid7;
 
-use super::step::{AWAITING_APPROVAL, Step};
+use super::step::{Step, waited};
 use super::{Admission2, Plane};
 use crate::error::{Error, Result};
-use crate::lease::admit::{Admission, Refusal};
+use crate::lease::admit::{Declined, Refusal};
 use crate::lease::answer::{EVENT_REFUSED, no_work};
 use crate::lease::envelope::Acquired;
 use crate::lease::event::Delivery;
 use crate::lease::installed::Installed;
+
+/// The no-work reason for a fleet paused between selection and claim.
+const FLEET_STOPPED: &str = "the fleet stopped between selection and claim";
 
 /// A fleet whose unreadable config could not even be recorded as such.
 const EVENT_CONFIG_REFUSAL_UNRECORDED: &str = "config_refusal_unrecorded";
@@ -41,11 +44,9 @@ impl Plane {
             Ok(Some(installed)) => Ok(Step::Go(installed)),
             // The selection pass filters on status, so reaching here with a
             // stopped fleet means an operator paused it in the window between
-            // selection and this read. The claim lapses on its own.
-            Ok(None) => Ok(Step::Stop(no_work(
-                runner_id,
-                "the fleet stopped between selection and claim",
-            )?)),
+            // selection and this read. The pass frees the claim; the pause
+            // already cleared the mark.
+            Ok(None) => no_work(runner_id, FLEET_STOPPED).map(Step::Stop),
             // One fleet's unreadable document is that fleet's fault and not
             // this runner's, which is the whole of `refuse_unreadable_config`.
             Err(unreadable) if unreadable.is_config_permanent() => self
@@ -56,26 +57,25 @@ impl Plane {
         }
     }
 
-    /// Apply a gate's stop, whatever kind it was.
-    pub(super) async fn stopped(
+    /// Apply a stop the payer, money or approval gate declined with.
+    ///
+    /// A wait on a person parks; a refusal ends the event; a retry leaves the
+    /// delivery leasable for the next poll.
+    pub(super) async fn ended(
         &self,
         acquired: &Acquired,
-        stop: Admission,
+        declined: Declined,
         runner_id: &Uuid7,
         now: UnixMillis,
     ) -> Result<Step<Admission2>> {
-        let answer = match stop {
-            Admission::Refuse(refusal) => {
-                self.refused(acquired, refusal.label, runner_id, refusal.detail, now)
-                    .await?
-            }
-            Admission::Retry(transient) => no_work(runner_id, transient.at)?,
-            Admission::Await(_waiting) => no_work(runner_id, AWAITING_APPROVAL)?,
-            // `of_gate` answers `None` for a pass, so this arm is the enum
-            // being exhaustive rather than a state that occurs.
-            Admission::Admit(_) => no_work(runner_id, "a passing gate cannot also stop")?,
-        };
-        Ok(Step::Stop(answer))
+        match declined {
+            Declined::Await(waiting) => waited(runner_id, waiting),
+            Declined::Refuse(refusal) => self
+                .refused(acquired, refusal.label, runner_id, refusal.detail, now)
+                .await
+                .map(Step::Stop),
+            Declined::Retry(transient) => no_work(runner_id, transient.at).map(Step::Stop),
+        }
     }
 
     /// End the event, then answer no-work.

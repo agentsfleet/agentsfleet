@@ -3,6 +3,7 @@
 #![expect(
     clippy::expect_used,
     clippy::indexing_slicing,
+    clippy::panic,
     reason = "a test asserts by panicking on an unmet precondition"
 )]
 
@@ -85,7 +86,7 @@ fn filled_report() -> Report {
 fn test_each_lane_writes_a_parseable_result() {
     let scratch = Scratch::new("parseable");
 
-    for lane in [Lane::Steer, Lane::Lease, Lane::Outbound, Lane::Cardinality] {
+    for lane in Lane::ALL {
         let mut report = Report::new(lane, Profile::Rig, Provenance::for_test());
         report.measurement(RATE_PER_SECOND, 1.0);
         let path = scratch.join(&format!("{}.json", lane.name()));
@@ -238,4 +239,89 @@ fn test_an_empty_distribution_reports_no_tail() {
             "{key} on nothing recorded is a zero nobody measured"
         );
     }
+}
+
+#[test]
+fn every_lane_parses_from_the_name_it_writes_its_files_under() {
+    for lane in Lane::ALL {
+        let parsed: Lane = lane.name().parse().expect("a lane's own name");
+        assert_eq!(parsed, lane);
+    }
+}
+
+#[test]
+fn an_unknown_lane_is_refused_with_the_spellings_that_exist() {
+    let refused = "leases".parse::<Lane>();
+
+    let Some(crate::error::ErrorKind::UnknownLane { usage }) =
+        refused.as_ref().err().map(crate::Error::kind)
+    else {
+        panic!("a near-miss spelling is not a lane: {refused:?}");
+    };
+    for lane in Lane::ALL {
+        assert!(
+            usage.contains(lane.name()),
+            "{usage} must offer {}",
+            lane.name()
+        );
+    }
+}
+
+#[test]
+fn a_result_whose_directory_cannot_be_made_names_that_directory() {
+    let scratch = Scratch::new("unmakeable");
+    let occupied = scratch.join("a-file");
+    fs::write(&occupied, "").expect("the blocking file");
+    let path = occupied.join("lease.rig.json");
+
+    let refused = filled_report().write(&path);
+
+    let Some(crate::error::ErrorKind::ResultUnwritable { path: named, .. }) =
+        refused.as_ref().err().map(crate::Error::kind)
+    else {
+        panic!("a file where the directory goes must refuse the write: {refused:?}");
+    };
+    assert_eq!(*named, occupied);
+}
+
+#[test]
+fn a_result_that_cannot_land_names_its_destination_and_leaves_it_untouched() {
+    let scratch = Scratch::new("unlandable");
+    // A non-empty directory at the destination: the pending file writes
+    // beside it, and only the rename can refuse.
+    let path = scratch.join("lease.rig.json");
+    fs::create_dir_all(path.join("occupant")).expect("the blocking directory");
+
+    let refused = filled_report().write(&path);
+
+    let Some(crate::error::ErrorKind::ResultUnwritable { path: named, .. }) =
+        refused.as_ref().err().map(crate::Error::kind)
+    else {
+        panic!("a directory at the destination must refuse the rename: {refused:?}");
+    };
+    assert_eq!(*named, path);
+    assert!(
+        path.join("occupant").is_dir(),
+        "a refused rename replaced nothing"
+    );
+}
+
+#[test]
+fn a_rate_over_no_time_is_zero_rather_than_infinite() {
+    assert!(super::per_second(10, 0.0).abs() < f64::EPSILON);
+    assert!(super::per_second(10, -1.0).abs() < f64::EPSILON);
+    assert!((super::per_second(10, 2.0) - 5.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn a_result_path_with_no_file_name_is_refused_rather_than_written_elsewhere() {
+    let refused = filled_report().write(Path::new(""));
+
+    assert!(
+        matches!(
+            refused.as_ref().err().map(crate::Error::kind),
+            Some(crate::error::ErrorKind::ResultUnwritable { .. })
+        ),
+        "an empty path names no file to write: {refused:?}"
+    );
 }

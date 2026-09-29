@@ -236,7 +236,7 @@ async fn refusal_drains(preended: bool) {
     poll_until_reached(&http, &run, "no poll revisited the denied event").await;
     let first_label = event_column(&run, &run.event_id, LABEL).await;
     let pending = FleetStreams::new(run.booted.queue.clone())
-        .read_pending(&run.fleet, &runner_consumer())
+        .take_over_oldest(&run.fleet, &runner_consumer())
         .await
         .expect("pending read");
     let second = run.enqueue_event(EventType::Chat).await;

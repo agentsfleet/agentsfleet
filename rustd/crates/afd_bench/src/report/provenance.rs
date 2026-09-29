@@ -61,7 +61,7 @@ impl Provenance {
     ///
     /// # Errors
     ///
-    /// [`Error::VariableUnset`](crate::error::Error::VariableUnset) naming the
+    /// `VariableUnset` naming the
     /// first variable that is absent or blank. Called before a lane measures
     /// anything, so an incomplete environment costs no run.
     pub fn read(env: Lookup<'_>) -> Result<Self> {

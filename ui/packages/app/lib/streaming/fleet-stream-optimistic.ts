@@ -31,6 +31,8 @@ export type Reconciled = {
   /** True when the server's row had already finished by the time the
    * identifier arrived — the reply is on it and nothing more is coming. */
   alreadyComplete: boolean;
+  /** Whether the thread already held the server's row. */
+  loaded: boolean;
 };
 
 /**
@@ -54,6 +56,7 @@ export function reconcileRows(
     return {
       events: grafted.filter((event) => event.id !== tempId),
       alreadyComplete: serverEvent.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED,
+      loaded: true,
     };
   }
   return {
@@ -63,5 +66,6 @@ export function reconcileRows(
         : event,
     ),
     alreadyComplete: false,
+    loaded: false,
   };
 }

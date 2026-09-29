@@ -23,7 +23,6 @@ use afd_core::id::Uuid7;
 use crate::error::Result;
 use crate::lease::envelope::Acquired;
 use crate::lease::pull::Plane;
-use crate::lease::pull::step::Step;
 
 impl Plane {
     /// [`Plane::lease`] over an event the caller has already claimed.
@@ -37,9 +36,6 @@ impl Plane {
         runner_id: &Uuid7,
         now: UnixMillis,
     ) -> Result<String> {
-        match self.admit_claimed(acquired, runner_id, now).await? {
-            Step::Go(admitted) => self.deliver(runner_id, admitted, now).await,
-            Step::Stop(answer) => Ok(answer),
-        }
+        self.run_claimed(acquired, runner_id, now).await
     }
 }

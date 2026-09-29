@@ -126,7 +126,7 @@ async fn delivered_and_leased(fixtures: &Fixtures, leases: &Leases, at: UnixMill
     let acquired = select_fleet_within_rotations(leases, &holder, at, &fleet)
         .await
         .expect("one rotation of polls reaches the fleet holding admitted work");
-    assert_eq!(acquired.event_id, admitted.id);
+    assert_eq!(acquired.event_id, admitted.stored.id);
     assert_eq!(
         leases
             .record_received(&acquired, at)
@@ -149,11 +149,12 @@ async fn delivered_and_leased(fixtures: &Fixtures, leases: &Leases, at: UnixMill
             at,
         )
         .await
-        .expect("the lease row is written");
+        .expect("the lease row is written")
+        .expect("the claim is still held");
     Staged {
         fleet,
         poller,
-        event_id: admitted.id,
+        event_id: admitted.stored.id,
         lease_id: Some(issued.lease_id.as_str().to_owned()),
     }
 }
@@ -169,7 +170,7 @@ async fn queued_undelivered(fixtures: &Fixtures) -> Staged {
     Staged {
         fleet,
         poller,
-        event_id: admitted.id,
+        event_id: admitted.stored.id,
         lease_id: None,
     }
 }
@@ -186,7 +187,7 @@ async fn admitted_unreceipted(fixtures: &Fixtures) -> Staged {
         .expect("a queue that is away defers: the row commits and the caller is answered");
     assert!(
         fixtures
-            .admission_receipt(&fleet, &admitted.id)
+            .admission_receipt(&fleet, &admitted.stored.id)
             .await
             .is_none(),
         "nothing receipted a row the queue never saw"
@@ -194,7 +195,7 @@ async fn admitted_unreceipted(fixtures: &Fixtures) -> Staged {
     Staged {
         fleet,
         poller,
-        event_id: admitted.id,
+        event_id: admitted.stored.id,
         lease_id: None,
     }
 }

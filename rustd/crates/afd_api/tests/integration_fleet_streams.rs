@@ -10,23 +10,16 @@ use crate::harness;
 #[path = "support/fleet_stream_transport.rs"]
 mod transport;
 
+#[path = "support/wall_stream_fixture.rs"]
+pub(crate) mod fixture;
+
 use std::time::Duration;
 
-use afd_auth::credential::Presented;
-use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::id::Uuid7;
-use afd_db::Db;
-use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
 use afd_dragonfly::SubscriptionHub;
-use afd_dragonfly::streams::{FleetStreams, fleet_activity_channel};
-use futures_util::StreamExt as _;
-use http::{Method, StatusCode};
 
-use self::harness::{Fleet, send};
-
-const SUBJECT: &str = "user_live_workspace_stream";
+use self::fixture::{Fixture, SUBJECT, Wall, data_of, next_chunk, open_stream, stream_ends};
+use self::harness::Fleet;
 
 /// More frames than the hub's per-subscriber queue (256) holds, so a body
 /// nobody reads falls behind and the fan-in reports the gap.
@@ -117,38 +110,28 @@ async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
         (ACQUIRE_TIMEOUT_KNOB, SHORT_ACQUIRE_MS),
     ])
     .await;
-    fixture.seed().await;
-    let hub = SubscriptionHub::start(harness::dragonfly_config())
-        .await
-        .expect("the lane's subscription connection starts");
-    let fleet = Fleet::live(
-        fixture.database.clone(),
-        SUBJECT,
-        ScopeSet::from_scopes(&Scope::ALL),
-    )
-    .with_owned_workspace(fixture.workspace.clone())
-    .with_live_hub(hub.clone());
-    let fleet_store = fleet.fleet_store();
-    let router = fleet.router();
-    let mut body = open_stream(&router, &fixture).await;
-
-    let second = fixture.seed_second_fleet().await;
-    fleet_store.invalidate_live_set(&fixture.workspace).await;
-    let refreshed = fleet_store
-        .live_set(&fixture.workspace)
+    let mut wall = Wall::open(fixture).await;
+    let second = wall.fixture.seed_second_fleet().await;
+    wall.store
+        .invalidate_live_set(&wall.fixture.workspace)
+        .await;
+    let refreshed = wall
+        .store
+        .live_set(&wall.fixture.workspace)
         .await
         .expect("the invalidated set refreshes before the connection is held");
     assert!(refreshed.contains(&second));
 
     // The one connection, held for the tick: the counters read can only wait.
-    let held = fixture
+    let held = wall
+        .fixture
         .database
         .acquire()
         .await
         .expect("the pool's one connection is free to hold");
     tokio::time::pause();
     tokio::time::advance(Duration::from_secs(11)).await;
-    let changed = next_chunk(&mut body).await;
+    let changed = next_chunk(&mut wall.body).await;
     tokio::time::resume();
     drop(held);
 
@@ -157,20 +140,13 @@ async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
         changed.contains(&second),
         "the set is announced whether or not it was priced"
     );
-    let data = changed
-        .lines()
-        .find_map(|line| line.strip_prefix("data:"))
-        .expect("the hello carries a data line");
-    let hello: serde_json::Value = serde_json::from_str(data.trim()).expect("the hello is JSON");
+    let hello = data_of(&changed);
     assert_eq!(
         hello.pointer("/counters"),
         Some(&serde_json::json!({})),
         "a refused read sends the set without figures, never with zeros: {hello}"
     );
-
-    drop(body);
-    hub.shutdown();
-    fixture.cleanup().await;
+    wall.close().await;
 }
 
 /// A gap the server could not carry is followed by a fresh `hello`.
@@ -182,53 +158,25 @@ async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_gap_is_followed_by_a_fresh_hello_with_the_fleets_counters() {
-    let fixture = Fixture::create().await;
-    fixture.seed().await;
-    let hub = SubscriptionHub::start(harness::dragonfly_config())
-        .await
-        .expect("the lane's subscription connection starts");
-    let router = Fleet::live(
-        fixture.database.clone(),
-        SUBJECT,
-        ScopeSet::from_scopes(&Scope::ALL),
-    )
-    .with_owned_workspace(fixture.workspace.clone())
-    .with_live_hub(hub.clone())
-    .router();
-    let mut body = open_stream(&router, &fixture).await;
-
-    let publisher = FleetStreams::new(
-        afd_dragonfly::Dragonfly::connect(&harness::dragonfly_config())
-            .await
-            .expect("the lane's Dragonfly accepts a publisher"),
-    );
-    let channel = fleet_activity_channel(&fixture.fleet);
-    for sequence in 0..GAP_FRAMES {
-        let payload = format!(r#"{{"kind":"chunk","event_id":"e{sequence}","text":"…"}}"#);
-        publisher
-            .publish(&channel, &payload)
-            .await
-            .expect("the frame publishes");
-    }
+    let mut wall = Wall::open(Fixture::create().await).await;
+    wall.publish(GAP_FRAMES).await;
 
     let mut heard = Vec::new();
     for _ in 0..GAP_READS {
-        let chunk = next_chunk(&mut body).await;
+        let chunk = next_chunk(&mut wall.body).await;
         if chunk.contains("event: catching_up") {
             heard.push("catching_up");
             continue;
         }
         if chunk.contains("event: hello") {
             heard.push("hello");
-            let data = chunk
-                .lines()
-                .find_map(|line| line.strip_prefix("data:"))
-                .expect("the hello carries a data line");
-            let hello: serde_json::Value =
-                serde_json::from_str(data.trim()).expect("the hello is JSON");
+            let hello = data_of(&chunk);
             assert!(
                 hello
-                    .pointer(&format!("/counters/{}/events_processed", fixture.fleet))
+                    .pointer(&format!(
+                        "/counters/{}/events_processed",
+                        wall.fixture.fleet
+                    ))
                     .is_some(),
                 "the hello after a gap carries the fleet's counters: {hello}"
             );
@@ -240,176 +188,5 @@ async fn a_gap_is_followed_by_a_fresh_hello_with_the_fleets_counters() {
         ["catching_up", "hello"],
         "a gap is announced, then the set is re-announced with its figures"
     );
-
-    drop(body);
-    hub.shutdown();
-    fixture.cleanup().await;
-}
-
-async fn open_stream(router: &axum::Router, fixture: &Fixture) -> axum::body::BodyDataStream {
-    let response = send(
-        router,
-        Method::GET,
-        &format!(
-            "/v1/workspaces/{}/events/stream",
-            fixture.workspace.as_str()
-        ),
-        Some(&fixture.token),
-        "",
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        response
-            .headers()
-            .get(http::header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok()),
-        Some("text/event-stream")
-    );
-
-    let mut body = response.into_body().into_data_stream();
-    let chunk = tokio::time::timeout(Duration::from_secs(2), body.next())
-        .await
-        .expect("the opening announcement is immediate")
-        .expect("the stream stays open")
-        .expect("the SSE body is infallible");
-    let opening = std::str::from_utf8(&chunk).expect("SSE is UTF-8");
-    assert!(opening.contains("event: hello"));
-    assert!(opening.contains(&fixture.fleet));
-    // The greeting says where each fleet stands, read fresh for it: a fleet
-    // that has never run answers with zeros rather than being left out.
-    let data = opening
-        .lines()
-        .find_map(|line| line.strip_prefix("data:"))
-        .expect("the hello carries a data line");
-    let hello: serde_json::Value = serde_json::from_str(data.trim()).expect("the hello is JSON");
-    let counters = afd_events::fleet_counters(&fixture.database, &fixture.fleet)
-        .await
-        .expect("the counters read back");
-    assert_eq!(
-        hello.pointer(&format!("/counters/{}/events_processed", fixture.fleet)),
-        Some(&serde_json::json!(counters.events_processed)),
-        "the hello carries the fleet's event count: {hello}"
-    );
-    assert_eq!(
-        hello.pointer(&format!("/counters/{}/budget_used_nanos", fixture.fleet)),
-        Some(&serde_json::json!(counters.budget_used_nanos))
-    );
-    body
-}
-
-async fn next_chunk(body: &mut axum::body::BodyDataStream) -> String {
-    let chunk = tokio::time::timeout(Duration::from_secs(2), body.next())
-        .await
-        .expect("the expected wall transition is prompt")
-        .expect("the stream stays open for the transition")
-        .expect("the SSE body is infallible");
-    std::str::from_utf8(&chunk)
-        .expect("SSE is UTF-8")
-        .to_owned()
-}
-
-async fn stream_ends(body: &mut axum::body::BodyDataStream) -> bool {
-    for _frame in 0..3 {
-        match body.next().await {
-            None => return true,
-            Some(Ok(_heartbeat)) => {}
-            Some(Err(_infallible)) => return false,
-        }
-    }
-    false
-}
-
-struct Fixture {
-    lane: TestDatabase,
-    database: Db,
-    tenant: String,
-    workspace: Uuid7,
-    fleet: String,
-    key: String,
-    token: String,
-}
-
-impl Fixture {
-    async fn create() -> Self {
-        Self::with_pool(&[]).await
-    }
-
-    async fn with_pool(settings: &[(&str, &str)]) -> Self {
-        let lane = TestDatabase::shared();
-        let token_bits = format!("{}{}", mint_id(), mint_id()).replace('-', "");
-        Self {
-            database: lane.open(DbRole::Api, settings).await,
-            tenant: mint_id(),
-            workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
-            fleet: mint_id(),
-            key: mint_id(),
-            token: format!("agt_t{token_bits}"),
-            lane,
-        }
-    }
-
-    async fn seed(&self) {
-        let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Workspace stream', 1, 1) \
-             ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'stream', $3, 1) \
-             ), credential AS ( \
-               INSERT INTO core.api_keys \
-                 (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                  revoked_at, created_at, updated_at) \
-               VALUES ($4::uuid, $1::uuid, 'fixture', '', $5, $3, TRUE, NULL, 1, 1) \
-             ) \
-             INSERT INTO core.fleets \
-               (id, workspace_id, tenant_id, name, source_markdown, config_json, \
-                status, created_at, updated_at) \
-             VALUES ($6::uuid, $2::uuid, $1::uuid, 'streamed', '# fixture', '{}', \
-                     'active', 1, 1)",
-        )
-        .bind(&self.tenant)
-        .bind(self.workspace.as_str())
-        .bind(SUBJECT)
-        .bind(&self.key)
-        .bind(digest.as_str())
-        .bind(&self.fleet)
-        .execute(&mut *connection)
-        .await
-        .expect("the authenticated workspace and fleet seed");
-    }
-
-    async fn seed_second_fleet(&self) -> String {
-        let fleet = mint_id();
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "INSERT INTO core.fleets \
-               (id, workspace_id, tenant_id, name, source_markdown, config_json, \
-                status, created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3::uuid, 'streamed-second', '# fixture', '{}', \
-                     'active', 2, 2)",
-        )
-        .bind(&fleet)
-        .bind(self.workspace.as_str())
-        .bind(&self.tenant)
-        .execute(&mut *connection)
-        .await
-        .expect("the second live fleet seeds");
-        fleet
-    }
-
-    async fn cleanup(self) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
-            .bind(&self.tenant)
-            .execute(&mut *connection)
-            .await
-            .expect("the scoped fixture cleans up");
-        drop(connection);
-        drop(self.database);
-        self.lane.cleanup().await;
-    }
+    wall.close().await;
 }

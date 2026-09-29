@@ -8,29 +8,18 @@ import {
   subscribePendingSends,
   type LedgerScope,
 } from "./pending-sends";
+import { NOW_MS, SCOPE, STORAGE_KEY, SUBJECT, send, states } from "@/tests/fleet-thread/ledger-fixtures";
 
 // A shared browser: which user a page shows decides whose ledgers storage may
 // hold. Split from `pending-sends.test.ts` at the length cap.
 
-const SUBJECT = "user_ledger";
 const OTHER_SUBJECT = "user_next_on_this_browser";
-const SCOPE: LedgerScope = { subject: SUBJECT, workspaceId: "ws_ledger", fleetId: "fleet_ledger" };
 const OTHER_FLEET: LedgerScope = { ...SCOPE, fleetId: "fleet_other" };
 const OTHER_USER: LedgerScope = { ...SCOPE, subject: OTHER_SUBJECT };
 const SIGNED_OUT: LedgerScope = { ...SCOPE, subject: null };
 const LEDGER_PREFIX = "agentsfleet:pending-sends";
-const STORAGE_KEY = `${LEDGER_PREFIX}:${SUBJECT}:ws_ledger:fleet_ledger`;
 const READER_KEY = "agentsfleet:ledger-reader";
-const NOW_MS = 1_790_553_600_000;
 const unsubscribes: (() => void)[] = [];
-
-function send(operationId: string, text: string) {
-  return { operationId, text, submittedAtMs: NOW_MS };
-}
-
-function states(scope: LedgerScope = SCOPE): [string, string][] {
-  return getPendingSends(scope).map((entry) => [entry.operationId, entry.state]);
-}
 
 // A page showing `scope`'s ledger, subscribed the way useSyncExternalStore does.
 function shows(scope: LedgerScope): void {

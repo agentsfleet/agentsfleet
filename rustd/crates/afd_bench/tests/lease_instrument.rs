@@ -51,6 +51,15 @@ fn test_the_lease_counters_are_read_back_from_the_daemons_own_instrument() {
     assert_eq!(worked.candidates, CANDIDATES);
     assert_eq!(worked.roundtrips, ROUNDTRIPS);
 
+    // A second install hands back the first instrument rather than building
+    // a provider nothing records into: it reads exactly what the first reads.
+    let again = LeaseInstrument::install().expect("a second install must succeed");
+    assert_eq!(
+        again.read().expect("readable"),
+        instrument.read().expect("readable"),
+        "a later install that built its own provider would read zero forever"
+    );
+
     // What the lease path records when the readiness index is empty: it
     // returns before touching Postgres, so the poll counts and the round trips
     // do not. This is the number a million idle fleets multiply.
@@ -64,7 +73,6 @@ fn test_the_lease_counters_are_read_back_from_the_daemons_own_instrument() {
         "an idle poll costing a round trip would make idle cost scale with \
          fleets rather than with runners"
     );
-    assert!((idle.roundtrips_per_poll() - 0.0).abs() < f64::EPSILON);
 }
 
 #[test]
@@ -88,15 +96,4 @@ fn test_a_delta_never_runs_backwards() {
         "a reading that looks older than its baseline saturates to zero rather \
          than wrapping to a number somebody reports as throughput"
     );
-}
-
-#[test]
-fn test_roundtrips_per_poll_is_the_ratio_an_operator_reads() {
-    let counters = PollCounters {
-        polls: 4,
-        candidates: 40,
-        roundtrips: 10,
-    };
-
-    assert!((counters.roundtrips_per_poll() - 2.5).abs() < f64::EPSILON);
 }

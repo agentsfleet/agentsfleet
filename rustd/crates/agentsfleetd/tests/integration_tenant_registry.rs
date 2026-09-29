@@ -35,7 +35,7 @@ const SECOND_MODEL: &str = "claude-fixture-walk-b";
 /// deliberately fails the activation ladder, and the runner suites rely on it
 /// staying that way.
 const WALK_KEY: &str = "walk-provider-key";
-use crate::e2e_seed::{seed_activatable_key, seed_tenant_key};
+use crate::e2e_seed_keys::{seed_activatable_key, seed_tenant_key};
 
 /// A tenant credential minted for this run alone.
 ///

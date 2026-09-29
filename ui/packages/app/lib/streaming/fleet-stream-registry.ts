@@ -1,9 +1,10 @@
 import { type EventRow } from "@/lib/api/events";
 import { FRAME_KIND, streamFleetEventsUrl } from "@/lib/api/events-types";
-import { latestFigures, sameFigures, type FleetFacts } from "@/lib/events/run-summary";
+import type { FleetFacts } from "@/lib/events/run-summary";
 import { backfillEntry } from "./fleet-stream-backfill";
 import { factsOf, mergeFacts } from "./fleet-stream-facts";
 import { optimisticRow, reconcileRows } from "./fleet-stream-optimistic";
+import { patchSnapshot, patchSpokenFacts, setEvents } from "./fleet-stream-snapshot";
 import {
   FAST_RECONNECT_ATTEMPTS,
   OFFLINE_RETRY_MS,
@@ -12,11 +13,19 @@ import {
   fastBackoffMs,
 } from "./fleet-stream-reconnect";
 import { applyLiveFrame, mergeBackfill, parseLiveFrame } from "./fleet-stream-frames";
-import { dispatchReplyFrame, disposeReplyStreams, markReplyGap, settleRepliesFromBackfill } from "./fleet-stream-reply-registry";
+import {
+  dispatchReplyFrame,
+  disposeReplyStreams,
+  markReplyGap,
+  readStalledReplies,
+  settleRepliesFromBackfill,
+  watchReply,
+  watchRunningRows,
+  type ApplyEvents,
+} from "./fleet-stream-reply-registry";
 import { HEARTBEAT_EVENT } from "./stream-recovery-window";
-import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
+import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
 import { advanceInstallStep, installStepFromKind } from "./install-steps";
-import { capEvents } from "./fleet-stream-cap";
 import {
   CONNECTION_STATUS,
   EMPTY_SNAPSHOT,
@@ -44,7 +53,12 @@ export {
 // frames published during the outage via the same-origin events proxy,
 // merged through the id-deduping mergeBackfill.
 
-const REGISTRY = new Map<string, Entry>();
+// An entry the registry holds, with the write every reply helper makes and its
+// check that this entry still owns the fleet. Both are made once, when the
+// entry is adopted, so a frame allocates neither.
+type LiveEntry = Entry & { apply: ApplyEvents; isCurrent: () => boolean };
+
+const REGISTRY = new Map<string, LiveEntry>();
 
 const IDLE_RELEASE_MS = 30_000;
 const RUNNER_ACTIVITY_KINDS: ReadonlySet<string> = new Set([
@@ -64,53 +78,18 @@ const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
 // then remove the operator's newest pending message.
 let tempCounter = 0;
 
-function notify(entry: Entry): void {
-  for (const l of entry.listeners) l();
-}
-
-function patchSnapshot(entry: Entry, patch: Partial<FleetStreamSnapshot>): void {
-  entry.snapshot = { ...entry.snapshot, ...patch };
-  notify(entry);
-}
-
-function setEvents(
-  entry: Entry,
-  next: (prev: FleetEvent[]) => FleetEvent[],
-  spoken: Partial<FleetFacts> = {},
-): void {
-  // The one choke point every mutation flows through: the cap and the strip's
-  // `latest` live here once, a completion's facts fold into the same write, and
-  // a frame that changed nothing (a duplicate, a malformed one) notifies no one.
-  const events = capEvents(next(entry.snapshot.events));
-  const facts = spokenFacts(entry, spoken);
-  if (events === entry.snapshot.events && facts.fleet === undefined) return;
-  const latest = latestFigures(events);
-  entry.snapshot = {
-    ...entry.snapshot,
-    ...facts,
-    events,
-    latest: sameFigures(latest, entry.snapshot.latest) ? entry.snapshot.latest : latest,
+function adopt(workspaceId: string, fleetId: string, initial: EventRow[]): LiveEntry {
+  const entry: LiveEntry = {
+    ...createEntry(workspaceId, initial),
+    apply: (next, facts) => setEvents(entry, next, facts),
+    isCurrent: () => REGISTRY.get(fleetId) === entry,
   };
-  notify(entry);
+  watchRunningRows(entry, initial);
+  REGISTRY.set(fleetId, entry);
+  return entry;
 }
 
-// What a FRAME said about the fleet itself, as a snapshot patch: the merged
-// facts and the advanced sequence, or nothing when the frame restated what
-// the snapshot already held.
-function spokenFacts(entry: Entry, patch: Partial<FleetFacts>): Partial<FleetStreamSnapshot> {
-  const fleet = mergeFacts(entry.snapshot.fleet, patch);
-  if (fleet === entry.snapshot.fleet) return {};
-  return { fleet, factsSeq: entry.snapshot.factsSeq + 1 };
-}
-
-// A gate frame moves the count and no row. Nothing is notified when nothing
-// changed, so a frame restating the count does not wake anyone.
-function patchSpokenFacts(entry: Entry, patch: Partial<FleetFacts>): void {
-  const spoken = spokenFacts(entry, patch);
-  if (spoken.fleet !== undefined) patchSnapshot(entry, spoken);
-}
-
-function startEventSource(entry: Entry, fleetId: string): void {
+function startEventSource(entry: LiveEntry, fleetId: string): void {
   const url = streamFleetEventsUrl(entry.workspaceId, fleetId);
   const es = new EventSource(url);
   entry.eventSource = es;
@@ -122,6 +101,9 @@ function startEventSource(entry: Entry, fleetId: string): void {
       patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.LIVE });
     }
   };
+  // After the frame is recorded, so the frame that ends a long silence counts
+  // as heard and its own event is not read back.
+  const sweep = () => readStalledReplies(entry, fleetId, entry.apply, entry.isCurrent);
   es.onopen = () => {
     if (entry.eventSource !== es) return;
     entry.recoveryWindow.opened(onTimeout);
@@ -129,17 +111,7 @@ function startEventSource(entry: Entry, fleetId: string): void {
     entry.hasConnectedOnce = true;
     entry.hadConnectionError = false;
     // An open alone does not reset failure history: accept-close loops back off.
-    if (needsBackfill) {
-      void backfillEntry(entry, fleetId, {
-        stillCurrent: () => REGISTRY.get(fleetId) === entry,
-        onPage: (rows) => {
-          setEvents(entry, (prev) => mergeBackfill(prev, rows));
-          settleRepliesFromBackfill(entry, fleetId, rows,
-            (next, facts) => setEvents(entry, next, facts),
-            () => REGISTRY.get(fleetId) === entry);
-        },
-      });
-    }
+    if (needsBackfill) recoverGap(entry, fleetId);
   };
   const handleFrame = (e: MessageEvent) => {
     if (entry.eventSource !== es) return;
@@ -147,6 +119,7 @@ function startEventSource(entry: Entry, fleetId: string): void {
     if (!frame) return;
     received();
     onFrame(entry, fleetId, frame);
+    sweep();
   };
   // Named frames dispatch only to their matching listener, never onmessage.
   // Keep both paths: the daemon uses message for its no-kind fallback.
@@ -154,12 +127,35 @@ function startEventSource(entry: Entry, fleetId: string): void {
     es.addEventListener(name, handleFrame as (e: Event) => void);
   }
   es.onmessage = handleFrame;
-  es.addEventListener(HEARTBEAT_EVENT, () => { if (entry.eventSource === es) received(); });
+  es.addEventListener(HEARTBEAT_EVENT, () => {
+    if (entry.eventSource !== es) return;
+    received();
+    sweep();
+  });
   es.onerror = onTimeout;
   entry.recoveryWindow.connecting(onTimeout);
 }
 
-function onFrame(entry: Entry, fleetId: string, frame: NonNullable<ReturnType<typeof parseLiveFrame>>): void {
+// Reads back what the stream missed. A burst of gap signals during a walk
+// costs one more walk after it, not one each.
+function recoverGap(entry: LiveEntry, fleetId: string): void {
+  void backfillEntry(entry, fleetId, {
+    stillCurrent: entry.isCurrent,
+    onPage: (rows) => {
+      setEvents(entry, (prev) => mergeBackfill(prev, rows));
+      watchRunningRows(entry, rows);
+      settleRepliesFromBackfill(entry, fleetId, rows, entry.apply, entry.isCurrent);
+    },
+  });
+}
+
+function onFrame(entry: LiveEntry, fleetId: string, frame: NonNullable<ReturnType<typeof parseLiveFrame>>): void {
+  // The daemon lost frames for this stream — dropped behind a slow reader, or
+  // a subscription lost and re-established — so read them back as a reconnect does.
+  if (frame.kind === FRAME_KIND.CATCHING_UP) {
+    recoverGap(entry, fleetId);
+    return;
+  }
   // Install frames advance the install step, never the message list. Forking
   // here (rather than inside applyLiveFrame) keeps the chat reducer pure and the
   // two concerns — a long-lived chat timeline vs. a one-shot install beat —
@@ -175,9 +171,7 @@ function onFrame(entry: Entry, fleetId: string, frame: NonNullable<ReturnType<ty
   // every late runner frame from mutating the settled answer or tool history.
   if ("event_id" in frame && RUNNER_ACTIVITY_KINDS.has(frame.kind)
     && entry.snapshot.events.some((event) => event.id === frame.event_id && TERMINAL_STATUSES.has(event.status))) return;
-  if (dispatchReplyFrame(entry, fleetId, frame,
-    (next, facts) => setEvents(entry, next, facts),
-    () => REGISTRY.get(fleetId) === entry)) return;
+  if (dispatchReplyFrame(entry, fleetId, frame, entry.apply, entry.isCurrent)) return;
   // A completion carries the fleet's status and pending count beside its row;
   // a gate frame carries the count alone and touches no row.
   const facts = factsOf(frame);
@@ -192,7 +186,7 @@ function onFrame(entry: Entry, fleetId: string, frame: NonNullable<ReturnType<ty
 // attempts run first; after them the connection is reported as not live but
 // the client keeps retrying on an unhurried cadence, so an outage that ends
 // while the operator is reading recovers without them doing anything.
-function onEventSourceError(entry: Entry, fleetId: string): void {
+function onEventSourceError(entry: LiveEntry, fleetId: string): void {
   markReplyGap(entry);
   entry.eventSource?.close();
   entry.eventSource = null;
@@ -246,8 +240,7 @@ export function subscribe(
 ): () => void {
   let entry = REGISTRY.get(fleetId);
   if (!entry) {
-    entry = createEntry(workspaceId, initial);
-    REGISTRY.set(fleetId, entry);
+    entry = adopt(workspaceId, fleetId, initial);
     const tracked = entry;
     entry.detachRecovery = attachRecoveryListeners({
       hasConnection: () => tracked.eventSource !== null && !tracked.recoveryWindow.isStale(),
@@ -276,6 +269,7 @@ export function reconcileServerRows(fleetId: string, rows: EventRow[]): void {
   const entry = REGISTRY.get(fleetId);
   if (!entry || rows.length === 0) return;
   setEvents(entry, (prev) => mergeBackfill(prev, rows));
+  watchRunningRows(entry, rows);
 }
 
 // A server render's word on the fleet, as the page just read it. It overwrites
@@ -320,15 +314,15 @@ export function reconcileOptimistic(
   fleetId: string,
   tempId: string,
   realEventId: string,
+  replayed: boolean,
 ): boolean {
   const entry = REGISTRY.get(fleetId);
   if (!entry) return false;
-  let alreadyComplete = false;
-  setEvents(entry, (prev) => {
-    const reconciled = reconcileRows(prev, tempId, realEventId);
-    alreadyComplete = reconciled.alreadyComplete;
-    return reconciled.events;
-  });
+  const { events, alreadyComplete, loaded } = reconcileRows(entry.snapshot.events, tempId, realEventId);
+  setEvents(entry, () => events);
+  // A replay's event may have run before this page held it, with no frame left
+  // to settle its row, so it is read now. One the page held settles from frames.
+  watchReply(entry, fleetId, realEventId, entry.apply, entry.isCurrent, replayed && !loaded);
   return alreadyComplete;
 }
 

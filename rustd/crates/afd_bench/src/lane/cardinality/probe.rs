@@ -12,9 +12,9 @@ use afd_fleet::lease::assign::MAX_READY_CANDIDATES_PER_POLL;
 use afd_fleet::lease::sql::lease::SELECT_READY_CANDIDATES;
 use sqlx::Row as _;
 
-use crate::datastores::Datastores;
 use crate::datastores::command::{COUNT, RANGE_END, RANGE_START, XRANGE};
-use crate::error::{Error, Result};
+use crate::datastores::{Datastores, postgres_count};
+use crate::error::{ErrorKind, Result};
 use crate::report::Report;
 
 /// Measurement key: `core.fleets` on disk at population, bytes.
@@ -53,9 +53,6 @@ const TABLE_SIZE_QUERY: &str = "SELECT pg_total_relation_size('core.fleets')";
 /// How many fleets exist, whatever their readiness.
 const POPULATION_QUERY: &str = "SELECT count(*) FROM core.fleets";
 
-/// The datastore named when a Postgres reading will not parse.
-const POSTGRES: &str = "postgres";
-
 /// The datastore named when a Dragonfly sample set is empty.
 const DRAGONFLY: &str = "dragonfly";
 
@@ -74,9 +71,12 @@ pub(super) async fn peek_ms(queue: &Dragonfly) -> Result<f64> {
             .await?;
         samples.push(started.elapsed());
     }
-    median_ms(samples).ok_or(Error::CounterUnreadable {
-        datastore: DRAGONFLY,
-        field: "readiness peek samples",
+    median_ms(samples).ok_or_else(|| {
+        ErrorKind::CounterUnreadable {
+            datastore: DRAGONFLY,
+            field: "readiness peek samples",
+        }
+        .into()
     })
 }
 
@@ -96,9 +96,12 @@ pub(super) async fn stream_read_ms(queue: &Dragonfly, fleet: &str) -> Result<f64
         let _entries: Vec<(String, Vec<String>)> = queue.command(XRANGE, &key, &command).await?;
         samples.push(started.elapsed());
     }
-    median_ms(samples).ok_or(Error::CounterUnreadable {
-        datastore: DRAGONFLY,
-        field: "stream read samples",
+    median_ms(samples).ok_or_else(|| {
+        ErrorKind::CounterUnreadable {
+            datastore: DRAGONFLY,
+            field: "stream read samples",
+        }
+        .into()
     })
 }
 
@@ -148,6 +151,9 @@ pub(super) async fn postgres_at_population(
     .bind(runner)
     .bind(&ready)
     .bind(i64::try_from(MAX_READY_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
+    // The instant the held-slot filter compares against, as the lease path
+    // binds it: now, so the plan is the one a live poll gets.
+    .bind(afd_core::clock::now().as_millis())
     .fetch_all(&mut *connection)
     .await?
     .iter()
@@ -175,7 +181,7 @@ pub(crate) fn plan_time(lines: &[String], label: &str) -> Option<f64> {
 
 /// `core.fleets` with its indexes, in bytes.
 pub(super) async fn table_sizes(database: &afd_db::Db) -> Result<u64> {
-    non_negative(
+    postgres_count(
         scalar(database, TABLE_SIZE_QUERY).await?,
         "pg_total_relation_size",
     )
@@ -183,7 +189,7 @@ pub(super) async fn table_sizes(database: &afd_db::Db) -> Result<u64> {
 
 /// How many fleets the database holds.
 pub(super) async fn fleet_population(database: &afd_db::Db) -> Result<u64> {
-    non_negative(scalar(database, POPULATION_QUERY).await?, "count(*)")
+    postgres_count(scalar(database, POPULATION_QUERY).await?, "count(*)")
 }
 
 /// One bigint out of a constant statement.
@@ -193,14 +199,6 @@ async fn scalar(database: &afd_db::Db, statement: &'static str) -> Result<i64> {
         .fetch_one(&mut *connection)
         .await?
         .try_get(0)?)
-}
-
-/// A Postgres count that cannot honestly be negative.
-fn non_negative(value: i64, field: &'static str) -> Result<u64> {
-    u64::try_from(value).map_err(|_negative| Error::CounterUnreadable {
-        datastore: POSTGRES,
-        field,
-    })
 }
 
 /// The middle sample in milliseconds, or nothing for no samples.

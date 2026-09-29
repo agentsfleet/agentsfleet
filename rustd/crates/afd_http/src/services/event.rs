@@ -13,7 +13,9 @@
 //! eventually do.
 
 use afd_core::id::Uuid7;
-use afd_events::{Cursor, EventDetailRow, EventRow, Filter, History, Result as EventResult, Steer};
+use afd_events::{
+    Cursor, EventDetailRow, EventRow, Filter, History, Result as EventResult, Steer, Steered,
+};
 
 /// Everything the event-history routes act through.
 pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
@@ -133,7 +135,8 @@ impl WorkspaceEvents for History {
 /// connection opened by CONNECTING — which is exactly the seam a suite proving
 /// the refusal matrix must not have to construct.
 pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
-    /// Puts one message on the fleet's stream, answering with its event id.
+    /// Puts one message on the fleet's stream, answering with its event id and
+    /// whether an earlier send of the same operation id already admitted it.
     ///
     /// `operation_id` is the CALLER's name for this operation, repeated across
     /// its retries, or `None` when it has none — see [`afd_events::Steer`].
@@ -147,7 +150,7 @@ pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
         actor: &str,
         request_json: &str,
         operation_id: Option<&str>,
-    ) -> impl Future<Output = EventResult<String>> + Send;
+    ) -> impl Future<Output = EventResult<Steered>> + Send;
 
     /// The event a caller's operation already became on `fleet`, or `None`
     /// when the operation id is new — asked when the fleet refuses new work, so
@@ -176,7 +179,7 @@ impl FleetSteering for Steer {
         actor: &str,
         request_json: &str,
         operation_id: Option<&str>,
-    ) -> impl Future<Output = EventResult<String>> + Send {
+    ) -> impl Future<Output = EventResult<Steered>> + Send {
         Self::append(self, fleet, workspace, actor, request_json, operation_id)
     }
 

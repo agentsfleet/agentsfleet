@@ -54,9 +54,9 @@ use agentsfleetd::supervisor::Supervisor;
 use crate::e2e_db::scenario_database;
 use crate::e2e_event::{enqueue, enqueue_unsupported};
 use crate::e2e_seed::{
-    DEEP_POOL, enrolment, seed_fleet, seed_model_rate, seed_platform_default, seed_provider_key,
-    seed_wallet,
+    DEEP_POOL, enrolment, seed_fleet, seed_model_rate, seed_platform_default, seed_wallet,
 };
+use crate::e2e_seed_keys::seed_provider_key;
 
 use crate::support::{IDENTITY, SESSION_PEPPER, install_subscriber};
 
@@ -215,6 +215,9 @@ pub(crate) struct Scenario {
     pub(crate) token: String,
     /// The instant the seed was stamped with.
     pub(crate) seeded_at: UnixMillis,
+    /// This scenario's hold on the platform default, released after the daemon
+    /// above has stopped and before the stream guard below.
+    _default: afd_db::test_util::PlatformDefault,
     /// Exclusive use of the ready stream, for as long as this scenario lives.
     ///
     /// Last field, so it is released only after the daemon above has been
@@ -265,7 +268,7 @@ pub(crate) async fn scenario_with_provider(
     seed_fleet(&booted, &fleet, &workspace, &tenant, now).await;
     seed_wallet(&booted, &tenant, DEEP_POOL, now).await;
     seed_model_rate(&booted, now).await;
-    seed_platform_default(&booted, &workspace, now).await;
+    let default = seed_platform_default(&booted, &workspace, now).await;
     seed_provider_key(&booted, &workspace, now).await;
 
     // Through the production verb, not an INSERT: enrolment mints the token
@@ -288,6 +291,7 @@ pub(crate) async fn scenario_with_provider(
         token: enrolled.token.expose().to_owned(),
         seeded_at: now,
         booted,
+        _default: default,
         _exclusive: exclusive,
     }
 }
@@ -333,7 +337,7 @@ impl Scenario {
         let Self { booted, fleet, .. } = self;
 
         let index = ReadyIndex::new(booted.queue.clone());
-        if let Ok(token) = index.mark(&fleet, &fleet).await {
+        if let Ok(token) = index.mark(&fleet).await {
             let _cleared = index.clear_if_unchanged(&fleet, &token).await;
         }
         drop(booted);

@@ -7,12 +7,15 @@
 //! list would skip a primary that now owns keys.
 
 use redis::Value;
+use redis::cluster_async::ClusterConnection;
+use redis::cluster_routing::{RoutingInfo, SingleNodeRoutingInfo};
 
 use crate::client::Dragonfly;
 use crate::error::{self, Result};
 
 const CMD_CLUSTER: &str = "CLUSTER";
 const ARG_SHARDS: &str = "SHARDS";
+const ARG_SLOTS: &str = "SLOTS";
 const FIELD_NODES: &str = "nodes";
 const FIELD_IP: &str = "ip";
 const FIELD_ENDPOINT: &str = "endpoint";
@@ -53,6 +56,12 @@ pub(crate) async fn nodes(redis: &Dragonfly) -> Result<Vec<Node>> {
     let mut cmd = redis::cmd(CMD_CLUSTER);
     cmd.arg(ARG_SHARDS);
     let shards: Value = redis.command(CMD_CLUSTER, ARG_SHARDS, &cmd).await?;
+    nodes_in(shards)
+}
+
+/// Every node a `CLUSTER SHARDS` reply names. A reply that is not a list of
+/// shards is refused rather than read as an empty cluster.
+fn nodes_in(shards: Value) -> Result<Vec<Node>> {
     let Value::Array(shards) = shards else {
         return Err(error::unexpected_reply(CMD_CLUSTER));
     };
@@ -74,6 +83,72 @@ pub(crate) async fn primaries(redis: &Dragonfly) -> Result<Vec<NodeAddress>> {
         .filter(|node| node.role == Role::Primary)
         .map(|node| node.address)
         .collect())
+}
+
+/// One contiguous run of slots and the primary serving it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SlotRange {
+    pub(crate) first: u16,
+    pub(crate) last: u16,
+    /// The primary's node id, the answer it gives to `CLUSTER MYID`; `None`
+    /// when the reply leaves it out.
+    pub(crate) id: Option<String>,
+}
+
+/// The slot map as `CLUSTER SLOTS` states it, asked on `connection`.
+///
+/// `SLOTS` rather than `SHARDS` because it is the reply the driver builds its
+/// own routing from: a range here is the range the driver routes by.
+///
+/// # Errors
+/// The driver's error when no node answers.
+pub(crate) async fn slot_ranges(
+    connection: &mut ClusterConnection,
+) -> redis::RedisResult<Vec<SlotRange>> {
+    let mut cmd = redis::cmd(CMD_CLUSTER);
+    cmd.arg(ARG_SLOTS);
+    let routing = RoutingInfo::SingleNode(SingleNodeRoutingInfo::Random);
+    Ok(ranges_in(&connection.route_command(cmd, routing).await?))
+}
+
+/// Every well-formed range a `CLUSTER SLOTS` reply names. A malformed range
+/// is skipped rather than guessed at: a slot no range claims is a channel the
+/// caller cannot place, which it treats as a loss it redials, never as a
+/// subscription it sends somewhere arbitrary.
+fn ranges_in(reply: &Value) -> Vec<SlotRange> {
+    let Value::Array(ranges) = reply else {
+        return Vec::new();
+    };
+    ranges.iter().filter_map(range_of).collect()
+}
+
+/// `[first, last, [host, port, id, …], replicas…]`, or `None` for another
+/// shape.
+fn range_of(range: &Value) -> Option<SlotRange> {
+    let Value::Array(fields) = range else {
+        return None;
+    };
+    let mut fields = fields.iter();
+    let first = small(fields.next()?)?;
+    let last = small(fields.next()?)?;
+    let Value::Array(primary) = fields.next()? else {
+        return None;
+    };
+    // `[host, port, id, …]`: the address is read only to reject a shape
+    // that is not a node, because nothing here routes by it.
+    let mut primary = primary.iter();
+    text(primary.next()?)?;
+    small(primary.next()?)?;
+    let id = primary.next().and_then(text);
+    Some(SlotRange { first, last, id })
+}
+
+/// An integer reply that fits a slot number or a port.
+fn small(value: &Value) -> Option<u16> {
+    match value {
+        Value::Int(number) => u16::try_from(*number).ok(),
+        _other => None,
+    }
 }
 
 fn nodes_of(shard: Value) -> Result<Vec<Value>> {

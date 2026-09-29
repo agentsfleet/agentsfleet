@@ -221,7 +221,7 @@ describe("useFleetEventStream", () => {
     expect(result.current.convertEvent(result.current.events[0]!).metadata?.custom?.["queued"]).toBe(true);
 
     act(() => {
-      result.current.reconcileOptimistic(tempId, "evt_real");
+      result.current.reconcileOptimistic(tempId, "evt_real", false);
     });
     await waitFor(() => expect(result.current.events[0]!.id).toBe("evt_real"));
     expect(result.current.events[0]!.status).toBe("received");
@@ -242,8 +242,8 @@ describe("useFleetEventStream", () => {
     act(() => {
       first = result.current.appendOptimistic("remember me", "steer:alice@example.com");
       second = result.current.appendOptimistic("what did I say?", "steer:alice@example.com");
-      result.current.reconcileOptimistic(first, "evt_first");
-      result.current.reconcileOptimistic(second, "evt_second");
+      result.current.reconcileOptimistic(first, "evt_first", false);
+      result.current.reconcileOptimistic(second, "evt_second", false);
     });
     const source = FakeEventSource.instances[0]!;
     act(() => {

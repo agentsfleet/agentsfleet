@@ -39,7 +39,7 @@ fn unset_optional_settings_resolve_to_documented_defaults() {
 
     assert_eq!(config.app_url(), "https://app.agentsfleet.net");
     assert_eq!(config.api_url(), "https://api.agentsfleet.net");
-    assert_eq!(config.sse_max_streams(), 64);
+    assert_eq!(config.sse_max_streams(), 256);
     assert!(config.posthog().is_none());
     assert!(config.bundles().is_none());
     assert!(config.platform_admin_workspace().is_none());

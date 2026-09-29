@@ -104,11 +104,6 @@ pub const API_URL_KNOB: &str = "API_URL";
 /// The deployment [`API_URL_KNOB`] falls back to.
 pub(super) const API_URL_DEFAULT: &str = "https://api.agentsfleet.net";
 
-/// How many concurrent event streams one instance carries.
-///
-/// `SSE_MAX_STREAMS`, and it is a knob rather than a constant because it is the
-/// one ceiling an operator tunes against their own host: a stream costs a task
-/// and a pub/sub map entry, so the right number is a property of the box.
 /// The `PostHog` project this deployment reports product events to.
 ///
 /// `POSTHOG_API_KEY`. Unset is most deployments — every developer's, every
@@ -122,10 +117,30 @@ pub(super) const POSTHOG_KEY_KNOB: &str = "POSTHOG_API_KEY";
 /// and the EU region are both real, and neither is a code change.
 pub(super) const POSTHOG_HOST_KNOB: &str = "POSTHOG_HOST";
 
+/// How many concurrent event streams one instance carries.
+///
+/// `SSE_MAX_STREAMS`, and it is a knob rather than a constant because it is the
+/// one ceiling an operator tunes against their own host: a stream costs a task
+/// and a pub/sub map entry, so the right number is a property of the box.
 pub(super) const SSE_MAX_STREAMS_KNOB: &str = "SSE_MAX_STREAMS";
 
-/// `SSE_MAX_STREAMS_DEFAULT`, mirrored.
-pub(super) const SSE_MAX_STREAMS_DEFAULT: usize = 64;
+/// The stream ceiling when the knob is unset.
+///
+/// Bound by FILE DESCRIPTORS, not by the tail itself: every stream holds a
+/// socket, nothing in this daemon raises `RLIMIT_NOFILE`, and a stock soft
+/// limit is 1,024. About 300 of those are spoken for before any stream — up
+/// to 256 admitted requests (`afd_http` `admission/mod.rs:62`), 20 per
+/// Postgres pool (`afd_db` `config.rs:52-60`), a dozen Dragonfly sockets and
+/// the runtime's own — which leaves room for 256 and not for the next rung.
+///
+/// The tail holds up well past that. `make bench-tail PROFILE=rig` (the tail
+/// lane's stream ladder, Sep 29, 2026, compose Postgres + four-process Dragonfly
+/// v2.0.0) at 256 streams: every stream reached and every frame delivered
+/// (`frames_undelivered=0`), publish-to-receive p95 0.143 ms against a 250 ms
+/// bound, 13,494 bytes of heap per stream — about 3.3 MiB in all against a
+/// 256 MiB bound. The ladder's 4,096 rung passed the same bounds, so a host
+/// with a raised descriptor limit can set the knob far higher.
+pub(super) const SSE_MAX_STREAMS_DEFAULT: usize = 256;
 
 /// Why a stream ceiling that will not parse refuses boot.
 pub(super) const WHY_SSE_MAX_STREAMS: &str =

@@ -62,7 +62,7 @@ test-util = [
 ]
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
 # The reconcile sweeper's resume state is handed in and out of a mutex around
 # every pass, and that hand-off is the one part of it decidable without a
 # datastore. Reaching it needs a `Reconcile`, which needs an `Admissions`, which
@@ -71,6 +71,12 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 afd_admission = { workspace = true, features = ["test-util"] }
 afd_db.workspace = true
 afd_dragonfly.workspace = true
+# The raw `XCLAIM`/`XPENDING` `integration_reclaim_faults.rs` ages and reads an
+# entry through.
+redis.workspace = true
+# The thread-scoped recorder `integration_repair_faults.rs` reads a dispatch
+# failure's log line back through.
+tracing-subscriber.workspace = true
 
 [[test]]
 name = "runner_suite"

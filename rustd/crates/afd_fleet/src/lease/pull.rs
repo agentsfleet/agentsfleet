@@ -39,13 +39,12 @@ use afd_core::id::Uuid7;
 use afd_wire::event::EventType;
 
 use crate::error::Result;
-use crate::lease::admit::{Admission, Billed as Admitted, Request, money_gates};
+use crate::lease::admit::{Admission, Billed as Admitted, Request, money_gates, payer_gate};
 use crate::lease::answer::no_work;
 use crate::lease::envelope::Acquired;
 use crate::lease::installed::Installed;
 use crate::lease::store::Leases;
 use afd_billing::Accounts;
-use afd_billing::rates::Posture;
 use afd_core::event::label;
 use afd_credential::provider::{Providers, Resolved};
 use afd_credential::secrets::Registry;
@@ -54,10 +53,22 @@ use afd_gate::gate::{Check, Gates};
 
 #[cfg(feature = "test-util")]
 mod claimed;
+mod held;
 mod refuse;
 mod step;
+#[cfg(all(test, feature = "test-util"))]
+mod tests;
 
-use self::step::{AWAITING_APPROVAL, Step};
+pub(in crate::lease) use self::step::{Leased, Step, claim_lost};
+
+/// A finished event's redelivery could not be acknowledged.
+const EVENT_TERMINAL_ACK_FAILED: &str = "terminal_redelivery_ack_failed";
+
+/// A finished event's redelivery was acknowledged and not executed.
+const EVENT_TERMINAL_SUPPRESSED: &str = "terminal_redelivery_suppressed";
+
+/// The no-work reason a finished event's redelivery answers.
+const REDELIVERED_FINISHED: &str = "the redelivered event had already finished";
 
 /// Everything the lease verb acts through.
 ///
@@ -147,84 +158,40 @@ impl Plane {
         if degraded {
             return no_work(runner_id, "the runner's verdict is degraded or unreadable");
         }
-        let admitted = match self.admit(runner_id, now).await? {
-            Step::Go(admitted) => admitted,
-            Step::Stop(answer) => return Ok(answer),
-        };
-        self.deliver(runner_id, admitted, now).await
-    }
-
-    /// Claim work and run every gate over it.
-    ///
-    /// Ends the pass on anything that means "not this poll", writing the
-    /// terminal row where one is owed.
-    async fn admit(&self, runner_id: &Uuid7, now: UnixMillis) -> Result<Step<Admission2>> {
         let Some(acquired) = self.leases.select(runner_id, now).await? else {
-            return Ok(Step::Stop(no_work(runner_id, "no leasable work")?));
+            return no_work(runner_id, "no leasable work");
         };
-        self.admit_claimed(acquired, runner_id, now).await
+        self.run_claimed(acquired, runner_id, now).await
     }
 
     /// Every gate over one already-claimed event.
     ///
-    /// Split from the selection above it because the two fail for different
-    /// reasons and are proven differently: WHICH event a poll gets is the
-    /// readiness index's decision, and what then happens to it is this chain's.
-    /// The suite enters here through [`Self::lease_claimed`], naming its own
-    /// fleet, instead of polling a process-global partition cursor until that
-    /// fleet comes up.
+    /// Ends the pass on anything that means "not this poll", writing the
+    /// terminal row where one is owed. Split from the selection because the
+    /// two fail for different reasons and are proven differently: WHICH event
+    /// a poll gets is the readiness index's decision, and what then happens to
+    /// it is this chain's. The suite enters below the selection through
+    /// [`Self::lease_claimed`], naming its own fleet, instead of polling a
+    /// process-global partition cursor until that fleet comes up.
     async fn admit_claimed(
         &self,
         acquired: Acquired,
         runner_id: &Uuid7,
         now: UnixMillis,
     ) -> Result<Step<Admission2>> {
-        let installed = match self.resolve_installed(&acquired, runner_id, now).await? {
-            Step::Go(installed) => installed,
-            Step::Stop(answer) => return Ok(Step::Stop(answer)),
+        let installed = match self
+            .resolve_installed(&acquired, runner_id, now)
+            .await?
+            .proceed()
+        {
+            Ok(installed) => installed,
+            Err(ended) => return Ok(ended),
         };
 
         let received = self.leases.record_received(&acquired, now).await?;
         let delivery = received.delivery;
-
-        // Dimension 7.4. The event already ran. Acknowledge the entry and stop
-        // BEFORE any of the work below — the gates, the money, the secrets, the
-        // lease row — because every one of them is an effect of executing, and
-        // the execution already happened: the tenant paid for it, and its answer
-        // is already owed or delivered.
-        //
-        // Acknowledging is the whole point rather than a tidy-up. An entry left
-        // pending is offered again, so a terminal event that is only SKIPPED
-        // comes back on the next poll forever, and each pass costs a selection,
-        // an insert attempt and this read. The ack is what ends it.
         if delivery == crate::lease::event::Delivery::Terminal {
-            self.leases
-                .acknowledge(&acquired.fleet_id, &acquired.receipt)
-                .await
-                .unwrap_or_else(|failure| {
-                    // Logged, not propagated: the entry stays pending and this
-                    // path runs again, which is the same answer one turn later.
-                    // Failing the lease would refuse a runner that has done
-                    // nothing wrong.
-                    tracing::warn!(
-                        error_code = failure.code().as_str(),
-                        fleet_id = acquired.fleet_id.as_str(),
-                        agentsfleet_event_id = acquired.event_id.as_str(),
-                        reason = failure.to_string(),
-                        event = "terminal_redelivery_ack_failed",
-                        "a finished event was not acknowledged; it will be offered again"
-                    );
-                });
-            tracing::info!(
-                fleet_id = acquired.fleet_id.as_str(),
-                agentsfleet_event_id = acquired.event_id.as_str(),
-                event = "terminal_redelivery_suppressed",
-                "a redelivered event had already finished; it was acknowledged, not executed"
-            );
-            return Ok(Step::Stop(no_work(
-                runner_id,
-                "the redelivered event had already finished",
-            )?));
+            return self.finished(&acquired, runner_id).await;
         }
         // The tail's opening bracket, once per row: a redelivery found the row
         // already there, and its watchers already hold the marker. The counters
@@ -234,49 +201,41 @@ impl Plane {
                 .publish_received(&acquired, now, received.counters)
                 .await;
         }
+        self.billed(acquired, installed, delivery, runner_id, now)
+            .await
+    }
 
+    /// The event's type, its payer, its provider and every gate, over a row
+    /// the pass has opened: the run is admitted and billed, or the pass ends.
+    async fn billed(
+        &self,
+        acquired: Acquired,
+        installed: Installed,
+        delivery: crate::lease::event::Delivery,
+        runner_id: &Uuid7,
+        now: UnixMillis,
+    ) -> Result<Step<Admission2>> {
         let Some(event_type) = EventType::parse(&acquired.event_type) else {
             let reason = acquired.event_type.clone();
+            let label = label::EVENT_TYPE_UNSUPPORTED;
             return self
-                .refused(
-                    &acquired,
-                    label::EVENT_TYPE_UNSUPPORTED,
-                    runner_id,
-                    &reason,
-                    now,
-                )
+                .refused(&acquired, label, runner_id, &reason, now)
                 .await
                 .map(Step::Stop);
         };
 
-        let resolved = match self.accounts.payer(&acquired.workspace_id).await? {
-            Some(tenant) => Some(self.providers.resolve(&tenant).await?),
-            None => None,
+        // The payer is read ONCE, here: the provider resolves against it and
+        // the gates bill it, so a second read could only disagree with the first.
+        let read = self.accounts.payer(&acquired.workspace_id).await;
+        let tenant = match payer_gate(read, &acquired.workspace_id)? {
+            Ok(tenant) => tenant,
+            Err(declined) => return self.ended(&acquired, declined, runner_id, now).await,
         };
-        let billed = match self
-            .money(&acquired, &installed, resolved.as_ref(), delivery, now)
-            .await?
-        {
-            Admission::Admit(billed) => billed,
-            Admission::Refuse(refusal) => {
-                return self
-                    .refused(&acquired, refusal.label, runner_id, refusal.detail, now)
-                    .await
-                    .map(Step::Stop);
-            }
-            Admission::Retry(transient) => {
-                return Ok(Step::Stop(no_work(runner_id, transient.at)?));
-            }
-            Admission::Await(_waiting) => {
-                return Ok(Step::Stop(no_work(runner_id, AWAITING_APPROVAL)?));
-            }
-        };
-
-        if let Some(stop) = self.judged(&acquired, &installed, now).await {
-            return self.stopped(&acquired, stop, runner_id, now).await;
-        }
-        let Some(resolved) = resolved else {
-            return Ok(Step::Stop(no_work(runner_id, "admitted with no provider")?));
+        let resolved = self.providers.resolve(&tenant).await?;
+        let gated = self.gated(&acquired, &installed, tenant, &resolved, delivery, now);
+        let billed = match gated.await?.admitted() {
+            Ok(billed) => billed,
+            Err(declined) => return self.ended(&acquired, declined, runner_id, now).await,
         };
         Ok(Step::Go(Admission2 {
             acquired,
@@ -287,33 +246,73 @@ impl Plane {
         }))
     }
 
-    /// The money pass, over one claim.
-    async fn money(
+    /// Dimension 7.4: the event already ran. Acknowledge the entry and stop
+    /// BEFORE any of the gates, the money, the secrets or the lease row,
+    /// because every one of them is an effect of executing, and the execution
+    /// already happened: the tenant paid for it, and its answer is already
+    /// owed or delivered.
+    ///
+    /// Acknowledging is the whole point rather than a tidy-up. An entry left
+    /// pending is offered again, so a terminal event that is only SKIPPED
+    /// comes back on the next poll forever. A failed acknowledgement is logged,
+    /// not propagated: the entry stays pending and this runs again, which is
+    /// the same answer one turn later, and failing the lease would refuse a
+    /// runner that has done nothing wrong.
+    async fn finished(&self, acquired: &Acquired, runner_id: &Uuid7) -> Result<Step<Admission2>> {
+        let fleet_id = acquired.fleet_id.as_str();
+        let agentsfleet_event_id = acquired.event_id.as_str();
+        if let Err(failure) = self
+            .leases
+            .acknowledge(&acquired.fleet_id, &acquired.receipt)
+            .await
+        {
+            let code = failure.code().as_str();
+            let reason = failure.to_string();
+            tracing::warn!(
+                error_code = code,
+                fleet_id,
+                agentsfleet_event_id,
+                reason,
+                event = EVENT_TERMINAL_ACK_FAILED,
+                "a finished event was not acknowledged; it will be offered again"
+            );
+        }
+        tracing::info!(
+            fleet_id,
+            agentsfleet_event_id,
+            event = EVENT_TERMINAL_SUPPRESSED,
+            "a redelivered event had already finished; it was acknowledged, not executed"
+        );
+        no_work(runner_id, REDELIVERED_FINISHED).map(Step::Stop)
+    }
+
+    /// The money gates over the tenant the payer gate found, then — once they
+    /// admit — the approval gate.
+    async fn gated(
         &self,
         acquired: &Acquired,
         installed: &Installed,
-        resolved: Option<&Resolved>,
+        tenant: Uuid7,
+        resolved: &Resolved,
         delivery: crate::lease::event::Delivery,
         now: UnixMillis,
     ) -> Result<Admission> {
-        let (provider, model) =
-            resolved.map_or(("", ""), |it| (it.provider.as_ref(), it.model.as_ref()));
-        money_gates(
-            &self.accounts,
-            Request {
-                workspace_id: &acquired.workspace_id,
-                fleet_id: &acquired.fleet_id,
-                event_id: &acquired.event_id,
-                event_created_at: acquired.event_created_at,
-                budget: installed.config.budget(),
-                posture: resolved.map_or(Posture::Platform, |it| it.posture),
-                provider,
-                model,
-                delivery,
-            },
-            now,
-        )
-        .await
+        let request = Request {
+            workspace_id: &acquired.workspace_id,
+            fleet_id: &acquired.fleet_id,
+            event_id: &acquired.event_id,
+            event_created_at: acquired.event_created_at,
+            budget: installed.config.budget(),
+            posture: resolved.posture,
+            provider: resolved.provider.as_ref(),
+            model: resolved.model.as_ref(),
+            delivery,
+        };
+        let money = money_gates(&self.accounts, Ok(Some(tenant)), request, now).await?;
+        if !matches!(money, Admission::Admit(_)) {
+            return Ok(money);
+        }
+        Ok(self.judged(acquired, installed, now).await.unwrap_or(money))
     }
 
     /// The approval gate, as an admission answer.

@@ -1,135 +1,41 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type {
-  FleetCountersSnapshot,
-  WorkspaceControlFrame,
-  WorkspaceLiveFrame,
-} from "@/lib/api/events";
-import type { BackfillOutcome, WorkspaceBackfillRequest } from "@/lib/streaming/fleet-stream-backfill";
+import type { FleetCountersSnapshot } from "@/lib/api/events";
 
 import { FRAME_KIND } from "@/lib/api/events-types";
-import { MAX_LIVE_EVENTS } from "@/lib/streaming/fleet-stream-cap";
-
-// The store is proven against captured subscriptions rather than a fake
-// EventSource: the claims here are about what the store does with a frame it
-// was handed, and the transport that hands it over has its own suite.
-type FrameListener = (frame: WorkspaceLiveFrame) => void;
-type ControlListener = (frame: WorkspaceControlFrame) => void;
-type BackfillFn = (workspaceId: string, anchorMs: number | null) => void;
-
-const fleetListeners = new Map<string, FrameListener>();
-let controlListener: ControlListener | null = null;
-let backfill: BackfillFn | null = null;
-
-const noteServerFrameTime = vi.fn();
-const warnBackfillFailure = vi.fn();
-vi.mock("@/lib/streaming/workspace-stream", () => ({
-  WORKSPACE_CONNECTION_STATUS: { CONNECTING: "connecting", LIVE: "live", RECONNECTING: "reconnecting" },
-  noteServerFrameTime: (...a: unknown[]) => noteServerFrameTime(...a),
-  subscribeStatus: (_workspaceId: string, _listener: unknown, onReconnect: BackfillFn) => {
-    backfill = onReconnect;
-    return () => {};
-  },
-  subscribeWorkspaceFrames: (_workspaceId: string, listener: ControlListener) => {
-    controlListener = listener;
-    return () => {};
-  },
-  subscribeFleet: (_workspaceId: string, fleetId: string, listener: FrameListener) => {
-    fleetListeners.set(fleetId, listener);
-    return () => {};
-  },
-}));
-
-const runWorkspaceBackfill = vi.fn<(req: WorkspaceBackfillRequest) => Promise<BackfillOutcome>>();
-vi.mock("@/lib/streaming/fleet-stream-backfill", () => ({
-  runWorkspaceBackfill: (req: WorkspaceBackfillRequest) => runWorkspaceBackfill(req),
-  warnBackfillFailure: (...a: unknown[]) => warnBackfillFailure(...a),
-}));
-
+import {
+  completed,
+  flushFrame,
+  greet,
+  push,
+  received,
+  setupWorkspaceWire,
+  WORKSPACE_ID,
+} from "@/tests/helpers/workspace-store-harness";
 import { WorkspaceStore } from "./workspace-store";
 
-const WORKSPACE_ID = "ws_store";
 const FLEET_A = "fleet_a";
 const FLEET_B = "fleet_b";
 const SEVEN_EVENTS = 7;
 const SPENT_NANOS = 1_500_000_000;
 const STANDING = { events_processed: 3, budget_used_nanos: 900_000_000 };
-const OVERFLOW = MAX_LIVE_EVENTS + 50;
-const CREATED_AT_MS = 1_700_000_000_000;
-
-function received(fleetId: string, eventId: string, counters: object = {}): WorkspaceLiveFrame {
-  return {
-    kind: FRAME_KIND.EVENT_RECEIVED,
-    fleet_id: fleetId,
-    event_id: eventId,
-    actor: "fleet",
-    created_at: CREATED_AT_MS,
-    ...counters,
-  };
-}
-
-function completed(fleetId: string, eventId: string, counters: object = {}): WorkspaceLiveFrame {
-  return {
-    kind: FRAME_KIND.EVENT_COMPLETE,
-    fleet_id: fleetId,
-    event_id: eventId,
-    status: "processed",
-    created_at: CREATED_AT_MS,
-    updated_at: CREATED_AT_MS,
-    ...counters,
-  };
-}
-
-function push(fleetId: string, frame: WorkspaceLiveFrame) {
-  const listener = fleetListeners.get(fleetId);
-  if (!listener) throw new Error(`no subscription for ${fleetId}`);
-  listener(frame);
-}
-
-function greet(frame: WorkspaceControlFrame) {
-  if (!controlListener) throw new Error("no workspace subscription");
-  controlListener(frame);
-}
 
 let store: WorkspaceStore;
 let disconnect: () => void;
-let queuedFrame: FrameRequestCallback | null = null;
 
-function flushFrame() {
-  const callback = queuedFrame;
-  queuedFrame = null;
-  callback?.(0);
-}
+setupWorkspaceWire();
 
 beforeEach(() => {
-  fleetListeners.clear();
-  controlListener = null;
-  backfill = null;
-  queuedFrame = null;
-  vi.stubGlobal(
-    "requestAnimationFrame",
-    vi.fn((callback: FrameRequestCallback) => {
-      queuedFrame = callback;
-      return 1;
-    }),
-  );
-  vi.stubGlobal("cancelAnimationFrame", vi.fn());
   store = new WorkspaceStore(WORKSPACE_ID);
   disconnect = store.connect([FLEET_A, FLEET_B]);
 });
 
-afterEach(() => {
-  disconnect();
-  vi.unstubAllGlobals();
-  runWorkspaceBackfill.mockReset();
-  noteServerFrameTime.mockReset();
-  warnBackfillFailure.mockReset();
-});
+afterEach(() => disconnect());
 
 describe("the tile counters are a snapshot the store assigns", () => {
   it("a_repeated_frame_leaves_the_tile_unchanged", () => {
-    // Dimension 1.1. The same frame twice carries the same truth twice; a
-    // delta would read 14, a snapshot reads 7.
+    // The same frame twice carries the same truth twice; a delta would read
+    // 14, a snapshot reads 7.
     const frame = completed(FLEET_A, "e1", {
       events_processed: SEVEN_EVENTS,
       budget_used_nanos: SPENT_NANOS,
@@ -165,9 +71,9 @@ describe("the tile counters are a snapshot the store assigns", () => {
   });
 
   it("the hello assigns each announced fleet, and leaves an unannounced one standing", () => {
-    // Dimension 1.2, the client half: the figures a late subscriber missed
-    // arrive on the greeting, before any event frame. A fleet the map omits
-    // keeps what it had — here nothing, so the server render still stands.
+    // The figures a late subscriber missed arrive on the greeting, before any
+    // event frame. A fleet the map omits keeps what it had — here nothing, so
+    // the server render still stands.
     push(FLEET_B, received(FLEET_B, "e0", STANDING));
     greet({
       kind: FRAME_KIND.HELLO,
@@ -288,107 +194,5 @@ describe("the wall's own subscription", () => {
     greet({ kind: FRAME_KIND.CATCHING_UP, dropped: 2 });
     flushFrame();
     expect(listener).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("the event map stays bounded", () => {
-  it("the_store_still_bounds_its_event_map_without_absorb", () => {
-    // Dimension 3.1. `absorb` was the only thing that ever emptied a fleet's
-    // rows; with it gone the cap has to hold on the write itself.
-    for (let index = 0; index < OVERFLOW; index += 1) {
-      push(FLEET_A, received(FLEET_A, `e${index}`));
-      push(FLEET_A, completed(FLEET_A, `e${index}`));
-    }
-    expect(store.snapshot(FLEET_A).events.length).toBeLessThanOrEqual(MAX_LIVE_EVENTS);
-    // And a key only for a fleet the wall subscribed: the map cannot grow
-    // with the workspace, only with the tiles on screen.
-    expect(store.snapshot(FLEET_B).events).toHaveLength(0);
-  });
-
-  it("a backfill that rejects is logged and leaves the fleet as it was", async () => {
-    runWorkspaceBackfill.mockRejectedValue(new Error("network failed"));
-    push(FLEET_A, received(FLEET_A, "e1", STANDING));
-    if (!backfill) throw new Error("no status subscription");
-    backfill(WORKSPACE_ID, null);
-    await vi.waitFor(() => expect(warnBackfillFailure).toHaveBeenCalledTimes(1));
-    expect(store.snapshot(FLEET_A).events).toHaveLength(1);
-    expect(store.snapshot(FLEET_A).counters?.eventsProcessed).toBe(STANDING.events_processed);
-  });
-
-  it("a backfill that lands after the store reconnected is dropped, catching up left standing", async () => {
-    let release: (outcome: BackfillOutcome) => void = () => {};
-    runWorkspaceBackfill.mockImplementation(
-      () => new Promise<BackfillOutcome>((resolve) => { release = resolve; }),
-    );
-    greet({ kind: FRAME_KIND.CATCHING_UP, dropped: 2 });
-    if (!backfill) throw new Error("no status subscription");
-    backfill(WORKSPACE_ID, null);
-    await vi.waitFor(() => expect(runWorkspaceBackfill).toHaveBeenCalledTimes(1));
-    // A new generation: the answer belongs to a connection this store no
-    // longer represents.
-    disconnect();
-    disconnect = store.connect([FLEET_A]);
-    release({ ok: true, watermark: 5 });
-    await Promise.resolve();
-    expect(store.snapshot(FLEET_A).catchingUp).toBe(true);
-    expect(noteServerFrameTime).not.toHaveBeenCalled();
-  });
-
-  it("a backfill row for a fleet the wall never subscribed is dropped", async () => {
-    runWorkspaceBackfill.mockImplementation(async (req) => {
-      req.onPage([
-        {
-          event_id: "b1",
-          fleet_id: "fleet_stranger",
-          workspace_id: WORKSPACE_ID,
-          actor: "fleet",
-          event_type: "chat",
-          status: "processed",
-          tokens: null,
-          wall_ms: null,
-          failure_label: null,
-          failure_detail: null,
-          checkpoint_id: null,
-          resumes_event_id: null,
-          cost_nanos: null,
-          created_at: CREATED_AT_MS,
-          updated_at: CREATED_AT_MS,
-        },
-      ]);
-      return { ok: true, watermark: CREATED_AT_MS };
-    });
-    if (!backfill) throw new Error("no status subscription");
-    backfill(WORKSPACE_ID, null);
-    await vi.waitFor(() => expect(noteServerFrameTime).toHaveBeenCalledWith(WORKSPACE_ID, CREATED_AT_MS));
-    expect(store.snapshot("fleet_stranger").events).toHaveLength(0);
-  });
-
-  it("a reconnect backfill is capped on the same write", async () => {
-    runWorkspaceBackfill.mockImplementation(async (req) => {
-      req.onPage(
-        Array.from({ length: OVERFLOW }, (_, index) => ({
-          event_id: `b${index}`,
-          fleet_id: FLEET_A,
-          workspace_id: WORKSPACE_ID,
-          actor: "fleet",
-          event_type: "chat",
-          status: "processed",
-          tokens: null,
-          wall_ms: null,
-          failure_label: null,
-          failure_detail: null,
-          checkpoint_id: null,
-          resumes_event_id: null,
-          cost_nanos: null,
-          created_at: CREATED_AT_MS + index,
-          updated_at: CREATED_AT_MS + index,
-        })),
-      );
-      return { ok: true, watermark: null };
-    });
-    if (!backfill) throw new Error("no status subscription");
-    backfill(WORKSPACE_ID, null);
-    await vi.waitFor(() => expect(runWorkspaceBackfill).toHaveBeenCalledTimes(1));
-    expect(store.snapshot(FLEET_A).events.length).toBeLessThanOrEqual(MAX_LIVE_EVENTS);
   });
 });

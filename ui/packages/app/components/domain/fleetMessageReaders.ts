@@ -48,11 +48,6 @@ export function readRenderKind(message: MessageState): string | null {
   return typeof raw === "string" ? raw : null;
 }
 
-export function readReply(message: MessageState): string {
-  const raw = message.metadata.custom["reply"];
-  return typeof raw === "string" ? raw : "";
-}
-
 /** When the reply's thinking started and ended; null for an end not recorded. */
 export function readReasoningSpan(message: MessageState): { startedAtMs: number | null; endedAtMs: number | null } {
   return {

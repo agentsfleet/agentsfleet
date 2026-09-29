@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   AssistantRuntimeProvider,
   useExternalStoreRuntime,
@@ -45,8 +45,8 @@ export type FleetThreadProps = {
 
 /**
  * Operator-facing chat surface backed by the durable event log. Wraps
- * `@assistant-ui/react` over `useFleetEventStream` + the `steerFleetAction`
- * Server Action; `fleetMessageRenderers` paints each durable event as the
+ * `@assistant-ui/react` over `useFleetEventStream` + `postSteer` (the same-origin
+ * `/live` steer route); `fleetMessageRenderers` paints each durable event as the
  * approved conversation row.
  *
  * The runtime is told the thread is never running. In this library
@@ -96,12 +96,14 @@ export function FleetThread({
   // drops, or renames an event, so a group can always hand back what it hid.
   const { entries, convertEntry } = useFleetThreadEntries(stream.events, stream.convertEvent);
   const submittedMessageId = submission?.fleetId === fleetId ? submission.id : null;
-  const runtime = useExternalStoreRuntime<FleetThreadEntry>({
-    isRunning: false,
-    messages: entries,
-    convertMessage: convertEntry,
-    onNew: delivery.onNew,
-  });
+  // The runtime compares its adapter by identity: a fresh literal on a render
+  // that changed no message (a connection cue, a ledger entry) re-ran every
+  // assistant-ui selector in the thread for nothing.
+  const adapter = useMemo(
+    () => ({ isRunning: false, messages: entries, convertMessage: convertEntry, onNew: delivery.onNew }),
+    [entries, convertEntry, delivery.onNew],
+  );
+  const runtime = useExternalStoreRuntime<FleetThreadEntry>(adapter);
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <SenderLabelProvider senderLabel={senderLabel}>

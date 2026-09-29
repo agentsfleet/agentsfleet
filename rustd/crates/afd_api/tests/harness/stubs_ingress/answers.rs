@@ -5,6 +5,7 @@
 //! store's call in one arm, the script's recorded reply in the other. A child
 //! module, so it reads [`Scripted`]'s fields without widening them.
 
+use afd_admission::Repeated;
 use afd_api::services::WebhookIngress;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -230,7 +231,7 @@ impl Scripted {
 
         // The ledger answers a LOGICAL id, so the stub does too: a receipt is
         // what the append returns and is not what a route renders back.
-        Admitted { id, replayed }
+        answer(id, replayed)
     }
 
     /// Answers one claim key, repeating its first id for a repeat — the
@@ -243,6 +244,20 @@ impl Scripted {
         let next = format!("{}{ENTRY_ID_SEQUENCE}", claimed.len() + 1);
         let replayed = claimed.contains_key(key);
         let id = claimed.entry(key.to_owned()).or_insert(next).clone();
-        Admitted { id, replayed }
+        answer(id, replayed)
+    }
+}
+
+/// The ledger's answer for one claim. The stub keeps no payload digests or
+/// fleets, and no ingress producer compares them — only a steer, which never
+/// comes here.
+fn answer(id: String, replayed: bool) -> Admitted {
+    Admitted {
+        replayed,
+        stored: Repeated {
+            id,
+            digest: String::new(),
+            fleet: String::new(),
+        },
     }
 }

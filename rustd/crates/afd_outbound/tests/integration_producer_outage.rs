@@ -23,7 +23,7 @@ use std::time::Duration;
 use afd_connector::Provider;
 use afd_core::clock::UnixMillis;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_dragonfly::streams::ACKNOWLEDGED_HISTORY;
+use afd_dragonfly::streams::{ACKNOWLEDGED_HISTORY, TRIM_SLACK};
 use afd_dragonfly::{Dragonfly, OutboundJob, OutboundQueue};
 use afd_outbound::obligation::{self, Delivery};
 use afd_outbound::producer::Producer;
@@ -54,9 +54,9 @@ const EVENT_ID: &str = "1760000000001-0";
 /// The stem the trim proof numbers its answers off, so every entry it appends
 /// is its own logical event rather than one event appended many times.
 const EVENT_ID_STEM: &str = "1760000000002-";
-/// Entries appended ABOVE the retained bound, so the trim reaches its floor
-/// calculation instead of returning early on a short stream.
-const ABOVE_THE_BOUND: usize = 50;
+/// Entries appended ABOVE the retained bound and its slack, so the trim
+/// reaches its floor calculation instead of returning early on a short stream.
+const ABOVE_THE_BOUND: usize = TRIM_SLACK + 50;
 /// A cutoff every seeded row is older than, so a scan sees all of them.
 const AFTER_EVERYTHING: i64 = SEEDED_AT + 1;
 /// More rows than this test seeds, so a limit never decides an assertion.
@@ -200,10 +200,10 @@ async fn an_empty_answer_owes_nothing() {
 /// taken, even with far more history on it than the bound retains.
 ///
 /// The entry count matters and is the whole test. `trim_history` returns
-/// early while the stream is at or under [`ACKNOWLEDGED_HISTORY`], so a stream
-/// with a handful of entries never reaches the floor calculation at all — it
-/// would answer "removed nothing" for a reason that has nothing to do with
-/// protecting anything. Past the bound, the floor is the MINIMUM of the
+/// early while the stream is at or under [`ACKNOWLEDGED_HISTORY`] plus
+/// [`TRIM_SLACK`], so a stream with a handful of entries never reaches the
+/// floor calculation at all — it would answer "removed nothing" for a reason
+/// that has nothing to do with protecting anything. Past the bound, the floor is the MINIMUM of the
 /// group's last-delivered id, its oldest pending entry and the history floor,
 /// and a group that has taken nothing pins that at the very start of the
 /// stream.
@@ -235,7 +235,7 @@ async fn a_trim_keeps_the_answers_the_group_has_not_taken() {
     }
 
     assert!(
-        appended > ACKNOWLEDGED_HISTORY,
+        appended > ACKNOWLEDGED_HISTORY + TRIM_SLACK,
         "the stream must be OVER the bound, or the trim returns before it ever \
          computes a floor and this proves nothing"
     );

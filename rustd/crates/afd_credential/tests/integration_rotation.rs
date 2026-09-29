@@ -19,7 +19,7 @@ use afd_crypto::envelope::{Envelope, Sealer};
 use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{DefaultSeed, PlatformDefault, TestDatabase, mint_id};
 use serde_json::Value;
 
 #[path = "integration_rotation/activation.rs"]
@@ -28,6 +28,8 @@ mod activation;
 mod provider_resolution;
 #[path = "integration_rotation/registry.rs"]
 mod registry;
+#[path = "integration_rotation/registry_default.rs"]
+mod registry_default;
 #[path = "integration_rotation/registry_page.rs"]
 mod registry_page;
 #[path = "integration_rotation/registry_walk.rs"]
@@ -257,49 +259,36 @@ impl Fixture {
         .expect("the catalogue row seeds");
     }
 
-    /// Publishes one ACTIVE platform default, for the reset's copy path.
+    /// Publishes one ACTIVE platform default, for the reset's copy path, and
+    /// holds it.
     ///
     /// `core.platform_provider_defaults` has no tenant column and the read is
     /// `WHERE active = true ... LIMIT 1`, so a caller seeding one is naming the
     /// deployment's default and not its own — see `registry.rs`'s header on
     /// what that costs and which half is therefore graded. Pass a provider name
-    /// no other test uses: the key is the provider, so a shared one would have
-    /// this seed silently rewrite a sibling's row rather than add its own.
+    /// no other test uses: the key is the provider.
     ///
-    /// The row must be dropped by [`Self::clear_platform_default`] before
-    /// cleanup — it points at this fixture's workspace, and the scope teardown
-    /// cannot delete a workspace something still references.
-    async fn seed_platform_default(&self, provider: &str, model: &str, cap: i32) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "INSERT INTO core.platform_provider_defaults \
-               (provider, source_workspace_id, active, model, context_cap_tokens, \
-                created_at, updated_at) \
-             VALUES ($1, $2::uuid, TRUE, $3, $4, $5, $5) \
-             ON CONFLICT (provider) DO UPDATE SET \
-               source_workspace_id = EXCLUDED.source_workspace_id, \
-               active = TRUE, model = EXCLUDED.model, \
-               context_cap_tokens = EXCLUDED.context_cap_tokens, \
-               updated_at = EXCLUDED.updated_at",
+    /// Drop the hold before cleanup — the row points at this fixture's
+    /// workspace, and the scope teardown cannot delete a workspace something
+    /// still references. A test that panics first drops it while unwinding, so
+    /// the row never outlives the test either way.
+    async fn seed_platform_default(
+        &self,
+        provider: &str,
+        model: &str,
+        cap: i32,
+    ) -> PlatformDefault {
+        PlatformDefault::hold(
+            &self.database,
+            DefaultSeed {
+                provider,
+                source_workspace_id: self.workspace.as_str(),
+                model,
+                context_cap_tokens: cap,
+                created_at: NOW.as_millis(),
+            },
         )
-        .bind(provider)
-        .bind(self.workspace.as_str())
-        .bind(model)
-        .bind(cap)
-        .bind(NOW.as_millis())
-        .execute(&mut *connection)
         .await
-        .expect("the platform default seeds");
-    }
-
-    /// Drops the default this fixture published, freeing its workspace.
-    async fn clear_platform_default(&self, provider: &str) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.platform_provider_defaults WHERE provider = $1")
-            .bind(provider)
-            .execute(&mut *connection)
-            .await
-            .expect("the platform default clears");
     }
 
     async fn insert(&self, name: &str, envelope: &Envelope) {

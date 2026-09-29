@@ -10,7 +10,7 @@
 //! Environment arrives as a lookup, as it does for the profile, so a test can
 //! hand in a map rather than mutate the process.
 
-use crate::error::{Error, Result};
+use crate::error::{ErrorKind, Result};
 
 /// How long a lane's measured window may run, in whole seconds.
 pub const WINDOW_VARIABLE: &str = "BENCH_WINDOW_SECONDS";
@@ -34,27 +34,27 @@ pub fn variable(env: Lookup<'_>, key: &str) -> Option<String> {
 ///
 /// # Errors
 ///
-/// [`Error::VariableUnset`] naming the variable.
+/// `VariableUnset` naming the variable.
 pub fn required(env: Lookup<'_>, key: &'static str) -> Result<String> {
-    variable(env, key).ok_or(Error::VariableUnset { variable: key })
+    variable(env, key).ok_or_else(|| ErrorKind::VariableUnset { variable: key }.into())
 }
 
 /// A whole-number knob, or its default when unset.
 ///
 /// # Errors
 ///
-/// [`Error::VariableUnreadable`] when the variable is set to something that
+/// `VariableUnreadable` when the variable is set to something that
 /// is not a whole number.
 pub fn number(env: Lookup<'_>, key: &'static str, fallback: u64) -> Result<u64> {
     match variable(env, key) {
         None => Ok(fallback),
-        Some(value) => value
-            .trim()
-            .parse()
-            .map_err(|_unparsed| Error::VariableUnreadable {
+        Some(value) => value.trim().parse().map_err(|_unparsed| {
+            ErrorKind::VariableUnreadable {
                 variable: key,
                 value,
-            }),
+            }
+            .into()
+        }),
     }
 }
 
@@ -62,7 +62,7 @@ pub fn number(env: Lookup<'_>, key: &'static str, fallback: u64) -> Result<u64> 
 ///
 /// # Errors
 ///
-/// [`Error::VariableUnreadable`] when the variable is set to something that
+/// `VariableUnreadable` when the variable is set to something that
 /// is not a number in that range.
 pub fn fraction(env: Lookup<'_>, key: &'static str, fallback: f64) -> Result<f64> {
     match variable(env, key) {
@@ -72,9 +72,12 @@ pub fn fraction(env: Lookup<'_>, key: &'static str, fallback: f64) -> Result<f64
             .parse::<f64>()
             .ok()
             .filter(|parsed| (0.0..=1.0).contains(parsed))
-            .ok_or(Error::VariableUnreadable {
-                variable: key,
-                value,
+            .ok_or_else(|| {
+                ErrorKind::VariableUnreadable {
+                    variable: key,
+                    value,
+                }
+                .into()
             }),
     }
 }

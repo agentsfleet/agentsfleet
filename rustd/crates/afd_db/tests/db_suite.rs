@@ -39,6 +39,8 @@ mod integration_migrate;
 mod integration_migrate_batch;
 #[path = "integration_migrate_faults.rs"]
 mod integration_migrate_faults;
+#[path = "integration_platform_default.rs"]
+mod integration_platform_default;
 #[path = "integration_pool.rs"]
 mod integration_pool;
 #[path = "integration_pool_faults.rs"]

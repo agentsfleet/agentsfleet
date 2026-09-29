@@ -18,14 +18,14 @@ Every row is extracted from the sections below; the owner column names the secti
 | Replay safety | idempotent | `INSERT … ON CONFLICT DO NOTHING` + the UNIQUE telemetry `event_id` | §C. EXECUTE |
 | Stale-writer rejection | `UZ-RUN-005` | `claimReport()` fences, flips, and dedups in one atomic statement | §C. EXECUTE |
 | Shared Dragonfly handle | one multiplexed connection per daemon | short-lived commands only: `XADD`, non-blocking `XREADGROUP`, `PUBLISH`, `XACK` | §Connection topology |
-| Dedicated Dragonfly connections | hub + outbound reader | refcounted `SUBSCRIBE`; blocking outbound reads use a separate socket | §Connection topology |
+| Dedicated Dragonfly connections | hub + outbound reader | refcounted `SSUBSCRIBE`; blocking outbound reads use a separate socket | §Connection topology |
 | Postgres acquire failures | 2 distinct errors | `PoolTimeout` (capacity) vs `PoolUnavailable` (datastore); `MAX_CONNECTIONS_PER_READ` = 1 | §The Postgres pool |
 | Config freshness | read per lease | a `PATCH` takes effect on the next lease; no cache, no signal | §Config reload |
 | Gate-blocked rows | terminal | never reopened; the resolved gate lands a NEW row via `actor=continuation:<original>` | §"C. EXECUTE" step 3 |
 | Webhook rejections | 3 codes | `UZ-WH-020` (misconfig) · `UZ-WH-010` (bad signature) · `UZ-WH-011` (stale timestamp, 5-minute window) | §B. TRIGGER |
 | Install guarantee | stream + group before 201 | `ensureEventStream` retries `[100ms, 500ms, 1500ms]`; exhaustion rolls back the PG row | §A. INSTALL |
 | SSE sequence ids | not durable | per-connection counter, resets to 0; `Last-Event-ID` ignored; backfill via the events list | §D. WATCH |
-| Client gap recovery | reconnect; workspace also handles catching_up | bounded `fleet_events` list `since` last delivery − 2 s overlap, merged by event id | §Two streams + one pub/sub channel |
+| Client gap recovery | reconnect, or `catching_up` on either stream | bounded `fleet_events` list `since` last delivery − 2 s overlap, merged by event id; a lost server subscription arrives as `catching_up` with `dropped: 0` | §Two streams + one pub/sub channel |
 | Cron authority | QStash | signature verified at ingress; replay suppressed atomically; the runner owns no timer | §B. TRIGGER |
 | Cancel latency | ≤ one heartbeat interval | revocation rides the heartbeat reply | §KILL |
 | Lease ownership | at most one active lease per fleet | atomic `runner_affinity` claim + monotonic `fencing_seq` | §One active lease per fleet |
@@ -442,7 +442,7 @@ Two Dragonfly surfaces carry a fleet's work: a durable stream for ingress, and a
 
 | Dragonfly surface | Type | Cardinality | Purpose | Volume |
 |---|---|---|---|---|
-| `fleet:{id}:events` | Stream + consumer group `fleet_lease` | One per fleet | Single event ingress — steer / webhook / cron / continuation all `XADD` here, with no `MAXLEN`. `agentsfleetd` is now the consumer: a **non-blocking** `XREADGROUP` on each `lease`, `XACK`ed at `report`, and the `XACK` trims acknowledged history to 1,000 entries without ever crossing the oldest pending or undelivered one. A fleet 10,000 entries behind refuses new admissions (503) instead of losing old ones; a lost group is recreated where the ledgers say delivery stopped. Idempotent on replay via `INSERT … ON CONFLICT DO NOTHING`. | High — every event the fleet handles. |
+| `fleet:{id}:events` | Stream + consumer group `fleet_lease` | One per fleet | Single event ingress — steer / webhook / cron / continuation all `XADD` here, with no `MAXLEN`. `agentsfleetd` is now the consumer: a **non-blocking** `XREADGROUP` on each `lease`, `XACK`ed at `report`, and once acknowledged history is more than 100 entries past 1,000, the `XACK` trims it back to 1,000 without ever crossing the oldest pending or undelivered one. A fleet 10,000 entries behind refuses new admissions (503) instead of losing old ones; a lost group is recreated where the ledgers say delivery stopped. Idempotent on replay via `INSERT … ON CONFLICT DO NOTHING`. | High — every event the fleet handles. |
 | `fleet:{id}:activity` | Pub/sub channel (no consumer group, no persistence) | One per fleet | Best-effort live tail — `agentsfleetd` `PUBLISH`es one frame per `event_received` / `tool_call_started` / `fleet_response_chunk` / `tool_call_progress` / `tool_call_completed` / `event_complete`, and `gate_opened` / `gate_resolved` when a human is asked and answers. The bracket and gate frames originate in `agentsfleetd`; the mid-run frames are forwarded from the runner over the `activity` verb. The SubscriptionHub `SUBSCRIBE`s once per channel-with-viewers on its one shared connection and fans frames out by copy into each SSE stream's bounded queue. No buffer beyond those queues, no ACK, no resume. | High during execution, zero when idle. |
 | `fleet:control` | (removed) | — | **Removed at the cutover.** It existed to tell the worker watcher to spawn / cancel / reconfigure per-fleet threads — and there are no per-fleet threads anymore. The producer (`control_stream.publish` from the install / status / config handlers) and the dead `control_stream` module were deleted; the install path keeps only `redis_agent.ensureFleetConsumerGroup` (load-bearing — the `lease` `XREADGROUP` needs the events group to exist). | gone |
 
@@ -472,11 +472,15 @@ The outbound reader owns `afd_dragonfly::Dedicated`, so its blocking read cannot
 Normal boot opens three Dragonfly connections when both optional background surfaces start.
 
 The hub refcounts subscribers and keeps one wire subscription per watched channel.
-Its pump owns the pub/sub socket and reconnects with backoff after a disconnect.
-Dragonfly pub/sub cannot replay frames lost during that gap, even if the browser's HTTP stream stays open.
+Two tasks serve its one connection: a control task owns commands, re-subscribes and redials, and a dispatch task owns the pushes, so a slow subscribe never holds a frame.
+When one node's socket drops, the driver repairs it inside the same connection and the hub re-subscribes every channel there once each owning primary answers again; a loss not repaired within five seconds, or two at once, is redialled whole.
+Dragonfly pub/sub cannot replay frames lost while a subscription was down, so every re-subscribed channel's viewers are sent `catching_up` with `dropped: 0` once it is back, and backfill from the events list.
+Each frame is one shared allocation, however many viewers read it.
 
 Source: [`afd_dragonfly::Dragonfly`](../../rustd/crates/afd_dragonfly/src/client.rs),
-[`hub pump`](../../rustd/crates/afd_dragonfly/src/hub/pump.rs),
+[`hub control task`](../../rustd/crates/afd_dragonfly/src/hub/pump.rs),
+[`hub dispatch task`](../../rustd/crates/afd_dragonfly/src/hub/dispatch.rs),
+[`node repair`](../../rustd/crates/afd_dragonfly/src/hub/repair.rs),
 [`runtime boot`](../../rustd/crates/agentsfleetd/src/serve/runtime.rs), and
 [`outbound worker boot`](../../rustd/crates/agentsfleetd/src/outbound.rs).
 
@@ -923,9 +927,9 @@ The deleted worker's single in-process `processEvent` loop is now split across t
    CLI       agentsfleet steer <fleet_id> "<message>"   (batch mode)
                → opens GET /v1/.../fleets/{id}/events/stream (SSE) BEFORE
                  posting the message, and waits (bounded, 2 s) for response
-                 headers. The hub queues SUBSCRIBE before returning the stream.
+                 headers. The hub queues SSUBSCRIBE before returning the stream.
                  Headers do not acknowledge Dragonfly subscription readiness;
-                 an early frame can still race the pump.
+                 an early frame can still race the subscription.
                → the hub shares one pub/sub connection across viewers;
                  the response owns a bounded broadcast receiver.
                → frames arriving before the 202 names the event wait in a
@@ -981,6 +985,10 @@ The deleted worker's single in-process `processEvent` loop is now split across t
                → activity data gains fleet_id; the wall routes it to one tile.
                → if a receiver falls behind, agentsfleetd sends
                  catching_up { dropped:N }; the wall shows recovery state.
+               → if the hub lost a channel's subscription and restored it
+                 (a node's socket, a slot move, a redial), agentsfleetd sends
+                 catching_up { dropped:0 } once it is back, on this stream
+                 and on the per-fleet one.
                → hello and catching_up use id:0 without advancing the
                  per-connection activity sequence.
 
@@ -997,7 +1005,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
 
    Reconnect / sequence id. The id:<seq> line on each SSE frame is a
    per-connection in-memory monotonic counter that resets to 0 on each
-   new SUBSCRIBE. The server IGNORES the Last-Event-ID request header —
+   new connection. The server IGNORES the Last-Event-ID request header —
    sequence ids are not durable and have no cross-connection meaning.
    Clients backfill after reconnect through the matching events list. The
    first request uses a server-time `since` floor; later pages use only the
@@ -1013,10 +1021,10 @@ The deleted worker's single in-process `processEvent` loop is now split across t
              "Busy or idle" is fleet.runner_leases, which has the fencing
              token and the expiry that make the answer trustworthy.
 
-   Both browser registries backfill durable event rows after reconnect.
-   The workspace registry also backfills on catching_up; the per-fleet
-   registry currently does not trigger a backfill for that frame alone.
-   A missed publish that leaves the HTTP stream open has no automatic replay.
+   Both browser registries backfill durable event rows after reconnect,
+   and on any catching_up frame, a lag's or a lost subscription's.
+   A publish missed while the HTTP stream stayed open is therefore
+   recovered by that backfill rather than lost silently.
    Transient token chunks are not durable history; settled rows are.
    Live tail is best-effort; core.fleet_events remains the durable record.
 ```

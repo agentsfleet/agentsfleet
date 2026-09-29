@@ -11,7 +11,7 @@ use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{PlatformDefault, TestDatabase, mint_id};
 use http::{Method, StatusCode};
 use serde_json::Value;
 #[path = "admin_live/libraries.rs"]
@@ -32,7 +32,12 @@ async fn platform_models_and_libraries_complete_real_http_lifecycles() {
     .router();
     exercise_models(&router, &fixture.token).await;
     libraries::exercise(&router, &fixture.token, &fixture.slug).await;
+    // The platform-key route creates this provider's default through the
+    // product; the hold removes it even when an assertion fails first.
+    let platform_default =
+        PlatformDefault::adopt(&fixture.database, &fixture.provider, &fixture.workspace).await;
     exercise_platform_keys(&router, &fixture).await;
+    drop(platform_default);
     fixture.cleanup().await;
 }
 

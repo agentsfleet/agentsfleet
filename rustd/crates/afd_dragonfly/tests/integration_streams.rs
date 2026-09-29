@@ -67,21 +67,23 @@ async fn test_stream_xadd_readgroup_ack() {
     assert_eq!(event.field("type"), Some("message"));
     assert_eq!(event.field("actor"), Some("user_1"));
 
-    // Delivered but unacknowledged, so it is this consumer's pending entry —
-    // which is what a re-poll after a crash has to find.
+    // Delivered but unacknowledged, so it is pending — and a takeover by
+    // ANOTHER consumer finds it, which is what a won lease claim on another
+    // replica needs when this one died holding it.
+    let other = harness.name("other-consumer");
     let pending = streams
-        .read_pending(&fleet, &consumer)
+        .take_over_oldest(&fleet, &other)
         .await
-        .expect("pending read")
-        .expect("an unacknowledged event is pending");
+        .expect("takeover")
+        .expect("an unacknowledged event is pending, whoever read it");
     assert_eq!(pending.receipt, appended);
 
     assert!(streams.ack(&fleet, &appended).await.expect("ack"));
     assert!(
         streams
-            .read_pending(&fleet, &consumer)
+            .take_over_oldest(&fleet, &other)
             .await
-            .expect("pending read")
+            .expect("takeover")
             .is_none(),
         "an acknowledged event must leave the pending list"
     );

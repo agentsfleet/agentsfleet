@@ -18,6 +18,9 @@ const { composer, aui } = vi.hoisted(() => {
   };
 });
 
+const FLEET_PATH = "/w/ws_1/fleets/fleet_1";
+vi.mock("next/navigation", () => ({ usePathname: () => FLEET_PATH }));
+
 vi.mock("@assistant-ui/react", () => ({
   ComposerPrimitive: {
     Root: ({ children, ...rest }: { children: React.ReactNode }) => <div {...rest}>{children}</div>,
@@ -32,6 +35,9 @@ vi.mock("@assistant-ui/react", () => ({
 import {
   DISMISS_LABEL as DISMISS,
   RESEND_LABEL as RESEND,
+  SEND_LABEL as SEND,
+  SEND_AS_NEW_LABEL as SEND_AS_NEW,
+  SEND_CONFLICT_TEXT as SEND_CONFLICT,
   SEND_FAILED_TEXT as SEND_FAILED,
   SEND_UNCONFIRMED_TEXT as SEND_UNCONFIRMED,
   TOO_LONG_TEXT,
@@ -39,6 +45,8 @@ import {
 import { STEER_MESSAGE_MAX_BYTES } from "@/lib/api/fleets-types";
 
 const SUBMITTED_AT_MS = 1_700_000_000_000;
+// A reply streaming in notifies the composer's store on every flush.
+const STORE_NOTIFICATIONS = 100;
 
 function entry(over: Partial<PendingSend> & { operationId: string }): PendingSend {
   return { text: "deploy the canary", state: PENDING_SEND_STATE.REFUSED, submittedAtMs: SUBMITTED_AT_MS, ...over };
@@ -157,11 +165,48 @@ describe("SteerComposer", () => {
     expect(screen.getByRole("alert")).toBeTruthy();
   });
 
-  it("sends an expired session to sign in, still restores the text, and offers Resend for after", () => {
+  it("test_sign_in_returns_to_the_fleet: an expired session signs in back to this fleet, restores the text, and offers Resend", () => {
     render(view([entry({ operationId: "op-session", state: PENDING_SEND_STATE.SESSION })]));
-    expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe("/sign-in");
+    expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe(`/sign-in?redirect_url=${encodeURIComponent(FLEET_PATH)}`);
     expect(screen.getByRole("button", { name: RESEND })).toBeTruthy();
     expect(composer.setText).toHaveBeenCalledExactlyOnceWith("deploy the canary");
+  });
+
+  it("test_byte_limit_counter_and_disabled_send", () => {
+    const send = () => screen.getByRole("button", { name: SEND }) as HTMLButtonElement;
+    // Short of nine tenths: no count, even for a draft whose length alone could reach it.
+    draft("a".repeat(3_000));
+    const viewed = render(view([]));
+    expect(screen.queryByText(/ \/ 8,192 bytes$/)).toBeNull();
+    draft("a".repeat(7_400));
+    viewed.rerender(view([]));
+    expect(screen.getByText("7,400 / 8,192 bytes")).toBeTruthy();
+    expect(send().disabled).toBe(false);
+    draft("a".repeat(STEER_MESSAGE_MAX_BYTES + 1));
+    viewed.rerender(view([]));
+    expect(screen.getByText("8,193 / 8,192 bytes")).toBeTruthy();
+    expect(send().disabled).toBe(true);
+  });
+
+  it("counts bytes, not characters: 2,500 three-byte characters are 7,500 bytes, and Send still works", () => {
+    draft("€".repeat(2_500));
+    render(view([]));
+    expect(screen.getByText("7,500 / 8,192 bytes")).toBeTruthy();
+    expect((screen.getByRole("button", { name: SEND }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("test_draft_encoded_once_per_text: encodes a draft once, however often the store notifies while it stands still", () => {
+    const encode = vi.spyOn(TextEncoder.prototype, "encode");
+    // Long enough that its length alone cannot settle its size.
+    draft("b".repeat(5_000));
+    const viewed = render(view([]));
+    for (let flush = 0; flush < STORE_NOTIFICATIONS; flush += 1) viewed.rerender(view([]));
+    expect(encode).toHaveBeenCalledTimes(1);
+    // A changed draft is counted again.
+    draft("c".repeat(5_000));
+    viewed.rerender(view([]));
+    expect(encode).toHaveBeenCalledTimes(2);
+    encode.mockRestore();
   });
 
   it("says why a draft longer than the daemon takes will not send", () => {
@@ -207,6 +252,22 @@ describe("SteerComposer", () => {
     resend.focus();
     fireEvent.click(screen.getByRole("button", { name: DISMISS }));
     expect(document.activeElement).toBe(screen.getByRole("textbox"));
+  });
+
+  it("offers a conflict no Resend, only Dismiss or Send as new", () => {
+    const onResend = vi.fn();
+    render(view([entry({ operationId: "op-spent", state: PENDING_SEND_STATE.CONFLICT })], { onResend }));
+    expect(screen.getByText(SEND_CONFLICT)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: RESEND })).toBeNull();
+    expect(screen.getByRole("button", { name: DISMISS })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: SEND_AS_NEW }));
+    expect(onResend).toHaveBeenCalledExactlyOnceWith("op-spent");
+  });
+
+  it("shows nothing for a dismissed send, and never restores its text", () => {
+    render(view([entry({ operationId: "op-gone", text: "", state: PENDING_SEND_STATE.DISMISSED })]));
+    expect(screen.queryByRole("list")).toBeNull();
+    expect(composer.setText).not.toHaveBeenCalled();
   });
 
   it("test_dismiss_removes_one_entry", () => {

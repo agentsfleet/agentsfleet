@@ -22,7 +22,6 @@ import {
   readActor,
   readCustomStatus,
   readGroupMembers,
-  readReply,
   readRenderKind,
   readRequestJson,
   hasOwnContent,
@@ -115,15 +114,14 @@ function FleetActivityMessage({
   senderLabel: string;
 }) {
   const status = readCustomStatus(message);
-  const reply = readReply(message);
   const payload = readRequestJson(message);
   const working = status === STATUS_IN_FLIGHT;
   const errored = status === STATUS_AGENT_ERROR;
   const isSplitTrigger = readRenderKind(message) === RENDER_KIND.TRIGGER;
   // The tick states the outcome itself — a delivery whose only content is its
-  // outcome does not earn a second row. A real reply does.
-  const outcome =
-    working || reply.length > 0 || isSplitTrigger ? undefined : messageOutcome(message);
+  // outcome does not earn a second row. A real reply does, and then this is
+  // its split trigger.
+  const outcome = working || isSplitTrigger ? undefined : messageOutcome(message);
   const link = eventLinkFrom(payload);
   const reference = link ? eventReferenceFrom(payload) : null;
   return (

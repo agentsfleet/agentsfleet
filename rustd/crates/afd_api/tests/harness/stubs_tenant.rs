@@ -15,7 +15,7 @@
 use afd_api::services::WorkspaceOwnership;
 use afd_core::id::Uuid7;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 /// The identifier of the one workspace [`OneWorkspace`] answers for.
 ///
@@ -43,6 +43,12 @@ pub(crate) const DEPLOYMENT: &str = "https://api.fixture.test";
 pub(crate) struct OneWorkspace {
     owned: Uuid7,
     authorized: Arc<AtomicBool>,
+    /// Whether the store answers at all: set, every read is an error, the
+    /// way an ownership store that cannot reach its database answers.
+    refusing: Arc<AtomicBool>,
+    /// How many ownership reads were asked for, answered or refused: the
+    /// proof a periodic re-read ran at all, which its silence cannot give.
+    authorize_calls: Arc<AtomicUsize>,
 }
 
 impl OneWorkspace {
@@ -51,6 +57,8 @@ impl OneWorkspace {
         Self {
             owned: Uuid7::parse(OWNED_WORKSPACE).expect("the fixture workspace is canonical"),
             authorized: Arc::new(AtomicBool::new(true)),
+            refusing: Arc::new(AtomicBool::new(false)),
+            authorize_calls: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -59,6 +67,8 @@ impl OneWorkspace {
         Self {
             owned,
             authorized: Arc::new(AtomicBool::new(true)),
+            refusing: Arc::new(AtomicBool::new(false)),
+            authorize_calls: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -66,7 +76,20 @@ impl OneWorkspace {
     pub(crate) fn revoke(&self) {
         self.authorized.store(false, Ordering::Release);
     }
+
+    /// From now on every ownership read fails rather than answering.
+    pub(crate) fn refuse(&self) {
+        self.refusing.store(true, Ordering::Release);
+    }
+
+    /// How many ownership reads this resolver has been asked for so far.
+    pub(crate) fn authorize_calls(&self) -> usize {
+        self.authorize_calls.load(Ordering::Acquire)
+    }
 }
+
+/// An identifier no store accepts, parsed to produce the store's own error.
+const UNREADABLE: &str = "ownership-store-unreachable";
 
 impl WorkspaceOwnership for OneWorkspace {
     fn authorize(
@@ -77,8 +100,13 @@ impl WorkspaceOwnership for OneWorkspace {
         // A runner has no tenant authority, exactly as in production: the
         // statement binds nothing that could match, so the answer is a denial
         // rather than an error.
+        self.authorize_calls.fetch_add(1, Ordering::AcqRel);
         let tenant = principal.tenant().cloned();
         let owned = workspace == &self.owned && self.authorized.load(Ordering::Acquire);
+        if self.refusing.load(Ordering::Acquire) {
+            let refused = Uuid7::parse(UNREADABLE).map(|_| None).map_err(Into::into);
+            return std::future::ready(refused);
+        }
         std::future::ready(Ok(tenant.filter(|_| owned)))
     }
 

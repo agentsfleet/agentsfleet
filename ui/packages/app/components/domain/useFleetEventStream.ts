@@ -17,12 +17,12 @@ import {
 import type { FleetEvent, FleetEventStatus } from "@/lib/streaming/fleet-stream-row";
 import type { InstallStepId } from "@/lib/streaming/install-steps";
 import { setEventDetailReader } from "@/lib/streaming/fleet-stream-reply-registry";
-import { getFleetEventAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
+import { readEventDetailRoute } from "@/lib/streaming/fleet-stream-detail-reader";
 
 // The chat is the only surface that shows reply text, so it installs the read
-// a reply uses when its stream lost the final words. The wrapper resolves the
-// action at call time, the way the registry's own import used to.
-setEventDetailReader((workspaceId, fleetId, eventId) => getFleetEventAction(workspaceId, fleetId, eventId));
+// a reply uses when its stream lost the final words: the same-origin route, so
+// a send in flight never holds the read up, nor the read a send.
+setEventDetailReader(readEventDetailRoute);
 
 // Public re-exports so existing consumers keep their import surface.
 export {
@@ -41,7 +41,7 @@ export type UseFleetEventStreamResult = {
   // installing→active flip.
   installStep: InstallStepId | null;
   appendOptimistic: (text: string, actor: string) => string;
-  reconcileOptimistic: (tempId: string, realEventId: string) => boolean;
+  reconcileOptimistic: (tempId: string, realEventId: string, replayed: boolean) => boolean;
   discardOptimistic: (tempId: string) => void;
   retryConnection: () => void;
   convertEvent: (event: FleetEvent) => ThreadMessageLike;
@@ -89,8 +89,8 @@ export function useFleetEventStream(
     [fleetId],
   );
   const reconcileOptimistic = useCallback(
-    (tempId: string, realEventId: string) =>
-      registryReconcileOptimistic(fleetId, tempId, realEventId),
+    (tempId: string, realEventId: string, replayed: boolean) =>
+      registryReconcileOptimistic(fleetId, tempId, realEventId, replayed),
     [fleetId],
   );
   const discardOptimistic = useCallback(
@@ -119,7 +119,9 @@ export function useFleetEventStream(
   };
 }
 
-function convertEvent(event: FleetEvent): ThreadMessageLike {
+/** The trigger message a row renders as. The thread compares its output to
+ * decide whether a trigger changed, so a field read here is compared too. */
+export function convertEvent(event: FleetEvent): ThreadMessageLike {
   return {
     role: event.role,
     id: event.id,
@@ -136,9 +138,10 @@ function convertEvent(event: FleetEvent): ThreadMessageLike {
         status: event.status,
         queued: event.clientTimestamp === true,
         submittedAtMs: event.submittedAtMs,
-        // The fleet's reply on this same durable row, and the sentence to show
-        // in its place when the reply is empty (still working, blocked, failed).
-        reply: event.reply,
+        // The reply itself is not here: it is the reply message's content
+        // (`toReplyMessage`), and carrying it would change this message on
+        // every streamed word. What is here is the sentence to show when there
+        // is no reply (still working, blocked, failed).
         replyRecovering: event.replyRecovering,
         outcome: event.outcome,
         // The failure CLASS, not the sentence — the renderer picks remediation

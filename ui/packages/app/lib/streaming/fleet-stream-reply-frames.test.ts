@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { applyLiveFrame } from "./fleet-stream-frames";
-import { applyFinalReplyText, applyReplyDelta, applyReplyRecovery } from "./fleet-stream-reply-frames";
+import { OUTCOME } from "@/lib/events/event-summary";
+import { applyFinalReplyText, applyReplyDelta, applyReplyGone, applyReplyRecovery } from "./fleet-stream-reply-frames";
+import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
 import type { FleetEvent } from "./fleet-stream-row";
 import type { ReplyDelta } from "./reply-stream-decoder";
 import { evt } from "@/tests/helpers/fleet-stream-fixtures";
@@ -68,5 +70,22 @@ describe("applyReplyDelta — reasoning span", () => {
     expect(only(applyReplyRecovery(thinking, EVENT, false, ANSWER_AT)).reasoningEndedAtMs).toBe(ANSWER_AT);
     const plain = applyFinalReplyText([evt({ id: EVENT })], EVENT, "Saved.", ANSWER_AT);
     expect(only(plain).reasoningEndedAtMs).toBeUndefined();
+  });
+});
+
+describe("applyReplyGone", () => {
+  it("settles only its own row, with the gone line and its span closed", () => {
+    const other = evt({ id: "e_other", reply: "Kept." });
+    let rows = applyReplyDelta([evt({ id: EVENT, status: AGENTSFLEET_EVENT_STATUS.RECEIVED }), other], EVENT, reasoning("Checking. "), REASONING_AT);
+    rows = applyReplyGone(rows, EVENT, LATER_AT);
+    expect(rows[0]).toMatchObject({
+      status: AGENTSFLEET_EVENT_STATUS.AGENT_ERROR,
+      reply: "",
+      thinking: false,
+      replyRecovering: false,
+      outcome: OUTCOME.REPLY_GONE,
+      reasoningEndedAtMs: LATER_AT,
+    });
+    expect(rows[1]).toBe(other);
   });
 });

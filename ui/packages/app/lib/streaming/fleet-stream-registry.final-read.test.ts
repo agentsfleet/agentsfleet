@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FRAME_KIND } from "@/lib/api/events-types";
+import { OUTCOME } from "@/lib/events/event-summary";
 import { getSnapshot, subscribe } from "./fleet-stream-registry";
 import { createEntry } from "./fleet-stream-entry";
 import { applyReplyDelta } from "./fleet-stream-reply-frames";
 import type { FleetEvent } from "./fleet-stream-row";
 import { dispatchReplyFrame, markReplyGap, setEventDetailReader, settleRepliesFromBackfill, type EventDetailReader } from "./fleet-stream-reply-registry";
 import { setupRegistryTests, row, sourceAt, WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";
-import { setupBackfillTests, fetchSpy, flushBackfill, pageWith, reconnect, MISSED_AT_MS, SEED_AT_MS } from "@/tests/helpers/fleet-stream-backfill-fixtures";
+import { setupBackfillTests, fetchSpy, flushBackfill, pageWith, reconnect, reconnectAgain, MISSED_AT_MS, SEED_AT_MS } from "@/tests/helpers/fleet-stream-backfill-fixtures";
 import { fleetActionsMock, getFleetEventActionMock, resetFleetEventAction } from "@/tests/helpers/fleet-stream-reply-action-mock";
 
 setupRegistryTests();
@@ -81,6 +82,23 @@ describe("fleet stream durable final read", () => {
     expect(getFleetEventActionMock).toHaveBeenCalledTimes(2);
     expect(events[0]?.reply).toBe("Recovered after login");
     expect(events[0]?.replyRecovering).toBe(false);
+  });
+
+  it("stops reading an event the read found gone, 404 or 410 alike", async () => {
+    const PERMANENT_RETRY_MS = 60_000;
+    for (const status of [404, 410]) {
+      getFleetEventActionMock.mockReset().mockResolvedValue({ ok: false, status });
+      const entry = createEntry(WS, []);
+      const eventId = `evt_gone_${status}`;
+      let events: FleetEvent[] = applyReplyDelta([], eventId, { answer: "Partial", reasoning: "", thinking: false });
+      const apply = vi.fn((next: (prev: FleetEvent[]) => FleetEvent[]) => { events = next(events); });
+      dispatchReplyFrame(entry, Z_A, { kind: FRAME_KIND.EVENT_COMPLETE, event_id: eventId, status: "processed" }, apply, () => true);
+      await vi.advanceTimersByTimeAsync(PERMANENT_RETRY_MS * 3);
+      expect(getFleetEventActionMock).toHaveBeenCalledTimes(1);
+      expect(entry.replyRecoveries.has(eventId)).toBe(false);
+      // Settled with a line, never left "Loading final reply".
+      expect(events[0]).toMatchObject({ status: "processed", reply: "", replyRecovering: false, outcome: OUTCOME.REPLY_GONE });
+    }
   });
 
   it("keeps the short retry cadence for a rate-limited detail read", async () => {
@@ -218,5 +236,47 @@ describe("fleet stream durable final read", () => {
     expect(getFleetEventActionMock).not.toHaveBeenCalled();
     expect(entry.replyRecoveries.has("evt_no_reader")).toBe(false);
     expect(entry.replyGaps.has("evt_no_reader")).toBe(true);
+  });
+});
+
+// An event that started and ended while the stream was away arrives only as a
+// list row, which carries no bodies.
+describe("a body-less row a backfill brings in", () => {
+  const STEER_ID = "evt_while_away";
+  const ASKED = "Deploy the preview";
+  const ANSWERED = "Deployed.";
+  const listRow = { ...row({ event_id: STEER_ID, actor: "steer:user_abc", status: "processed", created_at: MISSED_AT_MS }), request_json: undefined, response_text: undefined };
+
+  it("reads its saved row once, and shows the message and the answer", async () => {
+    getFleetEventActionMock.mockResolvedValue({
+      ok: true,
+      data: row({ event_id: STEER_ID, actor: "steer:user_abc", status: "processed", created_at: MISSED_AT_MS, request_json: JSON.stringify({ message: ASKED }), response_text: ANSWERED }),
+    });
+    fetchSpy.mockResolvedValue(pageWith([listRow]));
+    const release = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const source = reconnect();
+    await flushBackfill();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(getSnapshot(Z_A).events.find((event) => event.id === STEER_ID)).toMatchObject({ text: ASKED, reply: ANSWERED });
+
+    // Another outage restating the same row reads nothing more.
+    reconnectAgain(source);
+    await flushBackfill();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(getFleetEventActionMock).toHaveBeenCalledExactlyOnceWith(WS, Z_A, STEER_ID);
+    release();
+  });
+
+  it("reads nothing for a row whose bodies it already holds, or with no reader", async () => {
+    const entry = createEntry(WS, [row({ event_id: STEER_ID, actor: "steer:user_abc", request_json: JSON.stringify({ message: ASKED }), response_text: ANSWERED })]);
+    settleRepliesFromBackfill(entry, Z_A, [listRow], vi.fn(), () => true);
+    settleRepliesFromBackfill(entry, Z_A, [{ ...listRow, event_id: "evt_unknown" }], vi.fn(), () => true);
+    setEventDetailReader(null);
+    const bodiless = createEntry(WS, [listRow]);
+    settleRepliesFromBackfill(bodiless, Z_A, [listRow], vi.fn(), () => true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(getFleetEventActionMock).not.toHaveBeenCalled();
+    expect(bodiless.bodyReads.size).toBe(0);
   });
 });

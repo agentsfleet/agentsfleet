@@ -116,7 +116,8 @@ async fn test_reclaim_counts_as_reclaimed() {
             now,
         )
         .await
-        .expect("the lease row must be written");
+        .expect("the lease row must be written")
+        .expect("the claim is still held");
 
     let before = capture.sum(RUNS_STARTED, &[(KIND, RECLAIMED)]);
     let lapsed = held.leased_until.saturating_add_millis(1);

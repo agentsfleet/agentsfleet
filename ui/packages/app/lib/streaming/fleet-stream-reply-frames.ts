@@ -1,7 +1,8 @@
 import type { EventDetail } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { applyLiveFrame } from "./fleet-stream-frames";
-import { closeReasoningSpan, rowToEvent, type FleetEvent } from "./fleet-stream-row";
+import { OUTCOME } from "@/lib/events/event-summary";
+import { AGENTSFLEET_EVENT_STATUS, closeReasoningSpan, rowToEvent, type FleetEvent } from "./fleet-stream-row";
 import type { ReplyDelta } from "./reply-stream-decoder";
 
 /** Fold already classified text; model protocol never enters the row. */
@@ -39,6 +40,20 @@ export function applyReplyRecovery(
     reasoning: clearDraft ? "" : event.reasoning,
     thinking: false,
     replyRecovering: true,
+  }, nowMs) : event);
+}
+
+/** An event whose saved row is gone settles with no answer and says why. The
+ * unconfirmed draft is dropped, and a row still running ends as failed, so its
+ * clock and its wait both stop. */
+export function applyReplyGone(prev: FleetEvent[], eventId: string, nowMs: number = Date.now()): FleetEvent[] {
+  return prev.map((event) => event.id === eventId ? closeReasoningSpan({
+    ...event,
+    status: event.status === AGENTSFLEET_EVENT_STATUS.RECEIVED ? AGENTSFLEET_EVENT_STATUS.AGENT_ERROR : event.status,
+    reply: "",
+    thinking: false,
+    replyRecovering: false,
+    outcome: OUTCOME.REPLY_GONE,
   }, nowMs) : event);
 }
 

@@ -18,7 +18,7 @@ use core::time::Duration;
 use afd_core::env::EnvSource;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_dragonfly::{Dedicated, Dragonfly, DragonflyConfig, DragonflyRole};
+use afd_dragonfly::{Dedicated, Dragonfly, DragonflyConfig, DragonflyRole, SubscriptionHub};
 
 use crate::error::Result;
 
@@ -39,6 +39,8 @@ pub mod command {
     pub const XRANGE: &str = "XRANGE";
     /// Delete named entries from a stream.
     pub const XDEL: &str = "XDEL";
+    /// Delete whole keys.
+    pub const DEL: &str = "DEL";
     /// The smallest stream id, so a range reads from the beginning.
     pub const RANGE_START: &str = "-";
     /// The largest stream id, so a range reads to the end.
@@ -120,7 +122,7 @@ impl Datastores {
     ///
     /// # Errors
     ///
-    /// [`crate::Error::DatastoreUnavailable`] naming which one refused, so the
+    /// `DatabaseUnavailable` naming which one refused, so the
     /// message says whether to start Postgres or Dragonfly rather than "a
     /// datastore".
     pub async fn open(
@@ -145,9 +147,20 @@ impl Datastores {
     ///
     /// # Errors
     ///
-    /// [`crate::Error::QueueUnavailable`] when it will not open.
+    /// `QueueUnavailable` when it will not open.
     pub async fn dedicated(&self, longest_park: Duration) -> Result<Dedicated> {
         Ok(Dedicated::connect(&self.redis, longest_park).await?)
+    }
+
+    /// The pub/sub hub a replica's live tails read through, opened from the
+    /// same resolution as the queue — the daemon opens one per process, and
+    /// so does a lane.
+    ///
+    /// # Errors
+    ///
+    /// `QueueUnavailable` when its connection will not open.
+    pub async fn hub(&self) -> Result<SubscriptionHub> {
+        Ok(SubscriptionHub::start(self.redis.clone()).await?)
     }
 }
 
@@ -161,7 +174,7 @@ impl Datastores {
 ///
 /// # Errors
 ///
-/// [`crate::Error::QueueUnavailable`] when the server will not answer `INFO`.
+/// `QueueUnavailable` when the server will not answer `INFO`.
 pub async fn dragonfly_calls(queue: &Dragonfly) -> Result<u64> {
     // Summed across primaries: a command is served by whichever shard owns its
     // key, so one node's tally is a fraction of the lane's work reported as the
@@ -175,12 +188,13 @@ pub async fn dragonfly_calls(queue: &Dragonfly) -> Result<u64> {
             read_any = true;
         }
     }
-    read_any
-        .then_some(total)
-        .ok_or(crate::Error::CounterUnreadable {
+    read_any.then_some(total).ok_or_else(|| {
+        crate::error::ErrorKind::CounterUnreadable {
             datastore: DRAGONFLY,
             field: CALLS_FIELD,
-        })
+        }
+        .into()
+    })
 }
 
 /// The total of every `calls=` field in an `INFO commandstats` reply.
@@ -205,8 +219,8 @@ pub(crate) fn dragonfly_calls_in(info: &str) -> Option<u64> {
 ///
 /// # Errors
 ///
-/// [`crate::Error::DatabaseUnavailable`] when the statistics view will not
-/// answer, [`crate::Error::CounterUnreadable`] when it answers a negative.
+/// `DatabaseUnavailable` when the statistics view will not
+/// answer, `CounterUnreadable` when it answers a negative.
 pub async fn postgres_transactions(database: &Db) -> Result<u64> {
     use sqlx::Row as _;
 
@@ -215,9 +229,22 @@ pub async fn postgres_transactions(database: &Db) -> Result<u64> {
         .fetch_one(&mut *connection)
         .await?
         .try_get(0)?;
-    u64::try_from(total).map_err(|_negative| crate::Error::CounterUnreadable {
-        datastore: POSTGRES,
-        field: TRANSACTIONS_FIELD,
+    postgres_count(total, TRANSACTIONS_FIELD)
+}
+
+/// A Postgres tally as a count, refusing the negative no tally can hold.
+///
+/// Every lane that reads a server-side count reads it as a signed `bigint`,
+/// and a negative one means the statistic is not what the lane thinks it is —
+/// a reset mid-window, or a subtraction the server made. Refused, named by
+/// its field, rather than clamped to a zero nobody measured.
+pub(crate) fn postgres_count(value: i64, field: &'static str) -> Result<u64> {
+    u64::try_from(value).map_err(|_negative| {
+        crate::error::ErrorKind::CounterUnreadable {
+            datastore: POSTGRES,
+            field,
+        }
+        .into()
     })
 }
 
@@ -225,8 +252,8 @@ pub async fn postgres_transactions(database: &Db) -> Result<u64> {
 ///
 /// # Errors
 ///
-/// [`crate::Error::QueueUnavailable`] when `INFO` will not answer, and
-/// [`crate::Error::CounterUnreadable`] when the reply carries no
+/// `QueueUnavailable` when `INFO` will not answer, and
+/// `CounterUnreadable` when the reply carries no
 /// `used_memory:` line — which is not a server using zero bytes.
 pub async fn dragonfly_used_memory(queue: &Dragonfly) -> Result<u64> {
     // Summed for the same reason the call tally is: a fleet's keys are spread
@@ -241,12 +268,13 @@ pub async fn dragonfly_used_memory(queue: &Dragonfly) -> Result<u64> {
             read_any = true;
         }
     }
-    read_any
-        .then_some(total)
-        .ok_or(crate::Error::CounterUnreadable {
+    read_any.then_some(total).ok_or_else(|| {
+        crate::error::ErrorKind::CounterUnreadable {
             datastore: DRAGONFLY,
             field: USED_MEMORY_FIELD,
-        })
+        }
+        .into()
+    })
 }
 
 /// The `used_memory:` value out of an `INFO memory` reply.

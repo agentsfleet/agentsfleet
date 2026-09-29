@@ -86,12 +86,12 @@ pub(crate) async fn silence(tail: &mut Subscription) -> Option<Value> {
 async fn received(tail: &mut Subscription, budget: Duration) -> Option<Value> {
     let received = tokio::time::timeout(budget, tail.recv()).await.ok()?;
     let Received::Message(message) = received.expect("the subscription stays live") else {
-        // A lag notice is not a frame this suite published; treat it as
+        // A lag or gap notice is not a frame this suite published; treat it as
         // nothing having arrived rather than as the message it was waiting for.
         return None;
     };
-    let payload = message.payload;
-    Some(serde_json::from_str(&payload).unwrap_or_else(|_malformed| {
+    let payload = &message.payload;
+    Some(serde_json::from_str(payload).unwrap_or_else(|_malformed| {
         panic!("the tail carried a payload that is not JSON: {payload}")
     }))
 }

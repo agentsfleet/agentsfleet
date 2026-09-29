@@ -177,6 +177,22 @@ describe("backfillFleetEventsUrl", () => {
   });
 });
 
+describe("fleetEventDetailUrl", () => {
+  it("returns the same-origin path the detail Route Handler intercepts", async () => {
+    const { fleetEventDetailUrl } = await import("./events-types");
+    expect(fleetEventDetailUrl("ws_1", "z_1", "1790573387481-566")).toBe(
+      "/live/v1/workspaces/ws_1/fleets/z_1/events/1790573387481-566",
+    );
+  });
+
+  it("encodes every path segment so a slashy id can not escape the URL", async () => {
+    const { fleetEventDetailUrl } = await import("./events-types");
+    expect(fleetEventDetailUrl("ws/1", "z 2", "e/3")).toBe(
+      "/live/v1/workspaces/ws%2F1/fleets/z%202/events/e%2F3",
+    );
+  });
+});
+
 describe("list path encoding", () => {
   it("encodes the workspace and fleet ids on the /v1 routes, as the /live/ builders do", async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => mockResponse });

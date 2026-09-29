@@ -24,6 +24,17 @@
 
 use afd_core::error_code::{self, ErrorCode};
 
+mod raise;
+#[cfg(feature = "test-util")]
+mod samples;
+
+pub(crate) use self::raise::{
+    certificate_rejected, classify, config_rejected, connect_timed_out, timed_out,
+    unexpected_reply, unreachable, wrong_type,
+};
+#[cfg(feature = "test-util")]
+pub use self::samples::one_of_each_kind;
+
 /// The result every fallible function in this crate returns.
 ///
 /// One alias per crate, defaulted to this crate's own [`Error`], so a reader
@@ -147,7 +158,26 @@ pub(crate) enum ErrorKind {
 
     #[error("the subscription hub's connection is gone")]
     HubClosed,
+
+    /// The entropy a readiness token is minted from could not be drawn.
+    #[error("the entropy a readiness token is minted from could not be drawn")]
+    Entropy {
+        #[source]
+        source: afd_crypto::error::Error,
+    },
+
+    /// A readiness token could not be minted from the current instant.
+    #[error("a readiness token could not be minted")]
+    Identifier {
+        #[source]
+        source: afd_core::error::Error,
+    },
 }
+
+afd_core::error_lifts!(Error, ErrorKind:
+    afd_crypto::error::Error => Entropy,
+    afd_core::error::Error => Identifier,
+);
 
 impl Error {
     /// Raises `kind` as an error, capturing a backtrace.
@@ -274,6 +304,19 @@ impl Error {
         )
     }
 
+    /// Whether a readiness token could not be minted: the host refused its
+    /// entropy, or its clock sits outside what a version-7 identifier carries.
+    ///
+    /// Neither the datastore nor the command is at fault, so neither
+    /// [`Self::is_unavailable`] nor [`Self::is_command`] claims it.
+    #[must_use]
+    pub fn is_unmintable(&self) -> bool {
+        matches!(
+            self.inner.kind,
+            ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. }
+        )
+    }
+
     /// The registry code a handler would surface for this failure.
     ///
     /// A full datastore answers the UNAVAILABLE code rather than the
@@ -288,240 +331,11 @@ impl Error {
             | ErrorKind::UnexpectedReply { .. }
             | ErrorKind::GroupMissing { .. }
             | ErrorKind::GroupExists { .. }
-            | ErrorKind::WrongType { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            | ErrorKind::WrongType { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Identifier { .. } => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::Full { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             _ => error_code::STARTUP_DRAGONFLY_CONNECT,
         }
     }
-}
-
-/// The reply codes pulled out of a failed command by name (RULE UFS).
-///
-/// `NOGROUP` is the one recoverable failure: the group vanished (deleted out
-/// of band, a restart without persistence, a failover to an empty replica)
-/// and recreating it is a defined repair. `OOM` is the one that is not a
-/// fault at all but a limit. Dragonfly reports both as ordinary error replies, so
-/// nothing else would tell them apart from a genuine command failure.
-const CODE_NO_GROUP: &str = "NOGROUP";
-const CODE_BUSY_GROUP: &str = "BUSYGROUP";
-const CODE_OUT_OF_MEMORY: &str = "OOM";
-
-/// Classifies a failed command — see the three codes above.
-pub(crate) fn classify(command: &'static str, stream: &str, source: redis::RedisError) -> Error {
-    match source.code() {
-        Some(CODE_NO_GROUP) => {
-            return Error::new(ErrorKind::GroupMissing {
-                stream: stream.to_owned(),
-            });
-        }
-        Some(CODE_BUSY_GROUP) => {
-            return Error::new(ErrorKind::GroupExists {
-                stream: stream.to_owned(),
-            });
-        }
-        Some(CODE_OUT_OF_MEMORY) => return Error::new(ErrorKind::Full { command }),
-        _ => {}
-    }
-    if source.is_connection_dropped() || source.is_io_error() {
-        return Error::new(ErrorKind::Unreachable {
-            role: "default",
-            source: Box::new(source),
-        });
-    }
-    Error::new(ErrorKind::Command {
-        command,
-        source: Box::new(source),
-    })
-}
-
-/// The `WRONGTYPE` a working server owes, raised by the caller instead.
-///
-/// `FleetStreams` and `OutboundQueue` ask `TYPE` before any `MKSTREAM` create
-/// and call this when the answer rules the command out — see
-/// [`ErrorKind::WrongType`] for why the command cannot simply be sent and let
-/// the server refuse it.
-pub(crate) fn wrong_type(command: &'static str, stream: &str, holds: &str) -> Error {
-    Error::new(ErrorKind::WrongType {
-        command,
-        stream: stream.to_owned(),
-        holds: holds.to_owned(),
-    })
-}
-
-/// A command that never answered inside its deadline.
-pub(crate) fn timed_out(command: &'static str, waited_ms: u128) -> Error {
-    Error::new(ErrorKind::Timeout { command, waited_ms })
-}
-
-/// A datastore that could not be reached at all.
-///
-/// Here rather than at the call site so the three ways a dial can end —
-/// unreachable, refused for trust, refused for configuration — are raised
-/// through one seam instead of two constructors and a hand-rolled
-/// `Error::new`.
-pub(crate) fn unreachable(role: &'static str, source: redis::RedisError) -> Error {
-    Error::new(ErrorKind::Unreachable {
-        role,
-        source: Box::new(source),
-    })
-}
-
-/// A seed or certificate the driver refused before opening any socket.
-///
-/// Deliberately not [`ErrorKind::InvalidUrl`]: the client is built from
-/// the seed AND the certificate bytes, and a build that fails has not said
-/// which. Naming the URL would be a guess, and a guess in an error message is
-/// how an operator ends up reading the wrong file. The driver's own reason
-/// stays on the source.
-pub(crate) fn config_rejected(role: &'static str, source: redis::RedisError) -> Error {
-    Error::new(ErrorKind::ConfigRejected {
-        role,
-        source: Box::new(source),
-    })
-}
-
-/// A TLS endpoint whose certificate the configured authority does not trust.
-///
-/// Separate from [`ErrorKind::Unreachable`] because the two send an operator
-/// to opposite places: unreachable is a port, a firewall or a dead process,
-/// and this is the authority they configured. Both are still
-/// [`Error::is_unavailable`] — the datastore is equally unusable either way,
-/// and a caller branching on availability should not have to learn a new kind
-/// to keep working.
-pub(crate) fn certificate_rejected(role: &'static str, source: redis::RedisError) -> Error {
-    Error::new(ErrorKind::CertificateRejected {
-        role,
-        source: Box::new(source),
-    })
-}
-
-/// A connection that did not finish inside its whole-operation budget.
-pub(crate) fn connect_timed_out(role: &'static str, waited_ms: u128) -> Error {
-    Error::new(ErrorKind::ConnectTimeout { role, waited_ms })
-}
-
-/// A reply whose shape the client does not recognise.
-pub(crate) fn unexpected_reply(what: &'static str) -> Error {
-    Error::new(ErrorKind::UnexpectedReply { what })
-}
-
-/// One error of every kind, for tests that walk the whole surface.
-///
-/// Same seam and same argument as `afd_db::error::one_of_each_kind`: these are
-/// the renderings a human reads while something is already wrong, and a Dragonfly
-/// that refuses a command on demand is not something a test can arrange for
-/// every kind.
-#[cfg(feature = "test-util")]
-#[must_use]
-#[expect(
-    clippy::expect_used,
-    reason = "a sample builder whose own preconditions fail should stop the suite"
-)]
-pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
-    // One server-side refusal, built the way the wire builds one, because the
-    // code is the whole difference between a command the server would not run
-    // and a server that would not grow.
-    //
-    // Parsed from a RESP error reply rather than assembled from
-    // `RedisError::from((ErrorKind::Extension, code, detail))`. That
-    // constructor LOOKS like it carries the code and does not: it produces a
-    // `General` repr, whose `code()` is always `None`. Every sample routed
-    // through `classify` therefore fell past all three code arms and came back
-    // a plain command failure — including the one labelled `full`, so this
-    // function promised one of each kind and held no `Full` at all, and
-    // `afd_admission`'s error suite panicked looking for it. Parse-then-extract
-    // is the route the driver itself takes — the parser answers an error reply
-    // as `Value::ServerError` so a caller can find one nested in an array, and
-    // `extract_error` is what turns it into the `Err` a command sees — so the
-    // code survives and `classify` is exercised instead of bypassed.
-    let refusal = |code: &str| -> redis::RedisError {
-        let reply = format!("-{code} the server said no\r\n");
-        redis::parse_redis_value(reply.as_bytes())
-            .and_then(redis::Value::extract_error)
-            .expect_err("a RESP error reply extracts as an error, not a value")
-    };
-
-    vec![
-        (
-            "missing url",
-            Error::new(ErrorKind::MissingUrl {
-                knob: "DRAGONFLY_URL",
-            }),
-        ),
-        (
-            "invalid url",
-            Error::new(ErrorKind::InvalidUrl {
-                knob: "DRAGONFLY_URL",
-            }),
-        ),
-        (
-            "ca cert unreadable",
-            Error::new(ErrorKind::CaCertUnreadable {
-                path: "/tls/ca.crt".to_owned(),
-                source: std::io::Error::from(std::io::ErrorKind::NotFound),
-            }),
-        ),
-        (
-            "unreachable",
-            Error::new(ErrorKind::Unreachable {
-                role: "default",
-                source: Box::new(refusal("refused")),
-            }),
-        ),
-        (
-            "certificate rejected",
-            certificate_rejected("default", refusal("refused")),
-        ),
-        (
-            "config rejected",
-            config_rejected("default", refusal("refused")),
-        ),
-        ("connect timeout", connect_timed_out("default", 5_000)),
-        ("timeout", timed_out("XADD", 5_000)),
-        (
-            "command",
-            classify("XADD", "fleet:x:events", refusal("refused")),
-        ),
-        (
-            "wrong type",
-            wrong_type("XGROUP", "fleet:x:events", "string"),
-        ),
-        (
-            "group missing",
-            Error::new(ErrorKind::GroupMissing {
-                stream: "fleet:x:events".to_owned(),
-            }),
-        ),
-        (
-            "group exists",
-            Error::new(ErrorKind::GroupExists {
-                stream: "fleet:x:events".to_owned(),
-            }),
-        ),
-        (
-            "full",
-            classify("XADD", "fleet:x:events", refusal(CODE_OUT_OF_MEMORY)),
-        ),
-        (
-            "unsafe eviction",
-            Error::new(ErrorKind::UnsafeEviction {
-                node: 0,
-                setting: "maxmemory_policy=allkeys-lru".to_owned(),
-            }),
-        ),
-        (
-            "not a cluster",
-            Error::new(ErrorKind::NotACluster {
-                reported: "0".to_owned(),
-            }),
-        ),
-        (
-            "missing capability",
-            Error::new(ErrorKind::MissingCapability {
-                command: "SSUBSCRIBE",
-            }),
-        ),
-        ("unexpected reply", unexpected_reply("PING")),
-        ("hub closed", Error::new(ErrorKind::HubClosed)),
-    ]
 }

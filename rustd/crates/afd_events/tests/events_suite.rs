@@ -28,8 +28,12 @@ mod integration_backfill;
 mod integration_budgets;
 #[path = "integration_continuation_lineage.rs"]
 mod integration_continuation_lineage;
+#[path = "integration_list_plans.rs"]
+mod integration_list_plans;
 #[path = "integration_steer.rs"]
 mod integration_steer;
+#[path = "integration_steer_insert.rs"]
+mod integration_steer_insert;
 #[path = "integration_steer_races.rs"]
 mod integration_steer_races;
 #[path = "integration_steer_replay.rs"]

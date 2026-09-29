@@ -23,6 +23,7 @@ const pipe_proto = @import("../pipe_proto.zig");
 const inrun_memory = @import("inrun_memory.zig");
 const client_errors = @import("client_errors.zig");
 const stream_redactor = @import("stream_redactor.zig");
+const tools = @import("runner_progress_tools.zig");
 
 const ActivityFrame = contract.activity.ActivityFrame;
 
@@ -111,6 +112,10 @@ pub const Adapter = struct {
     /// events on the same thread that called `fleet.runSingle`, so no
     /// atomics needed).
     tool_call_count: u32 = 0,
+    /// Calls this run has started; each call's number is its `call_id`.
+    calls_started: u32 = 0,
+    /// The call a completion closes: NullClaw opens one call at a time.
+    open_call: ?u32 = null,
     nudges_emitted: u32 = 0,
     window_exceeded_logs: u32 = 0,
     chunk_threshold_logs: u32 = 0,
@@ -185,70 +190,9 @@ const observer_vtable: observability.Observer.VTable = .{
 fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEvent) void {
     const self = Adapter.fromPtr(ptr);
     switch (event.*) {
-        .tool_call_start => |b| {
-            // NullClaw exposes the tool name at start but not the args —
-            // emit `tool_call_started` with an empty redacted args object
-            // so live tail shows the tool kicking off; the args appear
-            // in the durable record (fleet_events.request_json) and in
-            // the `tool_call_completed` follow-up frame's UI affordances.
-            const frame = ActivityFrame{
-                .tool_call_started = .{ .name = b.tool, .args_redacted = "{}" },
-            };
-            self.writer.write(frame);
-        },
-        .tool_call => |b| {
-            // Best-effort: if NullClaw passed the args blob, redact it
-            // and emit a fresh `tool_call_started` carrying the
-            // post-redaction bytes; otherwise just close the call.
-            if (b.args) |raw| {
-                // Drop the args frame on redaction OOM (raw could carry a secret);
-                // the completed frame below still closes the call (M100 §1).
-                if (redactBytes(self.alloc, raw, self.secrets)) |redacted| {
-                    defer if (redacted.ptr != raw.ptr) self.alloc.free(redacted);
-                    self.writer.write(.{ .tool_call_started = .{ .name = b.tool, .args_redacted = redacted } });
-                } else |err| {
-                    log.warn("tool_args_redaction_failed_frame_dropped", .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
-                }
-            }
-            const ms_signed = std.math.cast(i64, b.duration_ms) orelse std.math.maxInt(i64);
-            const done_frame = ActivityFrame{
-                .tool_call_completed = .{ .name = b.tool, .ms = ms_signed },
-            };
-            self.writer.write(done_frame);
-            self.tool_call_count += 1;
-            // L1 nudge: SKILL.md prose tells the fleet to snapshot via
-            // memory_store on this cadence. The runtime side just logs
-            // the threshold hit so on-call can confirm the prompt is
-            // landing — actual prompt engineering is in the skill.
-            if (self.memory_checkpoint_every > 0 and
-                self.tool_call_count % self.memory_checkpoint_every == 0)
-            {
-                self.nudges_emitted += 1;
-                log.debug("memory_checkpoint_due", .{
-                    .tool_count = self.tool_call_count,
-                    .every = self.memory_checkpoint_every,
-                    .nudges_emitted = self.nudges_emitted,
-                });
-                // Flush the in-run store to the parent so a long run's learned
-                // memory is durable before it finishes (run-end is not the only
-                // capture point). Best-effort — a blip never disturbs the run.
-                if (self.memory_capturer) |c| c.capture();
-            }
-            // L2 window: once the cumulative count crosses the window
-            // threshold, every subsequent call emits a structured line
-            // so on-call can spot a runaway incident in the activity
-            // stream. The fleet compacts findings via memory_store at
-            // the SKILL prose's direction — the runtime doesn't drop
-            // anything from the conversation itself.
-            if (self.tool_window > 0 and self.tool_call_count > self.tool_window) {
-                self.window_exceeded_logs += 1;
-                log.debug("tool_window_exceeded", .{
-                    .tool_count = self.tool_call_count,
-                    .window = self.tool_window,
-                    .excess = self.tool_call_count - self.tool_window,
-                });
-            }
-        },
+        // A call's frames and its call id: `runner_progress_tools.zig`.
+        .tool_call_start => |b| tools.started(self, b.tool),
+        .tool_call => |b| tools.completed(self, b),
         .llm_response => |b| {
             // L3 chunk threshold: NullClaw doesn't expose mid-loop
             // interrupt, so we observe instead of force. After every

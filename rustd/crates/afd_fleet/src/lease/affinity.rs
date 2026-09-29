@@ -35,8 +35,8 @@ const CONTEXT_CLAIM: &str = "affinity claim";
 /// Statement name, for the context a query failure carries.
 const CONTEXT_RELEASE: &str = "affinity release";
 
-/// Statement name, for the context a query failure carries.
-const CONTEXT_RESET: &str = "affinity meter reset";
+/// A claim that issued no lease could not be freed; it lapses at its expiry.
+pub(crate) const EVENT_CLAIM_RELEASE_FAILED: &str = "lease_claim_release_failed";
 
 /// The `fencing_seq` column, which is the one number that orders lease holders.
 ///
@@ -134,7 +134,8 @@ impl Leases {
         }))
     }
 
-    /// Free the slot so the fleet's next event is claimable.
+    /// Free a slot whose claim issued no lease, so the fleet's next event is
+    /// claimable.
     ///
     /// Token-guarded: frees it only while `fence` is still the live token, so a
     /// holder superseded by a reclaim cannot free the CURRENT holder's slot and
@@ -143,17 +144,49 @@ impl Leases {
     ///
     /// Called on every post-claim path that does not issue a lease, so an
     /// abandoned claim costs one poll rather than a full TTL of silence on that
-    /// fleet.
+    /// fleet. It also drops the sticky hint the claim wrote: no run happened on
+    /// this runner, and a hint left behind would sort a fleet that keeps
+    /// stopping first for it on every poll of the partition.
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
     pub async fn release(&self, fleet_id: &Uuid7, fence: Fence, now: UnixMillis) -> Result<()> {
         let mut connection = self.pool().acquire().await?;
-        self.release_through(&mut connection, fleet_id, fence, now)
+        sqlx::query(sql::lease::RELEASE_UNLEASED_SLOT)
+            .bind(fleet_id.as_str())
+            .bind(now.as_millis())
+            .bind(fence.as_i64())
+            .execute(&mut *connection)
             .await
+            .map_err(query(CONTEXT_RELEASE))?;
+        Ok(())
     }
 
-    /// The same release, on a connection the caller already holds.
+    /// Frees a claim that issued no lease, best-effort.
+    ///
+    /// The one place every post-claim ending without a lease lets go: the
+    /// assignment pass's faults, and the pull's refusals, retries, parks and
+    /// faults. The caller already has its answer, and a release that fails
+    /// changes nothing it can act on: the claim lapses at its expiry, which is
+    /// the cost every such ending paid before this existed. So the failure is
+    /// logged and the answer stands.
+    pub(crate) async fn let_go(&self, fleet_id: &Uuid7, fence: Fence, now: UnixMillis) {
+        if let Err(failure) = self.release(fleet_id, fence, now).await {
+            let code = failure.code().as_str();
+            let fleet_id = fleet_id.as_str();
+            let reason = failure.to_string();
+            tracing::warn!(
+                error_code = code,
+                event = EVENT_CLAIM_RELEASE_FAILED,
+                fleet_id,
+                reason,
+                "a claim that issued no lease was not freed; it lapses at its expiry"
+            );
+        }
+    }
+
+    /// The release a finished run owes, on a connection the caller already
+    /// holds. Keeps the sticky hint: this runner did lease the fleet.
     ///
     /// The report path needs it: freeing the slot makes the fleet's next event
     /// claimable, and doing that before the run's result is durable would let a
@@ -162,9 +195,7 @@ impl Leases {
     /// becomes visible at the same instant the terminal row does — which is
     /// what lets this be a guarantee rather than the ordering comment it was.
     ///
-    /// Split from [`Leases::release`] rather than duplicating the statement,
-    /// so the pool-based entry point stays one acquire and this one adds none
-    /// (RULE CNX).
+    /// It takes a connection so it adds no acquire (RULE CNX).
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
@@ -182,31 +213,6 @@ impl Leases {
             .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT_RELEASE))?;
-        Ok(())
-    }
-
-    /// Reset the slot's metering cursor to zero at a FRESH lease issue.
-    ///
-    /// A reclaim must NOT call this: the slot has to keep the dead holder's
-    /// progress so the re-leased run meters forward from where it stopped,
-    /// which is exactly why the cursor is absent from the claim's `ON CONFLICT`
-    /// SET.
-    ///
-    /// Fail-closed by contract — the caller treats an error here as a failed
-    /// lease issue rather than a warning, because the renewal CTE reads this
-    /// cursor for each slice's delta and a stale value would over-charge the
-    /// first renewal.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer.
-    pub async fn reset_meters(&self, fleet_id: &Uuid7, now: UnixMillis) -> Result<()> {
-        let mut connection = self.pool().acquire().await?;
-        sqlx::query(sql::lease::RESET_AFFINITY_METERS)
-            .bind(fleet_id.as_str())
-            .bind(now.as_millis())
-            .execute(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_RESET))?;
         Ok(())
     }
 }

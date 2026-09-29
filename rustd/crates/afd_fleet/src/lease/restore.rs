@@ -1,6 +1,16 @@
 //! Reading a claimed fleet's next entry, and restoring its consumer group
 //! when the stream says there is none.
 //!
+//! # The oldest owed entry, whichever consumer holds it
+//!
+//! A won claim proves no live lease holds the fleet, so any entry pending in
+//! the group is owed rather than in flight: this process's own re-poll, a
+//! parked event, or one another replica read before it died. The read takes
+//! the group's oldest pending entry over into this consumer first, and reads
+//! a new one only when nothing is pending anywhere. Reading this consumer's
+//! own list alone would miss the third case, and a poll that then found
+//! nothing new would clear the fleet's mark over an entry no process reads.
+//!
 //! # Why the restore lives here and not in the datastore
 //!
 //! `afd_dragonfly` reports a vanished group and refuses to guess where to
@@ -24,22 +34,25 @@ use crate::error::Result;
 use crate::lease::assign::warn_queue_fleet;
 use crate::lease::store::Leases;
 
-/// The consumer's own pending list would not answer.
+/// The group's pending list would not answer the takeover.
 const EVENT_PEL_READ_FAILED: &str = "assign_pel_read_failed";
 
 /// The fleet stream would not answer.
 const EVENT_STREAM_READ_FAILED: &str = "assign_xreadgroup_failed";
 
-/// An entry this consumer already held came back.
+/// An entry pending in the group was taken over and is being re-delivered.
 const EVENT_PEL_REDELIVERED: &str = "assign_pel_redelivered";
 
 /// A vanished consumer group was recreated at the ledgers' cursor.
 const EVENT_GROUP_RESTORED: &str = "fleet_consumer_group_restored";
 
 impl Leases {
-    /// This consumer's own pending entry first, then a new one — restoring
-    /// the fleet's consumer group at the ledgers' cursor, once, if the
-    /// stream has lost it.
+    /// The group's oldest pending entry, taken over into `consumer`, then a
+    /// new one — restoring the fleet's consumer group at the ledgers' cursor,
+    /// once, if the stream has lost it.
+    ///
+    /// `None` is the one proof a poll has that the fleet is drained: nothing
+    /// pending anywhere in the group, and nothing new.
     ///
     /// # Errors
     /// Reports a queue that would not answer, and a ledger that could not
@@ -52,7 +65,7 @@ impl Leases {
         consumer: &str,
     ) -> Result<Option<FleetEvent>> {
         let streams = self.streams();
-        let read = match pending_then_new(&streams, fleet, consumer).await {
+        let read = match owed_then_new(&streams, fleet, consumer).await {
             Err(lost) if lost.is_group_missing() => {
                 let cursor = self.admissions().delivered_cursor(fleet).await?;
                 // Hoisted: see the `tracing` note in the workspace Cargo.toml.
@@ -66,7 +79,7 @@ impl Leases {
                     "the fleet's consumer group was gone and was recreated where the ledgers say delivery stopped"
                 );
                 streams.restore_group(fleet, &cursor).await?;
-                pending_then_new(&streams, fleet, consumer).await
+                owed_then_new(&streams, fleet, consumer).await
             }
             other => other,
         };
@@ -74,19 +87,20 @@ impl Leases {
     }
 }
 
-/// The two reads, in the order that keeps a re-poll ahead of new work.
+/// The two reads, in the order that keeps owed work ahead of new work.
 ///
-/// A failed pending read cannot PROVE the pending list is empty, so it must
-/// not fall through to the fresh read — promoting a new entry over a
-/// possibly-pending re-poll would break own-pending-first ordering exactly
-/// when the queue is degraded. Propagating is what stops it.
-async fn pending_then_new(
+/// A failed takeover cannot PROVE nothing is pending, so it must not fall
+/// through to the fresh read — promoting a new entry over a possibly-pending
+/// one would break the fleet's order exactly when the queue is degraded, and
+/// an empty answer from there would clear a mark over owed work. Propagating
+/// is what stops both.
+async fn owed_then_new(
     streams: &FleetStreams,
     fleet: &str,
     consumer: &str,
 ) -> afd_dragonfly::error::Result<Option<FleetEvent>> {
     let pending = streams
-        .read_pending(fleet, consumer)
+        .take_over_oldest(fleet, consumer)
         .await
         .inspect_err(|error| warn_queue_fleet(EVENT_PEL_READ_FAILED, fleet, error))?;
     match pending {
@@ -96,7 +110,7 @@ async fn pending_then_new(
                 event = EVENT_PEL_REDELIVERED,
                 fleet_id = fleet,
                 receipt = id,
-                "an entry this consumer already held is being re-delivered"
+                "an entry pending in the group was taken over and is being re-delivered"
             );
             Ok(Some(event))
         }

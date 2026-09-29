@@ -24,22 +24,25 @@
 //! that vanishes mid-frame, a handler that returns early, a task cancelled by
 //! shutdown — every one of them drops the response body, which drops the
 //! stream, which returns the slot. There is no deregister call to forget.
+//!
+//! # The body shares the payload
+//!
+//! Every viewer of a fleet writes the same published bytes; see [`body`].
 
+mod body;
 mod wall;
 
 #[cfg(test)]
 mod transport_tests;
 
-use std::convert::Infallible;
 use std::sync::Arc;
 
 use afd_core::error_code;
-use afd_sse::{Frame, Live, Slot};
+use afd_sse::{Live, Slot};
 use axum::extract::{Path, State};
-use axum::response::sse::{Event, KeepAlive, Sse};
-use axum::response::{IntoResponse as _, Response};
-use futures_util::StreamExt as _;
-use futures_util::stream::{self, BoxStream};
+use axum::response::Response;
+
+use self::body::serve;
 
 use crate::auth::{Acting, WorkspaceContext};
 use crate::handler::Refusal;
@@ -93,8 +96,16 @@ const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
         "`gate_id`, `event_id` and `pending_approvals`. `event_id` is null ",
         "for a gate raised outside a run. A resolved gate adds `status` and ",
         "`resolved_by`. The runner's frames ride the same stream: ",
-        "`fleet_response_chunk`, `tool_call_started`, `tool_call_progress` ",
-        "and `tool_call_completed`. Identifiers restart at 0 ",
+        "`chunk`, `tool_call_started`, `tool_call_progress` ",
+        "and `tool_call_completed`. Each tool frame carries `event_id` and ",
+        "`name`. Newer runners add `call_id`, which every frame of one call ",
+        "shares and no other call of the event reuses. If the server drops ",
+        "frames for this connection, it sends `event: catching_up`. Its `data` ",
+        "is `{\"kind\":\"catching_up\",\"dropped\":N}`. `dropped` counts frames ",
+        "dropped since the previous signal. It is 0 when the server missed frames ",
+        "it cannot count. After either, read missed events through `GET …/events`. ",
+        "`catching_up` uses identifier 0 and does not advance the activity ",
+        "sequence. Identifiers restart at 0 ",
         "for each connection. The route ignores `Last-Event-ID`. At capacity, ",
         "the route returns 503 `UZ-API-002` with `Retry-After`. Read missed ",
         "events before reconnecting. After 15 seconds without activity, the ",
@@ -156,7 +167,10 @@ pub(crate) async fn fleet<D: Services>(
         "can overflow its bounded server queue. ",
         "The server then sends `event: catching_up` with ",
         "`{\"kind\":\"catching_up\",\"dropped\":N}`. `dropped` is the new drop ",
-        "count since the previous signal. These control frames use identifier 0 and ",
+        "count since the previous signal. It is 0 when the server missed frames ",
+        "it cannot count. Read missed events through `GET ",
+        "/v1/workspaces/{workspace_id}/events` after either. ",
+        "These control frames use identifier 0 and ",
         "do not advance the activity sequence. Activity identifiers start at ",
         "0 for each connection. The route ignores `Last-Event-ID`. The ",
         "connection adjusts its fan-in as fleets appear or disappear. A ",
@@ -206,40 +220,4 @@ fn admit(live: &Live) -> Result<Slot, Refusal> {
         afd_observability::producers::http::stream_shed();
         Refusal::at_stream_ceiling(live.carrying(), live.capacity())
     })
-}
-
-/// One response body, holding `slot` for as long as it is alive.
-///
-/// Axum's keep-alive emits a named event so browsers can observe transport
-/// liveness. It has no activity ID, and ordinary traffic resets its timer.
-/// The event is built once per response; heartbeats need no datastore work.
-fn serve(frames: BoxStream<'static, Frame>, slot: Slot) -> Response {
-    let held = stream::unfold((frames, slot), |(mut frames, slot)| async move {
-        let frame = frames.next().await?;
-        Some((Ok::<Event, Infallible>(event_of(frame)), (frames, slot)))
-    });
-    Sse::new(held)
-        .keep_alive(
-            KeepAlive::new()
-                .interval(afd_sse::HEARTBEAT_INTERVAL)
-                .event(
-                    Event::default()
-                        .event(afd_sse::HEARTBEAT_EVENT)
-                        .data(afd_sse::HEARTBEAT_DATA),
-                ),
-        )
-        .into_response()
-}
-
-/// One decided frame, as `axum` writes it.
-///
-/// The `id:` line is this CONNECTION's counter. A browser will send it back as
-/// `Last-Event-ID` on reconnect and this daemon ignores it — honouring it would
-/// promise a resumption pub/sub cannot deliver, because it keeps nothing to
-/// resume from. The client recovers the gap through the events list.
-fn event_of(frame: Frame) -> Event {
-    Event::default()
-        .id(frame.seq.to_string())
-        .event(frame.kind)
-        .data(frame.data)
 }

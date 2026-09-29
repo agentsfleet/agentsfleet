@@ -66,6 +66,18 @@ describe("Alert", () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
+  it("test_dismiss_target_is_24px", () => {
+    render(
+      <Alert variant="warning" onDismiss={() => undefined}>
+        body
+      </Alert>,
+    );
+    // The shared icon button's 24 px size, and its 44 px coarse-pointer floor.
+    const dismiss = screen.getByRole("button", { name: /dismiss/i });
+    expect(dismiss.className).toContain("h-6 w-6");
+    expect(dismiss.className).toContain("pointer-coarse:min-h-11");
+  });
+
   it("renders no dismiss button when onDismiss is not provided", () => {
     render(<Alert variant="info">no dismiss</Alert>);
     expect(screen.queryByRole("button")).toBeNull();

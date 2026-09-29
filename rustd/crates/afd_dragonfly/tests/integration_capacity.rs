@@ -60,7 +60,7 @@ async fn the_capacity_sample_accounts_for_every_class_of_retained_state_separate
     }
     let index = ReadyIndex::new(harness.redis.clone());
     let marked = fleets.first().expect("a fleet was seeded");
-    index.mark(marked, marked).await.expect("mark ready");
+    index.mark(marked).await.expect("mark ready");
 
     let sample = Capacity::sample(&harness.redis, WALK_EVERYTHING)
         .await

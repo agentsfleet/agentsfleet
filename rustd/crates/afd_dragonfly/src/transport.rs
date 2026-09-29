@@ -75,6 +75,10 @@ const CONNECT_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// How many dials the driver may attempt before reporting the seed unreachable.
 ///
+/// Also the cap on a node's repair (redis-rs 1.7.0 `reconnect_loop` reads it),
+/// which is why the hub's connection is built without it: see
+/// [`connect_with_pushes`].
+///
 /// A `match` rather than `unwrap`, because a constant that panics at compile
 /// time needs no runtime proof and the manifest forbids `unwrap` everywhere.
 const CONNECT_ATTEMPTS: NonZeroUsize = match NonZeroUsize::new(3) {
@@ -117,12 +121,17 @@ pub(crate) fn builder(
     config: &DragonflyConfig,
     response_timeout: Duration,
 ) -> Result<ClusterClientBuilder> {
+    Ok(repairing(config, response_timeout)?.max_connection_attempts(CONNECT_ATTEMPTS))
+}
+
+/// [`builder`] without the attempt cap, so the driver repairs a lost node
+/// until it answers or leaves the topology.
+fn repairing(config: &DragonflyConfig, response_timeout: Duration) -> Result<ClusterClientBuilder> {
     let mut builder = ClusterClientBuilder::new([config.url().to_owned()])
         .use_protocol(ProtocolVersion::RESP3)
         .retries(REDIRECT_RETRIES)
         .min_retry_wait(RETRY_MIN_WAIT.as_millis().try_into().unwrap_or(u64::MAX))
         .max_retry_wait(RETRY_MAX_WAIT.as_millis().try_into().unwrap_or(u64::MAX))
-        .max_connection_attempts(CONNECT_ATTEMPTS)
         .connection_timeout(CONNECT_ATTEMPT_TIMEOUT)
         .response_timeout(response_timeout);
     if let Some(path) = config.ca_cert_file().filter(|_| config.is_tls()) {
@@ -151,6 +160,13 @@ pub(crate) fn client(
     // their own configuration had malformed -- and this function's own
     // documentation already promised a config error.
     builder(config, response_timeout)?
+        .build()
+        .map_err(|source| error::config_rejected(config.role().tag(), source))
+}
+
+/// [`client`] for the hub: the same seed and ladder, with node repair uncapped.
+fn repairing_client(config: &DragonflyConfig, response_timeout: Duration) -> Result<ClusterClient> {
+    repairing(config, response_timeout)?
         .build()
         .map_err(|source| error::config_rejected(config.role().tag(), source))
 }
@@ -194,12 +210,20 @@ pub(crate) async fn connect(
     }
 }
 
-/// As [`connect`], with server pushes routed to the returned receiver.
+/// As [`connect`], with server pushes routed to the returned receiver and a
+/// lost node repaired without an attempt cap.
+///
+/// Uncapped because a capped repair ends by DROPPING the node from the
+/// connection map, and the hub's re-subscribes after the loss are routed
+/// through that map: a node the driver gave up on is one they cannot reach.
+/// Uncapped, the repair ends when the node answers or when a topology refresh
+/// says it is gone. Pub/sub is this connection's only work, so there is no
+/// request a repair could stall.
 pub(crate) async fn connect_with_pushes(
     config: &DragonflyConfig,
     response_timeout: Duration,
 ) -> Result<Pushed> {
-    let client = client(config, response_timeout)?;
+    let client = repairing_client(config, response_timeout)?;
     let (sender, pushes) = mpsc::unbounded_channel();
     let dial =
         client.get_async_connection_with_config(connection_config(response_timeout, Some(sender)));
@@ -270,7 +294,15 @@ async fn diagnose(
         .build()
         .ok()?;
     let dial = client.get_async_connection_with_config(connection_config(response_timeout, None));
-    match tokio::time::timeout(CONNECT_ATTEMPT_TIMEOUT, dial).await {
+    recovered(tokio::time::timeout(CONNECT_ATTEMPT_TIMEOUT, dial).await)
+}
+
+/// The cause a diagnosis dial produced: its error, or nothing when it
+/// connected or ran out of time.
+fn recovered<C>(
+    outcome: std::result::Result<redis::RedisResult<C>, tokio::time::error::Elapsed>,
+) -> Option<redis::RedisError> {
+    match outcome {
         Ok(Err(source)) => Some(source),
         Ok(Ok(_)) | Err(_) => None,
     }
@@ -286,80 +318,29 @@ async fn dial_failure(
     response_timeout: Duration,
     source: redis::RedisError,
 ) -> Error {
+    let recovered = if config.is_tls() && !names_a_certificate(&source) {
+        diagnose(config, response_timeout).await
+    } else {
+        None
+    };
+    judged(config, source, recovered)
+}
+
+/// Which error a failed dial is reported as: a certificate either dial named
+/// is a rejection, and anything else is the first dial's own failure.
+fn judged(
+    config: &DragonflyConfig,
+    source: redis::RedisError,
+    recovered: Option<redis::RedisError>,
+) -> Error {
     if names_a_certificate(&source) {
         return error::certificate_rejected(config.role().tag(), source);
     }
-    if config.is_tls()
-        && let Some(recovered) = diagnose(config, response_timeout).await
-        && names_a_certificate(&recovered)
-    {
-        return error::certificate_rejected(config.role().tag(), recovered);
+    match recovered.filter(names_a_certificate) {
+        Some(recovered) => error::certificate_rejected(config.role().tag(), recovered),
+        None => error::unreachable(config.role().tag(), source),
     }
-    error::unreachable(config.role().tag(), source)
 }
 
 #[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    use super::{CONNECT_ATTEMPT_TIMEOUT, CONNECT_ATTEMPTS, RETRY_MAX_WAIT, builder};
-    use crate::config::{DragonflyConfig, DragonflyRole};
-
-    fn default_budget() -> Duration {
-        DragonflyConfig::from_url(DragonflyRole::Default, "redis://127.0.0.1:6379".to_owned())
-            .connect_timeout()
-    }
-
-    /// The regression this pins, and the reason it is a correctness test rather
-    /// than a performance one: while the dial ladder fits the budget, the
-    /// driver's own error always arrives first and keeps its source chain. Any
-    /// change to the constants has to preserve it. Jitter is additive, so a
-    /// retry's ceiling is twice its capped wait.
-    #[test]
-    fn test_the_connect_ladder_answers_before_the_budget_expires() {
-        let attempts_made = u32::try_from(CONNECT_ATTEMPTS.get()).unwrap_or(u32::MAX);
-        let attempts = CONNECT_ATTEMPT_TIMEOUT * attempts_made;
-        let sleeps = RETRY_MAX_WAIT * 2 * attempts_made.saturating_sub(1);
-        let worst = attempts + sleeps;
-        let budget = default_budget();
-        assert!(
-            worst < budget,
-            "dials plus jittered backoff must finish inside the connect budget, \
-             or the driver is cancelled mid-retry and its error is lost: \
-             worst case {worst:?} against a {budget:?} budget",
-        );
-    }
-
-    /// A configured authority does not make a plaintext seed a TLS one: the
-    /// scheme selects the transport, the authority only says whom to trust
-    /// once TLS is chosen. The path names a file that does not exist, and that
-    /// is the assertion — the plaintext branch never reads it.
-    #[test]
-    fn test_a_configured_authority_does_not_force_tls_on_a_plaintext_url() {
-        let config =
-            DragonflyConfig::from_url(DragonflyRole::Api, "redis://127.0.0.1:6379".to_owned())
-                .with_ca_cert_file(Some("/nonexistent/authority.pem".into()));
-        assert!(
-            builder(&config, Duration::from_secs(1)).is_ok(),
-            "a redis:// seed opens plaintext whatever authority is configured"
-        );
-    }
-
-    /// And the scheme that does mean TLS still reaches the authority, failing
-    /// on the file rather than quietly opening plaintext to a TLS port.
-    #[test]
-    fn test_a_tls_url_reads_the_authority_it_was_given() {
-        let config =
-            DragonflyConfig::from_url(DragonflyRole::Api, "rediss://127.0.0.1:6380".to_owned())
-                .with_ca_cert_file(Some("/nonexistent/authority.pem".into()));
-        let refusal = builder(&config, Duration::from_secs(1))
-            .err()
-            .map(|error| error.to_string());
-        assert!(
-            refusal
-                .as_deref()
-                .is_some_and(|message| message.contains("/nonexistent/authority.pem")),
-            "a rediss:// seed must consult the authority and name it when unreadable: {refusal:?}"
-        );
-    }
-}
+mod tests;

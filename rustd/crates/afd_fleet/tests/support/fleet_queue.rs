@@ -119,7 +119,7 @@ pub(crate) async fn enqueue(
     logical
 }
 
-/// A logical event id in the ledger's shape, unique within this process.
+/// A logical event id in the ledger's shape, unique across runs.
 ///
 /// `<millis>-<seq>` is what `afd_admission::logical_id` spells and what
 /// `logical_parts` reads back, and the lease path now carries it as the event's
@@ -128,11 +128,27 @@ pub(crate) async fn enqueue(
 /// owns identity: the entry id
 /// is a RECEIPT, and a fixture handing one back as an identity would re-teach
 /// the confusion the ledger exists to end.
+///
+/// The counter starts at the process's first wall-clock millisecond times a
+/// thousand, not at one. Every fixture stamps the same `created_at`, and the
+/// lane database outlives a process whenever `KEEP_TEST_STATE` skips the
+/// reset: a counter restarting at one re-minted the last run's ids, and a
+/// ledger count keyed by event id then read the last run's rows as this one's.
 fn mint_logical_id(created_at: i64) -> String {
-    static LOGICAL_SEQUENCE: AtomicI64 = AtomicI64::new(1);
+    static LOGICAL_SEQUENCE: std::sync::LazyLock<AtomicI64> = std::sync::LazyLock::new(|| {
+        AtomicI64::new(
+            afd_core::clock::now()
+                .as_millis()
+                .saturating_mul(RUN_STRIDE),
+        )
+    });
     let seq = LOGICAL_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     afd_admission::logical_id(created_at, seq)
 }
+
+/// Ids one run may mint per millisecond of its start before the next run's
+/// range begins.
+const RUN_STRIDE: i64 = 1_000;
 
 /// Appends an entry in the shape the Rust producers wrote before the wire fix.
 ///
@@ -200,7 +216,7 @@ pub(crate) async fn entries_on(queue: &Dragonfly, fleet: &str) -> Vec<(String, S
 
 pub(crate) async fn mark_ready(queue: &Dragonfly, fleet: &str) {
     ReadyIndex::new(queue.clone())
-        .mark(fleet, fleet)
+        .mark(fleet)
         .await
         .expect("the readiness mark must land");
 }
@@ -210,7 +226,7 @@ pub(crate) async fn mark_ready(queue: &Dragonfly, fleet: &str) {
 pub(crate) async fn clear_ready(queue: &Dragonfly, fleet: &str) {
     let index = ReadyIndex::new(queue.clone());
     let token = index
-        .mark(fleet, fleet)
+        .mark(fleet)
         .await
         .expect("re-marking to obtain the token must succeed");
     let _cleared = index.clear_if_unchanged(fleet, &token).await;

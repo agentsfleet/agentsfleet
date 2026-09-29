@@ -29,6 +29,7 @@ pub mod fence;
 pub mod finalize;
 pub mod installed;
 pub mod issue;
+mod mark;
 pub mod memory;
 pub mod mint;
 pub mod obligation;
@@ -41,6 +42,10 @@ pub mod scope;
 pub mod settle;
 pub mod sql;
 pub mod store;
+#[cfg(all(test, feature = "test-util"))]
+mod test_dead;
+#[cfg(test)]
+mod test_log;
 pub mod verdict;
 
 pub use self::activity::Target;

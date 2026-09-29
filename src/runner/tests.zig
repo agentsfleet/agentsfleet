@@ -47,6 +47,7 @@ test {
     _ = @import("cmd/args.zig");
     _ = @import("cmd/args_test.zig");
     _ = @import("engine/runner_progress_lifecycle_test.zig");
+    _ = @import("engine/runner_progress_tools_test.zig");
     _ = @import("cmd/output.zig");
     _ = @import("cmd/output_test.zig");
     _ = @import("cmd/registry.zig");
