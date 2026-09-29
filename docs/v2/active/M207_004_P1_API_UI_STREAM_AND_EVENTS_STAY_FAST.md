@@ -88,7 +88,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | UFS | yes | slack, ladder and ceiling figures are named consts |
 | LOGGING | yes | gap and depth events carry counts and channel ids, never payloads |
 | UI GATE / DESIGN TOKEN GATE | yes — reply and wall components | no raw elements or bracket utilities added |
-| SCHEMA GUARD | no — no `schema/` file changes | the held-slot filter and the meter fold are query text |
+| SCHEMA GUARD | yes — one additive file, approved by Indy (Discovery) | a dependency statistics object on `core.fleet_events (workspace_id, fleet_id)` and its `migration.rs` entry; no DROP or ALTER; the held-slot filter and the meter fold stay query text |
 
 ## Prior-Art / Reference Implementations
 
@@ -124,15 +124,15 @@ A drained fleet's mark is cleared, and only after the whole group has nothing pe
 ### §4 — Acknowledgements and reads stay small
 
 - **Dimension 4.1** — the trim after an acknowledgement reads at most the entries it removes plus one and never more than `TRIM_READ_MAX`, bounds its read at the oldest owed entry, runs only past the keep count plus `TRIM_SLACK`, and never removes a pending or undelivered entry → Test `test_trim_reads_only_the_floor`
-- **Dimension 4.2** — the fleet, workspace and thread reads keep their scope, cursor and `since` bound as index conditions under a generic plan → Test `test_event_list_plans_use_the_index`
+- **Dimension 4.2** — the fleet, workspace and thread reads keep their scope, cursor and `since` bound as index conditions under a generic plan, and walk their index in order without a Sort: a dependency statistics object stops the planner multiplying workspace and fleet odds, and actor-filtered reads get their own texts → Test `test_event_list_plans_use_the_index`
 - **Dimension 4.3** — a lease reads its tenant once, and its meter reset rides the lease insert → Test `test_issue_reads_the_tenant_once`
 
 ### §5 — The live tail degrades by channel, not by replica
 
-**Implementation default:** a dispatch task owns pushes and a control task owns subscribe commands, because a subscribe round trip must never hold a frame. redis-rs 1.7.0 forwards a node's `Disconnection` without its address, so the hub attributes a loss by what the driver replays: it repairs the node and re-sends that node's `SSUBSCRIBE`s, and any confirmation after a channel's first is a gap. A disconnect no replay explains within `NODE_REPAIR_WINDOW`, or two at once, falls back to a full redial with a gap on every channel. The hub's driver repairs a node without an attempt cap. A gap is written as `catching_up` with `dropped: 0`, and the SSE body shares one payload across viewers, because axum's `Event` copies per viewer.
+**Implementation default:** a dispatch task owns pushes and a control task owns subscribe commands, because a subscribe round trip must never hold a frame. redis-rs 1.7.0 forwards a node's `Disconnection` without its address, and its own replay cannot restore a node's channels: it packs every sharded channel into one `SSUBSCRIBE` routed by the first channel's slot, dropped unless that slot is on the repaired node and refused `CROSSSLOT` by Dragonfly when it is (`subscription_tracker.rs:105-127`, `cluster_handling/async_connection/mod.rs:1173-1186`). So on any `Disconnection` the hub re-sends one `SSUBSCRIBE` per live channel on its existing connection, and each routes to its own slot's node; any confirmation after a channel's first is a gap, so a node loss gaps every channel. A disconnect whose re-subscribes do not confirm within `NODE_REPAIR_WINDOW`, or two at once, falls back to a full redial with a gap on every channel. The hub's driver repairs a node without an attempt cap. A gap is written as `catching_up` with `dropped: 0`, and the SSE body shares one payload across viewers, because axum's `Event` copies per viewer.
 
 - **Dimension 5.1** — every hub reconnect sends each live channel a gap, and its viewers receive `catching_up` → Test `test_reconnect_sends_a_gap`
-- **Dimension 5.2** — one primary's socket loss re-subscribes only its channels, gives them a gap, and leaves other nodes' frames flowing, with no new connection opened → Test `test_node_loss_is_a_gap_not_a_reconnect`
+- **Dimension 5.2** — one primary's socket loss re-subscribes every live channel, one command each, restores the lost node's channels, gives each channel a gap, and leaves other nodes' frames flowing, with no new connection opened → Test `test_node_loss_is_a_gap_not_a_reconnect`
 - **Dimension 5.3** — frames keep flowing while a subscribe is slow → Test `test_dispatch_continues_during_slow_subscribe`
 - **Dimension 5.4** — a frame's payload and rendered event are shared across viewers, not copied per viewer → Test `test_fanout_shares_one_payload`
 - **Dimension 5.5** — a lagging wall viewer refreshes counters at most once per tick → Test `test_wall_lag_reads_counters_once_per_tick`
@@ -167,7 +167,7 @@ SSE_MAX_STREAMS default = the tail lane's measured value (knobs.rs), overridable
 | Stop after a won claim | refusal, Retry or Await | the claim is released; the next event is not held |
 | Parked gate expires unanswered | nobody answers the approval | the inbox expiry sweep re-marks each swept fleet |
 | Trim races an append | an append lands during the trim | the floor is the minimum of delivered, pending and kept; nothing pending is removed |
-| Primary socket lost | one Dragonfly primary drops | the driver repairs it and replays its channels; each gets a gap, its viewers get `catching_up` and backfill |
+| Primary socket lost | one Dragonfly primary drops | the driver repairs it; the hub re-subscribes every channel one command each; every channel gets a gap, so the other nodes' viewers backfill needlessly once |
 | Loss the hub cannot attribute | a replica drops, two nodes drop within `NODE_REPAIR_WINDOW`, or the driver's replay is lost | full redial; every channel gets a gap |
 | Slot migration | the driver replays every channel | every channel gets a gap; some viewers backfill needlessly, none miss frames silently |
 | Whole connection lost | every node unreachable | redial and resubscribe as today, and every channel gets a gap |
@@ -208,7 +208,7 @@ SSE_MAX_STREAMS default = the tail lane's measured value (knobs.rs), overridable
 | 4.2 | integration | `test_event_list_plans_use_the_index` | a deep-cursor page per shape through `History`, then `EXPLAIN (GENERIC_PLAN)` per text → the expected index, scope and cursor or `since` in Index Cond, no Sort |
 | 4.3 | integration | `test_issue_reads_the_tenant_once` | one lease → one tenant read, meters reset in the lease insert |
 | 5.1 | integration | `test_reconnect_sends_a_gap` | force a hub reconnect → each live channel's viewer gets `catching_up` |
-| 5.2 | integration | `test_node_loss_is_a_gap_not_a_reconnect` | drop one node's socket → its channels resubscribe, other frames flow, connections opened unchanged |
+| 5.2 | integration | `test_node_loss_is_a_gap_not_a_reconnect` | drop one node's socket → its channels resubscribe and get a gap, other nodes' frames flow (their channels may also gap), connections opened unchanged |
 | 5.3 | integration | `test_dispatch_continues_during_slow_subscribe` | a subscribe held 2 s while another channel publishes → frames delivered within the hold |
 | 5.4 | unit | `test_fanout_shares_one_payload` | one message, 3 receivers → one payload allocation |
 | 5.5 | unit | `test_wall_lag_reads_counters_once_per_tick` | 50 lag events in a tick → one counters read |
@@ -280,6 +280,11 @@ SSE_MAX_STREAMS default = the tail lane's measured value (knobs.rs), overridable
 - **Browser limits recorded, not fixed** — the settled-reply announcement is proven by its unit test, not yet heard through a screen reader in a browser (check on DEV with Dimension 6.7 of M207_003); a reference-style link or footnote whose definition arrives later renders unresolved while streaming and resolves at settle.
 - **Open scope call** — asked Sep 29, 2026 with no answer inside the question window: adopt the reviewed core plus the stream work, holding the money-path rewrites, wallet lock span, budget index, reply side-store, eviction, server filter, bounded push channel and status fold. The agent built only the agreed scope; nothing in Out of Scope's first bullet is deferred until Indy's quote lands here.
 - **Metrics review** — one warn log (`hub_channel_gap`) and one counter (`agentsfleet_lease_claims_empty_total`) added; no analytics or funnel change. A subscribe issued while its primary is still reconnecting can land on another node and be confirmed (redis-rs `mod.rs:948-972`, `datastore_scaling.md:193`) — a pre-existing exposure §5 narrows but does not close.
+- **Build-time decisions (Sep 29, 2026)** — 4.2: the planner multiplies workspace and fleet odds and collapses the actor guard to about one row, so a fleet page sorted its whole fleet; options were statistics, a once-per-query workspace check, or accepting the Sort. 5.2: the driver's replay never restores a node's channels on a multi-primary hub (live: `reconnected` 1 ms after the kill, no replay in 5 s; raw probe `-CROSSSLOT`); options were hub-side re-subscribe (A), a patched redis-rs (D), or the 5 s redial (C). An upstream redis-rs issue is drafted, filed only on Indy's word.
+
+> Indy (2026-09-29): "Statistics (Recommended)" — context: 4.2's Sort; approves the additive `schema/` statistics file under SCHEMA GUARD.
+> Indy (2026-09-29): "A: hub resubscribes (Recommended)" — context: 5.2's node loss; every channel gaps on any node loss.
+
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — the packaging decisions:
 
