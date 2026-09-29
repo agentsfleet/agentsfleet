@@ -1,8 +1,8 @@
 import { expect } from "vitest";
 import { act, fireEvent, screen } from "@testing-library/react";
-import { steerFleetActionMock } from "./harness";
+import { postSteerMock } from "./harness";
 
-// What the steer suites share: the composer's names and copy, the action's
+// What the steer suites share: the composer's names and copy, the steer's
 // answers, and the moves a person makes in the composer.
 
 import { COMPOSER_NAME, SEND_LABEL, UUID_V7 } from "./steer-copy";
@@ -30,15 +30,15 @@ export async function send(text: string): Promise<void> {
   });
 }
 
-/** The operation id the action received on its `index`th call. */
+/** The operation id the steer carried on its `index`th call. */
 export function operationIdOf(index: number): string {
-  return String(steerFleetActionMock.mock.calls[index]?.[3]);
+  return String(postSteerMock.mock.calls[index]?.[3]);
 }
 
 // A refusal the test releases when it chooses.
 export function heldRefusal(): { refuse: () => void } {
   const held = { refuse: () => {} };
-  steerFleetActionMock.mockImplementationOnce(
+  postSteerMock.mockImplementationOnce(
     () => new Promise((resolve) => { held.refuse = () => resolve(REFUSED); }),
   );
   return held;

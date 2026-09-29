@@ -12,7 +12,7 @@ const TEST_SUBJECT = "user_fleet_thread";
 
 const {
   routerRefreshMock,
-  steerFleetActionMock,
+  postSteerMock,
   useFleetEventStreamMock,
   capturedOnNew,
   capturedSubmittedMessageId,
@@ -22,7 +22,7 @@ const {
   // The page the thread renders on, as `usePathname` reports it.
   threadPath: "/w/ws_thread/fleets/fleet_thread",
   routerRefreshMock: vi.fn(),
-  steerFleetActionMock: vi.fn(),
+  postSteerMock: vi.fn(),
   useFleetEventStreamMock: vi.fn(),
   // Capture the `onNew` callback wired into the external-store runtime so a
   // test can drive it with content the composer UI never emits (e.g. an
@@ -52,9 +52,10 @@ vi.mock("@/lib/auth/client", () => ({
   }),
 }));
 
-vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
-  steerFleetAction: steerFleetActionMock,
-}));
+// The thread's steers leave through the browser transport; the Server Action
+// module stays mocked so no server-only import loads under the thread.
+vi.mock("@/lib/api/fleet-steer", () => ({ postSteer: postSteerMock }));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({}));
 
 vi.mock("@assistant-ui/react", async () => {
   const actual = await vi.importActual<typeof import("@assistant-ui/react")>(
@@ -152,7 +153,6 @@ export function toThreadMessage(e: FleetEvent): ThreadMessageLike {
         status: e.status,
         queued: e.clientTimestamp === true,
         submittedAtMs: e.submittedAtMs,
-        reply: e.reply,
         replyRecovering: e.replyRecovering,
         outcome: e.outcome,
         failureLabel: e.failureLabel,
@@ -245,7 +245,7 @@ export function serverEvent(over: Partial<EventDetail> = {}): EventDetail {
 
 beforeEach(() => {
   routerRefreshMock.mockReset();
-  steerFleetActionMock.mockReset();
+  postSteerMock.mockReset();
   useFleetEventStreamMock.mockReset();
   // The pending-send ledger is module-scoped and storage-mirrored by design
   // (it survives remounts and reloads); without this reset an entry recorded
@@ -258,4 +258,4 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
-export { routerRefreshMock, steerFleetActionMock, useFleetEventStreamMock, capturedOnNew, capturedSubmittedMessageId };
+export { routerRefreshMock, postSteerMock, useFleetEventStreamMock, capturedOnNew, capturedSubmittedMessageId };

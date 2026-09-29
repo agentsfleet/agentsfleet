@@ -28,6 +28,8 @@ export type PendingSendWriters = {
   dismiss: (operationId: string) => void;
   /** One entry, read from the ledger rather than from the last render. */
   find: (operationId: string) => PendingSend | undefined;
+  /** Every entry, tombstones included, read from the ledger now. */
+  list: () => readonly PendingSend[];
 };
 
 export type FleetPendingSends = {
@@ -50,6 +52,7 @@ export function useFleetPendingSends({ subject, workspaceId, fleetId }: LedgerSc
       fail: (operationId, state) => failPendingSend(scope, operationId, state),
       dismiss: (operationId) => dismissPendingSend(scope, operationId),
       find: (operationId) => findPendingSend(scope, operationId),
+      list: () => getPendingSends(scope),
     }),
     [scope],
   );

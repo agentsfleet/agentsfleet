@@ -7,8 +7,7 @@ import { ComposerPrimitive, useAui, useAuiState } from "@assistant-ui/react";
 import { Alert, Button, DashboardPanel, List, ListItem, Textarea, cn } from "@agentsfleet/design-system";
 import { ArrowUpIcon } from "lucide-react";
 import { PENDING_SEND_STATE, type PendingSend } from "./useFleetPendingSends";
-import { bytesNearSteerLimit, exceedsSteerLimit } from "./useFleetMessageDelivery";
-import { STEER_MESSAGE_MAX_BYTES } from "@/lib/api/fleets-types";
+import { STEER_MESSAGE_MAX_BYTES, overSteerLimit, steerBytesNearLimit } from "@/lib/api/fleets-types";
 import { signInPath } from "@/lib/auth/sign-in-redirect";
 
 const PLACEHOLDER = "Message this fleet…";
@@ -24,7 +23,9 @@ const SEND_AS_NEW_LABEL = "Send as new";
 const NOTICES_LABEL = "Unsent messages";
 const BYTE_COUNT = new Intl.NumberFormat("en-US");
 const TOO_LONG = `Messages can be at most ${BYTE_COUNT.format(STEER_MESSAGE_MAX_BYTES)} bytes.`;
-const BYTES_OF_LIMIT = (bytes: number) => `${BYTE_COUNT.format(bytes)} / ${BYTE_COUNT.format(STEER_MESSAGE_MAX_BYTES)} bytes`;
+const bytesOfLimit = (bytes: number) => `${BYTE_COUNT.format(bytes)} / ${BYTE_COUNT.format(STEER_MESSAGE_MAX_BYTES)} bytes`;
+/** The draft's size near the limit, counted once per distinct draft. */
+type DraftBytes = (text: string) => number | null;
 // In flight, or dismissed: neither is the operator's to act on here.
 const NOT_NOTICED: ReadonlySet<PendingSend["state"]> = new Set([PENDING_SEND_STATE.SENDING, PENDING_SEND_STATE.DISMISSED]);
 
@@ -52,6 +53,9 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
   // A notice unmounts under its own Resend or Dismiss, so focus goes back to
   // the draft rather than falling to the page.
   const draftRef = useRef<HTMLTextAreaElement>(null);
+  // Every leaf that reads the draft's size runs its selector on each store
+  // notification — every reply flush — so the count is kept for its draft.
+  const draftBytes = useMemo(() => lastDraftBytes(), []);
   return (
     <DashboardPanel
       asChild
@@ -68,8 +72,7 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
         aria-label={COMPOSER_LABEL}
       >
         <PendingSendNotices entries={unresolved} onResend={onResend} onDismiss={onDismiss} draftRef={draftRef} />
-        <DraftTooLongHint />
-        <DraftByteCount />
+        <DraftSize draftBytes={draftBytes} />
         <DraftReporter onDraft={onDraft} />
 
         {/* Stretch, not end-alignment: when the footer is capped this row
@@ -100,7 +103,7 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
               )}
             />
           </ComposerPrimitive.Input>
-          <SendButton />
+          <SendButton draftBytes={draftBytes} />
         </div>
       </ComposerPrimitive.Root>
     </DashboardPanel>
@@ -146,8 +149,8 @@ function useRestoreRefusedTextOnMount(
  * prop is passed only then: the primitive's slot lets a child's `disabled`
  * override its own, and `false` would enable Send on an empty draft.
  */
-function SendButton() {
-  const tooLong = useAuiState((s) => exceedsSteerLimit(s.composer.text));
+function SendButton({ draftBytes }: { draftBytes: DraftBytes }) {
+  const tooLong = useAuiState((s) => overSteerLimit(draftBytes(s.composer.text)));
   return (
     <ComposerPrimitive.Send asChild>
       <Button
@@ -164,7 +167,7 @@ function SendButton() {
   );
 }
 
-// Its own leaf, like the hint below: it reads the draft, so typing re-renders
+// Its own leaf, like the size below: it reads the draft, so typing re-renders
 // only this.
 function DraftReporter({ onDraft }: Pick<SteerComposerProps, "onDraft">) {
   const draft = useAuiState((s) => s.composer.text);
@@ -174,26 +177,29 @@ function DraftReporter({ onDraft }: Pick<SteerComposerProps, "onDraft">) {
   return null;
 }
 
-// Shown while the draft is longer than the daemon takes, so a Send that does
-// nothing says why. A boolean, not the draft: typing does not re-render it.
-function DraftTooLongHint() {
-  const tooLong = useAuiState((s) => exceedsSteerLimit(s.composer.text));
-  if (!tooLong) return null;
+// How much of the limit the draft uses, shown from nine tenths of it, and why
+// Send is disabled past it. A number, not the draft: typing below the window
+// does not re-render it. The count is not a live region — read out on every
+// keystroke it would drown the draft; the hint is `info`, announced politely.
+function DraftSize({ draftBytes }: { draftBytes: DraftBytes }) {
+  const bytes = useAuiState((s) => draftBytes(s.composer.text));
+  if (bytes === null) return null;
   return (
-    // `info`, so it is announced politely: it appears while the operator types.
-    <Alert variant="info">{TOO_LONG}</Alert>
+    <>
+      {overSteerLimit(bytes) ? <Alert variant="info">{TOO_LONG}</Alert> : null}
+      <span className="self-end text-label tabular-nums text-muted-foreground">{bytesOfLimit(bytes)}</span>
+    </>
   );
 }
 
-// How much of the limit the draft uses, shown from nine tenths of it. A number,
-// not the draft: typing below the window does not re-render it. Not a live
-// region — a count read out on every keystroke would drown the draft.
-function DraftByteCount() {
-  const bytes = useAuiState((s) => bytesNearSteerLimit(s.composer.text));
-  if (bytes === null) return null;
-  return (
-    <span className="self-end text-label tabular-nums text-muted-foreground">{BYTES_OF_LIMIT(bytes)}</span>
-  );
+// One draft's count, kept until the draft changes: a store notification that
+// leaves the draft alone costs a string comparison, not an encode.
+function lastDraftBytes(): DraftBytes {
+  let last: { text: string; bytes: number | null } | null = null;
+  return (text) => {
+    if (last === null || last.text !== text) last = { text, bytes: steerBytesNearLimit(text) };
+    return last.bytes;
+  };
 }
 
 type NoticeProps = Pick<SteerComposerProps, "onResend" | "onDismiss"> & {

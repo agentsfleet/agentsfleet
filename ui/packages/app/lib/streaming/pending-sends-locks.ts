@@ -12,33 +12,39 @@
 // same operation id and the daemon answers the first admission.
 //
 // Without `navigator.locks` every method does nothing and `supported()` says
-// so: a foreign `sending` then stays hidden until a reload or its expiry.
+// so: a foreign `sending` then stays hidden until a reload or its expiry. A
+// manager that is there but refuses requests — a `SecurityError` in an opaque
+// origin, an `InvalidStateError` in a document that is not fully active — is
+// the same browser without locks: from its first refusal `supported()` says
+// no, and the watch it refused reads its send as a reload would, unknown.
 
 type LockRequester = Pick<LockManager, "request">;
 
 /** Every send's lock name starts here; the operation id completes it. */
 export const SEND_LOCK_PREFIX = "agentsfleet:pending-send:";
 
-const ignore = (): void => undefined;
-
 export class SendLocks {
   // The release for each lock this document holds, keyed by operation id.
   #held = new Map<string, () => void>();
   // Operation ids this document is waiting to be granted.
   #watched = new Set<string>();
+  // The manager refused a request: this document asks it nothing more.
+  #refused = false;
 
   supported(): boolean {
-    return lockManager() !== null;
+    return this.#manager() !== null;
   }
 
   /** Holds `operationId`'s lock until `release`. */
   hold(operationId: string): void {
-    const locks = lockManager();
+    const locks = this.#manager();
     if (locks === null || this.#held.has(operationId)) return;
     // The executor runs now, so a release that comes before the grant still
     // finds its resolver and the lock is let go the moment it is granted.
     const released = new Promise<void>((resolve) => this.#held.set(operationId, resolve));
-    locks.request(lockName(operationId), () => released).catch(ignore);
+    locks.request(lockName(operationId), () => released).catch(() => {
+      this.#refused = true;
+    });
   }
 
   release(operationId: string): void {
@@ -46,23 +52,35 @@ export class SendLocks {
     this.#held.delete(operationId);
   }
 
-  /** Calls `gone` once no document holds `operationId`'s lock. */
+  /** Calls `gone` once no document holds `operationId`'s lock, or once the
+   * manager refuses to say. */
   watch(operationId: string, gone: () => void): void {
-    const locks = lockManager();
+    const locks = this.#manager();
     if (locks === null || this.#held.has(operationId) || this.#watched.has(operationId)) return;
     this.#watched.add(operationId);
     const granted = (): void => {
       this.#watched.delete(operationId);
       gone();
     };
-    locks.request(lockName(operationId), granted).catch(() => this.#watched.delete(operationId));
+    // A watch already granted rejects only for what `gone` threw, which is
+    // not the manager refusing.
+    locks.request(lockName(operationId), granted).catch(() => {
+      if (!this.#watched.has(operationId)) return;
+      this.#refused = true;
+      granted();
+    });
   }
 
-  /** Lets every held lock go and forgets every watch — for a test's reset. */
+  /** Lets every held lock go and forgets every watch and refusal — for a test's reset. */
   clear(): void {
     for (const release of this.#held.values()) release();
     this.#held.clear();
     this.#watched.clear();
+    this.#refused = false;
+  }
+
+  #manager(): LockRequester | null {
+    return this.#refused ? null : lockManager();
   }
 }
 

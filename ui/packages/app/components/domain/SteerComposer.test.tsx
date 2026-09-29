@@ -45,6 +45,8 @@ import {
 import { STEER_MESSAGE_MAX_BYTES } from "@/lib/api/fleets-types";
 
 const SUBMITTED_AT_MS = 1_700_000_000_000;
+// A reply streaming in notifies the composer's store on every flush.
+const STORE_NOTIFICATIONS = 100;
 
 function entry(over: Partial<PendingSend> & { operationId: string }): PendingSend {
   return { text: "deploy the canary", state: PENDING_SEND_STATE.REFUSED, submittedAtMs: SUBMITTED_AT_MS, ...over };
@@ -184,6 +186,27 @@ describe("SteerComposer", () => {
     viewed.rerender(view([]));
     expect(screen.getByText("8,193 / 8,192 bytes")).toBeTruthy();
     expect(send().disabled).toBe(true);
+  });
+
+  it("counts bytes, not characters: 2,500 three-byte characters are 7,500 bytes, and Send still works", () => {
+    draft("€".repeat(2_500));
+    render(view([]));
+    expect(screen.getByText("7,500 / 8,192 bytes")).toBeTruthy();
+    expect((screen.getByRole("button", { name: SEND }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("test_draft_encoded_once_per_text: encodes a draft once, however often the store notifies while it stands still", () => {
+    const encode = vi.spyOn(TextEncoder.prototype, "encode");
+    // Long enough that its length alone cannot settle its size.
+    draft("b".repeat(5_000));
+    const viewed = render(view([]));
+    for (let flush = 0; flush < STORE_NOTIFICATIONS; flush += 1) viewed.rerender(view([]));
+    expect(encode).toHaveBeenCalledTimes(1);
+    // A changed draft is counted again.
+    draft("c".repeat(5_000));
+    viewed.rerender(view([]));
+    expect(encode).toHaveBeenCalledTimes(2);
+    encode.mockRestore();
   });
 
   it("says why a draft longer than the daemon takes will not send", () => {

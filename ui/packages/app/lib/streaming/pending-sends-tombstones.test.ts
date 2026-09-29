@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  MAX_PENDING_SENDS,
   PENDING_SEND_STATE,
   __resetPendingSendsForTests,
   beginPendingSend,
@@ -10,7 +11,7 @@ import {
   settlePendingSend,
   type PendingSend,
 } from "./pending-sends";
-import { NOW_MS, SCOPE, STORAGE_KEY, otherTabWrote, send, states, stored } from "@/tests/fleet-thread/ledger-fixtures";
+import { NOW_MS, SCOPE, STORAGE_KEY, otherTabStored, otherTabWrote, send, states, stored } from "@/tests/fleet-thread/ledger-fixtures";
 
 // A dismissal is a tombstone every tab keeps until it expires, so a tab that
 // had not heard of it cannot write the send back.
@@ -21,12 +22,6 @@ const LATER_MS = NOW_MS + 1_000;
 
 function entry(state: PendingSend["state"], submittedAtMs: number, text = "deploy"): PendingSend {
   return { operationId: OP, text, state, submittedAtMs };
-}
-
-// Another tab's write, landed in storage and reported here.
-function otherTabStored(entries: PendingSend[]): void {
-  window.localStorage.setItem(STORAGE_KEY, stored(entries));
-  otherTabWrote(STORAGE_KEY, stored(entries));
 }
 
 function storedHere(): PendingSend[] {
@@ -89,6 +84,22 @@ describe("a dismissed send", () => {
     vi.setSystemTime(LATER_MS + 2);
     beginPendingSend(SCOPE, send(OP, "deploy", LATER_MS + 2));
     expect(states()).toEqual([[OP, SENDING]]);
+  });
+
+  it("test_tombstones_outlast_the_cap: outlasts every other ended send when the ledger is capped, so a late ending cannot bring it back", () => {
+    beginPendingSend(SCOPE, send(OP, "deploy"));
+    dismissPendingSend(SCOPE, OP);
+    for (let index = 0; index < MAX_PENDING_SENDS; index += 1) {
+      beginPendingSend(SCOPE, send(`op-later-${index}`, `unconfirmed ${index}`));
+      failPendingSend(SCOPE, `op-later-${index}`, UNKNOWN);
+    }
+    const ids = getPendingSends(SCOPE).map((held) => held.operationId);
+    expect(ids).toHaveLength(MAX_PENDING_SENDS);
+    expect(ids).toContain(OP);
+    expect(ids).not.toContain("op-later-0");
+    // The tab that resent it writes its ending late.
+    otherTabStored([...getPendingSends(SCOPE).filter((held) => held.operationId !== OP), entry(UNKNOWN, NOW_MS)]);
+    expect(findPendingSend(SCOPE, OP)).toBeUndefined();
   });
 
   it("is removed, tombstone and all, when the daemon acknowledges the send", () => {
