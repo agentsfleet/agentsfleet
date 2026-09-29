@@ -32,3 +32,30 @@ fn a_size_below_the_envelope_publishes_the_envelope_alone() {
     serde_json::from_str::<serde_json::Value>(&smallest)
         .expect("the bare envelope is still a JSON object");
 }
+
+#[tokio::test]
+async fn a_rung_nobody_is_hearing_stops_waiting_at_its_deadline() {
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicU64;
+    use std::time::Instant;
+
+    use tokio::sync::Notify;
+
+    use super::super::viewers::{FRAMES, Shared};
+    use super::wait_for;
+
+    let shared = Arc::new(Shared {
+        epoch: Instant::now(),
+        published_at: (0..FRAMES).map(|_| AtomicU64::new(0)).collect(),
+        delivered: AtomicU64::new(0),
+        ready: AtomicU64::new(0),
+        progress: Notify::new(),
+    });
+    let started = Instant::now();
+
+    // A deadline already behind it: nothing will ever be delivered, and the
+    // publisher must not wait on a viewer that is gone.
+    wait_for(&shared, 1, started).await;
+
+    assert!(started.elapsed() < core::time::Duration::from_secs(1));
+}

@@ -45,7 +45,7 @@ use opentelemetry_sdk::metrics::data::{
 use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider, Temporality};
 
-use crate::error::{Error, Result};
+use crate::error::{ErrorKind, Result};
 
 /// Total polls the lease path has made.
 const POLLS: &str = "agentsfleet_lease_polls_total";
@@ -176,23 +176,26 @@ impl LeaseInstrument {
     ///
     /// # Errors
     ///
-    /// [`Error::InstrumentUnavailable`] when the compiled-in census will not
+    /// `InstrumentUnavailable` when the compiled-in census will not
     /// read or the instrument set will not build.
     pub fn install() -> Result<Self> {
-        if let Some(installed) = INSTALLED.get() {
-            return Ok(installed.clone());
-        }
+        // One check, under the lock. A lock-free check before it would save a
+        // mutex acquisition on a call a lane makes once, and would leave the
+        // check below reachable only by the loser of a race.
         let _one_builder = BUILDING
             .lock()
-            .map_err(|_poisoned| Error::InstrumentPoisoned)?;
-        // Re-checked under the lock: the builder that lost the race finds the
-        // winner's instrument here and hands that back.
+            .map_err(|_poisoned| ErrorKind::InstrumentPoisoned)?;
+        // Every install after the first finds the instrument here, including
+        // a caller that waited on the first builder's lock.
         if let Some(installed) = INSTALLED.get() {
             return Ok(installed.clone());
         }
         let built = Self::build()?;
         let _ = INSTALLED.set(built);
-        INSTALLED.get().cloned().ok_or(Error::InstrumentPoisoned)
+        INSTALLED
+            .get()
+            .cloned()
+            .ok_or_else(|| ErrorKind::InstrumentPoisoned.into())
     }
 
     /// Build the provider and bind the producers to it.
@@ -224,14 +227,17 @@ impl LeaseInstrument {
     ///
     /// # Errors
     ///
-    /// [`Error::InstrumentUnflushable`] when the provider will not flush, and
-    /// [`Error::InstrumentPoisoned`] when the capture lock's holder panicked.
+    /// `InstrumentUnflushable` when the provider will not flush, and
+    /// `InstrumentPoisoned` when the capture lock's holder panicked.
     pub fn read(&self) -> Result<PollCounters> {
         self.provider.force_flush()?;
         self.captured
             .latest
             .lock()
             .map(|latest| *latest)
-            .map_err(|_poisoned| Error::InstrumentPoisoned)
+            .map_err(|_poisoned| ErrorKind::InstrumentPoisoned.into())
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -16,8 +16,9 @@ use afd_fleet::lease::Leases;
 use super::drive::{self, Shared};
 use crate::abort::Abort;
 use crate::datastores::{Datastores, dragonfly_calls};
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::instrument::{LeaseInstrument, PollCounters};
+use crate::lane::joined;
 use crate::lane::outcomes::Outcomes;
 use crate::report::{DatastoreCost, DatastoreCosts, Report, count, per_second, ratio};
 
@@ -122,9 +123,7 @@ async fn drive_all(
     let mut outcomes = Outcomes::new()?;
     let mut last_lease: Option<Instant> = None;
     for task in tasks {
-        let (theirs, their_last) = task
-            .await
-            .map_err(|_joined| Error::TaskLost { role: "runner" })??;
+        let (theirs, their_last) = joined(task.await, "runner")??;
         outcomes.absorb(&theirs)?;
         last_lease = last_lease.max(their_last);
     }

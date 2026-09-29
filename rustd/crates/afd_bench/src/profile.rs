@@ -20,7 +20,7 @@
 use core::fmt;
 use core::time::Duration;
 
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorKind, Result};
 
 /// Variable every lane reads its profile from; absent means the rig.
 pub const PROFILE_VARIABLE: &str = "BENCH_PROFILE";
@@ -201,23 +201,25 @@ impl Profile {
     ///
     /// # Errors
     ///
-    /// [`Error::CapExceeded`] when `requested` is over the cap.
+    /// `CapExceeded` when `requested` is over the cap.
     pub fn check(self, parameter: Parameter, requested: u64) -> Result<()> {
         if requested < PARAMETER_FLOOR {
-            return Err(Error::BelowFloor {
+            return Err(ErrorKind::BelowFloor {
                 parameter: parameter.name(),
                 requested,
                 floor: PARAMETER_FLOOR,
-            });
+            }
+            .into());
         }
         let cap = self.caps().ceiling(parameter);
         if requested > cap {
-            return Err(Error::CapExceeded {
+            return Err(ErrorKind::CapExceeded {
                 profile: self,
                 parameter: parameter.name(),
                 requested,
                 cap,
-            });
+            }
+            .into());
         }
         Ok(())
     }
@@ -226,15 +228,16 @@ impl Profile {
     ///
     /// # Errors
     ///
-    /// [`Error::WindowTooShort`] naming the floor.
+    /// `WindowTooShort` naming the floor.
     pub fn check_window(self, window: Duration) -> Result<()> {
         let floor = self.caps().warmup;
         if window < floor {
-            return Err(Error::WindowTooShort {
+            return Err(ErrorKind::WindowTooShort {
                 profile: self,
                 requested_ms: window.as_millis(),
                 floor_ms: floor.as_millis(),
-            });
+            }
+            .into());
         }
         Ok(())
     }
@@ -246,8 +249,8 @@ impl Profile {
     ///
     /// # Errors
     ///
-    /// [`Error::AcknowledgementMissing`] when production was not
-    /// acknowledged, or [`Error::TargetMissing`] when a deployed profile
+    /// `AcknowledgementMissing` when production was not
+    /// acknowledged, or `TargetMissing` when a deployed profile
     /// has nowhere to point.
     pub fn admit(self, env: &dyn Fn(&str) -> Option<String>) -> Result<Target> {
         self.acknowledge(env)?;
@@ -258,7 +261,7 @@ impl Profile {
     ///
     /// # Errors
     ///
-    /// [`Error::AcknowledgementMissing`] when the variable is absent or
+    /// `AcknowledgementMissing` when the variable is absent or
     /// carries anything but [`ACKNOWLEDGEMENT_VALUE`].
     pub fn acknowledge(self, env: &dyn Fn(&str) -> Option<String>) -> Result<()> {
         if self != Self::Prod {
@@ -268,17 +271,18 @@ impl Profile {
         if spoken == ACKNOWLEDGEMENT_VALUE {
             return Ok(());
         }
-        Err(Error::AcknowledgementMissing {
+        Err(ErrorKind::AcknowledgementMissing {
             variable: ACKNOWLEDGEMENT_VARIABLE,
             expected: ACKNOWLEDGEMENT_VALUE,
-        })
+        }
+        .into())
     }
 
     /// Where this profile's datastores are.
     ///
     /// # Errors
     ///
-    /// [`Error::TargetMissing`] when a deployed profile has no target.
+    /// `TargetMissing` when a deployed profile has no target.
     pub fn target(self, env: &dyn Fn(&str) -> Option<String>) -> Result<Target> {
         if !self.is_deployed() {
             return Ok(Target::Rig);
@@ -287,11 +291,12 @@ impl Profile {
         // address of one space; the knobs module reads every other variable
         // the same way.
         match env(TARGET_VARIABLE).unwrap_or_default().trim().to_owned() {
-            address if address.is_empty() => Err(Error::TargetMissing {
+            address if address.is_empty() => Err(ErrorKind::TargetMissing {
                 profile: self,
                 variable: TARGET_VARIABLE,
                 rig: TARGET_RIG,
-            }),
+            }
+            .into()),
             address if address == TARGET_RIG => Ok(Target::Rig),
             address => Ok(Target::Deployed { address }),
         }
@@ -328,10 +333,11 @@ impl core::str::FromStr for Profile {
             RIG_NAME => Ok(Self::Rig),
             DEV_NAME => Ok(Self::Dev),
             PROD_NAME => Ok(Self::Prod),
-            other => Err(Error::UnknownProfile {
+            other => Err(ErrorKind::UnknownProfile {
                 name: other.to_owned(),
                 expected: KNOWN_PROFILES,
-            }),
+            }
+            .into()),
         }
     }
 }

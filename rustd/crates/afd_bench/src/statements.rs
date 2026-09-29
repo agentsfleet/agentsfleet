@@ -60,7 +60,8 @@ use afd_db::Db;
 use sqlx::pool::PoolConnection;
 use sqlx::{Connection as _, Postgres, Row as _};
 
-use crate::error::{Error, LaneFault, Result};
+use crate::datastores::postgres_count;
+use crate::error::{Error, ErrorKind, Result};
 
 /// Creates the view the counter reads, where the library is already loaded.
 const INSTALL: &str = "CREATE EXTENSION IF NOT EXISTS pg_stat_statements";
@@ -85,9 +86,6 @@ const READ: &str = "SELECT \
          WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database()) \
            AND query !~* '^\\s*(BEGIN|START TRANSACTION|COMMIT|END|ROLLBACK|SAVEPOINT|RELEASE|ABORT)\\y'), \
        (SELECT xact_commit - sessions FROM pg_stat_database WHERE datname = current_database())";
-
-/// The datastore named when a tally will not read as a count.
-const POSTGRES: &str = "postgres";
 
 /// The statement tally, as a refusal names it.
 const STATEMENTS_FIELD: &str = "pg_stat_statements.calls";
@@ -147,7 +145,7 @@ impl StatementReading {
 ///
 /// # Errors
 ///
-/// [`LaneFault::StatementsUnreadable`] when Postgres refuses the extension.
+/// `StatementsUnreadable` when Postgres refuses the extension.
 pub async fn install(database: &Db) -> Result<()> {
     let mut connection = database.acquire().await?;
     sqlx::query(INSTALL)
@@ -161,8 +159,8 @@ pub async fn install(database: &Db) -> Result<()> {
 ///
 /// # Errors
 ///
-/// [`Error::DatabaseUnavailable`] when a connection will not open, and
-/// [`LaneFault::StatementsUnreadable`] when the counter will not answer.
+/// `DatabaseUnavailable` when a connection will not open, and
+/// `StatementsUnreadable` when the counter will not answer.
 pub async fn read(database: &Db) -> Result<StatementReading> {
     let mut held = every_connection(database).await?;
     for connection in &mut held {
@@ -183,17 +181,9 @@ pub async fn read(database: &Db) -> Result<StatementReading> {
     }
     .map_err(unreadable)?;
     Ok(StatementReading {
-        statements: tally(row.try_get(0).map_err(unreadable)?, STATEMENTS_FIELD)?,
-        commits: tally(row.try_get(1).map_err(unreadable)?, COMMITS_FIELD)?,
+        statements: postgres_count(row.try_get(0).map_err(unreadable)?, STATEMENTS_FIELD)?,
+        commits: postgres_count(row.try_get(1).map_err(unreadable)?, COMMITS_FIELD)?,
         flushed,
-    })
-}
-
-/// A server tally as a count, refusing the negative no tally can hold.
-fn tally(value: i64, field: &'static str) -> Result<u64> {
-    u64::try_from(value).map_err(|_negative| Error::CounterUnreadable {
-        datastore: POSTGRES,
-        field,
     })
 }
 
@@ -233,7 +223,7 @@ async fn flush(connection: &mut PoolConnection<Postgres>) -> Result<()> {
 
 /// The counter's own refusal, carrying what Postgres said.
 fn unreadable(source: sqlx::Error) -> Error {
-    LaneFault::StatementsUnreadable { source }.into()
+    ErrorKind::StatementsUnreadable { source }.into()
 }
 
 #[cfg(test)]

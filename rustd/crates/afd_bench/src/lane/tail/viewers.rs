@@ -27,7 +27,8 @@ use super::{
     LADDER_VIEWERS, RECEIVE_P95_MS, push,
 };
 use crate::allocations::Snapshot;
-use crate::error::{Error, Result};
+use crate::error::Result;
+use crate::lane::joined;
 use crate::report::{Latency, Report, count, latency, ratio};
 
 /// Frames each rung publishes.
@@ -167,9 +168,7 @@ pub(super) async fn rung(
         latency: Latency::new()?,
     };
     for task in tasks {
-        let seen = task
-            .await
-            .map_err(|_lost| Error::TaskLost { role: VIEWER_ROLE })??;
+        let seen = joined(task.await, VIEWER_ROLE)??;
         rung.delivered += seen.frames;
         rung.lagged += seen.lagged;
         rung.latency.merge(&seen.latency)?;
@@ -242,3 +241,6 @@ fn busy_time() -> Duration {
         .map(|worker| metrics.worker_total_busy_duration(worker))
         .sum()
 }
+
+#[cfg(test)]
+mod tests;

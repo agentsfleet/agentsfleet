@@ -46,25 +46,23 @@ impl Latency {
     ///
     /// # Errors
     ///
-    /// [`Error::LatencyUnavailable`] when the histogram cannot be built, which
+    /// `LatencyUnavailable` when the histogram cannot be built, which
     /// means the precision above is not one `HdrHistogram` accepts.
     pub fn new() -> Result<Self> {
         Histogram::new(SIGNIFICANT_FIGURES)
             .map(|histogram| Self { histogram })
-            .map_err(|source| Error::LatencyUnavailable { source })
+            .map_err(Error::from)
     }
 
     /// Record one operation.
     ///
     /// # Errors
     ///
-    /// [`Error::LatencyUnrecordable`] when the value is past what the
+    /// `LatencyUnrecordable` when the value is past what the
     /// histogram can hold even after resizing.
     pub fn record(&mut self, elapsed: Duration) -> Result<()> {
         let micros = u64::try_from(elapsed.as_micros()).unwrap_or(u64::MAX);
-        self.histogram
-            .record(micros)
-            .map_err(|source| Error::LatencyUnrecordable { source })
+        self.histogram.record(micros).map_err(Error::from)
     }
 
     /// Fold another distribution into this one.
@@ -76,12 +74,10 @@ impl Latency {
     ///
     /// # Errors
     ///
-    /// [`Error::LatencyUnmergeable`] when the other histogram holds a value
+    /// `LatencyUnmergeable` when the other histogram holds a value
     /// this one cannot, which cannot happen for two built by [`Latency::new`].
     pub fn merge(&mut self, other: &Self) -> Result<()> {
-        self.histogram
-            .add(&other.histogram)
-            .map_err(|source| Error::LatencyUnmergeable { source })
+        self.histogram.add(&other.histogram).map_err(Error::from)
     }
 
     /// How many operations were recorded.

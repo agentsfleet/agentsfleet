@@ -33,8 +33,9 @@ use tokio_util::sync::CancellationToken;
 use super::publish::{FRAME_KIND, PROBE, PROBE_INTERVAL, PROBE_KIND, RUNG_DEADLINE, frame_of};
 use super::{HEAP_BYTES_PER_STREAM, LADDER_STREAMS, STREAM_RECEIVE_P95_MS, STREAMS_LIVE, push};
 use crate::allocations::Snapshot;
-use crate::error::{Error, Result};
+use crate::error::{ErrorKind, Result};
 use crate::fixture::RunPrefix;
+use crate::lane::joined;
 use crate::report::{Latency, Report, count, ratio};
 
 /// Bytes in the frame each stream is timed through: a short chunk.
@@ -156,12 +157,9 @@ pub(super) async fn rung(
     // is the streams and nothing the lane needed to hold them.
     let before = Snapshot::now();
     for (index, fleet) in fleets.iter().enumerate() {
-        // A stream the ceiling refuses is never heard, and the shortfall is
-        // what the rung reports — the ceiling is sized for the widest rung, so
-        // a refusal would mean an earlier rung's streams had not closed.
-        let Some(slot) = live.admit() else {
-            continue;
-        };
+        // The ceiling is sized for the widest rung, so a refusal means an
+        // earlier rung's streams had not closed (see `CeilingRefused`).
+        let slot = live.admit().ok_or(ErrorKind::CeilingRefused { opened })?;
         let tail = live.tail_of(fleet);
         let (watch, stop) = (Arc::clone(&watch), stop.clone());
         tasks.push(tokio::spawn(hold(tail, slot, watch, index, stop)));
@@ -171,8 +169,7 @@ pub(super) async fn rung(
     time_every_stream(publisher, &fleets, &watch).await?;
     stop.cancel();
     for task in tasks {
-        task.await
-            .map_err(|_lost| Error::TaskLost { role: STREAM_ROLE })?;
+        joined(task.await, STREAM_ROLE)?;
     }
     Ok(Rung {
         opened,
@@ -275,3 +272,6 @@ async fn probe_until_heard(
         tokio::time::sleep(PROBE_INTERVAL).await;
     }
 }
+
+#[cfg(test)]
+mod tests;

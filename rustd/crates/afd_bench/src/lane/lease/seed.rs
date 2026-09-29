@@ -18,7 +18,7 @@
 //!
 //! Every table here CHECKs the UUID version nibble, so an identifier cannot
 //! carry a text prefix and still be accepted. The prefix therefore lives in the
-//! `name` column of all three rows, and [`sweep`] deletes by name. The
+//! `name` column of all three rows, and `sweep` deletes by name. The
 //! identifiers stay schema-legal and the sweep still recognises only its own
 //! work.
 //!
