@@ -37,6 +37,8 @@ mod e2e_db;
 mod e2e_event;
 #[path = "support/e2e_seed.rs"]
 mod e2e_seed;
+#[path = "support/e2e_seed_keys.rs"]
+mod e2e_seed_keys;
 #[path = "support/e2e_reads.rs"]
 mod reads;
 #[path = "support/mod.rs"]

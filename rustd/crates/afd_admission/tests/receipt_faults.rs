@@ -123,7 +123,7 @@ async fn a_receipt_the_sweeper_recorded_first_stands_and_is_logged() {
     let sweeper = lane.sweep_first(SWEPT_RECEIPT).await;
 
     let run = admit_against(&lane, &[("XADD", APPENDS)]).await;
-    sweeper.remove().await;
+    drop(sweeper);
 
     let admitted = run
         .outcome

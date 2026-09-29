@@ -54,9 +54,9 @@ use agentsfleetd::supervisor::Supervisor;
 use crate::e2e_db::scenario_database;
 use crate::e2e_event::{enqueue, enqueue_unsupported};
 use crate::e2e_seed::{
-    DEEP_POOL, enrolment, seed_fleet, seed_model_rate, seed_platform_default, seed_provider_key,
-    seed_wallet,
+    DEEP_POOL, enrolment, seed_fleet, seed_model_rate, seed_platform_default, seed_wallet,
 };
+use crate::e2e_seed_keys::seed_provider_key;
 
 use crate::support::{IDENTITY, SESSION_PEPPER, install_subscriber};
 

@@ -20,7 +20,7 @@ use self::support::{LANE, datastores, measurement, series, swept};
 static COUNTING: Counting = Counting;
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live datastores: cargo test -p afd_bench -- --ignored"]
 async fn bench_tail_reports_fanout_and_faults() {
     let _serial = LANE.lock().await;
     let stores = datastores().await;

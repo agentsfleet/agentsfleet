@@ -20,7 +20,7 @@ use self::support::{LANE, datastores};
 const PROBE: &str = "SELECT 1";
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live datastores: cargo test -p afd_bench -- --ignored"]
 async fn test_statement_counter_counts_each_statement() {
     // Held, because the tallies are database-wide: a lane measuring beside
     // this test would put its statements in this delta.
@@ -61,7 +61,7 @@ async fn three_statements_in_one_transaction(database: &afd_db::Db) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live datastores: cargo test -p afd_bench -- --ignored"]
 async fn test_a_database_without_the_counter_is_refused_by_name() {
     // A database of this test's own: created empty, so the extension's view
     // was never made there, and its pool has opened no connection yet — the

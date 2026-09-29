@@ -49,6 +49,9 @@ mod repair;
 mod tests;
 
 #[cfg(feature = "test-util")]
+pub(crate) use gap::NODE_REPAIR_WINDOW;
+
+#[cfg(feature = "test-util")]
 pub use self::detached::Server as DetachedServer;
 
 use std::sync::Arc;
