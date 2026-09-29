@@ -15,7 +15,7 @@ primary_region = "iad"
 # Backpressure: API_MAX_IN_FLIGHT_REQUESTS (default 256) sheds 429 only for
 # API-class routes (/healthz and /readyz are ops-class and never shed;
 # SSE answers to its own cap) and only when set BELOW WORKERS x THREADS (32
-# here). SSE_MAX_STREAMS (default 64) caps event streams per instance.
+# here). SSE_MAX_STREAMS (default 256) caps event streams per instance.
 # Postgres connections this replica may open, measured against the cluster's
 # own ceiling rather than left to the code's default.
 #
