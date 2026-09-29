@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FRAME_KIND } from "@/lib/api/events-types";
-import { appendOptimistic, getSnapshot, reconcileOptimistic, subscribe } from "./fleet-stream-registry";
+import { OUTCOME } from "@/lib/events/event-summary";
+import { appendOptimistic, getSnapshot, reconcileOptimistic, reconcileServerRows, subscribe } from "./fleet-stream-registry";
 import { REPLY_STALL_MS, setEventDetailReader, type EventDetailReader } from "./fleet-stream-reply-registry";
 import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
 import { IDLE_RELEASE_MS, setupRegistryTests, row, sourceAt, WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";
@@ -23,7 +24,7 @@ vi.mock("./fleet-stream-snapshot", async (importActual) => {
   };
 });
 
-const { PROCESSED, RECEIVED } = AGENTSFLEET_EVENT_STATUS;
+const { AGENT_ERROR, PROCESSED, RECEIVED } = AGENTSFLEET_EVENT_STATUS;
 const RAN = "evt_ran";
 const THINKING = "evt_thinking";
 const LATE = "evt_late";
@@ -40,6 +41,7 @@ const SAVED = {
 };
 const UNAVAILABLE = { ok: false, error: "unavailable", status: 503 };
 const NOT_FOUND = { ok: false, error: "not found", status: 404 };
+const GONE = { ok: false, error: "gone", status: 410 };
 
 setupRegistryTests();
 beforeEach(() => {
@@ -219,14 +221,19 @@ describe("a running reply that stops hearing frames", () => {
     release();
   });
 
-  it("test_stall_read_retries_each_silence_window: stops reading an event its read found gone, and keeps the row as it is", async () => {
-    getFleetEventActionMock.mockResolvedValue(NOT_FOUND);
+  it.each([NOT_FOUND, GONE])("test_stall_read_retries_each_silence_window: stops reading an event its read found gone ($status), and settles its row", async (gone) => {
+    getFleetEventActionMock.mockResolvedValue(gone);
     const release = subscribe(WS, Z_A, [], () => {});
-    sourceAt(0).emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: THINKING, actor: ACTOR });
-    // A 404 is final: three windows of silence, one read.
+    const source = sourceAt(0);
+    source.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: THINKING, actor: ACTOR });
+    source.emit({ kind: FRAME_KIND.CHUNK, event_id: THINKING, text: "Checking", text_kind: "reasoning", stream_start: true, stream_contiguous: true, stream_seq: 0 });
+    // Final: three windows of silence, one read.
     await keepaliveFor(REPLY_STALL_MS * 3);
     expect(getFleetEventActionMock).toHaveBeenCalledExactlyOnceWith(WS, Z_A, THINKING);
-    expect(shown(THINKING)?.status).toBe(RECEIVED);
+    // Nothing is left to wait for: the wait and the Thought clock both end.
+    const settled = shown(THINKING);
+    expect(settled).toMatchObject({ status: AGENT_ERROR, reply: "", thinking: false, replyRecovering: false, outcome: OUTCOME.REPLY_GONE });
+    expect(settled?.reasoningEndedAtMs).toBeDefined();
     release();
   });
 
@@ -253,6 +260,49 @@ describe("a running reply that stops hearing frames", () => {
     source.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: THINKING, actor: ACTOR });
     source.emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: THINKING, status: PROCESSED, final_reply: DONE });
     await keepaliveFor(REPLY_STALL_MS);
+    expect(getFleetEventActionMock).not.toHaveBeenCalled();
+    release();
+  });
+});
+
+// The first open reads no backfill, so a completion published between the
+// server render and the subscribe reaches this tab only through a read.
+describe("a row the server render shows running", () => {
+  const RUNNING = row({ event_id: THINKING, actor: ACTOR, status: RECEIVED, response_text: null });
+  const ENDED = { ok: true, data: row({ event_id: THINKING, actor: ACTOR, status: PROCESSED, response_text: DONE }) };
+
+  it("test_initial_running_row_settles_after_the_stall_window", async () => {
+    getFleetEventActionMock.mockResolvedValueOnce(ENDED);
+    const release = subscribe(WS, Z_A, [RUNNING], () => {});
+    sourceAt(0).open();
+    // No frame about it ever arrives; nothing is read before the window ends.
+    await keepaliveFor(REPLY_STALL_MS - KEEPALIVE_MS);
+    expect(getFleetEventActionMock).not.toHaveBeenCalled();
+
+    await keepaliveFor(KEEPALIVE_MS);
+    expect(getFleetEventActionMock).toHaveBeenCalledExactlyOnceWith(WS, Z_A, THINKING);
+    expect(shown(THINKING)).toMatchObject({ status: PROCESSED, reply: DONE });
+    release();
+  });
+
+  it("watches a running row a later server render brings in, and keeps an earlier row's stamp", async () => {
+    getFleetEventActionMock.mockResolvedValue(ENDED);
+    const release = subscribe(WS, Z_A, [RUNNING], () => {});
+    await keepaliveFor(REPLY_STALL_MS - KEEPALIVE_MS);
+    // A re-render still shows it running: its stall read is not pushed back.
+    reconcileServerRows(Z_A, [RUNNING, row({ event_id: LATE, status: RECEIVED, response_text: null })]);
+    await keepaliveFor(KEEPALIVE_MS);
+    expect(getFleetEventActionMock).toHaveBeenCalledExactlyOnceWith(WS, Z_A, THINKING);
+
+    // The row the re-render brought in is read one window after it arrived.
+    await keepaliveFor(REPLY_STALL_MS - KEEPALIVE_MS);
+    expect(getFleetEventActionMock).toHaveBeenLastCalledWith(WS, Z_A, LATE);
+    release();
+  });
+
+  it("watches nothing for a server row already ended", async () => {
+    const release = subscribe(WS, Z_A, [row({ event_id: RAN, status: PROCESSED })], () => {});
+    await keepaliveFor(REPLY_STALL_MS * 2);
     expect(getFleetEventActionMock).not.toHaveBeenCalled();
     release();
   });

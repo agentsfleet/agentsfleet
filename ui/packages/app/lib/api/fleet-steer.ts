@@ -23,7 +23,10 @@ const NO_ANSWER = "The steer got no answer";
 const NO_RECEIPT = "The steer was answered without a receipt";
 const SIGNED_OUT = "Not authenticated";
 
-const AcceptedSchema = z.object({ status: z.string(), event_id: z.string(), replayed: z.boolean() });
+// A daemon older than the app answers without `replayed`: it never replays, so
+// a missing field reads as `false` rather than as no receipt, whichever of the
+// two deploys first.
+const AcceptedSchema = z.object({ status: z.string(), event_id: z.string(), replayed: z.boolean().default(false) });
 // The route answers a refusal as the daemon's problem body does.
 const RefusalSchema = z.object({ detail: z.string().optional(), error_code: z.string().optional() });
 

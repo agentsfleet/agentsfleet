@@ -66,6 +66,11 @@ describe("postSteer", () => {
     expect(await steer()).toEqual({ ok: false, error: `status ${HTTP_CONFLICT}`, status: HTTP_CONFLICT, errorCode: undefined });
   });
 
+  it("reads a 202 from a daemon older than the replay field as a fresh admission", async () => {
+    fetchMock.mockResolvedValueOnce(answer(HTTP_ACCEPTED, { status: ACCEPTED.status, event_id: ACCEPTED.event_id }));
+    expect(await steer()).toEqual({ ok: true, data: ACCEPTED });
+  });
+
   it("reads a success without a receipt as no answer: the daemon may hold the message", async () => {
     fetchMock.mockResolvedValueOnce(answer(HTTP_ACCEPTED, { status: "accepted" }));
     const result = await steer();

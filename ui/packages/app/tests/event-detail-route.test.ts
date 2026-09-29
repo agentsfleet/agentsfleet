@@ -7,6 +7,7 @@
 // error-passthrough behavior the chat's stall and replay reads depend on.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ERROR_CODE } from "@/lib/errors";
 
 const { getTokenFn } = vi.hoisted(() => ({ getTokenFn: vi.fn() }));
 
@@ -59,14 +60,14 @@ function upstreamDetail(): Response {
 }
 
 describe("event detail route handler — auth", () => {
-  it("test_event_detail_route_unauthorized — 401 with UZ-401 body and no upstream call when Clerk has no session token", async () => {
+  it("test_event_detail_route_unauthorized — 401 with the registered auth code and no upstream call when Clerk has no session token", async () => {
     getTokenFn.mockResolvedValueOnce(null);
     const res = await GET(makeReq(), paramsOf(WS, FLEET, EVENT_ID));
     expect(res.status).toBe(401);
     expect(res.headers.get(HEADER_CONTENT_TYPE)).toBe(CONTENT_TYPE_JSON);
     expect(res.headers.get(HEADER_CACHE_CONTROL)).toBe(NO_STORE);
     const body = (await res.json()) as { error: string; code: string };
-    expect(body.code).toBe("UZ-401");
+    expect(body.code).toBe(ERROR_CODE.AUTH_401);
     expect(body.error).toBe("Unauthorized");
     expect(fetchSpy).not.toHaveBeenCalled();
   });

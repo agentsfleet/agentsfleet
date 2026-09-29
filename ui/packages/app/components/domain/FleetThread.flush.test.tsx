@@ -66,13 +66,14 @@ vi.mock("@/components/domain/useFleetEventStream", async (importOriginal) => {
 
 import { FleetThread } from "./FleetThread";
 import { CONNECTION_STATUS, convertEvent } from "./useFleetEventStream";
-import { ANNOUNCEMENT_HOLD_MS, SETTLED_REPLY_STATUS } from "./FleetReplyBody";
+import { ANNOUNCEMENT_HOLD_MS, SETTLED_REPLY_STATUS, SPOKEN_REPLY_MAX_CHARS, spokenSummary } from "./FleetReplyBody";
 
 const FLUSHES = 100;
 const EVENT_ID = "evt_flush";
 const STEER_ACTOR = `steer:${shell.user}`;
 const FINAL_WORD = "done.";
 const SENDER = "reviewer";
+const AGAIN_ID = "evt_flush_again";
 
 // Stable across flushes, as the registry's callbacks are.
 const STABLE = {
@@ -165,7 +166,28 @@ describe("a streamed reply and the thread around it", () => {
     flush(view, turn(`${answer} ${FINAL_WORD}`, AGENTSFLEET_EVENT_STATUS.PROCESSED));
     listen();
 
-    expect(announced).toEqual(["", `${SENDER}: ${answer}`]);
+    // Read as a bounded summary: the row holds the whole answer.
+    expect(announced).toEqual(["", `${SENDER}: ${spokenSummary(answer)}`]);
+    expect(spokenSummary(answer).length).toBeLessThanOrEqual(SPOKEN_REPLY_MAX_CHARS + 1);
+  });
+
+  it("announces a second reply that settles with the same words as the first", () => {
+    const again = (status: FleetEvent["status"]): FleetEvent => ({ ...turn(FINAL_WORD, status), id: AGAIN_ID });
+    const first = turn(FINAL_WORD, AGENTSFLEET_EVENT_STATUS.PROCESSED);
+    shell.stream.mockReturnValue({ ...STABLE, events: [turn(FINAL_WORD, AGENTSFLEET_EVENT_STATUS.RECEIVED)] });
+    const view = render(thread());
+    flush(view, first);
+    const status = screen.getByTestId(SETTLED_REPLY_STATUS);
+    const firstWords = status.firstElementChild;
+    expect(firstWords?.textContent).toBe(`${SENDER}: ${FINAL_WORD}`);
+
+    shell.stream.mockReturnValue({ ...STABLE, events: [first, again(AGENTSFLEET_EVENT_STATUS.RECEIVED)] });
+    view.rerender(thread());
+    shell.stream.mockReturnValue({ ...STABLE, events: [first, again(AGENTSFLEET_EVENT_STATUS.PROCESSED)] });
+    view.rerender(thread());
+    // The same words in a new text node: a screen reader hears them again.
+    expect(status.firstElementChild?.textContent).toBe(`${SENDER}: ${FINAL_WORD}`);
+    expect(status.firstElementChild).not.toBe(firstWords);
   });
 
   it("clears the status once the announcement has had time to be read", () => {

@@ -4,7 +4,7 @@ import { FRAME_KIND } from "@/lib/api/events-types";
 import type { FleetFacts } from "@/lib/events/run-summary";
 import { factsOf } from "./fleet-stream-facts";
 import { applyLiveFrame, mergeBackfill } from "./fleet-stream-frames";
-import { applyFinalReply, applyFinalReplyText, applyReplyDelta, applyReplyRecovery } from "./fleet-stream-reply-frames";
+import { applyFinalReply, applyFinalReplyText, applyReplyDelta, applyReplyGone, applyReplyRecovery } from "./fleet-stream-reply-frames";
 import type { Entry } from "./fleet-stream-entry";
 import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
 import { ReplyStreamDecoder } from "./reply-stream-decoder";
@@ -128,10 +128,13 @@ function completeReply(
 const TRANSIENT_MAX_RETRY_MS = 5_000;
 const FINAL_REPLY_RETRY_MS = [100, 300, TRANSIENT_MAX_RETRY_MS] as const;
 const PERMANENT_DETAIL_RETRY_MS = 60_000;
-// A read answered 404 names an event that no longer exists. The stall watch
-// ends there; final-reply recovery backs off with the other permanent statuses.
+// A read answered 404 or 410 names an event that no longer exists: the stall
+// watch and final-reply recovery both end there. The other permanent statuses
+// can heal — a fresh session, a repaired row — so recovery backs off on them.
 const HTTP_STATUS_NOT_FOUND = 404;
-const PERMANENT_DETAIL_STATUSES: ReadonlySet<number> = new Set([400, 401, 403, HTTP_STATUS_NOT_FOUND, 410, 422]);
+const HTTP_STATUS_GONE = 410;
+const EVENT_GONE_STATUSES: ReadonlySet<number> = new Set([HTTP_STATUS_NOT_FOUND, HTTP_STATUS_GONE]);
+const PERMANENT_DETAIL_STATUSES: ReadonlySet<number> = new Set([400, 401, 403, 422]);
 
 function recoverFinalReply(
   entry: Entry,
@@ -159,6 +162,10 @@ function recoverFinalReply(
           // A stale session or missing event cannot heal at the transient
           // retry cadence. Keep the draft unavailable, but check again after
           // reauthentication or eventual detail repair without request churn.
+          if (result.status !== undefined && EVENT_GONE_STATUSES.has(result.status)) {
+            apply((prev) => applyReplyGone(prev, eventId), {});
+            return;
+          }
           if (result.status !== undefined && PERMANENT_DETAIL_STATUSES.has(result.status)) {
             retryMs = PERMANENT_DETAIL_RETRY_MS;
           }
@@ -238,6 +245,19 @@ export function watchReply(
   if (readNow) void settleFromDetail(entry, fleetId, eventId, apply, isCurrent);
 }
 
+/** Watches every row a server read shows still running that this tab is not
+ * watching yet, from now. The first open reads no backfill, so a completion
+ * published between the server render and the subscribe is otherwise never
+ * heard, and its row would run forever. A row already watched keeps its stamp,
+ * so a later read never pushes its stall read back. */
+export function watchRunningRows(entry: Entry, rows: readonly EventRow[]): void {
+  const nowMs = Date.now();
+  for (const row of rows) {
+    if (row.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED || entry.replyHeard.has(row.event_id)) continue;
+    entry.replyHeard.set(row.event_id, nowMs);
+  }
+}
+
 /** Reads every running event this tab has not heard from in `REPLY_STALL_MS`,
  * once per silence window. */
 export function readStalledReplies(entry: Entry, fleetId: string, apply: ApplyEvents, isCurrent: () => boolean): void {
@@ -273,8 +293,13 @@ async function settleFromDetail(
   const result = await read(entry.workspaceId, fleetId, eventId).catch(() => null);
   if (!isCurrent()) return;
   if (!result?.ok) {
-    // The row keeps its state either way; only a gone event stops the reads.
-    if (result?.status === HTTP_STATUS_NOT_FOUND) entry.replyHeard.delete(eventId);
+    // A failed read keeps the row as it is and reads again; a gone event ends
+    // the reads and settles the row, since nothing is left to wait for.
+    if (result?.status !== undefined && EVENT_GONE_STATUSES.has(result.status)) {
+      entry.replyHeard.delete(eventId);
+      closeLivePass(entry, eventId);
+      apply((prev) => applyReplyGone(prev, eventId), {});
+    }
     return;
   }
   if (result.data.status === AGENTSFLEET_EVENT_STATUS.RECEIVED) return;

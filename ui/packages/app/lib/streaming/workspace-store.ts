@@ -56,6 +56,10 @@ export class WorkspaceStore {
   #status: ConnectionStatus = CONNECTION_STATUS.CONNECTING;
   #helloReceived = false;
   #catchingUp = false;
+  // Every catching-up frame, counted. A walk clears the notice only when no gap
+  // was reported after it started: a later gap queued one more walk, and the
+  // notice is that walk's to clear.
+  #gapsReported = 0;
   #liveFleetIds = new Set<string>();
   // Bounded on both axes: a key only for a subscribed fleet, since frames and
   // backfill rows reach the store through the subscriptions `connect` opened
@@ -233,6 +237,7 @@ export class WorkspaceStore {
       // a subscription lost and re-established, whose missed count is
       // unknowable and arrives as 0. The backfill it starts, or the next
       // greeting, clears it.
+      this.#gapsReported += 1;
       if (this.#catchingUp) return;
       this.#catchingUp = true;
     }
@@ -261,6 +266,7 @@ export class WorkspaceStore {
   }
 
   async #backfill(workspaceId: string, anchorMs: number | null, generation: number) {
+    const gapsAtStart = this.#gapsReported;
     try {
       const outcome = await runWorkspaceBackfill({
         workspaceId,
@@ -270,7 +276,7 @@ export class WorkspaceStore {
       });
       if (outcome.ok && this.#generation === generation) {
         if (outcome.watermark !== null) noteServerFrameTime(workspaceId, outcome.watermark);
-        if (this.#catchingUp) {
+        if (this.#catchingUp && this.#gapsReported === gapsAtStart) {
           this.#catchingUp = false;
           this.#notifySoon();
         }

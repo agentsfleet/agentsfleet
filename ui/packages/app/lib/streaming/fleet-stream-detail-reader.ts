@@ -1,6 +1,8 @@
 import type { ActionResult } from "@/lib/actions/with-token";
 import type { EventDetail } from "@/lib/api/events";
+import { HTTP_STATUS_UNAUTHORIZED } from "@/lib/api/errors";
 import { fleetEventDetailUrl } from "@/lib/api/events-types";
+import { ERROR_CODE } from "@/lib/errors";
 
 // The chat's read of one event's saved row, over the same-origin route rather
 // than a Server Action. Next runs a tab's Server Actions one at a time, so a
@@ -12,6 +14,7 @@ import { fleetEventDetailUrl } from "@/lib/api/events-types";
 export const EVENT_DETAIL_TIMEOUT_MS = 10_000;
 
 const MALFORMED_DETAIL = "malformed event detail";
+const SIGNED_OUT = "Not authenticated";
 
 /** Reads one event's saved row, in the result shape the registry consumes. */
 export async function readEventDetailRoute(
@@ -22,7 +25,17 @@ export async function readEventDetailRoute(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), EVENT_DETAIL_TIMEOUT_MS);
   try {
-    const res = await fetch(fleetEventDetailUrl(workspaceId, fleetId, eventId), { signal: controller.signal });
+    const res = await fetch(fleetEventDetailUrl(workspaceId, fleetId, eventId), {
+      signal: controller.signal,
+      // The session check answers a signed-out read with a redirect to
+      // sign-in. Followed, the sign-in page fails to parse with no status, and
+      // recovery would poll it at the transient cadence forever; as a 401 it
+      // backs off like any stale session.
+      redirect: "manual",
+    });
+    if (res.type === "opaqueredirect") {
+      return { ok: false, error: SIGNED_OUT, status: HTTP_STATUS_UNAUTHORIZED, errorCode: ERROR_CODE.AUTH_401 };
+    }
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}`, status: res.status };
     const body: unknown = await res.json();
     return isEventDetail(body) ? { ok: true, data: body } : { ok: false, error: MALFORMED_DETAIL };

@@ -147,6 +147,27 @@ describe("the event map stays bounded", () => {
     expect(noteServerFrameTime).not.toHaveBeenCalled();
   });
 
+  it("a walk that ends while a later gap's walk is queued leaves catching up to that walk", async () => {
+    const releases: Array<(outcome: BackfillOutcome) => void> = [];
+    runWorkspaceBackfill.mockImplementation(
+      () => new Promise<BackfillOutcome>((resolve) => { releases.push(resolve); }),
+    );
+    // The transport runs the first gap's walk at once and queues the second's.
+    greet({ kind: FRAME_KIND.CATCHING_UP, dropped: 2 });
+    reconnectBackfill();
+    greet({ kind: FRAME_KIND.CATCHING_UP, dropped: 3 });
+    await vi.waitFor(() => expect(runWorkspaceBackfill).toHaveBeenCalledTimes(1));
+
+    releases[0]?.({ ok: true, watermark: 5 });
+    await vi.waitFor(() => expect(noteServerFrameTime).toHaveBeenCalledTimes(1));
+    expect(store.snapshot(FLEET_A).catchingUp).toBe(true);
+
+    reconnectBackfill();
+    await vi.waitFor(() => expect(runWorkspaceBackfill).toHaveBeenCalledTimes(2));
+    releases[1]?.({ ok: true, watermark: 6 });
+    await vi.waitFor(() => expect(store.snapshot(FLEET_A).catchingUp).toBe(false));
+  });
+
   it("a backfill row for a fleet the wall never subscribed is dropped", async () => {
     runWorkspaceBackfill.mockImplementation(async (req) => {
       req.onPage([listRow(STRANGER, "b1")]);

@@ -164,6 +164,9 @@ describe("FleetThread — role rendering: turns and connection", () => {
       // Named for what it is; the visible verb is hidden from assistive tech.
       const status = screen.getByRole("status", { name });
       expect(status.lastElementChild?.getAttribute("aria-hidden")).toBe("true");
+      // A live region reads its text, not its name: the name is also its words.
+      expect(status.querySelector(".sr-only")?.textContent).toBe(name);
+      expect(status.textContent).toContain(name);
       view.unmount();
     }
   });
