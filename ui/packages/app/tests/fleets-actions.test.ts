@@ -16,7 +16,6 @@ const {
   saveFleetSourceMock,
   forgetMemoryMock,
   installFleetMock,
-  steerFleetMock,
   onboardWorkspaceFleetLibraryMock,
   getFleetEventMock,
 } =
@@ -30,7 +29,6 @@ const {
     saveFleetSourceMock: vi.fn(),
     forgetMemoryMock: vi.fn(),
     installFleetMock: vi.fn(),
-    steerFleetMock: vi.fn(),
     onboardWorkspaceFleetLibraryMock: vi.fn(),
   }));
 
@@ -42,7 +40,6 @@ vi.mock("@/lib/api/fleets", () => ({
   getFleet: getFleetMock,
   saveFleetSource: saveFleetSourceMock,
   installFleet: installFleetMock,
-  steerFleet: steerFleetMock,
 }));
 vi.mock("@/lib/api/memory", () => ({
   forgetMemory: forgetMemoryMock,
@@ -62,7 +59,6 @@ import {
   saveFleetSourceAction,
   forgetMemoryAction,
   installFleetAction,
-  steerFleetAction,
   onboardLibraryEntryAction,
   getFleetEventAction,
 } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
@@ -164,12 +160,6 @@ describe("fleet server actions — thin token-forwarders", () => {
     expect(installFleetMock).toHaveBeenCalledWith("ws1", body, "tok");
   });
 
-  it("steerFleetAction forwards ws, id, and one request carrying the operation id, token last", async () => {
-    steerFleetMock.mockResolvedValueOnce({ event_id: "evt-1" });
-    const r = await steerFleetAction("ws1", "z1", "ship it", "op-ship-1");
-    expect(r).toEqual({ ok: true, data: { event_id: "evt-1" } });
-    expect(steerFleetMock).toHaveBeenCalledWith("ws1", "z1", { message: "ship it", operation_id: "op-ship-1" }, "tok");
-  });
 
   it("test_onboard_action_maps_apierror_to_errorcode: forwards the template onboard body through withToken", async () => {
     const onboarded = {

@@ -87,17 +87,26 @@ const CODE_MAP = {
 /** Every code the dashboard currently maps to operator-friendly copy. */
 export const CURATED_ERROR_CODES = Object.keys(CODE_MAP) as ReadonlyArray<keyof typeof CODE_MAP>;
 
-/**
- * Named lookup for backend error codes the TS layer mints or branches on.
- * `with-token.ts` mints UZ-AUTH-401 when the server-side Bearer is null;
- * any future TS-side mint goes here so the code string lives in one place
- * and drift between CODE_MAP keys + the minter sites is caught at compile
- * time via `satisfies`.
- */
-export const ERROR_CODE = {
+// The codes the TS layer mints. `with-token.ts` mints UZ-AUTH-401 when the
+// server-side Bearer is null; any future TS-side mint goes here, where
+// `satisfies` catches drift between CODE_MAP keys and the minter sites at
+// compile time: a minted code always has its copy.
+const MINTED_CODES = {
   AUTH_401: "UZ-AUTH-401",
   INSUFFICIENT_SCOPE: "UZ-AUTH-022",
 } as const satisfies Record<string, keyof typeof CODE_MAP>;
+
+/**
+ * Named lookup for backend error codes the TS layer mints or branches on, so
+ * each code string lives in one place. A branched-on code carries its own
+ * copy where it is read, and keeps the name of its Rust declaration.
+ */
+export const ERROR_CODE = {
+  ...MINTED_CODES,
+  /** A steer's operation id already names another message. Mirrors
+   * `AGENTSFLEET_OPERATION_CONFLICT` in `rustd/crates/afd_core/src/error_code/fleet.rs`. */
+  AGENTSFLEET_OPERATION_CONFLICT: "UZ-AGT-016",
+} as const;
 
 export function presentError(input: ErrorInput): ErrorPresentation {
   const { errorCode, message, action } = input;

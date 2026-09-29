@@ -9,7 +9,6 @@ import {
   listFleets as apiListFleets,
   saveFleetSource as apiSaveFleetSource,
   setFleetStatus as apiSetFleetStatus,
-  steerFleet as apiSteerFleet,
   type FleetDetail,
   type FleetListResponse,
   type FleetStatusSettable,
@@ -17,7 +16,6 @@ import {
 } from "@/lib/api/fleets";
 import { getFleetEvent as apiGetFleetEvent, type EventDetail } from "@/lib/api/events";
 import { forgetMemory as apiForgetMemory } from "@/lib/api/memory";
-import type { SteerAccepted } from "@/lib/api/fleets-types";
 import type {
   InstallFleetRequest,
   InstallFleetResponse,
@@ -110,20 +108,4 @@ export async function onboardLibraryEntryAction(
   body: OnboardLibraryEntryRequest,
 ): Promise<ActionResult<OnboardedLibraryEntry>> {
   return withToken((t) => apiOnboardWorkspaceFleetLibrary(workspaceId, body, t));
-}
-
-// Submits a steer message server-side so the browser never holds the
-// api-audience token. Retry runs inside `steerFleet` with its defaults —
-// no client-visible per-attempt callback — and replays under the same
-// `operationId`, which the daemon deduplicates on. The caller reconciles its
-// optimistic frame against the returned event_id on success — reading the
-// event when `replayed` says it may have run already — or returns the text to
-// the composer when `ok` is false.
-export async function steerFleetAction(
-  workspaceId: string,
-  fleetId: string,
-  message: string,
-  operationId: string,
-): Promise<ActionResult<SteerAccepted>> {
-  return withToken((t) => apiSteerFleet(workspaceId, fleetId, { message, operation_id: operationId }, t));
 }

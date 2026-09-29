@@ -5,9 +5,10 @@ import { MessageNotSentError, type AppendMessage } from "@assistant-ui/react";
 
 import { PENDING_SEND_STATE, type PendingSendOutcome, type PendingSendWriters } from "./useFleetPendingSends";
 import type { useFleetEventStream } from "./useFleetEventStream";
-import { steerFleetAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
 import { HTTP_STATUS_UNAUTHORIZED, isDefiniteRefusal } from "@/lib/api/errors";
-import { STEER_MESSAGE_MAX_BYTES } from "@/lib/api/fleets-types";
+import { postSteer, type SteerResult } from "@/lib/api/fleet-steer";
+import { overSteerLimit, steerBytesNearLimit, type SteerAccepted } from "@/lib/api/fleets-types";
+import { ERROR_CODE } from "@/lib/errors";
 import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 import { mintOperationId } from "@/lib/streaming/operation-id";
 
@@ -20,35 +21,26 @@ import { mintOperationId } from "@/lib/streaming/operation-id";
 // rejects with assistant-ui's `MessageNotSentError` and the composer restores
 // the draft it cleared — and its ledger entry keeps the recovery.
 //
-// Every send ends: one with no answer by `SEND_TIMEOUT_MS` ends unknown and
-// frees the fleet's queue. A reused id the daemon refuses as another message's
-// ends in `conflict`, and its text goes out again only under a new id.
+// Every send ends within `SEND_TIMEOUT_MS` of Send. One still queued behind an
+// earlier send by then never left the tab: it ends not sent, and its text comes
+// back. One on the wire is aborted and ends unknown, with Resend under the same
+// id. A reused id the daemon refuses as another message's ends in `conflict`,
+// and its text goes out again only under a new id.
 
 // Placeholder actor on an optimistic row until the stream's matching
 // `EVENT_RECEIVED` lands and reconciliation replaces it with the real
 // authenticated principal.
 const OPTIMISTIC_ACTOR = "steer:pending";
-const UTF8 = new TextEncoder();
-// UTF-8 spends one to three bytes per UTF-16 unit (a surrogate pair's four
-// bytes are two per unit), so most drafts are settled by their length alone.
-const MAX_UTF8_BYTES_PER_UNIT = 3;
-// The composer counts bytes from nine tenths of the limit, near enough to
-// matter and far enough to be read before Send stops working.
-const COUNT_FROM_SHARE = 0.9;
-const COUNT_FROM_BYTES = Math.ceil(STEER_MESSAGE_MAX_BYTES * COUNT_FROM_SHARE);
 const settledEitherWay = (): void => undefined;
-/** How long a send waits for its Server Action: above the server's own 20 s
- * retry deadline (`lib/api/retry-config.ts`), so a slow send that is still
- * alive is never abandoned. */
+/** How long a send has, from Send to its end. Longer than the steer route's
+ * own worst case — its retry deadline plus one attempt's timeout, the ordering
+ * a test pins — so a slow send that is still alive is not abandoned. */
 export const SEND_TIMEOUT_MS = 30_000;
-/** The daemon's refusal of an operation id that already names another message. */
-const OPERATION_CONFLICT_CODE = "UZ-AGT-016";
 
 // One queue per fleet, in module state, so a composer that remounts mid-send
 // queues behind the send still out instead of overtaking it.
 const DELIVERY_TAILS = new Map<string, Promise<void>>();
 
-type SteerResult = Awaited<ReturnType<typeof steerFleetAction>>;
 type StreamApi = ReturnType<typeof useFleetEventStream>;
 type DeliveryCtx = {
   workspaceId: string;
@@ -77,21 +69,6 @@ export type MessageDelivery = {
   noteDraft: (text: string) => void;
 };
 
-/** `text`'s size in UTF-8 bytes once it is within reach of the limit; null
- * below that, which most drafts settle by their length alone. */
-export function bytesNearSteerLimit(text: string): number | null {
-  if (text.length * MAX_UTF8_BYTES_PER_UNIT < COUNT_FROM_BYTES) return null;
-  const bytes = UTF8.encode(text).length;
-  return bytes < COUNT_FROM_BYTES ? null : bytes;
-}
-
-/** Whether `text` is longer than the daemon takes. */
-export function exceedsSteerLimit(text: string): boolean {
-  if (text.length > STEER_MESSAGE_MAX_BYTES) return true;
-  if (text.length * MAX_UTF8_BYTES_PER_UNIT <= STEER_MESSAGE_MAX_BYTES) return false;
-  return UTF8.encode(text).length > STEER_MESSAGE_MAX_BYTES;
-}
-
 export function useMessageDelivery(ctx: DeliveryCtx): MessageDelivery {
   const deliver = useSerializedDelivery(ctx);
   const { writers } = ctx;
@@ -107,10 +84,11 @@ export function useMessageDelivery(ctx: DeliveryCtx): MessageDelivery {
       if (text.length === 0) return;
       // Refused before it is named or recorded: the daemon would refuse it, and
       // the composer keeps the draft while its hint says why.
-      if (exceedsSteerLimit(text)) throw new MessageNotSentError();
+      if (overSteerLimit(steerBytesNearLimit(text))) throw new MessageNotSentError();
       const back = take();
       const operationId = back?.text === text && back.ledger === writers ? back.operationId : mintOrNull();
       if (operationId === null) throw new MessageNotSentError();
+      dismissConflictsOf(writers, text);
       if (await deliver(operationId, text)) return;
       // A draft assistant-ui did not return is not this send's to reuse: the
       // same words typed later are a new message.
@@ -182,12 +160,12 @@ function useRestoredDraft(writers: PendingSendWriters) {
 }
 
 // One send: recorded, painted, then POSTed behind the fleet's previous send.
-// Removing the browser-side queue let two rapid submissions race: their Server
-// Action POSTs could reach the server out of submission order, so "stop" could
-// be assigned an earlier event id than the "deploy" it was meant to follow.
-function useSerializedDelivery({
-  workspaceId, fleetId, appendOptimistic, reconcileOptimistic, discardOptimistic, onSubmitted, writers,
-}: DeliveryCtx): (operationId: string, text: string) => Promise<boolean> {
+// Removing the browser-side queue let two rapid submissions race: their POSTs
+// could reach the server out of submission order, so "stop" could be assigned
+// an earlier event id than the "deploy" it was meant to follow.
+function useSerializedDelivery(ctx: DeliveryCtx): (operationId: string, text: string) => Promise<boolean> {
+  const { workspaceId, fleetId, appendOptimistic, discardOptimistic, onSubmitted, writers } = ctx;
+  const acknowledged = useAcknowledgement(ctx);
   return useCallback(
     (operationId: string, text: string): Promise<boolean> => {
       // The ledger entry is written first: a document that dies between here
@@ -195,62 +173,102 @@ function useSerializedDelivery({
       writers.begin({ operationId, text, submittedAtMs: Date.now() });
       const tempId = appendOptimistic(text, OPTIMISTIC_ACTOR);
       if (tempId) onSubmitted(tempId);
+      // The clock starts at Send, not at the send's turn in the queue: a send
+      // behind a hung one ends when its own time is up, not a full clock later.
+      const deadline = startDeadline();
+      let dispatched = false;
+      let over = false;
       const ended = (outcome: PendingSendOutcome): boolean => {
+        over = true;
         discardOptimistic(tempId);
         writers.fail(operationId, outcome);
         return false;
       };
+      // Out of time before its turn, it never left this tab and the daemon
+      // cannot hold it: it ends not sent, once, and its text comes back, as a
+      // refusal's does.
+      const unsent = (): boolean => (over ? false : ended(PENDING_SEND_STATE.REFUSED));
       const send = async (): Promise<boolean> => {
-        const result = await steerWithin(workspaceId, fleetId, text, operationId, writers);
+        if (deadline.passed()) return unsent();
+        dispatched = true;
+        const result = await answerWithin(deadline, () => postSteer(workspaceId, fleetId, text, operationId, deadline.signal));
         if (result === null) return ended(PENDING_SEND_STATE.UNKNOWN);
-        if (!result.ok) return ended(outcomeOf(result));
-        // Settled before the cosmetic reconcile: the daemon holds it, whatever
-        // the painting does next.
-        writers.settle(operationId);
-        reconcileOptimistic(tempId, result.data.event_id, result.data.replayed);
-        requestOnboardingRefresh(workspaceId);
-        return true;
+        return result.ok ? acknowledged(operationId, tempId, result.data) : ended(outcomeOf(result));
       };
-      const key = `${workspaceId}:${fleetId}`;
-      // `send` reports its own failure through the ledger. The tail settles
-      // either way, so a throw after the acknowledgement cannot stall every
-      // later send on this fleet — the next message always gets its slot.
-      const slot = (DELIVERY_TAILS.get(key) ?? Promise.resolve()).then(send);
-      const tail = slot.then(settledEitherWay, settledEitherWay);
-      DELIVERY_TAILS.set(key, tail);
-      void tail.then(() => {
-        if (DELIVERY_TAILS.get(key) === tail) DELIVERY_TAILS.delete(key);
-      });
-      return slot;
+      const slot = enqueue(`${workspaceId}:${fleetId}`, send);
+      return Promise.race([slot, deadline.expired.then(() => (dispatched ? slot : unsent()))]);
     },
-    [workspaceId, fleetId, appendOptimistic, reconcileOptimistic, discardOptimistic, onSubmitted, writers],
+    [workspaceId, fleetId, appendOptimistic, discardOptimistic, onSubmitted, writers, acknowledged],
   );
 }
 
-// The Server Action's answer, or null when nothing answered: its transport
-// failed, or `SEND_TIMEOUT_MS` passed first. Either way the daemon may or may
-// not hold the message. An answer after the timeout only settles the entry —
-// its row is gone, and the stream shows the message if it landed.
-async function steerWithin(
-  workspaceId: string, fleetId: string, text: string, operationId: string, writers: PendingSendWriters,
-): Promise<SteerResult | null> {
-  const action = steerFleetAction(workspaceId, fleetId, text, operationId);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), SEND_TIMEOUT_MS);
+// The daemon's 202. Settled before the cosmetic reconcile: the daemon holds
+// it, whatever the painting does next.
+function useAcknowledgement({ workspaceId, reconcileOptimistic, writers }: DeliveryCtx) {
+  return useCallback(
+    (operationId: string, tempId: string, accepted: SteerAccepted): boolean => {
+      writers.settle(operationId);
+      reconcileOptimistic(tempId, accepted.event_id, accepted.replayed);
+      requestOnboardingRefresh(workspaceId);
+      return true;
+    },
+    [workspaceId, reconcileOptimistic, writers],
+  );
+}
+
+// `send` reports its own failure through the ledger. The tail settles either
+// way, so a throw after the acknowledgement cannot stall every later send on
+// this fleet — the next message always gets its slot.
+function enqueue(key: string, send: () => Promise<boolean>): Promise<boolean> {
+  const slot = (DELIVERY_TAILS.get(key) ?? Promise.resolve()).then(send);
+  const tail = slot.then(settledEitherWay, settledEitherWay);
+  DELIVERY_TAILS.set(key, tail);
+  void tail.then(() => {
+    if (DELIVERY_TAILS.get(key) === tail) DELIVERY_TAILS.delete(key);
   });
-  const result = await Promise.race([action, timeout]).catch(() => null).finally(() => clearTimeout(timer));
-  if (result === null) action.then((late) => (late.ok ? writers.settle(operationId) : undefined), settledEitherWay);
-  return result;
+  return slot;
+}
+
+type Deadline = { signal: AbortSignal; expired: Promise<null>; passed: () => boolean; clear: () => void };
+
+// A send's clock: when it runs out it aborts the request on the wire, and
+// `expired` ends a send that is still waiting for its turn. `passed` reads the
+// time as well as the abort: of two timers due in the same instant the second
+// fires after the first one's work, which would otherwise dispatch a send
+// whose time is already up.
+function startDeadline(): Deadline {
+  const controller = new AbortController();
+  const endsAtMs = Date.now() + SEND_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);
+  const expired = new Promise<null>((resolve) => {
+    controller.signal.addEventListener("abort", () => resolve(null), { once: true });
+  });
+  const passed = () => controller.signal.aborted || Date.now() >= endsAtMs;
+  return { signal: controller.signal, expired, passed, clear: () => clearTimeout(timer) };
+}
+
+// The steer's answer, or null when none came before the clock ran out.
+// Whatever the transport does with the abort, the send ends with it.
+function answerWithin(deadline: Deadline, steer: () => Promise<SteerResult>): Promise<SteerResult | null> {
+  return Promise.race([steer().catch(() => null), deadline.expired]).finally(deadline.clear);
+}
+
+// A conflict's text sent from the composer is that conflict's "Send as new":
+// its entry goes, as the notice's own button dismisses it, so the button
+// cannot send the same words a second time.
+function dismissConflictsOf(writers: PendingSendWriters, text: string): void {
+  for (const entry of writers.list()) {
+    if (entry.state === PENDING_SEND_STATE.CONFLICT && entry.text === text) writers.dismiss(entry.operationId);
+  }
 }
 
 // A 401 asks for a sign-in. A reused id is refused for good. Any other client
 // refusal but a timeout means the server saw the request and said no. Anything
 // else — a timeout, a 5xx after the row committed, no status at all — leaves
 // delivery unconfirmed.
-function outcomeOf({ status, errorCode }: { status?: number; errorCode?: string }): PendingSendOutcome {
+function outcomeOf({ status, errorCode }: Extract<SteerResult, { ok: false }>): PendingSendOutcome {
   if (status === HTTP_STATUS_UNAUTHORIZED) return PENDING_SEND_STATE.SESSION;
-  if (errorCode === OPERATION_CONFLICT_CODE) return PENDING_SEND_STATE.CONFLICT;
+  if (errorCode === ERROR_CODE.AGENTSFLEET_OPERATION_CONFLICT) return PENDING_SEND_STATE.CONFLICT;
   return isDefiniteRefusal(status) ? PENDING_SEND_STATE.REFUSED : PENDING_SEND_STATE.UNKNOWN;
 }
 

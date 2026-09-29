@@ -26,6 +26,12 @@ export function otherTabWrote(key: string | null, newValue: string | null): void
   window.dispatchEvent(new StorageEvent("storage", { key, newValue }));
 }
 
+// Another tab's write, landed in storage and reported here.
+export function otherTabStored(entries: PendingSend[], key = STORAGE_KEY): void {
+  window.localStorage.setItem(key, stored(entries));
+  otherTabWrote(key, stored(entries));
+}
+
 /** One origin's locks, granted in request order. `heldElsewhere` is another
  * tab taking a lock; the function it returns lets go, as closing that tab would. */
 export function fakeLockManager() {

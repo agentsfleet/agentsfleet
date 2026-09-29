@@ -45,8 +45,8 @@ export type FleetThreadProps = {
 
 /**
  * Operator-facing chat surface backed by the durable event log. Wraps
- * `@assistant-ui/react` over `useFleetEventStream` + the `steerFleetAction`
- * Server Action; `fleetMessageRenderers` paints each durable event as the
+ * `@assistant-ui/react` over `useFleetEventStream` + `postSteer` (the same-origin
+ * `/live` steer route); `fleetMessageRenderers` paints each durable event as the
  * approved conversation row.
  *
  * The runtime is told the thread is never running. In this library

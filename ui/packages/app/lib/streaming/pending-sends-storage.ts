@@ -46,6 +46,47 @@ const PendingSendSchema = z.object({
 
 export type PendingSend = z.infer<typeof PendingSendSchema>;
 
+// An entry in the stored shape whose `state` this build does not know: a newer
+// build wrote it. It is never shown, and every write puts it back as it was
+// read, so the build that knows it finds it after this one wrote the key.
+const KNOWN_STATES: ReadonlySet<string> = new Set(Object.values(PENDING_SEND_STATE));
+const ForeignEntrySchema = z.object({
+  operationId: z.string(),
+  state: z.string().refine((state) => !KNOWN_STATES.has(state)),
+  submittedAtMs: z.number(),
+});
+export type ForeignEntry = z.infer<typeof ForeignEntrySchema> & Readonly<Record<string, unknown>>;
+
+/** What one stored key holds: the entries this build reads, and the ones it keeps. */
+export type StoredLedger = { entries: PendingSend[]; foreign: ForeignEntry[] };
+
+const MS_PER_HOUR = 3_600_000;
+const HOURS_PER_DAY = 24;
+/** How long an unresolved send stays recoverable. */
+export const PENDING_SEND_TTL_MS = HOURS_PER_DAY * MS_PER_HOUR;
+/** The most unresolved sends one fleet keeps; the oldest ended ones go first,
+ * and tombstones only after every other ended send. */
+export const MAX_PENDING_SENDS = 20;
+
+export function live<T extends { submittedAtMs: number }>(entries: readonly T[], nowMs: number): T[] {
+  return entries.filter((entry) => nowMs - entry.submittedAtMs < PENDING_SEND_TTL_MS);
+}
+
+// The newest `MAX_PENDING_SENDS`, never dropping a send still in flight. A
+// tombstone goes last: dropped, it would let a dismissed send's late ending
+// write the send back.
+export function capped(entries: PendingSend[]): PendingSend[] {
+  const excess = entries.length - MAX_PENDING_SENDS;
+  if (excess <= 0) return entries;
+  const ended = entries.filter((entry) => entry.state !== PENDING_SEND_STATE.SENDING);
+  const byEviction = [
+    ...ended.filter((entry) => entry.state !== PENDING_SEND_STATE.DISMISSED),
+    ...ended.filter((entry) => entry.state === PENDING_SEND_STATE.DISMISSED),
+  ];
+  const dropped = new Set(byEviction.slice(0, excess).map((entry) => entry.operationId));
+  return entries.filter((entry) => !dropped.has(entry.operationId));
+}
+
 /** Whose ledger, for which fleet. `subject` is null until the user is known. */
 export type LedgerScope = {
   subject: string | null;
@@ -75,29 +116,48 @@ export function mirror(scope: LedgerScope): Storage | null {
 }
 
 /** What storage holds for `key`, or null when the read itself threw. */
-export function readStored(store: Storage | null, key: string): PendingSend[] | null {
-  if (store === null) return [];
+export function readLedger(store: Storage | null, key: string): StoredLedger | null {
+  if (store === null) return { entries: [], foreign: [] };
   try {
-    return parseEntries(store.getItem(key));
+    return parseLedger(store.getItem(key));
   } catch {
     return null;
   }
 }
 
-// A malformed entry is dropped on its own; a value that is not a list, or not
-// JSON at all, reads as an empty ledger.
+/** The entries this build reads at `key`, or null when the read threw. */
+export function readStored(store: Storage | null, key: string): PendingSend[] | null {
+  return readLedger(store, key)?.entries ?? null;
+}
+
 export function parseEntries(raw: string | null): PendingSend[] {
+  return parseLedger(raw).entries;
+}
+
+// A malformed entry is dropped on its own; a value that is not a list, or not
+// JSON at all, reads as an empty ledger. A foreign entry is kept as it was
+// stored, not as the schema would rebuild it.
+function parseLedger(raw: string | null): StoredLedger {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw ?? "[]");
   } catch {
-    return [];
+    return { entries: [], foreign: [] };
   }
-  if (!Array.isArray(parsed)) return [];
-  return parsed.flatMap((value) => {
+  const ledger: StoredLedger = { entries: [], foreign: [] };
+  if (!Array.isArray(parsed)) return ledger;
+  for (const value of parsed) {
     const entry = PendingSendSchema.safeParse(value);
-    return entry.success ? [entry.data] : [];
-  });
+    if (entry.success) ledger.entries.push(entry.data);
+    else if (ForeignEntrySchema.safeParse(value).success) ledger.foreign.push(value as ForeignEntry);
+  }
+  return ledger;
+}
+
+/** The foreign entries a write keeps: live, and not the id it wrote or holds. */
+export function keptForeign(foreign: readonly ForeignEntry[], written: readonly PendingSend[], operationId: string, nowMs: number): ForeignEntry[] {
+  const ours = new Set(written.map((entry) => entry.operationId)).add(operationId);
+  return live(foreign, nowMs).filter((entry) => !ours.has(entry.operationId));
 }
 
 // Removes every mirrored ledger `doomed` names.
