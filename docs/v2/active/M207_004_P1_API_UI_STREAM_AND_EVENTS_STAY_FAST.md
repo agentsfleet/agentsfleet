@@ -58,13 +58,18 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_db/src/**` | EDIT | A counter of executed statements and transactions the lanes read |
 | `rustd/crates/afd_bench/src/**`, `rustd/crates/afd_bench/src/bin/tail.rs`, `make/bench.mk`, `bench/baselines/*.rig.json` | EDIT / CREATE | Re-baselined lanes; the lease lane drains through the report path; the tail lane |
 | `rustd/crates/afd_dragonfly/src/{ready,ready/**,streams,streams/**}.rs` | EDIT | Tokens minted inside `mark`; the orphan takeover; trim from the floor |
-| every `ReadyIndex::mark` caller: `rustd/crates/{afd_admission,afd_approval,afd_runner,afd_fleet}/src/**` and their tests | EDIT | `mark` no longer takes a token |
-| `rustd/crates/afd_fleet/src/lease/{assign,restore,pull,pull/**,affinity,issue,sql/**}.rs` | EDIT | Group-empty clear; release on every stop; the held-slot filter; tenant read once; meter reset folded into the lease insert |
-| `rustd/crates/afd_events/src/history/statement.rs` | EDIT | List reads split by shape so a generic plan keeps the index |
-| `rustd/crates/afd_dragonfly/src/{hub,hub/**,topology,transport}.rs` | EDIT | Gap arm; per-node repair; dispatch and control tasks; shared payload |
+| every `ReadyIndex::mark` caller: `rustd/crates/{afd_admission,afd_approval,afd_runner,afd_fleet,afd_bench}/src/**`, `rustd/crates/{afd_dragonfly,afd_fleet,afd_events,afd_approval,agentsfleetd}/tests/**` | EDIT | `mark` no longer takes a token |
+| `rustd/crates/afd_dragonfly/{Cargo.toml,src/lib.rs,src/error.rs,src/error/**}`, `rustd/crates/afd_observability/src/{producers,metrics/declared}/fleet.rs`, `rustd/crates/afd_approval/src/inbox/{sweep,resolve}.rs` | EDIT / CREATE | Token minting through `afd_crypto`; the over-cap error file split; the claim-empty counter; the expiry wake |
+| `rustd/crates/afd_fleet/src/lease/{assign,restore,pull,pull/**,affinity,issue,envelope,store,deliver,admit/**,sql/**}.rs` | EDIT | Group-empty clear; release on every stop; the held-slot filter; tenant read once; meter reset folded into the lease insert |
+| `rustd/crates/afd_events/src/{history/statement,history/mod,lib}.rs`, `rustd/crates/afd_events/tests/{events_suite,integration_list_plans}.rs` | EDIT / CREATE | List and thread reads split by scope and cursor so a generic plan keeps the index |
+| `rustd/crates/afd_dragonfly/tests/integration_retention{,/floor}.rs`, `rustd/crates/afd_outbound/tests/integration_producer_outage.rs` | EDIT / CREATE | Retention tests above the new slack; the floor's own proofs |
+| `rustd/crates/afd_dragonfly/src/{hub,hub/**,topology,transport,transport/**,test_util}.rs`, `rustd/crates/{afd_dragonfly,afd_sse,afd_api_tenant}/Cargo.toml`, `rustd/crates/afd_dragonfly/tests/**` | EDIT / CREATE | Gap arm; replay-attributed repair; dispatch and control tasks; shared payload; the fault fakes split under the cap |
+| `rustd/crates/afd_api_tenant/src/handler/stream/body.rs`, `rustd/crates/{afd_gate,afd_approval,afd_fleet,agentsfleetd}/tests/**`, `public/openapi.json` | EDIT / CREATE | A shared-payload SSE body; consumers of the gap arm; the `catching_up` description |
+| `ui/packages/app/lib/streaming/fleet-stream-registry.ts` (+ test) | EDIT | The chat backfills on `catching_up` |
 | `rustd/crates/afd_sse/src/{tail,frame,fanin,ceiling}.rs`, `rustd/crates/afd_api_tenant/src/handler/stream{,/wall}.rs`, `rustd/crates/agentsfleetd/src/preflight/knobs.rs` | EDIT | Gap as `catching_up`; one rendered frame per replica; coalesced wall counters; the measured ceiling |
 | `ui/packages/app/components/domain/{FleetReplyBody,FleetMarkdown,FleetThread,FleetThreadViewport}.tsx` | EDIT | Block-memoised markdown; a stable adapter; one announcement per reply |
-| `ui/packages/app/lib/streaming/{workspace-store,fleet-stream-backfill}.ts`, `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx` | EDIT | Wall projection; one notify per backfill walk |
+| `ui/packages/app/lib/streaming/{workspace-store,workspace-tile,fleet-stream-backfill}.ts`, `ui/packages/app/components/domain/fleetMarkdownBlocks.ts`, `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx` | EDIT / CREATE | Wall projection split from the store; streaming block boundaries; one notify per backfill walk |
+| `ui/packages/app/tests/{helpers/*,bench/fleet-markdown-stream.bench.tsx,dashboard-fleets-wall.test.tsx,fleet-thread/malformed-metadata.test.ts}` | EDIT / CREATE | Shared wall and store harnesses split under the cap; the streaming corpus and bench; the log's `aria-live` pin |
 | `docs/architecture/{scaling,runner_fleet,data_flow,datastore_scaling,concurrency}.md` | EDIT | Measured rows; the readiness token and clear; sharded pub/sub wording; the hub's gap |
 | Tests beside each file above | CREATE / EDIT | One test per Dimension |
 
@@ -112,25 +117,28 @@ A drained fleet's mark is cleared, and only after the whole group has nothing pe
 
 ### §3 — A stopped admission frees its fleet
 
-- **Dimension 3.1** — a refusal, Retry or Await releases the won claim, so the fleet's next event leases on the next poll → Test `test_stop_releases_the_claim`
+- **Dimension 3.1** — a refusal, Retry, Await or error after a won claim releases the claim through one helper, so the fleet's next event leases on the next poll → Test `test_stop_releases_the_claim`
 - **Dimension 3.2** — an approval resolution is leased on the next poll → Test `test_approval_resolution_leases_next_poll`
+- **Dimension 3.3** — an approval that expires unanswered re-marks its fleet, because a park cleared the mark → Test `an_expired_gate_wakes_its_fleet`
 
 ### §4 — Acknowledgements and reads stay small
 
-- **Dimension 4.1** — the trim after an acknowledgement reads at most the entries it removes plus one, runs only past the keep count plus a named slack, and never removes a pending or undelivered entry → Test `test_trim_reads_only_the_floor`
-- **Dimension 4.2** — the fleet and workspace list reads keep an index scan under a generic plan at a deep cursor → Test `test_event_list_plans_use_the_index`
+- **Dimension 4.1** — the trim after an acknowledgement reads at most the entries it removes plus one and never more than `TRIM_READ_MAX`, bounds its read at the oldest owed entry, runs only past the keep count plus `TRIM_SLACK`, and never removes a pending or undelivered entry → Test `test_trim_reads_only_the_floor`
+- **Dimension 4.2** — the fleet, workspace and thread reads keep their scope, cursor and `since` bound as index conditions under a generic plan → Test `test_event_list_plans_use_the_index`
 - **Dimension 4.3** — a lease reads its tenant once, and its meter reset rides the lease insert → Test `test_issue_reads_the_tenant_once`
 
 ### §5 — The live tail degrades by channel, not by replica
 
-**Implementation default:** a dispatch task owns pushes and a control task owns subscribe commands, because a subscribe round trip must never hold a frame; a node's disconnection is repaired by the driver and reported as a gap on that node's channels, because only a failed connection is a reconnect.
+**Implementation default:** a dispatch task owns pushes and a control task owns subscribe commands, because a subscribe round trip must never hold a frame. redis-rs 1.7.0 forwards a node's `Disconnection` without its address, so the hub attributes a loss by what the driver replays: it repairs the node and re-sends that node's `SSUBSCRIBE`s, and any confirmation after a channel's first is a gap. A disconnect no replay explains within `NODE_REPAIR_WINDOW`, or two at once, falls back to a full redial with a gap on every channel. The hub's driver repairs a node without an attempt cap. A gap is written as `catching_up` with `dropped: 0`, and the SSE body shares one payload across viewers, because axum's `Event` copies per viewer.
 
 - **Dimension 5.1** — every hub reconnect sends each live channel a gap, and its viewers receive `catching_up` → Test `test_reconnect_sends_a_gap`
-- **Dimension 5.2** — one node's socket loss re-subscribes only its channels and leaves other nodes' frames flowing, with no new connection opened → Test `test_node_loss_is_a_gap_not_a_reconnect`
+- **Dimension 5.2** — one primary's socket loss re-subscribes only its channels, gives them a gap, and leaves other nodes' frames flowing, with no new connection opened → Test `test_node_loss_is_a_gap_not_a_reconnect`
 - **Dimension 5.3** — frames keep flowing while a subscribe is slow → Test `test_dispatch_continues_during_slow_subscribe`
 - **Dimension 5.4** — a frame's payload and rendered event are shared across viewers, not copied per viewer → Test `test_fanout_shares_one_payload`
 - **Dimension 5.5** — a lagging wall viewer refreshes counters at most once per tick → Test `test_wall_lag_reads_counters_once_per_tick`
-- **Dimension 5.6** — `SSE_MAX_STREAMS`'s default is the tail lane's measured safe count, cited beside the const → Test `bench_stream_ceiling_ladder`
+- **Dimension 5.6** — `SSE_MAX_STREAMS`'s default is the largest stream-ladder rung at which every frame is delivered, p95 publish-to-receive stays under 250 ms and the streams' resident memory stays under 256 MiB, cited beside the const → Test `bench_stream_ceiling_ladder`
+- **Dimension 5.7** — the chat backfills on any `catching_up`, lag or gap → Test `test_chat_backfills_on_catching_up`
+- **Dimension 5.8** — the wall shows catching up on any `catching_up`, including a gap's `dropped: 0` → Test `test_wall_shows_a_gap`
 
 ### §6 — A flush renders one leaf
 
@@ -142,9 +150,10 @@ A drained fleet's mark is cleared, and only after the whole group has nothing pe
 ## Interfaces
 
 ```
-ReadyIndex::mark(fleet_id) -> ReadyToken         token minted inside; callers pass none
-ReadyIndex::clear_if_unchanged(fleet_id, token)  called by the lease on a group-empty poll
-hub::Received gains a gap arm; the SSE layers write it as `catching_up`
+ReadyIndex::mark(fleet_id) -> Result<ReadyToken>   a UUIDv7 token minted inside; callers pass none
+ReadyIndex::clear_if_unchanged(fleet_id, token)    called by the lease on a group-empty poll or a park
+FleetStreams::take_over_oldest(fleet, consumer)     XAUTOCLAIM min-idle 0 COUNT 1, never FORCE
+hub::Received { Message(Arc<Message>), Lagged(u64), Gap }; SSE writes Gap as `catching_up` with `dropped: 0`
 SSE_MAX_STREAMS default = the tail lane's measured value (knobs.rs), overridable as today
 ```
 
@@ -156,25 +165,28 @@ SSE_MAX_STREAMS default = the tail lane's measured value (knobs.rs), overridable
 | Clear fails | Dragonfly error on the clear | the poll answers as today; the mark stays and costs one more empty claim |
 | Entry orphaned in another consumer | a replica died between its stream read and its lease | the next won claim takes it over and delivers it |
 | Stop after a won claim | refusal, Retry or Await | the claim is released; the next event is not held |
+| Parked gate expires unanswered | nobody answers the approval | the inbox expiry sweep re-marks each swept fleet |
 | Trim races an append | an append lands during the trim | the floor is the minimum of delivered, pending and kept; nothing pending is removed |
-| Node socket lost | one Dragonfly node drops | that node's channels resubscribe; their viewers get `catching_up` and backfill |
+| Primary socket lost | one Dragonfly primary drops | the driver repairs it and replays its channels; each gets a gap, its viewers get `catching_up` and backfill |
+| Loss the hub cannot attribute | a replica drops, two nodes drop within `NODE_REPAIR_WINDOW`, or the driver's replay is lost | full redial; every channel gets a gap |
+| Slot migration | the driver replays every channel | every channel gets a gap; some viewers backfill needlessly, none miss frames silently |
 | Whole connection lost | every node unreachable | redial and resubscribe as today, and every channel gets a gap |
 | Subscribe storm | every tab reconnects after a deploy | frames keep dispatching while subscribes queue |
 
 ## Invariants
 
 1. A mark is cleared only by the token that wrote it — `clear_if_unchanged` compares inside Dragonfly; `test_mark_written_during_poll_survives`.
-2. A cleared mark never strands an event — the clear runs only on a group-empty read after the orphan takeover; `test_entry_pending_elsewhere_is_delivered`.
-3. A viewer never misses frames silently — every lost subscription yields a gap; `test_node_loss_is_a_gap_not_a_reconnect`, `test_reconnect_sends_a_gap`.
-4. A trim never removes a pending or undelivered entry — the floor computation; `test_trim_reads_only_the_floor`.
+2. A cleared mark never strands an event — the clear runs only on a group-empty read after the orphan takeover, or on a park whose answer re-marks (continuation admission, runless wake, expiry sweep); `test_entry_pending_elsewhere_is_delivered`, `an_expired_gate_wakes_its_fleet`.
+3. A viewer never misses frames silently — every lost subscription yields a gap, and a gap may over-report (a slot migration gaps every channel) but never under-report; `test_node_loss_is_a_gap_not_a_reconnect`, `test_reconnect_sends_a_gap`.
+4. A trim never removes a pending or undelivered entry — its read ends at the oldest owed entry, and last-delivered only moves forward; a concurrent trim can shorten acknowledged history, never cross owed work; `test_trim_reads_only_the_floor`.
 
 ## Metrics & Observability
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `hub_channel_gap` (warn) | ops | a channel loses its subscription | channel count, cause | no payloads | `test_node_loss_is_a_gap_not_a_reconnect` |
-| `lease_claim_empty` (counter) | ops | a won claim finds nothing deliverable | fleet partition | no fleet body | `test_mark_written_during_poll_survives` |
-| `ready_index_depth` (gauge) | ops | each poll's peek | partition, depth | none needed | `bench_idle_poll_after_drain` |
+| `hub_channel_gap` (warn log, one per 1 s burst) | ops | channels lose their subscription | channel count, cause (`node_repaired`, `slot_moved`, `reconnected`, `resubscribed`), `error_code` | no channel names, no payloads | `test_reconnect_sends_a_gap` |
+| `agentsfleet_lease_claims_empty_total` (counter) | ops | a won claim finds nothing deliverable | none | no fleet body | `test_mark_written_during_poll_survives` |
+| `agentsfleet_fleet_ready_depth` (gauge, existing) | ops | each poll's peek | depth | none needed | `bench_idle_poll_after_drain` |
 
 ## Test Specification (tiered)
 
@@ -191,8 +203,9 @@ SSE_MAX_STREAMS default = the tail lane's measured value (knobs.rs), overridable
 | 2.5 | bench | `bench_idle_poll_after_drain` | drain every fleet, then idle polls → 0 Postgres statements per poll |
 | 3.1 | integration | `test_stop_releases_the_claim` | refusal then a new send → leased on the next poll, no claim-length wait |
 | 3.2 | integration | `test_approval_resolution_leases_next_poll` | Await, then resolve → leased on the next poll |
-| 4.1 | integration | `test_trim_reads_only_the_floor` | 1,500 acked entries plus pending ones → trim reads ≤ removed + 1, pending kept |
-| 4.2 | integration | `test_event_list_plans_use_the_index` | six runs, then `EXPLAIN (GENERIC_PLAN)` → index scan for fleet and workspace pages |
+| 3.3 | integration | `an_expired_gate_wakes_its_fleet` | mark force-cleared, gate expires → the fleet is marked again |
+| 4.1 | integration | `test_trim_reads_only_the_floor` | 1,520 appended, 1,500 acked, 10 pending → removed 520, read 521, pending and undelivered kept; one owed entry below the window → read stops at it |
+| 4.2 | integration | `test_event_list_plans_use_the_index` | a deep-cursor page per shape through `History`, then `EXPLAIN (GENERIC_PLAN)` per text → the expected index, scope and cursor or `since` in Index Cond, no Sort |
 | 4.3 | integration | `test_issue_reads_the_tenant_once` | one lease → one tenant read, meters reset in the lease insert |
 | 5.1 | integration | `test_reconnect_sends_a_gap` | force a hub reconnect → each live channel's viewer gets `catching_up` |
 | 5.2 | integration | `test_node_loss_is_a_gap_not_a_reconnect` | drop one node's socket → its channels resubscribe, other frames flow, connections opened unchanged |
@@ -200,6 +213,8 @@ SSE_MAX_STREAMS default = the tail lane's measured value (knobs.rs), overridable
 | 5.4 | unit | `test_fanout_shares_one_payload` | one message, 3 receivers → one payload allocation |
 | 5.5 | unit | `test_wall_lag_reads_counters_once_per_tick` | 50 lag events in a tick → one counters read |
 | 5.6 | bench | `bench_stream_ceiling_ladder` | 64/256/1024/4096 streams → memory and CPU per stream; the const cites the result |
+| 5.7 | unit | `test_chat_backfills_on_catching_up` | open chat stream, `catching_up` with `dropped: 0` → one backfill read |
+| 5.8 | unit | `test_wall_shows_a_gap` | wall stream, `catching_up` with `dropped: 0` → catching-up state shown |
 | 6.1 | unit | `test_streaming_markdown_reparses_only_the_open_block` | 400 flushes of a 20 KB answer with split fences → finished blocks keep identity; settled output equals a single parse |
 | 6.2 | unit | `test_wall_tile_ignores_chunks` | 100 tiles, 1,000 chunk frames → 0 tile renders |
 | 6.3 | unit | `test_flush_leaves_the_shell_alone` | 100 flushes → viewport and composer render 0 times |
@@ -210,7 +225,7 @@ SSE_MAX_STREAMS default = the tail lane's measured value (knobs.rs), overridable
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Baselines re-measured before code (§1) | `git log --format=%s -- bench/baselines/ \| head -1` | substring `bench` | P0 | |
-| R2 | An idle poll after drain costs no Postgres (§2) | `make bench-lease PROFILE=rig` | substring `idle_statements_per_poll=0` | P0 | |
+| R2 | An idle poll after drain costs no Postgres (§2) | `make bench-lease PROFILE=rig \| grep -cE 'idle_statements_per_poll=0( \|$)'` | 1 (at HEAD before §2: `idle_statements_per_poll=47.5`) | P0 | |
 | R3 | A stop frees its fleet (§3) | `make test-integration-rustd` | substring `test_stop_releases_the_claim ... ok` | P0 | |
 | R4 | A node blip is a gap, not a reconnect (§5) | `make test-integration-rustd` | substring `test_node_loss_is_a_gap_not_a_reconnect ... ok` | P0 | |
 | R5 | Flush cost is flat in answer length (§6) | `cd ui/packages/app && bunx vitest run components/domain/FleetReplyBody.test.tsx` | exit 0 | P0 | |
@@ -262,8 +277,9 @@ SSE_MAX_STREAMS default = the tail lane's measured value (knobs.rs), overridable
 ## Discovery (consult log)
 
 - **Consults** — four read-only audits (daemon live tail, durable events, browser, plus the M207_003 adversarial review) and an adversarial Chief Technology Officer (CTO) review of the first plan (verdict: rework). The author re-read at source: marks never cleared (`ready.rs:259` has no production caller); the empty read is per consumer (`lease/restore.rs:83-90`, consumer `agentsfleetd-{pid}` at `assign.rs:271-273`), so a naive clear strands another replica's pending entry; Stop arms return without a release (`pull.rs:150-153`, `:262-272`); data-modifying Common Table Expressions (CTEs) run whether read or not (`sql/lease.rs:239-242`). Dragonfly v2.0.0 cluster mode rejects global `PUBLISH` and routes sharded pub/sub by slot (the pinned tag's `docs/cluster-mode.md`, read by the live-tail audit).
+- **Browser limits recorded, not fixed** — the settled-reply announcement is proven by its unit test, not yet heard through a screen reader in a browser (check on DEV with Dimension 6.7 of M207_003); a reference-style link or footnote whose definition arrives later renders unresolved while streaming and resolves at settle.
 - **Open scope call** — asked Sep 29, 2026 with no answer inside the question window: adopt the reviewed core plus the stream work, holding the money-path rewrites, wallet lock span, budget index, reply side-store, eviction, server filter, bounded push channel and status fold. The agent built only the agreed scope; nothing in Out of Scope's first bullet is deferred until Indy's quote lands here.
-- **Metrics review** — two operator signals added (`hub_channel_gap`, `hub_push_depth`); no analytics or funnel change.
+- **Metrics review** — one warn log (`hub_channel_gap`) and one counter (`agentsfleet_lease_claims_empty_total`) added; no analytics or funnel change. A subscribe issued while its primary is still reconnecting can land on another node and be confirmed (redis-rs `mod.rs:948-972`, `datastore_scaling.md:193`) — a pre-existing exposure §5 narrows but does not close.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — the packaging decisions:
 
