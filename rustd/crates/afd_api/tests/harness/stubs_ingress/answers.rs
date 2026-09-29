@@ -5,6 +5,7 @@
 //! store's call in one arm, the script's recorded reply in the other. A child
 //! module, so it reads [`Scripted`]'s fields without widening them.
 
+use afd_admission::Repeated;
 use afd_api::services::WebhookIngress;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -247,13 +248,16 @@ impl Scripted {
     }
 }
 
-/// The ledger's answer for one claim. The stub keeps no payload digests, and
-/// no ingress producer compares them — only a steer, which never comes here.
+/// The ledger's answer for one claim. The stub keeps no payload digests or
+/// fleets, and no ingress producer compares them — only a steer, which never
+/// comes here.
 fn answer(id: String, replayed: bool) -> Admitted {
     Admitted {
-        id,
         replayed,
-        stored_digest: String::new(),
-        stored_fleet: String::new(),
+        stored: Repeated {
+            id,
+            digest: String::new(),
+            fleet: String::new(),
+        },
     }
 }

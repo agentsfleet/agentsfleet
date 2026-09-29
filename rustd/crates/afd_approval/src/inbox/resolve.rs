@@ -251,7 +251,7 @@ impl Inbox {
             let mut connection = self.database.acquire().await?;
             let inserted: bool = sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
                 .bind(&resolved.fleet_id)
-                .bind(admitted.id.as_str())
+                .bind(admitted.stored.id.as_str())
                 .bind(&resolved.workspace_id)
                 .bind(&actor)
                 .bind(kind)
@@ -277,7 +277,7 @@ impl Inbox {
         // already there and announces nothing, as the lease verb does.
         if inserted {
             let frame = TailFrame::EventReceived {
-                event_id: Cow::Borrowed(admitted.id.as_str()),
+                event_id: Cow::Borrowed(admitted.stored.id.as_str()),
                 actor: Cow::Borrowed(&actor),
                 event_type: Cow::Borrowed(kind),
                 created_at: now.as_millis(),
@@ -288,6 +288,6 @@ impl Inbox {
                 .await;
         }
 
-        Ok(Some(admitted.id))
+        Ok(Some(admitted.stored.id))
     }
 }

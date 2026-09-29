@@ -47,17 +47,23 @@ async fn one_slack_request_is_one_attempt() {
     let ledger = ledger(&fixtures);
     let first = admit_mention(&ledger, &fleet, &workspace, &first_key).await;
     let retried = admit_mention(&ledger, &fleet, &workspace, &first_key).await;
-    assert_eq!(retried.id, first.id, "a retry is the same event");
+    assert_eq!(
+        retried.stored.id, first.stored.id,
+        "a retry is the same event"
+    );
     assert!(retried.replayed);
     let second = admit_mention(&ledger, &fleet, &workspace, &format!("{fleet}:EvSlack02")).await;
-    assert_ne!(second.id, first.id, "a second mention is a second event");
+    assert_ne!(
+        second.stored.id, first.stored.id,
+        "a second mention is a second event"
+    );
 
     // One lease: the fleet runs one event at a time, so the first is the one
     // leased, on the branch named for it, and no approval is asked for.
     let ready = Ready {
         runner,
         fleet: fleet.clone(),
-        event_id: first.id.clone(),
+        event_id: first.stored.id.clone(),
         tenant,
     };
     let claimed = claim(&fixtures, &ready).await;
@@ -66,7 +72,7 @@ async fn one_slack_request_is_one_attempt() {
         !answer.contains(NO_LEASE),
         "a Slack-requested write event was held rather than leased: {answer}"
     );
-    let first_branch = repair::branch_for(&first.id);
+    let first_branch = repair::branch_for(&first.stored.id);
     assert!(answer.contains(&first_branch), "{first_branch}: {answer}");
 
     // Three deliveries, two entries: the one leased and the one after it. The
@@ -83,7 +89,7 @@ async fn one_slack_request_is_one_attempt() {
     );
     // The second request authors elsewhere: its branch is named for its own
     // event, the name the lease path gives it (`deliver.rs`).
-    assert_ne!(repair::branch_for(&second.id), first_branch);
+    assert_ne!(repair::branch_for(&second.stored.id), first_branch);
 
     fixtures.cleanup().await;
 }

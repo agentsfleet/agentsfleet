@@ -1,10 +1,10 @@
 //! The row a producer's key already holds, read back.
 //!
 //! [`crate::Admissions::admit`] answers a repeat itself — its insert conflicts
-//! on `UNIQUE (producer, producer_key)` and hands back the first row — but it
-//! does not say whose payload that row holds, and a spent fleet budget or the
-//! caller's own check refuses before the insert is reached. A producer that
-//! must compare the payload, or answer a repeat a gate refused, reads it here.
+//! on `UNIQUE (producer, producer_key)` and hands back the first row, digest
+//! and fleet included, as [`crate::Admitted::stored`]. A spent fleet budget or
+//! the caller's own check refuses before the insert is reached, so a producer
+//! that must answer a repeat on those paths reads the row here.
 
 use sqlx::Row as _;
 
@@ -14,10 +14,11 @@ use crate::{Admissions, Producer, logical_id, sql};
 /// Statement name, for the context a query failure carries.
 const CONTEXT_FIND_REPEATED: &str = "find a repeated admission";
 
-/// An admission already recorded under a producer's key.
+/// An admission row as recorded under a producer's key: an earlier call's
+/// when read back here, or the one an admission just wrote or met.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Repeated {
-    /// The logical event id the first admission was answered with.
+    /// The logical event id the row's admission was answered with.
     pub id: String,
     /// The payload digest it was admitted with, which a retry is checked
     /// against ([`crate::Admission::payload_digest`]).

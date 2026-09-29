@@ -56,8 +56,12 @@ const DETAIL_MALFORMED_JSON: &str = "Request body is not valid JSON";
 /// The refusal an empty message earns.
 const DETAIL_MESSAGE_EMPTY: &str = "message must not be empty";
 
-/// The refusal an over-long message earns.
-const DETAIL_MESSAGE_LONG: &str = "message must not exceed 8192 bytes";
+/// The refusal a message past the bound, or holding NUL, earns.
+///
+/// One sentence names both rules: a caller told only the one it did not break
+/// would go looking at the wrong limit.
+const DETAIL_MESSAGE_INVALID: &str =
+    "message must not exceed 8192 bytes or contain a NUL character";
 
 /// The refusal an unusable client operation identity earns.
 ///
@@ -258,7 +262,7 @@ fn read_steer(body: &Bytes) -> Result<SteerRequest<'_>, Refusal> {
         } else if request.message.is_empty() {
             DETAIL_MESSAGE_EMPTY
         } else {
-            DETAIL_MESSAGE_LONG
+            DETAIL_MESSAGE_INVALID
         }));
     }
     Ok(request)

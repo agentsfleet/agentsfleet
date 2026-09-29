@@ -9209,7 +9209,7 @@
           "Fleets"
         ],
         "summary": "Stream live fleet activity",
-        "description": "Opens a Server-Sent Events (SSE) stream for new fleet activity. Each activity message includes `id`, `event`, and `data`. `event` is the `kind` field that leads `data`. The first frame is `event: hello`, sent as soon as the subscription attaches and before any activity. Its `data` is `{\"kind\":\"hello\",\"fleet_ids\":[\"<fleet_id>\"],\"counters\":{}}` — the one fleet this connection carries. It uses identifier 0 and does not advance the activity sequence, so a client may report the stream live without waiting for a heartbeat. An instance holding no pub/sub connection sends no `hello`. The daemon brackets every run. `event_received` carries `event_id`, `actor`, `event_type` and `created_at` when a run's row is written. `event_complete` carries the terminal row as `GET …/events` lists it, without `fleet_id` and `workspace_id`. The completion adds `fleet_status` and `pending_approvals`. It also carries `final_reply`, the reply text, when that text is at most 64 KiB. Without it, read the event detail. `gate_opened` and `gate_resolved` carry `gate_id`, `event_id` and `pending_approvals`. `event_id` is null for a gate raised outside a run. A resolved gate adds `status` and `resolved_by`. The runner's frames ride the same stream: `chunk`, `tool_call_started`, `tool_call_progress` and `tool_call_completed`. Each tool frame carries `event_id` and `name`. Newer runners add `call_id`, which every frame of one call shares. Identifiers restart at 0 for each connection. The route ignores `Last-Event-ID`. At capacity, the route returns 503 `UZ-API-002` with `Retry-After`. Read missed events before reconnecting. After 15 seconds without activity, the stream sends `event: heartbeat` with `data: {\"kind\":\"heartbeat\"}`. Heartbeats have no `id` and do not advance the activity sequence. ",
+        "description": "Opens a Server-Sent Events (SSE) stream for new fleet activity. Each activity message includes `id`, `event`, and `data`. `event` is the `kind` field that leads `data`. The first frame is `event: hello`, sent as soon as the subscription attaches and before any activity. Its `data` is `{\"kind\":\"hello\",\"fleet_ids\":[\"<fleet_id>\"],\"counters\":{}}` — the one fleet this connection carries. It uses identifier 0 and does not advance the activity sequence, so a client may report the stream live without waiting for a heartbeat. An instance holding no pub/sub connection sends no `hello`. The daemon brackets every run. `event_received` carries `event_id`, `actor`, `event_type` and `created_at` when a run's row is written. `event_complete` carries the terminal row as `GET …/events` lists it, without `fleet_id` and `workspace_id`. The completion adds `fleet_status` and `pending_approvals`. It also carries `final_reply`, the reply text, when that text is at most 64 KiB. Without it, read the event detail. `gate_opened` and `gate_resolved` carry `gate_id`, `event_id` and `pending_approvals`. `event_id` is null for a gate raised outside a run. A resolved gate adds `status` and `resolved_by`. The runner's frames ride the same stream: `chunk`, `tool_call_started`, `tool_call_progress` and `tool_call_completed`. Each tool frame carries `event_id` and `name`. Newer runners add `call_id`, which every frame of one call shares and no other call of the event reuses. Identifiers restart at 0 for each connection. The route ignores `Last-Event-ID`. At capacity, the route returns 503 `UZ-API-002` with `Retry-After`. Read missed events before reconnecting. After 15 seconds without activity, the stream sends `event: heartbeat` with `data: {\"kind\":\"heartbeat\"}`. Heartbeats have no `id` and do not advance the activity sequence. ",
         "operationId": "stream_fleet_events",
         "parameters": [
           {
@@ -17172,8 +17172,7 @@
             "type": "string",
             "description": "Always `accepted`. A field rather than an implied 202, because that is\nwhat the daemon this ports writes."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "SteerRequest": {
         "type": "object",
@@ -17184,14 +17183,14 @@
         "properties": {
           "message": {
             "type": "string",
-            "description": "What to say to the fleet.\n\nBounded on the decoded bytes, which is what reaches the stream. The\nescaped form a client sends is not what counts against the limit."
+            "description": "What to say to the fleet: 1 to 8192 bytes, with no NUL character.\n\nBounded on the decoded bytes, which is what reaches the stream. The\nescaped form a client sends is not what counts against the limit."
           },
           "operation_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Your own name for this message, repeated on its retries.\n\nScoped to the fleet. Send the same value again with the same message and\nthe answer is the first send's `event_id`: one run, one charge. That holds\neven if the fleet has stopped or paused since. The same value with a\ndifferent message, or from another sender, is refused with 409\n`UZ-AGT-016`. Each signed-in person is one sender; a workspace's API keys\nare one between them.\n\nOmit it and every call is a new message, which is what a person pressing\nsend twice means."
+            "description": "Your own name for this message, repeated on its retries: 1 to 200 bytes,\nwith no NUL character.\n\nScoped to the fleet. Send the same value again with the same message and\nthe answer is the first send's `event_id`: one run, one charge. That holds\neven if the fleet has stopped or paused since. The same value with a\ndifferent message, or from another sender, is refused with 409\n`UZ-AGT-016`. Each signed-in person is one sender; a workspace's API keys\nare one between them.\n\nOmit it and every call is a new message, which is what a person pressing\nsend twice means."
           }
         },
         "additionalProperties": false
@@ -17381,7 +17380,7 @@
               "string",
               "null"
             ],
-            "description": "Which call of the run this frame belongs to: every frame of one call\ncarries the same value. Absent from runners that do not name calls."
+            "description": "Which call of the run this frame belongs to, 1 to 64 bytes: every frame\nof one call carries the same value. Absent from runners that do not name\ncalls."
           },
           "ms": {
             "type": "integer",
@@ -17408,7 +17407,7 @@
               "string",
               "null"
             ],
-            "description": "Which call of the run this frame belongs to: every frame of one call\ncarries the same value. Absent from runners that do not name calls."
+            "description": "Which call of the run this frame belongs to, 1 to 64 bytes: every frame\nof one call carries the same value. Absent from runners that do not name\ncalls."
           },
           "elapsed_ms": {
             "type": "integer",
@@ -17439,7 +17438,7 @@
               "string",
               "null"
             ],
-            "description": "Which call of the run this frame belongs to: every frame of one call\ncarries the same value. Absent from runners that do not name calls."
+            "description": "Which call of the run this frame belongs to, 1 to 64 bytes: every frame\nof one call carries the same value. Absent from runners that do not name\ncalls."
           },
           "name": {
             "type": "string",

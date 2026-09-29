@@ -13,28 +13,30 @@
 //!
 //! No fencing, deliberately. A superseded holder's cosmetic frames are
 //! harmless, and the tail is never a source of truth — which is why the load
-//! below has no `status` predicate either.
+//! below has no `status` predicate either. The fence is read all the same, to
+//! scope the call ids a lease publishes (`activity/published.rs`).
 //!
 //! # The vocabulary bridge
 //!
 //! This is the one seam where the runner's frame names become the dashboard's.
 //! They are NOT the same vocabulary: `fleet_response_chunk` on the wire is
 //! `chunk` on the channel, and that single rename is the whole reason a
-//! translation type exists rather than the wire frame being re-serialized. The
-//! `From` below is total over [`ActivityFrame`], so a new frame variant fails
-//! the build until somebody decides what the dashboard calls it.
+//! translation type exists rather than the wire frame being re-serialized.
+//! `Published::of` is total over [`ActivityFrame`], so a new frame variant
+//! fails the build until somebody decides what the dashboard calls it.
 
 use afd_core::id::Uuid7;
 use afd_observability::metrics::label::fleet::DeliveryStage;
 use afd_observability::producers;
 use afd_wire::activity::ActivityFrame;
-use serde::Serialize;
-use serde_json::value::RawValue;
 use sqlx::Row as _;
 
+use self::published::Published;
 use crate::error::{Result, query, row_malformed};
 use crate::lease::sql;
 use crate::lease::store::Leases;
+
+mod published;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_TARGET: &str = "activity lease load";
@@ -57,51 +59,10 @@ pub struct Target {
     /// Expired or superseded holders can publish cosmetic frames but cannot
     /// contribute a latency sample to the active-lease histogram.
     pub timing_eligible: bool,
-}
-
-/// One frame as the dashboard reads it.
-///
-/// Tagged by `kind`, which is the discriminator `events.ts` switches on. The
-/// payload field names are the Zig's, because the consumer is unchanged.
-#[derive(Debug, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-enum Published<'a> {
-    ToolCallStarted {
-        event_id: &'a str,
-        name: &'a str,
-        /// Spliced in verbatim, NOT re-encoded — see [`Published::of`].
-        args_redacted: &'a RawValue,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        call_id: Option<&'a str>,
-    },
-    ToolCallProgress {
-        event_id: &'a str,
-        name: &'a str,
-        elapsed_ms: i64,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        call_id: Option<&'a str>,
-    },
-    /// The one rename in the bridge: `fleet_response_chunk` on the wire.
-    #[serde(rename = "chunk")]
-    Chunk {
-        event_id: &'a str,
-        text: &'a str,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        text_kind: Option<afd_wire::activity::StreamTextKind>,
-        /// A subscriber trusts raw model text only from this first frame.
-        stream_start: bool,
-        /// A dropped runner chunk makes later bytes unsafe to classify.
-        stream_contiguous: bool,
-        /// Zero-based output position, retained across lossy forwarding.
-        stream_seq: u64,
-    },
-    ToolCallCompleted {
-        event_id: &'a str,
-        name: &'a str,
-        ms: i64,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        call_id: Option<&'a str>,
-    },
+    /// The lease's fencing token, distinct per claim of the fleet. Kept as the
+    /// column's own `i64`: it only scopes a cosmetic id, so a value this daemon
+    /// never writes is no reason to refuse the tail.
+    pub fence: i64,
 }
 
 impl Leases {
@@ -186,6 +147,7 @@ impl Leases {
         let event_created_at: i64 = row.try_get(3).map_err(query(CONTEXT_TARGET))?;
         let status: String = row.try_get(4).map_err(query(CONTEXT_TARGET))?;
         let lease_expires_at: i64 = row.try_get(5).map_err(query(CONTEXT_TARGET))?;
+        let fence: i64 = row.try_get(6).map_err(query(CONTEXT_TARGET))?;
         Ok(Some(Target {
             fleet_id: Uuid7::parse(&fleet)
                 .map_err(row_malformed("fleet.runner_leases", "fleet_id"))?,
@@ -194,54 +156,8 @@ impl Leases {
             event_created_at,
             timing_eligible: status == sql::LEASE_STATUS_ACTIVE
                 && lease_expires_at > afd_core::clock::now().as_millis(),
+            fence,
         }))
-    }
-}
-
-impl<'a> Published<'a> {
-    /// The dashboard's shape for one wire frame.
-    ///
-    /// Total over [`ActivityFrame`], so a frame variant added upstream fails to
-    /// compile here until its channel name is decided — which is the property
-    /// the Zig gets from its exhaustive `switch` and the reason this is a match
-    /// rather than a serde re-tag.
-    ///
-    /// # Errors
-    /// Reports arguments that are not well-formed JSON. Only the started frame
-    /// can fail, because it is the only one carrying a nested document.
-    fn of(
-        target: &'a Target,
-        frame: &'a ActivityFrame<'a>,
-    ) -> core::result::Result<Self, serde_json::Error> {
-        let event_id = target.event_id.as_str();
-        Ok(match frame {
-            ActivityFrame::ToolCallStarted(body) => Self::ToolCallStarted {
-                event_id,
-                name: &body.name,
-                args_redacted: serde_json::from_str(&body.args_redacted)?,
-                call_id: frame.call_id(),
-            },
-            ActivityFrame::ToolCallProgress(body) => Self::ToolCallProgress {
-                event_id,
-                name: &body.name,
-                elapsed_ms: body.elapsed_ms,
-                call_id: frame.call_id(),
-            },
-            ActivityFrame::FleetResponseChunk(body) => Self::Chunk {
-                event_id,
-                text: &body.text,
-                text_kind: body.text_kind,
-                stream_start: body.stream_start && body.stream_seq == 0 && target.timing_eligible,
-                stream_contiguous: body.stream_contiguous && target.timing_eligible,
-                stream_seq: body.stream_seq,
-            },
-            ActivityFrame::ToolCallCompleted(body) => Self::ToolCallCompleted {
-                event_id,
-                name: &body.name,
-                ms: body.ms,
-                call_id: frame.call_id(),
-            },
-        })
     }
 }
 

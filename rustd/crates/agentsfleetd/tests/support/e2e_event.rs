@@ -79,7 +79,7 @@ pub(crate) async fn enqueue(
         !admitted.replayed,
         "an unrepeatable key is minted per call and cannot replay"
     );
-    admitted.id
+    admitted.stored.id
 }
 
 /// An event whose type this daemon cannot name — what a producer from a newer

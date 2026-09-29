@@ -44,7 +44,7 @@ pub(super) async fn deliver<D: Services>(
     Ok((
         StatusCode::ACCEPTED,
         Json(webhook::Accepted {
-            event_id: appended.id.as_str().into(),
+            event_id: appended.stored.id.as_str().into(),
             replayed: appended.replayed,
         }),
     )

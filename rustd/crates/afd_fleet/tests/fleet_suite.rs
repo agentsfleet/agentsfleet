@@ -72,6 +72,14 @@ mod integration_recovery_budget;
 mod integration_recovery_outage;
 #[path = "integration_recovery_progress.rs"]
 mod integration_recovery_progress;
+#[path = "integration_recovery_progress_deleted.rs"]
+mod integration_recovery_progress_deleted;
+#[path = "integration_recovery_progress_live.rs"]
+mod integration_recovery_progress_live;
+#[path = "integration_recovery_progress_restart.rs"]
+mod integration_recovery_progress_restart;
+#[path = "integration_recovery_progress_walk.rs"]
+mod integration_recovery_progress_walk;
 #[path = "integration_renew_clamp.rs"]
 mod integration_renew_clamp;
 #[path = "integration_renew_coverage.rs"]

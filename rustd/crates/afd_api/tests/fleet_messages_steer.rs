@@ -54,6 +54,9 @@ const MAX_OPERATION_ID_BYTES: usize = 200;
 /// The sentence an operation id outside that bound earns.
 const OPERATION_ID_DETAIL: &str = "operation_id must be between 1 and 200 bytes when present";
 
+/// The sentence a message past its bound, or holding NUL, earns.
+const MESSAGE_DETAIL: &str = "message must not exceed 8192 bytes or contain a NUL character";
+
 /// One fully authorised steer at a fresh router holding one scoped person.
 async fn steering(body: &str) -> axum::response::Response {
     let router = Fleet::new()
@@ -166,6 +169,16 @@ async fn test_nul_operation_id_is_refused() {
     assert_eq!(field_of(refused, "detail").await, OPERATION_ID_DETAIL);
 }
 
+/// A message holding NUL, which the lease's `jsonb` cast cannot store, is
+/// refused with the message sentence. The store behind this router only reports
+/// an outage, so a 400 proves the refusal came before anything was admitted.
+#[tokio::test]
+async fn test_nul_message_is_refused() {
+    let refused = steering(&steer_of("ship\u{0}it")).await;
+    assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(field_of(refused, "detail").await, MESSAGE_DETAIL);
+}
+
 /// A message past the bound is refused, and the bound is on DECODED bytes.
 ///
 /// The pair is the claim: one byte past the ceiling is refused, and a message
@@ -175,10 +188,7 @@ async fn test_nul_operation_id_is_refused() {
 async fn the_message_bound_is_measured_on_the_decoded_bytes() {
     let over = steering(&steer_of(&"a".repeat(MAX_MESSAGE_BYTES + 1))).await;
     assert_eq!(over.status(), StatusCode::BAD_REQUEST);
-    assert_eq!(
-        field_of(over, "detail").await,
-        "message must not exceed 8192 bytes"
-    );
+    assert_eq!(field_of(over, "detail").await, MESSAGE_DETAIL);
 
     let escaped = steering(&steer_of(&"\n".repeat(MAX_MESSAGE_BYTES))).await;
     assert_ne!(

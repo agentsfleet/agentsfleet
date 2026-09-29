@@ -81,7 +81,9 @@ async fn a_replay_pass_against_a_dead_queue_repairs_nothing_and_raises_nothing()
         .await
         .expect("the row commits whatever the queue does");
     assert_eq!(
-        fixtures.admission_receipt(&fleet, &deferred.id).await,
+        fixtures
+            .admission_receipt(&fleet, &deferred.stored.id)
+            .await,
         None,
         "an append that never happened records no receipt"
     );
@@ -98,7 +100,9 @@ async fn a_replay_pass_against_a_dead_queue_repairs_nothing_and_raises_nothing()
         "nothing can be appended to a queue that is not there: {replayed:?}"
     );
     assert_eq!(
-        fixtures.admission_receipt(&fleet, &deferred.id).await,
+        fixtures
+            .admission_receipt(&fleet, &deferred.stored.id)
+            .await,
         None,
         "a refused append must not record a receipt for an entry nobody holds"
     );
@@ -112,7 +116,7 @@ async fn a_replay_pass_against_a_dead_queue_repairs_nothing_and_raises_nothing()
         .expect("the replay pass runs against both live datastores");
     assert!(
         fixtures
-            .admission_receipt(&fleet, &deferred.id)
+            .admission_receipt(&fleet, &deferred.stored.id)
             .await
             .is_some(),
         "the row the outage deferred must still be repairable afterwards"
@@ -142,7 +146,7 @@ async fn a_reconcile_pass_that_cannot_probe_keeps_the_receipt() {
         .await
         .expect("a live queue admits and receipts in one call");
     let receipt = fixtures
-        .admission_receipt(&fleet, &healthy.id)
+        .admission_receipt(&fleet, &healthy.stored.id)
         .await
         .expect("a live append records its receipt");
 
@@ -160,7 +164,7 @@ async fn a_reconcile_pass_that_cannot_probe_keeps_the_receipt() {
         "a probe that could not be made must void nothing: {reconciled:?}"
     );
     assert_eq!(
-        fixtures.admission_receipt(&fleet, &healthy.id).await,
+        fixtures.admission_receipt(&fleet, &healthy.stored.id).await,
         Some(receipt),
         "the receipt the probe could not disprove must survive the pass"
     );

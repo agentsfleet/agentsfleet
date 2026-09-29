@@ -21,7 +21,7 @@ use afd_dragonfly::streams::FleetStreams;
 use afd_events::{ACTOR_MACHINE, Steer, Steered};
 use afd_wire::event::EventType;
 
-use crate::integration_steer_replay::CHANGED_JSON;
+use crate::integration_steer_replay::{CAUSE_PAYLOAD, CHANGED_JSON};
 use crate::integration_steer_retry::{KEY_SEPARATOR, PRODUCER_STEER, REQUEST_JSON, clean};
 use crate::recorder::Recorder;
 use crate::support::EventsLane;
@@ -44,10 +44,13 @@ const SET_DIGEST: &str = "UPDATE core.fleet_admissions SET payload_digest = $3 \
 const SET_FLEET: &str = "UPDATE core.fleet_admissions SET fleet_id = $3::uuid \
      WHERE producer = $1 AND producer_key = $2";
 
-/// The warns a reused key can leave, and the field that names them.
+/// The warns a reused key can leave, the field that names them, and the field
+/// naming which half of the stored row differed.
 const CONFLICT_EVENT: &str = "steer_operation_conflict";
 const DRIFT_EVENT: &str = "admission_payload_drifted";
 const FIELD_EVENT: &str = "event";
+const FIELD_CAUSE: &str = "cause";
+const CAUSE_FLEET: &str = "fleet";
 
 /// A repeat is answered from the insert: the first event, marked a replay.
 #[tokio::test(flavor = "multi_thread")]
@@ -87,16 +90,22 @@ async fn test_replayed_append_never_answers_unchecked() {
         .expect("the first send is admitted");
 
     set_stored(&lane, SET_DIGEST, FOREIGN_DIGEST).await;
+    let logs = Recorder::install();
     let foreign_digest = send(&steer, &lane, REQUEST_JSON)
         .await
         .expect_err("a row holding another payload is refused");
     assert!(foreign_digest.is_operation_conflict(), "{foreign_digest}");
+    assert_eq!(causes(&logs), [CAUSE_PAYLOAD]);
+    drop(logs);
 
     set_stored(&lane, SET_FLEET, &elsewhere.fleet).await;
+    let logs = Recorder::install();
     let foreign_fleet = send(&steer, &lane, REQUEST_JSON)
         .await
         .expect_err("a row holding another fleet is refused");
     assert!(foreign_fleet.is_operation_conflict(), "{foreign_fleet}");
+    assert_eq!(causes(&logs), [CAUSE_FLEET], "the fleet is named first");
+    drop(logs);
 
     clean(&lane, &FleetStreams::new(lane.queue.clone())).await;
 }
@@ -185,6 +194,15 @@ fn delivery<'a>(lane: &'a EventsLane, key: &'a str, request_json: &'a str) -> Ad
         request_json,
         reply: Reply::None,
     }
+}
+
+/// The `cause` each recorded conflict warn names, in order.
+fn causes(logs: &Recorder) -> Vec<String> {
+    logs.events()
+        .into_iter()
+        .filter(|record| record.fields.get(FIELD_EVENT).map(String::as_str) == Some(CONFLICT_EVENT))
+        .filter_map(|record| record.fields.get(FIELD_CAUSE).cloned())
+        .collect()
 }
 
 /// How many recorded events carry `event`.

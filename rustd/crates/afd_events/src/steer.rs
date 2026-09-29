@@ -21,8 +21,8 @@
 //! never saw its response.
 //!
 //! Those two are indistinguishable from here. The bytes are identical, so only
-//! the caller knows which one it is making, and Dimension 7.5 is the field that
-//! lets it say: `operation_id`, repeated across a retry. Present, it is the
+//! the caller knows which one it is making, and one request field lets it
+//! say which: `operation_id`, repeated across a retry. Present, it is the
 //! ledger's `producer_key` and the retry conflicts on
 //! `UNIQUE (producer, producer_key)` — answered with the first admission's
 //! event, one run, one charge. Absent, the ledger mints one and two identical
@@ -59,6 +59,11 @@ use crate::error::{Result, operation_conflict};
 
 /// Joins the fleet to the caller's operation id in the ledger key.
 const KEY_SEPARATOR: &str = ":";
+
+/// What a refused reuse's warn names as the half that differed: the row sits
+/// on another fleet, or it holds another message or sender.
+const CONFLICT_CAUSE_FLEET: &str = "fleet";
+const CONFLICT_CAUSE_PAYLOAD: &str = "payload";
 
 /// The prefix every operator-driven message carries in its actor.
 ///
@@ -144,18 +149,13 @@ impl Steer {
             // The insert met a row already under this key: a retry, or a send
             // with the same id that won the race to the insert. Its event is
             // this caller's answer only if the row holds this caller's payload.
-            let stored = Repeated {
-                id: admitted.id,
-                digest: admitted.stored_digest,
-                fleet: admitted.stored_fleet,
-            };
-            return answer_repeat(&admission, stored).map(Steered::repeat);
+            return answer_repeat(&admission, admitted.stored).map(Steered::repeat);
         }
 
         // Hoisted rather than spelled inside the macro: the log bridge
         // duplicates every field expression, and coverage instrumentation
         // scores the dead copy (`docs/LOGGING_STANDARD.md` §8A).
-        let id = admitted.id.as_str();
+        let id = admitted.stored.id.as_str();
         tracing::debug!(
             fleet_id = fleet,
             workspace_id = workspace,
@@ -164,7 +164,7 @@ impl Steer {
             event = "steer_appended",
         );
         Ok(Steered {
-            event_id: admitted.id,
+            event_id: admitted.stored.id,
             replayed: false,
         })
     }
@@ -235,11 +235,16 @@ impl Steer {
 /// somebody else's event; and a row some other fleet holds under this key is
 /// refused the same way rather than answered.
 fn answer_repeat(admission: &Admission<'_>, repeated: Repeated) -> Result<String> {
-    if repeated.fleet == admission.fleet && repeated.digest == admission.payload_digest() {
+    let cause = if repeated.fleet != admission.fleet {
+        CONFLICT_CAUSE_FLEET
+    } else if repeated.digest != admission.payload_digest() {
+        CONFLICT_CAUSE_PAYLOAD
+    } else {
         return Ok(repeated.id);
-    }
+    };
     // A client that reused its own id is a defect somebody should see; the
-    // refusal itself logs at debug like every other caller fault.
+    // refusal itself logs at debug like every other caller fault. The cause is
+    // a fixed word, so the warn never carries the message or the key.
     let code = error_code::AGENTSFLEET_OPERATION_CONFLICT.as_str();
     let fleet_id = admission.fleet;
     let event_id = repeated.id.as_str();
@@ -247,6 +252,7 @@ fn answer_repeat(admission: &Admission<'_>, repeated: Repeated) -> Result<String
         error_code = code,
         fleet_id,
         event_id,
+        cause,
         event = "steer_operation_conflict",
     );
     Err(operation_conflict())
