@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M207
 **Workstream:** 004
 **Date:** Sep 28, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — an idle deployment spends Postgres writes on fleets that drained long ago, a refused or waiting event holds its fleet, a node blip freezes the live tail silently, and a long reply re-parses its whole answer on every flush
 **Categories:** API, UI
 **Batch:** B1 — folded into M207_003's branch and Pull Request by Indy's decision; split into its own file only for the spec line cap
@@ -292,7 +292,7 @@ SSE_MAX_STREAMS default = the tail lane's measured value (knobs.rs), overridable
 > Indy (2026-09-29): "Statistics (Recommended)" — context: 4.2's Sort; approves the additive `schema/` statistics file under SCHEMA GUARD.
 > Indy (2026-09-29): "A: hub resubscribes (Recommended)" — context: 5.2's node loss; every channel gaps on any node loss.
 
-- **Skill-chain outcomes** — pending.
+- **Skill-chain outcomes** — gstack `/review` ran Sep 29, 2026 over the whole branch (392 files) with five reviewers: Rust runtime, security/SQL/API, UI, tests/maintainability, adversarial. Fixed on this branch: the double lease (lease insert fenced on the claim, `4f5c20abb`); a claim held 30 s after a post-claim fault; the approval sweep stranding decoded rows; a subscribe during a node repair going silent; an idle-hub blip forcing a redial; a lost readiness mark on a replayed send; a retried resolve not waking or not landing its continuation (`c6cad15b9`); a server-rendered running reply never stall-watched, a gone reply loading forever, signed-out recovery polling sign-in, Working/Queued unannounced, raw-markdown announcements (`e1e5206b4`); the `operation_id` 400 naming every rule (`c52ff6180`); seven test-quality fixes (`3a07491aa`). Kept by decision: a node blip gaps every channel (Dimension 5.2, option A); a failed wall backfill keeps "catching up" until the next reconnect (tests from `28c25baec`). Listed, not fixed: four sibling routes still answer `UZ-401`; five near-identical tracing recorders across test trees; `Handles::claim` over the 70-line cap (pre-existing); a spurious gap when a channel is unsubscribed and resubscribed before the echo; streaming markdown re-parses finished blocks after a discarded render. `/orly-write-unit-test` was not run as its own pass: the per-file coverage bar (Rust >99% outside `afd_bench`, TypeScript 100%) and a failing-first test per review fix stand in. Final `verify.*` lanes run in Continuous Integration (CI), per Indy (2026-09-29): "dont run repeatedly, if you are done with push the PR with /review and so on, let the CI hand it."
 - **Deferrals** — the packaging decisions:
 
 > Indy (2026-09-28, before 20:43): "Fold into M207_003" — context: where the performance refactor lands; the recommendation was a separate milestone M208 with four workstreams.
