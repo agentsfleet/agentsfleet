@@ -22,29 +22,34 @@ use tokio::time::Instant;
 use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
 
 /// Short enough that a hang fails the test rather than the lane's timeout.
-const BUDGET: Duration = Duration::from_secs(10);
+pub(crate) const BUDGET: Duration = Duration::from_secs(10);
 
 /// How long the held subscribe is held. Well inside the connection's
 /// five-second reply deadline, so the hold is slow rather than failed.
 const HOLD: Duration = Duration::from_secs(2);
 
 /// How often a publish is retried while a reader waits for it.
-const RETRY: Duration = Duration::from_millis(25);
+pub(crate) const RETRY: Duration = Duration::from_millis(25);
 
-const FIRST: &str = "fleet:first:activity";
-const SECOND: &str = "fleet:second:activity";
+pub(crate) const FIRST: &str = "fleet:first:activity";
+pub(crate) const SECOND: &str = "fleet:second:activity";
 const LATE: &str = "fleet:late:activity";
 
 /// A redial schedule a test can wait out; see `hub_socket_faults::impatient`.
-fn impatient() -> ExponentialBuilder {
+pub(crate) fn impatient() -> ExponentialBuilder {
     ExponentialBuilder::new()
         .with_min_delay(Duration::from_millis(5))
         .with_max_delay(Duration::from_millis(20))
         .without_max_times()
 }
 
-async fn fake_and_hub() -> (FakeRedis, SubscriptionHub) {
+pub(crate) async fn fake_and_hub() -> (FakeRedis, SubscriptionHub) {
     install_subscriber();
+    fake_and_hub_on(impatient()).await
+}
+
+/// A pub/sub fake and a hub on it that redials on `schedule`.
+pub(crate) async fn fake_and_hub_on(schedule: ExponentialBuilder) -> (FakeRedis, SubscriptionHub) {
     let fake = FakeRedis::spawn(&[
         ("PING", Reply::Raw("+PONG\r\n")),
         ("SSUBSCRIBE", Reply::SubscribeAck),
@@ -52,7 +57,7 @@ async fn fake_and_hub() -> (FakeRedis, SubscriptionHub) {
     ])
     .await;
     let config = DragonflyConfig::from_url(DragonflyRole::Api, fake.url());
-    let hub = SubscriptionHub::start_with_backoff(config, impatient())
+    let hub = SubscriptionHub::start_with_backoff(config, schedule)
         .await
         .expect("the fake accepts the first connection");
     (fake, hub)
@@ -60,7 +65,12 @@ async fn fake_and_hub() -> (FakeRedis, SubscriptionHub) {
 
 /// Publishes `payload` until `reader` receives it, returning every gap it was
 /// told about on the way.
-async fn deliver(fake: &FakeRedis, channel: &str, payload: &str, reader: &mut Subscription) -> u32 {
+pub(crate) async fn deliver(
+    fake: &FakeRedis,
+    channel: &str,
+    payload: &str,
+    reader: &mut Subscription,
+) -> u32 {
     let deadline = Instant::now() + BUDGET;
     let mut gaps = 0;
     loop {
@@ -79,7 +89,7 @@ async fn deliver(fake: &FakeRedis, channel: &str, payload: &str, reader: &mut Su
 }
 
 /// Waits until `reader` is told its subscription was lost and is back.
-async fn gap_on(reader: &mut Subscription) {
+pub(crate) async fn gap_on(reader: &mut Subscription) {
     let seen = tokio::time::timeout(BUDGET, async {
         loop {
             match reader.recv().await.expect("the hub stays open") {
@@ -200,7 +210,7 @@ async fn test_a_repaired_node_gaps_its_channels_without_a_redial() {
 }
 
 /// How many `SSUBSCRIBE`s the fake has been sent.
-fn subscribes_seen(fake: &FakeRedis) -> usize {
+pub(crate) fn subscribes_seen(fake: &FakeRedis) -> usize {
     fake.seen()
         .iter()
         .filter(|name| *name == "SSUBSCRIBE")

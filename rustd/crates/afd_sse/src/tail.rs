@@ -51,3 +51,6 @@ pub fn tail(subscription: Subscription) -> impl Stream<Item = Frame> + Send {
         },
     )
 }
+
+#[cfg(test)]
+mod tests;

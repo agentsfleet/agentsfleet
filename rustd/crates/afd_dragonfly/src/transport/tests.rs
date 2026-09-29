@@ -1,6 +1,15 @@
+//! The connect ladder's arithmetic, the authority's reach, and how a failed
+//! dial is named.
+#![expect(
+    clippy::expect_used,
+    reason = "a unit test asserts by panicking; the crate's restriction set is for the daemon"
+)]
+
 use std::time::Duration;
 
-use super::{CONNECT_ATTEMPT_TIMEOUT, CONNECT_ATTEMPTS, RETRY_MAX_WAIT, builder};
+use super::{
+    CONNECT_ATTEMPT_TIMEOUT, CONNECT_ATTEMPTS, RETRY_MAX_WAIT, builder, judged, recovered,
+};
 use crate::config::{DragonflyConfig, DragonflyRole};
 
 fn default_budget() -> Duration {
@@ -58,4 +67,61 @@ fn test_a_tls_url_reads_the_authority_it_was_given() {
             .is_some_and(|message| message.contains("/nonexistent/authority.pem")),
         "a rediss:// seed must consult the authority and name it when unreadable: {refusal:?}"
     );
+}
+
+fn driver_error(detail: &str) -> redis::RedisError {
+    redis::RedisError::from((redis::ErrorKind::Io, "dial failed", detail.to_owned()))
+}
+
+fn tls_config() -> DragonflyConfig {
+    DragonflyConfig::from_url(DragonflyRole::Api, "rediss://127.0.0.1:6380".to_owned())
+}
+
+/// A diagnosis dial offers a cause only when it failed: one that connected, or
+/// ran out its own time, has nothing to prefer over the error already held.
+#[tokio::test]
+async fn a_diagnosis_offers_a_cause_only_when_it_failed() {
+    let elapsed = tokio::time::timeout(Duration::ZERO, std::future::pending::<()>())
+        .await
+        .expect_err("a pending future never beats a zero deadline");
+    assert!(
+        recovered::<()>(Err(elapsed)).is_none(),
+        "timed out: no cause"
+    );
+    assert!(recovered(Ok(Ok(()))).is_none(), "connected: no cause");
+    let cause = recovered::<()>(Ok(Err(driver_error("UnknownIssuer"))));
+    assert!(cause.is_some_and(|error| error.to_string().contains("UnknownIssuer")));
+}
+
+/// A TLS dial whose kept error hides the refusal is reported as the
+/// certificate rejection the diagnosis recovered, carrying that cause.
+#[test]
+fn a_certificate_the_diagnosis_recovers_is_a_rejection() {
+    let error = judged(
+        &tls_config(),
+        driver_error("attempt timed out"),
+        Some(driver_error("invalid peer certificate: UnknownIssuer")),
+    );
+    assert!(error.is_certificate_rejected(), "{error}");
+    let chain = format!("{error:?}");
+    assert!(
+        chain.contains("UnknownIssuer"),
+        "the recovered cause is kept: {chain}"
+    );
+}
+
+/// A diagnosis that names no certificate leaves the first failure standing,
+/// and the first failure naming one needs no diagnosis at all.
+#[test]
+fn only_a_named_certificate_turns_a_failure_into_a_rejection() {
+    let unreachable = judged(
+        &tls_config(),
+        driver_error("connection refused"),
+        Some(driver_error("connection refused again")),
+    );
+    assert!(!unreachable.is_certificate_rejected() && unreachable.is_unavailable());
+    assert!(format!("{unreachable:?}").contains("connection refused"));
+
+    let first = judged(&tls_config(), driver_error("bad certificate"), None);
+    assert!(first.is_certificate_rejected(), "{first}");
 }

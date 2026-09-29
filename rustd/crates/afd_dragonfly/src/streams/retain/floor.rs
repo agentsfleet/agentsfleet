@@ -42,7 +42,7 @@
 //! a single-key Lua script, one round trip instead of five, was not worth its
 //! unverified `XPENDING`-inside-a-script on Dragonfly.
 
-use redis::streams::{StreamPendingReply, StreamRangeReply};
+use redis::streams::StreamRangeReply;
 
 use super::{ACKNOWLEDGED_HISTORY, Position, TRIM_SLACK, Trimmed, as_u64, group_of, length_of};
 use crate::client::Dragonfly;
@@ -133,18 +133,30 @@ async fn owed_position(redis: &Dragonfly, key: &str, group: &str) -> Result<Opti
     })))
 }
 
+/// `XPENDING`'s summary form: how many entries are pending, the oldest and
+/// newest of them, and each consumer's share, which nothing here reads.
+///
+/// Decoded as its own four fields rather than through the driver's
+/// `StreamPendingReply`. That enum is non-exhaustive, so a match on it needs an
+/// arm for variants no driver has, which no reply can ever reach; decoding the
+/// fields makes every refusal one a server can actually provoke.
+type PendingSummary = (u64, Option<String>, Option<String>, redis::Value);
+
 /// The oldest entry any consumer of `group` still holds, if one does.
+///
+/// A reply of any other shape fails the decode, and a count with no oldest
+/// id is refused, exactly as the driver's own decoder refuses it. Neither is
+/// ever read as "nothing pending": the floor would then cross entries a
+/// consumer still owes, which is the one thing this module exists to never do.
 async fn oldest_pending(redis: &Dragonfly, key: &str, group: &str) -> Result<Option<Position>> {
     let mut cmd = redis::cmd(CMD_XPENDING);
     cmd.arg(key).arg(group);
-    let reply: StreamPendingReply = redis.command(CMD_XPENDING, key, &cmd).await?;
-    match reply {
-        StreamPendingReply::Empty => Ok(None),
-        StreamPendingReply::Data(summary) => Position::parse(&summary.start_id).map(Some),
-        // A shape a newer driver added. Refused rather than read as "nothing
-        // pending": the floor would then cross entries a consumer still owes,
-        // which is the one thing this module exists to never do.
-        _unknown => Err(error::unexpected_reply(CMD_XPENDING)),
+    let (count, oldest, _newest, _consumers): PendingSummary =
+        redis.command(CMD_XPENDING, key, &cmd).await?;
+    match (count, oldest) {
+        (0, _) => Ok(None),
+        (_, Some(oldest)) => Position::parse(&oldest).map(Some),
+        (_, None) => Err(error::unexpected_reply(CMD_XPENDING)),
     }
 }
 

@@ -95,10 +95,14 @@ mod connect_refusals;
 mod dedicated_faults;
 #[path = "error_surface.rs"]
 mod error_surface;
+#[path = "group_create_faults.rs"]
+mod group_create_faults;
 #[path = "hub_connect_deadline.rs"]
 mod hub_connect_deadline;
 #[path = "hub_gap_faults.rs"]
 mod hub_gap_faults;
+#[path = "hub_repair_faults.rs"]
+mod hub_repair_faults;
 #[path = "hub_socket_faults.rs"]
 mod hub_socket_faults;
 #[path = "index_addressing.rs"]
@@ -139,5 +143,7 @@ mod keys_and_config;
 mod misbehaving_server;
 #[path = "preflight_refusals.rs"]
 mod preflight_refusals;
+#[path = "retention_faults.rs"]
+mod retention_faults;
 #[path = "verify_outcomes.rs"]
 mod verify_outcomes;

@@ -33,6 +33,15 @@ use tokio::net::TcpListener;
 
 pub(crate) use crate::subscriber::install_subscriber;
 
+/// A frame the server writes unprompted.
+#[derive(Debug, Clone)]
+struct Push {
+    /// The channel it was published on, or `None` for a push every
+    /// connection is sent.
+    channel: Option<Vec<u8>>,
+    frame: Vec<u8>,
+}
+
 /// Shared state the test drives the server through mid-flight.
 #[derive(Debug)]
 struct Control {
@@ -49,8 +58,9 @@ struct Control {
     /// Signals live connections to drop. A broadcast because there may be
     /// several and every one of them has to hear it.
     cut: tokio::sync::broadcast::Sender<()>,
-    /// Bytes every live connection writes unprompted — a published frame.
-    pushes: tokio::sync::broadcast::Sender<Vec<u8>>,
+    /// Bytes live connections write unprompted: a published frame, written
+    /// only where its channel is subscribed, or a push for every connection.
+    pushes: tokio::sync::broadcast::Sender<Push>,
     /// Connections currently being served. Counted server-side because it is
     /// the only place that can tell a client which CLOSED its socket from one
     /// that merely stopped using it.
@@ -147,7 +157,19 @@ impl FakeRedis {
     /// keeps no subscription table, so a client that never subscribed is sent
     /// the frame too, and a test only asserts on the reader it subscribed.
     pub(crate) fn publish(&self, channel: &str, payload: &str) {
-        let _delivered = self.control.pushes.send(smessage(channel, payload));
+        let _delivered = self.control.pushes.send(Push {
+            channel: Some(channel.as_bytes().to_vec()),
+            frame: smessage(channel, payload),
+        });
+    }
+
+    /// Writes `frame` to every live connection unprompted — a push of any
+    /// kind, well-formed or not, as the test builds it.
+    pub(crate) fn push(&self, frame: Vec<u8>) {
+        let _delivered = self.control.pushes.send(Push {
+            channel: None,
+            frame,
+        });
     }
 
     /// How many connections the server is currently serving.
@@ -225,8 +247,8 @@ mod reply;
 #[path = "fake_redis/serve.rs"]
 mod serve;
 
-pub(crate) use self::reply::Reply;
 use self::reply::{CMD_CLUSTER, RULE_INFO_CLUSTER, smessage};
+pub(crate) use self::reply::{Reply, push_frame};
 use self::serve::serve;
 
 /// A loopback port with nothing listening on it.

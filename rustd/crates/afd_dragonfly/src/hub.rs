@@ -38,6 +38,8 @@
 //! node answering it used to park every frame for every channel behind it.
 
 mod channels;
+#[cfg(feature = "test-util")]
+mod detached;
 mod dispatch;
 mod gap;
 mod pump;
@@ -45,6 +47,9 @@ mod repair;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(feature = "test-util")]
+pub use self::detached::Server as DetachedServer;
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
