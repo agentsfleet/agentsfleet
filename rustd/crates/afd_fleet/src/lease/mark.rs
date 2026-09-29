@@ -70,7 +70,10 @@ mod tests {
             .await;
 
         let after = capture.sum(READY_WRITE_FAILURES, &[]);
-        assert!(after > before, "the refused clear is counted: {before} -> {after}");
+        assert!(
+            after > before,
+            "the refused clear is counted: {before} -> {after}"
+        );
         let line = log.only(EVENT_READY_CLEAR_FAILED);
         assert_eq!(
             line.get("error_code").map(String::as_str),
