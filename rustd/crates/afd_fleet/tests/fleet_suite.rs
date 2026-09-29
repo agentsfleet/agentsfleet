@@ -52,6 +52,8 @@ mod integration_lease_gates;
 mod integration_lease_installed;
 #[path = "integration_lease_issue.rs"]
 mod integration_lease_issue;
+#[path = "integration_lease_ready.rs"]
+mod integration_lease_ready;
 #[path = "integration_lease_started.rs"]
 mod integration_lease_started;
 #[path = "integration_ledger_fleet_name.rs"]

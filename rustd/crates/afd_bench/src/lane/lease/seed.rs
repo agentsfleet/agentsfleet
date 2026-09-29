@@ -263,12 +263,9 @@ async fn enqueue(queue: &Dragonfly, seeded: &SeededFleet, now: i64) -> Result<()
     streams
         .append(&seeded.fleet, &entry.queued_pairs(&logical))
         .await?;
-    // The token is the caller's to mint, and the ingress path uses the entry
-    // it just appended. The fleet id serves here: this lane never reads the
-    // token back, and a distinct value would only be a second thing to sweep.
-    ReadyIndex::new(queue.clone())
-        .mark(&seeded.fleet, &seeded.fleet)
-        .await?;
+    // The index mints the token, as it does for ingress: a lease poll that
+    // drains this fleet clears exactly the generation it peeked.
+    ReadyIndex::new(queue.clone()).mark(&seeded.fleet).await?;
     Ok(())
 }
 

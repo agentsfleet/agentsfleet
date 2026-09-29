@@ -66,7 +66,7 @@ const CMD_XACK: &str = "XACK";
 const CMD_XAUTOCLAIM: &str = "XAUTOCLAIM";
 const CMD_XRANGE: &str = "XRANGE";
 
-/// The cap argument `XRANGE`, `XREVRANGE` and `XAUTOCLAIM` all take.
+/// The cap argument `XRANGE` and `XAUTOCLAIM` both take.
 pub(crate) const ARG_COUNT: &str = "COUNT";
 const CMD_DEL: &str = "DEL";
 
@@ -81,18 +81,16 @@ pub const FLEET_CONSUMER_GROUP: &str = "fleet_lease";
 /// that has is a retired instance or a legacy throwaway consumer name.
 const AUTOCLAIM_MIN_IDLE_MS: usize = 300_000;
 
-/// Where an autoclaim scan starts, and how many entries it takes.
+/// Where a claim's scan starts.
 ///
-/// Always from the beginning of the pending list: a claimed entry's idle clock
-/// RESETS, so the same entry is not eligible twice and the scan makes progress
-/// without a cursor to carry.
+/// Always from the beginning of the pending list. For the sweep, a claimed
+/// entry's idle clock RESETS, so the same entry is not eligible twice and the
+/// scan makes progress without a cursor to carry. For the lease's takeover the
+/// head IS the answer: the oldest owed entry is the one to deliver next.
 const AUTOCLAIM_START: &str = "0-0";
 
 /// Read id meaning "entries never delivered to any consumer".
 const NEW_ENTRIES: &str = ">";
-
-/// Read id meaning "this consumer's own pending entries, oldest first".
-const OWN_PENDING: &str = "0";
 
 /// Group start id for a stream that is brand new, where "from the beginning"
 /// and "from now" are the same position — and for a restore that found

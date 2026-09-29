@@ -129,7 +129,7 @@ pub(crate) async fn enqueue_unsupported(
     .await
     .expect("the receipt must record");
     ReadyIndex::new(booted.queue.clone())
-        .mark(fleet, fleet)
+        .mark(fleet)
         .await
         .expect("the readiness mark must land");
     event_id

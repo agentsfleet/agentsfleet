@@ -44,6 +44,10 @@ mod cases;
 mod seed;
 #[path = "integration_lease_gates/slack.rs"]
 mod slack;
+#[path = "integration_lease_gates/stops.rs"]
+mod stops;
+#[path = "integration_lease_gates/tenant.rs"]
+mod tenant;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;

@@ -39,7 +39,7 @@ use afd_core::id::Uuid7;
 use afd_wire::event::EventType;
 
 use crate::error::Result;
-use crate::lease::admit::{Admission, Billed as Admitted, Request, money_gates};
+use crate::lease::admit::{Admission, Billed as Admitted, Payer, Request, money_gates};
 use crate::lease::answer::no_work;
 use crate::lease::envelope::Acquired;
 use crate::lease::installed::Installed;
@@ -54,10 +54,12 @@ use afd_gate::gate::{Check, Gates};
 
 #[cfg(feature = "test-util")]
 mod claimed;
+mod held;
 mod refuse;
 mod step;
 
-use self::step::{AWAITING_APPROVAL, Step};
+use self::step::waited;
+pub(in crate::lease) use self::step::{Leased, Step};
 
 /// Everything the lease verb acts through.
 ///
@@ -147,41 +149,34 @@ impl Plane {
         if degraded {
             return no_work(runner_id, "the runner's verdict is degraded or unreadable");
         }
-        let admitted = match self.admit(runner_id, now).await? {
-            Step::Go(admitted) => admitted,
-            Step::Stop(answer) => return Ok(answer),
-        };
-        self.deliver(runner_id, admitted, now).await
-    }
-
-    /// Claim work and run every gate over it.
-    ///
-    /// Ends the pass on anything that means "not this poll", writing the
-    /// terminal row where one is owed.
-    async fn admit(&self, runner_id: &Uuid7, now: UnixMillis) -> Result<Step<Admission2>> {
         let Some(acquired) = self.leases.select(runner_id, now).await? else {
-            return Ok(Step::Stop(no_work(runner_id, "no leasable work")?));
+            return no_work(runner_id, "no leasable work");
         };
-        self.admit_claimed(acquired, runner_id, now).await
+        self.run_claimed(acquired, runner_id, now).await
     }
 
     /// Every gate over one already-claimed event.
     ///
-    /// Split from the selection above it because the two fail for different
-    /// reasons and are proven differently: WHICH event a poll gets is the
-    /// readiness index's decision, and what then happens to it is this chain's.
-    /// The suite enters here through [`Self::lease_claimed`], naming its own
-    /// fleet, instead of polling a process-global partition cursor until that
-    /// fleet comes up.
+    /// Ends the pass on anything that means "not this poll", writing the
+    /// terminal row where one is owed. Split from the selection because the
+    /// two fail for different reasons and are proven differently: WHICH event
+    /// a poll gets is the readiness index's decision, and what then happens to
+    /// it is this chain's. The suite enters below the selection through
+    /// [`Self::lease_claimed`], naming its own fleet, instead of polling a
+    /// process-global partition cursor until that fleet comes up.
     async fn admit_claimed(
         &self,
         acquired: Acquired,
         runner_id: &Uuid7,
         now: UnixMillis,
     ) -> Result<Step<Admission2>> {
-        let installed = match self.resolve_installed(&acquired, runner_id, now).await? {
-            Step::Go(installed) => installed,
-            Step::Stop(answer) => return Ok(Step::Stop(answer)),
+        let installed = match self
+            .resolve_installed(&acquired, runner_id, now)
+            .await?
+            .proceed()
+        {
+            Ok(installed) => installed,
+            Err(ended) => return Ok(ended),
         };
 
         let received = self.leases.record_received(&acquired, now).await?;
@@ -249,12 +244,23 @@ impl Plane {
                 .map(Step::Stop);
         };
 
-        let resolved = match self.accounts.payer(&acquired.workspace_id).await? {
-            Some(tenant) => Some(self.providers.resolve(&tenant).await?),
-            None => None,
+        // The payer is read ONCE, here, and handed to the money gates: the
+        // provider resolves against it and the gates bill it, so a second read
+        // could only disagree with the first.
+        let payer = self.accounts.payer(&acquired.workspace_id).await;
+        let resolved = match &payer {
+            Ok(Some(tenant)) => Some(self.providers.resolve(tenant).await?),
+            Ok(None) | Err(_) => None,
         };
         let billed = match self
-            .money(&acquired, &installed, resolved.as_ref(), delivery, now)
+            .money(
+                &acquired,
+                &installed,
+                payer,
+                resolved.as_ref(),
+                delivery,
+                now,
+            )
             .await?
         {
             Admission::Admit(billed) => billed,
@@ -267,9 +273,7 @@ impl Plane {
             Admission::Retry(transient) => {
                 return Ok(Step::Stop(no_work(runner_id, transient.at)?));
             }
-            Admission::Await(_waiting) => {
-                return Ok(Step::Stop(no_work(runner_id, AWAITING_APPROVAL)?));
-            }
+            Admission::Await(waiting) => return waited(runner_id, waiting),
         };
 
         if let Some(stop) = self.judged(&acquired, &installed, now).await {
@@ -287,11 +291,12 @@ impl Plane {
         }))
     }
 
-    /// The money pass, over one claim.
+    /// The money pass, over one claim and the payer the pass already read.
     async fn money(
         &self,
         acquired: &Acquired,
         installed: &Installed,
+        payer: Payer,
         resolved: Option<&Resolved>,
         delivery: crate::lease::event::Delivery,
         now: UnixMillis,
@@ -300,6 +305,7 @@ impl Plane {
             resolved.map_or(("", ""), |it| (it.provider.as_ref(), it.model.as_ref()));
         money_gates(
             &self.accounts,
+            payer,
             Request {
                 workspace_id: &acquired.workspace_id,
                 fleet_id: &acquired.fleet_id,

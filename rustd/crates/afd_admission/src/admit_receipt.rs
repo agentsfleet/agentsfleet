@@ -86,12 +86,12 @@ impl Admissions {
 
     /// Marks the fleet leasable, best-effort.
     ///
-    /// The token is the fleet id, as every producer spells it; no production
-    /// path reads it back today. A mark that fails is logged rather than raised
-    /// — the entry is already durable, and the streams are the system of record
-    /// the poll's backstop asks.
+    /// The index mints the token, so this mark is a new generation a poll
+    /// that peeked the previous one cannot clear. A mark that fails is logged
+    /// rather than raised — the entry is already durable, and the streams are
+    /// the system of record the poll's backstop asks.
     pub(crate) async fn mark_ready(&self, fleet: &str) {
-        if let Err(unmarked) = ReadyIndex::new(self.queue.clone()).mark(fleet, fleet).await {
+        if let Err(unmarked) = ReadyIndex::new(self.queue.clone()).mark(fleet).await {
             afd_observability::producers::fleet::ready_write_failed();
             let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
             let reason = unmarked.to_string();

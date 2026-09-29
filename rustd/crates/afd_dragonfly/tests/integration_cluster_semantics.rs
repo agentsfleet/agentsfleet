@@ -56,10 +56,6 @@ use crate::support::DragonflyHarness;
 const CMD_SCRIPT: &str = "SCRIPT";
 const SUB_FLUSH: &str = "FLUSH";
 
-/// The two generations every compare-and-set here is written between.
-const FIRST_GENERATION: &str = "generation-one";
-const SECOND_GENERATION: &str = "generation-two";
-
 /// Wider than any partition this file puts a single fleet in, so a peek that
 /// found nothing means the mark is gone rather than that the sample missed it.
 const WHOLE_PARTITION: usize = 64;
@@ -106,10 +102,7 @@ async fn a_lost_reply_retried_does_not_erase_newer_work(harness: &DragonflyHarne
     let index = ReadyIndex::new(harness.redis.clone());
     let fleet = harness.name("lost-reply");
 
-    let first = index
-        .mark(&fleet, FIRST_GENERATION)
-        .await
-        .expect("ingress marks the fleet");
+    let first = index.mark(&fleet).await.expect("ingress marks the fleet");
     assert!(
         index
             .clear_if_unchanged(&fleet, &first)
@@ -121,7 +114,7 @@ async fn a_lost_reply_retried_does_not_erase_newer_work(harness: &DragonflyHarne
     // The reply to that clear never reached the caller. Before it retries,
     // ingress admits again.
     index
-        .mark(&fleet, SECOND_GENERATION)
+        .mark(&fleet)
         .await
         .expect("ingress marks the fleet again");
 
@@ -153,10 +146,7 @@ async fn a_forgotten_script_reloads_and_still_compares(
     let index = ReadyIndex::new(harness.redis.clone());
     let fleet = harness.name("forgotten-script");
 
-    let stale = index
-        .mark(&fleet, FIRST_GENERATION)
-        .await
-        .expect("ingress marks the fleet");
+    let stale = index.mark(&fleet).await.expect("ingress marks the fleet");
 
     forget_every_script(cluster).await;
 
@@ -171,7 +161,7 @@ async fn a_forgotten_script_reloads_and_still_compares(
     // The negative arm, on a cache emptied again: a stale token still fails to
     // match. Without it, a reload that returned a constant would pass above.
     let current = index
-        .mark(&fleet, SECOND_GENERATION)
+        .mark(&fleet)
         .await
         .expect("ingress marks the fleet again");
     forget_every_script(cluster).await;

@@ -40,6 +40,10 @@ pub const LEASE_POLL_CANDIDATES_SCANNED_TOTAL: Declared<CounterKind> =
 pub const LEASE_POLL_DB_ROUNDTRIPS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_lease_poll_db_roundtrips_total");
 
+/// Won claims that found nothing deliverable; each clears one drained mark.
+pub const LEASE_CLAIMS_EMPTY_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_lease_claims_empty_total");
+
 /// Leases granted; fresh ÷ appended admissions is pickup, a rising reclaimed
 /// share is runners dying mid-run.
 ///

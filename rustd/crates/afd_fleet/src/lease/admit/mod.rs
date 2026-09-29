@@ -159,10 +159,18 @@ pub struct Request<'a> {
     pub delivery: Delivery,
 }
 
+/// The workspace's payer, as the lease read it: found, unowned, or unread.
+///
+/// Read once by the lease and handed in, because the provider resolves
+/// against the same tenant the gates bill — a second read could only disagree
+/// with the first, and it cost a round trip on every lease.
+pub type Payer = core::result::Result<Option<Uuid7>, afd_billing::Error>;
+
 /// Run the money gates in the worker's order.
 ///
 /// Payer → balance → fleet budget → receipt. Every gate that can refuse
-/// permanently precedes the debit, so a refused event is never charged.
+/// permanently precedes the debit, so a refused event is never charged. The
+/// payer gate judges the read the caller made; it reads nothing itself.
 ///
 /// # Errors
 /// Datastore faults do NOT reach the caller as `Err` — each gate absorbs its
@@ -171,10 +179,11 @@ pub struct Request<'a> {
 /// the ledger row's identifier.
 pub async fn money_gates(
     accounts: &Accounts,
+    payer: Payer,
     request: Request<'_>,
     now: UnixMillis,
 ) -> Result<Admission> {
-    let tenant_id = match accounts.payer(request.workspace_id).await {
+    let tenant_id = match payer {
         Ok(Some(found)) => found,
         // A workspace naming no tenant is a broken foreign key: waiting does
         // not fix it, and running work nobody can be charged for is worse than

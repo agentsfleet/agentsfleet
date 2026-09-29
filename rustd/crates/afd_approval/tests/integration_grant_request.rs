@@ -117,13 +117,15 @@ async fn cards(lane: &Lane) -> Vec<(String, Option<String>, Option<String>)> {
 }
 
 /// Whether the resolve woke the fleet for a parked delivery to poll again.
+///
+/// Any mark counts: the index mints each generation's token, so the value
+/// says only that a mark was written.
 async fn fleet_is_ready(lane: &Lane) -> bool {
     ReadyIndex::new(lane.queue.clone())
         .token_for(lane.fleet.as_str())
         .await
         .expect("the ready index is readable")
-        .as_ref()
-        .is_some_and(|token| token.as_str() == lane.fleet.as_str())
+        .is_some()
 }
 
 /// The action id of the one card this fleet holds.

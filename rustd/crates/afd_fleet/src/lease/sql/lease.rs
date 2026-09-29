@@ -1,12 +1,10 @@
 //! `fleet.runner_affinity` and `fleet.runner_leases` — the claim, the fence,
 //! and the row that records who owns a fleet's work.
 //!
-//! Text is byte-identical to `fleet/sql.zig` and `fleet/sql_lease_row.zig`.
-//! That is not tidiness: row-equivalence is this milestone's cutover claim, the
-//! dual-run differ that would have enforced it mechanically is gone with the
-//! Zig lanes, and REVIEW reading these side by side against the originals is
-//! what enforcement is left (Invariant 5). A statement is COPIED, never
-//! re-derived — where a `$n` order looks odd it is odd upstream too.
+//! Text began as a copy of the retired Zig daemon's `fleet/sql.zig` and
+//! `fleet/sql_lease_row.zig`, which is why some `$n` orders look odd. The
+//! candidate scan and the lease insert have since moved on, and each says how
+//! beside its text.
 //!
 //! # The claim is the whole concurrency design
 //!
@@ -33,8 +31,8 @@ use afd_runner::sql::runner::Bound;
 /// The durable metering cursor is seeded `0`/now on a brand-new slot and is
 /// deliberately ABSENT from the `ON CONFLICT` SET, so it survives a reclaim:
 /// the re-leased run meters forward from the dead holder's progress rather than
-/// from zero. [`RESET_AFFINITY_METERS`] is what clears it, and only a FRESH
-/// lease calls that.
+/// from zero. [`INSERT_LEASE_WITH_EVENT`]'s `reset` arm is what clears it, and
+/// only a FRESH lease sets the flag that arms it.
 ///
 /// Answers no row when a live runner still holds the slot — that absence is the
 /// `.taken` verdict, not an error.
@@ -52,19 +50,6 @@ ON CONFLICT (fleet_id) DO UPDATE
   WHERE fleet.runner_affinity.leased_until < $4
 RETURNING fencing_seq";
 
-/// Reset the slot's metering counters at the start of a fresh billing slice.
-///
-/// FRESH leases only. A reclaim must leave the cursor alone so the re-leased
-/// run meters forward from where the dead holder stopped; the renewal CTE reads
-/// this cursor for each slice's delta, so a stale value here would over-charge
-/// the first renewal. That is why the caller treats a failed reset as a failed
-/// lease issue rather than a warning — fail closed, never over-charge.
-pub const RESET_AFFINITY_METERS: &str = "\
-UPDATE fleet.runner_affinity
-SET metered_input_tokens = 0, metered_cached_tokens = 0,
-    metered_output_tokens = 0, last_metered_at = $2, updated_at = $2
-WHERE fleet_id = $1::uuid";
-
 /// Release the slot — fencing-guarded, so only the current holder can free it.
 ///
 /// The guard is load-bearing rather than defensive: a holder superseded by a
@@ -75,19 +60,36 @@ pub const RELEASE_AFFINITY_SLOT: &str = "\
 UPDATE fleet.runner_affinity SET leased_until = $2, updated_at = $2
 WHERE fleet_id = $1::uuid AND fencing_seq = $3";
 
-/// Open a lease, record the event that opened it, and bump the runner's
-/// lifetime acquired tally, atomically.
+/// Open a lease, record the event that opened it, bump the runner's lifetime
+/// acquired tally, and — on a fresh lease — reset the slot's metering cursor,
+/// atomically.
 ///
 /// Writing the lease and its audit trail in one statement means an observer can
 /// never see a lease with no corresponding event, or the reverse; the tally
 /// rides the same statement so the acquired counter can never drift from the
 /// rows it counts.
 ///
+/// # The meter reset rides the insert
+///
+/// A FRESH lease starts a new billing slice, so the slot's cursor goes back to
+/// zero; a RECLAIM leaves it, because the re-leased run meters forward from
+/// where the dead holder stopped. The renewal CTE reads the cursor for each
+/// slice's delta, so a lease issued over a stale one over-charges the first
+/// renewal. In here the reset cannot fail apart from the lease — both land or
+/// neither does — and an issue pays one round trip, not two. A data-modifying
+/// CTE runs whether or not anything reads it, so the fresh flag, `$25`, is in
+/// its `WHERE`: a reclaim's reset matches no row.
+///
 /// The lease stores no copy of the event body: the reclaim path reads it by
 /// joining `core.fleet_events` on the `(fleet_id, event_id)` unique key, so the
 /// hottest write in the system stops duplicating the largest value in it.
 pub const INSERT_LEASE_WITH_EVENT: &str = "\
-WITH inserted AS (
+WITH reset AS (
+  UPDATE fleet.runner_affinity
+  SET metered_input_tokens = 0, metered_cached_tokens = 0,
+      metered_output_tokens = 0, last_metered_at = $16, updated_at = $16
+  WHERE fleet_id = $3::uuid AND $25::boolean
+), inserted AS (
   INSERT INTO fleet.runner_leases
   (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, receipt,
    actor, event_type, event_created_at,
@@ -119,7 +121,7 @@ ON CONFLICT (runner_id) DO UPDATE
 
 /// Everything [`INSERT_LEASE_WITH_EVENT`] needs, by name.
 ///
-/// Twenty-four positional parameters, `$16` referenced five times, and the
+/// Twenty-five positional parameters, `$16` referenced eight times, and the
 /// `VALUES` list mentioning `$13` after `$16` — the same shape, and the same
 /// hazard, that [`super::runner::RegisterRow`] documents. Five of these are
 /// same-typed text that a transposition would compile straight through, and
@@ -181,13 +183,16 @@ pub struct LeaseRow<'a> {
     /// lease's provenance to an operator reading history, and nothing queries
     /// on it.
     pub kind: &'a str,
+    /// Whether this lease starts a new billing slice, which resets the slot's
+    /// metering cursor in the same statement. True for a fresh lease only.
+    pub reset_meters: bool,
 }
 
 impl<'a> LeaseRow<'a> {
     /// Binds this row to [`INSERT_LEASE_WITH_EVENT`], in `$n` order.
     ///
     /// The four metadata keys (`$19`–`$22`) are constants rather than caller
-    /// data, so they are supplied here — twenty-four binds, and none a caller
+    /// data, so they are supplied here — twenty-five binds, and none a caller
     /// has to place positionally.
     pub fn bind(&'a self) -> Bound<'a> {
         let millis = self.now.as_millis();
@@ -216,6 +221,7 @@ impl<'a> LeaseRow<'a> {
             .bind(afd_runner::sql::meta::KIND)
             .bind(self.kind)
             .bind(self.receipt)
+            .bind(self.reset_meters)
     }
 }
 
@@ -280,18 +286,28 @@ JOIN core.fleet_events e
 /// membership restriction is the readiness index's contribution, and `$4` is
 /// the ceiling that makes per-poll cost independent of how many fleets exist.
 ///
+/// A slot a live runner holds is skipped: its claim would lose, and a fleet
+/// running a long reply keeps its mark the whole time, so without `$5` every
+/// poll that sampled it would spend a claim round trip finding that out. The
+/// comparison is the claim's own, so a slot the claim could win is never
+/// filtered. Ties break on a hash of fleet and runner rather than on age, so
+/// runners polling one partition try different fleets first instead of all
+/// racing the oldest.
+///
 /// The runner's labels (stored JSONB) bind as a constant `TEXT[]` via the
 /// uncorrelated subquery, so `<@` stays a `column <@ constant` shape the
 /// `required_tags` GIN index can serve — not a column-to-column join, which no
 /// index serves.
 ///
-/// `$1` active status, `$2` runner id, `$3` ready fleet ids, `$4` ceiling.
+/// `$1` active status, `$2` runner id, `$3` ready fleet ids, `$4` ceiling,
+/// `$5` now.
 pub const SELECT_READY_CANDIDATES: &str = "\
 SELECT z.id::text
 FROM core.fleets z
 LEFT JOIN fleet.runner_affinity a ON a.fleet_id = z.id
 WHERE z.status = $1
   AND z.id = ANY(($3::text[])::uuid[])
+  AND (a.leased_until IS NULL OR a.leased_until < $5)
   AND z.required_tags <@ (
         SELECT COALESCE(array_agg(e), '{}'::text[])
         FROM jsonb_array_elements_text(
@@ -300,7 +316,7 @@ WHERE z.status = $1
                 FROM fleet.runners WHERE id = $2::uuid)
              ) AS e
       )
-ORDER BY (a.last_runner_id = $2::uuid) DESC NULLS LAST, z.created_at ASC
+ORDER BY (a.last_runner_id = $2::uuid) DESC NULLS LAST, md5(z.id::text || $2::text)
 LIMIT $4";
 
 /// What one lease authorises a mint to reach.

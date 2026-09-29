@@ -62,6 +62,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_dragonfly/{Cargo.toml,src/lib.rs,src/error.rs,src/error/**}`, `rustd/crates/afd_observability/src/{producers,metrics/declared}/fleet.rs`, `rustd/crates/afd_approval/src/inbox/{sweep,resolve}.rs` | EDIT / CREATE | Token minting through `afd_crypto`; the over-cap error file split; the claim-empty counter; the expiry wake |
 | `rustd/crates/afd_fleet/src/lease/{assign,restore,pull,pull/**,affinity,issue,envelope,store,deliver,admit/**,sql/**}.rs` | EDIT | Group-empty clear; release on every stop; the held-slot filter; tenant read once; meter reset folded into the lease insert |
 | `rustd/crates/afd_events/src/{history/statement,history/mod,lib}.rs`, `rustd/crates/afd_events/tests/{events_suite,integration_list_plans}.rs` | EDIT / CREATE | List and thread reads split by scope and cursor so a generic plan keeps the index |
+| `schema/922_fleet_events_scope_statistics.sql`, `rustd/crates/afd_db/src/migration.rs` | CREATE / EDIT | The dependency statistics object 4.2's fleet-scoped plans need, analysed once at apply (Indy's SCHEMA GUARD approval) |
 | `rustd/crates/afd_dragonfly/tests/integration_retention{,/floor}.rs`, `rustd/crates/afd_outbound/tests/integration_producer_outage.rs` | EDIT / CREATE | Retention tests above the new slack; the floor's own proofs |
 | `rustd/crates/afd_dragonfly/src/{hub,hub/**,topology,transport,transport/**,test_util}.rs`, `rustd/crates/{afd_dragonfly,afd_sse,afd_api_tenant}/Cargo.toml`, `rustd/crates/afd_dragonfly/tests/**` | EDIT / CREATE | Gap arm; replay-attributed repair; dispatch and control tasks; shared payload; the fault fakes split under the cap |
 | `rustd/crates/afd_api_tenant/src/handler/stream/body.rs`, `rustd/crates/{afd_gate,afd_approval,afd_fleet,agentsfleetd}/tests/**`, `public/openapi.json` | EDIT / CREATE | A shared-payload SSE body; consumers of the gap arm; the `catching_up` description |
@@ -71,6 +72,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/streaming/{workspace-store,workspace-tile,fleet-stream-backfill}.ts`, `ui/packages/app/components/domain/fleetMarkdownBlocks.ts`, `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx` | EDIT / CREATE | Wall projection split from the store; streaming block boundaries; one notify per backfill walk |
 | `ui/packages/app/tests/{helpers/*,bench/fleet-markdown-stream.bench.tsx,dashboard-fleets-wall.test.tsx,fleet-thread/malformed-metadata.test.ts}` | EDIT / CREATE | Shared wall and store harnesses split under the cap; the streaming corpus and bench; the log's `aria-live` pin |
 | `docs/architecture/{scaling,runner_fleet,data_flow,datastore_scaling,concurrency}.md` | EDIT | Measured rows; the readiness token and clear; sharded pub/sub wording; the hub's gap |
+| `rustd/crates/afd_sse/src/{lib,frame/**}.rs`, `rustd/crates/afd_sse/tests/integration_sequencing.rs`, `rustd/crates/agentsfleetd/src/preflight{.rs,/ceiling_tests.rs}`, `docker-compose.yml`, `docs/metrics.census.tsv` | EDIT / CREATE | The shared-payload frame data; the test that pins `SSE_MAX_STREAMS` to the tail baseline; `pg_stat_statements` preloaded for the statement counter; the claim-empty counter's census row |
 | Tests beside each file above | CREATE / EDIT | One test per Dimension |
 
 ## Applicable Rules
@@ -109,23 +111,23 @@ No path changes until its lane runs at HEAD. **Implementation default:** count e
 
 A drained fleet's mark is cleared, and only after the whole group has nothing pending. **Implementation default:** `mark` mints a Universally Unique Identifier version 7 (UUIDv7) token itself and callers pass none, because two of today's mark sites append nothing and the fleet id as token makes a compare-and-clear unconditional; a won claim first takes over the group's oldest pending entry, because the empty read sees only this process's own pending list and a won claim proves no live lease holds the fleet.
 
-- **Dimension 2.1** — two marks of one fleet mint distinct tokens → Test `test_marks_mint_distinct_tokens`
-- **Dimension 2.2** — a group-empty poll clears the mark with the token it peeked; a mark written between the read and the clear survives and is leased next poll → Test `test_mark_written_during_poll_survives`
-- **Dimension 2.3** — an entry pending under another replica's consumer is delivered by the next won claim, never stranded behind a cleared mark → Test `test_entry_pending_elsewhere_is_delivered`
-- **Dimension 2.4** — the candidate query skips slots a live runner holds, with a per-runner tie-break → Test `test_candidates_skip_held_slots`
-- **Dimension 2.5** — after every fleet drains, an idle poll issues zero Postgres statements → Test `bench_idle_poll_after_drain`
+- **Dimension 2.1** — two marks of one fleet mint distinct tokens → Test `test_marks_mint_distinct_tokens` — DONE (`test_marks_mint_distinct_tokens`: `afd_dragonfly` lib 51 passed, 0 failed)
+- **Dimension 2.2** — a group-empty poll clears the mark with the token it peeked; a mark written between the read and the clear survives and is leased next poll → Test `test_mark_written_during_poll_survives` — DONE (`test_mark_written_during_poll_survives`, 24 looped races, and it asserts `agentsfleet_lease_claims_empty_total` moves: ok)
+- **Dimension 2.3** — an entry pending under another replica's consumer is delivered by the next won claim, never stranded behind a cleared mark → Test `test_entry_pending_elsewhere_is_delivered` — DONE (`test_entry_pending_elsewhere_is_delivered`: ok)
+- **Dimension 2.4** — the candidate query skips slots a live runner holds, with a per-runner tie-break → Test `test_candidates_skip_held_slots` — DONE (`test_candidates_skip_held_slots`: ok; the poll costs 1 round trip, with no losing claim)
+- **Dimension 2.5** — after every fleet drains, an idle poll issues zero Postgres statements → Test `bench_idle_poll_after_drain` — DONE (`bench_idle_poll_after_drain`, `bench_lease_drains_through_report`: `lanes_lease` 7 passed; `make bench-lease PROFILE=rig` prints `idle_statements_per_poll=0 idle_commits_per_poll=0 … drain_ready_depth=0`, against 47.5 before)
 
 ### §3 — A stopped admission frees its fleet
 
-- **Dimension 3.1** — a refusal, Retry, Await or error after a won claim releases the claim through one helper, so the fleet's next event leases on the next poll → Test `test_stop_releases_the_claim`
-- **Dimension 3.2** — an approval resolution is leased on the next poll → Test `test_approval_resolution_leases_next_poll`
-- **Dimension 3.3** — an approval that expires unanswered re-marks its fleet, because a park cleared the mark → Test `an_expired_gate_wakes_its_fleet`
+- **Dimension 3.1** — a refusal, Retry, Await or error after a won claim releases the claim through one helper, so the fleet's next event leases on the next poll → Test `test_stop_releases_the_claim` — DONE (`test_stop_releases_the_claim`: ok)
+- **Dimension 3.2** — an approval resolution is leased on the next poll → Test `test_approval_resolution_leases_next_poll` — DONE (`test_approval_resolution_leases_next_poll`: ok)
+- **Dimension 3.3** — an approval that expires unanswered re-marks its fleet, because a park cleared the mark → Test `an_expired_gate_wakes_its_fleet` — DONE (`an_expired_gate_wakes_its_fleet`: approval_suite 58 passed, 0 failed)
 
 ### §4 — Acknowledgements and reads stay small
 
 - **Dimension 4.1** — the trim after an acknowledgement reads at most the entries it removes plus one and never more than `TRIM_READ_MAX`, bounds its read at the oldest owed entry, runs only past the keep count plus `TRIM_SLACK`, and never removes a pending or undelivered entry → Test `test_trim_reads_only_the_floor`
 - **Dimension 4.2** — the fleet, workspace and thread reads keep their scope, cursor and `since` bound as index conditions under a generic plan, and walk their index in order without a Sort: a dependency statistics object stops the planner multiplying workspace and fleet odds, and actor-filtered reads get their own texts → Test `test_event_list_plans_use_the_index`
-- **Dimension 4.3** — a lease reads its tenant once, and its meter reset rides the lease insert → Test `test_issue_reads_the_tenant_once`
+- **Dimension 4.3** — a lease reads its tenant once, and its meter reset rides the lease insert → Test `test_issue_reads_the_tenant_once` — DONE (`test_issue_reads_the_tenant_once`, `test_the_lease_row_resets_the_meter_only_when_fresh`: both ok)
 
 ### §5 — The live tail degrades by channel, not by replica
 

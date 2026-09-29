@@ -23,6 +23,7 @@
 use afd_core::clock::UnixMillis;
 
 use afd_approval::{Decision, Filter, Resolution};
+use afd_dragonfly::ReadyIndex;
 
 use crate::lane::{Lane, NOW_MS, WINDOW_MS, sweeper_exclusive};
 
@@ -221,6 +222,42 @@ async fn the_sweeper_expires_only_the_gates_whose_window_closed() {
         lane.status_of(&waiting).await,
         "pending",
         "a gate still inside its window is left alone"
+    );
+}
+
+/// A gate whose window closes unanswered wakes its fleet.
+///
+/// The delivery it parked cleared the fleet's readiness mark, because the
+/// answer was going to put it back. An expiry is that answer and the sweep is
+/// the only thing that gives it: without the mark no poll reads the lapsed
+/// gate, and the parked delivery never ends.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_expired_gate_wakes_its_fleet() {
+    // the sweep is global; a sibling's lapsed gate is in its statement.
+    let _sweeper = sweeper_exclusive().await;
+    let lane = Lane::isolated().await;
+    let index = ReadyIndex::new(lane.queue.clone());
+    // The state a park leaves behind: the gate open, the mark gone.
+    index
+        .force_clear(lane.fleet.as_str())
+        .await
+        .expect("the test can clear the ready mark");
+    let lapsed = lane.seed_gate(NOW_MS - 1).await;
+
+    lane.inbox
+        .expire(UnixMillis::from_millis(NOW_MS))
+        .await
+        .expect("the sweep must not fault");
+
+    assert_eq!(lane.status_of(&lapsed).await, "timed_out");
+    assert!(
+        index
+            .token_for(lane.fleet.as_str())
+            .await
+            .expect("the ready index is readable")
+            .is_some(),
+        "the swept gate's fleet is marked again, so a poll reads the lapse and ends the delivery"
     );
 }
 

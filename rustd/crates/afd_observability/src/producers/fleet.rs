@@ -84,6 +84,7 @@ pub struct Handles {
     lease_polls: Counter<u64>,
     lease_candidates: Counter<u64>,
     lease_roundtrips: Counter<u64>,
+    lease_claims_empty: Counter<u64>,
     runs_started: Counter<u64>,
     delivery_stage: Histogram<f64>,
     ready_write_failures: Counter<u64>,
@@ -124,6 +125,7 @@ impl Handles {
             lease_candidates: instruments
                 .counter_u64(&declared::LEASE_POLL_CANDIDATES_SCANNED_TOTAL)?,
             lease_roundtrips: instruments.counter_u64(&declared::LEASE_POLL_DB_ROUNDTRIPS_TOTAL)?,
+            lease_claims_empty: instruments.counter_u64(&declared::LEASE_CLAIMS_EMPTY_TOTAL)?,
             runs_started: instruments.counter_u64(&declared::FLEET_RUNS_STARTED_TOTAL)?,
             delivery_stage: instruments.histogram_f64(&declared::FLEET_DELIVERY_STAGE_SECONDS)?,
             ready_write_failures: instruments
@@ -239,6 +241,17 @@ pub fn lease_polled(candidates_scanned: u64, database_roundtrips: u64) {
             .fleet
             .lease_roundtrips
             .add(database_roundtrips, &[]);
+    }
+}
+
+/// Records a won claim whose fleet had nothing deliverable.
+///
+/// The cost a drained fleet adds before its mark is cleared: one claim, one
+/// stream read, one release. A rate that stays up while runs do not start is
+/// marks that keep coming back — a writer re-marking fleets with no work.
+pub fn lease_claimed_empty() {
+    if let Some(producers) = installed() {
+        producers.fleet.lease_claims_empty.add(1, &[]);
     }
 }
 

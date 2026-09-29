@@ -137,15 +137,16 @@ async fn test_steer_append_event_id() {
     // with `HRANDFIELD`, and the index is shared by every suite in the lane, so
     // a window smaller than the marked set would drop this fleet at random.
     // `HGET` also lets the TOKEN be asserted, which `peek` would have made
-    // incidental — and the token is load-bearing. `Steer` writes the fleet id
-    // as its own token so the poll-site clear can compare it; a mark written
-    // under any other value is one `clear_if_unchanged` can never remove, and
-    // the fleet would be polled forever.
-    assert_eq!(
-        ready_mark(&lane, &lane.fleet).await.as_deref(),
-        Some(lane.fleet.as_str()),
-        "the steered fleet must be marked ready, under itself as the token; \
-         without the mark the message waits for a poll it was appended to skip"
+    // incidental — and the token is load-bearing. The index mints a fresh
+    // version-7 identifier for every mark, so the poll-site clear compares
+    // generations; a mark under the fleet id would make every generation one
+    // value, and a stale clear would erase newer work.
+    let token = ready_mark(&lane, &lane.fleet)
+        .await
+        .expect("the steered fleet must be marked ready; without the mark the message waits for a poll it was appended to skip");
+    assert!(
+        afd_core::id::Uuid7::parse(&token).is_ok(),
+        "the mark carries a minted generation, not a caller's value: {token:?}"
     );
 
     ReadyIndex::new(lane.queue.clone())

@@ -95,6 +95,8 @@ mod hub_socket_faults;
 mod index_addressing;
 #[path = "integration_capacity.rs"]
 mod integration_capacity;
+#[path = "integration_client.rs"]
+mod integration_client;
 #[path = "integration_cluster_prototypes.rs"]
 mod integration_cluster_prototypes;
 #[path = "integration_cluster_readiness.rs"]
