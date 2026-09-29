@@ -96,6 +96,46 @@ describe("a replayed send", () => {
     release();
   });
 
+  it("test_replayed_answer_settles_from_detail: a first read of 404 is an event still queued, and its row waits for it", async () => {
+    getFleetEventActionMock.mockResolvedValueOnce(NOT_FOUND).mockResolvedValueOnce(SAVED);
+    const release = subscribe(WS, Z_A, [], () => {});
+    replayed(RAN);
+    await vi.advanceTimersByTimeAsync(0);
+    // No runner has written its row yet: nothing settles it as gone.
+    expect(shown(RAN)).toMatchObject({ status: RECEIVED, clientTimestamp: true });
+    expect(shown(RAN)?.outcome).not.toBe(OUTCOME.REPLY_GONE);
+    // Read again one silence window later, and settled by the row once it exists.
+    await keepaliveFor(REPLY_STALL_MS);
+    expect(getFleetEventActionMock).toHaveBeenCalledTimes(2);
+    expect(shown(RAN)).toMatchObject({ status: PROCESSED, reply: DEPLOYED });
+    release();
+  });
+
+  it("a queued replay whose first read was 404 still settles from its frames", async () => {
+    getFleetEventActionMock.mockResolvedValue(NOT_FOUND);
+    const release = subscribe(WS, Z_A, [], () => {});
+    replayed(RAN);
+    await vi.advanceTimersByTimeAsync(0);
+    sourceAt(0).emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: RAN, actor: ACTOR });
+    sourceAt(0).emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: RAN, status: PROCESSED, final_reply: DEPLOYED });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(shown(RAN)).toMatchObject({ status: PROCESSED, reply: DEPLOYED });
+    await keepaliveFor(REPLY_STALL_MS);
+    expect(getFleetEventActionMock).toHaveBeenCalledTimes(1);
+    release();
+  });
+
+  it("an event a read once found running, then 404, settles as gone", async () => {
+    getFleetEventActionMock
+      .mockResolvedValueOnce({ ok: true, data: row({ event_id: RAN, actor: ACTOR, status: RECEIVED, response_text: null }) })
+      .mockResolvedValueOnce(NOT_FOUND);
+    const release = subscribe(WS, Z_A, [], () => {});
+    replayed(RAN);
+    await keepaliveFor(REPLY_STALL_MS);
+    expect(shown(RAN)).toMatchObject({ status: AGENT_ERROR, outcome: OUTCOME.REPLY_GONE });
+    release();
+  });
+
   it("keeps its row when the read throws", async () => {
     failedAction.enabled = true;
     const release = subscribe(WS, Z_A, [], () => {});

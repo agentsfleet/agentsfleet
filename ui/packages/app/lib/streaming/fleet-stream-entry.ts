@@ -63,6 +63,13 @@ export type Entry = {
   replyRecoveries: Set<string>;
   /** Per running event, when this tab last heard a frame for it. */
   replyHeard: Map<string, number>;
+  /** Running events whose saved row is known to exist: a frame named it, or a
+   * server read showed it. Only for these does a 404 mean the row is gone; an
+   * event still queued behind its admission has no row yet. */
+  replyExists: Set<string>;
+  /** Settled events a backfill brought in without a body, whose saved row has
+   * been read once for it. */
+  bodyReads: Set<string>;
   listeners: Set<Listener>;
   refCount: number;
   eventSource: EventSource | null;
@@ -116,6 +123,8 @@ export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
     replyGaps: new Set(),
     replyRecoveries: new Set(),
     replyHeard: new Map(),
+    replyExists: new Set(),
+    bodyReads: new Set(),
     listeners: new Set(),
     refCount: 0,
     eventSource: null,
