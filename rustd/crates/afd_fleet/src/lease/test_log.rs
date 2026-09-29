@@ -45,7 +45,11 @@ impl Recorder {
             .iter()
             .filter(|fields| fields.get("event").map(String::as_str) == Some(name))
             .collect();
-        assert_eq!(matching.len(), 1, "expected one {name} event, got {events:?}");
+        assert_eq!(
+            matching.len(),
+            1,
+            "expected one {name} event, got {events:?}"
+        );
         (*matching.first().expect("one match")).clone()
     }
 }

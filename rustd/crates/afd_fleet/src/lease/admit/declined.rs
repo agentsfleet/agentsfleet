@@ -98,5 +98,4 @@ mod tests {
             Err(Declined::Retry(Transient { at: "fixture_gate" }))
         ));
     }
-
 }
