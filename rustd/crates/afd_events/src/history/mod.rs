@@ -1,21 +1,22 @@
 //! Reading the narrative log: one fleet's history, one workspace's, one event.
 //!
-//! # One statement, not eight
+//! # One text per scope and cursor, because a cached plan is generic
 //!
-//! Concatenating a WHERE clause from whichever filters are present gives four
-//! statement variants per entry point and eight across the two. Every one of
-//! them repeats the same column list, the
-//! same ordering and the same limit, and a fix applied to three of four is the
-//! failure mode that shape invites.
+//! sqlx prepares each text once per connection, and after five runs Postgres
+//! may plan it once for every value — a generic plan. That plan cannot decide
+//! a guard like `($2 IS NULL OR fleet_id = $2)`, so everything behind one
+//! becomes a filter. When the scope, the cursor and `since` were NULL-gated on
+//! one listing text, a generic plan scanned the workspace's whole history from
+//! the newest row down to the cursor, a page deeper each time.
 //!
-//! Here the filters are NULL-gated bindings on one statement: an absent filter
-//! binds `NULL`, and the guard `($n::type IS NULL OR <predicate>)` collapses.
-//! Postgres plans it the same way, and there is one text to get right.
-//!
-//! NULL rather than an empty-string sentinel — which is what the approval
-//! inbox's page uses — because one of these filters is a TIMESTAMP. Zero is a
-//! legitimate `created_at`, so a sentinel there would make "since the epoch"
-//! indistinguishable from "no lower bound".
+//! So nothing on the page path is gated. The scope, the cursor and the actor
+//! filter pick the text: fleet or workspace, first page or resumed, filtered
+//! or not. `since` is bound on every listing, as `i64::MIN` when absent, which
+//! is every `created_at` there is rather than a value a row could hold. The
+//! actor gets its own texts rather than a guard because a guard's row estimate
+//! is tiny whatever it binds, and a plan expecting one row sorts instead of
+//! walking the index to its `LIMIT`. The column list, ordering and limit still
+//! come from one vocabulary, so the variants cannot drift in what they select.
 //!
 //! # Newest-first, and the tie-break is not decoration
 //!
@@ -30,12 +31,13 @@ mod filter;
 mod row;
 pub(crate) mod statement;
 
+use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 
 use crate::error::{self, Result};
 
-use self::statement::{SELECT_DETAIL, SELECT_PAGE, SELECT_THREAD_PAGE};
+use self::statement::{SELECT_DETAIL, SELECT_THREAD_PAGE, SELECT_THREAD_PAGE_AFTER, listing_text};
 
 pub use self::cursor::Cursor;
 pub use self::detail::EventDetailRow;
@@ -59,6 +61,11 @@ pub const THREAD_DEFAULT_LIMIT: i64 = 20;
 /// Deliberately an order of magnitude below [`MAX_LIMIT`]: every row here carries a trigger payload and
 /// an agent's full answer, where a listing row carries neither.
 pub const THREAD_MAX_LIMIT: i64 = 25;
+
+/// The `since` a listing binds when the caller named none: the least value a
+/// `created_at` can hold, so the bound admits every row and still reaches the
+/// index as a condition.
+const NO_LOWER_BOUND: i64 = i64::MIN;
 
 /// The largest page this surface will build.
 ///
@@ -177,14 +184,18 @@ impl History {
         cursor: Option<&Cursor>,
         limit: i64,
     ) -> Result<Vec<EventDetailRow>> {
+        let scoped = match cursor {
+            None => sqlx::query(SELECT_THREAD_PAGE)
+                .bind(workspace.as_str())
+                .bind(fleet.as_str()),
+            Some(at) => sqlx::query(SELECT_THREAD_PAGE_AFTER)
+                .bind(workspace.as_str())
+                .bind(fleet.as_str())
+                .bind(at.created_at)
+                .bind(at.event_id.as_str()),
+        };
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(SELECT_THREAD_PAGE)
-            .bind(workspace.as_str())
-            .bind(fleet.as_str())
-            .bind(cursor.map(|at| at.created_at))
-            // Bound unconditionally and read only when the guard passes, so
-            // the argument count is fixed whether or not a cursor arrived.
-            .bind(cursor.map_or("", |at| at.event_id.as_str()))
+        let rows = scoped
             .bind(limit.clamp(1, THREAD_MAX_LIMIT + 1))
             .fetch_all(&mut *connection)
             .await
@@ -193,7 +204,8 @@ impl History {
         rows.iter().map(EventDetailRow::read).collect()
     }
 
-    /// The one statement both listings run.
+    /// The listing both entry points run: the text their scope, cursor and
+    /// actor filter pick, bound in the order that text numbers them.
     async fn page(
         &self,
         workspace: &Uuid7,
@@ -203,16 +215,24 @@ impl History {
         limit: i64,
         context: &'static str,
     ) -> Result<Vec<EventRow>> {
+        let actor = filter.actor_like.as_deref();
+        let text = listing_text(fleet.is_some(), cursor.is_some(), actor.is_some());
+        let query = sqlx::query(text).bind(workspace.as_str());
+        let query = match fleet {
+            Some(fleet) => query.bind(fleet),
+            None => query,
+        };
+        let query = match cursor {
+            Some(at) => query.bind(at.created_at).bind(at.event_id.as_str()),
+            None => query,
+        };
+        let query = match actor {
+            Some(actor) => query.bind(actor),
+            None => query,
+        };
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(SELECT_PAGE)
-            .bind(workspace.as_str())
-            .bind(fleet)
-            .bind(cursor.map(|at| at.created_at))
-            // Bound unconditionally and read only when the guard above passes,
-            // so the argument count is fixed whichever filters are present.
-            .bind(cursor.map_or("", |at| at.event_id.as_str()))
-            .bind(filter.actor_like.as_deref())
-            .bind(filter.since.map(afd_core::clock::UnixMillis::as_millis))
+        let rows = query
+            .bind(filter.since.map_or(NO_LOWER_BOUND, UnixMillis::as_millis))
             .bind(limit.clamp(1, MAX_LIMIT))
             .fetch_all(&mut *connection)
             .await

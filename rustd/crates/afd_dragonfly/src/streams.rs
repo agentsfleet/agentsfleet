@@ -44,7 +44,7 @@ mod tail;
 #[cfg(feature = "test-util")]
 pub use self::render::rendered_field_samples;
 use self::render::stringify;
-pub use self::retain::{ACKNOWLEDGED_HISTORY, Backlog, Trimmed};
+pub use self::retain::{ACKNOWLEDGED_HISTORY, Backlog, TRIM_SLACK, Trimmed};
 
 use crate::client::Dragonfly;
 use crate::error::{self, Result};
