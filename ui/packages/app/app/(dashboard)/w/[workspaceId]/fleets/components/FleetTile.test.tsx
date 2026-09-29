@@ -73,7 +73,7 @@ describe("FleetTile kinds", () => {
 
   it("an active fleet renders live identity, agent purpose, management, and server truth", () => {
     streamMock.mockReturnValue({
-      events: [],
+      feed: undefined,
       connectionStatus: CONNECTION_STATUS.LIVE,
       helloReceived: true,
       isLive: true,
@@ -99,7 +99,7 @@ describe("FleetTile kinds", () => {
 
   it("a reconnecting stream degrades to a snapshot tile with its last event and a still sigil", async () => {
     streamMock.mockReturnValue({
-      events: [{ id: "e1", role: "assistant", actor: "fleet", text: "ran a check", createdAt: new Date(0), status: "received" }],
+      feed: "ran a check",
       connectionStatus: CONNECTION_STATUS.RECONNECTING,
       helloReceived: true,
       isLive: true,
@@ -129,7 +129,7 @@ describe("FleetTile kinds", () => {
 
   it("derives a stable, distinct robot sigil from the immutable fleet id", () => {
     streamMock.mockReturnValue({
-      events: [],
+      feed: undefined,
       connectionStatus: CONNECTION_STATUS.LIVE,
       helloReceived: true,
       isLive: true,
@@ -169,7 +169,7 @@ describe("FleetTile kinds", () => {
 
   it("distinguishes same-named fleet links by their agent callsigns", () => {
     streamMock.mockReturnValue({
-      events: [],
+      feed: undefined,
       connectionStatus: CONNECTION_STATUS.LIVE,
       helloReceived: true,
       isLive: true,
@@ -195,7 +195,7 @@ describe("FleetTile kinds", () => {
 
   it("preserves the canonical callsign and mirrored sigil geometry", () => {
     streamMock.mockReturnValue({
-      events: [],
+      feed: undefined,
       connectionStatus: CONNECTION_STATUS.LIVE,
       helloReceived: true,
       isLive: true,
@@ -227,7 +227,7 @@ describe("FleetTile kinds", () => {
 
   it("an installing fleet streams with an info-toned marker", () => {
     streamMock.mockReturnValue({
-      events: [],
+      feed: undefined,
       connectionStatus: CONNECTION_STATUS.CONNECTING,
       helloReceived: false,
       isLive: true,
@@ -240,7 +240,7 @@ describe("FleetTile kinds", () => {
 
   it("an active fleet does not glow before its stream connects", () => {
     streamMock.mockReturnValue({
-      events: [],
+      feed: undefined,
       connectionStatus: CONNECTION_STATUS.CONNECTING,
       helloReceived: false,
       isLive: true,
@@ -256,7 +256,7 @@ describe("FleetTile kinds", () => {
     // figures it was rendered with, so the server's 7 events and $1.20 are
     // replaced by the frame's 9 and $2.50 outright.
     streamMock.mockReturnValue({
-      events: [],
+      feed: undefined,
       connectionStatus: CONNECTION_STATUS.LIVE,
       helloReceived: true,
       isLive: true,
@@ -270,7 +270,7 @@ describe("FleetTile kinds", () => {
 
   it("a fleet the daemon sent no aggregates for renders dashes, not $0.00", () => {
     streamMock.mockReturnValue({
-      events: [],
+      feed: undefined,
       connectionStatus: CONNECTION_STATUS.LIVE,
       helloReceived: true,
       isLive: true,
@@ -283,7 +283,7 @@ describe("FleetTile kinds", () => {
 
   it("a tile absent from the server hello set renders snapshot, not live", () => {
     streamMock.mockReturnValue({
-      events: [],
+      feed: undefined,
       connectionStatus: CONNECTION_STATUS.LIVE,
       helloReceived: true,
       isLive: false,
@@ -297,7 +297,7 @@ describe("FleetTile kinds", () => {
 
   it("test_wall_copy_consts_are_single_source", () => {
     streamMock.mockReturnValue({
-      events: [],
+      feed: undefined,
       connectionStatus: CONNECTION_STATUS.RECONNECTING,
       helloReceived: true,
       isLive: true,
@@ -313,7 +313,7 @@ describe("FleetTile kinds", () => {
 
   it("a server drop signal surfaces catching up", () => {
     streamMock.mockReturnValue({
-      events: [],
+      feed: undefined,
       connectionStatus: CONNECTION_STATUS.LIVE,
       helloReceived: true,
       isLive: true,

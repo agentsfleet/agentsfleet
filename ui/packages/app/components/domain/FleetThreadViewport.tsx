@@ -1,12 +1,13 @@
 "use client";
 
-import { useLayoutEffect } from "react";
+import { memo, useLayoutEffect } from "react";
 import { ArrowDownIcon } from "lucide-react";
 import { ThreadPrimitive, useThreadViewportStore } from "@assistant-ui/react";
 import { Button, Skeleton, cn } from "@agentsfleet/design-system";
 import { CONNECTION_STATUS, type ConnectionStatus } from "./useFleetEventStream";
 import { SteerComposer, type SteerComposerProps } from "./SteerComposer";
 import { renderFleetMessage } from "./fleetMessageRenderers";
+import { SettledReplyStatus } from "./FleetReplyBody";
 
 const PANEL_TITLE = "Chat";
 const EMPTY_HINT = "Message this fleet or wait for its next trigger. Activity and outcomes appear here.";
@@ -19,7 +20,9 @@ type FleetThreadViewportProps = SteerComposerProps & {
   submittedMessageId: string | null;
 };
 
-export function FleetThreadViewport({
+// Memoised: the thread re-renders on every streamed flush, and nothing this
+// shell draws moves with one. The messages below subscribe on their own.
+export const FleetThreadViewport = memo(function FleetThreadViewport({
   eventsCount, connectionStatus, submittedMessageId, pending, onResend, onDismiss, onRestored, onDraft,
 }: FleetThreadViewportProps) {
   const viewport = useThreadViewportStore();
@@ -47,7 +50,9 @@ export function FleetThreadViewport({
         className="flex min-h-0 flex-1 flex-col overflow-y-auto px-lg sm:px-xl"
         role="presentation"
       >
-        <ChatHistory eventsCount={eventsCount} connectionStatus={connectionStatus} />
+        <SettledReplyStatus>
+          <ChatHistory eventsCount={eventsCount} connectionStatus={connectionStatus} />
+        </SettledReplyStatus>
         <ThreadPrimitive.ViewportFooter
           data-testid="fleet-chat-footer"
           className="sticky bottom-0 mx-auto flex max-h-full w-full max-w-measure flex-col bg-background pb-md pt-md"
@@ -64,7 +69,7 @@ export function FleetThreadViewport({
       </ThreadPrimitive.Viewport>
     </ThreadPrimitive.Root>
   );
-}
+});
 
 // Rides in the sticky footer, just above the composer, so it stays in view
 // while the history scrolls under it.
@@ -107,9 +112,13 @@ function ChatHistory({ eventsCount, connectionStatus }: Pick<FleetThreadViewport
       connectionStatus === CONNECTION_STATUS.RECONNECTING);
   const isIdleEmpty = eventsCount === 0 && connectionStatus === CONNECTION_STATUS.LIVE;
   return (
+    // A log is a polite live region by default, and a streamed reply rewrites
+    // it on every flush — a screen reader re-read the growing answer each
+    // time. The log stays quiet; a settled reply is announced once, by the
+    // status beside it.
     <div
       role="log"
-      aria-live="polite"
+      aria-live="off"
       aria-label={PANEL_TITLE}
       // `flex-1`, not `min-h-full`: the log takes only the height left beside
       // the footer, so a short thread does not scroll and the sticky composer

@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { FRAME_KIND } from "@/lib/api/events-types";
 import { CONNECTION_STATUS, appendOptimistic, getSnapshot, reconcileServerRows, subscribe } from "./fleet-stream-registry";
 import { setupRegistryTests, row, WS, Z_A, IDLE_RELEASE_MS, sourceAt } from "@/tests/helpers/fleet-stream-registry-fixtures";
-import { setupBackfillTests, RECONNECT_ADVANCE_MS, SEED_AT_MS, MISSED_AT_MS, SEED_SINCE_PARAM, fetchSpy, pageWith, queryOf, flushBackfill, reconnect } from "@/tests/helpers/fleet-stream-backfill-fixtures";
+import { setupBackfillTests, RECONNECT_ADVANCE_MS, SEED_AT_MS, MISSED_AT_MS, SEED_SINCE_PARAM, MISSED_SINCE_PARAM, fetchSpy, pageWith, queryOf, flushBackfill, reconnect } from "@/tests/helpers/fleet-stream-backfill-fixtures";
 
 setupRegistryTests();
 setupBackfillTests();
@@ -181,5 +182,67 @@ describe("fleet-stream-registry — backfill", () => {
     expect(getSnapshot(Z_A).events).toEqual([]);
   });
 
+  it("test_chat_backfills_on_catching_up — a gap on an open stream reads the missed rows back", async () => {
+    fetchSpy.mockResolvedValue(pageWith([row({ event_id: "evt_missed", created_at: MISSED_AT_MS })]));
+    const release = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const es = sourceAt(0);
+    es.open();
+    es.heartbeat();
+    await flushBackfill();
+    // A first open has nothing to recover.
+    expect(fetchSpy).not.toHaveBeenCalled();
 
+    // A lost and re-established subscription: the missed count is unknowable.
+    es.emit({ kind: FRAME_KIND.CATCHING_UP, dropped: 0 });
+    await flushBackfill();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(queryOf(0).get("since")).toBe(SEED_SINCE_PARAM);
+    expect(getSnapshot(Z_A).events.map((event) => event.id)).toEqual(["evt_seed", "evt_missed"]);
+    release();
+  });
+  it("test_chat_backfills_on_catching_up — a gap during a walk runs a second walk, from the first one's watermark, after it", async () => {
+    const first = await gapDuringWalk(1);
+    first.resolve(pageWith([row({ event_id: "evt_missed", created_at: MISSED_AT_MS })]));
+    await flushBackfill();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(queryOf(1).get("since")).toBe(MISSED_SINCE_PARAM);
+    expect(getSnapshot(Z_A).events.map((event) => event.id)).toContain("evt_late");
+  });
+
+  it("test_chat_backfills_on_catching_up — three gaps during a walk still queue one walk after it", async () => {
+    const first = await gapDuringWalk(3);
+    first.resolve(pageWith([]));
+    await flushBackfill();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("queues no walk for an entry torn down while its walk was in flight", async () => {
+    const first = await gapDuringWalk(1);
+    releaseGapStream();
+    vi.advanceTimersByTime(IDLE_RELEASE_MS);
+    first.resolve(pageWith([]));
+    await flushBackfill();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
 });
+
+let releaseGapStream: () => void = () => {};
+
+// An open stream whose first gap starts a walk that hangs until released, and
+// `gaps` more gap frames that arrive while it hangs.
+async function gapDuringWalk(gaps: number) {
+  const first = Promise.withResolvers<unknown>();
+  fetchSpy.mockReturnValueOnce(first.promise);
+  fetchSpy.mockResolvedValue(pageWith([row({ event_id: "evt_late", created_at: MISSED_AT_MS + 1 })]));
+  releaseGapStream = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+  const es = sourceAt(0);
+  es.open();
+  es.heartbeat();
+  es.emit({ kind: FRAME_KIND.CATCHING_UP, dropped: 0 });
+  await flushBackfill();
+  for (let gap = 0; gap < gaps; gap += 1) es.emit({ kind: FRAME_KIND.CATCHING_UP, dropped: 0 });
+  await flushBackfill();
+  expect(fetchSpy).toHaveBeenCalledTimes(1);
+  return first;
+}

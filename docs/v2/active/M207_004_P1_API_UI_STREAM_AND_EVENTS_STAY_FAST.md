@@ -65,7 +65,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_dragonfly/tests/integration_retention{,/floor}.rs`, `rustd/crates/afd_outbound/tests/integration_producer_outage.rs` | EDIT / CREATE | Retention tests above the new slack; the floor's own proofs |
 | `rustd/crates/afd_dragonfly/src/{hub,hub/**,topology,transport,transport/**,test_util}.rs`, `rustd/crates/{afd_dragonfly,afd_sse,afd_api_tenant}/Cargo.toml`, `rustd/crates/afd_dragonfly/tests/**` | EDIT / CREATE | Gap arm; replay-attributed repair; dispatch and control tasks; shared payload; the fault fakes split under the cap |
 | `rustd/crates/afd_api_tenant/src/handler/stream/body.rs`, `rustd/crates/{afd_gate,afd_approval,afd_fleet,agentsfleetd}/tests/**`, `public/openapi.json` | EDIT / CREATE | A shared-payload SSE body; consumers of the gap arm; the `catching_up` description |
-| `ui/packages/app/lib/streaming/fleet-stream-registry.ts` (+ test) | EDIT | The chat backfills on `catching_up` |
+| `ui/packages/app/lib/streaming/{fleet-stream-registry,fleet-stream-entry,workspace-stream}.ts` (+ tests) | EDIT | The chat and the wall backfill on `catching_up`, and a gap during a walk queues one walk after it |
 | `rustd/crates/afd_sse/src/{tail,frame,fanin,ceiling}.rs`, `rustd/crates/afd_api_tenant/src/handler/stream{,/wall}.rs`, `rustd/crates/agentsfleetd/src/preflight/knobs.rs` | EDIT | Gap as `catching_up`; one rendered frame per replica; coalesced wall counters; the measured ceiling |
 | `ui/packages/app/components/domain/{FleetReplyBody,FleetMarkdown,FleetThread,FleetThreadViewport}.tsx` | EDIT | Block-memoised markdown; a stable adapter; one announcement per reply |
 | `ui/packages/app/lib/streaming/{workspace-store,workspace-tile,fleet-stream-backfill}.ts`, `ui/packages/app/components/domain/fleetMarkdownBlocks.ts`, `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx` | EDIT / CREATE | Wall projection split from the store; streaming block boundaries; one notify per backfill walk |
@@ -137,15 +137,15 @@ A drained fleet's mark is cleared, and only after the whole group has nothing pe
 - **Dimension 5.4** — a frame's payload and rendered event are shared across viewers, not copied per viewer → Test `test_fanout_shares_one_payload`
 - **Dimension 5.5** — a lagging wall viewer refreshes counters at most once per tick → Test `test_wall_lag_reads_counters_once_per_tick`
 - **Dimension 5.6** — `SSE_MAX_STREAMS`'s default is the largest stream-ladder rung at which every frame is delivered, p95 publish-to-receive stays under 250 ms and the streams' resident memory stays under 256 MiB, cited beside the const → Test `bench_stream_ceiling_ladder`
-- **Dimension 5.7** — the chat backfills on any `catching_up`, lag or gap → Test `test_chat_backfills_on_catching_up`
-- **Dimension 5.8** — the wall shows catching up on any `catching_up`, including a gap's `dropped: 0` → Test `test_wall_shows_a_gap`
+- **Dimension 5.7** — the chat backfills on any `catching_up`, lag or gap → Test `test_chat_backfills_on_catching_up` — DONE (`fleet-stream-registry-backfill.test.ts`: a gap backfills once, and a gap during an in-flight walk queues exactly one walk after it)
+- **Dimension 5.8** — the wall shows catching up on any `catching_up`, including a gap's `dropped: 0` → Test `test_wall_shows_a_gap` — DONE (`workspace-stream-backfill.test.ts`, `dashboard-fleets-wall.test.tsx`: a `dropped: 0` gap shows catching up; one or three gaps during a walk queue one follow-up; a torn-down connection queues none)
 
 ### §6 — A flush renders one leaf
 
-- **Dimension 6.1** — a streaming answer re-parses only its open block, finished blocks keep identity, and the settled render equals a single parse on a corpus with fences split across chunks → Test `test_streaming_markdown_reparses_only_the_open_block`
-- **Dimension 6.2** — a wall tile does not re-render on chunk or tool frames → Test `test_wall_tile_ignores_chunks`
-- **Dimension 6.3** — a text flush re-renders neither the thread viewport nor the composer → Test `test_flush_leaves_the_shell_alone`
-- **Dimension 6.4** — a backfill walk notifies once, and the transcript announces a settled reply once → Test `test_backfill_walk_notifies_once`
+- **Dimension 6.1** — a streaming answer re-parses only its open block, finished blocks keep identity, and the settled render equals a single parse on a corpus with fences split across chunks → Test `test_streaming_markdown_reparses_only_the_open_block` — DONE (400 flushes of a 20 KB answer take about 400 ms against 10,517 ms for the whole-prefix path; the settled HTML is byte-identical to a single parse; the last two blocks stay open because a list item arriving a chunk later joins its list)
+- **Dimension 6.2** — a wall tile does not re-render on chunk or tool frames → Test `test_wall_tile_ignores_chunks` — DONE (100 tiles and 2,000 chunk and tool frames → 0 tile commits, `FleetTile.stream.test.tsx`)
+- **Dimension 6.3** — a text flush re-renders neither the thread viewport nor the composer → Test `test_flush_leaves_the_shell_alone` — DONE (`FleetThread.flush.test.tsx`: text flushes render neither the viewport nor the composer)
+- **Dimension 6.4** — a backfill walk notifies once, and the transcript announces a settled reply once → Test `test_backfill_walk_notifies_once` — DONE (`fleet-stream-backfill.test.ts`: a three-page walk notifies its thread once; `FleetThread.flush.test.tsx`: a settled reply is announced once and never while it streams)
 
 ## Interfaces
 

@@ -83,6 +83,8 @@ export type Entry = {
   // the gap it left).
   serverSinceMs: number | null;
   backfillInFlight: boolean;
+  // A recovery asked for while a walk was in flight: one more walk runs after it.
+  backfillQueued: boolean;
   // Detaches the tab-visible / network-online recovery listeners. Held on the
   // entry so teardown can remove exactly what subscribe attached.
   detachRecovery: (() => void) | null;
@@ -125,6 +127,7 @@ export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
     hadConnectionError: false,
     serverSinceMs: maxServerCreatedAt(null, initial),
     backfillInFlight: false,
+    backfillQueued: false,
     detachRecovery: null,
   };
 }

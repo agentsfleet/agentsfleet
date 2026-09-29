@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   AssistantRuntimeProvider,
   useExternalStoreRuntime,
@@ -96,12 +96,14 @@ export function FleetThread({
   // drops, or renames an event, so a group can always hand back what it hid.
   const { entries, convertEntry } = useFleetThreadEntries(stream.events, stream.convertEvent);
   const submittedMessageId = submission?.fleetId === fleetId ? submission.id : null;
-  const runtime = useExternalStoreRuntime<FleetThreadEntry>({
-    isRunning: false,
-    messages: entries,
-    convertMessage: convertEntry,
-    onNew: delivery.onNew,
-  });
+  // The runtime compares its adapter by identity: a fresh literal on a render
+  // that changed no message (a connection cue, a ledger entry) re-ran every
+  // assistant-ui selector in the thread for nothing.
+  const adapter = useMemo(
+    () => ({ isRunning: false, messages: entries, convertMessage: convertEntry, onNew: delivery.onNew }),
+    [entries, convertEntry, delivery.onNew],
+  );
+  const runtime = useExternalStoreRuntime<FleetThreadEntry>(adapter);
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <SenderLabelProvider senderLabel={senderLabel}>

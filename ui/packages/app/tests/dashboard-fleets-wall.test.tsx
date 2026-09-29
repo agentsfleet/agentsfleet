@@ -1,111 +1,40 @@
 import type { ProfilerOnRenderCallback } from "react";
 
-import React, { Profiler } from "react";
-import { act, cleanup, render } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  WorkspaceStreamProvider,
-  useWorkspaceFleetStream,
-} from "@/components/domain/useWorkspaceStream";
+import { act, render } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { WorkspaceStreamProvider } from "@/components/domain/useWorkspaceStream";
 import { FRAME_KIND } from "@/lib/api/events-types";
-import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
-import { __resetWorkspaceRegistryForTests } from "@/lib/streaming/workspace-stream";
-import { deriveTileLiveness } from "@/lib/wall/tile-liveness";
+import {
+  activityFrame,
+  CATCHING_UP_LABEL,
+  completionFrame,
+  CURRENT_LABEL,
+  eventRow,
+  FakeEventSource,
+  FEED_SHOWN_LABEL,
+  FleetProbe,
+  flushAnimationFrame,
+  LAST_KNOWN_LABEL,
+  LIVE_LABEL,
+  NO_FEED_LABEL,
+  onlyEventSource,
+  renderWall,
+  settlePromises,
+  setupWallTests,
+  WORKSPACE_ID,
+} from "./helpers/fleets-wall-harness";
 
-const WORKSPACE_ID = "ws_wall";
 const FLEET_A = "fleet_a";
 const FLEET_B = "fleet_b";
 const BURST_FLEET_COUNT = 60;
 const RECONNECT_DELAY_MS = 2_000;
 const BACKFILL_PAGE_LIMIT = 200;
-const EVENT_CREATED_AT_MS = 1_700_000_000_000;
-const PROMISE_SETTLE_TURNS = 10;
-const LIVE_LABEL = "live";
-const LAST_KNOWN_LABEL = "last known";
-const CURRENT_LABEL = "current";
-const CATCHING_UP_LABEL = "catching up";
-const FLEET_ACTOR = "fleet";
-const ONE_EVENT_LABEL = "events:1";
 const SNAPSHOT_KIND_LABEL = "kind:snapshot";
 const LIVE_KIND_LABEL = "kind:live";
 const COUNT_BEFORE_THE_DROP = 5;
 const COUNT_AFTER_THE_DROP = 7;
-const SPENT_NANOS = 2_000_000_000;
 
-class FakeEventSource {
-  static instances: FakeEventSource[] = [];
-  onopen: ((this: EventSource, ev: Event) => unknown) | null = null;
-  onmessage: ((this: EventSource, ev: MessageEvent) => unknown) | null = null;
-  onerror: ((this: EventSource, ev: Event) => unknown) | null = null;
-  listeners = new Map<string, Set<(event: Event) => unknown>>();
-  closed = false;
-
-  constructor(readonly url: string) {
-    FakeEventSource.instances.push(this);
-  }
-
-  close() {
-    this.closed = true;
-  }
-
-  addEventListener(name: string, listener: (event: Event) => unknown) {
-    const handlers = this.listeners.get(name) ?? new Set();
-    handlers.add(listener);
-    this.listeners.set(name, handlers);
-  }
-
-  open() {
-    this.onopen?.call(this as unknown as EventSource, {} as Event);
-  }
-
-  emit(payload: unknown, eventName?: string) {
-    const parsed = typeof payload === "string" ? JSON.parse(payload) as unknown : payload;
-    const resolvedEventName = eventName ?? (typeof parsed === "object" && parsed !== null && "kind" in parsed
-      ? String((parsed as { kind: unknown }).kind)
-      : "");
-    const data = JSON.stringify(payload);
-    const event = { data } as MessageEvent;
-    for (const listener of this.listeners.get(resolvedEventName) ?? []) listener.call(this, event);
-    if (!resolvedEventName) this.onmessage?.call(this as unknown as EventSource, event);
-  }
-
-  fail() {
-    this.onerror?.call(this as unknown as EventSource, {} as Event);
-  }
-}
-
-let animationFrameId = 0;
-let animationFrames = new Map<number, FrameRequestCallback>();
-
-beforeEach(() => {
-  FakeEventSource.instances = [];
-  animationFrameId = 0;
-  animationFrames = new Map();
-  vi.stubGlobal("EventSource", FakeEventSource);
-  vi.stubGlobal(
-    "requestAnimationFrame",
-    vi.fn((callback: FrameRequestCallback) => {
-      animationFrameId += 1;
-      animationFrames.set(animationFrameId, callback);
-      return animationFrameId;
-    }),
-  );
-  vi.stubGlobal(
-    "cancelAnimationFrame",
-    vi.fn((id: number) => {
-      animationFrames.delete(id);
-    }),
-  );
-  __resetWorkspaceRegistryForTests();
-});
-
-afterEach(() => {
-  cleanup();
-  __resetWorkspaceRegistryForTests();
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
-  vi.useRealTimers();
-});
+setupWallTests();
 
 describe("workspace fleet wall provider", () => {
   it("opens one workspace stream and routes a tagged frame only to its fleet", () => {
@@ -120,8 +49,8 @@ describe("workspace fleet wall provider", () => {
 
     expect(FakeEventSource.instances).toHaveLength(1);
     expect(source.url).toBe(`/live/v1/workspaces/${WORKSPACE_ID}/events/stream`);
-    expect(view.getByTestId(FLEET_A).textContent).toContain(ONE_EVENT_LABEL);
-    expect(view.getByTestId(FLEET_B).textContent).toContain("events:0");
+    expect(view.getByTestId(FLEET_A).textContent).toContain(FEED_SHOWN_LABEL);
+    expect(view.getByTestId(FLEET_B).textContent).toContain(NO_FEED_LABEL);
   });
 
   it("coalesces a 60-fleet burst into one animation callback and one React commit", () => {
@@ -179,6 +108,29 @@ describe("workspace fleet wall provider", () => {
     flushAnimationFrame();
     source.emit({ kind: FRAME_KIND.CATCHING_UP, dropped: 3 });
     source.emit({ kind: FRAME_KIND.CATCHING_UP, dropped: 4 });
+    flushAnimationFrame();
+
+    expect(view.getByTestId(FLEET_A).textContent).toContain(CATCHING_UP_LABEL);
+    await act(async () => settlePromises());
+    flushAnimationFrame();
+    // The second gap arrived during the first walk, so one more walk follows.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(view.getByTestId(FLEET_A).textContent).toContain(CURRENT_LABEL);
+  });
+
+  it("test_wall_shows_a_gap: a lost subscription, sent as zero drops, shows catching up until its backfill lands", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [], next_cursor: null }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const view = renderWall([FLEET_A]);
+    const source = onlyEventSource();
+
+    source.emit({ kind: FRAME_KIND.HELLO, fleet_ids: [FLEET_A] });
+    flushAnimationFrame();
+    // The count of missed frames is unknowable after a lost subscription.
+    source.emit({ kind: FRAME_KIND.CATCHING_UP, dropped: 0 });
     flushAnimationFrame();
 
     expect(view.getByTestId(FLEET_A).textContent).toContain(CATCHING_UP_LABEL);
@@ -251,14 +203,14 @@ describe("workspace fleet wall provider", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       `/live/v1/workspaces/${WORKSPACE_ID}/events?limit=${BACKFILL_PAGE_LIMIT}`,
     );
-    expect(view.getByTestId(FLEET_A).textContent).toContain(ONE_EVENT_LABEL);
-    expect(view.getByTestId(FLEET_B).textContent).toContain(ONE_EVENT_LABEL);
+    expect(view.getByTestId(FLEET_A).textContent).toContain(FEED_SHOWN_LABEL);
+    expect(view.getByTestId(FLEET_B).textContent).toContain(FEED_SHOWN_LABEL);
   });
 
   it("returns a stable empty state when a tile renders outside the provider", () => {
     const view = render(<FleetProbe fleetId={FLEET_A} />);
 
-    expect(view.getByTestId(FLEET_A).textContent).toContain("events:0");
+    expect(view.getByTestId(FLEET_A).textContent).toContain(NO_FEED_LABEL);
     expect(view.getByTestId(FLEET_A).textContent).toContain(CURRENT_LABEL);
     expect(FakeEventSource.instances).toHaveLength(0);
   });
@@ -276,7 +228,7 @@ describe("workspace fleet wall provider", () => {
     flushAnimationFrame();
 
     expect(view.getAllByTestId(FLEET_A)).toHaveLength(2);
-    expect(view.getAllByTestId(FLEET_A)[0]?.textContent).toContain(ONE_EVENT_LABEL);
+    expect(view.getAllByTestId(FLEET_A)[0]?.textContent).toContain(FEED_SHOWN_LABEL);
   });
 
   it("skips a removed tile listener when its queued update flushes", () => {
@@ -300,7 +252,7 @@ describe("workspace fleet wall provider", () => {
   });
 
   it("a_dropped_frame_is_corrected_by_the_next_snapshot", () => {
-    // Dimension 1.5. The frame carrying 6 never arrives; the one carrying 7
+    // The frame carrying 6 never arrives; the one carrying 7
     // does, and the tile reads 7 — the database's figure — with no reload:
     // every frame carries the whole truth, so nothing owed the missing one.
     const view = renderWall([FLEET_A]);
@@ -320,7 +272,7 @@ describe("workspace fleet wall provider", () => {
   });
 
   it("a_capped_stream_degrades_to_a_snapshot_tile", () => {
-    // Dimension 1.6, the client half. A stream the daemon refused at its
+    // A stream the daemon refused at its
     // ceiling (`SSE_MAX_STREAMS`, `UZ-API-002` — the admission is pinned by
     // `afd_api/tests/fleet_streams.rs`) errors at the EventSource; the tile
     // must then say `snapshot`, never a stale `live`.
@@ -347,79 +299,3 @@ describe("workspace fleet wall provider", () => {
     expect(cancelAnimationFrame).toHaveBeenCalledTimes(1);
   });
 });
-
-function FleetProbe({ fleetId }: { fleetId: string }) {
-  const state = useWorkspaceFleetStream(fleetId);
-  const live = state.isLive ? LIVE_LABEL : LAST_KNOWN_LABEL;
-  const recovery = state.catchingUp ? CATCHING_UP_LABEL : CURRENT_LABEL;
-  const kind = deriveTileLiveness(AGENTSFLEET_STATUS.ACTIVE, state.connectionStatus).kind;
-  const processed = state.counters?.eventsProcessed ?? "none";
-  return React.createElement(
-    "output",
-    { "data-testid": fleetId },
-    `events:${state.events.length} ${live} ${recovery} kind:${kind} processed:${processed}`,
-  );
-}
-
-function renderWall(fleetIds: string[], onRender?: ProfilerOnRenderCallback) {
-  const provider = (
-    <WorkspaceStreamProvider workspaceId={WORKSPACE_ID} fleetIds={fleetIds}>
-      {fleetIds.map((fleetId) => (
-        <FleetProbe key={fleetId} fleetId={fleetId} />
-      ))}
-    </WorkspaceStreamProvider>
-  );
-  return render(onRender ? <Profiler id="fleet-wall" onRender={onRender}>{provider}</Profiler> : provider);
-}
-
-function activityFrame(fleetId: string) {
-  return {
-    fleet_id: fleetId,
-    kind: FRAME_KIND.EVENT_RECEIVED,
-    event_id: `event_${fleetId}`,
-    actor: FLEET_ACTOR,
-  };
-}
-
-function completionFrame(fleetId: string, eventId: string, eventsProcessed: number) {
-  return {
-    fleet_id: fleetId,
-    kind: FRAME_KIND.EVENT_COMPLETE,
-    event_id: eventId,
-    status: "processed",
-    created_at: EVENT_CREATED_AT_MS,
-    updated_at: EVENT_CREATED_AT_MS,
-    events_processed: eventsProcessed,
-    budget_used_nanos: SPENT_NANOS,
-  };
-}
-
-function eventRow(fleetId: string, eventId: string) {
-  return {
-    event_id: eventId,
-    fleet_id: fleetId,
-    actor: FLEET_ACTOR,
-    response_text: "recovered",
-    request_json: "{}",
-    status: "processed",
-    created_at: EVENT_CREATED_AT_MS,
-  };
-}
-
-function onlyEventSource(): FakeEventSource {
-  const source = FakeEventSource.instances[0];
-  if (!source) throw new Error("workspace stream was not opened");
-  return source;
-}
-
-function flushAnimationFrame() {
-  const callbacks = [...animationFrames.values()];
-  animationFrames.clear();
-  act(() => {
-    for (const callback of callbacks) callback(0);
-  });
-}
-
-async function settlePromises() {
-  for (let index = 0; index < PROMISE_SETTLE_TURNS; index += 1) await Promise.resolve();
-}

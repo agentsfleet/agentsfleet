@@ -1,8 +1,10 @@
 "use client";
 
-import { createContext, memo, useContext, type ReactNode } from "react";
+import { createContext, memo, useContext, useState, type ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+
+import { StreamingBlocks } from "./fleetMarkdownBlocks";
 
 /**
  * A fleet's reply, as markdown.
@@ -21,6 +23,9 @@ import remarkGfm from "remark-gfm";
 
 /** Set by `pre`, so a fenced block's `code` does not also render as a chip. */
 const Fenced = createContext(false);
+
+// Module scope, so a finished block's props never change identity under it.
+const REMARK_PLUGINS = [remarkGfm];
 
 const COMPONENTS: Components = {
   p: ({ children }) => <p className="leading-reading">{children}</p>,
@@ -101,13 +106,46 @@ const COMPONENTS: Components = {
  * white glares against the graphite canvas at reading length; `--text` stays
  * cool for the rest of the product, which is interface rather than prose.
  */
+const BODY_CLASS = "space-y-md font-sans text-reading leading-reading text-text-chat [font-variation-settings:'wght'_380]";
+
 export const FleetMarkdown = memo(function FleetMarkdown({ children }: { children: string }) {
   return (
-    <div className="space-y-md font-sans text-reading leading-reading text-text-chat [font-variation-settings:'wght'_380]">
-      <Markdown components={COMPONENTS} remarkPlugins={[remarkGfm]}>
+    <div className={BODY_CLASS}>
+      <Markdown components={COMPONENTS} remarkPlugins={REMARK_PLUGINS}>
         {children}
       </Markdown>
     </div>
+  );
+});
+
+/**
+ * A reply still streaming, rendered block by block: each finished block is
+ * parsed once and then left alone, and a flush re-parses only the open tail
+ * (see `fleetMarkdownBlocks`). A settled reply renders through `FleetMarkdown`
+ * instead, in one parse, so what stays on screen is exactly what it was.
+ */
+export const FleetStreamingMarkdown = memo(function FleetStreamingMarkdown({ text }: { text: string }) {
+  const [blocks] = useState(() => new StreamingBlocks());
+  const view = blocks.view(text);
+  return (
+    <div className={BODY_CLASS}>
+      {view.finished.map((source, index) => (
+        // Finished blocks only ever append, so a position names one block for
+        // good; a replaced answer re-renders through the `source` it carries.
+        <FinishedBlock key={index} source={source} />
+      ))}
+      <Markdown components={COMPONENTS} remarkPlugins={[remarkGfm, () => view.readTail]}>
+        {view.tail}
+      </Markdown>
+    </div>
+  );
+});
+
+const FinishedBlock = memo(function FinishedBlock({ source }: { source: string }) {
+  return (
+    <Markdown components={COMPONENTS} remarkPlugins={REMARK_PLUGINS}>
+      {source}
+    </Markdown>
   );
 });
 

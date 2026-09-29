@@ -109,15 +109,7 @@ function startEventSource(entry: LiveEntry, fleetId: string): void {
     entry.hasConnectedOnce = true;
     entry.hadConnectionError = false;
     // An open alone does not reset failure history: accept-close loops back off.
-    if (needsBackfill) {
-      void backfillEntry(entry, fleetId, {
-        stillCurrent: entry.isCurrent,
-        onPage: (rows) => {
-          setEvents(entry, (prev) => mergeBackfill(prev, rows));
-          settleRepliesFromBackfill(entry, fleetId, rows, entry.apply, entry.isCurrent);
-        },
-      });
-    }
+    if (needsBackfill) recoverGap(entry, fleetId);
   };
   const handleFrame = (e: MessageEvent) => {
     if (entry.eventSource !== es) return;
@@ -142,7 +134,25 @@ function startEventSource(entry: LiveEntry, fleetId: string): void {
   entry.recoveryWindow.connecting(onTimeout);
 }
 
+// Reads back what the stream missed. A burst of gap signals during a walk
+// costs one more walk after it, not one each.
+function recoverGap(entry: LiveEntry, fleetId: string): void {
+  void backfillEntry(entry, fleetId, {
+    stillCurrent: entry.isCurrent,
+    onPage: (rows) => {
+      setEvents(entry, (prev) => mergeBackfill(prev, rows));
+      settleRepliesFromBackfill(entry, fleetId, rows, entry.apply, entry.isCurrent);
+    },
+  });
+}
+
 function onFrame(entry: LiveEntry, fleetId: string, frame: NonNullable<ReturnType<typeof parseLiveFrame>>): void {
+  // The daemon lost frames for this stream — dropped behind a slow reader, or
+  // a subscription lost and re-established — so read them back as a reconnect does.
+  if (frame.kind === FRAME_KIND.CATCHING_UP) {
+    recoverGap(entry, fleetId);
+    return;
+  }
   // Install frames advance the install step, never the message list. Forking
   // here (rather than inside applyLiveFrame) keeps the chat reducer pure and the
   // two concerns — a long-lived chat timeline vs. a one-shot install beat —

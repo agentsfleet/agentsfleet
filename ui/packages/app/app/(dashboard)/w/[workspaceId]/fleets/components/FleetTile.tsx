@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import Link from "next/link";
 import {
   Card,
@@ -84,13 +84,15 @@ function FleetSigil({ identity, live }: { identity: FleetIdentity; live: boolean
 // a parked or killed fleet opens no stream at all. A live fleet
 // renders `StreamingTile`, which subscribes and then shows either `live` or
 // `snapshot` — never blank. The tile is always a link to its console (all
-// kinds), so no tile is ever a dead end.
-export default function FleetTile({ fleet, workspaceId }: Props) {
+// kinds), so no tile is ever a dead end. Memoised: a wall of tiles re-renders
+// as a whole for its own reasons, and a tile's props rarely move with it.
+const FleetTile = memo(function FleetTile({ fleet, workspaceId }: Props) {
   if (!tileShouldStream(fleet.status)) {
     return <DrainedTile fleet={fleet} workspaceId={workspaceId} />;
   }
   return <StreamingTile fleet={fleet} workspaceId={workspaceId} />;
-}
+});
+export default FleetTile;
 
 function DrainedTile({ fleet, workspaceId }: Props) {
   return (
@@ -113,7 +115,7 @@ function StreamingTile({ fleet, workspaceId }: Props) {
   // The footer is the snapshot the last frame carried — server truth the
   // stream ASSIGNED, never a sum the browser kept. Until the stream has said
   // anything about this fleet it is undefined and the server render stands.
-  const { events, connectionStatus, helloReceived, isLive, catchingUp, counters } =
+  const { feed, connectionStatus, helloReceived, isLive, catchingUp, counters } =
     useWorkspaceFleetStream(fleet.id);
   const liveness = deriveTileLiveness(fleet.status, connectionStatus);
   const kind = liveness.kind === "live" && helloReceived && !isLive ? "snapshot" : liveness.kind;
@@ -129,7 +131,6 @@ function StreamingTile({ fleet, workspaceId }: Props) {
     : kind === "snapshot"
       ? { text: TILE_NOT_LIVE_EYEBROW, tooltip: TILE_NOT_LIVE_TOOLTIP }
       : undefined;
-  const lastEvent = events.length > 0 ? events[events.length - 1] : null;
 
   return (
     <TileShell
@@ -139,7 +140,7 @@ function StreamingTile({ fleet, workspaceId }: Props) {
       live={actuallyLive}
       eyebrow={eyebrowInfo?.text}
       eyebrowTitle={eyebrowInfo?.tooltip}
-      feed={lastEvent?.text}
+      feed={feed}
       counters={counters}
       emptyActivity={actuallyLive ? FLEET_WAITING_COPY : FLEET_NO_LIVE_ACTIVITY_COPY}
     >

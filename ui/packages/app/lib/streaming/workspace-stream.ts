@@ -62,6 +62,8 @@ type Entry = {
   // Newest server-confirmed frame time (epoch ms) — the backfill anchor.
   serverSinceMs: number | null;
   backfillInFlight: boolean;
+  // A gap reported while a walk was in flight: one more walk runs after it.
+  backfillQueued: boolean;
   backfill: BackfillFn | null;
 };
 
@@ -94,14 +96,32 @@ function startEventSource(entry: Entry): void {
   es.onerror = () => onEventSourceError(entry);
 }
 
+// One walk at a time. A gap reported during a walk may hold frames lost after
+// that walk read its window, so it queues one more walk from the advanced
+// anchor when this one ends; any number of gaps meanwhile share it, and a
+// torn-down connection runs none.
 async function backfillGap(entry: Entry): Promise<void> {
-  if (!entry.backfill || entry.backfillInFlight) return;
+  if (!entry.backfill) return;
+  if (entry.backfillInFlight) {
+    entry.backfillQueued = true;
+    return;
+  }
   entry.backfillInFlight = true;
   try {
-    await entry.backfill(entry.workspaceId, entry.serverSinceMs);
+    do {
+      await walkGap(entry);
+    } while (entry.backfillQueued && REGISTRY.get(entry.workspaceId) === entry);
   } finally {
     entry.backfillInFlight = false;
+    entry.backfillQueued = false;
   }
+}
+
+// A walk reads everything reported before it starts, so starting one takes
+// whatever was queued.
+async function walkGap(entry: Entry): Promise<void> {
+  entry.backfillQueued = false;
+  await entry.backfill?.(entry.workspaceId, entry.serverSinceMs);
 }
 
 // Parse + validate a raw SSE frame, returning the tagged frame or null when it
@@ -191,6 +211,7 @@ function createEntry(workspaceId: string, backfill: BackfillFn | null): Entry {
     hasConnectedOnce: false,
     serverSinceMs: null,
     backfillInFlight: false,
+    backfillQueued: false,
     backfill,
   };
 }
