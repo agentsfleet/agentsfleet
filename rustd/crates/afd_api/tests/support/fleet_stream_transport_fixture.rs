@@ -198,13 +198,23 @@ impl Watched {
     }
 }
 
+/// The next whole SSE event, read to the blank line that ends it.
+///
+/// Reads chunks rather than one: an event's payload is written from the
+/// buffer every viewer shares, so it arrives in several body chunks, and
+/// chunk boundaries carry no meaning on the wire — an `EventSource` or the
+/// CLI's reader parses the byte stream to the blank line the same way.
 pub(super) async fn next_frame(body: &mut axum::body::BodyDataStream) -> String {
-    let bytes = tokio::time::timeout(DELIVERY_BUDGET, body.next())
-        .await
-        .expect("frame delivered within budget")
-        .expect("stream stays open")
-        .expect("infallible SSE body");
-    String::from_utf8(bytes.to_vec()).expect("SSE is UTF-8")
+    let mut event = String::new();
+    while !event.ends_with("\n\n") {
+        let bytes = tokio::time::timeout(DELIVERY_BUDGET, body.next())
+            .await
+            .expect("frame delivered within budget")
+            .expect("stream stays open")
+            .expect("infallible SSE body");
+        event.push_str(std::str::from_utf8(&bytes).expect("SSE is UTF-8"));
+    }
+    event
 }
 
 pub(super) fn assert_frame(frame: &str, sequence: u64, payload: &Value) {
