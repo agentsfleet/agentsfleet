@@ -14,13 +14,22 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_dragonfly::streams::{ACKNOWLEDGED_HISTORY, EventId, FleetStreams, fleet_stream_key};
+use afd_dragonfly::streams::{
+    ACKNOWLEDGED_HISTORY, EventId, FleetStreams, TRIM_SLACK, fleet_stream_key,
+};
 
 use crate::support::DragonflyHarness;
 
+#[path = "integration_retention/floor.rs"]
+mod floor;
+
 /// Entries appended above the history bound, so the trim has something to
 /// remove and something it must not.
-const ABOVE_THE_BOUND: usize = 50;
+///
+/// Past the slack as well as the bound: a stream inside the slack returns
+/// before the trim reads anything, and a test there would pass for a reason
+/// that has nothing to do with the floor.
+const ABOVE_THE_BOUND: usize = TRIM_SLACK + 50;
 
 /// How many of the appended entries a consumer is handed, and how many of
 /// those it acknowledges: the rest are pending, and everything never handed
