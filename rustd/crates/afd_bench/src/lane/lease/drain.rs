@@ -38,8 +38,9 @@ use self::settled::Settled;
 use super::Parameters;
 use crate::abort::Abort;
 use crate::datastores::{Datastores, dragonfly_calls};
-use crate::error::{Error, Result};
+use crate::error::{ErrorKind, Result};
 use crate::fixture::{FixtureLedger, RunPrefix};
+use crate::lane::joined;
 use crate::profile::Profile;
 use crate::report::{Report, count, latency, per_second, ratio};
 use crate::statements::{self, StatementCost};
@@ -231,9 +232,7 @@ async fn window(
     }
     let mut tally: Option<Tally> = None;
     for task in tasks {
-        let theirs = task
-            .await
-            .map_err(|_joined| Error::TaskLost { role: RUNNER_ROLE })??;
+        let theirs = joined(task.await, RUNNER_ROLE)??;
         match tally.as_mut() {
             Some(total) => total.absorb(&theirs)?,
             None => tally = Some(theirs),
@@ -241,7 +240,7 @@ async fn window(
     }
     let length = started.elapsed();
     Ok(Window {
-        tally: tally.ok_or(Error::TaskLost { role: RUNNER_ROLE })?,
+        tally: tally.ok_or(ErrorKind::TaskLost { role: RUNNER_ROLE })?,
         length,
         cost: statements::read(&stores.database).await?.since(before),
         dragonfly_calls: dragonfly_calls(&stores.queue)

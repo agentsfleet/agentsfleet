@@ -21,7 +21,7 @@ use afd_crypto::secret::Kek;
 
 use super::stage::INDEX_BASE;
 use crate::datastores::Datastores;
-use crate::error::{LaneFault, Result};
+use crate::error::{ErrorKind, Result};
 use crate::lane::lease::seed::{self, SEEDED_AT};
 
 /// Identifier kind for the catalogue row, apart from the seed's three.
@@ -55,10 +55,10 @@ const OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000_000;
 ///
 /// # Errors
 ///
-/// [`LaneFault::CredentialUnsealable`] when the host will not supply entropy.
+/// `CredentialUnsealable` when the host will not supply entropy.
 pub(super) fn minted_kek() -> Result<Kek> {
     let mut bytes = [0_u8; afd_crypto::KEY_LEN];
-    Entropy::new().fill(&mut bytes).map_err(LaneFault::from)?;
+    Entropy::new().fill(&mut bytes)?;
     Ok(Kek::from_bytes(bytes))
 }
 
@@ -68,7 +68,7 @@ pub(super) fn minted_kek() -> Result<Kek> {
 /// # Errors
 ///
 /// Whatever Postgres refused, a credential that would not seal, and
-/// [`LaneFault::PlatformDefaultHeld`] when another run holds the default.
+/// `PlatformDefaultHeld` when another run holds the default.
 pub(super) async fn stage(stores: &Datastores, kek: &Kek) -> Result<()> {
     let workspace = source_workspace();
     let mut connection = stores.database.acquire().await?;
@@ -100,13 +100,11 @@ async fn seal_credential(
     kek: &Kek,
     workspace: &str,
 ) -> Result<()> {
-    let sealed = Sealer::new()
-        .seal(
-            kek,
-            &Aad::new(workspace, PROVIDER),
-            CREDENTIAL_BODY.as_bytes(),
-        )
-        .map_err(LaneFault::from)?;
+    let sealed = Sealer::new().seal(
+        kek,
+        &Aad::new(workspace, PROVIDER),
+        CREDENTIAL_BODY.as_bytes(),
+    )?;
     sqlx::query(
         "INSERT INTO vault.secrets \
            (id, workspace_id, key_name, kek_version, encrypted_dek, dek_nonce, \
@@ -148,7 +146,7 @@ async fn claim_default(connection: &mut sqlx::PgConnection, workspace: &str) -> 
     .await?
     .rows_affected();
     if claimed == 0 {
-        return Err(LaneFault::PlatformDefaultHeld { provider: PROVIDER }.into());
+        return Err(ErrorKind::PlatformDefaultHeld { provider: PROVIDER }.into());
     }
     Ok(())
 }

@@ -30,7 +30,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Error, Result};
+use crate::error::{ErrorKind, Result};
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::profile::Profile;
 
@@ -215,26 +215,28 @@ impl Report {
     ///
     /// # Errors
     ///
-    /// [`Error::ResultUnrenderable`] when the report will not serialise, and
-    /// [`Error::ResultUnwritable`] when the directory cannot be created, the
+    /// `ResultUnrenderable` when the report will not serialise, and
+    /// `ResultUnwritable` when the directory cannot be created, the
     /// pending file cannot be written, or the rename does not land.
     pub fn write(&self, path: &Path) -> Result<()> {
-        let rendered = serde_json::to_string_pretty(self)
-            .map_err(|source| Error::ResultUnrenderable { source })?;
+        let rendered = serde_json::to_string_pretty(self)?;
         if let Some(directory) = path.parent() {
-            fs::create_dir_all(directory).map_err(|source| Error::ResultUnwritable {
+            fs::create_dir_all(directory).map_err(|source| ErrorKind::ResultUnwritable {
                 path: directory.to_path_buf(),
                 source,
             })?;
         }
         let pending = path.with_extension(format!("{RESULT_EXTENSION}{PENDING_SUFFIX}"));
-        fs::write(&pending, rendered).map_err(|source| Error::ResultUnwritable {
+        fs::write(&pending, rendered).map_err(|source| ErrorKind::ResultUnwritable {
             path: pending.clone(),
             source,
         })?;
-        fs::rename(&pending, path).map_err(|source| Error::ResultUnwritable {
-            path: path.to_path_buf(),
-            source,
+        fs::rename(&pending, path).map_err(|source| {
+            ErrorKind::ResultUnwritable {
+                path: path.to_path_buf(),
+                source,
+            }
+            .into()
         })
     }
 
@@ -242,16 +244,19 @@ impl Report {
     ///
     /// # Errors
     ///
-    /// [`Error::ResultUnreadable`] when the file will not open, and
-    /// [`Error::ResultUnparseable`] when its contents are not a report.
+    /// `ResultUnreadable` when the file will not open, and
+    /// `ResultUnparseable` when its contents are not a report.
     pub fn read(path: &Path) -> Result<Self> {
-        let raw = fs::read_to_string(path).map_err(|source| Error::ResultUnreadable {
+        let raw = fs::read_to_string(path).map_err(|source| ErrorKind::ResultUnreadable {
             path: path.to_path_buf(),
             source,
         })?;
-        serde_json::from_str(&raw).map_err(|source| Error::ResultUnparseable {
-            path: path.to_path_buf(),
-            source,
+        serde_json::from_str(&raw).map_err(|source| {
+            ErrorKind::ResultUnparseable {
+                path: path.to_path_buf(),
+                source,
+            }
+            .into()
         })
     }
 }

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use super::{BASELINES_DIRECTORY, RESULT_EXTENSION, RESULTS_DIRECTORY};
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorKind, Result};
 use crate::profile::Profile;
 
 /// Which question this file answers.
@@ -78,7 +78,7 @@ impl core::str::FromStr for Lane {
         Self::ALL
             .into_iter()
             .find(|lane| lane.name() == name)
-            .ok_or(Error::UnknownLane { usage: LANE_USAGE })
+            .ok_or_else(|| ErrorKind::UnknownLane { usage: LANE_USAGE }.into())
     }
 }
 

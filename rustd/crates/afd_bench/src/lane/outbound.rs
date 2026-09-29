@@ -44,7 +44,7 @@ use tokio_util::sync::CancellationToken;
 use self::poster::{Behaviour, Scripted};
 use self::record::{Drained, record, window_end};
 use crate::datastores::{Datastores, dragonfly_calls, postgres_transactions};
-use crate::error::{Error, Result};
+use crate::error::{ErrorKind, Result};
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::knobs::{RETRYABLE_FRACTION_VARIABLE, SLOW_FRACTION_VARIABLE};
 use crate::lane::sweep;
@@ -247,8 +247,8 @@ async fn drain(
     token.cancel();
     tokio::time::timeout(STOP_GRACE, worker)
         .await
-        .map_err(|_elapsed| Error::TaskLost { role: WORKER_ROLE })?
-        .map_err(|_joined| Error::TaskLost { role: WORKER_ROLE })?;
+        .map_err(|_elapsed| ErrorKind::TaskLost { role: WORKER_ROLE })?
+        .map_err(|_joined| ErrorKind::TaskLost { role: WORKER_ROLE })?;
 
     // The window ends at the last answer this run's jobs received, not at the
     // last attempt's start; the deadline stands in only when nothing was asked.

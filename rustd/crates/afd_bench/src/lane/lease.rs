@@ -39,7 +39,7 @@ use self::seed::{ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT};
 use self::window::Pollers;
 use crate::abort::Abort;
 use crate::datastores::Datastores;
-use crate::error::{Error, Result};
+use crate::error::{ErrorKind, Result};
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::instrument::LeaseInstrument;
 use crate::profile::{Parameter, Profile};
@@ -75,13 +75,14 @@ impl Parameters {
     ///
     /// # Errors
     ///
-    /// [`Error::RunnersExceedPool`] naming both numbers.
+    /// `RunnersExceedPool` naming both numbers.
     pub fn fit(self, pool_size: u32) -> Result<()> {
         if self.runners > u64::from(pool_size) {
-            return Err(Error::RunnersExceedPool {
+            return Err(ErrorKind::RunnersExceedPool {
                 runners: self.runners,
                 pool: pool_size,
-            });
+            }
+            .into());
         }
         Ok(())
     }
@@ -141,6 +142,36 @@ pub async fn run(
     Ok(report)
 }
 
+/// The drain, then the contended window, as one report: `make bench-lease`.
+///
+/// On a rig the run owns, the readiness index is emptied before anything is
+/// seeded, so the idle cost measured is this run's. The drain goes FIRST. The contended window leases and never reports, so
+/// its fleets end it claimed and marked for a claim's whole lifetime; a drain
+/// after it would poll those marks, and its idle cost would be theirs. Each
+/// population is its own, so the contended numbers stay comparable with
+/// every earlier baseline either way.
+///
+/// # Errors
+///
+/// Whatever either population refused, the drain's first.
+pub async fn run_both(
+    profile: Profile,
+    provenance: Provenance,
+    parameters: Parameters,
+    stores: &Datastores,
+    prefix: &RunPrefix,
+) -> Result<Report> {
+    if provenance.owned {
+        drain::reset_readiness(stores).await?;
+    }
+    let mut drained = Report::new(Lane::Lease, profile, provenance.clone());
+    drain::run(profile, parameters, stores, prefix, &mut drained).await?;
+    let mut report = run(profile, provenance, parameters, stores, prefix).await?;
+    report.measurements.append(&mut drained.measurements);
+    report.fixture.created += drained.fixture.created;
+    Ok(report)
+}
+
 /// Seed the population and enrol the runners that will poll it, answering
 /// the runners.
 async fn populate(
@@ -171,3 +202,6 @@ async fn populate(
     }
     Ok(runners)
 }
+
+#[cfg(test)]
+mod tests;

@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 
 use super::{DATASTORE_IMAGE_VARIABLE, OWNED_VALUE, OWNED_VARIABLE, Provenance, REVISION_VARIABLE};
-use crate::error::Error;
+use crate::error::{Error, ErrorKind};
 
 /// The three variables a complete run supplies.
 fn complete() -> BTreeMap<&'static str, String> {
@@ -48,7 +48,7 @@ fn every_field_refuses_to_be_absent() {
         environment.remove(missing);
         let refusal = read(&environment).expect_err("an incomplete environment is refused");
         assert!(
-            matches!(refusal, Error::VariableUnset { variable } if variable == missing),
+            matches!(refusal.kind(), ErrorKind::VariableUnset { variable } if *variable == missing),
             "{missing} unset must be refused by name, got {refusal:?}"
         );
     }
@@ -64,7 +64,7 @@ fn a_blank_field_is_as_absent_as_an_unset_one() {
         environment.insert(REVISION_VARIABLE, blank.to_owned());
         let refusal = read(&environment).expect_err("a blank field is refused");
         assert!(
-            matches!(refusal, Error::VariableUnset { variable } if variable == REVISION_VARIABLE),
+            matches!(refusal.kind(), ErrorKind::VariableUnset { variable } if *variable == REVISION_VARIABLE),
             "a blank revision must be refused, got {refusal:?}"
         );
     }

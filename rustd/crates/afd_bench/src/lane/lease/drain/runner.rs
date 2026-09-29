@@ -27,7 +27,7 @@ use afd_wire::lease::{LeasePayload, LeaseResponse};
 use afd_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 
 use crate::abort::Abort;
-use crate::error::{LaneFault, Result};
+use crate::error::{ErrorKind, Result};
 use crate::report::Latency;
 
 /// What every drain runner reports as its run's answer.
@@ -120,7 +120,7 @@ pub(super) async fn drive(plane: &Plane, runner: &Uuid7, shared: &Shared) -> Res
         let took = started.elapsed();
         shared.abort.record(true);
         let response: LeaseResponse<'_> = serde_json::from_str(&answer)
-            .map_err(|source| LaneFault::LeaseUnreadable { source })?;
+            .map_err(|source| ErrorKind::LeaseUnreadable { source })?;
         let Some(lease) = response.lease else {
             continue;
         };

@@ -29,7 +29,7 @@
 //! The hub buffers a bounded number of messages per channel and tells a reader
 //! that falls further behind that it lagged. A ladder that outran its slowest
 //! viewer would measure the lag path rather than delivery, so the publisher
-//! keeps no more than [`publish::WINDOW`] frames ahead of the slowest one. A
+//! keeps no more than `publish::WINDOW` frames ahead of the slowest one. A
 //! frame that still does not arrive is counted and reported, never assumed.
 //!
 //! # A node's loss is not measured here

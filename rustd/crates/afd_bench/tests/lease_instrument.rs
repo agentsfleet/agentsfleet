@@ -51,6 +51,15 @@ fn test_the_lease_counters_are_read_back_from_the_daemons_own_instrument() {
     assert_eq!(worked.candidates, CANDIDATES);
     assert_eq!(worked.roundtrips, ROUNDTRIPS);
 
+    // A second install hands back the first instrument rather than building
+    // a provider nothing records into: it reads exactly what the first reads.
+    let again = LeaseInstrument::install().expect("a second install must succeed");
+    assert_eq!(
+        again.read().expect("readable"),
+        instrument.read().expect("readable"),
+        "a later install that built its own provider would read zero forever"
+    );
+
     // What the lease path records when the readiness index is empty: it
     // returns before touching Postgres, so the poll counts and the round trips
     // do not. This is the number a million idle fleets multiply.

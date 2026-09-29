@@ -44,8 +44,9 @@ use afd_admission::Admissions;
 use afd_crypto::entropy::Entropy;
 
 use crate::datastores::{Datastores, dragonfly_calls};
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::fixture::{FixtureLedger, RunPrefix};
+use crate::lane::joined;
 use crate::lane::lease::seed::{
     self, BENCH_ACTOR, BENCH_REQUEST_JSON, ROWS_PER_FLEET, SEEDED_AT, SeededFleet,
 };
@@ -79,6 +80,9 @@ const POSTGRES_TRANSACTIONS_PER_STEER: &str = "postgres_transactions_per_steer";
 /// Measurement key: Postgres statements each accepted steer executed,
 /// transaction control left out.
 const POSTGRES_STATEMENTS_PER_STEER: &str = "postgres_statements_per_steer";
+
+/// The task role a lost depth sampler is reported under.
+const SAMPLER_ROLE: &str = "readiness sampler";
 
 /// Series key: readiness-index depth, sampled through the run.
 const READY_DEPTH: &str = "ready_depth";
@@ -195,9 +199,7 @@ async fn submit(
         .await?
         .since(postgres_before);
     stop.cancel();
-    let depth = sampler.await.map_err(|_joined| Error::TaskLost {
-        role: "readiness sampler",
-    })?;
+    let depth = joined(sampler.await, SAMPLER_ROLE)?;
 
     Ok(Submitted {
         outcomes,
@@ -230,9 +232,7 @@ async fn append_all(
     }
     let mut outcomes = Outcomes::new()?;
     for task in tasks {
-        let theirs = task
-            .await
-            .map_err(|_joined| Error::TaskLost { role: "submitter" })??;
+        let theirs = joined(task.await, "submitter")??;
         outcomes.absorb(&theirs)?;
     }
     Ok(outcomes)
@@ -342,3 +342,6 @@ impl Submitted {
         };
     }
 }
+
+#[cfg(test)]
+mod tests;

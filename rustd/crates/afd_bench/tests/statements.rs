@@ -59,3 +59,25 @@ async fn three_statements_in_one_transaction(database: &afd_db::Db) {
     }
     transaction.commit().await.expect("the transaction commits");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_database_without_the_counter_is_refused_by_name() {
+    // A database of this test's own: created empty, so the extension's view
+    // was never made there, and its pool has opened no connection yet — the
+    // reading acquires its own rather than finding one to flush.
+    let fresh = afd_db::test_util::TestDatabase::create().await;
+    let database = fresh.open(afd_db::config::DbRole::Api, &[]).await;
+    assert_eq!(database.size(), 0, "a lazy pool opens nothing until asked");
+
+    let refused = statements::read(&database).await;
+
+    assert!(
+        refused
+            .as_ref()
+            .is_err_and(afd_bench::Error::is_statements_unreadable),
+        "a counter that is not there is a named refusal, never a zero: {refused:?}"
+    );
+    database.close().await;
+    fresh.cleanup().await;
+}

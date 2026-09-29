@@ -5,7 +5,7 @@
 //! environment and the parameters leaves nothing to sweep, and a reader
 //! deserves to be told so rather than left wondering.
 
-use super::Error;
+use super::{Error, ErrorKind};
 impl Error {
     /// Whether this refusal happened before anything was opened or created.
     ///
@@ -20,37 +20,41 @@ impl Error {
         // grouping by cause and then giving two groups the same body is a
         // distinction the code does not make. What decides this is whether a
         // connection was open when the failure was raised.
-        match self {
-            Self::UnknownProfile { .. }
-            | Self::CapExceeded { .. }
-            | Self::AcknowledgementMissing { .. }
-            | Self::TargetMissing { .. }
-            | Self::VariableUnset { .. }
-            | Self::VariableUnreadable { .. }
-            | Self::UnknownLane { .. }
-            | Self::BelowFloor { .. }
-            | Self::WindowTooShort { .. }
-            | Self::RunnersExceedPool { .. } => true,
-            Self::LatencyUnavailable { .. }
-            | Self::LatencyUnrecordable { .. }
-            | Self::LatencyUnmergeable { .. }
-            | Self::ResultUnrenderable { .. }
-            | Self::ResultUnwritable { .. }
-            | Self::ResultUnreadable { .. }
-            | Self::ResultUnparseable { .. }
-            | Self::InstrumentUnavailable { .. }
-            | Self::InstrumentUnflushable { .. }
-            | Self::InstrumentPoisoned
-            | Self::DatabaseUnavailable { .. }
-            | Self::QueueUnavailable { .. }
-            | Self::LeasePathFaulted { .. }
-            | Self::SteerPathFaulted { .. }
-            | Self::LedgerUnreadable { .. }
-            | Self::FixtureUnseedable { .. }
-            | Self::RunnerUnenrollable { .. }
-            | Self::TaskLost { .. }
-            | Self::CounterUnreadable { .. }
-            | Self::Lane(..) => false,
+        match self.kind() {
+            ErrorKind::UnknownProfile { .. }
+            | ErrorKind::CapExceeded { .. }
+            | ErrorKind::AcknowledgementMissing { .. }
+            | ErrorKind::TargetMissing { .. }
+            | ErrorKind::VariableUnset { .. }
+            | ErrorKind::VariableUnreadable { .. }
+            | ErrorKind::UnknownLane { .. }
+            | ErrorKind::BelowFloor { .. }
+            | ErrorKind::WindowTooShort { .. }
+            | ErrorKind::RunnersExceedPool { .. } => true,
+            ErrorKind::LatencyUnavailable { .. }
+            | ErrorKind::LatencyUnrecordable { .. }
+            | ErrorKind::LatencyUnmergeable { .. }
+            | ErrorKind::ResultUnrenderable { .. }
+            | ErrorKind::ResultUnwritable { .. }
+            | ErrorKind::ResultUnreadable { .. }
+            | ErrorKind::ResultUnparseable { .. }
+            | ErrorKind::InstrumentUnavailable { .. }
+            | ErrorKind::InstrumentUnflushable { .. }
+            | ErrorKind::InstrumentPoisoned
+            | ErrorKind::DatabaseUnavailable { .. }
+            | ErrorKind::QueueUnavailable { .. }
+            | ErrorKind::LeasePathFaulted { .. }
+            | ErrorKind::SteerPathFaulted { .. }
+            | ErrorKind::LedgerUnreadable { .. }
+            | ErrorKind::FixtureUnseedable { .. }
+            | ErrorKind::RunnerUnenrollable { .. }
+            | ErrorKind::TaskLost { .. }
+            | ErrorKind::CounterUnreadable { .. }
+            | ErrorKind::StatementsUnreadable { .. }
+            | ErrorKind::PlatformDefaultHeld { .. }
+            | ErrorKind::CredentialUnsealable { .. }
+            | ErrorKind::CeilingRefused { .. }
+            | ErrorKind::LeaseUnreadable { .. } => false,
         }
     }
 }

@@ -71,7 +71,7 @@ impl Shared {
 ///
 /// # Errors
 ///
-/// [`crate::Error::LatencyUnavailable`] or [`crate::Error::LatencyUnrecordable`]
+/// `LatencyUnavailable` or `LatencyUnrecordable`
 /// from the histogram; never a refusal from the path, which is counted.
 pub async fn poll_until(
     leases: &Leases,

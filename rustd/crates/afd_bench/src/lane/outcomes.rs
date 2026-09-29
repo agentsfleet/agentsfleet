@@ -31,7 +31,7 @@ impl Outcomes {
     ///
     /// # Errors
     ///
-    /// [`crate::Error::LatencyUnavailable`] when the histogram will not build.
+    /// `LatencyUnavailable` when the histogram will not build.
     pub fn new() -> Result<Self> {
         Ok(Self {
             successes: 0,
@@ -45,7 +45,7 @@ impl Outcomes {
     ///
     /// # Errors
     ///
-    /// [`crate::Error::LatencyUnrecordable`] for a duration past the histogram.
+    /// `LatencyUnrecordable` for a duration past the histogram.
     pub fn succeeded(&mut self, took: Duration) -> Result<()> {
         self.successes += 1;
         self.latency.record(took)
@@ -55,7 +55,7 @@ impl Outcomes {
     ///
     /// # Errors
     ///
-    /// [`crate::Error::LatencyUnrecordable`] for a duration past the histogram.
+    /// `LatencyUnrecordable` for a duration past the histogram.
     pub fn missed(&mut self, took: Duration) -> Result<()> {
         self.misses += 1;
         self.latency.record(took)
@@ -70,7 +70,7 @@ impl Outcomes {
     ///
     /// # Errors
     ///
-    /// [`crate::Error::LatencyUnmergeable`] when the histograms will not add.
+    /// `LatencyUnmergeable` when the histograms will not add.
     pub fn absorb(&mut self, other: &Self) -> Result<()> {
         self.successes += other.successes;
         self.misses += other.misses;
