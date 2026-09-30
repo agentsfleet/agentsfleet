@@ -50,14 +50,9 @@ export function reportsOwnRun(events: readonly FleetEvent[], subject: string | n
   const newest = events.at(-1);
   if (newest === undefined || !isReplyInFlight(newest) || !isSteerBy(newest.actor, subject)) return false;
   // A row this tab painted keeps its submit clock through every frame, and
-  // another tab's row never had one. The daemon's opening frame can land
-  // before the 202 names it, though, leaving the server's row newest and
-  // unmarked until the graft; while a send here awaits its 202, it is ours.
-  return newest.submittedAtMs !== undefined || events.some(isAwaitingAck);
-}
-
-function isAwaitingAck(event: FleetEvent): boolean {
-  return event.status === AGENTSFLEET_EVENT_STATUS.OPTIMISTIC;
+  // another tab's row never had one. A turn announced before its 202 waits in
+  // the stream (`HeldTurns`) until the 202 says whose it is.
+  return newest.submittedAtMs !== undefined;
 }
 
 /**

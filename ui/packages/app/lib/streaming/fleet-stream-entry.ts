@@ -17,6 +17,7 @@ import type { FleetEvent } from "./fleet-stream-row";
 import type { ReplyStreamDecoder } from "./reply-stream-decoder";
 import type { InstallStepId } from "./install-steps";
 import { StreamRecoveryWindow } from "./stream-recovery-window";
+import { HeldTurns } from "./fleet-stream-held";
 
 export const CONNECTION_STATUS = {
   CONNECTING: "connecting",
@@ -95,6 +96,8 @@ export type Entry = {
   // Detaches the tab-visible / network-online recovery listeners. Held on the
   // entry so teardown can remove exactly what subscribe attached.
   detachRecovery: (() => void) | null;
+  // A steer's frames waiting on a send's 202 to say which tab sent it.
+  held: HeldTurns;
 };
 
 export const EMPTY_SNAPSHOT: FleetStreamSnapshot = Object.freeze({
@@ -138,5 +141,6 @@ export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
     backfillInFlight: false,
     backfillQueued: false,
     detachRecovery: null,
+    held: new HeldTurns(),
   };
 }

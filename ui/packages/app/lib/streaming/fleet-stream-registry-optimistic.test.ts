@@ -89,9 +89,9 @@ describe("fleet-stream-registry — optimistic mutations", () => {
   it("grafts the operator's text onto a body-less live row that beat the POST response", () => {
     const a = subscribe(WS, Z_A, NO_SEED, () => {});
     const tempId = appendOptimistic(Z_A, "deploy the canary", "steer:k@e2e.com");
-    // The SSE EVENT_RECEIVED for this steer lands before the Server Action
-    // resolves — the frame carries no message body, so the live row holds
-    // the real event id with an empty trigger.
+    // The opening frame for this steer lands before its 202. It names only
+    // the account, so it waits (`HeldTurns`) until the 202 names its row,
+    // then lands on the row that holds the operator's text.
     const es = sourceAt(0);
     es.emit({
       kind: FRAME_KIND.EVENT_RECEIVED,
