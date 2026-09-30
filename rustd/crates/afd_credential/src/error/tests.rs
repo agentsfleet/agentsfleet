@@ -88,32 +88,24 @@ fn a_vault_envelope_that_will_not_open_keeps_its_cause() -> Result<(), &'static 
     Ok(())
 }
 
-/// Drained entropy and a malformed mint share one internal code.
+/// An identifier that could not be minted answers the internal code.
 ///
-/// Both are failures of this instance rather than of its input — a host that
-/// cannot draw randomness, and a mint that produced something `Uuid7` refuses
-/// — so neither is the caller's to correct and both answer the same way.
+/// A host that cannot draw randomness is a failure of this instance rather than
+/// of its input, so it is not the caller's to correct.
 #[test]
-fn entropy_and_mint_failures_share_the_internal_operation_code() -> Result<(), &'static str> {
+fn a_failed_mint_answers_the_internal_operation_code() -> Result<(), &'static str> {
     let drained = super::entropy_drained(crypto_failure()?);
-    let minted = super::mint_failed(
-        afd_core::id::Uuid7::parse("not-an-id")
-            .err()
-            .ok_or("a malformed identifier unexpectedly parsed")?,
-    );
 
-    for (label, failure) in [("entropy", &drained), ("mint", &minted)] {
-        assert_eq!(
-            failure.code(),
-            error_code::INTERNAL_OPERATION_FAILED,
-            "{label} is this instance's problem, not the caller's"
-        );
-        assert!(failure.source().is_some(), "{label} keeps its cause");
-        assert!(!failure.detail().is_empty(), "{label}");
-        assert!(
-            !failure.is_config_permanent(),
-            "{label} is not a stored-configuration fault an operator edits"
-        );
-    }
+    assert_eq!(
+        drained.code(),
+        error_code::INTERNAL_OPERATION_FAILED,
+        "a failed mint is this instance's problem, not the caller's"
+    );
+    assert!(drained.source().is_some(), "a failed mint keeps its cause");
+    assert!(!drained.detail().is_empty());
+    assert!(
+        !drained.is_config_permanent(),
+        "a failed mint is not a stored-configuration fault an operator edits"
+    );
     Ok(())
 }

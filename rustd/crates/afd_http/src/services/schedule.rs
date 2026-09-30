@@ -14,7 +14,7 @@
 //! that arranges either.
 
 use afd_core::clock::UnixMillis;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use afd_cron::{
     Change, Fire, FireTarget, Fired, NewSchedule, Reconciled, Refused, Result as CronResult,
     Schedule, ScheduleService, Schedules,
@@ -136,9 +136,7 @@ impl SchedulePlane {
     /// this caller still holds the row with, so one that outlived its attempt
     /// would let a stale finalize land on a row another syncer had taken.
     fn token(&self, now: UnixMillis) -> CronResult<Uuid7> {
-        let mut bytes = [0_u8; ENTROPY_LEN];
-        self.entropy.fill(&mut bytes)?;
-        Ok(Uuid7::encode(now, bytes)?)
+        Ok(self.entropy.uuid7(now)?)
     }
 
     /// The store beneath the reconciler.

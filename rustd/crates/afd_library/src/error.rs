@@ -159,18 +159,11 @@ pub(crate) enum ErrorKind {
     ///
     /// Only the workspace tier mints: the platform catalogue is keyed by the
     /// bundle's own name, so it draws nothing.
-    #[error("could not draw the entropy a Fleet Bundle entry is minted from")]
+    #[error("a Fleet Bundle entry identifier could not be minted")]
     Entropy {
         /// The entropy source's refusal.
         #[source]
         source: afd_crypto::error::Error,
-    },
-    /// A minted entry identifier was not well-formed.
-    #[error("a minted Fleet Bundle entry identifier was not well-formed")]
-    Mint {
-        /// The identifier's own refusal.
-        #[source]
-        source: afd_core::error::Error,
     },
     /// A catalogue query failed with its statement context retained.
     #[error("Fleet Bundle catalogue query failed during {context}")]
@@ -218,11 +211,10 @@ impl Error {
             | ErrorKind::Snapshot { .. } => FLEET_BUNDLE_STORAGE_UNAVAILABLE,
             ErrorKind::CatalogIdCollision { .. } => CATALOG_ID_COLLISION,
             ErrorKind::Pool { .. } => INTERNAL_DB_UNAVAILABLE,
-            // Neither is the caller's to correct: a host that cannot draw
-            // entropy and a mint that produced something `Uuid7` refuses are
-            // both this instance's failure, and both answer the same internal
-            // code the credential plane gives them.
-            ErrorKind::Entropy { .. } | ErrorKind::Mint { .. } => INTERNAL_OPERATION_FAILED,
+            // Not the caller's to correct: a host that cannot mint an
+            // identifier is this instance's failure, and it answers the same
+            // internal code the credential plane gives it.
+            ErrorKind::Entropy { .. } => INTERNAL_OPERATION_FAILED,
             ErrorKind::CatalogueJson { .. } | ErrorKind::Database { .. } => INTERNAL_DB_QUERY,
             ErrorKind::Source(SourceFailure::InvalidReference | SourceFailure::UnsafeArchive) => {
                 FLEET_BUNDLE_INVALID
@@ -259,9 +251,7 @@ impl Error {
             // Nothing a caller can act on, and nothing about the bundle they
             // sent: this instance could not mint an identifier for the row it
             // was about to write.
-            ErrorKind::Entropy { .. } | ErrorKind::Mint { .. } => {
-                "Onboarding could not be completed"
-            }
+            ErrorKind::Entropy { .. } => "Onboarding could not be completed",
             ErrorKind::Invalid(
                 InvalidBundle::SkillTooLarge
                 | InvalidBundle::TriggerTooLarge

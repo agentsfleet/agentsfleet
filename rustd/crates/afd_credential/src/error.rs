@@ -79,12 +79,6 @@ pub(crate) enum ErrorKind {
         source: afd_crypto::error::Error,
     },
 
-    #[error("a minted registry-entry identifier was not well-formed")]
-    Mint {
-        #[source]
-        source: afd_core::error::Error,
-    },
-
     #[error("the credential directory would not describe a registry page's rows")]
     Directory {
         #[source]
@@ -137,7 +131,7 @@ impl Error {
             // that cannot draw entropy, and a mint that produced something
             // `Uuid7` refuses. Neither is the caller's to correct, and both
             // answer the same internal code `afd_tenant` gives them.
-            ErrorKind::Entropy { .. } | ErrorKind::Mint { .. } => {
+            ErrorKind::Entropy { .. } => {
                 (error_code::INTERNAL_OPERATION_FAILED, DETAIL_DATABASE_ERROR)
             }
             // The one provider-family failure an operator can ACT on: the
@@ -300,11 +294,6 @@ pub(crate) fn vault_data_invalid() -> Error {
 /// `From` cannot mean both.
 pub(crate) fn entropy_drained(source: afd_crypto::error::Error) -> Error {
     ErrorKind::Entropy { source }.into()
-}
-
-/// Reports a minted identifier the domain type refused.
-pub(crate) fn mint_failed(source: afd_core::error::Error) -> Error {
-    ErrorKind::Mint { source }.into()
 }
 
 /// Reports a declared credential with no vault row.

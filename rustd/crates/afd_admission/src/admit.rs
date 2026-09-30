@@ -78,7 +78,7 @@ impl Admissions {
     /// committed, and the replay sweeper appends it.
     pub async fn admit(&self, admission: Admission<'_>) -> Result<Admitted> {
         let now = clock::now();
-        let row_id = Uuid7::encode(now, self.entropy.uuid_randomness()?)?;
+        let row_id = self.entropy.uuid7(now)?;
         // An unrepeatable producer is keyed on the row it is about to write,
         // so its unique index still holds and this call is still the only
         // one that can own it. Minted HERE and not by the caller: the

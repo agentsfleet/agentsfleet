@@ -77,7 +77,7 @@ impl Vault {
         now: UnixMillis,
     ) -> Result<()> {
         let envelope = self.seal(workspace, name, body)?;
-        let id = self.mint_id(now)?;
+        let id = self.entropy.uuid7(now)?;
         let projection = body.projection();
 
         let written = sqlx::query(sql::INSERT_SECRET_IF_ABSENT)
@@ -210,13 +210,5 @@ impl Vault {
             &Aad::new(workspace.as_str(), name.as_str()),
             body.plaintext(),
         )?)
-    }
-
-    /// Draws a fresh row identifier.
-    ///
-    /// Minted from `now` rather than from a second clock read, so the row's
-    /// identifier sorts beside the `created_at` written in the same statement.
-    fn mint_id(&self, now: UnixMillis) -> Result<Uuid7> {
-        Ok(Uuid7::encode(now, self.entropy.uuid_randomness()?)?)
     }
 }

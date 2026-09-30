@@ -34,7 +34,7 @@ pub(crate) enum ErrorKind {
 
     #[error("an identifier could not be minted from the current instant")]
     Mint {
-        #[from]
+        #[source]
         source: afd_core::error::Error,
     },
 

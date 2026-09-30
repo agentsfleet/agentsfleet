@@ -15,6 +15,8 @@
 mod aad;
 #[path = "entropy_mock.rs"]
 mod entropy_mock;
+#[path = "entropy_uuid7.rs"]
+mod entropy_uuid7;
 #[path = "envelope.rs"]
 mod envelope;
 #[path = "envelope_conformance.rs"]

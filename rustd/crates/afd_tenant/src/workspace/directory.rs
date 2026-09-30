@@ -32,9 +32,6 @@ const CONTEXT_CREATE: &str = "create workspace";
 /// The context the tenant-existence read reports under.
 const CONTEXT_TENANT: &str = "check tenant exists";
 
-/// Postgres's unique-violation SQLSTATE.
-const UNIQUE_VIOLATION: &str = "23505";
-
 /// The index that arbitrates a per-tenant name.
 ///
 /// Must equal the name in `schema/210_workspaces.sql`, because classification
@@ -181,7 +178,7 @@ impl Workspaces {
         }
 
         if let Some(name) = chosen {
-            let id = self.mint_id(now)?;
+            let id = self.entropy.uuid7(now)?;
             return match self
                 .insert(&mut connection, &id, tenant, name.as_str(), created_by, now)
                 .await
@@ -198,7 +195,7 @@ impl Workspaces {
         let mut attempt = 0;
         loop {
             let name = name::generate(&self.entropy)?;
-            let id = self.mint_id(now)?;
+            let id = self.entropy.uuid7(now)?;
             match self
                 .insert(&mut connection, &id, tenant, &name, created_by, now)
                 .await
@@ -234,11 +231,6 @@ impl Workspaces {
             .await
             .map(|_outcome| ())
     }
-
-    /// Draws a fresh workspace identifier.
-    fn mint_id(&self, now: UnixMillis) -> Result<Uuid7> {
-        Ok(Uuid7::encode(now, self.entropy.uuid_randomness()?)?)
-    }
 }
 
 /// Reads one row by column name, through [`error::query`] with one context —
@@ -259,7 +251,6 @@ fn read_row(row: &sqlx::postgres::PgRow) -> Result<WorkspaceRow> {
 /// entropy draw repeating another to the bit — is not a fact about the NAME.
 fn is_name_conflict(source: &sqlx::Error) -> bool {
     source.as_database_error().is_some_and(|failure| {
-        failure.code().is_some_and(|code| code == UNIQUE_VIOLATION)
-            && failure.constraint() == Some(NAME_CONSTRAINT)
+        failure.is_unique_violation() && failure.constraint() == Some(NAME_CONSTRAINT)
     })
 }

@@ -62,14 +62,18 @@ fn a_request_that_could_not_be_written_retries_rather_than_ending() {
     assert_eq!(answers(None), Ungranted::Retries);
 }
 
-/// The error `written` is handed when an identifier will not encode.
+/// The error `written` is handed when an identifier cannot be minted.
 ///
-/// Built through the same `#[from]` edge production uses — `Uuid7::encode`'s
-/// failure lifts into `afd_approval::Error::Identifier` — so this is the real
+/// Built through the same `From` edge production uses: a refused mint from
+/// `Entropy::uuid7` lifts into `afd_approval::Error`, so this is the real
 /// variant with its real `code()`, not a stand-in.
 fn unwritable() -> afd_approval::Error {
+    let (entropy, control) = afd_crypto::entropy::Entropy::new_mocked();
+    control.fail_next();
     afd_approval::Error::from(
-        Uuid7::parse("not-a-v7-identifier").expect_err("a malformed id must not parse"),
+        entropy
+            .uuid7(afd_core::clock::UnixMillis::from_millis(1_767_225_600_000))
+            .expect_err("a mocked source told to fail refuses the mint"),
     )
 }
 

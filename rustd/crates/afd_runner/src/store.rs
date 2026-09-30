@@ -1,7 +1,7 @@
 //! The runner store: one pool, one entropy source, and the verbs over both.
 
 use afd_core::clock::UnixMillis;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_wire::runner::{AssignedPolicy, RegisterRequest};
@@ -84,11 +84,8 @@ impl Runners {
     /// three consecutive fallible draws inside the write would push
     /// [`Runners::register`] past the function-length line for no gain.
     fn mint(&self, now: UnixMillis) -> Result<(Uuid7, Uuid7, Minted)> {
-        let mut bytes = [0u8; ENTROPY_LEN];
-        self.entropy.fill(&mut bytes)?;
-        let runner_id = Uuid7::encode(now, bytes)?;
-        self.entropy.fill(&mut bytes)?;
-        let event_id = Uuid7::encode(now, bytes)?;
+        let runner_id = self.entropy.uuid7(now)?;
+        let event_id = self.entropy.uuid7(now)?;
         Ok((
             runner_id,
             event_id,

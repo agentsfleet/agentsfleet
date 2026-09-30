@@ -197,10 +197,10 @@ impl Signups {
         tenant_name: &str,
         now: UnixMillis,
     ) -> Result<Bootstrapped> {
-        let tenant_id = self.mint_id(now)?;
-        let user_id = self.mint_id(now)?;
-        let membership_id = self.mint_id(now)?;
-        let workspace_id = self.mint_id(now)?;
+        let tenant_id = self.entropy.uuid7(now)?;
+        let user_id = self.entropy.uuid7(now)?;
+        let membership_id = self.entropy.uuid7(now)?;
+        let workspace_id = self.entropy.uuid7(now)?;
 
         // `?` on every statement rolls back: a sqlx `Transaction` commits only
         // on an explicit `commit()` and rolls back when dropped, so an early
@@ -299,10 +299,5 @@ impl Signups {
             }
         }
         Err(error::workspace_name_exists())
-    }
-
-    /// A fresh identifier, stamped with this signup's instant.
-    fn mint_id(&self, now: UnixMillis) -> Result<Uuid7> {
-        Ok(Uuid7::encode(now, self.entropy.uuid_randomness()?)?)
     }
 }
