@@ -21,7 +21,7 @@ use crate::fake_redis::{FakeRedis, Reply, push_frame};
 use crate::hub_gap_faults::{
     BUDGET, FIRST, RETRY, deliver, fake_and_hub, fake_and_hub_on, gap_on, subscribes_seen,
 };
-use crate::recorder::Recorder;
+use afd_core::test_util::trace::Capture;
 
 /// A slot map at the fake's own address that owns every slot but `channel`'s,
 /// so the driver can route through it and the hub finds the channel unowned.
@@ -120,7 +120,7 @@ async fn a_push_of_a_kind_the_hub_never_asked_for_is_ignored() {
 /// command, and the channel's reader is told about its gap.
 #[tokio::test]
 async fn a_channel_no_range_owns_is_redialled_rather_than_guessed() {
-    let recorder = Recorder::install();
+    let recorder = Capture::install();
     let (fake, hub) = fake_and_hub().await;
     let mut first = hub.subscribe(FIRST);
     deliver(&fake, FIRST, "primed", &mut first).await;
@@ -162,7 +162,7 @@ async fn a_channel_no_range_owns_is_redialled_rather_than_guessed() {
 /// whole, logs the loss as unexplained, and the reader is told about its gap.
 #[tokio::test]
 async fn an_owner_that_never_answers_is_redialled_when_the_window_closes() {
-    let recorder = Recorder::install();
+    let recorder = Capture::install();
     let (fake, hub) = fake_and_hub().await;
     let mut first = hub.subscribe(FIRST);
     deliver(&fake, FIRST, "primed", &mut first).await;
@@ -245,7 +245,7 @@ async fn a_redial_outlives_a_schedule_with_an_attempt_limit() {
 /// holds is the echo of the hub's own unsubscribe, and is left alone.
 #[tokio::test]
 async fn a_slot_moved_under_a_held_channel_is_re_subscribed_and_gapped() {
-    let recorder = Recorder::install();
+    let recorder = Capture::install();
     let (fake, hub) = fake_and_hub().await;
     let mut first = hub.subscribe(FIRST);
     deliver(&fake, FIRST, "primed", &mut first).await;
@@ -276,7 +276,7 @@ async fn a_slot_moved_under_a_held_channel_is_re_subscribed_and_gapped() {
 /// under its own, and nothing is redialled.
 #[tokio::test]
 async fn a_node_lost_while_a_gap_warning_gathers_keeps_both_causes() {
-    let recorder = Recorder::install();
+    let recorder = Capture::install();
     let (fake, hub) = fake_and_hub().await;
     let mut first = hub.subscribe(FIRST);
     deliver(&fake, FIRST, "primed", &mut first).await;

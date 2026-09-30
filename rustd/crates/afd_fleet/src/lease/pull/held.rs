@@ -82,15 +82,17 @@ mod tests {
         reason = "a test asserts by panicking; the restriction set is for the daemon"
     )]
 
+    use afd_core::test_util::trace::Capture;
+
     use crate::lease::affinity::EVENT_CLAIM_RELEASE_FAILED;
-    use crate::lease::{test_dead, test_log::Recorder};
+    use crate::lease::test_dead;
 
     /// A fault after the claim reaches the caller as the fault, and the claim
     /// is still let go — here the release is refused too, so it is logged
     /// under the fault's own code and the claim lapses at its expiry instead.
     #[tokio::test]
     async fn should_raise_the_fault_and_log_a_release_the_datastore_refuses() {
-        let log = Recorder::install();
+        let log = Capture::install();
         let acquired = test_dead::acquired();
         let fleet = acquired.fleet_id.clone();
 
@@ -100,7 +102,7 @@ mod tests {
             .expect_err("an installed-fleet read with no datastore is a fault, not a decision");
 
         assert!(fault.is_datastore_unavailable(), "{fault}");
-        let line = log.only(EVENT_CLAIM_RELEASE_FAILED);
+        let line = log.only(EVENT_CLAIM_RELEASE_FAILED).fields;
         assert_eq!(
             line.get("fleet_id").map(String::as_str),
             Some(fleet.as_str())

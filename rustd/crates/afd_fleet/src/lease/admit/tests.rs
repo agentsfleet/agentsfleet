@@ -94,14 +94,15 @@ fn an_unread_payer_retries_under_the_payer_gate() {
 #[cfg(feature = "test-util")]
 async fn decided_on_a_dead_ledger(
     posture: afd_billing::rates::Posture,
-) -> (super::Admission, crate::lease::test_log::Recorder) {
+) -> (super::Admission, afd_core::test_util::trace::Capture) {
+    use afd_core::test_util::trace::Capture;
     use afd_fleet_runtime::FleetConfig;
 
     use super::{Request, money_gates};
     use crate::lease::event::Delivery;
-    use crate::lease::{test_dead, test_log::Recorder};
+    use crate::lease::test_dead;
 
-    let log = Recorder::install();
+    let log = Capture::install();
     let config = FleetConfig::authored(
         r#"{"name":"fixture","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":1}}}"#,
     )
@@ -135,7 +136,7 @@ async fn decided_on_a_dead_ledger(
 #[cfg(feature = "test-util")]
 fn assert_read_gates_fail_open_and_the_debit_retries(
     decided: &super::Admission,
-    log: &crate::lease::test_log::Recorder,
+    log: &afd_core::test_util::trace::Capture,
 ) {
     assert_eq!(
         *decided,
@@ -148,7 +149,7 @@ fn assert_read_gates_fail_open_and_the_debit_retries(
         "lease_budget_unavailable",
         "lease_receive_debit_unavailable",
     ] {
-        let line = log.only(event);
+        let line = log.only(event).fields;
         assert_eq!(
             line.get("error_code").map(String::as_str),
             Some(afd_core::error_code::INTERNAL_DB_QUERY.as_str()),
