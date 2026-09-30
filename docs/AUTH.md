@@ -27,6 +27,9 @@ Find the question, jump to the one §-section that answers it. Do not read the w
 | Signed in, but nothing loads (`503 UZ-AUTH-004`)? | §How the key set is fetched |
 | May field X appear in a log / metric / error body? | §Sensitive-data classification |
 | What does a signup write, and in what order? | §"Signup — what `user.created` writes" |
+| Who can open a workspace, and why is a member refused (`403 UZ-AUTH-026`)? | §Who opens a workspace |
+| How does an invite become a membership? | §Invites |
+| How is an operator's cross-tenant access recorded? | §Platform crossing |
 | How is a manual fleet webhook authenticated? | §Manual fleet-webhook auth |
 | How does an OAuth connector mint and refresh? | §OAuth connectors |
 | Which inbound surfaces are signature-verified? | §The three signed inbound surfaces |
@@ -114,9 +117,9 @@ Routing in `bearer_or_api_key`, in order: `agt_t` → tenant-key DB lookup; `afc
 Authorization is **scope-based** (M104_001). Every capability is an explicit `resource:action` scope carried on the verified token's `scopes` claim and surfaced as `principal.scopes` (a bitset). Two independent axes decide a request:
 
 1. **Capability** — `requireScope` (one middleware) checks the route's required scopes (declared per route + HTTP method in `afd_http`'s route table) against `principal.scopes`, any-of, hierarchy-expanded. Absent/insufficient ⇒ `403 UZ-AUTH-022` naming the missing scope.
-2. **Ownership** — `authorizeWorkspace` (unchanged) checks the principal owns the target workspace (tenant-id match), independent of scopes. The two compose: holding `fleet:write` does not let you touch a workspace you do not own.
+2. **Ownership** — the ownership layer checks the principal owns the workspace's account or holds a membership in it, independent of scopes. A `member` is then withheld two owner-grade capabilities (§Memberships and roles). The two compose: holding `fleet:write` does not let you touch a workspace outside your accounts.
 
-There is no role ladder and no capability bool: a role is an undocumented bundle, and "what may this principal do" has to have an enumerable answer. See the **Scope catalogue** below for the full vocabulary, the `read < write < admin` hierarchy, and the default provisioning grants.
+Capabilities have no role ladder and no capability bool. A role that grants is an undocumented bundle, and "what may this principal do" needs an enumerable answer. The two account roles grant nothing; they only withhold. See the **Scope catalogue** below for the full vocabulary, the `read < write < admin` hierarchy, and the default provisioning grants.
 
 Everything below is per-surface detail. For the CLI device-flow threat model + crypto, see [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md).
 
@@ -162,7 +165,7 @@ The complete capability vocabulary. The enum in `rustd/crates/afd_auth/src/scope
 
 | Scope | Grants |
 |---|---|
-| `workspace:any` | bypass the tenant-id ownership match to read and act on *any* tenant's workspace. Every bypass emits an auth audit record (operator, their tenant, the target tenant, workspace). Mirrors Sentry's `is_global`. |
+| `workspace:any` | bypass the membership check to read and act on *any* tenant's workspace. Every crossing is logged once, with its method (§Platform crossing). Mirrors Sentry's `is_global`. |
 
 ### Provisioning grants
 
@@ -258,9 +261,9 @@ Clerk user.created
         failure is logged, never answered with
 ```
 
-**Five rows, one transaction.** A user with no membership resolves to no
-workspace, and a tenant with no wallet answers 500 on every billing read with no
-path back. The transaction is the reason a partial account cannot exist.
+**Five rows, one transaction.** A tenant with no wallet answers 500 on every
+billing read with no path back. The transaction is the reason a partial account
+cannot exist.
 
 **Idempotent on `oidc_subject`.** An identity provider retries, and a second
 delivery for a subject already opened must answer exactly as the first did. The
@@ -280,6 +283,109 @@ gave them something to repair from.
 **Signup writes nothing to Dragonfly.** No key, no stream, no queue. The account
 is five Postgres rows and one outbound call to the identity provider; the
 datastore learns about a tenant when that tenant's first fleet is installed.
+
+## Memberships and roles
+
+A person opens a workspace when they own its account or hold a membership in
+it. Two roles exist, `owner` and `member`, stored in `core.memberships.role`
+(`rustd/crates/afd_tenant/src/workspace/access.rs`).
+
+A role grants no capability. A `member` loses two inside the owner's account:
+writing a secret and connecting an integration. Each is refused with
+`403 UZ-AUTH-026`.
+
+### Who opens a workspace
+
+| Caller | Reaches | Refused |
+|---|---|---|
+| `owner` of the account | every workspace route, plus the account's invites and members | nothing by role |
+| `member` of the account | every workspace in the account: fleets, steering, streams, schedules, approvals, secret names | routes needing `secret:write` or `connector:write`, with `403 UZ-AUTH-026` |
+| platform operator holding `workspace:any` | any account's workspace, with every method | nothing by role; each crossing is logged (§Platform crossing) |
+| anyone else | nothing | `403 UZ-AUTH-001`, `Workspace access denied` |
+
+```
+request on /v1/workspaces/{workspace_id}/…
+  │
+  ├─► capability gate, on the caller's own scopes
+  │     a required scope missing                    → 403 UZ-AUTH-022
+  │
+  ├─► ownership layer, one statement (AUTHORIZE_WORKSPACE)
+  │     owner of the account                        → handler
+  │     member, route needs secret:write
+  │       or connector:write                        → 403 UZ-AUTH-026
+  │     member, any other route                     → handler
+  │     neither, holds workspace:any                → audit event, then handler
+  │     neither                                     → 403 UZ-AUTH-001
+  │     Postgres unreachable                        → 503, never 403
+  │
+  └─► handler
+```
+
+**Scopes first, role second.** The capability gate passes a member on the
+scopes signup wrote for their own account, and those include `secret:write`.
+The role then withholds it inside somebody else's account
+(`rustd/crates/afd_http/src/auth/ownership/role.rs`).
+
+**The withheld list names capabilities.** `OWNER_ONLY` holds `secret:write` and
+`connector:write`. A route mounted later that needs either is withheld from
+members with no change to the route.
+
+**One statement decides.** `AUTHORIZE_WORKSPACE`
+(`rustd/crates/afd_tenant/src/sql/workspace.rs`) joins the workspace, the
+caller's user row and their membership. It admits a membership row, or the
+caller's own account from their user row or token claim. Each probe returns at
+most one row, so the plan is three index lookups at any table size.
+
+**An outage is a 503.** When the check cannot reach Postgres, the answer is
+`503`. A `403` would tell a person their workspace had vanished during a blip
+(`test_access_check_outage_is_not_denial`).
+
+**Open streams re-check.** A fleet's event stream re-checks access on each
+15-second heartbeat, and the workspace wall on each 10-second refresh. A
+removed member's streams send `event: access_revoked` and close.
+
+### Invites
+
+| Caller | Route | Scope | Effect |
+|---|---|---|---|
+| owner | `POST /v1/tenants/me/invites` | `workspace:admin` | invites an email address |
+| owner | `GET /v1/tenants/me/invites` | `workspace:admin` | lists pending invites |
+| owner | `DELETE /v1/tenants/me/invites/{invite_id}` | `workspace:admin` | revokes an invite |
+| owner | `GET /v1/tenants/me/members` | `workspace:admin` | lists the account's people |
+| owner | `DELETE /v1/tenants/me/members/{user_id}` | `workspace:admin` | removes a member |
+| invitee | `GET /v1/me/invites` | none | lists invites waiting for the signed-in address |
+| invitee | `POST /v1/me/invites/{invite_id}/accept` | none | joins the account as a `member` |
+
+**`/v1/tenants/me` is always the caller's own account.** Owning it is a fact of
+the path (`rustd/crates/afd_api_tenant/src/handler/tenant/invite.rs`). A member
+calling these routes manages their own account, never the one they joined.
+
+**Accepting takes no scope.** The signed-in person's email must match the
+invite's address. Accepting twice leaves one membership and returns the same
+body.
+
+| Code | Status | Cause | Fix |
+|---|---|---|---|
+| `UZ-INV-001` | 404 | No acceptable invite has that identifier: never issued, expired, revoked, or accepted by someone else | Ask the owner for a new invite |
+| `UZ-INV-002` | 403 | The invite went to another address | Sign in with the address the invite was sent to |
+| `UZ-INV-003` | 409 | The address has a pending invite, or already belongs to the account | Use the pending invite, or skip a person already in |
+| `UZ-INV-004` | 409 | Removing this person would leave the account without an owner | Keep one owner in the account |
+| `UZ-AUTH-026` | 403 | A member reached a route that writes a secret or connects an integration | Ask the account owner to make the change |
+
+### Platform crossing
+
+A platform operator holding `workspace:any` reaches any account's workspace
+with every method. The ownership layer logs each crossing once, before the
+handler runs (`rustd/crates/afd_tenant/src/workspace/crossing.rs`). The
+connector callback authorizes outside that layer and calls the same audit.
+
+The `warn` event is `cross_tenant_workspace_override`, with `subject`,
+`acting_tenant`, `target_tenant`, `target_workspace` and `method`. The method
+tells a reviewer a look from an act. Access from inside the account logs
+nothing.
+
+A steer the operator sends records `steer:<subject>` as its actor, so the
+fleet's thread names the operator (`test_platform_write_acts_attributed`).
 
 ## Flow 1 — CLI device flow (`agentsfleet login`)
 
