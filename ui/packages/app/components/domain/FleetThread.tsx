@@ -20,6 +20,7 @@ import { SenderLabelProvider } from "./FleetMessageRow";
 import { FleetConnectionIndicator, useArrivalCue } from "./FleetConnectionIndicator";
 import { useFleetPendingSends } from "./useFleetPendingSends";
 import { useCurrentUser } from "@/lib/auth/client";
+import { ACTOR } from "@/lib/events/event-summary";
 import { useMessageDelivery } from "./useFleetMessageDelivery";
 import { useFleetSteerQueue } from "./useFleetSteerQueue";
 import { reportsOwnRun } from "./fleetReplyMessage";
@@ -87,6 +88,7 @@ export function FleetThread({
   const delivery = useMessageDelivery({
     workspaceId,
     fleetId,
+    sentAs: subject === null ? undefined : `${ACTOR.STEER_PREFIX}${subject}`,
     appendOptimistic: stream.appendOptimistic,
     reconcileOptimistic: stream.reconcileOptimistic,
     discardOptimistic: stream.discardOptimistic,

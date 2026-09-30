@@ -40,7 +40,7 @@ export type UseFleetEventStreamResult = {
   // this to advance its rendered step with no polling and to detect the
   // installing→active flip.
   installStep: InstallStepId | null;
-  appendOptimistic: (text: string, actor: string) => string;
+  appendOptimistic: (text: string, actor: string, sentAs?: string) => string;
   reconcileOptimistic: (tempId: string, realEventId: string, replayed: boolean) => boolean;
   discardOptimistic: (tempId: string) => void;
   retryConnection: () => void;
@@ -84,8 +84,8 @@ export function useFleetEventStream(
   }, [fleetId, initial]);
 
   const appendOptimistic = useCallback(
-    (text: string, actor: string) =>
-      registryAppendOptimistic(fleetId, text, actor),
+    (text: string, actor: string, sentAs?: string) =>
+      registryAppendOptimistic(fleetId, text, actor, sentAs),
     [fleetId],
   );
   const reconcileOptimistic = useCallback(

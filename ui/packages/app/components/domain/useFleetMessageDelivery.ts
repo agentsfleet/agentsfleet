@@ -46,6 +46,8 @@ type StreamApi = ReturnType<typeof useFleetEventStream>;
 type DeliveryCtx = {
   workspaceId: string;
   fleetId: string;
+  /** The actor the daemon names this viewer's sends under, when known. */
+  sentAs?: string;
   appendOptimistic: StreamApi["appendOptimistic"];
   reconcileOptimistic: StreamApi["reconcileOptimistic"];
   discardOptimistic: StreamApi["discardOptimistic"];
@@ -164,14 +166,14 @@ function useRestoredDraft(writers: PendingSendWriters) {
 // could reach the server out of submission order, so "stop" could be assigned
 // an earlier event id than the "deploy" it was meant to follow.
 function useSerializedDelivery(ctx: DeliveryCtx): (operationId: string, text: string) => Promise<boolean> {
-  const { workspaceId, fleetId, appendOptimistic, discardOptimistic, writers } = ctx;
+  const { workspaceId, fleetId, sentAs, appendOptimistic, discardOptimistic, writers } = ctx;
   const acknowledged = useAcknowledgement(ctx);
   return useCallback(
     (operationId: string, text: string): Promise<boolean> => {
       // The ledger entry is written first: a document that dies between here
       // and the acknowledgement leaves a record the next one can resend.
       writers.begin({ operationId, text, submittedAtMs: Date.now() });
-      const tempId = appendOptimistic(text, OPTIMISTIC_ACTOR);
+      const tempId = appendOptimistic(text, OPTIMISTIC_ACTOR, sentAs);
       // The clock starts at Send, not at the send's turn in the queue: a send
       // behind a hung one ends when its own time is up, not a full clock later.
       const deadline = startDeadline();
@@ -197,7 +199,7 @@ function useSerializedDelivery(ctx: DeliveryCtx): (operationId: string, text: st
       const slot = enqueue(`${workspaceId}:${fleetId}`, send);
       return Promise.race([slot, deadline.expired.then(() => (dispatched ? slot : unsent()))]);
     },
-    [workspaceId, fleetId, appendOptimistic, discardOptimistic, writers, acknowledged],
+    [workspaceId, fleetId, sentAs, appendOptimistic, discardOptimistic, writers, acknowledged],
   );
 }
 

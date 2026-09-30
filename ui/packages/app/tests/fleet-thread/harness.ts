@@ -248,4 +248,4 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
-export { routerRefreshMock, postSteerMock, useFleetEventStreamMock, capturedOnNew, capturedRun };
+export { routerRefreshMock, postSteerMock, useFleetEventStreamMock, capturedOnNew, capturedRun, signedIn };
