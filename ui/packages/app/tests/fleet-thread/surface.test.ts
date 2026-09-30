@@ -52,9 +52,10 @@ describe("FleetThread — header chrome", () => {
     expect(container.querySelector('[role="log"]')?.contains(composer)).toBe(
       false,
     );
-    // Jump to latest overlays the history from the footer's stack.
-    const jump = screen.getByRole("button", { name: /jump to latest/i });
-    expect(jump.closest(".absolute")?.parentElement).toBe(footer);
+    expect(
+      screen.getByRole("button", { name: /jump to latest/i }).className,
+    ).toMatch(/absolute/);
+    expect(footer?.contains(screen.getByRole("button", { name: /jump to latest/i }))).toBe(true);
   });
 
   it("names each connection state rather than only the live one", () => {

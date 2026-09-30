@@ -56,7 +56,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/components/domain/FleetThread.tsx` | EDIT | runtime gets `queue` and an `isRunning` for the viewer's own turns |
 | `ui/packages/app/components/domain/useFleetMessageDelivery.ts` | EDIT | exposes the delivery path to the queue adapter |
 | `ui/packages/app/components/domain/useFleetSteerQueue.ts` | CREATE | the `ExternalThreadQueueAdapter` over the delivery path |
-| `ui/packages/app/components/domain/FleetThreadViewport.tsx` | EDIT | `turnAnchor="top"` beside `autoScroll`; the notice and Jump to latest overlay the history from the footer |
+| `ui/packages/app/components/domain/FleetThreadViewport.tsx` | EDIT | `turnAnchor="top"` beside `autoScroll`; the offline notice rides in the footer above the composer |
 | `ui/packages/app/components/domain/{fleetMessageRenderers.tsx,fleetReplyMessage.ts,useFleetSteerQueue.ts}`, `ui/packages/app/lib/{events/event-summary.ts,streaming/fleet-stream-reply-frames.ts}` | EDIT | only a settled reply skips layout; `isSteerBy` names the viewer's own turn; a non-refusal failure is dropped, not rethrown |
 | `ui/packages/app/components/domain/FleetConnectionNotice.tsx` | EDIT | `warning` variant |
 | `ui/packages/app/components/domain/FleetThought.tsx` | EDIT | fold lock verified under the reserve |
@@ -148,7 +148,7 @@ The events list, the workspace stream, the fleet events list and the fleet strea
 
 ### §7 — The 6.7 leftovers
 
-The reconnect notice uses `Alert variant="warning"` and is laid over the history from the sticky footer, so its arrival never shifts the transcript. The Working, Queued and gone rows get a live review the agent runs and verifies.
+The reconnect notice uses `Alert variant="warning"` and rides in the sticky footer's flow above the composer: a reader in the history keeps their rows, and a reader at the bottom keeps the newest row above it, never behind it. The Working, Queued and gone rows get a live review the agent runs and verifies.
 
 - **Dimension 7.1** — the reconnect notice is a warning, announced as `alert`, and the transcript does not move when it appears → Test `test_reconnect_notice_warns_in_place` — DONE
 - **Dimension 7.2** — a live review of Working, Queued and gone rows has every finding fixed or listed → Test `agent_live_state_review` (the agent re-runs it and records the evidence in Discovery) — DONE
@@ -223,7 +223,7 @@ make test-unit-runner: zig build --build-file build_runner.zig test   (part of t
 | 5.2 | unit | `make test-unit-rustd` | five suites green on the shared capture |
 | 6.1 | unit | `test_unit_all_runs_zig` | failing Zig test → `make test-unit-all` exits non-zero |
 | 6.2 | unit | `test_runner_zig_version_guard` | `zig` 0.15 on PATH → named refusal |
-| 7.1 | e2e | `test_reconnect_notice_warns_in_place` | stream drops over a reader in history → warning `alert`, on-screen Δ ≤ 1 px |
+| 7.1 | e2e | `test_reconnect_notice_warns_in_place` | stream drops over a reader in history → warning `alert`, on-screen Δ ≤ 1 px; at the bottom the newest row ends above the notice |
 | 7.2 | agent | `agent_live_state_review` | the agent re-runs the live review; every finding fixed or listed in Discovery |
 | 8.1 | manual | `docs_pr_open_and_green` | docs PR open, its checks green |
 

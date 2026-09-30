@@ -65,16 +65,18 @@ describe("FleetThreadViewport scroll", () => {
 
 describe("FleetThreadViewport offline notice", () => {
   // jsdom does no layout, so the held transcript is proven in
-  // fleet-thread-anchor.spec.ts. This pins where the notice lives: laid over
-  // the history from inside the footer, never in the flow above the thread.
-  it("warns over the history from the composer's footer", () => {
+  // fleet-thread-anchor.spec.ts. This pins where the notice lives: in the
+  // sticky footer's flow, above the composer. Above the thread it moved every
+  // row; laid over the history it hid the newest reply from a reader at the
+  // bottom.
+  it("warns from the composer's footer, in its flow", () => {
     const view = render(<View connectionStatus={CONNECTION_STATUS.OFFLINE} />);
     const notice = view.getByTestId("fleet-connection-notice");
     const footer = view.getByTestId("fleet-chat-footer");
-    expect(footer.contains(notice)).toBe(true);
-    const overlay = notice.closest(".absolute");
-    expect(overlay?.parentElement).toBe(footer);
-    expect([...(overlay?.classList ?? [])]).toEqual(expect.arrayContaining(["bottom-full", "inset-x-0"]));
+    expect(notice.parentElement).toBe(footer);
+    expect(notice.closest(".absolute")).toBeNull();
+    const composer = view.getByRole("form", { name: "Chat composer" });
+    expect(notice.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 

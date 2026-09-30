@@ -59,14 +59,12 @@ export const FleetThreadViewport = memo(function FleetThreadViewport({
           data-testid="fleet-chat-footer"
           className="sticky bottom-0 mx-auto flex max-h-full w-full max-w-measure flex-col bg-background pb-md pt-md"
         >
-          {/* Laid over the history, above the composer, so nothing that
-              appears here moves a row the reader is on. */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-full z-20 mb-sm flex flex-col items-center gap-sm">
-            <JumpToLatest />
-            <div className="pointer-events-auto w-full">
-              <FleetConnectionNotice status={connectionStatus} onRetry={onRetry} />
-            </div>
-          </div>
+          <JumpToLatest />
+          {/* In the footer's flow, not the panel above the thread: the sticky
+              footer grows over the rows a reader in the history is on without
+              moving them, and at the bottom autoScroll keeps the newest row
+              above it rather than hidden behind it. */}
+          <FleetConnectionNotice status={connectionStatus} onRetry={onRetry} />
           <SteerComposer
             pending={pending}
             onResend={onResend}
@@ -90,7 +88,7 @@ function JumpToLatest() {
         size="icon"
         aria-label={JUMP_TO_LATEST}
         className={cn(
-          "pointer-events-auto rounded-full",
+          "absolute bottom-full left-1/2 z-20 mb-sm -translate-x-1/2 rounded-full",
           "disabled:invisible disabled:pointer-events-none",
         )}
       >
