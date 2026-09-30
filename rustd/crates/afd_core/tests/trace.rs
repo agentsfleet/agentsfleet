@@ -61,6 +61,26 @@ fn trace_capture_only_refuses_an_event_raised_twice() {
     let _ = capture.only(EVENT);
 }
 
+// The race the global subscriber closes (a first registration straddling a
+// capture's rebuild) runs inside `tracing-core`, where no test can interleave
+// it. What a test can hold is the state that closes it.
+#[test]
+fn trace_capture_keeps_every_callsite_open() {
+    drop(Capture::install());
+    assert!(
+        tracing::dispatcher::has_been_set(),
+        "the first capture sets the process's global subscriber"
+    );
+    // A thread with no capture: the global keeps its callsite open and keeps
+    // nothing of the event.
+    thread::spawn(|| tracing::info!(event = FLEET))
+        .join()
+        .expect("the thread with no capture finishes");
+    let capture = Capture::install();
+    tracing::info!(event = EVENT);
+    assert_eq!(capture.events().len(), 1, "a capture hears its own thread");
+}
+
 #[test]
 fn trace_capture_serialises_concurrent_tests() {
     let first = Capture::install();
