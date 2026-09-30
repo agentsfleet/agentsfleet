@@ -15,11 +15,13 @@ export function FleetConnectionNotice({
   onRetry: () => void;
 }) {
   if (status !== CONNECTION_STATUS.OFFLINE) return null;
+  // A warning, not an error: the stream heals itself and nothing was lost.
+  // `Alert` announces a warning as `alert`, so the change is still spoken.
   return (
     <Alert
-      variant="destructive"
+      variant="warning"
       data-testid="fleet-connection-notice"
-      className="mx-xl my-md flex items-center justify-between gap-md rounded-md px-lg py-sm"
+      className="mb-sm flex w-full items-center justify-between gap-md rounded-md px-lg py-sm"
     >
       <span>{OFFLINE_MESSAGE}</span>
       <Button type="button" size="sm" variant="outline" onClick={onRetry}>

@@ -6,6 +6,7 @@ import { MessagePrimitive, groupPartByType, type MessageState } from "@assistant
 
 import { loadingPhrase, loadingVerbFor } from "@/components/layout/loading-verbs";
 import { truncate } from "@/lib/utils";
+import { FLEET_OUTCOME_CLASS, FleetFailedOutcome } from "./FleetFailedOutcome";
 import { FleetMarkdown, FleetStreamingMarkdown } from "./FleetMarkdown";
 import { FleetMessageRow, ROW_TONE } from "./FleetMessageRow";
 import { FleetThought } from "./FleetThought";
@@ -41,10 +42,6 @@ const MARKDOWN_TO_SPOKEN: ReadonlyArray<readonly [RegExp, string]> = [
   [/\|/g, " "],
   [/\s+/g, " "],
 ];
-// An outcome and an error are the dashboard's own sentences, not the model's
-// markdown, so they render as written.
-const ERRORED_TEXT_CLASS = "text-label font-medium leading-label text-foreground";
-
 // The library groups the parts: the reasoning becomes one Thought chip, and
 // adjacent tool calls one list. Module scope keeps the grouping's memo
 // fingerprint stable across renders.
@@ -90,10 +87,10 @@ export function FleetReply({
       failed={errored}
     >
       <MessagePrimitive.GroupedParts groupBy={REPLY_GROUP_BY}>
-        {(info) => renderReplyPart(info, { errored, running, queued, eventId, reasoning: reasoningText(message), span })}
+        {(info) => renderReplyPart(info, { errored, running, queued, eventId, reasoning: reasoningText(message), span, answered: answer.length > 0 })}
       </MessagePrimitive.GroupedParts>
       {answer.length === 0 && !running ? (
-        <span className={errored ? ERRORED_TEXT_CLASS : undefined}>{messageOutcome(message)}</span>
+        errored ? <FleetFailedOutcome>{messageOutcome(message)}</FleetFailedOutcome> : <p className={FLEET_OUTCOME_CLASS}>{messageOutcome(message)}</p>
       ) : null}
       {recovering ? <output aria-label={RECOVERING_LABEL} className="text-body-sm text-text-subtle">{RECOVERING_LABEL}</output> : null}
       <ReplyActions answer={answer} settled={!running && !errored && !recovering} />
@@ -108,6 +105,8 @@ export type ReplyContext = {
   eventId: string;
   reasoning: string;
   span: ReturnType<typeof readReasoningSpan>;
+  /** The answer has started, so a thought that resumes stays folded. */
+  answered: boolean;
 };
 
 /** One switch over every node the library hands back: groups, leaves, the indicator. */
@@ -120,6 +119,7 @@ export function renderReplyPart(
       return (
         <FleetThought
           live={part.status.type === "running"}
+          answered={reply.answered}
           reasoning={reply.reasoning}
           startedAtMs={reply.span.startedAtMs}
           endedAtMs={reply.span.endedAtMs}
@@ -169,7 +169,7 @@ function ReplyText({ text, errored, streaming }: { text: string; errored: boolea
   );
   return (
     <>
-      {errored ? <span className={ERRORED_TEXT_CLASS}>{deferred}</span> : markdown}
+      {errored ? <FleetFailedOutcome>{deferred}</FleetFailedOutcome> : markdown}
       {streaming ? (
         <span className="ml-xs animate-pulse text-pulse" aria-label="streaming">
           {STREAM_CURSOR}

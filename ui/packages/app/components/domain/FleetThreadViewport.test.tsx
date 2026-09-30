@@ -1,46 +1,44 @@
-import { useLayoutEffect } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import {
   AssistantRuntimeProvider,
   useExternalStoreRuntime,
-  useThreadViewportStore,
 } from "@assistant-ui/react";
 import { FleetThreadViewport } from "./FleetThreadViewport";
-import { CONNECTION_STATUS } from "./useFleetEventStream";
+import { CONNECTION_STATUS, type ConnectionStatus } from "./useFleetEventStream";
 
-const FIRST_MESSAGE = "optim-first";
-const SECOND_MESSAGE = "optim-second";
-const onScroll = vi.fn();
+const NO_MESSAGES: ThreadMessageLike[] = [];
+// An operator's turn with its reply still running, after an earlier one: the
+// library never anchors the thread's first message.
+const RUNNING_TURN: ThreadMessageLike[] = [
+  { id: "turn-0", role: "user", content: "check the build" },
+  { id: "turn-0:reply", role: "assistant", content: "Green." },
+  { id: "turn-1", role: "user", content: "deploy the canary" },
+  { id: "turn-1:reply", role: "assistant", content: "" },
+];
+const TOP_ANCHOR_USER = "[data-aui-top-anchor-user]";
 
-afterEach(() => {
-  cleanup();
-  onScroll.mockClear();
-});
+afterEach(() => cleanup());
 
-function ScrollObserver() {
-  const viewport = useThreadViewportStore();
-  useLayoutEffect(() => viewport.getState().onScrollToBottom(onScroll), [viewport]);
-  return null;
-}
-
-function View({ submittedMessageId = null, eventsCount = 0 }: {
-  submittedMessageId?: string | null;
+function View({ eventsCount = 0, messages = NO_MESSAGES, isRunning = false, connectionStatus = CONNECTION_STATUS.LIVE }: {
   eventsCount?: number;
+  messages?: ThreadMessageLike[];
+  isRunning?: boolean;
+  connectionStatus?: ConnectionStatus;
 }) {
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
-    messages: [],
+    messages,
+    isRunning,
     convertMessage: (message) => message,
     onNew: async () => {},
   });
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <ScrollObserver />
       <FleetThreadViewport
-        submittedMessageId={submittedMessageId}
         eventsCount={eventsCount}
-        connectionStatus={CONNECTION_STATUS.LIVE}
+        connectionStatus={connectionStatus}
+        onRetry={() => {}}
         pending={[]}
         onResend={() => {}}
         onDismiss={() => {}}
@@ -51,22 +49,34 @@ function View({ submittedMessageId = null, eventsCount = 0 }: {
   );
 }
 
-describe("FleetThreadViewport scroll intent", () => {
-  it("follows each new submission once without pulling the reader on background updates", () => {
-    const view = render(<View />);
-    expect(onScroll).not.toHaveBeenCalled();
+describe("FleetThreadViewport scroll", () => {
+  // jsdom does no layout, so the held view itself is proven in
+  // fleet-thread-anchor.spec.ts. This pins the mode that holds it: while a
+  // reply runs, the operator's newest row is the library's top anchor.
+  it("anchors the operator's newest row while its reply runs", () => {
+    const view = render(<View messages={RUNNING_TURN} />);
+    expect(view.container.querySelector(TOP_ANCHOR_USER)).toBeNull();
 
-    view.rerender(<View submittedMessageId={FIRST_MESSAGE} eventsCount={1} />);
-    expect(onScroll).toHaveBeenCalledExactlyOnceWith({ behavior: "instant" });
+    view.rerender(<View messages={RUNNING_TURN} isRunning />);
+    const anchor = view.container.querySelector(TOP_ANCHOR_USER);
+    expect(anchor?.textContent).toContain("deploy the canary");
+  });
+});
 
-    view.rerender(<View submittedMessageId={FIRST_MESSAGE} eventsCount={2} />);
-    expect(onScroll).toHaveBeenCalledTimes(1);
-
-    view.rerender(<View eventsCount={2} />);
-    expect(onScroll).toHaveBeenCalledTimes(1);
-
-    view.rerender(<View submittedMessageId={SECOND_MESSAGE} eventsCount={3} />);
-    expect(onScroll).toHaveBeenCalledTimes(2);
+describe("FleetThreadViewport offline notice", () => {
+  // jsdom does no layout, so the held transcript is proven in
+  // fleet-thread-anchor.spec.ts. This pins where the notice lives: in the
+  // sticky footer's flow, above the composer. Above the thread it moved every
+  // row; laid over the history it hid the newest reply from a reader at the
+  // bottom.
+  it("warns from the composer's footer, in its flow", () => {
+    const view = render(<View connectionStatus={CONNECTION_STATUS.OFFLINE} />);
+    const notice = view.getByTestId("fleet-connection-notice");
+    const footer = view.getByTestId("fleet-chat-footer");
+    expect(notice.parentElement).toBe(footer);
+    expect(notice.closest(".absolute")).toBeNull();
+    const composer = view.getByRole("form", { name: "Chat composer" });
+    expect(notice.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 

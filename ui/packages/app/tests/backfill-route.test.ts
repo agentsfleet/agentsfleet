@@ -8,6 +8,7 @@
 // (fleet-stream-registry) depends on.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ERROR_CODE } from "@/lib/errors";
 
 const { getTokenFn } = vi.hoisted(() => ({ getTokenFn: vi.fn() }));
 
@@ -48,14 +49,14 @@ function paramsOf(workspaceId: string, fleetId: string) {
 }
 
 describe("backfill route handler — auth", () => {
-  it("test_backfill_route_unauthorized — 401 with UZ-401 body and no upstream call when Clerk has no session token", async () => {
+  it("test_backfill_route_unauthorized — 401 with the registered 401 code and no upstream call when Clerk has no session token", async () => {
     getTokenFn.mockResolvedValueOnce(null);
     const res = await GET(makeReq(), paramsOf("ws_1", "zomb_1"));
     expect(res.status).toBe(401);
     expect(res.headers.get("content-type")).toBe("application/json");
     expect(res.headers.get("cache-control")).toBe("no-store");
     const body = (await res.json()) as { error: string; code: string };
-    expect(body.code).toBe("UZ-401");
+    expect(body.code).toBe(ERROR_CODE.AUTH_401);
     expect(body.error).toBe("Unauthorized");
     expect(fetchSpy).not.toHaveBeenCalled();
   });

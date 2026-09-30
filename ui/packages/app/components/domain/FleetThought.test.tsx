@@ -8,13 +8,15 @@ const STARTED = 1_000;
 const ENDED = 9_500;
 const TICK_MS = 1_000;
 const REASONING = "Reading the diff. Checking the header";
+// FleetThought's open delay for a live thought.
+const LIVE_OPEN_DELAY_MS = 400;
 
 let parentRenders = 0;
 
-function Reply(props: Omit<FleetThoughtProps, "children">) {
+function Reply({ answered = false, ...props }: Omit<FleetThoughtProps, "children" | "answered"> & { answered?: boolean }) {
   parentRenders += 1;
   return (
-    <FleetThought {...props}>
+    <FleetThought answered={answered} {...props}>
       <p>{props.reasoning}</p>
     </FleetThought>
   );
@@ -65,6 +67,58 @@ describe("FleetThought", () => {
     expect(screen.getByText(REASONING, { selector: "p" })).toBeTruthy();
     view.rerender(<Reply live={false} reasoning={`${REASONING}.`} startedAtMs={STARTED} endedAtMs={ENDED} />);
     expect(screen.getByText(`${REASONING}.`, { selector: "p" })).toBeTruthy();
+  });
+
+  it("test_burst_thought_never_opens", () => {
+    // Reasoning that lands with its answer is live for a render: it must not
+    // open and fold at once, flashing the whole thought past the reader.
+    const view = render(<Reply live reasoning={REASONING} startedAtMs={STARTED} endedAtMs={null} />);
+    act(() => {
+      vi.advanceTimersByTime(LIVE_OPEN_DELAY_MS - 1);
+    });
+    expect(screen.queryByText(REASONING, { selector: "p" })).toBeNull();
+    view.rerender(<Reply live={false} reasoning={REASONING} startedAtMs={STARTED} endedAtMs={ENDED} />);
+    act(() => {
+      vi.advanceTimersByTime(LIVE_OPEN_DELAY_MS);
+    });
+    expect(screen.queryByText(REASONING, { selector: "p" })).toBeNull();
+    expect(chip().getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("test_live_thought_opens_after_the_delay", () => {
+    render(<Reply live reasoning={REASONING} startedAtMs={STARTED} endedAtMs={null} />);
+    act(() => {
+      vi.advanceTimersByTime(LIVE_OPEN_DELAY_MS - 1);
+    });
+    expect(screen.queryByText(REASONING, { selector: "p" })).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.getByText(REASONING, { selector: "p" })).toBeTruthy();
+  });
+
+  // A short prompt's model reasons, answers, then reasons again. The chip goes
+  // live again with its clock, but stays folded: it opened and folded twice
+  // under the reader before.
+  it("test_resumed_thought_stays_folded", () => {
+    const view = render(<Reply live reasoning={REASONING} startedAtMs={STARTED} endedAtMs={null} />);
+    act(() => {
+      vi.advanceTimersByTime(LIVE_OPEN_DELAY_MS);
+    });
+    expect(chip().getAttribute("aria-expanded")).toBe("true");
+    view.rerender(<Reply live={false} answered reasoning={REASONING} startedAtMs={STARTED} endedAtMs={ENDED} />);
+    expect(chip().getAttribute("aria-expanded")).toBe("false");
+
+    view.rerender(<Reply live answered reasoning={`${REASONING}. Again`} startedAtMs={STARTED} endedAtMs={null} />);
+    act(() => {
+      vi.advanceTimersByTime(LIVE_OPEN_DELAY_MS * 3);
+    });
+    expect(chip().getAttribute("aria-expanded")).toBe("false");
+    expect(chip().textContent).toContain(THOUGHT_LIVE_LABEL);
+    expect(chip().querySelector("[data-braille-spinner]")).toBeTruthy();
+    // The operator can still open it.
+    fireEvent.click(chip());
+    expect(chip().getAttribute("aria-expanded")).toBe("true");
   });
 
   it("test_thought_clock_ticks_only_the_leaf", () => {

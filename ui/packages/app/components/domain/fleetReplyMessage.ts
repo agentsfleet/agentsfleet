@@ -1,5 +1,6 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
 
+import { isSteerBy } from "@/lib/events/event-summary";
 import {
   AGENTSFLEET_EVENT_STATUS,
   type FleetEvent,
@@ -34,6 +35,26 @@ const NO_OUTPUT = null;
 
 type ReplyPart = Exclude<ThreadMessageLike["content"], string>[number];
 
+/** Whether this event's reply is still running: the rule behind a reply
+ * row's status. */
+export function isReplyInFlight(event: FleetEvent): boolean {
+  return IN_FLIGHT.has(event.status);
+}
+
+/** Whether the thread reports a run: the newest turn is one this tab sent,
+ * and its reply is still running. The viewport's top anchor pins a running
+ * turn to the top wherever the reader is, so a turn a teammate, the API, a
+ * webhook, or the same operator in another tab sent never engages it, and a
+ * reader back in the history stays where they are. */
+export function reportsOwnRun(events: readonly FleetEvent[], subject: string | null): boolean {
+  const newest = events.at(-1);
+  if (newest === undefined || !isReplyInFlight(newest) || !isSteerBy(newest.actor, subject)) return false;
+  // A row this tab painted keeps its submit clock through every frame, and
+  // another tab's row never had one. A turn announced before its 202 waits in
+  // the stream (`HeldTurns`) until the 202 says whose it is.
+  return newest.submittedAtMs !== undefined;
+}
+
 /**
  * Re-shape a converted row as its reply. `base` carries the row's custom bag
  * (status, outcome, failure, timing), so the reply reads the same fields the
@@ -43,9 +64,7 @@ export function toReplyMessage(base: ThreadMessageLike, event: FleetEvent): Thre
   return {
     ...base,
     role: "assistant",
-    // Per message, never the thread's `isRunning`: that would disable the
-    // composer, and a working fleet is no reason to stop an operator steering.
-    status: IN_FLIGHT.has(event.status) ? RUNNING : MESSAGE_COMPLETE,
+    status: isReplyInFlight(event) ? RUNNING : MESSAGE_COMPLETE,
     content: replyParts(event),
     metadata: {
       ...base.metadata,

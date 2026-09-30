@@ -7,8 +7,6 @@
 //! declared once here and reached as `crate::<name>` from each suite,
 //! which is the shape `afd_api` already uses for its four planes.
 
-#[path = "support/fleet_log.rs"]
-mod fleet_log;
 #[path = "support/fleet_lease_reads.rs"]
 mod lease_reads;
 #[path = "support/fleet_queue.rs"]

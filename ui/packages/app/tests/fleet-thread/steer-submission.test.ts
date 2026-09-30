@@ -1,9 +1,12 @@
-import { SUBJECT, WS, ZID, appendMessage, capturedOnNew, capturedSubmittedMessageId, ev, mockStream, renderThread, postSteerMock, threadElement } from "./harness";
+import { SUBJECT, WS, ZID, appendMessage, capturedOnNew, mockStream, renderThread, postSteerMock, signedIn } from "./harness";
 import { ACCEPTED, OPERATION_ID, REFUSED, TOO_LONG_TEXT, UUID_V7, composerInput, heldRefusal, operationIdOf, send } from "./steer-helpers";
 import { SEND_LABEL } from "./steer-copy";
 import { STEER_MESSAGE_MAX_BYTES } from "@/lib/api/fleets-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import React from "react";
+import { FleetThread } from "@/components/domain/FleetThread";
+import { ACTOR } from "@/lib/events/event-summary";
 import type { AppendMessage } from "@assistant-ui/react";
 import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
 import { getPendingSends } from "@/lib/streaming/pending-sends";
@@ -78,13 +81,27 @@ describe("FleetThread — steer submission", () => {
     await waitFor(() =>
       expect(postSteerMock).toHaveBeenCalledWith(WS, ZID, "deploy the canary", OPERATION_ID, expect.any(AbortSignal)),
     );
-    expect(appendOptimistic).toHaveBeenCalledWith("deploy the canary", "steer:pending");
+    // Named for the account the daemon will write, so a turn announced before
+    // the 202 can be told apart from a teammate's (`HeldTurns`).
+    expect(appendOptimistic).toHaveBeenCalledWith("deploy the canary", ACTOR.PENDING_STEER, `${ACTOR.STEER_PREFIX}${SUBJECT}`);
     expect(reconcileOptimistic).toHaveBeenCalledWith("temp_42", "evt_real_42", false);
     expect(discardOptimistic).not.toHaveBeenCalled();
     expect(refreshed).toHaveBeenCalledTimes(1);
     // Acknowledged: nothing is left to recover.
     expect(getPendingSends({ subject: SUBJECT, workspaceId: WS, fleetId: ZID })).toEqual([]);
     unsubscribe();
+  });
+
+  it("test_send_with_no_known_account_names_no_sender", async () => {
+    // Before the auth script loads and with no server-rendered viewer, the
+    // account the daemon will write is unknown: the send holds nothing back.
+    signedIn.userId = null;
+    const appendOptimistic = vi.fn().mockReturnValue("temp_7");
+    mockStream([], { appendOptimistic });
+    postSteerMock.mockResolvedValueOnce(ACCEPTED("evt_real_7"));
+    render(React.createElement(FleetThread, { workspaceId: WS, fleetId: ZID, senderLabel: "", initial: [], viewer: null }));
+    await capturedOnNew.current!(appendMessage("deploy the canary"));
+    expect(appendOptimistic).toHaveBeenCalledWith("deploy the canary", ACTOR.PENDING_STEER, undefined);
   });
 
   it("test_operation_id_minted_before_append", async () => {
@@ -170,25 +187,6 @@ describe("FleetThread — steer submission", () => {
     expect(appendOptimistic).not.toHaveBeenCalled();
     expect(postSteerMock).not.toHaveBeenCalled();
     expect(getPendingSends({ subject: SUBJECT, workspaceId: WS, fleetId: ZID })).toEqual([]);
-  });
-
-  it("keeps submit scroll intent through acknowledgement and reordered backfill", async () => {
-    const appendOptimistic = vi.fn().mockReturnValue("temp_clock_skew");
-    mockStream([], { appendOptimistic });
-    postSteerMock.mockResolvedValueOnce(ACCEPTED("evt_clock_skew"));
-    const view = renderThread();
-
-    await act(async () => {
-      await capturedOnNew.current!(appendMessage("recent operator message"));
-    });
-    expect(capturedSubmittedMessageId.current).toBe("temp_clock_skew");
-
-    mockStream([
-      ev({ id: "temp_clock_skew", role: "user", actor: "steer:pending", status: "optimistic" }),
-      ev({ id: "newer_server_row", role: "system", actor: "webhook", createdAt: new Date("2026-05-15T18:00:00Z") }),
-    ], { appendOptimistic });
-    view.rerender(threadElement());
-    expect(capturedSubmittedMessageId.current).toBe("temp_clock_skew");
   });
 
   it("accepts a steer that completed before its HTTP response returned", async () => {

@@ -9,6 +9,7 @@
 
 import { credential } from "@/lib/auth/credential";
 import { API_ORIGIN } from "@/lib/api/client";
+import { ERROR_CODE } from "@/lib/errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,7 +33,7 @@ export async function GET(req: Request, { params }: Params) {
 
   const token = await credential();
   if (!token) {
-    return new Response(JSON.stringify({ error: "Unauthorized", code: "UZ-401" }), {
+    return new Response(JSON.stringify({ error: "Unauthorized", code: ERROR_CODE.AUTH_401 }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
     });

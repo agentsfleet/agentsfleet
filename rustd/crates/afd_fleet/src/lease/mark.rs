@@ -48,10 +48,11 @@ impl Leases {
 #[cfg(all(test, feature = "test-util"))]
 mod tests {
     use afd_core::error_code;
+    use afd_core::test_util::trace;
     use afd_observability::test_util::Capture;
 
     use super::EVENT_READY_CLEAR_FAILED;
-    use crate::lease::{test_dead, test_log::Recorder};
+    use crate::lease::test_dead;
 
     /// The family a refused clear is counted under, with every failed mark.
     const READY_WRITE_FAILURES: &str = "agentsfleet_fleet_ready_write_failures_total";
@@ -61,7 +62,7 @@ mod tests {
     #[tokio::test]
     async fn should_count_and_log_a_clear_the_index_refuses() {
         let capture = Capture::install();
-        let log = Recorder::install();
+        let log = trace::Capture::install();
         let acquired = test_dead::acquired();
         let before = capture.sum(READY_WRITE_FAILURES, &[]);
 
@@ -74,7 +75,7 @@ mod tests {
             after > before,
             "the refused clear is counted: {before} -> {after}"
         );
-        let line = log.only(EVENT_READY_CLEAR_FAILED);
+        let line = log.only(EVENT_READY_CLEAR_FAILED).fields;
         assert_eq!(
             line.get("error_code").map(String::as_str),
             Some(error_code::INTERNAL_OPERATION_FAILED.as_str())

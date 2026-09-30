@@ -9,6 +9,21 @@ const THOUGHT = /^Thought/;
 const THINKING = /^Thinking/;
 const SPAN_START = 1_000;
 const SPAN_END = 9_500;
+// FleetThought opens a live thought once it has streamed this long.
+const LIVE_OPEN_DELAY_MS = 400;
+
+// Past the chip's open delay, on fake timers restored afterwards.
+function afterOpenDelay(body: () => void): void {
+  vi.useFakeTimers();
+  try {
+    body();
+    act(() => {
+      vi.advanceTimersByTime(LIVE_OPEN_DELAY_MS);
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+}
 
 /**
  * The typed reasoning, as the reply's Thought chip.
@@ -51,14 +66,17 @@ describe("FleetThread — reasoning disclosure", () => {
     expect(screen.getByRole("button", { name: THOUGHT }).textContent).toBe("Thought · 8.5s");
   });
 
-  it("opens the fold while the block is still arriving", () => {
+  it("opens the fold once the block has streamed a moment", () => {
     // The decoder marks an open thinking block until its closing tag arrives.
     mockStream([
       ev({ role: "assistant", actor: "fleet", status: "received", reasoning: "still weighing it", thinking: true }),
     ]);
-    renderThread();
-
-    expect(screen.getByRole("button", { name: THINKING })).toBeTruthy();
+    afterOpenDelay(() => {
+      renderThread();
+      // Not on the first render: a burst that settles at once never opens.
+      expect(screen.getByRole("button", { name: THINKING })).toBeTruthy();
+      expect(screen.queryByText("still weighing it", { selector: "p" })).toBeNull();
+    });
     expect(screen.getByText("still weighing it", { selector: "p" })).toBeTruthy();
   });
 
@@ -115,7 +133,7 @@ describe("FleetThread — reasoning disclosure", () => {
         thinking: true,
       }),
     ]);
-    renderThread();
+    afterOpenDelay(() => renderThread());
 
     expect(screen.getByRole("button", { name: THINKING })).toBeTruthy();
     expect(screen.getByText("reading the diff", { selector: "p" })).toBeTruthy();

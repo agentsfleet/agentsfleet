@@ -28,8 +28,7 @@ vi.mock("@/lib/auth/client", () => ({
 vi.mock("@/lib/api/fleet-steer", () => ({ postSteer: vi.fn() }));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({}));
 
-// The viewport reads its store once per render, so the read counts renders;
-// the runtime is handed its adapter once per thread render.
+// The runtime is handed its adapter once per thread render.
 vi.mock("@assistant-ui/react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@assistant-ui/react")>();
   return {
@@ -38,11 +37,20 @@ vi.mock("@assistant-ui/react", async (importOriginal) => {
       shell.adapters.push(adapter);
       return actual.useExternalStoreRuntime(adapter);
     },
-    useThreadViewportStore: () => {
-      shell.viewportRenders += 1;
-      return actual.useThreadViewportStore();
-    },
   };
+});
+
+// The viewport is memoised; a memo with the same props gate in front of it
+// counts exactly the renders that get through to it, one commit each.
+vi.mock("@/components/domain/FleetThreadViewport", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/domain/FleetThreadViewport")>();
+  const Counted = React.memo(function Counted(props: React.ComponentProps<typeof actual.FleetThreadViewport>) {
+    React.useLayoutEffect(() => {
+      shell.viewportRenders += 1;
+    });
+    return <actual.FleetThreadViewport {...props} />;
+  });
+  return { ...actual, FleetThreadViewport: Counted };
 });
 
 // A commit anywhere in the composer's subtree — its own subscriptions or its

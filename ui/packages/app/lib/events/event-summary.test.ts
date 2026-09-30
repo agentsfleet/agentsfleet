@@ -8,6 +8,7 @@ import {
   failureSentenceFor,
   GUIDANCE,
   guidanceFor,
+  isSteerBy,
   outcomeFor,
   outcomeForStatus,
   roleFor,
@@ -31,6 +32,25 @@ describe("roleFor", () => {
     expect(roleFor(`continuation:${ACTOR.STEER_PREFIX}${ACCOUNT_ID}`)).toBe("user");
     expect(roleFor(`continuation:${ACTOR.FLEET}`)).toBe("assistant");
     expect(roleFor(`continuation:${PLATFORM_IDENTITY}`)).toBe("system");
+  });
+});
+
+describe("isSteerBy", () => {
+  const own = `${ACTOR.STEER_PREFIX}${ACCOUNT_ID}`;
+
+  it("claims the viewer's own steer and a send not yet named", () => {
+    expect(isSteerBy(own, ACCOUNT_ID)).toBe(true);
+    expect(isSteerBy(ACTOR.PENDING_STEER, ACCOUNT_ID)).toBe(true);
+    expect(isSteerBy(ACTOR.PENDING_STEER, null)).toBe(true);
+  });
+
+  it("disowns another operator, the API, a webhook, and any steer while signed out", () => {
+    expect(isSteerBy(`${ACTOR.STEER_PREFIX}user_teammate`, ACCOUNT_ID)).toBe(false);
+    // A subject that is a prefix of another's must not claim theirs.
+    expect(isSteerBy(`${own}x`, ACCOUNT_ID)).toBe(false);
+    expect(isSteerBy(ACTOR.API_STEER, ACCOUNT_ID)).toBe(false);
+    expect(isSteerBy(PLATFORM_IDENTITY, ACCOUNT_ID)).toBe(false);
+    expect(isSteerBy(own, null)).toBe(false);
   });
 });
 

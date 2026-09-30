@@ -145,6 +145,9 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+# The `tracing` capture the suites read their log lines back through
+# (`afd_core::test_util::trace`). A dev-dependency feature only.
+afd_core = { workspace = true, features = ["test-util"] }
 # `test-util` is what makes an assertion about JOIN_TIMEOUT affordable: with
 # time paused and every task parked, the runtime advances to the next deadline
 # itself, so the ten-second timeout costs no wall clock in the unit lane.
