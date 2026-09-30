@@ -37,6 +37,8 @@ const SENTENCES = new Intl.Segmenter(undefined, { granularity: "sentence" });
 
 export type FleetThoughtProps = {
   live: boolean;
+  /** The reply's answer has started: a thought live after that stays folded. */
+  answered: boolean;
   reasoning: string;
   startedAtMs: number | null;
   endedAtMs: number | null;
@@ -46,15 +48,18 @@ export type FleetThoughtProps = {
 /**
  * Open while it streams, because watching a fleet think is the only signal
  * during a long turn; closed once the answer lands, unless the operator opened
- * it. Closed content unmounts, so a long thought leaves no hidden DOM behind.
+ * it. A model answering a short prompt reasons, answers, and reasons again:
+ * the chip goes live again but stays folded, so the reply never opens and
+ * folds a second time under the reader. Closed content unmounts, so a long
+ * thought leaves no hidden DOM behind.
  */
-export function FleetThought({ live, reasoning, startedAtMs, endedAtMs, children }: FleetThoughtProps) {
+export function FleetThought({ live, answered, reasoning, startedAtMs, endedAtMs, children }: FleetThoughtProps) {
   const [opened, setOpened] = useState<string | null>(null);
   // The item stays mounted through a fold; the content does not, so the lock
   // finds the scroller from here.
   const itemRef = useRef<HTMLDivElement | null>(null);
   const lockScroll = useScrollLock(itemRef, FOLD_ANIMATION_MS);
-  const autoOpen = useLiveFor(live, LIVE_OPEN_DELAY_MS);
+  const autoOpen = useLiveFor(live && !answered, LIVE_OPEN_DELAY_MS);
   const value = opened ?? (autoOpen ? THOUGHT_VALUE : "");
   // Taken as the fold commits and before it paints, for a click and for the
   // fold the answer triggers alike: the library locks before the height moves.
