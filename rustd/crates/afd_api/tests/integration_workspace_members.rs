@@ -18,13 +18,14 @@ use std::time::Duration;
 
 use afd_core::error_code;
 use afd_dragonfly::SubscriptionHub;
+use afd_events::ACTOR_PREFIX;
 use afd_tenant::workspace::access::{ROLE_MEMBER, ROLE_OWNER};
 use axum::Router;
 use axum::body::BodyDataStream;
 use http::{Method, StatusCode};
 use serde_json::Value;
 
-use self::fixture::{Members, Person, owner_scopes};
+use self::fixture::{Members, Person, owner_scopes, platform_scopes};
 use crate::harness::{self, json_body, send};
 use crate::integration_fleet_streams::fixture::{next_chunk, stream_ends};
 
@@ -86,7 +87,12 @@ async fn test_member_reaches_owner_workspace() {
     let members = Members::create().await;
     members.seed().await;
     let hub = live_hub().await;
-    let router = members.live_router(&members.bob, harness::connect_redis().await, hub.clone());
+    let router = members.live_router(
+        &members.bob,
+        owner_scopes(),
+        harness::connect_redis().await,
+        hub.clone(),
+    );
     let (john, bob) = (&members.john, &members.bob);
 
     let (status, list) = get(&router, LIST, bob).await;
@@ -196,7 +202,12 @@ async fn test_removed_member_stream_ends() {
     let members = Members::create().await;
     members.seed().await;
     let hub = live_hub().await;
-    let router = members.live_router(&members.bob, harness::connect_redis().await, hub.clone());
+    let router = members.live_router(
+        &members.bob,
+        owner_scopes(),
+        harness::connect_redis().await,
+        hub.clone(),
+    );
     let john = &members.john;
     let wall = format!("/v1/workspaces/{}/events/stream", john.workspace.as_str());
     let tail = format!(
@@ -235,7 +246,12 @@ async fn test_single_owner_paths_unchanged() {
     let members = Members::create().await;
     members.seed().await;
     let hub = live_hub().await;
-    let router = members.live_router(&members.john, harness::connect_redis().await, hub.clone());
+    let router = members.live_router(
+        &members.john,
+        owner_scopes(),
+        harness::connect_redis().await,
+        hub.clone(),
+    );
     let john = &members.john;
 
     let (status, list) = get(&router, LIST, john).await;
@@ -261,6 +277,44 @@ async fn test_single_owner_paths_unchanged() {
     let thread = format!("{}/{}/messages", fleets_of(john), members.fleet.as_str());
     let steered = send(&router, Method::POST, &thread, Some(&john.token), STEER).await;
     assert_eq!(steered.status(), StatusCode::ACCEPTED);
+
+    hub.shutdown();
+    members.cleanup().await;
+}
+
+/// An operator holding the platform-wide scope, a stranger to John's account,
+/// steers John's fleet: the crossing admits the write, and the admitted
+/// message names the operator rather than the owner whose fleet it is.
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn test_platform_write_acts_attributed() {
+    let members = Members::create().await;
+    members.seed().await;
+    let hub = live_hub().await;
+    let operator = &members.stranger;
+    let router = members.live_router(
+        operator,
+        platform_scopes(),
+        harness::connect_redis().await,
+        hub.clone(),
+    );
+
+    let thread = format!(
+        "{}/{}/messages",
+        fleets_of(&members.john),
+        members.fleet.as_str()
+    );
+    let steered = send(&router, Method::POST, &thread, Some(&operator.token), STEER).await;
+    assert_eq!(
+        steered.status(),
+        StatusCode::ACCEPTED,
+        "the platform scope crosses to write"
+    );
+    assert_eq!(
+        members.admitted_actors().await,
+        [format!("{ACTOR_PREFIX}{}", operator.subject)],
+        "one admission, attributed to the operator"
+    );
 
     hub.shutdown();
     members.cleanup().await;

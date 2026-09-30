@@ -153,7 +153,7 @@ Owners get Settings → Members (invite, copy link, pending invites, members, re
 
 `workspace:any` admits every method across tenants, as it does today; there is no read-only crossing (Discovery). The ownership layer emits `cross_tenant_workspace_override` before a crossing is honoured, with the method, so a look and an act read differently in the log. The event moves there from `afd_tenant/src/workspace/mod.rs:163`, which cannot see the method and logged again on every stream re-check. `GET /v1/admin/workspaces` lists every workspace for `workspace:any` and refuses everyone else; the dashboard's `/admin/workspaces` page lists them and opens one. The operator's identity-provider scopes need no edit.
 
-- **Dimension 5.1** — an operator steers another tenant's fleet, attributed to the operator → Test `test_platform_write_acts_attributed`
+- **Dimension 5.1** — an operator steers another tenant's fleet, attributed to the operator → Test `test_platform_write_acts_attributed` — DONE (`afd_api/tests/integration_workspace_members.rs`)
 - **Dimension 5.2** — every honoured crossing logs one audit event with the method, before the handler; access from inside the account logs none → Test `test_platform_crossing_audited` — DONE (`afd_tenant/src/workspace/crossing.rs`; placement in the layer by `test_layer_records_platform_crossings`, `afd_api/tests/workspace_member_roles.rs`)
 - **Dimension 5.3** — the directory serves `workspace:any` and refuses others → Test `test_admin_directory_scoped`
 - **Dimension 5.4** — the directory page lists workspaces and opens one → Test `test_admin_directory_page_opens_workspace`
