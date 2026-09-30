@@ -32,12 +32,14 @@ export function buildQuery(opts?: EventsQuery): string {
 // `Published` enum in rustd/crates/afd_fleet/src/lease/activity.rs, where the
 // runner's wire vocabulary becomes this one. The two brackets and the two gate
 // frames are the daemon's own `TailFrame` in rustd/crates/afd_wire/src/tail.rs:
-// `event_received` when the lease opens the row, `event_complete` with the
+// `event_admitted` when a person's message is accepted, before any runner has
+// it, `event_received` when the lease opens the row, `event_complete` with the
 // whole row when a report or a refusal closes it, `gate_opened` and
 // `gate_resolved` when a human is asked and answers. Keep every spelling in
 // sync with those enums; the install frames below are declared nowhere on the
 // server — the SSE layer reads a payload's leading `kind` and forwards it.
 export const FRAME_KIND = {
+  EVENT_ADMITTED: "event_admitted",
   EVENT_RECEIVED: "event_received",
   TOOL_CALL_STARTED: "tool_call_started",
   TOOL_CALL_PROGRESS: "tool_call_progress",

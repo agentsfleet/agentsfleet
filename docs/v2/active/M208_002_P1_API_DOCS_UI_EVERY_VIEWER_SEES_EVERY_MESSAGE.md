@@ -70,11 +70,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/streaming/fleet-stream-row.ts` | EDIT | `queued` status constant |
 | `ui/packages/app/lib/streaming/fleet-stream-frames.ts` | EDIT | apply `event_admitted`; `event_received` moves `queued` to `received` and takes `message` |
 | `ui/packages/app/lib/streaming/fleet-stream-held.ts` | EDIT | `event_admitted` opens a held turn too |
-| `ui/packages/app/lib/streaming/workspace-stream.ts` | EDIT | the wall treats `event_admitted` as a no-op |
+| `ui/packages/app/lib/streaming/workspace-store.ts` | EDIT | the wall treats `event_admitted` as a no-op |
+| `ui/packages/app/lib/events/run-summary.ts`, `ui/packages/app/components/domain/{fleetReplyMessage,useFleetEventStream}.ts` | EDIT | a waiting row is never the latest run; its reply runs, marked queued |
 | `ui/packages/app/lib/events/event-summary.ts` | EDIT | sender labels; "Waiting for {fleet}" for `queued` |
 | `ui/packages/app/components/domain/{FleetThread,FleetMessageRow}.tsx` | EDIT | members' names reach the rows |
 | `ui/packages/app/lib/streaming/fleet-stream-admitted.ts`, `ui/packages/app/lib/events/sender-names.ts` | CREATE | the admitted frame's handling, beside `fleet-stream-frames.ts` at its cap; the viewer's and members' labels |
-| `ui/packages/app/lib/auth/credential.ts` | EDIT | the session subject, the viewer's own steer actor |
 | `rustd/crates/afd_admission/src/{lib,repeat}.rs` | EDIT | the admission answers with its `event_created_at` |
 | `rustd/crates/afd_events/src/{lib.rs,history/**}`, `rustd/crates/afd_events/tests/{events_suite,integration_thread_queued}.rs`, `rustd/crates/afd_core/src/event.rs` | CREATE/EDIT | the thread's first page reads waiting steers from the ledger and merges them; `status::QUEUED` |
 | `docs/architecture/data_flow.md` | EDIT | the admitted frame in the steer flow |
@@ -119,13 +119,13 @@ The thread read (`GET …/fleets/{fleet_id}/messages`) returns the fleet's recei
 
 ### §3 — Every screen renders the turn at once
 
-`event_admitted` creates the row with the typed text and status `queued`, rendered "Waiting for {fleet}". `event_received` for that id moves it to `received` without a second row. The two can arrive in either order: `append` has written the queue entry before the route publishes, so a runner can lease and announce first. An `event_admitted` for a row already held fills only an empty text and never moves the row back to `queued`. The two-tab hold (`HeldTurns`) treats `event_admitted` as an opening frame, so the sending tab still waits for its 202 before deciding whose turn it is. The wall ignores `event_admitted`: a tile changes when work starts.
+`event_admitted` creates the row with the typed text and status `queued`, rendered with the chat's existing "Queued" reply state (`FleetReplyBody.tsx`), the one a sender's own waiting message already shows. `event_received` for that id moves it to `received` without a second row. The two can arrive in either order: `append` has written the queue entry before the route publishes, so a runner can lease and announce first. An `event_admitted` for a row already held fills only an empty text and never moves the row back to `queued`. The two-tab hold (`HeldTurns`) treats `event_admitted` as an opening frame, so the sending tab still waits for its 202 before deciding whose turn it is. The wall ignores `event_admitted`: a tile changes when work starts.
 
-- **Dimension 3.1** — `event_admitted` renders a `queued` row with the text → Test `test_admitted_frame_renders_queued_row`
-- **Dimension 3.2** — `event_received` moves `queued` to `received`, one row → Test `test_received_moves_queued_row`
-- **Dimension 3.3** — an own-account `event_admitted` waits on this tab's 202 → Test `test_held_turns_hold_admitted_frames`
-- **Dimension 3.4** — the wall ignores `event_admitted` → Test `test_wall_ignores_admitted_frame`
-- **Dimension 3.5** — `event_admitted` after `event_received` keeps the row's status, one row → Test `test_late_admitted_frame_keeps_status`
+- **Dimension 3.1** — `event_admitted` renders a `queued` row with the text → Test `test_admitted_frame_renders_queued_row` — DONE (`ui/packages/app/lib/streaming/fleet-stream-admitted.test.ts`)
+- **Dimension 3.2** — `event_received` moves `queued` to `received`, one row → Test `test_received_moves_queued_row` — DONE (`fleet-stream-admitted.test.ts`)
+- **Dimension 3.3** — an own-account `event_admitted` waits on this tab's 202 → Test `test_held_turns_hold_admitted_frames` — DONE (`fleet-stream-held.test.ts`)
+- **Dimension 3.4** — the wall ignores `event_admitted` → Test `test_wall_ignores_admitted_frame` — DONE (`workspace-store.test.ts`)
+- **Dimension 3.5** — `event_admitted` after `event_received` keeps the row's status, one row → Test `test_late_admitted_frame_keeps_status` — DONE (`fleet-stream-admitted.test.ts`)
 
 ### §4 — Messages carry their sender's name
 
@@ -187,7 +187,7 @@ GET /v1/workspaces/{workspace_id}/members  items gain  actor   ("steer:<oidc_sub
 | 2.2 | integration | `test_thread_read_dedupes_leased_steer` | lease it → one row, not `queued` |
 | 2.3 | unit | `test_event_received_carries_steer_message` | `steer:u1` → `message`; `webhook:gh` → no key |
 | 2.4 | unit | `test_event_received_without_parsable_body` | `request_json:"{"` → no `message`, one warn |
-| 3.1 | unit | `test_admitted_frame_renders_queued_row` | frame → row `queued`, text set, label "Waiting for MARY-001" |
+| 3.1 | unit | `test_admitted_frame_renders_queued_row` | frame → row `queued`, text set, its reply running and marked queued |
 | 3.2 | unit | `test_received_moves_queued_row` | admitted then received → one row, `received` |
 | 3.3 | unit | `test_held_turns_hold_admitted_frames` | own-account admitted while waiting → held until the 202 |
 | 3.4 | unit | `test_wall_ignores_admitted_frame` | wall state unchanged by the frame |
@@ -254,3 +254,4 @@ N/A — no files deleted.
 - **Deferrals** — none.
 - **PLAN source corrections** — Oct 1, 2026: no "You" label exists; every `steer:*` actor reads "Operator" (`ui/packages/app/lib/events/event-summary.ts:51,101`), so §4 learns the viewer's actor from the session's subject claim (`lib/auth/credential.ts`), which `steer:<oidc_subject>` records (`message_steer.rs:219-229`, `schema/220_users.sql`). The admission answers with id, digest and fleet only (`afd_admission/src/repeat.rs:20-28`), so it gains `event_created_at` for the frame. The thread reads newest first (`afd_events/src/history/statement.rs:92`), so queued rows lead the first page. `~/Projects/docs` holds no frames page (`event_received` appears only in `changelog.mdx`), so §5 drops that row. The command-line client parses no frames (`cli/src`, no `event_received`).
 - **R1 after merge** — Oct 1, 2026, Indy via AskUserQuestion: "Go, R1 after merge (Recommended)". The journey calls the shared dev API, which runs `main`; the Pull Request opens under an Orly-Override Indy records, and Dimension 4.2 is graded after merge.
+- **EXECUTE source corrections** — Oct 1, 2026: the viewer's steer actor is already built in `FleetThread.tsx` from the session subject for the send hold, so "You" reuses it and `lib/auth/credential.ts` is untouched. The chat already renders a waiting message as "Queued" (`FleetReplyBody.tsx`), so a teammate's waiting message uses that state rather than new "Waiting for {fleet}" copy (Indy, Oct 1, 2026, on the members page: "follow our standard design in the UI"). A waiting row stays out of the status line's latest run (`run-summary.ts`), which it would otherwise have read as completed. The planner serves the waiting read from `idx_fleet_admissions_delivery_lookup`, the other partial index on undelivered rows (§2).
