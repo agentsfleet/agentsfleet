@@ -1,5 +1,5 @@
 import { request } from "./client";
-import { decodeOnePage, isNonEmptyString, isRecord } from "./decode";
+import { decodeOnePage, isEpochMs, isNonEmptyString, isRecord } from "./decode";
 import { isAccountRole, type AccountRole } from "./workspaces";
 
 // The people in the caller's own account. Removing one is idempotent, and the
@@ -14,6 +14,8 @@ export type MemberSummary = {
   display_name: string | null;
   email: string;
   role: AccountRole;
+  /** When they joined the account, epoch milliseconds. */
+  joined_at: number;
 };
 
 const decodeMember = (value: unknown): MemberSummary => {
@@ -22,7 +24,8 @@ const decodeMember = (value: unknown): MemberSummary => {
     !isNonEmptyString(value.user_id) ||
     (value.display_name !== null && typeof value.display_name !== "string") ||
     !isNonEmptyString(value.email) ||
-    !isAccountRole(value.role)
+    !isAccountRole(value.role) ||
+    !isEpochMs(value.joined_at)
   ) {
     throw new Error("member is invalid");
   }
@@ -31,6 +34,7 @@ const decodeMember = (value: unknown): MemberSummary => {
     display_name: value.display_name,
     email: value.email,
     role: value.role,
+    joined_at: value.joined_at,
   };
 };
 

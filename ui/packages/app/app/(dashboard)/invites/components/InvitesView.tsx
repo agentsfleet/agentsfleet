@@ -9,12 +9,13 @@ import {
   DataTable,
   type DataTableColumn,
   EmptyState,
+  IconAction,
   PageHeader,
   PageLayout,
   PageTitle,
   Time,
 } from "@agentsfleet/design-system";
-import { MailOpenIcon } from "lucide-react";
+import { CheckIcon, MailOpenIcon } from "lucide-react";
 import type { WaitingInvite } from "@/lib/api/invites";
 import { presentErrorString } from "@/lib/errors";
 import { DASHBOARD_ROOT_PATH, DEFAULT_WORKSPACE_SUBPATH, workspacePath } from "@/lib/workspace-routes";
@@ -100,11 +101,13 @@ function columns(pending: boolean, accept: (inviteId: string) => void): DataTabl
       cell: (invite) => <span className="truncate text-sm">{accountLabel(invite.account.owner_name)}</span>,
     },
     {
-      key: "expires",
-      header: "Expires",
+      key: "time",
+      header: "Time",
       hideOnMobile: true,
       cell: (invite) => (
-        <Time value={new Date(invite.expires_at)} format="relative" className="text-label tabular-nums text-muted-foreground" />
+        <span className="text-label leading-label text-muted-foreground">
+          expires <Time value={new Date(invite.expires_at)} format="relative" className="tabular-nums" />
+        </span>
       ),
     },
     {
@@ -112,15 +115,14 @@ function columns(pending: boolean, accept: (inviteId: string) => void): DataTabl
       header: "Actions",
       numeric: true,
       cell: (invite) => (
-        <Button
+        <IconAction
           type="button"
-          size="sm"
           disabled={pending}
           onClick={() => accept(invite.id)}
-          aria-label={`${ACCEPT_LABEL} invite into ${accountLabel(invite.account.owner_name)}`}
+          label={`${ACCEPT_LABEL} invite into ${accountLabel(invite.account.owner_name)}`}
         >
-          {ACCEPT_LABEL}
-        </Button>
+          <CheckIcon size={14} />
+        </IconAction>
       ),
     },
   ];

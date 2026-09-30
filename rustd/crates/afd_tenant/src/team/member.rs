@@ -11,8 +11,8 @@ use crate::{Result, error};
 const CONTEXT_LIST: &str = "list members";
 const CONTEXT_REMOVE: &str = "remove member";
 
-/// One member row: user, display name, address, role.
-type MemberRow = (String, Option<String>, String, String);
+/// One member row: user, display name, address, role, when they joined.
+type MemberRow = (String, Option<String>, String, String, i64);
 
 impl Team {
     /// The account's members, oldest membership first.
@@ -28,12 +28,13 @@ impl Team {
             .await
             .map_err(error::query(CONTEXT_LIST))?;
         rows.into_iter()
-            .map(|(user, display_name, email, role)| {
+            .map(|(user, display_name, email, role, joined_at_ms)| {
                 Ok(Member {
                     user,
                     display_name,
                     email,
                     role: Role::parse(&role)?,
+                    joined_at_ms,
                 })
             })
             .collect()
