@@ -14,6 +14,7 @@ vi.mock("@/lib/api/client", () => ({
 }));
 
 import { GET } from "../app/live/v1/workspaces/[workspaceId]/events/route";
+import { ERROR_CODE } from "@/lib/errors";
 
 const WORKSPACE_ID = "ws_1";
 const TOKEN = "session_token";
@@ -62,7 +63,7 @@ describe("workspace backfill route", () => {
     const res = await GET(makeReq(), paramsOf());
 
     expect(res.status).toBe(STATUS_UNAUTHORIZED);
-    await expect(res.json()).resolves.toEqual({ error: "Unauthorized", code: "UZ-401" });
+    await expect(res.json()).resolves.toEqual({ error: "Unauthorized", code: ERROR_CODE.AUTH_401 });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

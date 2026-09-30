@@ -104,7 +104,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Dimension 1.1** — the composer's Send stays enabled while a reply runs → Test `test_send_enabled_while_running` — DONE
 - **Dimension 1.2** — a send while running and a send while idle each make one POST with one operation id → Test `test_queue_send_posts_once` — DONE
 - **Dimension 1.3** — `isRunning` is true exactly while a reply to the viewer's own turn runs; another sender's never sets it → Test `test_is_running_tracks_reply_rows` — DONE (`tests/fleet-thread/steer-queue.test.ts`, `lib/events/event-summary.test.ts`)
-- **Dimension 1.4** — Resend still carries the first operation id → Test `test_failed_send_resend_journey`
+- **Dimension 1.4** — Resend still carries the first operation id → Test `test_failed_send_resend_journey` — DONE (`fleet-resend.spec.ts` green in the full thread e2e runs)
 
 ### §2 — The thread anchors the turn at the top
 
@@ -130,7 +130,7 @@ The reply's text part renders through `MarkdownTextPrimitive` with the existing 
 The events list, the workspace stream, the fleet events list and the fleet stream answer a signed-out request with `{error, code: ERROR_CODE.AUTH_401}`, the body the event-detail sibling already answers (`e1e5206b4`). No browser reader parses these bodies (backfill reads `res.status`; the streams are `EventSource`), so the family keeps its shape.
 
 - **Dimension 4.1** — each route answers signed-out with 401 and `code: "UZ-AUTH-401"` → Test `test_routes_answer_auth_401` (one case per route) — DONE (`tests/live-routes-auth.test.ts`)
-- **Dimension 4.2** — no `"UZ-401"` literal remains under `ui/packages/app` → Test `test_no_unregistered_auth_code` — DONE
+- **Dimension 4.2** — no `"UZ-401"` literal remains under `ui/packages/app`, tests included → Test `test_no_unregistered_auth_code` — DONE (widened to `tests/` after two stale route-test pins failed `make test-unit-all`)
 
 ### §5 — One tracing capture for Rust tests
 
@@ -233,7 +233,7 @@ make test-unit-runner: zig build --build-file build_runner.zig test   (part of t
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | The view holds through folds, settles and Send (§1, §2) | `cd ui/packages/app && bunx playwright test --config=playwright.acceptance.config.ts --project=journeys tests/e2e/acceptance/fleet-thread.spec.ts tests/e2e/acceptance/fleet-thread-anchor.spec.ts tests/e2e/acceptance/fleet-reply-parts.spec.ts tests/e2e/acceptance/fleet-resend.spec.ts` | exit 0 | P0 | |
 | R2 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| R3 | Only registered 401s (§4) | `git grep -n '"UZ-401"' -- ui/packages/app` | 0 matches | P0 | |
+| R3 | Only registered 401s (§4) | `git grep -n '"UZ-401"' -- ui/packages/app ':!ui/packages/app/tests/live-routes-auth.test.ts'` (the scan test names what it looks for) | 0 matches | P0 | |
 | R4 | One tracing capture (§5) | `git grep -lnE 'impl<S[^>]*> Layer<S>' -- rustd/crates/afd_dragonfly/tests rustd/crates/afd_events/tests rustd/crates/afd_fleet rustd/crates/agentsfleetd/src/supervisor ':!rustd/crates/afd_fleet/tests/integration_lease_gates/tenant.rs'` (the lease-gate layer is Out of Scope; at the baseline this lists six files) | 0 matches | P1 | |
 | R5 | Zig tests in the unit lane (§6) | `make -n test-unit-all \| grep -c 'build_runner.zig test'` | 1 | P1 | |
 | R6 | Docs PR open (§8) | `gh pr list -R agentsfleet/docs --head chore/m207-005-chat-holds-still-changelog --json state -q '.[].state'` | `OPEN` | P1 | |
