@@ -36,6 +36,8 @@ mod wall;
 /// The `data` line of the frame a revoked stream ends on, as both stream
 /// descriptions quote it. A macro rather than a `const` because `concat!`
 /// takes only literals, and this is the one place the literal is written.
+/// Gated with the descriptions that use it: without `openapi` nothing does.
+#[cfg(feature = "openapi")]
 macro_rules! access_revoked_data {
     () => {
         "`data: {\"kind\":\"access_revoked\",\"error_code\":\"UZ-AUTH-001\"}` "
