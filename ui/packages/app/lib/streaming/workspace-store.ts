@@ -17,6 +17,7 @@ import {
 } from "@/lib/streaming/fleet-stream-backfill";
 import { applyLiveFrame, mergeBackfill } from "@/lib/streaming/fleet-stream-frames";
 import {
+  lastGreeting,
   noteServerFrameTime,
   subscribeFleet,
   subscribeStatus,
@@ -96,6 +97,13 @@ export class WorkspaceStore {
         subscribeFleet(this.#workspaceId, fleetId, (frame) => this.#applyFleetFrame(fleetId, frame)),
       ),
     ];
+    // A wall that remounts inside the idle grace joins a connection whose
+    // `hello` already went by, and takes the set it announced. A greeted store
+    // is only re-subscribing for a changed fleet set and already has it.
+    if (!this.#helloReceived) {
+      const greeting = lastGreeting(this.#workspaceId);
+      if (greeting) this.#applyWorkspaceFrame(greeting);
+    }
     return () => {
       for (const unsub of unsubs) unsub();
       this.#generation += 1;

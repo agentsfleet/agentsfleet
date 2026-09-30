@@ -8,6 +8,7 @@ import {
   flushFrame,
   greet,
   push,
+  lastGreeting,
   received,
   setupWorkspaceWire,
   WORKSPACE_ID,
@@ -194,5 +195,28 @@ describe("the wall's own subscription", () => {
     greet({ kind: FRAME_KIND.CATCHING_UP, dropped: 2 });
     flushFrame();
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("joining after the greeting", () => {
+  it("an ungreeted store takes the set the connection last announced", () => {
+    lastGreeting.mockReturnValue({ kind: FRAME_KIND.HELLO, fleet_ids: [FLEET_A] });
+    const late = new WorkspaceStore(WORKSPACE_ID);
+    const leave = late.connect([FLEET_A, FLEET_B]);
+
+    expect(late.workspaceSnapshot().helloReceived).toBe(true);
+    expect(late.snapshot(FLEET_A).isLive).toBe(true);
+    expect(late.snapshot(FLEET_B).isLive).toBe(false);
+    leave();
+  });
+
+  it("a greeted store re-subscribing for a changed set keeps catching up", () => {
+    greet({ kind: FRAME_KIND.HELLO, fleet_ids: [FLEET_A] });
+    greet({ kind: FRAME_KIND.CATCHING_UP, dropped: 2 });
+    lastGreeting.mockReturnValue({ kind: FRAME_KIND.HELLO, fleet_ids: [FLEET_A] });
+    disconnect();
+    disconnect = store.connect([FLEET_A, FLEET_B, "fleet_c"]);
+
+    expect(store.workspaceSnapshot().catchingUp).toBe(true);
   });
 });
