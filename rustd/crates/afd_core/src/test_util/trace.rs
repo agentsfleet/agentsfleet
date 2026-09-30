@@ -18,16 +18,17 @@
 //! the first time: that registration reads the subscribers, a capture's
 //! rebuild runs before the callsite joins the list, and the callsite keeps a
 //! cached "never" for as long as that capture lives. So the first capture also
-//! installs a process-wide subscriber that answers every callsite "sometimes"
-//! and records nothing: no callsite registered after it can be cached as
-//! disabled, and each event asks the thread's own subscriber instead.
+//! installs a bare `Registry` as the process-wide subscriber: every callsite
+//! stays on, so none registered after it is cached as disabled, and an event
+//! on a thread with no capture has its fields evaluated and is kept nowhere.
+//! That is what `afd_db::test_util::install_subscriber` sets up too, so a test
+//! binary that runs both gets the same process whichever installs first.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, Once, PoisonError};
 
 use tracing::field::{Field, Visit};
-use tracing::subscriber::Interest;
-use tracing::{Event, Level, Metadata, Subscriber, subscriber};
+use tracing::{Event, Level, Subscriber, subscriber};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt as _};
 use tracing_subscriber::registry::Registry;
 
@@ -37,8 +38,8 @@ const EVENT_FIELD: &str = "event";
 /// Held by the one live [`Capture`].
 static SERIAL: Mutex<()> = Mutex::new(());
 
-/// Installs [`Undecided`] as the process's global subscriber, once.
-static UNDECIDED: Once = Once::new();
+/// Installs the process's global subscriber, once.
+static GLOBAL: Once = Once::new();
 
 /// One event a [`Capture`] saw.
 #[derive(Debug, Clone)]
@@ -71,10 +72,10 @@ impl Capture {
         // A test that panicked while holding the lock proved nothing about
         // the next one, so a poisoned lock is taken as it stands.
         let serial = SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
-        UNDECIDED.call_once(|| {
-            // Another suite's global subscriber, set first, answers every
-            // callsite itself; either way no callsite is left cached "never".
-            let _already_set = subscriber::set_global_default(Registry::default().with(Undecided));
+        GLOBAL.call_once(|| {
+            // Another suite's global subscriber, set first, keeps every
+            // callsite on itself; either way none is left cached "never".
+            let _already_set = subscriber::set_global_default(Registry::default());
         });
         let events = Arc::new(Mutex::new(Vec::new()));
         let layer = Recorder(Arc::clone(&events));
@@ -115,20 +116,6 @@ impl Capture {
             (Some(one), None) => one.clone(),
             _ => panic!("expected exactly one {name} event, got {events:?}"),
         }
-    }
-}
-
-/// Keeps every callsite's interest open and records nothing, so an event is
-/// always put to the subscriber of the thread that raised it.
-struct Undecided;
-
-impl<S: Subscriber> Layer<S> for Undecided {
-    fn register_callsite(&self, _metadata: &'static Metadata<'static>) -> Interest {
-        Interest::sometimes()
-    }
-
-    fn enabled(&self, _metadata: &Metadata<'_>, _ctx: Context<'_, S>) -> bool {
-        false
     }
 }
 

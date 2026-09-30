@@ -5,6 +5,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -19,6 +20,8 @@ const ATTEMPTS: u64 = 3;
 const HOLD: Duration = Duration::from_millis(200);
 /// How long the second capture may take once the first has ended.
 const RELEASE: Duration = Duration::from_secs(10);
+/// Set by a field expression, so a test can see the field was evaluated.
+static EVALUATED: AtomicBool = AtomicBool::new(false);
 
 #[test]
 fn trace_capture_records_fields() {
@@ -71,11 +74,20 @@ fn trace_capture_keeps_every_callsite_open() {
         tracing::dispatcher::has_been_set(),
         "the first capture sets the process's global subscriber"
     );
-    // A thread with no capture: the global keeps its callsite open and keeps
-    // nothing of the event.
-    thread::spawn(|| tracing::info!(event = FLEET))
-        .join()
-        .expect("the thread with no capture finishes");
+    // A thread with no capture: its event's fields are still evaluated, as a
+    // coverage run needs them to be, and the event is kept nowhere.
+    thread::spawn(|| {
+        tracing::info!(
+            event = FLEET,
+            evaluated = EVALUATED.swap(true, Ordering::SeqCst)
+        );
+    })
+    .join()
+    .expect("the thread with no capture finishes");
+    assert!(
+        EVALUATED.load(Ordering::SeqCst),
+        "a thread with no capture still evaluates its event's fields"
+    );
     let capture = Capture::install();
     tracing::info!(event = EVENT);
     assert_eq!(capture.events().len(), 1, "a capture hears its own thread");
