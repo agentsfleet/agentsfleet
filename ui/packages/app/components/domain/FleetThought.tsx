@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useScrollLock } from "@assistant-ui/react";
 import {
   Accordion,
@@ -27,6 +27,10 @@ const CLOCK_TICK_MS = 100;
 // The accordion's fold (tw-animate-css `accordion-up`, .2s), so the viewport
 // holds still for exactly that long.
 const FOLD_ANIMATION_MS = 200;
+// Reasoning that lands in one burst is live for a render or two. Opened then,
+// it folds at once and the prose flashes past; it opens only once it has
+// streamed for this long.
+const LIVE_OPEN_DELAY_MS = 400;
 // Only the tail can hold the latest sentence; scanning more costs every frame.
 const SENTENCE_TAIL_CHARS = 400;
 const SENTENCES = new Intl.Segmenter(undefined, { granularity: "sentence" });
@@ -46,12 +50,22 @@ export type FleetThoughtProps = {
  */
 export function FleetThought({ live, reasoning, startedAtMs, endedAtMs, children }: FleetThoughtProps) {
   const [opened, setOpened] = useState<string | null>(null);
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const lockScroll = useScrollLock(contentRef, FOLD_ANIMATION_MS);
-  const value = opened ?? (live ? THOUGHT_VALUE : "");
+  // The item stays mounted through a fold; the content does not, so the lock
+  // finds the scroller from here.
+  const itemRef = useRef<HTMLDivElement | null>(null);
+  const lockScroll = useScrollLock(itemRef, FOLD_ANIMATION_MS);
+  const autoOpen = useLiveFor(live, LIVE_OPEN_DELAY_MS);
+  const value = opened ?? (autoOpen ? THOUGHT_VALUE : "");
+  // Taken as the fold commits and before it paints, for a click and for the
+  // fold the answer triggers alike: the library locks before the height moves.
+  const previous = useRef(value);
+  useLayoutEffect(() => {
+    if (previous.current !== value) lockScroll();
+    previous.current = value;
+  }, [value, lockScroll]);
   return (
     <Accordion type="single" collapsible value={value} onValueChange={setOpened} className="mb-md">
-      <AccordionItem value={THOUGHT_VALUE} className="border-0">
+      <AccordionItem ref={itemRef} value={THOUGHT_VALUE} className="border-0">
         <AccordionTrigger className="min-w-0 py-xs text-label text-text-dim hover:no-underline">
           {live ? (
             <LiveLabel reasoning={reasoning} startedAtMs={startedAtMs} />
@@ -64,12 +78,23 @@ export function FleetThought({ live, reasoning, startedAtMs, endedAtMs, children
             </span>
           )}
         </AccordionTrigger>
-        <AccordionContent ref={contentRef} onAnimationStart={lockScroll}>
+        <AccordionContent>
           {children}
         </AccordionContent>
       </AccordionItem>
     </Accordion>
   );
+}
+
+/** True once `live` has held for `delayMs`; false again the moment it ends. */
+function useLiveFor(live: boolean, delayMs: number): boolean {
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (!live) return;
+    const id = setTimeout(() => setHeld(true), delayMs);
+    return () => clearTimeout(id);
+  }, [live, delayMs]);
+  return live && held;
 }
 
 function LiveLabel({ reasoning, startedAtMs }: { reasoning: string; startedAtMs: number | null }) {
