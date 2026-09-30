@@ -89,6 +89,8 @@ describe("FleetThread — reply parts", () => {
     expect(within(replyRow()).getByText(OUTCOME.COMPLETED)).toBeTruthy();
     expect(replyRow().getAttribute("data-failed")).toBeNull();
     expect(replyRow().querySelector("[data-failed-outcome]")).toBeNull();
+    // The dashboard's own sentence reads as a system line, not as the fleet's words.
+    expect(within(replyRow()).getByText(OUTCOME.COMPLETED).className).toMatch(/text-muted-foreground/);
 
     mockStream([ev({ role: "user", actor: "operator", text: "Anything?", status: "fleet_error", outcome: OUTCOME.FAILED })]);
     view.rerender(threadElement());

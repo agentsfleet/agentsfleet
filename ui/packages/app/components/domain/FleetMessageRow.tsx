@@ -21,7 +21,7 @@ import {
   formatTimeRelative,
 } from "@agentsfleet/design-system";
 
-import { FleetFailedOutcome } from "./FleetFailedOutcome";
+import { FLEET_OUTCOME_CLASS, FleetFailedOutcome } from "./FleetFailedOutcome";
 
 const ROW_ENTER =
   "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-stream";
@@ -195,7 +195,7 @@ export function FleetActivityRow({
               {failed ? (
                 <FleetFailedOutcome className="font-sans">{outcome}</FleetFailedOutcome>
               ) : (
-                <p className="font-sans text-mono leading-mono text-muted-foreground">{outcome}</p>
+                <p className={FLEET_OUTCOME_CLASS}>{outcome}</p>
               )}
             </div>
           ) : null}
