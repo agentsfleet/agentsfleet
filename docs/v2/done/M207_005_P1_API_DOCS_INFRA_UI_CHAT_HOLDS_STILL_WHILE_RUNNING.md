@@ -21,9 +21,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Categories:** API, DOCS, INFRA, UI
 **Batch:** B1 — sole workstream; carries M207_003's 6.7 leftovers and the M207_003/M207_004 listed items
 **Branch:** `fix/m207-003-design-review`
-**Baseline revision:** `115e8ba668145e6407c8a47459bc87869fa358c2` (merge base with `origin/main`)
-**Test Baseline:** unit `make test-unit-all` exit 0 — Rust 2,879 passed / 0 failed / 708 ignored (162 binaries), app 3,268 (353 files), website 142 (22), cli 1,777 passed / 16 skipped, design-system 640 (60); integration `make test-integration-rustd` exit 0 — 683 passed / 0 failed over 140 binaries (681 + 2 exclusive)
-**Baseline evidence:** local runs at `115e8ba66` in a detached worktree, macOS, compose Postgres + four-process Dragonfly, Sep 30, 2026; counts summed from each lane's own summary lines. The first integration run stopped at `afd_runner integration_reclaim_faults::a_stranded_lease_the_index_will_not_mark_is_logged_and_not_counted` (589 passed, 1 failed); the rerun above passed whole, so that test flakes at the baseline
+**Baseline revision:** `115e8ba668145e6407c8a47459bc87869fa358c2`
+**Test Baseline:** unit=8706 integration=683 — unit `make test-unit-all` exit 0 — Rust 2,879 passed / 0 failed / 708 ignored (162 binaries), app 3,268 (353 files), website 142 (22), cli 1,777 passed / 16 skipped, design-system 640 (60); integration `make test-integration-rustd` exit 0 — 683 passed / 0 failed over 140 binaries (681 + 2 exclusive)
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M207_005-115e8ba66.md`
 **Depends on:** M207_003 (steer route, pending-sends ledger, Resend), M207_004 (streaming budget, catching-up)
 **Provenance:** LLM-drafted (Claude Opus 5.5, Sep 30, 2026)
 **Canonical architecture:** `docs/architecture/data_flow.md` §Steer flow end-to-end
@@ -65,7 +65,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_core/{Cargo.toml,src/lib.rs,src/test_util.rs,src/test_util/trace.rs,tests/core_suite.rs,tests/trace.rs}`, `rustd/Cargo.lock` | EDIT / CREATE | the one tracing capture, behind `test-util` |
 | `rustd/crates/{agentsfleetd/src/supervisor/tests.rs,afd_dragonfly/tests/support/recorder.rs,afd_events/tests/support/recorder.rs,afd_fleet/tests/support/fleet_log.rs,afd_fleet/src/lease/test_log.rs}` | EDIT / DELETE | migrate the five copies |
 | `rustd/crates/{agentsfleetd,afd_dragonfly,afd_events,afd_fleet}/**` | EDIT | each copy's suite `mod` line, call sites, and a `test-util` dev-dependency on `afd_core` |
-| `make/test.mk`, `make/test-unit.mk`, `build_runner.zig`, `scripts/runner_zig_version_test.py` | EDIT / CREATE | runner Zig tests in `test-unit-all`; version guard and its self-test; stale target comment |
+| `make/test.mk`, `make/test-unit.mk`, `build_runner.zig`, `scripts/runner_zig_version_test.py`, `playbooks/operations/acceptance/baselines/M207_005-115e8ba66.md` | EDIT / CREATE | runner Zig tests in `test-unit-all`; version guard and its self-test; stale target comment |
 | Tests beside each file above; `tests/e2e/acceptance/{fleet-thread,fleet-thread-anchor,fleet-reply-parts,fleet-resend}.spec.ts`, `fixtures/{reply-page,page-event-stream}.ts`; `tests/bench/fleet-markdown-stream.bench.tsx` | CREATE / EDIT | one test per Dimension |
 | M207_003 6.6/6.7 files already on the branch: `FleetFailedOutcome.tsx`, `FleetMessageRow.tsx`, `FleetThought.test.tsx`, `tests/fleet-thread/role-*.test.ts`, `tests/e2e/acceptance/fixtures/{page-event-stream,sse-server}.ts`, `docs/v2/done/M207_003_*.md` | EDIT / CREATE / DELETE | shipped in this PR by Indy's call |
 | `~/Projects/docs/changelog.mdx`, `~/Projects/docs/fleets/running.mdx` | EDIT | docs repo, own branch `chore/m207-005-chat-holds-still-changelog` |
