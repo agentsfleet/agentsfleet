@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, vi } from "vitest";
 
-import type { EventRow, WorkspaceControlFrame, WorkspaceLiveFrame } from "@/lib/api/events";
+import type {
+  EventRow,
+  WorkspaceControlFrame,
+  WorkspaceHelloFrame,
+  WorkspaceLiveFrame,
+} from "@/lib/api/events";
 import type { BackfillOutcome, WorkspaceBackfillRequest } from "@/lib/streaming/fleet-stream-backfill";
 
 import { FRAME_KIND } from "@/lib/api/events-types";
@@ -18,6 +23,7 @@ const wire = vi.hoisted(() => ({
   controlListener: null as ControlListener | null,
   backfill: null as BackfillFn | null,
   noteServerFrameTime: vi.fn(),
+  lastGreeting: vi.fn<(workspaceId: string) => WorkspaceHelloFrame | null>(() => null),
   warnBackfillFailure: vi.fn(),
   runWorkspaceBackfill: vi.fn<(req: WorkspaceBackfillRequest) => Promise<BackfillOutcome>>(),
 }));
@@ -25,6 +31,7 @@ const wire = vi.hoisted(() => ({
 vi.mock("@/lib/streaming/workspace-stream", () => ({
   WORKSPACE_CONNECTION_STATUS: { CONNECTING: "connecting", LIVE: "live", RECONNECTING: "reconnecting" },
   noteServerFrameTime: (...a: unknown[]) => wire.noteServerFrameTime(...a),
+  lastGreeting: (workspaceId: string) => wire.lastGreeting(workspaceId),
   subscribeStatus: (_workspaceId: string, _listener: unknown, onReconnect: BackfillFn) => {
     wire.backfill = onReconnect;
     return () => {};
@@ -56,6 +63,7 @@ export const BLANK_FEED = "";
 const SETTLED = "processed";
 
 export const noteServerFrameTime = wire.noteServerFrameTime;
+export const lastGreeting = wire.lastGreeting;
 export const warnBackfillFailure = wire.warnBackfillFailure;
 export const runWorkspaceBackfill = wire.runWorkspaceBackfill;
 
@@ -157,6 +165,8 @@ export function setupWorkspaceWire() {
     vi.unstubAllGlobals();
     wire.runWorkspaceBackfill.mockReset();
     wire.noteServerFrameTime.mockReset();
+    wire.lastGreeting.mockReset();
+    wire.lastGreeting.mockReturnValue(null);
     wire.warnBackfillFailure.mockReset();
   });
 }
