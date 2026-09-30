@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M207
 **Workstream:** 005
 **Date:** Sep 30, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operators watch every fleet reply here; a fold that drags the thread and a flash of reasoning break reading
 **Categories:** API, DOCS, INFRA, UI
 **Batch:** B1 — sole workstream; carries M207_003's 6.7 leftovers and the M207_003/M207_004 listed items
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
+**Branch:** `fix/m207-003-design-review`
+**Baseline revision:** `115e8ba668145e6407c8a47459bc87869fa358c2` (merge base with `origin/main`)
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M207_003 (steer route, pending-sends ledger, Resend), M207_004 (streaming budget, catching-up)
