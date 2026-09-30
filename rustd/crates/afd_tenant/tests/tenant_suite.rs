@@ -28,6 +28,12 @@
 // at this root, the allowance travels with the declaration -- scoped to the
 // helper rather than blanketed over the suites, which would hand them
 // permissions their own headers deliberately withhold.
+#[path = "support/access_lane.rs"]
+#[allow(
+    clippy::expect_used,
+    reason = "test support: an unmet precondition should fail the test loudly"
+)]
+mod access_lane;
 #[path = "support/apikey_lane.rs"]
 #[allow(
     clippy::expect_used,
@@ -60,5 +66,9 @@ mod integration_identity;
 mod integration_preferences;
 #[path = "integration_signup.rs"]
 mod integration_signup;
+#[path = "integration_workspace_access_plan.rs"]
+mod integration_workspace_access_plan;
+#[path = "integration_workspace_membership.rs"]
+mod integration_workspace_membership;
 #[path = "integration_workspace_ownership.rs"]
 mod integration_workspace_ownership;

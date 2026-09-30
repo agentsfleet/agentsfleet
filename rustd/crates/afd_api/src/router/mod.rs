@@ -194,7 +194,7 @@ fn layered<D: Serving>(
     // short a capability must be refused before this daemon runs a statement
     // for them.
     let owned = if meta.ownership.is_checked() {
-        let owner = Owner::new(Arc::clone(dependencies), meta.template);
+        let owner = Owner::new(Arc::clone(dependencies), meta);
         handler.layer(from_fn_with_state(owner, own::<D>))
     } else {
         handler

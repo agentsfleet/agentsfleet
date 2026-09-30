@@ -8,6 +8,29 @@
 //! the cutover invariant, so a statement is copied rather than re-derived;
 //! where a `$n` order looks odd, it is odd in the original too.
 
+/// The account a row belongs to, named by its owner.
+///
+/// Joined against a `core.tenants` row aliased `t`: the owner's display name
+/// when one is stored, else the account's own name, which signup takes from the
+/// owner's address. `$slot` is the number of the parameter the owner role's
+/// spelling is bound to, bound rather than written here (RULE STS). The lateral reads
+/// `uq_memberships_tenant_id_user_id` by its tenant prefix: an account has a
+/// handful of members, so this is a few index entries per account.
+macro_rules! owner_name_join {
+    ($slot:literal) => {
+        concat!(
+            "LEFT JOIN LATERAL ( \
+               SELECT u.display_name FROM core.memberships om \
+               JOIN core.users u ON u.id = om.user_id \
+               WHERE om.tenant_id = t.id AND om.role = $",
+            $slot,
+            " AND u.display_name IS NOT NULL \
+               ORDER BY om.created_at, om.id LIMIT 1 \
+             ) owner ON TRUE "
+        )
+    };
+}
+
 pub mod apikey;
 pub mod cli_credential;
 pub mod models;

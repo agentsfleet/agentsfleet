@@ -131,3 +131,36 @@ pub(crate) async fn json_body(response: Response) -> Value {
         .expect("a test response body is small and in memory");
     serde_json::from_slice(&bytes).expect("the response must be valid JSON")
 }
+
+/// What every path parameter is filled with while probing.
+///
+/// A UUID rather than a word, so a substitution can never collide with a
+/// literal sibling segment: `/v1/auth/sessions/{session_id}` and
+/// `/v1/auth/sessions/all` are different routes, and a placeholder spelled
+/// `all` would silently probe the wrong one.
+const PARAMETER_FILL: &str = "00000000-0000-7000-8000-000000000000";
+
+/// A concrete path for `template`, with every `{parameter}` filled.
+///
+/// `matchit` matches any non-empty segment against a parameter, so the value
+/// only has to be non-empty and free of `/`. `workspace`, when given, fills
+/// `{workspace_id}` instead, for a suite whose ownership stub owns one.
+pub(crate) fn concrete_path(template: &str, workspace: Option<&str>) -> String {
+    let mut path = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(open) = rest.find('{') {
+        let close = rest[open..]
+            .find('}')
+            .expect("a route template closes every parameter it opens")
+            + open;
+        path.push_str(&rest[..open]);
+        let fill = match workspace {
+            Some(owned) if &rest[open..=close] == afd_api::route::WORKSPACE_PARAMETER => owned,
+            _ => PARAMETER_FILL,
+        };
+        path.push_str(fill);
+        rest = &rest[close + 1..];
+    }
+    path.push_str(rest);
+    path
+}

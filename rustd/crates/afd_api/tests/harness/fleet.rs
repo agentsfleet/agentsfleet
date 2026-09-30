@@ -91,7 +91,7 @@ impl Fleet {
             // snapshots proves the refusal a deployment with no R2 knobs gives
             // — which is most of them.
             bundles: Bundles::unconfigured(),
-            workspaces: OneWorkspace::fixed(),
+            workspaces: Ownership::Stub(OneWorkspace::fixed()),
             workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
@@ -224,7 +224,7 @@ impl Fleet {
             runners: Runners::new(database.clone(), Entropy::new()),
             leases: NoWork,
             bundles: Bundles::unconfigured(),
-            workspaces: OneWorkspace::fixed(),
+            workspaces: Ownership::Stub(OneWorkspace::fixed()),
             workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),

@@ -140,9 +140,9 @@ impl Error {
             ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } => {
                 error_code::INTERNAL_DB_UNAVAILABLE
             }
-            ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } => {
-                error_code::INTERNAL_DB_QUERY
-            }
+            ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::RoleUnknown { .. } => error_code::INTERNAL_DB_QUERY,
             // One internal code for four failures the caller shares an
             // inability to correct. Two are this instance's own — a mint that
             // failed, a host that cannot draw entropy. A missing wallet is
@@ -217,6 +217,7 @@ impl Error {
             // cause is in the log beside the request id.
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
+            | ErrorKind::RoleUnknown { .. }
             | ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::CliCredentialMachineCollision => DETAIL_DATABASE_ERROR,

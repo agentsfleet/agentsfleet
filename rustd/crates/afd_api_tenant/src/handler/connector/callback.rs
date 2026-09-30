@@ -261,6 +261,11 @@ pub(crate) async fn complete<D: Services>(
     // their workspace is not theirs.
     let workspace = Uuid7::parse(verified.workspace())
         .map_err(|_unparseable| state_refused(provider, Rejected::Malformed.reason()))?;
+    // No member role check here, and none is needed: a connect is started on
+    // a workspace route the ownership layer withholds from members, and the
+    // state is bound to the identity that started it. No member ever holds a
+    // state to finish, so what is left to ask is whether the starter still
+    // holds the workspace.
     let owned = services
         .workspaces()
         .authorize(&principal, &workspace)

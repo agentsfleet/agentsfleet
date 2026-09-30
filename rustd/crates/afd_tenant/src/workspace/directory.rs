@@ -55,6 +55,8 @@ pub struct WorkspaceRow {
     pub name: Option<String>,
     /// When it was created; the walk's sort key.
     pub created_at_ms: i64,
+    /// The account it belongs to, one of those the page was asked for.
+    pub tenant_id: String,
 }
 
 /// One page of the walk, and whether a row exists beyond it.
@@ -93,7 +95,7 @@ pub struct Created {
 }
 
 impl Workspaces {
-    /// One page of `tenant`'s workspaces, oldest first.
+    /// One page of the workspaces across `tenants`, oldest first.
     ///
     /// `filter` holds the walk to an exact name; `after` is the decoded
     /// cursor when the caller is resuming.
@@ -103,7 +105,7 @@ impl Workspaces {
     /// cannot read.
     pub async fn page(
         &self,
-        tenant: &Uuid7,
+        tenants: &[Uuid7],
         filter: Option<&str>,
         after: Option<&After>,
         limit: u32,
@@ -111,23 +113,24 @@ impl Workspaces {
         // One past the limit, so `more` is a fact about the walk rather than
         // a guess about a full page.
         let fetch = i64::from(limit).saturating_add(1);
+        let accounts: Vec<&str> = tenants.iter().map(Uuid7::as_str).collect();
         let mut connection = self.database.acquire().await?;
         let query = match (filter, after) {
             (None, None) => sqlx::query(sql::SELECT_TENANT_WORKSPACES_PAGE_FIRST)
-                .bind(tenant.as_str())
+                .bind(&accounts)
                 .bind(fetch),
             (None, Some(boundary)) => sqlx::query(sql::SELECT_TENANT_WORKSPACES_PAGE_AFTER)
-                .bind(tenant.as_str())
+                .bind(&accounts)
                 .bind(boundary.created_at_ms)
                 .bind(boundary.id.as_str())
                 .bind(fetch),
             (Some(name), None) => sqlx::query(sql::SELECT_TENANT_WORKSPACES_PAGE_FIRST_BY_NAME)
-                .bind(tenant.as_str())
+                .bind(&accounts)
                 .bind(name)
                 .bind(fetch),
             (Some(name), Some(boundary)) => {
                 sqlx::query(sql::SELECT_TENANT_WORKSPACES_PAGE_AFTER_BY_NAME)
-                    .bind(tenant.as_str())
+                    .bind(&accounts)
                     .bind(name)
                     .bind(boundary.created_at_ms)
                     .bind(boundary.id.as_str())
@@ -241,6 +244,7 @@ fn read_row(row: &sqlx::postgres::PgRow) -> Result<WorkspaceRow> {
         id: row.try_get("id").map_err(&unreadable)?,
         name: row.try_get("name").map_err(&unreadable)?,
         created_at_ms: row.try_get("created_at").map_err(&unreadable)?,
+        tenant_id: row.try_get("tenant_id").map_err(&unreadable)?,
     })
 }
 

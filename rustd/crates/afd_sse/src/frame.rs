@@ -45,6 +45,10 @@ pub const KIND_HELLO: &str = "hello";
 /// The `event:` name of the frame announcing frames the server dropped.
 pub const KIND_CATCHING_UP: &str = "catching_up";
 
+/// The `event:` name of the last frame a stream sends when its caller lost
+/// access to what it streams.
+pub const KIND_ACCESS_REVOKED: &str = "access_revoked";
+
 /// The synthetic frames' sequence number.
 ///
 /// Zero, and deliberately not a number from the connection's counter: `hello`
@@ -152,6 +156,21 @@ impl Frame {
         Self {
             seq: SYNTHETIC_SEQ,
             kind: Cow::Borrowed(KIND_CATCHING_UP),
+            data: Data::owned(data.to_string()),
+        }
+    }
+
+    /// The control frame that ends a stream whose caller lost access to it.
+    ///
+    /// Sent once, and last. It carries the registry code the caller's next
+    /// request would be refused with, so a client stops reconnecting instead
+    /// of retrying into the same refusal, and can say why the view went quiet.
+    #[must_use]
+    pub fn access_revoked(error_code: &str) -> Self {
+        let data = serde_json::json!({ KIND_KEY: KIND_ACCESS_REVOKED, "error_code": error_code });
+        Self {
+            seq: SYNTHETIC_SEQ,
+            kind: Cow::Borrowed(KIND_ACCESS_REVOKED),
             data: Data::owned(data.to_string()),
         }
     }

@@ -109,7 +109,7 @@ pub(crate) use self::stubs_identity::{RecordingWriteback, WroteBack};
 pub(crate) use self::stubs_ingress::{HarnessIngress, Recorded, Scripted};
 pub(crate) use self::stubs_provider::HarnessProviders;
 pub(crate) use self::stubs_runner::NoWork;
-pub(crate) use self::stubs_tenant::{DEPLOYMENT, OWNED_WORKSPACE, OneWorkspace};
+pub(crate) use self::stubs_tenant::{DEPLOYMENT, OWNED_WORKSPACE, OneWorkspace, Ownership};
 /// Where this fixture deployment's schedule fires would arrive.
 ///
 /// A real destination shape, because it is half of what a fire token's subject
@@ -128,8 +128,8 @@ pub(crate) const SCHEDULE_DESTINATION: &str =
 pub(crate) const SCHEDULE_API_BASE: &str = "https://qstash.fixture.test/v2";
 
 pub(crate) use self::support::{
-    ERROR_CODE, connect_redis, dragonfly_config, file_runner, json_body, presented, runner_id,
-    send, send_with_headers, tenant,
+    ERROR_CODE, concrete_path, connect_redis, dragonfly_config, file_runner, json_body, presented,
+    runner_id, send, send_with_headers, tenant,
 };
 
 /// A Postgres nobody is listening on.
@@ -222,7 +222,7 @@ pub(crate) struct Fleet {
     runners: Runners,
     leases: NoWork,
     bundles: Bundles,
-    workspaces: OneWorkspace,
+    workspaces: Ownership,
     workspace_directory: Workspaces,
     api_keys: ApiKeys,
     cli_credentials: CliCredentials,
@@ -299,6 +299,7 @@ impl CredentialDirectory for Directory {
 const DEFAULT_STREAM_CEILING: usize = 64;
 
 mod fleet;
+mod fleet_access;
 mod fleet_credentials;
 mod fleet_seams;
 

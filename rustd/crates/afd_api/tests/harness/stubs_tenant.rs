@@ -14,6 +14,8 @@
 
 use afd_api::services::WorkspaceOwnership;
 use afd_core::id::Uuid7;
+use afd_tenant::workspace::Workspaces;
+use afd_tenant::workspace::access::{Access, Grant, Role};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -49,6 +51,8 @@ pub(crate) struct OneWorkspace {
     /// How many ownership reads were asked for, answered or refused: the
     /// proof a periodic re-read ran at all, which its silence cannot give.
     authorize_calls: Arc<AtomicUsize>,
+    /// Set, the caller holds the workspace as a member rather than its owner.
+    member: Arc<AtomicBool>,
 }
 
 impl OneWorkspace {
@@ -59,6 +63,7 @@ impl OneWorkspace {
             authorized: Arc::new(AtomicBool::new(true)),
             refusing: Arc::new(AtomicBool::new(false)),
             authorize_calls: Arc::new(AtomicUsize::new(0)),
+            member: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -69,7 +74,13 @@ impl OneWorkspace {
             authorized: Arc::new(AtomicBool::new(true)),
             refusing: Arc::new(AtomicBool::new(false)),
             authorize_calls: Arc::new(AtomicUsize::new(0)),
+            member: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// From now on the caller holds the workspace as a member of the account.
+    pub(crate) fn join_as_member(&self) {
+        self.member.store(true, Ordering::Release);
     }
 
     /// Revokes this fixture principal for a stream refresh proof.
@@ -88,6 +99,50 @@ impl OneWorkspace {
     }
 }
 
+/// The ownership seam a harness serves: the deciding stub, or the real resolver.
+///
+/// The stub proves the refusal matrix with no datastore. The live resolver is
+/// for the suites whose subject IS the access decision — memberships and roles
+/// read from Postgres — where a stub would assert its own answer back.
+#[derive(Debug, Clone)]
+pub(crate) enum Ownership {
+    Stub(OneWorkspace),
+    Live(Workspaces),
+}
+
+impl Ownership {
+    /// The deciding stub, when the harness is not reading real rows.
+    pub(crate) const fn stub(&self) -> Option<&OneWorkspace> {
+        match self {
+            Self::Stub(stub) => Some(stub),
+            Self::Live(_) => None,
+        }
+    }
+}
+
+impl WorkspaceOwnership for Ownership {
+    async fn authorize(
+        &self,
+        principal: &afd_auth::principal::Principal,
+        workspace: &Uuid7,
+    ) -> afd_tenant::Result<Option<Access>> {
+        match self {
+            Self::Stub(stub) => stub.authorize(principal, workspace).await,
+            Self::Live(live) => live.authorize(principal, workspace).await,
+        }
+    }
+
+    async fn tenant_of(
+        &self,
+        principal: &afd_auth::principal::Principal,
+    ) -> afd_tenant::Result<Option<Uuid7>> {
+        match self {
+            Self::Stub(stub) => stub.tenant_of(principal).await,
+            Self::Live(live) => live.tenant_of(principal).await,
+        }
+    }
+}
+
 /// An identifier no store accepts, parsed to produce the store's own error.
 const UNREADABLE: &str = "ownership-store-unreachable";
 
@@ -96,7 +151,7 @@ impl WorkspaceOwnership for OneWorkspace {
         &self,
         principal: &afd_auth::principal::Principal,
         workspace: &Uuid7,
-    ) -> impl Future<Output = afd_tenant::Result<Option<Uuid7>>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<Option<Access>>> + Send {
         // A runner has no tenant authority, exactly as in production: the
         // statement binds nothing that could match, so the answer is a denial
         // rather than an error.
@@ -107,7 +162,16 @@ impl WorkspaceOwnership for OneWorkspace {
             let refused = Uuid7::parse(UNREADABLE).map(|_| None).map_err(Into::into);
             return std::future::ready(refused);
         }
-        std::future::ready(Ok(tenant.filter(|_| owned)))
+        let role = if self.member.load(Ordering::Acquire) {
+            Role::Member
+        } else {
+            Role::Owner
+        };
+        let access = tenant.filter(|_| owned).map(|tenant| Access {
+            tenant,
+            grant: Grant::Membership(role),
+        });
+        std::future::ready(Ok(access))
     }
 
     fn tenant_of(
