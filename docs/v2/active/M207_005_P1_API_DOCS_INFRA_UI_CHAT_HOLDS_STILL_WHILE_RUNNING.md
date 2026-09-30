@@ -124,10 +124,10 @@ The reply's text part renders through `MarkdownTextPrimitive` with the existing 
 
 ### §4 — Four routes answer the registered 401
 
-The events list, the workspace stream, the fleet events list and the fleet stream answer a signed-out request with `problem(401, …, ERROR_CODE.AUTH_401)`, as the steer route does.
+The events list, the workspace stream, the fleet events list and the fleet stream answer a signed-out request with `{error, code: ERROR_CODE.AUTH_401}`, the body the event-detail sibling already answers (`e1e5206b4`). No browser reader parses these bodies (backfill reads `res.status`; the streams are `EventSource`), so the family keeps its shape.
 
-- **Dimension 4.1** — each route answers signed-out with 401 and `error_code: "UZ-AUTH-401"` → Test `test_routes_answer_auth_401` (one case per route)
-- **Dimension 4.2** — no `"UZ-401"` literal remains under `ui/packages/app` → Test `test_no_unregistered_auth_code`
+- **Dimension 4.1** — each route answers signed-out with 401 and `code: "UZ-AUTH-401"` → Test `test_routes_answer_auth_401` (one case per route) — DONE (`tests/live-routes-auth.test.ts`)
+- **Dimension 4.2** — no `"UZ-401"` literal remains under `ui/packages/app` → Test `test_no_unregistered_auth_code` — DONE
 
 ### §5 — One tracing capture for Rust tests
 
@@ -163,7 +163,7 @@ ExternalThreadQueueAdapter (useFleetSteerQueue):
   items = [], steerItems = []          # the daemon is the queue
   enqueue(m) = steer(m) = deliver(m)   # one POST, one operation id
   move/edit/remove(id)                 # unreachable with empty lanes; refuse an unknown id
-401 from the four routes: application/problem+json {"detail":"Not authenticated","error_code":"UZ-AUTH-401"}
+401 from the four routes: application/json {"error":"Unauthorized","code":"UZ-AUTH-401"}
 afd_core::test_util::trace (feature "test-util"): Capture::install() -> guard; guard.events() -> Vec<CapturedEvent>
 make test-unit-runner: zig build --build-file build_runner.zig test   (part of test-unit-all)
 ```
