@@ -8,6 +8,8 @@ const STARTED = 1_000;
 const ENDED = 9_500;
 const TICK_MS = 1_000;
 const REASONING = "Reading the diff. Checking the header";
+// FleetThought's open delay for a live thought.
+const LIVE_OPEN_DELAY_MS = 400;
 
 let parentRenders = 0;
 
@@ -65,6 +67,34 @@ describe("FleetThought", () => {
     expect(screen.getByText(REASONING, { selector: "p" })).toBeTruthy();
     view.rerender(<Reply live={false} reasoning={`${REASONING}.`} startedAtMs={STARTED} endedAtMs={ENDED} />);
     expect(screen.getByText(`${REASONING}.`, { selector: "p" })).toBeTruthy();
+  });
+
+  it("test_burst_thought_never_opens", () => {
+    // Reasoning that lands with its answer is live for a render: it must not
+    // open and fold at once, flashing the whole thought past the reader.
+    const view = render(<Reply live reasoning={REASONING} startedAtMs={STARTED} endedAtMs={null} />);
+    act(() => {
+      vi.advanceTimersByTime(LIVE_OPEN_DELAY_MS - 1);
+    });
+    expect(screen.queryByText(REASONING, { selector: "p" })).toBeNull();
+    view.rerender(<Reply live={false} reasoning={REASONING} startedAtMs={STARTED} endedAtMs={ENDED} />);
+    act(() => {
+      vi.advanceTimersByTime(LIVE_OPEN_DELAY_MS);
+    });
+    expect(screen.queryByText(REASONING, { selector: "p" })).toBeNull();
+    expect(chip().getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("test_live_thought_opens_after_the_delay", () => {
+    render(<Reply live reasoning={REASONING} startedAtMs={STARTED} endedAtMs={null} />);
+    act(() => {
+      vi.advanceTimersByTime(LIVE_OPEN_DELAY_MS - 1);
+    });
+    expect(screen.queryByText(REASONING, { selector: "p" })).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.getByText(REASONING, { selector: "p" })).toBeTruthy();
   });
 
   it("test_thought_clock_ticks_only_the_leaf", () => {
