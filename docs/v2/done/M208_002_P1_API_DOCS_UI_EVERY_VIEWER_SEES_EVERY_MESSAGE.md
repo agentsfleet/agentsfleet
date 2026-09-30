@@ -16,11 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M208
 **Workstream:** 002
 **Date:** Sep 30, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — a message sent from another device or by a teammate is missing on every other screen until a reload
 **Categories:** API, DOCS, UI
 **Batch:** B1 — second of three M208 workstreams in one Pull Request (PR); §1–§3 need nothing from M208_001, §4's names need its members route
 **Branch:** `feat/m208-team-accounts`
+**Folded-into:** `M208_001`
 **Baseline revision:** `3b61121c3c7da8b97cc348cca1d1dbfb99c3bce4`
 **Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
@@ -251,10 +252,11 @@ N/A — no files deleted.
 
 - **Consults** — Sep 30, 2026, Indy: "showing a message before the fleet picks it up, which needs a send-time broadcast is also a must have since then i can test John invited to Bob and they both see the same fleet. Bob types a message and John can see the typed message and response." Source findings: `event_received` has no body (`handler/stream.rs:89-90`) and fires at lease (`lease/bracket.rs`); `core.fleet_admissions` holds `request_json` and commits before the 202 (`schema/910_fleet_admissions.sql`).
 - **Source corrections** — Sep 30, 2026, read before CHORE(open): sender names need a join key the members route lacked (§4, Dimension 4.3); `event_admitted` can trail `event_received` (§3, Dimension 3.5); queued rows ride the existing undelivered index (§2); a dropped frame is logged by the shared publisher, not a new warn (§1); a reconnect restores a waiting turn only at its lease (Failure Modes). `orly gate work` allows one active spec per worktree, so M208_001 closes before this opens (Aiwa's call while Indy was away; the PR is one either way).
-- **Metrics review** — pending.
-- **Skill-chain outcomes** — pending.
-- **Deferrals** — none.
+- **Metrics review** — at the Pull Request boundary, with the skill chain.
+- **Skill-chain outcomes** — `/orly-write-unit-test` and `/review` run once at the Pull Request boundary over the whole M208 diff (Batch B1); outcomes land in the Pull Request Session Notes.
+- **Deferrals** — none. Dimension 4.2 and R1 run after merge, per Indy's "Go, R1 after merge (Recommended)" (Oct 1, 2026, above).
 - **PLAN source corrections** — Oct 1, 2026: no "You" label exists; every `steer:*` actor reads "Operator" (`ui/packages/app/lib/events/event-summary.ts:51,101`), so §4 learns the viewer's actor from the session's subject claim (`lib/auth/credential.ts`), which `steer:<oidc_subject>` records (`message_steer.rs:219-229`, `schema/220_users.sql`). The admission answers with id, digest and fleet only (`afd_admission/src/repeat.rs:20-28`), so it gains `event_created_at` for the frame. The thread reads newest first (`afd_events/src/history/statement.rs:92`), so queued rows lead the first page. `~/Projects/docs` holds no frames page (`event_received` appears only in `changelog.mdx`), so §5 drops that row. The command-line client parses no frames (`cli/src`, no `event_received`).
 - **R1 after merge** — Oct 1, 2026, Indy via AskUserQuestion: "Go, R1 after merge (Recommended)". The journey calls the shared dev API, which runs `main`; the Pull Request opens under an Orly-Override Indy records, and Dimension 4.2 is graded after merge.
 - **EXECUTE source corrections** — Oct 1, 2026: the viewer's steer actor is already built in `FleetThread.tsx` from the session subject for the send hold, so "You" reuses it and `lib/auth/credential.ts` is untouched. The chat already renders a waiting message as "Queued" (`FleetReplyBody.tsx`), so a teammate's waiting message uses that state rather than new "Waiting for {fleet}" copy (Indy, Oct 1, 2026, on the members page: "follow our standard design in the UI"). A waiting row stays out of the status line's latest run (`run-summary.ts`), which it would otherwise have read as completed. The planner serves the waiting read from `idx_fleet_admissions_delivery_lookup`, the other partial index on undelivered rows (§2).
 - **Names on screen** — Oct 1, 2026: a person's turn carried its sender only as screen-reader text (`FleetMessageRow.tsx`, the M207 design), so John could not see Bob's name. A named teammate's turn now shows the name above the bubble, hidden from assistive tech, which reads the unchanged prefix; the viewer's own turn and any turn the thread cannot name keep the chrome-free row, as `tests/fleet-thread/role-links.test.ts` pins.
+- **Close** — Oct 1, 2026: every Dimension is DONE but 4.2, which is written and runs once `main` deploys to dev. Folded into M208_001, the branch's owning spec, so `orly gate pr` finds one owner among its `done/` specs. The public teammates page gained a line on live, named messages (docs branch `2ee8ea0`); no changelog (M208_001 Discovery).
