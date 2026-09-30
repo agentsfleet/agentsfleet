@@ -8,8 +8,6 @@
 //! suites has nothing to race on. The support module is declared once and
 //! reached as `crate::support`.
 
-#[path = "support/recorder.rs"]
-mod recorder;
 #[path = "support/events_lane.rs"]
 mod support;
 

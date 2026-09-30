@@ -7,6 +7,7 @@
 // docs/AUTH.md "UI · SSE stream".
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ERROR_CODE } from "@/lib/errors";
 
 const { getTokenFn } = vi.hoisted(() => ({ getTokenFn: vi.fn() }));
 
@@ -42,13 +43,13 @@ function paramsOf(workspaceId: string, fleetId: string) {
 }
 
 describe("SSE route handler — auth", () => {
-  it("returns 401 with UZ-401 body when Clerk has no session token", async () => {
+  it("returns 401 with the registered 401 code when Clerk has no session token", async () => {
     getTokenFn.mockResolvedValueOnce(null);
     const res = await GET(makeReq(), paramsOf("ws_1", "zomb_1"));
     expect(res.status).toBe(401);
     expect(res.headers.get("content-type")).toBe("application/json");
     const body = (await res.json()) as { error: string; code: string };
-    expect(body.code).toBe("UZ-401");
+    expect(body.code).toBe(ERROR_CODE.AUTH_401);
     expect(body.error).toBe("Unauthorized");
     expect(fetchSpy).not.toHaveBeenCalled();
   });

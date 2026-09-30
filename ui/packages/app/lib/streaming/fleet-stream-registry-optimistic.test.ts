@@ -43,6 +43,25 @@ describe("fleet-stream-registry — optimistic mutations", () => {
     a();
   });
 
+  // The thread reports a run only for a row this tab sent (`reportsOwnRun`),
+  // and the submit clock is how it knows: the 202 and every frame after it
+  // must carry the clock the optimistic paint stamped.
+  it("carries the local submit clock through the 202 and the live frames", () => {
+    const release = subscribe(WS, Z_A, NO_SEED, () => {});
+    const tempId = appendOptimistic(Z_A, "sent from this tab", "steer:k@e2e.com");
+    const stamped = getSnapshot(Z_A).events[0]?.submittedAtMs;
+    expect(stamped).toBeTypeOf("number");
+
+    reconcileOptimistic(Z_A, tempId, "evt_mine", false);
+    expect(getSnapshot(Z_A).events[0]?.submittedAtMs).toBe(stamped);
+    sourceAt(0).emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_mine", actor: "steer:k@e2e.com", created_at: Date.UTC(2026, 0, 1) });
+    // A frame that lands on the row synchronously, so nothing here waits.
+    sourceAt(0).emit({ kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "evt_mine", name: "read_file", args_redacted: true });
+    expect(getSnapshot(Z_A).events).toHaveLength(1);
+    expect(getSnapshot(Z_A).events[0]).toMatchObject({ id: "evt_mine", tools: [{ name: "read_file" }], submittedAtMs: stamped });
+    release();
+  });
+
   it("keeps an acknowledged steer visible through backfill until its server timestamp arrives", () => {
     const clientInstant = Date.UTC(2026, 0, 1);
     vi.setSystemTime(clientInstant);
@@ -70,9 +89,9 @@ describe("fleet-stream-registry — optimistic mutations", () => {
   it("grafts the operator's text onto a body-less live row that beat the POST response", () => {
     const a = subscribe(WS, Z_A, NO_SEED, () => {});
     const tempId = appendOptimistic(Z_A, "deploy the canary", "steer:k@e2e.com");
-    // The SSE EVENT_RECEIVED for this steer lands before the Server Action
-    // resolves — the frame carries no message body, so the live row holds
-    // the real event id with an empty trigger.
+    // The opening frame for this steer lands before its 202. It names only
+    // the account, so it waits (`HeldTurns`) until the 202 names its row,
+    // then lands on the row that holds the operator's text.
     const es = sourceAt(0);
     es.emit({
       kind: FRAME_KIND.EVENT_RECEIVED,

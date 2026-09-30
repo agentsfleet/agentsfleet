@@ -23,8 +23,8 @@ use afd_wire::event::EventType;
 
 use crate::integration_steer_replay::{CAUSE_PAYLOAD, CHANGED_JSON};
 use crate::integration_steer_retry::{KEY_SEPARATOR, PRODUCER_STEER, REQUEST_JSON, clean};
-use crate::recorder::Recorder;
 use crate::support::EventsLane;
+use afd_core::test_util::trace::Capture;
 
 /// The operation id these tests send twice.
 const OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0a21";
@@ -90,7 +90,7 @@ async fn test_replayed_append_never_answers_unchecked() {
         .expect("the first send is admitted");
 
     set_stored(&lane, SET_DIGEST, FOREIGN_DIGEST).await;
-    let logs = Recorder::install();
+    let logs = Capture::install();
     let foreign_digest = send(&steer, &lane, REQUEST_JSON)
         .await
         .expect_err("a row holding another payload is refused");
@@ -99,7 +99,7 @@ async fn test_replayed_append_never_answers_unchecked() {
     drop(logs);
 
     set_stored(&lane, SET_FLEET, &elsewhere.fleet).await;
-    let logs = Recorder::install();
+    let logs = Capture::install();
     let foreign_fleet = send(&steer, &lane, REQUEST_JSON)
         .await
         .expect_err("a row holding another fleet is refused");
@@ -121,7 +121,7 @@ async fn test_steer_reuse_is_not_an_internal_failure() {
         .await
         .expect("the first send is admitted");
 
-    let logs = Recorder::install();
+    let logs = Capture::install();
     send(&steer, &lane, CHANGED_JSON)
         .await
         .expect_err("a reused id with another message is refused");
@@ -139,7 +139,7 @@ async fn test_steer_reuse_is_not_an_internal_failure() {
         .admit(delivery(&lane, &key, DELIVERY_JSON))
         .await
         .expect("the delivery is admitted");
-    let logs = Recorder::install();
+    let logs = Capture::install();
     let redelivered = admissions
         .admit(delivery(&lane, &key, REDELIVERED_JSON))
         .await
@@ -197,7 +197,7 @@ fn delivery<'a>(lane: &'a EventsLane, key: &'a str, request_json: &'a str) -> Ad
 }
 
 /// The `cause` each recorded conflict warn names, in order.
-fn causes(logs: &Recorder) -> Vec<String> {
+fn causes(logs: &Capture) -> Vec<String> {
     logs.events()
         .into_iter()
         .filter(|record| record.fields.get(FIELD_EVENT).map(String::as_str) == Some(CONFLICT_EVENT))
@@ -206,7 +206,7 @@ fn causes(logs: &Recorder) -> Vec<String> {
 }
 
 /// How many recorded events carry `event`.
-fn count(logs: &Recorder, event: &str) -> usize {
+fn count(logs: &Capture, event: &str) -> usize {
     logs.events()
         .iter()
         .filter(|record| record.fields.get(FIELD_EVENT).map(String::as_str) == Some(event))

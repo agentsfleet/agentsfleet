@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useRef } from "react";
 import {
   AssistantRuntimeProvider,
   useExternalStoreRuntime,
+  type AssistantRuntime,
 } from "@assistant-ui/react";
 import {
   DashboardPanel,
@@ -16,11 +17,13 @@ import {
 import { useFleetThreadEntries, type FleetThreadEntry } from "./useFleetThreadEntries";
 import type { EventRow } from "@/lib/api/events";
 import { SenderLabelProvider } from "./FleetMessageRow";
-import { FleetConnectionNotice } from "./FleetConnectionNotice";
 import { FleetConnectionIndicator, useArrivalCue } from "./FleetConnectionIndicator";
 import { useFleetPendingSends } from "./useFleetPendingSends";
 import { useCurrentUser } from "@/lib/auth/client";
+import { ACTOR } from "@/lib/events/event-summary";
 import { useMessageDelivery } from "./useFleetMessageDelivery";
+import { useFleetSteerQueue } from "./useFleetSteerQueue";
+import { reportsOwnRun } from "./fleetReplyMessage";
 import { FleetThreadViewport } from "./FleetThreadViewport";
 
 export type FleetThreadProps = {
@@ -49,12 +52,13 @@ export type FleetThreadProps = {
  * `/live` steer route); `fleetMessageRenderers` paints each durable event as the
  * approved conversation row.
  *
- * The runtime is told the thread is never running. In this library
- * `isRunning` means "disable the composer", and a working fleet is not a
- * reason to stop an operator from steering it — the fleet's own event stream
- * serialises what arrives. Left unset, the library would infer it from the
- * last reply's own running status; each reply's status drives its parts and
- * wait state instead.
+ * The runtime is told the thread runs while the newest turn is one this tab
+ * sent and its reply is still running, and every send goes through a queue (`useFleetSteerQueue`), so a run
+ * never closes the composer: assistant-ui routes a send made mid-run to the
+ * queue's steer lane instead of refusing it. That flag is what the viewport's
+ * top anchor keys on to hold the viewer's place while their reply grows and
+ * folds; any other sender's reply, another tab's included, leaves it off
+ * (`reportsOwnRun`).
  */
 export function FleetThread({
   workspaceId,
@@ -64,8 +68,6 @@ export function FleetThread({
   viewer,
 }: FleetThreadProps) {
   const stream = useFleetEventStream(workspaceId, fleetId, initial);
-  const [submission, setSubmission] = useState<{ fleetId: string; id: string } | null>(null);
-  const onSubmitted = useCallback((id: string) => setSubmission({ fleetId, id }), [fleetId]);
   // The header row is chrome that earns its space only while the stream is not
   // yet fine. `arrived` keeps it for the length of the arrival cue so the
   // operator who WAS waiting gets the confirmation, and then the row goes —
@@ -78,32 +80,42 @@ export function FleetThread({
   // Keyed by the signed-in user as well, so the next person on a shared
   // browser never sees, or resends as themselves, what this one typed.
   const { userId } = useCurrentUser();
-  const ledger = useFleetPendingSends({ subject: userId ?? viewer, workspaceId, fleetId });
+  const subject = userId ?? viewer;
+  const ledger = useFleetPendingSends({ subject, workspaceId, fleetId });
   // Pass the registry methods (each `useCallback([fleetId])`-stable), not
   // the whole `stream` object — `stream` is a fresh reference on every SSE
   // frame, so listing it would rebuild `onNew` per frame for no benefit.
   const delivery = useMessageDelivery({
     workspaceId,
     fleetId,
+    sentAs: subject === null ? undefined : `${ACTOR.STEER_PREFIX}${subject}`,
     appendOptimistic: stream.appendOptimistic,
     reconcileOptimistic: stream.reconcileOptimistic,
     discardOptimistic: stream.discardOptimistic,
-    onSubmitted,
     writers: ledger.writers,
   });
   // Runs of identical activity render as one expandable row. Grouping is a
   // pure view over the array the stream already ordered — it never reorders,
   // drops, or renames an event, so a group can always hand back what it hid.
   const { entries, convertEntry } = useFleetThreadEntries(stream.events, stream.convertEvent);
-  const submittedMessageId = submission?.fleetId === fleetId ? submission.id : null;
   // The runtime compares its adapter by identity: a fresh literal on a render
   // that changed no message (a connection cue, a ledger entry) re-ran every
   // assistant-ui selector in the thread for nothing.
+  // The steer rides assistant-ui's queue, so a run can be reported as one
+  // without closing the composer; the queue reaches the runtime through a ref
+  // because the runtime is built from the adapter that holds the queue.
+  const runtimeRef = useRef<AssistantRuntime | null>(null);
+  const queue = useFleetSteerQueue(delivery.onNew, runtimeRef);
+  // The newest turn only: assistant-ui anchors whatever turn is last while the
+  // thread runs, so a teammate's turn landing under the viewer's own running
+  // reply would otherwise be pinned to the top and pull the viewer off theirs.
+  const isRunning = useMemo(() => reportsOwnRun(stream.events, subject), [stream.events, subject]);
   const adapter = useMemo(
-    () => ({ isRunning: false, messages: entries, convertMessage: convertEntry, onNew: delivery.onNew }),
-    [entries, convertEntry, delivery.onNew],
+    () => ({ isRunning, messages: entries, convertMessage: convertEntry, onNew: delivery.onNew, queue }),
+    [isRunning, entries, convertEntry, delivery.onNew, queue],
   );
   const runtime = useExternalStoreRuntime<FleetThreadEntry>(adapter);
+  runtimeRef.current = runtime;
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <SenderLabelProvider senderLabel={senderLabel}>
@@ -123,9 +135,9 @@ export function FleetThread({
             *
             * What is worth saying is the exception, so connecting, reconnecting
             * and offline still render here — and OFFLINE additionally gets the
-            * notice below, with its retry. `PANEL_TITLE` stays as the scroll
-            * region's accessible name, where it is the only name that region
-            * has.
+            * notice above the composer, with its retry. `PANEL_TITLE` stays as
+            * the scroll region's accessible name, where it is the only name
+            * that region has.
             */}
           {settledLive ? null : (
             <DashboardPanelHeader
@@ -135,13 +147,10 @@ export function FleetThread({
               <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
             </DashboardPanelHeader>
           )}
-          {stream.connectionStatus === CONNECTION_STATUS.OFFLINE ? (
-            <FleetConnectionNotice status={stream.connectionStatus} onRetry={stream.retryConnection} />
-          ) : null}
           <FleetThreadViewport
             eventsCount={stream.events.length}
-            submittedMessageId={submittedMessageId}
             connectionStatus={stream.connectionStatus}
+            onRetry={stream.retryConnection}
             pending={ledger.pending}
             onResend={delivery.resend}
             onDismiss={ledger.writers.dismiss}

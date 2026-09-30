@@ -24,6 +24,9 @@ import {
 
 export const ACTOR = {
   STEER_PREFIX: "steer:",
+  // The row a send paints before the daemon names its sender. Only a send
+  // from this tab ever carries it.
+  PENDING_STEER: "steer:pending",
   WEBHOOK_PREFIX: "webhook:",
   API_STEER: "steer:api",
   FLEET: "fleet",
@@ -66,6 +69,13 @@ export function roleFor(actor: string): MessageRole {
   if (base.startsWith(ACTOR.STEER_PREFIX)) return "user";
   if (base === ACTOR.FLEET) return "assistant";
   return "system";
+}
+
+/** Whether `subject` sent this turn: their own steer, or a send from this tab
+ * the daemon has not yet named. */
+export function isSteerBy(actor: string, subject: string | null): boolean {
+  if (actor === ACTOR.PENDING_STEER) return true;
+  return subject !== null && actor === `${ACTOR.STEER_PREFIX}${subject}`;
 }
 
 // A source segment that is a bare opaque identifier — a Clerk user id, a Slack

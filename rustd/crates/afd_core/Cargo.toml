@@ -14,9 +14,11 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-# M-TEST-UTIL: the map-backed environment source. Behind a flag because a
-# production binary reads the process environment and nothing else.
-test-util = []
+# M-TEST-UTIL: the map-backed environment source, and the `tracing` capture
+# every crate's suites assert log lines through. Behind a flag because a
+# production binary reads the process environment and nothing else, and
+# emits through the subscriber boot installs, never through a test's.
+test-util = ["dep:tracing", "dep:tracing-subscriber"]
 
 [dependencies]
 serde.workspace = true
@@ -37,6 +39,10 @@ base64.workspace = true
 # the JWKS document — call it from production paths.
 serde_json.workspace = true
 thiserror.workspace = true
+# `test_util::trace` only: the capture is a `tracing` layer. Optional, so the
+# value layer links neither outside `test-util`.
+tracing = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
 # Version-7 construction only; the canonical-spelling PARSE stays here, because
 # `Uuid::parse_str` normalises case and this product rejects it. See the
 # workspace manifest for the full rationale.

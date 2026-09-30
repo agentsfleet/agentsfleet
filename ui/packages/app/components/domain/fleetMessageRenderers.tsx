@@ -44,9 +44,13 @@ const SOURCE_LINK_FALLBACK = "View source";
  * fleet replies stay open on the left (FleetMessageRow).
  */
 export function renderFleetMessage({ message }: { message: MessageState }): ReactNode {
-  // A settled row lets the browser skip its layout while it is off screen
+  // A settled reply lets the browser skip its layout while it is off screen
   // (tokens.css); the running reply is still growing, so it never does.
-  const settled = message.status?.type !== "running";
+  // Operator and activity rows are short and always laid out: off screen a
+  // skipped row stands in at 12rem, and the viewport's top anchor pins the
+  // operator's newest row by its height: a 68 px row measured at its stand-in
+  // was pinned wrong, then right, and the view went back and forth on Send.
+  const settled = message.role === "assistant" && message.status.type !== "running";
   return (
     <MessagePrimitive.Root className="w-full" data-testid="fleet-message" data-settled={settled ? "true" : undefined}>
       <FleetMessage message={message} />

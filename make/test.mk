@@ -16,5 +16,5 @@ ZIG_LOCAL_CACHE_DIR ?= $(CURDIR)/.tmp/zig-local-cache
 
 .PHONY: test-unit-all
 
-test-unit-all: test-unit-rustd test-coverage-all  ## Run all unit lanes (Rust workspace + multi-package coverage)
+test-unit-all: test-unit-rustd test-unit-runner test-coverage-all  ## Run all unit lanes (Rust workspace + Zig runner + multi-package coverage)
 	@echo "✓ All unit lanes passed"

@@ -25,8 +25,8 @@ use afd_events::{ACTOR_MACHINE, Steer, Steered};
 use tracing::Level;
 
 use crate::integration_steer_retry::{REQUEST_JSON, admissions_for, append_with, clean};
-use crate::recorder::Recorder;
 use crate::support::EventsLane;
+use afd_core::test_util::trace::Capture;
 
 /// The consumer name the test reads the stream back under; distinct from the
 /// sibling suites' so no read consumes another suite's entry.
@@ -245,7 +245,7 @@ async fn test_payload_drift_is_refused() {
     let steer = Steer::new(lane.admissions());
 
     let admitted = append_with(&steer, &lane, Some(OPERATION)).await;
-    let logs = Recorder::install();
+    let logs = Capture::install();
     let refused = steer
         .append(
             &lane.fleet,

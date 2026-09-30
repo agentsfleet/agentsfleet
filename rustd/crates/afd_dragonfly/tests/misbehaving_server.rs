@@ -25,7 +25,7 @@ use afd_dragonfly::session::{AbortReason, Approval, SessionStore};
 use afd_dragonfly::streams::FleetStreams;
 
 use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
-use crate::recorder::Recorder;
+use afd_core::test_util::trace::Capture;
 
 /// Short enough that a hang fails the test rather than the lane's timeout.
 const BUDGET: Duration = Duration::from_secs(10);
@@ -37,7 +37,7 @@ fn config_for(server: &FakeRedis) -> DragonflyConfig {
 }
 
 /// Checks one API-role connection emitted one correlated start/failure pair.
-fn assert_connection_pair(recorder: &Recorder) {
+fn assert_connection_pair(recorder: &Capture) {
     let events: Vec<_> = recorder
         .events()
         .into_iter()
@@ -72,7 +72,7 @@ fn assert_connection_pair(recorder: &Recorder) {
 /// crate's fact, so it has no invented driver source.
 #[tokio::test]
 async fn test_dragonfly_connect_honours_its_deadline() {
-    let recorder = Recorder::install();
+    let recorder = Capture::install();
     let server = FakeRedis::spawn(&[("PING", Reply::Silent)]).await;
     let budget = Duration::from_millis(100);
     let config = DragonflyConfig::from_url(DragonflyRole::Api, server.url())

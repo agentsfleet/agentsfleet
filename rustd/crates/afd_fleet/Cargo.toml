@@ -117,6 +117,9 @@ serde_json.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# The `tracing` capture the suites read their log lines back through
+# (`afd_core::test_util::trace`). A dev-dependency feature only.
+afd_core = { workspace = true, features = ["test-util"] }
 # The credential plane moved out; its client and the zeroizing wrapper are
 # still what the lease suite constructs a stub broker with.
 reqwest.workspace = true

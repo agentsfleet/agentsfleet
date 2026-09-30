@@ -7,8 +7,9 @@ import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
 // entry they run against.
 
 /** The operator's message as the thread shows it before the server answers. */
-export function optimisticRow(tempId: string, text: string, actor: string): FleetEvent {
+export function optimisticRow(tempId: string, text: string, actor: string, sentAs?: string): FleetEvent {
   return {
+    ...(sentAs === undefined ? {} : { sentAs }),
     id: tempId,
     role: "user",
     actor,

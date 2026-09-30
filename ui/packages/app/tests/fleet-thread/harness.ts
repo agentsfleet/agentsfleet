@@ -15,7 +15,7 @@ const {
   postSteerMock,
   useFleetEventStreamMock,
   capturedOnNew,
-  capturedSubmittedMessageId,
+  capturedRun,
   signedIn,
   threadPath,
 } = vi.hoisted(() => ({
@@ -30,7 +30,9 @@ const {
   capturedOnNew: {
     current: null as ((msg: AppendMessage) => Promise<void>) | null,
   },
-  capturedSubmittedMessageId: { current: null as string | null },
+  // What the thread told the runtime last: whether a reply runs, and the
+  // queue every send goes through.
+  capturedRun: { isRunning: false as boolean | undefined, hasQueue: false },
   // Who the client's auth script says is signed in: null until it loads.
   signedIn: { userId: "user_fleet_thread" as string | null },
 }));
@@ -67,6 +69,8 @@ vi.mock("@assistant-ui/react", async () => {
       cfg: Parameters<typeof actual.useExternalStoreRuntime>[0],
     ) => {
       capturedOnNew.current = cfg.onNew ?? null;
+      capturedRun.isRunning = cfg.isRunning;
+      capturedRun.hasQueue = cfg.queue !== undefined;
       return actual.useExternalStoreRuntime(cfg);
     },
   };
@@ -79,21 +83,6 @@ vi.mock("@/components/domain/useFleetEventStream", async () => {
   return {
     ...actual,
     useFleetEventStream: useFleetEventStreamMock,
-  };
-});
-
-vi.mock("@/components/domain/FleetThreadViewport", async () => {
-  const actual = await vi.importActual<
-    typeof import("@/components/domain/FleetThreadViewport")
-  >("@/components/domain/FleetThreadViewport");
-  return {
-    ...actual,
-    FleetThreadViewport: (
-      props: React.ComponentProps<typeof actual.FleetThreadViewport>,
-    ) => {
-      capturedSubmittedMessageId.current = props.submittedMessageId;
-      return React.createElement(actual.FleetThreadViewport, props);
-    },
   };
 });
 
@@ -252,10 +241,11 @@ beforeEach(() => {
   // in one test leaks its notice — and its restored text — into the next.
   __resetPendingSendsForTests();
   capturedOnNew.current = null;
-  capturedSubmittedMessageId.current = null;
+  capturedRun.isRunning = false;
+  capturedRun.hasQueue = false;
   signedIn.userId = TEST_SUBJECT;
 });
 
 afterEach(() => cleanup());
 
-export { routerRefreshMock, postSteerMock, useFleetEventStreamMock, capturedOnNew, capturedSubmittedMessageId };
+export { routerRefreshMock, postSteerMock, useFleetEventStreamMock, capturedOnNew, capturedRun, signedIn };

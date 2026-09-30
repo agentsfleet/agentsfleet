@@ -103,8 +103,14 @@ export type FleetEvent = {
   /** True while this locally submitted row still carries the browser clock.
    * The first server timestamp clears it so backfill can order the turn. */
   clientTimestamp?: boolean;
-  /** Monotonic browser clock at local submission, for first visible paint. */
+  /** Monotonic browser clock at local submission, for first visible paint.
+   * Only a row this tab sent carries it, so it is also how the thread tells
+   * its own run from the same operator's in another tab (`reportsOwnRun`). */
   submittedAtMs?: number;
+  /** The actor the daemon will name this tab's send under (`steer:<user>`),
+   * on its optimistic row, when the sender is known: what a turn announced
+   * before the 202 is checked against (`HeldTurns`). */
+  sentAs?: string;
   /**
    * The run's figures, as the daemon reported them: tokens spent, wall time,
    * and the summed telemetry cost. Absent on a row the browser assembled from

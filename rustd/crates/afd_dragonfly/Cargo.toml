@@ -50,6 +50,9 @@ tokio = { workspace = true, features = ["sync", "rt"] }
 tracing.workspace = true
 
 [dev-dependencies]
+# The `tracing` capture the suites read their log lines back through
+# (`afd_core::test_util::trace`). A dev-dependency feature only.
+afd_core = { workspace = true, features = ["test-util"] }
 # The reconnect schedule the suites configure and assert on; the library half
 # is a regular dependency.
 backon.workspace = true

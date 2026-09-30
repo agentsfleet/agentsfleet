@@ -21,6 +21,12 @@ function replyRow(): HTMLElement {
   return row;
 }
 
+// The destructive icon beside a failed reply's own words.
+function failureMark(words: string): SVGElement | null {
+  const line = within(replyRow()).getByText(words).closest("[data-failed-outcome]");
+  return line?.querySelector("svg.text-destructive") ?? null;
+}
+
 function messageRoot(of: HTMLElement): HTMLElement {
   const root = of.closest<HTMLElement>('[data-testid="fleet-message"]');
   if (root === null) throw new Error("row outside a message root");
@@ -37,7 +43,7 @@ describe("FleetThread — reply parts", () => {
     expect(within(reply).getByRole("status", { name: "Queued" })).toBeTruthy();
     expect(within(reply).queryByRole("list", { name: TOOL_CALLS })).toBeNull();
     expect(within(reply).queryByRole("button")).toBeNull();
-    // A running reply never marks the thread running: the composer still steers.
+    // A running reply marks the thread running, and the composer still steers.
     const composer = screen.getByRole("textbox", { name: COMPOSER_NAME }) as HTMLTextAreaElement;
     expect(composer.disabled).toBe(false);
     fireEvent.change(composer, { target: { value: "and roll back" } });
@@ -75,6 +81,9 @@ describe("FleetThread — reply parts", () => {
     expect(within(replyRow()).queryByLabelText("streaming")).toBeNull();
     expect(within(replyRow()).getByRole("button", { name: COPY_REPLY })).toBeTruthy();
     expect(messageRoot(replyRow()).getAttribute("data-settled")).toBe("true");
+    // The operator's row is always laid out: the viewport's top anchor pins it
+    // by its height, and a skipped row would report a stand-in height.
+    expect(messageRoot(screen.getByText("Go")).getAttribute("data-settled")).toBeNull();
   });
 
   it("test_outcome_floor_without_text_part", () => {
@@ -82,11 +91,16 @@ describe("FleetThread — reply parts", () => {
     const view = renderThread();
     expect(within(replyRow()).getByText(OUTCOME.COMPLETED)).toBeTruthy();
     expect(replyRow().getAttribute("data-failed")).toBeNull();
+    expect(replyRow().querySelector("[data-failed-outcome]")).toBeNull();
+    // The dashboard's own sentence reads as a system line, not as the fleet's words.
+    expect(within(replyRow()).getByText(OUTCOME.COMPLETED).className).toMatch(/text-muted-foreground/);
 
     mockStream([ev({ role: "user", actor: "operator", text: "Anything?", status: "fleet_error", outcome: OUTCOME.FAILED })]);
     view.rerender(threadElement());
     expect(within(replyRow()).getByText(OUTCOME.FAILED)).toBeTruthy();
     expect(replyRow().getAttribute("data-failed")).toBe("true");
+    // The failure carries its own mark, so it never reads as a short reply.
+    expect(failureMark(OUTCOME.FAILED)).toBeTruthy();
   });
 
   it("should give an integration turn a reply row once it has only called tools", () => {
@@ -108,6 +122,7 @@ describe("FleetThread — reply parts", () => {
     expect(within(replyRow()).getByText("**429** from the provider")).toBeTruthy();
     expect(replyRow().querySelector("strong")).toBeNull();
     expect(replyRow().getAttribute("data-failed")).toBe("true");
+    expect(failureMark("**429** from the provider")).toBeTruthy();
   });
 
   it("test_indicator_verb_and_accessible_name", () => {
