@@ -40,7 +40,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** feat: invite teammates to an account and show every message live (the M208 PR)
 - **Intent (one sentence):** a team works one account's fleets together, each person within their role.
-- **Handshake** — pending until the implementing agent performs PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** — Sep 30, 2026, stated to Indy before EXECUTE: a team shares one account; an owner invites by email, the invitee reads and steers that account's fleets, and only the owner writes secrets and connectors or manages members. Assumptions stated: claim-bound credentials act as owner of their own account only; `UZ-AUTH-025` is taken, so the role refusal is `UZ-AUTH-026` and read-only platform access `UZ-AUTH-027`; the directory is an admin route served by the operator plane; streams re-check on their existing beats; the operator's identity-provider scopes are re-provisioned before deploy. Indy's reply added: "Ensure the query is performant" (Dimension 2.7).
 
 ## Implementing agent — read these first
 
@@ -55,7 +55,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `playbooks/founding/02_preflight/{001_playbook.md,credentials_test.sh}` | EDIT | list `resend-app`; report it missing by name |
-| `schema/923_workspace_invites.sql` | CREATE | `core.invites`: tenant, email, role, inviter, expiry, accepted/revoked, and the email-status columns M208_003 writes |
+| `schema/923_workspace_invites.sql` | CREATE | `core.invites`: tenant, email, role, inviter, expiry, accepted/revoked, the email-status columns M208_003 writes; a partial index on pending invites by email; `core.workspaces (created_at, id)` for the platform directory |
 | `rustd/crates/afd_db/src/migration.rs` | EDIT | register 923 |
 | `rustd/crates/afd_tenant/src/sql/workspace.rs` | EDIT | access through memberships; answers tenant and role |
 | `rustd/crates/afd_tenant/src/workspace/mod.rs` | EDIT | access record: role and via (membership, platform read, platform write) |
@@ -63,13 +63,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_tenant/src/member/` | CREATE | list members, remove member, last-owner guard |
 | `rustd/crates/afd_auth/src/scope.rs` | EDIT | `workspace:any` → `workspace-any:read` + `workspace-any:write` |
 | `rustd/crates/afd_http/src/auth/ownership.rs` | EDIT | role gate; read-only crossing admits safe methods only; audit fields |
+| `rustd/crates/afd_api/src/router/mod.rs` | EDIT | the ownership layer receives the route's scopes, which the role gate reads |
 | `rustd/crates/afd_http/src/services/tenant.rs` | EDIT | `WorkspaceOwnership` returns the access record |
 | `rustd/crates/afd_http/src/route/{tenant,workspace,admin}.rs` | EDIT | invite, member, directory and access routes |
 | `rustd/crates/afd_api_tenant/src/handler/tenant/{invite,member}.rs` | CREATE | owner and invitee handlers |
 | `rustd/crates/afd_api_tenant/src/handler/tenant/workspace.rs` | EDIT | list spans memberships; detail carries `access` |
 | `rustd/crates/afd_api_tenant/src/handler/stream.rs` | EDIT | re-authorize open streams on a bounded cadence |
-| `rustd/crates/afd_api_tenant/src/handler/admin/workspaces.rs` | CREATE | platform directory |
-| `rustd/crates/afd_core/src/error_code/{auth,invite}.rs` | EDIT/CREATE | `UZ-AUTH-025`, `UZ-AUTH-026`, `UZ-INV-001`…`004` |
+| `rustd/crates/afd_api_operator/src/handler/admin/workspaces.rs` | CREATE | platform directory (admin routes are the operator plane's) |
+| `rustd/crates/afd_core/src/{error_code,problem}/{auth,invite}.rs` | EDIT/CREATE | `UZ-AUTH-026`, `UZ-AUTH-027`, `UZ-INV-001`…`004`, with their statuses |
 | `public/openapi.json` | EDIT | new routes and `access` |
 | `ui/packages/app/lib/api/{tenant-members,invites,admin-workspaces}.ts` | CREATE | clients |
 | `ui/packages/app/components/layout/WorkspaceSwitcher*.tsx` | EDIT | workspaces grouped by account |
@@ -79,6 +80,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/invites/` | CREATE | invitee: accept or decline |
 | `ui/packages/app/app/(dashboard)/admin/workspaces/` | CREATE | platform directory |
 | `docs/AUTH.md` | EDIT | memberships, roles, scope split, operator bundle |
+| `playbooks/operations/admin_bootstrap/{001_playbook.md,admin_bootstrap_test.sh}` | EDIT | the operator bundle names the split scopes |
 | `~/Projects/docs` (branch `chore/m208-team-accounts-changelog`) | EDIT | members and invites pages, changelog `<Update>` |
 | `rustd/crates/{afd_crypto,afd_tenant,afd_fleet_lifecycle,afd_vault,afd_admin,afd_admission,afd_approval,afd_billing,afd_connector,afd_cron,afd_credential,afd_dragonfly,afd_fleet,afd_gate,afd_http,afd_ingress,afd_library,afd_runner}/{src,tests}/**` | EDIT | hand-rolled Rust cleanup Indy asked for in session (Discovery): one identifier mint, sqlx's unique-violation check, `error_lifts!`, dead kinds removed |
 
@@ -117,14 +119,15 @@ M208 needs one external credential, for M208_003: the `resend-app` bag `{api_key
 
 ### §2 — Access resolves through memberships, with two roles
 
-The access check answers `{tenant, role, via}`: a `core.memberships` row for the caller's user in the workspace's tenant grants access with that row's role. Tenant API keys and CLI credentials keep resolving to their own tenant only. A member is refused, with `UZ-AUTH-025`, where the route's required capability for the request's method is `secret:write` or `connector:write`, the only owner-grade capabilities on workspace routes (`rustd/crates/afd_http/src/route/{workspace,connector}.rs`); the capability gate still applies to everyone. The workspace list spans every membership, and each item names its account and the caller's role. Open streams re-run the check every 60 s (**Implementation default:** heartbeat-aligned, since the stream wakes then) and end with a problem frame when access is gone.
+The access check answers `{tenant, role, via}`: a `core.memberships` row for the caller's user in the workspace's tenant grants access with that row's role. The caller's own account keeps today's rule and answers `owner`; tenant API keys and CLI credentials resolve only through it. The check stays one statement with no subquery: three unique-index probes (workspace by id, user by subject, membership by account and user). A member is refused, with `UZ-AUTH-026`, where the route's required capability for the request's method is `secret:write` or `connector:write`, the only owner-grade capabilities on workspace routes (`rustd/crates/afd_http/src/route/{workspace,connector}.rs`); the capability gate still applies to everyone. The workspace list spans every membership, and each item names its account and the caller's role. Open streams re-run the check on the beat each already has, the workspace stream's 10 s refresh (`handler/stream/wall.rs`) and the fleet stream's 15 s heartbeat, and end with a problem frame when access is gone.
 
 - **Dimension 2.1** — a member opens, lists, streams and steers the owner's workspace → Test `test_member_reaches_owner_workspace`
 - **Dimension 2.2** — a non-member still gets `403 UZ-AUTH-001`, byte-identical to today → Test `test_non_member_refused_unchanged`
-- **Dimension 2.3** — a member is refused every secret-write and connector-write route with `UZ-AUTH-025` → Test `test_member_refused_owner_only_routes`
-- **Dimension 2.4** — a removed member's open stream ends within 60 s → Test `test_removed_member_stream_ends`
+- **Dimension 2.3** — a member is refused every secret-write and connector-write route with `UZ-AUTH-026` → Test `test_member_refused_owner_only_routes`
+- **Dimension 2.4** — a removed member's open stream ends within one re-check (15 s) → Test `test_removed_member_stream_ends`
 - **Dimension 2.5** — a datastore failure during the check is `503`, never a denial → Test `test_access_check_outage_is_not_denial`
 - **Dimension 2.6** — an account with no invites behaves exactly as today → Test `test_single_owner_paths_unchanged`
+- **Dimension 2.7** — the access statement plans as index probes only → Test `test_access_check_plans_as_index_probes`
 
 ### §3 — Owners invite; invitees accept
 
@@ -144,9 +147,9 @@ Owners get Settings → Members (invite, copy link, pending invites, members, re
 
 ### §5 — Platform operators: find any workspace; read, and act when granted
 
-`workspace-any:read` admits only `GET` and `HEAD` across tenants; `workspace-any:write` admits every method. Each crossing emits `cross_tenant_workspace_override` before it is honoured, now with `access=read|write` and the method. `GET /v1/admin/workspaces` lists every workspace for either scope. The workspace detail's `access` drives the banner and, for read, hides every write control.
+`workspace-any:read` admits only `GET` and `HEAD` across tenants; `workspace-any:write` admits every method. Each crossing emits `cross_tenant_workspace_override` before it is honoured, now with `access=read|write` and the method. `GET /v1/admin/workspaces` lists every workspace for either scope. Before deploy Indy replaces `workspace:any` with `workspace-any:write` on the platform operator at the identity provider; until then that operator crosses no tenant. The workspace detail's `access` drives the banner and, for read, hides every write control.
 
-- **Dimension 5.1** — a read-only operator streams and reads another tenant's fleet; any write is `403 UZ-AUTH-026` → Test `test_platform_read_is_read_only`
+- **Dimension 5.1** — a read-only operator streams and reads another tenant's fleet; any write is `403 UZ-AUTH-027` → Test `test_platform_read_is_read_only`
 - **Dimension 5.2** — a write operator steers another tenant's fleet, attributed to the operator → Test `test_platform_write_acts_attributed`
 - **Dimension 5.3** — every crossing logs one audit event with access and method → Test `test_platform_crossing_audited`
 - **Dimension 5.4** — the directory serves either scope and refuses others → Test `test_admin_directory_scoped`
@@ -172,7 +175,7 @@ GET    /v1/workspaces/{workspace_id}/members       -> 200 {items:[{user_id, disp
 GET    /v1/tenants/me/workspaces   items gain {account:{tenant_id, owner_name}, role}
 GET    /v1/workspaces/{workspace_id}   gains access:{role|null, via:"membership"|"platform_read"|"platform_write", can_write}
 GET    /v1/admin/workspaces?q=&cursor=              -> 200 {items:[{id, name, owner_name, fleet_count}], next_cursor}
-Errors: UZ-AUTH-025 role refused (403) · UZ-AUTH-026 read-only platform access (403)
+Errors: UZ-AUTH-026 role refused (403) · UZ-AUTH-027 read-only platform access (403)
         UZ-INV-001 not found/expired/revoked (404) · UZ-INV-002 email mismatch (403)
         UZ-INV-003 already pending or member (409) · UZ-INV-004 last owner (409)
 ```
@@ -183,9 +186,9 @@ Errors: UZ-AUTH-025 role refused (403) · UZ-AUTH-026 read-only platform access 
 |------|-------|--------------------------------------------------------|
 | Link reaches a third party | forwarded invite | accept requires the signed-in account's email to equal the invite's: `403 UZ-INV-002` |
 | Concurrent accept | two tabs accept at once | unique `(tenant_id, user_id)`; the second returns the same body |
-| Member removed mid-stream | owner removes Bob while he watches | problem frame within 60 s; next request `403 UZ-AUTH-001` |
+| Member removed mid-stream | owner removes Bob while he watches | problem frame within one re-check; next request `403 UZ-AUTH-001` |
 | Access-check outage | Postgres unavailable | `503` with the outage code, never `403`; a failed stream re-check keeps the stream until the next pass |
-| Read-only operator writes | non-safe method with `workspace-any:read` | `403 UZ-AUTH-026`; the audit event is still emitted |
+| Read-only operator writes | non-safe method with `workspace-any:read` | `403 UZ-AUTH-027`; the audit event is still emitted |
 | Last owner removal | sole owner removes self | `409 UZ-INV-004` |
 
 ## Invariants
@@ -212,17 +215,18 @@ Errors: UZ-AUTH-025 role refused (403) · UZ-AUTH-026 read-only platform access 
 | 1.1 | unit | `test_preflight_names_missing_resend_app` | no `resend-app` item → preflight exits non-zero naming `resend-app` |
 | 2.1 | integration | `test_member_reaches_owner_workspace` | membership row → detail, list, stream and steer 2xx |
 | 2.2 | integration | `test_non_member_refused_unchanged` | no row → `403 UZ-AUTH-001`, body equal to today's |
-| 2.3 | integration | `test_member_refused_owner_only_routes` | member on every secret-write and connector-write route → `403 UZ-AUTH-025`; their reads 2xx |
+| 2.3 | integration | `test_member_refused_owner_only_routes` | member on every secret-write and connector-write route → `403 UZ-AUTH-026`; their reads 2xx |
 | 2.4 | integration | `test_removed_member_stream_ends` | removal during an open stream → problem frame within one re-check |
 | 2.5 | unit | `test_access_check_outage_is_not_denial` | query error → `503`, never `403` |
 | 2.6 | integration | `test_single_owner_paths_unchanged` | no invites → list, detail, stream, steer as before |
+| 2.7 | integration | `test_access_check_plans_as_index_probes` | thousands of seeded rows, `ANALYZE` → `EXPLAIN` of the access statement holds no `Seq Scan` on workspaces, users or memberships |
 | 3.1 | integration | `test_owner_manages_invites` | create → listed → revoke → list empty |
 | 3.2 | integration | `test_invitee_accepts_once` | accept twice → one membership, same body |
 | 3.3 | integration | `test_accept_refusals` | other email → `UZ-INV-002`; expired, revoked → `UZ-INV-001` |
 | 3.4 | integration | `test_invite_and_member_conflicts` | duplicate, existing member → `UZ-INV-003`; last owner → `UZ-INV-004` |
 | 4.1 | e2e | `test_members_page_owner_journey` | invite, copy link, remove on the rendered page |
 | 4.2 | e2e | `test_invitee_accept_journey` | accept → switcher shows the workspace under the owner's account |
-| 5.1 | integration | `test_platform_read_is_read_only` | read scope: every mounted `GET` 2xx, every other method `403 UZ-AUTH-026` |
+| 5.1 | integration | `test_platform_read_is_read_only` | read scope: every mounted `GET` 2xx, every other method `403 UZ-AUTH-027` |
 | 5.2 | integration | `test_platform_write_acts_attributed` | write scope steer → row actor `steer:<operator>` |
 | 5.3 | unit | `test_platform_crossing_audited` | crossing → one event with access and method, before the handler |
 | 5.4 | integration | `test_admin_directory_scoped` | either scope → all tenants' workspaces; neither → `403 UZ-AUTH-022` |
