@@ -3,9 +3,11 @@
 /// The account's members, oldest membership first.
 ///
 /// `$1` tenant. Serves both the owner's members page and a workspace's sender
-/// names; the second leaves the address out when it renders.
+/// names; the second leaves the address out when it renders, and names each
+/// member by the subject their steers record.
 pub const SELECT_MEMBERS: &str = "\
-SELECT u.id::text AS user_id, u.display_name, u.email, m.role, m.created_at AS joined_at \
+SELECT u.id::text AS user_id, u.display_name, u.email, u.oidc_subject, m.role, \
+       m.created_at AS joined_at \
 FROM core.memberships m \
 JOIN core.users u ON u.id = m.user_id \
 WHERE m.tenant_id = $1::uuid \

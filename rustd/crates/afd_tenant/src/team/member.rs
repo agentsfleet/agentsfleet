@@ -88,6 +88,7 @@ fn member(row: &PgRow) -> Result<Member> {
         user: row.try_get("user_id").map_err(&unreadable)?,
         display_name: row.try_get("display_name").map_err(&unreadable)?,
         email: row.try_get("email").map_err(&unreadable)?,
+        subject: row.try_get("oidc_subject").map_err(&unreadable)?,
         role: Role::parse(&role)?,
         joined_at_ms: row.try_get("joined_at").map_err(&unreadable)?,
     })

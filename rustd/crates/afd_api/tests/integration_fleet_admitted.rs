@@ -187,3 +187,33 @@ async fn test_admitted_publish_failure_still_accepts() {
     hub.shutdown();
     members.cleanup().await;
 }
+
+/// Dimension 4.3: a workspace's member list names each member by the actor
+/// their messages record, so a thread can put a name on each one.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_workspace_members_carry_actor() {
+    let members = Members::create().await;
+    members.seed().await;
+    let hub = live_hub().await;
+    let bob = bob_router(&members, harness::connect_redis().await, &hub);
+    let path = format!("/v1/workspaces/{}/members", members.john.workspace.as_str());
+
+    let response = send(&bob, Method::GET, &path, Some(&members.bob.token), "").await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let list = json_body(response).await;
+    let item = list["items"]
+        .as_array()
+        .expect("a page of members")
+        .iter()
+        .find(|item| item["user_id"] == json!(members.bob.user))
+        .expect("Bob is listed in John's workspace");
+    assert_eq!(item["actor"], json!(actor_of(&members.bob)));
+    assert!(
+        item.get("email").is_none(),
+        "no address on this list: {item}"
+    );
+
+    hub.shutdown();
+    members.cleanup().await;
+}

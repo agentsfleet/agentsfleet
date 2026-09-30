@@ -59,7 +59,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_api/tests/{integration_fleet_admitted,tenant_plane_suite}.rs`, `rustd/crates/afd_events/tests/integration_steer_{insert,replay}.rs`, `rustd/crates/afd_api/tests/harness/stubs_ingress/answers.rs` | CREATE/EDIT | the admitted frame over live stores; `Steered` and `Repeated` gain the admission instant |
 | `rustd/crates/afd_approval/src/inbox/resolve.rs` | EDIT | a continuation's received frame carries no message |
 | `rustd/crates/afd_http/src/services/event.rs`, `rustd/crates/afd_events/src/steer.rs` | EDIT | the announce seam on `FleetSteering`; `Steered` carries the admission instant |
-| `rustd/crates/afd_tenant/src/sql/member.rs`, `rustd/crates/afd_api_tenant/src/handler/tenant/member.rs`, `rustd/crates/afd_wire/src/team.rs` | EDIT | a workspace member carries `actor`, the string that member's steers record |
+| `rustd/crates/afd_tenant/src/{sql/member.rs,team/{mod,member}.rs}`, `rustd/crates/afd_api_tenant/src/handler/tenant/member.rs`, `rustd/crates/afd_wire/src/team.rs` | EDIT | a workspace member carries `actor`, the string that member's steers record |
 | `ui/packages/app/lib/api/tenant-members.ts` | EDIT | `listWorkspaceMembers` |
 | `rustd/crates/afd_fleet/src/lease/bracket.rs` | EDIT | `event_received` carries the steer's message |
 | `rustd/crates/afd_api_tenant/src/handler/fleet/message.rs` | EDIT | thread read adds `queued` rows, deduplicated by event id |
@@ -132,7 +132,7 @@ The viewer's own messages read "You"; a member's read their display name from `G
 
 - **Dimension 4.1** — viewer, member and unknown actors label as "You", the name, and the existing fallback → Test `test_sender_labels_name_members`
 - **Dimension 4.2** — two people on one fleet each see the other's message, named, then the reply → Test `test_member_sees_teammate_message_then_reply`
-- **Dimension 4.3** — a workspace member item carries `actor` equal to that member's steer actor → Test `test_workspace_members_carry_actor`
+- **Dimension 4.3** — a workspace member item carries `actor` equal to that member's steer actor → Test `test_workspace_members_carry_actor` — DONE (`afd_api/tests/integration_fleet_admitted.rs`; the list still carries no address)
 
 ### §5 — Documentation
 

@@ -11876,7 +11876,7 @@
           "Members"
         ],
         "summary": "List who can work in a workspace",
-        "description": "Returns the members of the account that owns the workspace, with each one's name and role, so a thread can name who sent each turn. No email addresses: every member of the account can read this list. One page: `next_cursor` is always `null`. ",
+        "description": "Returns the members of the account that owns the workspace, with each one's name and role, so a thread can name who sent each turn. Each `actor` equals the `actor` of the messages that member sends. No email addresses: every member of the account can read this list. One page: `next_cursor` is always `null`. ",
         "operationId": "list_workspace_members",
         "parameters": [
           {
@@ -16512,9 +16512,14 @@
               "description": "One member of a workspace's account, as its thread names senders.\n\nNo address: every member of an account can read this list, and a name is\nall a thread needs.",
               "required": [
                 "user_id",
-                "role"
+                "role",
+                "actor"
               ],
               "properties": {
+                "actor": {
+                  "type": "string",
+                  "description": "The actor their messages record, `steer:<subject>`: what a thread\nrow's `actor` equals when this member sent it."
+                },
                 "display_name": {
                   "type": [
                     "string",
@@ -18709,9 +18714,14 @@
         "description": "One member of a workspace's account, as its thread names senders.\n\nNo address: every member of an account can read this list, and a name is\nall a thread needs.",
         "required": [
           "user_id",
-          "role"
+          "role",
+          "actor"
         ],
         "properties": {
+          "actor": {
+            "type": "string",
+            "description": "The actor their messages record, `steer:<subject>`: what a thread\nrow's `actor` equals when this member sent it."
+          },
           "display_name": {
             "type": [
               "string",

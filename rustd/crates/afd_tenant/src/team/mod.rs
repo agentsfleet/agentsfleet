@@ -87,6 +87,9 @@ pub struct Member {
     pub display_name: Option<String>,
     /// Their address, as stored.
     pub email: String,
+    /// The identity provider's subject for them, which a steer they send
+    /// records as its actor.
+    pub subject: String,
     /// Their role in the account.
     pub role: Role,
     /// When their membership began, epoch milliseconds.
