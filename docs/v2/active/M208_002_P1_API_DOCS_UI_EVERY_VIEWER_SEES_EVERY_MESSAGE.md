@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M208
 **Workstream:** 002
 **Date:** Sep 30, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — a message sent from another device or by a teammate is missing on every other screen until a reload
 **Categories:** API, DOCS, UI
 **Batch:** B1 — second of three M208 workstreams in one Pull Request (PR); §1–§3 need nothing from M208_001, §4's names need its members route
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** `feat/m208-team-accounts`
+**Baseline revision:** `3b61121c3c7da8b97cc348cca1d1dbfb99c3bce4`
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M208_001 (`GET /v1/workspaces/{workspace_id}/members` for sender names; memberships for the two-person e2e)
 **Provenance:** LLM-drafted (Claude Opus 5.5, Sep 30, 2026); decisions in Discovery are Indy's
