@@ -157,3 +157,28 @@ pub(crate) fn cli_credential_machine_collision() -> Error {
 pub(crate) fn unknown_subject() -> Error {
     Error::new(ErrorKind::UnknownSubject)
 }
+
+/// Reports an invite that can no longer be accepted.
+pub(crate) fn invite_not_found() -> Error {
+    Error::new(ErrorKind::InviteNotFound)
+}
+
+/// Reports an accept from an account the invite was not sent to.
+pub(crate) fn invite_email_mismatch() -> Error {
+    Error::new(ErrorKind::InviteEmailMismatch)
+}
+
+/// Reports a second pending invite, or an invite for a member.
+pub(crate) fn invite_conflict() -> Error {
+    Error::new(ErrorKind::InviteConflict)
+}
+
+/// Reports a removal that would leave the account with no owner.
+pub(crate) fn member_last_owner() -> Error {
+    Error::new(ErrorKind::MemberLastOwner)
+}
+
+/// Reports an invite address that is not one.
+pub(crate) fn email_invalid() -> Error {
+    Error::new(ErrorKind::EmailInvalid)
+}

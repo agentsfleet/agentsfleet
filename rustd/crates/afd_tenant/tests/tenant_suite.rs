@@ -66,6 +66,8 @@ mod integration_identity;
 mod integration_preferences;
 #[path = "integration_signup.rs"]
 mod integration_signup;
+#[path = "integration_team.rs"]
+mod integration_team;
 #[path = "integration_workspace_access_plan.rs"]
 mod integration_workspace_access_plan;
 #[path = "integration_workspace_membership.rs"]

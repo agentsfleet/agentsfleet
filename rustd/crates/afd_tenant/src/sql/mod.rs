@@ -33,6 +33,8 @@ macro_rules! owner_name_join {
 
 pub mod apikey;
 pub mod cli_credential;
+pub mod invite;
+pub mod member;
 pub mod models;
 pub mod preference;
 pub mod signup;

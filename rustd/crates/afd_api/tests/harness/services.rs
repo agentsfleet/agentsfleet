@@ -33,6 +33,7 @@ use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
 use afd_tenant::preference::Preferences;
 use afd_tenant::session::Sessions as Logins;
+use afd_tenant::team::Team;
 use afd_tenant::workspace::Workspaces;
 use afd_vault::Vault as SecretVault;
 
@@ -226,6 +227,7 @@ impl Services for Fleet {
 impl TenantSurface for Fleet {
     type WorkspaceDirectory = Workspaces;
     type ApiKeys = ApiKeys;
+    type Team = Team;
     type CliCredentials = CliCredentials;
     type Billing = Billing;
     type Catalogue = Models;
@@ -238,6 +240,10 @@ impl TenantSurface for Fleet {
 
     fn api_keys(&self) -> &ApiKeys {
         &self.api_keys
+    }
+
+    fn team(&self) -> &Team {
+        &self.team
     }
 
     fn cli_credentials(&self) -> &CliCredentials {

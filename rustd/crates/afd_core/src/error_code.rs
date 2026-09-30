@@ -90,12 +90,14 @@ mod auth;
 mod bundle;
 mod fleet;
 mod integration;
+mod invite;
 mod request;
 
 pub use self::auth::*;
 pub use self::bundle::*;
 pub use self::fleet::*;
 pub use self::integration::*;
+pub use self::invite::*;
 pub use self::request::*;
 
 /// Every code this crate declares, in declaration order.
@@ -236,4 +238,8 @@ pub const REGISTRY: &[ErrorCode] = &[
     REPAIR_WRITE_UNAPPROVED,
     REPAIR_BINDING_DRIFT,
     REPAIR_SPEND_EXHAUSTED,
+    INVITE_NOT_FOUND,
+    INVITE_EMAIL_MISMATCH,
+    INVITE_CONFLICT,
+    MEMBER_LAST_OWNER,
 ];

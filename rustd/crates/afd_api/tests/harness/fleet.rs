@@ -29,6 +29,16 @@ fn fleet_store(database: &Db, queue: &Dragonfly, kek: &Arc<Kek>) -> Fleets {
     )
 }
 
+/// The device-flow login store both constructors build, over `queue`.
+fn login_store(queue: &Dragonfly) -> Logins {
+    Logins::new(
+        afd_dragonfly::SessionStore::new(queue.clone()),
+        SecretBytes::new(FIXTURE_PEPPER.to_vec()),
+        Entropy::new(),
+        FIXTURE_APP_URL,
+    )
+}
+
 impl Fleet {
     /// Keeps real pub/sub while setting the stream ceiling for the load ladder.
     pub(crate) fn with_stream_capacity(
@@ -94,13 +104,9 @@ impl Fleet {
             workspaces: Ownership::Stub(OneWorkspace::fixed()),
             workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
+            team: Team::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
-            logins: Logins::new(
-                afd_dragonfly::SessionStore::new(queue.clone()),
-                SecretBytes::new(FIXTURE_PEPPER.to_vec()),
-                Entropy::new(),
-                FIXTURE_APP_URL,
-            ),
+            logins: login_store(&queue),
             fleets: fleet_store(&database, &queue, &kek),
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
             // The production connect flow, over stores that are not there and a
@@ -227,13 +233,9 @@ impl Fleet {
             workspaces: Ownership::Stub(OneWorkspace::fixed()),
             workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
+            team: Team::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
-            logins: Logins::new(
-                afd_dragonfly::SessionStore::new(queue.clone()),
-                SecretBytes::new(FIXTURE_PEPPER.to_vec()),
-                Entropy::new(),
-                FIXTURE_APP_URL,
-            ),
+            logins: login_store(&queue),
             fleets: fleet_store(&database, &queue, &kek),
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
             // The production connect flow, over stores that are not there and a

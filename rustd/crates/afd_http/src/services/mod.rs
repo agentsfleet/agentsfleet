@@ -48,6 +48,7 @@ mod preference;
 mod provider;
 mod schedule;
 mod signup;
+mod team;
 mod tenant;
 mod vault;
 
@@ -69,6 +70,7 @@ pub use self::schedule::{FleetSchedules, SchedulePlane};
 pub use self::signup::{
     Bootstrapped, IdentityWebhookSecret, NewAccount, SignupMetadata, Signups, personal_tenant_name,
 };
+pub use self::team::TenantTeam;
 pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, WorkspaceOwnership};
 pub use self::vault::WorkspaceSecrets;
 

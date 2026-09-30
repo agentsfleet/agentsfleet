@@ -34,6 +34,7 @@ pub mod preference;
 pub mod session;
 pub mod signup;
 pub mod sql;
+pub mod team;
 pub mod workspace;
 
 pub use self::error::{Error, Result};

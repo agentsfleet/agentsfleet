@@ -12,7 +12,7 @@
 )]
 
 #[path = "support/workspace_members_fixture.rs"]
-mod fixture;
+pub(crate) mod fixture;
 
 use std::time::Duration;
 

@@ -180,7 +180,8 @@ impl Error {
             ErrorKind::ApiKeyFieldInvalid { .. }
             | ErrorKind::CliCredentialMachineNameInvalid
             | ErrorKind::WorkspaceNameInvalid
-            | ErrorKind::WorkspaceNameTooLong => error_code::INVALID_REQUEST,
+            | ErrorKind::WorkspaceNameTooLong
+            | ErrorKind::EmailInvalid => error_code::INVALID_REQUEST,
             ErrorKind::WorkspaceNameExists => error_code::WORKSPACE_NAME_EXISTS,
             // A 401 and not a 403: the session's tenant is GONE, so the
             // credential itself is stale and re-authenticating is the remedy.
@@ -195,6 +196,10 @@ impl Error {
             ErrorKind::ApiKeyReadonlyField => error_code::APIKEY_READONLY_FIELD,
             ErrorKind::ApiKeyMustRevokeFirst => error_code::APIKEY_MUST_REVOKE_FIRST,
             ErrorKind::CliCredentialNotFound => error_code::AUTH_CLI_CREDENTIAL_NOT_FOUND,
+            ErrorKind::InviteNotFound => error_code::INVITE_NOT_FOUND,
+            ErrorKind::InviteEmailMismatch => error_code::INVITE_EMAIL_MISMATCH,
+            ErrorKind::InviteConflict => error_code::INVITE_CONFLICT,
+            ErrorKind::MemberLastOwner => error_code::MEMBER_LAST_OWNER,
         }
     }
 
@@ -254,6 +259,11 @@ impl Error {
             ErrorKind::WorkspaceNameExists => DETAIL_WORKSPACE_NAME_EXISTS,
             ErrorKind::WorkspaceTenantVanished => DETAIL_WORKSPACE_TENANT_VANISHED,
             ErrorKind::LibraryPageUnavailable { .. } => DETAIL_LIBRARY_PAGE_UNAVAILABLE,
+            ErrorKind::InviteNotFound => DETAIL_INVITE_NOT_FOUND,
+            ErrorKind::InviteEmailMismatch => DETAIL_INVITE_EMAIL_MISMATCH,
+            ErrorKind::InviteConflict => DETAIL_INVITE_CONFLICT,
+            ErrorKind::MemberLastOwner => DETAIL_MEMBER_LAST_OWNER,
+            ErrorKind::EmailInvalid => DETAIL_INVITE_EMAIL_INVALID,
         }
     }
 }

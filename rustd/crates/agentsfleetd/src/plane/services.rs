@@ -213,6 +213,7 @@ impl Services for ServingPlane {
 impl TenantSurface for ServingPlane {
     type WorkspaceDirectory = Workspaces;
     type ApiKeys = ApiKeys;
+    type Team = afd_tenant::team::Team;
     type CliCredentials = CliCredentials;
     type Billing = Billing;
     type Catalogue = Models;
@@ -229,6 +230,10 @@ impl TenantSurface for ServingPlane {
 
     fn api_keys(&self) -> &ApiKeys {
         &self.api_keys
+    }
+
+    fn team(&self) -> &Self::Team {
+        &self.team
     }
 
     fn cli_credentials(&self) -> &CliCredentials {

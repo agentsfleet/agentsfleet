@@ -26,6 +26,9 @@ pub(crate) fn owner_scopes() -> ScopeSet {
 pub(crate) struct Person {
     pub(crate) subject: String,
     pub(crate) display_name: &'static str,
+    /// Unique per run: the invites waiting for an address are read across
+    /// every account, so a shared address would see another run's.
+    pub(crate) email: String,
     pub(crate) tenant: String,
     pub(crate) user: String,
     pub(crate) workspace: Uuid7,
@@ -37,6 +40,7 @@ impl Person {
         let subject = format!("user_members_{}", mint_id());
         Self {
             token: format!("session-{subject}"),
+            email: format!("{subject}@example.test"),
             subject,
             display_name,
             tenant: mint_id(),
@@ -120,10 +124,7 @@ impl Members {
         .bind(person.display_name.to_lowercase())
         .bind(&person.user)
         .bind(&person.subject)
-        .bind(format!(
-            "{}@example.test",
-            person.display_name.to_lowercase()
-        ))
+        .bind(&person.email)
         .bind(person.display_name)
         .bind(mint_id())
         .bind(ROLE_OWNER)

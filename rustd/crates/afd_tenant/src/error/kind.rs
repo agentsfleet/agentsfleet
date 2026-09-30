@@ -24,7 +24,7 @@ pub(crate) enum ErrorKind {
         source: sqlx::Error,
     },
 
-    #[error("core.memberships.role holds {stored}, which this build does not know")]
+    #[error("a stored role holds {stored}, which this build does not know")]
     RoleUnknown {
         /// The stored bytes, so the log names what a newer daemon wrote.
         stored: Box<str>,
@@ -121,6 +121,21 @@ pub(crate) enum ErrorKind {
 
     #[error("the session's tenant claim names no tenant row")]
     WorkspaceTenantVanished,
+
+    #[error("no invite that can still be accepted carries that id")]
+    InviteNotFound,
+
+    #[error("the invite was sent to a different address than the caller's")]
+    InviteEmailMismatch,
+
+    #[error("the address already has a pending invite or belongs to the account")]
+    InviteConflict,
+
+    #[error("removing this member would leave the account with no owner")]
+    MemberLastOwner,
+
+    #[error("an invite address was refused")]
+    EmailInvalid,
 
     #[error("the catalogue page statement would not answer")]
     LibraryPageUnavailable {
