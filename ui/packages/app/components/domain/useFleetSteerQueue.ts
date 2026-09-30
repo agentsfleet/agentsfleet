@@ -37,7 +37,11 @@ export function useFleetSteerQueue(
     const dispatch = (message: AppendMessage): void => {
       const send = ++sends.current;
       void deliver(message).catch((error: unknown) => {
-        if (!isMessageNotSentError(error)) throw error;
+        // Only a refusal hands the draft back. Any other failure is dropped,
+        // as assistant-ui's own send drops it: a throw past the daemon's 202
+        // happens after the pending-sends ledger settled, and rethrowing from
+        // this detached promise only raised an unhandled rejection.
+        if (!isMessageNotSentError(error)) return;
         const composer = runtime.current?.thread.composer;
         if (composer === undefined || sends.current !== send) return;
         composer.setText([textOf(message), composer.getState().text].filter(Boolean).join(DRAFT_JOIN));

@@ -17,9 +17,11 @@ export type ScheduledStream = {
   connected: Promise<void>;
   /** Writes these frames in order, each after its delay; resolves after the last. */
   send: (frames: readonly TimedFrame[]) => Promise<void>;
+  /** Fails the page's stream, and every reconnect after it, as an outage would. */
+  drop: () => Promise<void>;
 };
 
-type PageSide = { deliver: (bodies: readonly string[]) => void };
+type PageSide = { deliver: (bodies: readonly string[]) => void; drop: () => void };
 
 export async function pageEventStream(page: Page, streamPath: string): Promise<ScheduledStream> {
   const connected = Promise.withResolvers<void>();
@@ -35,6 +37,9 @@ export async function pageEventStream(page: Page, streamPath: string): Promise<S
           { key: PAGE_KEY, bodies: batch.bodies },
         );
       }
+    },
+    drop: async () => {
+      await page.evaluate((key) => (window as unknown as Record<string, PageSide>)[key]?.drop(), PAGE_KEY);
     },
   });
 }
@@ -75,14 +80,23 @@ function installStandIn({ path, key, opened }: { path: string; key: string; open
     }
   }
   // The first stream is the page's; a reconnect gets nothing, as a dropped
-  // connection would.
+  // connection would. Once dropped, every stream errors instead of opening.
   const streams: StandIn[] = [];
+  let dropped = false;
+  const fail = (stream: StandIn): void => {
+    stream.readyState = Real.CLOSED;
+    stream.fire(new Event("error"), stream.onerror);
+  };
   function EventSourceWithStandIn(url: string | URL, init?: EventSourceInit): EventSource {
     const target = new URL(String(url), window.location.href);
     if (target.pathname !== path) return new Real(url, init);
     const stream = new StandIn(target.href);
     streams.push(stream);
     setTimeout(() => {
+      if (dropped) {
+        fail(stream);
+        return;
+      }
       stream.readyState = Real.OPEN;
       stream.fire(new Event("open"), stream.onopen);
       (window as unknown as Record<string, () => void>)[opened]?.();
@@ -101,6 +115,10 @@ function installStandIn({ path, key, opened }: { path: string; key: string; open
         const data = body.split("\n").filter((line) => line.startsWith("data: ")).map((line) => line.slice(6)).join("\n");
         stream.fire(new MessageEvent(type, { data }), type === "message" ? stream.onmessage : null);
       }
+    },
+    drop: () => {
+      dropped = true;
+      for (const stream of streams) if (stream.readyState !== Real.CLOSED) fail(stream);
     },
   };
 }

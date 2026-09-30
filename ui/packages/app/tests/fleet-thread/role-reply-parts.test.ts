@@ -43,7 +43,7 @@ describe("FleetThread — reply parts", () => {
     expect(within(reply).getByRole("status", { name: "Queued" })).toBeTruthy();
     expect(within(reply).queryByRole("list", { name: TOOL_CALLS })).toBeNull();
     expect(within(reply).queryByRole("button")).toBeNull();
-    // A running reply never marks the thread running: the composer still steers.
+    // A running reply marks the thread running, and the composer still steers.
     const composer = screen.getByRole("textbox", { name: COMPOSER_NAME }) as HTMLTextAreaElement;
     expect(composer.disabled).toBe(false);
     fireEvent.change(composer, { target: { value: "and roll back" } });
@@ -81,6 +81,9 @@ describe("FleetThread — reply parts", () => {
     expect(within(replyRow()).queryByLabelText("streaming")).toBeNull();
     expect(within(replyRow()).getByRole("button", { name: COPY_REPLY })).toBeTruthy();
     expect(messageRoot(replyRow()).getAttribute("data-settled")).toBe("true");
+    // The operator's row is always laid out: the viewport's top anchor pins it
+    // by its height, and a skipped row would report a stand-in height.
+    expect(messageRoot(screen.getByText("Go")).getAttribute("data-settled")).toBeNull();
   });
 
   it("test_outcome_floor_without_text_part", () => {

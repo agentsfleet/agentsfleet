@@ -53,21 +53,22 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `ui/packages/app/components/domain/FleetThread.tsx` | EDIT | runtime gets `queue` and a truthful `isRunning` |
+| `ui/packages/app/components/domain/FleetThread.tsx` | EDIT | runtime gets `queue` and an `isRunning` for the viewer's own turns |
 | `ui/packages/app/components/domain/useFleetMessageDelivery.ts` | EDIT | exposes the delivery path to the queue adapter |
 | `ui/packages/app/components/domain/useFleetSteerQueue.ts` | CREATE | the `ExternalThreadQueueAdapter` over the delivery path |
-| `ui/packages/app/components/domain/FleetThreadViewport.tsx` | EDIT | `turnAnchor="top"`; the connection notice moves into the sticky footer |
+| `ui/packages/app/components/domain/FleetThreadViewport.tsx` | EDIT | `turnAnchor="top"` beside `autoScroll`; the notice and Jump to latest overlay the history from the footer |
+| `ui/packages/app/components/domain/{fleetMessageRenderers.tsx,fleetReplyMessage.ts,useFleetSteerQueue.ts}`, `ui/packages/app/lib/events/event-summary.ts` | EDIT | only a settled reply skips layout; `isSteerBy` names the viewer's own turn; a non-refusal failure is dropped, not rethrown |
 | `ui/packages/app/components/domain/FleetConnectionNotice.tsx` | EDIT | `warning` variant |
 | `ui/packages/app/components/domain/FleetThought.tsx` | EDIT | fold lock verified under the reserve |
 | `ui/packages/app/components/domain/FleetMarkdown.tsx`, `FleetReplyBody.tsx` | EDIT | reply text through `MarkdownTextPrimitive` |
 | `ui/packages/app/components/domain/fleetMarkdownBlocks.ts` | DELETE | superseded by the library's renderer |
 | `ui/packages/app/package.json`, `bun.lock` | EDIT | add `@assistant-ui/react-markdown` |
 | `ui/packages/app/app/live/v1/workspaces/[workspaceId]/{events,events/stream,fleets/[fleetId]/events,fleets/[fleetId]/events/stream}/route.ts` | EDIT | answer `UZ-AUTH-401` as the steer route does |
-| `rustd/crates/afd_core/{Cargo.toml,src/test_util/trace.rs}` | EDIT / CREATE | the one tracing capture, behind `test-util` |
+| `rustd/crates/afd_core/{Cargo.toml,src/lib.rs,src/test_util.rs,src/test_util/trace.rs,tests/core_suite.rs,tests/trace.rs}`, `rustd/Cargo.lock` | EDIT / CREATE | the one tracing capture, behind `test-util` |
 | `rustd/crates/{agentsfleetd/src/supervisor/tests.rs,afd_dragonfly/tests/support/recorder.rs,afd_events/tests/support/recorder.rs,afd_fleet/tests/support/fleet_log.rs,afd_fleet/src/lease/test_log.rs}` | EDIT / DELETE | migrate the five copies |
-| `make/test.mk`, `make/test-unit.mk`, `build_runner.zig` | EDIT | runner Zig tests in `test-unit-all`; stale target comment |
-| `.github/workflows/test.yml` | EDIT | `test-unit-runner` job — Indy approves before this edit |
-| Tests beside each file above; `tests/e2e/acceptance/{fleet-thread,fleet-reply-parts,fleet-resend}.spec.ts`; `tests/bench/fleet-markdown-stream.bench.tsx` | CREATE / EDIT | one test per Dimension |
+| `rustd/crates/{agentsfleetd,afd_dragonfly,afd_events,afd_fleet}/**` | EDIT | each copy's suite `mod` line, call sites, and a `test-util` dev-dependency on `afd_core` |
+| `make/test.mk`, `make/test-unit.mk`, `build_runner.zig`, `scripts/runner_zig_version_test.py` | EDIT / CREATE | runner Zig tests in `test-unit-all`; version guard and its self-test; stale target comment |
+| Tests beside each file above; `tests/e2e/acceptance/{fleet-thread,fleet-thread-anchor,fleet-reply-parts,fleet-resend}.spec.ts`, `fixtures/{reply-page,page-event-stream}.ts`; `tests/bench/fleet-markdown-stream.bench.tsx` | CREATE / EDIT | one test per Dimension |
 | M207_003 6.6/6.7 files already on the branch: `FleetFailedOutcome.tsx`, `FleetMessageRow.tsx`, `FleetThought.test.tsx`, `tests/fleet-thread/role-*.test.ts`, `tests/e2e/acceptance/fixtures/{page-event-stream,sse-server}.ts`, `docs/v2/done/M207_003_*.md` | EDIT / CREATE / DELETE | shipped in this PR by Indy's call |
 | `~/Projects/docs/changelog.mdx`, `~/Projects/docs/fleets/running.mdx` | EDIT | docs repo, own branch `chore/m207-005-chat-holds-still-changelog` |
 
@@ -98,21 +99,22 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — The steer rides assistant-ui's queue
 
-`FleetThread` passes a `queue` built by `useFleetSteerQueue`. Its `enqueue` and `steer` both hand the message to the existing delivery path (`writers.begin` → `appendOptimistic` → `postSteer`, one operation id per send), so M207_002/003's replay and Resend guarantees hold unchanged. `items` and `steerItems` stay empty, because the daemon admits every steer at once and the pending-sends ledger remains the one authority for an unconfirmed send. `isRunning` is `true` exactly while any reply row's status is `running`. **Implementation default:** dispatch immediately rather than `createMessageQueue`, because that controller holds items until the run ends and the fleet must receive a steer mid-run. The queue returns before the send does, so a refused send's text comes back by the library's own `_returnToDraft` rule, applied in the adapter: when no newer send started, the text returns ahead of anything typed since.
+`FleetThread` passes a `queue` built by `useFleetSteerQueue`. Its `enqueue` and `steer` both hand the message to the existing delivery path (`writers.begin` → `appendOptimistic` → `postSteer`, one operation id per send), so M207_002/003's replay and Resend guarantees hold unchanged. `items` and `steerItems` stay empty, because the daemon admits every steer at once and the pending-sends ledger remains the one authority for an unconfirmed send. `isRunning` is `true` exactly while a reply to the viewer's own turn is running (`isOwnReplyInFlight`): the top anchor keys on it and pins the running turn wherever the reader is, so another sender's turn must not engage it. **Implementation default:** dispatch immediately rather than `createMessageQueue`, because that controller holds items until the run ends and the fleet must receive a steer mid-run. The queue returns before the send does, so a refused send's text comes back by the library's own `_returnToDraft` rule, applied in the adapter: when no newer send started, the text returns ahead of anything typed since.
 
 - **Dimension 1.1** — the composer's Send stays enabled while a reply runs → Test `test_send_enabled_while_running` — DONE
 - **Dimension 1.2** — a send while running and a send while idle each make one POST with one operation id → Test `test_queue_send_posts_once` — DONE
-- **Dimension 1.3** — `isRunning` is true exactly while a reply row is running → Test `test_is_running_tracks_reply_rows` — DONE (`tests/fleet-thread/steer-queue.test.ts`)
+- **Dimension 1.3** — `isRunning` is true exactly while a reply to the viewer's own turn runs; another sender's never sets it → Test `test_is_running_tracks_reply_rows` — DONE (`tests/fleet-thread/steer-queue.test.ts`, `lib/events/event-summary.test.ts`)
 - **Dimension 1.4** — Resend still carries the first operation id → Test `test_failed_send_resend_journey`
 
 ### §2 — The thread anchors the turn at the top
 
-Depends on §1. `ThreadPrimitive.Viewport` takes `turnAnchor="top"` and drops `autoScroll`. The library reserve under the running turn absorbs a Thought's fold and a settling reply, so the view holds. `FleetThought`'s lock stays for folds mid-thread.
+Depends on §1. `ThreadPrimitive.Viewport` takes `turnAnchor="top"` beside `autoScroll`: the anchor holds the viewer's own running turn, and `autoScroll` follows the bottom for a turn with no anchor, such as a webhook's. The library reserve absorbs a Thought's fold and a settling reply. The log is top-aligned, only a settled reply skips layout off screen, and the submit-time `scrollToBottom` goes, since the anchor scrolls on send. `FleetThought`'s lock stays for folds mid-thread.
 
-- **Dimension 2.1** — folding a Thought at the bottom moves its trigger ≤ 1 px and scrolls no reasoning through the viewport → Test `test_fold_at_bottom_holds_view`
-- **Dimension 2.2** — a reply settling (auto-fold) holds the view the same way → Test `test_settle_holds_view`
-- **Dimension 2.3** — after Send, `scrollTop` moves one way only until admission (no back-and-forth) → Test `test_send_scrolls_once`
-- **Dimension 2.4** — Jump to latest still reaches the newest row → Test `test_jump_to_latest_after_anchor`
+- **Dimension 2.1** — folding a Thought at the bottom wobbles its trigger ≤ 40 px and returns within 1 px → Test `test_fold_at_bottom_holds_view` — DONE
+- **Dimension 2.2** — a reply settling (auto-fold) holds the view the same way → Test `test_settle_holds_view` — DONE
+- **Dimension 2.3** — after Send, `scrollTop` never falls more than a 40 px wobble behind its furthest point, and rests there → Test `test_send_scrolls_once` — DONE
+- **Dimension 2.4** — Jump to latest still reaches the newest row → Test `test_jump_to_latest_after_anchor` — DONE
+- **Dimension 2.5** — a turn another sender makes leaves a reader in the history where they are → Test `test_background_turn_leaves_history_alone` — DONE
 
 ### §3 — Reply text through `@assistant-ui/react-markdown`
 
@@ -138,17 +140,17 @@ The events list, the workspace stream, the fleet events list and the fleet strea
 
 ### §6 — The runner's Zig tests run in the unit lane
 
-`test-unit-all` gains `test-unit-runner` (`zig build --build-file build_runner.zig test`), refusing with a named message when `zig version` is not 0.16.0. `test.yml` runs it on `ci-zig-alpine:0.16.0-r6`. `build_runner.zig`'s comment naming the retired target is corrected. **Required human decision:** Indy approves the `.github/workflows/test.yml` edit before it is made.
+`test-unit-all` gains `test-unit-runner` (`zig build --build-file build_runner.zig test`), refusing with a named message when `zig version` is not the one `build.zig.zon` pins. No CI job runs it: it runs locally before push, inside `make test-unit-all` (Indy, Discovery). `build_runner.zig`'s comment naming the retired target is corrected.
 
 - **Dimension 6.1** — `make test-unit-all` runs the runner's Zig tests and fails when one fails → Test `test_unit_all_runs_zig` (inject a failing test in a scratch branch)
-- **Dimension 6.2** — a wrong Zig version fails fast with the named message → Test `test_runner_zig_version_guard`
+- **Dimension 6.2** — a wrong Zig version fails fast with the named message → Test `test_runner_zig_version_guard` (`scripts/runner_zig_version_test.py`)
 
 ### §7 — The 6.7 leftovers
 
-The reconnect notice uses `Alert variant="warning"` and renders in the sticky footer, so its arrival never shifts the transcript. The Working, Queued and gone rows get a live `/design-review` on DEV.
+The reconnect notice uses `Alert variant="warning"` and is laid over the history from the sticky footer, so its arrival never shifts the transcript. The Working, Queued and gone rows get a live review the agent runs and verifies.
 
-- **Dimension 7.1** — the reconnect notice is a warning, announced as `alert`, and the transcript does not move when it appears → Test `test_reconnect_notice_warns_in_place`
-- **Dimension 7.2** — a `/design-review` of Working, Queued and gone rows on DEV has every finding fixed or listed → Test `manual_live_state_review` (Kishore reads the report)
+- **Dimension 7.1** — the reconnect notice is a warning, announced as `alert`, and the transcript does not move when it appears → Test `test_reconnect_notice_warns_in_place` — DONE
+- **Dimension 7.2** — a live review of Working, Queued and gone rows has every finding fixed or listed → Test `agent_live_state_review` (the agent re-runs it and records the evidence in Discovery)
 
 ### §8 — The user docs say what changed
 
@@ -162,6 +164,7 @@ On a `~/Projects/docs` branch `chore/m207-005-chat-holds-still-changelog` off `m
 ExternalThreadQueueAdapter (useFleetSteerQueue):
   items = [], steerItems = []          # the daemon is the queue
   enqueue(m) = steer(m) = deliver(m)   # one POST, one operation id
+isRunning = some event in flight whose actor isSteerBy the viewer   # own turns only
   move/edit/remove(id)                 # unreachable with empty lanes; refuse an unknown id
 401 from the four routes: application/json {"error":"Unauthorized","code":"UZ-AUTH-401"}
 afd_core::test_util::trace (feature "test-util"): Capture::install() -> guard; guard.events() -> Vec<CapturedEvent>
@@ -202,12 +205,13 @@ make test-unit-runner: zig build --build-file build_runner.zig test   (part of t
 |-----------|------|------|---------------------------------------------|
 | 1.1 | unit | `test_send_enabled_while_running` | a running reply row → Send not disabled |
 | 1.2 | unit | `test_queue_send_posts_once` | send idle and send running → one `postSteer` each, distinct operation ids, no `onNew` |
-| 1.3 | unit | `test_is_running_tracks_reply_rows` | running row → true; all settled → false; empty thread → false |
+| 1.3 | unit | `test_is_running_tracks_reply_rows` | own running row → true; all settled → false; a teammate's or the API's running row → false; empty → false |
 | 1.4 | e2e | `test_failed_send_resend_journey` | lost answer → Resend carries the first operation id; `test_reload_recovers_unconfirmed_send` stays green beside it |
-| 2.1 | e2e | `test_fold_at_bottom_holds_view` | fold at bottom → trigger Δy ≤ 1 px, no reasoning line crosses the viewport |
-| 2.2 | e2e | `test_settle_holds_view` | answer lands after a 1 s thought → view Δ ≤ 1 px |
-| 2.3 | e2e | `test_send_scrolls_once` | Send → `scrollTop` monotonic until admission |
+| 2.1 | e2e | `test_fold_at_bottom_holds_view` | fold at bottom → trigger wobble ≤ 40 px, back within 1 px |
+| 2.2 | e2e | `test_settle_holds_view` | answer lands after a 1 s thought → wobble ≤ 40 px, back within 1 px |
+| 2.3 | e2e | `test_send_scrolls_once` | Send → `scrollTop` never > 40 px behind its furthest point, resting there |
 | 2.4 | e2e | `test_jump_to_latest_after_anchor` | scrolled up, new row → Jump to latest reaches it |
+| 2.5 | e2e | `test_background_turn_leaves_history_alone` | a teammate's turn while turn 1 is read → turn 1 Δ ≤ 1 px in the thread, Jump to latest shown |
 | 3.1 | unit | `test_reply_markdown_tokens` | list, fenced code, table → token classes, no prose defaults |
 | 3.2 | unit | `test_reply_html_is_text` | `<script>x</script>` → literal text, no element |
 | 3.3 | e2e | `test_streaming_reply_costs_no_long_tasks` | 0 long tasks, p95 ≤ 17.6 ms |
@@ -217,18 +221,18 @@ make test-unit-runner: zig build --build-file build_runner.zig test   (part of t
 | 5.2 | unit | `make test-unit-rustd` | five suites green on the shared capture |
 | 6.1 | unit | `test_unit_all_runs_zig` | failing Zig test → `make test-unit-all` exits non-zero |
 | 6.2 | unit | `test_runner_zig_version_guard` | `zig` 0.15 on PATH → named refusal |
-| 7.1 | e2e | `test_reconnect_notice_warns_in_place` | stream drops → warning notice, transcript Δ 0 px |
-| 7.2 | manual | `manual_live_state_review` | Kishore reads the `/design-review` report; findings fixed or listed in Discovery |
+| 7.1 | e2e | `test_reconnect_notice_warns_in_place` | stream drops over a reader in history → warning `alert`, on-screen Δ ≤ 1 px |
+| 7.2 | agent | `agent_live_state_review` | the agent re-runs the live review; every finding fixed or listed in Discovery |
 | 8.1 | manual | `docs_pr_open_and_green` | docs PR open, its checks green |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | The view holds through folds, settles and Send (§1, §2) | `cd ui/packages/app && bunx playwright test --config=playwright.acceptance.config.ts --project=journeys tests/e2e/acceptance/fleet-thread.spec.ts tests/e2e/acceptance/fleet-reply-parts.spec.ts tests/e2e/acceptance/fleet-resend.spec.ts` | exit 0 | P0 | |
+| R1 | The view holds through folds, settles and Send (§1, §2) | `cd ui/packages/app && bunx playwright test --config=playwright.acceptance.config.ts --project=journeys tests/e2e/acceptance/fleet-thread.spec.ts tests/e2e/acceptance/fleet-thread-anchor.spec.ts tests/e2e/acceptance/fleet-reply-parts.spec.ts tests/e2e/acceptance/fleet-resend.spec.ts` | exit 0 | P0 | |
 | R2 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | R3 | Only registered 401s (§4) | `git grep -n '"UZ-401"' -- ui/packages/app` | 0 matches | P0 | |
-| R4 | One tracing capture (§5) | `git grep -ln 'impl<S> Layer<S>' -- rustd/crates/afd_dragonfly/tests rustd/crates/afd_events/tests rustd/crates/afd_fleet rustd/crates/agentsfleetd/src/supervisor` | 0 matches | P1 | |
+| R4 | One tracing capture (§5) | `git grep -lnE 'impl<S[^>]*> Layer<S>' -- rustd/crates/afd_dragonfly/tests rustd/crates/afd_events/tests rustd/crates/afd_fleet rustd/crates/agentsfleetd/src/supervisor ':!rustd/crates/afd_fleet/tests/integration_lease_gates/tenant.rs'` (the lease-gate layer is Out of Scope; at the baseline this lists six files) | 0 matches | P1 | |
 | R5 | Zig tests in the unit lane (§6) | `make -n test-unit-all \| grep -c 'build_runner.zig test'` | 1 | P1 | |
 | R6 | Docs PR open (§8) | `gh pr list -R agentsfleet/docs --head chore/m207-005-chat-holds-still-changelog --json state -q '.[].state'` | `OPEN` | P1 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
@@ -250,6 +254,7 @@ make test-unit-runner: zig build --build-file build_runner.zig test   (part of t
 |----------------|--------|
 | `ui/packages/app/components/domain/fleetMarkdownBlocks.ts` | `test ! -f ui/packages/app/components/domain/fleetMarkdownBlocks.ts` |
 | `ui/packages/app/tests/e2e/acceptance/fixtures/sse-server.ts` | `test ! -f ui/packages/app/tests/e2e/acceptance/fixtures/sse-server.ts` |
+| the four recorder copies (`afd_dragonfly`, `afd_events` `tests/support/recorder.rs`; `afd_fleet` `tests/support/fleet_log.rs`, `src/lease/test_log.rs`) | `git ls-files rustd/crates \| grep -cE 'support/recorder.rs\|fleet_log.rs\|lease/test_log.rs'` → 0 |
 
 **2. Orphaned references — zero remaining imports/uses.**
 
@@ -292,6 +297,11 @@ make test-unit-runner: zig build --build-file build_runner.zig test   (part of t
 > Indy (2026-09-30): "New M207_005, this PR (Recommended)" — context: AskUserQuestion on where the steer/queue move, markdown swap and deferred items live; overrides the security-boundary own-PR rule for the steer path and the 401 routes.
 > Indy (2026-09-30): "Run provision-env, Publish ~/Projects/docs, orly P32 rule" — context: which carried-over items the agent does; authorises the `~/Projects/docs` write for §8.
 - **Live state review (Sep 30, 2026, local app against DEV's API, for 7.2)** — Queued → Working → Thinking 1.6 s → Thought + answer → Completed, observed on two back-to-back sends. FINDING-003, fixed: a reply's outcome sentence ("Completed.", the gone line) wore the reply's foreground ink; it now takes the integration tick's muted mono (`FLEET_OUTCOME_CLASS`). FINDING-004, listed: the footer says "Still working." while both rows still say "Queued…", because a row turns Working only on its first frame; aligning them is a status-semantics call for Indy. The gone row is reachable only on a 404/410 event, so it was checked in `role-reasoning.test.ts`, not live. The Working spinner is `aria-hidden`.
+- **§2 probes (Sep 30, 2026, headless e2e)** — Send's jump was the anchor measuring a skipped operator row at its 208 px stand-in (68 px real), plus our submit-time `scrollToBottom`; both gone. Admission renames the turn's rows and the library re-pins a frame late: one 36 px dip that returns, held to the fold bar. The anchor scrolls to any new running user turn wherever the reader is (`mountTopAnchorReserve.js` `apply`), measured at 1,938 px for a teammate's turn, so `isRunning` counts the viewer's own turns only, restoring `main`'s rule that background replies leave history alone. FINDING-010, listed: the header's arrival cue collapses after connect and slides the thread 37 px, page chrome that predates this spec.
+> Indy (2026-09-30): "Yes for test.yml edit." — context: approval of the §6 CI job; superseded below.
+> Indy (2026-09-30): "Well dont add the test-unit-runner in test.yml job" and "you can run it locally prior to push" — §6 has no CI job.
+> Indy (2026-09-30): "keep it as is or make a better general human friendly name" — context: FINDING-004; kept as is. Indy also confirmed a fold may wobble ≤ 40 px and must return, and that short threads start at the top of the panel.
+> Indy (2026-09-30): "7.2 make it agent-verified, i donot have time to eyeball. Only add that if you verified it."
 - **Metrics review** — no analytics/funnel playbook update required: no event is added, renamed or removed.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.

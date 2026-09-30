@@ -1,4 +1,4 @@
-import { SUBJECT, WS, ZID, appendMessage, capturedOnNew, capturedSubmittedMessageId, ev, mockStream, renderThread, postSteerMock, threadElement } from "./harness";
+import { SUBJECT, WS, ZID, appendMessage, capturedOnNew, mockStream, renderThread, postSteerMock } from "./harness";
 import { ACCEPTED, OPERATION_ID, REFUSED, TOO_LONG_TEXT, UUID_V7, composerInput, heldRefusal, operationIdOf, send } from "./steer-helpers";
 import { SEND_LABEL } from "./steer-copy";
 import { STEER_MESSAGE_MAX_BYTES } from "@/lib/api/fleets-types";
@@ -170,25 +170,6 @@ describe("FleetThread — steer submission", () => {
     expect(appendOptimistic).not.toHaveBeenCalled();
     expect(postSteerMock).not.toHaveBeenCalled();
     expect(getPendingSends({ subject: SUBJECT, workspaceId: WS, fleetId: ZID })).toEqual([]);
-  });
-
-  it("keeps submit scroll intent through acknowledgement and reordered backfill", async () => {
-    const appendOptimistic = vi.fn().mockReturnValue("temp_clock_skew");
-    mockStream([], { appendOptimistic });
-    postSteerMock.mockResolvedValueOnce(ACCEPTED("evt_clock_skew"));
-    const view = renderThread();
-
-    await act(async () => {
-      await capturedOnNew.current!(appendMessage("recent operator message"));
-    });
-    expect(capturedSubmittedMessageId.current).toBe("temp_clock_skew");
-
-    mockStream([
-      ev({ id: "temp_clock_skew", role: "user", actor: "steer:pending", status: "optimistic" }),
-      ev({ id: "newer_server_row", role: "system", actor: "webhook", createdAt: new Date("2026-05-15T18:00:00Z") }),
-    ], { appendOptimistic });
-    view.rerender(threadElement());
-    expect(capturedSubmittedMessageId.current).toBe("temp_clock_skew");
   });
 
   it("accepts a steer that completed before its HTTP response returned", async () => {

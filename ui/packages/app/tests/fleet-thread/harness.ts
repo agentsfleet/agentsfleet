@@ -16,7 +16,6 @@ const {
   useFleetEventStreamMock,
   capturedOnNew,
   capturedRun,
-  capturedSubmittedMessageId,
   signedIn,
   threadPath,
 } = vi.hoisted(() => ({
@@ -34,7 +33,6 @@ const {
   // What the thread told the runtime last: whether a reply runs, and the
   // queue every send goes through.
   capturedRun: { isRunning: false as boolean | undefined, hasQueue: false },
-  capturedSubmittedMessageId: { current: null as string | null },
   // Who the client's auth script says is signed in: null until it loads.
   signedIn: { userId: "user_fleet_thread" as string | null },
 }));
@@ -85,21 +83,6 @@ vi.mock("@/components/domain/useFleetEventStream", async () => {
   return {
     ...actual,
     useFleetEventStream: useFleetEventStreamMock,
-  };
-});
-
-vi.mock("@/components/domain/FleetThreadViewport", async () => {
-  const actual = await vi.importActual<
-    typeof import("@/components/domain/FleetThreadViewport")
-  >("@/components/domain/FleetThreadViewport");
-  return {
-    ...actual,
-    FleetThreadViewport: (
-      props: React.ComponentProps<typeof actual.FleetThreadViewport>,
-    ) => {
-      capturedSubmittedMessageId.current = props.submittedMessageId;
-      return React.createElement(actual.FleetThreadViewport, props);
-    },
   };
 });
 
@@ -260,10 +243,9 @@ beforeEach(() => {
   capturedOnNew.current = null;
   capturedRun.isRunning = false;
   capturedRun.hasQueue = false;
-  capturedSubmittedMessageId.current = null;
   signedIn.userId = TEST_SUBJECT;
 });
 
 afterEach(() => cleanup());
 
-export { routerRefreshMock, postSteerMock, useFleetEventStreamMock, capturedOnNew, capturedRun, capturedSubmittedMessageId };
+export { routerRefreshMock, postSteerMock, useFleetEventStreamMock, capturedOnNew, capturedRun };

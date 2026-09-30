@@ -9,6 +9,7 @@ import { HTTP_STATUS_UNAUTHORIZED, isDefiniteRefusal } from "@/lib/api/errors";
 import { postSteer, type SteerResult } from "@/lib/api/fleet-steer";
 import { overSteerLimit, steerBytesNearLimit, type SteerAccepted } from "@/lib/api/fleets-types";
 import { ERROR_CODE } from "@/lib/errors";
+import { ACTOR } from "@/lib/events/event-summary";
 import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 import { mintOperationId } from "@/lib/streaming/operation-id";
 
@@ -30,7 +31,7 @@ import { mintOperationId } from "@/lib/streaming/operation-id";
 // Placeholder actor on an optimistic row until the stream's matching
 // `EVENT_RECEIVED` lands and reconciliation replaces it with the real
 // authenticated principal.
-const OPTIMISTIC_ACTOR = "steer:pending";
+const OPTIMISTIC_ACTOR = ACTOR.PENDING_STEER;
 const settledEitherWay = (): void => undefined;
 /** How long a send has, from Send to its end. Longer than the steer route's
  * own worst case — its retry deadline plus one attempt's timeout, the ordering
@@ -48,7 +49,6 @@ type DeliveryCtx = {
   appendOptimistic: StreamApi["appendOptimistic"];
   reconcileOptimistic: StreamApi["reconcileOptimistic"];
   discardOptimistic: StreamApi["discardOptimistic"];
-  onSubmitted: (tempId: string) => void;
   writers: PendingSendWriters;
 };
 
@@ -164,7 +164,7 @@ function useRestoredDraft(writers: PendingSendWriters) {
 // could reach the server out of submission order, so "stop" could be assigned
 // an earlier event id than the "deploy" it was meant to follow.
 function useSerializedDelivery(ctx: DeliveryCtx): (operationId: string, text: string) => Promise<boolean> {
-  const { workspaceId, fleetId, appendOptimistic, discardOptimistic, onSubmitted, writers } = ctx;
+  const { workspaceId, fleetId, appendOptimistic, discardOptimistic, writers } = ctx;
   const acknowledged = useAcknowledgement(ctx);
   return useCallback(
     (operationId: string, text: string): Promise<boolean> => {
@@ -172,7 +172,6 @@ function useSerializedDelivery(ctx: DeliveryCtx): (operationId: string, text: st
       // and the acknowledgement leaves a record the next one can resend.
       writers.begin({ operationId, text, submittedAtMs: Date.now() });
       const tempId = appendOptimistic(text, OPTIMISTIC_ACTOR);
-      if (tempId) onSubmitted(tempId);
       // The clock starts at Send, not at the send's turn in the queue: a send
       // behind a hung one ends when its own time is up, not a full clock later.
       const deadline = startDeadline();
@@ -198,7 +197,7 @@ function useSerializedDelivery(ctx: DeliveryCtx): (operationId: string, text: st
       const slot = enqueue(`${workspaceId}:${fleetId}`, send);
       return Promise.race([slot, deadline.expired.then(() => (dispatched ? slot : unsent()))]);
     },
-    [workspaceId, fleetId, appendOptimistic, discardOptimistic, onSubmitted, writers, acknowledged],
+    [workspaceId, fleetId, appendOptimistic, discardOptimistic, writers, acknowledged],
   );
 }
 
