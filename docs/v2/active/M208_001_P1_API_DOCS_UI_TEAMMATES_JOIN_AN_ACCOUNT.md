@@ -34,7 +34,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** `test_invited_member_opens_and_steers_owner_fleet` — John invites Bob; Bob accepts, opens John's workspace, reads and steers MARY-001, and is refused writing John's secrets or connectors and managing his members.
 **Problem:** Workspace access is `core.users.tenant_id` equality (`rustd/crates/afd_tenant/src/sql/workspace.rs:38-44`), so only a workspace's creator can open it; `core.memberships` exists but no access check reads it. Platform operators holding `workspace:any` reach any workspace through the API (`rustd/crates/afd_tenant/src/workspace/mod.rs:104-149`), but the dashboard cannot find one, and the one scope grants read and write together.
-**Solution summary:** Access resolves through memberships with two roles, owner and member. Owners invite by email, list and revoke invites, and remove members; an invitee accepts from the dashboard. `workspace:any` splits into `workspace-any:read` and `workspace-any:write`, a platform directory lists every workspace, each crossing is audited, and read-only access renders without write controls. §1 lists the one credential M208 needs, for M208_003's invite email.
+**Solution summary:** Access resolves through memberships with two roles, owner and member. Owners invite by email, list and revoke invites, and remove members; an invitee accepts from the dashboard. `workspace:any` keeps its read-and-write crossing and a new `workspace-any:read` grants read-only crossing, a platform directory lists every workspace, each crossing is audited, and read-only access renders without write controls. §1 lists the one credential M208 needs, for M208_003's invite email.
 
 ## PR Intent & comprehension handshake
 
@@ -67,7 +67,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_core/src/{error_code,problem}.rs` | EDIT | the registry lists the new codes and the invite family |
 | `rustd/crates/{afd_api_tenant/src/handler/auth/session,afd_api_runner/src/handler/runner/enrolment}.rs` | EDIT | published descriptions name no identity vendor |
 | `rustd/crates/{afd_api,afd_tenant}/tests/**` | CREATE/EDIT | the access suites; the harness decides from real rows on request; an uncompiled harness file removed |
-| `rustd/crates/afd_auth/src/scope.rs` | EDIT | `workspace:any` → `workspace-any:read` + `workspace-any:write` |
+| `rustd/crates/afd_auth/src/scope.rs` | EDIT | add `workspace-any:read` beside `workspace:any`, whose meaning is unchanged |
 | `rustd/crates/afd_http/src/auth/ownership.rs` | EDIT | role gate; read-only crossing admits safe methods only; audit fields |
 | `rustd/crates/afd_api/src/router/mod.rs` | EDIT | the ownership layer receives the route's scopes, which the role gate reads |
 | `rustd/crates/afd_http/src/services/tenant.rs` | EDIT | `WorkspaceOwnership` returns the access record |
@@ -87,14 +87,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/settings/members/` | CREATE | owner: invite, copy link, pending invites, members, remove |
 | `ui/packages/app/app/(dashboard)/invites/` | CREATE | invitee: accept or decline |
 | `ui/packages/app/app/(dashboard)/admin/workspaces/` | CREATE | platform directory |
-| `docs/AUTH.md` | EDIT | memberships, roles, scope split, operator bundle |
+| `docs/AUTH.md` | EDIT | memberships, roles, the read-only crossing scope |
 | `playbooks/operations/admin_bootstrap/{001_playbook.md,admin_bootstrap_test.sh}` | EDIT | the operator bundle names the split scopes |
 | `~/Projects/docs` (branch `chore/m208-team-accounts-changelog`) | EDIT | members and invites pages, changelog `<Update>` |
 | `rustd/crates/{afd_crypto,afd_tenant,afd_fleet_lifecycle,afd_vault,afd_admin,afd_admission,afd_approval,afd_billing,afd_connector,afd_cron,afd_credential,afd_dragonfly,afd_fleet,afd_gate,afd_http,afd_ingress,afd_library,afd_runner}/{src,tests}/**` | EDIT | hand-rolled Rust cleanup Indy asked for in session (Discovery): one identifier mint, sqlx's unique-violation check, `error_lifts!`, dead kinds removed |
 
 ## Applicable Rules
 
-- **`docs/greptile-learnings/RULES.md`** — UFS (role, via and scope strings as named constants), NDC and NLR (retire `workspace:any` with no alias), NLG, ORP (orphan sweep for the old scope), FLL (split before 350 lines), ECL (an outage never answers "not a member").
+- **`docs/greptile-learnings/RULES.md`** — UFS (role, via and scope strings as named constants), NDC and NLR (no alias scopes), NLG, FLL (split before 350 lines), ECL (an outage never answers "not a member").
 - `docs/REST_API_DESIGN_GUIDELINES.md` — new routes, six-place registration, problem bodies, 403 parity with `UZ-AUTH-001`.
 - `docs/SCHEMA_CONVENTIONS.md` and the static-strings rule — `role` and `email_status` stay `TEXT` with no `CHECK`; vocabularies live in constants, overriding the "gains a constraint" note in `schema/230_memberships.sql`.
 - `docs/RUST_ERROR_STANDARD.md` — new modules declare `ErrorKind` behind `error_shell!`.
@@ -155,7 +155,7 @@ Owners get Settings → Members (invite, copy link, pending invites, members, re
 
 ### §5 — Platform operators: find any workspace; read, and act when granted
 
-`workspace-any:read` admits only `GET` and `HEAD` across tenants; `workspace-any:write` admits every method. Each crossing emits `cross_tenant_workspace_override` before it is honoured, now with `access=read|write` and the method. `GET /v1/admin/workspaces` lists every workspace for either scope. Before deploy Indy replaces `workspace:any` with `workspace-any:write` on the platform operator at the identity provider; until then that operator crosses no tenant. The workspace detail's `access` drives the banner and, for read, hides every write control.
+`workspace-any:read` admits only `GET` and `HEAD` across tenants; `workspace:any` admits every method, as it does today. Each crossing emits `cross_tenant_workspace_override` before it is honoured, now with `access=read|write` and the method. `GET /v1/admin/workspaces` lists every workspace for either scope. The operator's identity-provider scopes need no edit (Discovery). The workspace detail's `access` drives the banner and, for read, hides every write control.
 
 - **Dimension 5.1** — a read-only operator streams and reads another tenant's fleet; any write is `403 UZ-AUTH-027` → Test `test_platform_read_is_read_only`
 - **Dimension 5.2** — a write operator steers another tenant's fleet, attributed to the operator → Test `test_platform_write_acts_attributed`
@@ -165,9 +165,9 @@ Owners get Settings → Members (invite, copy link, pending invites, members, re
 
 ### §6 — Documentation
 
-`docs/AUTH.md` (memberships, roles, scope split, operator bundle); public members and invites pages and the changelog on the docs branch.
+`docs/AUTH.md` (memberships, roles, the read-only crossing scope); public members and invites pages and the changelog on the docs branch.
 
-- **Dimension 6.1** — no page in `docs/` or `public/openapi.json` names `workspace:any` → Test `test_docs_name_scope_split`
+- **Dimension 6.1** — `docs/AUTH.md`'s scope table names `workspace-any:read` beside `workspace:any` → Test `test_docs_name_read_only_scope`
 
 ## Interfaces
 
@@ -239,7 +239,7 @@ Errors: UZ-AUTH-026 role refused (403) · UZ-AUTH-027 read-only platform access 
 | 5.3 | unit | `test_platform_crossing_audited` | crossing → one event with access and method, before the handler |
 | 5.4 | integration | `test_admin_directory_scoped` | either scope → all tenants' workspaces; neither → `403 UZ-AUTH-022` |
 | 5.5 | e2e | `test_read_only_banner_hides_controls` | `can_write:false` → banner, no composer, no write button |
-| 6.1 | unit | `test_docs_name_scope_split` | grep of `docs/` and `public/openapi.json` → no `workspace:any` |
+| 6.1 | unit | `test_docs_name_read_only_scope` | `docs/AUTH.md` scope table → rows for both `workspace:any` and `workspace-any:read` |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -248,7 +248,7 @@ Errors: UZ-AUTH-026 role refused (403) · UZ-AUTH-027 read-only platform access 
 | R1 | Members reach and are bounded (§2, §3) | `make test-integration-rustd` | exit 0 | P0 | |
 | R2 | Invite and accept journeys (§4) | `cd ui/packages/app && bunx playwright test --config=playwright.acceptance.config.ts --project=journeys -g "test_invitee_accept_journey\|test_members_page_owner_journey"` | `2 passed` | P0 | |
 | R3 | Operator read is read-only, write is audited (§5) | `cd rustd && cargo test -p afd_http --all-features platform_` | exit 0 | P0 | |
-| R4 | Old scope gone | `git grep -n "workspace:any" -- . ':!docs/v2/done'` | 0 matches | P0 | |
+| R4 | Read-only scope documented | `git grep -c "workspace-any:read" -- docs/AUTH.md` | ≥ 1 | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the three M208 Files Changed tables | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -270,10 +270,7 @@ N/A — no files deleted.
 
 **2. Orphaned references — zero remaining imports/uses.**
 
-| Deleted symbol/import | Grep | Expected |
-|-----------------------|------|----------|
-| `Scope::WorkspaceAny` | `git grep -n "WorkspaceAny" rustd/` | 0 matches |
-| `workspace:any` | `git grep -n "workspace:any" -- . ':!docs/v2/done'` | 0 matches |
+N/A — no symbol is deleted: `workspace:any` keeps its meaning (Discovery).
 
 ## Out of Scope
 
@@ -291,11 +288,11 @@ N/A — no files deleted.
 2. **Preserved user behaviour** — a solo account works exactly as today: same list, refusals, stream and steer; API keys and the CLI unchanged.
 3. **Optimal-way check** — the optimal shape adds a viewer role and per-workspace grants; neither blocks a two-person team, and both extend the same access record later.
 4. **Rebuild-vs-iterate** — iterate: `core.memberships` was shaped for teams at signup; access and roles extend one existing seam.
-5. **What we build** — membership access with two roles, invites, members and invites pages, grouped switcher, the split operator scope, directory and banner.
+5. **What we build** — membership access with two roles, invites, members and invites pages, grouped switcher, a read-only operator scope, directory and banner.
 6. **What we do NOT build** — viewer role, per-workspace invites, cross-account API keys, ownership transfer.
 7. **Fit with existing features** — the steer path, pending-sends ledger and chat hold are unchanged; M208_002 names the senders this creates.
 8. **Surface order** — User Interface (UI) first: inviting and accepting are dashboard acts; the API is public and documented; the CLI follows later.
-9. **Dashboard restraint** — no Members entry for a member, no invite notice without a pending invite, no directory without a `workspace-any` scope, no write control on read-only access.
+9. **Dashboard restraint** — no Members entry for a member, no invite notice without a pending invite, no directory without `workspace:any` or `workspace-any:read`, no write control on read-only access.
 10. **Confused-user next step** — a refused accept says to sign in with the address the invite was sent to, without naming it; a member refused an owner action reads "Only the account owner can do this."
 
 ## Decomposition & alternatives (patch vs refactor)
@@ -310,6 +307,7 @@ N/A — no files deleted.
 - **Metrics review** — pending.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
+- **Operator scope** — Sep 30, 2026, Indy via AskUserQuestion: "Keep workspace:any". It keeps its read-and-write crossing, so the operator's identity-provider profile needs no edit and no deploy step; `workspace-any:read` is added for read-only. This supersedes the rename to `workspace-any:write` and its pre-deploy step.
 - **§4 source corrections** — Sep 30, 2026: every `/v1/tenants/me/*` route resolves the caller's own account (`afd_api_tenant/src/handler/tenant/mod.rs:96-111`) and signup makes every person its owner, so Settings → Members always shows; restraint 9's "no Members entry for a member" has no case. Interfaces has no decline route, so the Invites page offers accept only. The switcher labels accounts only once a person holds more than one, keeping Dimension 2.6's solo view. The acceptance env targets the shared dev API (`ui.env.local`), which runs `main`, so R2 runs after this branch deploys there.
-- **§3 source corrections** — Sep 30, 2026: the `UZ-INV-002` refusal names no address (`afd_core/src/problem/invite.rs:27`), since the link may reach a third party and naming the address would leak it; Product Clarity 10 amended. A revoked stream ends with `event: access_revoked`, data `{kind, error_code:"UZ-AUTH-001"}` (`afd_api_tenant/src/handler/stream.rs:41-43`). Open for Indy: invite create takes no `Idempotency-Key` (`docs/REST_API_DESIGN_GUIDELINES.md:142`); a retry after a lost response is `409 UZ-INV-003`. Proposed: a repeat create returns the pending invite, as the runner report's lease id does (`afd_api_runner/src/handler/runner/report.rs:69`).
+- **§3 source corrections** — Sep 30, 2026: the `UZ-INV-002` refusal names no address (`afd_core/src/problem/invite.rs:27`), since the link may reach a third party and naming the address would leak it; Product Clarity 10 amended. A revoked stream ends with `event: access_revoked`, data `{kind, error_code:"UZ-AUTH-001"}` (`afd_api_tenant/src/handler/stream.rs:41-43`). Invite create takes no `Idempotency-Key` (`docs/REST_API_DESIGN_GUIDELINES.md:142`): a repeat create answers `409 UZ-INV-003` and the pending list offers the link; Indy kept the 409 over returning the pending invite (AskUserQuestion, Sep 30, 2026: "Keep the 409").
 - **Hand-rolled Rust cleanup** — Sep 30, 2026, Indy in session: "Are there any handrolled rust code? where you can use the afd_core or external crates, if yes fix them", then "Are there any duplicate handrolled code you have, if yes fix them." and "and clean it up". Its own commit on this branch: `Entropy::uuid7` replaces every draw-then-encode copy, `sqlx::error::DatabaseError::is_unique_violation` replaces the hand-written `23505` checks, `afd_tenant` lifts through `error_lifts!`, the identifier kinds that became dead are removed, and `DETAIL_NOT_DASHBOARD` drops the identity vendor's name.
