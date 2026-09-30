@@ -24,7 +24,9 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_core::error_code;
-use afd_wire::event::{SteerAccepted, SteerRequest, operation_id_usable};
+use afd_events::Steered;
+use afd_wire::event::{EventType, SteerAccepted, SteerRequest, operation_id_usable};
+use afd_wire::tail::TailFrame;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -36,7 +38,7 @@ use afd_fleet_lifecycle::FleetStatus;
 
 use crate::auth::{PersonIdentity, WorkspaceContext};
 use crate::handler::Refusal;
-use crate::services::{FleetSteering as _, Services, WorkspaceFleets as _};
+use crate::services::{FleetSteering, Services, WorkspaceFleets as _};
 
 use super::detail::{FleetPath, parse_fleet_id};
 
@@ -135,7 +137,7 @@ pub(crate) async fn steer<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_STEER))?
         .ok_or_else(|| Refusal::coded(error_code::AGENTSFLEET_NOT_FOUND, DETAIL_FLEET_NOT_FOUND))?;
-    let request_json = stored_payload(steer.message)?;
+    let request_json = stored_payload(&steer.message)?;
     let operation_id = steer.operation_id.as_deref();
     let (fleet, workspace) = (fleet.as_str(), owned.workspace.as_str());
     let steering = services.steering();
@@ -159,7 +161,34 @@ pub(crate) async fn steer<D: Services>(
         .append(fleet, workspace, &actor, &request_json, operation_id)
         .await
         .map_err(refuse_steer)?;
-    Ok(accepted(steered.event_id, steered.replayed))
+    announce_admitted(steering, fleet, &steered, &actor, &steer.message).await;
+    let replayed = steered.replayed();
+    Ok(accepted(steered.event_id, replayed))
+}
+
+/// Tells every screen on the fleet the message was accepted, before the 202.
+///
+/// Once per message: a repeat carries no admission instant, because its first
+/// send announced it. Best-effort, like every tail frame — a queue that will
+/// not take it is logged by the publisher and the steer is still accepted.
+async fn announce_admitted(
+    steering: &impl FleetSteering,
+    fleet: &str,
+    steered: &Steered,
+    actor: &str,
+    message: &str,
+) {
+    let Some(created_at) = steered.admitted_at else {
+        return;
+    };
+    let frame = TailFrame::EventAdmitted {
+        event_id: Cow::Borrowed(&steered.event_id),
+        actor: Cow::Borrowed(actor),
+        event_type: Cow::Borrowed(EventType::Chat.as_str()),
+        message: Cow::Borrowed(message),
+        created_at,
+    };
+    steering.announce(fleet, &frame).await;
 }
 
 /// The body the ledger stores for a message.
@@ -168,9 +197,9 @@ pub(crate) async fn steer<D: Services>(
 /// CALLER names its retry — and not something the fleet reads, so putting it in
 /// the body would hand every run a field it has no use for and change the bytes
 /// a replay re-appends. The ledger holds it where it belongs, as `producer_key`.
-fn stored_payload(message: Cow<'_, str>) -> Result<String, Refusal> {
+fn stored_payload(message: &str) -> Result<String, Refusal> {
     serde_json::to_string(&SteerRequest {
-        message,
+        message: Cow::Borrowed(message),
         operation_id: None,
     })
     .map_err(|_unencodable| Refusal::malformed(DETAIL_MALFORMED_JSON))

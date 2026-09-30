@@ -25,6 +25,9 @@ pub struct Repeated {
     pub digest: String,
     /// The fleet the row was admitted for.
     pub fleet: String,
+    /// Epoch milliseconds the row was admitted — the instant the logical id
+    /// spells, and the event's own `created_at`.
+    pub created_at: i64,
 }
 
 impl Admissions {
@@ -51,6 +54,7 @@ impl Admissions {
                 id: logical_id(created_at, seq),
                 digest,
                 fleet,
+                created_at,
             })
         })
         .transpose()

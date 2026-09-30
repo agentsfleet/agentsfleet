@@ -107,7 +107,7 @@ async fn test_replay_bypasses_fleet_budget() {
         retried,
         Steered {
             event_id: admitted.clone(),
-            replayed: true,
+            admitted_at: None,
         },
         "a retry of an admitted message must not be refused by the budget it \
          already spent -- the sender would read it as never delivered"
