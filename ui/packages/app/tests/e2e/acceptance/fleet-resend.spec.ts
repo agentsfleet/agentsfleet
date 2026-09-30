@@ -1,11 +1,12 @@
 /** A send whose answer never reached the page, the Claude.ai way: the row
  * leaves the thread, the text returns to the composer, and Resend delivers it
- * through the real Server Action under the operation id it was first sent with
+ * through the real steer route under the operation id it was first sent with
  * — so the daemon answers the first admission's event instead of running it
  * twice. Proven in the same page, and after a reload. */
 import type { Page, Request, Route } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { v7 } from "uuid";
+import { steerMessagesUrl } from "@/lib/api/fleets-types";
 import { clientFor } from "./fixtures/api-client";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
@@ -21,10 +22,8 @@ const NOTICES_LABEL = "Unsent messages";
 const SEND_LABEL = "Send";
 const RESEND_LABEL = "Resend";
 const SEND_UNCONFIRMED = "Couldn't confirm this message was sent.";
-const SERVER_ACTION_HEADER = "next-action";
 const POST = "POST";
 const UUID_V7 = /[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/;
-const UUID_V7_ALL = new RegExp(UUID_V7.source, "g");
 // A logical event id as the daemon spells it: `<millis>-<seq>`.
 const EVENT_ID = /\d{13}-\d+/;
 const STORAGE_KEY_PREFIX = "agentsfleet:pending-sends";
@@ -35,7 +34,7 @@ type Steers = { lostAnswers: number; operationIds: string[]; eventIds: string[] 
 
 type ResendPage = { workspaceId: string; fleetId: string; href: string; message: string };
 
-// A seeded fleet, and every steer Server Action seen: each goes through to the
+// A seeded fleet, and every steer POST seen: each goes through to the
 // daemon, and its operation id and the event id the daemon answered are read
 // off the wire. With `loseFirstAnswer`, the first steer is admitted but its
 // answer never reaches the page — the acknowledgement lost on the way back.
@@ -49,10 +48,11 @@ async function withResendPage(
   const href = workspaceHref(workspaceId, `fleets/${fleet.id}`);
   const message = `resend probe ${crypto.randomUUID().slice(0, 8)}`;
   const steers: Steers = { lostAnswers: 0, operationIds: [], eventIds: [] };
-  await page.route((url) => url.pathname === href, async (route) => {
+  const steerPath = steerMessagesUrl(workspaceId, fleet.id);
+  await page.route((url) => url.pathname === steerPath, async (route) => {
     const request = route.request();
     if (!isSteer(request, message)) return route.fallback();
-    steers.operationIds.push(operationIdOf(request, [workspaceId, fleet.id]));
+    steers.operationIds.push(steerBody(request).operation_id ?? "");
     return answerThrough(route, steers, loseFirstAnswer);
   });
   try {
@@ -76,18 +76,16 @@ async function answerThrough(route: Route, steers: Steers, loseFirstAnswer: bool
   return route.fulfill({ response });
 }
 
-function isSteer(request: Request, message: string): boolean {
-  return request.method() === POST
-    && request.headers()[SERVER_ACTION_HEADER] !== undefined
-    && (request.postData() ?? "").includes(message);
+// The steer is a same-origin JSON POST (`lib/api/fleet-steer.ts`); its body
+// names the text and the operation id outright.
+type SteerBody = { message?: string; operation_id?: string };
+
+function steerBody(request: Request): SteerBody {
+  return (request.postDataJSON() ?? {}) as SteerBody;
 }
 
-// The Server Action's arguments are the workspace, the fleet, the text and the
-// operation id — and the first two are UUID v7 too, so the id is the one v7
-// that names neither.
-function operationIdOf(request: Request, named: readonly string[]): string {
-  const ids = (request.postData() ?? "").match(UUID_V7_ALL) ?? [];
-  return ids.find((id) => !named.includes(id)) ?? "";
+function isSteer(request: Request, message: string): boolean {
+  return request.method() === POST && steerBody(request).message === message;
 }
 
 function chatParts(page: Page) {
