@@ -150,7 +150,7 @@ The events list, the workspace stream, the fleet events list and the fleet strea
 The reconnect notice uses `Alert variant="warning"` and is laid over the history from the sticky footer, so its arrival never shifts the transcript. The Working, Queued and gone rows get a live review the agent runs and verifies.
 
 - **Dimension 7.1** — the reconnect notice is a warning, announced as `alert`, and the transcript does not move when it appears → Test `test_reconnect_notice_warns_in_place` — DONE
-- **Dimension 7.2** — a live review of Working, Queued and gone rows has every finding fixed or listed → Test `agent_live_state_review` (the agent re-runs it and records the evidence in Discovery)
+- **Dimension 7.2** — a live review of Working, Queued and gone rows has every finding fixed or listed → Test `agent_live_state_review` (the agent re-runs it and records the evidence in Discovery) — DONE
 
 ### §8 — The user docs say what changed
 
@@ -302,6 +302,8 @@ make test-unit-runner: zig build --build-file build_runner.zig test   (part of t
 > Indy (2026-09-30): "Well dont add the test-unit-runner in test.yml job" and "you can run it locally prior to push" — §6 has no CI job.
 > Indy (2026-09-30): "keep it as is or make a better general human friendly name" — context: FINDING-004; kept as is. Indy also confirmed a fold may wobble ≤ 40 px and must return, and that short threads start at the top of the panel.
 > Indy (2026-09-30): "7.2 make it agent-verified, i donot have time to eyeball. Only add that if you verified it."
+- **Agent live review (Sep 30, 2026, 7.2)** — re-run on `next dev` against DEV's API, frames through the page's `EventSource` plus one real Send; report `~/.gstack/projects/agentsfleet-agentsfleet/designs/design-audit-20260930/design-audit-localhost.md`, screenshots `live2-*.png`. Working (spinner `aria-hidden`), Thinking (opens after 400 ms), Thought + streaming answer, Completed, failed (destructive mark), Queued, the gone row (reached live: a failed run's detail read 404'd), and the offline warning (`alert`, 8.4:1 on its fill) all render as specified. Fixed: 001–003, 005–007, 012 (a teammate's turn yanking the reader). Listed: 004 (Indy: kept), 008 (model output), 010 (arrival cue slides the thread 37 px, pre-existing chrome), 011 (a refused run's completion carries no reply — `pull/refuse.rs:105` — so it flashes "Loading final reply" under the failure for one detail read).
+- **§3 measured, decision pending (Sep 30, 2026)** — `@assistant-ui/react-markdown` 0.14.17 re-parses the whole text part on every change (`MarkdownText.js`: `MarkdownRenderer` is `memo`'d on the full text; it memoises components, not blocks). On the 20 KB, 400-flush corpus: block path 376 ms, library 8,114 ms (memoised components) / 8,133 ms (default), whole re-parse 8,366 ms. §3 as written trades the tail-only parse for a ~21× slower stream; the swap is not made and Indy is asked whether to cut §3.
 - **Metrics review** — no analytics/funnel playbook update required: no event is added, renamed or removed.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
