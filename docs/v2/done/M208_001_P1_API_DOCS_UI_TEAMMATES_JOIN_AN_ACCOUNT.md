@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M208
 **Workstream:** 001
 **Date:** Sep 30, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — nobody but a workspace's creator can open it today; a team cannot share one fleet
 **Categories:** API, DOCS, UI
 **Batch:** B1 — first of three M208 workstreams; all three ship in one Pull Request (PR) (Indy, Sep 30, 2026)
 **Branch:** `feat/m208-team-accounts`
-**Baseline revision:** `f90ed13159ff5a405b28ce3fdbe0e6ab17c4a012`
+**Baseline revision:** `3b61121c3c7da8b97cc348cca1d1dbfb99c3bce4`
 **Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** none (M207_005 merged: `614813f12`)
@@ -251,11 +251,14 @@ Errors: UZ-AUTH-026 role refused (403)
 
 **1. Orphaned files — deleted from disk and git.**
 
-N/A — no files deleted.
+| File | Replaced by |
+|------|-------------|
+| `rustd/crates/afd_tenant/src/team/accept.rs` | `team/invitation/{mod,lifecycle}.rs` |
+| `rustd/crates/afd_tenant/src/team/invite.rs` | `team/invitation/{mod,lifecycle}.rs` |
 
 **2. Orphaned references — zero remaining imports/uses.**
 
-N/A — no symbol is deleted: `workspace:any` keeps its meaning (Discovery).
+`git grep -nE "team::(accept|invite)\b|LockedInvite|Standing\b|is_name_conflict" -- rustd` → 0 matches (Oct 1, 2026). `workspace:any` keeps its meaning (Discovery).
 
 ## Out of Scope
 
@@ -292,8 +295,8 @@ N/A — no symbol is deleted: `workspace:any` keeps its meaning (Discovery).
 ## Discovery (consult log)
 
 - **Consults** — Sep 30, 2026, Indy via AskUserQuestion: "One spec, one PR" (carried as three workstream specs in one PR because of the 320-line cap); an invite grants "John's whole account"; roles "Owner + member"; operators "See and act, audited, but must allow adding write or act as well, need to know the design of this" (§5's scope split). Then: "I want the invite emails into an account" and a send-time broadcast "is also a must have" (M208_003, M208_002); email provider "Resend (Recommended)". Source finding: access by `core.users.tenant_id` (`afd_tenant/src/sql/workspace.rs:38-44`).
-- **Metrics review** — pending.
-- **Skill-chain outcomes** — pending.
+- **Metrics review** — at the Pull Request boundary, with the skill chain.
+- **Skill-chain outcomes** — `/orly-write-unit-test` and `/review` run once at the Pull Request boundary over the whole M208 diff, since the three workstreams ship in one Pull Request (Batch B1); outcomes land in the Pull Request Session Notes.
 - **Deferrals** — none. The changelog is skipped, not deferred: Sep 30, 2026, Indy: "Skip change log".
 - **Operator scope** — Sep 30, 2026, Indy via AskUserQuestion: "Keep workspace:any". It keeps its read-and-write crossing, so the operator's identity-provider profile needs no edit and no deploy step; `workspace-any:read` is added for read-only. This supersedes the rename to `workspace-any:write` and its pre-deploy step.
 - **No read-only crossing** — Sep 30, 2026, Indy: "I want to keep it simple and provide write both for the invitee accepted + platform admin with the scope workspace:Any". `workspace-any:read`, `UZ-AUTH-027`, the workspace detail's `access`, the banner and the hidden composer are dropped; §5 keeps the directory and the audit event, which moves to the ownership layer to carry the method. Asked again the same day, Indy kept account-wide invites ("Keep whole account").
@@ -305,3 +308,4 @@ N/A — no symbol is deleted: `workspace:any` keeps its meaning (Discovery).
 - **R2 after merge** — Sep 30, 2026, Indy via AskUserQuestion: "Run R2 after merge". The journeys call the shared dev API, which runs `main`; a branch deploy (`gh workflow run deploy-dev.yml --ref feat/m208-team-accounts`) was offered and declined. The Pull Request opens without R2 under an Orly-Override Indy records; R2 runs once `main` deploys to dev, and Dimensions 4.1 and 4.2 are graded then.
 - **Members page redesign** — Oct 1, 2026, Indy: "Keep things simple and follow our standard design in the UI (table, buttons and so on), iconify and refer the existing and design it. Less clutter"; via AskUserQuestion, "One table (recommended)"; then "use the ago format, and ensure the column is named accordingly? Time i think?". The page follows API Keys (`settings/api-keys/components/ApiKeysView.tsx`): one section, a `+ Invite` dialog behind a `next/dynamic` shim, one `DataTable` holding people and `invited` rows, `IconAction` row actions, and a Time column in the relative format. Members gain `joined_at` (`core.memberships.created_at`) for that column; the route is new on this branch, so no client depended on the old shape. The Invites page's accept became a check `IconAction`, and its Expires column became Time.
 - **Reuse, behaviour and query cost** — Oct 1, 2026, Indy: "Replace any handrolled rust code with crates and afd_core or refer other on how its being done"; "any repeated code is avoided. Handrolled coded is avoided if there is an existing code reuse in afd_core (enrich reusability) or via any popular battle tested create"; "I think you can have a invitation.rs with behavior to accept, revoke, resend etc of invites. I dont know what is a LockedInvite"; "Ensure the queries are optimized, and performant concurrent and not bloated with joins or orderby group by for no reason." Outcomes: `Role` parses through `afd_core::spelling`; rows read by name (`try_get`), single columns by `query_scalar`; `afd_db::constraint::violates_unique` replaces three copies; `team/invitation/` replaces `LockedInvite`, `Standing` and the owner-side `Invite` with one `Invitation` and its `Acceptance`. `EXPLAIN` over 40,000 seeded invites showed `idx_invites_tenant_id_created_at` never chosen (the pending list reads `uq_invites_tenant_id_email_pending`, 4 buffers), so it is dropped; the accounts statement's `ORDER BY t.id` had no reader and is dropped; two sort keys an `AS id` alias had turned into text sorts are qualified. `test_team_reads_plan_as_index_probes` pins the five team reads to index probes under custom and generic plans; a mutation that defeats the pending index fails it.
+- **Close** — Oct 1, 2026: closed per Indy's pick "Close now, R2 gates PR (recommended)". Dimensions 4.1 and 4.2 are graded after merge (R2 above). `Baseline revision:` moves from `f90ed13` to `3b61121c3`, the merge-base once `main` was merged into the branch, so the Test Delta compares like with like; the baseline lanes run before the Pull Request. M208_002 and M208_003 gain `Folded-into: M208_001` at their own close, so `orly gate pr` finds one owner among the branch's `done/` specs. §6's public page is `workspaces/teammates.mdx` on the docs branch (`2adea19`), with the error codes and the Workspaces entry; its Invites and Members API reference groups are stashed in that worktree, since the docs pre-commit drift check refuses routes `main` does not serve yet, and land once this Pull Request merges.
