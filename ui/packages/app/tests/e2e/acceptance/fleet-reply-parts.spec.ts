@@ -1,6 +1,6 @@
-/** A reply streamed over time into the real page, frame by frame from a local
- * server: the Thought chip live then folded, a timed tool row, and what the
- * reply costs the main thread while it streams. */
+/** A reply streamed over time into the real page, frame by frame through the
+ * page's own EventSource: the Thought chip live then folded, a timed tool row,
+ * and what the reply costs the main thread while it streams. */
 import type { Locator, Page } from "@playwright/test";
 import type { EventsPage } from "@/lib/api/events";
 import { expect, test } from "@playwright/test";
@@ -11,7 +11,7 @@ import { workspaceHref } from "./fixtures/nav";
 import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { sseFrame as frame } from "./fixtures/sse";
-import { scheduledSseServer, type ScheduledStream, type TimedFrame } from "./fixtures/sse-server";
+import { pageEventStream, type ScheduledStream, type TimedFrame } from "./fixtures/page-event-stream";
 
 const FLEET_PREFIX = "reply-parts-spec-";
 const EVENT_ID = "9200000000000-1";
@@ -109,7 +109,9 @@ test("test_settled_row_keeps_its_focus_ring", async ({ page }) => {
     await page.keyboard.press("Tab");
     await expect(copy).toBeFocused();
 
-    const row = chat.locator('[data-settled="true"]').filter({ has: copy });
+    // `has` runs inside each row, so its locator starts from the page, not
+    // the chat: a chat-rooted one looks for "Fleet chat" within the row.
+    const row = chat.locator('[data-settled="true"]').filter({ has: page.getByRole("button", { name: COPY_REPLY }) });
     const [control, painted] = await Promise.all([copy.boundingBox(), row.boundingBox()]);
     expect(control).not.toBeNull();
     expect(painted).not.toBeNull();
@@ -121,17 +123,16 @@ test("test_settled_row_keeps_its_focus_ring", async ({ page }) => {
   });
 });
 
-// A seeded fleet whose live stream the local server writes; history reads
-// empty, so every row on screen came from the frames a test sends.
+// A seeded fleet whose live stream the test writes; history reads empty, so
+// every row on screen came from the frames a test sends.
 async function withReplyPage(page: Page, body: (reply: ReplyPage) => Promise<void>): Promise<void> {
   const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
   const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, { name: `${FLEET_PREFIX}${crypto.randomUUID()}` });
   const streamPath = `/live/v1/workspaces/${workspaceId}/fleets/${fleet.id}/events/stream`;
   const historyPath = streamPath.replace(/\/stream$/, "");
-  const stream = await scheduledSseServer();
+  const stream = await pageEventStream(page, streamPath);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.route((url) => url.pathname === streamPath, (route) => route.continue({ url: stream.url }));
   await page.route((url) => url.pathname === historyPath, (route) => route.fulfill({ json: EMPTY_HISTORY }));
   try {
     await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
@@ -143,7 +144,6 @@ async function withReplyPage(page: Page, body: (reply: ReplyPage) => Promise<voi
     await body({ chat, stream });
     expect(errors).toEqual([]);
   } finally {
-    await stream.close();
     await page.goto("about:blank");
     await page.unrouteAll({ behavior: "wait" });
     await cleanWorkspaceFleets(FIXTURE_KEY.regular, workspaceId, FLEET_PREFIX);
