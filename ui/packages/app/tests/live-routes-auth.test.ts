@@ -28,7 +28,8 @@ const WORKSPACE_ID = "ws_1";
 const FLEET_ID = "fleet_1";
 const UNREGISTERED_AUTH_CODE = "UZ-401";
 const APP_ROOT = join(__dirname, "..");
-const SCANNED_DIRS = ["app", "components", "lib"];
+// Tests too: a test pinning the old code keeps it alive as an expectation.
+const SCANNED_DIRS = ["app", "components", "lib", "tests"];
 const SOURCE_FILE = /\.(ts|tsx)$/;
 
 type Route = (req: Request, ctx: { params: Promise<Record<string, string>> }) => Promise<Response>;
@@ -54,7 +55,9 @@ describe("same-origin event routes — signed out", () => {
   });
 
   it("test_no_unregistered_auth_code", () => {
+    // This file names the code it looks for, and only this file may.
     const hits = SCANNED_DIRS.flatMap((dir) => sourceFiles(join(APP_ROOT, dir)))
+      .filter((file) => file !== __filename)
       .filter((file) => readFileSync(file, "utf8").includes(`"${UNREGISTERED_AUTH_CODE}"`));
     expect(hits).toEqual([]);
   });
