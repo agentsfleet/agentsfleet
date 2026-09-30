@@ -1,8 +1,8 @@
 /** The thread holds the reader's place: a Thought folding, a reply settling,
- * a send, another sender's turn and the offline notice each leave the view
- * where it was. Frames go into the page's own
- * EventSource, so a reply can be held mid-run, which is when the thread
- * anchors its turn and keeps room below it. */
+ * a send, another sender's turn, the operator's own turn from another tab and
+ * the offline notice each leave the view where it was. Frames go into the
+ * page's own EventSource, so a reply can be held mid-run, which is when the
+ * thread anchors a turn this tab sent and keeps room below it. */
 import type { Locator } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { FRAME_KIND } from "@/lib/api/events-types";
@@ -34,6 +34,8 @@ const SEND_SAMPLE_MS = 1_500;
 // Frames of unchanged scroll height that count as a thread at rest.
 const STILL_FRAMES = 10;
 const SENT = "anchor probe";
+// The turn the fold and settle journeys run: sent here, so the thread anchors it.
+const OWN_TURN = "check every signature";
 const NOTICE = "fleet-connection-notice";
 const HEADER = "fleet-chat-header";
 // Six failed connects report the stream offline: five fast attempts backing off
@@ -42,7 +44,8 @@ const OFFLINE_WITHIN_MS = 60_000;
 const OFFLINE_TEST_MS = 120_000;
 
 test("test_fold_at_bottom_holds_view", async ({ page }) => {
-  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream, ownActor }) => {
+  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream, ownActor, sendOwn }) => {
+    await sendOwn(OWN_TURN, EVENT_ID);
     await stream.send(liveReply(Date.now(), ownActor));
     await stream.send([answer(), complete(ownActor)]);
     const thought = chat.getByRole("button", { name: THOUGHT });
@@ -57,11 +60,12 @@ test("test_fold_at_bottom_holds_view", async ({ page }) => {
 });
 
 test("test_settle_holds_view", async ({ page }) => {
-  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream, ownActor }) => {
+  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream, ownActor, sendOwn }) => {
+    await sendOwn(OWN_TURN, EVENT_ID);
     await stream.send(liveReply(Date.now(), ownActor));
     await expect(chat.getByRole("button", { name: /^Thinking/ })).toHaveAttribute("aria-expanded", "true");
-    // The reply's own row: a steer frame without text draws no operator
-    // bubble, and the Thought folds inside this row, below its top.
+    // The reply's own row, under the operator's bubble: the Thought folds
+    // inside it, below its top.
     const replyRow = chat.locator('[data-role="assistant"]').last();
     const tops = await sampleTop(replyRow, SAMPLE_MS, () => stream.send([answer(), complete(ownActor)]));
     expectHeld(tops);
@@ -103,12 +107,15 @@ test("test_jump_to_latest_after_anchor", async ({ page }) => {
 // leaves a reader in the history where they are.
 test("test_background_turn_leaves_history_alone", async ({ page }) => {
   await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream }) => {
-    await readingHistory(chat, stream);
-    const reading = chat.getByText("Settled answer 1", { exact: true });
-    const tops = await sampleTop(reading, SEND_SAMPLE_MS, () => stream.send(liveReply(Date.now(), TEAMMATE)));
-    await test.info().attach("background-turn-tops", { contentType: "application/json", body: JSON.stringify(tops.map(Math.round)) });
-    expect(Math.max(...tops.map((top) => Math.abs(top - (tops[0] ?? top))))).toBeLessThanOrEqual(SETTLED_PX);
-    await expect(chat.getByRole("button", { name: JUMP_TO_LATEST })).toBeVisible();
+    await expectHistoryHeld(chat, stream, TEAMMATE, "background-turn-tops");
+  });
+});
+
+// The operator's own account sending from another tab reaches this one by
+// frame alone: this tab's reader stays in the history too.
+test("test_other_tab_turn_leaves_history_alone", async ({ page }) => {
+  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream, ownActor }) => {
+    await expectHistoryHeld(chat, stream, ownActor, "other-tab-turn-tops");
   });
 });
 
@@ -139,6 +146,17 @@ test("test_reconnect_notice_warns_in_place", async ({ page }) => {
     expect(rowBottom).toBeLessThanOrEqual(noticeTop);
   });
 });
+
+// A reader back at the first settled turn while `actor`'s reply starts
+// running: the turn they are reading never moves.
+async function expectHistoryHeld(chat: Locator, stream: ScheduledStream, actor: string, attachment: string): Promise<void> {
+  await readingHistory(chat, stream);
+  const reading = chat.getByText("Settled answer 1", { exact: true });
+  const tops = await sampleTop(reading, SEND_SAMPLE_MS, () => stream.send(liveReply(Date.now(), actor)));
+  await test.info().attach(attachment, { contentType: "application/json", body: JSON.stringify(tops.map(Math.round)) });
+  expect(Math.max(...tops.map((top) => Math.abs(top - (tops[0] ?? top))))).toBeLessThanOrEqual(SETTLED_PX);
+  await expect(chat.getByRole("button", { name: JUMP_TO_LATEST })).toBeVisible();
+}
 
 // Thirty settled turns, the reader scrolled back to the first: the Jump to
 // latest control shows once the thread knows the reader left the bottom.
