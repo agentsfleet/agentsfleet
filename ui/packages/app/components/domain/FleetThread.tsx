@@ -51,8 +51,8 @@ export type FleetThreadProps = {
  * `/live` steer route); `fleetMessageRenderers` paints each durable event as the
  * approved conversation row.
  *
- * The runtime is told the thread runs while a reply to the viewer's own turn
- * does, and every send goes through a queue (`useFleetSteerQueue`), so a run
+ * The runtime is told the thread runs while the newest turn is the viewer's
+ * own and its reply is still running, and every send goes through a queue (`useFleetSteerQueue`), so a run
  * never closes the composer: assistant-ui routes a send made mid-run to the
  * queue's steer lane instead of refusing it. That flag is what the viewport's
  * top anchor keys on to hold the viewer's place while their reply grows and
@@ -103,10 +103,13 @@ export function FleetThread({
   // because the runtime is built from the adapter that holds the queue.
   const runtimeRef = useRef<AssistantRuntime | null>(null);
   const queue = useFleetSteerQueue(delivery.onNew, runtimeRef);
-  const isRunning = useMemo(
-    () => stream.events.some((event) => isOwnReplyInFlight(event, subject)),
-    [stream.events, subject],
-  );
+  // The newest turn only: assistant-ui anchors whatever turn is last while the
+  // thread runs, so a teammate's turn landing under the viewer's own running
+  // reply would otherwise be pinned to the top and pull the viewer off theirs.
+  const isRunning = useMemo(() => {
+    const newest = stream.events.at(-1);
+    return newest !== undefined && isOwnReplyInFlight(newest, subject);
+  }, [stream.events, subject]);
   const adapter = useMemo(
     () => ({ isRunning, messages: entries, convertMessage: convertEntry, onNew: delivery.onNew, queue }),
     [isRunning, entries, convertEntry, delivery.onNew, queue],

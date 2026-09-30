@@ -281,7 +281,8 @@ function mintOrNull(): string | null {
   }
 }
 
-function extractMessageText(msg: AppendMessage): string {
+/** The text a composer send carries: its first text part, or nothing. */
+export function extractMessageText(msg: AppendMessage): string {
   for (const part of msg.content) {
     if (part.type === "text") return part.text;
   }
