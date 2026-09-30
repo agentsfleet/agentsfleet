@@ -131,6 +131,12 @@ test("test_reconnect_notice_warns_in_place", async ({ page }) => {
     expect(Math.abs(after - before)).toBeLessThanOrEqual(SETTLED_PX);
     await expect(notice).toHaveAttribute("role", "alert");
     await expect(notice).toHaveClass(/\btext-warning\b/);
+    // At the bottom, the newest row stays above the notice, never behind it.
+    await restAtBottom(chat.locator('[role="presentation"]'));
+    const newest = chat.getByText(`Settled answer ${HISTORY_TURNS}`, { exact: true });
+    const rowBottom = await newest.evaluate((el) => el.getBoundingClientRect().bottom);
+    const noticeTop = await notice.evaluate((el) => el.getBoundingClientRect().top);
+    expect(rowBottom).toBeLessThanOrEqual(noticeTop);
   });
 });
 

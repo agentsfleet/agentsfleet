@@ -21,7 +21,7 @@ export function FleetConnectionNotice({
     <Alert
       variant="warning"
       data-testid="fleet-connection-notice"
-      className="flex w-full items-center justify-between gap-md rounded-md px-lg py-sm"
+      className="mb-sm flex w-full items-center justify-between gap-md rounded-md px-lg py-sm"
     >
       <span>{OFFLINE_MESSAGE}</span>
       <Button type="button" size="sm" variant="outline" onClick={onRetry}>
