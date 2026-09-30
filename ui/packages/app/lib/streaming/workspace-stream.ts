@@ -1,5 +1,11 @@
-import { type LiveFrame, type WorkspaceControlFrame, type WorkspaceFrame, type WorkspaceLiveFrame } from "@/lib/api/events";
+import {
+  type LiveFrame,
+  type WorkspaceControlFrame,
+  type WorkspaceHelloFrame,
+  type WorkspaceLiveFrame,
+} from "@/lib/api/events";
 import { FRAME_KIND, streamWorkspaceEventsUrl } from "@/lib/api/events-types";
+import { isWorkspaceFrame, parseWorkspaceFrame } from "@/lib/streaming/workspace-stream-parse";
 
 // One EventSource per WORKSPACE, demultiplexed to per-fleet subscribers.
 //
@@ -13,11 +19,9 @@ import { FRAME_KIND, streamWorkspaceEventsUrl } from "@/lib/api/events-types";
 // survives a route change up to IDLE_RELEASE_MS after its last subscriber
 // detaches, reconnects with capped backoff, and — on a reconnect open, never
 // the first — backfills the gap through the same-origin workspace events proxy.
-//
-// Frame safety: a frame whose `data` is not valid JSON, is not an object, has
-// no string `kind`, or has no string `fleet_id` is DROPPED. Mis-routing a frame
-// to the wrong tile is worse than losing it, and the durable row is recoverable
-// through backfill.
+// A wall that comes back inside that grace joins after the connection's
+// `hello`, so the entry keeps the newest set for it (see `lastGreeting`).
+// Frame validation lives in workspace-stream-parse.ts.
 
 export type FleetFrameListener = (frame: WorkspaceLiveFrame) => void;
 export type WorkspaceFrameListener = (frame: WorkspaceControlFrame) => void;
@@ -59,6 +63,10 @@ type Entry = {
   reconnectAttempts: number;
   idleTimer: ReturnType<typeof setTimeout> | null;
   hasConnectedOnce: boolean;
+  // The newest `hello` on the open connection, without its counters. The
+  // server greets on connect and again only when the set changes or after a
+  // lag, so a listener that joins late may wait long for the next one.
+  greeting: WorkspaceHelloFrame | null;
   // Newest server-confirmed frame time (epoch ms) — the backfill anchor.
   serverSinceMs: number | null;
   backfillInFlight: boolean;
@@ -124,42 +132,13 @@ async function walkGap(entry: Entry): Promise<void> {
   await entry.backfill?.(entry.workspaceId, entry.serverSinceMs);
 }
 
-// Parse + validate a raw SSE frame, returning the tagged frame or null when it
-// must be dropped. Exported for the demux test.
-export function parseWorkspaceFrame(data: string): WorkspaceFrame | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(data);
-  } catch {
-    return null;
-  }
-  if (!parsed || typeof parsed !== "object") return null;
-  const kind = (parsed as { kind?: unknown }).kind;
-  if (typeof kind !== "string") return null;
-  if (kind === FRAME_KIND.HELLO) {
-    const fleetIds = (parsed as { fleet_ids?: unknown }).fleet_ids;
-    if (
-      !Array.isArray(fleetIds) ||
-      !fleetIds.every((value) => typeof value === "string" && value.length > 0)
-    ) {
-      return null;
-    }
-    return parsed as WorkspaceControlFrame;
-  }
-  if (kind === FRAME_KIND.CATCHING_UP) {
-    const dropped = (parsed as { dropped?: unknown }).dropped;
-    if (typeof dropped !== "number" || !Number.isSafeInteger(dropped) || dropped < 0) return null;
-    return parsed as WorkspaceControlFrame;
-  }
-  const fleetId = (parsed as { fleet_id?: unknown }).fleet_id;
-  if (typeof fleetId !== "string" || fleetId.length === 0) return null;
-  return parsed as WorkspaceLiveFrame;
-}
-
 function onFrame(entry: Entry, e: MessageEvent): void {
   const frame = parseWorkspaceFrame(e.data as string);
   if (frame === null) return; // malformed / untagged — dropped, never routed
   if (isWorkspaceFrame(frame)) {
+    if (frame.kind === FRAME_KIND.HELLO) {
+      entry.greeting = { kind: FRAME_KIND.HELLO, fleet_ids: frame.fleet_ids };
+    }
     for (const l of entry.workspaceListeners) l(frame);
     if (frame.kind === FRAME_KIND.CATCHING_UP) void backfillGap(entry);
     return;
@@ -169,13 +148,10 @@ function onFrame(entry: Entry, e: MessageEvent): void {
   for (const l of listeners) l(frame);
 }
 
-function isWorkspaceFrame(frame: WorkspaceFrame): frame is WorkspaceControlFrame {
-  return frame.kind === FRAME_KIND.HELLO || frame.kind === FRAME_KIND.CATCHING_UP;
-}
-
 function onEventSourceError(entry: Entry): void {
   entry.eventSource?.close();
   entry.eventSource = null;
+  entry.greeting = null;
   setStatus(entry, WORKSPACE_CONNECTION_STATUS.RECONNECTING);
   entry.reconnectAttempts += 1;
   const delayMs = Math.min(
@@ -209,6 +185,7 @@ function createEntry(workspaceId: string, backfill: BackfillFn | null): Entry {
     reconnectAttempts: 0,
     idleTimer: null,
     hasConnectedOnce: false,
+    greeting: null,
     serverSinceMs: null,
     backfillInFlight: false,
     backfillQueued: false,
@@ -309,6 +286,15 @@ function decRef(entry: Entry): void {
   entry.refCount -= 1;
   if (entry.refCount > 0) return;
   entry.idleTimer = setTimeout(() => teardown(entry), IDLE_RELEASE_MS);
+}
+
+// The set the open connection last announced, for a wall that mounts after its
+// `hello` went by. It carries no counters: they are as old as the greeting, and
+// a tile shows the stream's figures over the page's, so the page's stand until
+// the next frame brings fresh ones.
+// Null before the first `hello` and while reconnecting; the reconnect greets.
+export function lastGreeting(workspaceId: string): WorkspaceHelloFrame | null {
+  return REGISTRY.get(workspaceId)?.greeting ?? null;
 }
 
 export function getWorkspaceConnectionStatus(workspaceId: string): WorkspaceConnectionStatus {
