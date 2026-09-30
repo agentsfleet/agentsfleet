@@ -38,7 +38,7 @@ use afd_vault::Vault as SecretVault;
 
 use super::HarnessProviders;
 use super::stubs_runner::NoWork;
-use super::stubs_tenant::OneWorkspace;
+use super::stubs_tenant::Ownership;
 use super::{
     DEPLOYMENT, Directory, FIXTURE_APP_URL, Fleet, HarnessIngress, RecordingWriteback,
     SCHEDULE_DESTINATION,
@@ -49,7 +49,7 @@ impl Services for Fleet {
     type SignupMetadata = RecordingWriteback;
     type Leases = NoWork;
     type Sessions = Logins;
-    type Workspaces = OneWorkspace;
+    type Workspaces = Ownership;
     type Fleets = Fleets;
     type Secrets = SecretVault;
     type Preferences = Preferences;
@@ -86,7 +86,7 @@ impl Services for Fleet {
         &self.logins
     }
 
-    fn workspaces(&self) -> &OneWorkspace {
+    fn workspaces(&self) -> &Ownership {
         &self.workspaces
     }
 

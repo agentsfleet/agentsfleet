@@ -5,13 +5,15 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_auth::principal::{Person, PersonCredential, Principal, Runner, Subject};
+use afd_auth::principal::{PersonCredential, Principal, Runner};
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_tenant::workspace::Workspaces;
+use afd_tenant::workspace::access::{Access, Grant, Role};
+
+use crate::access_lane::{held, id, person};
 
 const SUBJECT: &str = "user_workspace_ownership";
 const UNKNOWN_SUBJECT: &str = "user_workspace_ownership_absent";
@@ -57,7 +59,8 @@ async fn verify_machine_and_terminal_credentials(workspaces: &Workspaces, fixtur
                 .authorize(&principal, &id(&fixture.own_workspace))
                 .await
                 .expect("owned workspace resolves"),
-            Some(id(&fixture.own_tenant))
+            Some(held(&fixture.own_tenant, Role::Owner)),
+            "a claim-bound credential owns its own account and nothing else"
         );
         assert_eq!(
             workspaces
@@ -106,7 +109,7 @@ async fn verify_session_authority(workspaces: &Workspaces, fixture: &Fixture) {
             .authorize(&session, &id(&fixture.own_workspace))
             .await
             .expect("session workspace resolves"),
-        Some(id(&fixture.own_tenant)),
+        Some(held(&fixture.own_tenant, Role::Owner)),
         "the user row outranks the stale tenant claim"
     );
     assert_eq!(
@@ -148,7 +151,11 @@ async fn verify_platform_override(workspaces: &Workspaces, fixture: &Fixture) {
             .authorize(&operator, &id(&fixture.other_workspace))
             .await
             .expect("platform override resolves"),
-        Some(id(&fixture.other_tenant))
+        Some(Access {
+            tenant: id(&fixture.other_tenant),
+            grant: Grant::Platform,
+        }),
+        "a crossing carries no role in the account it reaches"
     );
     assert_eq!(
         workspaces
@@ -157,24 +164,6 @@ async fn verify_platform_override(workspaces: &Workspaces, fixture: &Fixture) {
             .expect("an absent override target resolves"),
         None
     );
-}
-
-fn person(
-    credential: PersonCredential,
-    tenant: &str,
-    subject: &str,
-    scopes: ScopeSet,
-) -> Principal {
-    Principal::Person(Person::new(
-        credential,
-        id(tenant),
-        Subject::new(subject).expect("the fixture subject is not blank"),
-        scopes,
-    ))
-}
-
-fn id(value: &str) -> Uuid7 {
-    Uuid7::parse(value).expect("the fixture identifier is UUIDv7")
 }
 
 struct Fixture {

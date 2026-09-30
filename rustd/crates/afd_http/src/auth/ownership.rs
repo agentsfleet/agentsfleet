@@ -31,6 +31,7 @@ use std::sync::Arc;
 use afd_auth::principal::Principal;
 use afd_core::error_code::{self, ErrorCode};
 use afd_core::id::Uuid7;
+use afd_tenant::workspace::access::{Access, Grant};
 use axum::RequestExt as _;
 use axum::extract::{RawPathParams, Request, State};
 use axum::middleware::Next;
@@ -38,7 +39,7 @@ use axum::response::{IntoResponse as _, Response};
 
 use crate::envelope::ProblemResponse;
 use crate::request_id::RequestId;
-use crate::route::WORKSPACE_PARAMETER;
+use crate::route::{RouteMeta, Scopes, WORKSPACE_PARAMETER};
 use crate::services::{Services, WorkspaceOwnership as _};
 
 /// The refusal a caller reads for a workspace that is not theirs.
@@ -54,6 +55,11 @@ const DETAIL_NOT_YOURS: &str = "Workspace access denied";
 /// The refusal for a path segment that is not an identifier.
 const DETAIL_MALFORMED: &str = "workspace_id must be a valid UUIDv7";
 
+/// The refusal a member reads on a route only the account owner may use.
+///
+/// Names who CAN act, because that is the member's next step: ask the owner.
+const DETAIL_OWNER_ONLY: &str = "Only the account owner can do this";
+
 /// The workspace this request acts in, and the tenant that owns it.
 ///
 /// Inserted by the layer and read back by handlers through
@@ -67,6 +73,9 @@ pub struct Owned {
     pub workspace: Uuid7,
     /// The tenant the authorizing statement resolved.
     pub tenant: Uuid7,
+    /// How the caller holds the workspace: a role in the owning account, or a
+    /// platform crossing.
+    pub grant: Grant,
 }
 
 /// Everything the ownership layer holds, resolved once when a route is mounted.
@@ -74,12 +83,18 @@ pub struct Owned {
 pub struct Owner<D> {
     services: Arc<D>,
     template: &'static str,
+    /// The route's capability requirement, read again here for the role gate.
+    scopes: Scopes,
 }
 
 impl<D> Owner<D> {
-    /// The layer state for a route whose template is `template`.
-    pub const fn new(services: Arc<D>, template: &'static str) -> Self {
-        Self { services, template }
+    /// The layer state for the route `meta` describes.
+    pub const fn new(services: Arc<D>, meta: RouteMeta) -> Self {
+        Self {
+            services,
+            template: meta.template,
+            scopes: meta.scopes,
+        }
     }
 }
 
@@ -90,6 +105,7 @@ impl<D> Clone for Owner<D> {
         Self {
             services: Arc::clone(&self.services),
             template: self.template,
+            scopes: self.scopes,
         }
     }
 }
@@ -153,8 +169,23 @@ async fn authorize<D: Services>(
         .authorize(principal, &workspace)
         .await
     {
-        Ok(Some(tenant)) => {
-            let verdict = Owned { workspace, tenant };
+        Ok(Some(Access { tenant, grant })) => {
+            // Checked here rather than in a handler for the reason the whole
+            // layer is: a secret-writing route mounted tomorrow is withheld
+            // from members without its author remembering to ask.
+            if role::withholds(grant, owner.scopes.required(request.method())) {
+                return refuse(
+                    error_code::AUTH_OWNER_ONLY,
+                    DETAIL_OWNER_ONLY,
+                    owner,
+                    "workspace_owner_only",
+                );
+            }
+            let verdict = Owned {
+                workspace,
+                tenant,
+                grant,
+            };
             request.extensions_mut().insert(verdict.clone());
             let mut response = next.run(request).await;
             // Onto the response too, for the reporting layer outside this one:
@@ -227,110 +258,10 @@ fn refuse<D>(
     ProblemResponse::new(code, detail, request_id).into_response()
 }
 
-/// The workspace a handler is acting in, as a parameter it declares.
-///
-/// A handler that names it in its signature is a handler that ran behind the
-/// ownership layer — and one that does not name it still ran behind the layer,
-/// because the layer is mounted from the route rather than from the signature.
-/// What the extractor adds is access to the TENANT the verdict resolved,
-/// without a second read of the row.
-#[derive(Debug, Clone)]
-pub struct WorkspaceContext(pub Owned);
+mod extract;
+mod role;
 
-impl<S: Send + Sync> axum::extract::FromRequestParts<S> for WorkspaceContext {
-    type Rejection = Response;
-
-    fn from_request_parts(
-        parts: &mut http::request::Parts,
-        _state: &S,
-    ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
-        std::future::ready(
-            parts
-                .extensions
-                .get::<Owned>()
-                .cloned()
-                .map(Self)
-                .ok_or_else(|| {
-                    let request_id = RequestId::mint();
-                    let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-                    let request_id_field = request_id.as_str();
-                    // `error`: a handler asking whose workspace this is, mounted
-                    // on a route whose template carries no workspace, is a
-                    // routing table and a router disagreeing. No client
-                    // behaviour causes it and no retry fixes it.
-                    tracing::error!(
-                        error_code = code,
-                        request_id = request_id_field,
-                        event = "workspace_context_absent",
-                        "a workspace handler ran with no ownership verdict — its layer is not mounted"
-                    );
-                    ProblemResponse::new(
-                        error_code::INTERNAL_OPERATION_FAILED,
-                        DETAIL_NOT_YOURS,
-                        request_id,
-                    )
-                    .into_response()
-                }),
-        )
-    }
-}
-
-/// The caller themselves, for the two surfaces the layer cannot serve.
-///
-/// Every other verb is authorized once, by the layer mounted from the route's
-/// own template, and is finished before the answer could go stale. Two are not,
-/// for different reasons, and both need the principal rather than the verdict
-/// the layer reached:
-///
-/// - A live stream is open for as long as somebody has a tab, so its membership
-///   check has to RUN AGAIN on a tick.
-/// - The connector completion names no workspace in its PATH — the workspace is
-///   inside the signed state, unreadable until the signature has been checked —
-///   so `Ownership::of` mounts nothing and the check happens in the handler, at
-///   the one point in the order where it is both possible and still ahead of
-///   the nonce spend. See [`crate::handler::connector::callback`].
-///
-/// Those are the only reasons it is extractable at all. A third caller is a
-/// route that should have declared its workspace in its template.
-#[derive(Debug, Clone)]
-pub struct Acting(pub Principal);
-
-impl<S: Send + Sync> axum::extract::FromRequestParts<S> for Acting {
-    type Rejection = Response;
-
-    fn from_request_parts(
-        parts: &mut http::request::Parts,
-        _state: &S,
-    ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
-        std::future::ready(
-            parts
-                .extensions
-                .get::<Principal>()
-                .cloned()
-                .map(Self)
-                .ok_or_else(|| {
-                    let request_id = RequestId::mint();
-                    let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-                    let request_id_field = request_id.as_str();
-                    // `error`, for the reason the sibling above is: a handler
-                    // naming the caller, mounted on a route with no guard layer, is
-                    // the routing table and the router disagreeing.
-                    tracing::error!(
-                        error_code = code,
-                        request_id = request_id_field,
-                        event = "principal_absent",
-                        "a handler asked who the caller is with no guard in front of it"
-                    );
-                    ProblemResponse::new(
-                        error_code::INTERNAL_OPERATION_FAILED,
-                        DETAIL_NOT_YOURS,
-                        request_id,
-                    )
-                    .into_response()
-                }),
-        )
-    }
-}
+pub use self::extract::{Acting, WorkspaceContext};
 
 #[cfg(test)]
 mod tests;

@@ -60,6 +60,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_tenant/src/sql/workspace.rs` | EDIT | access through memberships; answers tenant and role |
 | `rustd/crates/afd_tenant/src/workspace/mod.rs` | EDIT | access record: role and via (membership, platform read, platform write) |
 | `rustd/crates/afd_tenant/src/invite/` | CREATE | create, list, revoke, accept (one transaction), expiry |
+| `rustd/crates/afd_tenant/src/workspace/{access,accounts}.rs`, `src/sql/mod.rs`, `src/error/*` | CREATE/EDIT | the access record, the accounts a caller holds, the refusals |
+| `rustd/crates/afd_http/src/auth/ownership/{role,extract}.rs` | CREATE | the member rule; the extractors, split out at the file cap |
+| `rustd/crates/afd_sse/src/{frame,lib}.rs`, `afd_api_tenant/src/handler/stream/{guard,wall}.rs` | CREATE/EDIT | streams re-check access and end on `access_revoked` |
+| `rustd/crates/afd_api_tenant/src/handler/tenant/workspace/{input,render}.rs`, `afd_wire/src/workspace.rs` | CREATE/EDIT | list items carry `account` and `role`; the handler split at the file cap |
+| `rustd/crates/afd_core/src/{error_code,problem}.rs` | EDIT | the registry lists the new codes and the invite family |
+| `rustd/crates/{afd_api_tenant/src/handler/auth/session,afd_api_runner/src/handler/runner/enrolment}.rs` | EDIT | published descriptions name no identity vendor |
+| `rustd/crates/{afd_api,afd_tenant}/tests/**` | CREATE/EDIT | the access suites; the harness decides from real rows on request; an uncompiled harness file removed |
 | `rustd/crates/afd_tenant/src/member/` | CREATE | list members, remove member, last-owner guard |
 | `rustd/crates/afd_auth/src/scope.rs` | EDIT | `workspace:any` → `workspace-any:read` + `workspace-any:write` |
 | `rustd/crates/afd_http/src/auth/ownership.rs` | EDIT | role gate; read-only crossing admits safe methods only; audit fields |
@@ -121,13 +128,13 @@ M208 needs one external credential, for M208_003: the `resend-app` bag `{api_key
 
 The access check answers `{tenant, role, via}`: a `core.memberships` row for the caller's user in the workspace's tenant grants access with that row's role. The caller's own account keeps today's rule and answers `owner`; tenant API keys and CLI credentials resolve only through it. The check stays one statement with no subquery: three unique-index probes (workspace by id, user by subject, membership by account and user). A member is refused, with `UZ-AUTH-026`, where the route's required capability for the request's method is `secret:write` or `connector:write`, the only owner-grade capabilities on workspace routes (`rustd/crates/afd_http/src/route/{workspace,connector}.rs`); the capability gate still applies to everyone. The workspace list spans every membership, and each item names its account and the caller's role. Open streams re-run the check on the beat each already has, the workspace stream's 10 s refresh (`handler/stream/wall.rs`) and the fleet stream's 15 s heartbeat, and end with a problem frame when access is gone.
 
-- **Dimension 2.1** — a member opens, lists, streams and steers the owner's workspace → Test `test_member_reaches_owner_workspace`
-- **Dimension 2.2** — a non-member still gets `403 UZ-AUTH-001`, byte-identical to today → Test `test_non_member_refused_unchanged`
-- **Dimension 2.3** — a member is refused every secret-write and connector-write route with `UZ-AUTH-026` → Test `test_member_refused_owner_only_routes`
-- **Dimension 2.4** — a removed member's open stream ends within one re-check (15 s) → Test `test_removed_member_stream_ends`
-- **Dimension 2.5** — a datastore failure during the check is `503`, never a denial → Test `test_access_check_outage_is_not_denial`
-- **Dimension 2.6** — an account with no invites behaves exactly as today → Test `test_single_owner_paths_unchanged`
-- **Dimension 2.7** — the access statement plans as index probes only → Test `test_access_check_plans_as_index_probes`
+- **Dimension 2.1** — a member opens, lists, streams and steers the owner's workspace → Test `test_member_reaches_owner_workspace` — DONE (`afd_api/tests/integration_workspace_members.rs`)
+- **Dimension 2.2** — a non-member still gets `403 UZ-AUTH-001`, byte-identical to today → Test `test_non_member_refused_unchanged` — DONE (`afd_api/tests/integration_workspace_members.rs`)
+- **Dimension 2.3** — a member is refused every secret-write and connector-write route with `UZ-AUTH-026` → Test `test_member_refused_owner_only_routes` — DONE (`afd_api/tests/workspace_member_roles.rs` over every mounted route, and live)
+- **Dimension 2.4** — a removed member's open stream ends within one re-check (15 s) → Test `test_removed_member_stream_ends` — DONE (both streams, `integration_workspace_members.rs`)
+- **Dimension 2.5** — a datastore failure during the check is `503`, never a denial → Test `test_access_check_outage_is_not_denial` — DONE (`afd_api/tests/workspace_member_roles.rs`, the real resolver over a dead pool)
+- **Dimension 2.6** — an account with no invites behaves exactly as today → Test `test_single_owner_paths_unchanged` — DONE (`afd_api/tests/integration_workspace_members.rs`)
+- **Dimension 2.7** — the access statement plans as index probes only → Test `test_access_check_plans_as_index_probes` — DONE (`afd_tenant/tests/integration_workspace_access_plan.rs`, custom and generic plans)
 
 ### §3 — Owners invite; invitees accept
 

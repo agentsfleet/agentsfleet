@@ -24,6 +24,12 @@ pub(crate) enum ErrorKind {
         source: sqlx::Error,
     },
 
+    #[error("core.memberships.role holds {stored}, which this build does not know")]
+    RoleUnknown {
+        /// The stored bytes, so the log names what a newer daemon wrote.
+        stored: Box<str>,
+    },
+
     #[error("a {table} row holds a value this daemon cannot read: {column}")]
     RowMalformed {
         table: &'static str,

@@ -18,6 +18,8 @@
 //! `Result<Option<T>>` convention `core_api` runs on, and the reason it is the
 //! convention.
 
+pub mod access;
+pub mod accounts;
 pub mod directory;
 pub mod name;
 
@@ -27,6 +29,7 @@ use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 
+use self::access::{Access, Grant, Role};
 use crate::sql::workspace as sql;
 use crate::{Result, error};
 
@@ -50,7 +53,8 @@ impl Workspaces {
         Self { database, entropy }
     }
 
-    /// The tenant owning `workspace`, when this principal's does.
+    /// The owning tenant and the caller's grant, when this principal may open
+    /// `workspace`.
     ///
     /// # The ordering is load-bearing
     ///
@@ -67,7 +71,7 @@ impl Workspaces {
         &self,
         principal: &Principal,
         workspace: &Uuid7,
-    ) -> Result<Option<Uuid7>> {
+    ) -> Result<Option<Access>> {
         let Some(person) = principal.person() else {
             // A runner has no tenant authority at all, so the statement could
             // never match. Refused without a round trip rather than by asking a
@@ -80,25 +84,36 @@ impl Workspaces {
             return Ok(None);
         }
 
-        if let Some(tenant) = self.owner_matching(person, workspace).await? {
-            return Ok(Some(tenant));
+        if let Some(access) = self.membership(person, workspace).await? {
+            return Ok(Some(access));
         }
         self.cross_tenant_override(principal, person, workspace)
             .await
     }
 
-    /// The owning tenant, when it is the one this principal resolves to.
-    async fn owner_matching(&self, person: &Person, workspace: &Uuid7) -> Result<Option<Uuid7>> {
+    /// The caller's grant from inside the owning account, when they hold one.
+    ///
+    /// A row with no stored role is the caller's own account admitted by the
+    /// tenant match alone, which is exactly the rule this replaced, so it
+    /// answers `owner`.
+    async fn membership(&self, person: &Person, workspace: &Uuid7) -> Result<Option<Access>> {
         let binds = TenantBinds::of(person);
         let mut connection = self.database.acquire().await?;
-        let row: Option<(String,)> = sqlx::query_as(sql::AUTHORIZE_WORKSPACE)
+        let row: Option<(String, Option<String>)> = sqlx::query_as(sql::AUTHORIZE_WORKSPACE)
             .bind(workspace.as_str())
             .bind(binds.subject)
             .bind(binds.claim)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query("authorize workspace"))?;
-        row.map(|(tenant,)| parse_tenant(&tenant)).transpose()
+        row.map(|(tenant, role)| {
+            let role = role.as_deref().map_or(Ok(Role::Owner), Role::parse)?;
+            Ok(Access {
+                tenant: parse_tenant(&tenant)?,
+                grant: Grant::Membership(role),
+            })
+        })
+        .transpose()
     }
 
     /// The audited platform-wide override, for the few principals holding it.
@@ -114,7 +129,7 @@ impl Workspaces {
         principal: &Principal,
         person: &Person,
         workspace: &Uuid7,
-    ) -> Result<Option<Uuid7>> {
+    ) -> Result<Option<Access>> {
         if !principal.scopes().contains(Scope::WorkspaceAny) {
             return Ok(None);
         }
@@ -148,7 +163,10 @@ impl Workspaces {
             event = "cross_tenant_workspace_override",
             "a platform-scoped principal reached another tenant's workspace"
         );
-        Ok(Some(tenant))
+        Ok(Some(Access {
+            tenant,
+            grant: Grant::Platform,
+        }))
     }
 
     /// The tenant a subject belongs to, with no workspace to check against.
@@ -225,6 +243,9 @@ impl<'a> TenantBinds<'a> {
 }
 
 /// A stored tenant identifier, or a report that the column holds something else.
+///
+/// Every tenant identifier this module reads is a `core.tenants.id`, whichever
+/// table carried it here, so that is the column a malformed one is reported as.
 fn parse_tenant(value: &str) -> Result<Uuid7> {
-    Uuid7::parse(value).map_err(error::row_malformed("core.workspaces", "tenant_id"))
+    Uuid7::parse(value).map_err(error::row_malformed("core.tenants", "id"))
 }

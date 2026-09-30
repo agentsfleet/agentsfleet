@@ -30,6 +30,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use afd_auth::principal::Principal;
+use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_sse::{FanIn, Frame, KIND_CATCHING_UP};
 use futures_util::StreamExt as _;
@@ -55,7 +56,8 @@ enum Tick {
     Steady,
     /// Channels were attached, detached, or both.
     Changed,
-    /// The caller may no longer read this workspace. The stream must close.
+    /// The caller may no longer read this workspace. The stream sends
+    /// `access_revoked` and closes.
     Revoked,
 }
 
@@ -70,6 +72,8 @@ struct Wall<D> {
     next_refresh: Instant,
     /// Whether the opening `hello` has been sent.
     announced: bool,
+    /// Whether `access_revoked` has been sent, after which nothing else is.
+    closed: bool,
     /// When a lag may next re-read the counters.
     recount: Recount,
 }
@@ -148,6 +152,7 @@ pub(super) fn frames<D: Services>(
         fan_in,
         next_refresh: now + REFRESH_INTERVAL,
         announced: false,
+        closed: false,
         recount: Recount::new(now),
     };
     stream::unfold(wall, step).boxed()
@@ -155,6 +160,9 @@ pub(super) fn frames<D: Services>(
 
 /// The next frame, and the wall that produced it.
 async fn step<D: Services>(mut wall: Wall<D>) -> Option<(Frame, Wall<D>)> {
+    if wall.closed {
+        return None;
+    }
     // The set is announced before any activity, so a client knows which tiles
     // to open before the first frame arrives for one of them.
     if !wall.announced {
@@ -164,7 +172,11 @@ async fn step<D: Services>(mut wall: Wall<D>) -> Option<(Frame, Wall<D>)> {
     loop {
         if Instant::now() >= wall.next_refresh {
             match refresh(&mut wall).await {
-                Tick::Revoked => return None,
+                Tick::Revoked => {
+                    wall.closed = true;
+                    let refused = error_code::AUTH_FORBIDDEN.as_str();
+                    return Some((Frame::access_revoked(refused), wall));
+                }
                 Tick::Changed => return Some(announce(wall).await),
                 Tick::Steady => {}
             }

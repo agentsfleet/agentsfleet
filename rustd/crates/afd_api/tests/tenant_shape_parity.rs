@@ -35,7 +35,9 @@ use afd_wire::tenant::{
     ApiKeySummary, BillingResponse, ChargeSummary, ChargesResponse, MintedApiKeyResponse,
     MintedCliCredentialResponse, PageResponse, RevokedApiKeyResponse,
 };
-use afd_wire::workspace::{CreatedWorkspaceResponse, WorkspaceSummary, WorkspacesResponse};
+use afd_wire::workspace::{
+    CreatedWorkspaceResponse, WorkspaceAccount, WorkspaceSummary, WorkspacesResponse,
+};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -289,16 +291,23 @@ fn a_created_workspace_answers_its_own_request_id() {
     );
 }
 
+/// Team accounts added two keys: which account a workspace is in, and the
+/// caller's role there. The dashboard groups its switcher by the first.
 #[test]
-fn a_workspace_summary_is_three_fields_and_stays_three() {
+fn a_workspace_summary_names_its_account_and_the_callers_role() {
     assert_shape(
         &WorkspaceSummary {
             id: Cow::Borrowed(TEXT),
             name: Some(Cow::Borrowed(TEXT)),
             created_at: WHEN,
+            account: WorkspaceAccount {
+                tenant_id: Cow::Borrowed(TEXT),
+                owner_name: Cow::Borrowed(TEXT),
+            },
+            role: Cow::Borrowed(TEXT),
         },
         "WorkspaceSummary",
-        &["id", "name", "created_at"],
+        &["id", "name", "created_at", "account", "role"],
     );
 }
 
