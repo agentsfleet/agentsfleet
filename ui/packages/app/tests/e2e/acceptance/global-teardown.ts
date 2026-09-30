@@ -58,7 +58,7 @@ const STALE_AFTER_MS = 60 * 60 * 1000;
  * match this shape, which is the safety boundary of a sweep that deletes.
  */
 export const PER_RUN_FIXTURE_RE =
-  /^(signup-fixture|signup-webhook|signup-lifecycle|workspace-create)-[0-9a-f]{8}\+clerk_test@(e2e\.agentsfleet\.net|mailinator\.com)$/i;
+  /^(signup-fixture|signup-webhook|signup-lifecycle|workspace-create|team-invitee)-[0-9a-f]{8}\+clerk_test@(e2e\.agentsfleet\.net|mailinator\.com)$/i;
 
 const SWEEP_QUERIES = ["+clerk_test@e2e.agentsfleet.net", "+clerk_test@mailinator.com"];
 

@@ -14,10 +14,18 @@ vi.mock("./WorkspaceCreationProvider", () => ({
 }));
 
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
+
+// Every listed workspace names its account and the caller's role in it; these
+// are all the caller's own, the shape a solo account's list has.
+const OWN_ACCOUNT = {
+  account: { tenant_id: "tenant_own", owner_name: "You" },
+  role: ACCOUNT_ROLE.owner,
+};
 
 const LISTED = [
-  { id: "0195b4ba-8d3a-7f13-8abc-b00000000001", name: "listed-alpha", created_at: 0 },
-  { id: "0195b4ba-8d3a-7f13-8abc-b00000000002", name: "listed-beta", created_at: 0 },
+  { id: "0195b4ba-8d3a-7f13-8abc-b00000000001", name: "listed-alpha", created_at: 0, ...OWN_ACCOUNT },
+  { id: "0195b4ba-8d3a-7f13-8abc-b00000000002", name: "listed-beta", created_at: 0, ...OWN_ACCOUNT },
 ];
 const CREATED_ID = "0195b4ba-8d3a-7f13-8abc-b00000000009";
 const UNKNOWN_ID = "0195b4ba-8d3a-7f13-8abc-b00000000042";

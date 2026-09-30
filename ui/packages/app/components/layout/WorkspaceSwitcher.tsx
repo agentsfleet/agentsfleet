@@ -12,6 +12,7 @@ import {
 } from "@/components/domain/island-dynamic/intent-module-loader";
 import { useCreatedWorkspaces } from "./WorkspaceCreationProvider";
 import { WorkspaceSwitcherTrigger } from "./WorkspaceSwitcherTrigger";
+import { WORKSPACE_LABEL } from "./workspace-groups";
 
 type Props = {
   workspaces: TenantWorkspace[];
@@ -38,8 +39,8 @@ export default function WorkspaceSwitcher({ workspaces }: Props) {
     : workspaces[0];
   const activeLabel =
     routedId && !active
-      ? "Current workspace"
-      : (active?.name ?? (active ? "Unnamed workspace" : "No workspace"));
+      ? WORKSPACE_LABEL.current
+      : (active?.name ?? (active ? WORKSPACE_LABEL.unnamed : WORKSPACE_LABEL.none));
 
   useEffect(() => {
     setOpen(false);

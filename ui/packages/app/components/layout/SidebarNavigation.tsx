@@ -19,6 +19,7 @@ import {
   LibraryIcon,
   PlugIcon,
   ServerIcon,
+  UsersIcon,
 } from "lucide-react";
 import {
   cn,
@@ -85,7 +86,10 @@ const PLATFORM_NAV: PlatformNavEntry[] = [
   },
 ];
 
+// Every person owns the account signup made them, so Members is always theirs
+// to manage; a joined account's people are its owner's page, not this one.
 const ORGANIZATION_NAV: NavEntry[] = [
+  { label: "Members", path: "/settings/members", icon: UsersIcon },
   { label: "API Keys", path: "/settings/api-keys", icon: KeyIcon },
   { label: "Billing", path: "/settings/billing", icon: CreditCardIcon },
 ];

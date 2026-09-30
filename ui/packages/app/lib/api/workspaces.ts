@@ -1,13 +1,31 @@
 import { request } from "./client";
+import { isNonEmptyString, isRecord } from "./decode";
 
 const CREATE_WORKSPACE_TIMEOUT_MS = 15_000;
 
 const WORKSPACE_LIST_PAGE_LIMIT = 100;
 
+/** The caller's role in a workspace's account. Mirrors `ROLE_OWNER` and
+ * `ROLE_MEMBER` in `rustd/crates/afd_tenant/src/workspace/access.rs`. */
+export const ACCOUNT_ROLE = {
+  owner: "owner",
+  member: "member",
+} as const;
+
+export type AccountRole = (typeof ACCOUNT_ROLE)[keyof typeof ACCOUNT_ROLE];
+
+/** The account a workspace belongs to, which is how the switcher groups. */
+export type WorkspaceAccount = {
+  tenant_id: string;
+  owner_name: string;
+};
+
 export type TenantWorkspace = {
   id: string;
   name: string | null;
   created_at: number;
+  account: WorkspaceAccount;
+  role: AccountRole;
 };
 
 export type TenantWorkspaceListResponse = {
@@ -31,18 +49,29 @@ export type CreateWorkspaceResponse = {
   request_id: string;
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
+const ACCOUNT_ROLES: ReadonlySet<string> = new Set(Object.values(ACCOUNT_ROLE));
 
-const isNonEmptyString = (value: unknown): value is string =>
-  typeof value === "string" && value.trim().length > 0;
+export const isAccountRole = (value: unknown): value is AccountRole =>
+  typeof value === "string" && ACCOUNT_ROLES.has(value);
+
+export const decodeWorkspaceAccount = (value: unknown): WorkspaceAccount => {
+  if (
+    !isRecord(value) ||
+    !isNonEmptyString(value.tenant_id) ||
+    !isNonEmptyString(value.owner_name)
+  ) {
+    throw new Error("workspace account is invalid");
+  }
+  return { tenant_id: value.tenant_id, owner_name: value.owner_name };
+};
 
 const decodeWorkspace = (value: unknown): TenantWorkspace => {
   if (!isRecord(value)) throw new Error("workspace item is invalid");
   if (
     !isNonEmptyString(value.id) ||
     (value.name !== null && typeof value.name !== "string") ||
-    !Number.isSafeInteger(value.created_at)
+    !Number.isSafeInteger(value.created_at) ||
+    !isAccountRole(value.role)
   ) {
     throw new Error("workspace item is invalid");
   }
@@ -50,6 +79,8 @@ const decodeWorkspace = (value: unknown): TenantWorkspace => {
     id: value.id,
     name: value.name,
     created_at: value.created_at as number,
+    account: decodeWorkspaceAccount(value.account),
+    role: value.role,
   };
 };
 

@@ -20,6 +20,10 @@ import {
 } from "./helpers/dashboard-app-mocks";
 import { EVENTS } from "@/lib/analytics/events";
 
+// Listed workspaces name their account and the caller's role; these are all
+// the caller's own, the shape a solo account's list has.
+const OWN_ACCOUNT = { account: { tenant_id: "tenant_own", owner_name: "You" }, role: "owner" as const };
+
 const captureProductEventMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/analytics/posthog", async (orig) => {
   const actual = await orig<typeof import("@/lib/analytics/posthog")>();
@@ -128,8 +132,8 @@ describe("WorkspaceSwitcher component", () => {
         null,
         React.createElement(WorkspaceSwitcher, {
           workspaces: props.workspaces ?? [
-            { id: "ws_1", name: "Alpha" },
-            { id: "ws_2", name: "Beta" },
+            { id: "ws_1", name: "Alpha", ...OWN_ACCOUNT },
+            { id: "ws_2", name: "Beta", ...OWN_ACCOUNT },
           ],
         } as never),
       ),
@@ -177,6 +181,7 @@ describe("WorkspaceSwitcher component", () => {
     const manyWorkspaces = Array.from({ length: 32 }, (_, index) => ({
       id: `ws_${index}`,
       name: `Workspace ${index}`,
+      ...OWN_ACCOUNT,
     }));
     const { container } = await renderSwitcher({
       workspaces: manyWorkspaces,
@@ -207,7 +212,7 @@ describe("WorkspaceSwitcher component", () => {
   it("uses a calm label when a workspace name is absent", async () => {
     usePathname.mockReturnValue("/");
     await renderSwitcher({
-      workspaces: [{ id: "ws_only", name: null }],
+      workspaces: [{ id: "ws_only", name: null, ...OWN_ACCOUNT }],
     });
     expect(screen.getByLabelText(/select workspace/i).textContent).toContain(
       "Unnamed workspace",
@@ -218,8 +223,8 @@ describe("WorkspaceSwitcher component", () => {
     usePathname.mockReturnValue("/w/ws_unknown/fleets");
     await renderSwitcher({
       workspaces: [
-        { id: "ws_a", name: "Alpha" },
-        { id: "ws_b", name: "Beta" },
+        { id: "ws_a", name: "Alpha", ...OWN_ACCOUNT },
+        { id: "ws_b", name: "Beta", ...OWN_ACCOUNT },
       ],
     });
     expect(screen.getByLabelText(/select workspace/i).textContent).toContain(
@@ -275,8 +280,8 @@ describe("WorkspaceSwitcher component", () => {
     const user = userEvent.setup({ delay: null });
     await renderSwitcher({
       workspaces: [
-        { id: "ws_1", name: "Alpha" },
-        { id: "ws_no_name", name: null },
+        { id: "ws_1", name: "Alpha", ...OWN_ACCOUNT },
+        { id: "ws_no_name", name: null, ...OWN_ACCOUNT },
       ],
     });
     const items = screen.getAllByRole("menuitem");
@@ -291,7 +296,7 @@ describe("WorkspaceSwitcher component", () => {
   it("truncates long workspace names while preserving the full title", async () => {
     const longName = "A".repeat(128);
     await renderSwitcher({
-      workspaces: [{ id: "ws_long", name: longName }],
+      workspaces: [{ id: "ws_long", name: longName, ...OWN_ACCOUNT }],
     });
     const label = screen.getByTitle(longName);
     expect(label.className).toContain("truncate");

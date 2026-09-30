@@ -4,6 +4,9 @@ import { credential } from "@/lib/auth/credential";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
 import { readSessionScopes } from "@/lib/auth/platform";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
+import { listWaitingInvites, type WaitingInvite } from "@/lib/api/invites";
+
+const NO_WAITING_INVITES: WaitingInvite[] = [];
 
 export default async function DashboardLayout({
   children,
@@ -11,7 +14,7 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const token = await credential();
-  const [listResult, scopes, billing] = token
+  const [listResult, scopes, billing, waitingInvites] = token
     ? await Promise.all([
         // The switcher needs the complete workspace list; this
         // is the one place that walks the complete cursor-paginated list off
@@ -29,8 +32,11 @@ export default async function DashboardLayout({
         // null and the header omits the figure — a shell that cannot render
         // because billing is down would be the worse trade.
         getTenantBillingCached(token).catch(() => null),
+        // Invites waiting for this person's address, for the shell's one-line
+        // notice. A failure hides the notice; the Invites page reads its own.
+        listWaitingInvites(token).catch(() => NO_WAITING_INVITES),
       ])
-    : [{ items: [], total: 0 }, new Set<string>(), null];
+    : [{ items: [], total: 0 }, new Set<string>(), null, NO_WAITING_INVITES];
 
   // Shell controls derive the active workspace from `/w/<id>/…`; no
   // `activeWorkspaceId` prop or cookie owns navigation state. ShellFrame wraps
@@ -49,7 +55,12 @@ export default async function DashboardLayout({
   // is covered too.
   return (
     <TooltipProvider>
-      <ShellFrame workspaces={listResult.items} operatorScopes={[...scopes]} billing={billing}>
+      <ShellFrame
+        workspaces={listResult.items}
+        operatorScopes={[...scopes]}
+        billing={billing}
+        waitingInvites={waitingInvites}
+      >
         {children}
       </ShellFrame>
     </TooltipProvider>
