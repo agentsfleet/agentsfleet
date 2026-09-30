@@ -13,9 +13,10 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::TestDatabase;
 use afd_tenant::sql::workspace::AUTHORIZE_WORKSPACE;
 use afd_tenant::workspace::access::ROLE_MEMBER;
 use sqlx::{AssertSqlSafe, Row as _};
@@ -30,7 +31,8 @@ const READ: [&str; 3] = ["workspaces", "users", "memberships"];
 const PLAN_MODES: [&str; 2] = ["force_custom_plan", "force_generic_plan"];
 
 /// One account per row, each with a user, a membership and a workspace, all
-/// under identifiers sharing a per-run prefix so cleanup finds exactly them.
+/// under identifiers sharing a random per-run prefix, and tenants named for
+/// it so cleanup removes exactly these and nothing another suite seeded.
 async fn seed(database: &Db, prefix: &str) {
     let mut connection = database.acquire().await.expect("an API connection");
     // A UUIDv7 shape per row: the per-run prefix, the row number, and the
@@ -41,7 +43,7 @@ async fn seed(database: &Db, prefix: &str) {
            FROM generate_series(1, $2) g \
          ), tenants AS ( \
            INSERT INTO core.tenants (id, name, created_at, updated_at) \
-           SELECT (stem || '000000000001')::uuid, 'plan', 1, 1 FROM n \
+           SELECT (stem || '000000000001')::uuid, 'plan-' || $1, 1, 1 FROM n \
          ), people AS ( \
            INSERT INTO core.users \
              (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
@@ -104,11 +106,12 @@ async fn plan(database: &Db, prefix: &str, mode: &str) -> Vec<String> {
 async fn test_access_check_plans_as_index_probes() {
     let lane = TestDatabase::shared();
     let database = lane.open(DbRole::Api, &[]).await;
-    let prefix: String = mint_id()
-        .chars()
-        .filter(char::is_ascii_hexdigit)
-        .take(8)
-        .collect();
+    // Eight hex digits from the random half of a fresh identifier: unique
+    // per run, and unlike `mint_id`, whose ids all begin `01900000`.
+    let fresh = Entropy::new()
+        .uuid7(afd_core::clock::now())
+        .expect("the host draws entropy");
+    let prefix: String = fresh.as_str().chars().rev().take(8).collect();
     seed(&database, &prefix).await;
 
     for mode in PLAN_MODES {
@@ -131,7 +134,10 @@ async fn test_access_check_plans_as_index_probes() {
     }
 
     let mut connection = database.acquire().await.expect("an API connection");
-    sqlx::query("DELETE FROM core.tenants WHERE id::text LIKE $1 || '-%'")
+    // By the run's own tenant name, never by an id pattern: fixture ids from
+    // `mint_id` all start alike, so a prefix match here once removed every
+    // tenant the concurrent suites had seeded.
+    sqlx::query("DELETE FROM core.tenants WHERE name = 'plan-' || $1")
         .bind(&prefix)
         .execute(&mut *connection)
         .await
