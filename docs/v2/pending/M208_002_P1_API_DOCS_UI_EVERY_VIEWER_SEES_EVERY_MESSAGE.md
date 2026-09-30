@@ -56,6 +56,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `rustd/crates/afd_wire/src/tail.rs` (+ tests) | EDIT | `EventAdmitted`; `EventReceived.message` |
 | `rustd/crates/afd_api_tenant/src/handler/fleet/message_steer.rs` | EDIT | publish `event_admitted` after the admission commits |
+| `rustd/crates/afd_http/src/services/event.rs`, `rustd/crates/afd_events/src/steer.rs` | EDIT | the announce seam on `FleetSteering`; `Steered` carries the admission instant |
+| `rustd/crates/afd_tenant/src/sql/member.rs`, `rustd/crates/afd_api_tenant/src/handler/tenant/member.rs`, `rustd/crates/afd_wire/src/team.rs` | EDIT | a workspace member carries `actor`, the string that member's steers record |
+| `ui/packages/app/lib/api/tenant-members.ts` | EDIT | `listWorkspaceMembers` |
 | `rustd/crates/afd_fleet/src/lease/bracket.rs` | EDIT | `event_received` carries the steer's message |
 | `rustd/crates/afd_admission/src/pending.rs` | CREATE | read a fleet's undelivered steer admissions |
 | `rustd/crates/afd_api_tenant/src/handler/fleet/message.rs` | EDIT | thread read adds `queued` rows, deduplicated by event id |
@@ -82,7 +85,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
 | UFS | yes | frame kind and status as constants in `afd_wire` and `events-types.ts` |
-| LOGGING | yes | one structured warn per failed publish, no body |
+| LOGGING | yes | a dropped frame is logged once by the shared publisher (`tail_frame_dropped`, `afd_dragonfly/src/streams/tail.rs:76-91`), as every daemon frame is; no body |
 | File & Function Length (≤350/≤50/≤70) | yes — `fleet-stream-frames.ts` is near its cap | admitted-frame handling in a sibling module |
 
 ## Prior-Art / Reference Implementations
@@ -94,7 +97,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — Announce a message the moment it is accepted
 
-After the steer's admission commits and before the 202, the route publishes `event_admitted` `{event_id, actor, event_type, message, created_at}`: the logical id the 202 returns, the admission's `event_created_at`, and the typed text (at most `STEER_MESSAGE_MAX_BYTES`). Publishing is best-effort, as every tail frame is: a failure logs and the steer still answers 202. A replayed steer (`replayed: true`) publishes nothing, since its first admission already did.
+After the steer's admission commits and before the 202, the route publishes `event_admitted` `{event_id, actor, event_type, message, created_at}`: the logical id the 202 returns, the admission's `event_created_at`, and the typed text (at most `STEER_MESSAGE_MAX_BYTES`). Publishing is best-effort through `FleetStreams::publish_frame`, as every tail frame is: a failure is logged once there and the steer still answers 202. A replayed steer (`replayed: true`) publishes nothing, on either replay path, since its first admission already did.
 
 - **Dimension 1.1** — a steer publishes one `event_admitted` whose id equals the 202's → Test `test_steer_publishes_admitted_frame`
 - **Dimension 1.2** — a publish failure still answers 202 and logs once → Test `test_admitted_publish_failure_still_accepts`
@@ -102,7 +105,7 @@ After the steer's admission commits and before the 202, the route publishes `eve
 
 ### §2 — Late joiners see waiting and started turns with their text
 
-The thread read (`GET …/fleets/{fleet_id}/messages`) returns the fleet's undelivered steer admissions (`delivered_at IS NULL`) as rows with status `queued`, newest page only, merged by event id so a leased turn appears once. `event_received` carries `message`, parsed from `Acquired.request_json` for `steer:*` actors and omitted above the byte cap or when unparsable.
+The thread read (`GET …/fleets/{fleet_id}/messages`) returns the fleet's receipted, undelivered steer admissions (`receipt IS NOT NULL AND delivered_at IS NULL`, the ledger's own meaning of queued, `schema/910_fleet_admissions.sql:37-39`) as rows with status `queued`, first page only, merged by event id so a leased turn appears once. The read rides `idx_fleet_admissions_undelivered`, which holds only in-flight work; no schema change. `event_received` carries `message`, parsed from `Acquired.request_json` for `steer:*` actors and omitted above the byte cap or when unparsable.
 
 - **Dimension 2.1** — an undelivered steer appears in the thread read as `queued` with its text → Test `test_thread_read_includes_queued_steers`
 - **Dimension 2.2** — once leased, the same event id appears once, no longer `queued` → Test `test_thread_read_dedupes_leased_steer`
@@ -111,19 +114,21 @@ The thread read (`GET …/fleets/{fleet_id}/messages`) returns the fleet's undel
 
 ### §3 — Every screen renders the turn at once
 
-`event_admitted` creates the row with the typed text and status `queued`, rendered "Waiting for {fleet}". `event_received` for that id moves it to `received` without a second row. The two-tab hold (`HeldTurns`) treats `event_admitted` as an opening frame, so the sending tab still waits for its 202 before deciding whose turn it is. The wall ignores `event_admitted`: a tile changes when work starts.
+`event_admitted` creates the row with the typed text and status `queued`, rendered "Waiting for {fleet}". `event_received` for that id moves it to `received` without a second row. The two can arrive in either order: `append` has written the queue entry before the route publishes, so a runner can lease and announce first. An `event_admitted` for a row already held fills only an empty text and never moves the row back to `queued`. The two-tab hold (`HeldTurns`) treats `event_admitted` as an opening frame, so the sending tab still waits for its 202 before deciding whose turn it is. The wall ignores `event_admitted`: a tile changes when work starts.
 
 - **Dimension 3.1** — `event_admitted` renders a `queued` row with the text → Test `test_admitted_frame_renders_queued_row`
 - **Dimension 3.2** — `event_received` moves `queued` to `received`, one row → Test `test_received_moves_queued_row`
 - **Dimension 3.3** — an own-account `event_admitted` waits on this tab's 202 → Test `test_held_turns_hold_admitted_frames`
 - **Dimension 3.4** — the wall ignores `event_admitted` → Test `test_wall_ignores_admitted_frame`
+- **Dimension 3.5** — `event_admitted` after `event_received` keeps the row's status, one row → Test `test_late_admitted_frame_keeps_status`
 
 ### §4 — Messages carry their sender's name
 
-The viewer's own messages read "You"; a member's read their display name from `GET /v1/workspaces/{workspace_id}/members` (M208_001); any other actor keeps today's label (`senderLabelFor`). No account identifier ever renders.
+The viewer's own messages read "You"; a member's read their display name from `GET /v1/workspaces/{workspace_id}/members` (M208_001); any other actor, and a member with no display name, keeps today's label (`senderLabelFor`). No account identifier ever renders. The route's `user_id` is `core.users.id` (`afd_tenant/src/sql/member.rs:8`) while a steer records `steer:<oidc_subject>` (`message_steer.rs:226`), so each item gains `actor`, the string that member's steers record. Nothing new is exposed: every event row a member reads already carries it.
 
 - **Dimension 4.1** — viewer, member and unknown actors label as "You", the name, and the existing fallback → Test `test_sender_labels_name_members`
 - **Dimension 4.2** — two people on one fleet each see the other's message, named, then the reply → Test `test_member_sees_teammate_message_then_reply`
+- **Dimension 4.3** — a workspace member item carries `actor` equal to that member's steer actor → Test `test_workspace_members_carry_actor`
 
 ### §5 — Documentation
 
@@ -138,6 +143,7 @@ event_admitted  {kind:"event_admitted", event_id, actor, event_type, message, cr
                  event_id = the 202's event_id; message <= STEER_MESSAGE_MAX_BYTES; steers only
 event_received  gains  message?   (steer:* only; omitted above the cap or when unparsable)
 GET …/fleets/{fleet_id}/messages  rows may carry status:"queued" (admitted, not yet picked up)
+GET /v1/workspaces/{workspace_id}/members  items gain  actor   ("steer:<oidc_subject>")
 ```
 
 ## Failure Modes
@@ -146,7 +152,8 @@ GET …/fleets/{fleet_id}/messages  rows may carry status:"queued" (admitted, no
 |------|-------|--------------------------------------------------------|
 | Publish lost | pub/sub unavailable | steer still 202; other screens show the turn at `event_received` or on reload |
 | Frame beats the 202 | admission publish reaches the sender tab first | `HeldTurns` holds it; it lands on the sender's row after the 202 |
-| Reconnect gap | a screen was offline at admission | catching-up backfill plus the thread read's `queued` rows restore it |
+| Reconnect gap | a screen was offline at admission | the reconnect backfill reads the events list (`fleet-stream-backfill.ts:89`), which holds no admissions: the turn reappears at its `event_received`, and a reload shows it `queued` |
+| Admitted after received | a runner leased the turn before the route published | the row keeps `received`; the frame fills only an empty text (3.5) |
 | Replayed steer | same operation id retried | no second frame; the one row stands |
 | Oversized or unparsable body | legacy or corrupt row | frame without `message`; row text as today; one warn |
 | Fleet never picks it up | fleet paused or no runner | the row stays "Waiting for {fleet}" on every screen, matching the ledger |
@@ -162,14 +169,14 @@ GET …/fleets/{fleet_id}/messages  rows may carry status:"queued" (admitted, no
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `event_admitted_publish_failed` | ops | the admitted frame could not be published | fleet id, event id, error code | never the message | `test_admitted_publish_failure_still_accepts` |
+| `tail_frame_dropped` (existing, shared by every daemon frame) | ops | the admitted frame could not be published | fleet id, reason | never the message | `test_admitted_publish_failure_still_accepts` |
 
 ## Test Specification (tiered)
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
 | 1.1 | unit | `test_steer_publishes_admitted_frame` | steer "hi" → one frame, `event_id` equals the 202's, `message:"hi"` |
-| 1.2 | unit | `test_admitted_publish_failure_still_accepts` | failing publisher → 202, one warn, no text in the log |
+| 1.2 | unit | `test_admitted_publish_failure_still_accepts` | unreachable queue → 202, one `tail_frame_dropped`, no text in the log |
 | 1.3 | unit | `test_replayed_steer_publishes_nothing` | same operation id twice → one frame |
 | 2.1 | integration | `test_thread_read_includes_queued_steers` | undelivered admission → row `queued` with text |
 | 2.2 | integration | `test_thread_read_dedupes_leased_steer` | lease it → one row, not `queued` |
@@ -179,8 +186,10 @@ GET …/fleets/{fleet_id}/messages  rows may carry status:"queued" (admitted, no
 | 3.2 | unit | `test_received_moves_queued_row` | admitted then received → one row, `received` |
 | 3.3 | unit | `test_held_turns_hold_admitted_frames` | own-account admitted while waiting → held until the 202 |
 | 3.4 | unit | `test_wall_ignores_admitted_frame` | wall state unchanged by the frame |
+| 3.5 | unit | `test_late_admitted_frame_keeps_status` | received then admitted → one row, `received`, text filled |
 | 4.1 | unit | `test_sender_labels_name_members` | viewer, member, `steer:api`, unknown → "You", name, "API", fallback |
 | 4.2 | e2e | `test_member_sees_teammate_message_then_reply` | two signed-in members on one fleet: each sees the other's text, named, then the reply |
+| 4.3 | integration | `test_workspace_members_carry_actor` | member with subject `user_b` → item `actor:"steer:user_b"` |
 | 5.1 | unit | `test_stream_description_names_every_frame` | every `TailFrame` kind string is in the description |
 
 ## Acceptance Rubric (single scoring surface)
@@ -234,6 +243,7 @@ N/A — no files deleted.
 ## Discovery (consult log)
 
 - **Consults** — Sep 30, 2026, Indy: "showing a message before the fleet picks it up, which needs a send-time broadcast is also a must have since then i can test John invited to Bob and they both see the same fleet. Bob types a message and John can see the typed message and response." Source findings: `event_received` has no body (`handler/stream.rs:89-90`) and fires at lease (`lease/bracket.rs`); `core.fleet_admissions` holds `request_json` and commits before the 202 (`schema/910_fleet_admissions.sql`).
+- **Source corrections** — Sep 30, 2026, read before CHORE(open): sender names need a join key the members route lacked (§4, Dimension 4.3); `event_admitted` can trail `event_received` (§3, Dimension 3.5); queued rows ride the existing undelivered index (§2); a dropped frame is logged by the shared publisher, not a new warn (§1); a reconnect restores a waiting turn only at its lease (Failure Modes). `orly gate work` allows one active spec per worktree, so M208_001 closes before this opens (Aiwa's call while Indy was away; the PR is one either way).
 - **Metrics review** — pending.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
