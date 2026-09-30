@@ -42,6 +42,25 @@ fn trace_capture_records_fields() {
     assert_eq!(capture.events().len(), 1, "one event raised, one captured");
 }
 
+// `only` fails the test on anything but one match, so a suite asserting a log
+// line never passes over an event nobody raised or one raised twice.
+#[test]
+#[should_panic(expected = "expected exactly one capture_probe event")]
+fn trace_capture_only_refuses_an_event_nobody_raised() {
+    let capture = Capture::install();
+    tracing::info!(event = FLEET);
+    let _ = capture.only(EVENT);
+}
+
+#[test]
+#[should_panic(expected = "expected exactly one capture_probe event")]
+fn trace_capture_only_refuses_an_event_raised_twice() {
+    let capture = Capture::install();
+    tracing::info!(event = EVENT);
+    tracing::info!(event = EVENT);
+    let _ = capture.only(EVENT);
+}
+
 #[test]
 fn trace_capture_serialises_concurrent_tests() {
     let first = Capture::install();
