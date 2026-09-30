@@ -16,7 +16,10 @@ import { clientFor } from "./fixtures/api-client";
 import { signInAs } from "./fixtures/auth";
 import { deleteUser, findUserIdByEmail } from "./fixtures/clerk-admin";
 import { FIXTURE_KEY, VERCEL_BYPASS_STATE_FILENAME } from "./fixtures/constants";
+import { workspaceHref } from "./fixtures/nav";
+import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { signUpAs } from "./fixtures/signup";
+import { cleanWorkspaceFleets } from "./fixtures/teardown";
 
 const PASSWORD = "TeamInvitee!2026-stable";
 const FLOW_TIMEOUT_MS = 120_000;
@@ -25,6 +28,18 @@ const OWNER_MEMBERS = "/v1/tenants/me/members";
 const WAITING_INVITES = "/v1/me/invites";
 const OWNER_WORKSPACES = "/v1/tenants/me/workspaces?limit=100";
 const OWNER_ROLE = "owner";
+const CURRENT_USER = "/v1/users/me";
+// The shared-thread journey's fleet, swept by prefix after each test.
+const THREAD_PREFIX = "team-thread-";
+const CHAT_LABEL = "Fleet chat";
+const COMPOSER_LABEL = "Chat composer";
+const PERSON_TURN = '[data-role="user"]';
+const ASSISTANT_TURN = '[data-role="assistant"]';
+const SENDER_LINE = "fleet-message-sender";
+// A turn another screen sent lands over the live stream, well inside this.
+const LIVE_MS = 15_000;
+// A runner leases the turn and the provider answers inside this.
+const REPLY_MS = 150_000;
 
 const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.agentsfleet.net");
 
@@ -33,6 +48,7 @@ type InviteRow = { id: string; email: string; link: string };
 type MemberRow = { user_id: string; email: string };
 type WorkspaceRow = { id: string; name: string | null; role: string };
 type WaitingRow = { id: string; account: { owner_name: string } };
+type CurrentUser = { display_name: string | null };
 
 type Invitee = { email: string; sessionJwt: string; page: Page; context: BrowserContext };
 
@@ -154,4 +170,62 @@ test.describe("teammates join an account", () => {
     await expect(menu.getByRole("menuitem", { name: first!.name ?? "Unnamed workspace" })).toBeVisible();
     await expect(page.getByTestId("invite-notice")).toHaveCount(0);
   });
+
+  test("test_member_sees_teammate_message_then_reply", async ({ page, browser }) => {
+    test.setTimeout(REPLY_MS + FLOW_TIMEOUT_MS);
+    email = inviteeEmail();
+    const invitee = await signUpInvitee(browser, email);
+    inviteeContext = invitee.context;
+    const owner = clientFor(FIXTURE_KEY.admin);
+    const bobApi = clientFor({ sessionJwt: invitee.sessionJwt });
+
+    // Bob joins John's account, and John's workspace holds a fleet for both.
+    const invite = await owner.post<InviteRow>(OWNER_INVITES, { email: invitee.email });
+    await bobApi.post(`${WAITING_INVITES}/${invite.id}/accept`, undefined);
+    const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.admin);
+    const tag = crypto.randomBytes(3).toString("hex");
+    const fleet = await seedFleet(FIXTURE_KEY.admin, workspaceId, { name: `${THREAD_PREFIX}${tag}` });
+    try {
+      await waitForFleetActive(FIXTURE_KEY.admin, workspaceId, fleet.id);
+      const johnName = (await owner.get<CurrentUser>(CURRENT_USER)).display_name;
+      const bobName = (await bobApi.get<CurrentUser>(CURRENT_USER)).display_name;
+      expect(johnName).toBeTruthy();
+      expect(bobName).toBeTruthy();
+
+      await signInAs(page, FIXTURE_KEY.admin);
+      const thread = workspaceHref(workspaceId, `fleets/${fleet.id}`);
+      await page.goto(thread);
+      await invitee.page.goto(thread);
+      await expect(page.getByLabel(CHAT_LABEL)).toBeVisible();
+      await expect(invitee.page.getByLabel(CHAT_LABEL)).toBeVisible();
+
+      // Bob types; John's screen shows it at once, under Bob's name.
+      const bobSays = `check the tests ${tag}`;
+      await send(invitee.page, bobSays);
+      const onJohns = page.getByLabel(CHAT_LABEL).locator(PERSON_TURN).filter({ hasText: bobSays });
+      await expect(onJohns).toBeVisible({ timeout: LIVE_MS });
+      await expect(onJohns.getByTestId(SENDER_LINE)).toHaveText(bobName!);
+
+      // John answers; Bob's screen names John, and John's own turn names no one.
+      const johnSays = `ship it ${tag}`;
+      await send(page, johnSays);
+      const onBobs = invitee.page.getByLabel(CHAT_LABEL).locator(PERSON_TURN).filter({ hasText: johnSays });
+      await expect(onBobs).toBeVisible({ timeout: LIVE_MS });
+      await expect(onBobs.getByTestId(SENDER_LINE)).toHaveText(johnName!);
+      const ownTurn = page.getByLabel(CHAT_LABEL).locator(PERSON_TURN).filter({ hasText: johnSays });
+      await expect(ownTurn.getByTestId(SENDER_LINE)).toHaveCount(0);
+
+      // The fleet's answer to Bob reaches John's screen too.
+      await expect(page.getByLabel(CHAT_LABEL).locator(ASSISTANT_TURN).first()).toBeVisible({ timeout: REPLY_MS });
+    } finally {
+      await cleanWorkspaceFleets(FIXTURE_KEY.admin, workspaceId, THREAD_PREFIX);
+    }
+  });
 });
+
+// Types `text` into the fleet's composer and sends it.
+async function send(page: Page, text: string): Promise<void> {
+  const composer = page.getByLabel(COMPOSER_LABEL);
+  await composer.getByPlaceholder(/message this fleet/i).fill(text);
+  await composer.getByRole("button", { name: /send/i }).click();
+}

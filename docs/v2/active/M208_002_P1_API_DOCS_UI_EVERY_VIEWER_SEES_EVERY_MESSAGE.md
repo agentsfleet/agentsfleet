@@ -61,6 +61,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_http/src/services/event.rs`, `rustd/crates/afd_events/src/steer.rs` | EDIT | the announce seam on `FleetSteering`; `Steered` carries the admission instant |
 | `rustd/crates/afd_tenant/src/{sql/member.rs,team/{mod,member}.rs}`, `rustd/crates/afd_api_tenant/src/handler/tenant/member.rs`, `rustd/crates/afd_wire/src/team.rs` | EDIT | a workspace member carries `actor`, the string that member's steers record |
 | `ui/packages/app/lib/api/tenant-members.ts` | EDIT | `listWorkspaceMembers` |
+| `ui/packages/app/tests/e2e/acceptance/team-members.spec.ts` | EDIT | the two-person journey: each sees the other's message, named, then the reply |
 | `rustd/crates/afd_fleet/src/lease/bracket.rs` | EDIT | `event_received` carries the steer's message |
 | `rustd/crates/afd_api_tenant/src/handler/fleet/message.rs` | EDIT | thread read adds `queued` rows, deduplicated by event id |
 | `rustd/crates/afd_api_tenant/src/handler/stream.rs` | EDIT | stream description names `event_admitted` and `message` |
@@ -133,7 +134,7 @@ The thread read (`GET …/fleets/{fleet_id}/messages`) returns the fleet's recei
 The viewer's own messages read "You"; a member's read their display name from `GET /v1/workspaces/{workspace_id}/members` (M208_001); any other actor, and a member with no display name, keeps today's label (`senderLabelFor`). No account identifier ever renders. The route's `user_id` is `core.users.id` (`afd_tenant/src/sql/member.rs:8`) while a steer records `steer:<oidc_subject>` (`message_steer.rs:226`), so each item gains `actor`, the string that member's steers record. Nothing new is exposed: every event row a member reads already carries it.
 
 - **Dimension 4.1** — viewer, member and unknown actors label as "You", the name, and the existing fallback → Test `test_sender_labels_name_members` — DONE (`ui/packages/app/lib/events/sender-names.test.ts`; rendered in `tests/fleet-thread/role-senders.test.ts`)
-- **Dimension 4.2** — two people on one fleet each see the other's message, named, then the reply → Test `test_member_sees_teammate_message_then_reply`
+- **Dimension 4.2** — two people on one fleet each see the other's message, named, then the reply → Test `test_member_sees_teammate_message_then_reply` — written (`ui/packages/app/tests/e2e/acceptance/team-members.spec.ts`); runs after merge, once `main` deploys to dev (Discovery)
 - **Dimension 4.3** — a workspace member item carries `actor` equal to that member's steer actor → Test `test_workspace_members_carry_actor` — DONE (`afd_api/tests/integration_fleet_admitted.rs`; the list still carries no address)
 
 ### §5 — Documentation
