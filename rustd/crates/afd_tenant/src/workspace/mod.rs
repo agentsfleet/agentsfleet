@@ -29,10 +29,14 @@ use afd_auth::scope::Scope;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
+use sqlx::Row as _;
 
 use self::access::{Access, Grant, Role};
 use crate::sql::workspace as sql;
 use crate::{Result, error};
+
+/// The context an access read's failure reports under.
+const CONTEXT_AUTHORIZE: &str = "authorize workspace";
 
 /// Resolves who owns a workspace, and keeps the tenant's directory of them.
 ///
@@ -99,18 +103,20 @@ impl Workspaces {
     async fn membership(&self, person: &Person, workspace: &Uuid7) -> Result<Option<Access>> {
         let binds = TenantBinds::of(person);
         let mut connection = self.database.acquire().await?;
-        let row: Option<(String, Option<String>)> = sqlx::query_as(sql::AUTHORIZE_WORKSPACE)
+        let unreadable = error::query(CONTEXT_AUTHORIZE);
+        let row = sqlx::query(sql::AUTHORIZE_WORKSPACE)
             .bind(workspace.as_str())
             .bind(binds.subject)
             .bind(binds.claim)
             .fetch_optional(connection.as_mut())
             .await
-            .map_err(error::query("authorize workspace"))?;
-        row.map(|(tenant, role)| {
-            let role = role.as_deref().map_or(Ok(Role::Owner), Role::parse)?;
+            .map_err(&unreadable)?;
+        row.map(|row| {
+            let tenant: String = row.try_get("tenant_id").map_err(&unreadable)?;
+            let role: Option<String> = row.try_get("role").map_err(&unreadable)?;
             Ok(Access {
                 tenant: parse_tenant(&tenant)?,
-                grant: Grant::Membership(role),
+                grant: Grant::Membership(Role::held(role.as_deref())?),
             })
         })
         .transpose()
@@ -133,18 +139,19 @@ impl Workspaces {
             return Ok(None);
         }
         let mut connection = self.database.acquire().await?;
-        let row: Option<(String,)> = sqlx::query_as(sql::SELECT_WORKSPACE_TENANT)
+        let tenant: Option<String> = sqlx::query_scalar(sql::SELECT_WORKSPACE_TENANT)
             .bind(workspace.as_str())
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query("resolve workspace tenant"))?;
-        row.map(|(tenant,)| {
-            Ok(Access {
-                tenant: parse_tenant(&tenant)?,
-                grant: Grant::Platform,
+        tenant
+            .map(|tenant| {
+                Ok(Access {
+                    tenant: parse_tenant(&tenant)?,
+                    grant: Grant::Platform,
+                })
             })
-        })
-        .transpose()
+            .transpose()
     }
 
     /// The tenant a subject belongs to, with no workspace to check against.

@@ -2,6 +2,8 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use sqlx::Row as _;
+use sqlx::postgres::PgRow;
 
 use super::{INVITE_TTL_MS, Invite, NewInvite, Team, Waiting};
 use crate::sql::invite as sql;
@@ -17,11 +19,12 @@ const CONTEXT_WAITING: &str = "list waiting invites";
 /// The index that holds an account to one pending invite per address.
 const PENDING_CONSTRAINT: &str = "uq_invites_tenant_id_email_pending";
 
+/// The invite columns more than one read names.
+const COLUMN_ID: &str = "id";
+const COLUMN_EXPIRES_AT: &str = "expires_at";
+
 /// Sends attempted for an invite that was only just issued.
 const NO_ATTEMPTS: i32 = 0;
-
-/// One invite row: id, address, role, expiry, issue time.
-type InviteRow = (String, String, String, i64, i64);
 
 impl Team {
     /// Issues an invite for `new.email` into `new.tenant`, as a member.
@@ -31,14 +34,14 @@ impl Team {
     /// a pending invite there; reports a datastore that would not answer.
     pub async fn invite(&self, new: &NewInvite<'_>, now: UnixMillis) -> Result<Invite> {
         let id = self.entropy.uuid7(now)?;
-        let expires_at_ms = now.as_millis().saturating_add(INVITE_TTL_MS);
+        let expires_at_ms = now.saturating_add_millis(INVITE_TTL_MS).as_millis();
         let raise = error::query(CONTEXT_ISSUE);
         let mut connection = self.database.acquire().await?;
         let mut transaction = sqlx::Acquire::begin(&mut *connection)
             .await
             .map_err(&raise)?;
 
-        let member: Option<(i32,)> = sqlx::query_as(sql::SELECT_MEMBER_BY_EMAIL)
+        let member: Option<i32> = sqlx::query_scalar(sql::SELECT_MEMBER_BY_EMAIL)
             .bind(new.tenant.as_str())
             .bind(new.email.as_str())
             .fetch_optional(&mut *transaction)
@@ -87,13 +90,13 @@ impl Team {
     /// cannot read.
     pub async fn invites(&self, tenant: &Uuid7, now: UnixMillis) -> Result<Vec<Invite>> {
         let mut connection = self.database.acquire().await?;
-        let rows: Vec<InviteRow> = sqlx::query_as(sql::SELECT_TENANT_PENDING)
+        let rows = sqlx::query(sql::SELECT_TENANT_PENDING)
             .bind(tenant.as_str())
             .bind(now.as_millis())
             .fetch_all(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_LIST))?;
-        rows.into_iter().map(invite).collect()
+        rows.iter().map(invite).collect()
     }
 
     /// Revokes one of the account's pending invites.
@@ -131,34 +134,39 @@ impl Team {
     /// Reports a datastore that would not answer.
     pub async fn waiting_for(&self, email: &str, now: UnixMillis) -> Result<Vec<Waiting>> {
         let mut connection = self.database.acquire().await?;
-        let rows: Vec<(String, String, String, i64)> =
-            sqlx::query_as(sql::SELECT_PENDING_FOR_EMAIL)
-                .bind(email.to_lowercase())
-                .bind(now.as_millis())
-                .bind(ROLE_OWNER)
-                .fetch_all(connection.as_mut())
-                .await
-                .map_err(error::query(CONTEXT_WAITING))?;
-        Ok(rows
-            .into_iter()
-            .map(|(id, tenant, owner_name, expires_at_ms)| Waiting {
-                id,
-                tenant,
-                owner_name,
-                expires_at_ms,
-            })
-            .collect())
+        let rows = sqlx::query(sql::SELECT_PENDING_FOR_EMAIL)
+            .bind(super::email::fold(email))
+            .bind(now.as_millis())
+            .bind(ROLE_OWNER)
+            .fetch_all(connection.as_mut())
+            .await
+            .map_err(error::query(CONTEXT_WAITING))?;
+        rows.iter().map(waiting).collect()
     }
 }
 
-/// One invite from its row.
-fn invite((id, email, role, expires_at_ms, created_at_ms): InviteRow) -> Result<Invite> {
+/// One invite from its row, read by column name.
+fn invite(row: &PgRow) -> Result<Invite> {
+    let unreadable = error::query(CONTEXT_LIST);
+    let id: String = row.try_get(COLUMN_ID).map_err(&unreadable)?;
+    let role: String = row.try_get("role").map_err(&unreadable)?;
     Ok(Invite {
-        id: Uuid7::parse(&id).map_err(error::row_malformed("core.invites", "id"))?,
-        email,
+        id: Uuid7::parse(&id).map_err(error::row_malformed("core.invites", COLUMN_ID))?,
+        email: row.try_get("email").map_err(&unreadable)?,
         role: Role::parse(&role)?,
-        expires_at_ms,
-        created_at_ms,
+        expires_at_ms: row.try_get(COLUMN_EXPIRES_AT).map_err(&unreadable)?,
+        created_at_ms: row.try_get("created_at").map_err(&unreadable)?,
+    })
+}
+
+/// One invite waiting for an address, read by column name.
+fn waiting(row: &PgRow) -> Result<Waiting> {
+    let unreadable = error::query(CONTEXT_WAITING);
+    Ok(Waiting {
+        id: row.try_get(COLUMN_ID).map_err(&unreadable)?,
+        tenant: row.try_get("tenant_id").map_err(&unreadable)?,
+        owner_name: row.try_get("owner_name").map_err(&unreadable)?,
+        expires_at_ms: row.try_get(COLUMN_EXPIRES_AT).map_err(&unreadable)?,
     })
 }
 

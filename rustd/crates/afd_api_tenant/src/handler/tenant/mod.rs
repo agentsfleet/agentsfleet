@@ -70,17 +70,6 @@ use afd_core::id::Uuid7;
 use crate::handler::{Refusal, parameter};
 use crate::services::{Services, WorkspaceOwnership as _};
 
-/// Which tenant this principal acts for, or the refusal.
-///
-/// The tenant plane's routes carry no workspace, so there is no ownership layer
-/// in front of them and this is the boundary instead: every statement below a
-/// handler filters on what this returns, and a principal that resolves to no
-/// tenant cannot reach a row at all.
-///
-/// `detail` and `event` are the route family's own: the refusal a bootstrap
-/// credential earns names what it cannot do HERE, so the api-key verbs and the
-/// billing reads each hand in their sentence rather than sharing one that is
-/// wrong for somebody (the port of each Zig handler group spelling its own).
 /// A whole list as its one page: every row, the count of them, no cursor.
 ///
 /// For the lists an account keeps small by nature, its invites and its
@@ -93,6 +82,17 @@ fn one_page<'a, T>(items: Vec<T>) -> afd_wire::tenant::PageResponse<'a, T> {
     }
 }
 
+/// Which tenant this principal acts for, or the refusal.
+///
+/// The tenant plane's routes carry no workspace, so there is no ownership layer
+/// in front of them and this is the boundary instead: every statement below a
+/// handler filters on what this returns, and a principal that resolves to no
+/// tenant cannot reach a row at all.
+///
+/// `detail` and `event` are the route family's own: the refusal a bootstrap
+/// credential earns names what it cannot do HERE, so the api-key verbs and the
+/// billing reads each hand in their sentence rather than sharing one that is
+/// wrong for somebody (the port of each Zig handler group spelling its own).
 async fn tenant_of<D: Services>(
     services: &Arc<D>,
     person: &afd_auth::principal::Person,

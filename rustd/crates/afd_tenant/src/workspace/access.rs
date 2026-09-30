@@ -8,6 +8,7 @@
 //! beside an optional platform flag.
 
 use afd_core::id::Uuid7;
+use afd_core::spelling::from_spelling;
 
 use crate::{Result, error};
 
@@ -22,7 +23,8 @@ pub const ROLE_MEMBER: &str = "member";
 /// Roles only subtract. The capability gate runs first, on the caller's own
 /// scopes, so a member never exceeds what their identity grants; the role then
 /// withholds the owner-grade routes inside somebody else's account.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Role {
     /// Created the account, or holds it as its owner.
     Owner,
@@ -48,11 +50,16 @@ impl Role {
     /// would lock an owner out, and guessing `owner` would hand a stranger the
     /// account's secrets.
     pub fn parse(stored: &str) -> Result<Self> {
-        match stored {
-            ROLE_OWNER => Ok(Self::Owner),
-            ROLE_MEMBER => Ok(Self::Member),
-            unknown => Err(error::role_unknown(unknown)),
-        }
+        from_spelling(stored).ok_or_else(|| error::role_unknown(stored))
+    }
+
+    /// The role an access row carries, where no membership row means the
+    /// caller's own account, which they own.
+    ///
+    /// # Errors
+    /// As [`Role::parse`], for a stored value this build does not know.
+    pub fn held(stored: Option<&str>) -> Result<Self> {
+        stored.map_or(Ok(Self::Owner), Self::parse)
     }
 }
 

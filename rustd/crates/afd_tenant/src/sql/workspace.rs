@@ -118,7 +118,8 @@ pub const SELECT_SUBJECT_ACCOUNTS: &str = concat!(
          SELECT me.tenant_id, NULL::text FROM me \
        ) arm ORDER BY arm.tenant_id, arm.role NULLS LAST \
      ) \
-     SELECT t.id::text, held.role, COALESCE(owner.display_name, t.name), me.tenant_id::text \
+     SELECT t.id::text AS tenant_id, held.role, \
+            COALESCE(owner.display_name, t.name) AS owner_name, me.tenant_id::text AS home_tenant_id \
      FROM held CROSS JOIN me \
      JOIN core.tenants t ON t.id = held.tenant_id ",
     owner_name_join!(2),
@@ -131,7 +132,8 @@ pub const SELECT_SUBJECT_ACCOUNTS: &str = concat!(
 /// claim names no tenant, and the list is then empty rather than refused,
 /// exactly as it was before accounts had members.
 pub const SELECT_TENANT_ACCOUNT: &str = concat!(
-    "SELECT t.id::text, NULL::text, COALESCE(owner.display_name, t.name), t.id::text \
+    "SELECT t.id::text AS tenant_id, NULL::text AS role, \
+            COALESCE(owner.display_name, t.name) AS owner_name, t.id::text AS home_tenant_id \
      FROM core.tenants t ",
     owner_name_join!(2),
     "WHERE t.id = $1::uuid"

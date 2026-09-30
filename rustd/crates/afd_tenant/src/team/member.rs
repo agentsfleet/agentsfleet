@@ -1,6 +1,8 @@
 //! Listing an account's members, and removing one without leaving it ownerless.
 
 use afd_core::id::Uuid7;
+use sqlx::Row as _;
+use sqlx::postgres::PgRow;
 
 use super::{Member, Removal, Team};
 use crate::sql::member as sql;
@@ -11,9 +13,6 @@ use crate::{Result, error};
 const CONTEXT_LIST: &str = "list members";
 const CONTEXT_REMOVE: &str = "remove member";
 
-/// One member row: user, display name, address, role, when they joined.
-type MemberRow = (String, Option<String>, String, String, i64);
-
 impl Team {
     /// The account's members, oldest membership first.
     ///
@@ -22,22 +21,12 @@ impl Team {
     /// build cannot read.
     pub async fn members(&self, tenant: &Uuid7) -> Result<Vec<Member>> {
         let mut connection = self.database.acquire().await?;
-        let rows: Vec<MemberRow> = sqlx::query_as(sql::SELECT_MEMBERS)
+        let rows = sqlx::query(sql::SELECT_MEMBERS)
             .bind(tenant.as_str())
             .fetch_all(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_LIST))?;
-        rows.into_iter()
-            .map(|(user, display_name, email, role, joined_at_ms)| {
-                Ok(Member {
-                    user,
-                    display_name,
-                    email,
-                    role: Role::parse(&role)?,
-                    joined_at_ms,
-                })
-            })
-            .collect()
+        rows.iter().map(member).collect()
     }
 
     /// Removes `user`'s membership in the account.
@@ -56,17 +45,17 @@ impl Team {
             .await
             .map_err(&raise)?;
 
-        let held: Option<(String,)> = sqlx::query_as(sql::LOCK_MEMBERSHIP)
+        let held: Option<String> = sqlx::query_scalar(sql::LOCK_MEMBERSHIP)
             .bind(tenant.as_str())
             .bind(user.as_str())
             .fetch_optional(&mut *transaction)
             .await
             .map_err(&raise)?;
-        let Some((role,)) = held else {
+        let Some(role) = held else {
             return Ok(Removal::Absent);
         };
         if Role::parse(&role)? == Role::Owner {
-            let owners: Vec<(String,)> = sqlx::query_as(sql::LOCK_OWNERS)
+            let owners: Vec<String> = sqlx::query_scalar(sql::LOCK_OWNERS)
                 .bind(tenant.as_str())
                 .bind(ROLE_OWNER)
                 .fetch_all(&mut *transaction)
@@ -89,4 +78,17 @@ impl Team {
         tracing::info!(tenant_id, user_id, event = "workspace_member_removed");
         Ok(Removal::Removed)
     }
+}
+
+/// One member from its row, read by column name.
+fn member(row: &PgRow) -> Result<Member> {
+    let unreadable = error::query(CONTEXT_LIST);
+    let role: String = row.try_get("role").map_err(&unreadable)?;
+    Ok(Member {
+        user: row.try_get("user_id").map_err(&unreadable)?,
+        display_name: row.try_get("display_name").map_err(&unreadable)?,
+        email: row.try_get("email").map_err(&unreadable)?,
+        role: Role::parse(&role)?,
+        joined_at_ms: row.try_get("joined_at").map_err(&unreadable)?,
+    })
 }

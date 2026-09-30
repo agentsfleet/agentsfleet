@@ -62,7 +62,8 @@ WHERE tenant_id = $1::uuid AND id = $2::uuid \
 ///
 /// `$1` the lowercased address · `$2` now · `$3` the owner role's spelling.
 pub const SELECT_PENDING_FOR_EMAIL: &str = concat!(
-    "SELECT i.id::text, t.id::text, COALESCE(owner.display_name, t.name), i.expires_at \
+    "SELECT i.id::text AS id, t.id::text AS tenant_id, \
+            COALESCE(owner.display_name, t.name) AS owner_name, i.expires_at \
      FROM core.invites i \
      JOIN core.tenants t ON t.id = i.tenant_id ",
     owner_name_join!(3),
