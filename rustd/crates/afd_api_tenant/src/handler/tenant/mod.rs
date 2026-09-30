@@ -11,6 +11,8 @@ pub(crate) mod api_key;
 pub(crate) mod billing;
 pub(crate) mod cli_credential;
 pub(crate) mod identity;
+pub(crate) mod invite;
+pub(crate) mod member;
 pub(crate) mod model_entry;
 pub(crate) mod models;
 pub(crate) mod provider;
@@ -79,6 +81,18 @@ use crate::services::{Services, WorkspaceOwnership as _};
 /// credential earns names what it cannot do HERE, so the api-key verbs and the
 /// billing reads each hand in their sentence rather than sharing one that is
 /// wrong for somebody (the port of each Zig handler group spelling its own).
+/// A whole list as its one page: every row, the count of them, no cursor.
+///
+/// For the lists an account keeps small by nature, its invites and its
+/// members, where a cursor would promise a second page that cannot exist.
+fn one_page<'a, T>(items: Vec<T>) -> afd_wire::tenant::PageResponse<'a, T> {
+    afd_wire::tenant::PageResponse {
+        total: i64::try_from(items.len()).unwrap_or(i64::MAX),
+        items,
+        next_cursor: None,
+    }
+}
+
 async fn tenant_of<D: Services>(
     services: &Arc<D>,
     person: &afd_auth::principal::Person,

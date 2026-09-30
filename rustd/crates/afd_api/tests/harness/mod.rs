@@ -79,6 +79,7 @@ use afd_tenant::apikey::ApiKeys;
 use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
 use afd_tenant::session::Sessions as Logins;
+use afd_tenant::team::Team;
 use afd_tenant::workspace::Workspaces;
 // Aliased for the reason the composition root aliases it: `afd_credential::vault`
 // is the runner plane's reader and this is the workspace-admin surface.
@@ -225,6 +226,7 @@ pub(crate) struct Fleet {
     workspaces: Ownership,
     workspace_directory: Workspaces,
     api_keys: ApiKeys,
+    team: Team,
     cli_credentials: CliCredentials,
     logins: Logins,
     fleets: Fleets,

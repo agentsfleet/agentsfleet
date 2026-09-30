@@ -72,6 +72,7 @@ pub mod schedule;
 pub mod schema;
 pub mod secret;
 pub mod tail;
+pub mod team;
 pub mod tenant;
 pub mod tenant_model_entry;
 pub mod tenant_provider;

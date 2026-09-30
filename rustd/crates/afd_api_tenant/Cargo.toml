@@ -57,6 +57,9 @@ afd_dragonfly.workspace = true
 afd_tenant.workspace = true
 afd_vault.workspace = true
 afd_wire.workspace = true
+# The invite link is built by path segment from the dashboard base, the way
+# the connector's own dashboard URLs are, never by string formatting.
+url.workspace = true
 # The document generator, reachable only under `openapi`. Optional at every
 # member that names it, so the default resolve is unchanged.
 utoipa = { workspace = true, optional = true }

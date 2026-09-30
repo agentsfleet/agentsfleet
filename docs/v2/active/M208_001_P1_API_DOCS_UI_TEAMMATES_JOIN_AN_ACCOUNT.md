@@ -59,7 +59,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_db/src/migration.rs` | EDIT | register 923 |
 | `rustd/crates/afd_tenant/src/sql/workspace.rs` | EDIT | access through memberships; answers tenant and role |
 | `rustd/crates/afd_tenant/src/workspace/mod.rs` | EDIT | access record: role and via (membership, platform read, platform write) |
-| `rustd/crates/afd_tenant/src/invite/` | CREATE | create, list, revoke, accept (one transaction), expiry |
+| `rustd/crates/afd_tenant/src/{team/,sql/{invite,member}.rs,lib.rs}` | CREATE/EDIT | one `Team` store: invites (create, list, revoke, accept in one transaction, expiry) and members (list, remove, last-owner guard) |
 | `rustd/crates/afd_tenant/src/workspace/{access,accounts}.rs`, `src/sql/mod.rs`, `src/error/*` | CREATE/EDIT | the access record, the accounts a caller holds, the refusals |
 | `rustd/crates/afd_http/src/auth/ownership/{role,extract}.rs` | CREATE | the member rule; the extractors, split out at the file cap |
 | `rustd/crates/afd_sse/src/{frame,lib}.rs`, `afd_api_tenant/src/handler/stream/{guard,wall}.rs` | CREATE/EDIT | streams re-check access and end on `access_revoked` |
@@ -67,13 +67,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_core/src/{error_code,problem}.rs` | EDIT | the registry lists the new codes and the invite family |
 | `rustd/crates/{afd_api_tenant/src/handler/auth/session,afd_api_runner/src/handler/runner/enrolment}.rs` | EDIT | published descriptions name no identity vendor |
 | `rustd/crates/{afd_api,afd_tenant}/tests/**` | CREATE/EDIT | the access suites; the harness decides from real rows on request; an uncompiled harness file removed |
-| `rustd/crates/afd_tenant/src/member/` | CREATE | list members, remove member, last-owner guard |
 | `rustd/crates/afd_auth/src/scope.rs` | EDIT | `workspace:any` → `workspace-any:read` + `workspace-any:write` |
 | `rustd/crates/afd_http/src/auth/ownership.rs` | EDIT | role gate; read-only crossing admits safe methods only; audit fields |
 | `rustd/crates/afd_api/src/router/mod.rs` | EDIT | the ownership layer receives the route's scopes, which the role gate reads |
 | `rustd/crates/afd_http/src/services/tenant.rs` | EDIT | `WorkspaceOwnership` returns the access record |
 | `rustd/crates/afd_http/src/route/{tenant,workspace,admin}.rs` | EDIT | invite, member, directory and access routes |
-| `rustd/crates/afd_api_tenant/src/handler/tenant/{invite,member}.rs` | CREATE | owner and invitee handlers |
+| `rustd/crates/afd_api_tenant/{Cargo.toml,src/lib.rs,src/openapi.rs,src/handler/tenant/{mod,invite,member}.rs}`, `rustd/Cargo.lock` | CREATE/EDIT | owner and invitee handlers, registered and documented |
+| `rustd/crates/{afd_wire/src/{lib,team}.rs,afd_http/src/{openapi.rs,openapi/path.rs,services/{mod,tenant_surface,team}.rs},agentsfleetd/src/{plane.rs,plane/services.rs}}` | CREATE/EDIT | invite and member bodies; the `Team` service wired into the tenant plane and its OpenAPI document |
 | `rustd/crates/afd_api_tenant/src/handler/tenant/workspace.rs` | EDIT | list spans memberships; detail carries `access` |
 | `rustd/crates/afd_api_tenant/src/handler/stream.rs` | EDIT | re-authorize open streams on a bounded cadence |
 | `rustd/crates/afd_api_operator/src/handler/admin/workspaces.rs` | CREATE | platform directory (admin routes are the operator plane's) |
@@ -140,10 +140,10 @@ The access check answers `{tenant, role, via}`: a `core.memberships` row for the
 
 An owner invites an email (lowercased) as `member`; one pending invite per `(tenant, email)`; invites expire after 7 days. The invitee sees pending invites for their account email and accepts: the membership insert and the invite's `accepted_at` commit in one transaction, and accepting twice is a no-op. An owner lists members, lists and revokes invites, and removes a member; the last owner is never removed. The create response carries the accept `link` (`{dashboard}/invites/{invite_id}`, from `services.dashboard()`).
 
-- **Dimension 3.1** — create, list, revoke by an owner → Test `test_owner_manages_invites`
-- **Dimension 3.2** — accept by the matching account email creates one member row → Test `test_invitee_accepts_once`
-- **Dimension 3.3** — a different email is `403 UZ-INV-002`; expired or revoked is `404 UZ-INV-001` → Test `test_accept_refusals`
-- **Dimension 3.4** — a duplicate pending invite or existing member is `409 UZ-INV-003`; removing the last owner is `409 UZ-INV-004` → Test `test_invite_and_member_conflicts`
+- **Dimension 3.1** — create, list, revoke by an owner → Test `test_owner_manages_invites` — DONE (`afd_tenant/tests/integration_team.rs`; the seven routes end to end in `afd_api/tests/integration_team_routes.rs`)
+- **Dimension 3.2** — accept by the matching account email creates one member row → Test `test_invitee_accepts_once` — DONE (`integration_team.rs`, plus a failed second write leaving no member row)
+- **Dimension 3.3** — a different email is `403 UZ-INV-002`; expired or revoked is `404 UZ-INV-001` → Test `test_accept_refusals` — DONE (`integration_team.rs`)
+- **Dimension 3.4** — a duplicate pending invite or existing member is `409 UZ-INV-003`; removing the last owner is `409 UZ-INV-004` → Test `test_invite_and_member_conflicts` — DONE (`integration_team.rs`)
 
 ### §4 — The dashboard: members, invites, the account-grouped switcher
 
@@ -295,7 +295,7 @@ N/A — no files deleted.
 7. **Fit with existing features** — the steer path, pending-sends ledger and chat hold are unchanged; M208_002 names the senders this creates.
 8. **Surface order** — User Interface (UI) first: inviting and accepting are dashboard acts; the API is public and documented; the CLI follows later.
 9. **Dashboard restraint** — no Members entry for a member, no invite notice without a pending invite, no directory without a `workspace-any` scope, no write control on read-only access.
-10. **Confused-user next step** — a refused accept names the account email it expects; a member refused an owner action reads "Only the account owner can do this."
+10. **Confused-user next step** — a refused accept says to sign in with the address the invite was sent to, without naming it; a member refused an owner action reads "Only the account owner can do this."
 
 ## Decomposition & alternatives (patch vs refactor)
 
@@ -309,4 +309,5 @@ N/A — no files deleted.
 - **Metrics review** — pending.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
+- **§3 source corrections** — Sep 30, 2026: the `UZ-INV-002` refusal names no address (`afd_core/src/problem/invite.rs:27`), since the link may reach a third party and naming the address would leak it; Product Clarity 10 amended. A revoked stream ends with `event: access_revoked`, data `{kind, error_code:"UZ-AUTH-001"}` (`afd_api_tenant/src/handler/stream.rs:41-43`). Open for Indy: invite create takes no `Idempotency-Key` (`docs/REST_API_DESIGN_GUIDELINES.md:142`); a retry after a lost response is `409 UZ-INV-003`. Proposed: a repeat create returns the pending invite, as the runner report's lease id does (`afd_api_runner/src/handler/runner/report.rs:69`).
 - **Hand-rolled Rust cleanup** — Sep 30, 2026, Indy in session: "Are there any handrolled rust code? where you can use the afd_core or external crates, if yes fix them", then "Are there any duplicate handrolled code you have, if yes fix them." and "and clean it up". Its own commit on this branch: `Entropy::uuid7` replaces every draw-then-encode copy, `sqlx::error::DatabaseError::is_unique_violation` replaces the hand-written `23505` checks, `afd_tenant` lifts through `error_lifts!`, the identifier kinds that became dead are removed, and `DETAIL_NOT_DASHBOARD` drops the identity vendor's name.

@@ -48,6 +48,8 @@ mod integration_fleet_lifecycle;
 mod integration_fleet_memories;
 #[path = "integration_fleet_streams.rs"]
 mod integration_fleet_streams;
+#[path = "integration_team_routes.rs"]
+mod integration_team_routes;
 #[path = "integration_tenant.rs"]
 mod integration_tenant;
 #[path = "integration_tenant_cli.rs"]

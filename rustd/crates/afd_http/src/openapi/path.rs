@@ -83,6 +83,22 @@ pub struct Session {
     pub session_id: String,
 }
 
+/// One invite into an account.
+#[derive(Debug, IntoParams)]
+#[into_params(parameter_in = Path)]
+pub struct Invite {
+    /// `UUIDv7` of the invite.
+    pub invite_id: String,
+}
+
+/// One person in an account.
+#[derive(Debug, IntoParams)]
+#[into_params(parameter_in = Path)]
+pub struct Member {
+    /// `UUIDv7` of the member's user.
+    pub user_id: String,
+}
+
 /// One runner, as an operator addresses it.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]

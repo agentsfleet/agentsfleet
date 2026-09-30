@@ -339,6 +339,12 @@ const fn is_mounted(route: Route) -> bool {
                     | TenantRoute::ModelEntries
                     | TenantRoute::ModelEntry
                     | TenantRoute::CurrentUser
+                    | TenantRoute::Invites
+                    | TenantRoute::Invite
+                    | TenantRoute::Members
+                    | TenantRoute::Member
+                    | TenantRoute::InvitesForMe
+                    | TenantRoute::InviteAcceptance
             )
     )
 }

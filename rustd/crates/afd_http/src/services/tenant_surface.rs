@@ -14,7 +14,7 @@
 
 use crate::services::{
     ModelCatalogue, Signups, TenantBilling, TenantKeys, TenantModelEntries, TenantProviders,
-    TenantWorkspaces, TerminalCredentials,
+    TenantTeam, TenantWorkspaces, TerminalCredentials,
 };
 
 /// The tenant-scoped half of [`Services`](super::Services).
@@ -40,6 +40,12 @@ pub trait TenantSurface {
 
     /// The tenant api-key store.
     fn api_keys(&self) -> &Self::ApiKeys;
+
+    /// The people in an account: invites into it and the members who accepted.
+    type Team: TenantTeam;
+
+    /// The account's invite and member store.
+    fn team(&self) -> &Self::Team;
 
     /// A person's own command-line credentials.
     ///

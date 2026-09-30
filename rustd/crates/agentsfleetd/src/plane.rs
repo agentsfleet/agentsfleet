@@ -55,6 +55,7 @@ use afd_tenant::apikey::ApiKeys;
 use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
 use afd_tenant::session::Sessions as Logins;
+use afd_tenant::team::Team;
 use afd_tenant::workspace::Workspaces;
 // Aliased: `afd_credential::vault::Vault` above is the RUNNER plane's reader — it
 // opens a credential a fleet declared and never lists — and this is the
@@ -90,6 +91,7 @@ pub struct ServingPlane {
     workspaces: Workspaces,
     fleets: Fleets,
     api_keys: ApiKeys,
+    team: Team,
     cli_credentials: CliCredentials,
     billing: Billing,
     models: Models,
@@ -206,6 +208,7 @@ impl ServingPlane {
                 Entropy::new(),
             ),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
+            team: Team::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
             billing: Billing::new(database.clone()),
             models: Models::new(database.clone()),
