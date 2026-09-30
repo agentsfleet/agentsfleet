@@ -26,15 +26,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** none (M207_005 merged: `614813f12`)
 **Provenance:** LLM-drafted (Claude Opus 5.5, Sep 30, 2026); decisions in Discovery are Indy's
-**Canonical architecture:** `docs/AUTH.md` §Scopes and §Signup
+**Canonical architecture:** `docs/AUTH.md` §Scopes, §Signup and §Memberships and roles
 
 ---
 
 ## Overview
 
 **Goal (testable):** `test_invited_member_opens_and_steers_owner_fleet` — John invites Bob; Bob accepts, opens John's workspace, reads and steers MARY-001, and is refused writing John's secrets or connectors and managing his members.
-**Problem:** Workspace access is `core.users.tenant_id` equality (`rustd/crates/afd_tenant/src/sql/workspace.rs:38-44`), so only a workspace's creator can open it; `core.memberships` exists but no access check reads it. Platform operators holding `workspace:any` reach any workspace through the API (`rustd/crates/afd_tenant/src/workspace/mod.rs:104-149`), but the dashboard cannot find one, and the audit event cannot tell a look from an act.
-**Solution summary:** Access resolves through memberships with two roles, owner and member. Owners invite by email, list and revoke invites, and remove members; an invitee accepts from the dashboard. `workspace:any` keeps its read-and-write crossing, a platform directory lists every workspace, and each crossing is audited with its method. §1 lists the one credential M208 needs, for M208_003's invite email.
+**Problem:** Workspace access is `core.users.tenant_id` equality (`rustd/crates/afd_tenant/src/sql/workspace.rs:38-44`), so only a workspace's creator can open it; `core.memberships` exists but no access check reads it. Platform operators holding `workspace:any` reach any workspace through the API (`rustd/crates/afd_tenant/src/workspace/mod.rs:104-149`), but the audit event cannot tell a look from an act.
+**Solution summary:** Access resolves through memberships with two roles, owner and member. Owners invite by email, list and revoke invites, and remove members; an invitee accepts from the dashboard. `workspace:any` keeps its read-and-write crossing, and each crossing is audited with its method. §1 lists the one credential M208 needs, for M208_003's invite email.
 
 ## PR Intent & comprehension handshake
 
@@ -55,7 +55,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `playbooks/founding/02_preflight/{001_playbook.md,credentials_test.sh}` | EDIT | list `smtp-relay` among the post-deploy outputs; prove the early gates never read it |
-| `schema/923_workspace_invites.sql` | CREATE | `core.invites`: tenant, email, role, inviter, expiry, accepted/revoked, the email-status columns M208_003 writes; a partial index on pending invites by email; `core.workspaces (created_at, id)` for the platform directory |
+| `schema/923_workspace_invites.sql` | CREATE | `core.invites`: tenant, email, role, inviter, expiry, accepted/revoked, the email-status columns M208_003 writes; a partial index on pending invites by email |
 | `rustd/crates/afd_db/src/migration.rs` | EDIT | register 923 |
 | `rustd/crates/afd_tenant/src/sql/workspace.rs` | EDIT | access through memberships; answers tenant and role |
 | `rustd/crates/afd_tenant/src/workspace/mod.rs` | EDIT | access record: tenant and grant; the crossing event moves to the ownership layer |
@@ -71,12 +71,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_http/src/auth/ownership.rs` | EDIT | role gate; the crossing audit event, with the method, before the handler |
 | `rustd/crates/afd_api/src/router/mod.rs` | EDIT | the ownership layer receives the route's scopes, which the role gate reads |
 | `rustd/crates/afd_http/src/services/tenant.rs` | EDIT | `WorkspaceOwnership` returns the access record |
-| `rustd/crates/afd_http/src/route/{tenant,workspace,admin}.rs` | EDIT | invite, member, directory and access routes |
+| `rustd/crates/afd_http/src/route/{tenant,workspace}.rs` | EDIT | invite, member and access routes |
 | `rustd/crates/afd_api_tenant/{Cargo.toml,src/lib.rs,src/openapi.rs,src/handler/tenant/{mod,invite,member}.rs}`, `rustd/Cargo.lock` | CREATE/EDIT | owner and invitee handlers, registered and documented |
 | `rustd/crates/{afd_wire/src/{lib,team}.rs,afd_http/src/{openapi.rs,openapi/path.rs,services/{mod,tenant_surface,team}.rs},agentsfleetd/src/{plane.rs,plane/services.rs}}` | CREATE/EDIT | invite and member bodies; the `Team` service wired into the tenant plane and its OpenAPI document |
 | `rustd/crates/afd_api_tenant/src/handler/tenant/workspace.rs` | EDIT | list spans memberships |
 | `rustd/crates/afd_api_tenant/src/handler/stream.rs` | EDIT | re-authorize open streams on a bounded cadence |
-| `rustd/crates/afd_api_operator/src/handler/admin/workspaces.rs` | CREATE | platform directory (admin routes are the operator plane's) |
 | `rustd/crates/afd_core/src/{error_code,problem}/{auth,invite}.rs` | EDIT/CREATE | `UZ-AUTH-026`, `UZ-INV-001`…`004`, with their statuses |
 | `public/openapi.json` | EDIT | new routes |
 | `ui/packages/app/lib/api/{tenant-members,invites,decode,workspaces,admin-workspaces}.ts` | CREATE/EDIT | clients; workspace items decode `account` and `role` |
@@ -84,9 +83,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/{tests,lib,components,app}/**/*.test.{ts,tsx}`, `tests/e2e/acceptance/{team-members.spec.ts,global-teardown.ts}` | CREATE/EDIT | unit suites; the two journeys; the sweep reaps a leaked invitee |
 | `ui/packages/app/app/(dashboard)/settings/members/` | CREATE | owner: invite, copy link, pending invites, members, remove |
 | `ui/packages/app/app/(dashboard)/invites/` | CREATE | invitee: accept or decline |
-| `ui/packages/app/app/(dashboard)/admin/workspaces/` | CREATE | platform directory |
 | `docs/AUTH.md` | EDIT | memberships, the two roles, the owner-only refusal |
-| `~/Projects/docs` (branch `chore/m208-team-accounts-changelog`) | EDIT | members and invites pages, changelog `<Update>` |
+| `~/Projects/docs` (branch `chore/m208-team-accounts-changelog`) | EDIT | members and invites pages; no changelog `<Update>` (Discovery) |
 | `rustd/crates/{afd_crypto,afd_tenant,afd_fleet_lifecycle,afd_vault,afd_admin,afd_admission,afd_approval,afd_billing,afd_connector,afd_cron,afd_credential,afd_dragonfly,afd_fleet,afd_gate,afd_http,afd_ingress,afd_library,afd_runner}/{src,tests}/**` | EDIT | hand-rolled Rust cleanup Indy asked for in session (Discovery): one identifier mint, sqlx's unique-violation check, `error_lifts!`, dead kinds removed |
 
 ## Applicable Rules
@@ -149,18 +147,16 @@ Owners get Settings → Members (invite, copy link, pending invites, members, re
 - **Dimension 4.1** — an owner invites, copies the link and removes a member on the page → Test `test_members_page_owner_journey` — written (`tests/e2e/acceptance/team-members.spec.ts`); runs once the dev API serves §3
 - **Dimension 4.2** — an invitee accepts and the workspace appears under the owner's account → Test `test_invitee_accept_journey` — written (same spec); runs once the dev API serves §3
 
-### §5 — Platform operators: find any workspace, and act in it, audited
+### §5 — Platform operators: act in any workspace, audited
 
-`workspace:any` admits every method across tenants, as it does today; there is no read-only crossing (Discovery). The ownership layer emits `cross_tenant_workspace_override` before a crossing is honoured, with the method, so a look and an act read differently in the log. The event moves there from `afd_tenant/src/workspace/mod.rs:163`, which cannot see the method and logged again on every stream re-check. `GET /v1/admin/workspaces` lists every workspace for `workspace:any` and refuses everyone else; the dashboard's `/admin/workspaces` page lists them and opens one. The operator's identity-provider scopes need no edit.
+`workspace:any` admits every method across tenants, as it does today; there is no read-only crossing (Discovery). The ownership layer emits `cross_tenant_workspace_override` before a crossing is honoured, with the method, so a look and an act read differently in the log. The event moves there from `afd_tenant/src/workspace/mod.rs:163`, which cannot see the method and logged again on every stream re-check. An operator opens a workspace by its URL; there is no directory (Discovery). The operator's identity-provider scopes need no edit.
 
 - **Dimension 5.1** — an operator steers another tenant's fleet, attributed to the operator → Test `test_platform_write_acts_attributed` — DONE (`afd_api/tests/integration_workspace_members.rs`)
 - **Dimension 5.2** — every honoured crossing logs one audit event with the method, before the handler; access from inside the account logs none → Test `test_platform_crossing_audited` — DONE (`afd_tenant/src/workspace/crossing.rs`; placement in the layer by `test_layer_records_platform_crossings`, `afd_api/tests/workspace_member_roles.rs`)
-- **Dimension 5.3** — the directory serves `workspace:any` and refuses others → Test `test_admin_directory_scoped`
-- **Dimension 5.4** — the directory page lists workspaces and opens one → Test `test_admin_directory_page_opens_workspace`
 
 ### §6 — Documentation
 
-`docs/AUTH.md` (memberships, the two roles, the owner-only refusal); public members and invites pages and the changelog on the docs branch.
+`docs/AUTH.md` (memberships, the two roles, the owner-only refusal); public members and invites pages on the docs branch; no changelog entry (Discovery).
 
 - **Dimension 6.1** — `docs/AUTH.md` names both roles and `UZ-AUTH-026` → Test `test_docs_name_member_roles` — DONE (`afd_tenant/src/workspace/access.rs`)
 
@@ -176,7 +172,6 @@ GET    /v1/tenants/me/members                      -> 200 {items:[{user_id, disp
 DELETE /v1/tenants/me/members/{user_id}            -> 204
 GET    /v1/workspaces/{workspace_id}/members       -> 200 {items:[{user_id, display_name, role}]}
 GET    /v1/tenants/me/workspaces   items gain {account:{tenant_id, owner_name}, role}
-GET    /v1/admin/workspaces?q=&cursor=              -> 200 {items:[{id, name, owner_name, fleet_count}], next_cursor}
 Errors: UZ-AUTH-026 role refused (403)
         UZ-INV-001 not found/expired/revoked (404) · UZ-INV-002 email mismatch (403)
         UZ-INV-003 already pending or member (409) · UZ-INV-004 last owner (409)
@@ -228,8 +223,6 @@ Errors: UZ-AUTH-026 role refused (403)
 | 4.2 | e2e | `test_invitee_accept_journey` | accept → switcher shows the workspace under the owner's account |
 | 5.1 | integration | `test_platform_write_acts_attributed` | `workspace:any` steer on another tenant's fleet → 202, row actor `steer:<operator>` |
 | 5.2 | unit | `test_platform_crossing_audited` | platform `POST` → one warn event naming `POST`, operator and target; owner or member → none; the layer suite sees one event per crossing request and none for the owner |
-| 5.3 | integration | `test_admin_directory_scoped` | `workspace:any` → all tenants' workspaces; without it → `403 UZ-AUTH-022` |
-| 5.4 | unit | `test_admin_directory_page_opens_workspace` | two directory rows → both render; a row links to `/w/{id}` |
 | 6.1 | unit | `test_docs_name_member_roles` | `docs/AUTH.md` → names `owner`, `member` and `UZ-AUTH-026` |
 
 ## Acceptance Rubric (single scoring surface)
@@ -268,6 +261,8 @@ N/A — no symbol is deleted: `workspace:any` keeps its meaning (Discovery).
 - A viewer (watch-only) role — owner and member only (Indy, Sep 30, 2026).
 - Per-workspace invites — an invite grants the whole account (Indy, Sep 30, 2026; kept when asked again the same day).
 - A read-only platform crossing — `workspace:any` reads and writes (Indy, Sep 30, 2026, Discovery).
+- An operator directory of every workspace — an operator opens one by its URL (Indy, Sep 30, 2026, Discovery).
+- A changelog entry for M208 (Indy, Sep 30, 2026, Discovery).
 - API keys and CLI credentials reaching an invited account — they stay bound to their own tenant.
 - Transferring ownership or multiple owners — the account creator stays the one owner.
 - Live messages and sender names — M208_002. Invite email — M208_003.
@@ -280,11 +275,11 @@ N/A — no symbol is deleted: `workspace:any` keeps its meaning (Discovery).
 2. **Preserved user behaviour** — a solo account works exactly as today: same list, refusals, stream and steer; API keys and the CLI unchanged.
 3. **Optimal-way check** — the optimal shape adds a viewer role and per-workspace grants; neither blocks a two-person team, and both extend the same access record later.
 4. **Rebuild-vs-iterate** — iterate: `core.memberships` was shaped for teams at signup; access and roles extend one existing seam.
-5. **What we build** — membership access with two roles, invites, members and invites pages, grouped switcher, an operator directory, and a crossing audit that names the method.
-6. **What we do NOT build** — viewer role, per-workspace invites, cross-account API keys, ownership transfer, read-only operator access.
+5. **What we build** — membership access with two roles, invites, members and invites pages, grouped switcher, and a crossing audit that names the method.
+6. **What we do NOT build** — viewer role, per-workspace invites, cross-account API keys, ownership transfer, read-only operator access, an operator directory.
 7. **Fit with existing features** — the steer path, pending-sends ledger and chat hold are unchanged; M208_002 names the senders this creates.
 8. **Surface order** — User Interface (UI) first: inviting and accepting are dashboard acts; the API is public and documented; the CLI follows later.
-9. **Dashboard restraint** — no Members entry for a member, no invite notice without a pending invite, no directory without `workspace:any`.
+9. **Dashboard restraint** — no Members entry for a member, no invite notice without a pending invite.
 10. **Confused-user next step** — a refused accept says to sign in with the address the invite was sent to, without naming it; a member refused an owner action reads "Only the account owner can do this."
 
 ## Decomposition & alternatives (patch vs refactor)
@@ -298,10 +293,11 @@ N/A — no symbol is deleted: `workspace:any` keeps its meaning (Discovery).
 - **Consults** — Sep 30, 2026, Indy via AskUserQuestion: "One spec, one PR" (carried as three workstream specs in one PR because of the 320-line cap); an invite grants "John's whole account"; roles "Owner + member"; operators "See and act, audited, but must allow adding write or act as well, need to know the design of this" (§5's scope split). Then: "I want the invite emails into an account" and a send-time broadcast "is also a must have" (M208_003, M208_002); email provider "Resend (Recommended)". Source finding: access by `core.users.tenant_id` (`afd_tenant/src/sql/workspace.rs:38-44`).
 - **Metrics review** — pending.
 - **Skill-chain outcomes** — pending.
-- **Deferrals** — none.
+- **Deferrals** — none. The changelog is skipped, not deferred: Sep 30, 2026, Indy: "Skip change log".
 - **Operator scope** — Sep 30, 2026, Indy via AskUserQuestion: "Keep workspace:any". It keeps its read-and-write crossing, so the operator's identity-provider profile needs no edit and no deploy step; `workspace-any:read` is added for read-only. This supersedes the rename to `workspace-any:write` and its pre-deploy step.
 - **No read-only crossing** — Sep 30, 2026, Indy: "I want to keep it simple and provide write both for the invitee accepted + platform admin with the scope workspace:Any". `workspace-any:read`, `UZ-AUTH-027`, the workspace detail's `access`, the banner and the hidden composer are dropped; §5 keeps the directory and the audit event, which moves to the ownership layer to carry the method. Asked again the same day, Indy kept account-wide invites ("Keep whole account").
-- **§1 source correction** — Sep 30, 2026: provider bags are post-deploy inputs the early gates must not read (`playbooks/founding/02_preflight/credentials_test.sh`, `test_post_deploy_values_are_not_early_inputs`), so §1 lists `smtp-relay` in the playbook's post-deploy table rather than failing the preflight. The bag is `smtp-relay` per decision `a3d20406` (SMTP through `afd_mail`); Resend's SMTP settings are from resend.com/docs/send-with-smtp. No `smtp-relay` item exists yet in `ZMB_CD_DEV` or `ZMB_CD_PROD` (`op item list`, Sep 30, 2026).
+- **§1 source correction** — Sep 30, 2026: provider bags are post-deploy inputs the early gates must not read (`playbooks/founding/02_preflight/credentials_test.sh`, `test_post_deploy_values_are_not_early_inputs`), so §1 lists `smtp-relay` in the playbook's post-deploy table rather than failing the preflight. The bag is `smtp-relay` per decision `a3d20406` (SMTP through `afd_mail`); Resend's SMTP settings are from resend.com/docs/send-with-smtp. No `smtp-relay` item existed yet in `ZMB_CD_DEV` or `ZMB_CD_PROD` (`op item list`, Sep 30, 2026); Indy added both that evening, and `op item get smtp-relay` in each lists `username, password, host, port, from_address`.
 - **§4 source corrections** — Sep 30, 2026: every `/v1/tenants/me/*` route resolves the caller's own account (`afd_api_tenant/src/handler/tenant/mod.rs:96-111`) and signup makes every person its owner, so Settings → Members always shows; restraint 9's "no Members entry for a member" has no case. Interfaces has no decline route, so the Invites page offers accept only. The switcher labels accounts only once a person holds more than one, keeping Dimension 2.6's solo view. The acceptance env targets the shared dev API (`ui.env.local`), which runs `main`, so R2 runs after this branch deploys there.
 - **§3 source corrections** — Sep 30, 2026: the `UZ-INV-002` refusal names no address (`afd_core/src/problem/invite.rs:27`), since the link may reach a third party and naming the address would leak it; Product Clarity 10 amended. A revoked stream ends with `event: access_revoked`, data `{kind, error_code:"UZ-AUTH-001"}` (`afd_api_tenant/src/handler/stream.rs:41-43`). Invite create takes no `Idempotency-Key` (`docs/REST_API_DESIGN_GUIDELINES.md:142`): a repeat create answers `409 UZ-INV-003` and the pending list offers the link; Indy kept the 409 over returning the pending invite (AskUserQuestion, Sep 30, 2026: "Keep the 409").
 - **Hand-rolled Rust cleanup** — Sep 30, 2026, Indy in session: "Are there any handrolled rust code? where you can use the afd_core or external crates, if yes fix them", then "Are there any duplicate handrolled code you have, if yes fix them." and "and clean it up". Its own commit on this branch: `Entropy::uuid7` replaces every draw-then-encode copy, `sqlx::error::DatabaseError::is_unique_violation` replaces the hand-written `23505` checks, `afd_tenant` lifts through `error_lifts!`, the identifier kinds that became dead are removed, and `DETAIL_NOT_DASHBOARD` drops the identity vendor's name.
+- **Directory cut** — Sep 30, 2026, Indy: "I donot see value in doing Direcotry since opening a workspace by URL works if i am a platform admin with workspace:any scope. So cut tht scope". Dimensions 5.3 and 5.4 are removed with their Interfaces line, tests, the `core.workspaces (created_at, id)` index, and the admin route, handler and page rows. No directory code had been written (`git grep`, Sep 30, 2026). This supersedes "§5 keeps the directory" above.
