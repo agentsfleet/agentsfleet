@@ -45,4 +45,8 @@ pub mod money;
 pub mod paging;
 pub mod problem;
 pub mod spelling;
+// The `tracing` capture every crate's suites share. Behind `test-util` so a
+// production build links none of it.
+#[cfg(feature = "test-util")]
+pub mod test_util;
 pub mod timing;

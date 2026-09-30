@@ -135,8 +135,8 @@ The events list, the workspace stream, the fleet events list and the fleet strea
 
 `afd_core::test_util::trace` (feature `test-util`) owns the recorder, the layer and the serial guard. The five copies import it and delete their own. The eight ad-hoc single-purpose layers stay (Out of Scope).
 
-- **Dimension 5.1** — the capture records a scoped event with its fields, and serialises concurrent tests → Test `trace_capture_records_fields`
-- **Dimension 5.2** — the five crates' suites pass on the shared capture with no local `Layer` impl → Test `make test-unit-rustd` + Dead Code Sweep grep
+- **Dimension 5.1** — the capture records a scoped event with its fields, and serialises concurrent tests → Test `trace_capture_records_fields`, `trace_capture_serialises_concurrent_tests` — DONE
+- **Dimension 5.2** — the five crates' suites pass on the shared capture with no local `Layer` impl → Test `make test-unit-rustd` + Dead Code Sweep grep — DONE
 
 ### §6 — The runner's Zig tests run in the unit lane
 

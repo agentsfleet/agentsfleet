@@ -57,6 +57,9 @@ test-util = [
 ]
 
 [dev-dependencies]
+# The `tracing` capture the suites read their log lines back through
+# (`afd_core::test_util::trace`). A dev-dependency feature only.
+afd_core = { workspace = true, features = ["test-util"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 # The lane fixture: the shared test database, the role/knob resolution over it,
 # and the identifier minting the seeded rows are addressed by. A dev-dependency

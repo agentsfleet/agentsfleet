@@ -21,5 +21,8 @@ mod id;
 mod limits;
 #[path = "problem.rs"]
 mod problem;
+#[cfg(feature = "test-util")]
+#[path = "trace.rs"]
+mod trace;
 #[path = "workspace.rs"]
 mod workspace;

@@ -13,11 +13,12 @@
 //!   minted from the process id and a counter, exactly so parallel tests never
 //!   collide. That is the failure `afd_fleet` hit and this crate cannot.
 //! - The two subscriber installers do not fight. `support/subscriber.rs` calls
-//!   `set_global_default` once for the process; `support/recorder.rs` calls
-//!   `set_default`, which is THREAD-local and returns a guard. One being global
-//!   and the other scoped is why they coexist in a single binary.
-//! - `RECORDER_SERIAL` is held only by suites that install a recorder, which is
-//!   `misbehaving_server` alone, so its contention set does not widen here.
+//!   `set_global_default` once for the process; `afd_core::test_util::trace`
+//!   calls `set_default`, which is THREAD-local and returns a guard. One being
+//!   global and the other scoped is why they coexist in a single binary.
+//! - The capture's one-at-a-time lock is held only by suites that install one,
+//!   `misbehaving_server` and `hub_repair_faults`, so its contention set does
+//!   not widen here.
 //! - `HUB_LANE` serialises the hub suite against itself, which aggregation does
 //!   not change.
 //! - Both fake servers bind `("127.0.0.1", 0)`, so no fixed port can collide.
@@ -54,14 +55,6 @@ mod subscriber;
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 mod fake_redis;
-
-#[path = "support/recorder.rs"]
-#[allow(
-    clippy::expect_used,
-    clippy::panic,
-    reason = "test support: an unmet precondition should fail the test loudly"
-)]
-mod recorder;
 
 #[path = "support/dragonfly_harness.rs"]
 #[allow(

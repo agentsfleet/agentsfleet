@@ -5,12 +5,12 @@
 use super::*;
 
 use afd_billing::Accounts;
+use afd_core::test_util::trace::Capture;
 use afd_crypto::entropy::Entropy;
 use afd_dragonfly::FleetStreams;
 use afd_fleet::lease::Plane;
 use afd_fleet::lease::admit::Refusal;
 
-use crate::fleet_log::{Recorder, dead_database};
 use crate::lease_reads::COLUMN_LEASED_UNTIL;
 
 /// The stored status of an event nobody ended.
@@ -49,14 +49,14 @@ async fn should_answer_no_work_and_keep_the_entry_when_a_finished_event_cannot_b
         .await
         .expect("the row ends");
 
-    let log = Recorder::install();
+    let log = Capture::install();
     let answer = fixtures
         .plane_with_dead_queue()
         .lease_claimed(claimed.clone(), &seeded.runner, now)
         .await
         .expect("a lost acknowledgement is not the runner's fault");
-    let failed = log.only("terminal_redelivery_ack_failed");
-    let suppressed = log.only("terminal_redelivery_suppressed");
+    let failed = log.only("terminal_redelivery_ack_failed").fields;
+    let suppressed = log.only("terminal_redelivery_suppressed").fields;
     drop(log);
 
     assert!(
@@ -94,17 +94,17 @@ async fn should_retry_and_free_the_claim_when_the_payer_cannot_be_read() {
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
     let claimed = claim(&fixtures, &seeded).await;
     let plane = Plane {
-        accounts: Accounts::new(dead_database(), Entropy::new()),
+        accounts: Accounts::new(afd_db::test_util::unreachable_db(), Entropy::new()),
         ..fixtures.plane()
     };
 
     let now = UnixMillis::from_millis(ENROLLED_AT);
-    let log = Recorder::install();
+    let log = Capture::install();
     let answer = plane
         .lease_claimed(claimed.clone(), &seeded.runner, now)
         .await
         .expect("an unread payer is a retry, not a fault");
-    let line = log.only("lease_tenant_lookup_failed");
+    let line = log.only("lease_tenant_lookup_failed").fields;
     drop(log);
     // The next poll meets the same delivery on its open row: it retries again
     // and reopens nothing.
@@ -199,9 +199,9 @@ async fn should_answer_no_work_when_an_unreadable_fleets_refusal_cannot_be_recor
     };
     let claimed = claim(&fixtures, &seeded).await;
 
-    let log = Recorder::install();
+    let log = Capture::install();
     let answer = drive(&fixtures, &seeded, claimed).await;
-    let line = log.only("config_refusal_unrecorded");
+    let line = log.only("config_refusal_unrecorded").fields;
     drop(log);
 
     assert!(

@@ -98,10 +98,10 @@ fn an_unwritten_request_reports_and_then_reads_as_no_answer() {
     // no line, no error_code, and a `no_work` identical to a healthy park — a
     // failure with no error, redelivering every second. `written` must answer
     // `None` (so the delivery is retried) AND emit the line that says why.
-    let log = crate::lease::test_log::Recorder::install();
+    let log = afd_core::test_util::trace::Capture::install();
     assert_eq!(written(Err(unwritable()), &fleet(), "github"), None);
 
-    let line = log.only(super::EVENT_REQUEST_FAILED);
+    let line = log.only(super::EVENT_REQUEST_FAILED).fields;
     assert_eq!(
         line.get("error_code").map(String::as_str),
         Some(unwritable().code().as_str()),
