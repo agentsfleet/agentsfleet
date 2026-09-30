@@ -8,6 +8,8 @@ import {
   type ExternalThreadQueueAdapter,
 } from "@assistant-ui/react";
 
+import { extractMessageText } from "./useFleetMessageDelivery";
+
 // The fleet's daemon is the queue: its admission ledger orders every steer, so
 // no lane here ever holds a message. Once a runtime has a queue, assistant-ui
 // sends every new message through it — to `steer` while a reply runs, to
@@ -44,7 +46,7 @@ export function useFleetSteerQueue(
         if (!isMessageNotSentError(error)) return;
         const composer = runtime.current?.thread.composer;
         if (composer === undefined || sends.current !== send) return;
-        composer.setText([textOf(message), composer.getState().text].filter(Boolean).join(DRAFT_JOIN));
+        composer.setText([extractMessageText(message), composer.getState().text].filter(Boolean).join(DRAFT_JOIN));
       });
     };
     return {
@@ -57,11 +59,4 @@ export function useFleetSteerQueue(
       remove: NO_ITEM,
     };
   }, [deliver, runtime]);
-}
-
-function textOf(message: AppendMessage): string {
-  for (const part of message.content) {
-    if (part.type === "text") return part.text;
-  }
-  return "";
 }

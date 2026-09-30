@@ -38,9 +38,8 @@ describe("roleFor", () => {
 describe("isSteerBy", () => {
   const own = `${ACTOR.STEER_PREFIX}${ACCOUNT_ID}`;
 
-  it("claims the viewer's own steer, its continuation, and a send not yet named", () => {
+  it("claims the viewer's own steer and a send not yet named", () => {
     expect(isSteerBy(own, ACCOUNT_ID)).toBe(true);
-    expect(isSteerBy(`continuation:${own}`, ACCOUNT_ID)).toBe(true);
     expect(isSteerBy(ACTOR.PENDING_STEER, ACCOUNT_ID)).toBe(true);
     expect(isSteerBy(ACTOR.PENDING_STEER, null)).toBe(true);
   });

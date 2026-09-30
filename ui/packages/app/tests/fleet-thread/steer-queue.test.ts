@@ -1,8 +1,9 @@
-import { SUBJECT, capturedRun, ev, mockStream, postSteerMock, renderThread } from "./harness";
+import { SUBJECT, appendMessage, capturedRun, ev, mockStream, postSteerMock, renderThread } from "./harness";
 import { ACCEPTED, OPERATION_ID, composerInput, send } from "./steer-helpers";
 import { SEND_LABEL } from "./steer-copy";
-import { describe, expect, it } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, renderHook, screen, waitFor } from "@testing-library/react";
+import { useFleetSteerQueue } from "@/components/domain/useFleetSteerQueue";
 import { ACTOR } from "@/lib/events/event-summary";
 import { AGENTSFLEET_EVENT_STATUS, type FleetEventStatus } from "@/lib/streaming/fleet-stream-row";
 
@@ -20,6 +21,20 @@ function turn(status: FleetEventStatus, actor = OWN_ACTOR) {
 }
 
 describe("FleetThread — steer queue", () => {
+  // The daemon is the queue: both lanes stay empty, and with no item to act on
+  // the library's move, edit and remove reach nothing and send nothing.
+  it("test_queue_lanes_stay_empty", () => {
+    const deliver = vi.fn(async () => {});
+    const { result } = renderHook(() => useFleetSteerQueue(deliver, { current: null }));
+    expect(result.current.items).toEqual([]);
+    expect(result.current.steerItems).toEqual([]);
+    result.current.move("item_1", { lane: "steer" });
+    result.current.edit("item_1", appendMessage("edited"));
+    result.current.remove("item_1");
+    expect(deliver).not.toHaveBeenCalled();
+    expect(result.current.items).toEqual([]);
+  });
+
   it("test_is_running_tracks_reply_rows", () => {
     mockStream([]);
     const idle = renderThread();
@@ -46,6 +61,23 @@ describe("FleetThread — steer queue", () => {
 
     // A send from this tab the daemon has not named yet is the viewer's own.
     mockStream([turn(RUNNING_STATUS, ACTOR.PENDING_STEER)]);
+    const pending = renderThread();
+    expect(capturedRun.isRunning).toBe(true);
+    pending.unmount();
+
+    // The newest turn decides: a teammate's turn landing under the viewer's own
+    // running reply ends the run, or the anchor would pin the teammate's turn.
+    mockStream([
+      ev({ id: "evt_own", role: "user", actor: OWN_ACTOR, text: "Deploy", status: RUNNING_STATUS }),
+      ev({ id: "evt_teammate", role: "user", actor: TEAMMATE_ACTOR, text: "Hold on", status: RUNNING_STATUS }),
+    ]);
+    const under = renderThread();
+    expect(capturedRun.isRunning).toBe(false);
+    under.unmount();
+    mockStream([
+      ev({ id: "evt_teammate", role: "user", actor: TEAMMATE_ACTOR, text: "Hold on", status: RUNNING_STATUS }),
+      ev({ id: "evt_own", role: "user", actor: OWN_ACTOR, text: "Deploy", status: RUNNING_STATUS }),
+    ]);
     renderThread();
     expect(capturedRun.isRunning).toBe(true);
   });

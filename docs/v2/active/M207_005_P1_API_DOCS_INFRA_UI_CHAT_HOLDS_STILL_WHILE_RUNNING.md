@@ -34,7 +34,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** Folding a Thought, sending while a reply runs, and a reply settling each leave the operator's view where it was, with no text sliding or flashing past.
 **Problem:** Folding a Thought at the bottom of the thread drags the whole reasoning past the viewport (measured Sep 30: `scrollTop` clamps 9304→7384 over the 200 ms fold). The thread jumps 140 px twice after Send. The reconnect notice is destructive red for a state that heals itself. Four routes answer an unregistered `UZ-401`. Streaming markdown is hand-rolled beside assistant-ui's own renderer. Five test trees copy one tracing recorder, and the runner's Zig tests run in no lane.
-**Solution summary:** The steer moves onto assistant-ui's external-store `queue` adapter, so the thread reports `isRunning` truthfully and the composer stays enabled through a run. That unlocks `ThreadPrimitive.Viewport turnAnchor="top"`, whose reserve under the last turn holds the view through folds. Reply text renders through `@assistant-ui/react-markdown`. The four routes answer `UZ-AUTH-401`, the recorder becomes one `afd_core` test utility, the Zig tests join the unit lane, and the user docs describe the result.
+**Solution summary:** The steer moves onto assistant-ui's external-store `queue` adapter, so the thread reports `isRunning` truthfully and the composer stays enabled through a run. That unlocks `ThreadPrimitive.Viewport turnAnchor="top"`, whose reserve under the last turn holds the view through folds. Reply markdown keeps the block parser, which measured 21× faster than the library's renderer (§3, cut). The four routes answer `UZ-AUTH-401`, the recorder becomes one `afd_core` test utility, the Zig tests join the unit lane, and the user docs describe the result.
 
 ## PR Intent & comprehension handshake
 
@@ -46,7 +46,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 1. `ui/packages/app/components/domain/useFleetMessageDelivery.ts` — the one admission path (`onNew`, `resend`, `deliver`); the queue adapter must call it, never duplicate it.
 2. https://github.com/assistant-ui/assistant-ui — installed as `@assistant-ui/core` 0.3.21 and `@assistant-ui/react` 0.15.22: `external-store-thread-runtime-core` sends a non-edit message to `queue.steer` while running, else `queue.enqueue`, and never to `onNew`; `topAnchor/topAnchorTurn` engages the reserve only while `thread.isRunning` with user → assistant as the last two messages.
-3. `ui/packages/app/components/domain/FleetMarkdown.tsx` — the token-mapped `Components` to keep; `StreamingBlocks` to retire.
+3. `ui/packages/app/components/domain/FleetMarkdown.tsx` — the block parser §3 measured and kept.
 4. `docs/RUST_ERROR_STANDARD.md` and `dispatch/write_rust.md` — before any `rustd/` edit.
 
 ## Files Changed (blast radius)
@@ -60,9 +60,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/components/domain/{fleetMessageRenderers.tsx,fleetReplyMessage.ts,useFleetSteerQueue.ts}`, `ui/packages/app/lib/{events/event-summary.ts,streaming/fleet-stream-reply-frames.ts}` | EDIT | only a settled reply skips layout; `isSteerBy` names the viewer's own turn; a non-refusal failure is dropped, not rethrown |
 | `ui/packages/app/components/domain/FleetConnectionNotice.tsx` | EDIT | `warning` variant |
 | `ui/packages/app/components/domain/FleetThought.tsx` | EDIT | fold lock verified under the reserve |
-| `ui/packages/app/components/domain/FleetMarkdown.tsx`, `FleetReplyBody.tsx` | EDIT | reply text through `MarkdownTextPrimitive` |
-| `ui/packages/app/components/domain/fleetMarkdownBlocks.ts` | DELETE | superseded by the library's renderer |
-| `ui/packages/app/package.json`, `bun.lock` | EDIT | add `@assistant-ui/react-markdown` |
+| `ui/packages/app/components/domain/{FleetReplyBody.tsx,FleetThought.tsx}` | EDIT | a thought that resumes after the answer stays folded |
 | `ui/packages/app/app/live/v1/workspaces/[workspaceId]/{events,events/stream,fleets/[fleetId]/events,fleets/[fleetId]/events/stream}/route.ts` | EDIT | answer `UZ-AUTH-401` as the steer route does |
 | `rustd/crates/afd_core/{Cargo.toml,src/lib.rs,src/test_util.rs,src/test_util/trace.rs,tests/core_suite.rs,tests/trace.rs}`, `rustd/Cargo.lock` | EDIT / CREATE | the one tracing capture, behind `test-util` |
 | `rustd/crates/{agentsfleetd/src/supervisor/tests.rs,afd_dragonfly/tests/support/recorder.rs,afd_events/tests/support/recorder.rs,afd_fleet/tests/support/fleet_log.rs,afd_fleet/src/lease/test_log.rs}` | EDIT / DELETE | migrate the five copies |
@@ -74,7 +72,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Applicable Rules
 
-- **`docs/greptile-learnings/RULES.md`** — NDC and ORP (StreamingBlocks, the recorder copies, `sse-server.ts`), NLR (stale `build_runner.zig` comment), UFS (queue lane names, error codes), FLL, TSC/TSJ, UIS and DTK (notice variant, markdown components), ERR (only registered codes; `UZ-401` is not in `CODE_MAP`), STR (streaming proven over transport), TCF, TST-NAM, TIM (the 400 ms open delay, the 200 ms fold).
+- **`docs/greptile-learnings/RULES.md`** — NDC and ORP (the recorder copies, `sse-server.ts`), NLR (stale `build_runner.zig` comment), UFS (queue lane names, error codes), FLL, TSC/TSJ, UIS and DTK (notice variant, markdown components), ERR (only registered codes; `UZ-401` is not in `CODE_MAP`), STR (streaming proven over transport), TCF, TST-NAM, TIM (the 400 ms open delay, the 200 ms fold).
 - `dispatch/write_ts_adhere_bun.md` — every `*.ts`/`*.tsx` edit; lint is `make lint-app` (oxlint + `tsc`).
 - `dispatch/write_rust.md` + `docs/RUST_ERROR_STANDARD.md` — the `afd_core` test utility and the five migrations.
 - `dispatch/write_documentation.md` → `docs/DOCUMENTATION_RULES.md`, `dispatch/write_changelog.md` → `docs/CHANGELOG_VOICE.md` — §8.
@@ -99,11 +97,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — The steer rides assistant-ui's queue
 
-`FleetThread` passes a `queue` built by `useFleetSteerQueue`. Its `enqueue` and `steer` both hand the message to the existing delivery path (`writers.begin` → `appendOptimistic` → `postSteer`, one operation id per send), so M207_002/003's replay and Resend guarantees hold unchanged. `items` and `steerItems` stay empty, because the daemon admits every steer at once and the pending-sends ledger remains the one authority for an unconfirmed send. `isRunning` is `true` exactly while a reply to the viewer's own turn is running (`isOwnReplyInFlight`): the top anchor keys on it and pins the running turn wherever the reader is, so another sender's turn must not engage it. **Implementation default:** dispatch immediately rather than `createMessageQueue`, because that controller holds items until the run ends and the fleet must receive a steer mid-run. The queue returns before the send does, so a refused send's text comes back by the library's own `_returnToDraft` rule, applied in the adapter: when no newer send started, the text returns ahead of anything typed since.
+`FleetThread` passes a `queue` built by `useFleetSteerQueue`. Its `enqueue` and `steer` both hand the message to the existing delivery path (`writers.begin` → `appendOptimistic` → `postSteer`, one operation id per send), so M207_002/003's replay and Resend guarantees hold unchanged. `items` and `steerItems` stay empty, because the daemon admits every steer at once and the pending-sends ledger remains the one authority for an unconfirmed send. `isRunning` is `true` exactly while the newest turn is the viewer's own and its reply runs (`isOwnReplyInFlight` on the last event): the top anchor pins whatever turn is last wherever the reader is, so another sender's turn must never be the one it pins. **Implementation default:** dispatch immediately rather than `createMessageQueue`, because that controller holds items until the run ends and the fleet must receive a steer mid-run. The queue returns before the send does, so a refused send's text comes back by the library's own `_returnToDraft` rule, applied in the adapter: when no newer send started, the text returns ahead of anything typed since.
 
 - **Dimension 1.1** — the composer's Send stays enabled while a reply runs → Test `test_send_enabled_while_running` — DONE
 - **Dimension 1.2** — a send while running and a send while idle each make one POST with one operation id → Test `test_queue_send_posts_once` — DONE
-- **Dimension 1.3** — `isRunning` is true exactly while a reply to the viewer's own turn runs; another sender's never sets it → Test `test_is_running_tracks_reply_rows` — DONE (`tests/fleet-thread/steer-queue.test.ts`, `lib/events/event-summary.test.ts`)
+- **Dimension 1.3** — `isRunning` is true exactly while the newest turn is the viewer's own and its reply runs; another sender's turn, even under the viewer's running reply, never sets it → Test `test_is_running_tracks_reply_rows` — DONE (`tests/fleet-thread/steer-queue.test.ts`, `lib/events/event-summary.test.ts`)
 - **Dimension 1.4** — Resend still carries the first operation id → Test `test_failed_send_resend_journey` — DONE (`fleet-resend.spec.ts` green in the full thread e2e runs)
 
 ### §2 — The thread anchors the turn at the top
@@ -117,13 +115,11 @@ Depends on §1. `ThreadPrimitive.Viewport` takes `turnAnchor="top"` beside `auto
 - **Dimension 2.5** — a turn another sender makes leaves a reader in the history where they are → Test `test_background_turn_leaves_history_alone` — DONE
 - **Dimension 2.6** — reasoning that resumes after the answer began keeps the Thought folded, and its label counts every stretch → Test `test_interleaved_reasoning_folds_once`, `test_resumed_thought_stays_folded`, `test_resumed_reasoning_reopens_the_span` — DONE
 
-### §3 — Reply text through `@assistant-ui/react-markdown`
+### §3 — Reply text through `@assistant-ui/react-markdown` (cut)
 
-The reply's text part renders through `MarkdownTextPrimitive` with the existing token-mapped `Components`. `StreamingBlocks`, `FleetStreamingMarkdown` and `fleetMarkdownBlocks.ts` go. Raw HTML stays unparsed (no `rehype-raw`), and an errored text part still renders as `FleetFailedOutcome`. **Implementation default:** pin the release whose peer range admits `@assistant-ui/react` 0.15.22, checked against the lockfile.
+Measured before the swap: the library re-parses the whole text part on every change, about 21× the block parser's cost on a long streamed reply (Discovery). Indy cut the swap; `StreamingBlocks` stays.
 
-- **Dimension 3.1** — a streamed reply renders lists, code and tables with design tokens → Test `test_reply_markdown_tokens`
-- **Dimension 3.2** — `<script>` and raw HTML in a reply render as text → Test `test_reply_html_is_text`
-- **Dimension 3.3** — streaming stays inside M207_004's budget: 0 long tasks, frame p95 ≤ 17.6 ms → Test `test_streaming_reply_costs_no_long_tasks` (existing)
+- **Dimension 3.3** — streaming stays inside M207_004's budget: 0 long tasks, frame p95 ≤ 17.6 ms → Test `test_streaming_reply_costs_no_long_tasks` (existing) — DONE (3 of 3 on a quiet machine, and in every full thread run)
 
 ### §4 — Four routes answer the registered 401
 
@@ -157,7 +153,7 @@ The reconnect notice uses `Alert variant="warning"` and rides in the sticky foot
 
 On a `~/Projects/docs` branch `chore/m207-005-chat-holds-still-changelog` off `main`: one changelog `<Update>` for M207_003–005's user-visible changes (sends settle, Resend, catching up, the failure mark, quiet Thoughts, the anchored thread), and `fleets/running.mdx` revised for catching up and the anchored turn. A docs Pull Request is opened; Indy merges it. PR #206 (M207_001/002 docs) merges first, or this branch rebases on it.
 
-- **Dimension 8.1** — the docs branch passes the docs repo's own checks and its PR is open → Test `docs_pr_open_and_green`
+- **Dimension 8.1** — the docs branch passes the docs repo's own checks and its PR is open → Test `docs_pr_open_and_green` — DONE (agentsfleet/docs#207, stacked on #206: Greptile pass, gitleaks pass)
 
 ## Interfaces
 
@@ -165,7 +161,7 @@ On a `~/Projects/docs` branch `chore/m207-005-chat-holds-still-changelog` off `m
 ExternalThreadQueueAdapter (useFleetSteerQueue):
   items = [], steerItems = []          # the daemon is the queue
   enqueue(m) = steer(m) = deliver(m)   # one POST, one operation id
-isRunning = some event in flight whose actor isSteerBy the viewer   # own turns only
+isRunning = the newest event is in flight and its actor isSteerBy the viewer
   move/edit/remove(id)                 # unreachable with empty lanes; refuse an unknown id
 401 from the four routes: application/json {"error":"Unauthorized","code":"UZ-AUTH-401"}
 afd_core::test_util::trace (feature "test-util"): Capture::install() -> guard; guard.events() -> Vec<CapturedEvent>
@@ -180,8 +176,6 @@ make test-unit-runner: zig build --build-file build_runner.zig test   (part of t
 | Send fails mid-run | `postSteer` refused or unanswered | the existing unsent notice and Resend, same as idle |
 | Stale running flag | a reply row never settles | `isRunning` follows row status; the stall watcher (M207_004) settles the row, releasing the anchor |
 | Reserve after backfill | catching-up inserts history above | the reserve is measured from the anchor turn; the view holds (Test 2.2) |
-| Unclosed fence while streaming | partial markdown | renders as text until closed; no throw, no `pageerror` |
-| Raw HTML in a reply | model output | escaped text (Test 3.2) |
 | Signed-out stream | 401 on an `EventSource` | the error path already recovers to sign-in; the code is now registered |
 | Zig missing | local machine without 0.16.0 | `test-unit-runner` refuses with the install hint |
 | Docs conflict | #206 and this branch both touch `changelog.mdx` | rebase after #206 merges; entries stay dated |
@@ -191,7 +185,7 @@ make test-unit-runner: zig build --build-file build_runner.zig test   (part of t
 1. One POST and one operation id per logical send — the queue adapter's only effect is the delivery path's `deliver`; Test 1.2 and the resend journeys.
 2. `isRunning` is derived, never set — one selector over reply rows; Test 1.3.
 3. Only registered error codes leave a route — `ERROR_CODE` constants; the rubric grep for `"UZ-401"` returns 0.
-4. Raw HTML is never parsed — no `rehype-raw` in `package.json`; Test 3.2.
+4. Raw HTML is never parsed — no `rehype-raw` in `package.json`.
 5. One tracing capture — the Dead Code Sweep grep returns 0 local `Layer` impls in the five files.
 
 ## Metrics & Observability
@@ -206,7 +200,7 @@ make test-unit-runner: zig build --build-file build_runner.zig test   (part of t
 |-----------|------|------|---------------------------------------------|
 | 1.1 | unit | `test_send_enabled_while_running` | a running reply row → Send not disabled |
 | 1.2 | unit | `test_queue_send_posts_once` | send idle and send running → one `postSteer` each, distinct operation ids, no `onNew` |
-| 1.3 | unit | `test_is_running_tracks_reply_rows` | own running row → true; all settled → false; a teammate's or the API's running row → false; empty → false |
+| 1.3 | unit | `test_is_running_tracks_reply_rows` | own running row last → true; all settled → false; a teammate's or the API's running row last, even over the viewer's → false; empty → false |
 | 1.4 | e2e | `test_failed_send_resend_journey` | lost answer → Resend carries the first operation id; `test_reload_recovers_unconfirmed_send` stays green beside it |
 | 2.1 | e2e | `test_fold_at_bottom_holds_view` | fold at bottom → trigger wobble ≤ 40 px, back within 1 px |
 | 2.2 | e2e | `test_settle_holds_view` | answer lands after a 1 s thought → wobble ≤ 40 px, back within 1 px |
@@ -214,8 +208,6 @@ make test-unit-runner: zig build --build-file build_runner.zig test   (part of t
 | 2.4 | e2e | `test_jump_to_latest_after_anchor` | scrolled up, new row → Jump to latest reaches it |
 | 2.5 | e2e | `test_background_turn_leaves_history_alone` | a teammate's turn while turn 1 is read → turn 1 Δ ≤ 1 px in the thread, Jump to latest shown |
 | 2.6 | e2e + unit | `test_interleaved_reasoning_folds_once` | reason → answer → reason → answer → the Thought's open state goes true, false and never true again; the span ends at the last hand-off |
-| 3.1 | unit | `test_reply_markdown_tokens` | list, fenced code, table → token classes, no prose defaults |
-| 3.2 | unit | `test_reply_html_is_text` | `<script>x</script>` → literal text, no element |
 | 3.3 | e2e | `test_streaming_reply_costs_no_long_tasks` | 0 long tasks, p95 ≤ 17.6 ms |
 | 4.1 | unit | `test_routes_answer_auth_401` | four routes signed-out → 401, `UZ-AUTH-401` |
 | 4.2 | unit | `test_no_unregistered_auth_code` | source scan → 0 `"UZ-401"` |
@@ -254,7 +246,6 @@ make test-unit-runner: zig build --build-file build_runner.zig test   (part of t
 
 | File to delete | Verify |
 |----------------|--------|
-| `ui/packages/app/components/domain/fleetMarkdownBlocks.ts` | `test ! -f ui/packages/app/components/domain/fleetMarkdownBlocks.ts` |
 | `ui/packages/app/tests/e2e/acceptance/fixtures/sse-server.ts` | `test ! -f ui/packages/app/tests/e2e/acceptance/fixtures/sse-server.ts` |
 | the four recorder copies (`afd_dragonfly`, `afd_events` `tests/support/recorder.rs`; `afd_fleet` `tests/support/fleet_log.rs`, `src/lease/test_log.rs`) | `git ls-files rustd/crates \| grep -cE 'support/recorder.rs\|fleet_log.rs\|lease/test_log.rs'` → 0 |
 
@@ -262,14 +253,13 @@ make test-unit-runner: zig build --build-file build_runner.zig test   (part of t
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
-| `StreamingBlocks`, `FleetStreamingMarkdown` | `git grep -nwE 'StreamingBlocks\|FleetStreamingMarkdown' -- ui` | 0 matches |
 | `scheduledSseServer` | `git grep -nw scheduledSseServer -- ui` | 0 matches |
 | `test-unit-agentsfleet-runner` | `git grep -n test-unit-agentsfleet-runner -- build_runner.zig make` | 0 matches |
 
 ## Out of Scope
 
 - The eight single-purpose tracing layers (`afd_runner`, `afd_admission`, `afd_api` ×2, `afd_outbound`, `afd_fleet` lease gates, `afd_cron`, `agentsfleetd::logs`) — they assert different shapes; folding them is a separate call.
-- `Handles::claim` over the 70-line cap, the spurious gap on unsubscribe/resubscribe, and streaming markdown re-parsing after a discarded render — M207_004's listed items; the third is answered by §3 if the library's renderer memoises blocks, otherwise it stays listed.
+- `Handles::claim` over the 70-line cap, the spurious gap on unsubscribe/resubscribe, and streaming markdown re-parsing after a discarded render — M207_004's listed items; the third stays listed, since the library's renderer re-parses whole (§3, cut).
 - The fleet's model emitting an unknown `<nc_choices>` block — model output, shown as text as it should be.
 
 ---
@@ -306,7 +296,9 @@ make test-unit-runner: zig build --build-file build_runner.zig test   (part of t
 > Indy (2026-09-30): "7.2 make it agent-verified, i donot have time to eyeball. Only add that if you verified it."
 - **Agent live review (Sep 30, 2026, 7.2)** — re-run on `next dev` against DEV's API, frames through the page's `EventSource` plus one real Send; report `~/.gstack/projects/agentsfleet-agentsfleet/designs/design-audit-20260930/design-audit-localhost.md`, screenshots `live2-*.png`. Working (spinner `aria-hidden`), Thinking (opens after 400 ms), Thought + streaming answer, Completed, failed (destructive mark), Queued, the gone row (reached live: a failed run's detail read 404'd), and the offline warning (`alert`, 8.4:1 on its fill) all render as specified. Fixed: 001–003, 005–007, 012 (a teammate's turn yanking the reader). Listed: 004 (Indy: kept), 008 (model output), 010 (arrival cue slides the thread 37 px, pre-existing chrome), 011 (a refused run's completion carries no reply — `pull/refuse.rs:105` — so it flashes "Loading final reply" under the failure for one detail read).
 - **Interleaved reasoning (Sep 30, 2026)** — Indy, eyeballing localhost: "the thought is still happening and the answer is still happening, hence when the first thought is done i see 1 sec, with text and folded with an answer then again the thought expands with the seconds increasing and folds" — only on short prompts (`hey`), not on a 1000-word story. Cause: each delta sets `thinking` to its kind, so resumed reasoning re-ran the Thought's 400 ms auto-open, and the span closed at the first answer only. Fix: auto-open only before any answer text; resumed reasoning reopens the span. Dimension 2.6.
-- **§3 measured, decision pending (Sep 30, 2026)** — `@assistant-ui/react-markdown` 0.14.17 re-parses the whole text part on every change (`MarkdownText.js`: `MarkdownRenderer` is `memo`'d on the full text; it memoises components, not blocks). On the 20 KB, 400-flush corpus: block path 376 ms, library 8,114 ms (memoised components) / 8,133 ms (default), whole re-parse 8,366 ms. §3 as written trades the tail-only parse for a ~21× slower stream; the swap is not made and Indy is asked whether to cut §3.
+- **§3 measured, then cut (Sep 30, 2026)** — `@assistant-ui/react-markdown` 0.14.17 re-parses the whole text part on every change (`MarkdownText.js`: `MarkdownRenderer` is `memo`'d on the full text; it memoises components, not blocks). On the 20 KB, 400-flush corpus: block path 376 ms, library 8,114 ms (memoised components) / 8,133 ms (default), whole re-parse 8,366 ms. §3 as written traded the tail-only parse for a ~21× slower stream, so the swap was not made.
+> Indy (2026-09-30): "i think on the markdown i asked to drop 3 -  since you said the assitant-ui is not performant." — §3's swap is cut; the block parser stays.
+- **Review (Sep 30, 2026)** — agent pass plus one adversarial subagent over `17535ad79..HEAD`. Fixed: the offline notice hid the newest reply from a reader at the bottom (moved into the footer's flow); `isRunning` counted any own running reply, so a teammate's turn landing under it was pinned (now the newest event only); `isSteerBy`'s continuation branch matched `continuation:steer:…`, which the daemon never writes (`afd_approval/src/inbox/resolve.rs:228`); two route tests pinned `"UZ-401"`. Kept: the steer queue drops a non-refusal rejection silently, as assistant-ui's own send did before §1, since surfacing it needs a new lint suppression. The runner's Zig tests run in no CI job, by Indy's call above.
 - **Metrics review** — no analytics/funnel playbook update required: no event is added, renamed or removed.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.

@@ -71,12 +71,11 @@ export function roleFor(actor: string): MessageRole {
   return "system";
 }
 
-/** Whether `subject` sent this turn: their own steer, a continuation of one,
- * or a send from this tab the daemon has not yet named. */
+/** Whether `subject` sent this turn: their own steer, or a send from this tab
+ * the daemon has not yet named. */
 export function isSteerBy(actor: string, subject: string | null): boolean {
-  const base = actor.startsWith(CONTINUATION_PREFIX) ? actor.slice(CONTINUATION_PREFIX.length) : actor;
-  if (base === ACTOR.PENDING_STEER) return true;
-  return subject !== null && base === `${ACTOR.STEER_PREFIX}${subject}`;
+  if (actor === ACTOR.PENDING_STEER) return true;
+  return subject !== null && actor === `${ACTOR.STEER_PREFIX}${subject}`;
 }
 
 // A source segment that is a bare opaque identifier — a Clerk user id, a Slack

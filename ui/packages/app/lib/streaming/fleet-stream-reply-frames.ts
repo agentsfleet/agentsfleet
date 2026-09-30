@@ -83,12 +83,11 @@ export function applyFinalReplyText(
 // The span opens on the first reasoning text and closes on the next answer
 // text. A short prompt's model reasons, answers, then reasons again: that
 // reopens the span, so the folded Thought counts every stretch, not the
-// first. The decoder emits one kind per delta, so each end reads its own clock.
+// first. The decoder emits one non-empty kind per delta (`#emit`), so a delta
+// without reasoning is answer text, and each end reads its own clock.
 function stampReasoningSpan(event: FleetEvent, delta: ReplyDelta, nowMs: number): FleetEvent {
-  if (delta.reasoning.length > 0) {
-    return event.reasoningStartedAtMs === undefined ? { ...event, reasoningStartedAtMs: nowMs } : reopenReasoningSpan(event);
-  }
-  return delta.answer.length > 0 ? closeReasoningSpan(event, nowMs) : event;
+  if (delta.reasoning.length === 0) return closeReasoningSpan(event, nowMs);
+  return event.reasoningStartedAtMs === undefined ? { ...event, reasoningStartedAtMs: nowMs } : reopenReasoningSpan(event);
 }
 
 function reopenReasoningSpan(event: FleetEvent): FleetEvent {
