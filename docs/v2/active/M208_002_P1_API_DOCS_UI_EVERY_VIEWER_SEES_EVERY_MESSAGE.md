@@ -64,6 +64,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/src/lease/bracket.rs` | EDIT | `event_received` carries the steer's message |
 | `rustd/crates/afd_api_tenant/src/handler/fleet/message.rs` | EDIT | thread read adds `queued` rows, deduplicated by event id |
 | `rustd/crates/afd_api_tenant/src/handler/stream.rs` | EDIT | stream description names `event_admitted` and `message` |
+| `rustd/crates/afd_api/tests/{openapi_stream_frames,http_substrate_suite}.rs` | CREATE/EDIT | every frame kind is named in the published description |
 | `public/openapi.json` | EDIT | frame and `queued` status |
 | `ui/packages/app/lib/api/{events-types,events}.ts` | EDIT | frame kind, frame and row types |
 | `ui/packages/app/lib/streaming/fleet-stream-row.ts` | EDIT | `queued` status constant |
@@ -138,7 +139,7 @@ The viewer's own messages read "You"; a member's read their display name from `G
 
 The stream description and OpenAPI name `event_admitted` and `message`; `docs/architecture/data_flow.md` shows where it fires. The public API reference renders the stream description from OpenAPI; no other public page documents frames (Discovery).
 
-- **Dimension 5.1** — every `TailFrame` kind appears in the stream description → Test `test_stream_description_names_every_frame`
+- **Dimension 5.1** — every `TailFrame` kind appears in the stream description → Test `test_stream_description_names_every_frame` — DONE (`afd_api/tests/openapi_stream_frames.rs`, an exhaustive `match` over `TailFrame`)
 
 ## Interfaces
 
