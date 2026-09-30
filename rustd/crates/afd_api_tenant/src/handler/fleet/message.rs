@@ -92,6 +92,8 @@ fn parse_cursor(raw: Option<&str>) -> Result<Option<Cursor>, Refusal> {
         "then each event's detail. A page holds at most `limit` items and at ",
         "most 512 KiB of encoded items. The newest item always ships, even ",
         "alone. Follow `next_cursor` to read the rest. ",
+        "The first page also lists messages still waiting for a runner, with ",
+        "status `queued` and no answer yet. ",
     ),
     params(
         afd_http::openapi::path::Fleet,

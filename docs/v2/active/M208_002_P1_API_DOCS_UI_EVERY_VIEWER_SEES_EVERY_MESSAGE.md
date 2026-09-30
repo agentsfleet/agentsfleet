@@ -62,7 +62,6 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_tenant/src/sql/member.rs`, `rustd/crates/afd_api_tenant/src/handler/tenant/member.rs`, `rustd/crates/afd_wire/src/team.rs` | EDIT | a workspace member carries `actor`, the string that member's steers record |
 | `ui/packages/app/lib/api/tenant-members.ts` | EDIT | `listWorkspaceMembers` |
 | `rustd/crates/afd_fleet/src/lease/bracket.rs` | EDIT | `event_received` carries the steer's message |
-| `rustd/crates/afd_admission/src/pending.rs` | CREATE | read a fleet's undelivered steer admissions |
 | `rustd/crates/afd_api_tenant/src/handler/fleet/message.rs` | EDIT | thread read adds `queued` rows, deduplicated by event id |
 | `rustd/crates/afd_api_tenant/src/handler/stream.rs` | EDIT | stream description names `event_admitted` and `message` |
 | `public/openapi.json` | EDIT | frame and `queued` status |
@@ -76,7 +75,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/streaming/fleet-stream-admitted.ts`, `ui/packages/app/lib/events/sender-names.ts` | CREATE | the admitted frame's handling, beside `fleet-stream-frames.ts` at its cap; the viewer's and members' labels |
 | `ui/packages/app/lib/auth/credential.ts` | EDIT | the session subject, the viewer's own steer actor |
 | `rustd/crates/afd_admission/src/{lib,repeat}.rs` | EDIT | the admission answers with its `event_created_at` |
-| `rustd/crates/afd_events/src/history/**` | EDIT | the queued rows' shape beside the thread's |
+| `rustd/crates/afd_events/src/{lib.rs,history/**}`, `rustd/crates/afd_events/tests/{events_suite,integration_thread_queued}.rs`, `rustd/crates/afd_core/src/event.rs` | CREATE/EDIT | the thread's first page reads waiting steers from the ledger and merges them; `status::QUEUED` |
 | `docs/architecture/data_flow.md` | EDIT | the admitted frame in the steer flow |
 
 ## Applicable Rules
@@ -110,10 +109,10 @@ After the steer's admission commits and before the 202, the route publishes `eve
 
 ### §2 — Late joiners see waiting and started turns with their text
 
-The thread read (`GET …/fleets/{fleet_id}/messages`) returns the fleet's receipted, undelivered steer admissions (`receipt IS NOT NULL AND delivered_at IS NULL`, the ledger's own meaning of queued, `schema/910_fleet_admissions.sql:37-39`) as rows with status `queued`, first page only, merged by event id so a leased turn appears once. The read rides `idx_fleet_admissions_undelivered`, which holds only in-flight work; no schema change. `event_received` carries `message`, parsed from `Acquired.request_json` for `steer:*` actors and omitted above the byte cap or when unparsable.
+The thread read (`GET …/fleets/{fleet_id}/messages`) returns the fleet's receipted, undelivered steer admissions (`receipt IS NOT NULL AND delivered_at IS NULL`, the ledger's own meaning of queued, `schema/910_fleet_admissions.sql:37-39`) as rows with status `queued`, first page only, merged by event id so a leased turn appears once. The read rides a partial index holding only undelivered admissions, keyed `(fleet_id, created_at, seq)`: the planner takes `idx_fleet_admissions_delivery_lookup` (`schema/914`) over `idx_fleet_admissions_undelivered` (`schema/910`), both bounded by in-flight work; no schema change. `event_received` carries `message`, parsed from `Acquired.request_json` for `steer:*` actors and omitted above the byte cap or when unparsable.
 
-- **Dimension 2.1** — an undelivered steer appears in the thread read as `queued` with its text → Test `test_thread_read_includes_queued_steers`
-- **Dimension 2.2** — once leased, the same event id appears once, no longer `queued` → Test `test_thread_read_dedupes_leased_steer`
+- **Dimension 2.1** — an undelivered steer appears in the thread read as `queued` with its text → Test `test_thread_read_includes_queued_steers` — DONE (`afd_events/tests/integration_thread_queued.rs`, with `test_queued_read_plans_on_the_undelivered_index` on the plan)
+- **Dimension 2.2** — once leased, the same event id appears once, no longer `queued` → Test `test_thread_read_dedupes_leased_steer` — DONE (`integration_thread_queued.rs`; the merge rule in `afd_events/src/history/queued/tests.rs`)
 - **Dimension 2.3** — `event_received` carries a steer's message; a webhook's carries none → Test `test_event_received_carries_steer_message` — DONE (`afd_fleet/src/lease/bracket.rs`)
 - **Dimension 2.4** — an unparsable body publishes without `message` and logs once → Test `test_event_received_without_parsable_body` — DONE (`afd_fleet/src/lease/bracket.rs`, with the byte bound at its edge)
 
