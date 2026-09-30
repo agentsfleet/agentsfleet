@@ -91,4 +91,7 @@ pub struct WorkspaceMember<'a> {
     pub display_name: Option<Cow<'a, str>>,
     /// Their role: `owner` or `member`.
     pub role: Cow<'a, str>,
+    /// The actor their messages record, `steer:<subject>`: what a thread
+    /// row's `actor` equals when this member sent it.
+    pub actor: Cow<'a, str>,
 }

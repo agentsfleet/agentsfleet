@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use afd_core::error_code;
 use afd_core::id::Uuid7;
+use afd_events::ACTOR_PREFIX;
 use afd_tenant::team::Member;
 use afd_wire::team::{MemberSummary, WorkspaceMember};
 use axum::Json;
@@ -134,6 +135,7 @@ pub(crate) async fn remove<D: Services>(
     description = concat!(
         "Returns the members of the account that owns the workspace, with ",
         "each one's name and role, so a thread can name who sent each turn. ",
+        "Each `actor` equals the `actor` of the messages that member sends. ",
         "No email addresses: every member of the account can read this list. ",
         "One page: `next_cursor` is always `null`. ",
     ),
@@ -175,5 +177,6 @@ fn workspace_member(member: &Member) -> WorkspaceMember<'_> {
         user_id: Cow::Borrowed(&member.user),
         display_name: member.display_name.as_deref().map(Cow::Borrowed),
         role: Cow::Borrowed(member.role.wire()),
+        actor: Cow::Owned(format!("{ACTOR_PREFIX}{}", member.subject)),
     }
 }
