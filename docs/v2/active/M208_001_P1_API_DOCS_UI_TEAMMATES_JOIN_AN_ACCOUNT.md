@@ -60,7 +60,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_tenant/src/sql/workspace.rs` | EDIT | access through memberships; answers tenant and role |
 | `rustd/crates/afd_tenant/src/workspace/mod.rs` | EDIT | access record: tenant and grant; the crossing event moves to the ownership layer |
 | `rustd/crates/afd_tenant/src/{team/,sql/{invite,member}.rs,lib.rs}` | CREATE/EDIT | one `Team` store: invites (create, list, revoke, accept in one transaction, expiry) and members (list, remove, last-owner guard) |
-| `rustd/crates/afd_tenant/src/workspace/{access,accounts}.rs`, `src/sql/mod.rs`, `src/error/*` | CREATE/EDIT | the access record, the accounts a caller holds, the refusals |
+| `rustd/crates/afd_tenant/src/workspace/{access,accounts,crossing}.rs`, `src/sql/mod.rs`, `src/error/*`, `Cargo.toml` | CREATE/EDIT | the access record, the accounts a caller holds, the crossing audit, the refusals; the trace capture as a dev-dependency |
+| `rustd/crates/afd_api_tenant/src/handler/connector/callback.rs` | EDIT | the callback authorizes outside the layer, so it records a crossing itself |
 | `rustd/crates/afd_http/src/auth/ownership/{role,extract}.rs` | CREATE | the member rule; the extractors, split out at the file cap |
 | `rustd/crates/afd_sse/src/{frame,lib}.rs`, `afd_api_tenant/src/handler/stream/{guard,wall}.rs` | CREATE/EDIT | streams re-check access and end on `access_revoked` |
 | `rustd/crates/afd_api_tenant/src/handler/tenant/workspace/{input,render}.rs`, `afd_wire/src/workspace.rs` | CREATE/EDIT | list items carry `account` and `role`; the handler split at the file cap |
@@ -153,7 +154,7 @@ Owners get Settings → Members (invite, copy link, pending invites, members, re
 `workspace:any` admits every method across tenants, as it does today; there is no read-only crossing (Discovery). The ownership layer emits `cross_tenant_workspace_override` before a crossing is honoured, with the method, so a look and an act read differently in the log. The event moves there from `afd_tenant/src/workspace/mod.rs:163`, which cannot see the method and logged again on every stream re-check. `GET /v1/admin/workspaces` lists every workspace for `workspace:any` and refuses everyone else; the dashboard's `/admin/workspaces` page lists them and opens one. The operator's identity-provider scopes need no edit.
 
 - **Dimension 5.1** — an operator steers another tenant's fleet, attributed to the operator → Test `test_platform_write_acts_attributed`
-- **Dimension 5.2** — every crossing logs one audit event with the method, before the handler, and a stream re-check logs none → Test `test_platform_crossing_audited`
+- **Dimension 5.2** — every honoured crossing logs one audit event with the method, before the handler; access from inside the account logs none → Test `test_platform_crossing_audited` — DONE (`afd_tenant/src/workspace/crossing.rs`; placement in the layer by `test_layer_records_platform_crossings`, `afd_api/tests/workspace_member_roles.rs`)
 - **Dimension 5.3** — the directory serves `workspace:any` and refuses others → Test `test_admin_directory_scoped`
 - **Dimension 5.4** — the directory page lists workspaces and opens one → Test `test_admin_directory_page_opens_workspace`
 
@@ -196,7 +197,7 @@ Errors: UZ-AUTH-026 role refused (403)
 1. Access is decided once, in `ownership.rs`, for every workspace route — mounted from the route template (existing); the role gate reads the same access record.
 2. A member never exceeds their own Clerk scopes — the capability gate runs before ownership (existing order), and roles only subtract.
 3. Membership insert and invite acceptance commit together — one transaction; a unit test fails the second statement and asserts no member row.
-4. No crossing is honoured before its audit event — the layer emits it before calling the handler, asserted by a test that captures the event and records the handler's run after it.
+4. No crossing is honoured before its audit event — the ownership layer and the connector callback call `crossing::audit` before the work; the layer suite fails when the layer's call is removed.
 
 ## Metrics & Observability
 
@@ -226,7 +227,7 @@ Errors: UZ-AUTH-026 role refused (403)
 | 4.1 | e2e | `test_members_page_owner_journey` | invite, copy link, remove on the rendered page |
 | 4.2 | e2e | `test_invitee_accept_journey` | accept → switcher shows the workspace under the owner's account |
 | 5.1 | integration | `test_platform_write_acts_attributed` | `workspace:any` steer on another tenant's fleet → 202, row actor `steer:<operator>` |
-| 5.2 | unit | `test_platform_crossing_audited` | `POST` crossing → one event naming `POST`, before the handler; a stream re-check → none |
+| 5.2 | unit | `test_platform_crossing_audited` | platform `POST` → one warn event naming `POST`, operator and target; owner or member → none; the layer suite sees one event per crossing request and none for the owner |
 | 5.3 | integration | `test_admin_directory_scoped` | `workspace:any` → all tenants' workspaces; without it → `403 UZ-AUTH-022` |
 | 5.4 | unit | `test_admin_directory_page_opens_workspace` | two directory rows → both render; a row links to `/w/{id}` |
 | 6.1 | unit | `test_docs_name_member_roles` | `docs/AUTH.md` → names `owner`, `member` and `UZ-AUTH-026` |
@@ -237,7 +238,7 @@ Errors: UZ-AUTH-026 role refused (403)
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Members reach and are bounded (§2, §3) | `make test-integration-rustd` | exit 0 | P0 | |
 | R2 | Invite and accept journeys (§4) | `cd ui/packages/app && bunx playwright test --config=playwright.acceptance.config.ts --project=journeys -g "test_invitee_accept_journey\|test_members_page_owner_journey"` | `2 passed` | P0 | |
-| R3 | Operator crossings are audited (§5) | `cd rustd && cargo test -p afd_http --all-features platform_` | exit 0 | P0 | |
+| R3 | Operator crossings are audited (§5) | `cd rustd && cargo test -p afd_tenant --all-features --lib crossing && cargo test -p afd_api --all-features --test tenant_plane test_layer_records_platform_crossings` | exit 0 | P0 | |
 | R4 | Member roles documented | `git grep -c "UZ-AUTH-026" -- docs/AUTH.md` | ≥ 1 | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the three M208 Files Changed tables | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |

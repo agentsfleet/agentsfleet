@@ -53,18 +53,14 @@ pub(crate) struct OneWorkspace {
     authorize_calls: Arc<AtomicUsize>,
     /// Set, the caller holds the workspace as a member rather than its owner.
     member: Arc<AtomicBool>,
+    /// Set, the caller reaches the workspace from outside its account.
+    platform: Arc<AtomicBool>,
 }
 
 impl OneWorkspace {
     /// The stable workspace used by datastore-free routing suites.
     pub(crate) fn fixed() -> Self {
-        Self {
-            owned: Uuid7::parse(OWNED_WORKSPACE).expect("the fixture workspace is canonical"),
-            authorized: Arc::new(AtomicBool::new(true)),
-            refusing: Arc::new(AtomicBool::new(false)),
-            authorize_calls: Arc::new(AtomicUsize::new(0)),
-            member: Arc::new(AtomicBool::new(false)),
-        }
+        Self::owning(Uuid7::parse(OWNED_WORKSPACE).expect("the fixture workspace is canonical"))
     }
 
     /// A minted workspace used by a live fixture without global row collisions.
@@ -75,12 +71,18 @@ impl OneWorkspace {
             refusing: Arc::new(AtomicBool::new(false)),
             authorize_calls: Arc::new(AtomicUsize::new(0)),
             member: Arc::new(AtomicBool::new(false)),
+            platform: Arc::new(AtomicBool::new(false)),
         }
     }
 
     /// From now on the caller holds the workspace as a member of the account.
     pub(crate) fn join_as_member(&self) {
         self.member.store(true, Ordering::Release);
+    }
+
+    /// From now on the caller reaches the workspace through the platform scope.
+    pub(crate) fn cross_as_platform(&self) {
+        self.platform.store(true, Ordering::Release);
     }
 
     /// Revokes this fixture principal for a stream refresh proof.
@@ -162,15 +164,16 @@ impl WorkspaceOwnership for OneWorkspace {
             let refused = Uuid7::parse(UNREADABLE).map(|_| None).map_err(Into::into);
             return std::future::ready(refused);
         }
-        let role = if self.member.load(Ordering::Acquire) {
-            Role::Member
+        let grant = if self.platform.load(Ordering::Acquire) {
+            Grant::Platform
+        } else if self.member.load(Ordering::Acquire) {
+            Grant::Membership(Role::Member)
         } else {
-            Role::Owner
+            Grant::Membership(Role::Owner)
         };
-        let access = tenant.filter(|_| owned).map(|tenant| Access {
-            tenant,
-            grant: Grant::Membership(role),
-        });
+        let access = tenant
+            .filter(|_| owned)
+            .map(|tenant| Access { tenant, grant });
         std::future::ready(Ok(access))
     }
 
