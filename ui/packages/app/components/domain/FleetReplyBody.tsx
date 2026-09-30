@@ -6,7 +6,7 @@ import { MessagePrimitive, groupPartByType, type MessageState } from "@assistant
 
 import { loadingPhrase, loadingVerbFor } from "@/components/layout/loading-verbs";
 import { truncate } from "@/lib/utils";
-import { FleetFailedOutcome } from "./FleetFailedOutcome";
+import { FLEET_OUTCOME_CLASS, FleetFailedOutcome } from "./FleetFailedOutcome";
 import { FleetMarkdown, FleetStreamingMarkdown } from "./FleetMarkdown";
 import { FleetMessageRow, ROW_TONE } from "./FleetMessageRow";
 import { FleetThought } from "./FleetThought";
@@ -90,7 +90,7 @@ export function FleetReply({
         {(info) => renderReplyPart(info, { errored, running, queued, eventId, reasoning: reasoningText(message), span })}
       </MessagePrimitive.GroupedParts>
       {answer.length === 0 && !running ? (
-        errored ? <FleetFailedOutcome>{messageOutcome(message)}</FleetFailedOutcome> : <span>{messageOutcome(message)}</span>
+        errored ? <FleetFailedOutcome>{messageOutcome(message)}</FleetFailedOutcome> : <p className={FLEET_OUTCOME_CLASS}>{messageOutcome(message)}</p>
       ) : null}
       {recovering ? <output aria-label={RECOVERING_LABEL} className="text-body-sm text-text-subtle">{RECOVERING_LABEL}</output> : null}
       <ReplyActions answer={answer} settled={!running && !errored && !recovering} />
