@@ -105,6 +105,7 @@ Do not invent placeholders for these values:
 | `agentsfleet-admin/api-key` | `operations/admin_bootstrap` from the dashboard's one-time reveal |
 | `github-app`, `slack-app`, `zoho-app`, `jira-app`, `linear-app` | the matching provider registration playbook |
 | `qstash` | `operations/qstash_registration` |
+| `smtp-relay` (`host`, `port`, `username`, `password`, `from_address`) | `operations/smtp_relay_registration`, once the sending domain is verified at the relay |
 | `agentsfleet-fleets-investigation-service-token` | `operations/observability` |
 | runner `tailscale-hostname` and `deploy-user` | the environment runner-bootstrap step |
 | runner `runner-token` | the dashboard **Add runner** action |
