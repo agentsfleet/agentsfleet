@@ -1,11 +1,12 @@
 "use client";
 
-import { memo, useLayoutEffect } from "react";
+import { memo } from "react";
 import { ArrowDownIcon } from "lucide-react";
-import { ThreadPrimitive, useThreadViewportStore } from "@assistant-ui/react";
+import { ThreadPrimitive } from "@assistant-ui/react";
 import { Button, Skeleton, cn } from "@agentsfleet/design-system";
 import { CONNECTION_STATUS, type ConnectionStatus } from "./useFleetEventStream";
 import { SteerComposer, type SteerComposerProps } from "./SteerComposer";
+import { FleetConnectionNotice } from "./FleetConnectionNotice";
 import { renderFleetMessage } from "./fleetMessageRenderers";
 import { SettledReplyStatus } from "./FleetReplyBody";
 
@@ -17,21 +18,15 @@ const BACKFILL_LABEL = "Loading recent activity";
 type FleetThreadViewportProps = SteerComposerProps & {
   eventsCount: number;
   connectionStatus: ConnectionStatus;
-  submittedMessageId: string | null;
+  /** Reconnects the live stream now, from the offline notice. */
+  onRetry: () => void;
 };
 
 // Memoised: the thread re-renders on every streamed flush, and nothing this
 // shell draws moves with one. The messages below subscribe on their own.
 export const FleetThreadViewport = memo(function FleetThreadViewport({
-  eventsCount, connectionStatus, submittedMessageId, pending, onResend, onDismiss, onRestored, onDraft,
+  eventsCount, connectionStatus, onRetry, pending, onResend, onDismiss, onRestored, onDraft,
 }: FleetThreadViewportProps) {
-  const viewport = useThreadViewportStore();
-  // The external runtime stays steerable while the fleet runs, so its normal
-  // run-start scroll event never fires. Only a newly submitted message pulls
-  // the reader to the latest turn; background replies leave history alone.
-  useLayoutEffect(() => {
-    if (submittedMessageId) viewport.getState().scrollToBottom({ behavior: "instant" });
-  }, [submittedMessageId, viewport]);
   return (
     // `overflow-clip`, never `overflow-hidden`: a hidden box is still a scroll
     // container, and focus or scroll anchoring during a long streamed reply
@@ -44,8 +39,15 @@ export const FleetThreadViewport = memo(function FleetThreadViewport({
       {/* assistant-ui's layout: the viewport is the only scroller, and the
           composer rides inside it in ViewportFooter, stuck to the bottom.
           Capped at the viewport's height, a tall draft shrinks the textarea
-          (see SteerComposer) instead of pushing Send out of view. */}
+          (see SteerComposer) instead of pushing Send out of view.
+          The top anchor is the one scroller on a send: while a reply runs it
+          pins the operator's newest row to the top and holds room below the
+          reply, so a fold or a settle cannot drag the view. `autoScroll`
+          still follows the bottom where no anchor holds the view, as for a
+          webhook's reply, which has no operator row to pin; the library
+          leaves it off under a top anchor unless asked. */}
       <ThreadPrimitive.Viewport
+        turnAnchor="top"
         autoScroll
         className="flex min-h-0 flex-1 flex-col overflow-y-auto px-lg sm:px-xl"
         role="presentation"
@@ -57,7 +59,14 @@ export const FleetThreadViewport = memo(function FleetThreadViewport({
           data-testid="fleet-chat-footer"
           className="sticky bottom-0 mx-auto flex max-h-full w-full max-w-measure flex-col bg-background pb-md pt-md"
         >
-          <JumpToLatest />
+          {/* Laid over the history, above the composer, so nothing that
+              appears here moves a row the reader is on. */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-full z-20 mb-sm flex flex-col items-center gap-sm">
+            <JumpToLatest />
+            <div className="pointer-events-auto w-full">
+              <FleetConnectionNotice status={connectionStatus} onRetry={onRetry} />
+            </div>
+          </div>
           <SteerComposer
             pending={pending}
             onResend={onResend}
@@ -81,7 +90,7 @@ function JumpToLatest() {
         size="icon"
         aria-label={JUMP_TO_LATEST}
         className={cn(
-          "absolute bottom-full left-1/2 z-20 mb-sm -translate-x-1/2 rounded-full",
+          "pointer-events-auto rounded-full",
           "disabled:invisible disabled:pointer-events-none",
         )}
       >
@@ -122,8 +131,10 @@ function ChatHistory({ eventsCount, connectionStatus }: Pick<FleetThreadViewport
       aria-label={PANEL_TITLE}
       // `flex-1`, not `min-h-full`: the log takes only the height left beside
       // the footer, so a short thread does not scroll and the sticky composer
-      // never covers its newest rows.
-      className="mx-auto flex w-full max-w-measure flex-1 flex-col justify-end py-lg"
+      // never covers its newest rows. Top-aligned, as the viewport's top
+      // anchor expects: a bottom-aligned short thread slid down by the height
+      // of every Thought that folded above the composer.
+      className="mx-auto flex w-full max-w-measure flex-1 flex-col justify-start py-lg"
     >
       {isAwaitingFirstFrames ? <BackfillSkeleton /> : null}
       {isIdleEmpty ? (

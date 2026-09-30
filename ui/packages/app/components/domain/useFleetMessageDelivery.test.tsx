@@ -65,7 +65,6 @@ function delivery(appendOptimistic: (text: string, actor: string) => string = ()
     appendOptimistic,
     reconcileOptimistic: vi.fn(),
     discardOptimistic: vi.fn(),
-    onSubmitted: vi.fn(),
     writers,
   };
   return { ctx, hook: renderHook(() => useMessageDelivery(ctx)) };
@@ -113,14 +112,13 @@ afterEach(() => {
 });
 
 describe("useMessageDelivery", () => {
-  it("still sends and settles when the fleet's thread is gone, and scrolls to no row", async () => {
+  it("still sends and settles when the fleet's thread is gone", async () => {
     postSteer.mockResolvedValue(ACCEPTED);
     // The registry answers an empty id when the fleet's entry was released.
     const { ctx, hook } = delivery(() => NO_ROW);
     await act(() => hook.result.current.onNew(message(DEPLOY)));
     expect(postSteer).toHaveBeenCalledWith(WORKSPACE, FLEET, DEPLOY, expect.any(String), expect.any(AbortSignal));
     expect(ctx.writers.settle).toHaveBeenCalledTimes(1);
-    expect(ctx.onSubmitted).not.toHaveBeenCalled();
   });
 
   it("hands a replayed 202 to the reconcile as a replay", async () => {

@@ -1,5 +1,6 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
 
+import { isSteerBy } from "@/lib/events/event-summary";
 import {
   AGENTSFLEET_EVENT_STATUS,
   type FleetEvent,
@@ -34,10 +35,18 @@ const NO_OUTPUT = null;
 
 type ReplyPart = Exclude<ThreadMessageLike["content"], string>[number];
 
-/** Whether this event's reply is still running: the one rule behind a reply
- * row's status and the thread's `isRunning`. */
+/** Whether this event's reply is still running: the rule behind a reply
+ * row's status. */
 export function isReplyInFlight(event: FleetEvent): boolean {
   return IN_FLIGHT.has(event.status);
+}
+
+/** Whether the thread reports a run: a reply to `subject`'s own turn is still
+ * running. The viewport's top anchor pins a running turn to the top wherever
+ * the reader is, so a turn a teammate, the API or a webhook sent never engages
+ * it, and a reader back in the history stays where they are. */
+export function isOwnReplyInFlight(event: FleetEvent, subject: string | null): boolean {
+  return isReplyInFlight(event) && isSteerBy(event.actor, subject);
 }
 
 /**

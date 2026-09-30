@@ -45,6 +45,10 @@ describe("FleetConnectionNotice", () => {
     render(<FleetConnectionNotice status={CONNECTION_STATUS.OFFLINE} onRetry={retry} />);
 
     const notice = screen.getByTestId("fleet-connection-notice");
+    // A warning for a state that heals itself, still spoken as it arrives.
+    expect(notice.getAttribute("role")).toBe("alert");
+    expect(notice.className).toMatch(/\btext-warning\b/);
+    expect(notice.className).not.toMatch(/destructive/);
     expect(notice.textContent).not.toMatch(/history/i);
     expect(notice.textContent).toMatch(/temporarily unavailable.*reconnecting automatically/i);
 

@@ -2,16 +2,12 @@
  * page's own EventSource: the Thought chip live then folded, a timed tool row,
  * and what the reply costs the main thread while it streams. */
 import type { Locator, Page } from "@playwright/test";
-import type { EventsPage } from "@/lib/api/events";
 import { expect, test } from "@playwright/test";
 import { FRAME_KIND } from "@/lib/api/events-types";
-import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
-import { workspaceHref } from "./fixtures/nav";
-import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
-import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { sseFrame as frame } from "./fixtures/sse";
-import { pageEventStream, type ScheduledStream, type TimedFrame } from "./fixtures/page-event-stream";
+import type { TimedFrame } from "./fixtures/page-event-stream";
+import { withReplyPage } from "./fixtures/reply-page";
 
 const FLEET_PREFIX = "reply-parts-spec-";
 const EVENT_ID = "9200000000000-1";
@@ -37,7 +33,6 @@ const HISTORY_TURNS = 100;
 const HISTORY_ID_BASE = 9_100_000_000_000;
 const HISTORY_STATUS = "processed";
 const LAST_HISTORY_ANSWER = `Settled answer ${HISTORY_TURNS}`;
-const EMPTY_HISTORY: EventsPage = { items: [], next_cursor: null };
 const COPY_REPLY = "Copy reply";
 // How far the shared focus ring reaches past a control: 2px wide on a 2px offset.
 const RING_REACH_PX = 4;
@@ -45,10 +40,9 @@ const RING_REACH_PX = 4;
 const FRAMES_PER_TURN = 2;
 
 type ProbeResult = { longTasks: number; frames: number; p95FrameMs: number };
-type ReplyPage = { chat: Locator; stream: ScheduledStream };
 
 test("test_stream_reply_parts_live_then_folded", async ({ page }) => {
-  await withReplyPage(page, async ({ chat, stream }) => {
+  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream }) => {
     let seq = 0;
     await stream.send([opening(Date.now()), chunk(seq++, "reasoning", LIVE_REASONING)]);
     const live = chat.getByRole("button", { name: /^Thinking/ });
@@ -74,7 +68,7 @@ test("test_stream_reply_parts_live_then_folded", async ({ page }) => {
 });
 
 test("test_streaming_reply_costs_no_long_tasks", async ({ page }, testInfo) => {
-  await withReplyPage(page, async ({ chat, stream }) => {
+  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream }) => {
     // A thread with a real history first, then the measured reply beneath it.
     const now = Date.now();
     await stream.send(settledHistory(now - HISTORY_TURNS));
@@ -99,7 +93,7 @@ test("test_streaming_reply_costs_no_long_tasks", async ({ page }, testInfo) => {
 // A settled row skips layout off screen, which contains its paint; a control
 // focused near its edge must still show the whole ring, not a clipped arc.
 test("test_settled_row_keeps_its_focus_ring", async ({ page }) => {
-  await withReplyPage(page, async ({ chat, stream }) => {
+  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream }) => {
     await stream.send(settledHistory(Date.now()).slice(0, FRAMES_PER_TURN));
     const copy = chat.getByRole("button", { name: COPY_REPLY });
     await expect(copy).toBeVisible();
@@ -123,32 +117,6 @@ test("test_settled_row_keeps_its_focus_ring", async ({ page }) => {
   });
 });
 
-// A seeded fleet whose live stream the test writes; history reads empty, so
-// every row on screen came from the frames a test sends.
-async function withReplyPage(page: Page, body: (reply: ReplyPage) => Promise<void>): Promise<void> {
-  const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-  const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, { name: `${FLEET_PREFIX}${crypto.randomUUID()}` });
-  const streamPath = `/live/v1/workspaces/${workspaceId}/fleets/${fleet.id}/events/stream`;
-  const historyPath = streamPath.replace(/\/stream$/, "");
-  const stream = await pageEventStream(page, streamPath);
-  const errors: string[] = [];
-  page.on("pageerror", (error) => errors.push(error.message));
-  await page.route((url) => url.pathname === historyPath, (route) => route.fulfill({ json: EMPTY_HISTORY }));
-  try {
-    await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
-    await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`), { waitUntil: "domcontentloaded" });
-    const chat = page.getByLabel("Fleet chat");
-    await expect(chat).toBeVisible();
-    await stream.connected;
-    await body({ chat, stream });
-    expect(errors).toEqual([]);
-  } finally {
-    await page.goto("about:blank");
-    await page.unrouteAll({ behavior: "wait" });
-    await cleanWorkspaceFleets(FIXTURE_KEY.regular, workspaceId, FLEET_PREFIX);
-  }
-}
 
 // Settled operator turns, each opened and completed with its answer inline, the
 // way the daemon publishes a finished turn (`final_reply` on the completion).
