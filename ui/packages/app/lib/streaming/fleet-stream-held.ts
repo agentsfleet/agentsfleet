@@ -1,19 +1,20 @@
 import { type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
-import { ACTOR } from "@/lib/events/event-summary";
 import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
 
 /**
- * A steer's turns whose sender this tab cannot tell yet.
+ * Turns under this tab's own account whose tab it cannot tell yet.
  *
  * A steer's opening frame names the sender's account, never the tab, and the
  * daemon can lease a send and announce it before the send's own 202 reaches
- * this tab. While a send here awaits its 202, a steer's turn the thread does
- * not hold may be this tab's or another tab's, so its frames wait here until
- * the 202 says which. The turn the 202 names lands on this tab's row, which
- * carries the submit clock that makes a run this tab's (`reportsOwnRun`); any
- * other lands as its own row once no send here is waiting. Every send ends in
- * a 202 or a discard inside its deadline, so nothing waits longer than that.
+ * this tab. While a send here awaits its 202, a turn the thread has no row for,
+ * opened under the account that send will be named under (`sentAs`), may be
+ * this tab's or the same operator's in another tab, so its frames wait here
+ * until the 202 says which. The turn the 202 names lands on this tab's row,
+ * which carries the submit clock that makes a run this tab's (`reportsOwnRun`);
+ * any other lands as its own row once no send here is waiting. A teammate's,
+ * the API's or a webhook's turn is never held. Every send ends in a 202 or a
+ * discard inside its deadline, so nothing waits longer than that.
  */
 export class HeldTurns {
   #frames = new Map<string, LiveFrame[]>();
@@ -27,7 +28,7 @@ export class HeldTurns {
       held.push(frame);
       return true;
     }
-    if (!opensUnheldSteer(frame, events) || !events.some(isAwaitingAck)) return false;
+    if (!opensAWaitingSendsTurn(frame, events)) return false;
     this.#frames.set(eventId, [frame]);
     return true;
   }
@@ -37,20 +38,30 @@ export class HeldTurns {
    * here awaits its 202. */
   release(events: readonly FleetEvent[]): LiveFrame[] {
     const waiting = events.some(isAwaitingAck);
-    const free: LiveFrame[] = [];
-    for (const [eventId, frames] of this.#frames) {
-      if (waiting && !events.some((event) => event.id === eventId)) continue;
+    return this.#take((eventId) => !waiting || events.some((event) => event.id === eventId));
+  }
+
+  /** The frames of the held turns among `eventIds`, which a backfill page is
+   * about to settle. */
+  releaseTurns(eventIds: ReadonlySet<string>): LiveFrame[] {
+    return this.#take((eventId) => eventIds.has(eventId));
+  }
+
+  #take(free: (eventId: string) => boolean): LiveFrame[] {
+    const frames: LiveFrame[] = [];
+    for (const [eventId, held] of this.#frames) {
+      if (!free(eventId)) continue;
       this.#frames.delete(eventId);
-      free.push(...frames);
+      frames.push(...held);
     }
-    return free;
+    return frames;
   }
 }
 
-function opensUnheldSteer(frame: LiveFrame, events: readonly FleetEvent[]): boolean {
+function opensAWaitingSendsTurn(frame: LiveFrame, events: readonly FleetEvent[]): boolean {
   return frame.kind === FRAME_KIND.EVENT_RECEIVED
-    && frame.actor.startsWith(ACTOR.STEER_PREFIX)
-    && !events.some((event) => event.id === frame.event_id);
+    && !events.some((event) => event.id === frame.event_id)
+    && events.some((event) => isAwaitingAck(event) && event.sentAs === frame.actor);
 }
 
 function isAwaitingAck(event: FleetEvent): boolean {

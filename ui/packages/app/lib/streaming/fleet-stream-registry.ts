@@ -1,10 +1,10 @@
 import { type EventRow } from "@/lib/api/events";
 import { FRAME_KIND, streamFleetEventsUrl } from "@/lib/api/events-types";
 import type { FleetFacts } from "@/lib/events/run-summary";
-import { backfillEntry } from "./fleet-stream-backfill";
-import { factsOf, mergeFacts } from "./fleet-stream-facts";
+import { landFrames, onFrame, recoverGap, type LiveEntry } from "./fleet-stream-dispatch";
+import { mergeFacts } from "./fleet-stream-facts";
 import { optimisticRow, reconcileRows } from "./fleet-stream-optimistic";
-import { patchSnapshot, patchSpokenFacts, setEvents } from "./fleet-stream-snapshot";
+import { patchSnapshot, setEvents } from "./fleet-stream-snapshot";
 import {
   FAST_RECONNECT_ATTEMPTS,
   OFFLINE_RETRY_MS,
@@ -12,20 +12,15 @@ import {
   cancelPendingReconnect,
   fastBackoffMs,
 } from "./fleet-stream-reconnect";
-import { applyLiveFrame, mergeBackfill, parseLiveFrame } from "./fleet-stream-frames";
+import { mergeBackfill, parseLiveFrame } from "./fleet-stream-frames";
 import {
-  dispatchReplyFrame,
   disposeReplyStreams,
   markReplyGap,
   readStalledReplies,
-  settleRepliesFromBackfill,
   watchReply,
   watchRunningRows,
-  type ApplyEvents,
 } from "./fleet-stream-reply-registry";
 import { HEARTBEAT_EVENT } from "./stream-recovery-window";
-import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
-import { advanceInstallStep, installStepFromKind } from "./install-steps";
 import {
   CONNECTION_STATUS,
   EMPTY_SNAPSHOT,
@@ -53,23 +48,9 @@ export {
 // frames published during the outage via the same-origin events proxy,
 // merged through the id-deduping mergeBackfill.
 
-// An entry the registry holds, with the write every reply helper makes and its
-// check that this entry still owns the fleet. Both are made once, when the
-// entry is adopted, so a frame allocates neither.
-type LiveEntry = Entry & { apply: ApplyEvents; isCurrent: () => boolean };
-
 const REGISTRY = new Map<string, LiveEntry>();
 
 const IDLE_RELEASE_MS = 30_000;
-const RUNNER_ACTIVITY_KINDS: ReadonlySet<string> = new Set([
-  FRAME_KIND.CHUNK, FRAME_KIND.TOOL_CALL_STARTED,
-  FRAME_KIND.TOOL_CALL_PROGRESS, FRAME_KIND.TOOL_CALL_COMPLETED,
-]);
-const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
-  AGENTSFLEET_EVENT_STATUS.PROCESSED,
-  AGENTSFLEET_EVENT_STATUS.AGENT_ERROR,
-  AGENTSFLEET_EVENT_STATUS.GATE_BLOCKED,
-]);
 
 // Module-level, not per-entry: a pending send's optimistic row deliberately
 // outlives the stream entry, which is torn down after the idle window and
@@ -134,53 +115,6 @@ function startEventSource(entry: LiveEntry, fleetId: string): void {
   });
   es.onerror = onTimeout;
   entry.recoveryWindow.connecting(onTimeout);
-}
-
-// Reads back what the stream missed. A burst of gap signals during a walk
-// costs one more walk after it, not one each.
-function recoverGap(entry: LiveEntry, fleetId: string): void {
-  void backfillEntry(entry, fleetId, {
-    stillCurrent: entry.isCurrent,
-    onPage: (rows) => {
-      setEvents(entry, (prev) => mergeBackfill(prev, rows));
-      watchRunningRows(entry, rows);
-      settleRepliesFromBackfill(entry, fleetId, rows, entry.apply, entry.isCurrent);
-    },
-  });
-}
-
-function onFrame(entry: LiveEntry, fleetId: string, frame: NonNullable<ReturnType<typeof parseLiveFrame>>): void {
-  // The daemon lost frames for this stream — dropped behind a slow reader, or
-  // a subscription lost and re-established — so read them back as a reconnect does.
-  if (frame.kind === FRAME_KIND.CATCHING_UP) {
-    recoverGap(entry, fleetId);
-    return;
-  }
-  // Install frames advance the install step, never the message list. Forking
-  // here (rather than inside applyLiveFrame) keeps the chat reducer pure and the
-  // two concerns — a long-lived chat timeline vs. a one-shot install beat —
-  // independent while sharing the single EventSource the spec mandates.
-  const installStep = installStepFromKind(frame.kind);
-  if (installStep !== null) {
-    patchSnapshot(entry, {
-      installStep: advanceInstallStep(entry.snapshot.installStep, installStep),
-    });
-    return;
-  }
-  // Best-effort activity can arrive after the report's durable close. Keep
-  // every late runner frame from mutating the settled answer or tool history.
-  if ("event_id" in frame && RUNNER_ACTIVITY_KINDS.has(frame.kind)
-    && entry.snapshot.events.some((event) => event.id === frame.event_id && TERMINAL_STATUSES.has(event.status))) return;
-  if (entry.held.take(frame, entry.snapshot.events)) return;
-  if (dispatchReplyFrame(entry, fleetId, frame, entry.apply, entry.isCurrent)) return;
-  // A completion carries the fleet's status and pending count beside its row;
-  // a gate frame carries the count alone and touches no row.
-  const facts = factsOf(frame);
-  if (frame.kind === FRAME_KIND.GATE_OPENED || frame.kind === FRAME_KIND.GATE_RESOLVED) {
-    patchSpokenFacts(entry, facts);
-    return;
-  }
-  setEvents(entry, (prev) => applyLiveFrame(prev, frame), facts);
 }
 
 // A lost connection is a transient state, never a terminal one. The fast
@@ -302,12 +236,13 @@ export function appendOptimistic(
   fleetId: string,
   text: string,
   actor: string,
+  sentAs?: string,
 ): string {
   const entry = REGISTRY.get(fleetId);
   if (!entry) return "";
   tempCounter += 1;
   const tempId = `optim-${tempCounter}`;
-  setEvents(entry, (prev) => [...prev, optimisticRow(tempId, text, actor)]);
+  setEvents(entry, (prev) => [...prev, optimisticRow(tempId, text, actor, sentAs)]);
   return tempId;
 }
 
@@ -324,7 +259,7 @@ export function reconcileOptimistic(
   // A replay's event may have run before this page held it, with no frame left
   // to settle its row, so it is read now. One the page held settles from frames.
   watchReply(entry, fleetId, realEventId, entry.apply, entry.isCurrent, replayed && !loaded);
-  for (const frame of entry.held.release(entry.snapshot.events)) onFrame(entry, fleetId, frame);
+  landFrames(entry, fleetId, entry.held.release(entry.snapshot.events));
   return alreadyComplete;
 }
 
@@ -334,7 +269,7 @@ export function discardOptimistic(fleetId: string, tempId: string): void {
   const entry = REGISTRY.get(fleetId);
   if (!entry) return;
   setEvents(entry, (prev) => prev.filter((event) => event.id !== tempId));
-  for (const frame of entry.held.release(entry.snapshot.events)) onFrame(entry, fleetId, frame);
+  landFrames(entry, fleetId, entry.held.release(entry.snapshot.events));
 }
 
 // Test surface — vitest must reset between tests; nothing in production

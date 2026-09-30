@@ -7,9 +7,13 @@ import { HeldTurns } from "./fleet-stream-held";
 import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
 
 const OWN = `${ACTOR.STEER_PREFIX}user_viewer`;
+const TEAMMATE = `${ACTOR.STEER_PREFIX}user_teammate`;
 const MINE = "evt_mine";
 const ELSEWHERE = "evt_elsewhere";
-const WAITING: FleetEvent[] = [evt({ id: "optim-1", role: "user", actor: ACTOR.PENDING_STEER, status: AGENTSFLEET_EVENT_STATUS.OPTIMISTIC })];
+// This tab's send, awaiting its 202, to be named under the viewer's account.
+const WAITING: FleetEvent[] = [
+  evt({ id: "optim-1", role: "user", actor: ACTOR.PENDING_STEER, status: AGENTSFLEET_EVENT_STATUS.OPTIMISTIC, sentAs: OWN }),
+];
 const NAMED_MINE: FleetEvent[] = [evt({ id: MINE, role: "user", actor: ACTOR.PENDING_STEER, status: AGENTSFLEET_EVENT_STATUS.RECEIVED })];
 const IDLE: FleetEvent[] = [];
 
@@ -33,6 +37,12 @@ describe("HeldTurns", () => {
     const held = new HeldTurns();
     // Nothing of this tab's is waiting on a 202.
     expect(held.take(opening(MINE), IDLE)).toBe(false);
+    // A teammate's or the API's turn is never this tab's: it lands at once.
+    expect(held.take(opening(MINE, TEAMMATE), WAITING)).toBe(false);
+    expect(held.take(opening(MINE, ACTOR.API_STEER), WAITING)).toBe(false);
+    // A send whose sender is unknown holds nothing.
+    const unnamed = [evt({ id: "optim-1", role: "user", actor: ACTOR.PENDING_STEER, status: AGENTSFLEET_EVENT_STATUS.OPTIMISTIC })];
+    expect(held.take(opening(MINE), unnamed)).toBe(false);
     // A fleet or webhook turn is never a send from a tab.
     expect(held.take(opening(MINE, ACTOR.FLEET), WAITING)).toBe(false);
     // The thread already holds this turn's row.
@@ -56,6 +66,17 @@ describe("HeldTurns", () => {
     // No send here waits any more: the rest is another tab's, and lands.
     expect(held.release(NAMED_MINE)).toEqual([opening(ELSEWHERE)]);
     expect(held.release(NAMED_MINE)).toEqual([]);
+  });
+
+  it("test_a_backfill_releases_the_turns_it_settles", () => {
+    const held = new HeldTurns();
+    held.take(opening(MINE), WAITING);
+    held.take(tool(MINE), WAITING);
+    held.take(opening(ELSEWHERE), WAITING);
+    expect(held.releaseTurns(new Set([MINE, "evt_unheld"]))).toEqual([opening(MINE), tool(MINE)]);
+    // The turn the page did not settle still waits on the 202.
+    expect(held.release(WAITING)).toEqual([]);
+    expect(held.releaseTurns(new Set([ELSEWHERE]))).toEqual([opening(ELSEWHERE)]);
   });
 
   it("test_a_discard_releases_everything", () => {
