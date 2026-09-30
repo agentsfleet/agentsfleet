@@ -144,8 +144,8 @@ An owner invites an email (lowercased) as `member`; one pending invite per `(ten
 
 Owners get Settings → Members (invite, copy link, pending invites, members, remove). Invitees get an Invites page and a one-line notice while any invite is pending. The workspace switcher groups by account ("Yours", "John's account").
 
-- **Dimension 4.1** — an owner invites, copies the link and removes a member on the page → Test `test_members_page_owner_journey` — written (`tests/e2e/acceptance/team-members.spec.ts`); runs once the dev API serves §3
-- **Dimension 4.2** — an invitee accepts and the workspace appears under the owner's account → Test `test_invitee_accept_journey` — written (same spec); runs once the dev API serves §3
+- **Dimension 4.1** — an owner invites, copies the link and removes a member on the page → Test `test_members_page_owner_journey` — written (`tests/e2e/acceptance/team-members.spec.ts`); runs after merge, once `main` deploys to dev (Discovery)
+- **Dimension 4.2** — an invitee accepts and the workspace appears under the owner's account → Test `test_invitee_accept_journey` — written (same spec); runs after merge, once `main` deploys to dev (Discovery)
 
 ### §5 — Platform operators: act in any workspace, audited
 
@@ -230,7 +230,7 @@ Errors: UZ-AUTH-026 role refused (403)
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Members reach and are bounded (§2, §3) | `make test-integration-rustd` | exit 0 | P0 | |
-| R2 | Invite and accept journeys (§4) | `cd ui/packages/app && bunx playwright test --config=playwright.acceptance.config.ts --project=journeys -g "test_invitee_accept_journey\|test_members_page_owner_journey"` | `2 passed` | P0 | |
+| R2 | Invite and accept journeys (§4) | `cd ui/packages/app && bunx playwright test --config=playwright.acceptance.config.ts --project=journeys -g "test_invitee_accept_journey\|test_members_page_owner_journey"` | `2 passed` | P0 | post-merge (Indy, Discovery) |
 | R3 | Operator crossings are audited (§5) | `cd rustd && cargo test -p afd_tenant --all-features --lib crossing && cargo test -p afd_api --all-features --test tenant_plane test_layer_records_platform_crossings` | exit 0 | P0 | |
 | R4 | Member roles documented | `git grep -c "UZ-AUTH-026" -- docs/AUTH.md` | ≥ 1 | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the three M208 Files Changed tables | P0 | |
@@ -301,3 +301,4 @@ N/A — no symbol is deleted: `workspace:any` keeps its meaning (Discovery).
 - **§3 source corrections** — Sep 30, 2026: the `UZ-INV-002` refusal names no address (`afd_core/src/problem/invite.rs:27`), since the link may reach a third party and naming the address would leak it; Product Clarity 10 amended. A revoked stream ends with `event: access_revoked`, data `{kind, error_code:"UZ-AUTH-001"}` (`afd_api_tenant/src/handler/stream.rs:41-43`). Invite create takes no `Idempotency-Key` (`docs/REST_API_DESIGN_GUIDELINES.md:142`): a repeat create answers `409 UZ-INV-003` and the pending list offers the link; Indy kept the 409 over returning the pending invite (AskUserQuestion, Sep 30, 2026: "Keep the 409").
 - **Hand-rolled Rust cleanup** — Sep 30, 2026, Indy in session: "Are there any handrolled rust code? where you can use the afd_core or external crates, if yes fix them", then "Are there any duplicate handrolled code you have, if yes fix them." and "and clean it up". Its own commit on this branch: `Entropy::uuid7` replaces every draw-then-encode copy, `sqlx::error::DatabaseError::is_unique_violation` replaces the hand-written `23505` checks, `afd_tenant` lifts through `error_lifts!`, the identifier kinds that became dead are removed, and `DETAIL_NOT_DASHBOARD` drops the identity vendor's name.
 - **Directory cut** — Sep 30, 2026, Indy: "I donot see value in doing Direcotry since opening a workspace by URL works if i am a platform admin with workspace:any scope. So cut tht scope". Dimensions 5.3 and 5.4 are removed with their Interfaces line, tests, the `core.workspaces (created_at, id)` index, and the admin route, handler and page rows. No directory code had been written (`git grep`, Sep 30, 2026). This supersedes "§5 keeps the directory" above.
+- **R2 after merge** — Sep 30, 2026, Indy via AskUserQuestion: "Run R2 after merge". The journeys call the shared dev API, which runs `main`; a branch deploy (`gh workflow run deploy-dev.yml --ref feat/m208-team-accounts`) was offered and declined. The Pull Request opens without R2 under an Orly-Override Indy records; R2 runs once `main` deploys to dev, and Dimensions 4.1 and 4.2 are graded then.
