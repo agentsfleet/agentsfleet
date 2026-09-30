@@ -15,9 +15,9 @@ use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_tenant::team::{Email, Invitee, NewInvite, Removal, Team};
-use afd_tenant::workspace::access::{ROLE_MEMBER, ROLE_OWNER};
+use afd_tenant::workspace::access::ROLE_MEMBER;
 
-use crate::access_lane::id;
+use crate::access_lane::{Signup, delete_accounts, hold, id, sign_up};
 
 /// Now, for every call a case makes.
 const NOW: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
@@ -84,48 +84,22 @@ impl Fixture {
     }
 
     async fn sign_up(&self, person: &Person) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'team', 1, 1) \
-             ), person AS ( \
-               INSERT INTO core.users \
-                 (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
-               VALUES ($2::uuid, $1::uuid, $3, $4, NULL, 1, 1) \
-             ), membership AS ( \
-               INSERT INTO core.memberships (id, tenant_id, user_id, role, created_at) \
-               VALUES ($5::uuid, $1::uuid, $2::uuid, $6, 1) \
-             ) \
-             INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-             VALUES ($7::uuid, $1::uuid, 'team', $3, 1)",
-        )
-        .bind(&person.tenant)
-        .bind(&person.user)
-        .bind(format!("user_team_{}", mint_id()))
-        .bind(&person.email)
-        .bind(mint_id())
-        .bind(ROLE_OWNER)
-        .bind(&person.workspace)
-        .execute(&mut *connection)
-        .await
-        .expect("a signed-up person seeds");
+        let subject = format!("user_team_{}", mint_id());
+        let signup = Signup {
+            tenant: &person.tenant,
+            user: &person.user,
+            subject: &subject,
+            email: &person.email,
+            name: "team",
+            display_name: None,
+            workspace: &person.workspace,
+        };
+        sign_up(&self.database, &signup).await;
     }
 
     /// `person` as a member of John's account.
     async fn add_member(&self, person: &Person) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "INSERT INTO core.memberships (id, tenant_id, user_id, role, created_at) \
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 2)",
-        )
-        .bind(mint_id())
-        .bind(&self.john.tenant)
-        .bind(&person.user)
-        .bind(ROLE_MEMBER)
-        .execute(&mut *connection)
-        .await
-        .expect("a member seeds");
+        hold(&self.database, &self.john.tenant, &person.user, ROLE_MEMBER).await;
     }
 
     /// How many memberships `person` holds in John's account: zero or one.
@@ -155,15 +129,8 @@ impl Fixture {
     }
 
     async fn cleanup(self) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.tenants WHERE id IN ($1::uuid, $2::uuid, $3::uuid)")
-            .bind(&self.john.tenant)
-            .bind(&self.bob.tenant)
-            .bind(&self.carol.tenant)
-            .execute(&mut *connection)
-            .await
-            .expect("the accounts clean up");
-        drop(connection);
+        let accounts = [&*self.john.tenant, &self.bob.tenant, &self.carol.tenant];
+        delete_accounts(&self.database, accounts).await;
         drop(self.database);
         self.lane.cleanup().await;
     }

@@ -8,17 +8,44 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use sqlx::Row as _;
+use sqlx::postgres::PgRow;
 
-use super::{Accepted, Invitee, Team};
+use super::{Accepted, Invitee, Team, email};
 use crate::sql::invite as sql;
 use crate::workspace::access::Role;
 use crate::{Result, error};
 
+/// The locked row's account column, read and reported under one name.
+const COLUMN_TENANT_ID: &str = "tenant_id";
+
 /// The context each statement failure here reports under.
 const CONTEXT_ACCEPT: &str = "accept invite";
 
-/// The locked invite row: account, address, role, expiry, acceptor, revocation.
-type LockedInvite = (String, String, String, i64, Option<String>, Option<i64>);
+/// The locked invite row.
+struct LockedInvite {
+    tenant: String,
+    email: String,
+    role: String,
+    expires_at: i64,
+    accepted_by: Option<String>,
+    revoked_at: Option<i64>,
+}
+
+impl LockedInvite {
+    /// Reads the row by column name; a `try_get` failure names the column.
+    fn read(row: &PgRow) -> Result<Self> {
+        let unreadable = error::query(CONTEXT_ACCEPT);
+        Ok(Self {
+            tenant: row.try_get(COLUMN_TENANT_ID).map_err(&unreadable)?,
+            email: row.try_get("email").map_err(&unreadable)?,
+            role: row.try_get("role").map_err(&unreadable)?,
+            expires_at: row.try_get("expires_at").map_err(&unreadable)?,
+            accepted_by: row.try_get("accepted_by").map_err(&unreadable)?,
+            revoked_at: row.try_get("revoked_at").map_err(&unreadable)?,
+        })
+    }
+}
 
 /// Where an invite stands for this invitee, decided from its locked row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,12 +62,11 @@ enum Standing {
 
 impl Standing {
     fn of(row: &LockedInvite, invitee: &Invitee<'_>, now: UnixMillis) -> Self {
-        let (_, email, _, expires_at, accepted_by, revoked_at) = row;
-        match accepted_by.as_deref() {
+        match row.accepted_by.as_deref() {
             Some(user) if user == invitee.user.as_str() => Self::Theirs,
             Some(_) => Self::Closed,
-            None if revoked_at.is_some() || *expires_at <= now.as_millis() => Self::Closed,
-            None if *email != invitee.email.to_lowercase() => Self::Elsewhere,
+            None if row.revoked_at.is_some() || row.expires_at <= now.as_millis() => Self::Closed,
+            None if row.email != email::fold(invitee.email) => Self::Elsewhere,
             None => Self::Open,
         }
     }
@@ -68,18 +94,19 @@ impl Team {
             .await
             .map_err(&raise)?;
 
-        let row: LockedInvite = sqlx::query_as(sql::LOCK_INVITE)
+        let locked = sqlx::query(sql::LOCK_INVITE)
             .bind(invite.as_str())
             .fetch_optional(&mut *transaction)
             .await
             .map_err(&raise)?
             .ok_or_else(error::invite_not_found)?;
-        let (tenant, _, role, ..) = &row;
+        let row = LockedInvite::read(&locked)?;
+        let (tenant, role) = (&row.tenant, &row.role);
         match Standing::of(&row, invitee, now) {
             Standing::Closed => return Err(error::invite_not_found()),
             Standing::Elsewhere => return Err(error::invite_email_mismatch()),
             Standing::Theirs => {
-                let held: Option<(i32,)> = sqlx::query_as(sql::SELECT_MEMBERSHIP_EXISTS)
+                let held: Option<i32> = sqlx::query_scalar(sql::SELECT_MEMBERSHIP_EXISTS)
                     .bind(tenant)
                     .bind(invitee.user.as_str())
                     .fetch_optional(&mut *transaction)
@@ -106,7 +133,7 @@ impl Team {
                     .map_err(&raise)?;
             }
         }
-        let workspaces: Vec<(String,)> = sqlx::query_as(sql::SELECT_TENANT_WORKSPACE_IDS)
+        let workspaces: Vec<String> = sqlx::query_scalar(sql::SELECT_TENANT_WORKSPACE_IDS)
             .bind(tenant)
             .fetch_all(&mut *transaction)
             .await
@@ -114,7 +141,7 @@ impl Team {
         transaction.commit().await.map_err(&raise)?;
 
         let tenant =
-            Uuid7::parse(tenant).map_err(error::row_malformed("core.invites", "tenant_id"))?;
+            Uuid7::parse(tenant).map_err(error::row_malformed("core.invites", COLUMN_TENANT_ID))?;
         let tenant_id = tenant.as_str();
         let invite_id = invite.as_str();
         let user_id = invitee.user.as_str();
@@ -124,10 +151,7 @@ impl Team {
             user_id,
             event = "workspace_invite_accepted"
         );
-        Ok(Accepted {
-            tenant,
-            workspaces: workspaces.into_iter().map(|(id,)| id).collect(),
-        })
+        Ok(Accepted { tenant, workspaces })
     }
 }
 
@@ -144,14 +168,14 @@ mod tests {
     const CAROL: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1012";
 
     fn row(accepted_by: Option<&str>, revoked_at: Option<i64>, expires_at: i64) -> LockedInvite {
-        (
-            String::new(),
-            "bob@example.com".to_owned(),
-            String::new(),
+        LockedInvite {
+            tenant: String::new(),
+            email: "bob@example.com".to_owned(),
+            role: String::new(),
             expires_at,
-            accepted_by.map(str::to_owned),
+            accepted_by: accepted_by.map(str::to_owned),
             revoked_at,
-        )
+        }
     }
 
     fn standing(row: &LockedInvite, email: &str) -> Standing {

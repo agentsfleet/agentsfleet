@@ -48,8 +48,8 @@ pub(super) fn page_response<'page>(
     })
 }
 
-/// One row as the wire shows it.
-/// One listed workspace, with the held account its row belongs to.
+/// One listed workspace as the wire shows it, with the held account its row
+/// belongs to.
 ///
 /// The page was asked only for held accounts, so a row outside them is this
 /// daemon disagreeing with itself, answered as the internal fault it is rather

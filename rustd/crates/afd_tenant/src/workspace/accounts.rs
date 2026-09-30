@@ -7,6 +7,8 @@
 
 use afd_auth::principal::{Person, PersonCredential, Principal};
 use afd_core::id::Uuid7;
+use sqlx::Row as _;
+use sqlx::postgres::PgRow;
 
 use super::access::{ROLE_OWNER, Role};
 use super::{Workspaces, parse_tenant};
@@ -56,9 +58,6 @@ impl Accounts {
     }
 }
 
-/// One account row: tenant, stored role, display name, the caller's own tenant.
-type AccountRow = (String, Option<String>, String, String);
-
 impl Workspaces {
     /// The accounts `principal` holds, with its role in each.
     ///
@@ -82,16 +81,18 @@ impl Workspaces {
     /// Every account a signed-in person holds, or `None` with no user row.
     async fn subject_accounts(&self, person: &Person) -> Result<Option<Accounts>> {
         let mut connection = self.database.acquire().await?;
-        let rows: Vec<AccountRow> = sqlx::query_as(sql::SELECT_SUBJECT_ACCOUNTS)
+        let unreadable = error::query(CONTEXT_ACCOUNTS);
+        let rows = sqlx::query(sql::SELECT_SUBJECT_ACCOUNTS)
             .bind(person.subject().as_str())
             .bind(ROLE_OWNER)
             .fetch_all(connection.as_mut())
             .await
-            .map_err(error::query(CONTEXT_ACCOUNTS))?;
-        let Some((_, _, _, home)) = rows.first() else {
+            .map_err(&unreadable)?;
+        let Some(first) = rows.first() else {
             return Ok(None);
         };
-        let home = parse_tenant(home)?;
+        let home: String = first.try_get("home_tenant_id").map_err(&unreadable)?;
+        let home = parse_tenant(&home)?;
         let held = rows.iter().map(account).collect::<Result<_>>()?;
         Ok(Some(Accounts { home, held }))
     }
@@ -99,7 +100,7 @@ impl Workspaces {
     /// The one account a claim names, held as its owner.
     async fn claimed_account(&self, person: &Person) -> Result<Accounts> {
         let mut connection = self.database.acquire().await?;
-        let rows: Vec<AccountRow> = sqlx::query_as(sql::SELECT_TENANT_ACCOUNT)
+        let rows = sqlx::query(sql::SELECT_TENANT_ACCOUNT)
             .bind(person.tenant().as_str())
             .bind(ROLE_OWNER)
             .fetch_all(connection.as_mut())
@@ -117,10 +118,13 @@ impl Workspaces {
 ///
 /// A row with no stored role is the caller's own account admitted without a
 /// membership row, and it is held as its owner, as the access check holds it.
-fn account((tenant, role, owner_name, _home): &AccountRow) -> Result<Account> {
+fn account(row: &PgRow) -> Result<Account> {
+    let unreadable = error::query(CONTEXT_ACCOUNTS);
+    let tenant: String = row.try_get("tenant_id").map_err(&unreadable)?;
+    let role: Option<String> = row.try_get("role").map_err(&unreadable)?;
     Ok(Account {
-        tenant: parse_tenant(tenant)?,
-        role: role.as_deref().map_or(Ok(Role::Owner), Role::parse)?,
-        owner_name: owner_name.clone(),
+        tenant: parse_tenant(&tenant)?,
+        role: Role::held(role.as_deref())?,
+        owner_name: row.try_get("owner_name").map_err(&unreadable)?,
     })
 }

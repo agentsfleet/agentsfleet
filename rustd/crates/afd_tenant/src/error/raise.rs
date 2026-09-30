@@ -21,7 +21,6 @@ pub(crate) fn row_malformed(
     }
 }
 
-/// Refuses a device-flow field this daemon will not store.
 /// Reports a membership row whose role this build does not know.
 pub(crate) fn role_unknown(stored: &str) -> Error {
     Error::new(ErrorKind::RoleUnknown {
@@ -29,6 +28,7 @@ pub(crate) fn role_unknown(stored: &str) -> Error {
     })
 }
 
+/// Refuses a device-flow field this daemon will not store.
 pub(crate) fn session_field(field: SessionField) -> Error {
     Error::new(ErrorKind::SessionFieldInvalid { field })
 }

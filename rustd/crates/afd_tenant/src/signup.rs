@@ -47,19 +47,13 @@ use afd_db::Db;
 use afd_observability::producers;
 
 use crate::sql::signup as sql;
+use crate::workspace::access::ROLE_OWNER;
 use crate::workspace::name;
 use crate::{Result, error};
 
 /// The context a failed statement is reported under.
 const CONTEXT_EXISTING: &str = "read an existing account";
 const CONTEXT_OPEN: &str = "open a personal account";
-
-/// The tenant-level role a personal account's one member holds.
-///
-/// Bound as a parameter to both the membership insert and the lookup join, so
-/// the word a signup writes and the word a later read matches on cannot drift.
-/// Personal accounts have exactly one owner; teams are later work.
-const OWNER_ROLE: &str = "owner";
 
 /// Stamped into the workspace row so analytics can tell a bootstrapped
 /// workspace from one a person created.
@@ -148,7 +142,7 @@ impl Signups {
         let mut connection = self.database.acquire().await?;
         let row = sqlx::query_as::<_, (String, String, String, String)>(sql::SELECT_EXISTING)
             .bind(oidc_subject)
-            .bind(OWNER_ROLE)
+            .bind(ROLE_OWNER)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_EXISTING))?;
@@ -234,7 +228,7 @@ impl Signups {
             .bind(membership_id.as_str())
             .bind(tenant_id.as_str())
             .bind(user_id.as_str())
-            .bind(OWNER_ROLE)
+            .bind(ROLE_OWNER)
             .bind(now.as_millis())
             .execute(&mut *transaction)
             .await

@@ -26,6 +26,11 @@ const AT: char = '@';
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Email(String);
 
+/// The spelling an address is stored and matched in: trimmed and lowercased.
+pub(crate) fn fold(address: &str) -> String {
+    address.trim().to_lowercase()
+}
+
 impl Email {
     /// The address `raw` names, normalised.
     ///
@@ -34,7 +39,7 @@ impl Email {
     /// `@`, an empty local part or domain, a domain with no dot, and anything
     /// longer than SMTP carries.
     pub fn parse(raw: &str) -> Result<Self> {
-        let address = raw.trim().to_lowercase();
+        let address = fold(raw);
         let shaped = address.len() <= MAX_LEN
             && !address.chars().any(|c| c.is_whitespace() || c.is_control())
             && address.split_once(AT).is_some_and(|(local, domain)| {
