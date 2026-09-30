@@ -17,6 +17,8 @@ import {
 import { useFleetThreadEntries, type FleetThreadEntry } from "./useFleetThreadEntries";
 import type { EventRow } from "@/lib/api/events";
 import { SenderLabelProvider } from "./FleetMessageRow";
+import { SenderNamesProvider } from "./SenderNames";
+import { senderNamesFrom, type SenderName } from "@/lib/events/sender-names";
 import { FleetConnectionIndicator, useArrivalCue } from "./FleetConnectionIndicator";
 import { useFleetPendingSends } from "./useFleetPendingSends";
 import { useCurrentUser } from "@/lib/auth/client";
@@ -44,6 +46,9 @@ export type FleetThreadProps = {
    * when it did, taking its Resend with it.
    */
   viewer: string | null;
+  /** The fleet's account members a thread can name, by the actor each one's
+   * messages record; the server read them beside the thread. */
+  senderNames: readonly SenderName[];
 };
 
 /**
@@ -66,6 +71,7 @@ export function FleetThread({
   senderLabel,
   initial,
   viewer,
+  senderNames,
 }: FleetThreadProps) {
   const stream = useFleetEventStream(workspaceId, fleetId, initial);
   // The header row is chrome that earns its space only while the stream is not
@@ -81,6 +87,7 @@ export function FleetThread({
   // browser never sees, or resends as themselves, what this one typed.
   const { userId } = useCurrentUser();
   const subject = userId ?? viewer;
+  const names = useMemo(() => senderNamesFrom(subject, senderNames), [subject, senderNames]);
   const ledger = useFleetPendingSends({ subject, workspaceId, fleetId });
   // Pass the registry methods (each `useCallback([fleetId])`-stable), not
   // the whole `stream` object — `stream` is a fresh reference on every SSE
@@ -119,45 +126,47 @@ export function FleetThread({
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <SenderLabelProvider senderLabel={senderLabel}>
-        <DashboardPanel
-          id="fleet-chat-transcript"
-          aria-label="Fleet chat"
-          padding="none"
-          className="flex min-h-0 flex-1 flex-col overflow-clip rounded-none border-0 bg-background"
-        >
-          {/*
-            * The header speaks only when the stream is not fine.
-            *
-            * It carried the word "Chat" directly under a tab already reading
-            * "Chat", and a steady "Live" that said nothing on the overwhelming
-            * majority of loads. A transcript is the page's content; labelling
-            * it costs a row and tells the operator what they can see.
-            *
-            * What is worth saying is the exception, so connecting, reconnecting
-            * and offline still render here — and OFFLINE additionally gets the
-            * notice above the composer, with its retry. `PANEL_TITLE` stays as
-            * the scroll region's accessible name, where it is the only name
-            * that region has.
-            */}
-          {settledLive ? null : (
-            <DashboardPanelHeader
-              data-testid="fleet-chat-header"
-              className="shrink-0 border-b border-border px-lg py-md sm:px-xl"
-            >
-              <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
-            </DashboardPanelHeader>
-          )}
-          <FleetThreadViewport
-            eventsCount={stream.events.length}
-            connectionStatus={stream.connectionStatus}
-            onRetry={stream.retryConnection}
-            pending={ledger.pending}
-            onResend={delivery.resend}
-            onDismiss={ledger.writers.dismiss}
-            onRestored={delivery.noteRestored}
-            onDraft={delivery.noteDraft}
-          />
-        </DashboardPanel>
+        <SenderNamesProvider names={names}>
+          <DashboardPanel
+            id="fleet-chat-transcript"
+            aria-label="Fleet chat"
+            padding="none"
+            className="flex min-h-0 flex-1 flex-col overflow-clip rounded-none border-0 bg-background"
+          >
+            {/*
+              * The header speaks only when the stream is not fine.
+              *
+              * It carried the word "Chat" directly under a tab already reading
+              * "Chat", and a steady "Live" that said nothing on the overwhelming
+              * majority of loads. A transcript is the page's content; labelling
+              * it costs a row and tells the operator what they can see.
+              *
+              * What is worth saying is the exception, so connecting, reconnecting
+              * and offline still render here — and OFFLINE additionally gets the
+              * notice above the composer, with its retry. `PANEL_TITLE` stays as
+              * the scroll region's accessible name, where it is the only name
+              * that region has.
+              */}
+            {settledLive ? null : (
+              <DashboardPanelHeader
+                data-testid="fleet-chat-header"
+                className="shrink-0 border-b border-border px-lg py-md sm:px-xl"
+              >
+                <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
+              </DashboardPanelHeader>
+            )}
+            <FleetThreadViewport
+              eventsCount={stream.events.length}
+              connectionStatus={stream.connectionStatus}
+              onRetry={stream.retryConnection}
+              pending={ledger.pending}
+              onResend={delivery.resend}
+              onDismiss={ledger.writers.dismiss}
+              onRestored={delivery.noteRestored}
+              onDraft={delivery.noteDraft}
+            />
+          </DashboardPanel>
+        </SenderNamesProvider>
       </SenderLabelProvider>
     </AssistantRuntimeProvider>
   );

@@ -85,4 +85,18 @@ describe("a message waiting for a runner", () => {
   it("opens a row with no text when the frame carried none", () => {
     expect(fold([admitted(null)])[0]?.text).toBe("");
   });
+
+  it("fills an empty text from a received frame on a row already running", () => {
+    // The first received frame carried no message; a redelivered one does.
+    const rows = fold([received(), received(TYPED)]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ text: TYPED, status: AGENTSFLEET_EVENT_STATUS.RECEIVED });
+  });
+
+  it("stamps a waiting row with the browser clock when the frame has no instant", () => {
+    const before = Date.now();
+    const { created_at: _dropped, ...undated } = admitted() as Extract<LiveFrame, { created_at?: number }>;
+    const [row] = fold([undated as LiveFrame]);
+    expect(row?.createdAt.getTime()).toBeGreaterThanOrEqual(before);
+  });
 });

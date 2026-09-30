@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "./errors";
-import { listMembers, removeMember } from "./tenant-members";
+import { listMembers, listWorkspaceMembers, removeMember } from "./tenant-members";
 import { ACCOUNT_ROLE } from "./workspaces";
 
 const TOKEN = "tok_owner";
@@ -60,5 +60,29 @@ describe("removeMember", () => {
     const error = await removeMember(TOKEN, OWNER.user_id).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ status: 409, code: "UZ-INV-004" });
+  });
+});
+
+describe("listWorkspaceMembers", () => {
+  const WORKSPACE = "ws 1";
+  const BOB = { user_id: "user_bob", display_name: "Bob", role: ACCOUNT_ROLE.member, actor: "steer:user_bob" };
+
+  it("should decode each member with the actor their messages record", async () => {
+    const spy = answer(200, { items: [BOB, { ...BOB, user_id: "user_x", display_name: null }], total: 2, next_cursor: null });
+    await expect(listWorkspaceMembers(WORKSPACE, TOKEN)).resolves.toEqual([
+      BOB,
+      { ...BOB, user_id: "user_x", display_name: null },
+    ]);
+    expect(spy.mock.calls[0]?.[0] as string).toContain("/v1/workspaces/ws%201/members");
+  });
+
+  it("should reject a member with no actor, which no message could match", async () => {
+    answer(200, { items: [{ ...BOB, actor: "" }], total: 1, next_cursor: null });
+    await expect(listWorkspaceMembers(WORKSPACE, TOKEN)).rejects.toThrow("workspace member is invalid");
+  });
+
+  it("should reject a display name that is neither text nor null", async () => {
+    answer(200, { items: [{ ...BOB, display_name: 7 }], total: 1, next_cursor: null });
+    await expect(listWorkspaceMembers(WORKSPACE, TOKEN)).rejects.toThrow("workspace member is invalid");
   });
 });
