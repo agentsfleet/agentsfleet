@@ -56,6 +56,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `rustd/crates/afd_wire/src/tail.rs` (+ tests) | EDIT | `EventAdmitted`; `EventReceived.message` |
 | `rustd/crates/afd_api_tenant/src/handler/fleet/message_steer.rs` | EDIT | publish `event_admitted` after the admission commits |
+| `rustd/crates/afd_api/tests/{integration_fleet_admitted,tenant_plane_suite}.rs`, `rustd/crates/afd_events/tests/integration_steer_{insert,replay}.rs`, `rustd/crates/afd_api/tests/harness/stubs_ingress/answers.rs` | CREATE/EDIT | the admitted frame over live stores; `Steered` and `Repeated` gain the admission instant |
+| `rustd/crates/afd_approval/src/inbox/resolve.rs` | EDIT | a continuation's received frame carries no message |
 | `rustd/crates/afd_http/src/services/event.rs`, `rustd/crates/afd_events/src/steer.rs` | EDIT | the announce seam on `FleetSteering`; `Steered` carries the admission instant |
 | `rustd/crates/afd_tenant/src/sql/member.rs`, `rustd/crates/afd_api_tenant/src/handler/tenant/member.rs`, `rustd/crates/afd_wire/src/team.rs` | EDIT | a workspace member carries `actor`, the string that member's steers record |
 | `ui/packages/app/lib/api/tenant-members.ts` | EDIT | `listWorkspaceMembers` |
@@ -102,9 +104,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 After the steer's admission commits and before the 202, the route publishes `event_admitted` `{event_id, actor, event_type, message, created_at}`: the logical id the 202 returns, the admission's `event_created_at`, and the typed text (at most `STEER_MESSAGE_MAX_BYTES`). Publishing is best-effort through `FleetStreams::publish_frame`, as every tail frame is: a failure is logged once there and the steer still answers 202. A replayed steer (`replayed: true`) publishes nothing, on either replay path, since its first admission already did.
 
-- **Dimension 1.1** — a steer publishes one `event_admitted` whose id equals the 202's → Test `test_steer_publishes_admitted_frame`
-- **Dimension 1.2** — a publish failure still answers 202 and logs once → Test `test_admitted_publish_failure_still_accepts`
-- **Dimension 1.3** — a replayed steer publishes nothing → Test `test_replayed_steer_publishes_nothing`
+- **Dimension 1.1** — a steer publishes one `event_admitted` whose id equals the 202's → Test `test_steer_publishes_admitted_frame` — DONE (`afd_api/tests/integration_fleet_admitted.rs`, John's open tail; fails with the publish removed)
+- **Dimension 1.2** — a publish failure still answers 202 and logs once → Test `test_admitted_publish_failure_still_accepts` — DONE (`integration_fleet_admitted.rs`, an unreachable queue)
+- **Dimension 1.3** — a replayed steer publishes nothing → Test `test_replayed_steer_publishes_nothing` — DONE (`integration_fleet_admitted.rs`)
 
 ### §2 — Late joiners see waiting and started turns with their text
 
@@ -112,8 +114,8 @@ The thread read (`GET …/fleets/{fleet_id}/messages`) returns the fleet's recei
 
 - **Dimension 2.1** — an undelivered steer appears in the thread read as `queued` with its text → Test `test_thread_read_includes_queued_steers`
 - **Dimension 2.2** — once leased, the same event id appears once, no longer `queued` → Test `test_thread_read_dedupes_leased_steer`
-- **Dimension 2.3** — `event_received` carries a steer's message; a webhook's carries none → Test `test_event_received_carries_steer_message`
-- **Dimension 2.4** — an unparsable body publishes without `message` and logs once → Test `test_event_received_without_parsable_body`
+- **Dimension 2.3** — `event_received` carries a steer's message; a webhook's carries none → Test `test_event_received_carries_steer_message` — DONE (`afd_fleet/src/lease/bracket.rs`)
+- **Dimension 2.4** — an unparsable body publishes without `message` and logs once → Test `test_event_received_without_parsable_body` — DONE (`afd_fleet/src/lease/bracket.rs`, with the byte bound at its edge)
 
 ### §3 — Every screen renders the turn at once
 
@@ -178,9 +180,9 @@ GET /v1/workspaces/{workspace_id}/members  items gain  actor   ("steer:<oidc_sub
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `test_steer_publishes_admitted_frame` | steer "hi" → one frame, `event_id` equals the 202's, `message:"hi"` |
-| 1.2 | unit | `test_admitted_publish_failure_still_accepts` | unreachable queue → 202, one `tail_frame_dropped`, no text in the log |
-| 1.3 | unit | `test_replayed_steer_publishes_nothing` | same operation id twice → one frame |
+| 1.1 | integration | `test_steer_publishes_admitted_frame` | steer "hi" → one frame, `event_id` equals the 202's, `message:"hi"` |
+| 1.2 | integration | `test_admitted_publish_failure_still_accepts` | unreachable queue → 202, one `tail_frame_dropped`, no text in the log |
+| 1.3 | integration | `test_replayed_steer_publishes_nothing` | same operation id twice → one frame |
 | 2.1 | integration | `test_thread_read_includes_queued_steers` | undelivered admission → row `queued` with text |
 | 2.2 | integration | `test_thread_read_dedupes_leased_steer` | lease it → one row, not `queued` |
 | 2.3 | unit | `test_event_received_carries_steer_message` | `steer:u1` → `message`; `webhook:gh` → no key |

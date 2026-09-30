@@ -258,6 +258,7 @@ fn answer(id: String, replayed: bool) -> Admitted {
             id,
             digest: String::new(),
             fleet: String::new(),
+            created_at: 0,
         },
     }
 }

@@ -219,6 +219,7 @@ impl Admissions {
                 id: logical_id(created_at, seq),
                 digest,
                 fleet,
+                created_at,
             },
             inserted,
             receipt,
