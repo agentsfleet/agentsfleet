@@ -138,12 +138,19 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
            ║  agentsfleetd-api (HTTP)               ║
            ║  POST /v1/.../fleets/{id}/messages     ║
            ║  ────────────────────────────────────  ║
+           ║  INSERT core.fleet_admissions          ║   ← the acceptance;
+           ║                                        ║     the XADD is its
+           ║                                        ║     receipt.
            ║  XADD fleet:{id}:events *              ║   ← single ingress.
            ║       actor=steer:<user>               ║     Webhook + cron use
            ║       type=chat                        ║     the same XADD.
            ║       workspace_id=<uuid>              ║
            ║       request=<msg-json>               ║
            ║       created_at=<epoch_ms>            ║
+           ║  PUBLISH fleet:{id}:activity           ║   ← every screen shows
+           ║    {kind:"event_admitted",             ║     the message, waiting
+           ║     event_id, actor, message}          ║     (steers only; a
+           ║                                        ║     repeat publishes none)
            ║  → 202 { event_id }                    ║
            ╚════════════════════════════════════════╝
                           ↓
@@ -443,7 +450,7 @@ Two Dragonfly surfaces carry a fleet's work: a durable stream for ingress, and a
 | Dragonfly surface | Type | Cardinality | Purpose | Volume |
 |---|---|---|---|---|
 | `fleet:{id}:events` | Stream + consumer group `fleet_lease` | One per fleet | Single event ingress — steer / webhook / cron / continuation all `XADD` here, with no `MAXLEN`. `agentsfleetd` is now the consumer: a **non-blocking** `XREADGROUP` on each `lease`, `XACK`ed at `report`, and once acknowledged history is more than 100 entries past 1,000, the `XACK` trims it back to 1,000 without ever crossing the oldest pending or undelivered one. A fleet 10,000 entries behind refuses new admissions (503) instead of losing old ones; a lost group is recreated where the ledgers say delivery stopped. Idempotent on replay via `INSERT … ON CONFLICT DO NOTHING`. | High — every event the fleet handles. |
-| `fleet:{id}:activity` | Pub/sub channel (no consumer group, no persistence) | One per fleet | Best-effort live tail — `agentsfleetd` `PUBLISH`es one frame per `event_received` / `tool_call_started` / `fleet_response_chunk` / `tool_call_progress` / `tool_call_completed` / `event_complete`, and `gate_opened` / `gate_resolved` when a human is asked and answers. The bracket and gate frames originate in `agentsfleetd`; the mid-run frames are forwarded from the runner over the `activity` verb. The SubscriptionHub `SUBSCRIBE`s once per channel-with-viewers on its one shared connection and fans frames out by copy into each SSE stream's bounded queue. No buffer beyond those queues, no ACK, no resume. | High during execution, zero when idle. |
+| `fleet:{id}:activity` | Pub/sub channel (no consumer group, no persistence) | One per fleet | Best-effort live tail — `agentsfleetd` `PUBLISH`es `event_admitted` when a person's message is accepted, before any runner has it, then one frame per `event_received` / `tool_call_started` / `fleet_response_chunk` / `tool_call_progress` / `tool_call_completed` / `event_complete`, and `gate_opened` / `gate_resolved` when a human is asked and answers. The bracket and gate frames originate in `agentsfleetd`; the mid-run frames are forwarded from the runner over the `activity` verb. The SubscriptionHub `SUBSCRIBE`s once per channel-with-viewers on its one shared connection and fans frames out by copy into each SSE stream's bounded queue. No buffer beyond those queues, no ACK, no resume. | High during execution, zero when idle. |
 | `fleet:control` | (removed) | — | **Removed at the cutover.** It existed to tell the worker watcher to spawn / cancel / reconfigure per-fleet threads — and there are no per-fleet threads anymore. The producer (`control_stream.publish` from the install / status / config handlers) and the dead `control_stream` module were deleted; the install path keeps only `redis_agent.ensureFleetConsumerGroup` (load-bearing — the `lease` `XREADGROUP` needs the events group to exist). | gone |
 
 `fleet:{id}:events` is durable (events appended, `XACK`ed entries pruned) and backs the at-least-once delivery guarantee. The pub/sub channel is ephemeral and exists only to power live user interfaces — its loss never affects correctness, only what the user sees in real time. Durable activity history lives in `core.fleet_events`; the pub/sub channel is the eyeballs surface, not the audit surface.

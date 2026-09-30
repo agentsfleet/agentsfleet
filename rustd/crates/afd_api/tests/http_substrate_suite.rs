@@ -27,6 +27,9 @@ mod openapi_coverage;
 #[cfg(feature = "openapi")]
 #[path = "openapi_problem.rs"]
 mod openapi_problem;
+#[cfg(feature = "openapi")]
+#[path = "openapi_stream_frames.rs"]
+mod openapi_stream_frames;
 
 #[path = "openapi_contract.rs"]
 mod openapi_contract;
