@@ -13,14 +13,19 @@ const actions = vi.hoisted(() => ({
   removeMemberAction: vi.fn(),
 }));
 vi.mock("../actions", () => actions);
+// The Invite trigger ships behind a next/dynamic shim; alias it back to the
+// real dialog so the trigger and form mount synchronously.
+vi.mock("@/components/domain/island-dynamic/InviteDialogDynamic", async () => ({
+  default: (await vi.importActual<{ default: unknown }>("./InviteDialog")).default,
+}));
 
 import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
 import type { InviteSummary } from "@/lib/api/invites";
 import type { MemberSummary } from "@/lib/api/tenant-members";
 import { MembersView } from "./MembersView";
 
-const JOHN: MemberSummary = { user_id: "user_john", display_name: "John", email: "john@example.com", role: ACCOUNT_ROLE.owner };
-const BOB: MemberSummary = { user_id: "user_bob", display_name: "Bob", email: "bob@example.com", role: ACCOUNT_ROLE.member };
+const JOHN: MemberSummary = { user_id: "user_john", display_name: "John", email: "john@example.com", role: ACCOUNT_ROLE.owner, joined_at: Date.UTC(2026, 7, 1) };
+const BOB: MemberSummary = { user_id: "user_bob", display_name: "Bob", email: "bob@example.com", role: ACCOUNT_ROLE.member, joined_at: Date.UTC(2026, 8, 20) };
 const INVITE: InviteSummary = {
   id: "inv_1",
   email: "carol@example.com",
@@ -35,9 +40,17 @@ function renderView(members: MemberSummary[] = [JOHN, BOB], invites: InviteSumma
   return render(<MembersView initialMembers={members} initialInvites={invites} />, { wrapper: TooltipProvider });
 }
 
+const rowOf = (name: string) => screen.getByRole("row", { name: new RegExp(name) });
+
 async function confirmIn(dialogButton: string) {
   const dialog = await screen.findByRole("alertdialog");
   await userEvent.setup().click(within(dialog).getByRole("button", { name: dialogButton }));
+}
+
+async function openInvite() {
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Invite" }));
+  return { user, dialog: await screen.findByRole("dialog") };
 }
 
 beforeEach(() => {
@@ -48,13 +61,34 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 
-describe("people", () => {
-  it("should offer Remove for a member and never for the owner", () => {
+describe("the table", () => {
+  it("should list people and pending invites in one table, each with its role", () => {
     renderView();
-    expect(screen.getByRole("button", { name: "Remove Bob" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Remove John" })).toBeNull();
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+    expect(within(rowOf("John")).getByText(ACCOUNT_ROLE.owner)).toBeTruthy();
+    expect(within(rowOf("Bob")).getByText(ACCOUNT_ROLE.member)).toBeTruthy();
+    expect(within(rowOf(INVITE.email)).getByText("invited")).toBeTruthy();
   });
 
+  it("should say when each person joined and when each invite went out and lapses", () => {
+    renderView();
+    const stamps = (row: HTMLElement) => [...row.querySelectorAll("time")].map((time) => time.dateTime);
+    const iso = (epochMs: number) => new Date(epochMs).toISOString();
+    expect(stamps(rowOf("Bob"))).toEqual([iso(BOB.joined_at)]);
+    expect(stamps(rowOf(INVITE.email))).toEqual([iso(INVITE.created_at), iso(INVITE.expires_at)]);
+    expect(rowOf(INVITE.email).textContent).toContain("expires");
+  });
+
+  it("should give an invite a copy and a revoke action, a member a remove, and the owner none", () => {
+    renderView();
+    expect(within(rowOf(INVITE.email)).getByRole("button", { name: `Copy invite link for ${INVITE.email}` })).toBeTruthy();
+    expect(within(rowOf(INVITE.email)).getByRole("button", { name: `Revoke invite for ${INVITE.email}` })).toBeTruthy();
+    expect(within(rowOf("Bob")).getByRole("button", { name: "Remove Bob" })).toBeTruthy();
+    expect(within(rowOf("John")).queryAllByRole("button")).toHaveLength(0);
+  });
+});
+
+describe("people", () => {
   it("should remove a member after confirmation and show the reloaded list", async () => {
     actions.removeMemberAction.mockResolvedValue({ ok: true, data: undefined });
     actions.loadTeamAction.mockResolvedValue({ ok: true, data: { members: [JOHN], invites: [INVITE] } });
@@ -78,7 +112,7 @@ describe("people", () => {
 });
 
 describe("a member with no display name", () => {
-  const DANA: MemberSummary = { user_id: "user_dana", display_name: null, email: "dana@example.com", role: ACCOUNT_ROLE.member };
+  const DANA: MemberSummary = { user_id: "user_dana", display_name: null, email: "dana@example.com", role: ACCOUNT_ROLE.member, joined_at: Date.UTC(2026, 8, 25) };
 
   it("should name them by their address and leave them in place when the removal is cancelled", async () => {
     renderView([JOHN, DANA], []);
@@ -94,13 +128,13 @@ describe("a member with no display name", () => {
 });
 
 describe("pending invites", () => {
-  it("should revoke an invite after confirmation and reload the lists", async () => {
+  it("should revoke an invite after confirmation and drop its row on reload", async () => {
     actions.revokeInviteAction.mockResolvedValue({ ok: true, data: undefined });
     actions.loadTeamAction.mockResolvedValue({ ok: true, data: { members: [JOHN, BOB], invites: [] } });
     renderView();
     await userEvent.setup().click(screen.getByRole("button", { name: `Revoke invite for ${INVITE.email}` }));
     await confirmIn("Revoke");
-    await waitFor(() => expect(screen.getByText("No pending invites")).toBeTruthy());
+    await waitFor(() => expect(screen.queryByText(INVITE.email)).toBeNull());
     expect(actions.revokeInviteAction).toHaveBeenCalledExactlyOnceWith(INVITE.id);
   });
 
@@ -128,34 +162,59 @@ describe("pending invites", () => {
 describe("inviting", () => {
   it("should refuse something that is plainly not an address without calling the backend", async () => {
     renderView();
-    const user = userEvent.setup();
-    await user.type(screen.getByLabelText("Email"), "not-an-address");
-    await user.click(screen.getByRole("button", { name: "Invite" }));
-    await waitFor(() => expect(screen.getByText("Enter an email address")).toBeTruthy());
+    const { user, dialog } = await openInvite();
+    await user.type(within(dialog).getByLabelText("Email"), "not-an-address");
+    await user.click(within(dialog).getByRole("button", { name: "Create invite" }));
+    await waitFor(() => expect(within(dialog).getByText("Enter an email address")).toBeTruthy());
     expect(actions.createInviteAction).not.toHaveBeenCalled();
   });
 
-  it("should send the trimmed address, then show the link to copy and reload the lists", async () => {
+  it("should send the trimmed address, show the link to copy, reload the table, and close on Done", async () => {
     actions.createInviteAction.mockResolvedValue({ ok: true, data: INVITE });
     renderView([JOHN], []);
-    const user = userEvent.setup();
-    await user.type(screen.getByLabelText("Email"), `  ${INVITE.email}  `);
-    await user.click(screen.getByRole("button", { name: "Invite" }));
+    const { user, dialog } = await openInvite();
+    await user.type(within(dialog).getByLabelText("Email"), `  ${INVITE.email}  `);
+    await user.click(within(dialog).getByRole("button", { name: "Create invite" }));
     const ready = await screen.findByTestId("invite-ready");
     expect(actions.createInviteAction).toHaveBeenCalledExactlyOnceWith(INVITE.email);
-    expect(ready.textContent).toContain(INVITE.link);
+    const field = within(ready).getByLabelText("Invite link") as HTMLInputElement;
+    expect(field.value).toBe(INVITE.link);
+    await user.click(field);
+    expect([field.selectionStart, field.selectionEnd]).toEqual([0, INVITE.link.length]);
     expect(within(ready).getByRole("button", { name: /Copy invite link/ })).toBeTruthy();
     expect(actions.loadTeamAction).toHaveBeenCalled();
+
+    await user.click(within(ready).getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const reopened = (await openInvite()).dialog;
+    expect((within(reopened).getByLabelText("Email") as HTMLInputElement).value).toBe("");
   });
 
-  it("should show the backend's refusal and no link when the invite is not created", async () => {
+  it("should show a spinner while the invite is being created", async () => {
+    const answer = Promise.withResolvers<unknown>();
+    actions.createInviteAction.mockReturnValue(answer.promise);
+    renderView();
+    const { user, dialog } = await openInvite();
+    await user.type(within(dialog).getByLabelText("Email"), INVITE.email);
+    await user.click(within(dialog).getByRole("button", { name: "Create invite" }));
+    await waitFor(() => expect(within(dialog).getByText("Creating")).toBeTruthy());
+    answer.resolve({ ok: true, data: INVITE });
+    await screen.findByTestId("invite-ready");
+  });
+
+  it("should show the backend's refusal and no link, and clear it when cancelled", async () => {
     actions.createInviteAction.mockResolvedValue({ ok: false, status: 409, errorCode: "UZ-INV-003", error: "That address already has a pending invite." });
     renderView();
-    const user = userEvent.setup();
-    await user.type(screen.getByLabelText("Email"), INVITE.email);
-    await user.click(screen.getByRole("button", { name: "Invite" }));
-    const alert = await screen.findByRole("alert");
+    const { user, dialog } = await openInvite();
+    await user.type(within(dialog).getByLabelText("Email"), INVITE.email);
+    await user.click(within(dialog).getByRole("button", { name: "Create invite" }));
+    const alert = await within(dialog).findByRole("alert");
     expect(alert.textContent).toContain("already has a pending invite");
     expect(screen.queryByTestId("invite-ready")).toBeNull();
+
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const reopened = (await openInvite()).dialog;
+    expect(within(reopened).queryByRole("alert")).toBeNull();
   });
 });

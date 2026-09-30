@@ -74,6 +74,8 @@ pub struct MemberSummary<'a> {
     pub email: Cow<'a, str>,
     /// Their role: `owner` or `member`.
     pub role: Cow<'a, str>,
+    /// When they joined the account, epoch milliseconds.
+    pub joined_at: i64,
 }
 
 /// One member of a workspace's account, as its thread names senders.

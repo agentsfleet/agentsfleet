@@ -166,6 +166,7 @@ fn member_summary(member: &Member) -> MemberSummary<'_> {
         display_name: member.display_name.as_deref().map(Cow::Borrowed),
         email: Cow::Borrowed(&member.email),
         role: Cow::Borrowed(member.role.wire()),
+        joined_at: member.joined_at_ms,
     }
 }
 

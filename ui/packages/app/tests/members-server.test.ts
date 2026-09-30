@@ -28,7 +28,7 @@ import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
 
 const MEMBERS_PATH = "/v1/tenants/me/members";
 const INVITES_PATH = "/v1/tenants/me/invites";
-const OWNER = { user_id: "user_john", display_name: "John", email: "john@example.com", role: ACCOUNT_ROLE.owner };
+const OWNER = { user_id: "user_john", display_name: "John", email: "john@example.com", role: ACCOUNT_ROLE.owner, joined_at: 1 };
 const INVITE = {
   id: "inv_1",
   email: "bob@example.com",

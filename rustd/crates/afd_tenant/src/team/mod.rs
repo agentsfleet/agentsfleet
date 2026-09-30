@@ -107,6 +107,8 @@ pub struct Member {
     pub email: String,
     /// Their role in the account.
     pub role: Role,
+    /// When their membership began, epoch milliseconds.
+    pub joined_at_ms: i64,
 }
 
 /// What a removal did.

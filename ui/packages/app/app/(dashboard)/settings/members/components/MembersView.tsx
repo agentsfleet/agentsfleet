@@ -5,18 +5,11 @@ import { PageHeader, PageLayout, PageTitle, Section, SectionHeader } from "@agen
 import type { InviteSummary } from "@/lib/api/invites";
 import type { MemberSummary } from "@/lib/api/tenant-members";
 import { presentErrorString } from "@/lib/errors";
+import InviteDialogDynamic from "@/components/domain/island-dynamic/InviteDialogDynamic";
 import { loadTeamAction, removeMemberAction, revokeInviteAction } from "../actions";
 import { MEMBERS_DESCRIPTION, MEMBERS_TITLE } from "../copy";
-import { InviteForm } from "./InviteForm";
-import { InviteList } from "./InviteList";
-import { MemberList } from "./MemberList";
 import { CONFIRM_KIND, TeamConfirm, type ConfirmTarget, type ConfirmTargetActive } from "./TeamConfirm";
-
-const SECTION = {
-  invite: "Invite someone",
-  invites: "Pending invites",
-  people: "People",
-} as const;
+import { TEAM_CAPTION, TeamTable } from "./TeamTable";
 
 type Props = {
   initialMembers: MemberSummary[];
@@ -78,28 +71,16 @@ export function MembersView(props: Props) {
         <PageTitle>{MEMBERS_TITLE}</PageTitle>
       </PageHeader>
       <Section asChild>
-        <section aria-label={SECTION.invite}>
-          <SectionHeader as="p">{SECTION.invite}</SectionHeader>
-          <InviteForm onCreated={team.refresh} />
-        </section>
-      </Section>
-      <Section asChild>
-        <section aria-label={SECTION.invites}>
-          <SectionHeader as="p">{SECTION.invites}</SectionHeader>
-          <InviteList
+        <section aria-label={TEAM_CAPTION}>
+          <SectionHeader as="p" actions={<InviteDialogDynamic onCreated={team.refresh} />}>
+            {TEAM_CAPTION}
+          </SectionHeader>
+          <TeamTable
+            members={team.members}
             invites={team.invites}
             pending={team.pending}
-            onRevoke={(invite) => team.setTarget({ kind: CONFIRM_KIND.revoke, invite })}
-          />
-        </section>
-      </Section>
-      <Section asChild>
-        <section aria-label={SECTION.people}>
-          <SectionHeader as="p">{SECTION.people}</SectionHeader>
-          <MemberList
-            members={team.members}
-            pending={team.pending}
             onRemove={(member) => team.setTarget({ kind: CONFIRM_KIND.remove, member })}
+            onRevoke={(invite) => team.setTarget({ kind: CONFIRM_KIND.revoke, invite })}
           />
         </section>
       </Section>

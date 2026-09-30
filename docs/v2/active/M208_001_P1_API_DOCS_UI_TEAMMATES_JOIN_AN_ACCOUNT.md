@@ -78,10 +78,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_api_tenant/src/handler/stream.rs` | EDIT | re-authorize open streams on a bounded cadence |
 | `rustd/crates/afd_core/src/{error_code,problem}/{auth,invite}.rs` | EDIT/CREATE | `UZ-AUTH-026`, `UZ-INV-001`…`004`, with their statuses |
 | `public/openapi.json` | EDIT | new routes |
-| `ui/packages/app/lib/api/{tenant-members,invites,decode,workspaces,admin-workspaces}.ts` | CREATE/EDIT | clients; workspace items decode `account` and `role` |
+| `ui/packages/app/lib/api/{tenant-members,invites,decode,workspaces}.ts` | CREATE/EDIT | clients; workspace items decode `account` and `role` |
 | `ui/packages/app/components/layout/{WorkspaceSwitcher*.tsx,workspace-groups.ts,InviteNotice.tsx,SidebarNavigation.tsx,ShellFrame.tsx}`, `app/(dashboard)/layout.tsx` | CREATE/EDIT | workspaces grouped by account; the Members entry; the pending-invite notice |
 | `ui/packages/app/{tests,lib,components,app}/**/*.test.{ts,tsx}`, `tests/e2e/acceptance/{team-members.spec.ts,global-teardown.ts}` | CREATE/EDIT | unit suites; the two journeys; the sweep reaps a leaked invitee |
-| `ui/packages/app/app/(dashboard)/settings/members/` | CREATE | owner: invite, copy link, pending invites, members, remove |
+| `ui/packages/app/app/(dashboard)/settings/members/`, `components/domain/island-dynamic/InviteDialogDynamic.tsx` | CREATE | owner: one table of people and pending invites, an Invite dialog behind a dynamic shim, copy link, revoke, remove |
 | `ui/packages/app/app/(dashboard)/invites/` | CREATE | invitee: accept or decline |
 | `docs/AUTH.md` | EDIT | memberships, the two roles, the owner-only refusal |
 | `~/Projects/docs` (branch `chore/m208-team-accounts-changelog`) | EDIT | members and invites pages; no changelog `<Update>` (Discovery) |
@@ -168,7 +168,7 @@ GET    /v1/tenants/me/invites                      -> 200 {items:[...]}
 DELETE /v1/tenants/me/invites/{invite_id}          -> 204
 GET    /v1/me/invites                              -> 200 {items:[{id, account:{owner_name}, expires_at}]}
 POST   /v1/me/invites/{invite_id}/accept           -> 200 {workspace_ids:[...]}
-GET    /v1/tenants/me/members                      -> 200 {items:[{user_id, display_name, email, role}]}
+GET    /v1/tenants/me/members                      -> 200 {items:[{user_id, display_name, email, role, joined_at}]}
 DELETE /v1/tenants/me/members/{user_id}            -> 204
 GET    /v1/workspaces/{workspace_id}/members       -> 200 {items:[{user_id, display_name, role}]}
 GET    /v1/tenants/me/workspaces   items gain {account:{tenant_id, owner_name}, role}
@@ -302,3 +302,4 @@ N/A — no symbol is deleted: `workspace:any` keeps its meaning (Discovery).
 - **Hand-rolled Rust cleanup** — Sep 30, 2026, Indy in session: "Are there any handrolled rust code? where you can use the afd_core or external crates, if yes fix them", then "Are there any duplicate handrolled code you have, if yes fix them." and "and clean it up". Its own commit on this branch: `Entropy::uuid7` replaces every draw-then-encode copy, `sqlx::error::DatabaseError::is_unique_violation` replaces the hand-written `23505` checks, `afd_tenant` lifts through `error_lifts!`, the identifier kinds that became dead are removed, and `DETAIL_NOT_DASHBOARD` drops the identity vendor's name.
 - **Directory cut** — Sep 30, 2026, Indy: "I donot see value in doing Direcotry since opening a workspace by URL works if i am a platform admin with workspace:any scope. So cut tht scope". Dimensions 5.3 and 5.4 are removed with their Interfaces line, tests, the `core.workspaces (created_at, id)` index, and the admin route, handler and page rows. No directory code had been written (`git grep`, Sep 30, 2026). This supersedes "§5 keeps the directory" above.
 - **R2 after merge** — Sep 30, 2026, Indy via AskUserQuestion: "Run R2 after merge". The journeys call the shared dev API, which runs `main`; a branch deploy (`gh workflow run deploy-dev.yml --ref feat/m208-team-accounts`) was offered and declined. The Pull Request opens without R2 under an Orly-Override Indy records; R2 runs once `main` deploys to dev, and Dimensions 4.1 and 4.2 are graded then.
+- **Members page redesign** — Oct 1, 2026, Indy: "Keep things simple and follow our standard design in the UI (table, buttons and so on), iconify and refer the existing and design it. Less clutter"; via AskUserQuestion, "One table (recommended)"; then "use the ago format, and ensure the column is named accordingly? Time i think?". The page follows API Keys (`settings/api-keys/components/ApiKeysView.tsx`): one section, a `+ Invite` dialog behind a `next/dynamic` shim, one `DataTable` holding people and `invited` rows, `IconAction` row actions, and a Time column in the relative format. Members gain `joined_at` (`core.memberships.created_at`) for that column; the route is new on this branch, so no client depended on the old shape. The Invites page's accept became a check `IconAction`, and its Expires column became Time.

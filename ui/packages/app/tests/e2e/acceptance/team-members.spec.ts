@@ -97,15 +97,18 @@ test.describe("teammates join an account", () => {
     await page.goto("/settings/members");
     await expect(page.getByRole("heading", { name: /^members$/i })).toBeVisible();
 
-    // Invite, then copy the link the invitee will open.
-    await page.getByLabel(/^email$/i).fill(invitee.email);
+    // Invite from the dialog, then copy the link the invitee will open.
     await page.getByRole("button", { name: /^invite$/i }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel(/^email$/i).fill(invitee.email);
+    await dialog.getByRole("button", { name: /^create invite$/i }).click();
     const ready = page.getByTestId("invite-ready");
-    const link = (await ready.locator("code").textContent())?.trim() ?? "";
+    const link = await ready.getByLabel(/^invite link$/i).inputValue();
     expect(link).toMatch(/\/invites\/[0-9a-f-]+$/);
     await ready.getByRole("button", { name: /copy invite link/i }).click();
     await expect(ready.getByRole("button", { name: /^copied$/i })).toBeVisible();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
+    await ready.getByRole("button", { name: /^done$/i }).click();
     await expect(rowFor(page, invitee.email)).toHaveCount(1);
 
     // The invitee accepts from their own session; the owner then sees a member.

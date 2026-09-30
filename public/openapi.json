@@ -15516,7 +15516,8 @@
         "required": [
           "user_id",
           "email",
-          "role"
+          "role",
+          "joined_at"
         ],
         "properties": {
           "display_name": {
@@ -15529,6 +15530,11 @@
           "email": {
             "type": "string",
             "description": "Their address."
+          },
+          "joined_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When they joined the account, epoch milliseconds."
           },
           "role": {
             "type": "string",
@@ -16395,7 +16401,8 @@
               "required": [
                 "user_id",
                 "email",
-                "role"
+                "role",
+                "joined_at"
               ],
               "properties": {
                 "display_name": {
@@ -16408,6 +16415,11 @@
                 "email": {
                   "type": "string",
                   "description": "Their address."
+                },
+                "joined_at": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "When they joined the account, epoch milliseconds."
                 },
                 "role": {
                   "type": "string",

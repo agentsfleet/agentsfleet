@@ -4,8 +4,8 @@ import { listMembers, removeMember } from "./tenant-members";
 import { ACCOUNT_ROLE } from "./workspaces";
 
 const TOKEN = "tok_owner";
-const OWNER = { user_id: "user_john", display_name: "John", email: "john@example.com", role: ACCOUNT_ROLE.owner };
-const MEMBER = { user_id: "user_bob", display_name: null, email: "bob@example.com", role: ACCOUNT_ROLE.member };
+const OWNER = { user_id: "user_john", display_name: "John", email: "john@example.com", role: ACCOUNT_ROLE.owner, joined_at: 1 };
+const MEMBER = { user_id: "user_bob", display_name: null, email: "bob@example.com", role: ACCOUNT_ROLE.member, joined_at: 2 };
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -37,6 +37,11 @@ describe("listMembers", () => {
 
   it("should reject a display name that is neither text nor null", async () => {
     answer(200, { items: [{ ...MEMBER, display_name: 42 }], total: 1, next_cursor: null });
+    await expect(listMembers(TOKEN)).rejects.toThrow("member is invalid");
+  });
+
+  it("should reject a member with no join time rather than show a wrong one", async () => {
+    answer(200, { items: [{ ...MEMBER, joined_at: undefined }], total: 1, next_cursor: null });
     await expect(listMembers(TOKEN)).rejects.toThrow("member is invalid");
   });
 });

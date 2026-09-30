@@ -5,7 +5,7 @@
 /// `$1` tenant. Serves both the owner's members page and a workspace's sender
 /// names; the second leaves the address out when it renders.
 pub const SELECT_MEMBERS: &str = "\
-SELECT u.id::text, u.display_name, u.email, m.role \
+SELECT u.id::text, u.display_name, u.email, m.role, m.created_at \
 FROM core.memberships m \
 JOIN core.users u ON u.id = m.user_id \
 WHERE m.tenant_id = $1::uuid \
