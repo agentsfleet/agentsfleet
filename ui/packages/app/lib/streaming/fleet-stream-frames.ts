@@ -20,6 +20,7 @@ import {
   type FleetEventStatus,
 } from "./fleet-stream-row";
 import { applyToolFrame } from "./fleet-stream-tool-frames";
+import { applyEventAdmitted, receivedUpdate } from "./fleet-stream-admitted";
 
 // Pure frame-transform helpers shared by the streaming registry: how each
 // live frame folds into the timeline, and how a page of durable rows merges
@@ -47,6 +48,8 @@ export function applyLiveFrame(
   nowMs: number = Date.now(),
 ): FleetEvent[] {
   switch (frame.kind) {
+    case FRAME_KIND.EVENT_ADMITTED:
+      return applyEventAdmitted(prev, frame);
     case FRAME_KIND.EVENT_RECEIVED:
       return applyEventReceived(prev, frame);
     case FRAME_KIND.CHUNK:
@@ -81,19 +84,26 @@ function applyEventReceived(
   // A row the browser already holds — the operator's own steer, reconciled
   // to its identifier before the daemon opened it — keeps everything but its
   // instant: that was the client clock's guess, and the row's own is what the
-  // strip orders the newest run by.
-  if (existing !== undefined) return adoptInstant(prev, index, existing, createdAt);
+  // strip orders the newest run by. A row waiting for a runner starts here.
+  if (existing !== undefined) {
+    const started = receivedUpdate(existing, frame);
+    if (started === null) return adoptInstant(prev, index, existing, createdAt);
+    const updated = [...prev];
+    updated[index] = started;
+    return adoptInstant(updated, index, started, createdAt);
+  }
+  const message = text(frame.message);
   return [
     ...prev,
     {
       id: frame.event_id,
       role: roleFor(frame.actor),
       actor: frame.actor,
-      // The frame carries no payload, so the trigger comes from the actor and
-      // the event type the daemon recorded. A steer renders empty here until
-      // reconciliation grafts the operator's text; a webhook or cron trigger
-      // gets its own neutral headline rather than a chat caption.
-      text: triggerBodyFor({
+      // A steer's frame carries what was typed. Any other frame carries no
+      // payload, so the trigger comes from the actor and the event type the
+      // daemon recorded: a webhook or cron trigger gets its own neutral
+      // headline rather than a chat caption.
+      text: message.length > 0 ? message : triggerBodyFor({
         actor: frame.actor,
         request_json: EMPTY_PAYLOAD,
         event_type: typeof frame.event_type === "string" ? frame.event_type : "",

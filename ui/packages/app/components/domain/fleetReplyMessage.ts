@@ -25,6 +25,7 @@ const MESSAGE_COMPLETE = { type: "complete", reason: "stop" } as const;
 const PART_COMPLETE = { type: "complete" } as const;
 const IN_FLIGHT: ReadonlySet<string> = new Set([
   AGENTSFLEET_EVENT_STATUS.OPTIMISTIC,
+  AGENTSFLEET_EVENT_STATUS.QUEUED,
   AGENTSFLEET_EVENT_STATUS.RECEIVED,
 ]);
 const TOOL_CALL_ID_INFIX = ":tool:";

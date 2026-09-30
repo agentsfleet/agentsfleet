@@ -58,9 +58,11 @@ export class HeldTurns {
   }
 }
 
+// Either frame can open a turn: the admitted frame normally comes first, but a
+// runner can lease a send and announce it before the route publishes.
 function opensAWaitingSendsTurn(frame: LiveFrame, events: readonly FleetEvent[]): boolean {
-  return frame.kind === FRAME_KIND.EVENT_RECEIVED
-    && !events.some((event) => event.id === frame.event_id)
+  if (frame.kind !== FRAME_KIND.EVENT_ADMITTED && frame.kind !== FRAME_KIND.EVENT_RECEIVED) return false;
+  return !events.some((event) => event.id === frame.event_id)
     && events.some((event) => isAwaitingAck(event) && event.sentAs === frame.actor);
 }
 

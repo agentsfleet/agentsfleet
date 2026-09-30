@@ -43,6 +43,14 @@ export const EVENT_STATUS = {
   GATE_BLOCKED: "gate_blocked",
 } as const;
 
+// A status the thread read and the admitted frame carry but no row stores: a
+// message accepted and waiting for a runner (afd_core::event::status::QUEUED).
+// Kept apart from EVENT_STATUS, whose members are the stored vocabulary and
+// the set a "latest run" is chosen from; a waiting message is not a run yet.
+export const THREAD_STATUS = {
+  QUEUED: "queued",
+} as const;
+
 // ── Sender labels ─────────────────────────────────────────────────────────
 // The actor field carries an opaque account identifier for a steer, which no
 // operator can read. The rendered sender is a word, never an identifier.
@@ -210,7 +218,7 @@ const UNFINISHED_REPLY_SENTENCE = "This fleet couldn’t complete the reply.";
 export function outcomeFor(
   row: Pick<EventRow, "status" | "failure_label"> & Partial<Pick<EventRow, "failure_detail">>,
 ): string {
-  if (row.status === EVENT_STATUS.RECEIVED) return OUTCOME.WORKING;
+  if (row.status === EVENT_STATUS.RECEIVED || row.status === THREAD_STATUS.QUEUED) return OUTCOME.WORKING;
   if (row.failure_label) {
     // A runner failure may follow completed tool actions. The raw detail belongs
     // in diagnostics, not in a user-facing sentence or a blind retry prompt.

@@ -65,7 +65,9 @@ export function buildRunSummary(
   rows: RowsPage,
   pendingApprovals: number,
 ): FleetRunSummary {
-  const newest = rows?.items[0];
+  // The newest stored row: a waiting message leads a thread's first page, and
+  // it is not the fleet's latest run.
+  const newest = rows?.items.find((row) => SERVER_STATUSES.has(row.status));
   return {
     status,
     latest: newest === undefined ? null : figuresOfRow(newest),

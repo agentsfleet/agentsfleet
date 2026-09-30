@@ -26,6 +26,22 @@ function tool(eventId: string): LiveFrame {
 }
 
 describe("HeldTurns", () => {
+  it("test_held_turns_hold_admitted_frames", () => {
+    const held = new HeldTurns();
+    const admitted: LiveFrame = { kind: FRAME_KIND.EVENT_ADMITTED, event_id: MINE, actor: OWN, message: "hi" };
+    // The admitted frame can beat this tab's 202: it waits like an opening.
+    expect(held.take(admitted, WAITING)).toBe(true);
+    // Its received frame joins the same held turn.
+    expect(held.take(opening(MINE), WAITING)).toBe(true);
+    // The 202 names it, and both land in arrival order.
+    expect(held.release(NAMED_MINE).map((frame) => frame.kind)).toEqual([
+      FRAME_KIND.EVENT_ADMITTED,
+      FRAME_KIND.EVENT_RECEIVED,
+    ]);
+    // A teammate's admitted message is never this tab's.
+    expect(held.take({ ...admitted, actor: TEAMMATE }, WAITING)).toBe(false);
+  });
+
   it("test_holds_a_steer_turn_while_a_send_here_waits", () => {
     const held = new HeldTurns();
     expect(held.take(opening(MINE), WAITING)).toBe(true);

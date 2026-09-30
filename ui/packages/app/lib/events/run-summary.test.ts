@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { EventDetail, EventRow } from "@/lib/api/events";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import { THREAD_STATUS } from "./event-summary";
 import { buildRunSummary, figuresOfRow, latestFigures, sameFigures } from "./run-summary";
 
 const STATUS_ACTIVE = "active";
@@ -65,6 +66,18 @@ describe("buildRunSummary", () => {
     expect(fromThread.latest).toEqual(latestFigures([event()]));
     expect(fromThread.pendingApprovals).toBe(PENDING);
     expect(fromThread.latestAvailable).toBe(true);
+  });
+
+  it("a message waiting for a runner is not the fleet's latest run", () => {
+    const waiting = turn({ event_id: "evt_2", status: THREAD_STATUS.QUEUED, actor: "steer:user_bob" });
+    const summary = buildRunSummary(STATUS_ACTIVE, { items: [waiting, turn()] }, 0);
+    expect(summary.latest).toEqual(figuresOfRow(row()));
+    // Live, the same: the waiting row never becomes the strip's latest.
+    expect(latestFigures([event(), event({ id: "evt_2", status: THREAD_STATUS.QUEUED })])).toEqual(
+      latestFigures([event()]),
+    );
+    // A page holding only waiting messages has no run yet.
+    expect(buildRunSummary(STATUS_ACTIVE, { items: [waiting] }, 0).latest).toBeNull();
   });
 
   it("a failed read is unavailable, an empty read is empty — never the same thing", () => {

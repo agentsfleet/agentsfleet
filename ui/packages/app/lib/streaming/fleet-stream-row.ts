@@ -1,6 +1,7 @@
 import type { EventDetail, EventRow } from "@/lib/api/events";
 import {
   EVENT_STATUS,
+  THREAD_STATUS,
   outcomeFor,
   replyBodyFor,
   roleFor,
@@ -34,6 +35,7 @@ export const AGENTSFLEET_EVENT_STATUS = {
   PROCESSED: EVENT_STATUS.PROCESSED,
   AGENT_ERROR: EVENT_STATUS.FLEET_ERROR,
   GATE_BLOCKED: EVENT_STATUS.GATE_BLOCKED,
+  QUEUED: THREAD_STATUS.QUEUED,
   OPTIMISTIC: "optimistic",
 } as const;
 
