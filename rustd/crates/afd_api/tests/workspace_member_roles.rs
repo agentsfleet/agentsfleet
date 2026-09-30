@@ -18,6 +18,8 @@ use afd_api::Route;
 use afd_api::route::{RouteClass, WorkspaceRoute};
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::error_code;
+use afd_core::test_util::trace::Capture;
+use afd_tenant::workspace::crossing::EVENT_CROSSING;
 use axum::Router;
 use axum::response::Response;
 use http::StatusCode;
@@ -150,4 +152,34 @@ async fn test_access_check_outage_is_not_denial() {
         code.as_deref(),
         Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str())
     );
+}
+
+/// Dimension 5.2: the layer records a platform crossing once, naming the
+/// method, and records nothing for the account's own owner.
+#[tokio::test]
+async fn test_layer_records_platform_crossings() {
+    let path = concrete_path(
+        WorkspaceRoute::Fleets.meta().template,
+        Some(OWNED_WORKSPACE),
+    );
+    for (crossing, expected) in [(true, 1), (false, 0)] {
+        let fleet =
+            Fleet::new().with_terminal(TERMINAL, SUBJECT, ScopeSet::from_scopes(&Scope::ALL));
+        if crossing {
+            fleet.ownership().cross_as_platform();
+        }
+        let router = fleet.router();
+        let capture = Capture::install();
+        let _answered = send(&router, http::Method::GET, &path, Some(TERMINAL), "").await;
+
+        let recorded: Vec<_> = capture
+            .events()
+            .into_iter()
+            .filter(|event| event.fields.get("event").map(String::as_str) == Some(EVENT_CROSSING))
+            .collect();
+        assert_eq!(recorded.len(), expected, "crossing: {crossing}");
+        for event in recorded {
+            assert_eq!(event.fields.get("method").map(String::as_str), Some("GET"));
+        }
+    }
 }

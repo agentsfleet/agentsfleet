@@ -20,6 +20,7 @@
 
 pub mod access;
 pub mod accounts;
+pub mod crossing;
 pub mod directory;
 pub mod name;
 
@@ -87,8 +88,7 @@ impl Workspaces {
         if let Some(access) = self.membership(person, workspace).await? {
             return Ok(Some(access));
         }
-        self.cross_tenant_override(principal, person, workspace)
-            .await
+        self.cross_tenant_override(principal, workspace).await
     }
 
     /// The caller's grant from inside the owning account, when they hold one.
@@ -116,18 +116,17 @@ impl Workspaces {
         .transpose()
     }
 
-    /// The audited platform-wide override, for the few principals holding it.
+    /// The platform-wide override, for the few principals holding it.
     ///
     /// Engages ONLY after the tenant-scoped check has already denied, and only
-    /// for a principal holding the platform-wide workspace scope. Every use is
-    /// recorded before it is honoured, because this is the sole path by which
-    /// one tenant's operator reaches another tenant's workspace and an
-    /// unrecorded one would be indistinguishable from the cross-tenant read
-    /// this whole layer exists to stop.
+    /// for a principal holding the platform-wide workspace scope. This is the
+    /// sole path by which one tenant's operator reaches another tenant's
+    /// workspace, so every use is recorded before it is honoured — by the
+    /// caller that honours it, through [`crossing::audit`], because only that
+    /// caller knows the method and an open stream re-asks this on every beat.
     async fn cross_tenant_override(
         &self,
         principal: &Principal,
-        person: &Person,
         workspace: &Uuid7,
     ) -> Result<Option<Access>> {
         if !principal.scopes().contains(Scope::WorkspaceAny) {
@@ -139,34 +138,13 @@ impl Workspaces {
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query("resolve workspace tenant"))?;
-        let Some((tenant,)) = row else {
-            return Ok(None);
-        };
-        let tenant = parse_tenant(&tenant)?;
-
-        // Emitted BEFORE the override is honoured, so a crash between the
-        // decision and the work still leaves the record. Hoisted fields: the
-        // `log` bridge duplicates every expression and llvm-cov scores the
-        // dead copy.
-        let subject = person.subject().as_str();
-        let acting_tenant = person.tenant().as_str();
-        let target_tenant = tenant.as_str();
-        let target_workspace = workspace.as_str();
-        // `warn`, and it is the one refusal-adjacent event in this file that
-        // earns it: an operator crossing a tenant boundary is rare, legitimate,
-        // and exactly what somebody reviewing an incident needs to find.
-        tracing::warn!(
-            subject,
-            acting_tenant,
-            target_tenant,
-            target_workspace,
-            event = "cross_tenant_workspace_override",
-            "a platform-scoped principal reached another tenant's workspace"
-        );
-        Ok(Some(Access {
-            tenant,
-            grant: Grant::Platform,
-        }))
+        row.map(|(tenant,)| {
+            Ok(Access {
+                tenant: parse_tenant(&tenant)?,
+                grant: Grant::Platform,
+            })
+        })
+        .transpose()
     }
 
     /// The tenant a subject belongs to, with no workspace to check against.

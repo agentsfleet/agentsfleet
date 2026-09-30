@@ -29,8 +29,10 @@ use std::sync::Arc;
 use afd_connector::{Finishing, Handoff, Landed, Provider, Rejected, callback, github};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
+use afd_tenant::workspace::crossing;
 use axum::extract::{Path, RawQuery, State};
 use axum::response::Response;
+use http::Method;
 
 use super::landing::{connected, relayed};
 use super::{EVENT_WRITE, provider_of, relay_uri, state_secret, unconfigured};
@@ -210,6 +212,7 @@ pub(crate) async fn complete<D: Services>(
     State(services): State<Arc<D>>,
     Acting(principal): Acting,
     person: PersonIdentity,
+    method: Method,
     Path(provider_segment): Path<String>,
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
@@ -266,17 +269,16 @@ pub(crate) async fn complete<D: Services>(
     // state is bound to the identity that started it. No member ever holds a
     // state to finish, so what is left to ask is whether the starter still
     // holds the workspace.
-    let owned = services
+    let access = services
         .workspaces()
         .authorize(&principal, &workspace)
         .await
-        .map_err(Refusal::at(EVENT_OWNERSHIP))?;
-    if owned.is_none() {
-        return Err(Refusal::coded(
-            error_code::AUTH_FORBIDDEN,
-            DETAIL_FOREIGN_WORKSPACE,
-        ));
-    }
+        .map_err(Refusal::at(EVENT_OWNERSHIP))?
+        .ok_or_else(|| Refusal::coded(error_code::AUTH_FORBIDDEN, DETAIL_FOREIGN_WORKSPACE))?;
+    // This check runs outside the ownership layer, so the crossing record the
+    // layer leaves for every other workspace write is left here, before the
+    // grant lands.
+    crossing::audit(&principal, &access, &workspace, method.as_str());
 
     // Step 3 — the single-use slot, spent last and exactly once. A slot already
     // spent or expired answers exactly as a forged state does: both mean start

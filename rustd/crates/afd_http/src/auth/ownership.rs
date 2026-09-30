@@ -32,6 +32,7 @@ use afd_auth::principal::Principal;
 use afd_core::error_code::{self, ErrorCode};
 use afd_core::id::Uuid7;
 use afd_tenant::workspace::access::{Access, Grant};
+use afd_tenant::workspace::crossing;
 use axum::RequestExt as _;
 use axum::extract::{RawPathParams, Request, State};
 use axum::middleware::Next;
@@ -169,7 +170,12 @@ async fn authorize<D: Services>(
         .authorize(principal, &workspace)
         .await
     {
-        Ok(Some(Access { tenant, grant })) => {
+        Ok(Some(access)) => {
+            // Recorded before anything below can honour it, with the method
+            // only this layer sees: a crossing that ran and left no record is
+            // the cross-tenant read this layer exists to stop.
+            crossing::audit(principal, &access, &workspace, request.method().as_str());
+            let Access { tenant, grant } = access;
             // Checked here rather than in a handler for the reason the whole
             // layer is: a secret-writing route mounted tomorrow is withheld
             // from members without its author remembering to ask.
