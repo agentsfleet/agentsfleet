@@ -38,6 +38,42 @@ const decodeMember = (value: unknown): MemberSummary => {
   };
 };
 
+/** One member of a workspace's account, as a thread names its senders. */
+export type WorkspaceMember = {
+  user_id: string;
+  /** Null when the identity provider supplied no name. */
+  display_name: string | null;
+  role: AccountRole;
+  /** The actor this member's messages record: `steer:<subject>`. */
+  actor: string;
+};
+
+const decodeWorkspaceMember = (value: unknown): WorkspaceMember => {
+  if (
+    !isRecord(value) ||
+    !isNonEmptyString(value.user_id) ||
+    (value.display_name !== null && typeof value.display_name !== "string") ||
+    !isAccountRole(value.role) ||
+    !isNonEmptyString(value.actor)
+  ) {
+    throw new Error("workspace member is invalid");
+  }
+  return {
+    user_id: value.user_id,
+    display_name: value.display_name,
+    role: value.role,
+    actor: value.actor,
+  };
+};
+
+// GET /v1/workspaces/{workspace_id}/members — who can work in a workspace,
+// with no addresses; one page.
+export async function listWorkspaceMembers(workspaceId: string, token: string): Promise<WorkspaceMember[]> {
+  const path = `/v1/workspaces/${encodeURIComponent(workspaceId)}/members`;
+  const response = await request<unknown>(path, { method: "GET" }, token);
+  return decodeOnePage(response, decodeWorkspaceMember);
+}
+
 // GET /v1/tenants/me/members — oldest membership first.
 export async function listMembers(token: string): Promise<MemberSummary[]> {
   const response = await request<unknown>(MEMBERS_PATH, { method: "GET" }, token);

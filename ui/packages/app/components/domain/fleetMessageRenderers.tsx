@@ -11,6 +11,7 @@ import {
   useSenderLabel,
 } from "./FleetMessageRow";
 import { FleetPayloadDisclosure } from "./FleetPayloadDisclosure";
+import { useNameSender } from "./SenderNames";
 import { FleetReply } from "./FleetReplyBody";
 import {
   STATUS_AGENT_ERROR,
@@ -60,7 +61,9 @@ export function renderFleetMessage({ message }: { message: MessageState }): Reac
 
 function FleetMessage({ message }: { message: MessageState }) {
   const senderLabel = useSenderLabel();
-  const sender = senderLabelFor(readActor(message), senderLabel);
+  // A person's turn: "You", a member's name, or the fallback label; only a
+  // named teammate's is shown as well as read.
+  const sender = useNameSender()(readActor(message));
   const status = readCustomStatus(message);
   const optimistic = status === STATUS_OPTIMISTIC;
   const trigger = readText(message);
@@ -86,10 +89,11 @@ function FleetMessage({ message }: { message: MessageState }) {
     <>
       {isReplyRow || !hasTrigger ? null : (
         <FleetMessageRow
-          sender={sender}
+          sender={sender.label}
           tone={ROW_TONE.OPERATOR}
           messageRole={message.role}
           dimmed={optimistic}
+          showSender={sender.shown}
         >
           <span>{trigger}</span>
         </FleetMessageRow>

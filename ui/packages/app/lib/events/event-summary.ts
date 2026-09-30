@@ -94,6 +94,11 @@ export function isSteerBy(actor: string, subject: string | null): boolean {
 const OPAQUE_ID = /^(user_|sess_|org_)/i;
 const CONTINUATION_PREFIX = "continuation:";
 
+/** The actor a message speaks for: a continuation carries the one it resumed. */
+export function baseActorOf(actor: string): string {
+  return actor.startsWith(CONTINUATION_PREFIX) ? actor.slice(CONTINUATION_PREFIX.length) : actor;
+}
+
 /**
  * The name rendered beside a message. `fleetName` is the console's own fleet —
  * the design labels the fleet's messages with the fleet's name, not the word
@@ -102,9 +107,7 @@ const CONTINUATION_PREFIX = "continuation:";
  */
 export function senderLabelFor(actor: string, fleetName?: string): string {
   // A continuation of a steer is still that operator speaking, not a new actor.
-  const base = actor.startsWith(CONTINUATION_PREFIX)
-    ? actor.slice(CONTINUATION_PREFIX.length)
-    : actor;
+  const base = baseActorOf(actor);
   if (base === ACTOR.API_STEER) return SENDER.API;
   if (base.startsWith(ACTOR.STEER_PREFIX)) return SENDER.OPERATOR;
   if (base === ACTOR.FLEET) return fleetName && fleetName.length > 0 ? fleetName : SENDER.FLEET_FALLBACK;

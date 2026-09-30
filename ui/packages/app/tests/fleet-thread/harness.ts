@@ -197,6 +197,7 @@ export function threadElement(initial: EventRow[] = []) {
     senderLabel: FLEET_NAME,
     initial,
     viewer: TEST_SUBJECT,
+    senderNames: [],
   });
 }
 

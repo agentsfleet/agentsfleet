@@ -25,6 +25,7 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
         senderLabel: "",
         initial: [],
         viewer: null,
+        senderNames: [],
       }),
     );
     expect(screen.queryByText("Fleet")).toBeNull();

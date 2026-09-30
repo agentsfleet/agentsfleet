@@ -32,6 +32,7 @@ import { FleetInstallGate } from "./components/FleetInstallGate";
 import { FleetViewedTracker } from "./components/FleetViewedTracker";
 import { resolveLastDeliveries } from "./components/last-delivery";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
+import { namedMembers } from "@/lib/events/sender-names";
 import {
   FleetSubnavigation,
   FLEET_VIEW,
@@ -196,7 +197,7 @@ async function loadChatView(
   // strip's first figures come off that same page, and its pending count off
   // the fleet detail the page already holds: the chat opens on two reads, and
   // the live tail moves both from there.
-  const threadResult = await data.thread;
+  const [threadResult, members] = await Promise.all([data.thread, data.members]);
   const turns = threadResult?.items ?? [];
   // Who is signed in, from the verified claims this request already holds:
   // the thread keys its unsent messages by it before the client knows.
@@ -211,6 +212,7 @@ async function loadChatView(
       initialSummary={buildRunSummary(fleet.status, threadResult, fleet.pending_approvals)}
       approvalsHref={approvalsHref}
       viewer={typeof subject === "string" ? subject : null}
+      senderNames={namedMembers(members ?? [])}
     />
   );
 }
