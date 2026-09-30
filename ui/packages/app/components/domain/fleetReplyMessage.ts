@@ -41,12 +41,23 @@ export function isReplyInFlight(event: FleetEvent): boolean {
   return IN_FLIGHT.has(event.status);
 }
 
-/** Whether the thread reports a run: a reply to `subject`'s own turn is still
- * running. The viewport's top anchor pins a running turn to the top wherever
- * the reader is, so a turn a teammate, the API or a webhook sent never engages
- * it, and a reader back in the history stays where they are. */
-export function isOwnReplyInFlight(event: FleetEvent, subject: string | null): boolean {
-  return isReplyInFlight(event) && isSteerBy(event.actor, subject);
+/** Whether the thread reports a run: the newest turn is one this tab sent,
+ * and its reply is still running. The viewport's top anchor pins a running
+ * turn to the top wherever the reader is, so a turn a teammate, the API, a
+ * webhook, or the same operator in another tab sent never engages it, and a
+ * reader back in the history stays where they are. */
+export function reportsOwnRun(events: readonly FleetEvent[], subject: string | null): boolean {
+  const newest = events.at(-1);
+  if (newest === undefined || !isReplyInFlight(newest) || !isSteerBy(newest.actor, subject)) return false;
+  // A row this tab painted keeps its submit clock through every frame, and
+  // another tab's row never had one. The daemon's opening frame can land
+  // before the 202 names it, though, leaving the server's row newest and
+  // unmarked until the graft; while a send here awaits its 202, it is ours.
+  return newest.submittedAtMs !== undefined || events.some(isAwaitingAck);
+}
+
+function isAwaitingAck(event: FleetEvent): boolean {
+  return event.status === AGENTSFLEET_EVENT_STATUS.OPTIMISTIC;
 }
 
 /**

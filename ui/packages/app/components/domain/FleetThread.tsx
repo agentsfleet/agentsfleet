@@ -22,7 +22,7 @@ import { useFleetPendingSends } from "./useFleetPendingSends";
 import { useCurrentUser } from "@/lib/auth/client";
 import { useMessageDelivery } from "./useFleetMessageDelivery";
 import { useFleetSteerQueue } from "./useFleetSteerQueue";
-import { isOwnReplyInFlight } from "./fleetReplyMessage";
+import { reportsOwnRun } from "./fleetReplyMessage";
 import { FleetThreadViewport } from "./FleetThreadViewport";
 
 export type FleetThreadProps = {
@@ -51,12 +51,13 @@ export type FleetThreadProps = {
  * `/live` steer route); `fleetMessageRenderers` paints each durable event as the
  * approved conversation row.
  *
- * The runtime is told the thread runs while the newest turn is the viewer's
- * own and its reply is still running, and every send goes through a queue (`useFleetSteerQueue`), so a run
+ * The runtime is told the thread runs while the newest turn is one this tab
+ * sent and its reply is still running, and every send goes through a queue (`useFleetSteerQueue`), so a run
  * never closes the composer: assistant-ui routes a send made mid-run to the
  * queue's steer lane instead of refusing it. That flag is what the viewport's
  * top anchor keys on to hold the viewer's place while their reply grows and
- * folds; another sender's reply leaves it off (`isOwnReplyInFlight`).
+ * folds; any other sender's reply, another tab's included, leaves it off
+ * (`reportsOwnRun`).
  */
 export function FleetThread({
   workspaceId,
@@ -106,10 +107,7 @@ export function FleetThread({
   // The newest turn only: assistant-ui anchors whatever turn is last while the
   // thread runs, so a teammate's turn landing under the viewer's own running
   // reply would otherwise be pinned to the top and pull the viewer off theirs.
-  const isRunning = useMemo(() => {
-    const newest = stream.events.at(-1);
-    return newest !== undefined && isOwnReplyInFlight(newest, subject);
-  }, [stream.events, subject]);
+  const isRunning = useMemo(() => reportsOwnRun(stream.events, subject), [stream.events, subject]);
   const adapter = useMemo(
     () => ({ isRunning, messages: entries, convertMessage: convertEntry, onNew: delivery.onNew, queue }),
     [isRunning, entries, convertEntry, delivery.onNew, queue],

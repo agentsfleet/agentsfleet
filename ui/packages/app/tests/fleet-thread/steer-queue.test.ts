@@ -15,9 +15,16 @@ const RUNNING_STATUS = AGENTSFLEET_EVENT_STATUS.RECEIVED;
 const SETTLED_STATUS = AGENTSFLEET_EVENT_STATUS.PROCESSED;
 const OWN_ACTOR = `${ACTOR.STEER_PREFIX}${SUBJECT}`;
 const TEAMMATE_ACTOR = `${ACTOR.STEER_PREFIX}user_teammate`;
+const SUBMITTED_AT_MS = 5_000;
 
+// A turn that reached this tab by frame alone.
 function turn(status: FleetEventStatus, actor = OWN_ACTOR) {
   return ev({ id: `evt_${status}`, role: "user", actor, text: "Run it", status });
+}
+
+// A turn this tab sent: its row carries the submit clock from the optimistic paint on.
+function sentHere(status: FleetEventStatus, actor = OWN_ACTOR) {
+  return ev({ id: `evt_${status}`, role: "user", actor, text: "Run it", status, submittedAtMs: SUBMITTED_AT_MS });
 }
 
 describe("FleetThread — steer queue", () => {
@@ -42,12 +49,12 @@ describe("FleetThread — steer queue", () => {
     expect(capturedRun.hasQueue).toBe(true);
     idle.unmount();
 
-    mockStream([turn(RUNNING_STATUS)]);
+    mockStream([sentHere(RUNNING_STATUS)]);
     const running = renderThread();
     expect(capturedRun.isRunning).toBe(true);
     running.unmount();
 
-    mockStream([turn(SETTLED_STATUS)]);
+    mockStream([sentHere(SETTLED_STATUS)]);
     const settled = renderThread();
     expect(capturedRun.isRunning).toBe(false);
     settled.unmount();
@@ -59,8 +66,15 @@ describe("FleetThread — steer queue", () => {
     expect(capturedRun.isRunning).toBe(false);
     others.unmount();
 
+    // The viewer's own account from another tab never reports either: this
+    // tab's reader may be back in the history.
+    mockStream([turn(RUNNING_STATUS)]);
+    const elsewhere = renderThread();
+    expect(capturedRun.isRunning).toBe(false);
+    elsewhere.unmount();
+
     // A send from this tab the daemon has not named yet is the viewer's own.
-    mockStream([turn(RUNNING_STATUS, ACTOR.PENDING_STEER)]);
+    mockStream([sentHere(RUNNING_STATUS, ACTOR.PENDING_STEER)]);
     const pending = renderThread();
     expect(capturedRun.isRunning).toBe(true);
     pending.unmount();
@@ -68,7 +82,7 @@ describe("FleetThread — steer queue", () => {
     // The newest turn decides: a teammate's turn landing under the viewer's own
     // running reply ends the run, or the anchor would pin the teammate's turn.
     mockStream([
-      ev({ id: "evt_own", role: "user", actor: OWN_ACTOR, text: "Deploy", status: RUNNING_STATUS }),
+      ev({ id: "evt_own", role: "user", actor: OWN_ACTOR, text: "Deploy", status: RUNNING_STATUS, submittedAtMs: SUBMITTED_AT_MS }),
       ev({ id: "evt_teammate", role: "user", actor: TEAMMATE_ACTOR, text: "Hold on", status: RUNNING_STATUS }),
     ]);
     const under = renderThread();
@@ -76,14 +90,14 @@ describe("FleetThread — steer queue", () => {
     under.unmount();
     mockStream([
       ev({ id: "evt_teammate", role: "user", actor: TEAMMATE_ACTOR, text: "Hold on", status: RUNNING_STATUS }),
-      ev({ id: "evt_own", role: "user", actor: OWN_ACTOR, text: "Deploy", status: RUNNING_STATUS }),
+      ev({ id: "evt_own", role: "user", actor: OWN_ACTOR, text: "Deploy", status: RUNNING_STATUS, submittedAtMs: SUBMITTED_AT_MS }),
     ]);
     renderThread();
     expect(capturedRun.isRunning).toBe(true);
   });
 
   it("test_send_enabled_while_running", () => {
-    mockStream([turn(RUNNING_STATUS)]);
+    mockStream([sentHere(RUNNING_STATUS)]);
     renderThread();
     expect(capturedRun.isRunning).toBe(true);
     // A draft to send, so only the run could hold Send closed.
@@ -94,7 +108,7 @@ describe("FleetThread — steer queue", () => {
 
   it("test_queue_send_posts_once", async () => {
     postSteerMock.mockResolvedValueOnce(ACCEPTED("evt_a")).mockResolvedValueOnce(ACCEPTED("evt_b"));
-    mockStream([turn(RUNNING_STATUS)]);
+    mockStream([sentHere(RUNNING_STATUS)]);
     renderThread();
     await send("steer while running");
     await waitFor(() => expect(postSteerMock).toHaveBeenCalledTimes(1));
