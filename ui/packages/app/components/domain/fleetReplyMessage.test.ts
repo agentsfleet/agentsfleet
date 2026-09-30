@@ -102,14 +102,11 @@ describe("reportsOwnRun", () => {
     expect(reportsOwnRun([steer("evt_elsewhere", OWN, RECEIVED)], SUBJECT)).toBe(false);
   });
 
-  it("test_opening_frame_before_the_202_reports", () => {
-    // The daemon's opening frame beat the 202: its row is newest and unmarked
-    // while this tab's optimistic row still waits to be grafted onto it.
-    const ownFirst = [steer("optim-1", ACTOR.PENDING_STEER, OPTIMISTIC, SUBMITTED_AT_MS), steer("evt_own", OWN, RECEIVED)];
-    expect(reportsOwnRun(ownFirst, SUBJECT)).toBe(true);
-    // A teammate's turn landing in that window is still theirs.
-    const teammate = [steer("optim-1", ACTOR.PENDING_STEER, OPTIMISTIC, SUBMITTED_AT_MS), steer("evt_mate", TEAMMATE, RECEIVED)];
-    expect(reportsOwnRun(teammate, SUBJECT)).toBe(false);
+  it("test_unmarked_turn_stays_quiet_while_a_send_here_waits", () => {
+    // Another tab's turn under the same account, newest while this tab's own
+    // send awaits its 202: the waiting send never lends it this tab's run.
+    const waiting = [steer("optim-1", ACTOR.PENDING_STEER, OPTIMISTIC, SUBMITTED_AT_MS), steer("evt_elsewhere", OWN, RECEIVED)];
+    expect(reportsOwnRun(waiting, SUBJECT)).toBe(false);
   });
 
   it("test_newest_turn_decides", () => {

@@ -171,6 +171,7 @@ function onFrame(entry: LiveEntry, fleetId: string, frame: NonNullable<ReturnTyp
   // every late runner frame from mutating the settled answer or tool history.
   if ("event_id" in frame && RUNNER_ACTIVITY_KINDS.has(frame.kind)
     && entry.snapshot.events.some((event) => event.id === frame.event_id && TERMINAL_STATUSES.has(event.status))) return;
+  if (entry.held.take(frame, entry.snapshot.events)) return;
   if (dispatchReplyFrame(entry, fleetId, frame, entry.apply, entry.isCurrent)) return;
   // A completion carries the fleet's status and pending count beside its row;
   // a gate frame carries the count alone and touches no row.
@@ -323,6 +324,7 @@ export function reconcileOptimistic(
   // A replay's event may have run before this page held it, with no frame left
   // to settle its row, so it is read now. One the page held settles from frames.
   watchReply(entry, fleetId, realEventId, entry.apply, entry.isCurrent, replayed && !loaded);
+  for (const frame of entry.held.release(entry.snapshot.events)) onFrame(entry, fleetId, frame);
   return alreadyComplete;
 }
 
@@ -332,6 +334,7 @@ export function discardOptimistic(fleetId: string, tempId: string): void {
   const entry = REGISTRY.get(fleetId);
   if (!entry) return;
   setEvents(entry, (prev) => prev.filter((event) => event.id !== tempId));
+  for (const frame of entry.held.release(entry.snapshot.events)) onFrame(entry, fleetId, frame);
 }
 
 // Test surface — vitest must reset between tests; nothing in production
