@@ -8,6 +8,9 @@ const TOKEN = "tok";
 const TENANT_ID = "018f0000-0000-7000-8000-000000000001";
 const OTHER_TENANT_ID = "018f0000-0000-7000-8000-000000000002";
 const NEXT_CURSOR = "01900000-0000-7000-8000-000000000001";
+// Every item names its account and the caller's role; the invalid-item cases
+// below carry both too, so each fails on the one field it is about.
+const OWN = { account: { tenant_id: TENANT_ID, owner_name: "Owner" }, role: "owner" };
 const okResponse = (body: unknown) => ({
   ok: true,
   status: 200,
@@ -20,7 +23,7 @@ describe("listTenantWorkspaces", () => {
   it("GET /v1/tenants/me/workspaces with bearer, returns envelope", async () => {
     fetchMock.mockResolvedValue(
       okResponse({
-        items: [{ id: "ws_1", name: "alpha", created_at: 100 }],
+        items: [{ id: "ws_1", name: "alpha", created_at: 100, ...OWN }],
         tenant_id: TENANT_ID,
         total: null,
         next_cursor: null,
@@ -136,19 +139,19 @@ describe("listTenantWorkspaces", () => {
         next_cursor: null,
       },
       {
-        items: [{ id: "", name: "bad", created_at: 1 }],
+        items: [{ id: "", name: "bad", created_at: 1, ...OWN }],
         tenant_id: TENANT_ID,
         total: null,
         next_cursor: null,
       },
       {
-        items: [{ id: "ws_1", name: 42, created_at: 1 }],
+        items: [{ id: "ws_1", name: 42, created_at: 1, ...OWN }],
         tenant_id: TENANT_ID,
         total: null,
         next_cursor: null,
       },
       {
-        items: [{ id: "ws_1", name: "bad", created_at: Number.NaN }],
+        items: [{ id: "ws_1", name: "bad", created_at: Number.NaN, ...OWN }],
         tenant_id: TENANT_ID,
         total: null,
         next_cursor: null,

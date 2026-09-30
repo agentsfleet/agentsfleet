@@ -6,13 +6,15 @@ vi.mock("@/lib/api/client", () => ({
   requestWithEtag: vi.fn(),
 }));
 
-import { firstTenantWorkspace } from "@/lib/api/workspaces";
+import { ACCOUNT_ROLE, firstTenantWorkspace } from "@/lib/api/workspaces";
 
 const TOKEN = "tok";
 const WORKSPACE = {
   id: "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
   name: "primary",
   created_at: 1_777_507_200_000,
+  account: { tenant_id: "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", owner_name: "Primary" },
+  role: ACCOUNT_ROLE.owner,
 };
 
 function pageWith(items: unknown[]) {

@@ -201,9 +201,9 @@ pub(crate) async fn revoke<D: Services>(
     operation_id = "list_my_invites",
     summary = "List invites waiting for you",
     description = concat!(
-        "Returns every invite, from any account, sent to the email address of ",
-        "the calling person and still acceptable, newest first, with the ",
-        "account each one joins. One page: `next_cursor` is always `null`. ",
+        "Returns every still-acceptable invite sent to the calling person's ",
+        "email address, from any account, newest first. Each item names the ",
+        "account it joins. One page: `next_cursor` is always `null`. ",
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = afd_wire::tenant::PageResponse<WaitingInvite>),

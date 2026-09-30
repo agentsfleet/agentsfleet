@@ -79,8 +79,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_api_operator/src/handler/admin/workspaces.rs` | CREATE | platform directory (admin routes are the operator plane's) |
 | `rustd/crates/afd_core/src/{error_code,problem}/{auth,invite}.rs` | EDIT/CREATE | `UZ-AUTH-026`, `UZ-AUTH-027`, `UZ-INV-001`…`004`, with their statuses |
 | `public/openapi.json` | EDIT | new routes and `access` |
-| `ui/packages/app/lib/api/{tenant-members,invites,admin-workspaces}.ts` | CREATE | clients |
-| `ui/packages/app/components/layout/WorkspaceSwitcher*.tsx` | EDIT | workspaces grouped by account |
+| `ui/packages/app/lib/api/{tenant-members,invites,decode,workspaces,admin-workspaces}.ts` | CREATE/EDIT | clients; workspace items decode `account` and `role` |
+| `ui/packages/app/components/layout/{WorkspaceSwitcher*.tsx,workspace-groups.ts,InviteNotice.tsx,SidebarNavigation.tsx,ShellFrame.tsx}`, `app/(dashboard)/layout.tsx` | CREATE/EDIT | workspaces grouped by account; the Members entry; the pending-invite notice |
+| `ui/packages/app/{tests,lib,components,app}/**/*.test.{ts,tsx}`, `tests/e2e/acceptance/{team-members.spec.ts,global-teardown.ts}` | CREATE/EDIT | unit suites; the two journeys; the sweep reaps a leaked invitee |
 | `ui/packages/app/components/layout/PlatformAccessBanner.tsx` | CREATE | "Viewing as platform operator: read only / can act" |
 | `ui/packages/app/components/domain/FleetThread.tsx` | EDIT | no composer when `can_write` is false |
 | `ui/packages/app/app/(dashboard)/settings/members/` | CREATE | owner: invite, copy link, pending invites, members, remove |
@@ -149,8 +150,8 @@ An owner invites an email (lowercased) as `member`; one pending invite per `(ten
 
 Owners get Settings → Members (invite, copy link, pending invites, members, remove). Invitees get an Invites page and a one-line notice while any invite is pending. The workspace switcher groups by account ("Yours", "John's account").
 
-- **Dimension 4.1** — an owner invites, copies the link and removes a member on the page → Test `test_members_page_owner_journey`
-- **Dimension 4.2** — an invitee accepts and the workspace appears under the owner's account → Test `test_invitee_accept_journey`
+- **Dimension 4.1** — an owner invites, copies the link and removes a member on the page → Test `test_members_page_owner_journey` — written (`tests/e2e/acceptance/team-members.spec.ts`); runs once the dev API serves §3
+- **Dimension 4.2** — an invitee accepts and the workspace appears under the owner's account → Test `test_invitee_accept_journey` — written (same spec); runs once the dev API serves §3
 
 ### §5 — Platform operators: find any workspace; read, and act when granted
 
@@ -309,5 +310,6 @@ N/A — no files deleted.
 - **Metrics review** — pending.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
+- **§4 source corrections** — Sep 30, 2026: every `/v1/tenants/me/*` route resolves the caller's own account (`afd_api_tenant/src/handler/tenant/mod.rs:96-111`) and signup makes every person its owner, so Settings → Members always shows; restraint 9's "no Members entry for a member" has no case. Interfaces has no decline route, so the Invites page offers accept only. The switcher labels accounts only once a person holds more than one, keeping Dimension 2.6's solo view. The acceptance env targets the shared dev API (`ui.env.local`), which runs `main`, so R2 runs after this branch deploys there.
 - **§3 source corrections** — Sep 30, 2026: the `UZ-INV-002` refusal names no address (`afd_core/src/problem/invite.rs:27`), since the link may reach a third party and naming the address would leak it; Product Clarity 10 amended. A revoked stream ends with `event: access_revoked`, data `{kind, error_code:"UZ-AUTH-001"}` (`afd_api_tenant/src/handler/stream.rs:41-43`). Open for Indy: invite create takes no `Idempotency-Key` (`docs/REST_API_DESIGN_GUIDELINES.md:142`); a retry after a lost response is `409 UZ-INV-003`. Proposed: a repeat create returns the pending invite, as the runner report's lease id does (`afd_api_runner/src/handler/runner/report.rs:69`).
 - **Hand-rolled Rust cleanup** — Sep 30, 2026, Indy in session: "Are there any handrolled rust code? where you can use the afd_core or external crates, if yes fix them", then "Are there any duplicate handrolled code you have, if yes fix them." and "and clean it up". Its own commit on this branch: `Entropy::uuid7` replaces every draw-then-encode copy, `sqlx::error::DatabaseError::is_unique_violation` replaces the hand-written `23505` checks, `afd_tenant` lifts through `error_lifts!`, the identifier kinds that became dead are removed, and `DETAIL_NOT_DASHBOARD` drops the identity vendor's name.
