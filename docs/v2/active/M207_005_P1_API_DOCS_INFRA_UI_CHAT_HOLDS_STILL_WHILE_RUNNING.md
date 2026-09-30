@@ -142,8 +142,8 @@ The events list, the workspace stream, the fleet events list and the fleet strea
 
 `test-unit-all` gains `test-unit-runner` (`zig build --build-file build_runner.zig test`), refusing with a named message when `zig version` is not the one `build.zig.zon` pins. No CI job runs it: it runs locally before push, inside `make test-unit-all` (Indy, Discovery). `build_runner.zig`'s comment naming the retired target is corrected.
 
-- **Dimension 6.1** — `make test-unit-all` runs the runner's Zig tests and fails when one fails → Test `test_unit_all_runs_zig` (inject a failing test in a scratch branch)
-- **Dimension 6.2** — a wrong Zig version fails fast with the named message → Test `test_runner_zig_version_guard` (`scripts/runner_zig_version_test.py`)
+- **Dimension 6.1** — `make test-unit-all` runs the runner's Zig tests and fails when one fails → Test `test_unit_all_runs_zig` (injected failure: exit 2, `747/751 tests passed (3 skipped, 1 failed)`) — DONE
+- **Dimension 6.2** — a wrong Zig version fails fast with the named message → Test `test_runner_zig_version_guard` (`scripts/runner_zig_version_test.py`) — DONE
 
 ### §7 — The 6.7 leftovers
 

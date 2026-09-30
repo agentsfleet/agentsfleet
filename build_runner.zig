@@ -126,7 +126,7 @@ pub fn build(b: *std.Build) void {
     b.step("run", "Run the agentsfleet-runner daemon").dependOn(&run_cmd.step);
 
     // Runner-side test target — `zig build --build-file build_runner.zig test`
-    // (the `test-unit-agentsfleet-runner` make target). Same root + module wiring as the
+    // (the `test-unit-runner` make target). Same root + module wiring as the
     // exe, so it proves exactly what ships and links no datastore: a red agentsfleetd
     // (`src/`) suite never blocks building, testing, or shipping the runner.
     const runner_tests = b.addTest(.{

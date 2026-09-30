@@ -2,7 +2,7 @@
 # TEST-UNIT — agentsfleetd, agentsfleet, website, app + multi-package coverage gate
 # =============================================================================
 
-.PHONY: test-unit-rustd test-unit-cli test-unit-website test-unit-app test-unit-design-system test-coverage-all
+.PHONY: test-unit-rustd test-unit-runner test-unit-cli test-unit-website test-unit-app test-unit-design-system test-coverage-all
 
 test-unit-rustd:  ## Run the Rust workspace unit tests (cargo)
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
@@ -11,6 +11,20 @@ test-unit-rustd:  ## Run the Rust workspace unit tests (cargo)
 	@# demand get reached at all, and a default-feature run silently skips them.
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] cargo test --workspace" -- \
 	  cargo test --workspace --all-features
+
+# The Zig compiler `agentsfleet-runner` builds and ships with, spelled once in
+# `build.zig.zon`. The manifest's floor admits any newer Zig, which then fails
+# on standard-library drift a long way from the cause, so the tests refuse
+# anything but this exact version up front. Recursive, so the read happens
+# only when a runner target asks for it.
+RUNNER_ZIG_VERSION = $(shell sed -n 's/^[[:space:]]*\.minimum_zig_version = "\(.*\)",/\1/p' build.zig.zon)
+
+test-unit-runner:  ## Run the Zig runner's unit tests (zig build test, on build.zig.zon's Zig)
+	@command -v zig >/dev/null 2>&1 || { echo "✗ zig not found. Install via: mise install zig@$(RUNNER_ZIG_VERSION)"; exit 1; }
+	@found="$$(zig version)"; [ "$$found" = "$(RUNNER_ZIG_VERSION)" ] || { \
+	  echo "✗ [runner] zig $$found found; the runner's tests need Zig $(RUNNER_ZIG_VERSION) (build.zig.zon). Install via: mise install zig@$(RUNNER_ZIG_VERSION)"; \
+	  exit 1; }
+	@$(WITH_PROGRESS) "[runner] zig build test" -- zig build --build-file build_runner.zig test
 
 test-unit-cli:  ## Run agentsfleet CLI unit tests (bun)
 	@echo "→ [agentsfleet] Building dist/ (tests spawn dist/bin/agentsfleet.js)..."
