@@ -12,6 +12,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_db::constraint::violates_unique;
 use sqlx::Row as _;
 
 use crate::sql::workspace as sql;
@@ -190,7 +191,9 @@ impl Workspaces {
                     id,
                     name: name.as_str().to_owned(),
                 }),
-                Err(source) if is_name_conflict(&source) => Err(error::workspace_name_exists()),
+                Err(source) if violates_unique(&source, NAME_CONSTRAINT) => {
+                    Err(error::workspace_name_exists())
+                }
                 Err(source) => Err(error::query(CONTEXT_CREATE)(source)),
             };
         }
@@ -204,7 +207,10 @@ impl Workspaces {
                 .await
             {
                 Ok(()) => return Ok(Created { id, name }),
-                Err(source) if is_name_conflict(&source) && attempt + 1 < GENERATED_ATTEMPTS => {
+                Err(source)
+                    if violates_unique(&source, NAME_CONSTRAINT)
+                        && attempt + 1 < GENERATED_ATTEMPTS =>
+                {
                     attempt += 1;
                 }
                 // Exhausted, or broken some other way. Either way the chain
@@ -245,16 +251,5 @@ fn read_row(row: &sqlx::postgres::PgRow) -> Result<WorkspaceRow> {
         name: row.try_get("name").map_err(&unreadable)?,
         created_at_ms: row.try_get("created_at").map_err(&unreadable)?,
         tenant_id: row.try_get("tenant_id").map_err(&unreadable)?,
-    })
-}
-
-/// Tells a lost name race apart from a broken statement.
-///
-/// By exact constraint, not by SQLSTATE alone: the table carries a second
-/// unique constraint on `(id, tenant_id)`, and an identifier collision — one
-/// entropy draw repeating another to the bit — is not a fact about the NAME.
-fn is_name_conflict(source: &sqlx::Error) -> bool {
-    source.as_database_error().is_some_and(|failure| {
-        failure.is_unique_violation() && failure.constraint() == Some(NAME_CONSTRAINT)
     })
 }

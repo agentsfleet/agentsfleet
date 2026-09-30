@@ -8,6 +8,16 @@
 //! the cutover invariant, so a statement is copied rather than re-derived;
 //! where a `$n` order looks odd, it is odd in the original too.
 
+/// The select list every invitation read opens with, in the names
+/// `Invitation::read` reads them by, so a list and the accept lock cannot drift
+/// apart. A macro because `concat!` takes literals, not constants.
+macro_rules! select_invitation {
+    () => {
+        "SELECT id::text AS id, tenant_id::text AS tenant_id, email, role, expires_at, \
+         created_at, accepted_by::text AS accepted_by, revoked_at "
+    };
+}
+
 /// The account a row belongs to, named by its owner.
 ///
 /// Joined against a `core.tenants` row aliased `t`: the owner's display name

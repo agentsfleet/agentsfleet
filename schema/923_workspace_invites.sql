@@ -52,9 +52,5 @@ CREATE INDEX IF NOT EXISTS idx_invites_email_pending
     ON core.invites (email)
     WHERE accepted_at IS NULL AND revoked_at IS NULL;
 
--- An account's invites for its owner, newest first.
-CREATE INDEX IF NOT EXISTS idx_invites_tenant_id_created_at
-    ON core.invites (tenant_id, created_at DESC, id DESC);
-
 -- api_runtime creates, lists, revokes and accepts invites.
 GRANT SELECT, INSERT, UPDATE, DELETE ON core.invites TO api_runtime;

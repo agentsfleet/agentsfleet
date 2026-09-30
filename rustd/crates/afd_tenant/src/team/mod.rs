@@ -6,9 +6,8 @@
 //! Invites grant the whole account, and every invite grants the member role.
 
 pub mod email;
+pub mod invitation;
 
-mod accept;
-mod invite;
 mod member;
 
 use afd_core::id::Uuid7;
@@ -18,9 +17,7 @@ use afd_db::Db;
 use crate::workspace::access::Role;
 
 pub use self::email::Email;
-
-/// How long an invite can be accepted: seven days.
-pub const INVITE_TTL_MS: i64 = 7 * 24 * 60 * 60 * 1000;
+pub use self::invitation::{Acceptance, INVITE_TTL_MS, Invitation};
 
 /// Invites, acceptance and members, over one pool.
 ///
@@ -48,21 +45,6 @@ pub struct NewInvite<'a> {
     pub inviter: &'a Uuid7,
     /// The address it is for.
     pub email: &'a Email,
-}
-
-/// One issued invite, as the account's owner sees it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Invite {
-    /// The invite's identifier, which its accept link names.
-    pub id: Uuid7,
-    /// The address it is for, lowercased.
-    pub email: String,
-    /// The role accepting it grants.
-    pub role: Role,
-    /// When it stops being acceptable.
-    pub expires_at_ms: i64,
-    /// When it was issued.
-    pub created_at_ms: i64,
 }
 
 /// One invite waiting for an address, with the account it opens.

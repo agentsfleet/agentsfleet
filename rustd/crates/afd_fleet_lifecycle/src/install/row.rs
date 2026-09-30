@@ -16,6 +16,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_db::constraint::violates_unique;
 use sqlx::Row as _;
 
 use crate::error::{self, ErrorKind, Result};
@@ -145,10 +146,12 @@ impl Fleets {
                 .await
             {
                 Ok(()) => return Ok(candidate),
-                Err(source) if is_name_conflict(&source) => match naming.redraw(&self.entropy)? {
-                    Some(next) => naming = next,
-                    None => return Err(ErrorKind::NameExists.into()),
-                },
+                Err(source) if violates_unique(&source, NAME_CONSTRAINT) => {
+                    match naming.redraw(&self.entropy)? {
+                        Some(next) => naming = next,
+                        None => return Err(ErrorKind::NameExists.into()),
+                    }
+                }
                 Err(source) => return Err(error::query(CONTEXT_INSERT)(source)),
             }
         }
@@ -215,13 +218,6 @@ impl Naming {
     }
 }
 
-/// Tells a lost name race apart from a broken statement.
-fn is_name_conflict(source: &sqlx::Error) -> bool {
-    source.as_database_error().is_some_and(|failure| {
-        failure.is_unique_violation() && failure.constraint() == Some(NAME_CONSTRAINT)
-    })
-}
-
 #[cfg(test)]
 mod tests {
     #![expect(
@@ -280,18 +276,5 @@ mod tests {
         assert_eq!(base, "daily-digest");
         assert_eq!(tail.len(), 3, "three digits, so the slug stays in bounds");
         assert!(tail.parse::<u32>().is_ok_and(|value| value < SUFFIX_SPACE));
-    }
-
-    /// A statement that failed for any other reason is not a name race.
-    ///
-    /// The true arm needs a `DatabaseError` carrying SQLSTATE 23505 AND the
-    /// name constraint, which sqlx only produces from a real driver. The arm
-    /// this holds is the one that decides whether a broken statement gets
-    /// retried as a lost race — answering true there would loop on a fault
-    /// that never clears.
-    #[test]
-    fn a_failure_that_is_not_a_database_error_is_not_a_name_race() {
-        assert!(!super::is_name_conflict(&sqlx::Error::PoolClosed));
-        assert!(!super::is_name_conflict(&sqlx::Error::RowNotFound));
     }
 }
