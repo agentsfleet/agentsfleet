@@ -16,14 +16,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M207
 **Workstream:** 005
 **Date:** Sep 30, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operators watch every fleet reply here; a fold that drags the thread and a flash of reasoning break reading
 **Categories:** API, DOCS, INFRA, UI
 **Batch:** B1 — sole workstream; carries M207_003's 6.7 leftovers and the M207_003/M207_004 listed items
 **Branch:** `fix/m207-003-design-review`
 **Baseline revision:** `115e8ba668145e6407c8a47459bc87869fa358c2` (merge base with `origin/main`)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit `make test-unit-all` exit 0 — Rust 2,879 passed / 0 failed / 708 ignored (162 binaries), app 3,268 (353 files), website 142 (22), cli 1,777 passed / 16 skipped, design-system 640 (60); integration `make test-integration-rustd` exit 0 — 683 passed / 0 failed over 140 binaries (681 + 2 exclusive)
+**Baseline evidence:** local runs at `115e8ba66` in a detached worktree, macOS, compose Postgres + four-process Dragonfly, Sep 30, 2026; counts summed from each lane's own summary lines. The first integration run stopped at `afd_runner integration_reclaim_faults::a_stranded_lease_the_index_will_not_mark_is_logged_and_not_counted` (589 passed, 1 failed); the rerun above passed whole, so that test flakes at the baseline
 **Depends on:** M207_003 (steer route, pending-sends ledger, Resend), M207_004 (streaming budget, catching-up)
 **Provenance:** LLM-drafted (Claude Opus 5.5, Sep 30, 2026)
 **Canonical architecture:** `docs/architecture/data_flow.md` §Steer flow end-to-end
@@ -300,5 +300,5 @@ make test-unit-runner: zig build --build-file build_runner.zig test   (part of t
 > Indy (2026-09-30): "i think on the markdown i asked to drop 3 -  since you said the assitant-ui is not performant." — §3's swap is cut; the block parser stays.
 - **Review (Sep 30, 2026)** — agent pass plus one adversarial subagent over `17535ad79..HEAD`. Fixed: the offline notice hid the newest reply from a reader at the bottom (moved into the footer's flow); `isRunning` counted any own running reply, so a teammate's turn landing under it was pinned (now the newest event only); `isSteerBy`'s continuation branch matched `continuation:steer:…`, which the daemon never writes (`afd_approval/src/inbox/resolve.rs:228`); two route tests pinned `"UZ-401"`. Kept: the steer queue drops a non-refusal rejection silently, as assistant-ui's own send did before §1, since surfacing it needs a new lint suppression. The runner's Zig tests run in no CI job, by Indy's call above.
 - **Metrics review** — no analytics/funnel playbook update required: no event is added, renamed or removed.
-- **Skill-chain outcomes** — pending.
+- **Skill-chain outcomes** — `/orly-write-unit-test` was not invoked as a skill: each Dimension got its test in the Section's commit and was made red before it was trusted (TCF), and the app coverage gate reads 100%. `/orly-write-integration-test`: N/A — the Rust change is test support, and the app changes cross the browser boundary the e2e lane proves. REVIEW: agent pass plus an adversarial subagent (Review bullet above).
 - **Deferrals** — none.
