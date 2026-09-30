@@ -57,7 +57,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/components/domain/useFleetMessageDelivery.ts` | EDIT | exposes the delivery path to the queue adapter |
 | `ui/packages/app/components/domain/useFleetSteerQueue.ts` | CREATE | the `ExternalThreadQueueAdapter` over the delivery path |
 | `ui/packages/app/components/domain/FleetThreadViewport.tsx` | EDIT | `turnAnchor="top"` beside `autoScroll`; the notice and Jump to latest overlay the history from the footer |
-| `ui/packages/app/components/domain/{fleetMessageRenderers.tsx,fleetReplyMessage.ts,useFleetSteerQueue.ts}`, `ui/packages/app/lib/events/event-summary.ts` | EDIT | only a settled reply skips layout; `isSteerBy` names the viewer's own turn; a non-refusal failure is dropped, not rethrown |
+| `ui/packages/app/components/domain/{fleetMessageRenderers.tsx,fleetReplyMessage.ts,useFleetSteerQueue.ts}`, `ui/packages/app/lib/{events/event-summary.ts,streaming/fleet-stream-reply-frames.ts}` | EDIT | only a settled reply skips layout; `isSteerBy` names the viewer's own turn; a non-refusal failure is dropped, not rethrown |
 | `ui/packages/app/components/domain/FleetConnectionNotice.tsx` | EDIT | `warning` variant |
 | `ui/packages/app/components/domain/FleetThought.tsx` | EDIT | fold lock verified under the reserve |
 | `ui/packages/app/components/domain/FleetMarkdown.tsx`, `FleetReplyBody.tsx` | EDIT | reply text through `MarkdownTextPrimitive` |
@@ -115,6 +115,7 @@ Depends on §1. `ThreadPrimitive.Viewport` takes `turnAnchor="top"` beside `auto
 - **Dimension 2.3** — after Send, `scrollTop` never falls more than a 40 px wobble behind its furthest point, and rests there → Test `test_send_scrolls_once` — DONE
 - **Dimension 2.4** — Jump to latest still reaches the newest row → Test `test_jump_to_latest_after_anchor` — DONE
 - **Dimension 2.5** — a turn another sender makes leaves a reader in the history where they are → Test `test_background_turn_leaves_history_alone` — DONE
+- **Dimension 2.6** — reasoning that resumes after the answer began keeps the Thought folded, and its label counts every stretch → Test `test_interleaved_reasoning_folds_once`, `test_resumed_thought_stays_folded`, `test_resumed_reasoning_reopens_the_span` — DONE
 
 ### §3 — Reply text through `@assistant-ui/react-markdown`
 
@@ -212,6 +213,7 @@ make test-unit-runner: zig build --build-file build_runner.zig test   (part of t
 | 2.3 | e2e | `test_send_scrolls_once` | Send → `scrollTop` never > 40 px behind its furthest point, resting there |
 | 2.4 | e2e | `test_jump_to_latest_after_anchor` | scrolled up, new row → Jump to latest reaches it |
 | 2.5 | e2e | `test_background_turn_leaves_history_alone` | a teammate's turn while turn 1 is read → turn 1 Δ ≤ 1 px in the thread, Jump to latest shown |
+| 2.6 | e2e + unit | `test_interleaved_reasoning_folds_once` | reason → answer → reason → answer → the Thought's open state goes true, false and never true again; the span ends at the last hand-off |
 | 3.1 | unit | `test_reply_markdown_tokens` | list, fenced code, table → token classes, no prose defaults |
 | 3.2 | unit | `test_reply_html_is_text` | `<script>x</script>` → literal text, no element |
 | 3.3 | e2e | `test_streaming_reply_costs_no_long_tasks` | 0 long tasks, p95 ≤ 17.6 ms |
@@ -303,6 +305,7 @@ make test-unit-runner: zig build --build-file build_runner.zig test   (part of t
 > Indy (2026-09-30): "keep it as is or make a better general human friendly name" — context: FINDING-004; kept as is. Indy also confirmed a fold may wobble ≤ 40 px and must return, and that short threads start at the top of the panel.
 > Indy (2026-09-30): "7.2 make it agent-verified, i donot have time to eyeball. Only add that if you verified it."
 - **Agent live review (Sep 30, 2026, 7.2)** — re-run on `next dev` against DEV's API, frames through the page's `EventSource` plus one real Send; report `~/.gstack/projects/agentsfleet-agentsfleet/designs/design-audit-20260930/design-audit-localhost.md`, screenshots `live2-*.png`. Working (spinner `aria-hidden`), Thinking (opens after 400 ms), Thought + streaming answer, Completed, failed (destructive mark), Queued, the gone row (reached live: a failed run's detail read 404'd), and the offline warning (`alert`, 8.4:1 on its fill) all render as specified. Fixed: 001–003, 005–007, 012 (a teammate's turn yanking the reader). Listed: 004 (Indy: kept), 008 (model output), 010 (arrival cue slides the thread 37 px, pre-existing chrome), 011 (a refused run's completion carries no reply — `pull/refuse.rs:105` — so it flashes "Loading final reply" under the failure for one detail read).
+- **Interleaved reasoning (Sep 30, 2026)** — Indy, eyeballing localhost: "the thought is still happening and the answer is still happening, hence when the first thought is done i see 1 sec, with text and folded with an answer then again the thought expands with the seconds increasing and folds" — only on short prompts (`hey`), not on a 1000-word story. Cause: each delta sets `thinking` to its kind, so resumed reasoning re-ran the Thought's 400 ms auto-open, and the span closed at the first answer only. Fix: auto-open only before any answer text; resumed reasoning reopens the span. Dimension 2.6.
 - **§3 measured, decision pending (Sep 30, 2026)** — `@assistant-ui/react-markdown` 0.14.17 re-parses the whole text part on every change (`MarkdownText.js`: `MarkdownRenderer` is `memo`'d on the full text; it memoises components, not blocks). On the 20 KB, 400-flush corpus: block path 376 ms, library 8,114 ms (memoised components) / 8,133 ms (default), whole re-parse 8,366 ms. §3 as written trades the tail-only parse for a ~21× slower stream; the swap is not made and Indy is asked whether to cut §3.
 - **Metrics review** — no analytics/funnel playbook update required: no event is added, renamed or removed.
 - **Skill-chain outcomes** — pending.

@@ -87,7 +87,7 @@ export function FleetReply({
       failed={errored}
     >
       <MessagePrimitive.GroupedParts groupBy={REPLY_GROUP_BY}>
-        {(info) => renderReplyPart(info, { errored, running, queued, eventId, reasoning: reasoningText(message), span })}
+        {(info) => renderReplyPart(info, { errored, running, queued, eventId, reasoning: reasoningText(message), span, answered: answer.length > 0 })}
       </MessagePrimitive.GroupedParts>
       {answer.length === 0 && !running ? (
         errored ? <FleetFailedOutcome>{messageOutcome(message)}</FleetFailedOutcome> : <p className={FLEET_OUTCOME_CLASS}>{messageOutcome(message)}</p>
@@ -105,6 +105,8 @@ export type ReplyContext = {
   eventId: string;
   reasoning: string;
   span: ReturnType<typeof readReasoningSpan>;
+  /** The answer has started, so a thought that resumes stays folded. */
+  answered: boolean;
 };
 
 /** One switch over every node the library hands back: groups, leaves, the indicator. */
@@ -117,6 +119,7 @@ export function renderReplyPart(
       return (
         <FleetThought
           live={part.status.type === "running"}
+          answered={reply.answered}
           reasoning={reply.reasoning}
           startedAtMs={reply.span.startedAtMs}
           endedAtMs={reply.span.endedAtMs}

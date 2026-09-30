@@ -44,6 +44,23 @@ describe("applyReplyDelta — reasoning span", () => {
     expect(only(rows)).toMatchObject({ reasoningStartedAtMs: REASONING_AT, reasoningEndedAtMs: ANSWER_AT });
   });
 
+  // A short prompt: reasoning, answer, reasoning again, answer. The span
+  // reopens, so the folded Thought counts to the last hand-off, and a run that
+  // completes mid-thought closes it there.
+  it("test_resumed_reasoning_reopens_the_span", () => {
+    let rows = applyReplyDelta([evt({ id: EVENT })], EVENT, reasoning("Greeting. "), REASONING_AT);
+    rows = applyReplyDelta(rows, EVENT, answer("Hey!"), ANSWER_AT);
+    expect(only(rows).reasoningEndedAtMs).toBe(ANSWER_AT);
+    rows = applyReplyDelta(rows, EVENT, reasoning("Anything else?"), ANSWER_AT + 1);
+    expect(only(rows)).toMatchObject({ reasoningStartedAtMs: REASONING_AT, thinking: true });
+    expect(only(rows).reasoningEndedAtMs).toBeUndefined();
+    const answered = applyReplyDelta(rows, EVENT, answer(" How can I help?"), LATER_AT);
+    expect(only(answered)).toMatchObject({ reasoningStartedAtMs: REASONING_AT, reasoningEndedAtMs: LATER_AT });
+
+    const completed = applyLiveFrame(rows, { kind: FRAME_KIND.EVENT_COMPLETE, event_id: EVENT, status: "processed" }, LATER_AT);
+    expect(only(completed).reasoningEndedAtMs).toBe(LATER_AT);
+  });
+
   it("an answer-only reply opens no span", () => {
     const rows = applyReplyDelta([evt({ id: EVENT })], EVENT, answer("Straight answer."), ANSWER_AT);
     expect(only(rows).reasoningStartedAtMs).toBeUndefined();
