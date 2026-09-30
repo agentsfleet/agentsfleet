@@ -150,7 +150,7 @@ async fn test_owner_manages_invites() {
         .expect("John invites Carol");
     let listed = fixture
         .team
-        .invites(&tenant, NOW)
+        .invitations(&tenant, NOW)
         .await
         .expect("the list reads");
     assert_eq!(listed.len(), 1);
@@ -163,18 +163,18 @@ async fn test_owner_manages_invites() {
 
     fixture
         .team
-        .revoke_invite(&tenant, &invite, NOW)
+        .revoke_invitation(&tenant, &invite, NOW)
         .await
         .expect("the revoke lands");
     fixture
         .team
-        .revoke_invite(&tenant, &invite, NOW)
+        .revoke_invitation(&tenant, &invite, NOW)
         .await
         .expect("a second revoke is quiet");
     assert!(
         fixture
             .team
-            .invites(&tenant, NOW)
+            .invitations(&tenant, NOW)
             .await
             .expect("the list reads")
             .is_empty()
@@ -247,7 +247,7 @@ async fn test_accept_refusals() {
 
     fixture
         .team
-        .revoke_invite(&tenant, &invite, NOW)
+        .revoke_invitation(&tenant, &invite, NOW)
         .await
         .expect("the revoke lands");
     let revoked = fixture

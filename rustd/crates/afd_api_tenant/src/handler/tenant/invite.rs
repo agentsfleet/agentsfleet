@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_tenant::team::{Email, Invite, Invitee, NewInvite, Waiting};
+use afd_tenant::team::{Email, Invitation, Invitee, NewInvite, Waiting};
 use afd_wire::team::{AcceptedInviteResponse, CreateInviteRequest, InviteSummary, WaitingInvite};
 use afd_wire::workspace::WorkspaceAccount;
 use axum::Json;
@@ -144,7 +144,7 @@ pub(crate) async fn list<D: Services>(
     let tenant = tenant_of(&services, person, DETAIL_TENANT_REQUIRED, EVENT_TENANT).await?;
     let invites = services
         .team()
-        .invites(&tenant, services.now())
+        .invitations(&tenant, services.now())
         .await
         .map_err(Refusal::at(EVENT_LIST))?;
     let items = invites
@@ -187,7 +187,7 @@ pub(crate) async fn revoke<D: Services>(
     let tenant = tenant_of(&services, person, DETAIL_TENANT_REQUIRED, EVENT_TENANT).await?;
     services
         .team()
-        .revoke_invite(&tenant, &invite, services.now())
+        .revoke_invitation(&tenant, &invite, services.now())
         .await
         .map_err(Refusal::at(EVENT_REVOKE))?;
     Ok(StatusCode::NO_CONTENT.into_response())
@@ -298,7 +298,7 @@ fn invite_id_of(raw: &str) -> Result<Uuid7, Refusal> {
 }
 
 /// One invite, with the dashboard page that accepts it.
-fn summary<'a>(dashboard: &str, invite: &'a Invite) -> Result<InviteSummary<'a>, Refusal> {
+fn summary<'a>(dashboard: &str, invite: &'a Invitation) -> Result<InviteSummary<'a>, Refusal> {
     let link = invite_link(dashboard, &invite.id)
         .ok_or_else(|| Refusal::coded(error_code::INTERNAL_OPERATION_FAILED, DETAIL_LINK))?;
     Ok(InviteSummary {

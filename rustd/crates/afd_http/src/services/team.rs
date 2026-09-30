@@ -6,7 +6,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_tenant::team::{Accepted, Invite, Invitee, Member, NewInvite, Removal, Team, Waiting};
+use afd_tenant::team::{Accepted, Invitation, Invitee, Member, NewInvite, Removal, Team, Waiting};
 
 /// Invites into an account, their acceptance, and its members.
 pub trait TenantTeam: Send + Sync + std::fmt::Debug + 'static {
@@ -15,17 +15,17 @@ pub trait TenantTeam: Send + Sync + std::fmt::Debug + 'static {
         &self,
         new: &NewInvite<'_>,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_tenant::Result<Invite>> + Send;
+    ) -> impl Future<Output = afd_tenant::Result<Invitation>> + Send;
 
-    /// The account's acceptable invites. See [`Team::invites`].
-    fn invites(
+    /// The account's acceptable invitations. See [`Team::invitations`].
+    fn invitations(
         &self,
         tenant: &Uuid7,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_tenant::Result<Vec<Invite>>> + Send;
+    ) -> impl Future<Output = afd_tenant::Result<Vec<Invitation>>> + Send;
 
-    /// Revokes one invite, idempotently. See [`Team::revoke_invite`].
-    fn revoke_invite(
+    /// Revokes one invitation, idempotently. See [`Team::revoke_invitation`].
+    fn revoke_invitation(
         &self,
         tenant: &Uuid7,
         invite: &Uuid7,
@@ -67,25 +67,25 @@ impl TenantTeam for Team {
         &self,
         new: &NewInvite<'_>,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_tenant::Result<Invite>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<Invitation>> + Send {
         Self::invite(self, new, now)
     }
 
-    fn invites(
+    fn invitations(
         &self,
         tenant: &Uuid7,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_tenant::Result<Vec<Invite>>> + Send {
-        Self::invites(self, tenant, now)
+    ) -> impl Future<Output = afd_tenant::Result<Vec<Invitation>>> + Send {
+        Self::invitations(self, tenant, now)
     }
 
-    fn revoke_invite(
+    fn revoke_invitation(
         &self,
         tenant: &Uuid7,
         invite: &Uuid7,
         now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<()>> + Send {
-        Self::revoke_invite(self, tenant, invite, now)
+        Self::revoke_invitation(self, tenant, invite, now)
     }
 
     fn waiting_for(

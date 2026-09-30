@@ -41,11 +41,12 @@ VALUES ($1::uuid, $2::uuid, $3, $4, $5::uuid, $6, $8, $7, $7)";
 /// The account's invites that can still be accepted, newest first.
 ///
 /// `$1` tenant · `$2` now.
-pub const SELECT_TENANT_PENDING: &str = "\
-SELECT id::text, email, role, expires_at, created_at \
-FROM core.invites \
-WHERE tenant_id = $1::uuid AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > $2 \
-ORDER BY created_at DESC, id DESC";
+pub const SELECT_TENANT_PENDING: &str = concat!(
+    select_invitation!(),
+    "FROM core.invites \
+     WHERE tenant_id = $1::uuid AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > $2 \
+     ORDER BY invites.created_at DESC, invites.id DESC"
+);
 
 /// Revokes one pending invite.
 ///
@@ -76,11 +77,10 @@ pub const SELECT_PENDING_FOR_EMAIL: &str = concat!(
 ///
 /// `$1` invite. The lock is what makes two tabs accepting at once one accept:
 /// the second waits, then reads the first one's stamp.
-pub const LOCK_INVITE: &str = "\
-SELECT tenant_id::text, email, role, expires_at, accepted_by::text, revoked_at \
-FROM core.invites \
-WHERE id = $1::uuid \
-FOR UPDATE";
+pub const LOCK_INVITE: &str = concat!(
+    select_invitation!(),
+    "FROM core.invites WHERE id = $1::uuid FOR UPDATE"
+);
 
 /// The membership an accept writes. A second accept writes nothing.
 ///
@@ -109,4 +109,5 @@ WHERE id = $1::uuid";
 ///
 /// `$1` tenant.
 pub const SELECT_TENANT_WORKSPACE_IDS: &str = "\
-SELECT id::text FROM core.workspaces WHERE tenant_id = $1::uuid ORDER BY created_at, id";
+SELECT id::text FROM core.workspaces WHERE tenant_id = $1::uuid \
+ORDER BY workspaces.created_at, workspaces.id";

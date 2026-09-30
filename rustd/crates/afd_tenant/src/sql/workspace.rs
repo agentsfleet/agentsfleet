@@ -122,8 +122,7 @@ pub const SELECT_SUBJECT_ACCOUNTS: &str = concat!(
             COALESCE(owner.display_name, t.name) AS owner_name, me.tenant_id::text AS home_tenant_id \
      FROM held CROSS JOIN me \
      JOIN core.tenants t ON t.id = held.tenant_id ",
-    owner_name_join!(2),
-    "ORDER BY t.id"
+    owner_name_join!(2)
 );
 
 /// The one account a claim-bound credential holds: its own.
