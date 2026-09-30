@@ -15,7 +15,6 @@ afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_admission::Error => Admission,
     afd_crypto::error::Error => Identifier,
-    afd_core::error::Error => IdentifierShape,
     reqwest::Error => UpstreamUnreachable,
 );
 
@@ -88,8 +87,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let admission_gone = admission_sample("datastore");
     let identifier =
         afd_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
-    let shape =
-        afd_core::id::Uuid7::parse("not-an-identifier").expect_err("a non-identifier is refused");
     // A URL the builder rejects, so a `reqwest::Error` exists without a request
     // ever leaving the process — this suite reaches no network.
     let unreachable = reqwest::Client::new()
@@ -109,10 +106,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         (
             "identifier",
             ErrorKind::Identifier { source: identifier }.into(),
-        ),
-        (
-            "identifier shape",
-            ErrorKind::IdentifierShape { source: shape }.into(),
         ),
         (
             "admission",

@@ -222,7 +222,7 @@ impl Preferences {
     ) -> Result<()> {
         let mut connection = self.database.acquire().await?;
         sqlx::query(sql::UPSERT_PREF)
-            .bind(self.mint_id(now)?.as_str())
+            .bind(self.entropy.uuid7(now)?.as_str())
             .bind(user)
             .bind(workspace.as_str())
             .bind(key.as_str())
@@ -273,11 +273,6 @@ impl Preferences {
             has_steer_event: row.try_get(3).map_err(&unreadable)?,
             model_configured,
         })
-    }
-
-    /// Draws the identifier one upserted row carries.
-    fn mint_id(&self, now: UnixMillis) -> Result<Uuid7> {
-        Ok(Uuid7::encode(now, self.entropy.uuid_randomness()?)?)
     }
 }
 

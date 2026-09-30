@@ -1,7 +1,7 @@
 //! Priced model catalogue CRUD with revision bumps in the same transaction.
 
 use afd_core::clock::UnixMillis;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use sqlx::{Acquire as _, Row as _};
@@ -242,9 +242,7 @@ impl Models {
     }
 
     fn mint(&self, now: UnixMillis) -> Result<Uuid7> {
-        let mut bytes = [0_u8; ENTROPY_LEN];
-        self.entropy.fill(&mut bytes)?;
-        Ok(Uuid7::encode(now, bytes)?)
+        Ok(self.entropy.uuid7(now)?)
     }
 }
 

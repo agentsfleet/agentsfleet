@@ -29,7 +29,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_vault::{SecretBody, SecretName, Vault};
@@ -236,9 +236,7 @@ impl Grants {
         now: UnixMillis,
         entropy: &Entropy,
     ) -> Result<()> {
-        let mut bytes = [0_u8; ENTROPY_LEN];
-        entropy.fill(&mut bytes)?;
-        let id = Uuid7::encode(now, bytes)?;
+        let id = entropy.uuid7(now)?;
 
         // Let go of any OTHER account this workspace still routes for the
         // provider, before claiming this one. The vault holds one handle per

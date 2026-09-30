@@ -61,19 +61,11 @@ pub(crate) enum ErrorKind {
         source: afd_core::error::Error,
     },
 
-    /// An identifier this crate had to mint or read could not be formed.
+    /// A ledger row's identifier could not be minted.
     ///
-    /// Transparent, and lifted by `error_lifts!`: the identifier layer already
-    /// says what was wrong with the value, and restating it here would add
-    /// nothing and cost the `source()` chain.
-    #[error(transparent)]
-    Identifier { source: afd_core::error::Error },
-
-    /// The entropy source a ledger row's identifier is drawn from failed.
-    ///
-    /// Transparent for the same reason [`ErrorKind::Identifier`] is: a charge
-    /// that cannot mint a row id is a charge that did not land, which is what
-    /// the caller needs rather than a second sentence about randomness.
+    /// Transparent: a charge that cannot mint a row id is a charge that did not
+    /// land, which is what the caller needs rather than a second sentence about
+    /// randomness.
     #[error(transparent)]
     Entropy { source: afd_crypto::error::Error },
 
@@ -107,7 +99,6 @@ impl Error {
             }
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
-            | ErrorKind::Identifier { .. }
             | ErrorKind::Entropy { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 DETAIL_OPERATION_FAILED,

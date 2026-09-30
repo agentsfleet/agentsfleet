@@ -266,7 +266,7 @@ impl IntegrationGrants {
     /// [`afd_gate`]'s park mints its pair there: a second source is a second
     /// failure mode on a path that already has one.
     fn mint(&self, now: UnixMillis) -> Result<Uuid7> {
-        Ok(Uuid7::encode(now, self.entropy().uuid_randomness()?)?)
+        Ok(self.entropy().uuid7(now)?)
     }
 }
 

@@ -257,29 +257,12 @@ impl Error {
     }
 }
 
-impl From<afd_db::Error> for Error {
-    fn from(source: afd_db::Error) -> Self {
-        Self::new(ErrorKind::Datastore { source })
-    }
-}
-
-impl From<afd_dragonfly::Error> for Error {
-    fn from(source: afd_dragonfly::Error) -> Self {
-        Self::new(ErrorKind::Queue { source })
-    }
-}
-
-impl From<afd_core::error::Error> for Error {
-    fn from(source: afd_core::error::Error) -> Self {
-        Self::new(ErrorKind::Mint { source })
-    }
-}
-
-impl From<afd_crypto::error::Error> for Error {
-    fn from(source: afd_crypto::error::Error) -> Self {
-        Self::new(ErrorKind::Entropy { source })
-    }
-}
+afd_core::error_lifts!(Error, ErrorKind:
+    afd_db::Error => Datastore,
+    afd_dragonfly::Error => Queue,
+    afd_core::error::Error => Mint,
+    afd_crypto::error::Error => Entropy,
+);
 
 mod raise;
 

@@ -16,7 +16,7 @@
 //! reason the cursor survives a claim.
 
 use afd_core::clock::UnixMillis;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use afd_observability::metrics::label::fleet::DeliveryStage;
 use afd_observability::producers;
 
@@ -149,11 +149,8 @@ impl Leases {
     /// two consecutive fallible draws inside the write would push
     /// [`Leases::issue`] past the function-length line for no gain.
     fn mint(&self, now: UnixMillis) -> Result<(Uuid7, Uuid7)> {
-        let mut bytes = [0u8; ENTROPY_LEN];
-        self.entropy().fill(&mut bytes)?;
-        let lease_id = Uuid7::encode(now, bytes)?;
-        self.entropy().fill(&mut bytes)?;
-        let event_row_id = Uuid7::encode(now, bytes)?;
+        let lease_id = self.entropy().uuid7(now)?;
+        let event_row_id = self.entropy().uuid7(now)?;
         Ok((lease_id, event_row_id))
     }
 }

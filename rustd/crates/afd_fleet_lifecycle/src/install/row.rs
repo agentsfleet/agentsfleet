@@ -44,9 +44,6 @@ const VISIBILITY_PUBLIC: &str = "public";
 /// into a 500, which is the regression the Zig comment records.
 const NAME_CONSTRAINT: &str = "uq_fleets_workspace_id_name";
 
-/// Postgres's unique-violation SQLSTATE.
-const UNIQUE_VIOLATION: &str = "23505";
-
 /// The contexts a failed statement on this path reports under.
 const CONTEXT_LIBRARY: &str = "resolve install source";
 const CONTEXT_INSERT: &str = "insert fleet row";
@@ -221,8 +218,7 @@ impl Naming {
 /// Tells a lost name race apart from a broken statement.
 fn is_name_conflict(source: &sqlx::Error) -> bool {
     source.as_database_error().is_some_and(|failure| {
-        failure.code().is_some_and(|code| code == UNIQUE_VIOLATION)
-            && failure.constraint() == Some(NAME_CONSTRAINT)
+        failure.is_unique_violation() && failure.constraint() == Some(NAME_CONSTRAINT)
     })
 }
 

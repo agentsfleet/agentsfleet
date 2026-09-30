@@ -36,7 +36,7 @@ use std::time::Duration;
 
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_core::clock::{self, UnixMillis};
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_observability::metrics::label::fleet::{SyntheticEvent, VerifierRun};
@@ -222,9 +222,7 @@ impl Repairs {
 
     /// A fresh claim token for one pass.
     fn token(&self, now: UnixMillis) -> Result<Uuid7> {
-        let mut bytes = [0u8; ENTROPY_LEN];
-        self.entropy.fill(&mut bytes)?;
-        Ok(Uuid7::encode(now, bytes)?)
+        Ok(self.entropy.uuid7(now)?)
     }
 }
 

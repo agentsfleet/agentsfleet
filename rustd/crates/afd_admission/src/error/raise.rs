@@ -15,7 +15,6 @@ afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_dragonfly::Error => Queue,
     afd_crypto::error::Error => Entropy,
-    afd_core::error::Error => Identifier,
 );
 
 /// The SQLSTATE class Postgres answers when it is out of something —
@@ -122,7 +121,6 @@ impl sqlx::error::DatabaseError for DiskFull {
 )]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
-    let identifier = afd_core::id::Uuid7::parse("").expect_err("an empty identifier is refused");
     let (entropy, ctrl) = afd_crypto::entropy::Entropy::new_mocked();
     ctrl.fail_next();
     let entropy = entropy
@@ -171,10 +169,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             ErrorKind::Queue { source: answered }.into(),
         ),
         ("entropy", ErrorKind::Entropy { source: entropy }.into()),
-        (
-            "identifier",
-            ErrorKind::Identifier { source: identifier }.into(),
-        ),
         (
             "over budget",
             ErrorKind::OverBudget {

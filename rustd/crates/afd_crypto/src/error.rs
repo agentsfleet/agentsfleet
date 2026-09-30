@@ -59,7 +59,17 @@ pub(crate) enum ErrorKind {
 
     #[error("the system entropy source failed")]
     Entropy,
+
+    #[error("an identifier could not be minted from the given instant")]
+    Identifier {
+        #[source]
+        source: afd_core::error::Error,
+    },
 }
+
+afd_core::error_lifts!(Error, ErrorKind:
+    afd_core::error::Error => Identifier,
+);
 
 impl Error {
     /// Whether the configured master key was not 64 hexadecimal characters.

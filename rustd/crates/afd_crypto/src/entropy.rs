@@ -17,6 +17,9 @@
 //! The mock lives behind the `test-util` feature (`M-TEST-UTIL`), so a release
 //! build has no constructor that can weaken nonce generation.
 
+use afd_core::clock::UnixMillis;
+use afd_core::id::Uuid7;
+
 use crate::error::{Error, ErrorKind, Result};
 
 /// Where nonce bytes come from.
@@ -107,6 +110,20 @@ impl Entropy {
         let mut bytes = [0_u8; afd_core::id::ENTROPY_LEN];
         self.fill(&mut bytes)?;
         Ok(bytes)
+    }
+
+    /// A fresh `UUIDv7` stamped with `at`, its random half drawn from this source.
+    ///
+    /// The one way a row identifier is minted. Every store used to spell the
+    /// draw-then-encode pair itself, so the shape lives here once and a caller
+    /// passes the same instant it writes into `created_at`, which keeps the
+    /// identifier sorting beside that column.
+    ///
+    /// # Errors
+    /// Reports a source that refused the draw, or an instant the identifier
+    /// cannot carry.
+    pub fn uuid7(&self, at: UnixMillis) -> Result<Uuid7> {
+        Ok(Uuid7::encode(at, self.uuid_randomness()?)?)
     }
 
     /// Fills `buf` with random bytes.

@@ -66,17 +66,10 @@ pub(crate) enum ErrorKind {
     /// machine that cannot draw random bytes is not a machine whose Postgres
     /// is down, and an operator reading the two the same way would restart
     /// the wrong thing.
-    #[error("an identifier could not be drawn")]
+    #[error("an identifier could not be minted")]
     Entropy {
         #[source]
         source: afd_crypto::error::Error,
-    },
-
-    /// An identifier could not be minted from the instant it was drawn at.
-    #[error("an identifier could not be minted")]
-    Identifier {
-        #[source]
-        source: afd_core::error::Error,
     },
 
     /// The continuation's acceptance could not be recorded — see the module
@@ -94,8 +87,7 @@ impl Error {
         match self.kind() {
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
-            | ErrorKind::Entropy { .. }
-            | ErrorKind::Identifier { .. } => (
+            | ErrorKind::Entropy { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 DETAIL_OPERATION_FAILED,
             ),

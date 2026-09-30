@@ -53,14 +53,14 @@
 //! that is not a provider key — never open an envelope at all.
 
 use afd_core::clock::UnixMillis;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use afd_crypto::aad::Aad;
 use afd_crypto::secret::SecretBytes;
 use afd_vault::StoredEnvelope;
 use sqlx::FromRow as _;
 use sqlx::{Acquire as _, Row as _, Transaction};
 
-use crate::error::{Result, entropy_drained, mint_failed, query, row_malformed, vault_open};
+use crate::error::{Result, entropy_drained, query, row_malformed, vault_open};
 use crate::provider::endpoint::{OPENAI_COMPATIBLE, Rejection};
 use crate::provider::selection::{COLUMN_ID, Selection, TABLE_WORKSPACES};
 use crate::provider::store::Providers;
@@ -279,9 +279,7 @@ impl Providers {
 
     /// A fresh identifier for a registry entry.
     pub(crate) fn mint_entry_id(&self, now: UnixMillis) -> Result<Uuid7> {
-        let mut bytes = [0u8; ENTROPY_LEN];
-        self.entropy().fill(&mut bytes).map_err(entropy_drained)?;
-        Uuid7::encode(now, bytes).map_err(mint_failed)
+        self.entropy().uuid7(now).map_err(entropy_drained)
     }
 }
 

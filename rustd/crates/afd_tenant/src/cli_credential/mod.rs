@@ -73,9 +73,6 @@ const CONTEXT_REVOKE: &str = "revoke cli-credential";
 /// The context the subject lookup reports under.
 const CONTEXT_SUBJECT: &str = "resolve subject user";
 
-/// The Postgres error class for a violated unique index.
-const UNIQUE_VIOLATION: &str = "23505";
-
 /// Leading hex characters kept for display beside a credential.
 ///
 /// Eight of sixty-four leaves 224 bits unrevealed, so a stored display prefix
@@ -154,7 +151,7 @@ impl CliCredentials {
         // datastore, and holding a transaction open across them would widen the
         // window on this write path for nothing.
         let credential = Minted::draw(CredentialKind::CliCredential, &self.entropy)?;
-        let id = self.mint_id(now)?;
+        let id = self.entropy.uuid7(now)?;
 
         let mut connection = self.database.acquire().await?;
         // Dropped without a commit — on a `?` below, or on a panic — this rolls
@@ -253,11 +250,6 @@ impl CliCredentials {
             revoked_at_ms: now.as_millis(),
         })
     }
-
-    /// Draws a fresh credential-row identifier.
-    fn mint_id(&self, now: UnixMillis) -> Result<Uuid7> {
-        Ok(Uuid7::encode(now, self.entropy.uuid_randomness()?)?)
-    }
 }
 
 /// Tells a lost race apart from a broken statement.
@@ -268,8 +260,7 @@ impl CliCredentials {
 fn classify_insert(source: sqlx::Error) -> crate::Error {
     let collided = source
         .as_database_error()
-        .and_then(sqlx::error::DatabaseError::code)
-        .is_some_and(|code| code == UNIQUE_VIOLATION);
+        .is_some_and(sqlx::error::DatabaseError::is_unique_violation);
     if collided {
         error::cli_credential_machine_collision()
     } else {

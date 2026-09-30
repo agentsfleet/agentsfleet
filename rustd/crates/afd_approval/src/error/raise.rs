@@ -14,7 +14,6 @@ use super::{Error, ErrorKind};
 afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_crypto::error::Error => Entropy,
-    afd_core::error::Error => Identifier,
     afd_admission::Error => Admission,
 );
 
@@ -55,8 +54,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
     let entropy =
         afd_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
-    let identifier =
-        afd_core::id::Uuid7::parse("not-an-identifier").expect_err("a non-identifier is refused");
     let admission = afd_admission::error::one_of_each_kind()
         .into_iter()
         .find(|(label, _error)| *label == "datastore")
@@ -74,10 +71,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             row_malformed("status")(sqlx::Error::ColumnNotFound("status".into())),
         ),
         ("entropy", ErrorKind::Entropy { source: entropy }.into()),
-        (
-            "identifier",
-            ErrorKind::Identifier { source: identifier }.into(),
-        ),
         (
             "admission",
             ErrorKind::Admission { source: admission }.into(),

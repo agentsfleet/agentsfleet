@@ -96,18 +96,11 @@ pub(crate) enum ErrorKind {
         source: sqlx::Error,
     },
 
-    /// The entropy a row identifier is minted from could not be drawn.
-    #[error("the entropy a row identifier is minted from could not be drawn")]
+    /// A row identifier could not be minted.
+    #[error("a row identifier could not be minted")]
     Entropy {
         #[source]
         source: afd_crypto::error::Error,
-    },
-
-    /// A row identifier could not be minted from the current instant.
-    #[error("a row identifier could not be minted")]
-    Identifier {
-        #[source]
-        source: afd_core::error::Error,
     },
 }
 
@@ -131,7 +124,7 @@ impl Error {
                 DETAIL_DATABASE_UNAVAILABLE,
             ),
             ErrorKind::Query { .. } => (error_code::INTERNAL_DB_QUERY, DETAIL_DATABASE_ERROR),
-            ErrorKind::Queue { .. } | ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => (
+            ErrorKind::Queue { .. } | ErrorKind::Entropy { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 DETAIL_OPERATION_FAILED,
             ),

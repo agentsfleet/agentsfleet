@@ -147,26 +147,26 @@ fn a_statement_that_would_not_run_names_its_operation_to_the_operator_only() {
 
 #[test]
 fn no_sentence_names_which_internal_failure_it_was() {
-    // Three internal failures share one sentence on purpose. Naming which of
+    // Two internal failures share one sentence on purpose. Naming which of
     // them it was would tell whoever provoked it something about this
     // deployment's state, and an ingress caller is exactly who must not learn
     // it — the webhook endpoint is public until the signature passes.
     let opaque: Vec<&'static str> = one_of_each_kind()
         .into_iter()
-        .filter(|(label, _error)| ["queue answered", "entropy", "identifier"].contains(label))
+        .filter(|(label, _error)| ["queue answered", "entropy"].contains(label))
         .map(|(_label, error)| error.detail())
         .collect();
 
     assert_eq!(
         opaque.len(),
-        3,
+        2,
         "the sample lost one of the opaque failures"
     );
     let distinct: BTreeSet<&&str> = opaque.iter().collect();
     assert_eq!(
         distinct.len(),
         1,
-        "three internal failures must be indistinguishable to a caller: {opaque:?}"
+        "two internal failures must be indistinguishable to a caller: {opaque:?}"
     );
     assert_eq!(
         opaque.first().copied(),
