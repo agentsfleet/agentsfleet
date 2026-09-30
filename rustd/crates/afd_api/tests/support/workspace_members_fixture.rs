@@ -6,7 +6,7 @@
 //! John's. Each signs in with a browser session, the one credential resolved
 //! through the user row a membership hangs from.
 
-use afd_auth::scope::{ScopeSet, TENANT_OWNER_GRANT};
+use afd_auth::scope::{Scope, ScopeSet, TENANT_OWNER_GRANT};
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
@@ -20,6 +20,12 @@ use crate::harness::Fleet;
 /// What a signed-up owner holds: the grant signup writes to the provider.
 pub(crate) fn owner_scopes() -> ScopeSet {
     ScopeSet::from_scopes(&TENANT_OWNER_GRANT)
+}
+
+/// What a platform operator holds: their own account's grant, plus the scope
+/// that crosses into every other account's workspaces.
+pub(crate) const fn platform_scopes() -> ScopeSet {
+    ScopeSet::from_scopes(&TENANT_OWNER_GRANT).insert(Scope::WorkspaceAny)
 }
 
 /// One signed-up person and the account they own.
@@ -147,6 +153,16 @@ impl Members {
         .expect("Bob's membership is removed");
     }
 
+    /// The actor of every message admitted to John's fleet.
+    pub(crate) async fn admitted_actors(&self) -> Vec<String> {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query_scalar("SELECT actor FROM core.fleet_admissions WHERE fleet_id = $1::uuid")
+            .bind(self.fleet.as_str())
+            .fetch_all(&mut *connection)
+            .await
+            .expect("John's fleet's admissions read")
+    }
+
     /// A router signed in as `who`, deciding access from these rows.
     pub(crate) fn router(&self, who: &Person, scopes: ScopeSet) -> Router {
         Fleet::live(self.database.clone(), &who.subject, scopes)
@@ -159,12 +175,13 @@ impl Members {
     pub(crate) fn live_router(
         &self,
         who: &Person,
+        scopes: ScopeSet,
         queue: Dragonfly,
         hub: SubscriptionHub,
     ) -> Router {
-        Fleet::live(self.database.clone(), &who.subject, owner_scopes())
+        Fleet::live(self.database.clone(), &who.subject, scopes)
             .with_live_ownership()
-            .with_dashboard_holding(&who.subject, owner_scopes())
+            .with_dashboard_holding(&who.subject, scopes)
             .with_steering_queue(self.database.clone(), queue)
             .with_live_hub(hub)
             .router()
