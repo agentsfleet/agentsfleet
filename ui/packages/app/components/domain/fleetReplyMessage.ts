@@ -34,6 +34,12 @@ const NO_OUTPUT = null;
 
 type ReplyPart = Exclude<ThreadMessageLike["content"], string>[number];
 
+/** Whether this event's reply is still running: the one rule behind a reply
+ * row's status and the thread's `isRunning`. */
+export function isReplyInFlight(event: FleetEvent): boolean {
+  return IN_FLIGHT.has(event.status);
+}
+
 /**
  * Re-shape a converted row as its reply. `base` carries the row's custom bag
  * (status, outcome, failure, timing), so the reply reads the same fields the
@@ -43,9 +49,7 @@ export function toReplyMessage(base: ThreadMessageLike, event: FleetEvent): Thre
   return {
     ...base,
     role: "assistant",
-    // Per message, never the thread's `isRunning`: that would disable the
-    // composer, and a working fleet is no reason to stop an operator steering.
-    status: IN_FLIGHT.has(event.status) ? RUNNING : MESSAGE_COMPLETE,
+    status: isReplyInFlight(event) ? RUNNING : MESSAGE_COMPLETE,
     content: replyParts(event),
     metadata: {
       ...base.metadata,

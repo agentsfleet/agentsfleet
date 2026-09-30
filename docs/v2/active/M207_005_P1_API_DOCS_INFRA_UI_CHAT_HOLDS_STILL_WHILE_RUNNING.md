@@ -98,11 +98,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — The steer rides assistant-ui's queue
 
-`FleetThread` passes a `queue` built by `useFleetSteerQueue`. Its `enqueue` and `steer` both hand the message to the existing delivery path (`writers.begin` → `appendOptimistic` → `postSteer`, one operation id per send), so M207_002/003's replay and Resend guarantees hold unchanged. `items` and `steerItems` stay empty, because the daemon admits every steer at once and the pending-sends ledger remains the one authority for an unconfirmed send. `isRunning` is `true` exactly while any reply row's status is `running`. **Implementation default:** dispatch immediately rather than `createMessageQueue`, because that controller holds items until the run ends and the fleet must receive a steer mid-run.
+`FleetThread` passes a `queue` built by `useFleetSteerQueue`. Its `enqueue` and `steer` both hand the message to the existing delivery path (`writers.begin` → `appendOptimistic` → `postSteer`, one operation id per send), so M207_002/003's replay and Resend guarantees hold unchanged. `items` and `steerItems` stay empty, because the daemon admits every steer at once and the pending-sends ledger remains the one authority for an unconfirmed send. `isRunning` is `true` exactly while any reply row's status is `running`. **Implementation default:** dispatch immediately rather than `createMessageQueue`, because that controller holds items until the run ends and the fleet must receive a steer mid-run. The queue returns before the send does, so a refused send's text comes back by the library's own `_returnToDraft` rule, applied in the adapter: when no newer send started, the text returns ahead of anything typed since.
 
-- **Dimension 1.1** — the composer's Send stays enabled while a reply runs → Test `test_send_enabled_while_running`
-- **Dimension 1.2** — a send while running and a send while idle each make one POST with one operation id → Test `test_queue_send_posts_once`
-- **Dimension 1.3** — `isRunning` is true exactly while a reply row is running → Test `test_is_running_tracks_reply_rows`
+- **Dimension 1.1** — the composer's Send stays enabled while a reply runs → Test `test_send_enabled_while_running` — DONE
+- **Dimension 1.2** — a send while running and a send while idle each make one POST with one operation id → Test `test_queue_send_posts_once` — DONE
+- **Dimension 1.3** — `isRunning` is true exactly while a reply row is running → Test `test_is_running_tracks_reply_rows` — DONE (`tests/fleet-thread/steer-queue.test.ts`)
 - **Dimension 1.4** — Resend still carries the first operation id → Test `test_failed_send_resend_journey`
 
 ### §2 — The thread anchors the turn at the top

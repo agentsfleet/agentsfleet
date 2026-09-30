@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   AssistantRuntimeProvider,
   useExternalStoreRuntime,
+  type AssistantRuntime,
 } from "@assistant-ui/react";
 import {
   DashboardPanel,
@@ -21,6 +22,8 @@ import { FleetConnectionIndicator, useArrivalCue } from "./FleetConnectionIndica
 import { useFleetPendingSends } from "./useFleetPendingSends";
 import { useCurrentUser } from "@/lib/auth/client";
 import { useMessageDelivery } from "./useFleetMessageDelivery";
+import { useFleetSteerQueue } from "./useFleetSteerQueue";
+import { isReplyInFlight } from "./fleetReplyMessage";
 import { FleetThreadViewport } from "./FleetThreadViewport";
 
 export type FleetThreadProps = {
@@ -99,11 +102,18 @@ export function FleetThread({
   // The runtime compares its adapter by identity: a fresh literal on a render
   // that changed no message (a connection cue, a ledger entry) re-ran every
   // assistant-ui selector in the thread for nothing.
+  // The steer rides assistant-ui's queue, so a run can be reported as one
+  // without closing the composer; the queue reaches the runtime through a ref
+  // because the runtime is built from the adapter that holds the queue.
+  const runtimeRef = useRef<AssistantRuntime | null>(null);
+  const queue = useFleetSteerQueue(delivery.onNew, runtimeRef);
+  const isRunning = useMemo(() => stream.events.some(isReplyInFlight), [stream.events]);
   const adapter = useMemo(
-    () => ({ isRunning: false, messages: entries, convertMessage: convertEntry, onNew: delivery.onNew }),
-    [entries, convertEntry, delivery.onNew],
+    () => ({ isRunning, messages: entries, convertMessage: convertEntry, onNew: delivery.onNew, queue }),
+    [isRunning, entries, convertEntry, delivery.onNew, queue],
   );
   const runtime = useExternalStoreRuntime<FleetThreadEntry>(adapter);
+  runtimeRef.current = runtime;
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <SenderLabelProvider senderLabel={senderLabel}>
