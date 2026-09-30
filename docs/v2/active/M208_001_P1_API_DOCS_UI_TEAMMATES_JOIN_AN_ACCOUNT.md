@@ -118,7 +118,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 M208 needs one external credential, for M208_003: the `smtp-relay` bag `{host, port, username, password, from_address}` in the admin-workspace vault. Source of record: the 1Password item `smtp-relay` in `ZMB_CD_DEV` and `ZMB_CD_PROD`, created by Indy after verifying `agentsfleet.net` at Resend (host `smtp.resend.com`, port `465`, username `resend`, password a Resend API key per environment), and loaded with `playbooks/lib/platform_secret_sync.sh smtp-relay` (M208_003). It is a post-deploy input like `slack-app` and `github-app`: the early gates never read it (`credentials_test.sh`, `test_post_deploy_values_are_not_early_inputs`), the preflight playbook's post-deploy table names it and its source, and the sync fails naming a missing field. M208_001 and M208_002 ship with zero new credentials.
 
-- **Dimension 1.1** — the post-deploy table lists `smtp-relay` and its five fields; neither early gate reads it → Test `test_smtp_relay_is_a_post_deploy_input`
+- **Dimension 1.1** — the post-deploy table lists `smtp-relay` and its five fields; neither early gate reads it → Test `test_smtp_relay_is_a_post_deploy_input` — DONE (`playbooks/founding/02_preflight/credentials_test.sh`)
 
 ### §2 — Access resolves through memberships, with two roles
 
