@@ -118,4 +118,16 @@ mod tests {
         assert_eq!(Grant::Membership(Role::Member).role(), Some(Role::Member));
         assert_eq!(Grant::Platform.role(), None);
     }
+
+    /// The contributor auth page names both roles and the refusal a member
+    /// meets, spelled from the constants a rename would change.
+    #[test]
+    fn test_docs_name_member_roles() {
+        const AUTH_PAGE: &str = include_str!("../../../../../docs/AUTH.md");
+        let refusal = afd_core::error_code::AUTH_OWNER_ONLY;
+        for named in [ROLE_OWNER, ROLE_MEMBER, refusal.as_str()] {
+            let spelled = format!("`{named}`");
+            assert!(AUTH_PAGE.contains(&spelled), "docs/AUTH.md names {spelled}");
+        }
+    }
 }

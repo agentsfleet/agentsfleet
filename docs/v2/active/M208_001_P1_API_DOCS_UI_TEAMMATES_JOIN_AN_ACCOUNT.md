@@ -162,7 +162,7 @@ Owners get Settings → Members (invite, copy link, pending invites, members, re
 
 `docs/AUTH.md` (memberships, the two roles, the owner-only refusal); public members and invites pages and the changelog on the docs branch.
 
-- **Dimension 6.1** — `docs/AUTH.md` names both roles and `UZ-AUTH-026` → Test `test_docs_name_member_roles`
+- **Dimension 6.1** — `docs/AUTH.md` names both roles and `UZ-AUTH-026` → Test `test_docs_name_member_roles` — DONE (`afd_tenant/src/workspace/access.rs`)
 
 ## Interfaces
 
