@@ -15,6 +15,7 @@ const {
   postSteerMock,
   useFleetEventStreamMock,
   capturedOnNew,
+  capturedRun,
   capturedSubmittedMessageId,
   signedIn,
   threadPath,
@@ -30,6 +31,9 @@ const {
   capturedOnNew: {
     current: null as ((msg: AppendMessage) => Promise<void>) | null,
   },
+  // What the thread told the runtime last: whether a reply runs, and the
+  // queue every send goes through.
+  capturedRun: { isRunning: false as boolean | undefined, hasQueue: false },
   capturedSubmittedMessageId: { current: null as string | null },
   // Who the client's auth script says is signed in: null until it loads.
   signedIn: { userId: "user_fleet_thread" as string | null },
@@ -67,6 +71,8 @@ vi.mock("@assistant-ui/react", async () => {
       cfg: Parameters<typeof actual.useExternalStoreRuntime>[0],
     ) => {
       capturedOnNew.current = cfg.onNew ?? null;
+      capturedRun.isRunning = cfg.isRunning;
+      capturedRun.hasQueue = cfg.queue !== undefined;
       return actual.useExternalStoreRuntime(cfg);
     },
   };
@@ -252,10 +258,12 @@ beforeEach(() => {
   // in one test leaks its notice — and its restored text — into the next.
   __resetPendingSendsForTests();
   capturedOnNew.current = null;
+  capturedRun.isRunning = false;
+  capturedRun.hasQueue = false;
   capturedSubmittedMessageId.current = null;
   signedIn.userId = TEST_SUBJECT;
 });
 
 afterEach(() => cleanup());
 
-export { routerRefreshMock, postSteerMock, useFleetEventStreamMock, capturedOnNew, capturedSubmittedMessageId };
+export { routerRefreshMock, postSteerMock, useFleetEventStreamMock, capturedOnNew, capturedRun, capturedSubmittedMessageId };
