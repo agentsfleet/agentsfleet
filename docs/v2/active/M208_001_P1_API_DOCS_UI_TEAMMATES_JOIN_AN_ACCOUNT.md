@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M208
 **Workstream:** 001
 **Date:** Sep 30, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — nobody but a workspace's creator can open it today; a team cannot share one fleet
 **Categories:** API, DOCS, UI
 **Batch:** B1 — first of three M208 workstreams; all three ship in one Pull Request (PR) (Indy, Sep 30, 2026)
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** `feat/m208-team-accounts`
+**Baseline revision:** `f90ed13159ff5a405b28ce3fdbe0e6ab17c4a012`
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** none (M207_005 merged: `614813f12`)
 **Provenance:** LLM-drafted (Claude Opus 5.5, Sep 30, 2026); decisions in Discovery are Indy's
