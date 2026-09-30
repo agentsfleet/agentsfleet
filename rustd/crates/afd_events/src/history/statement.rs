@@ -280,6 +280,28 @@ pub(super) const SELECT_THREAD_PAGE_AFTER: &str = concat!(
     newest_first!(5)
 );
 
+/// The fleet's steers on its queue that no runner has yet, newest first:
+/// `$1` workspace, `$2` fleet, `$3` producer, `$4` limit.
+///
+/// A first page's only other read. Both partial indexes on `delivered_at IS
+/// NULL` (`schema/910`, `schema/914`) key on `(fleet_id, created_at, seq)` and
+/// hold only in-flight work, so whichever the planner takes, the fleet is an
+/// index condition, the order comes off the index, and the cost follows what
+/// waits, never the ledger's history.
+/// The logical id is spelled in Rust (`afd_admission::logical_id`), so the two
+/// integers come back as they are.
+pub(super) const SELECT_THREAD_QUEUED: &str = "\
+SELECT fleet_id::text, workspace_id::text, actor, event_type, request_json, created_at, seq \
+FROM core.fleet_admissions \
+WHERE fleet_id = $2::uuid AND workspace_id = $1::uuid AND producer = $3 \
+  AND receipt IS NOT NULL AND delivered_at IS NULL \
+ORDER BY created_at DESC, seq DESC \
+LIMIT $4";
+
+/// The waiting-messages text, for the suite that asks Postgres how it plans it.
+#[cfg(feature = "test-util")]
+pub const QUEUED_READ_TEXT: &str = SELECT_THREAD_QUEUED;
+
 /// Every listing and thread text, named, for the suite that asks Postgres how
 /// it plans each one.
 #[cfg(feature = "test-util")]
