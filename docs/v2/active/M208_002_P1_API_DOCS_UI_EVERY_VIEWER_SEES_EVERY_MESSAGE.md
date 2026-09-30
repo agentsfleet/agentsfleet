@@ -40,7 +40,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** the M208 PR (see M208_001)
 - **Intent (one sentence):** whoever types, from whichever device, every screen on that fleet shows it immediately and says who typed it.
-- **Handshake** — pending until the implementing agent performs PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** — Oct 1, 2026, stated to Indy before EXECUTE: when anyone types to a fleet, every screen on it shows the message at once, marked waiting until a runner picks it up, under "You" or the sender's name. Assumptions stated: "You" compares the session's subject claim with the steer's actor; `Steered` carries the admission instant; queued rows lead the first page, merged by event id; documentation is the OpenAPI stream description and `docs/architecture/data_flow.md`; the command-line client parses no frames. Indy: "Go, R1 after merge (Recommended)".
 
 ## Implementing agent — read these first
 
@@ -71,8 +71,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/streaming/workspace-stream.ts` | EDIT | the wall treats `event_admitted` as a no-op |
 | `ui/packages/app/lib/events/event-summary.ts` | EDIT | sender labels; "Waiting for {fleet}" for `queued` |
 | `ui/packages/app/components/domain/{FleetThread,FleetMessageRow}.tsx` | EDIT | members' names reach the rows |
+| `ui/packages/app/lib/streaming/fleet-stream-admitted.ts`, `ui/packages/app/lib/events/sender-names.ts` | CREATE | the admitted frame's handling, beside `fleet-stream-frames.ts` at its cap; the viewer's and members' labels |
+| `ui/packages/app/lib/auth/credential.ts` | EDIT | the session subject, the viewer's own steer actor |
+| `rustd/crates/afd_admission/src/{lib,repeat}.rs` | EDIT | the admission answers with its `event_created_at` |
+| `rustd/crates/afd_events/src/history/**` | EDIT | the queued rows' shape beside the thread's |
 | `docs/architecture/data_flow.md` | EDIT | the admitted frame in the steer flow |
-| `~/Projects/docs` (branch `chore/m208-team-accounts-changelog`) | EDIT | live-stream frames page |
 
 ## Applicable Rules
 
@@ -132,7 +135,7 @@ The viewer's own messages read "You"; a member's read their display name from `G
 
 ### §5 — Documentation
 
-The stream description and OpenAPI name `event_admitted` and `message`; `docs/architecture/data_flow.md` shows where it fires; the public frames page on the docs branch.
+The stream description and OpenAPI name `event_admitted` and `message`; `docs/architecture/data_flow.md` shows where it fires. The public API reference renders the stream description from OpenAPI; no other public page documents frames (Discovery).
 
 - **Dimension 5.1** — every `TailFrame` kind appears in the stream description → Test `test_stream_description_names_every_frame`
 
@@ -196,7 +199,7 @@ GET /v1/workspaces/{workspace_id}/members  items gain  actor   ("steer:<oidc_sub
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Two people see each other's messages (§4) | `cd ui/packages/app && bunx playwright test --config=playwright.acceptance.config.ts --project=journeys -g test_member_sees_teammate_message_then_reply` | `1 passed` | P0 | |
+| R1 | Two people see each other's messages (§4) | `cd ui/packages/app && bunx playwright test --config=playwright.acceptance.config.ts --project=journeys -g test_member_sees_teammate_message_then_reply` | `1 passed` | P0 | post-merge (Indy, Discovery) |
 | R2 | Admitted frame and queued rows (§1, §2) | `make test-integration-rustd` | exit 0 | P0 | |
 | R3 | Rows render once, held when owed (§3) | `cd ui/packages/app && bunx vitest run lib/streaming` | exit 0 | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
@@ -247,3 +250,5 @@ N/A — no files deleted.
 - **Metrics review** — pending.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
+- **PLAN source corrections** — Oct 1, 2026: no "You" label exists; every `steer:*` actor reads "Operator" (`ui/packages/app/lib/events/event-summary.ts:51,101`), so §4 learns the viewer's actor from the session's subject claim (`lib/auth/credential.ts`), which `steer:<oidc_subject>` records (`message_steer.rs:219-229`, `schema/220_users.sql`). The admission answers with id, digest and fleet only (`afd_admission/src/repeat.rs:20-28`), so it gains `event_created_at` for the frame. The thread reads newest first (`afd_events/src/history/statement.rs:92`), so queued rows lead the first page. `~/Projects/docs` holds no frames page (`event_received` appears only in `changelog.mdx`), so §5 drops that row. The command-line client parses no frames (`cli/src`, no `event_received`).
+- **R1 after merge** — Oct 1, 2026, Indy via AskUserQuestion: "Go, R1 after merge (Recommended)". The journey calls the shared dev API, which runs `main`; the Pull Request opens under an Orly-Override Indy records, and Dimension 4.2 is graded after merge.
