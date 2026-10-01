@@ -136,7 +136,9 @@ pub(super) async fn email_invite<D: Services>(
     summary = "Send an invite's email again",
     description = concat!(
         "Sends the invite email for one pending invite into the caller's own ",
-        "account, as a new attempt. Use it when the invite's `email_status` is ",
+        "account, as a new attempt. An operation, in the side-effecting RPC ",
+        "category. Each call sends one more email and takes no `Idempotency-Key`. ",
+        "Use it when the invite's `email_status` is ",
         "`failed`. When the mail relay is not set up, refuses, or does not ",
         "answer, the route answers 503 `UZ-INV-005`. The invite stays valid ",
         "either way, so its `link` can be shared by hand. An invite that ",

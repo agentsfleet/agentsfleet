@@ -66,7 +66,7 @@ pub struct WaitingInvite<'a> {
     pub expires_at: i64,
 }
 
-/// `POST /v1/me/invites/{invite_id}/accept` — the account joined.
+/// `POST /v1/users/me/invites/{invite_id}/accept` — the account joined.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AcceptedInviteResponse<'a> {

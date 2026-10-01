@@ -68,7 +68,7 @@ const BODILESS_WRITES: [(&str, &str, &str); 6] = [
     ),
     (
         "post",
-        "/v1/me/invites/{invite_id}/accept",
+        "/v1/users/me/invites/{invite_id}/accept",
         "the invite and the signed-in person are the whole request",
     ),
     (

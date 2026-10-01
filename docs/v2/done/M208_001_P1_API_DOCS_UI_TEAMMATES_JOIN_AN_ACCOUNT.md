@@ -167,8 +167,8 @@ Owners get Settings → Members (invite, copy link, pending invites, members, re
 POST   /v1/tenants/me/invites            {email}   -> 201 {id, email, role:"member", expires_at, link}
 GET    /v1/tenants/me/invites                      -> 200 {items:[...]}
 DELETE /v1/tenants/me/invites/{invite_id}          -> 204
-GET    /v1/me/invites                              -> 200 {items:[{id, account:{owner_name}, expires_at}]}
-POST   /v1/me/invites/{invite_id}/accept           -> 200 {workspace_ids:[...]}
+GET    /v1/users/me/invites                              -> 200 {items:[{id, account:{owner_name}, expires_at}]}
+POST   /v1/users/me/invites/{invite_id}/accept           -> 200 {workspace_ids:[...]}
 GET    /v1/tenants/me/members                      -> 200 {items:[{user_id, display_name, email, role, joined_at}]}
 DELETE /v1/tenants/me/members/{user_id}            -> 204
 GET    /v1/workspaces/{workspace_id}/members       -> 200 {items:[{user_id, display_name, role}]}

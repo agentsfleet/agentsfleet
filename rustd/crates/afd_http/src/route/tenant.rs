@@ -180,8 +180,8 @@ impl TenantRoute {
                 "/v1/tenants/me/members/{user_id}",
                 Scopes::Always(WORKSPACE_ADMIN),
             ),
-            Self::InvitesForMe => ("/v1/me/invites", Scopes::Always(NONE)),
-            Self::InviteAcceptance => ("/v1/me/invites/{invite_id}/accept", Scopes::Always(NONE)),
+            Self::InvitesForMe => ("/v1/users/me/invites", Scopes::Always(NONE)),
+            Self::InviteAcceptance => ("/v1/users/me/invites/{invite_id}/accept", Scopes::Always(NONE)),
         };
         RouteMeta::new(Guard::Bearer, RouteClass::Api, template, scopes)
     }
