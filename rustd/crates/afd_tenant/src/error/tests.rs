@@ -6,6 +6,7 @@
 //! those three methods for every variant without inventing a cause.
 
 use super::{ApiKeyField, Error, SessionField};
+use afd_core::error_code;
 use std::error::Error as _;
 
 fn data_only_kinds() -> Vec<(&'static str, Error)> {
@@ -54,14 +55,38 @@ fn data_only_kinds() -> Vec<(&'static str, Error)> {
             "workspace tenant vanished",
             super::workspace_tenant_vanished(),
         ),
+        ("invite not found", super::invite_not_found()),
+        ("invite email mismatch", super::invite_email_mismatch()),
+        ("invite conflict", super::invite_conflict()),
+        ("member last owner", super::member_last_owner()),
+        ("email invalid", super::email_invalid()),
     ]);
     kinds
+}
+
+/// The team failures answer with the codes the routes and the dashboard
+/// branch on; a remap would send a refusal down the wrong path.
+#[test]
+fn team_failures_carry_their_wire_codes() {
+    let codes = [
+        (super::invite_not_found(), error_code::INVITE_NOT_FOUND),
+        (
+            super::invite_email_mismatch(),
+            error_code::INVITE_EMAIL_MISMATCH,
+        ),
+        (super::invite_conflict(), error_code::INVITE_CONFLICT),
+        (super::member_last_owner(), error_code::MEMBER_LAST_OWNER),
+        (super::email_invalid(), error_code::INVALID_REQUEST),
+    ];
+    for (failure, code) in codes {
+        assert_eq!(failure.code(), code, "{failure}");
+    }
 }
 
 #[test]
 fn every_data_only_failure_has_a_registered_public_contract() {
     let kinds = data_only_kinds();
-    assert_eq!(kinds.len(), 29, "the table must grow with the enum");
+    assert_eq!(kinds.len(), 34, "the table must grow with the enum");
 
     for (label, failure) in kinds {
         assert!(!failure.code().as_str().is_empty(), "{label}: code");
