@@ -7,7 +7,8 @@ use std::time::Duration;
 
 use afd_crypto::secret::SecretBytes;
 
-use super::{Relay, SMTPS_PORT, Security};
+use super::{BagFault, Relay, SMTPS_PORT, Security, TlsCache};
+use crate::test_util::{FROM, PASSWORD, bag_json};
 
 const SUBMISSION_PORT: u16 = 587;
 const MAILPIT_PORT: u16 = 1025;
@@ -15,7 +16,9 @@ const MAILPIT_PORT: u16 = 1025;
 /// proves the bag's port overrode lettre's default.
 const ALTERNATE_SUBMISSION_PORT: u16 = 2525;
 const REMOTE_HOST: &str = "smtp.resend.com";
-const PASSWORD: &str = "relay-password";
+const OTHER_REMOTE_HOST: &str = "smtp.example.test";
+const LOOPBACK_ADDRESS: &str = "127.0.0.1";
+const NETWORK_ADDRESS: &str = "10.0.0.5";
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn bag(json: &str) -> SecretBytes {
@@ -24,22 +27,15 @@ fn bag(json: &str) -> SecretBytes {
 
 /// The relay a complete bag naming `host:port` parses to.
 fn relay_at(host: &str, port: u16) -> Relay {
-    let json = serde_json::json!({
-        "host": host,
-        "port": port.to_string(),
-        "username": "relay",
-        "password": PASSWORD,
-        "from_address": "hello@agentsfleet.test",
-    })
-    .to_string();
-    Relay::parse(&bag(&json)).expect("a complete bag is a relay")
+    Relay::parse(&bag(&bag_json(host, port))).expect("a complete bag is a relay")
 }
 
 /// The transport built for `host:port`, as lettre's `Debug` prints it: a built
 /// transport exposes its settings no other way.
 fn transport_shape(host: &str, port: u16) -> String {
     let transport = relay_at(host, port)
-        .transport(COMMAND_TIMEOUT)
+        .server
+        .transport(COMMAND_TIMEOUT, &TlsCache::default())
         .expect("a transport builds without dialling");
     format!("{transport:?}")
 }
@@ -51,14 +47,20 @@ fn test_plaintext_refused_off_loopback() {
     for port in [SMTPS_PORT, SUBMISSION_PORT, MAILPIT_PORT] {
         for host in [
             REMOTE_HOST,
-            "smtp.example.test",
-            "10.0.0.5",
+            OTHER_REMOTE_HOST,
+            NETWORK_ADDRESS,
             "localhost.example.test",
         ] {
             assert_ne!(Security::of(host, port), Security::Plain, "{host}:{port}");
         }
     }
-    for host in ["127.0.0.1", "127.0.0.9", "::1", "localhost", "LOCALHOST"] {
+    for host in [
+        LOOPBACK_ADDRESS,
+        "127.0.0.9",
+        "::1",
+        "localhost",
+        "LOCALHOST",
+    ] {
         assert_eq!(Security::of(host, MAILPIT_PORT), Security::Plain, "{host}");
     }
 }
@@ -73,22 +75,84 @@ fn remote_ports_pick_their_tls() {
     );
 }
 
-/// A complete bag parses; every incomplete or malformed one reads as absent.
+/// A complete bag parses to the server and sender it names, and its `Debug`
+/// never prints the password.
 #[test]
-fn only_a_complete_bag_is_a_relay() {
-    let complete = r#"{"host":"127.0.0.1","port":"1025","username":"u","password":"p","from_address":"hello@agentsfleet.test"}"#;
-    assert!(Relay::parse(&bag(complete)).is_some());
-    let unusable = [
-        "not json",
-        "{}",
-        r#"{"host":"h","port":"1025","username":"u","password":"p"}"#,
-        r#"{"host":"h","port":"x","username":"u","password":"p","from_address":"a@b.test"}"#,
-        r#"{"host":"h","port":"1025","username":"u","password":"","from_address":"a@b.test"}"#,
-        r#"{"host":"h","port":"1025","username":"u","password":"p","from_address":"not an address"}"#,
-        r#"{"host":"h","port":1025,"username":"u","password":"p","from_address":"a@b.test"}"#,
+fn should_parse_complete_bag_without_printing_password() {
+    let relay = relay_at(REMOTE_HOST, SUBMISSION_PORT);
+    assert_eq!(relay.from.email.to_string(), FROM);
+    let shape = format!("{relay:?}");
+    assert!(shape.contains(REMOTE_HOST), "{shape}");
+    assert!(!shape.contains(PASSWORD), "{shape}");
+}
+
+/// Every unusable bag is refused with the fault that names what to fix: a bag
+/// that is not an object of strings as malformed, an absent, empty or `null`
+/// field as missing by name, and a port or sender that will not parse as
+/// unparsed by name.
+#[test]
+fn should_name_the_field_at_fault_when_bag_unusable() {
+    let cases = [
+        ("not json", BagFault::Malformed),
+        ("[]", BagFault::Malformed),
+        (
+            r#"{"host":"h","port":1025,"username":"u","password":"p","from_address":"a@b.test"}"#,
+            BagFault::Malformed,
+        ),
+        ("{}", BagFault::Missing("host")),
+        (
+            r#"{"host":"","port":"1025","username":"u","password":"p","from_address":"a@b.test"}"#,
+            BagFault::Missing("host"),
+        ),
+        (
+            r#"{"host":"h","port":"","username":"u","password":"p","from_address":"a@b.test"}"#,
+            BagFault::Missing("port"),
+        ),
+        (
+            r#"{"host":"h","port":"1025","password":"p","from_address":"a@b.test"}"#,
+            BagFault::Missing("username"),
+        ),
+        (
+            r#"{"host":"h","port":"1025","username":"u","password":"","from_address":"a@b.test"}"#,
+            BagFault::Missing("password"),
+        ),
+        (
+            r#"{"host":"h","port":"1025","username":"u","password":null,"from_address":"a@b.test"}"#,
+            BagFault::Missing("password"),
+        ),
+        (
+            r#"{"host":"h","port":"1025","username":"u","password":"p"}"#,
+            BagFault::Missing("from_address"),
+        ),
+        (
+            r#"{"host":"h","port":"x","username":"u","password":"p","from_address":"a@b.test"}"#,
+            BagFault::Unparsed("port"),
+        ),
+        (
+            r#"{"host":"h","port":"70000","username":"u","password":"p","from_address":"a@b.test"}"#,
+            BagFault::Unparsed("port"),
+        ),
+        (
+            r#"{"host":"h","port":"1025","username":"u","password":"p","from_address":"not an address"}"#,
+            BagFault::Unparsed("from_address"),
+        ),
     ];
-    for json in unusable {
-        assert!(Relay::parse(&bag(json)).is_none(), "{json}");
+    for (json, fault) in cases {
+        assert_eq!(Relay::parse(&bag(json)).err(), Some(fault), "{json}");
+    }
+}
+
+/// What the `unconfigured` record says for each fault: its name, and the
+/// field's name where one is at fault — never a value from the bag.
+#[test]
+fn should_log_fault_by_name_and_field() {
+    for (fault, name, field) in [
+        (BagFault::Absent, "absent", None),
+        (BagFault::Malformed, "malformed", None),
+        (BagFault::Missing("password"), "missing", Some("password")),
+        (BagFault::Unparsed("port"), "unparsed", Some("port")),
+    ] {
+        assert_eq!((fault.name(), fault.field()), (name, field), "{fault:?}");
     }
 }
 
@@ -114,6 +178,35 @@ fn transport_builds_for_implicit_and_starttls() {
         );
         assert!(!shape.contains(PASSWORD), "{shape}");
     }
-    assert!(transport_shape("127.0.0.1", MAILPIT_PORT).contains("tls: None"));
-    assert!(transport_shape("10.0.0.5", MAILPIT_PORT).contains("tls: Required"));
+    assert!(transport_shape(LOOPBACK_ADDRESS, MAILPIT_PORT).contains("tls: None"));
+    assert!(transport_shape(NETWORK_ADDRESS, MAILPIT_PORT).contains("tls: Required"));
+}
+
+/// The TLS parameters are built for the relay's host once and kept, shared by
+/// every clone of the mailer that holds the cache; a bag naming another host
+/// still gets a transport, built for that host, while the first stays cached.
+/// A loopback relay builds none.
+#[test]
+fn should_build_tls_once_per_host() {
+    let cache = TlsCache::default();
+    let shared = cache.clone();
+    assert_eq!(format!("{shared:?}"), "TlsCache(None)");
+
+    let plain = relay_at(LOOPBACK_ADDRESS, MAILPIT_PORT).server;
+    plain
+        .transport(COMMAND_TIMEOUT, &cache)
+        .expect("a loopback transport builds");
+    assert_eq!(format!("{shared:?}"), "TlsCache(None)");
+
+    for host in [REMOTE_HOST, REMOTE_HOST, OTHER_REMOTE_HOST] {
+        relay_at(host, SMTPS_PORT)
+            .server
+            .transport(COMMAND_TIMEOUT, &cache)
+            .expect("a TLS transport builds without dialling");
+        assert_eq!(
+            format!("{shared:?}"),
+            format!("TlsCache(Some({REMOTE_HOST:?}))"),
+            "{host}"
+        );
+    }
 }

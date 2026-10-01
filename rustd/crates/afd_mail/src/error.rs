@@ -1,11 +1,12 @@
 //! The one error type this crate returns.
 //!
 //! Almost nothing here is an error. A relay that refuses, a connection that
-//! drops, a bag that is missing — each is an [`crate::Outcome`] the caller
-//! records against the invite, because the invite already exists and must stay
-//! valid whatever email does. What reaches this type is a message this build
-//! could not put together: a template that would not render, or an address the
-//! message builder refused.
+//! drops, a bag that is missing — each is an
+//! [`afd_observability::InviteEmailOutcome`] the caller records against the
+//! invite, because the invite already exists and must stay valid whatever
+//! email does. What reaches this type is a message this build could not put
+//! together: a template that would not render, or an address the message
+//! builder refused.
 
 use afd_core::error_code::{self, ErrorCode};
 

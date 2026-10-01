@@ -1,12 +1,14 @@
 //! One message, built and handed to a relay, with one retry when the
 //! connection rather than the relay failed.
 //!
-//! The retry carries the SAME message, so the same `Resend-Idempotency-Key`:
-//! a relay that accepted the first copy before the connection dropped
-//! recognises the second and delivers once. Resend deduplicates on that header;
-//! a relay that ignores it may deliver one extra copy, which is the cost of not
-//! leaving an invite unsent over a dropped socket.
+//! The retry carries the SAME message — the same bytes, formatted once — so the
+//! same `Resend-Idempotency-Key`: a relay that accepted the first copy before
+//! the connection dropped recognises the second and delivers once. Resend
+//! deduplicates on that header; a relay that ignores it may deliver one extra
+//! copy, which is the cost of not leaving an invite unsent over a dropped
+//! socket.
 
+use lettre::address::Envelope;
 use lettre::message::header::{Header, HeaderName, HeaderValue};
 use lettre::message::{Mailbox, MultiPart};
 use lettre::{AsyncSmtpTransport, AsyncTransport as _, Message, Tokio1Executor};
@@ -47,17 +49,17 @@ impl Header for IdempotencyKey {
 pub(crate) fn message(
     from: Mailbox,
     to: Mailbox,
-    rendered: &RenderedEmail,
+    rendered: RenderedEmail,
     key: IdempotencyKey,
 ) -> Result<Message> {
     Ok(Message::builder()
         .from(from)
         .to(to)
-        .subject(rendered.subject.clone())
+        .subject(rendered.subject)
         .header(key)
         .multipart(MultiPart::alternative_plain_html(
-            rendered.text.clone(),
-            rendered.html.clone(),
+            rendered.text,
+            rendered.html,
         ))?)
 }
 
@@ -73,17 +75,17 @@ pub(crate) enum Delivery {
     Unreachable,
 }
 
-/// Something that hands a message to a relay.
+/// Something that hands a formatted message to a relay.
 ///
 /// Production's is lettre's SMTP transport; the unit suite's is lettre's
 /// `AsyncStubTransport`, which records what it was given.
 pub(crate) trait Mailer: Sync {
-    fn deliver(&self, message: Message) -> impl Future<Output = Delivery> + Send;
+    fn deliver(&self, envelope: &Envelope, raw: &[u8]) -> impl Future<Output = Delivery> + Send;
 }
 
 impl Mailer for AsyncSmtpTransport<Tokio1Executor> {
-    async fn deliver(&self, message: Message) -> Delivery {
-        match self.send(message).await {
+    async fn deliver(&self, envelope: &Envelope, raw: &[u8]) -> Delivery {
+        match self.send_raw(envelope, raw).await {
             Ok(response) => Delivery::Accepted {
                 reply: response.code().into(),
             },
@@ -118,10 +120,13 @@ pub(crate) struct Attempted {
 }
 
 /// Sends `message`, and once more when the first try never reached the relay.
-pub(crate) async fn send_once_retrying<M: Mailer>(mailer: &M, message: Message) -> Attempted {
-    match mailer.deliver(message.clone()).await {
+///
+/// Formatted once: both tries hand the relay the same bytes.
+pub(crate) async fn send_once_retrying<M: Mailer>(mailer: &M, message: &Message) -> Attempted {
+    let (envelope, raw) = (message.envelope(), message.formatted());
+    match mailer.deliver(envelope, &raw).await {
         Delivery::Unreachable => Attempted {
-            delivery: mailer.deliver(message).await,
+            delivery: mailer.deliver(envelope, &raw).await,
             retried: true,
         },
         delivery => Attempted {

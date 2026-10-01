@@ -14,6 +14,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_db::test_util::mint_id;
+use afd_mail::test_util::{FROM, FakeRelay, LOOPBACK, Session, bag_json};
 use afd_mail::{IDEMPOTENCY_HEADER, SMTP_RELAY_BAG};
 use afd_observability::{InviteEmailOutcome, Recorded, Telemetry};
 use afd_tenant::team::{EMAIL_STATUS_FAILED, EMAIL_STATUS_SENT, EMAIL_STATUS_UNCONFIGURED};
@@ -25,15 +26,8 @@ use serde_json::{Value, json};
 use crate::harness::{Failpoint, Fleet, TeamStep, send, vault};
 use crate::integration_workspace_members::fixture::{Members, owner_scopes};
 
-#[path = "support/fake_smtp.rs"]
-mod fake_smtp;
-
-use self::fake_smtp::{FakeRelay, Session};
-
 const INVITES: &str = "/v1/tenants/me/invites";
 const MEMBERS: &str = "/v1/tenants/me/members";
-const FROM: &str = "hello@agentsfleet.test";
-const LOOPBACK: &str = "127.0.0.1";
 const STALL_DEADLINE: Duration = Duration::from_millis(500);
 const MAILPIT_SMTP_PORT: &str = "TEST_MAILPIT_SMTP_PORT";
 const MAILPIT_URL: &str = "TEST_MAILPIT_URL";
@@ -92,7 +86,7 @@ async fn owner_recording(members: &Members, relay: Option<u16>) -> (Router, Reco
 }
 
 /// The invite-email events reported for `invite`: attempt and outcome.
-fn reported(recorded: &Recorded, invite: &str) -> Vec<(u32, InviteEmailOutcome)> {
+fn reported(recorded: &Recorded, invite: &str) -> Vec<(i32, InviteEmailOutcome)> {
     recorded
         .events()
         .into_iter()
@@ -109,14 +103,7 @@ fn reported(recorded: &Recorded, invite: &str) -> Vec<(u32, InviteEmailOutcome)>
 }
 
 async fn seal_relay(members: &Members, port: u16) {
-    let bag = json!({
-        "host": LOOPBACK,
-        "port": port.to_string(),
-        "username": "relay",
-        "password": "relay-password",
-        "from_address": FROM,
-    })
-    .to_string();
+    let bag = bag_json(LOOPBACK, port);
     let raw = serde_json::value::RawValue::from_string(bag).expect("the bag is an object");
     let sealed = vault(members.database.clone())
         .create(
@@ -270,7 +257,7 @@ async fn test_send_retry_reuses_idempotency_key() {
     let members = Members::create().await;
     members.seed().await;
     let relay = FakeRelay::start(vec![Session::DropAfterData, Session::Accept]).await;
-    let router = owner(&members, Some(relay.port), None).await;
+    let router = owner(&members, Some(relay.port()), None).await;
     let (created, _address) = invite(&router, &members).await;
     assert_eq!(text(&created, "email_status"), EMAIL_STATUS_SENT);
     let received = relay.received();
@@ -316,7 +303,7 @@ async fn test_failed_email_keeps_invite() {
         Session::Stall,
     ];
     let relay = FakeRelay::start(script).await;
-    let router = owner(&members, Some(relay.port), Some(STALL_DEADLINE)).await;
+    let router = owner(&members, Some(relay.port()), Some(STALL_DEADLINE)).await;
     for _case in 0..4 {
         let (created, _address) = invite(&router, &members).await;
         assert_eq!(text(&created, "email_status"), EMAIL_STATUS_FAILED);
@@ -337,7 +324,7 @@ async fn test_send_again_after_failure() {
     let members = Members::create().await;
     members.seed().await;
     let relay = FakeRelay::start(vec![Session::RefuseAuth(535), Session::Accept]).await;
-    let router = owner(&members, Some(relay.port), None).await;
+    let router = owner(&members, Some(relay.port()), None).await;
     let (created, _address) = invite(&router, &members).await;
     let id = text(&created, "id").to_owned();
     assert_eq!(text(&created, "email_status"), EMAIL_STATUS_FAILED);
@@ -413,7 +400,7 @@ async fn test_email_count_failure_keeps_invite() {
     let members = Members::create().await;
     members.seed().await;
     let relay = FakeRelay::start(vec![Session::Accept]).await;
-    let (router, failpoint) = owner_breaking(&members, relay.port, TeamStep::BeginEmail).await;
+    let (router, failpoint) = owner_breaking(&members, relay.port(), TeamStep::BeginEmail).await;
     let (created, _address) = invite(&router, &members).await;
     let id = text(&created, "id").to_owned();
     assert_eq!(failpoint.fired(), 1);
@@ -452,7 +439,7 @@ async fn test_email_unrecorded_keeps_invite() {
     let members = Members::create().await;
     members.seed().await;
     let relay = FakeRelay::start(vec![Session::Accept, Session::Accept]).await;
-    let (router, failpoint) = owner_breaking(&members, relay.port, TeamStep::RecordEmail).await;
+    let (router, failpoint) = owner_breaking(&members, relay.port(), TeamStep::RecordEmail).await;
     let (created, _address) = invite(&router, &members).await;
     let id = text(&created, "id").to_owned();
     assert_eq!(failpoint.fired(), 1);
@@ -498,7 +485,7 @@ async fn test_send_again_refusals_leave_the_row_true() {
         Session::RefuseRecipient(550),
     ])
     .await;
-    let router = owner(&members, Some(relay.port), None).await;
+    let router = owner(&members, Some(relay.port()), None).await;
 
     let (refused, _address) = invite(&router, &members).await;
     let refused = text(&refused, "id").to_owned();
@@ -556,7 +543,7 @@ async fn test_failed_email_invite_is_still_acceptable() {
     let members = Members::create().await;
     members.seed().await;
     let relay = FakeRelay::start(vec![Session::RefuseRecipient(550)]).await;
-    let router = owner(&members, Some(relay.port), None).await;
+    let router = owner(&members, Some(relay.port()), None).await;
     let body = json!({ "email": members.stranger.email }).to_string();
     let (status, created) = call(&router, &members, Method::POST, INVITES, &body).await;
     assert_eq!(status, StatusCode::CREATED, "{created}");
@@ -586,7 +573,7 @@ async fn test_invite_email_reports_each_outcome() {
     let members = Members::create().await;
     members.seed().await;
     let relay = FakeRelay::start(vec![Session::Accept, Session::RefuseRecipient(550)]).await;
-    let (router, recorded) = owner_recording(&members, Some(relay.port)).await;
+    let (router, recorded) = owner_recording(&members, Some(relay.port())).await;
     let (sent, _address) = invite(&router, &members).await;
     let (refused, _address) = invite(&router, &members).await;
     assert_eq!(
@@ -632,7 +619,7 @@ async fn test_invite_store_failure_issues_nothing() {
     let members = Members::create().await;
     members.seed().await;
     let relay = FakeRelay::start(vec![Session::Accept]).await;
-    let (router, failpoint) = owner_breaking(&members, relay.port, TeamStep::Invite).await;
+    let (router, failpoint) = owner_breaking(&members, relay.port(), TeamStep::Invite).await;
     let body = json!({ "email": format!("invitee+{}@example.test", mint_id()) }).to_string();
     let (status, problem) = call(&router, &members, Method::POST, INVITES, &body).await;
     assert_eq!(failpoint.fired(), 1);
@@ -657,7 +644,8 @@ async fn test_invite_gone_before_its_email_sends_nothing() {
     let members = Members::create().await;
     members.seed().await;
     let relay = FakeRelay::start(vec![Session::Accept]).await;
-    let (router, failpoint) = owner_breaking(&members, relay.port, TeamStep::BeginEmailGone).await;
+    let (router, failpoint) =
+        owner_breaking(&members, relay.port(), TeamStep::BeginEmailGone).await;
     let (created, _address) = invite(&router, &members).await;
     assert_eq!(failpoint.fired(), 1);
     assert!(relay.received().is_empty());
@@ -673,7 +661,7 @@ async fn test_member_removal_store_failure_keeps_member() {
     let members = Members::create().await;
     members.seed().await;
     let relay = FakeRelay::start(vec![]).await;
-    let (router, failpoint) = owner_breaking(&members, relay.port, TeamStep::Remove).await;
+    let (router, failpoint) = owner_breaking(&members, relay.port(), TeamStep::Remove).await;
     let path = format!("{MEMBERS}/{}", members.bob.user);
     let (status, problem) = call(&router, &members, Method::DELETE, &path, "").await;
     assert_eq!(failpoint.fired(), 1);

@@ -19,7 +19,10 @@ mod relay;
 
 pub use self::deliver::IDEMPOTENCY_HEADER;
 pub use self::error::{Error, Result};
-pub(crate) use self::invite::{RenderedEmail, render_invite};
 pub use self::invite::{INVITE_VALID_DAYS, InviteLetter};
-pub use self::mailer::{InviteMailer, InviteSend, Outcome, deliverable};
+pub(crate) use self::invite::{RenderedEmail, render_invite};
+pub use self::mailer::{InviteMailer, InviteSend, deliverable};
 pub use self::relay::SMTP_RELAY_BAG;
+
+#[cfg(any(test, feature = "test-util"))]
+pub mod test_util;

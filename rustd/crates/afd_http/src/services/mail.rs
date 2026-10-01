@@ -5,7 +5,8 @@
 //! answers it directly.
 
 use afd_core::id::Uuid7;
-use afd_mail::{InviteMailer, InviteSend, Outcome};
+use afd_mail::{InviteMailer, InviteSend};
+use afd_observability::InviteEmailOutcome;
 
 /// Sends one invite email and reports what became of it, never failing.
 pub trait InviteMail: Send + Sync + std::fmt::Debug + 'static {
@@ -15,7 +16,7 @@ pub trait InviteMail: Send + Sync + std::fmt::Debug + 'static {
         &self,
         admin: Option<&Uuid7>,
         invite: &InviteSend<'_>,
-    ) -> impl Future<Output = Outcome> + Send;
+    ) -> impl Future<Output = InviteEmailOutcome> + Send;
 }
 
 /// The production mailer answers it directly.
@@ -24,7 +25,7 @@ impl InviteMail for InviteMailer {
         &self,
         admin: Option<&Uuid7>,
         invite: &InviteSend<'_>,
-    ) -> impl Future<Output = Outcome> + Send {
+    ) -> impl Future<Output = InviteEmailOutcome> + Send {
         Self::send(self, admin, invite)
     }
 }

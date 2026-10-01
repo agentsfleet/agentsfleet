@@ -4,23 +4,24 @@
 //! A bag missing any of them, or carrying one this build cannot use, reads as
 //! no relay at all: the invite then records `unconfigured`, which is the truth
 //! an operator can act on, rather than a send attempted with half a credential.
+//! The [`BagFault`] it reads as names the field to fix, never what it holds.
 
 use std::net::IpAddr;
+use std::str::FromStr;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use afd_crypto::secret::SecretBytes;
+use afd_crypto::secret::{SecretBytes, SecretString};
 use lettre::message::Mailbox;
 use lettre::transport::smtp::authentication::Credentials;
+use lettre::transport::smtp::client::{Tls, TlsParameters};
 use lettre::{AsyncSmtpTransport, Tokio1Executor};
+use serde::Deserialize;
+
+use crate::Result;
 
 /// The platform bag holding the relay, in the admin workspace's vault.
 pub const SMTP_RELAY_BAG: &str = "smtp-relay";
-
-const FIELD_HOST: &str = "host";
-const FIELD_PORT: &str = "port";
-const FIELD_USERNAME: &str = "username";
-const FIELD_PASSWORD: &str = "password";
-const FIELD_FROM_ADDRESS: &str = "from_address";
 
 /// The port SMTP over implicit Transport Layer Security (TLS) answers on.
 pub(crate) const SMTPS_PORT: u16 = 465;
@@ -66,56 +67,169 @@ fn is_loopback(host: &str) -> bool {
             .is_ok_and(|address| address.is_loopback())
 }
 
-/// A usable relay, parsed once from its bag.
+/// Why the admin workspace's vault yields no relay.
+///
+/// Fieldless but for the NAME of the field at fault, so the record an operator
+/// reads says what to fix and never what the bag holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BagFault {
+    /// No bag, or no admin workspace to hold one.
+    Absent,
+    /// Not a JSON object, or a field that is not a string.
+    Malformed,
+    /// A field absent or empty.
+    Missing(&'static str),
+    /// A field present but not a port, or not a mailbox.
+    Unparsed(&'static str),
+}
+
+impl BagFault {
+    /// What the `unconfigured` record calls this fault.
+    #[must_use]
+    pub(crate) const fn name(self) -> &'static str {
+        match self {
+            Self::Absent => "absent",
+            Self::Malformed => "malformed",
+            Self::Missing(_) => "missing",
+            Self::Unparsed(_) => "unparsed",
+        }
+    }
+
+    /// The field at fault, when one is.
+    #[must_use]
+    pub(crate) const fn field(self) -> Option<&'static str> {
+        match self {
+            Self::Missing(field) | Self::Unparsed(field) => Some(field),
+            Self::Absent | Self::Malformed => None,
+        }
+    }
+}
+
+/// The bag as it is stored. Every field may be absent here, so an absent one
+/// is refused by its name, as an empty one is, rather than as a bag that does
+/// not parse.
+#[derive(Deserialize)]
+struct RelayBag {
+    host: Option<String>,
+    port: Option<String>,
+    username: Option<String>,
+    password: Option<SecretString>,
+    from_address: Option<String>,
+}
+
+/// A usable relay, parsed once from its bag: the server and the sender.
 #[derive(Debug)]
 pub(crate) struct Relay {
-    host: String,
-    port: u16,
-    username: String,
-    password: SecretBytes,
+    pub(crate) server: Server,
     pub(crate) from: Mailbox,
 }
 
-impl Relay {
-    /// The relay a stored bag names, or `None` when the bag cannot be used.
-    pub(crate) fn parse(stored: &SecretBytes) -> Option<Self> {
-        let bag: serde_json::Value = serde_json::from_slice(stored.expose()).ok()?;
-        let password = field(&bag, FIELD_PASSWORD)?;
-        Some(Self {
-            host: field(&bag, FIELD_HOST)?.to_owned(),
-            port: field(&bag, FIELD_PORT)?.parse().ok()?,
-            username: field(&bag, FIELD_USERNAME)?.to_owned(),
-            password: SecretBytes::new(password.as_bytes().to_vec()),
-            from: field(&bag, FIELD_FROM_ADDRESS)?.parse().ok()?,
-        })
-    }
+/// Where the relay listens, and the credential it takes.
+#[derive(Debug)]
+pub(crate) struct Server {
+    host: String,
+    port: u16,
+    username: String,
+    password: SecretString,
+}
 
-    /// A transport to this relay, each SMTP command bounded by `timeout`.
-    ///
-    /// Built per send so a rotated password takes effect on the next invite.
-    /// The password leaves [`SecretBytes`] here because lettre's credentials
-    /// hold a `String`; it lives as long as this one transport.
-    pub(crate) fn transport(
-        &self,
-        timeout: Duration,
-    ) -> Result<AsyncSmtpTransport<Tokio1Executor>, lettre::transport::smtp::Error> {
-        let builder = match Security::of(&self.host, self.port) {
-            Security::Implicit => AsyncSmtpTransport::<Tokio1Executor>::relay(&self.host)?,
-            Security::StartTls => AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&self.host)?,
-            Security::Plain => AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&self.host),
-        };
-        let password = String::from_utf8_lossy(self.password.expose()).into_owned();
-        Ok(builder
-            .port(self.port)
-            .credentials(Credentials::new(self.username.clone(), password))
-            .timeout(Some(timeout))
-            .build())
+impl Relay {
+    /// The relay a stored bag names, or the fault that makes it unusable.
+    pub(crate) fn parse(stored: &SecretBytes) -> Result<Self, BagFault> {
+        // serde's own message is dropped: it can quote a value, the password
+        // among them, and the fault is logged.
+        let bag: RelayBag =
+            serde_json::from_slice(stored.expose()).map_err(|_quoted| BagFault::Malformed)?;
+        Ok(Self {
+            server: Server {
+                host: filled(bag.host, "host")?,
+                port: parsed(bag.port, "port")?,
+                username: filled(bag.username, "username")?,
+                password: bag
+                    .password
+                    .filter(|password| !password.is_empty())
+                    .ok_or(BagFault::Missing("password"))?,
+            },
+            from: parsed(bag.from_address, "from_address")?,
+        })
     }
 }
 
-/// One non-empty string field of the bag.
-fn field<'b>(bag: &'b serde_json::Value, name: &str) -> Option<&'b str> {
-    bag.get(name)?.as_str().filter(|value| !value.is_empty())
+impl Server {
+    /// A transport to this server, each SMTP command bounded by `timeout`.
+    ///
+    /// Built per send from the bag just read, so a rotated password takes
+    /// effect on the next invite; only the TLS parameters come from `tls`. The
+    /// password leaves [`SecretString`] here because lettre's credentials hold
+    /// a `String`; it lives as long as this one transport.
+    pub(crate) fn transport(
+        self,
+        timeout: Duration,
+        tls: &TlsCache,
+    ) -> Result<AsyncSmtpTransport<Tokio1Executor>, lettre::transport::smtp::Error> {
+        let mode = match Security::of(&self.host, self.port) {
+            Security::Implicit => Tls::Wrapper(tls.parameters(&self.host)?),
+            Security::StartTls => Tls::Required(tls.parameters(&self.host)?),
+            Security::Plain => Tls::None,
+        };
+        let credentials = Credentials::new(self.username, self.password.expose().to_owned());
+        Ok(
+            AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(self.host)
+                .port(self.port)
+                .tls(mode)
+                .credentials(credentials)
+                .timeout(Some(timeout))
+                .build(),
+        )
+    }
+}
+
+/// The TLS parameters for the relay's host, built once and kept.
+///
+/// Building them loads and parses the system trust store, which is blocking
+/// file work on a runtime worker; per send, every invite paid it. The first
+/// host built is kept without a lock; a bag later naming another host builds
+/// per send until the daemon restarts, since a relay that moves is rare.
+#[derive(Clone, Default)]
+pub(crate) struct TlsCache(Arc<OnceLock<(String, TlsParameters)>>);
+
+impl TlsCache {
+    /// The parameters for `host`, built on the first ask for it.
+    pub(crate) fn parameters(
+        &self,
+        host: &str,
+    ) -> Result<TlsParameters, lettre::transport::smtp::Error> {
+        if let Some((built_for, parameters)) = self.0.get()
+            && built_for == host
+        {
+            return Ok(parameters.clone());
+        }
+        let parameters = TlsParameters::new(host.to_owned())?;
+        self.0.get_or_init(|| (host.to_owned(), parameters.clone()));
+        Ok(parameters)
+    }
+}
+
+/// lettre's parameters print nothing; the host they were built for is enough.
+impl std::fmt::Debug for TlsCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let host = self.0.get().map(|(host, _)| host.as_str());
+        f.debug_tuple("TlsCache").field(&host).finish()
+    }
+}
+
+/// One field of the bag, refused by name when absent or empty.
+fn filled(value: Option<String>, field: &'static str) -> Result<String, BagFault> {
+    value
+        .filter(|value| !value.is_empty())
+        .ok_or(BagFault::Missing(field))
+}
+
+/// One field of the bag, parsed, refused by name when it does not parse.
+fn parsed<T: FromStr>(value: Option<String>, field: &'static str) -> Result<T, BagFault> {
+    filled(value, field)?
+        .parse()
+        .map_err(|_unparsed| BagFault::Unparsed(field))
 }
 
 #[cfg(test)]

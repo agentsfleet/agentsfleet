@@ -154,13 +154,18 @@ pub enum Telemetry {
         /// The invite.
         invite_id: String,
         /// Which send this was: the first is 1, and each send-again adds one.
-        attempt: u32,
+        /// The invite row's own count, so it crosses no integer conversion.
+        attempt: i32,
         /// What became of it.
         outcome: InviteEmailOutcome,
     },
 }
 
-/// What became of one invite email, as the analytics tells them apart.
+/// What became of one invite email.
+///
+/// One type for the send and its report: `afd_mail`'s invite send returns it,
+/// and the route records and reports that same value, so the email the invite
+/// row records and the event the analytics counts cannot disagree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InviteEmailOutcome {
     /// The relay accepted it, with this SMTP reply code.
@@ -168,12 +173,13 @@ pub enum InviteEmailOutcome {
         /// The relay's reply code.
         reply: u16,
     },
-    /// The relay refused it or never answered; `reply` when it spoke a code.
+    /// The relay refused it, never answered, or the deadline passed; `reply`
+    /// is the relay's code when it spoke one.
     Failed {
         /// The relay's reply code, when it answered.
         reply: Option<u16>,
     },
-    /// No relay is set up for this deployment.
+    /// No usable `smtp-relay` bag, or no admin workspace to hold one.
     Unconfigured,
 }
 

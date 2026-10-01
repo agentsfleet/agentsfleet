@@ -25,6 +25,8 @@ mod properties;
 mod telemetry;
 
 use std::sync::Arc;
+#[cfg(feature = "test-util")]
+use std::sync::{Mutex, PoisonError};
 
 use posthog_rs::{Client, ClientOptions};
 
@@ -114,9 +116,14 @@ impl Analytics {
 }
 
 /// The events a recording reporter kept, in the order they were reported.
+///
+/// A suite whose thread panicked while holding the lock still reads every
+/// event: the list is only ever appended to, so a poisoned guard holds a whole
+/// list, and dropping events there would turn one failure into a second,
+/// misleading one.
 #[cfg(feature = "test-util")]
 #[derive(Debug, Clone, Default)]
-pub struct Recorded(Arc<std::sync::Mutex<Vec<Telemetry>>>);
+pub struct Recorded(Arc<Mutex<Vec<Telemetry>>>);
 
 #[cfg(feature = "test-util")]
 impl Recorded {
@@ -125,14 +132,15 @@ impl Recorded {
     pub fn events(&self) -> Vec<Telemetry> {
         self.0
             .lock()
-            .map(|events| events.clone())
-            .unwrap_or_default()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     fn push(&self, telemetry: &Telemetry) {
-        if let Ok(mut events) = self.0.lock() {
-            events.push(telemetry.clone());
-        }
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(telemetry.clone());
     }
 }
 
