@@ -3,16 +3,14 @@
 //! Lowercased and trimmed, so every stored invite and every comparison uses
 //! one spelling and the partial indexes match it without a function.
 //!
-//! # A shape guard, not an address parser
+//! # A shape guard, then the mail library's parser
 //!
-//! Nothing here reads an address into parts. Accepting an invite requires the
-//! signed-in account's address, which the identity provider verified, to equal
-//! this one exactly, so no string that is not a real address can ever be
-//! accepted. What this refuses is input that cannot be an address at all:
-//! blank, spaced, over the SMTP path limit, or without a local part and a
-//! domain. The invite email hands the address to the mail library's own parser
-//! before anything is sent. No address parser is in this workspace or its
-//! lockfile, and adding one would buy nothing at this boundary.
+//! The shape guard refuses input that cannot be an address at all: blank,
+//! spaced, over the SMTP path limit, or without a local part and a dotted
+//! domain. The caller then supplies `deliverable`, the parser the invite email
+//! addresses its recipient with, so no invite is stored for an address its
+//! email could never be sent to. The store links no mail client: the parser
+//! arrives as a function.
 
 use crate::{Result, error};
 
@@ -32,13 +30,13 @@ pub(crate) fn fold(address: &str) -> String {
 }
 
 impl Email {
-    /// The address `raw` names, normalised.
+    /// The address `raw` names, normalised, if `deliverable` accepts it.
     ///
     /// # Errors
     /// Refuses blank input, whitespace or control characters, more than one
-    /// `@`, an empty local part or domain, a domain with no dot, and anything
-    /// longer than SMTP carries.
-    pub fn parse(raw: &str) -> Result<Self> {
+    /// `@`, an empty local part or domain, a domain with no dot, anything
+    /// longer than SMTP carries, and any address `deliverable` refuses.
+    pub fn parse(raw: &str, deliverable: impl FnOnce(&str) -> bool) -> Result<Self> {
         let address = fold(raw);
         let shaped = address.len() <= MAX_LEN
             && !address.chars().any(|c| c.is_whitespace() || c.is_control())
@@ -50,7 +48,7 @@ impl Email {
                     && !domain.starts_with('.')
                     && !domain.ends_with('.')
             });
-        shaped
+        (shaped && deliverable(&address))
             .then_some(Self(address))
             .ok_or_else(error::email_invalid)
     }
@@ -70,9 +68,14 @@ impl Email {
 mod tests {
     use super::Email;
 
+    /// A parser that refuses nothing, so these cases test the shape guard alone.
+    fn any(_: &str) -> bool {
+        true
+    }
+
     #[test]
     fn an_address_is_trimmed_and_lowercased_once() {
-        let parsed = Email::parse("  Bob@Example.COM ").map(|email| email.as_str().to_owned());
+        let parsed = Email::parse("  Bob@Example.COM ", any).map(|email| email.as_str().to_owned());
         assert_eq!(parsed.ok().as_deref(), Some("bob@example.com"));
     }
 
@@ -94,7 +97,7 @@ mod tests {
             "bob@exam\u{0}ple.com",
         ] {
             assert!(
-                Email::parse(raw).is_err(),
+                Email::parse(raw, any).is_err(),
                 "{raw:?} was accepted as an address"
             );
         }
@@ -102,7 +105,7 @@ mod tests {
 
     #[test]
     fn surrounding_whitespace_is_not_part_of_the_address() {
-        let parsed = Email::parse("bob@example.com\n").map(|email| email.as_str().to_owned());
+        let parsed = Email::parse("bob@example.com\n", any).map(|email| email.as_str().to_owned());
         assert_eq!(parsed.ok().as_deref(), Some("bob@example.com"));
     }
 
@@ -112,13 +115,20 @@ mod tests {
         let local = "a".repeat(super::MAX_LEN - domain.len());
         let longest = format!("{local}{domain}");
         assert_eq!(longest.len(), super::MAX_LEN);
-        Email::parse(&longest).expect("the longest address SMTP carries");
-        Email::parse(&format!("a{longest}")).expect_err("one byte past it");
+        Email::parse(&longest, any).expect("the longest address SMTP carries");
+        Email::parse(&format!("a{longest}"), any).expect_err("one byte past it");
     }
 
     #[test]
     fn an_address_longer_than_smtp_carries_is_refused() {
         let long = format!("{}@example.com", "a".repeat(250));
-        Email::parse(&long).expect_err("longer than SMTP carries");
+        Email::parse(&long, any).expect_err("longer than SMTP carries");
+    }
+
+    #[test]
+    fn an_address_the_mail_parser_refuses_is_refused() {
+        Email::parse("a<b@example.com", |_| false).expect_err("refused by the parser");
+        let checked = Email::parse("  Bob@Example.COM ", |address| address == "bob@example.com");
+        assert!(checked.is_ok(), "the parser sees the folded address");
     }
 }

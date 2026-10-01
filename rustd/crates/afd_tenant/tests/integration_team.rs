@@ -149,7 +149,7 @@ impl Fixture {
 
     /// John invites `address`, as of `at`.
     async fn invite(&self, address: &str, at: UnixMillis) -> afd_tenant::Result<Uuid7> {
-        let email = Email::parse(address)?;
+        let email = Email::parse(address, |_| true)?;
         let tenant = id(&self.john.tenant);
         let new = NewInvite {
             tenant: &tenant,
@@ -786,7 +786,7 @@ async fn should_read_failed_when_attempt_began_and_never_recorded() {
 async fn should_report_query_failure_when_insert_fails_other_than_unique() {
     let fixture = Fixture::create().await;
     let nowhere = id(&mint_id());
-    let email = Email::parse(&fixture.carol.email).expect("an address");
+    let email = Email::parse(&fixture.carol.email, |_| true).expect("an address");
     let refused = fixture
         .team
         .invite(

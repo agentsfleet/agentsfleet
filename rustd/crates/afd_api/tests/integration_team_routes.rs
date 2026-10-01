@@ -311,6 +311,9 @@ async fn test_team_routes_refuse_malformed_and_unauthorized_calls() {
     }
     for body in [
         json!({ "email": "not an address" }).to_string(),
+        // Shaped like an address, but the mail library refuses it, so every
+        // send of the invite would fail.
+        json!({ "email": "a<b@example.com" }).to_string(),
         json!({ "email": stranger.email, "role": "owner" }).to_string(),
         "{".to_owned(),
     ] {

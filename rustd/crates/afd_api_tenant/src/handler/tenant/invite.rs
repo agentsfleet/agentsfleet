@@ -82,7 +82,8 @@ pub(crate) async fn create<D: Services>(
     let person = identity.person();
     let request = afd_http::handler::read_body::<CreateInviteRequest<'_>>(&body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_BODY))?;
-    let email = Email::parse(&request.email).map_err(Refusal::at(EVENT_CREATE))?;
+    let email =
+        Email::parse(&request.email, afd_mail::deliverable).map_err(Refusal::at(EVENT_CREATE))?;
     let tenant = tenant_of(&services, person, DETAIL_TENANT_REQUIRED, EVENT_TENANT).await?;
     let inviter = services
         .cli_credentials()
