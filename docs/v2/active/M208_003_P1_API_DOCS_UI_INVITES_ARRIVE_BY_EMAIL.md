@@ -56,6 +56,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `rustd/crates/afd_mail/` (+ `rustd/Cargo.toml`, `rustd/Cargo.lock`) | CREATE | render the invite (askama) and send it over SMTP (lettre): bounded deadline, idempotency header, typed outcome |
 | `rustd/crates/afd_mail/templates/invite.{html,txt}` | CREATE | the invite email; the HTML ports the relay account's `invitation_dev` design; three variables |
+| `rustd/crates/afd_mail/templates/layout.html` | CREATE | the brand every email extends: design-system colors (light, and dark where the client honours it), Bricolage Grotesque and Instrument Sans, the pulse-dot wordmark, the footer |
+| `rustd/crates/afd_api_tenant/src/handler/tenant/invite_email.rs` | EDIT | a compile-time check that the email's `INVITE_VALID_DAYS` equals `INVITE_TTL_MS` |
 | `rustd/crates/afd_tenant/src/team/invitation/lifecycle.rs` | EDIT | send after the invite commits; record status and attempts; send again |
 | `rustd/crates/afd_http/src/route/tenant.rs` | EDIT | `POST /v1/tenants/me/invites/{invite_id}/send` |
 | `rustd/crates/afd_api_tenant/src/handler/tenant/invite.rs` | EDIT | responses carry `email_status` |
@@ -110,7 +112,7 @@ Rendering and delivery stay apart: `render_invite` returns a `RenderedEmail` (su
 - **Dimension 2.2** — a retried attempt carries the same idempotency header → Test `test_send_retry_reuses_idempotency_key` — DONE (`afd_api/tests/integration_invite_email.rs`)
 - **Dimension 2.3** — the address and body never appear in logs → Test `test_send_logs_carry_no_address` — DONE (`afd_mail/src/mailer/tests.rs`)
 - **Dimension 2.4** — a display name carrying markup renders escaped in the HTML part → Test `test_invite_template_escapes_names` — DONE (`afd_mail/src/invite/tests.rs`)
-- **Dimension 2.5** — the rendered HTML and text parts match reviewed snapshots → Test `test_invite_render_snapshots` — DONE (`afd_mail/src/invite/tests.rs`; HTML is a stand-in until `invitation_dev` is ported)
+- **Dimension 2.5** — the rendered HTML and text parts match reviewed snapshots → Test `test_invite_render_snapshots` — DONE (`afd_mail/src/invite/tests.rs`; the HTML ports `invitation_dev` onto `templates/layout.html` in the design system's colors and faces)
 - **Dimension 2.6** — `deliver` builds the envelope, subject, idempotency header and both MIME parts → Test `test_deliver_builds_message` — DONE (`afd_mail/src/deliver/tests.rs`)
 - **Dimension 2.7** — plaintext SMTP is refused for any non-loopback host → Test `test_plaintext_refused_off_loopback` — DONE (`afd_mail/src/relay/tests.rs`)
 

@@ -1,6 +1,10 @@
 //! The invite email: what it says, rendered from `templates/invite.{html,txt}`.
 //!
-//! Three variables and no more, because an invite is issued knowing only the
+//! Both parts extend `templates/layout.html`, which carries the brand: the
+//! design system's colors and faces, the wordmark and the footer. A new email
+//! extends the same layout instead of restyling.
+//!
+//! Three caller variables and no more, because an invite is issued knowing only the
 //! invitee's address: who invited them, which account, and the link. Askama
 //! checks the variables against these structs at compile time and escapes every
 //! one in the HTML part, so a display name carrying markup renders as text.
@@ -15,6 +19,13 @@ use crate::Result;
 /// (`ui/packages/app/components/layout/workspace-groups.ts`), so the email and
 /// the invites page name the account identically.
 pub const ACCOUNT_LABEL_SUFFIX: &str = "'s account";
+
+/// How many days the email says the invite stays acceptable.
+///
+/// The daemon checks this against `afd_tenant`'s `INVITE_TTL_MS` at compile
+/// time (`afd_api_tenant/src/handler/tenant/invite_email.rs`), so the email can
+/// never promise a window the invite does not keep.
+pub const INVITE_VALID_DAYS: i64 = 7;
 
 /// The subject line, around the account's label.
 const SUBJECT_PREFIX: &str = "You're invited to join ";
@@ -49,6 +60,7 @@ struct InviteHtml<'a> {
     inviter_name: &'a str,
     account_name: &'a str,
     invite_url: &'a str,
+    valid_days: i64,
 }
 
 #[derive(Template)]
@@ -57,6 +69,7 @@ struct InviteText<'a> {
     inviter_name: &'a str,
     account_name: &'a str,
     invite_url: &'a str,
+    valid_days: i64,
 }
 
 /// The label an account goes by, as the dashboard prints it: "John's account".
@@ -75,12 +88,14 @@ pub fn render_invite(letter: &InviteLetter<'_>) -> Result<RenderedEmail> {
         inviter_name: letter.inviter_name,
         account_name: &account_name,
         invite_url: letter.invite_url,
+        valid_days: INVITE_VALID_DAYS,
     }
     .render()?;
     let text = InviteText {
         inviter_name: letter.inviter_name,
         account_name: &account_name,
         invite_url: letter.invite_url,
+        valid_days: INVITE_VALID_DAYS,
     }
     .render()?;
     Ok(RenderedEmail {

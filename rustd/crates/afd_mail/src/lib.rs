@@ -20,7 +20,8 @@ mod relay;
 pub use self::deliver::IDEMPOTENCY_HEADER;
 pub use self::error::{Error, Result};
 pub use self::invite::{
-    ACCOUNT_LABEL_SUFFIX, InviteLetter, RenderedEmail, account_label, render_invite,
+    ACCOUNT_LABEL_SUFFIX, INVITE_VALID_DAYS, InviteLetter, RenderedEmail, account_label,
+    render_invite,
 };
 pub use self::mailer::{InviteMailer, InviteSend, MAIL_SEND_DEADLINE, Outcome};
 pub use self::relay::{SMTP_RELAY_BAG, SMTPS_PORT, Security};

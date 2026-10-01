@@ -13,9 +13,9 @@ use std::sync::Arc;
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_mail::{InviteLetter, InviteSend, Outcome};
+use afd_mail::{INVITE_VALID_DAYS, InviteLetter, InviteSend, Outcome};
 use afd_observability::{InviteEmailOutcome, Telemetry};
-use afd_tenant::team::{EmailStatus, Invitation};
+use afd_tenant::team::{EmailStatus, INVITE_TTL_MS, Invitation};
 use afd_wire::team::InviteEmailResponse;
 use axum::Json;
 use axum::extract::{Path, State};
@@ -28,6 +28,13 @@ use crate::services::{InviteMail as _, Services, TenantTeam as _};
 use super::invite::invite_id_of;
 use super::invite_view::link_or_refuse;
 use super::{DETAIL_TENANT_REQUIRED, tenant_of};
+
+/// One day, in the milliseconds the invite's expiry is counted in.
+const MILLIS_PER_DAY: i64 = 24 * 60 * 60 * 1000;
+
+// The email tells the invitee how long the link lasts; the store decides it.
+// Fail the build, not the reader, when the two drift.
+const _: () = assert!(INVITE_VALID_DAYS * MILLIS_PER_DAY == INVITE_TTL_MS);
 
 const EVENT_SEND: &str = "invite_send_failed";
 const EVENT_TENANT: &str = "invite_tenant_unresolved";
