@@ -98,16 +98,21 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 `playbooks/operations/smtp_relay_registration/001_playbook.md` walks the human steps: a relay account (Resend today); verify `agentsfleet.net` with the DNS records the relay lists; SMTP credentials (Resend: host `smtp.resend.com`, port `465`, username `resend`, password an API key with sending access); the 1Password item `smtp-relay` with `host`, `port`, `username`, `password` and `from_address` in `ZMB_CD_DEV` and `ZMB_CD_PROD`; then `playbooks/lib/platform_secret_sync.sh smtp-relay`. Both items exist (M208_001 Discovery). The bag has no test field: the integration lane reaches its sink through a `test-util` seam.
 
-- **Dimension 1.1** — the sync script's `smtp-relay` case maps exactly `host`, `port`, `username`, `password`, `from_address` → Test `test_secret_sync_maps_smtp_relay`
+- **Dimension 1.1** — the sync script's `smtp-relay` case maps exactly `host`, `port`, `username`, `password`, `from_address` → Test `test_secret_sync_maps_smtp_relay` — DONE (`playbooks/lib/platform_secret_sync_test.sh`)
 
 ### §2 — One send per invite, after the invite commits
 
-Creating an invite commits the row, then increments `email_attempts` and commits, then sends one message: from `from_address`, to the invite's email, subject "You're invited to join {account_name} on agentsfleet", plain-text and HTML parts rendered from the repository's template, and no tracking. The template takes exactly three variables, `inviter_name`, `account_name` ("John's account") and `invite_url`; company name and address are template text. The transport is implicit Transport Layer Security (TLS) on port 465 and required STARTTLS on any other port, over the workspace's one rustls provider; plaintext exists only behind the `test-util` seam. The message carries `Resend-Idempotency-Key: invite-{invite_id}-{attempt}`, which Resend deduplicates on and other relays ignore, and the send runs under a named deadline (`MAIL_SEND_DEADLINE`); a connection failure is retried once under the same key. The outcome is recorded as `email_status` and `email_sent_at`, and the create response carries it.
+Creating an invite commits the row, then increments `email_attempts` and commits, then sends one message: from `from_address`, to the invite's email, subject "You're invited to join {account_name} on agentsfleet", plain-text and HTML parts rendered from the repository's template, and no tracking. The template takes exactly three variables, `inviter_name`, `account_name` ("John's account") and `invite_url`; company name and address are template text. The transport is implicit Transport Layer Security (TLS) on port 465 and required STARTTLS on any other port, over the workspace's one rustls provider; plaintext is allowed only to a loopback host (`127.0.0.1`, `::1`, `localhost`), so the message never leaves the machine — that is how the local Docker daemon and the integration lane reach Mailpit. The message carries `Resend-Idempotency-Key: invite-{invite_id}-{attempt}`, which Resend deduplicates on and other relays ignore, and the send runs under a named deadline (`MAIL_SEND_DEADLINE`); a connection failure is retried once under the same key. The outcome is recorded as `email_status` and `email_sent_at`, and the create response carries it.
+
+Rendering and delivery stay apart: `render_invite` returns a `RenderedEmail` (subject, HTML, text) and `deliver` hands it to a `Mailer`; production's mailer is lettre's SMTP transport, unit tests use lettre's `StubTransport`.
 
 - **Dimension 2.1** — a created invite sends one message with the link and both names → Test `test_invite_email_carries_accept_link`
 - **Dimension 2.2** — a retried attempt carries the same idempotency header → Test `test_send_retry_reuses_idempotency_key`
 - **Dimension 2.3** — the address and body never appear in logs → Test `test_send_logs_carry_no_address`
 - **Dimension 2.4** — a display name carrying markup renders escaped in the HTML part → Test `test_invite_template_escapes_names`
+- **Dimension 2.5** — the rendered HTML and text parts match reviewed snapshots → Test `test_invite_render_snapshots`
+- **Dimension 2.6** — `deliver` builds the envelope, subject, idempotency header and both MIME parts → Test `test_deliver_builds_message`
+- **Dimension 2.7** — plaintext SMTP is refused for any non-loopback host → Test `test_plaintext_refused_off_loopback`
 
 ### §3 — A failed or unconfigured send leaves a valid invite
 
@@ -165,6 +170,7 @@ Template         rustd/crates/afd_mail/templates/invite.{html,txt}  {inviter_nam
 3. The recipient address and body never reach logs — send events take only ids and reply codes; a log-capture test asserts it.
 4. The relay password never leaves the vault read — it is loaded per send from the admin-workspace bag and never logged or returned.
 5. No variable reaches the HTML part unescaped — askama escapes by default; `test_invite_template_escapes_names` renders a hostile display name.
+6. Credentials never cross the network in the clear — TLS to every relay host; plaintext only to loopback; `test_plaintext_refused_off_loopback`.
 
 ## Metrics & Observability
 
@@ -183,6 +189,9 @@ Template         rustd/crates/afd_mail/templates/invite.{html,txt}  {inviter_nam
 | 2.2 | integration | `test_send_retry_reuses_idempotency_key` | a loopback listener drops the first connection → the retry carries the same `Resend-Idempotency-Key` |
 | 2.3 | unit | `test_send_logs_carry_no_address` | captured events hold no `@` address and no body text |
 | 2.4 | unit | `test_invite_template_escapes_names` | inviter name `<b>x</b>` → the HTML part holds `&lt;b&gt;x&lt;/b&gt;` |
+| 2.5 | unit | `test_invite_render_snapshots` | fixed names and link → HTML and text equal the reviewed `insta` snapshots |
+| 2.6 | unit | `test_deliver_builds_message` | `StubTransport` records one message: envelope to/from, subject, `Resend-Idempotency-Key`, `text/plain` and `text/html` parts |
+| 2.7 | unit | `test_plaintext_refused_off_loopback` | bag host `smtp.example.test` with plaintext → refused before connecting; `127.0.0.1` → allowed |
 | 3.1 | integration | `test_unconfigured_email_keeps_invite` | no bag → 201 `unconfigured`, one error event, invite listed |
 | 3.2 | integration | `test_failed_email_keeps_invite` | listener answers 535, 450 and 550, then stalls → 201 `failed`, invite acceptable |
 | 4.1 | integration | `test_send_again_after_failure` | fail then send again → new key, `sent` |
@@ -246,6 +255,7 @@ N/A — no files deleted.
 - **Transport** — Sep 30, 2026, Indy: "i thought its afd_mail? with smtp_relay", in reply to the recommendation to call Resend's HTTP API (decision `a3d20406`). The bag became `smtp-relay` (M208_001 §1) and any SMTP relay plugs in. A real SMTP sink (Mailpit) replaces the HTTP loopback fake for delivery tests; refusals and stalls keep a loopback listener.
 - **Template** — decisions `9c96e2e8` and `956040a2`: Indy wants templates over SMTP. Resend's stored templates exist only on `POST /emails` (resend.com/docs/api-reference/emails/send-email), and its SMTP guide covers headers and `Resend-Idempotency-Key` only (resend.com/docs/send-with-smtp), so the template lives here, rendered by askama, which checks variables at compile time and escapes HTML. Three variables, since only the invitee's address is known at invite time: `inviter_name`, `account_name`, `invite_url`; company name and address are template text; no `first_name`. The HTML ports Indy's Resend dev template `invitation_dev` (sender hello@agentsfleet.net; `invitation_dev-1` sends from hello@agentsfleet.dev).
 - **Amendment** — Oct 1, 2026: this spec moved from Resend's HTTP API to SMTP. §1's playbook, the sync case, §2's transport, §3's failure codes, Interfaces, Failure Modes, Metrics and the test names follow; the invite module is `team/invitation/` since M208_001's refactor (`bfb021bf8`); Dimension 2.4 and Invariant 5 are added for template escaping; Dimension 6.1 tests `docs/AUTH.md`, which this repository can read, in place of the public page.
+- **Test layers and local eyeball** — Oct 1, 2026, Indy: "Do all three. Anything less misses a failure class" — askama with `insta` snapshots for the template, lettre's `StubTransport` for the send path, Mailpit for the real SMTP exchange; Mailpit runs in `docker-compose.yml`, in Continuous Integration (CI) and in `make test-integration-rustd`. The members page and the email are eyeballed on the local Docker stack ("it can be on docker like here, where i can check on http://... url"): the daemon sends to Mailpit and Indy reads the mail at Mailpit's web page. That needs plaintext SMTP outside `test-util`, so the rule is now loopback-only plaintext (§2, Invariant 6). Template HTML is fetched from Resend's API (Indy: "Fetch via Resend API").
 - **Metrics review** — pending.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none. §5 runs after merge because DEV runs `main`; R3 needs Indy's ack quote before the Pull Request.

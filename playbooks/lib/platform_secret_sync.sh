@@ -53,6 +53,17 @@ case "$secret_name" in
       "signing_secret|slack-app/signing_secret"
     )
     ;;
+  smtp-relay)
+    # The invite email's relay. Five fields, no test field: the integration
+    # lane reaches its mail sink through afd_mail's `test-util` seam instead.
+    field_refs=(
+      "host|smtp-relay/host"
+      "port|smtp-relay/port"
+      "username|smtp-relay/username"
+      "password|smtp-relay/password"
+      "from_address|smtp-relay/from_address"
+    )
+    ;;
   zoho-app|jira-app|linear-app)
     field_refs=(
       "client_id|$secret_name/client_id"
