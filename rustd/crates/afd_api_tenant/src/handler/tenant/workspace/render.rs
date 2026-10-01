@@ -88,3 +88,55 @@ pub(super) fn created_response<'created>(
         tenant_id: Cow::Borrowed(tenant.as_str()),
     }
 }
+
+#[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "test module: an unmet precondition should fail the test loudly"
+)]
+mod tests {
+    use afd_core::id::Uuid7;
+    use afd_tenant::workspace::access::Role;
+    use afd_tenant::workspace::accounts::{Account, Accounts};
+    use afd_tenant::workspace::directory::{WorkspacePage, WorkspaceRow};
+    use axum::response::IntoResponse as _;
+    use http::StatusCode;
+
+    use super::page_response;
+
+    const HOME: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011";
+    const STRANGER: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1022";
+    const WORKSPACE: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1033";
+
+    /// The page was asked only for held accounts, so a row from any other is
+    /// the daemon disagreeing with itself. It answers as the internal fault it
+    /// is; dropping the row would shift every later cursor.
+    #[test]
+    fn a_row_outside_the_held_accounts_is_an_internal_fault_not_a_dropped_row() {
+        let home = Uuid7::parse(HOME).expect("the fixture identifier is UUIDv7");
+        let accounts = Accounts {
+            home: home.clone(),
+            held: vec![Account {
+                tenant: home,
+                role: Role::Owner,
+                owner_name: "John".to_owned(),
+            }],
+        };
+        let page = WorkspacePage {
+            rows: vec![WorkspaceRow {
+                id: WORKSPACE.to_owned(),
+                name: None,
+                created_at_ms: 1,
+                tenant_id: STRANGER.to_owned(),
+            }],
+            more: false,
+        };
+        let refused = page_response(&page, &accounts)
+            .err()
+            .expect("a row from an unheld account refuses the page");
+        assert_eq!(
+            refused.into_response().status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+}

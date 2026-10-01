@@ -13,6 +13,7 @@ use afd_auth::principal::{PersonCredential, Principal, Runner};
 use afd_auth::scope::ScopeSet;
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
+use afd_core::id::ENTROPY_LEN as ID_ENTROPY_LEN;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
@@ -21,6 +22,7 @@ use afd_tenant::workspace::Workspaces;
 use afd_tenant::workspace::access::{ROLE_MEMBER, Role};
 use afd_tenant::workspace::directory::After;
 use afd_tenant::workspace::name::Chosen;
+use afd_tenant::workspace::name::ENTROPY_LEN as NAME_ENTROPY_LEN;
 
 use crate::access_lane::{Signup, delete_accounts, held, hold, id, person, session, sign_up};
 
@@ -353,6 +355,26 @@ async fn should_walk_keyset_across_held_accounts() {
     let mut expected = vec![fixture.john.tenant.as_str(), fixture.bob.tenant.as_str()];
     expected.sort_unstable();
     assert_eq!(owners, expected, "the shared name once per account");
+
+    let first = workspaces
+        .page(&tenants, Some(SHARED_NAME), None, 1)
+        .await
+        .expect("the first named page reads");
+    let boundary = first.rows.last().expect("one named row");
+    let after = After {
+        created_at_ms: boundary.created_at_ms,
+        id: id(&boundary.id),
+    };
+    let rest = workspaces
+        .page(&tenants, Some(SHARED_NAME), Some(&after), 1)
+        .await
+        .expect("the resumed named page reads");
+    assert!(first.more && !rest.more, "two named rows, one per page");
+    assert_ne!(
+        rest.rows.first().map(|row| row.tenant_id.as_str()),
+        Some(boundary.tenant_id.as_str()),
+        "the resumed page is the other account's"
+    );
     fixture.cleanup().await;
 }
 
@@ -379,5 +401,50 @@ async fn should_refuse_chosen_workspace_name_when_account_already_uses_it() {
         .await
         .expect_err("the name is taken");
     assert_eq!(taken.code(), error_code::WORKSPACE_NAME_EXISTS);
+    fixture.cleanup().await;
+}
+
+/// A generated name another workspace already holds is drawn again rather
+/// than refused, since the caller never chose it; three collisions in a row
+/// are the datastore's refusal, not a name conflict the caller could fix.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_draw_again_when_a_generated_name_collides() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let (entropy, draws) = Entropy::new_mocked();
+    let workspaces = Workspaces::new(fixture.database.clone(), entropy);
+    let tenant = id(&fixture.john.tenant);
+    let taken = [1_u8; NAME_ENTROPY_LEN];
+    let fresh = [2_u8; NAME_ENTROPY_LEN];
+    let now = afd_core::clock::now();
+    let mut id_byte = 10_u8;
+    let mut queue = |name: &[u8]| {
+        id_byte += 1;
+        draws.push_bytes(name);
+        draws.push_bytes(&[id_byte; ID_ENTROPY_LEN]);
+    };
+
+    queue(&taken);
+    let first = workspaces
+        .create(&tenant, None, "fixture", now)
+        .await
+        .expect("the first generated name lands");
+    queue(&taken);
+    queue(&fresh);
+    let second = workspaces
+        .create(&tenant, None, "fixture", now)
+        .await
+        .expect("a collided name is drawn again");
+    assert_ne!(second.name, first.name);
+
+    for _attempt in 0..3 {
+        queue(&taken);
+    }
+    let exhausted = workspaces
+        .create(&tenant, None, "fixture", now)
+        .await
+        .expect_err("three collisions in a row");
+    assert_eq!(exhausted.code(), error_code::INTERNAL_DB_QUERY);
     fixture.cleanup().await;
 }

@@ -589,3 +589,70 @@ async fn test_invite_email_reports_each_outcome() {
     );
     members.cleanup().await;
 }
+
+/// The store refuses the invite itself: the route answers the outage, nothing
+/// is listed, and no email goes.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_invite_store_failure_issues_nothing() {
+    let members = Members::create().await;
+    members.seed().await;
+    let relay = FakeRelay::start(vec![Session::Accept]).await;
+    let (router, failpoint) = owner_breaking(&members, relay.port, TeamStep::Invite).await;
+    let body = json!({ "email": format!("invitee+{}@example.test", mint_id()) }).to_string();
+    let (status, problem) = call(&router, &members, Method::POST, INVITES, &body).await;
+    assert_eq!(failpoint.fired(), 1);
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{problem}");
+    let (_, listed) = call(&router, &members, Method::GET, INVITES, "").await;
+    let items = listed
+        .get("items")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    assert!(items.is_empty(), "{listed}");
+    assert!(relay.received().is_empty());
+    members.cleanup().await;
+}
+
+/// The invite stops being sendable between its commit and its count — a
+/// revoke landing in that gap: the create still answers 201 and nothing is
+/// sent or counted.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_invite_gone_before_its_email_sends_nothing() {
+    let members = Members::create().await;
+    members.seed().await;
+    let relay = FakeRelay::start(vec![Session::Accept]).await;
+    let (router, failpoint) = owner_breaking(&members, relay.port, TeamStep::BeginEmailGone).await;
+    let (created, _address) = invite(&router, &members).await;
+    assert_eq!(failpoint.fired(), 1);
+    assert!(relay.received().is_empty());
+    assert_eq!(attempts_of(&members, text(&created, "id")).await, 0);
+    members.cleanup().await;
+}
+
+/// The store refuses a removal: the route answers the outage and the member
+/// stays.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_member_removal_store_failure_keeps_member() {
+    let members = Members::create().await;
+    members.seed().await;
+    let relay = FakeRelay::start(vec![]).await;
+    let (router, failpoint) = owner_breaking(&members, relay.port, TeamStep::Remove).await;
+    let path = format!("/v1/tenants/me/members/{}", members.bob.user);
+    let (status, problem) = call(&router, &members, Method::DELETE, &path, "").await;
+    assert_eq!(failpoint.fired(), 1);
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{problem}");
+    let (_, roster) = call(&router, &members, Method::GET, "/v1/tenants/me/members", "").await;
+    let kept = roster
+        .get("items")
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items
+                .iter()
+                .any(|item| text(item, "user_id") == members.bob.user)
+        });
+    assert!(kept, "{roster}");
+    members.cleanup().await;
+}
