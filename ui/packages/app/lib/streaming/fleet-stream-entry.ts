@@ -24,6 +24,9 @@ export const CONNECTION_STATUS = {
   LIVE: "live",
   RECONNECTING: "reconnecting",
   OFFLINE: "offline",
+  // Terminal: the daemon ended the stream with `access_revoked`, and nothing
+  // reconnects after it.
+  REVOKED: "revoked",
 } as const;
 export type ConnectionStatus =
   (typeof CONNECTION_STATUS)[keyof typeof CONNECTION_STATUS];

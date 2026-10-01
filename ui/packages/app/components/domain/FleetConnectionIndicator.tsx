@@ -18,6 +18,7 @@ const STATUS_LABEL: Record<ConnectionStatus, string> = {
   [CONNECTION_STATUS.LIVE]: "Live",
   [CONNECTION_STATUS.RECONNECTING]: "Reconnecting…",
   [CONNECTION_STATUS.OFFLINE]: "Not live",
+  [CONNECTION_STATUS.REVOKED]: "No access",
 };
 
 const STATUS_CLASS: Record<ConnectionStatus, string> = {
@@ -25,6 +26,7 @@ const STATUS_CLASS: Record<ConnectionStatus, string> = {
   [CONNECTION_STATUS.LIVE]: "text-pulse",
   [CONNECTION_STATUS.RECONNECTING]: "text-warning",
   [CONNECTION_STATUS.OFFLINE]: "text-destructive",
+  [CONNECTION_STATUS.REVOKED]: "text-destructive",
 };
 
 /** How long the arrival cue plays before the steady pulse takes over. */

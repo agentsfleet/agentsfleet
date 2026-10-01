@@ -29,7 +29,7 @@ const wire = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/streaming/workspace-stream", () => ({
-  WORKSPACE_CONNECTION_STATUS: { CONNECTING: "connecting", LIVE: "live", RECONNECTING: "reconnecting" },
+  WORKSPACE_CONNECTION_STATUS: { CONNECTING: "connecting", LIVE: "live", RECONNECTING: "reconnecting", REVOKED: "revoked" },
   noteServerFrameTime: (...a: unknown[]) => wire.noteServerFrameTime(...a),
   lastGreeting: (workspaceId: string) => wire.lastGreeting(workspaceId),
   subscribeStatus: (_workspaceId: string, _listener: unknown, onReconnect: BackfillFn) => {

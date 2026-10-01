@@ -328,5 +328,7 @@ function toConnectionStatus(status: WorkspaceConnectionStatus): ConnectionStatus
       return CONNECTION_STATUS.RECONNECTING;
     case WORKSPACE_CONNECTION_STATUS.CONNECTING:
       return CONNECTION_STATUS.CONNECTING;
+    case WORKSPACE_CONNECTION_STATUS.REVOKED:
+      return CONNECTION_STATUS.REVOKED;
   }
 }

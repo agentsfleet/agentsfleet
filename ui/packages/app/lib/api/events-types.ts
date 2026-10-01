@@ -27,8 +27,9 @@ export function buildQuery(opts?: EventsQuery): string {
 }
 
 // Live frames published on `fleet:{id}:activity` (Redis pub/sub), fanned out
-// as SSE messages by the backend handler. `hello` and `catching_up` are
-// rustd/crates/afd_sse/src/frame.rs's. The four mid-run frames are the
+// as SSE messages by the backend handler. `hello`, `catching_up` and
+// `access_revoked` are rustd/crates/afd_sse/src/frame.rs's `KIND_*` control
+// frames. The four mid-run frames are the
 // `Published` enum in rustd/crates/afd_fleet/src/lease/activity.rs, where the
 // runner's wire vocabulary becomes this one. The two brackets and the two gate
 // frames are the daemon's own `TailFrame` in rustd/crates/afd_wire/src/tail.rs:
@@ -62,9 +63,19 @@ export const FRAME_KIND = {
   INSTALL_ERROR: "install:error",
   HELLO: "hello",
   CATCHING_UP: "catching_up",
+  // The last frame of a stream whose caller lost access to what it streams.
+  // The daemon closes the stream after it and refuses the next request with
+  // the same code, so a client stops rather than reconnects.
+  ACCESS_REVOKED: "access_revoked",
 } as const;
 
 export type FrameKind = (typeof FRAME_KIND)[keyof typeof FRAME_KIND];
+
+/** Every frame a stream hands to its readers. `access_revoked` is not one: it
+ * ends the stream, so each registry listens for it on its own. */
+export const ROUTED_FRAME_KINDS: readonly FrameKind[] = Object.values(FRAME_KIND).filter(
+  (kind) => kind !== FRAME_KIND.ACCESS_REVOKED,
+);
 
 // Same-origin URL for the SSE stream. The path is intercepted by the
 // Next Route Handler at app/live/.../events/stream/route.ts which
