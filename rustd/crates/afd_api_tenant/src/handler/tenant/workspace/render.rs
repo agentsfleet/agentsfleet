@@ -16,7 +16,8 @@ use crate::request_id::RequestId;
 /// A listed row whose account the caller does not hold: an internal fault.
 const DETAIL_ACCOUNT_UNHELD: &str = "Workspace list could not be assembled";
 
-/// One page, the tenant it belongs to, and the cursor that continues it.
+/// One page across the caller's accounts, the caller's own account id, and the
+/// cursor that continues it.
 ///
 /// The cursor is emitted only when a row EXISTS beyond this page — `more` is
 /// decided by over-fetching, not by the page being full — so a client never

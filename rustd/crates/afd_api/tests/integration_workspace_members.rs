@@ -19,6 +19,7 @@ use std::time::Duration;
 use afd_core::error_code;
 use afd_dragonfly::SubscriptionHub;
 use afd_events::ACTOR_PREFIX;
+use afd_sse::KIND_ACCESS_REVOKED;
 use afd_tenant::workspace::access::{ROLE_MEMBER, ROLE_OWNER};
 use axum::Router;
 use axum::body::BodyDataStream;
@@ -230,7 +231,10 @@ async fn test_removed_member_stream_ends() {
 
     for body in [&mut wall_body, &mut tail_body] {
         let last = past_heartbeats(body).await;
-        assert!(last.contains("event: access_revoked"), "{last}");
+        assert!(
+            last.contains(&format!("event: {KIND_ACCESS_REVOKED}")),
+            "{last}"
+        );
         assert!(last.contains(error_code::AUTH_FORBIDDEN.as_str()), "{last}");
         assert!(stream_ends(body).await, "nothing follows access_revoked");
     }

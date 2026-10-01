@@ -73,7 +73,7 @@ pub(crate) enum ErrorKind {
     #[error("the fleet declared a credential this workspace does not hold")]
     CredentialMissing,
 
-    #[error("could not draw the entropy a registry entry is minted from")]
+    #[error("a registry entry identifier could not be minted")]
     Entropy {
         #[source]
         source: afd_crypto::error::Error,
@@ -127,10 +127,10 @@ impl Error {
             // shape is wrong answers this one — the shape is a fact the
             // operator who stored it can act on.
             ErrorKind::VaultDataInvalid => (error_code::VAULT_DATA_INVALID, DETAIL_VAULT_INVALID),
-            // Two failures of this instance rather than of its input: a host
-            // that cannot draw entropy, and a mint that produced something
-            // `Uuid7` refuses. Neither is the caller's to correct, and both
-            // answer the same internal code `afd_tenant` gives them.
+            // A failure of this instance rather than of its input: the host
+            // could not draw entropy, or the mint could not encode it. Not the
+            // caller's to correct, so it answers the internal code
+            // `afd_tenant` gives a failed mint.
             ErrorKind::Entropy { .. } => {
                 (error_code::INTERNAL_OPERATION_FAILED, DETAIL_DATABASE_ERROR)
             }

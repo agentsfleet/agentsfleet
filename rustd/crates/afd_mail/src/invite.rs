@@ -18,7 +18,7 @@ use crate::Result;
 /// The dashboard spells the same label in `accountLabel`
 /// (`ui/packages/app/components/layout/workspace-groups.ts`), so the email and
 /// the invites page name the account identically.
-pub const ACCOUNT_LABEL_SUFFIX: &str = "'s account";
+pub(crate) const ACCOUNT_LABEL_SUFFIX: &str = "'s account";
 
 /// How many days the email says the invite stays acceptable.
 ///
@@ -45,7 +45,7 @@ pub struct InviteLetter<'a> {
 
 /// One email, rendered and ready to address.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RenderedEmail {
+pub(crate) struct RenderedEmail {
     /// The subject line.
     pub subject: String,
     /// The HTML part.
@@ -74,7 +74,7 @@ struct InviteText<'a> {
 
 /// The label an account goes by, as the dashboard prints it: "John's account".
 #[must_use]
-pub fn account_label(owner_name: &str) -> String {
+pub(crate) fn account_label(owner_name: &str) -> String {
     format!("{owner_name}{ACCOUNT_LABEL_SUFFIX}")
 }
 
@@ -82,7 +82,7 @@ pub fn account_label(owner_name: &str) -> String {
 ///
 /// # Errors
 /// Reports a template that would not render, which is this build's fault.
-pub fn render_invite(letter: &InviteLetter<'_>) -> Result<RenderedEmail> {
+pub(crate) fn render_invite(letter: &InviteLetter<'_>) -> Result<RenderedEmail> {
     let account_name = account_label(letter.owner_name);
     let html = InviteHtml {
         inviter_name: letter.inviter_name,

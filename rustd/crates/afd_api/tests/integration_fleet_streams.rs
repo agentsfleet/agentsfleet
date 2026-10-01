@@ -17,6 +17,7 @@ use std::time::Duration;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_dragonfly::SubscriptionHub;
+use afd_sse::KIND_ACCESS_REVOKED;
 
 use self::fixture::{Fixture, SUBJECT, Wall, data_of, next_chunk, open_stream, stream_ends};
 use self::harness::Fleet;
@@ -85,7 +86,7 @@ async fn a_workspace_stream_announces_its_live_fleet_set() {
     tokio::time::advance(Duration::from_secs(11)).await;
     let last = next_chunk(&mut body).await;
     assert!(
-        last.contains("event: access_revoked"),
+        last.contains(&format!("event: {KIND_ACCESS_REVOKED}")),
         "a revoked wall says why it is closing: {last}"
     );
     assert!(

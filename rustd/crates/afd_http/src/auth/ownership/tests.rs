@@ -5,7 +5,6 @@
 
 use afd_auth::principal::{Principal, Runner};
 use afd_core::id::Uuid7;
-use afd_tenant::workspace::access::{Grant, Role};
 use axum::extract::FromRequestParts as _;
 
 use super::{Acting, Owned, WorkspaceContext};
@@ -20,7 +19,6 @@ async fn workspace_context_requires_the_ownership_verdict() {
     let expected = Owned {
         workspace: id("2b3e1e0c1011"),
         tenant: id("2b3e1e0c1012"),
-        grant: Grant::Membership(Role::Member),
     };
     let (mut parts, _body) = http::Request::new(()).into_parts();
     parts.extensions.insert(expected.clone());

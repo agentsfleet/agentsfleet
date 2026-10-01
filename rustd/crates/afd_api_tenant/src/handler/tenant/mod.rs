@@ -65,6 +65,10 @@ pub(crate) use self::workspace::{create as create_workspace, list as list_worksp
 /// session — each family keeps its own words.
 pub const DETAIL_TENANT_REQUIRED: &str = "Tenant context required";
 
+/// The refusal a body that is not the route's JSON earns, on every tenant
+/// route that reads one.
+pub(crate) const DETAIL_JSON_BODY: &str = "Malformed JSON body";
+
 use std::sync::Arc;
 
 use afd_core::id::Uuid7;
