@@ -2,7 +2,7 @@
 --
 -- One row per invite. It is pending until it is accepted, revoked, or its
 -- expiry passes; acceptance writes the membership and stamps `accepted_at` in
--- one transaction (`afd_tenant::invite`). A pending invite is the one kind the
+-- one transaction (`afd_tenant::team::invitation`). A pending invite is the one kind the
 -- partial indexes below cover, because the two questions asked on a hot path
 -- are both about pending ones: "is this address already invited here" at
 -- create, and "what is waiting for me" on every dashboard page an invitee
@@ -51,6 +51,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_invites_tenant_id_email_pending
 CREATE INDEX IF NOT EXISTS idx_invites_email_pending
     ON core.invites (email)
     WHERE accepted_at IS NULL AND revoked_at IS NULL;
+
+-- Deleting an account cascades here by tenant, and deleting a user cascades
+-- by inviter and clears the accepter. Accepted, revoked and expired rows stay,
+-- so each delete finds its rows by these indexes rather than a table scan.
+CREATE INDEX IF NOT EXISTS idx_invites_tenant_id
+    ON core.invites (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_invites_invited_by
+    ON core.invites (invited_by);
+CREATE INDEX IF NOT EXISTS idx_invites_accepted_by
+    ON core.invites (accepted_by)
+    WHERE accepted_by IS NOT NULL;
 
 -- api_runtime creates, lists, revokes and accepts invites.
 GRANT SELECT, INSERT, UPDATE, DELETE ON core.invites TO api_runtime;
