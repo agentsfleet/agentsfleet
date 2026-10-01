@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Alert,
   Button,
   Card,
   CardContent,
@@ -62,7 +63,7 @@ export function InvitesView({ waiting, linkedId }: Props) {
       <PageHeader description={INVITES_DESCRIPTION}>
         <PageTitle>{INVITES_TITLE}</PageTitle>
       </PageHeader>
-      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+      {error ? <Alert variant="destructive">{error}</Alert> : null}
       {linkedUnlisted ? (
         <Card>
           <CardContent className="flex flex-col gap-sm p-md sm:flex-row sm:items-center">
