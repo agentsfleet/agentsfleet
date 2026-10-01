@@ -37,7 +37,17 @@ pub use self::telemetry::{InviteEmailOutcome, Telemetry};
 /// handle to the same one — a second client would be a second batch queue and a
 /// second flush to remember at shutdown.
 #[derive(Clone)]
-pub struct Analytics(Option<Arc<Client>>);
+pub struct Analytics(Sink);
+
+/// The three places an event can go. A recording exists only for suites that
+/// prove a route reported what it did; production cannot build one.
+#[derive(Clone)]
+enum Sink {
+    Silent,
+    PostHog(Arc<Client>),
+    #[cfg(feature = "test-util")]
+    Recording(Recorded),
+}
 
 impl std::fmt::Debug for Analytics {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -57,27 +67,38 @@ impl Analytics {
         if let Some(host) = host {
             options = ClientOptions::from((project_key, host));
         }
-        Self(Some(Arc::new(posthog_rs::client(options).await)))
+        Self(Sink::PostHog(Arc::new(posthog_rs::client(options).await)))
     }
 
     /// The reporter for a deployment holding none.
     #[must_use]
     pub const fn silent() -> Self {
-        Self(None)
+        Self(Sink::Silent)
+    }
+
+    /// A reporter that keeps every event, and the handle a suite reads them
+    /// back through.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn recording() -> (Self, Recorded) {
+        let recorded = Recorded::default();
+        (Self(Sink::Recording(recorded.clone())), recorded)
     }
 
     /// Whether anything is actually being reported.
     #[must_use]
     pub const fn is_reporting(&self) -> bool {
-        self.0.is_some()
+        !matches!(self.0, Sink::Silent)
     }
 
     /// Queues one event. Returns as soon as it is queued, never on delivery.
     pub fn report(&self, telemetry: &Telemetry) {
-        let Some(client) = self.0.as_ref() else {
-            return;
-        };
-        client.capture(telemetry.event());
+        match &self.0 {
+            Sink::Silent => {}
+            Sink::PostHog(client) => client.capture(telemetry.event()),
+            #[cfg(feature = "test-util")]
+            Sink::Recording(recorded) => recorded.push(telemetry),
+        }
     }
 
     /// Delivers what is queued, for a process that is going away.
@@ -86,8 +107,31 @@ impl Analytics {
     /// last request served is one this daemon still owes, and dropping the
     /// client without this would discard it.
     pub async fn flush(&self) {
-        if let Some(client) = self.0.as_ref() {
+        if let Sink::PostHog(client) = &self.0 {
             client.shutdown().await;
+        }
+    }
+}
+
+/// The events a recording reporter kept, in the order they were reported.
+#[cfg(feature = "test-util")]
+#[derive(Debug, Clone, Default)]
+pub struct Recorded(Arc<std::sync::Mutex<Vec<Telemetry>>>);
+
+#[cfg(feature = "test-util")]
+impl Recorded {
+    /// Every event so far.
+    #[must_use]
+    pub fn events(&self) -> Vec<Telemetry> {
+        self.0
+            .lock()
+            .map(|events| events.clone())
+            .unwrap_or_default()
+    }
+
+    fn push(&self, telemetry: &Telemetry) {
+        if let Ok(mut events) = self.0.lock() {
+            events.push(telemetry.clone());
         }
     }
 }

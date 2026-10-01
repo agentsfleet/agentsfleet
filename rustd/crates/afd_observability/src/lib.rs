@@ -40,4 +40,6 @@ pub mod test_util;
 pub use self::delivery::{Delivery, MAX_RUN};
 pub use self::error::{Error, Result};
 pub use self::export::{CountingExporter, CountingLogExporter, LogDrops, SpanDrops};
+#[cfg(feature = "test-util")]
+pub use self::product::Recorded;
 pub use self::product::{Analytics, InviteEmailOutcome, Telemetry};

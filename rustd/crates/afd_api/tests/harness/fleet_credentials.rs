@@ -42,6 +42,13 @@ impl Fleet {
         self
     }
 
+    /// Keeps every product event the routes report, for the suite to read.
+    pub(crate) fn with_recorded_analytics(mut self) -> (Self, afd_observability::Recorded) {
+        let (analytics, recorded) = afd_observability::Analytics::recording();
+        self.analytics = analytics;
+        (self, recorded)
+    }
+
     /// Breaks call `ordinal` of one team-store write; the failpoint comes back
     /// so the suite can prove it fired.
     pub(crate) fn with_team_fault(

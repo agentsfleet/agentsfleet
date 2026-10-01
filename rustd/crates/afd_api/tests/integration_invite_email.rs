@@ -15,6 +15,7 @@ use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_db::test_util::mint_id;
 use afd_mail::{IDEMPOTENCY_HEADER, SMTP_RELAY_BAG};
+use afd_observability::{InviteEmailOutcome, Recorded, Telemetry};
 use afd_vault::{SecretBody, SecretName};
 use axum::Router;
 use http::{Method, StatusCode};
@@ -71,6 +72,40 @@ async fn owner_breaking(members: &Members, port: u16, step: TeamStep) -> (Router
     .with_platform_admin(members.john.workspace.clone())
     .with_team_fault(step, 1);
     (fleet.router(), failpoint)
+}
+
+/// John's routes, keeping every product event they report.
+async fn owner_recording(members: &Members, relay: Option<u16>) -> (Router, Recorded) {
+    let mut fleet = Fleet::live(
+        members.database.clone(),
+        &members.john.subject,
+        owner_scopes(),
+    )
+    .with_live_ownership()
+    .with_dashboard_holding(&members.john.subject, owner_scopes());
+    if let Some(port) = relay {
+        seal_relay(members, port).await;
+        fleet = fleet.with_platform_admin(members.john.workspace.clone());
+    }
+    let (fleet, recorded) = fleet.with_recorded_analytics();
+    (fleet.router(), recorded)
+}
+
+/// The invite-email events reported for `invite`: attempt and outcome.
+fn reported(recorded: &Recorded, invite: &str) -> Vec<(u32, InviteEmailOutcome)> {
+    recorded
+        .events()
+        .into_iter()
+        .filter_map(|event| match event {
+            Telemetry::InviteEmail {
+                invite_id,
+                attempt,
+                outcome,
+                ..
+            } if invite_id == invite => Some((attempt, outcome)),
+            _ => None,
+        })
+        .collect()
 }
 
 async fn seal_relay(members: &Members, port: u16) {
@@ -505,5 +540,52 @@ async fn test_failed_email_invite_is_still_acceptable() {
     )
     .await;
     assert_eq!(response.status(), StatusCode::OK);
+    members.cleanup().await;
+}
+
+/// Each send reports one product event naming its attempt and what became of
+/// it — sent with the relay's code, refused with its code, or unconfigured —
+/// on behalf of the owner who sent it.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_invite_email_reports_each_outcome() {
+    let members = Members::create().await;
+    members.seed().await;
+    let relay = FakeRelay::start(vec![Session::Accept, Session::RefuseRecipient(550)]).await;
+    let (router, recorded) = owner_recording(&members, Some(relay.port)).await;
+    let (sent, _address) = invite(&router, &members).await;
+    let (refused, _address) = invite(&router, &members).await;
+    assert_eq!(
+        reported(&recorded, text(&sent, "id")),
+        [(1, InviteEmailOutcome::Sent { reply: 250 })]
+    );
+    assert_eq!(
+        reported(&recorded, text(&refused, "id")),
+        [(1, InviteEmailOutcome::Failed { reply: Some(550) })]
+    );
+    let actors: Vec<String> = recorded
+        .events()
+        .iter()
+        .filter_map(|event| match event {
+            Telemetry::InviteEmail {
+                actor, tenant_id, ..
+            } => {
+                assert_eq!(tenant_id, &members.john.tenant);
+                Some(actor.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        actors,
+        [members.john.subject.clone(), members.john.subject.clone()]
+    );
+
+    let (unconfigured_router, unconfigured) = owner_recording(&members, None).await;
+    let (quiet, _address) = invite(&unconfigured_router, &members).await;
+    assert_eq!(
+        reported(&unconfigured, text(&quiet, "id")),
+        [(1, InviteEmailOutcome::Unconfigured)]
+    );
     members.cleanup().await;
 }

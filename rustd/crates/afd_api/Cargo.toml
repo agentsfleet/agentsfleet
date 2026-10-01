@@ -22,6 +22,7 @@ test-util = [
   "afd_auth/test-util",
   "afd_webhook/test-util",
   "afd_core/test-util",
+  "afd_observability/test-util",
 ]
 
 # The merged document: every plane's collector, plus this crate's own probes.
