@@ -531,7 +531,7 @@ async fn test_failed_email_invite_is_still_acceptable() {
     let id = text(&created, "id");
 
     let strangers = members.router(&members.stranger, owner_scopes());
-    let accept = format!("/v1/me/invites/{id}/accept");
+    let accept = format!("/v1/users/me/invites/{id}/accept");
     let response = send(
         &strangers,
         Method::POST,

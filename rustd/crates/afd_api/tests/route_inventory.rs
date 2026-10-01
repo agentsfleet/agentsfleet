@@ -119,15 +119,15 @@ const DEFERRED_TO_M180: &[&str] = &[
     "/v1/connectors/{provider}/events",
     "/v1/fleets/bundles",
     // Team accounts: an owner's invites and members under the caller's own
-    // account, the invitee's side under `/v1/me`, and the names a workspace's
+    // account, the invitee's side under `/v1/users/me`, and the names a workspace's
     // thread shows beside each sender.
     "/v1/tenants/me/invites",
     "/v1/tenants/me/invites/{invite_id}",
     "/v1/tenants/me/invites/{invite_id}/send",
     "/v1/tenants/me/members",
     "/v1/tenants/me/members/{user_id}",
-    "/v1/me/invites",
-    "/v1/me/invites/{invite_id}/accept",
+    "/v1/users/me/invites",
+    "/v1/users/me/invites/{invite_id}/accept",
     "/v1/workspaces/{workspace_id}/members",
 ];
 

@@ -24,7 +24,10 @@ use crate::integration_workspace_members::fixture::{Members, Person, owner_scope
 
 const INVITES: &str = "/v1/tenants/me/invites";
 const MEMBERS: &str = "/v1/tenants/me/members";
-const MINE: &str = "/v1/me/invites";
+const MINE: &str = "/v1/users/me/invites";
+/// The `current_state` a duplicate invite answers with, by what stands in its way.
+const STATE_INVITED: &str = "invited";
+const STATE_MEMBER: &str = "member";
 
 async fn call(
     router: &Router,
@@ -114,7 +117,7 @@ async fn john_invites_the_stranger(routers: &Routers, members: &Members) -> Stri
     let (status, twice) = call(&routers.john, Method::POST, INVITES, john, &body).await;
     assert_eq!(status, StatusCode::CONFLICT);
     assert_eq!(code(&twice), Some(error_code::INVITE_CONFLICT.as_str()));
-    assert_eq!(text(&twice, "current_state"), Some("invited_or_member"));
+    assert_eq!(text(&twice, "current_state"), Some(STATE_INVITED));
 
     let (_, listed) = call(&routers.john, Method::GET, INVITES, john, "").await;
     assert!(find(&listed, "id", &id).is_some(), "{listed}");
@@ -147,6 +150,12 @@ async fn the_stranger_accepts(routers: &Routers, members: &Members, invite: &str
             .any(|w| w.as_str() == Some(john.workspace.as_str()))),
         "{accepted}"
     );
+
+    // Now a member, the address is refused as one, not as a pending invite.
+    let body = json!({ "email": stranger.email }).to_string();
+    let (status, again) = call(&routers.john, Method::POST, INVITES, john, &body).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{again}");
+    assert_eq!(text(&again, "current_state"), Some(STATE_MEMBER));
 }
 
 /// John reads his members, cannot remove himself, removes the stranger twice.

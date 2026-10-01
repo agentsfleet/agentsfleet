@@ -2,13 +2,13 @@
 //!
 //! An owner issues, lists and revokes invites under `/v1/tenants/me`, which is
 //! always the caller's own account, so owning it is a fact of the path. The
-//! invitee reads and accepts under `/v1/me`, from whichever account sent them.
+//! invitee reads and accepts under `/v1/users/me`, from whichever account sent them.
 
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_core::error_code;
 use afd_core::id::Uuid7;
+use afd_tenant::error::InviteConflict;
 use afd_tenant::team::{Email, Invitee, NewInvite, Waiting};
 use afd_wire::team::{AcceptedInviteResponse, CreateInviteRequest, WaitingInvite};
 use afd_wire::workspace::WorkspaceAccount;
@@ -42,7 +42,10 @@ const DETAIL_BODY: &str = "Malformed JSON body";
 const DETAIL_INVITE_ID: &str = "invite_id must be a valid UUIDv7";
 
 /// The state a conflicting invite's 409 names.
-const STATE_INVITED: &str = "invited_or_member";
+/// `current_state` on a duplicate invite: the address has a pending invite.
+const STATE_INVITED: &str = "invited";
+/// `current_state` on a duplicate invite: the address belongs to the account.
+const STATE_MEMBER: &str = "member";
 
 /// `POST /v1/tenants/me/invites` — invite an address into the caller's account.
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -95,17 +98,20 @@ pub(crate) async fn create<D: Services>(
         inviter: &inviter.id,
         email: &email,
     };
-    let mut invite = services
-        .team()
-        .invite(&new, services.now())
-        .await
-        .map_err(|error| {
-            if error.code() == error_code::INVITE_CONFLICT {
-                Refusal::conflict_at(EVENT_CREATE, STATE_INVITED)(error)
-            } else {
-                Refusal::at(EVENT_CREATE)(error)
-            }
-        })?;
+    let mut invite =
+        services
+            .team()
+            .invite(&new, services.now())
+            .await
+            .map_err(|error| match error.invite_conflict() {
+                Some(InviteConflict::Invited) => {
+                    Refusal::conflict_at(EVENT_CREATE, STATE_INVITED)(error)
+                }
+                Some(InviteConflict::Member) => {
+                    Refusal::conflict_at(EVENT_CREATE, STATE_MEMBER)(error)
+                }
+                None => Refusal::at(EVENT_CREATE)(error),
+            })?;
     let link = link_or_refuse(services.dashboard(), &invite.id)?;
     email_new_invite(&*services, &mut invite, person.subject().as_str(), &link).await;
     let summary = summary(services.dashboard(), &invite)?;
@@ -191,10 +197,10 @@ pub(crate) async fn revoke<D: Services>(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
-/// `GET /v1/me/invites` — the invites waiting for the caller's address.
+/// `GET /v1/users/me/invites` — the invites waiting for the caller's address.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = "/v1/me/invites",
+    path = "/v1/users/me/invites",
     tag = afd_http::openapi::tag::INVITES,
     operation_id = "list_my_invites",
     summary = "List invites waiting for you",
@@ -230,10 +236,10 @@ pub(crate) async fn waiting<D: Services>(
     Ok(Json(one_page(waiting.iter().map(waiting_invite).collect())).into_response())
 }
 
-/// `POST /v1/me/invites/{invite_id}/accept` — join the account an invite opens.
+/// `POST /v1/users/me/invites/{invite_id}/accept` — join the account an invite opens.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = "/v1/me/invites/{invite_id}/accept",
+    path = "/v1/users/me/invites/{invite_id}/accept",
     tag = afd_http::openapi::tag::INVITES,
     operation_id = "accept_invite",
     summary = "Accept an invite",
@@ -244,7 +250,9 @@ pub(crate) async fn waiting<D: Services>(
         "person's email address must equal the invite's, or it is refused with ",
         "403 `UZ-INV-002`, which does not name the address. An invite that ",
         "expired, was revoked, or was accepted by somebody else answers 404 ",
-        "`UZ-INV-001`. Accepting again answers exactly as the first accept did. ",
+        "`UZ-INV-001`. Accepting again while still a member answers 200 with ",
+        "the account's current workspaces. A member removed since gets 404 ",
+        "`UZ-INV-001`. ",
     ),
     params(afd_http::openapi::path::Invite),
     responses(

@@ -4079,191 +4079,6 @@
         "security": []
       }
     },
-    "/v1/me/invites": {
-      "get": {
-        "tags": [
-          "Invites"
-        ],
-        "summary": "List invites waiting for you",
-        "description": "Returns every still-acceptable invite sent to the calling person's email address, from any account, newest first. Each item names the account it joins. One page: `next_cursor` is always `null`. ",
-        "operationId": "list_my_invites",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PageResponse_WaitingInvite"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No credential, or one this route does not accept",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "The caller is not a person this tenant knows",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "The instance is at its ceiling",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "The daemon failed to answer",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A dependency this route needs is unreachable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    },
-    "/v1/me/invites/{invite_id}/accept": {
-      "post": {
-        "tags": [
-          "Invites"
-        ],
-        "summary": "Accept an invite",
-        "description": "Makes the caller a member of the account the invite opens. An operation, in the multi-resource-transaction category: it writes the membership and stamps the invite accepted, together. The signed-in person's email address must equal the invite's, or it is refused with 403 `UZ-INV-002`, which does not name the address. An invite that expired, was revoked, or was accepted by somebody else answers 404 `UZ-INV-001`. Accepting again answers exactly as the first accept did. ",
-        "operationId": "accept_invite",
-        "parameters": [
-          {
-            "name": "invite_id",
-            "in": "path",
-            "description": "`UUIDv7` of the invite.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AcceptedInviteResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The request could not be read",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No credential, or one this route does not accept",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "The credential is good and lacks the capability this route requires",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No such resource, or none this caller may see",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "The instance is at its ceiling",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "The daemon failed to answer",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A dependency this route needs is unreachable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    },
     "/v1/models": {
       "get": {
         "tags": [
@@ -5968,7 +5783,7 @@
           "Invites"
         ],
         "summary": "Send an invite's email again",
-        "description": "Sends the invite email for one pending invite into the caller's own account, as a new attempt. Use it when the invite's `email_status` is `failed`. When the mail relay is not set up, refuses, or does not answer, the route answers 503 `UZ-INV-005`. The invite stays valid either way, so its `link` can be shared by hand. An invite that expired, was revoked, or was accepted answers 404 `UZ-INV-001`. ",
+        "description": "Sends the invite email for one pending invite into the caller's own account, as a new attempt. An operation, in the side-effecting RPC category. Each call sends one more email and takes no `Idempotency-Key`. Use it when the invite's `email_status` is `failed`. When the mail relay is not set up, refuses, or does not answer, the route answers 503 `UZ-INV-005`. The invite stays valid either way, so its `link` can be shared by hand. An invite that expired, was revoked, or was accepted answers 404 `UZ-INV-001`. ",
         "operationId": "send_invite_email",
         "parameters": [
           {
@@ -7101,6 +6916,191 @@
           },
           "403": {
             "description": "The caller is not a person this tenant knows",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/users/me/invites": {
+      "get": {
+        "tags": [
+          "Invites"
+        ],
+        "summary": "List invites waiting for you",
+        "description": "Returns every still-acceptable invite sent to the calling person's email address, from any account, newest first. Each item names the account it joins. One page: `next_cursor` is always `null`. ",
+        "operationId": "list_my_invites",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageResponse_WaitingInvite"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is not a person this tenant knows",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/users/me/invites/{invite_id}/accept": {
+      "post": {
+        "tags": [
+          "Invites"
+        ],
+        "summary": "Accept an invite",
+        "description": "Makes the caller a member of the account the invite opens. An operation, in the multi-resource-transaction category: it writes the membership and stamps the invite accepted, together. The signed-in person's email address must equal the invite's, or it is refused with 403 `UZ-INV-002`, which does not name the address. An invite that expired, was revoked, or was accepted by somebody else answers 404 `UZ-INV-001`. Accepting again while still a member answers 200 with the account's current workspaces. A member removed since gets 404 `UZ-INV-001`. ",
+        "operationId": "accept_invite",
+        "parameters": [
+          {
+            "name": "invite_id",
+            "in": "path",
+            "description": "`UUIDv7` of the invite.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedInviteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such resource, or none this caller may see",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -10694,7 +10694,7 @@
           "Fleets"
         ],
         "summary": "List a fleet's chat thread with bodies",
-        "description": "Returns the newest chat events first. Each item carries the trigger payload (`request_json`) and the agent's full answer (`response_text`). One request replaces reading the event list and then each event's detail. A page holds at most `limit` items and at most 512 KiB of encoded items. The newest item always ships, even alone. Follow `next_cursor` to read the rest. The first page also lists messages still waiting for a runner, with status `queued` and no answer yet. ",
+        "description": "Returns the newest chat events first. Each item carries the trigger payload (`request_json`) and the agent's full answer (`response_text`). One request replaces reading the event list and then each event's detail. A page holds at most `limit` items and at most 512 KiB of encoded items. The newest item always ships, even alone. Follow `next_cursor` to read the rest. Any page can also list messages still waiting for a runner, older than its cursor, with status `queued` and no answer yet. ",
         "operationId": "list_fleet_messages",
         "parameters": [
           {
@@ -12910,7 +12910,7 @@
       },
       "AcceptedInviteResponse": {
         "type": "object",
-        "description": "`POST /v1/me/invites/{invite_id}/accept` — the account joined.",
+        "description": "`POST /v1/users/me/invites/{invite_id}/accept` — the account joined.",
         "required": [
           "tenant_id",
           "workspace_ids"

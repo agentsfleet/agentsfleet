@@ -378,8 +378,8 @@ removed member's streams send `event: access_revoked` and close.
 | owner | `POST /v1/tenants/me/invites/{invite_id}/send` | `workspace:admin` | sends the invite email again |
 | owner | `GET /v1/tenants/me/members` | `workspace:admin` | lists the account's people |
 | owner | `DELETE /v1/tenants/me/members/{user_id}` | `workspace:admin` | removes a member |
-| invitee | `GET /v1/me/invites` | none | lists invites waiting for the signed-in address |
-| invitee | `POST /v1/me/invites/{invite_id}/accept` | none | joins the account as a `member` |
+| invitee | `GET /v1/users/me/invites` | none | lists invites waiting for the signed-in address |
+| invitee | `POST /v1/users/me/invites/{invite_id}/accept` | none | joins the account as a `member` |
 
 **`/v1/tenants/me` is always the caller's own account.** Owning it is a fact of
 the path (`rustd/crates/afd_api_tenant/src/handler/tenant/invite.rs`). A member
