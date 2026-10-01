@@ -27,12 +27,16 @@ tokio = { workspace = true, features = ["time"] }
 tracing.workspace = true
 
 [dev-dependencies]
-# `test_util::trace::Capture`, which the log-privacy test reads events through.
+# `test_util::trace::Capture`, which the log-privacy tests read events through.
 afd_core = { workspace = true, features = ["test-util"] }
+# `test_util::unreachable_db`, the vault the mailer suite reads the relay
+# through when that read must fail: every acquire refuses, no datastore needed.
+afd_db = { workspace = true, features = ["test-util"] }
 insta.workspace = true
-# `net` and `io-util` for the loopback SMTP listener the refusal and stall
-# tests talk to; `rt-multi-thread` so the listener and the client run apart.
-tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "net", "io-util"] }
+# `net` and `io-util` for the loopback SMTP relay (`src/deliver/tests/loopback.rs`)
+# that the reply-code and send tests drive lettre's real transport against. The
+# tests run on one thread, which is also what `Capture` reads events from.
+tokio = { workspace = true, features = ["macros", "rt", "time", "net", "io-util"] }
 
 [lints]
 workspace = true

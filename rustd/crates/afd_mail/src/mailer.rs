@@ -98,7 +98,7 @@ impl InviteMailer {
 
     /// Sends one invite email and reports what became of it.
     pub async fn send(&self, admin: Option<&Uuid7>, invite: &InviteSend<'_>) -> Outcome {
-        send_within(self.relay(admin), invite, self.deadline).await
+        send_within(self.relay(admin), Relay::transport, invite, self.deadline).await
     }
 
     /// The relay, when the admin workspace holds a usable bag.
@@ -114,9 +114,12 @@ impl InviteMailer {
 /// Reads the relay, then sends through it, all under `deadline`.
 ///
 /// The read is a future rather than the vault itself so a suite can hand it
-/// one that never resolves.
-pub(crate) async fn send_within(
+/// one that never resolves. `connect` is [`Relay::transport`] in production
+/// and a parameter so a suite can hand it a TLS setup that fails: no relay
+/// provokes one on a host whose system trust store loads.
+pub(crate) async fn send_within<M: Mailer>(
     read: impl Future<Output = afd_vault::Result<Option<Relay>>>,
+    connect: impl FnOnce(&Relay, Duration) -> crate::Result<M, lettre::transport::smtp::Error>,
     invite: &InviteSend<'_>,
     deadline: Duration,
 ) -> Outcome {
@@ -130,7 +133,7 @@ pub(crate) async fn send_within(
     };
     // Whatever the read spent comes out of what the relay gets.
     let remaining = until.saturating_duration_since(tokio::time::Instant::now());
-    match relay.transport(remaining) {
+    match connect(&relay, remaining) {
         Ok(transport) => send_with(&transport, &relay.from, &attempt, remaining).await,
         Err(error) => attempt.failed(None, REASON_TLS_SETUP, Some(&error)),
     }
