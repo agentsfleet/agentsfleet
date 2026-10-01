@@ -30,6 +30,7 @@ mod fake_smtp;
 use self::fake_smtp::{FakeRelay, Session};
 
 const INVITES: &str = "/v1/tenants/me/invites";
+const MEMBERS: &str = "/v1/tenants/me/members";
 const FROM: &str = "hello@agentsfleet.test";
 const LOOPBACK: &str = "127.0.0.1";
 const STALL_DEADLINE: Duration = Duration::from_millis(500);
@@ -640,12 +641,12 @@ async fn test_member_removal_store_failure_keeps_member() {
     members.seed().await;
     let relay = FakeRelay::start(vec![]).await;
     let (router, failpoint) = owner_breaking(&members, relay.port, TeamStep::Remove).await;
-    let path = format!("/v1/tenants/me/members/{}", members.bob.user);
+    let path = format!("{MEMBERS}/{}", members.bob.user);
     let (status, problem) = call(&router, &members, Method::DELETE, &path, "").await;
     assert_eq!(failpoint.fired(), 1);
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{problem}");
-    let (_, roster) = call(&router, &members, Method::GET, "/v1/tenants/me/members", "").await;
-    let kept = roster
+    let (_, listed) = call(&router, &members, Method::GET, MEMBERS, "").await;
+    let kept = listed
         .get("items")
         .and_then(Value::as_array)
         .is_some_and(|items| {
@@ -653,6 +654,6 @@ async fn test_member_removal_store_failure_keeps_member() {
                 .iter()
                 .any(|item| text(item, "user_id") == members.bob.user)
         });
-    assert!(kept, "{roster}");
+    assert!(kept, "{listed}");
     members.cleanup().await;
 }
