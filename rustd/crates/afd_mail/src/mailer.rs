@@ -20,7 +20,7 @@ use crate::deliver::{self, Attempted, Delivery, IdempotencyKey, Mailer};
 use crate::relay::{Relay, SMTP_RELAY_BAG};
 use crate::{InviteLetter, render_invite};
 
-/// How long one invite send may take, both tries included.
+/// How long one invite send may take: the relay read and both tries.
 ///
 /// Creating an invite waits for it, so this bounds what a slow relay costs the
 /// owner's click; past it the invite records `failed` and the owner can send
@@ -98,16 +98,7 @@ impl InviteMailer {
 
     /// Sends one invite email and reports what became of it.
     pub async fn send(&self, admin: Option<&Uuid7>, invite: &InviteSend<'_>) -> Outcome {
-        let attempt = Attempt::begin(invite);
-        let relay = match self.relay(admin).await {
-            Ok(Some(relay)) => relay,
-            Ok(None) => return attempt.unconfigured(),
-            Err(error) => return attempt.failed(None, REASON_RELAY_UNREAD, Some(&error)),
-        };
-        match relay.transport(self.deadline) {
-            Ok(transport) => send_with(&transport, &relay.from, &attempt, self.deadline).await,
-            Err(error) => attempt.failed(None, REASON_TLS_SETUP, Some(&error)),
-        }
+        send_within(self.relay(admin), invite, self.deadline).await
     }
 
     /// The relay, when the admin workspace holds a usable bag.
@@ -117,6 +108,31 @@ impl InviteMailer {
         };
         let stored = self.vault.load(admin, &name).await?;
         Ok(stored.as_ref().and_then(Relay::parse))
+    }
+}
+
+/// Reads the relay, then sends through it, all under `deadline`.
+///
+/// The read is a future rather than the vault itself so a suite can hand it
+/// one that never resolves.
+pub(crate) async fn send_within(
+    read: impl Future<Output = afd_vault::Result<Option<Relay>>>,
+    invite: &InviteSend<'_>,
+    deadline: Duration,
+) -> Outcome {
+    let attempt = Attempt::begin(invite);
+    let until = tokio::time::Instant::now() + deadline;
+    let relay = match tokio::time::timeout_at(until, read).await {
+        Ok(Ok(Some(relay))) => relay,
+        Ok(Ok(None)) => return attempt.unconfigured(),
+        Ok(Err(error)) => return attempt.failed(None, REASON_RELAY_UNREAD, Some(&error)),
+        Err(_elapsed) => return attempt.failed(None, REASON_DEADLINE, None),
+    };
+    // Whatever the read spent comes out of what the relay gets.
+    let remaining = until.saturating_duration_since(tokio::time::Instant::now());
+    match relay.transport(remaining) {
+        Ok(transport) => send_with(&transport, &relay.from, &attempt, remaining).await,
+        Err(error) => attempt.failed(None, REASON_TLS_SETUP, Some(&error)),
     }
 }
 
