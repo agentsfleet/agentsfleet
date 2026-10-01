@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
 
@@ -28,6 +28,7 @@ const SEND = "Send";
 const INVITE_READY = "invite-ready";
 const INVITE_LINK = "Invite link";
 const ENTER_AN_ADDRESS = "Enter an email address";
+const DUPLICATE_REFUSED = { ok: false, status: 409, errorCode: "UZ-INV-003", error: "That address already has a pending invite." };
 // pin test: 64 is the RFC 5321 limit the backend's mail parser enforces.
 const LOCAL_PART_MAX = 64;
 const addressWithLocalPart = (length: number) => `${"a".repeat(length)}@example.com`;
@@ -37,8 +38,8 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 
-async function openDialog(onCreated = vi.fn()) {
-  render(<InviteDialog onCreated={onCreated} />, { wrapper: TooltipProvider });
+async function openDialog(onSettled = vi.fn()) {
+  render(<InviteDialog onSettled={onSettled} />, { wrapper: TooltipProvider });
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: INVITE_BUTTON }));
   const dialog = await screen.findByRole("dialog");
@@ -48,17 +49,17 @@ async function openDialog(onCreated = vi.fn()) {
     await user.type(field, address);
     await user.click(within(dialog).getByRole("button", { name: SEND }));
   };
-  return { dialog, send };
+  return { dialog, send, user };
 }
 
 async function createWith(email_status: EmailStatus) {
   const email_sent_at = email_status === EMAIL_STATUS.sent ? INVITE.email_sent_at : null;
   actions.createInviteAction.mockResolvedValue({ ok: true, data: { ...INVITE, email_status, email_sent_at } });
-  const onCreated = vi.fn();
-  const { send } = await openDialog(onCreated);
+  const onSettled = vi.fn();
+  const { send } = await openDialog(onSettled);
   await send(INVITE.email);
   const ready = await screen.findByTestId(INVITE_READY);
-  expect(onCreated).toHaveBeenCalledOnce();
+  expect(onSettled).toHaveBeenCalledOnce();
   return ready;
 }
 
@@ -93,5 +94,32 @@ describe("the invite it just created", () => {
     expect(ready.textContent).toContain(lead);
     expect(ready.textContent).not.toMatch(/\bsent\b|emailed/i);
     expect((within(ready).getByLabelText(INVITE_LINK) as HTMLInputElement).value).toBe(INVITE.link);
+  });
+});
+
+describe("a create that settles", () => {
+  it("should re-read the list after a refused create, since a refusal can follow a saved invite", async () => {
+    actions.createInviteAction.mockResolvedValue(DUPLICATE_REFUSED);
+    const onSettled = vi.fn();
+    const { dialog, send } = await openDialog(onSettled);
+    await send(INVITE.email);
+    expect(await within(dialog).findByRole("alert")).toBeTruthy();
+    expect(onSettled).toHaveBeenCalledOnce();
+  });
+
+  it("should stay open while a create is in flight, so its answer cannot land in the next invite", async () => {
+    const answer = Promise.withResolvers<unknown>();
+    actions.createInviteAction.mockReturnValue(answer.promise);
+    const { dialog, send, user } = await openDialog();
+    await send(INVITE.email);
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog")).toBe(dialog);
+
+    await act(async () => {
+      answer.resolve({ ok: true, data: INVITE });
+    });
+    await screen.findByTestId(INVITE_READY);
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 });

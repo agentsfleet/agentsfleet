@@ -204,7 +204,7 @@ describe("dynamic island shims mount their inner component", () => {
     ],
     [
       "InviteDialogDynamic",
-      React.createElement(InviteDialogDynamic, { onCreated: noop }),
+      React.createElement(InviteDialogDynamic, { onSettled: noop }),
     ],
     [
       "AddRunnerDialogDynamic",

@@ -44,15 +44,19 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
-export default function InviteDialog({ onCreated }: { onCreated: () => void }) {
+/** `onSettled` runs after every create attempt: a refused or timed-out create
+ * may still have saved the invite, so the list re-reads either way. */
+export default function InviteDialog({ onSettled }: { onSettled: () => void }) {
   const [open, setOpen] = useState(false);
   const [created, setCreated] = useState<InviteSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { email: "" } });
 
-  // Closing from any path starts the next invite from an empty form.
+  // Closing from any path starts the next invite from an empty form. A send in
+  // flight finishes here first, or its answer would land in the next invite.
   function handleOpenChange(next: boolean) {
+    if (!next && pending) return;
     setOpen(next);
     if (next) return;
     setCreated(null);
@@ -64,12 +68,12 @@ export default function InviteDialog({ onCreated }: { onCreated: () => void }) {
     setError(null);
     startTransition(async () => {
       const result = await createInviteAction(values.email);
+      onSettled();
       if (!result.ok) {
         setError(presentErrorString({ errorCode: result.errorCode, message: result.error, action: "create the invite" }));
         return;
       }
       setCreated(result.data);
-      onCreated();
     });
   }
 

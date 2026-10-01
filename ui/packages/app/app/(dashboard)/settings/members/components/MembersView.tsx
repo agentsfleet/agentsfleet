@@ -97,7 +97,7 @@ export function MembersView(props: Props) {
       </PageHeader>
       <Section asChild>
         <section aria-label={TEAM_CAPTION}>
-          <SectionHeader as="p" actions={<InviteDialogDynamic onCreated={team.refresh} />}>
+          <SectionHeader as="p" actions={<InviteDialogDynamic onSettled={team.refresh} />}>
             {TEAM_CAPTION}
           </SectionHeader>
           <TeamTable
