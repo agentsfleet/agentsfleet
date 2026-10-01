@@ -137,7 +137,9 @@ export async function listInvites(token: string): Promise<InviteSummary[]> {
   return decodeOnePage(response, decodeInvite);
 }
 
-// DELETE /v1/tenants/me/invites/{invite_id} — idempotent: 204 either way.
+// DELETE /v1/tenants/me/invites/{invite_id} — 204 for a pending or already
+// revoked invite. One its invitee already joined through answers 409
+// `UZ-INV-003` (`current_state` "member"), raised as an ApiError.
 export async function revokeInvite(token: string, inviteId: string): Promise<void> {
   await request<void>(invitePath(inviteId), { method: "DELETE" }, token);
 }

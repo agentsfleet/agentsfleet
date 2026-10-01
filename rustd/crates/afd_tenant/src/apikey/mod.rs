@@ -28,6 +28,7 @@ use afd_core::id::Uuid7;
 use afd_core::paging::{BoundaryKind, Cursor, Page, SortOrder as _};
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
+use afd_db::constraint::violates_unique;
 use sqlx::Row as _;
 
 use crate::sql::apikey as sql;
@@ -47,6 +48,12 @@ const COLUMN_CHANGED: &str = "changed";
 
 /// The column carrying the instant a revoke recorded.
 const COLUMN_REVOKED_AT: &str = "revoked_at";
+
+/// The index that holds a tenant to one key per name.
+///
+/// Must equal the name in `schema/240_api_keys.sql`: a key-hash or primary-key
+/// collision is unique too, and is not a name the caller can change.
+const NAME_CONSTRAINT: &str = "uq_api_keys_tenant_id_key_name";
 
 /// A tenant's api-keys.
 #[derive(Debug, Clone)]
@@ -262,7 +269,7 @@ pub struct Revoked {
 
 /// Turns an insert failure into the refusal it means.
 ///
-/// The name collision is arbitrated by `api_keys_name_per_tenant_uniq` rather
+/// The name collision is arbitrated by [`NAME_CONSTRAINT`] rather
 /// than by a read before the write: a pre-flight `SELECT` leaves a window in
 /// which two concurrent mints both pass it, and one of them then loses at the
 /// insert anyway, so the window buys nothing and hides the real arbiter.
@@ -272,10 +279,7 @@ pub struct Revoked {
 /// reported as the statement failure it is, with the `sqlx::Error` riding
 /// through as the source.
 fn classify_insert(source: sqlx::Error) -> crate::Error {
-    let collided = source
-        .as_database_error()
-        .is_some_and(sqlx::error::DatabaseError::is_unique_violation);
-    if collided {
+    if violates_unique(&source, NAME_CONSTRAINT) {
         error::apikey_name_taken()
     } else {
         error::query("mint api-key")(source)

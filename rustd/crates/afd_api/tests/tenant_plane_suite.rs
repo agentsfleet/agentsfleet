@@ -54,6 +54,8 @@ mod integration_fleet_streams;
 mod integration_invite_email;
 #[path = "integration_team_routes.rs"]
 mod integration_team_routes;
+#[path = "integration_team_routes_scope.rs"]
+mod integration_team_routes_scope;
 #[path = "integration_tenant.rs"]
 mod integration_tenant;
 #[path = "integration_tenant_cli.rs"]

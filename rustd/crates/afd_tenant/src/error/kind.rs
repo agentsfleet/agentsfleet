@@ -38,8 +38,11 @@ pub(crate) enum ErrorKind {
         source: afd_core::error::Error,
     },
 
-    #[error("an identifier could not be minted")]
-    Entropy {
+    /// Every `afd_crypto` failure lands here: a draw from the entropy source,
+    /// an identifier minted from it, or a key or tag it was handed. The source
+    /// says which.
+    #[error("a cryptographic operation failed")]
+    Crypto {
         #[source]
         source: afd_crypto::error::Error,
     },

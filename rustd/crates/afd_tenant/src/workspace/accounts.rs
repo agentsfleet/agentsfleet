@@ -5,15 +5,15 @@
 //! for the reason the access check gives it nothing else: an api-key or a
 //! terminal credential acts for the account it was minted in.
 
-use afd_auth::principal::{Person, PersonCredential, Principal};
+use afd_auth::principal::{Person, Principal};
 use afd_core::id::Uuid7;
 use sqlx::Row as _;
 use sqlx::postgres::PgRow;
 
 use super::access::{ROLE_OWNER, Role};
-use super::{Workspaces, parse_tenant};
+use super::{Workspaces, held_row, reads_user_row};
 use crate::sql::workspace as sql;
-use crate::{Result, error};
+use crate::{Result, error, stored};
 
 /// The context a failed account read reports under.
 const CONTEXT_ACCOUNTS: &str = "list held accounts";
@@ -40,21 +40,20 @@ pub struct Accounts {
 }
 
 impl Accounts {
-    /// The tenants to walk, in the order they were read.
+    /// The tenants to walk, in the order they were read, borrowed for the
+    /// page statement's array bind.
     #[must_use]
-    pub fn tenants(&self) -> Vec<Uuid7> {
+    pub fn tenants(&self) -> Vec<&str> {
         self.held
             .iter()
-            .map(|account| account.tenant.clone())
+            .map(|account| account.tenant.as_str())
             .collect()
     }
 
     /// The held account `tenant` names, when it is one of them.
     #[must_use]
-    pub fn get(&self, tenant: &str) -> Option<&Account> {
-        self.held
-            .iter()
-            .find(|account| account.tenant.as_str() == tenant)
+    pub fn get(&self, tenant: &Uuid7) -> Option<&Account> {
+        self.held.iter().find(|account| account.tenant == *tenant)
     }
 }
 
@@ -68,7 +67,7 @@ impl Workspaces {
         let Some(person) = principal.person() else {
             return Ok(None);
         };
-        if matches!(person.credential(), PersonCredential::SessionToken { .. })
+        if reads_user_row(person)
             && let Some(accounts) = self.subject_accounts(person).await?
         {
             return Ok(Some(accounts));
@@ -92,7 +91,7 @@ impl Workspaces {
             return Ok(None);
         };
         let home: String = first.try_get("home_tenant_id").map_err(&unreadable)?;
-        let home = parse_tenant(&home)?;
+        let home = stored::tenant(&home)?;
         let held = rows.iter().map(account).collect::<Result<_>>()?;
         Ok(Some(Accounts { home, held }))
     }
@@ -114,19 +113,14 @@ impl Workspaces {
     }
 }
 
-/// One held account from its row.
-///
-/// A row with no stored role is the caller's own account admitted without a
-/// membership row, and it is held as its owner, as the access check holds it.
+/// One held account from its row, held as the access check holds it.
 fn account(row: &PgRow) -> Result<Account> {
-    let unreadable = error::query(CONTEXT_ACCOUNTS);
-    let tenant: String = row.try_get("tenant_id").map_err(&unreadable)?;
-    let role: Option<String> = row.try_get("role").map_err(&unreadable)?;
+    let (tenant, role) = held_row(row, CONTEXT_ACCOUNTS)?;
     Ok(Account {
-        tenant: parse_tenant(&tenant)?,
-        role: Role::held(role.as_deref())?,
+        tenant,
+        role,
         owner_name: row
             .try_get(crate::sql::COLUMN_OWNER_NAME)
-            .map_err(&unreadable)?,
+            .map_err(error::query(CONTEXT_ACCOUNTS))?,
     })
 }

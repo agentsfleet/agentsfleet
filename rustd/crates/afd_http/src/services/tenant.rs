@@ -96,7 +96,7 @@ pub trait TenantWorkspaces: Send + Sync + std::fmt::Debug + 'static {
     /// cannot read.
     fn page(
         &self,
-        tenants: &[Uuid7],
+        tenants: &[&str],
         filter: Option<&str>,
         after: Option<&After>,
         limit: u32,
@@ -128,7 +128,7 @@ impl TenantWorkspaces for afd_tenant::workspace::Workspaces {
 
     fn page(
         &self,
-        tenants: &[Uuid7],
+        tenants: &[&str],
         filter: Option<&str>,
         after: Option<&After>,
         limit: u32,

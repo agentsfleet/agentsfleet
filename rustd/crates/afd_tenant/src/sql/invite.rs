@@ -28,10 +28,12 @@ LIMIT 1";
 /// `$1` tenant · `$2` address · `$3` now. Expired but unaccepted invites stay
 /// pending as far as that index can tell, since its predicate cannot read the
 /// clock; this is what lets them go.
-pub const REVOKE_EXPIRED_PENDING: &str = "\
-UPDATE core.invites SET revoked_at = $3, updated_at = $3 \
-WHERE tenant_id = $1::uuid AND email = $2 \
-  AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at <= $3";
+pub const REVOKE_EXPIRED_PENDING: &str = concat!(
+    "UPDATE core.invites SET revoked_at = $3, updated_at = $3 \
+     WHERE tenant_id = $1::uuid AND email = $2",
+    pending_invite!(),
+    "AND expires_at <= $3"
+);
 
 /// One invite.
 ///
@@ -48,21 +50,34 @@ VALUES ($1::uuid, $2::uuid, $3, $4, $5::uuid, $6, $8, $7, $7)";
 /// `$1` tenant · `$2` now.
 pub const SELECT_TENANT_PENDING: &str = concat!(
     select_invitation!(),
-    "FROM core.invites \
-     WHERE tenant_id = $1::uuid AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > $2 \
-     ORDER BY invites.created_at DESC, invites.id DESC"
+    "FROM core.invites WHERE tenant_id = $1::uuid",
+    pending_invite!(),
+    "AND expires_at > $2 ORDER BY invites.created_at DESC, invites.id DESC"
 );
 
 /// Revokes one pending invite.
 ///
 /// `$1` tenant · `$2` invite · `$3` now. Scoped by tenant in the statement, so
 /// an owner cannot revoke another account's invite by guessing its id. No row
-/// means it was already revoked, accepted, or never this account's, and the
-/// caller answers all three the same way.
-pub const REVOKE_INVITE: &str = "\
-UPDATE core.invites SET revoked_at = $3, updated_at = $3 \
-WHERE tenant_id = $1::uuid AND id = $2::uuid \
-  AND accepted_at IS NULL AND revoked_at IS NULL";
+/// means it was already revoked, accepted, or never this account's;
+/// [`SELECT_JOINED_THROUGH_INVITE`] tells the accepted one apart.
+pub const REVOKE_INVITE: &str = concat!(
+    "UPDATE core.invites SET revoked_at = $3, updated_at = $3 \
+     WHERE tenant_id = $1::uuid AND id = $2::uuid",
+    pending_invite!()
+);
+
+/// Whether the person who accepted an invite still belongs to its account.
+///
+/// `$1` tenant · `$2` invite. Asked only after a revoke changed nothing, as
+/// its own statement: an accept holding the invite's row lock makes the
+/// revoke wait, and only a statement begun after that accept committed can
+/// read the membership it wrote. The invite by primary key, the membership by
+/// `uq_memberships_tenant_id_user_id`.
+pub const SELECT_JOINED_THROUGH_INVITE: &str = "\
+SELECT 1 FROM core.invites i \
+JOIN core.memberships m ON m.tenant_id = i.tenant_id AND m.user_id = i.accepted_by \
+WHERE i.tenant_id = $1::uuid AND i.id = $2::uuid";
 
 /// What is waiting for an address, with the account each invite is for.
 ///
@@ -74,9 +89,9 @@ pub const SELECT_PENDING_FOR_EMAIL: &str = concat!(
      FROM core.invites i \
      JOIN core.tenants t ON t.id = i.tenant_id ",
     owner_name_join!(3),
-    "WHERE i.email = $1 AND i.accepted_at IS NULL AND i.revoked_at IS NULL \
-       AND i.expires_at > $2 \
-     ORDER BY i.created_at DESC, i.id DESC"
+    "WHERE i.email = $1",
+    pending_invite!(i),
+    "AND i.expires_at > $2 ORDER BY i.created_at DESC, i.id DESC"
 );
 
 /// The invite an accept acts on, locked until the accept commits.
@@ -129,8 +144,9 @@ ORDER BY workspaces.created_at, workspaces.id";
 pub const BEGIN_EMAIL_ATTEMPT: &str = concat!(
     "WITH counted AS ( \
        UPDATE core.invites SET email_attempts = email_attempts + 1, updated_at = $3 \
-       WHERE tenant_id = $1::uuid AND id = $2::uuid \
-         AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > $3 \
+       WHERE tenant_id = $1::uuid AND id = $2::uuid",
+    pending_invite!(),
+    "AND expires_at > $3 \
        RETURNING tenant_id, email, invited_by, email_attempts \
      ) \
      SELECT c.email_attempts, c.email, \

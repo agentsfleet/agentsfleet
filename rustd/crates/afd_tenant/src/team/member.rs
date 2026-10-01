@@ -6,12 +6,17 @@ use sqlx::postgres::PgRow;
 
 use super::{Member, Removal, Team};
 use crate::sql::member as sql;
+use crate::sql::{COLUMN_EMAIL, COLUMN_ROLE};
 use crate::workspace::access::{ROLE_OWNER, Role};
-use crate::{Result, error};
+use crate::{Result, error, stored};
 
 /// The context each statement failure here reports under.
 const CONTEXT_LIST: &str = "list members";
 const CONTEXT_REMOVE: &str = "remove member";
+
+/// Where a member's user identifier comes from, as a malformed one names it.
+const TABLE_MEMBERSHIPS: &str = "core.memberships";
+const COLUMN_USER_ID: &str = "user_id";
 
 impl Team {
     /// The account's members, oldest membership first.
@@ -48,7 +53,7 @@ impl Team {
             .await
             .map_err(&raise)?;
 
-        let owners: Vec<String> = sqlx::query_scalar(sql::LOCK_OWNERS)
+        let owners: Vec<i32> = sqlx::query_scalar(sql::LOCK_OWNERS)
             .bind(tenant.as_str())
             .bind(ROLE_OWNER)
             .fetch_all(&mut *transaction)
@@ -82,13 +87,17 @@ impl Team {
 }
 
 /// One member from its row, read by column name.
+///
+/// Mapped by hand rather than derived: the user identifier and the role each
+/// parse, and a role this build does not know must surface as its own error.
 fn member(row: &PgRow) -> Result<Member> {
     let unreadable = error::query(CONTEXT_LIST);
-    let role: String = row.try_get("role").map_err(&unreadable)?;
+    let user: String = row.try_get(COLUMN_USER_ID).map_err(&unreadable)?;
+    let role: String = row.try_get(COLUMN_ROLE).map_err(&unreadable)?;
     Ok(Member {
-        user: row.try_get("user_id").map_err(&unreadable)?,
+        user: stored::uuid(TABLE_MEMBERSHIPS, COLUMN_USER_ID, &user)?,
         display_name: row.try_get("display_name").map_err(&unreadable)?,
-        email: row.try_get("email").map_err(&unreadable)?,
+        email: row.try_get(COLUMN_EMAIL).map_err(&unreadable)?,
         subject: row.try_get("oidc_subject").map_err(&unreadable)?,
         role: Role::parse(&role)?,
         joined_at_ms: row.try_get("joined_at").map_err(&unreadable)?,

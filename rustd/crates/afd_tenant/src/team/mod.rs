@@ -54,9 +54,9 @@ pub struct NewInvite<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Waiting {
     /// The invite's identifier.
-    pub id: String,
+    pub id: Uuid7,
     /// The account it opens.
-    pub tenant: String,
+    pub tenant: Uuid7,
     /// What a person calls that account.
     pub owner_name: String,
     /// When it stops being acceptable.
@@ -78,14 +78,14 @@ pub struct Accepted {
     /// The account joined.
     pub tenant: Uuid7,
     /// Its workspaces, oldest first.
-    pub workspaces: Vec<String>,
+    pub workspaces: Vec<Uuid7>,
 }
 
 /// One member of an account.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Member {
     /// Their user row.
-    pub user: String,
+    pub user: Uuid7,
     /// Their name, when the identity provider supplied one.
     pub display_name: Option<String>,
     /// Their address, as stored.

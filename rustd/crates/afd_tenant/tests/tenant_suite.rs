@@ -48,6 +48,8 @@ mod apikey_lane;
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 mod dragonfly_harness;
+// Carries its own `#![expect]`, carved with the code from the suite that
+// declared it, so it needs no allowance here.
 #[path = "support/preference_lane.rs"]
 #[allow(
     clippy::expect_used,
@@ -55,6 +57,8 @@ mod dragonfly_harness;
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 mod preference_lane;
+#[path = "support/team_lane.rs"]
+mod team_lane;
 
 #[path = "integration_api_key_paging.rs"]
 mod integration_api_key_paging;
@@ -70,8 +74,16 @@ mod integration_signup;
 mod integration_team;
 #[path = "integration_team_email.rs"]
 mod integration_team_email;
+#[path = "integration_team_invites.rs"]
+mod integration_team_invites;
+#[path = "integration_team_members.rs"]
+mod integration_team_members;
+#[path = "integration_team_races.rs"]
+mod integration_team_races;
 #[path = "integration_workspace_access_plan.rs"]
 mod integration_workspace_access_plan;
+#[path = "integration_workspace_directory.rs"]
+mod integration_workspace_directory;
 #[path = "integration_workspace_membership.rs"]
 mod integration_workspace_membership;
 #[path = "integration_workspace_ownership.rs"]

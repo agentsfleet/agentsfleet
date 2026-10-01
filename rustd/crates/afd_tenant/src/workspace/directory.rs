@@ -16,7 +16,8 @@ use afd_db::constraint::violates_unique;
 use sqlx::Row as _;
 
 use crate::sql::workspace as sql;
-use crate::{Result, error};
+use crate::sql::{COLUMN_ID, COLUMN_TENANT_ID};
+use crate::{Result, error, stored};
 
 use super::Workspaces;
 use super::name::{self, Chosen};
@@ -57,7 +58,7 @@ pub struct WorkspaceRow {
     /// When it was created; the walk's sort key.
     pub created_at_ms: i64,
     /// The account it belongs to, one of those the page was asked for.
-    pub tenant_id: String,
+    pub tenant_id: Uuid7,
 }
 
 /// One page of the walk, and whether a row exists beyond it.
@@ -98,6 +99,9 @@ pub struct Created {
 impl Workspaces {
     /// One page of the workspaces across `tenants`, oldest first.
     ///
+    /// `tenants` is bound as one array, borrowed as [`super::accounts::
+    /// Accounts::tenants`] lends it, so the walk copies no identifier.
+    ///
     /// `filter` holds the walk to an exact name; `after` is the decoded
     /// cursor when the caller is resuming.
     ///
@@ -106,7 +110,7 @@ impl Workspaces {
     /// cannot read.
     pub async fn page(
         &self,
-        tenants: &[Uuid7],
+        tenants: &[&str],
         filter: Option<&str>,
         after: Option<&After>,
         limit: u32,
@@ -114,24 +118,23 @@ impl Workspaces {
         // One past the limit, so `more` is a fact about the walk rather than
         // a guess about a full page.
         let fetch = i64::from(limit).saturating_add(1);
-        let accounts: Vec<&str> = tenants.iter().map(Uuid7::as_str).collect();
         let mut connection = self.database.acquire().await?;
         let query = match (filter, after) {
             (None, None) => sqlx::query(sql::SELECT_TENANT_WORKSPACES_PAGE_FIRST)
-                .bind(&accounts)
+                .bind(tenants)
                 .bind(fetch),
             (None, Some(boundary)) => sqlx::query(sql::SELECT_TENANT_WORKSPACES_PAGE_AFTER)
-                .bind(&accounts)
+                .bind(tenants)
                 .bind(boundary.created_at_ms)
                 .bind(boundary.id.as_str())
                 .bind(fetch),
             (Some(name), None) => sqlx::query(sql::SELECT_TENANT_WORKSPACES_PAGE_FIRST_BY_NAME)
-                .bind(&accounts)
+                .bind(tenants)
                 .bind(name)
                 .bind(fetch),
             (Some(name), Some(boundary)) => {
                 sqlx::query(sql::SELECT_TENANT_WORKSPACES_PAGE_AFTER_BY_NAME)
-                    .bind(&accounts)
+                    .bind(tenants)
                     .bind(name)
                     .bind(boundary.created_at_ms)
                     .bind(boundary.id.as_str())
@@ -246,10 +249,11 @@ impl Workspaces {
 /// a `try_get` failure already names the column and the type it refused.
 fn read_row(row: &sqlx::postgres::PgRow) -> Result<WorkspaceRow> {
     let unreadable = error::query(CONTEXT_ROW);
+    let tenant: String = row.try_get(COLUMN_TENANT_ID).map_err(&unreadable)?;
     Ok(WorkspaceRow {
-        id: row.try_get("id").map_err(&unreadable)?,
+        id: row.try_get(COLUMN_ID).map_err(&unreadable)?,
         name: row.try_get("name").map_err(&unreadable)?,
         created_at_ms: row.try_get("created_at").map_err(&unreadable)?,
-        tenant_id: row.try_get("tenant_id").map_err(&unreadable)?,
+        tenant_id: stored::tenant(&tenant)?,
     })
 }

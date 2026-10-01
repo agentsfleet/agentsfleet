@@ -12,7 +12,8 @@ use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_dragonfly::{Dragonfly, SubscriptionHub};
-use afd_tenant::workspace::access::{ROLE_MEMBER, ROLE_OWNER};
+use afd_tenant::test_util::{Signup, delete_accounts, sign_up};
+use afd_tenant::workspace::access::ROLE_MEMBER;
 use axum::Router;
 
 use crate::harness::Fleet;
@@ -108,36 +109,19 @@ impl Members {
         .expect("John's fleet and Bob's membership seed");
     }
 
-    /// The five rows signup writes for one person, less the wallet.
+    /// The rows signup writes for one person, less the wallet.
     async fn sign_up(&self, person: &Person) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, $2, 1, 1) \
-             ), person AS ( \
-               INSERT INTO core.users \
-                 (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
-               VALUES ($3::uuid, $1::uuid, $4, $5, $6, 1, 1) \
-             ), membership AS ( \
-               INSERT INTO core.memberships (id, tenant_id, user_id, role, created_at) \
-               VALUES ($7::uuid, $1::uuid, $3::uuid, $8, 1) \
-             ) \
-             INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-             VALUES ($9::uuid, $1::uuid, $2, $4, 1)",
-        )
-        .bind(&person.tenant)
-        .bind(person.display_name.to_lowercase())
-        .bind(&person.user)
-        .bind(&person.subject)
-        .bind(&person.email)
-        .bind(person.display_name)
-        .bind(mint_id())
-        .bind(ROLE_OWNER)
-        .bind(person.workspace.as_str())
-        .execute(&mut *connection)
-        .await
-        .expect("a signed-up person seeds");
+        let name = person.display_name.to_lowercase();
+        let signup = Signup {
+            tenant: &person.tenant,
+            user: &person.user,
+            subject: &person.subject,
+            email: &person.email,
+            name: &name,
+            display_name: Some(person.display_name),
+            workspace: person.workspace.as_str(),
+        };
+        sign_up(&self.database, &signup).await;
     }
 
     /// John removes Bob from his account.
@@ -186,15 +170,8 @@ impl Members {
     }
 
     pub(crate) async fn cleanup(self) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.tenants WHERE id IN ($1::uuid, $2::uuid, $3::uuid)")
-            .bind(&self.john.tenant)
-            .bind(&self.bob.tenant)
-            .bind(&self.stranger.tenant)
-            .execute(&mut *connection)
-            .await
-            .expect("the three accounts clean up");
-        drop(connection);
+        let accounts = [&*self.john.tenant, &self.bob.tenant, &self.stranger.tenant];
+        delete_accounts(&self.database, &accounts).await;
         drop(self.database);
         self.lane.cleanup().await;
     }

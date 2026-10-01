@@ -128,7 +128,7 @@ mod tests {
                 id: WORKSPACE.to_owned(),
                 name: None,
                 created_at_ms: 1,
-                tenant_id: STRANGER.to_owned(),
+                tenant_id: Uuid7::parse(STRANGER).expect("the fixture identifier is UUIDv7"),
             }],
             more: false,
         };

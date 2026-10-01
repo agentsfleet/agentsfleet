@@ -14,15 +14,13 @@ use afd_db::constraint::violates_unique;
 use sqlx::Row as _;
 use sqlx::postgres::PgRow;
 
-use super::{
-    Acceptance, COLUMN_EXPIRES_AT, COLUMN_ID, COLUMN_TENANT_ID, EmailStatus, INVITE_TTL_MS,
-    Invitation,
-};
+use super::{Acceptance, COLUMN_EXPIRES_AT, EmailStatus, INVITE_TTL_MS, Invitation, TABLE};
 use crate::error::InviteConflict;
 use crate::sql::invite as sql;
+use crate::sql::{COLUMN_ID, COLUMN_OWNER_NAME, COLUMN_TENANT_ID};
 use crate::team::{Accepted, Invitee, NewInvite, Team, Waiting, email};
 use crate::workspace::access::{ROLE_OWNER, Role};
-use crate::{Result, error};
+use crate::{Result, error, stored};
 
 /// The context each statement failure here reports under.
 const CONTEXT_ISSUE: &str = "issue invitation";
@@ -30,6 +28,9 @@ const CONTEXT_LIST: &str = "list invitations";
 const CONTEXT_REVOKE: &str = "revoke invitation";
 const CONTEXT_WAITING: &str = "list waiting invitations";
 const CONTEXT_ACCEPT: &str = "accept invitation";
+
+/// Where an accept's workspace identifiers come from, as a malformed one names it.
+const TABLE_WORKSPACES: &str = "core.workspaces";
 
 /// The index that holds an account to one pending invitation per address.
 const PENDING_CONSTRAINT: &str = "uq_invites_tenant_id_email_pending";
@@ -119,17 +120,22 @@ impl Team {
 
     /// Revokes one of the account's pending invitations.
     ///
-    /// Idempotent: an invitation already revoked, accepted, or never this
-    /// account's changes nothing and is not an error.
+    /// Idempotent: an invitation already revoked, never this account's, or
+    /// accepted by someone who has since left changes nothing and is not an
+    /// error. One whose invitee joined and still belongs to the account is
+    /// refused, so an owner whose revoke lost the race to an accept is not
+    /// told the person was kept out.
     ///
     /// # Errors
-    /// Reports a datastore that would not answer.
+    /// Refuses an invitation its invitee joined through; reports a datastore
+    /// that would not answer.
     pub async fn revoke_invitation(
         &self,
         tenant: &Uuid7,
         invitation: &Uuid7,
         now: UnixMillis,
     ) -> Result<()> {
+        let raise = error::query(CONTEXT_REVOKE);
         let mut connection = self.database.acquire().await?;
         let revoked = sqlx::query(sql::REVOKE_INVITE)
             .bind(tenant.as_str())
@@ -137,13 +143,22 @@ impl Team {
             .bind(now.as_millis())
             .execute(connection.as_mut())
             .await
-            .map_err(error::query(CONTEXT_REVOKE))?;
+            .map_err(&raise)?;
         if revoked.rows_affected() > 0 {
             let tenant_id = tenant.as_str();
             let invite_id = invitation.as_str();
             tracing::info!(tenant_id, invite_id, event = "workspace_invite_revoked");
+            return Ok(());
         }
-        Ok(())
+        let joined: Option<i32> = sqlx::query_scalar(sql::SELECT_JOINED_THROUGH_INVITE)
+            .bind(tenant.as_str())
+            .bind(invitation.as_str())
+            .fetch_optional(connection.as_mut())
+            .await
+            .map_err(&raise)?;
+        joined.map_or(Ok(()), |_| {
+            Err(error::invite_conflict(InviteConflict::Member))
+        })
     }
 
     /// The invitations waiting for `address`, newest first, with the account
@@ -177,7 +192,6 @@ impl Team {
         invitee: &Invitee<'_>,
         now: UnixMillis,
     ) -> Result<Accepted> {
-        let membership = self.entropy.uuid7(now)?;
         let raise = error::query(CONTEXT_ACCEPT);
         let mut connection = self.database.acquire().await?;
         let mut transaction = sqlx::Acquire::begin(&mut *connection)
@@ -192,13 +206,17 @@ impl Team {
             .ok_or_else(error::invite_not_found)?;
         let locked = Invitation::read(&row)?;
         let tenant = locked.tenant.as_str();
-        settle(&mut transaction, &locked, invitee, &membership, now).await?;
+        self.settle(&mut transaction, &locked, invitee, now).await?;
         let workspaces: Vec<String> = sqlx::query_scalar(sql::SELECT_TENANT_WORKSPACE_IDS)
             .bind(tenant)
             .fetch_all(&mut *transaction)
             .await
             .map_err(&raise)?;
         transaction.commit().await.map_err(&raise)?;
+        let workspaces = workspaces
+            .iter()
+            .map(|workspace| stored::uuid(TABLE_WORKSPACES, COLUMN_ID, workspace))
+            .collect::<Result<_>>()?;
 
         let invite_id = invitation.as_str();
         let user_id = invitee.user.as_str();
@@ -213,63 +231,67 @@ impl Team {
             workspaces,
         })
     }
-}
 
-/// Writes what accepting `invitation` means for `invitee`, inside the accept's
-/// transaction: a new membership and the invitation's stamp, or a check that a
-/// replay's membership still stands.
-async fn settle(
-    transaction: &mut sqlx::PgConnection,
-    invitation: &Invitation,
-    invitee: &Invitee<'_>,
-    membership: &Uuid7,
-    now: UnixMillis,
-) -> Result<()> {
-    let raise = error::query(CONTEXT_ACCEPT);
-    let tenant = invitation.tenant.as_str();
-    match invitation.acceptance_for(invitee, now) {
-        Acceptance::Closed => Err(error::invite_not_found()),
-        Acceptance::WrongAddress => Err(error::invite_email_mismatch()),
-        Acceptance::AlreadyJoined => {
-            let held: Option<i32> = sqlx::query_scalar(sql::SELECT_MEMBERSHIP_EXISTS)
-                .bind(tenant)
-                .bind(invitee.user.as_str())
-                .fetch_optional(&mut *transaction)
-                .await
-                .map_err(&raise)?;
-            held.map(|_| ()).ok_or_else(error::invite_not_found)
-        }
-        Acceptance::Join => {
-            sqlx::query(sql::INSERT_MEMBERSHIP)
-                .bind(membership.as_str())
-                .bind(tenant)
-                .bind(invitee.user.as_str())
-                .bind(invitation.role.wire())
-                .bind(now.as_millis())
-                .execute(&mut *transaction)
-                .await
-                .map_err(&raise)?;
-            sqlx::query(sql::MARK_ACCEPTED)
-                .bind(invitation.id.as_str())
-                .bind(invitee.user.as_str())
-                .bind(now.as_millis())
-                .execute(&mut *transaction)
-                .await
-                .map_err(&raise)?;
-            Ok(())
+    /// Writes what accepting `invitation` means for `invitee`, inside the
+    /// accept's transaction: a new membership and the invitation's stamp, or
+    /// a check that a replay's membership still stands. The membership's
+    /// identifier is drawn only when one is written.
+    async fn settle(
+        &self,
+        transaction: &mut sqlx::PgConnection,
+        invitation: &Invitation,
+        invitee: &Invitee<'_>,
+        now: UnixMillis,
+    ) -> Result<()> {
+        let raise = error::query(CONTEXT_ACCEPT);
+        let tenant = invitation.tenant.as_str();
+        match invitation.acceptance_for(invitee, now) {
+            Acceptance::Closed => Err(error::invite_not_found()),
+            Acceptance::WrongAddress => Err(error::invite_email_mismatch()),
+            Acceptance::AlreadyJoined => {
+                let held: Option<i32> = sqlx::query_scalar(sql::SELECT_MEMBERSHIP_EXISTS)
+                    .bind(tenant)
+                    .bind(invitee.user.as_str())
+                    .fetch_optional(&mut *transaction)
+                    .await
+                    .map_err(&raise)?;
+                held.map(|_| ()).ok_or_else(error::invite_not_found)
+            }
+            Acceptance::Join => {
+                let membership = self.entropy.uuid7(now)?;
+                sqlx::query(sql::INSERT_MEMBERSHIP)
+                    .bind(membership.as_str())
+                    .bind(tenant)
+                    .bind(invitee.user.as_str())
+                    .bind(invitation.role.wire())
+                    .bind(now.as_millis())
+                    .execute(&mut *transaction)
+                    .await
+                    .map_err(&raise)?;
+                sqlx::query(sql::MARK_ACCEPTED)
+                    .bind(invitation.id.as_str())
+                    .bind(invitee.user.as_str())
+                    .bind(now.as_millis())
+                    .execute(&mut *transaction)
+                    .await
+                    .map_err(&raise)?;
+                Ok(())
+            }
         }
     }
 }
 
 /// One invitation waiting for an address, read by column name.
+///
+/// Mapped by hand rather than derived: both identifiers parse at the row.
 fn waiting(row: &PgRow) -> Result<Waiting> {
     let unreadable = error::query(CONTEXT_WAITING);
+    let id: String = row.try_get(COLUMN_ID).map_err(&unreadable)?;
+    let tenant: String = row.try_get(COLUMN_TENANT_ID).map_err(&unreadable)?;
     Ok(Waiting {
-        id: row.try_get(COLUMN_ID).map_err(&unreadable)?,
-        tenant: row.try_get(COLUMN_TENANT_ID).map_err(&unreadable)?,
-        owner_name: row
-            .try_get(crate::sql::COLUMN_OWNER_NAME)
-            .map_err(&unreadable)?,
+        id: stored::uuid(TABLE, COLUMN_ID, &id)?,
+        tenant: stored::tenant(&tenant)?,
+        owner_name: row.try_get(COLUMN_OWNER_NAME).map_err(&unreadable)?,
         expires_at_ms: row.try_get(COLUMN_EXPIRES_AT).map_err(&unreadable)?,
     })
 }

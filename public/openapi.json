@@ -5692,7 +5692,7 @@
           "Invites"
         ],
         "summary": "Revoke an invite",
-        "description": "Revokes one pending invite into the caller's own account, so its link stops working. Idempotent: an invite already revoked, already accepted, or never this account's also answers 204. ",
+        "description": "Revokes one pending invite into the caller's own account, so its link stops working. Idempotent: an invite already revoked, or never this account's, also answers 204, as does one accepted by someone who has since left. One accepted by someone who still belongs to the account is refused with 409 `UZ-INV-003` and `current_state` `member`. They joined, so remove them instead. ",
         "operationId": "revoke_invite",
         "parameters": [
           {
@@ -5731,6 +5731,16 @@
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
             "content": {
               "application/problem+json": {
                 "schema": {

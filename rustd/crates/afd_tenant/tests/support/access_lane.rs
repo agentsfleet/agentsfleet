@@ -1,16 +1,23 @@
-//! The principals and verdicts the access suites build, spelled once.
+//! The principals, verdicts and people the access suites build, spelled once.
 //!
 //! Every access suite asks the same resolver about the same kinds of caller:
 //! a browser session naming a subject, and a claim-bound credential naming a
 //! tenant. These are the constructors for both and for the verdicts they get,
-//! and the rows every such suite seeds: a signed-up account and a membership.
+//! and the three people the team and membership suites seed: John owns an
+//! account, Bob owns his own and is a member of John's, and Carol owns hers
+//! and holds nothing of John's. The rows themselves are
+//! `afd_tenant::test_util`'s, which `afd_api`'s suites seed too.
 
 use afd_auth::principal::{Person, PersonCredential, Principal, Subject};
 use afd_auth::scope::ScopeSet;
 use afd_core::id::Uuid7;
+use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_db::test_util::mint_id;
-use afd_tenant::workspace::access::{Access, Grant, ROLE_OWNER, Role};
+use afd_db::config::DbRole;
+use afd_db::test_util::{TestDatabase, mint_id};
+use afd_tenant::team::{Invitee, Team};
+use afd_tenant::test_util::{Signup, delete_accounts, hold, sign_up};
+use afd_tenant::workspace::access::{Access, Grant, ROLE_MEMBER, Role};
 
 /// A stored or minted identifier, parsed.
 pub(crate) fn id(value: &str) -> Uuid7 {
@@ -52,77 +59,102 @@ pub(crate) fn held(tenant: &str, role: Role) -> Access {
     }
 }
 
-/// One person's account as signup leaves it, less the wallet.
-pub(crate) struct Signup<'a> {
-    pub(crate) tenant: &'a str,
-    pub(crate) user: &'a str,
-    pub(crate) subject: &'a str,
-    pub(crate) email: &'a str,
-    /// The account's name, and its one workspace's.
-    pub(crate) name: &'a str,
-    /// The person's own name, when the identity provider gave one.
-    pub(crate) display_name: Option<&'a str>,
-    pub(crate) workspace: &'a str,
+/// One signed-up person: their account, user row, subject, address and the
+/// account's one workspace.
+pub(crate) struct Account {
+    /// What they are called, and what their account is named after.
+    pub(crate) name: &'static str,
+    pub(crate) tenant: String,
+    pub(crate) user: String,
+    /// `user`, parsed once, for an invitee to borrow.
+    pub(crate) user_id: Uuid7,
+    pub(crate) subject: String,
+    /// Unique per run: the invites waiting for an address are read across
+    /// every account, so a shared address would see another run's.
+    pub(crate) email: String,
+    pub(crate) workspace: String,
 }
 
-/// Writes `person`'s tenant, user, owner membership and workspace, all at 1.
-pub(crate) async fn sign_up(database: &Db, person: &Signup<'_>) {
-    let mut connection = database.acquire().await.expect("an API connection");
-    sqlx::query(
-        "WITH tenant AS ( \
-           INSERT INTO core.tenants (id, name, created_at, updated_at) \
-           VALUES ($1::uuid, $2, 1, 1) \
-         ), person AS ( \
-           INSERT INTO core.users \
-             (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
-           VALUES ($3::uuid, $1::uuid, $4, $5, $6, 1, 1) \
-         ), membership AS ( \
-           INSERT INTO core.memberships (id, tenant_id, user_id, role, created_at) \
-           VALUES ($7::uuid, $1::uuid, $3::uuid, $8, 1) \
-         ) \
-         INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-         VALUES ($9::uuid, $1::uuid, $2, $4, 1)",
-    )
-    .bind(person.tenant)
-    .bind(person.name)
-    .bind(person.user)
-    .bind(person.subject)
-    .bind(person.email)
-    .bind(person.display_name)
-    .bind(mint_id())
-    .bind(ROLE_OWNER)
-    .bind(person.workspace)
-    .execute(&mut *connection)
-    .await
-    .expect("a signed-up person seeds");
+impl Account {
+    /// A person called `name`, every identifier minted.
+    pub(crate) fn minted(name: &'static str) -> Self {
+        let user = mint_id();
+        let handle = name.to_lowercase();
+        Self {
+            name,
+            tenant: mint_id(),
+            user_id: id(&user),
+            user,
+            subject: format!("user_{handle}_{}", mint_id()),
+            email: format!("{handle}+{}@example.test", mint_id()),
+            workspace: mint_id(),
+        }
+    }
+
+    /// Writes this person's account as signup leaves it, named after them.
+    pub(crate) async fn sign_up(&self, database: &Db) {
+        let signup = Signup {
+            tenant: &self.tenant,
+            user: &self.user,
+            subject: &self.subject,
+            email: &self.email,
+            name: self.name,
+            display_name: Some(self.name),
+            workspace: &self.workspace,
+        };
+        sign_up(database, &signup).await;
+    }
+
+    /// This person, accepting an invite.
+    pub(crate) fn invitee(&self) -> Invitee<'_> {
+        Invitee {
+            user: &self.user_id,
+            email: &self.email,
+        }
+    }
 }
 
-/// `user` in `tenant`'s account with `role` from time 2, whatever they held.
-pub(crate) async fn hold(database: &Db, tenant: &str, user: &str, role: &str) {
-    let mut connection = database.acquire().await.expect("an API connection");
-    sqlx::query(
-        "INSERT INTO core.memberships (id, tenant_id, user_id, role, created_at) \
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 2) \
-         ON CONFLICT (tenant_id, user_id) DO UPDATE SET role = EXCLUDED.role",
-    )
-    .bind(mint_id())
-    .bind(tenant)
-    .bind(user)
-    .bind(role)
-    .execute(&mut *connection)
-    .await
-    .expect("the membership is set");
+/// John, Bob and Carol over the lane's database, and the team store.
+pub(crate) struct Fixture {
+    pub(crate) lane: TestDatabase,
+    pub(crate) database: Db,
+    pub(crate) team: Team,
+    pub(crate) john: Account,
+    pub(crate) bob: Account,
+    pub(crate) carol: Account,
 }
 
-/// Removes three accounts and everything that cascades from them.
-pub(crate) async fn delete_accounts(database: &Db, tenants: [&str; 3]) {
-    let mut connection = database.acquire().await.expect("an API connection");
-    let [first, second, third] = tenants;
-    sqlx::query("DELETE FROM core.tenants WHERE id IN ($1::uuid, $2::uuid, $3::uuid)")
-        .bind(first)
-        .bind(second)
-        .bind(third)
-        .execute(&mut *connection)
-        .await
-        .expect("the accounts clean up");
+impl Fixture {
+    /// The three accounts, and Bob's membership in John's.
+    pub(crate) async fn create() -> Self {
+        let lane = TestDatabase::shared();
+        let database = lane.open(DbRole::Api, &[]).await;
+        let fixture = Self {
+            team: Team::new(database.clone(), Entropy::new()),
+            database,
+            john: Account::minted("John"),
+            bob: Account::minted("Bob"),
+            carol: Account::minted("Carol"),
+            lane,
+        };
+        for account in [&fixture.john, &fixture.bob, &fixture.carol] {
+            account.sign_up(&fixture.database).await;
+        }
+        fixture.set_bob_in_johns_account(ROLE_MEMBER).await;
+        fixture
+    }
+
+    /// Bob's row in John's account, holding `role` whatever it held before.
+    pub(crate) async fn set_bob_in_johns_account(&self, role: &str) {
+        hold(&self.database, &self.john.tenant, &self.bob.user, role).await;
+    }
+
+    /// Removes the three accounts and releases the lane.
+    pub(crate) async fn cleanup(self) {
+        let accounts = [&*self.john.tenant, &self.bob.tenant, &self.carol.tenant];
+        delete_accounts(&self.database, &accounts).await;
+        drop(self.team);
+        drop(self.database);
+        self.lane.cleanup().await;
+    }
 }

@@ -4,7 +4,8 @@
 //! The store's own rules are `afd_tenant`'s integration suite. What this adds
 //! is the HTTP edge: each route is mounted, reads the caller's account from
 //! the path, answers with the documented shape, and refuses with the
-//! documented code.
+//! documented code. That no route reaches another account is
+//! `integration_team_routes_scope.rs`, which shares the helpers here.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -22,14 +23,14 @@ use afd_auth::scope::ScopeSet;
 use crate::harness::send;
 use crate::integration_workspace_members::fixture::{Members, Person, owner_scopes};
 
-const INVITES: &str = "/v1/tenants/me/invites";
-const MEMBERS: &str = "/v1/tenants/me/members";
+pub(crate) const INVITES: &str = "/v1/tenants/me/invites";
+pub(crate) const MEMBERS: &str = "/v1/tenants/me/members";
 const MINE: &str = "/v1/users/me/invites";
 /// The `current_state` a duplicate invite answers with, by what stands in its way.
 const STATE_INVITED: &str = "invited";
 const STATE_MEMBER: &str = "member";
 
-async fn call(
+pub(crate) async fn call(
     router: &Router,
     method: Method,
     path: &str,
@@ -54,17 +55,17 @@ fn items(page: &Value) -> Vec<Value> {
         .unwrap_or_default()
 }
 
-fn code(problem: &Value) -> Option<&str> {
+pub(crate) fn code(problem: &Value) -> Option<&str> {
     problem.get("error_code").and_then(Value::as_str)
 }
 
 /// A string field of a JSON object, when it holds one.
-fn text<'v>(value: &'v Value, key: &str) -> Option<&'v str> {
+pub(crate) fn text<'v>(value: &'v Value, key: &str) -> Option<&'v str> {
     value.get(key).and_then(Value::as_str)
 }
 
 /// The item in a page whose `key` is `wanted`.
-fn find(page: &Value, key: &str, wanted: &str) -> Option<Value> {
+pub(crate) fn find(page: &Value, key: &str, wanted: &str) -> Option<Value> {
     items(page)
         .into_iter()
         .find(|item| text(item, key) == Some(wanted))
@@ -156,6 +157,12 @@ async fn the_stranger_accepts(routers: &Routers, members: &Members, invite: &str
     let (status, again) = call(&routers.john, Method::POST, INVITES, john, &body).await;
     assert_eq!(status, StatusCode::CONFLICT, "{again}");
     assert_eq!(text(&again, "current_state"), Some(STATE_MEMBER));
+    // And John revoking the invite she joined through hears the same, rather
+    // than a 204 that would say she was kept out.
+    let revoke = format!("{INVITES}/{invite}");
+    let (status, joined) = call(&routers.john, Method::DELETE, &revoke, john, "").await;
+    assert_eq!(status, StatusCode::CONFLICT, "{joined}");
+    assert_eq!(text(&joined, "current_state"), Some(STATE_MEMBER));
 }
 
 /// John reads his members, cannot remove himself, removes the stranger twice.
@@ -201,103 +208,8 @@ async fn john_manages_the_account(routers: &Routers, members: &Members, invite: 
     assert_eq!(
         status,
         StatusCode::NO_CONTENT,
-        "revoking an accepted invite is quiet"
+        "revoking a spent invite whose invitee left is quiet"
     );
-}
-
-/// How many sends John's invite has counted, read from the row.
-async fn attempts_of(members: &Members, invite: &str) -> i32 {
-    let mut connection = members.database.acquire().await.expect("a connection");
-    sqlx::query_scalar("SELECT email_attempts FROM core.invites WHERE id = $1::uuid")
-        .bind(invite)
-        .fetch_one(&mut *connection)
-        .await
-        .expect("the invite row reads")
-}
-
-/// An owner naming another account's invite or member through their own
-/// `/tenants/me` routes reaches nothing: the revoke and the removal are quiet
-/// no-ops, the send is not found and counts no attempt, and John's invite and
-/// Bob's membership stand.
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_owner_routes_never_reach_another_account() {
-    let members = Members::create().await;
-    members.seed().await;
-    let (john, bob, stranger) = (&members.john, &members.bob, &members.stranger);
-    let johns = members.router(john, owner_scopes());
-    let strangers = members.router(stranger, owner_scopes());
-    let body = json!({ "email": format!("dave+{}@example.test", bob.user) }).to_string();
-    let (status, invite) = call(&johns, Method::POST, INVITES, john, &body).await;
-    assert_eq!(status, StatusCode::CREATED, "{invite}");
-    let invite = text(&invite, "id").expect("an id").to_owned();
-    let counted = attempts_of(&members, &invite).await;
-
-    let revoke = format!("{INVITES}/{invite}");
-    let (status, _) = call(&strangers, Method::DELETE, &revoke, stranger, "").await;
-    assert_eq!(
-        status,
-        StatusCode::NO_CONTENT,
-        "nothing of theirs to revoke"
-    );
-    let resend = format!("{INVITES}/{invite}/send");
-    let (status, problem) = call(&strangers, Method::POST, &resend, stranger, "").await;
-    assert_eq!(status, StatusCode::NOT_FOUND, "{problem}");
-    assert_eq!(code(&problem), Some(error_code::INVITE_NOT_FOUND.as_str()));
-    assert_eq!(
-        attempts_of(&members, &invite).await,
-        counted,
-        "no send counted"
-    );
-    let remove = format!("{MEMBERS}/{}", bob.user);
-    let (status, _) = call(&strangers, Method::DELETE, &remove, stranger, "").await;
-    assert_eq!(status, StatusCode::NO_CONTENT, "nobody of theirs to remove");
-
-    let (_, listed) = call(&johns, Method::GET, INVITES, john, "").await;
-    assert!(
-        find(&listed, "id", &invite).is_some(),
-        "John's invite stands: {listed}"
-    );
-    let (_, roster) = call(&johns, Method::GET, MEMBERS, john, "").await;
-    assert!(
-        find(&roster, "user_id", &bob.user).is_some(),
-        "Bob stays: {roster}"
-    );
-    members.cleanup().await;
-}
-
-/// Bob is a member of John's account and owns his own: his `/tenants/me`
-/// routes read his own account, never John's invites or roster.
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_member_manages_only_own_account() {
-    let members = Members::create().await;
-    members.seed().await;
-    let (john, bob, stranger) = (&members.john, &members.bob, &members.stranger);
-    let johns = members.router(john, owner_scopes());
-    let bobs = members.router(bob, owner_scopes());
-    let body = json!({ "email": stranger.email }).to_string();
-    let (status, invite) = call(&johns, Method::POST, INVITES, john, &body).await;
-    assert_eq!(status, StatusCode::CREATED, "{invite}");
-    let invite = text(&invite, "id").expect("an id").to_owned();
-
-    let (status, listed) = call(&bobs, Method::GET, INVITES, bob, "").await;
-    assert_eq!(status, StatusCode::OK, "{listed}");
-    assert!(
-        find(&listed, "id", &invite).is_none(),
-        "not Bob's invite: {listed}"
-    );
-    let (status, roster) = call(&bobs, Method::GET, MEMBERS, bob, "").await;
-    assert_eq!(status, StatusCode::OK, "{roster}");
-    assert!(
-        find(&roster, "user_id", &john.user).is_none(),
-        "not Bob's roster: {roster}"
-    );
-    assert!(
-        find(&roster, "user_id", &bob.user).is_some(),
-        "Bob owns his own: {roster}"
-    );
-    members.cleanup().await;
 }
 
 /// The routes' edges: malformed path ids and bodies are 400s, no credential

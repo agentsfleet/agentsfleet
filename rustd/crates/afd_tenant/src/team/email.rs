@@ -3,14 +3,16 @@
 //! Lowercased and trimmed, so every stored invite and every comparison uses
 //! one spelling and the partial indexes match it without a function.
 //!
-//! # A shape guard, then the mail library's parser
+//! # Two product rules, then the mail library's parser
 //!
-//! The shape guard refuses input that cannot be an address at all: blank,
-//! spaced, over the SMTP path limit, or without a local part and a dotted
-//! domain. The caller then supplies `deliverable`, the parser the invite email
-//! addresses its recipient with, so no invite is stored for an address its
-//! email could never be sent to. The store links no mail client: the parser
-//! arrives as a function.
+//! The syntax of an address is the parser's: the caller supplies
+//! `deliverable`, the one the invite email addresses its recipient with, so no
+//! invite is stored for an address its email could never be sent to, and no
+//! second, hand-written grammar can disagree with it. The store links no mail
+//! client: the parser arrives as a function. What stays here is what the
+//! product adds on top: nothing longer than SMTP carries, and a domain with a
+//! dot in it, since an invite goes to a person on the internet and never to a
+//! bare host name the parser would accept.
 
 use crate::{Result, error};
 
@@ -20,7 +22,10 @@ const MAX_LEN: usize = 254;
 /// The separator between an address's local part and its domain.
 const AT: char = '@';
 
-/// An invite address: trimmed, lowercased, and shaped like one.
+/// What an internet domain carries and a bare host name does not.
+const DOT: char = '.';
+
+/// An invite address: trimmed, lowercased, and one its email can be sent to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Email(String);
 
@@ -33,22 +38,14 @@ impl Email {
     /// The address `raw` names, normalised, if `deliverable` accepts it.
     ///
     /// # Errors
-    /// Refuses blank input, whitespace or control characters, more than one
-    /// `@`, an empty local part or domain, a domain with no dot, anything
-    /// longer than SMTP carries, and any address `deliverable` refuses.
+    /// Refuses anything longer than SMTP carries, a domain with no dot, and
+    /// any address `deliverable` refuses.
     pub fn parse(raw: &str, deliverable: impl FnOnce(&str) -> bool) -> Result<Self> {
         let address = fold(raw);
-        let shaped = address.len() <= MAX_LEN
-            && !address.chars().any(|c| c.is_whitespace() || c.is_control())
-            && address.split_once(AT).is_some_and(|(local, domain)| {
-                !local.is_empty()
-                    && !domain.is_empty()
-                    && !domain.contains(AT)
-                    && domain.contains('.')
-                    && !domain.starts_with('.')
-                    && !domain.ends_with('.')
-            });
-        (shaped && deliverable(&address))
+        let dotted = address
+            .rsplit_once(AT)
+            .is_some_and(|(_, domain)| domain.contains(DOT));
+        (address.len() <= MAX_LEN && dotted && deliverable(&address))
             .then_some(Self(address))
             .ok_or_else(error::email_invalid)
     }
@@ -68,17 +65,21 @@ impl Email {
 mod tests {
     use super::Email;
 
-    /// A parser that refuses nothing, so these cases test the shape guard alone.
+    /// A parser that refuses nothing, so these cases test the product rules
+    /// alone.
     fn any(_: &str) -> bool {
         true
     }
 
     #[test]
     fn an_address_is_trimmed_and_lowercased_once() {
-        let parsed = Email::parse("  Bob@Example.COM ", any).map(|email| email.as_str().to_owned());
+        let parsed = Email::parse("  Bob@Example.COM ", afd_mail::deliverable)
+            .map(|email| email.as_str().to_owned());
         assert_eq!(parsed.ok().as_deref(), Some("bob@example.com"));
     }
 
+    /// Syntax is the injected parser's: the route injects
+    /// `afd_mail::deliverable`, so these run the composition the route runs.
     #[test]
     fn input_that_cannot_be_an_address_is_refused() {
         for raw in [
@@ -97,15 +98,26 @@ mod tests {
             "bob@exam\u{0}ple.com",
         ] {
             assert!(
-                Email::parse(raw, any).is_err(),
+                Email::parse(raw, afd_mail::deliverable).is_err(),
                 "{raw:?} was accepted as an address"
             );
         }
     }
 
+    /// The product rule the parser does not hold: a bare host name is a
+    /// valid address to the parser and never an invitee.
+    #[test]
+    fn a_domain_without_a_dot_is_refused_whatever_the_parser_says() {
+        assert!(afd_mail::deliverable("bob@example"), "the parser takes it");
+        for raw in ["bob@example", "bob", ""] {
+            assert!(Email::parse(raw, any).is_err(), "{raw:?}");
+        }
+    }
+
     #[test]
     fn surrounding_whitespace_is_not_part_of_the_address() {
-        let parsed = Email::parse("bob@example.com\n", any).map(|email| email.as_str().to_owned());
+        let parsed = Email::parse("bob@example.com\n", afd_mail::deliverable)
+            .map(|email| email.as_str().to_owned());
         assert_eq!(parsed.ok().as_deref(), Some("bob@example.com"));
     }
 

@@ -164,7 +164,7 @@ pub(crate) async fn in_workspace<D: Services>(
 
 fn member_summary(member: &Member) -> MemberSummary<'_> {
     MemberSummary {
-        user_id: Cow::Borrowed(&member.user),
+        user_id: Cow::Borrowed(member.user.as_str()),
         display_name: member.display_name.as_deref().map(Cow::Borrowed),
         email: Cow::Borrowed(&member.email),
         role: Cow::Borrowed(member.role.wire()),
@@ -174,7 +174,7 @@ fn member_summary(member: &Member) -> MemberSummary<'_> {
 
 fn workspace_member(member: &Member) -> WorkspaceMember<'_> {
     WorkspaceMember {
-        user_id: Cow::Borrowed(&member.user),
+        user_id: Cow::Borrowed(member.user.as_str()),
         display_name: member.display_name.as_deref().map(Cow::Borrowed),
         role: Cow::Borrowed(member.role.wire()),
         actor: Cow::Owned(format!("{ACTOR_PREFIX}{}", member.subject)),
