@@ -123,6 +123,7 @@ const DEFERRED_TO_M180: &[&str] = &[
     // thread shows beside each sender.
     "/v1/tenants/me/invites",
     "/v1/tenants/me/invites/{invite_id}",
+    "/v1/tenants/me/invites/{invite_id}/send",
     "/v1/tenants/me/members",
     "/v1/tenants/me/members/{user_id}",
     "/v1/me/invites",

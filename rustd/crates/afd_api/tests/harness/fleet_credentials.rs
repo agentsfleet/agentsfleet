@@ -36,6 +36,12 @@ impl Fleet {
         self
     }
 
+    /// Bounds the invite email's send, for the case proving a stalled relay.
+    pub(crate) fn with_mail_deadline(mut self, deadline: std::time::Duration) -> Self {
+        self.invite_mail = self.invite_mail.with_deadline(deadline);
+        self
+    }
+
     /// Configures the secret a signup event is verified against.
     ///
     /// `None` is the default and it is a real deployment state rather than an

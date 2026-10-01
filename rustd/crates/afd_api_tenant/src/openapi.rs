@@ -82,6 +82,7 @@ use utoipa::OpenApi as _;
     crate::handler::tenant::invite::list,
     crate::handler::tenant::invite::revoke,
     crate::handler::tenant::invite::waiting,
+    crate::handler::tenant::invite_email::send,
     crate::handler::tenant::member::in_workspace,
     crate::handler::tenant::member::list,
     crate::handler::tenant::member::remove,

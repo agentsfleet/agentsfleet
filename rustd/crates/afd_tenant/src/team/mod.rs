@@ -17,7 +17,10 @@ use afd_db::Db;
 use crate::workspace::access::Role;
 
 pub use self::email::Email;
-pub use self::invitation::{Acceptance, INVITE_TTL_MS, Invitation};
+pub use self::invitation::{
+    Acceptance, EMAIL_STATUS_FAILED, EMAIL_STATUS_SENT, EMAIL_STATUS_UNCONFIGURED, EmailAttempt,
+    EmailStatus, INVITE_TTL_MS, Invitation,
+};
 
 /// Invites, acceptance and members, over one pool.
 ///

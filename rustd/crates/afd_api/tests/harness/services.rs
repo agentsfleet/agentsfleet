@@ -233,6 +233,11 @@ impl TenantSurface for Fleet {
     type Catalogue = Models;
     type TenantProviders = HarnessProviders;
     type Signups = afd_tenant::signup::Signups;
+    type InviteMail = afd_mail::InviteMailer;
+
+    fn invite_mail(&self) -> &afd_mail::InviteMailer {
+        &self.invite_mail
+    }
 
     fn workspace_directory(&self) -> &Workspaces {
         &self.workspace_directory

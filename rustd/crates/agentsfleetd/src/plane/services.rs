@@ -219,6 +219,11 @@ impl TenantSurface for ServingPlane {
     type Catalogue = Models;
     type TenantProviders = Providers;
     type Signups = afd_tenant::signup::Signups;
+    type InviteMail = afd_mail::InviteMailer;
+
+    fn invite_mail(&self) -> &Self::InviteMail {
+        &self.invite_mail
+    }
 
     fn signups(&self) -> &Self::Signups {
         &self.signups

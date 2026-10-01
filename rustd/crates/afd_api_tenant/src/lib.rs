@@ -47,6 +47,7 @@ pub fn tenant_handler_for<D: Services>(verb: TenantRoute) -> Option<MethodRouter
             Some(get(handler::tenant::invite::list::<D>).post(handler::tenant::invite::create::<D>))
         }
         TenantRoute::Invite => Some(delete(handler::tenant::invite::revoke::<D>)),
+        TenantRoute::InviteEmail => Some(post(handler::tenant::invite_email::send::<D>)),
         TenantRoute::Members => Some(get(handler::tenant::member::list::<D>)),
         TenantRoute::Member => Some(delete(handler::tenant::member::remove::<D>)),
         TenantRoute::InvitesForMe => Some(get(handler::tenant::invite::waiting::<D>)),

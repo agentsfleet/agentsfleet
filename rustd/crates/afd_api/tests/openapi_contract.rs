@@ -45,7 +45,7 @@ const WRITES: [&str; 3] = ["post", "put", "patch"];
 /// The writes that read no body, and why each is honest about it.
 ///
 /// Every other write names what it reads, so a client can send it.
-const BODILESS_WRITES: [(&str, &str, &str); 5] = [
+const BODILESS_WRITES: [(&str, &str, &str); 6] = [
     (
         "post",
         "/v1/runners/me/leases",
@@ -70,6 +70,11 @@ const BODILESS_WRITES: [(&str, &str, &str); 5] = [
         "post",
         "/v1/me/invites/{invite_id}/accept",
         "the invite and the signed-in person are the whole request",
+    ),
+    (
+        "post",
+        "/v1/tenants/me/invites/{invite_id}/send",
+        "the invite is the whole request",
     ),
 ];
 

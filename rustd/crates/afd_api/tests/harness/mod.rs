@@ -227,6 +227,7 @@ pub(crate) struct Fleet {
     workspace_directory: Workspaces,
     api_keys: ApiKeys,
     team: Team,
+    invite_mail: afd_mail::InviteMailer,
     cli_credentials: CliCredentials,
     logins: Logins,
     fleets: Fleets,

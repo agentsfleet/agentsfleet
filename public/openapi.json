@@ -5962,6 +5962,114 @@
         ]
       }
     },
+    "/v1/tenants/me/invites/{invite_id}/send": {
+      "post": {
+        "tags": [
+          "Invites"
+        ],
+        "summary": "Send an invite's email again",
+        "description": "Sends the invite email for one pending invite into the caller's own account, as a new attempt. Use it when the invite's `email_status` is `failed`. When the mail relay is not set up, refuses, or does not answer, the route answers 503 `UZ-INV-005`. The invite stays valid either way, so its `link` can be shared by hand. An invite that expired, was revoked, or was accepted answers 404 `UZ-INV-001`. ",
+        "operationId": "send_invite_email",
+        "parameters": [
+          {
+            "name": "invite_id",
+            "in": "path",
+            "description": "`UUIDv7` of the invite.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteEmailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such resource, or none this caller may see",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/tenants/me/members": {
       "get": {
         "tags": [
@@ -15338,6 +15446,19 @@
           }
         }
       },
+      "InviteEmailResponse": {
+        "type": "object",
+        "description": "`POST /v1/tenants/me/invites/{invite_id}/send` — the invite email went.",
+        "required": [
+          "email_status"
+        ],
+        "properties": {
+          "email_status": {
+            "type": "string",
+            "description": "`sent`: the relay accepted the email."
+          }
+        }
+      },
       "InviteSummary": {
         "type": "object",
         "description": "One invite, as the account's owner sees it.",
@@ -15347,7 +15468,8 @@
           "role",
           "expires_at",
           "created_at",
-          "link"
+          "link",
+          "email_status"
         ],
         "properties": {
           "created_at": {
@@ -15358,6 +15480,18 @@
           "email": {
             "type": "string",
             "description": "The address it is for, lowercased."
+          },
+          "email_sent_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the relay last accepted its email, epoch milliseconds; `null` if\nit never has."
+          },
+          "email_status": {
+            "type": "string",
+            "description": "What became of its most recent email: `sent`, `failed`, or\n`unconfigured` when this deployment has no mail relay set up."
           },
           "expires_at": {
             "type": "integer",
@@ -16338,7 +16472,8 @@
                 "role",
                 "expires_at",
                 "created_at",
-                "link"
+                "link",
+                "email_status"
               ],
               "properties": {
                 "created_at": {
@@ -16349,6 +16484,18 @@
                 "email": {
                   "type": "string",
                   "description": "The address it is for, lowercased."
+                },
+                "email_sent_at": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64",
+                  "description": "When the relay last accepted its email, epoch milliseconds; `null` if\nit never has."
+                },
+                "email_status": {
+                  "type": "string",
+                  "description": "What became of its most recent email: `sent`, `failed`, or\n`unconfigured` when this deployment has no mail relay set up."
                 },
                 "expires_at": {
                   "type": "integer",

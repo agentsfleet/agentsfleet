@@ -7,6 +7,11 @@
 //! without a database.
 
 mod lifecycle;
+mod mail_status;
+
+pub use self::mail_status::{
+    EMAIL_STATUS_FAILED, EMAIL_STATUS_SENT, EMAIL_STATUS_UNCONFIGURED, EmailAttempt, EmailStatus,
+};
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -49,6 +54,10 @@ pub struct Invitation {
     pub accepted_by: Option<Uuid7>,
     /// When the owner revoked it, if they did.
     pub revoked_at_ms: Option<i64>,
+    /// What became of its most recent email.
+    pub email_status: EmailStatus,
+    /// When the relay last accepted its email, if it ever has.
+    pub email_sent_at_ms: Option<i64>,
 }
 
 /// What accepting an invitation does for one person, now.
@@ -90,6 +99,7 @@ impl Invitation {
         let tenant: String = row.try_get(COLUMN_TENANT_ID).map_err(&unreadable)?;
         let role: String = row.try_get("role").map_err(&unreadable)?;
         let accepted_by: Option<String> = row.try_get(COLUMN_ACCEPTED_BY).map_err(&unreadable)?;
+        let email_status: Option<String> = row.try_get("email_status").map_err(&unreadable)?;
         Ok(Self {
             id: uuid(COLUMN_ID, &id)?,
             tenant: uuid(COLUMN_TENANT_ID, &tenant)?,
@@ -102,6 +112,8 @@ impl Invitation {
                 .map(|user| uuid(COLUMN_ACCEPTED_BY, user))
                 .transpose()?,
             revoked_at_ms: row.try_get("revoked_at").map_err(&unreadable)?,
+            email_status: EmailStatus::from_stored(email_status.as_deref()),
+            email_sent_at_ms: row.try_get("email_sent_at").map_err(&unreadable)?,
         })
     }
 }
@@ -115,7 +127,7 @@ mod tests {
     use afd_core::clock::UnixMillis;
     use afd_core::id::Uuid7;
 
-    use super::{Acceptance, Invitation};
+    use super::{Acceptance, EmailStatus, Invitation};
     use crate::team::Invitee;
     use crate::workspace::access::Role;
 
@@ -141,6 +153,8 @@ mod tests {
             created_at_ms: NOW - 1,
             accepted_by: accepted_by.map(uuid),
             revoked_at_ms,
+            email_status: EmailStatus::Failed,
+            email_sent_at_ms: None,
         }
     }
 

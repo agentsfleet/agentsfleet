@@ -75,6 +75,8 @@ tracing.workspace = true
 # The route table is pure, so it needs no runtime to test — the admission layer
 # and the envelope writer bring tokio and the subscriber with them.
 [dev-dependencies]
+# The harness's invite mailer, the production one over the fixture vault.
+afd_mail.workspace = true
 # The admission ledger every producer seam in the harness writes through.
 afd_admission = { workspace = true, features = ["test-util"] }
 # The signup fixture signs a Svix delivery, whose tag is base64 over the

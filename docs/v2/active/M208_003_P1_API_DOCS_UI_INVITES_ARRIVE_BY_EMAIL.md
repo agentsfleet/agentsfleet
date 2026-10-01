@@ -108,11 +108,11 @@ Rendering and delivery stay apart: `render_invite` returns a `RenderedEmail` (su
 
 - **Dimension 2.1** — a created invite sends one message with the link and both names → Test `test_invite_email_carries_accept_link`
 - **Dimension 2.2** — a retried attempt carries the same idempotency header → Test `test_send_retry_reuses_idempotency_key`
-- **Dimension 2.3** — the address and body never appear in logs → Test `test_send_logs_carry_no_address`
-- **Dimension 2.4** — a display name carrying markup renders escaped in the HTML part → Test `test_invite_template_escapes_names`
-- **Dimension 2.5** — the rendered HTML and text parts match reviewed snapshots → Test `test_invite_render_snapshots`
-- **Dimension 2.6** — `deliver` builds the envelope, subject, idempotency header and both MIME parts → Test `test_deliver_builds_message`
-- **Dimension 2.7** — plaintext SMTP is refused for any non-loopback host → Test `test_plaintext_refused_off_loopback`
+- **Dimension 2.3** — the address and body never appear in logs → Test `test_send_logs_carry_no_address` — DONE (`afd_mail/src/mailer/tests.rs`)
+- **Dimension 2.4** — a display name carrying markup renders escaped in the HTML part → Test `test_invite_template_escapes_names` — DONE (`afd_mail/src/invite/tests.rs`)
+- **Dimension 2.5** — the rendered HTML and text parts match reviewed snapshots → Test `test_invite_render_snapshots` — DONE (`afd_mail/src/invite/tests.rs`; HTML is a stand-in until `invitation_dev` is ported)
+- **Dimension 2.6** — `deliver` builds the envelope, subject, idempotency header and both MIME parts → Test `test_deliver_builds_message` — DONE (`afd_mail/src/deliver/tests.rs`)
+- **Dimension 2.7** — plaintext SMTP is refused for any non-loopback host → Test `test_plaintext_refused_off_loopback` — DONE (`afd_mail/src/relay/tests.rs`)
 
 ### §3 — A failed or unconfigured send leaves a valid invite
 
