@@ -111,11 +111,21 @@ const decodeAccepted = (value: unknown): AcceptedInvite => {
 const invitePath = (inviteId: string): string =>
   `${OWNER_INVITES_PATH}/${encodeURIComponent(inviteId)}`;
 
+/** Create and send-again wait for the invite email, which the daemon bounds at
+ * 10 s (`MAIL_SEND_DEADLINE`, `rustd/crates/afd_mail/src/mailer.rs`) after its
+ * own reads. The client's default per-attempt timeout is also 10 s and would
+ * give up first, reporting a timeout for an invite that was saved. */
+export const INVITE_EMAIL_REQUEST_TIMEOUT_MS = 15_000;
+
 // POST /v1/tenants/me/invites — invite one address into the caller's account.
 export async function createInvite(token: string, email: string): Promise<InviteSummary> {
   const response = await request<unknown>(
     OWNER_INVITES_PATH,
-    { method: "POST", body: JSON.stringify({ email }) },
+    {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      signal: AbortSignal.timeout(INVITE_EMAIL_REQUEST_TIMEOUT_MS),
+    },
     token,
   );
   return decodeInvite(response);
@@ -136,7 +146,11 @@ export async function revokeInvite(token: string, inviteId: string): Promise<voi
 // the relay took it; a relay that is not set up or refused answers 503
 // `UZ-INV-005`, which the client raises as an ApiError like any refusal.
 export async function sendInviteEmail(token: string, inviteId: string): Promise<void> {
-  const response = await request<unknown>(`${invitePath(inviteId)}/${SEND_SEGMENT}`, { method: "POST" }, token);
+  const response = await request<unknown>(
+    `${invitePath(inviteId)}/${SEND_SEGMENT}`,
+    { method: "POST", signal: AbortSignal.timeout(INVITE_EMAIL_REQUEST_TIMEOUT_MS) },
+    token,
+  );
   if (!isRecord(response) || response.email_status !== EMAIL_STATUS.sent) {
     throw new Error("invite email answer is invalid");
   }

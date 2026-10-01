@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "./errors";
 import {
   EMAIL_STATUS,
+  INVITE_EMAIL_REQUEST_TIMEOUT_MS,
   acceptInvite,
   createInvite,
   listInvites,
@@ -52,6 +53,22 @@ function sent(spy: ReturnType<typeof answer>): { url: string; init: RequestInit 
   // The client always sends a string URL and a string body.
   return { url: url as string, init: init as RequestInit };
 }
+
+// pin test: the daemon's MAIL_SEND_DEADLINE, which create and send-again wait on.
+const DAEMON_MAIL_DEADLINE_MS = 10_000;
+
+describe("requests that wait for the invite email", () => {
+  it("should give create and send-again longer than the daemon's mail deadline", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    answer(201, INVITE);
+    await createInvite(TOKEN, "bob@example.com");
+    answer(200, { email_status: EMAIL_STATUS.sent });
+    await sendInviteEmail(TOKEN, "inv_1");
+    const budgets = timeout.mock.calls.map(([ms]) => ms);
+    expect(budgets.filter((ms) => ms === INVITE_EMAIL_REQUEST_TIMEOUT_MS)).toHaveLength(2);
+    expect(INVITE_EMAIL_REQUEST_TIMEOUT_MS).toBeGreaterThan(DAEMON_MAIL_DEADLINE_MS);
+  });
+});
 
 describe("owner invites", () => {
   it("should POST the address to the account's invites and return the decoded invite", async () => {
