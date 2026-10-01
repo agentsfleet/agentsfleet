@@ -12,11 +12,12 @@ use lettre::message::Mailbox;
 
 use super::{
     Attempt, EVENT_COMPLETED, EVENT_FAILED, EVENT_RETRIED, EVENT_STARTED, InviteSend, Outcome,
-    send_with,
+    send_with, send_within,
 };
 use crate::InviteLetter;
 use crate::deliver::tests::Scripted;
 use crate::deliver::{Delivery, Mailer};
+use crate::relay::Relay;
 
 const INVITE: &str = "0190f5a2-4b2d-7c11-8d5e-2a5f31d98210";
 const RECIPIENT: &str = "bob@example.test";
@@ -186,6 +187,26 @@ async fn a_stalled_relay_fails_at_the_deadline() {
         run(&Stalled, &invite(&id), STALL_DEADLINE).await,
         Outcome::Failed { reply: None }
     );
+}
+
+/// How long a suite waits for a send that should already have ended at its
+/// own deadline before calling it hung.
+const HUNG_AFTER: Duration = Duration::from_secs(2);
+
+/// A vault read that never answers is cut off by the same deadline as the
+/// relay. The deadline used to start after the read, so a stalled vault held
+/// the owner's click open without bound.
+#[tokio::test]
+async fn should_fail_within_deadline_when_vault_read_stalls() {
+    let id = id();
+    let stalled = std::future::pending::<afd_vault::Result<Option<Relay>>>();
+    let outcome = tokio::time::timeout(
+        HUNG_AFTER,
+        send_within(stalled, &invite(&id), STALL_DEADLINE),
+    )
+    .await
+    .expect("the send ends at its own deadline, not the suite's");
+    assert_eq!(outcome, Outcome::Failed { reply: None });
 }
 
 /// An address the builder refuses fails this send without reaching a relay.
