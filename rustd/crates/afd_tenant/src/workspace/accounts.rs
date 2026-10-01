@@ -125,6 +125,8 @@ fn account(row: &PgRow) -> Result<Account> {
     Ok(Account {
         tenant: parse_tenant(&tenant)?,
         role: Role::held(role.as_deref())?,
-        owner_name: row.try_get("owner_name").map_err(&unreadable)?,
+        owner_name: row
+            .try_get(crate::sql::COLUMN_OWNER_NAME)
+            .map_err(&unreadable)?,
     })
 }

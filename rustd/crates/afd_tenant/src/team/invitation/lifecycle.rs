@@ -267,7 +267,9 @@ fn waiting(row: &PgRow) -> Result<Waiting> {
     Ok(Waiting {
         id: row.try_get(COLUMN_ID).map_err(&unreadable)?,
         tenant: row.try_get(COLUMN_TENANT_ID).map_err(&unreadable)?,
-        owner_name: row.try_get("owner_name").map_err(&unreadable)?,
+        owner_name: row
+            .try_get(crate::sql::COLUMN_OWNER_NAME)
+            .map_err(&unreadable)?,
         expires_at_ms: row.try_get(COLUMN_EXPIRES_AT).map_err(&unreadable)?,
     })
 }

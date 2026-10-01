@@ -42,6 +42,19 @@ macro_rules! owner_name_join {
     };
 }
 
+/// The account's name as `owner_name_join!` resolves it, aliased
+/// [`COLUMN_OWNER_NAME`]: the owner's display name when one is stored, else
+/// the account's own name. Spelled once beside the join it reads, so the
+/// naming rule cannot drift between the statements that use it.
+macro_rules! owner_name_column {
+    () => {
+        "COALESCE(owner.display_name, t.name) AS owner_name"
+    };
+}
+
+/// The column `owner_name_column!` names, as the readers fetch it.
+pub(crate) const COLUMN_OWNER_NAME: &str = "owner_name";
+
 pub mod apikey;
 pub mod cli_credential;
 pub mod invite;
@@ -50,3 +63,17 @@ pub mod models;
 pub mod preference;
 pub mod signup;
 pub mod workspace;
+
+#[cfg(test)]
+mod tests {
+    /// Readers fetch the alias by `COLUMN_OWNER_NAME`; the macro must alias
+    /// the projection to exactly that name.
+    #[test]
+    fn the_owner_name_projection_aliases_the_column_readers_fetch() {
+        let projection = owner_name_column!();
+        assert!(
+            projection.ends_with(&format!(" AS {}", super::COLUMN_OWNER_NAME)),
+            "{projection}"
+        );
+    }
+}

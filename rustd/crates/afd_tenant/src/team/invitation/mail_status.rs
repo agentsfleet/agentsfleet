@@ -108,7 +108,7 @@ impl Team {
                 attempt: row.try_get("email_attempts").map_err(&raise)?,
                 to: row.try_get("email").map_err(&raise)?,
                 inviter_name: row.try_get("inviter_name").map_err(&raise)?,
-                owner_name: row.try_get("owner_name").map_err(&raise)?,
+                owner_name: row.try_get(crate::sql::COLUMN_OWNER_NAME).map_err(&raise)?,
             })
         })
         .transpose()
