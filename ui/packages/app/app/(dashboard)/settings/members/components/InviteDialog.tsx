@@ -31,8 +31,16 @@ import { createInviteAction } from "../actions";
 
 // The backend lowercases and checks the address itself; this only spares a
 // round trip for something that is plainly not one.
+const ENTER_AN_ADDRESS = "Enter an email address";
+// RFC 5321 caps the part before the @ at 64 characters, and the backend's mail
+// parser refuses a longer one; zod's email rule alone lets it through.
+const LOCAL_PART_MAX = 64;
 const schema = z.object({
-  email: z.string().trim().pipe(z.email("Enter an email address")),
+  email: z
+    .string()
+    .trim()
+    .pipe(z.email(ENTER_AN_ADDRESS))
+    .refine((email) => email.lastIndexOf("@") <= LOCAL_PART_MAX, ENTER_AN_ADDRESS),
 });
 type FormValues = z.infer<typeof schema>;
 
