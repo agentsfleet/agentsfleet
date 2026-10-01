@@ -78,9 +78,9 @@ describe("the address it accepts", () => {
 });
 
 describe("the invite it just created", () => {
-  it("should say the invitation was sent, and offer the link to share as well", async () => {
+  it("should say the invite was sent, and offer the link to share as well", async () => {
     const ready = await createWith(EMAIL_STATUS.sent);
-    expect(within(ready).getByRole("heading", { name: "Invitation sent" })).toBeTruthy();
+    expect(within(ready).getByRole("heading", { name: "Invite sent" })).toBeTruthy();
     expect(ready.textContent).toContain(`We emailed ${INVITE.email}. You can also copy the link and share it.`);
     expect((within(ready).getByLabelText(INVITE_LINK) as HTMLInputElement).value).toBe(INVITE.link);
   });

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { ConfirmDialog } from "@agentsfleet/design-system";
 import type { InviteSummary } from "@/lib/api/invites";
 import type { MemberSummary } from "@/lib/api/tenant-members";
@@ -44,7 +45,12 @@ type Props = {
 };
 
 export function TeamConfirm({ target, error, onOpenChange, onConfirm }: Props) {
-  const copy = target ? copyFor(target) : null;
+  // The dialog animates out after `target` clears, so it keeps the last
+  // target's words rather than closing on a blank title and a default button.
+  const [last, setLast] = useState<ConfirmTargetActive | null>(target);
+  if (target !== null && target !== last) setLast(target);
+  const shown = target ?? last;
+  const copy = shown ? copyFor(shown) : null;
   return (
     <ConfirmDialog
       open={target !== null}

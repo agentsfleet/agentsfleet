@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { PageHeader, PageLayout, PageTitle, Section, SectionHeader } from "@agentsfleet/design-system";
+import { type TransitionStartFunction, useEffect, useRef, useState, useTransition } from "react";
+import { Alert, PageHeader, PageLayout, PageTitle, Section, SectionHeader } from "@agentsfleet/design-system";
 import type { InviteSummary } from "@/lib/api/invites";
 import type { MemberSummary } from "@/lib/api/tenant-members";
 import { presentErrorString } from "@/lib/errors";
@@ -16,16 +16,15 @@ type Props = {
   initialInvites: InviteSummary[];
 };
 
-// The lists and the one confirm dialog they share. Every mutation re-reads
-// both lists afterwards, so the page mirrors the backend rather than guessing.
-function useTeam({ initialMembers, initialInvites }: Props) {
+// The two lists, re-read from the backend after every change so the page
+// mirrors it rather than guessing. `afterReload` runs once a reload has
+// replaced them.
+function useTeamLists({ initialMembers, initialInvites }: Props, startTransition: TransitionStartFunction) {
   const [members, setMembers] = useState(initialMembers);
   const [invites, setInvites] = useState(initialInvites);
-  const [target, setTarget] = useState<ConfirmTarget>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
 
-  function refresh() {
+  function refresh(afterReload?: () => void) {
     startTransition(async () => {
       const result = await loadTeamAction();
       if (!result.ok) {
@@ -37,8 +36,20 @@ function useTeam({ initialMembers, initialInvites }: Props) {
       }
       setMembers(result.data.members);
       setInvites(result.data.invites);
+      afterReload?.();
     });
   }
+
+  return { members, invites, error, setError, refresh };
+}
+
+type TeamLists = ReturnType<typeof useTeamLists>;
+
+// The confirm dialog the table shares and the changes the page makes. Each
+// change re-reads the lists, so a row shows what the backend recorded.
+// `onRemoved` runs once a removal or revoke has landed and its row is gone.
+function useTeamChanges({ setError, refresh }: TeamLists, startTransition: TransitionStartFunction, onRemoved: () => void) {
+  const [target, setTarget] = useState<ConfirmTarget>(null);
 
   // Settles once the request has answered. `ConfirmDialog` holds both of its
   // buttons while the promise it is handed runs, so a second confirm cannot
@@ -48,18 +59,16 @@ function useTeam({ initialMembers, initialInvites }: Props) {
     const answered = Promise.withResolvers<void>();
     startTransition(async () => {
       try {
-        const result =
-          active.kind === CONFIRM_KIND.revoke
-            ? await revokeInviteAction(active.invite.id)
-            : await removeMemberAction(active.member.user_id);
+        const revoking = active.kind === CONFIRM_KIND.revoke;
+        const result = revoking ? await revokeInviteAction(active.invite.id) : await removeMemberAction(active.member.user_id);
         if (!result.ok) {
-          const action = active.kind === CONFIRM_KIND.revoke ? "revoke the invite" : "remove the member";
+          const action = revoking ? "revoke the invite" : "remove the member";
           setError(presentErrorString({ errorCode: result.errorCode, message: result.error, action }));
           refresh();
           return;
         }
         setTarget(null);
-        refresh();
+        refresh(onRemoved);
       } finally {
         answered.resolve();
       }
@@ -67,8 +76,6 @@ function useTeam({ initialMembers, initialInvites }: Props) {
     return answered.promise;
   }
 
-  // A new email attempt. Either way the lists are re-read, so the row shows the
-  // status the backend recorded rather than the one this page hoped for.
   function resend(invite: InviteSummary) {
     setError(null);
     startTransition(async () => {
@@ -85,32 +92,52 @@ function useTeam({ initialMembers, initialInvites }: Props) {
     setError(null);
   }
 
-  return { members, invites, target, error, pending, setTarget, refresh, confirm, resend, dismiss };
+  return { target, setTarget, confirm, resend, dismiss };
+}
+
+// One transition for the lists and the changes, so a control stays held until
+// the reload behind its change has landed too.
+function useTeam(props: Props, onRemoved: () => void) {
+  const [pending, startTransition] = useTransition();
+  const lists = useTeamLists(props, startTransition);
+  const changes = useTeamChanges(lists, startTransition, onRemoved);
+  return { ...lists, ...changes, pending };
+}
+
+// The row whose button opened the dialog is gone after a removal, and focus
+// would fall to the page with it; it lands on the team's table instead.
+function useFocusAfterRemoval() {
+  const regionRef = useRef<HTMLDivElement>(null);
+  const [removals, setRemovals] = useState(0);
+  useEffect(() => {
+    if (removals > 0) regionRef.current?.focus();
+  }, [removals]);
+  return { regionRef, onRemoved: () => setRemovals((count) => count + 1) };
 }
 
 export function MembersView(props: Props) {
-  const team = useTeam(props);
+  const { regionRef, onRemoved } = useFocusAfterRemoval();
+  const team = useTeam(props, onRemoved);
   return (
     <PageLayout>
       <PageHeader description={MEMBERS_DESCRIPTION}>
         <PageTitle>{MEMBERS_TITLE}</PageTitle>
       </PageHeader>
-      <Section asChild>
-        <section aria-label={TEAM_CAPTION}>
-          <SectionHeader as="p" actions={<InviteDialogDynamic onSettled={team.refresh} />}>
-            {TEAM_CAPTION}
-          </SectionHeader>
-          <TeamTable
-            members={team.members}
-            invites={team.invites}
-            pending={team.pending}
-            onRemove={(member) => team.setTarget({ kind: CONFIRM_KIND.remove, member })}
-            onRevoke={(invite) => team.setTarget({ kind: CONFIRM_KIND.revoke, invite })}
-            onResend={team.resend}
-          />
-        </section>
+      {/* Reachable by script only, for the focus a removal hands back. */}
+      <Section ref={regionRef} tabIndex={-1} aria-label={TEAM_CAPTION}>
+        <SectionHeader as="p" actions={<InviteDialogDynamic onSettled={team.refresh} />}>
+          {TEAM_CAPTION}
+        </SectionHeader>
+        <TeamTable
+          members={team.members}
+          invites={team.invites}
+          pending={team.pending}
+          onRemove={(member) => team.setTarget({ kind: CONFIRM_KIND.remove, member })}
+          onRevoke={(invite) => team.setTarget({ kind: CONFIRM_KIND.revoke, invite })}
+          onResend={team.resend}
+        />
       </Section>
-      {team.error && team.target === null ? <p role="alert" className="text-sm text-destructive">{team.error}</p> : null}
+      {team.error && team.target === null ? <Alert variant="destructive">{team.error}</Alert> : null}
       <TeamConfirm target={team.target} error={team.error} onOpenChange={team.dismiss} onConfirm={team.confirm} />
     </PageLayout>
   );
