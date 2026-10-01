@@ -1,11 +1,12 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState, useTransition } from "react";
+import { type RefObject, useEffect, useId, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { FolderIcon, PlusIcon } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -24,8 +25,12 @@ import {
 } from "@/lib/workspace-routes";
 import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
 import { useWorkspaceCreation } from "./WorkspaceCreationProvider";
-import { switcherSections, WORKSPACE_LABEL } from "./workspace-groups";
+import { type SwitcherSection, switcherSections, WORKSPACE_LABEL } from "./workspace-groups";
 import { WorkspaceSwitcherTrigger } from "./WorkspaceSwitcherTrigger";
+
+// An owner's name reads in sentence case at the label size; the menu label's
+// eyebrow capitals would shout "JOHN'S ACCOUNT".
+const ACCOUNT_LABEL_CLASS = "normal-case text-label leading-label tracking-label text-muted-foreground";
 
 type WorkspaceSwitcherMenuProps = {
   open: boolean;
@@ -75,7 +80,7 @@ export default function WorkspaceSwitcherMenu({
       ? { id: activeId, name: WORKSPACE_LABEL.current }
       : null;
   // Sections by account; one unlabelled section while the caller holds only
-  // their own, so a solo account's menu reads exactly as it always has.
+  // their own.
   const sections = switcherSections(
     workspaces,
     creation.createdWorkspaces,
@@ -152,38 +157,15 @@ export default function WorkspaceSwitcherMenu({
               className="max-h-80 overflow-y-auto"
               data-testid="workspace-list-scroll"
             >
-              {sections.map((section, sectionIndex) => (
-                <Fragment key={section.label ?? `section-${sectionIndex}`}>
-                  {section.label ? (
-                    <DropdownMenuLabel className="text-label text-muted-foreground">
-                      {section.label}
-                    </DropdownMenuLabel>
-                  ) : null}
-                  {section.workspaces.map((workspace) => {
-                    const label = workspace.name ?? WORKSPACE_LABEL.unnamed;
-                    return (
-                      <DropdownMenuItem
-                        key={workspace.id}
-                        ref={workspace.id === firstMenuId ? firstItemRef : undefined}
-                        onSelect={() => pick(workspace.id)}
-                        data-active={workspace.id === activeId ? "true" : undefined}
-                      >
-                        <FolderIcon
-                          size={14}
-                          strokeWidth={1.75}
-                          aria-hidden="true"
-                          className="text-muted-foreground"
-                        />
-                        <span className="min-w-0 flex-1 truncate" title={label}>
-                          {label}
-                        </span>
-                        {workspace.id === activeId ? (
-                          <span aria-hidden="true">✓</span>
-                        ) : null}
-                      </DropdownMenuItem>
-                    );
-                  })}
-                </Fragment>
+              {sections.map((section) => (
+                <WorkspaceSection
+                  key={section.key}
+                  section={section}
+                  activeId={activeId}
+                  firstMenuId={firstMenuId}
+                  firstItemRef={firstItemRef}
+                  onPick={pick}
+                />
               ))}
             </div>
             {menuWorkspaces.length > 0 ? <DropdownMenuSeparator /> : null}
@@ -209,5 +191,48 @@ export default function WorkspaceSwitcherMenu({
         restoreFocus={() => switcherTriggerRef.current?.focus()}
       />
     </>
+  );
+}
+
+type WorkspaceSectionProps = {
+  section: SwitcherSection;
+  activeId: string | null;
+  // The menu's first item takes the entry focus. It sits in whichever section
+  // leads, so every section is offered the ref and only that one keeps it.
+  firstMenuId: string | null;
+  firstItemRef: RefObject<HTMLDivElement | null>;
+  onPick: (id: string) => void;
+};
+
+// One account's workspaces. A labelled section is a group its label names, so
+// a screen reader says whose account an item is in; the one unlabelled section
+// of a solo account adds no group.
+function WorkspaceSection({ section, activeId, firstMenuId, firstItemRef, onPick }: WorkspaceSectionProps) {
+  const labelId = useId();
+  const items = section.workspaces.map((workspace) => {
+    const label = workspace.name ?? WORKSPACE_LABEL.unnamed;
+    return (
+      <DropdownMenuItem
+        key={workspace.id}
+        ref={workspace.id === firstMenuId ? firstItemRef : undefined}
+        onSelect={() => onPick(workspace.id)}
+        data-active={workspace.id === activeId ? "true" : undefined}
+      >
+        <FolderIcon size={14} strokeWidth={1.75} aria-hidden="true" className="text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate" title={label}>
+          {label}
+        </span>
+        {workspace.id === activeId ? <span aria-hidden="true">✓</span> : null}
+      </DropdownMenuItem>
+    );
+  });
+  if (section.label === null) return <>{items}</>;
+  return (
+    <DropdownMenuGroup aria-labelledby={labelId}>
+      <DropdownMenuLabel id={labelId} className={ACCOUNT_LABEL_CLASS}>
+        {section.label}
+      </DropdownMenuLabel>
+      {items}
+    </DropdownMenuGroup>
   );
 }
