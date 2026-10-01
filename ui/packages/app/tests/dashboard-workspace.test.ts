@@ -21,9 +21,6 @@ import {
 import { EVENTS } from "@/lib/analytics/events";
 import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
 
-// Listed workspaces name their account and the caller's role; these are all
-// the caller's own, the shape a solo account's list has.
-
 const captureProductEventMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/analytics/posthog", async (orig) => {
   const actual = await orig<typeof import("@/lib/analytics/posthog")>();
@@ -179,9 +176,7 @@ describe("WorkspaceSwitcher component", () => {
 
   it("keeps workspace rows bounded without scrolling the create action", async () => {
     const manyWorkspaces = Array.from({ length: 32 }, (_, index) => ({
-      id: `ws_${index}`,
-      name: `Workspace ${index}`,
-      ...OWN_ACCOUNT,
+      id: `ws_${index}`, name: `Workspace ${index}`, ...OWN_ACCOUNT,
     }));
     const { container } = await renderSwitcher({
       workspaces: manyWorkspaces,
