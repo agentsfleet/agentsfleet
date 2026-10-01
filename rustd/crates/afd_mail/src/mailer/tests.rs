@@ -6,23 +6,23 @@
 use std::time::Duration;
 
 use afd_core::id::Uuid7;
-use afd_core::test_util::trace::Capture;
-use lettre::Message;
+use afd_core::test_util::trace::{Capture, CapturedEvent};
+use afd_observability::InviteEmailOutcome;
+use lettre::address::Envelope;
 use lettre::message::Mailbox;
 
 use super::{
-    Attempt, EVENT_COMPLETED, EVENT_FAILED, EVENT_RETRIED, EVENT_STARTED, InviteSend, Outcome,
-    send_with, send_within,
+    Attempt, EVENT_COMPLETED, EVENT_FAILED, EVENT_RETRIED, EVENT_STARTED, InviteSend, send_with,
+    send_within,
 };
 use crate::InviteLetter;
-use crate::deliver::tests::Scripted;
+use crate::deliver::tests::{DOMAIN_LITERAL, INVITE, INVITE_URL, RECIPIENT, Scripted};
 use crate::deliver::{Delivery, Mailer};
-use crate::relay::Relay;
+use crate::relay::{Server, TlsCache};
+use crate::test_util::FROM;
 
 mod relay_read;
 
-const INVITE: &str = "0190f5a2-4b2d-7c11-8d5e-2a5f31d98210";
-const RECIPIENT: &str = "bob@example.test";
 const INVITER: &str = "John";
 const DEADLINE: Duration = Duration::from_secs(5);
 const STALL_DEADLINE: Duration = Duration::from_millis(50);
@@ -31,13 +31,13 @@ const STALL_DEADLINE: Duration = Duration::from_millis(50);
 struct Stalled;
 
 impl Mailer for Stalled {
-    async fn deliver(&self, _message: Message) -> Delivery {
+    async fn deliver(&self, _envelope: &Envelope, _raw: &[u8]) -> Delivery {
         std::future::pending().await
     }
 }
 
 fn from() -> Mailbox {
-    "hello@agentsfleet.test".parse().expect("a mailbox")
+    FROM.parse().expect("a mailbox")
 }
 
 fn invite(id: &Uuid7) -> InviteSend<'_> {
@@ -48,7 +48,7 @@ fn invite(id: &Uuid7) -> InviteSend<'_> {
         letter: InviteLetter {
             inviter_name: INVITER,
             owner_name: INVITER,
-            invite_url: "https://app.agentsfleet.test/invites/x",
+            invite_url: INVITE_URL,
         },
     }
 }
@@ -57,9 +57,36 @@ fn id() -> Uuid7 {
     Uuid7::parse(INVITE).expect("a UUIDv7")
 }
 
+/// The production connect, over a fresh TLS cache.
+fn connect(
+    server: Server,
+    timeout: Duration,
+) -> crate::Result<lettre::AsyncSmtpTransport<lettre::Tokio1Executor>, lettre::transport::smtp::Error>
+{
+    server.transport(timeout, &TlsCache::default())
+}
+
 /// Runs one send through `mailer` the way `InviteMailer::send` does.
-async fn run<M: Mailer>(mailer: &M, invite: &InviteSend<'_>, deadline: Duration) -> Outcome {
-    send_with(mailer, &from(), &Attempt::begin(invite), deadline).await
+async fn run<M: Mailer>(
+    mailer: &M,
+    invite: &InviteSend<'_>,
+    deadline: Duration,
+) -> InviteEmailOutcome {
+    send_with(mailer, from(), &Attempt::begin(invite), deadline).await
+}
+
+/// No record names the invitee or quotes the email: no address, no body text.
+fn assert_no_address(events: &[CapturedEvent]) {
+    for value in events.iter().flat_map(|event| event.fields.values()) {
+        assert!(
+            !value.contains('@'),
+            "an address reached a log record: {value}"
+        );
+        assert!(
+            !value.contains(INVITER),
+            "body text reached a log record: {value}"
+        );
+    }
 }
 
 /// Dimension 2.3: no record holds the recipient's address or any body text —
@@ -71,12 +98,12 @@ async fn test_send_logs_carry_no_address() {
     let accepting = Scripted::new(vec![Delivery::Accepted { reply: 250 }]);
     assert_eq!(
         run(&accepting, &invite(&id), DEADLINE).await,
-        Outcome::Sent { reply: 250 }
+        InviteEmailOutcome::Sent { reply: 250 }
     );
     let refusing = Scripted::new(vec![Delivery::Refused { reply: Some(550) }]);
     assert_eq!(
         run(&refusing, &invite(&id), DEADLINE).await,
-        Outcome::Failed { reply: Some(550) }
+        InviteEmailOutcome::Failed { reply: Some(550) }
     );
 
     let completed = capture.only(EVENT_COMPLETED);
@@ -86,18 +113,7 @@ async fn test_send_logs_carry_no_address() {
         Some(INVITE)
     );
     assert_eq!(failed.fields.get("reply").map(String::as_str), Some("550"));
-    for event in capture.events() {
-        for value in event.fields.values() {
-            assert!(
-                !value.contains('@'),
-                "an address reached a log record: {value}"
-            );
-            assert!(
-                !value.contains(INVITER),
-                "body text reached a log record: {value}"
-            );
-        }
-    }
+    assert_no_address(&capture.events());
 }
 
 /// Every send opens with `invite_email_started` and closes with exactly one
@@ -140,7 +156,7 @@ async fn a_retry_is_logged_once() {
     ]);
     assert_eq!(
         run(&flaky, &invite(&id), DEADLINE).await,
-        Outcome::Sent { reply: 250 }
+        InviteEmailOutcome::Sent { reply: 250 }
     );
     let retried = capture.only(EVENT_RETRIED);
     assert_eq!(
@@ -156,23 +172,23 @@ async fn relay_answers_map_to_outcomes() {
     let cases = [
         (
             vec![Delivery::Accepted { reply: 250 }],
-            Outcome::Sent { reply: 250 },
+            InviteEmailOutcome::Sent { reply: 250 },
         ),
         (
             vec![Delivery::Refused { reply: Some(535) }],
-            Outcome::Failed { reply: Some(535) },
+            InviteEmailOutcome::Failed { reply: Some(535) },
         ),
         (
             vec![Delivery::Refused { reply: Some(450) }],
-            Outcome::Failed { reply: Some(450) },
+            InviteEmailOutcome::Failed { reply: Some(450) },
         ),
         (
             vec![Delivery::Unreachable, Delivery::Unreachable],
-            Outcome::Failed { reply: None },
+            InviteEmailOutcome::Failed { reply: None },
         ),
         (
             vec![Delivery::Unreachable, Delivery::Accepted { reply: 250 }],
-            Outcome::Sent { reply: 250 },
+            InviteEmailOutcome::Sent { reply: 250 },
         ),
     ];
     for (answers, expected) in cases {
@@ -187,7 +203,7 @@ async fn a_stalled_relay_fails_at_the_deadline() {
     let id = id();
     assert_eq!(
         run(&Stalled, &invite(&id), STALL_DEADLINE).await,
-        Outcome::Failed { reply: None }
+        InviteEmailOutcome::Failed { reply: None }
     );
 }
 
@@ -201,14 +217,14 @@ const HUNG_AFTER: Duration = Duration::from_secs(2);
 #[tokio::test]
 async fn should_fail_within_deadline_when_vault_read_stalls() {
     let id = id();
-    let stalled = std::future::pending::<afd_vault::Result<Option<Relay>>>();
+    let stalled = std::future::pending::<super::RelayRead>();
     let outcome = tokio::time::timeout(
         HUNG_AFTER,
-        send_within(stalled, Relay::transport, &invite(&id), STALL_DEADLINE),
+        send_within(stalled, connect, &invite(&id), STALL_DEADLINE),
     )
     .await
     .expect("the send ends at its own deadline, not the suite's");
-    assert_eq!(outcome, Outcome::Failed { reply: None });
+    assert_eq!(outcome, InviteEmailOutcome::Failed { reply: None });
 }
 
 /// An address is deliverable exactly when the recipient parse accepts it, so
@@ -235,7 +251,26 @@ async fn an_unparseable_recipient_fails_before_delivery() {
     let mailer = Scripted::new(vec![Delivery::Accepted { reply: 250 }]);
     assert_eq!(
         run(&mailer, &bad, DEADLINE).await,
-        Outcome::Failed { reply: None }
+        InviteEmailOutcome::Failed { reply: None }
+    );
+    assert!(mailer.formatted().is_empty());
+}
+
+/// A domain literal is refused at the route, because no send can address it:
+/// it used to pass `deliverable` and then fail every send, since the builder
+/// re-reads the recipient with a stricter parser than the guard ran. One that
+/// reached a send anyway — an invite stored before the guard agreed — fails
+/// before any relay is dialled.
+#[tokio::test]
+async fn should_refuse_domain_literal_the_builder_cannot_address() {
+    assert!(!super::deliverable(DOMAIN_LITERAL));
+    let id = id();
+    let mut literal = invite(&id);
+    literal.to = DOMAIN_LITERAL;
+    let mailer = Scripted::new(vec![Delivery::Accepted { reply: 250 }]);
+    assert_eq!(
+        run(&mailer, &literal, DEADLINE).await,
+        InviteEmailOutcome::Failed { reply: None }
     );
     assert!(mailer.formatted().is_empty());
 }

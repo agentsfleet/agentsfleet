@@ -13,7 +13,7 @@ use std::sync::Arc;
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_mail::{INVITE_VALID_DAYS, InviteLetter, InviteSend, Outcome};
+use afd_mail::{INVITE_VALID_DAYS, InviteLetter, InviteSend};
 use afd_observability::{InviteEmailOutcome, Telemetry};
 use afd_tenant::team::{EmailStatus, INVITE_TTL_MS, Invitation};
 use afd_wire::team::InviteEmailResponse;
@@ -120,8 +120,8 @@ pub(super) async fn email_invite<D: Services>(
         actor: actor.to_owned(),
         tenant_id: tenant.as_str().to_owned(),
         invite_id: invite.as_str().to_owned(),
-        attempt: u32::try_from(attempt.attempt).unwrap_or_default(),
-        outcome: telemetry_of(outcome),
+        attempt: attempt.attempt,
+        outcome,
     });
     Ok(Some(emailed))
 }
@@ -185,20 +185,11 @@ pub(crate) async fn send<D: Services>(
 }
 
 /// The status an outcome is recorded as.
-const fn status_of(outcome: Outcome) -> EmailStatus {
+const fn status_of(outcome: InviteEmailOutcome) -> EmailStatus {
     match outcome {
-        Outcome::Sent { .. } => EmailStatus::Sent,
-        Outcome::Failed { .. } => EmailStatus::Failed,
-        Outcome::Unconfigured => EmailStatus::Unconfigured,
-    }
-}
-
-/// The product event an outcome is reported as.
-const fn telemetry_of(outcome: Outcome) -> InviteEmailOutcome {
-    match outcome {
-        Outcome::Sent { reply } => InviteEmailOutcome::Sent { reply },
-        Outcome::Failed { reply } => InviteEmailOutcome::Failed { reply },
-        Outcome::Unconfigured => InviteEmailOutcome::Unconfigured,
+        InviteEmailOutcome::Sent { .. } => EmailStatus::Sent,
+        InviteEmailOutcome::Failed { .. } => EmailStatus::Failed,
+        InviteEmailOutcome::Unconfigured => EmailStatus::Unconfigured,
     }
 }
 
