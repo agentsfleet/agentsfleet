@@ -41,7 +41,8 @@ const DETAIL_INVITE_ID: &str = "invite_id must be a valid UUIDv7";
 /// The state a conflicting invite's 409 names.
 /// `current_state` on a duplicate invite: the address has a pending invite.
 const STATE_INVITED: &str = "invited";
-/// `current_state` on a duplicate invite: the address belongs to the account.
+/// `current_state` when the address belongs to the account: a duplicate
+/// invite, or a revoke of one its invitee already joined through.
 const STATE_MEMBER: &str = "member";
 
 /// `POST /v1/tenants/me/invites` — invite an address into the caller's account.
@@ -95,20 +96,11 @@ pub(crate) async fn create<D: Services>(
         inviter: &inviter.id,
         email: &email,
     };
-    let mut invite =
-        services
-            .team()
-            .invite(&new, services.now())
-            .await
-            .map_err(|error| match error.invite_conflict() {
-                Some(InviteConflict::Invited) => {
-                    Refusal::conflict_at(EVENT_CREATE, STATE_INVITED)(error)
-                }
-                Some(InviteConflict::Member) => {
-                    Refusal::conflict_at(EVENT_CREATE, STATE_MEMBER)(error)
-                }
-                None => Refusal::at(EVENT_CREATE)(error),
-            })?;
+    let mut invite = services
+        .team()
+        .invite(&new, services.now())
+        .await
+        .map_err(refusal_at(EVENT_CREATE))?;
     let link = link_or_refuse(services.dashboard(), &invite.id)?;
     email_new_invite(&*services, &mut invite, person.subject().as_str(), &link).await;
     let summary = summary(services.dashboard(), &invite)?;
@@ -164,8 +156,11 @@ pub(crate) async fn list<D: Services>(
     summary = "Revoke an invite",
     description = concat!(
         "Revokes one pending invite into the caller's own account, so its link ",
-        "stops working. Idempotent: an invite already revoked, already ",
-        "accepted, or never this account's also answers 204. ",
+        "stops working. Idempotent: an invite already revoked, or never this ",
+        "account's, also answers 204, as does one accepted by someone who has ",
+        "since left. One accepted by someone who still belongs to the account ",
+        "is refused with 409 `UZ-INV-003` and `current_state` `member`. They ",
+        "joined, so remove them instead. ",
     ),
     params(afd_http::openapi::path::Invite),
     responses(
@@ -173,6 +168,7 @@ pub(crate) async fn list<D: Services>(
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
@@ -190,7 +186,7 @@ pub(crate) async fn revoke<D: Services>(
         .team()
         .revoke_invitation(&tenant, &invite, services.now())
         .await
-        .map_err(Refusal::at(EVENT_REVOKE))?;
+        .map_err(refusal_at(EVENT_REVOKE))?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -295,6 +291,16 @@ pub(crate) async fn accept<D: Services>(
     .into_response())
 }
 
+/// Renders an invite store failure as `event`'s refusal, naming the state a
+/// conflict carries so a client branches on it without re-reading the invite.
+fn refusal_at(event: &'static str) -> impl FnOnce(afd_tenant::Error) -> Refusal {
+    move |error| match error.invite_conflict() {
+        Some(InviteConflict::Invited) => Refusal::conflict_at(event, STATE_INVITED)(error),
+        Some(InviteConflict::Member) => Refusal::conflict_at(event, STATE_MEMBER)(error),
+        None => Refusal::at(event)(error),
+    }
+}
+
 /// The invite a path names, or the refusal a malformed one earns.
 pub(super) fn invite_id_of(raw: &str) -> Result<Uuid7, Refusal> {
     Uuid7::parse(raw).map_err(|_unparseable| Refusal::malformed(DETAIL_INVITE_ID))
@@ -303,9 +309,9 @@ pub(super) fn invite_id_of(raw: &str) -> Result<Uuid7, Refusal> {
 /// One waiting invite, with the account it joins.
 fn waiting_invite(waiting: &Waiting) -> WaitingInvite<'_> {
     WaitingInvite {
-        id: Cow::Borrowed(&waiting.id),
+        id: Cow::Borrowed(waiting.id.as_str()),
         account: WorkspaceAccount {
-            tenant_id: Cow::Borrowed(&waiting.tenant),
+            tenant_id: Cow::Borrowed(waiting.tenant.as_str()),
             owner_name: Cow::Borrowed(&waiting.owner_name),
         },
         expires_at: waiting.expires_at_ms,

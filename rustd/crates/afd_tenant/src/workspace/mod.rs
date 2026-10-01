@@ -30,10 +30,12 @@ use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use sqlx::Row as _;
+use sqlx::postgres::PgRow;
 
 use self::access::{Access, Grant, Role};
 use crate::sql::workspace as sql;
-use crate::{Result, error};
+use crate::sql::{COLUMN_ROLE, COLUMN_TENANT_ID};
+use crate::{Result, error, stored};
 
 /// The context an access read's failure reports under.
 const CONTEXT_AUTHORIZE: &str = "authorize workspace";
@@ -102,20 +104,18 @@ impl Workspaces {
     async fn membership(&self, person: &Person, workspace: &Uuid7) -> Result<Option<Access>> {
         let binds = TenantBinds::of(person);
         let mut connection = self.database.acquire().await?;
-        let unreadable = error::query(CONTEXT_AUTHORIZE);
         let row = sqlx::query(sql::AUTHORIZE_WORKSPACE)
             .bind(workspace.as_str())
             .bind(binds.subject)
             .bind(binds.claim)
             .fetch_optional(connection.as_mut())
             .await
-            .map_err(&unreadable)?;
+            .map_err(error::query(CONTEXT_AUTHORIZE))?;
         row.map(|row| {
-            let tenant: String = row.try_get("tenant_id").map_err(&unreadable)?;
-            let role: Option<String> = row.try_get("role").map_err(&unreadable)?;
+            let (tenant, role) = held_row(&row, CONTEXT_AUTHORIZE)?;
             Ok(Access {
-                tenant: parse_tenant(&tenant)?,
-                grant: Grant::Membership(Role::held(role.as_deref())?),
+                tenant,
+                grant: Grant::Membership(role),
             })
         })
         .transpose()
@@ -146,7 +146,7 @@ impl Workspaces {
         tenant
             .map(|tenant| {
                 Ok(Access {
-                    tenant: parse_tenant(&tenant)?,
+                    tenant: stored::tenant(&tenant)?,
                     grant: Grant::Platform,
                 })
             })
@@ -166,11 +166,8 @@ impl Workspaces {
         let Some(person) = principal.person() else {
             return Ok(None);
         };
-        match person.credential() {
-            PersonCredential::TenantApiKey | PersonCredential::CliCredential => {
-                return Ok(Some(person.tenant().clone()));
-            }
-            PersonCredential::SessionToken { .. } => {}
+        if !reads_user_row(person) {
+            return Ok(Some(person.tenant().clone()));
         }
 
         let mut connection = self.database.acquire().await?;
@@ -180,7 +177,7 @@ impl Workspaces {
             .await
             .map_err(error::query("resolve subject tenant"))?;
         match row {
-            Some((tenant,)) => parse_tenant(&tenant).map(Some),
+            Some((tenant,)) => stored::tenant(&tenant).map(Some),
             // The claim stands when no user row exists, which is the same
             // fallback the `COALESCE` above encodes.
             None => Ok(Some(person.tenant().clone())),
@@ -211,25 +208,34 @@ impl<'a> TenantBinds<'a> {
     /// and here a runner never reaches this function at all — it was refused one
     /// frame up, by not being a `Person`. The type says so, so there is no arm.
     fn of(person: &'a Person) -> Self {
-        // Only a browser session binds the subject. A claim-bound credential
-        // resolved its tenant through the user row at authentication time, so
-        // re-reading it here would be a second round trip for a value the
-        // principal already carries — and its claim is therefore authoritative.
-        let subject = match person.credential() {
-            PersonCredential::SessionToken { .. } => Some(person.subject().as_str()),
-            PersonCredential::TenantApiKey | PersonCredential::CliCredential => None,
-        };
         Self {
-            subject,
+            subject: reads_user_row(person).then(|| person.subject().as_str()),
             claim: Some(person.tenant().as_str()),
         }
     }
 }
 
-/// A stored tenant identifier, or a report that the column holds something else.
+/// Whether `person`'s tenant is read from their user row.
 ///
-/// Every tenant identifier this module reads is a `core.tenants.id`, whichever
-/// table carried it here, so that is the column a malformed one is reported as.
-fn parse_tenant(value: &str) -> Result<Uuid7> {
-    Uuid7::parse(value).map_err(error::row_malformed("core.tenants", "id"))
+/// Only a browser session's is. A claim-bound credential resolved its tenant
+/// through the user row at authentication time, so reading it again would be
+/// a second round trip for a value the principal already carries, and its
+/// claim is therefore authoritative.
+fn reads_user_row(person: &Person) -> bool {
+    match person.credential() {
+        PersonCredential::SessionToken { .. } => true,
+        PersonCredential::TenantApiKey | PersonCredential::CliCredential => false,
+    }
+}
+
+/// The tenant an access row names and the role it is held with, failures
+/// reported under `context`.
+///
+/// A row with no stored role is the caller's own account admitted without a
+/// membership row, and it is held as its owner.
+fn held_row(row: &PgRow, context: &'static str) -> Result<(Uuid7, Role)> {
+    let unreadable = error::query(context);
+    let tenant: String = row.try_get(COLUMN_TENANT_ID).map_err(&unreadable)?;
+    let role: Option<String> = row.try_get(COLUMN_ROLE).map_err(&unreadable)?;
+    Ok((stored::tenant(&tenant)?, Role::held(role.as_deref())?))
 }

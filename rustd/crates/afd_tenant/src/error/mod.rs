@@ -172,14 +172,12 @@ impl Error {
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::RoleUnknown { .. } => error_code::INTERNAL_DB_QUERY,
-            // One internal code for four failures the caller shares an
-            // inability to correct. One is this instance's own: an identifier
-            // that could not be minted. A missing wallet is
-            // operator surgery or a defect, because signup bootstrap writes it
-            // in the tenant-create transaction; a machine collision reaching
-            // the edge means the mint's retry already lost twice in a row. The
-            // SENTENCES separate them where separation helps.
-            ErrorKind::Entropy { .. } | ErrorKind::CliCredentialMachineCollision => {
+            // One internal code for two failures the caller shares an
+            // inability to correct. One is this instance's own: a
+            // cryptographic step — a draw, an identifier, a key — that failed.
+            // A machine collision reaching the edge means the mint's retry
+            // already lost twice in a row. The log's source chain separates them.
+            ErrorKind::Crypto { .. } | ErrorKind::CliCredentialMachineCollision => {
                 error_code::INTERNAL_OPERATION_FAILED
             }
             ErrorKind::SessionFieldInvalid { field } => match field {
@@ -252,7 +250,7 @@ impl Error {
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::RoleUnknown { .. }
-            | ErrorKind::Entropy { .. }
+            | ErrorKind::Crypto { .. }
             | ErrorKind::CliCredentialMachineCollision => DETAIL_DATABASE_ERROR,
             ErrorKind::SessionFieldInvalid { field } => match field {
                 SessionField::PublicKey => DETAIL_SESSION_PUBLIC_KEY,
@@ -302,7 +300,7 @@ impl Error {
 afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_dragonfly::Error => Queue,
-    afd_crypto::error::Error => Entropy,
+    afd_crypto::error::Error => Crypto,
 );
 
 mod raise;

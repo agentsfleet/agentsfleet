@@ -1,8 +1,10 @@
 //! The access decision through memberships, against live Postgres.
 //!
-//! John owns an account. Bob owns his own and is a member of John's. The
-//! resolver is asked what each may open and which accounts each holds, from the
-//! rows alone. How the answer reaches a route is `afd_api`'s concern.
+//! John owns an account. Bob owns his own and is a member of John's; Carol
+//! owns hers and holds nothing of John's. The resolver is asked what each may
+//! open and which accounts each holds, from the rows alone. The walk across
+//! those accounts is `integration_workspace_directory.rs`; how the answer
+//! reaches a route is `afd_api`'s concern.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -11,110 +13,20 @@
 
 use afd_auth::principal::{PersonCredential, Principal, Runner};
 use afd_auth::scope::ScopeSet;
-use afd_core::clock::UnixMillis;
 use afd_core::error_code;
-use afd_core::id::ENTROPY_LEN as ID_ENTROPY_LEN;
 use afd_crypto::entropy::Entropy;
-use afd_db::Db;
-use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::mint_id;
 use afd_tenant::workspace::Workspaces;
-use afd_tenant::workspace::access::{ROLE_MEMBER, Role};
-use afd_tenant::workspace::directory::After;
-use afd_tenant::workspace::name::Chosen;
-use afd_tenant::workspace::name::ENTROPY_LEN as NAME_ENTROPY_LEN;
+use afd_tenant::workspace::access::Role;
 
-use crate::access_lane::{Signup, delete_accounts, held, hold, id, person, session, sign_up};
-
-/// A name both accounts give a workspace, so a name filter must keep them apart.
-const SHARED_NAME: &str = "shared-across-accounts";
-
-/// When the extra workspaces are made: after every signup's own.
-const LATER: UnixMillis = UnixMillis::from_millis(4_102_444_800_000);
-
-/// One signed-up person: their account, user row and workspace.
-struct Owner {
-    tenant: String,
-    user: String,
-    subject: String,
-    workspace: String,
-}
-
-impl Owner {
-    fn minted() -> Self {
-        Self {
-            tenant: mint_id(),
-            user: mint_id(),
-            subject: format!("user_membership_{}", mint_id()),
-            workspace: mint_id(),
-        }
-    }
-}
-
-struct Fixture {
-    lane: TestDatabase,
-    database: Db,
-    john: Owner,
-    bob: Owner,
-    stranger: Owner,
-}
-
-impl Fixture {
-    async fn create() -> Self {
-        let lane = TestDatabase::shared();
-        Self {
-            database: lane.open(DbRole::Api, &[]).await,
-            john: Owner::minted(),
-            bob: Owner::minted(),
-            stranger: Owner::minted(),
-            lane,
-        }
-    }
-
-    async fn seed(&self) {
-        for (owner, name) in [
-            (&self.john, "John"),
-            (&self.bob, "Bob"),
-            (&self.stranger, "Stranger"),
-        ] {
-            self.sign_up(owner, name).await;
-        }
-        self.set_bob_in_johns_account(ROLE_MEMBER).await;
-    }
-
-    async fn sign_up(&self, owner: &Owner, display_name: &str) {
-        let person = Signup {
-            tenant: &owner.tenant,
-            user: &owner.user,
-            subject: &owner.subject,
-            email: "fixture@example.test",
-            name: display_name,
-            display_name: Some(display_name),
-            workspace: &owner.workspace,
-        };
-        sign_up(&self.database, &person).await;
-    }
-
-    /// Bob's row in John's account, holding `role` whatever it held before.
-    async fn set_bob_in_johns_account(&self, role: &str) {
-        hold(&self.database, &self.john.tenant, &self.bob.user, role).await;
-    }
-
-    async fn cleanup(self) {
-        let accounts = [&*self.john.tenant, &self.bob.tenant, &self.stranger.tenant];
-        delete_accounts(&self.database, accounts).await;
-        drop(self.database);
-        self.lane.cleanup().await;
-    }
-}
+use crate::access_lane::{Account, Fixture, held, id, person, session};
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn membership_decides_access_and_the_role_it_is_held_with() {
     let fixture = Fixture::create().await;
-    fixture.seed().await;
     let workspaces = Workspaces::new(fixture.database.clone(), Entropy::new());
-    let (john, bob, stranger) = (&fixture.john, &fixture.bob, &fixture.stranger);
+    let (john, bob, stranger) = (&fixture.john, &fixture.bob, &fixture.carol);
     let bob_session = session(&bob.tenant, &bob.subject);
 
     let reached = workspaces
@@ -163,7 +75,6 @@ async fn membership_decides_access_and_the_role_it_is_held_with() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_stored_role_this_build_does_not_know_is_reported_not_guessed() {
     let fixture = Fixture::create().await;
-    fixture.seed().await;
     fixture.set_bob_in_johns_account("viewer").await;
     let workspaces = Workspaces::new(fixture.database.clone(), Entropy::new());
 
@@ -183,7 +94,6 @@ async fn a_stored_role_this_build_does_not_know_is_reported_not_guessed() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn the_accounts_a_person_holds_are_their_own_and_every_membership() {
     let fixture = Fixture::create().await;
-    fixture.seed().await;
     let workspaces = Workspaces::new(fixture.database.clone(), Entropy::new());
     let (john, bob) = (&fixture.john, &fixture.bob);
 
@@ -194,13 +104,15 @@ async fn the_accounts_a_person_holds_are_their_own_and_every_membership() {
         .expect("a person holds accounts");
     assert_eq!(accounts.home, id(&bob.tenant));
     assert_eq!(accounts.held.len(), 2, "{accounts:?}");
-    let johns = accounts.get(&john.tenant).expect("John's account is held");
+    let johns = accounts
+        .get(&id(&john.tenant))
+        .expect("John's account is held");
     assert_eq!(
         (johns.role, johns.owner_name.as_str()),
         (Role::Member, "John")
     );
     let own = accounts
-        .get(&bob.tenant)
+        .get(&id(&bob.tenant))
         .expect("Bob's own account is held");
     assert_eq!(own.role, Role::Owner);
 
@@ -211,7 +123,13 @@ async fn the_accounts_a_person_holds_are_their_own_and_every_membership() {
     let tenants: Vec<&str> = page.rows.iter().map(|row| row.tenant_id.as_str()).collect();
     assert!(tenants.contains(&john.tenant.as_str()), "{tenants:?}");
     assert!(tenants.contains(&bob.tenant.as_str()), "{tenants:?}");
+    an_api_key_holds_only_its_own_account(&workspaces, bob).await;
+    fixture.cleanup().await;
+}
 
+/// Bob's api-key names his account and holds only it, though the person who
+/// minted it is a member of John's too.
+async fn an_api_key_holds_only_its_own_account(workspaces: &Workspaces, bob: &Account) {
     let key = person(
         PersonCredential::TenantApiKey,
         &bob.tenant,
@@ -230,11 +148,9 @@ async fn the_accounts_a_person_holds_are_their_own_and_every_membership() {
     );
     assert!(
         by_key
-            .get(&bob.tenant)
+            .get(&id(&bob.tenant))
             .is_some_and(|account| account.role == Role::Owner)
     );
-
-    fixture.cleanup().await;
 }
 
 /// A runner acts for no person and holds no account.
@@ -258,7 +174,6 @@ async fn should_answer_none_when_principal_is_a_runner() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn should_fall_back_to_claim_when_session_subject_has_no_user_row() {
     let fixture = Fixture::create().await;
-    fixture.seed().await;
     let workspaces = Workspaces::new(fixture.database.clone(), Entropy::new());
     let unknown = format!("user_unknown_{}", mint_id());
 
@@ -271,7 +186,7 @@ async fn should_fall_back_to_claim_when_session_subject_has_no_user_row() {
     assert_eq!(claimed.held.len(), 1, "{claimed:?}");
     assert!(
         claimed
-            .get(&fixture.john.tenant)
+            .get(&id(&fixture.john.tenant))
             .is_some_and(|account| account.role == Role::Owner)
     );
 
@@ -283,168 +198,5 @@ async fn should_fall_back_to_claim_when_session_subject_has_no_user_row() {
         .expect("a person always answers");
     assert_eq!(empty.home, id(&nowhere));
     assert!(empty.held.is_empty(), "{empty:?}");
-    fixture.cleanup().await;
-}
-
-/// Bob walks every workspace of both accounts he holds one row at a time:
-/// each appears once, in creation order, and a name both accounts use comes
-/// back once per account.
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn should_walk_keyset_across_held_accounts() {
-    let fixture = Fixture::create().await;
-    fixture.seed().await;
-    let workspaces = Workspaces::new(fixture.database.clone(), Entropy::new());
-    for tenant in [&fixture.john.tenant, &fixture.bob.tenant] {
-        let name = Chosen::parse(SHARED_NAME)
-            .expect("a plain name")
-            .expect("a chosen name");
-        workspaces
-            .create(&id(tenant), Some(name), "fixture", LATER)
-            .await
-            .expect("the shared name lands in each account");
-    }
-    let accounts = workspaces
-        .accounts_of(&session(&fixture.bob.tenant, &fixture.bob.subject))
-        .await
-        .expect("the account read answers")
-        .expect("Bob holds accounts");
-    let tenants = accounts.tenants();
-    let whole = workspaces
-        .page(&tenants, None, None, 50)
-        .await
-        .expect("the whole list reads");
-
-    let mut walked = Vec::new();
-    let mut after: Option<After> = None;
-    loop {
-        let page = workspaces
-            .page(&tenants, None, after.as_ref(), 1)
-            .await
-            .expect("a page reads");
-        let Some(row) = page.rows.last() else { break };
-        after = Some(After {
-            created_at_ms: row.created_at_ms,
-            id: id(&row.id),
-        });
-        walked.extend(page.rows.iter().map(|row| row.id.clone()));
-        if !page.more {
-            break;
-        }
-    }
-    let listed: Vec<String> = whole.rows.iter().map(|row| row.id.clone()).collect();
-    assert_eq!(
-        walked, listed,
-        "one row at a time is the whole list, in order"
-    );
-    assert!(
-        whole.rows.len() >= 4,
-        "two signups and two shared: {listed:?}"
-    );
-
-    let named = workspaces
-        .page(&tenants, Some(SHARED_NAME), None, 50)
-        .await
-        .expect("the name filter reads");
-    let mut owners: Vec<&str> = named
-        .rows
-        .iter()
-        .map(|row| row.tenant_id.as_str())
-        .collect();
-    owners.sort_unstable();
-    let mut expected = vec![fixture.john.tenant.as_str(), fixture.bob.tenant.as_str()];
-    expected.sort_unstable();
-    assert_eq!(owners, expected, "the shared name once per account");
-
-    let first = workspaces
-        .page(&tenants, Some(SHARED_NAME), None, 1)
-        .await
-        .expect("the first named page reads");
-    let boundary = first.rows.last().expect("one named row");
-    let after = After {
-        created_at_ms: boundary.created_at_ms,
-        id: id(&boundary.id),
-    };
-    let rest = workspaces
-        .page(&tenants, Some(SHARED_NAME), Some(&after), 1)
-        .await
-        .expect("the resumed named page reads");
-    assert!(first.more && !rest.more, "two named rows, one per page");
-    assert_ne!(
-        rest.rows.first().map(|row| row.tenant_id.as_str()),
-        Some(boundary.tenant_id.as_str()),
-        "the resumed page is the other account's"
-    );
-    fixture.cleanup().await;
-}
-
-/// A chosen name the account already uses is refused as taken: the unique
-/// index decides, and the refusal is the caller's, not the datastore's.
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn should_refuse_chosen_workspace_name_when_account_already_uses_it() {
-    let fixture = Fixture::create().await;
-    fixture.seed().await;
-    let workspaces = Workspaces::new(fixture.database.clone(), Entropy::new());
-    let tenant = id(&fixture.john.tenant);
-    let chosen = || {
-        Chosen::parse(SHARED_NAME)
-            .expect("a plain name")
-            .expect("a chosen name")
-    };
-    workspaces
-        .create(&tenant, Some(chosen()), "fixture", LATER)
-        .await
-        .expect("the first lands");
-    let taken = workspaces
-        .create(&tenant, Some(chosen()), "fixture", LATER)
-        .await
-        .expect_err("the name is taken");
-    assert_eq!(taken.code(), error_code::WORKSPACE_NAME_EXISTS);
-    fixture.cleanup().await;
-}
-
-/// A generated name another workspace already holds is drawn again rather
-/// than refused, since the caller never chose it; three collisions in a row
-/// are the datastore's refusal, not a name conflict the caller could fix.
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn should_draw_again_when_a_generated_name_collides() {
-    let fixture = Fixture::create().await;
-    fixture.seed().await;
-    let (entropy, draws) = Entropy::new_mocked();
-    let workspaces = Workspaces::new(fixture.database.clone(), entropy);
-    let tenant = id(&fixture.john.tenant);
-    let taken = [1_u8; NAME_ENTROPY_LEN];
-    let fresh = [2_u8; NAME_ENTROPY_LEN];
-    let now = afd_core::clock::now();
-    let mut id_byte = 10_u8;
-    let mut queue = |name: &[u8]| {
-        id_byte += 1;
-        draws.push_bytes(name);
-        draws.push_bytes(&[id_byte; ID_ENTROPY_LEN]);
-    };
-
-    queue(&taken);
-    let first = workspaces
-        .create(&tenant, None, "fixture", now)
-        .await
-        .expect("the first generated name lands");
-    queue(&taken);
-    queue(&fresh);
-    let second = workspaces
-        .create(&tenant, None, "fixture", now)
-        .await
-        .expect("a collided name is drawn again");
-    assert_ne!(second.name, first.name);
-
-    for _attempt in 0..3 {
-        queue(&taken);
-    }
-    let exhausted = workspaces
-        .create(&tenant, None, "fixture", now)
-        .await
-        .expect_err("three collisions in a row");
-    assert_eq!(exhausted.code(), error_code::INTERNAL_DB_QUERY);
     fixture.cleanup().await;
 }

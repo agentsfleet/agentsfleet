@@ -845,6 +845,7 @@ dependencies = [
  "afd_crypto",
  "afd_db",
  "afd_dragonfly",
+ "afd_mail",
  "afd_observability",
  "base64 0.23.1",
  "futures-util",

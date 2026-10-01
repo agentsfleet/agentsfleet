@@ -19,6 +19,37 @@ macro_rules! select_invitation {
     };
 }
 
+/// The two stamps that keep an invitation pending, neither of which a clock
+/// changes: nobody accepted it and nobody revoked it. `$alias` qualifies the
+/// columns where a statement joins another table. Each statement adds its own
+/// expiry comparison, since a revoke reaches an expired invite and a list does
+/// not.
+macro_rules! pending_invite {
+    () => {
+        " AND accepted_at IS NULL AND revoked_at IS NULL "
+    };
+    ($alias:ident) => {
+        concat!(
+            " AND ",
+            stringify!($alias),
+            ".accepted_at IS NULL AND ",
+            stringify!($alias),
+            ".revoked_at IS NULL "
+        )
+    };
+}
+
+/// The head every page of the workspace walk shares: the four columns
+/// `WorkspaceRow` reads, across the held accounts bound as `$1`. Each page
+/// adds its own filter, keyset and limit.
+macro_rules! workspace_page {
+    () => {
+        "SELECT id::text, name, created_at, tenant_id::text \
+         FROM core.workspaces \
+         WHERE tenant_id = ANY($1::uuid[]) "
+    };
+}
+
 /// The account a row belongs to, named by its owner.
 ///
 /// Joined against a `core.tenants` row aliased `t`: the owner's display name
@@ -54,6 +85,11 @@ macro_rules! owner_name_column {
 
 /// The column `owner_name_column!` names, as the readers fetch it.
 pub(crate) const COLUMN_OWNER_NAME: &str = "owner_name";
+/// The columns more than one reader fetches by name, each spelled once.
+pub(crate) const COLUMN_ID: &str = "id";
+pub(crate) const COLUMN_TENANT_ID: &str = "tenant_id";
+pub(crate) const COLUMN_ROLE: &str = "role";
+pub(crate) const COLUMN_EMAIL: &str = "email";
 
 pub mod apikey;
 pub mod cli_credential;

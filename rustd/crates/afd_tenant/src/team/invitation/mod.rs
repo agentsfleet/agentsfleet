@@ -19,8 +19,9 @@ use sqlx::Row as _;
 use sqlx::postgres::PgRow;
 
 use super::{Invitee, email};
+use crate::sql::{COLUMN_EMAIL, COLUMN_ID, COLUMN_ROLE, COLUMN_TENANT_ID};
 use crate::workspace::access::Role;
-use crate::{Result, error};
+use crate::{Result, error, stored};
 
 /// How long an invitation can be accepted: seven days.
 pub const INVITE_TTL_MS: i64 = 7 * 24 * 60 * 60 * 1000;
@@ -28,8 +29,6 @@ pub const INVITE_TTL_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 /// The table an invitation is read from, as a malformed row reports it.
 const TABLE: &str = "core.invites";
 /// The columns more than one invitation read names, each spelled once.
-const COLUMN_ID: &str = "id";
-const COLUMN_TENANT_ID: &str = "tenant_id";
 const COLUMN_EXPIRES_AT: &str = "expires_at";
 const COLUMN_ACCEPTED_BY: &str = "accepted_by";
 /// The context an unreadable invitation row reports under.
@@ -83,33 +82,37 @@ impl Invitation {
         match &self.accepted_by {
             Some(user) if user == invitee.user => Acceptance::AlreadyJoined,
             Some(_) => Acceptance::Closed,
-            None if self.accepted_at_ms.is_some()
-                || self.revoked_at_ms.is_some()
-                || self.expires_at_ms <= now.as_millis() =>
-            {
-                Acceptance::Closed
-            }
+            None if !self.is_open(now) => Acceptance::Closed,
             None if self.email != email::fold(invitee.email) => Acceptance::WrongAddress,
             None => Acceptance::Join,
         }
+    }
+
+    /// Whether this invitation can still be accepted at `now`: nobody accepted
+    /// it, nobody revoked it, and it has not expired.
+    ///
+    /// The row-side twin of the statements' `pending_invite!` predicate and
+    /// their `expires_at > now` comparison.
+    const fn is_open(&self, now: UnixMillis) -> bool {
+        self.accepted_at_ms.is_none()
+            && self.revoked_at_ms.is_none()
+            && self.expires_at_ms > now.as_millis()
     }
 
     /// Reads one invitation by column name, as every invitation statement
     /// selects it (`select_invitation!`).
     fn read(row: &PgRow) -> Result<Self> {
         let unreadable = error::query(CONTEXT_READ);
-        let uuid = |column: &'static str, value: &str| {
-            Uuid7::parse(value).map_err(error::row_malformed(TABLE, column))
-        };
+        let uuid = |column: &'static str, value: &str| stored::uuid(TABLE, column, value);
         let id: String = row.try_get(COLUMN_ID).map_err(&unreadable)?;
         let tenant: String = row.try_get(COLUMN_TENANT_ID).map_err(&unreadable)?;
-        let role: String = row.try_get("role").map_err(&unreadable)?;
+        let role: String = row.try_get(COLUMN_ROLE).map_err(&unreadable)?;
         let accepted_by: Option<String> = row.try_get(COLUMN_ACCEPTED_BY).map_err(&unreadable)?;
         let email_status: Option<String> = row.try_get("email_status").map_err(&unreadable)?;
         Ok(Self {
             id: uuid(COLUMN_ID, &id)?,
             tenant: uuid(COLUMN_TENANT_ID, &tenant)?,
-            email: row.try_get("email").map_err(&unreadable)?,
+            email: row.try_get(COLUMN_EMAIL).map_err(&unreadable)?,
             role: Role::parse(&role)?,
             expires_at_ms: row.try_get(COLUMN_EXPIRES_AT).map_err(&unreadable)?,
             created_at_ms: row.try_get("created_at").map_err(&unreadable)?,

@@ -140,43 +140,32 @@ pub const SELECT_TENANT_ACCOUNT: &str = concat!(
 );
 
 /// The first page of the workspaces across a person's accounts.
-pub const SELECT_TENANT_WORKSPACES_PAGE_FIRST: &str = "\
-SELECT id::text, name, created_at, tenant_id::text \
-FROM core.workspaces \
-WHERE tenant_id = ANY($1::uuid[]) \
-ORDER BY created_at ASC, id ASC \
-LIMIT $2";
+pub const SELECT_TENANT_WORKSPACES_PAGE_FIRST: &str = concat!(
+    workspace_page!(),
+    "ORDER BY created_at ASC, id ASC LIMIT $2"
+);
 
 /// The page after a boundary row.
-pub const SELECT_TENANT_WORKSPACES_PAGE_AFTER: &str = "\
-SELECT id::text, name, created_at, tenant_id::text \
-FROM core.workspaces \
-WHERE tenant_id = ANY($1::uuid[]) \
-  AND (created_at, id) > ($2, $3::uuid) \
-ORDER BY created_at ASC, id ASC \
-LIMIT $4";
+pub const SELECT_TENANT_WORKSPACES_PAGE_AFTER: &str = concat!(
+    workspace_page!(),
+    "AND (created_at, id) > ($2, $3::uuid) ORDER BY created_at ASC, id ASC LIMIT $4"
+);
 
 /// The first page, held to an exact name.
 ///
 /// The filter a client reconciling its own create uses, so it can find the
 /// row it just made without walking the whole list.
-pub const SELECT_TENANT_WORKSPACES_PAGE_FIRST_BY_NAME: &str = "\
-SELECT id::text, name, created_at, tenant_id::text \
-FROM core.workspaces \
-WHERE tenant_id = ANY($1::uuid[]) \
-  AND name = $2 \
-ORDER BY created_at ASC, id ASC \
-LIMIT $3";
+pub const SELECT_TENANT_WORKSPACES_PAGE_FIRST_BY_NAME: &str = concat!(
+    workspace_page!(),
+    "AND name = $2 ORDER BY created_at ASC, id ASC LIMIT $3"
+);
 
 /// The page after a boundary row, held to an exact name.
-pub const SELECT_TENANT_WORKSPACES_PAGE_AFTER_BY_NAME: &str = "\
-SELECT id::text, name, created_at, tenant_id::text \
-FROM core.workspaces \
-WHERE tenant_id = ANY($1::uuid[]) \
-  AND name = $2 \
-  AND (created_at, id) > ($3, $4::uuid) \
-ORDER BY created_at ASC, id ASC \
-LIMIT $5";
+pub const SELECT_TENANT_WORKSPACES_PAGE_AFTER_BY_NAME: &str = concat!(
+    workspace_page!(),
+    "AND name = $2 AND (created_at, id) > ($3, $4::uuid) \
+     ORDER BY created_at ASC, id ASC LIMIT $5"
+);
 
 #[cfg(test)]
 mod tests {

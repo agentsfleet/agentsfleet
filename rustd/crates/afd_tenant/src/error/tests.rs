@@ -6,23 +6,11 @@
 //! those three methods for every variant without inventing a cause.
 
 use super::{ApiKeyField, Error, InviteConflict, SessionField};
-use afd_core::error_code;
+use afd_core::error_code::{self, ErrorCode};
 use std::error::Error as _;
 
 fn data_only_kinds() -> Vec<(&'static str, Error)> {
-    let mut kinds = Vec::new();
-    for field in [
-        SessionField::PublicKey,
-        SessionField::TokenName,
-        SessionField::Ciphertext,
-        SessionField::Nonce,
-        SessionField::VerificationCode,
-    ] {
-        kinds.push(("session field", super::session_field(field)));
-    }
-    for field in [ApiKeyField::Name, ApiKeyField::Description] {
-        kinds.push(("api-key field", super::apikey_field(field)));
-    }
+    let mut kinds = field_kinds();
     kinds.extend([
         ("session missing", super::session_missing()),
         ("session expired", super::session_expired()),
@@ -56,51 +44,74 @@ fn data_only_kinds() -> Vec<(&'static str, Error)> {
             super::workspace_tenant_vanished(),
         ),
     ]);
-    kinds.extend(team_kinds());
+    kinds.extend(
+        team_kinds()
+            .into_iter()
+            .map(|(label, failure, _code)| (label, failure)),
+    );
     kinds
 }
 
-/// The team failures: an account's invites and members.
-fn team_kinds() -> [(&'static str, Error); 6] {
-    [
-        ("invite not found", super::invite_not_found()),
-        ("invite email mismatch", super::invite_email_mismatch()),
-        (
-            "invite conflict member",
-            super::invite_conflict(InviteConflict::Member),
-        ),
-        (
-            "invite conflict invited",
-            super::invite_conflict(InviteConflict::Invited),
-        ),
-        ("member last owner", super::member_last_owner()),
-        ("email invalid", super::email_invalid()),
-    ]
+/// The refusals that name the field they refused.
+fn field_kinds() -> Vec<(&'static str, Error)> {
+    let mut kinds = Vec::new();
+    for field in [
+        SessionField::PublicKey,
+        SessionField::TokenName,
+        SessionField::Ciphertext,
+        SessionField::Nonce,
+        SessionField::VerificationCode,
+    ] {
+        kinds.push(("session field", super::session_field(field)));
+    }
+    for field in [ApiKeyField::Name, ApiKeyField::Description] {
+        kinds.push(("api-key field", super::apikey_field(field)));
+    }
+    kinds
 }
 
-/// The team failures answer with the codes the routes and the dashboard
-/// branch on; a remap would send a refusal down the wrong path.
-#[test]
-fn team_failures_carry_their_wire_codes() {
-    let codes = [
-        (super::invite_not_found(), error_code::INVITE_NOT_FOUND),
+/// The team failures, each with the wire code the routes and the dashboard
+/// branch on: one table, read by both tests below.
+fn team_kinds() -> [(&'static str, Error, ErrorCode); 6] {
+    [
         (
+            "invite not found",
+            super::invite_not_found(),
+            error_code::INVITE_NOT_FOUND,
+        ),
+        (
+            "invite email mismatch",
             super::invite_email_mismatch(),
             error_code::INVITE_EMAIL_MISMATCH,
         ),
         (
+            "invite conflict member",
             super::invite_conflict(InviteConflict::Member),
             error_code::INVITE_CONFLICT,
         ),
         (
+            "invite conflict invited",
             super::invite_conflict(InviteConflict::Invited),
             error_code::INVITE_CONFLICT,
         ),
-        (super::member_last_owner(), error_code::MEMBER_LAST_OWNER),
-        (super::email_invalid(), error_code::INVALID_REQUEST),
-    ];
-    for (failure, code) in codes {
-        assert_eq!(failure.code(), code, "{failure}");
+        (
+            "member last owner",
+            super::member_last_owner(),
+            error_code::MEMBER_LAST_OWNER,
+        ),
+        (
+            "email invalid",
+            super::email_invalid(),
+            error_code::INVALID_REQUEST,
+        ),
+    ]
+}
+
+/// A remap would send a refusal down the wrong path.
+#[test]
+fn team_failures_carry_their_wire_codes() {
+    for (label, failure, code) in team_kinds() {
+        assert_eq!(failure.code(), code, "{label}: {failure}");
     }
 }
 
@@ -184,7 +195,7 @@ fn a_machine_collision_is_detectable_only_inside_the_tenant_crate() {
     );
 }
 
-/// A drawn-entropy failure lifts through `From`, and an identifier a stored
+/// A cryptographic failure lifts through `From`, and an identifier a stored
 /// row holds malformed reports as that row; both keep their cause.
 ///
 /// The lift exists so `?` can carry a foreign error across this crate's
@@ -205,10 +216,15 @@ fn foreign_failures_keep_their_cause() -> Result<(), &'static str> {
         .ok_or("a two-character non-hex string unexpectedly parsed as a KEK")?
         .into();
 
-    for (label, failure) in [("row", &malformed), ("entropy", &drawn)] {
+    for (label, failure) in [("row", &malformed), ("crypto", &drawn)] {
         assert!(failure.source().is_some(), "{label} keeps its cause");
         assert!(!failure.to_string().is_empty(), "{label}");
         assert!(!failure.code().as_str().is_empty(), "{label}");
     }
+    // A key that is not hex mints nothing, so the sentence must not claim an
+    // identifier failed: it names the step every `afd_crypto` failure shares.
+    let said = drawn.to_string();
+    assert!(said.contains("a cryptographic operation failed"), "{said}");
+    assert!(!said.contains("minted"), "{said}");
     Ok(())
 }

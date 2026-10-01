@@ -50,19 +50,23 @@
 //! hash would protect nothing.
 
 mod machine;
+mod record;
 
 use afd_auth::credential::CredentialKind;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
+use afd_db::constraint::violates_unique;
 use sqlx::Acquire as _;
 
 use crate::sql::cli_credential as sql;
-use crate::{Result, error};
+use crate::sql::{COLUMN_ID, COLUMN_TENANT_ID};
+use crate::{Result, error, stored};
 use afd_auth::minted::Minted;
 
 pub use self::machine::MachineName;
+pub use self::record::{MintRequest, Revealed, Revoked, UserIdentity};
 
 /// The context a datastore failure on the mint path is reported under.
 const CONTEXT_MINT: &str = "mint cli-credential";
@@ -73,10 +77,14 @@ const CONTEXT_REVOKE: &str = "revoke cli-credential";
 /// The context the subject lookup reports under.
 const CONTEXT_SUBJECT: &str = "resolve subject user";
 
-/// The table and columns a malformed user row is reported by.
+/// The table a malformed user row is reported by.
 const TABLE_USERS: &str = "core.users";
-const COLUMN_ID: &str = "id";
-const COLUMN_TENANT_ID: &str = "tenant_id";
+
+/// The partial index that holds a machine to one live credential.
+///
+/// Must equal the name in `schema/250_cli_credentials.sql`: a hash or
+/// primary-key collision is unique too, and no re-login resolves it.
+const MACHINE_CONSTRAINT: &str = "uq_cli_credentials_user_machine_live";
 
 /// Leading hex characters kept for display beside a credential.
 ///
@@ -119,10 +127,9 @@ impl CliCredentials {
 
         let (id, tenant, email, display_name, tenant_name) =
             row.ok_or_else(error::unknown_subject)?;
-        let malformed = |column| error::row_malformed(TABLE_USERS, column);
         Ok(UserIdentity {
-            id: Uuid7::parse(&id).map_err(malformed(COLUMN_ID))?,
-            tenant: Uuid7::parse(&tenant).map_err(malformed(COLUMN_TENANT_ID))?,
+            id: stored::uuid(TABLE_USERS, COLUMN_ID, &id)?,
+            tenant: stored::uuid(TABLE_USERS, COLUMN_TENANT_ID, &tenant)?,
             email,
             display_name,
             tenant_name,
@@ -260,14 +267,12 @@ impl CliCredentials {
 
 /// Tells a lost race apart from a broken statement.
 ///
-/// `23505` on this insert has exactly one cause: the partial unique index on
-/// `(user_id, machine_name) WHERE revoked_at IS NULL` refused a second live row
-/// for this machine. Everything else is a genuine fault.
+/// A violation of [`MACHINE_CONSTRAINT`], the partial unique index on
+/// `(user_id, machine_name) WHERE revoked_at IS NULL`, is a second live row
+/// for this machine: a lost race the mint retries. Everything else, another
+/// unique index included, is a genuine fault.
 fn classify_insert(source: sqlx::Error) -> crate::Error {
-    let collided = source
-        .as_database_error()
-        .is_some_and(sqlx::error::DatabaseError::is_unique_violation);
-    if collided {
+    if violates_unique(&source, MACHINE_CONSTRAINT) {
         error::cli_credential_machine_collision()
     } else {
         error::query(CONTEXT_MINT)(source)
@@ -286,76 +291,6 @@ fn display_prefix(credential: &str) -> &str {
         .map_or(0, str::len)
         .saturating_add(DISPLAY_HEX_LEN);
     credential.get(..shown).unwrap_or(credential)
-}
-
-/// The person a proven subject names.
-///
-/// Every field comes from ONE read. The tenant is the joined user row's, which
-/// is the authoritative one — the copy stamped on a credential row at mint is
-/// provenance, never authority.
-///
-/// The mint and revoke paths read `id` and `tenant` and ignore the rest;
-/// `GET /v1/users/me` renders all five. One record rather than a narrow one for
-/// the writes and a wide one for the read: the question both ask is "who is this
-/// subject", and two answers to it would be two things to keep true.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserIdentity {
-    /// `core.users.id`, which the credential's foreign key points at.
-    pub id: Uuid7,
-    /// The tenant that user belongs to.
-    pub tenant: Uuid7,
-    /// The address the account was opened with.
-    pub email: String,
-    /// What they asked to be called, when they said. `NULL` in the column when
-    /// the identity provider sent no name, and absent from the wire in turn.
-    pub display_name: Option<String>,
-    /// That tenant's name, which is what a person recognises.
-    pub tenant_name: String,
-}
-
-/// What minting one credential needs.
-#[derive(Debug, Clone, Copy)]
-pub struct MintRequest<'a> {
-    /// Whose credential it is, as `core.users.id`.
-    pub user: &'a Uuid7,
-    /// The tenant that user belongs to.
-    pub tenant: &'a Uuid7,
-    /// The terminal's label, already parsed.
-    pub machine: MachineName<'a>,
-    /// The deployment answering this request.
-    ///
-    /// Never a value the caller supplied: a credential and the deployment that
-    /// minted it are one fact, and a client-asserted host would let them
-    /// disagree.
-    pub deployment: &'a str,
-    /// Where the mint was requested from, for the audit trail.
-    pub from_address: &'a str,
-}
-
-/// A credential, and the one view of its plaintext that will ever exist.
-///
-/// No `Clone`, for [`crate::apikey::Revealed`]'s reason: a second copy of a
-/// credential is a second thing to zero, and the one that gets missed is the
-/// one that stays in the heap.
-#[derive(Debug)]
-pub struct Revealed {
-    /// The credential row's identifier.
-    pub id: Uuid7,
-    /// The terminal's label.
-    pub machine_name: String,
-    /// The plaintext, which zeroes when this is dropped.
-    pub credential: Minted,
-    /// The deployment that minted it.
-    pub deployment: String,
-}
-
-/// A credential that this call revoked.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Revoked {
-    /// The credential row's identifier.
-    pub id: Uuid7,
-    /// When the row records it stopped working.
-    pub revoked_at_ms: i64,
 }
 
 #[cfg(test)]

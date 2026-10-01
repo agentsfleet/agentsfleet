@@ -9,7 +9,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use sqlx::Row as _;
+use afd_core::spelling::from_spelling;
 
 use crate::sql::invite as sql;
 use crate::team::Team;
@@ -27,7 +27,8 @@ const CONTEXT_BEGIN: &str = "begin invite email";
 const CONTEXT_RECORD: &str = "record invite email";
 
 /// What became of an invitation's most recent email.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum EmailStatus {
     /// The relay accepted it.
     Sent,
@@ -57,20 +58,21 @@ impl EmailStatus {
     /// meet, reads `failed` too, rather than failing the whole invite list.
     #[must_use]
     pub fn from_stored(stored: Option<&str>) -> Self {
-        match stored {
-            Some(EMAIL_STATUS_SENT) => Self::Sent,
-            Some(EMAIL_STATUS_UNCONFIGURED) => Self::Unconfigured,
-            _ => Self::Failed,
-        }
+        stored.and_then(from_spelling).unwrap_or(Self::Failed)
     }
 }
 
 /// One counted send, and what its email says.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Decoded by `sqlx::FromRow`, by column name: nothing here parses, so there
+/// is no domain error for a hand-written reader to surface.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct EmailAttempt {
     /// Which send this is: the first is 1.
+    #[sqlx(rename = "email_attempts")]
     pub attempt: i32,
     /// The invitee's address, lowercased.
+    #[sqlx(rename = "email")]
     pub to: String,
     /// The inviter's display name, else their address.
     pub inviter_name: String,
@@ -93,25 +95,15 @@ impl Team {
         invite: &Uuid7,
         now: UnixMillis,
     ) -> Result<Option<EmailAttempt>> {
-        let raise = error::query(CONTEXT_BEGIN);
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query(sql::BEGIN_EMAIL_ATTEMPT)
+        sqlx::query_as(sql::BEGIN_EMAIL_ATTEMPT)
             .bind(tenant.as_str())
             .bind(invite.as_str())
             .bind(now.as_millis())
             .bind(ROLE_OWNER)
             .fetch_optional(&mut *connection)
             .await
-            .map_err(&raise)?;
-        row.map(|row| {
-            Ok(EmailAttempt {
-                attempt: row.try_get("email_attempts").map_err(&raise)?,
-                to: row.try_get("email").map_err(&raise)?,
-                inviter_name: row.try_get("inviter_name").map_err(&raise)?,
-                owner_name: row.try_get(crate::sql::COLUMN_OWNER_NAME).map_err(&raise)?,
-            })
-        })
-        .transpose()
+            .map_err(error::query(CONTEXT_BEGIN))
     }
 
     /// Records what became of `attempt`, unless a later send has begun.

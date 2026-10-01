@@ -47,7 +47,8 @@ hex.workspace = true
 # The device-flow fingerprint: a session is bound to the caller that opened it
 # by a digest of address, agent and id.
 sha2.workspace = true
-sqlx.workspace = true
+# `derive` for `FromRow`: a row with nothing to parse decodes by column name.
+sqlx = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tracing.workspace = true
 petname.workspace = true
@@ -82,6 +83,10 @@ afd_core = { workspace = true, features = ["test-util"] }
 # Reads a stored session envelope back, so the suite asserts on what Redis holds
 # rather than on what this crate says it wrote.
 serde_json.workspace = true
+# The parser the invite route injects into `Email::parse`, so the address
+# tests run the composition the route runs. A dev-dependency only: the store
+# itself links no mail client.
+afd_mail.workspace = true
 
 [[test]]
 name = "tenant_suite"
