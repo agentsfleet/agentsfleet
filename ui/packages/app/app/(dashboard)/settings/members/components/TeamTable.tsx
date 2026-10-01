@@ -132,17 +132,18 @@ function RoleCell({ row }: { row: TeamRow }) {
   return <Badge variant={row.member.role === ACCOUNT_ROLE.owner ? "cyan" : "default"}>{row.member.role}</Badge>;
 }
 
-// An invite's email status, then: send again when the email failed, copy the
-// link the invitee needs either way, and revoke. With no mail relay there is
-// nothing to send again (it could only answer 503); the copied link is the way
-// in. On a phone the status reads under the address, leaving this cell icons.
+// An invite's email status, then: send again (a sent email may still never
+// arrive), copy the link the invitee needs either way, and revoke. With no mail
+// relay there is nothing to send again (it could only answer 503); the copied
+// link is the way in. On a phone the status reads under the address, leaving
+// this cell icons.
 function InviteActions({ invite, pending, onRevoke, onResend }: InviteHandlers & { invite: InviteSummary }) {
   return (
     <div className="inline-flex items-center gap-xs">
       <span className="hidden sm:inline-flex">
         <EmailStatusLabel status={invite.email_status} />
       </span>
-      {invite.email_status === EMAIL_STATUS.failed ? (
+      {invite.email_status === EMAIL_STATUS.unconfigured ? null : (
         <IconAction
           type="button"
           disabled={pending}
@@ -151,7 +152,7 @@ function InviteActions({ invite, pending, onRevoke, onResend }: InviteHandlers &
         >
           <SendIcon size={14} />
         </IconAction>
-      ) : null}
+      )}
       <CopyButton value={invite.link} label={`Copy invite link for ${invite.email}`} />
       <IconAction
         type="button"

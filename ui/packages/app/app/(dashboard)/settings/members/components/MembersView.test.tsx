@@ -99,12 +99,13 @@ describe("the table", () => {
 });
 
 describe("invite email", () => {
-  it("should show each invite's email status, and offer send again only when the email failed", () => {
+  it("should show each invite's email status, and offer send again whenever there is a relay to send it", () => {
     renderView([JOHN], [INVITE, UNSENT, NO_RELAY]);
     expect(within(actionsCellOf(INVITE.email)).getByText(EMAIL_SENT)).toBeTruthy();
     expect(within(actionsCellOf(UNSENT.email)).getByText(EMAIL_NOT_SENT)).toBeTruthy();
     expect(within(actionsCellOf(NO_RELAY.email)).getByText(EMAIL_NOT_SET_UP)).toBeTruthy();
-    expect(within(rowOf(INVITE.email)).queryByRole("button", { name: sendAgain(INVITE) })).toBeNull();
+    // A sent email may still never arrive, so it can be sent again too.
+    expect(within(rowOf(INVITE.email)).getByRole("button", { name: sendAgain(INVITE) })).toBeTruthy();
     expect(within(rowOf(UNSENT.email)).getByRole("button", { name: sendAgain(UNSENT) })).toBeTruthy();
     expect(within(rowOf(NO_RELAY.email)).getByRole("button", { name: copyLinkFor(NO_RELAY) })).toBeTruthy();
   });
