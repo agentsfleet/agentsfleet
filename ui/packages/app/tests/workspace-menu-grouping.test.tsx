@@ -23,8 +23,12 @@ import { ACCOUNT_ROLE, type TenantWorkspace } from "@/lib/api/workspaces";
 
 const MINE = { tenant_id: "tenant_bob", owner_name: "Bob" };
 const JOHNS = { tenant_id: "tenant_john", owner_name: "John" };
+// A second account whose owner is also called John.
+const OTHER_JOHNS = { tenant_id: "tenant_john_2", owner_name: JOHNS.owner_name };
 const BOB_HOME: TenantWorkspace = { id: "ws_bob", name: "bob-home", created_at: 1, account: MINE, role: ACCOUNT_ROLE.owner };
 const MARY_001: TenantWorkspace = { id: "ws_john", name: "mary-001", created_at: 2, account: JOHNS, role: ACCOUNT_ROLE.member };
+const OPS_001: TenantWorkspace = { id: "ws_john_2", name: "ops-001", created_at: 3, account: OTHER_JOHNS, role: ACCOUNT_ROLE.member };
+const DUPLICATE_KEY = /same key/;
 
 beforeEach(() => { pathname.mockReturnValue(`/w/${BOB_HOME.id}/fleets`); });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -42,7 +46,27 @@ describe("workspace menu grouped by account", () => {
   it("should label nothing while the person holds only their own account", () => {
     render(<WorkspaceSwitcherMenu open workspaces={[BOB_HOME]} onOpenChange={vi.fn()} />);
     expect(screen.queryByText(OWN_ACCOUNT_LABEL)).toBeNull();
+    expect(screen.queryByRole("group")).toBeNull();
     expect(screen.getByRole("menuitem", { name: /bob-home/ })).toBeTruthy();
+  });
+
+  it("should group each account's workspaces under its label for screen readers", () => {
+    render(<WorkspaceSwitcherMenu open workspaces={[MARY_001, BOB_HOME]} onOpenChange={vi.fn()} />);
+    const yours = screen.getByRole("group", { name: OWN_ACCOUNT_LABEL });
+    const johns = screen.getByRole("group", { name: accountLabel(JOHNS.owner_name) });
+    expect(within(yours).getByRole("menuitem", { name: /bob-home/ })).toBeTruthy();
+    expect(within(johns).getByRole("menuitem", { name: /mary-001/ })).toBeTruthy();
+    expect(within(johns).queryByRole("menuitem", { name: /bob-home/ })).toBeNull();
+  });
+
+  it("should list both workspaces of two accounts whose owners share a name, with no duplicate key", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<WorkspaceSwitcherMenu open workspaces={[BOB_HOME, MARY_001, OPS_001]} onOpenChange={vi.fn()} />);
+    expect(screen.getByRole("menuitem", { name: /mary-001/ })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /ops-001/ })).toBeTruthy();
+    expect(screen.getAllByRole("group", { name: accountLabel(JOHNS.owner_name) })).toHaveLength(2);
+    expect(consoleError.mock.calls.flat().join(" ")).not.toMatch(DUPLICATE_KEY);
+    consoleError.mockRestore();
   });
 
   it("should navigate to a joined account's workspace when it is picked", async () => {

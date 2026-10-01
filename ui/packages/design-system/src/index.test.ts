@@ -37,6 +37,10 @@ describe("design-system public exports", () => {
     expect(DesignSystem.EYEBROW_CLASS).toContain("uppercase");
   });
 
+  it("exports the dropdown menu's group, which names a labelled run of items", () => {
+    expect(DesignSystem.DropdownMenuGroup).toBeDefined();
+  });
+
   it("exports list and utility components", () => {
     expect(DesignSystem.Time).toBeDefined();
     expect(DesignSystem.List).toBeDefined();

@@ -5,6 +5,8 @@ import { accountLabel, OWN_ACCOUNT_LABEL, switcherSections } from "./workspace-g
 const OWN = { tenant_id: "tenant_me", owner_name: "Me" };
 const JOHN = { tenant_id: "tenant_john", owner_name: "John" };
 const MARY = { tenant_id: "tenant_mary", owner_name: "Mary" };
+// A second account whose owner is also called John.
+const OTHER_JOHN = { tenant_id: "tenant_john_2", owner_name: JOHN.owner_name };
 
 function own(id: string): TenantWorkspace {
   return { id, name: id, created_at: 1, account: OWN, role: ACCOUNT_ROLE.owner };
@@ -16,7 +18,7 @@ function joined(id: string, account: typeof JOHN): TenantWorkspace {
 
 describe("switcherSections", () => {
   it("should render a solo account as one unlabelled section, exactly as before accounts could be shared", () => {
-    expect(switcherSections([own("a"), own("b")], [], null)).toEqual([
+    expect(switcherSections([own("a"), own("b")], [], null)).toMatchObject([
       { label: null, workspaces: [{ id: "a", name: "a" }, { id: "b", name: "b" }] },
     ]);
   });
@@ -51,7 +53,7 @@ describe("switcherSections", () => {
       [{ id: "fresh", name: "fresh" }, { id: "a", name: "stale copy" }],
       null,
     );
-    expect(sections[0]).toEqual({
+    expect(sections[0]).toMatchObject({
       label: OWN_ACCOUNT_LABEL,
       workspaces: [{ id: "a", name: "a" }, { id: "fresh", name: "fresh" }],
     });
@@ -60,22 +62,34 @@ describe("switcherSections", () => {
   it("should lead with an unplaceable routed workspace, outside every account", () => {
     const routed = { id: "unknown", name: "Current workspace" };
     const grouped = switcherSections([own("a"), joined("j1", JOHN)], [], routed);
-    expect(grouped[0]).toEqual({ label: null, workspaces: [routed] });
+    expect(grouped[0]).toMatchObject({ label: null, workspaces: [routed] });
     const solo = switcherSections([own("a")], [], routed);
-    expect(solo).toEqual([
+    expect(solo).toMatchObject([
       { label: null, workspaces: [routed] },
       { label: null, workspaces: [{ id: "a", name: "a" }] },
     ]);
   });
 
   it("should return one empty unlabelled section for a person with no workspaces", () => {
-    expect(switcherSections([], [], null)).toEqual([{ label: null, workspaces: [] }]);
+    expect(switcherSections([], [], null)).toMatchObject([{ label: null, workspaces: [] }]);
+  });
+
+  it("should key a joined account by its tenant, so two owners with one name stay two sections", () => {
+    const routed = { id: "unknown", name: "Current workspace" };
+    const sections = switcherSections([own("a"), joined("j1", JOHN), joined("j2", OTHER_JOHN)], [], routed);
+    const keys = sections.map((section) => section.key);
+    expect(keys.slice(-2)).toEqual([JOHN.tenant_id, OTHER_JOHN.tenant_id]);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(sections.slice(-2).map((section) => section.label)).toEqual([
+      accountLabel(JOHN.owner_name),
+      accountLabel(OTHER_JOHN.owner_name),
+    ]);
   });
 });
 
 describe("accountLabel", () => {
   it("should name an account by its owner", () => {
-    // pin test: literal is the contract
+    // pin test: literal is the contract — the wording the invite email uses too.
     expect(accountLabel("John")).toBe("John's account");
   });
 });
