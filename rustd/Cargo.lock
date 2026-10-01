@@ -722,6 +722,7 @@ version = "0.51.0"
 dependencies = [
  "afd_core",
  "afd_crypto",
+ "afd_db",
  "afd_vault",
  "askama",
  "insta",

@@ -19,6 +19,8 @@ use crate::deliver::tests::Scripted;
 use crate::deliver::{Delivery, Mailer};
 use crate::relay::Relay;
 
+mod relay_read;
+
 const INVITE: &str = "0190f5a2-4b2d-7c11-8d5e-2a5f31d98210";
 const RECIPIENT: &str = "bob@example.test";
 const INVITER: &str = "John";
@@ -202,7 +204,7 @@ async fn should_fail_within_deadline_when_vault_read_stalls() {
     let stalled = std::future::pending::<afd_vault::Result<Option<Relay>>>();
     let outcome = tokio::time::timeout(
         HUNG_AFTER,
-        send_within(stalled, &invite(&id), STALL_DEADLINE),
+        send_within(stalled, Relay::transport, &invite(&id), STALL_DEADLINE),
     )
     .await
     .expect("the send ends at its own deadline, not the suite's");
