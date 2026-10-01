@@ -351,6 +351,7 @@ removed member's streams send `event: access_revoked` and close.
 | owner | `POST /v1/tenants/me/invites` | `workspace:admin` | invites an email address |
 | owner | `GET /v1/tenants/me/invites` | `workspace:admin` | lists pending invites |
 | owner | `DELETE /v1/tenants/me/invites/{invite_id}` | `workspace:admin` | revokes an invite |
+| owner | `POST /v1/tenants/me/invites/{invite_id}/send` | `workspace:admin` | sends the invite email again |
 | owner | `GET /v1/tenants/me/members` | `workspace:admin` | lists the account's people |
 | owner | `DELETE /v1/tenants/me/members/{user_id}` | `workspace:admin` | removes a member |
 | invitee | `GET /v1/me/invites` | none | lists invites waiting for the signed-in address |
@@ -370,7 +371,41 @@ body.
 | `UZ-INV-002` | 403 | The invite went to another address | Sign in with the address the invite was sent to |
 | `UZ-INV-003` | 409 | The address has a pending invite, or already belongs to the account | Use the pending invite, or skip a person already in |
 | `UZ-INV-004` | 409 | Removing this person would leave the account without an owner | Keep one owner in the account |
+| `UZ-INV-005` | 503 | Send-again found no mail relay, or the relay refused or did not answer | Copy the invite link, or send again later |
 | `UZ-AUTH-026` | 403 | A member reached a route that writes a secret or connects an integration | Ask the account owner to make the change |
+
+### Invite email
+
+Creating an invite sends one email to the invited address. It names the
+inviter and the account, and it carries the accept link. `afd_mail` renders it
+from `rustd/crates/afd_mail/templates/invite.{html,txt}`.
+
+The email goes through the Simple Mail Transfer Protocol (SMTP) relay named by
+the `smtp-relay` platform bag. That bag lives in the admin workspace's vault,
+with `host`, `port`, `username`, `password` and `from_address`. The daemon reads
+it on every send, so a rotated password needs no restart.
+
+The relay password never leaves the vault read. It is not logged, returned, or
+written to configuration. Port 465 uses implicit Transport Layer Security (TLS),
+and any other port must upgrade with STARTTLS.
+
+Plaintext SMTP goes only to a loopback host such as Mailpit on a developer's
+machine. `playbooks/operations/smtp_relay_registration/001_playbook.md` sets the
+bag up for each deployment.
+
+The invite is saved before the email is sent, so email never loses an invite.
+Each invite records the outcome of its latest send as `email_status`:
+
+| `email_status` | Meaning | What the owner does |
+|---|---|---|
+| `sent` | The relay accepted the email | Nothing |
+| `failed` | The relay refused it, did not answer, or the send never finished | Send again, or copy the link |
+| `unconfigured` | This deployment has no `smtp-relay` bag | Copy the link; an operator runs the playbook |
+
+Send-again is a new attempt with its own `Resend-Idempotency-Key`. A retry
+inside one attempt reuses that key, so the relay delivers the email once.
+Logs carry the invite identifier, the attempt and the reply code. They never
+carry the address or the email body.
 
 ### Platform crossing
 

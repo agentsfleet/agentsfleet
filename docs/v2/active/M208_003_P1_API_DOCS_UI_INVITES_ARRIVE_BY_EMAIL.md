@@ -139,7 +139,7 @@ After §1's sync runs on DEV and this change reaches DEV, an invite to a test ma
 
 `docs/AUTH.md` states what is sent, through which bag, and what each failure leaves; `workspaces/teammates.mdx` on the docs branch describes the email and its three states.
 
-- **Dimension 6.1** — `docs/AUTH.md` names the three email states and the `smtp-relay` bag → Test `test_auth_doc_names_email_states`
+- **Dimension 6.1** — `docs/AUTH.md` names the three email states and the `smtp-relay` bag → Test `test_auth_doc_names_email_states` — DONE (`playbooks/operations/smtp_relay_registration/smtp_relay_registration_test.sh`)
 
 ## Interfaces
 
