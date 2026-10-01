@@ -73,6 +73,11 @@ const CONTEXT_REVOKE: &str = "revoke cli-credential";
 /// The context the subject lookup reports under.
 const CONTEXT_SUBJECT: &str = "resolve subject user";
 
+/// The table and columns a malformed user row is reported by.
+const TABLE_USERS: &str = "core.users";
+const COLUMN_ID: &str = "id";
+const COLUMN_TENANT_ID: &str = "tenant_id";
+
 /// Leading hex characters kept for display beside a credential.
 ///
 /// Eight of sixty-four leaves 224 bits unrevealed, so a stored display prefix
@@ -114,9 +119,10 @@ impl CliCredentials {
 
         let (id, tenant, email, display_name, tenant_name) =
             row.ok_or_else(error::unknown_subject)?;
+        let malformed = |column| error::row_malformed(TABLE_USERS, column);
         Ok(UserIdentity {
-            id: Uuid7::parse(&id)?,
-            tenant: Uuid7::parse(&tenant)?,
+            id: Uuid7::parse(&id).map_err(malformed(COLUMN_ID))?,
+            tenant: Uuid7::parse(&tenant).map_err(malformed(COLUMN_TENANT_ID))?,
             email,
             display_name,
             tenant_name,
