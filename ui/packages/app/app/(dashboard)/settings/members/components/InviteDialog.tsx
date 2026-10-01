@@ -5,6 +5,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
+  ActionForm,
+  Alert,
   Button,
   CopyButton,
   Dialog,
@@ -51,23 +53,22 @@ export default function InviteDialog({ onSettled }: { onSettled: () => void }) {
   const [created, setCreated] = useState<InviteSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { email: "" } });
 
-  // Closing from any path starts the next invite from an empty form. A send in
-  // flight finishes here first, or its answer would land in the next invite.
+  // Closing from any path starts the next invite afresh; the form itself
+  // unmounts with the dialog. A send in flight finishes here first, or its
+  // answer would land in the next invite.
   function handleOpenChange(next: boolean) {
     if (!next && pending) return;
     setOpen(next);
     if (next) return;
     setCreated(null);
     setError(null);
-    form.reset({ email: "" });
   }
 
-  function onSubmit(values: FormValues) {
+  function send(email: string) {
     setError(null);
     startTransition(async () => {
-      const result = await createInviteAction(values.email);
+      const result = await createInviteAction(email);
       onSettled();
       if (!result.ok) {
         setError(presentErrorString({ errorCode: result.errorCode, message: result.error, action: "create the invite" }));
@@ -89,47 +90,59 @@ export default function InviteDialog({ onSettled }: { onSettled: () => void }) {
         {created ? (
           <InviteReady invite={created} onDone={() => handleOpenChange(false)} />
         ) : (
-          <>
-            <DialogHeader>
-              <DialogTitle>Invite someone</DialogTitle>
-              <DialogDescription>They can open every workspace in your account.</DialogDescription>
-            </DialogHeader>
-            <Form {...form}>
-              <form
-                onSubmit={(e) => { void form.handleSubmit(onSubmit)(e); }}
-                className="space-y-4"
-                // The schema's message, not the browser's bubble, explains a bad address.
-                noValidate
-              >
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <FormControl>
-                        <Input type="email" placeholder="teammate@example.com" autoComplete="off" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-                <DialogFooter>
-                  <Button type="button" variant="ghost" disabled={pending} onClick={() => handleOpenChange(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={pending}>
-                    {pending ? <Spinner size="sm" srLabel="Sending" /> : null}
-                    Send
-                  </Button>
-                </DialogFooter>
-              </form>
-            </Form>
-          </>
+          <InviteForm error={error} pending={pending} onSend={send} onCancel={() => handleOpenChange(false)} />
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+type InviteFormProps = {
+  error: string | null;
+  pending: boolean;
+  onSend: (email: string) => void;
+  onCancel: () => void;
+};
+
+// The address to invite. It mounts each time the dialog opens, so every invite
+// starts from an empty field.
+function InviteForm({ error, pending, onSend, onCancel }: InviteFormProps) {
+  const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { email: "" } });
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Invite someone</DialogTitle>
+        <DialogDescription>They can open every workspace in your account.</DialogDescription>
+      </DialogHeader>
+      <Form {...form}>
+        {/* The schema's message, not the browser's bubble, explains a bad address. */}
+        <ActionForm onSubmit={(e) => { void form.handleSubmit((values) => onSend(values.email))(e); }} noValidate>
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email</FormLabel>
+                <FormControl>
+                  <Input type="email" placeholder="teammate@example.com" autoComplete="off" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          {error ? <Alert variant="destructive">{error}</Alert> : null}
+          <DialogFooter>
+            <Button type="button" variant="ghost" disabled={pending} onClick={onCancel}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={pending}>
+              {pending ? <Spinner size="sm" srLabel="Sending" /> : null}
+              Send
+            </Button>
+          </DialogFooter>
+        </ActionForm>
+      </Form>
+    </>
   );
 }
 
@@ -140,7 +153,7 @@ const INVITE_CREATED = "Invite created";
 // way in.
 const READY_COPY: Record<EmailStatus, { title: string; lead: (email: string) => string }> = {
   [EMAIL_STATUS.sent]: {
-    title: "Invitation sent",
+    title: "Invite sent",
     lead: (email) => `We emailed ${email}. You can also copy the link and share it.`,
   },
   [EMAIL_STATUS.failed]: {
