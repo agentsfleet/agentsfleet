@@ -106,8 +106,8 @@ Creating an invite commits the row, then increments `email_attempts` and commits
 
 Rendering and delivery stay apart: `render_invite` returns a `RenderedEmail` (subject, HTML, text) and `deliver` hands it to a `Mailer`; production's mailer is lettre's SMTP transport, unit tests use lettre's `StubTransport`.
 
-- **Dimension 2.1** — a created invite sends one message with the link and both names → Test `test_invite_email_carries_accept_link`
-- **Dimension 2.2** — a retried attempt carries the same idempotency header → Test `test_send_retry_reuses_idempotency_key`
+- **Dimension 2.1** — a created invite sends one message with the link and both names → Test `test_invite_email_carries_accept_link` — DONE (`afd_api/tests/integration_invite_email.rs`)
+- **Dimension 2.2** — a retried attempt carries the same idempotency header → Test `test_send_retry_reuses_idempotency_key` — DONE (`afd_api/tests/integration_invite_email.rs`)
 - **Dimension 2.3** — the address and body never appear in logs → Test `test_send_logs_carry_no_address` — DONE (`afd_mail/src/mailer/tests.rs`)
 - **Dimension 2.4** — a display name carrying markup renders escaped in the HTML part → Test `test_invite_template_escapes_names` — DONE (`afd_mail/src/invite/tests.rs`)
 - **Dimension 2.5** — the rendered HTML and text parts match reviewed snapshots → Test `test_invite_render_snapshots` — DONE (`afd_mail/src/invite/tests.rs`; HTML is a stand-in until `invitation_dev` is ported)
@@ -118,15 +118,15 @@ Rendering and delivery stay apart: `render_invite` returns a `RenderedEmail` (su
 
 With no `smtp-relay` bag, the invite still returns 201 with `email_status: "unconfigured"`, and one error event names the missing bag. A relay refusal (any 4xx or 5xx SMTP reply, authentication failure included), a lost connection after the retry, or the deadline leaves `email_status: "failed"` with the reply code in the event; the invite stays pending and acceptable.
 
-- **Dimension 3.1** — unconfigured → 201, `unconfigured`, one error event naming `smtp-relay` → Test `test_unconfigured_email_keeps_invite`
-- **Dimension 3.2** — relay 4xx, 5xx, authentication refusal and stall → 201, `failed`, invite acceptable → Test `test_failed_email_keeps_invite`
+- **Dimension 3.1** — unconfigured → 201, `unconfigured`, one error event naming `smtp-relay` → Test `test_unconfigured_email_keeps_invite` — DONE (`afd_api/tests/integration_invite_email.rs`)
+- **Dimension 3.2** — relay 4xx, 5xx, authentication refusal and stall → 201, `failed`, invite acceptable → Test `test_failed_email_keeps_invite` — DONE (`afd_api/tests/integration_invite_email.rs`)
 
 ### §4 — The owner sees the status and can send again
 
 Each `invited` row on the members page shows "Email sent", "Email not sent" or "Email not set up" beside its copy-link action, with a "Send again" action when not sent. `POST /v1/tenants/me/invites/{invite_id}/send` is a new attempt (new key); when email is unconfigured or the relay refuses it answers `503 UZ-INV-005` and the status records it.
 
-- **Dimension 4.1** — send-again after a failure sends under a new key and flips to `sent` → Test `test_send_again_after_failure`
-- **Dimension 4.2** — send-again while unconfigured is `503 UZ-INV-005` → Test `test_send_again_unconfigured_refused`
+- **Dimension 4.1** — send-again after a failure sends under a new key and flips to `sent` → Test `test_send_again_after_failure` — DONE (`afd_api/tests/integration_invite_email.rs`)
+- **Dimension 4.2** — send-again while unconfigured is `503 UZ-INV-005` → Test `test_send_again_unconfigured_refused` — DONE (`afd_api/tests/integration_invite_email.rs`)
 - **Dimension 4.3** — the members page shows each status with its actions → Test `test_members_page_shows_email_status`
 
 ### §5 — Real delivery on DEV
