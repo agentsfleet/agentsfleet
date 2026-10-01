@@ -12,6 +12,7 @@
 import * as crypto from "node:crypto";
 import * as path from "node:path";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { EMAIL_STATUS, type EmailStatus } from "@/lib/api/invites";
 import { clientFor } from "./fixtures/api-client";
 import { signInAs } from "./fixtures/auth";
 import { deleteUser, findUserIdByEmail } from "./fixtures/clerk-admin";
@@ -43,8 +44,16 @@ const REPLY_MS = 150_000;
 
 const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.agentsfleet.net");
 
+// The words the Members table shows for each email status, held here rather
+// than imported so the spec pins what a person reads on the page.
+const EMAIL_STATUS_LABEL: Record<EmailStatus, string> = {
+  [EMAIL_STATUS.sent]: "Email sent",
+  [EMAIL_STATUS.failed]: "Email not sent",
+  [EMAIL_STATUS.unconfigured]: "Email not set up",
+};
+
 type OnePage<T> = { items: T[] };
-type InviteRow = { id: string; email: string; link: string };
+type InviteRow = { id: string; email: string; link: string; email_status: EmailStatus };
 type MemberRow = { user_id: string; email: string };
 type WorkspaceRow = { id: string; name: string | null; role: string };
 type WaitingRow = { id: string; account: { owner_name: string } };
@@ -141,19 +150,22 @@ test.describe("teammates join an account", () => {
   });
 
   // Which status the row shows depends on the deployment's relay, so the test
-  // holds the row to the one rule that holds everywhere: three labels, and
-  // "Send again" exactly when the email did not go.
+  // asks the backend which one it recorded, then holds the row to that label,
+  // with "Send again" exactly when the email did not go.
   test("test_members_page_shows_email_status", async ({ page }) => {
     email = inviteeEmail();
-    await clientFor(FIXTURE_KEY.admin).post(OWNER_INVITES, { email });
+    const owner = clientFor(FIXTURE_KEY.admin);
+    const created = await owner.post<InviteRow>(OWNER_INVITES, { email });
+    const recorded = (await owner.get<OnePage<InviteRow>>(OWNER_INVITES)).items.find((row) => row.id === created.id);
+    if (recorded === undefined) throw new Error(`invite ${created.id} is missing from the owner's invite list`);
+    const status = recorded.email_status;
     await signInAs(page, FIXTURE_KEY.admin);
     await page.goto("/settings/members");
     const row = rowFor(page, email);
     await expect(row).toHaveCount(1);
-    const status = row.getByText(/^Email (sent|not sent|not set up)$/);
-    await expect(status).toBeVisible();
+    await expect(row.getByText(EMAIL_STATUS_LABEL[status], { exact: true })).toBeVisible();
     const sendAgain = row.getByRole("button", { name: /^send the invite email to .* again$/i });
-    await expect(sendAgain).toHaveCount((await status.textContent()) === "Email sent" ? 0 : 1);
+    await expect(sendAgain).toHaveCount(status === EMAIL_STATUS.sent ? 0 : 1);
   });
 
   test("test_invitee_accept_journey", async ({ browser }) => {

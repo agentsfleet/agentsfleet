@@ -39,7 +39,8 @@ type Props = {
   target: ConfirmTarget;
   error: string | null;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (target: ConfirmTargetActive) => void;
+  /** Settles once the request has answered; the dialog's buttons hold until then. */
+  onConfirm: (target: ConfirmTargetActive) => Promise<void>;
 };
 
 export function TeamConfirm({ target, error, onOpenChange, onConfirm }: Props) {

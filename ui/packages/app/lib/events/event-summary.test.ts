@@ -14,6 +14,7 @@ import {
   roleFor,
   senderInitialsFor,
   senderLabelFor,
+  THREAD_STATUS,
 } from "./event-summary";
 import { ACCOUNT_ID, PLATFORM_IDENTITY, row } from "@/tests/helpers/event-summary-fixtures";
 
@@ -154,6 +155,10 @@ describe("outcomeFor", () => {
     expect(outcomeFor(row({ status: EVENT_STATUS.GATE_BLOCKED }))).toBe(OUTCOME.WAITING_APPROVAL);
     expect(outcomeFor(row({ status: EVENT_STATUS.FLEET_ERROR }))).toBe(OUTCOME.FAILED);
     expect(outcomeFor(row({ status: EVENT_STATUS.PROCESSED }))).toBe(OUTCOME.COMPLETED);
+  });
+
+  it("should read a queued row as working when the message waits for a runner", () => {
+    expect(outcomeFor(row({ status: THREAD_STATUS.QUEUED }))).toBe(OUTCOME.WORKING);
   });
 
   it("prefers the failure sentence over the generic failed line", () => {
