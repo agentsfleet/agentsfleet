@@ -158,8 +158,8 @@ test.describe("teammates join an account", () => {
 
   // Which status the row shows depends on the deployment's relay, so the test
   // asks the backend which one it recorded, then holds the row to that label,
-  // with "Send again" exactly when the email failed: with no relay, sending
-  // again could only be refused.
+  // with "Send again" whenever a relay exists: with none, sending again could
+  // only be refused.
   test("test_members_page_shows_email_status", async ({ page }) => {
     email = inviteeEmail();
     const owner = clientFor(FIXTURE_KEY.admin);
@@ -174,7 +174,7 @@ test.describe("teammates join an account", () => {
     // The row carries a second, phone-width copy of the status that CSS hides here.
     await expect(row.getByText(EMAIL_STATUS_LABEL[status], { exact: true }).filter({ visible: true })).toBeVisible();
     const sendAgain = row.getByRole("button", { name: /^send the invite email to .* again$/i });
-    await expect(sendAgain).toHaveCount(status === EMAIL_STATUS.failed ? 1 : 0);
+    await expect(sendAgain).toHaveCount(status === EMAIL_STATUS.unconfigured ? 0 : 1);
   });
 
   test("test_invitee_accept_journey", async ({ browser }) => {
