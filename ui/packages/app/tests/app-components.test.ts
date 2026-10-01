@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
 const TOAST_FADE_MS = 240;
-const OWN_ACCOUNT = { account: { tenant_id: "tenant_own", owner_name: "You" }, role: "owner" as const };
 const mocks = vi.hoisted(() => ({
   trackAppEvent: vi.fn(), trackNavigationClicked: vi.fn(),
   identifyAnalyticsUser: vi.fn(), resetAnalyticsIdentity: vi.fn(),

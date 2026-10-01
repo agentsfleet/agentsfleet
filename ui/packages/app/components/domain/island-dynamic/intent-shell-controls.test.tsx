@@ -2,15 +2,10 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
+import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
 
 // Every listed workspace names its account and the caller's role in it; these
 // are all the caller's own, the shape a solo account's list has.
-const OWN_ACCOUNT = {
-  account: { tenant_id: "tenant_own", owner_name: "You" },
-  role: ACCOUNT_ROLE.owner,
-};
-
 type Snapshot = {
   error: unknown;
   module: { default: React.ComponentType<Record<string, unknown>> } | null;

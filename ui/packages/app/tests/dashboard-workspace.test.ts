@@ -19,10 +19,10 @@ import {
   createWorkspaceActionMock,
 } from "./helpers/dashboard-app-mocks";
 import { EVENTS } from "@/lib/analytics/events";
+import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
 
 // Listed workspaces name their account and the caller's role; these are all
 // the caller's own, the shape a solo account's list has.
-const OWN_ACCOUNT = { account: { tenant_id: "tenant_own", owner_name: "You" }, role: "owner" as const };
 
 const captureProductEventMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/analytics/posthog", async (orig) => {
