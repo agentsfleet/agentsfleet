@@ -15,7 +15,7 @@ use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_tenant::team::{Email, Invitee, NewInvite, Removal, Team};
-use afd_tenant::workspace::access::ROLE_MEMBER;
+use afd_tenant::workspace::access::{ROLE_MEMBER, ROLE_OWNER};
 
 use crate::access_lane::{Signup, delete_accounts, hold, id, sign_up};
 
@@ -24,6 +24,10 @@ const NOW: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
 
 /// Long enough ago that an invite issued then has expired by [`NOW`].
 const LONG_AGO: UnixMillis = UnixMillis::from_millis(1_700_000_000_000);
+
+/// How many times the owner-removal race runs. Two concurrent removals that
+/// lock in different orders deadlock in most rounds, so a dozen shows it.
+const RACE_ROUNDS: usize = 12;
 
 /// One signed-up person.
 struct Person {
@@ -114,6 +118,20 @@ impl Fixture {
         .await
         .expect("the membership count reads");
         held
+    }
+
+    /// How many owners John's account has.
+    async fn owners_in_johns(&self) -> i64 {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        let (owners,): (i64,) = sqlx::query_as(
+            "SELECT count(*) FROM core.memberships WHERE tenant_id = $1::uuid AND role = $2",
+        )
+        .bind(&self.john.tenant)
+        .bind(ROLE_OWNER)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the owner count reads");
+        owners
     }
 
     /// John invites `address`, as of `at`.
@@ -333,6 +351,82 @@ async fn test_invite_and_member_conflicts() {
             .expect("removing again is quiet"),
         Removal::Absent
     );
+    fixture.cleanup().await;
+}
+
+/// An owner can be removed while another owner stays; the one left is then
+/// the last owner.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_remove_owner_when_another_owner_remains() {
+    let fixture = Fixture::create().await;
+    let tenant = id(&fixture.john.tenant);
+    hold(
+        &fixture.database,
+        &fixture.john.tenant,
+        &fixture.carol.user,
+        ROLE_OWNER,
+    )
+    .await;
+
+    let removed = fixture
+        .team
+        .remove(&tenant, &fixture.carol.user_id)
+        .await
+        .expect("a second owner can go");
+    assert_eq!(removed, Removal::Removed);
+    assert_eq!(fixture.owners_in_johns().await, 1);
+    let last = fixture
+        .team
+        .remove(&tenant, &fixture.john.user_id)
+        .await
+        .expect_err("John is now the last owner");
+    assert_eq!(last.code(), error_code::MEMBER_LAST_OWNER);
+    fixture.cleanup().await;
+}
+
+/// Two owners removing each other at once: every round, one goes and the
+/// other is told it is the last owner. Locking the target's row before the
+/// owners let each removal hold its own row and wait on the other's, and
+/// Postgres broke the deadlock by aborting one, which answered as a datastore
+/// failure.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_keep_one_owner_when_two_owners_remove_each_other_concurrently() {
+    let fixture = Fixture::create().await;
+    let tenant = id(&fixture.john.tenant);
+    for round in 0..RACE_ROUNDS {
+        for owner in [&fixture.john, &fixture.carol] {
+            hold(
+                &fixture.database,
+                &fixture.john.tenant,
+                &owner.user,
+                ROLE_OWNER,
+            )
+            .await;
+        }
+        let (john, carol) = tokio::join!(
+            fixture.team.remove(&tenant, &fixture.john.user_id),
+            fixture.team.remove(&tenant, &fixture.carol.user_id),
+        );
+        let outcomes = [john, carol];
+        let removed = outcomes
+            .iter()
+            .filter(|outcome| matches!(outcome, Ok(Removal::Removed)))
+            .count();
+        let refused: Vec<_> = outcomes
+            .iter()
+            .filter_map(|outcome| outcome.as_ref().err())
+            .map(|refusal| refusal.code())
+            .collect();
+        assert_eq!(removed, 1, "round {round}: exactly one owner goes");
+        assert_eq!(
+            refused,
+            [error_code::MEMBER_LAST_OWNER],
+            "round {round}: the other is the last owner, not a datastore failure"
+        );
+        assert_eq!(fixture.owners_in_johns().await, 1, "round {round}");
+    }
     fixture.cleanup().await;
 }
 

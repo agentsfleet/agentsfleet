@@ -24,10 +24,14 @@ FOR UPDATE";
 /// The account's owners, locked, so two removals cannot each see another
 /// owner standing and together leave none.
 ///
+/// Every removal takes these first, in id order, before the row it removes:
+/// one order for everyone, so two removals queue instead of deadlocking.
+///
 /// `$1` tenant · `$2` the owner role's spelling.
 pub const LOCK_OWNERS: &str = "\
 SELECT id::text FROM core.memberships \
 WHERE tenant_id = $1::uuid AND role = $2 \
+ORDER BY id \
 FOR UPDATE";
 
 /// Removes one membership.
