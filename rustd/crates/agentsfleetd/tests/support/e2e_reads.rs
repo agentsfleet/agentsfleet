@@ -216,11 +216,14 @@ pub(crate) async fn counter_column(run: &Scenario, column: &str) -> Option<Strin
         .map(|row| row.try_get(0).expect("the column must be readable as text"))
 }
 
-/// How many lease rows this scenario's runner holds, of any status.
+/// How many lease rows this scenario's runner holds on the fleet under test,
+/// of any status.
 ///
 /// Counted rather than read, because the claim is an ABSENCE: a gate that
 /// refused after writing would leave exactly one row, and only a count can say
-/// there is none.
+/// there is none. Scoped to the fleet, because the shared lane can hand this
+/// runner a lease on another scenario's fleet; see
+/// `assert_no_lease_for_fleet_under_test`.
 pub(crate) async fn lease_rows(run: &Scenario) -> i64 {
     let mut connection = run
         .booted
@@ -228,11 +231,14 @@ pub(crate) async fn lease_rows(run: &Scenario) -> i64 {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("SELECT count(*) FROM fleet.runner_leases WHERE runner_id = $1::uuid")
-        .bind(run.runner_id.as_str())
-        .fetch_one(&mut *connection)
-        .await
-        .expect("the lease count must run")
-        .try_get(0)
-        .expect("a count is a bigint")
+    sqlx::query(
+        "SELECT count(*) FROM fleet.runner_leases WHERE runner_id = $1::uuid AND fleet_id = $2::uuid",
+    )
+    .bind(run.runner_id.as_str())
+    .bind(&run.fleet)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("the lease count must run")
+    .try_get(0)
+    .expect("a count is a bigint")
 }
