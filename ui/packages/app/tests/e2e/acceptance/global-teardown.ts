@@ -43,6 +43,7 @@ import {
   sweepLeakedFixtureLibraries,
 } from "./fixtures/teardown";
 import { revokeBrowserSessions } from "./fixtures/browser-sessions";
+import { TEST_INBOX_DOMAIN } from "./fixtures/constants";
 
 const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
 
@@ -52,15 +53,17 @@ const STALE_AFTER_MS = 60 * 60 * 1000;
 /**
  * Exactly the addresses the per-run specs mint — prefix, 8-hex tag,
  * `+clerk_test`, and one of the two fixture domains (current + the retired
- * mailinator one, so legacy leftovers keep getting reaped). The persistent
- * regular/admin/operator fixtures deliberately do NOT match: they are
- * provisioned on purpose and re-used across runs. A real user can never
- * match this shape, which is the safety boundary of a sweep that deletes.
+ * mailinator one, so legacy leftovers keep getting reaped) — and the team
+ * invitees' address in Resend's test inbox, `TEST_INBOX_LOCAL_PREFIX` plus the
+ * tag at `TEST_INBOX_DOMAIN` (`team-invitee` stays for earlier runs' leftovers).
+ * The persistent regular/admin/operator fixtures deliberately do NOT match:
+ * they are provisioned on purpose and re-used across runs. A real user can
+ * never match this shape, which is the safety boundary of a sweep that deletes.
  */
 export const PER_RUN_FIXTURE_RE =
-  /^(signup-fixture|signup-webhook|signup-lifecycle|workspace-create|team-invitee)-[0-9a-f]{8}\+clerk_test@(e2e\.agentsfleet\.net|mailinator\.com)$/i;
+  /^(?:(signup-fixture|signup-webhook|signup-lifecycle|workspace-create|team-invitee)-[0-9a-f]{8}\+clerk_test@(e2e\.agentsfleet\.net|mailinator\.com)|delivered\+clerk_test_[0-9a-f]{8}@resend\.dev)$/i;
 
-const SWEEP_QUERIES = ["+clerk_test@e2e.agentsfleet.net", "+clerk_test@mailinator.com"];
+const SWEEP_QUERIES = ["+clerk_test@e2e.agentsfleet.net", "+clerk_test@mailinator.com", `@${TEST_INBOX_DOMAIN}`];
 
 interface CachedFixture {
   sessionId?: string;
