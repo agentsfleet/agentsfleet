@@ -25,6 +25,7 @@ const OPERATOR_CATALOG_PROJECT = "operator-catalog";
 const OPERATOR_JOURNEY_PROJECT = "operator-journey";
 const LIVE_COUNTER_PROJECT = "live-counter";
 const PULSE_WALL_PROJECT = "pulse-wall";
+const FRAME_BUDGET_PROJECT = "frame-budget";
 const FETCH_AUDIT_PROJECT = "fetch-audit";
 
 const PREFLIGHT_SOURCE_PATH = path.join(
@@ -193,16 +194,18 @@ describe("concurrency is earned by isolation", () => {
   it("test_operator_acceptance_is_serialized", () => {
     // Platform-operator mutations never overlap: the operator journey runs
     // strictly after the catalog flow, and the whole-wall count specs run
-    // strictly after the journey group and each other.
+    // strictly after the journey group and each other. The frame timing waits
+    // for both chains so nothing shares its CPU, and the fetch audit runs last.
     expect(projectByName(OPERATOR_JOURNEY_PROJECT).dependencies).toEqual([
       OPERATOR_CATALOG_PROJECT,
     ]);
     expect(projectByName(LIVE_COUNTER_PROJECT).dependencies).toEqual([JOURNEYS_PROJECT]);
     expect(projectByName(PULSE_WALL_PROJECT).dependencies).toEqual([LIVE_COUNTER_PROJECT]);
-    expect(projectByName(FETCH_AUDIT_PROJECT).dependencies).toEqual([
+    expect(projectByName(FRAME_BUDGET_PROJECT).dependencies).toEqual([
       PULSE_WALL_PROJECT,
       OPERATOR_JOURNEY_PROJECT,
     ]);
+    expect(projectByName(FETCH_AUDIT_PROJECT).dependencies).toEqual([FRAME_BUDGET_PROJECT]);
   });
 
   it("should keep the raw bypass secret out of recorded browser traffic", () => {
