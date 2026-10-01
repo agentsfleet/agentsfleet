@@ -129,6 +129,21 @@ impl Fixture {
         .router()
     }
 
+    /// The owner's daemon, with the workspace held as a platform operator
+    /// crossing into another account rather than as its owner.
+    pub(crate) fn router_crossing(&self, provider: &FakeProvider) -> axum::Router {
+        let fleet = harness::Fleet::live(
+            self.database.clone(),
+            &self.subject,
+            ScopeSet::from_scopes(&Scope::ALL),
+        )
+        .with_owned_workspace(self.workspace.clone())
+        .with_platform_admin(self.admin.clone())
+        .with_live_connectors(self.database.clone(), self.queue.clone(), provider.url());
+        fleet.ownership().cross_as_platform();
+        fleet.router()
+    }
+
     /// The workspaces `core.connector_installs` routes `account` to, for
     /// `provider` — empty when nothing routes it.
     pub(crate) async fn routed_to(&self, provider: Provider, account: &str) -> Vec<String> {
