@@ -1,9 +1,10 @@
-//! The team store with one write a suite can break, on one call of it.
+//! The team store with one call a suite can break, on one occurrence of it.
 //!
-//! Every method answers from the live store. A suite names a step and which
-//! call of it to break; that call alone goes to a store over a pool that
-//! answers nothing, so the refusal is the one `afd_tenant` really raises when
-//! its datastore is gone, through the real handler.
+//! Every method answers through the production `TenantTeam` impl over the live
+//! store. A suite names a step and which call of it to break; that call alone
+//! goes to a store over a pool that answers nothing, so the refusal is the one
+//! `afd_tenant` really raises when its datastore is gone, through the real
+//! handler.
 //!
 //! A struct and a trait impl, not a closure: the seam stands in for a whole
 //! store whose methods share one failpoint. The failpoint counts with atomics,
@@ -24,13 +25,20 @@ use afd_tenant::team::{
 
 use super::readiness::unreachable_pool;
 
-/// The writes after an invite commits, where a failure must not undo it.
+/// The team-store calls a suite can break, and how.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TeamStep {
+    /// Issuing the invite: the store refuses before anything commits.
+    Invite,
     /// Counting one more send against the invite.
     BeginEmail,
+    /// The invite stops being sendable between its commit and its count, as a
+    /// revoke landing in that gap would leave it: the count answers nothing.
+    BeginEmailGone,
     /// Recording what became of a send.
     RecordEmail,
+    /// Removing a member: the store refuses.
+    Remove,
 }
 
 /// Which call of which step breaks, and how often it did.
@@ -94,11 +102,19 @@ impl HarnessTeam {
         (self, failpoint)
     }
 
+    /// Whether this call of `step` is the one the suite breaks.
+    fn breaks(&self, step: TeamStep) -> bool {
+        self.failpoint
+            .as_ref()
+            .is_some_and(|failpoint| failpoint.breaks(step))
+    }
+
     /// The store this call of `step` goes to.
     fn store_for(&self, step: TeamStep) -> &Team {
-        match &self.failpoint {
-            Some(failpoint) if failpoint.breaks(step) => &self.broken,
-            _ => &self.live,
+        if self.breaks(step) {
+            &self.broken
+        } else {
+            &self.live
         }
     }
 }
@@ -109,7 +125,7 @@ impl TenantTeam for HarnessTeam {
         new: &NewInvite<'_>,
         now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<Invitation>> + Send {
-        self.live.invite(new, now)
+        TenantTeam::invite(self.store_for(TeamStep::Invite), new, now)
     }
 
     fn begin_email(
@@ -118,8 +134,14 @@ impl TenantTeam for HarnessTeam {
         invite: &Uuid7,
         now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<Option<EmailAttempt>>> + Send {
-        self.store_for(TeamStep::BeginEmail)
-            .begin_email(tenant, invite, now)
+        let gone = self.breaks(TeamStep::BeginEmailGone);
+        let store = self.store_for(TeamStep::BeginEmail);
+        async move {
+            if gone {
+                return Ok(None);
+            }
+            TenantTeam::begin_email(store, tenant, invite, now).await
+        }
     }
 
     fn record_email(
@@ -129,8 +151,13 @@ impl TenantTeam for HarnessTeam {
         status: EmailStatus,
         now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<()>> + Send {
-        self.store_for(TeamStep::RecordEmail)
-            .record_email(invite, attempt, status, now)
+        TenantTeam::record_email(
+            self.store_for(TeamStep::RecordEmail),
+            invite,
+            attempt,
+            status,
+            now,
+        )
     }
 
     fn invitations(
@@ -138,7 +165,7 @@ impl TenantTeam for HarnessTeam {
         tenant: &Uuid7,
         now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<Vec<Invitation>>> + Send {
-        self.live.invitations(tenant, now)
+        TenantTeam::invitations(&self.live, tenant, now)
     }
 
     fn revoke_invitation(
@@ -147,7 +174,7 @@ impl TenantTeam for HarnessTeam {
         invite: &Uuid7,
         now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<()>> + Send {
-        self.live.revoke_invitation(tenant, invite, now)
+        TenantTeam::revoke_invitation(&self.live, tenant, invite, now)
     }
 
     fn waiting_for(
@@ -155,7 +182,7 @@ impl TenantTeam for HarnessTeam {
         email: &str,
         now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<Vec<Waiting>>> + Send {
-        self.live.waiting_for(email, now)
+        TenantTeam::waiting_for(&self.live, email, now)
     }
 
     fn accept(
@@ -164,14 +191,14 @@ impl TenantTeam for HarnessTeam {
         invitee: &Invitee<'_>,
         now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<Accepted>> + Send {
-        self.live.accept(invite, invitee, now)
+        TenantTeam::accept(&self.live, invite, invitee, now)
     }
 
     fn members(
         &self,
         tenant: &Uuid7,
     ) -> impl Future<Output = afd_tenant::Result<Vec<Member>>> + Send {
-        self.live.members(tenant)
+        TenantTeam::members(&self.live, tenant)
     }
 
     fn remove(
@@ -179,6 +206,6 @@ impl TenantTeam for HarnessTeam {
         tenant: &Uuid7,
         user: &Uuid7,
     ) -> impl Future<Output = afd_tenant::Result<Removal>> + Send {
-        self.live.remove(tenant, user)
+        TenantTeam::remove(self.store_for(TeamStep::Remove), tenant, user)
     }
 }
