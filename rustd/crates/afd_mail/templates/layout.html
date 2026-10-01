@@ -1,7 +1,3 @@
----
-source: crates/afd_mail/src/invite/tests.rs
-expression: rendered.html
----
 <!doctype html>
 <html lang="en" dir="ltr">
   <head>
@@ -11,9 +7,12 @@ expression: rendered.html
     <meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no">
     <meta name="color-scheme" content="light dark">
     <meta name="supported-color-schemes" content="light dark">
-    <title>You're invited to join John&#39;s account on agentsfleet</title>
+    <title>{% block title %}{% endblock %}</title>
+    {#- The dashboard's own faces. Clients that block remote fonts fall back to the system stack. #}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600&amp;family=Instrument+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+    {#- Colors are the design system's tokens (ui/packages/design-system/src/tokens.css):
+        the light theme inline, the dark theme below for clients that honour it. #}
     <style>
       @media (prefers-color-scheme: dark) {
         .af-page { background-color: #0e171b !important; }
@@ -28,13 +27,14 @@ expression: rendered.html
     </style>
   </head>
   <body class="af-page" style="margin:0;padding:0;background-color:#e8efed;-webkit-text-size-adjust:100%;">
-    <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">John invited you to join John&#39;s account on agentsfleet.</div>
+    <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">{% block preheader %}{% endblock %}</div>
     <table role="presentation" class="af-page" width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color:#e8efed;">
       <tr>
         <td align="center" style="padding:40px 16px;font-family:'Instrument Sans','Instrument Sans Variable',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
           <table role="presentation" class="af-card" width="100%" border="0" cellpadding="0" cellspacing="0" style="max-width:560px;background-color:#ffffff;border:1px solid #c5d3cd;border-radius:12px;">
             <tr>
               <td style="padding:24px 40px;background-color:#131d21;border-radius:11px 11px 0 0;">
+                {#- The wordmark as the dashboard's header draws it: the pulse dot, then the name. #}
                 <table role="presentation" border="0" cellpadding="0" cellspacing="0">
                   <tr>
                     <td style="vertical-align:middle;font-size:0;line-height:0;"><span style="display:inline-block;width:12px;height:12px;border-radius:6px;background-color:#5eead4;"></span></td>
@@ -45,27 +45,7 @@ expression: rendered.html
             </tr>
             <tr>
               <td style="padding:40px 40px 32px;">
-                
-<h1 class="af-ink" style="margin:0 0 20px;font-family:'Bricolage Grotesque','Bricolage Grotesque Variable','Instrument Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:28px;line-height:34px;font-weight:600;letter-spacing:-0.5px;color:#14251f;">You've been invited to join John&#39;s account</h1>
-<p class="af-muted" style="margin:0 0 16px;font-size:16px;line-height:26px;color:#435d52;"><strong class="af-ink" style="font-weight:600;color:#14251f;">John</strong> invited you to work in <strong class="af-ink" style="font-weight:600;color:#14251f;">John&#39;s account</strong> on agentsfleet. Once you join, you share its fleets and their threads with the rest of the team.</p>
-<p class="af-muted" style="margin:0 0 28px;font-size:16px;line-height:26px;color:#435d52;">Sign in with this email address, then accept.</p>
-<table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin:0 0 32px;">
-  <tr>
-    <td class="af-button" style="border-radius:8px;background-color:#06695e;">
-      <a class="af-button" href="https://app.agentsfleet.test/invites/0190f5a2-4b2d-7c11-8d5e-2a5f31d98210" target="_blank" style="display:inline-block;padding:12px 22px;border-radius:8px;background-color:#06695e;color:#ffffff;font-size:15px;line-height:20px;font-weight:600;text-decoration:none;">Accept invitation</a>
-    </td>
-  </tr>
-</table>
-<table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr>
-    <td class="af-rule af-dim" style="padding-top:24px;border-top:1px solid #dfe9e5;font-size:13px;line-height:20px;color:#627a70;">
-      <p style="margin:0 0 8px;">If the button does not open, paste this link into your browser:</p>
-      <p style="margin:0 0 16px;word-break:break-all;font-family:'Commit Mono','JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;font-size:12px;"><a class="af-link" href="https://app.agentsfleet.test/invites/0190f5a2-4b2d-7c11-8d5e-2a5f31d98210" style="color:#06695e;text-decoration:underline;">https://app.agentsfleet.test/invites/0190f5a2-4b2d-7c11-8d5e-2a5f31d98210</a></p>
-      <p style="margin:0;">This invitation expires in 7 days. If you were not expecting it, you can ignore this email.</p>
-    </td>
-  </tr>
-</table>
-
+                {% block content %}{% endblock %}
               </td>
             </tr>
           </table>
