@@ -145,7 +145,7 @@ impl WorkspaceOwnership for Ownership {
     }
 }
 
-/// An identifier no store accepts, parsed to produce the store's own error.
+/// A key no store accepts, parsed to produce the store's own error.
 const UNREADABLE: &str = "ownership-store-unreachable";
 
 impl WorkspaceOwnership for OneWorkspace {
@@ -161,7 +161,9 @@ impl WorkspaceOwnership for OneWorkspace {
         let tenant = principal.tenant().cloned();
         let owned = workspace == &self.owned && self.authorized.load(Ordering::Acquire);
         if self.refusing.load(Ordering::Acquire) {
-            let refused = Uuid7::parse(UNREADABLE).map(|_| None).map_err(Into::into);
+            let refused = afd_crypto::secret::Kek::from_hex(UNREADABLE)
+                .map(|_| None)
+                .map_err(Into::into);
             return std::future::ready(refused);
         }
         let grant = if self.platform.load(Ordering::Acquire) {
