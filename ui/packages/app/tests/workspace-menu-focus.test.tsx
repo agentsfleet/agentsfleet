@@ -18,15 +18,10 @@ vi.mock("@/components/layout/WorkspaceCreationProvider", () => ({
 }));
 
 import WorkspaceSwitcherMenu from "@/components/layout/WorkspaceSwitcherMenu";
-import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
+import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
 
 // Every listed workspace names its account and the caller's role in it; these
 // are all the caller's own, the shape a solo account's list has.
-const OWN_ACCOUNT = {
-  account: { tenant_id: "tenant_own", owner_name: "You" },
-  role: ACCOUNT_ROLE.owner,
-};
-
 beforeEach(() => { pathname.mockReturnValue("/w/ws_0/fleets"); });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
