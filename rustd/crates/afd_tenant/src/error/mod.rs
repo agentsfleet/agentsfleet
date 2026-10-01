@@ -95,6 +95,26 @@ impl Display for ApiKeyField {
     }
 }
 
+/// What already stands between an address and a new invite into an account.
+///
+/// Both answer `UZ-INV-003`; the remedy differs, so a refusal says which.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InviteConflict {
+    /// The address belongs to one of the account's members.
+    Member,
+    /// The address has an invite into the account that can still be accepted.
+    Invited,
+}
+
+impl Display for InviteConflict {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Member => "already belongs to the account",
+            Self::Invited => "already has a pending invite",
+        })
+    }
+}
+
 impl Error {
     /// Raises `kind` as an error, capturing a backtrace.
     ///
@@ -127,6 +147,15 @@ impl Error {
                 | ErrorKind::Queue { .. }
                 | ErrorKind::LibraryPageUnavailable { .. }
         )
+    }
+
+    /// What refused an invite, when an invite was refused for a conflict.
+    #[must_use]
+    pub const fn invite_conflict(&self) -> Option<InviteConflict> {
+        match self.inner.kind {
+            ErrorKind::InviteConflict { conflict } => Some(conflict),
+            _ => None,
+        }
     }
 
     /// The registry code this failure answers with.
@@ -198,7 +227,7 @@ impl Error {
             ErrorKind::CliCredentialNotFound => error_code::AUTH_CLI_CREDENTIAL_NOT_FOUND,
             ErrorKind::InviteNotFound => error_code::INVITE_NOT_FOUND,
             ErrorKind::InviteEmailMismatch => error_code::INVITE_EMAIL_MISMATCH,
-            ErrorKind::InviteConflict => error_code::INVITE_CONFLICT,
+            ErrorKind::InviteConflict { .. } => error_code::INVITE_CONFLICT,
             ErrorKind::MemberLastOwner => error_code::MEMBER_LAST_OWNER,
         }
     }
@@ -261,7 +290,10 @@ impl Error {
             ErrorKind::LibraryPageUnavailable { .. } => DETAIL_LIBRARY_PAGE_UNAVAILABLE,
             ErrorKind::InviteNotFound => DETAIL_INVITE_NOT_FOUND,
             ErrorKind::InviteEmailMismatch => DETAIL_INVITE_EMAIL_MISMATCH,
-            ErrorKind::InviteConflict => DETAIL_INVITE_CONFLICT,
+            ErrorKind::InviteConflict { conflict } => match conflict {
+                InviteConflict::Member => DETAIL_INVITE_MEMBER,
+                InviteConflict::Invited => DETAIL_INVITE_PENDING,
+            },
             ErrorKind::MemberLastOwner => DETAIL_MEMBER_LAST_OWNER,
             ErrorKind::EmailInvalid => DETAIL_INVITE_EMAIL_INVALID,
         }

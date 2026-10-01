@@ -50,6 +50,9 @@ pub struct Invitation {
     pub expires_at_ms: i64,
     /// When it was issued.
     pub created_at_ms: i64,
+    /// When it was accepted, once it has been. Outlives `accepted_by`, which
+    /// clears if the accepter's user row is ever deleted.
+    pub accepted_at_ms: Option<i64>,
     /// Who accepted it, once someone has.
     pub accepted_by: Option<Uuid7>,
     /// When the owner revoked it, if they did.
@@ -80,7 +83,10 @@ impl Invitation {
         match &self.accepted_by {
             Some(user) if user == invitee.user => Acceptance::AlreadyJoined,
             Some(_) => Acceptance::Closed,
-            None if self.revoked_at_ms.is_some() || self.expires_at_ms <= now.as_millis() => {
+            None if self.accepted_at_ms.is_some()
+                || self.revoked_at_ms.is_some()
+                || self.expires_at_ms <= now.as_millis() =>
+            {
                 Acceptance::Closed
             }
             None if self.email != email::fold(invitee.email) => Acceptance::WrongAddress,
@@ -107,6 +113,7 @@ impl Invitation {
             role: Role::parse(&role)?,
             expires_at_ms: row.try_get(COLUMN_EXPIRES_AT).map_err(&unreadable)?,
             created_at_ms: row.try_get("created_at").map_err(&unreadable)?,
+            accepted_at_ms: row.try_get("accepted_at").map_err(&unreadable)?,
             accepted_by: accepted_by
                 .as_deref()
                 .map(|user| uuid(COLUMN_ACCEPTED_BY, user))
@@ -151,6 +158,7 @@ mod tests {
             role: Role::Member,
             expires_at_ms,
             created_at_ms: NOW - 1,
+            accepted_at_ms: accepted_by.map(|_| NOW - 1),
             accepted_by: accepted_by.map(uuid),
             revoked_at_ms,
             email_status: EmailStatus::Failed,
@@ -188,6 +196,17 @@ mod tests {
         ] {
             assert_eq!(for_bob(&closed, "bob@example.com"), Acceptance::Closed);
         }
+    }
+
+    /// The accepter's user row is gone, which clears `accepted_by`; the stamp
+    /// keeps the invite spent, so a new account at that address cannot reuse it.
+    #[test]
+    fn an_invitation_whose_accepter_was_deleted_stays_closed() {
+        let spent = Invitation {
+            accepted_at_ms: Some(NOW - 1),
+            ..invitation(None, None, NOW + 1)
+        };
+        assert_eq!(for_bob(&spent, "bob@example.com"), Acceptance::Closed);
     }
 
     #[test]
