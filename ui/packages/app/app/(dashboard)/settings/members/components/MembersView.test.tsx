@@ -57,7 +57,7 @@ const RELOAD_REFUSED = { ok: false, status: 503, error: "Service unavailable" };
 const DONE = { ok: true, data: undefined };
 const EMAIL_SENT = "Email sent";
 const EMAIL_NOT_SENT = "Email not sent";
-const CREATE_INVITE = "Create invite";
+const SEND_INVITE = "Send";
 const EMAIL_FIELD = "Email";
 const CANCEL_LABEL = "Cancel";
 const INVITE_READY = "invite-ready";
@@ -299,13 +299,13 @@ describe("a request in flight", () => {
     expect(action).toHaveBeenCalledOnce();
   });
 
-  it("should hold create invite disabled and create once when it is submitted twice while the request runs", async () => {
+  it("should hold Send disabled and create once when it is submitted twice while the request runs", async () => {
     const answer = Promise.withResolvers<unknown>();
     actions.createInviteAction.mockReturnValue(answer.promise);
     renderView();
     const { user, dialog } = await openInvite();
     await user.type(within(dialog).getByLabelText(EMAIL_FIELD), INVITE.email);
-    const submit = within(dialog).getByRole("button", { name: CREATE_INVITE }) as HTMLButtonElement;
+    const submit = within(dialog).getByRole("button", { name: SEND_INVITE }) as HTMLButtonElement;
     await user.click(submit);
     await waitFor(() => expect(submit.disabled).toBe(true));
     await user.click(submit);
@@ -324,7 +324,7 @@ describe("inviting", () => {
     renderView();
     const { user, dialog } = await openInvite();
     await user.type(within(dialog).getByLabelText(EMAIL_FIELD), "not-an-address");
-    await user.click(within(dialog).getByRole("button", { name: CREATE_INVITE }));
+    await user.click(within(dialog).getByRole("button", { name: SEND_INVITE }));
     await waitFor(() => expect(within(dialog).getByText("Enter an email address")).toBeTruthy());
     expect(actions.createInviteAction).not.toHaveBeenCalled();
   });
@@ -335,7 +335,7 @@ describe("inviting", () => {
     renderView([JOHN], []);
     const { user, dialog } = await openInvite();
     await user.type(within(dialog).getByLabelText(EMAIL_FIELD), `  ${INVITE.email}  `);
-    await user.click(within(dialog).getByRole("button", { name: CREATE_INVITE }));
+    await user.click(within(dialog).getByRole("button", { name: SEND_INVITE }));
     const ready = await screen.findByTestId(INVITE_READY);
     expect(actions.createInviteAction).toHaveBeenCalledExactlyOnceWith(INVITE.email);
     const field = within(ready).getByLabelText("Invite link") as HTMLInputElement;
@@ -358,8 +358,8 @@ describe("inviting", () => {
     renderView();
     const { user, dialog } = await openInvite();
     await user.type(within(dialog).getByLabelText(EMAIL_FIELD), INVITE.email);
-    await user.click(within(dialog).getByRole("button", { name: CREATE_INVITE }));
-    await waitFor(() => expect(within(dialog).getByText("Creating")).toBeTruthy());
+    await user.click(within(dialog).getByRole("button", { name: SEND_INVITE }));
+    await waitFor(() => expect(within(dialog).getByText("Sending")).toBeTruthy());
     answer.resolve({ ok: true, data: INVITE });
     await screen.findByTestId(INVITE_READY);
   });
@@ -369,7 +369,7 @@ describe("inviting", () => {
     renderView();
     const { user, dialog } = await openInvite();
     await user.type(within(dialog).getByLabelText(EMAIL_FIELD), INVITE.email);
-    await user.click(within(dialog).getByRole("button", { name: CREATE_INVITE }));
+    await user.click(within(dialog).getByRole("button", { name: SEND_INVITE }));
     const alert = await within(dialog).findByRole("alert");
     expect(alert.textContent).toContain("already has a pending invite");
     expect(screen.queryByTestId(INVITE_READY)).toBeNull();

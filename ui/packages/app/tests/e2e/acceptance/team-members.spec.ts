@@ -126,7 +126,7 @@ test.describe("teammates join an account", () => {
     await page.getByRole("button", { name: /^invite$/i }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByLabel(/^email$/i).fill(invitee.email);
-    await dialog.getByRole("button", { name: /^create invite$/i }).click();
+    await dialog.getByRole("button", { name: /^send$/i }).click();
     const ready = page.getByTestId("invite-ready");
     const link = await ready.getByLabel(/^invite link$/i).inputValue();
     expect(link).toMatch(/\/invites\/[0-9a-f-]+$/);

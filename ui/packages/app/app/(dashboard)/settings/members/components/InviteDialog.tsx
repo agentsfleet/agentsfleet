@@ -25,7 +25,7 @@ import {
   Time,
 } from "@agentsfleet/design-system";
 import { PlusIcon } from "lucide-react";
-import type { InviteSummary } from "@/lib/api/invites";
+import { EMAIL_STATUS, type EmailStatus, type InviteSummary } from "@/lib/api/invites";
 import { presentErrorString } from "@/lib/errors";
 import { createInviteAction } from "../actions";
 
@@ -108,8 +108,8 @@ export default function InviteDialog({ onCreated }: { onCreated: () => void }) {
                     Cancel
                   </Button>
                   <Button type="submit" disabled={pending}>
-                    {pending ? <Spinner size="sm" srLabel="Creating" /> : null}
-                    Create invite
+                    {pending ? <Spinner size="sm" srLabel="Sending" /> : null}
+                    Send
                   </Button>
                 </DialogFooter>
               </form>
@@ -121,15 +121,36 @@ export default function InviteDialog({ onCreated }: { onCreated: () => void }) {
   );
 }
 
-// The link is what the invitee opens, so it shows the moment the invite
-// exists. The table keeps a copy action on the row, so closing loses nothing.
+const INVITE_CREATED = "Invite created";
+
+// Only a relay that accepted the email earns "sent". An invite whose email
+// failed, or that has no relay to send it, still exists, and its link is the
+// way in.
+const READY_COPY: Record<EmailStatus, { title: string; lead: (email: string) => string }> = {
+  [EMAIL_STATUS.sent]: {
+    title: "Invitation sent",
+    lead: (email) => `We emailed ${email}. You can also copy the link and share it.`,
+  },
+  [EMAIL_STATUS.failed]: {
+    title: INVITE_CREATED,
+    lead: (email) => `The email to ${email} did not go out. Copy the link and share it, or send the email again from the list.`,
+  },
+  [EMAIL_STATUS.unconfigured]: {
+    title: INVITE_CREATED,
+    lead: (email) => `This deployment sends no email. Copy the link and share it with ${email}.`,
+  },
+};
+
+// The link shows the moment the invite exists. The table keeps a copy action
+// on the row, so closing loses nothing.
 function InviteReady({ invite, onDone }: { invite: InviteSummary; onDone: () => void }) {
+  const copy = READY_COPY[invite.email_status];
   return (
     <div className="space-y-4" data-testid="invite-ready">
       <DialogHeader>
-        <DialogTitle>Invite ready</DialogTitle>
+        <DialogTitle>{copy.title}</DialogTitle>
         <DialogDescription>
-          Send {invite.email} this link. It expires <Time value={new Date(invite.expires_at)} format="relative" />.
+          {copy.lead(invite.email)} It expires <Time value={new Date(invite.expires_at)} format="relative" />.
         </DialogDescription>
       </DialogHeader>
       <div className="flex items-center gap-sm">
