@@ -173,15 +173,15 @@ impl Error {
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::RoleUnknown { .. } => error_code::INTERNAL_DB_QUERY,
             // One internal code for four failures the caller shares an
-            // inability to correct. Two are this instance's own — a mint that
-            // failed, a host that cannot draw entropy. A missing wallet is
+            // inability to correct. One is this instance's own: an identifier
+            // that could not be minted. A missing wallet is
             // operator surgery or a defect, because signup bootstrap writes it
             // in the tenant-create transaction; a machine collision reaching
             // the edge means the mint's retry already lost twice in a row. The
             // SENTENCES separate them where separation helps.
-            ErrorKind::Mint { .. }
-            | ErrorKind::Entropy { .. }
-            | ErrorKind::CliCredentialMachineCollision => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::Entropy { .. } | ErrorKind::CliCredentialMachineCollision => {
+                error_code::INTERNAL_OPERATION_FAILED
+            }
             ErrorKind::SessionFieldInvalid { field } => match field {
                 SessionField::PublicKey => error_code::INVALID_PUBLIC_KEY,
                 SessionField::TokenName => error_code::INVALID_TOKEN_NAME,
@@ -252,7 +252,6 @@ impl Error {
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::RoleUnknown { .. }
-            | ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::CliCredentialMachineCollision => DETAIL_DATABASE_ERROR,
             ErrorKind::SessionFieldInvalid { field } => match field {
@@ -303,7 +302,6 @@ impl Error {
 afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_dragonfly::Error => Queue,
-    afd_core::error::Error => Mint,
     afd_crypto::error::Error => Entropy,
 );
 

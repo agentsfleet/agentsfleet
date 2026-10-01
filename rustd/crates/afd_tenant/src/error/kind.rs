@@ -38,13 +38,7 @@ pub(crate) enum ErrorKind {
         source: afd_core::error::Error,
     },
 
-    #[error("an identifier could not be minted from the current instant")]
-    Mint {
-        #[source]
-        source: afd_core::error::Error,
-    },
-
-    #[error("could not draw the entropy a credential is minted from")]
+    #[error("an identifier could not be minted")]
     Entropy {
         #[source]
         source: afd_crypto::error::Error,
