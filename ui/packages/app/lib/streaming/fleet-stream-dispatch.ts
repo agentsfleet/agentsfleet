@@ -10,7 +10,7 @@ import {
   watchRunningRows,
   type ApplyEvents,
 } from "./fleet-stream-reply-registry";
-import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
+import { TERMINAL_STATUSES } from "./fleet-stream-row";
 import { patchSnapshot, patchSpokenFacts, setEvents } from "./fleet-stream-snapshot";
 import { advanceInstallStep, installStepFromKind } from "./install-steps";
 
@@ -26,11 +26,6 @@ export type LiveEntry = Entry & { apply: ApplyEvents; isCurrent: () => boolean }
 const RUNNER_ACTIVITY_KINDS: ReadonlySet<string> = new Set([
   FRAME_KIND.CHUNK, FRAME_KIND.TOOL_CALL_STARTED,
   FRAME_KIND.TOOL_CALL_PROGRESS, FRAME_KIND.TOOL_CALL_COMPLETED,
-]);
-const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
-  AGENTSFLEET_EVENT_STATUS.PROCESSED,
-  AGENTSFLEET_EVENT_STATUS.AGENT_ERROR,
-  AGENTSFLEET_EVENT_STATUS.GATE_BLOCKED,
 ]);
 
 // Reads back what the stream missed. A burst of gap signals during a walk

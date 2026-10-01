@@ -42,6 +42,15 @@ export const AGENTSFLEET_EVENT_STATUS = {
 export type FleetEventStatus =
   (typeof AGENTSFLEET_EVENT_STATUS)[keyof typeof AGENTSFLEET_EVENT_STATUS];
 
+// The statuses a turn ends in. Only these are final: `received` and `queued`
+// are still moving, and a page that read them can trail what the stream has
+// already shown.
+export const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
+  AGENTSFLEET_EVENT_STATUS.PROCESSED,
+  AGENTSFLEET_EVENT_STATUS.AGENT_ERROR,
+  AGENTSFLEET_EVENT_STATUS.GATE_BLOCKED,
+]);
+
 // One tool the fleet called while working an event, as the three tool frames
 // describe it — started with no timing yet, progressing with elapsed time,
 // completed with the final wall time.
