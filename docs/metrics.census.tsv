@@ -51,7 +51,7 @@ agentsfleet_otlp_entries_discarded_total	counter	u64	1	cumulative	signal,reason	
 agentsfleet_otel_attribute_omitted_total	counter	u64	1	cumulative	attribute,reason	-	fixed:6	no	health	model attribution gaps (never faked)
 agentsfleet_signup_bootstrapped_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	signup funnel: fresh accounts
 agentsfleet_signup_replayed_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	signup funnel: idempotent replays
-agentsfleet_signup_failed_total	counter	u64	1	cumulative	reason	-	fixed:6	no	errors	rejected signups per cause
+agentsfleet_signup_failed_total	counter	u64	1	cumulative	reason	-	fixed:7	no	errors	rejected signups per cause
 agentsfleet_lease_polls_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	the denominator for the two below
 agentsfleet_lease_poll_candidates_scanned_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = fan-out per poll
 agentsfleet_lease_poll_db_roundtrips_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = DB cost per poll; idle polls must add zero

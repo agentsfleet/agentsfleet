@@ -57,7 +57,7 @@ const SECRET: &str = "whsec_C2FVsBQIhrscChlQIMV+b5sSYspob7oD";
 const DELIVERY: &str = "msg_2fJk8Lq0PsWzXbYtRnVdEcHgMa";
 
 /// A `user.created` this daemon can open an account from.
-const CREATED: &str = r#"{"type":"user.created","data":{"id":"user_2fJk8Lq0","email_addresses":[{"id":"idn_1","email_address":"ada@example.test"}],"primary_email_address_id":"idn_1","first_name":"Ada","last_name":"Lovelace"}}"#;
+const CREATED: &str = r#"{"type":"user.created","data":{"id":"user_2fJk8Lq0","email_addresses":[{"id":"idn_1","email_address":"ada@example.test","verification":{"status":"verified"}}],"primary_email_address_id":"idn_1","first_name":"Ada","last_name":"Lovelace"}}"#;
 
 /// The instant this fixture signs and verifies at — frozen, not the wall clock.
 fn now() -> i64 {
@@ -293,7 +293,7 @@ async fn an_event_naming_no_primary_address_is_refused_before_the_store() {
     // The fixture's pool is unreachable, so a refusal that leaked through would
     // surface as a connection error rather than as this code.
     let answer = signed(
-        r#"{"type":"user.created","data":{"id":"user_2fJk8Lq0","email_addresses":[{"id":"idn_1","email_address":"ada@example.test"}]}}"#,
+        r#"{"type":"user.created","data":{"id":"user_2fJk8Lq0","email_addresses":[{"id":"idn_1","email_address":"ada@example.test","verification":{"status":"verified"}}]}}"#,
     )
     .await;
     assert_eq!(
@@ -308,7 +308,7 @@ async fn an_address_the_provider_did_not_mark_primary_is_not_substituted() {
     // in the list would open an account under whichever address happened to
     // sort first — somebody else's inbox, when a provider reports several.
     let answer = signed(
-        r#"{"type":"user.created","data":{"id":"user_2fJk8Lq0","email_addresses":[{"id":"idn_1","email_address":"ada@example.test"}],"primary_email_address_id":"idn_absent"}}"#,
+        r#"{"type":"user.created","data":{"id":"user_2fJk8Lq0","email_addresses":[{"id":"idn_1","email_address":"ada@example.test","verification":{"status":"verified"}}],"primary_email_address_id":"idn_absent"}}"#,
     )
     .await;
     assert_eq!(
@@ -318,12 +318,64 @@ async fn an_address_the_provider_did_not_mark_primary_is_not_substituted() {
     );
 }
 
+/// The refusal detail a refused event answers with.
+async fn refusal_detail(answer: axum::response::Response) -> String {
+    json_body(answer)
+        .await
+        .get("detail")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned()
+}
+
+#[tokio::test]
+async fn an_unverified_primary_address_is_refused_before_the_store() {
+    // Accepting an invite matches on this address, so an account opened under
+    // an address nobody proved would hand that address's invites to whoever
+    // typed it. Every status but `verified` reads as unproven.
+    for status in ["unverified", "expired", "failed", "a_status_added_later"] {
+        let answer = signed(&format!(
+            r#"{{"type":"user.created","data":{{"id":"user_2fJk8Lq0","email_addresses":[{{"id":"idn_1","email_address":"ada@example.test","verification":{{"status":"{status}"}}}}],"primary_email_address_id":"idn_1"}}}}"#
+        ))
+        .await;
+        assert_eq!(answer.status(), StatusCode::BAD_REQUEST, "{status}");
+        assert!(
+            refusal_detail(answer).await.contains("not verified"),
+            "{status}: the refusal names the unverified address"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_verified_secondary_does_not_stand_in_for_an_unverified_primary() {
+    let answer = signed(
+        r#"{"type":"user.created","data":{"id":"user_2fJk8Lq0","email_addresses":[{"id":"idn_1","email_address":"ada@example.test","verification":{"status":"unverified"}},{"id":"idn_2","email_address":"ada@personal.test","verification":{"status":"verified"}}],"primary_email_address_id":"idn_1"}}"#,
+    )
+    .await;
+    assert_eq!(
+        refusal_code(answer).await,
+        code(error_code::INVALID_REQUEST),
+        "the primary decides; a verified secondary is not substituted"
+    );
+}
+
+#[tokio::test]
+async fn an_address_carrying_no_verification_is_refused() {
+    for verification in ["", r#","verification":null"#] {
+        let answer = signed(&format!(
+            r#"{{"type":"user.created","data":{{"id":"user_2fJk8Lq0","email_addresses":[{{"id":"idn_1","email_address":"ada@example.test"{verification}}}],"primary_email_address_id":"idn_1"}}}}"#
+        ))
+        .await;
+        assert_eq!(answer.status(), StatusCode::BAD_REQUEST, "{verification:?}");
+    }
+}
+
 #[tokio::test]
 async fn an_address_with_no_local_part_is_refused_rather_than_renamed() {
     // The Zig substitutes a fixed tenant name here. That hides a malformed
     // event behind a tenant nobody can tell from another; this refuses.
     let answer = signed(
-        r#"{"type":"user.created","data":{"id":"user_2fJk8Lq0","email_addresses":[{"id":"idn_1","email_address":"@example.test"}],"primary_email_address_id":"idn_1"}}"#,
+        r#"{"type":"user.created","data":{"id":"user_2fJk8Lq0","email_addresses":[{"id":"idn_1","email_address":"@example.test","verification":{"status":"verified"}}],"primary_email_address_id":"idn_1"}}"#,
     )
     .await;
     assert_eq!(
@@ -366,7 +418,7 @@ async fn a_verified_signup_opens_one_account_and_a_replay_answers_with_it() {
     let subject = format!("user_{}", mint_id().replace('-', ""));
     let address = format!("{subject}@example.test");
     let body = format!(
-        r#"{{"type":"user.created","data":{{"id":"{subject}","email_addresses":[{{"id":"idn_1","email_address":"{address}"}}],"primary_email_address_id":"idn_1","first_name":"Ada","last_name":"Lovelace"}}}}"#
+        r#"{{"type":"user.created","data":{{"id":"{subject}","email_addresses":[{{"id":"idn_1","email_address":"{address}","verification":{{"status":"verified"}}}}],"primary_email_address_id":"idn_1","first_name":"Ada","last_name":"Lovelace"}}}}"#
     );
 
     let opened = json_body(deliver(&router, &body).await).await;
@@ -483,7 +535,7 @@ async fn a_name_the_provider_sends_only_half_of_is_stored_without_the_gap() {
             family.map_or("null".to_owned(), |it| format!(r#""{it}""#)),
         );
         let body = format!(
-            r#"{{"type":"user.created","data":{{"id":"{subject}","email_addresses":[{{"id":"idn_1","email_address":"{subject}@example.test"}}],"primary_email_address_id":"idn_1",{names}}}}}"#
+            r#"{{"type":"user.created","data":{{"id":"{subject}","email_addresses":[{{"id":"idn_1","email_address":"{subject}@example.test","verification":{{"status":"verified"}}}}],"primary_email_address_id":"idn_1",{names}}}}}"#
         );
 
         let answer = deliver(&router, &body).await;
@@ -541,7 +593,7 @@ async fn a_verified_signup_tells_the_provider_which_tenant_it_opened() {
     let subject = format!("user_{}", mint_id().replace('-', ""));
     let address = format!("{subject}@example.test");
     let body = format!(
-        r#"{{"type":"user.created","data":{{"id":"{subject}","email_addresses":[{{"id":"idn_1","email_address":"{address}"}}],"primary_email_address_id":"idn_1","first_name":"Ada","last_name":"Lovelace"}}}}"#
+        r#"{{"type":"user.created","data":{{"id":"{subject}","email_addresses":[{{"id":"idn_1","email_address":"{address}","verification":{{"status":"verified"}}}}],"primary_email_address_id":"idn_1","first_name":"Ada","last_name":"Lovelace"}}}}"#
     );
 
     let opened = json_body(deliver(&router, &body).await).await;
@@ -609,7 +661,7 @@ async fn a_provider_that_will_not_take_the_writeback_does_not_refuse_the_deliver
     let subject = format!("user_{}", mint_id().replace('-', ""));
     let address = format!("{subject}@example.test");
     let body = format!(
-        r#"{{"type":"user.created","data":{{"id":"{subject}","email_addresses":[{{"id":"idn_1","email_address":"{address}"}}],"primary_email_address_id":"idn_1"}}}}"#
+        r#"{{"type":"user.created","data":{{"id":"{subject}","email_addresses":[{{"id":"idn_1","email_address":"{address}","verification":{{"status":"verified"}}}}],"primary_email_address_id":"idn_1"}}}}"#
     );
 
     let answer = deliver(&router, &body).await;
@@ -662,7 +714,7 @@ async fn a_subject_that_is_only_whitespace_opens_the_account_but_is_not_written_
     // colliding on a second one. The replay path reaches the same write.
     let address = format!("blank-{}@example.test", mint_id().replace('-', ""));
     let body = format!(
-        r#"{{"type":"user.created","data":{{"id":"   ","email_addresses":[{{"id":"idn_1","email_address":"{address}"}}],"primary_email_address_id":"idn_1"}}}}"#
+        r#"{{"type":"user.created","data":{{"id":"   ","email_addresses":[{{"id":"idn_1","email_address":"{address}","verification":{{"status":"verified"}}}}],"primary_email_address_id":"idn_1"}}}}"#
     );
 
     let answer = deliver(&router, &body).await;

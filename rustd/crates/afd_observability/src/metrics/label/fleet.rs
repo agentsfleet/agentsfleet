@@ -41,7 +41,7 @@ closed_set! {
 closed_set! {
     /// Why opening an account from a signup delivery did not happen.
     ///
-    /// Six, and the count is the point: the first three are the delivery being
+    /// Seven, and the split is the point: the first four are the delivery being
     /// wrong and the last three are this daemon being unable to act on a
     /// delivery that was right. An operator seeing a spike needs to know which
     /// half, because only one of them is theirs to fix.
@@ -52,6 +52,8 @@ closed_set! {
         StaleTimestamp => "stale_ts",
         /// The payload carried no address to open an account against.
         MissingEmail => "missing_email",
+        /// The primary address was not one the provider had verified.
+        UnverifiedEmail => "unverified_email",
         /// The database refused the write.
         DatabaseError => "db_error",
         /// No connection was available to attempt it on.

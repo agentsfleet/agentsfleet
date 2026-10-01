@@ -78,6 +78,12 @@ const DETAIL_UNREADABLE: &str = "The request body is not an identity event";
 /// sent a person this daemon cannot name.
 const DETAIL_NO_ADDRESS: &str = "The identity event carries no usable primary email address";
 
+/// The refusal for a primary address the provider has not verified. An invite
+/// is accepted by matching this address, so an unproven one would let anyone
+/// who typed someone else's address join that person's teams.
+const DETAIL_UNVERIFIED_ADDRESS: &str =
+    "The identity event's primary email address is not verified";
+
 /// The identity provider's `user.created` payload, tolerant of unknown fields.
 ///
 /// Unknown fields are ignored rather than refused, which is the port's rule and
@@ -117,21 +123,55 @@ struct IdentityEmail {
     id: String,
     /// The address itself.
     email_address: String,
+    /// The provider's proof that the person reads it; absent reads as none.
+    #[serde(default)]
+    verification: Option<Verification>,
+}
+
+/// What the provider says it proved about one address.
+#[derive(Debug, Deserialize)]
+struct Verification {
+    status: VerificationStatus,
+}
+
+/// Whether the provider proved the address, in its own spelling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum VerificationStatus {
+    Verified,
+    /// `unverified`, `expired`, `failed`, and any status a provider adds later:
+    /// only a proof counts, so everything else reads the same.
+    #[serde(other)]
+    Unproven,
+}
+
+impl IdentityEmail {
+    fn is_verified(&self) -> bool {
+        self.verification
+            .as_ref()
+            .is_some_and(|proof| proof.status == VerificationStatus::Verified)
+    }
 }
 
 impl IdentityUser {
-    /// The address an account is opened under.
+    /// The address an account is opened under, or why there is none.
     ///
     /// The one the provider MARKED primary, and only that one. Falling back to
     /// the first address in the list would open an account under whichever
     /// address happened to sort first — a different person's inbox, when a
-    /// provider reports several.
-    fn primary_email(&self) -> Option<&str> {
-        let primary = self.primary_email_address_id.as_deref()?;
-        self.email_addresses
-            .iter()
-            .find(|address| address.id == primary)
-            .map(|address| address.email_address.as_str())
+    /// provider reports several. It must also be verified: accepting an invite
+    /// matches on it, so an address nobody proved would hand that address's
+    /// invites to whoever typed it.
+    fn verified_email(&self) -> Result<&str, SignupFailure> {
+        let primary = self
+            .primary_email_address_id
+            .as_deref()
+            .and_then(|id| self.email_addresses.iter().find(|address| address.id == id))
+            .ok_or(SignupFailure::MissingEmail)?;
+        primary
+            .is_verified()
+            .then_some(primary.email_address.as_str())
+            .ok_or(SignupFailure::UnverifiedEmail)
     }
 
     /// What to call them, when the provider said anything at all.
@@ -238,13 +278,15 @@ pub(crate) async fn receive<D: Services>(
             .into_response());
     }
 
-    let Some(email) = event.data.primary_email() else {
-        producers::fleet::signup_failed(SignupFailure::MissingEmail);
-        return Err(Refusal::coded(
-            error_code::INVALID_REQUEST,
-            DETAIL_NO_ADDRESS,
-        ));
-    };
+    let email = event.data.verified_email().map_err(|reason| {
+        producers::fleet::signup_failed(reason);
+        let detail = if reason == SignupFailure::UnverifiedEmail {
+            DETAIL_UNVERIFIED_ADDRESS
+        } else {
+            DETAIL_NO_ADDRESS
+        };
+        Refusal::coded(error_code::INVALID_REQUEST, detail)
+    })?;
     // An address with no local part is the same fault as no address at all —
     // see `signup::personal_tenant_name` on why this refuses rather than
     // substituting a name.

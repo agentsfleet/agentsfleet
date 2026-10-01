@@ -248,6 +248,9 @@ Clerk user.created
   ├─► Svix signature verify        (bad signature or absent secret → 401;
   │                                 UZ-WH-010 vs UZ-WH-020 in the body)
   │
+  ├─► primary address, verified    (none → 400 missing_email;
+  │                                 unproven → 400 unverified_email)
+  │
   ├─► ONE Postgres transaction     (rustd/crates/afd_tenant/src/signup.rs)
   │     1. core.tenants            one per person
   │     2. core.users              the OIDC subject, unique
@@ -264,6 +267,14 @@ Clerk user.created
 **Five rows, one transaction.** A tenant with no wallet answers 500 on every
 billing read with no path back. The transaction is the reason a partial account
 cannot exist.
+
+**Only a verified primary address opens an account.** Accepting an invite matches
+the invite's address against this one. An address nobody proved would hand its
+invites to whoever typed it. So the delivery's primary address must carry Clerk's
+`verified` status, or the delivery is refused with 400 and counted under
+`agentsfleet_signup_failed_total{reason="unverified_email"}`. Clerk verifies the
+address at sign-up with an emailed code, so this check is a backstop: it holds if
+a sign-up method that admits unverified addresses is ever enabled.
 
 **Idempotent on `oidc_subject`.** An identity provider retries, and a second
 delivery for a subject already opened must answer exactly as the first did. The
