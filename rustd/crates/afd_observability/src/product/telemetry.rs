@@ -1,4 +1,5 @@
-//! The eleven product events, as one closed set.
+//! The product events, as one closed set: the eleven ported ones, then the
+//! invite email's.
 //!
 //! # Why an enum where the daemon this ports has eleven structs
 //!
@@ -143,6 +144,37 @@ pub enum Telemetry {
         /// The request that bootstrapped it.
         request_id: String,
     },
+    /// An invite email was handed to the relay, refused, or not sent for want
+    /// of one. Reported under one of three names, by [`InviteEmailOutcome`].
+    InviteEmail {
+        /// The owner who issued or re-sent the invite.
+        actor: String,
+        /// The account the invite is into.
+        tenant_id: String,
+        /// The invite.
+        invite_id: String,
+        /// Which send this was: the first is 1, and each send-again adds one.
+        attempt: u32,
+        /// What became of it.
+        outcome: InviteEmailOutcome,
+    },
+}
+
+/// What became of one invite email, as the analytics tells them apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InviteEmailOutcome {
+    /// The relay accepted it, with this SMTP reply code.
+    Sent {
+        /// The relay's reply code.
+        reply: u16,
+    },
+    /// The relay refused it or never answered; `reply` when it spoke a code.
+    Failed {
+        /// The relay's reply code, when it answered.
+        reply: Option<u16>,
+    },
+    /// No relay is set up for this deployment.
+    Unconfigured,
 }
 
 impl Telemetry {
@@ -165,6 +197,11 @@ impl Telemetry {
             Self::FleetTriggered { .. } => "fleet_triggered",
             Self::FleetCompleted { .. } => "fleet_completed",
             Self::SignupBootstrapped { .. } => "signup_bootstrapped",
+            Self::InviteEmail { outcome, .. } => match outcome {
+                InviteEmailOutcome::Sent { .. } => "invite_email_sent",
+                InviteEmailOutcome::Failed { .. } => "invite_email_failed",
+                InviteEmailOutcome::Unconfigured => "invite_email_unconfigured",
+            },
         }
     }
 
@@ -182,7 +219,8 @@ impl Telemetry {
             | Self::AuthLoginCompleted { actor, .. }
             | Self::FleetTriggered { actor, .. }
             | Self::FleetCompleted { actor, .. }
-            | Self::SignupBootstrapped { actor, .. } => Some(actor),
+            | Self::SignupBootstrapped { actor, .. }
+            | Self::InviteEmail { actor, .. } => Some(actor),
             Self::ServerStarted { .. }
             | Self::WorkerStarted { .. }
             | Self::StartupFailed { .. }
@@ -204,3 +242,7 @@ impl Telemetry {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "telemetry/invite_tests.rs"]
+mod invite_tests;

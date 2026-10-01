@@ -41,4 +41,13 @@ pub(super) const INVITE: &[Problem] = &[
         hint: "An account keeps at least one owner. The last owner cannot be removed.",
         user_message: Some("The account's only owner cannot be removed."),
     },
+    Problem {
+        code: error_code::INVITE_EMAIL_UNAVAILABLE,
+        status: 503,
+        title: "Invite email could not be sent",
+        hint: "Email is not set up, or the mail relay refused or did not answer. The invite is still valid: copy its link, or send again later.",
+        user_message: Some(
+            "We could not send the email. The invite still works: copy its link and send it yourself.",
+        ),
+    },
 ];

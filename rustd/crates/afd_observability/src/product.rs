@@ -1,12 +1,12 @@
 //! What this daemon reports to the product analytics it is measured by.
 //!
-//! # This is a PORT, not a new event set
+//! # Ported events keep their bytes; new ones only add names
 //!
-//! Every event here already fires in the daemon this replaces, under the same
-//! name, carrying the same property keys. Nothing is added and nothing is
-//! renamed, because the funnels, dashboards and alerts on the other end match
-//! on those bytes — a rename is an observability migration, and it is not this
-//! milestone's.
+//! Eleven events fired in the daemon this replaces, and each keeps its name and
+//! property keys, because the funnels, dashboards and alerts on the other end
+//! match on those bytes — a rename is an observability migration. Events added
+//! since, such as the invite email's, arrive under names nothing matched
+//! before, so they rename nothing.
 //!
 //! # A deployment with no key is a value, not an `Option` at every call site
 //!
@@ -28,7 +28,7 @@ use std::sync::Arc;
 
 use posthog_rs::{Client, ClientOptions};
 
-pub use self::telemetry::Telemetry;
+pub use self::telemetry::{InviteEmailOutcome, Telemetry};
 
 /// Where this daemon's product events go.
 ///

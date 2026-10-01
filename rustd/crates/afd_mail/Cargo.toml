@@ -1,0 +1,38 @@
+[package]
+name = "afd_mail"
+description = "Product email: renders the invite from this repository's templates and sends it over SMTP through the relay the smtp-relay platform bag names."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+# The registry codes a failure is reported under, and the admin workspace id.
+afd_core.workspace = true
+# The relay password stays inside `SecretBytes` until the transport is built.
+afd_crypto.workspace = true
+# Where the `smtp-relay` bag is read from: the admin workspace's vault.
+afd_vault.workspace = true
+askama.workspace = true
+lettre.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+# The send deadline.
+tokio = { workspace = true, features = ["time"] }
+tracing.workspace = true
+
+[dev-dependencies]
+# `test_util::trace::Capture`, which the log-privacy test reads events through.
+afd_core = { workspace = true, features = ["test-util"] }
+insta.workspace = true
+# `net` and `io-util` for the loopback SMTP listener the refusal and stall
+# tests talk to; `rt-multi-thread` so the listener and the client run apart.
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "net", "io-util"] }
+
+[lints]
+workspace = true

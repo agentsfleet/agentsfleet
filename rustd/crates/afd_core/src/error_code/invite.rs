@@ -25,3 +25,10 @@ pub const INVITE_CONFLICT: ErrorCode = ErrorCode::declare("UZ-INV-003");
 
 /// Removing this member would leave the account with no owner.
 pub const MEMBER_LAST_OWNER: ErrorCode = ErrorCode::declare("UZ-INV-004");
+
+/// The invite exists but its email could not be sent: the relay is not set up,
+/// or it refused or did not answer.
+///
+/// Answered only by the send-again route; creating an invite never fails on
+/// email. The invite stays acceptable, so the owner can copy its link instead.
+pub const INVITE_EMAIL_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-INV-005");

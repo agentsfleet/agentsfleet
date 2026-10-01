@@ -1,0 +1,32 @@
+---
+source: crates/afd_mail/src/invite/tests.rs
+expression: rendered.html
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>You're invited to join John&#39;s account on agentsfleet</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f6f6f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1c1c1a;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:8px;padding:32px;">
+            <tr>
+              <td>
+                <p style="margin:0 0 16px;font-size:16px;line-height:24px;"><strong>John</strong> invited you to join <strong>John&#39;s account</strong> on agentsfleet.</p>
+                <p style="margin:0 0 24px;font-size:14px;line-height:22px;color:#5c5c57;">Sign in with this email address, then accept the invite.</p>
+                <p style="margin:0 0 24px;"><a href="https://app.agentsfleet.test/invites/0190f5a2-4b2d-7c11-8d5e-2a5f31d98210" style="display:inline-block;background:#1c1c1a;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 20px;border-radius:6px;">Accept invite</a></p>
+                <p style="margin:0 0 8px;font-size:12px;line-height:18px;color:#5c5c57;">Or open this link: <a href="https://app.agentsfleet.test/invites/0190f5a2-4b2d-7c11-8d5e-2a5f31d98210" style="color:#5c5c57;">https://app.agentsfleet.test/invites/0190f5a2-4b2d-7c11-8d5e-2a5f31d98210</a></p>
+                <p style="margin:0;font-size:12px;line-height:18px;color:#5c5c57;">If you were not expecting it, you can ignore this email.</p>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:16px 0 0;font-size:12px;color:#8a8a84;">agentsfleet</p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
