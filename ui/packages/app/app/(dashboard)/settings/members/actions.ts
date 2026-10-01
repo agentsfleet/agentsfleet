@@ -1,7 +1,7 @@
 "use server";
 
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
-import { createInvite, listInvites, revokeInvite, type InviteSummary } from "@/lib/api/invites";
+import { createInvite, listInvites, revokeInvite, sendInviteEmail, type InviteSummary } from "@/lib/api/invites";
 import { listMembers, removeMember, type MemberSummary } from "@/lib/api/tenant-members";
 
 export type Team = { members: MemberSummary[]; invites: InviteSummary[] };
@@ -19,6 +19,10 @@ export async function createInviteAction(email: string): Promise<ActionResult<In
 
 export async function revokeInviteAction(inviteId: string): Promise<ActionResult<void>> {
   return withToken((token) => revokeInvite(token, inviteId));
+}
+
+export async function sendInviteEmailAction(inviteId: string): Promise<ActionResult<void>> {
+  return withToken((token) => sendInviteEmail(token, inviteId));
 }
 
 export async function removeMemberAction(userId: string): Promise<ActionResult<void>> {

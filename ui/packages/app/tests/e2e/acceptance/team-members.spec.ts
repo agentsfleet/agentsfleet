@@ -140,6 +140,22 @@ test.describe("teammates join an account", () => {
     await expect(rowFor(page, invitee.email)).toHaveCount(0);
   });
 
+  // Which status the row shows depends on the deployment's relay, so the test
+  // holds the row to the one rule that holds everywhere: three labels, and
+  // "Send again" exactly when the email did not go.
+  test("test_members_page_shows_email_status", async ({ page }) => {
+    email = inviteeEmail();
+    await clientFor(FIXTURE_KEY.admin).post(OWNER_INVITES, { email });
+    await signInAs(page, FIXTURE_KEY.admin);
+    await page.goto("/settings/members");
+    const row = rowFor(page, email);
+    await expect(row).toHaveCount(1);
+    const status = row.getByText(/^Email (sent|not sent|not set up)$/);
+    await expect(status).toBeVisible();
+    const sendAgain = row.getByRole("button", { name: /^send the invite email to .* again$/i });
+    await expect(sendAgain).toHaveCount((await status.textContent()) === "Email sent" ? 0 : 1);
+  });
+
   test("test_invitee_accept_journey", async ({ browser }) => {
     email = inviteeEmail();
     const invitee = await signUpInvitee(browser, email);

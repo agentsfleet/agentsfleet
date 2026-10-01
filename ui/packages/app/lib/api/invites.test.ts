@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "./errors";
-import { acceptInvite, createInvite, listInvites, listWaitingInvites, revokeInvite } from "./invites";
+import {
+  EMAIL_STATUS,
+  acceptInvite,
+  createInvite,
+  listInvites,
+  listWaitingInvites,
+  revokeInvite,
+  sendInviteEmail,
+} from "./invites";
 
 // The network is the only thing stood in for: every call runs the real client,
 // the real problem-body parsing, and the real decoders.
@@ -15,6 +23,8 @@ const INVITE = {
   expires_at: EXPIRES_AT,
   created_at: CREATED_AT,
   link: "https://app.agentsfleet.net/invites/0195b4ba-8d3a-7f13-8abc-0000000000a1",
+  email_status: EMAIL_STATUS.sent,
+  email_sent_at: CREATED_AT,
 };
 const WAITING = {
   id: INVITE.id,
@@ -92,6 +102,40 @@ describe("owner invites", () => {
     const { url, init } = sent(spy);
     expect(url).toContain("/v1/tenants/me/invites/a%2Fb");
     expect(init.method).toBe("DELETE");
+  });
+});
+
+describe("invite email", () => {
+  it("should accept an invite whose email was never sent, with no sent time", async () => {
+    const unsent = { ...INVITE, email_status: EMAIL_STATUS.unconfigured, email_sent_at: null };
+    answer(201, unsent);
+    await expect(createInvite(TOKEN, "bob@example.com")).resolves.toEqual(unsent);
+  });
+
+  it("should reject an email status this client does not know, or a sent time that is not a timestamp", async () => {
+    for (const broken of [{ ...INVITE, email_status: "bounced" }, { ...INVITE, email_sent_at: "yesterday" }]) {
+      answer(201, broken);
+      await expect(createInvite(TOKEN, "bob@example.com")).rejects.toThrow("invite is invalid");
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("should POST a new attempt to the invite's send route and resolve when the relay took it", async () => {
+    const spy = answer(200, { email_status: EMAIL_STATUS.sent });
+    await expect(sendInviteEmail(TOKEN, INVITE.id)).resolves.toBeUndefined();
+    const { url, init } = sent(spy);
+    expect(url).toContain(`/v1/tenants/me/invites/${INVITE.id}/send`);
+    expect(init.method).toBe("POST");
+  });
+
+  it("should reject a send answer that does not say sent", async () => {
+    answer(200, { email_status: EMAIL_STATUS.failed });
+    await expect(sendInviteEmail(TOKEN, INVITE.id)).rejects.toThrow("invite email answer is invalid");
+  });
+
+  it("should surface an unset-up or refusing relay as 503 UZ-INV-005", async () => {
+    problem(503, "UZ-INV-005", "We could not send the email.");
+    await expect(sendInviteEmail(TOKEN, INVITE.id)).rejects.toMatchObject({ status: 503, code: "UZ-INV-005" });
   });
 });
 

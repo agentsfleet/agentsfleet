@@ -6,7 +6,7 @@ import type { InviteSummary } from "@/lib/api/invites";
 import type { MemberSummary } from "@/lib/api/tenant-members";
 import { presentErrorString } from "@/lib/errors";
 import InviteDialogDynamic from "@/components/domain/island-dynamic/InviteDialogDynamic";
-import { loadTeamAction, removeMemberAction, revokeInviteAction } from "../actions";
+import { loadTeamAction, removeMemberAction, revokeInviteAction, sendInviteEmailAction } from "../actions";
 import { MEMBERS_DESCRIPTION, MEMBERS_TITLE } from "../copy";
 import { CONFIRM_KIND, TeamConfirm, type ConfirmTarget, type ConfirmTargetActive } from "./TeamConfirm";
 import { TEAM_CAPTION, TeamTable } from "./TeamTable";
@@ -55,12 +55,25 @@ function useTeam({ initialMembers, initialInvites }: Props) {
     });
   }
 
+  // A new email attempt. Either way the lists are re-read, so the row shows the
+  // status the backend recorded rather than the one this page hoped for.
+  function resend(invite: InviteSummary) {
+    setError(null);
+    startTransition(async () => {
+      const result = await sendInviteEmailAction(invite.id);
+      if (!result.ok) {
+        setError(presentErrorString({ errorCode: result.errorCode, message: result.error, action: "send the invite email" }));
+      }
+      refresh();
+    });
+  }
+
   function dismiss() {
     setTarget(null);
     setError(null);
   }
 
-  return { members, invites, target, error, pending, setTarget, refresh, confirm, dismiss };
+  return { members, invites, target, error, pending, setTarget, refresh, confirm, resend, dismiss };
 }
 
 export function MembersView(props: Props) {
@@ -81,6 +94,7 @@ export function MembersView(props: Props) {
             pending={team.pending}
             onRemove={(member) => team.setTarget({ kind: CONFIRM_KIND.remove, member })}
             onRevoke={(invite) => team.setTarget({ kind: CONFIRM_KIND.revoke, invite })}
+            onResend={team.resend}
           />
         </section>
       </Section>

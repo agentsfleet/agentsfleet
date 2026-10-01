@@ -21,6 +21,7 @@ import {
   loadTeamAction,
   removeMemberAction,
   revokeInviteAction,
+  sendInviteEmailAction,
 } from "@/app/(dashboard)/settings/members/actions";
 import { ERROR_CODE } from "@/lib/errors";
 import { SIGN_IN_PATH } from "@/lib/auth/sign-in-redirect";
@@ -36,6 +37,8 @@ const INVITE = {
   expires_at: 2,
   created_at: 1,
   link: "https://app.agentsfleet.net/invites/inv_1",
+  email_status: "sent",
+  email_sent_at: 1,
 };
 
 function json(status: number, body?: unknown): Response {
@@ -94,6 +97,12 @@ describe("members server actions", () => {
       expect.stringContaining(`${INVITES_PATH}/inv_1`),
       expect.stringContaining(`${MEMBERS_PATH}/user_bob`),
     ]);
+  });
+
+  it("should send an invite's email again through its send route", async () => {
+    const spy = serve({ [`${INVITES_PATH}/inv_1/send`]: () => json(200, { email_status: "sent" }) });
+    await expect(sendInviteEmailAction("inv_1")).resolves.toEqual({ ok: true, data: undefined });
+    expect(spy.mock.calls.map(([url]) => url as string)).toEqual([expect.stringContaining(`${INVITES_PATH}/inv_1/send`)]);
   });
 
   it("should refuse without calling the backend when there is no session", async () => {

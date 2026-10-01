@@ -127,7 +127,7 @@ Each `invited` row on the members page shows "Email sent", "Email not sent" or "
 
 - **Dimension 4.1** — send-again after a failure sends under a new key and flips to `sent` → Test `test_send_again_after_failure` — DONE (`afd_api/tests/integration_invite_email.rs`)
 - **Dimension 4.2** — send-again while unconfigured is `503 UZ-INV-005` → Test `test_send_again_unconfigured_refused` — DONE (`afd_api/tests/integration_invite_email.rs`)
-- **Dimension 4.3** — the members page shows each status with its actions → Test `test_members_page_shows_email_status`
+- **Dimension 4.3** — the members page shows each status with its actions → Test `test_members_page_shows_email_status` — written (`ui/packages/app/tests/e2e/acceptance/team-members.spec.ts`); the view is unit-proven in `MembersView.test.tsx`; the journey runs on DEV after merge
 
 ### §5 — Real delivery on DEV
 

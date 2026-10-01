@@ -11,6 +11,7 @@ const actions = vi.hoisted(() => ({
   createInviteAction: vi.fn(),
   revokeInviteAction: vi.fn(),
   removeMemberAction: vi.fn(),
+  sendInviteEmailAction: vi.fn(),
 }));
 vi.mock("../actions", () => actions);
 // The Invite trigger ships behind a next/dynamic shim; alias it back to the
@@ -20,7 +21,7 @@ vi.mock("@/components/domain/island-dynamic/InviteDialogDynamic", async () => ({
 }));
 
 import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
-import type { InviteSummary } from "@/lib/api/invites";
+import { EMAIL_STATUS, type InviteSummary } from "@/lib/api/invites";
 import type { MemberSummary } from "@/lib/api/tenant-members";
 import { MembersView } from "./MembersView";
 
@@ -33,7 +34,19 @@ const INVITE: InviteSummary = {
   expires_at: Date.UTC(2026, 9, 7),
   created_at: Date.UTC(2026, 8, 30),
   link: "https://app.agentsfleet.net/invites/inv_1",
+  email_status: EMAIL_STATUS.sent,
+  email_sent_at: Date.UTC(2026, 8, 30),
 };
+const UNSENT: InviteSummary = {
+  ...INVITE,
+  id: "inv_2",
+  email: "dave@example.com",
+  link: "https://app.agentsfleet.net/invites/inv_2",
+  email_status: EMAIL_STATUS.failed,
+  email_sent_at: null,
+};
+const NO_RELAY: InviteSummary = { ...UNSENT, id: "inv_3", email: "erin@example.com", email_status: EMAIL_STATUS.unconfigured };
+const sendAgain = (invite: InviteSummary) => `Send the invite email to ${invite.email} again`;
 const LAST_OWNER = "The account's last owner cannot be removed.";
 
 function renderView(members: MemberSummary[] = [JOHN, BOB], invites: InviteSummary[] = [INVITE]) {
@@ -85,6 +98,36 @@ describe("the table", () => {
     expect(within(rowOf(INVITE.email)).getByRole("button", { name: `Revoke invite for ${INVITE.email}` })).toBeTruthy();
     expect(within(rowOf("Bob")).getByRole("button", { name: "Remove Bob" })).toBeTruthy();
     expect(within(rowOf("John")).queryAllByRole("button")).toHaveLength(0);
+  });
+});
+
+describe("invite email", () => {
+  it("should show each invite's email status, and offer send again only when it did not go", () => {
+    renderView([JOHN], [INVITE, UNSENT, NO_RELAY]);
+    expect(within(rowOf(INVITE.email)).getByText("Email sent")).toBeTruthy();
+    expect(within(rowOf(UNSENT.email)).getByText("Email not sent")).toBeTruthy();
+    expect(within(rowOf(NO_RELAY.email)).getByText("Email not set up")).toBeTruthy();
+    expect(within(rowOf(INVITE.email)).queryByRole("button", { name: sendAgain(INVITE) })).toBeNull();
+    expect(within(rowOf(UNSENT.email)).getByRole("button", { name: sendAgain(UNSENT) })).toBeTruthy();
+    expect(within(rowOf(NO_RELAY.email)).getByRole("button", { name: `Copy invite link for ${NO_RELAY.email}` })).toBeTruthy();
+  });
+
+  it("should send again and show the status the reloaded list carries", async () => {
+    actions.sendInviteEmailAction.mockResolvedValue({ ok: true, data: undefined });
+    actions.loadTeamAction.mockResolvedValue({ ok: true, data: { members: [JOHN], invites: [{ ...UNSENT, email_status: EMAIL_STATUS.sent }] } });
+    renderView([JOHN], [UNSENT]);
+    await userEvent.setup().click(screen.getByRole("button", { name: sendAgain(UNSENT) }));
+    await waitFor(() => expect(within(rowOf(UNSENT.email)).getByText("Email sent")).toBeTruthy());
+    expect(actions.sendInviteEmailAction).toHaveBeenCalledExactlyOnceWith(UNSENT.id);
+  });
+
+  it("should say the email could not be sent, and still reload the lists", async () => {
+    actions.sendInviteEmailAction.mockResolvedValue({ ok: false, status: 503, errorCode: "UZ-INV-005", error: "We could not send the email." });
+    actions.loadTeamAction.mockResolvedValue({ ok: true, data: { members: [JOHN], invites: [UNSENT] } });
+    renderView([JOHN], [UNSENT]);
+    await userEvent.setup().click(screen.getByRole("button", { name: sendAgain(UNSENT) }));
+    await waitFor(() => expect(screen.getByText(/Couldn't send the invite email/)).toBeTruthy());
+    expect(actions.loadTeamAction).toHaveBeenCalledOnce();
   });
 });
 
