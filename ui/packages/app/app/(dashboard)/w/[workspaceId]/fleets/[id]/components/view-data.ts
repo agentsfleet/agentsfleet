@@ -17,7 +17,7 @@ export type ChatViewData = {
   view: typeof FLEET_VIEW.chat;
   thread: Promise<ThreadPage | null>;
   /** Who the thread can name. A failed read names no one, and every sender
-   * keeps the label it had before names existed. */
+   * falls back to its actor label. */
   members: Promise<WorkspaceMember[] | null>;
 };
 
