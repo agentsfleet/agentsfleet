@@ -6,15 +6,15 @@ import NoWorkspaceEmptyState from "@/components/layout/NoWorkspaceEmptyState";
 
 export const dynamic = "force-dynamic";
 
-// Dashboard entry (`/`). Resolves the first owned workspace and redirects once
-// to its fleet wall; a tenant that owns no workspace lands on the
-// create-workspace empty state instead of a broken page. This is the ONLY
-// place the "default workspace" is chosen — every deeper page reads the
-// workspace from its route param.
+// Dashboard entry (`/`). Resolves the caller's own workspace — or, owning none,
+// the first one they joined — and redirects once to its fleet wall; a caller
+// with no workspace at all lands on the create-workspace empty state instead
+// of a broken page. This is the ONLY place the "default workspace" is chosen —
+// every deeper page reads the workspace from its route param.
 //
-// One page of one, deliberately: the redirect fires before the layout tree
-// renders, so nothing here can share the layout's cached full walk — a full
-// list on this request is pure double-payment on every cold entry.
+// One page, deliberately: the redirect fires before the layout tree renders,
+// so nothing here can share the layout's cached full walk — the complete list
+// on this request is pure double-payment on every cold entry.
 export default async function DashboardIndexPage() {
   const token = await requireCredential();
 

@@ -4,6 +4,7 @@ import { withToken, type ActionResult } from "@/lib/actions/with-token";
 import { requireScope } from "@/lib/actions/require-scope";
 import { SCOPE } from "@/lib/auth/scopes";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
 import { createSecret } from "@/lib/api/secrets";
 import {
   listAdminModels,
@@ -56,14 +57,15 @@ export async function setPlatformDefaultAction(body: {
     withToken(async (t) => {
       // admin/models is a platform surface with no workspace URL segment, so the
       // storage workspace is resolved explicitly from the authoritative tenant
-      // list rather than a cookie/claim hint — `items[0]`, exactly as the pre-M118
-      // `resolveFromList` fallback did (any owned workspace is a valid store for
-      // the platform key; the resolver follows `source_workspace_id` into it).
-      // Both writes run under the same id; an empty list is the genuine
+      // list rather than a cookie/claim hint. The list also carries workspaces of
+      // accounts the admin joined, oldest first, and only an owner may write a
+      // workspace's vault, so the store is the first workspace the admin OWNS
+      // (any owned one serves; the resolver follows `source_workspace_id` into
+      // it). Both writes run under the same id; owning none is the genuine
       // "no workspace" error.
       const { items } = await listTenantWorkspacesCached(t);
-      const workspaceId = items[0]?.id;
-      if (!workspaceId) throw new Error("No active workspace to store the platform key in");
+      const workspaceId = items.find((workspace) => workspace.role === ACCOUNT_ROLE.owner)?.id;
+      if (!workspaceId) throw new Error("No workspace you own to store the platform key in");
 
       const data: Record<string, unknown> = { provider: body.provider, api_key: body.api_key, model: body.model };
       if (body.base_url) data.base_url = body.base_url;
