@@ -3,9 +3,10 @@
 //!
 //! `core.fleet_events` gains a row only at lease, so a message sent to a busy
 //! fleet has no history row until its turn. The admission ledger holds it the
-//! whole time, and its undelivered rows are what a first page adds, as
+//! whole time, and its undelivered rows are what every thread page adds, as
 //! [`status::QUEUED`] rows, so a screen opened while a message waits agrees
-//! with one that watched it arrive.
+//! with one that watched it arrive. A resumed page reads the ones older than
+//! its cursor, so more waiting messages than one page holds still all appear.
 //!
 //! # One row per event, whichever read saw it
 //!
@@ -21,13 +22,15 @@ use sqlx::PgConnection;
 use sqlx::Row as _;
 use sqlx::postgres::PgRow;
 
-use super::statement::SELECT_THREAD_QUEUED;
+use super::cursor::Cursor;
+use super::statement::{SELECT_THREAD_QUEUED, SELECT_THREAD_QUEUED_AFTER};
 use super::{EventDetailRow, EventRow};
 use crate::error::{self, Result, row_malformed};
 
 const CONTEXT_QUEUED: &str = "read a fleet's waiting messages";
 
-/// The fleet's waiting steers, newest first, at most `limit`.
+/// The fleet's waiting steers, newest first, at most `limit`, older than
+/// `cursor` when a page resumes.
 ///
 /// Steers only: a waiting webhook or schedule names no typed words, and its
 /// row appears when a runner takes it, as it always has.
@@ -38,12 +41,22 @@ pub(super) async fn waiting(
     connection: &mut PgConnection,
     workspace: &Uuid7,
     fleet: &Uuid7,
+    cursor: Option<&Cursor>,
     limit: i64,
 ) -> Result<Vec<EventDetailRow>> {
-    let rows = sqlx::query(SELECT_THREAD_QUEUED)
-        .bind(workspace.as_str())
-        .bind(fleet.as_str())
-        .bind(Producer::Steer.as_str())
+    let scoped = match cursor {
+        None => sqlx::query(SELECT_THREAD_QUEUED)
+            .bind(workspace.as_str())
+            .bind(fleet.as_str())
+            .bind(Producer::Steer.as_str()),
+        Some(at) => sqlx::query(SELECT_THREAD_QUEUED_AFTER)
+            .bind(workspace.as_str())
+            .bind(fleet.as_str())
+            .bind(Producer::Steer.as_str())
+            .bind(at.created_at)
+            .bind(at.event_id.as_str()),
+    };
+    let rows = scoped
         .bind(limit)
         .fetch_all(connection)
         .await

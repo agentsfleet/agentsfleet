@@ -52,4 +52,4 @@ pub use self::steer::{ACTOR_MACHINE, ACTOR_PREFIX, Steer, Steered};
 /// Every history read's text, named, so the plan suite can `EXPLAIN` exactly
 /// what `History` runs rather than a copy of it.
 #[cfg(feature = "test-util")]
-pub use self::history::statement::{QUEUED_READ_TEXT, READ_TEXTS};
+pub use self::history::statement::{QUEUED_READ_TEXTS, READ_TEXTS};

@@ -20,7 +20,7 @@ use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_db::{Db, Migrator};
 use afd_dragonfly::streams::FleetStreams;
-use afd_events::{History, QUEUED_READ_TEXT, Steer};
+use afd_events::{Cursor, History, QUEUED_READ_TEXTS, Steer};
 use sqlx::{AssertSqlSafe, Row as _};
 
 use crate::integration_steer_retry::clean;
@@ -70,6 +70,12 @@ SELECT uuidv7(), fleets.id, fleets.workspace_id, 'steer', fleets.id || ':' || a,
        'digest', 'steer:api', 'chat', '{}', $2 + a, a || '-0',
        CASE WHEN a % 50 = 0 THEN NULL ELSE $2 + a END, 0, $2 + a, $2 + a
   FROM fleets, generate_series(1, $4) a";
+
+/// A page smaller than what waits, so the walk must cross a page boundary.
+const SMALL_PAGE: i64 = 2;
+
+/// More waiting messages than [`SMALL_PAGE`] holds.
+const WAITING: usize = 3;
 
 fn uuid(text: &str) -> Uuid7 {
     Uuid7::parse(text).expect("the lane mints canonical identifiers")
@@ -144,7 +150,54 @@ async fn test_thread_read_dedupes_leased_steer() {
     lane.cleanup().await;
 }
 
-/// The waiting read probes an index of in-flight work alone under a generic
+/// More messages wait than one page holds: walking the thread page by page,
+/// the way the route cuts and resumes it, reaches every one of them, newest
+/// first, each once. Waiting rows used to join the first page only, so the
+/// ones it cut never came back until a runner took them.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_waiting_overflow_reaches_later_pages() {
+    let lane = EventsLane::open().await;
+    let steer = Steer::new(lane.admissions());
+    let mut admitted = Vec::with_capacity(WAITING);
+    for _ in 0..WAITING {
+        let steered = steer
+            .append(&lane.fleet, &lane.workspace, ACTOR, BODY, None)
+            .await
+            .expect("the steer is admitted");
+        admitted.push(steered.event_id);
+    }
+    admitted.reverse();
+    let history = History::new(lane.database.clone());
+    let (workspace, fleet) = (uuid(&lane.workspace), uuid(&lane.fleet));
+
+    let mut walked = Vec::new();
+    let mut cursor: Option<Cursor> = None;
+    let page_rows = usize::try_from(SMALL_PAGE).expect("a page size is positive");
+    loop {
+        let page = history
+            .thread_page(&workspace, &fleet, cursor.as_ref(), SMALL_PAGE)
+            .await
+            .expect("the thread reads");
+        let kept: Vec<_> = page.into_iter().take(page_rows).collect();
+        let Some(last) = kept.last() else { break };
+        cursor = Some(Cursor::after(last.row.created_at, &last.row.event_id));
+        let full = kept.len() == page_rows;
+        walked.extend(kept.into_iter().map(|row| row.row.event_id));
+        if !full {
+            break;
+        }
+    }
+    assert_eq!(
+        walked, admitted,
+        "every waiting message, newest first, once"
+    );
+
+    clean(&lane, &FleetStreams::new(lane.queue.clone())).await;
+    lane.cleanup().await;
+}
+
+/// Both waiting reads probe an index of in-flight work alone under a generic
 /// plan, over a ledger whose history is almost all delivered: the fleet is an
 /// index condition, nothing is sorted, and no table is scanned whole.
 #[tokio::test(flavor = "multi_thread")]
@@ -179,32 +232,33 @@ async fn test_queued_read_plans_on_the_undelivered_index() {
         .await
         .expect("statistics refresh");
 
-    // The simple protocol, because the placeholders stay unbound; the text is
+    // The simple protocol, because the placeholders stay unbound; each text is
     // this crate's own constant with a keyword in front of it.
-    let plan = sqlx::raw_sql(AssertSqlSafe(format!(
-        "EXPLAIN (GENERIC_PLAN) {QUEUED_READ_TEXT}"
-    )))
-    .fetch_all(&mut *connection)
-    .await
-    .expect("the waiting read explains")
-    .iter()
-    .map(|row| row.try_get::<String, _>(0).expect("a plan line is text"))
-    .collect::<Vec<_>>()
-    .join("\n");
-    assert!(
-        IN_FLIGHT_INDEXES.iter().any(|index| plan.contains(index)),
-        "{plan}"
-    );
-    assert!(
-        plan.lines()
-            .any(|line| line.trim_start().starts_with("Index Cond:") && line.contains("fleet_id")),
-        "the fleet bounds the scan: {plan}"
-    );
-    assert!(!plan.contains("Seq Scan"), "{plan}");
-    assert!(
-        !plan.contains("Sort"),
-        "the order comes off the index: {plan}"
-    );
+    for (label, text) in QUEUED_READ_TEXTS {
+        let plan = sqlx::raw_sql(AssertSqlSafe(format!("EXPLAIN (GENERIC_PLAN) {text}")))
+            .fetch_all(&mut *connection)
+            .await
+            .expect("the waiting read explains")
+            .iter()
+            .map(|row| row.try_get::<String, _>(0).expect("a plan line is text"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            IN_FLIGHT_INDEXES.iter().any(|index| plan.contains(index)),
+            "{label}: {plan}"
+        );
+        assert!(
+            plan.lines()
+                .any(|line| line.trim_start().starts_with("Index Cond:")
+                    && line.contains("fleet_id")),
+            "{label}: the fleet bounds the scan: {plan}"
+        );
+        assert!(!plan.contains("Seq Scan"), "{label}: {plan}");
+        assert!(
+            !plan.contains("Sort"),
+            "{label}: the order comes off the index: {plan}"
+        );
+    }
 
     drop(connection);
     database.cleanup().await;

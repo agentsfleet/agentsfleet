@@ -206,10 +206,7 @@ impl History {
             .iter()
             .map(EventDetailRow::read)
             .collect::<Result<Vec<_>>>()?;
-        if cursor.is_some() {
-            return Ok(delivered);
-        }
-        let waiting = queued::waiting(&mut connection, workspace, fleet, bound).await?;
+        let waiting = queued::waiting(&mut connection, workspace, fleet, cursor, bound).await?;
         Ok(queued::merged(delivered, waiting))
     }
 
