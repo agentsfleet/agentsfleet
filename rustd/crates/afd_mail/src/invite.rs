@@ -57,6 +57,8 @@ pub(crate) struct RenderedEmail {
 #[derive(Template)]
 #[template(path = "invite.html")]
 struct InviteHtml<'a> {
+    /// The subject line, which the HTML title repeats.
+    subject: &'a str,
     inviter_name: &'a str,
     account_name: &'a str,
     invite_url: &'a str,
@@ -84,7 +86,9 @@ pub(crate) fn account_label(owner_name: &str) -> String {
 /// Reports a template that would not render, which is this build's fault.
 pub(crate) fn render_invite(letter: &InviteLetter<'_>) -> Result<RenderedEmail> {
     let account_name = account_label(letter.owner_name);
+    let subject = format!("{SUBJECT_PREFIX}{account_name}{SUBJECT_SUFFIX}");
     let html = InviteHtml {
+        subject: &subject,
         inviter_name: letter.inviter_name,
         account_name: &account_name,
         invite_url: letter.invite_url,
@@ -99,7 +103,7 @@ pub(crate) fn render_invite(letter: &InviteLetter<'_>) -> Result<RenderedEmail> 
     }
     .render()?;
     Ok(RenderedEmail {
-        subject: format!("{SUBJECT_PREFIX}{account_name}{SUBJECT_SUFFIX}"),
+        subject,
         html,
         text,
     })
