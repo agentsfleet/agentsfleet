@@ -68,8 +68,9 @@ WHERE tenant_id = $1::uuid AND id = $2::uuid \
 ///
 /// `$1` the lowercased address · `$2` now · `$3` the owner role's spelling.
 pub const SELECT_PENDING_FOR_EMAIL: &str = concat!(
-    "SELECT i.id::text AS id, t.id::text AS tenant_id, \
-            COALESCE(owner.display_name, t.name) AS owner_name, i.expires_at \
+    "SELECT i.id::text AS id, t.id::text AS tenant_id, ",
+    owner_name_column!(),
+    ", i.expires_at \
      FROM core.invites i \
      JOIN core.tenants t ON t.id = i.tenant_id ",
     owner_name_join!(3),
@@ -133,9 +134,9 @@ pub const BEGIN_EMAIL_ATTEMPT: &str = concat!(
        RETURNING tenant_id, email, invited_by, email_attempts \
      ) \
      SELECT c.email_attempts, c.email, \
-            COALESCE(inviter.display_name, inviter.email) AS inviter_name, \
-            COALESCE(owner.display_name, t.name) AS owner_name \
-     FROM counted c \
+            COALESCE(inviter.display_name, inviter.email) AS inviter_name, ",
+    owner_name_column!(),
+    " FROM counted c \
      JOIN core.tenants t ON t.id = c.tenant_id \
      JOIN core.users inviter ON inviter.id = c.invited_by ",
     owner_name_join!(4)

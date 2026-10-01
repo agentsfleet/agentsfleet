@@ -97,9 +97,8 @@ impl Workspaces {
 
     /// The caller's grant from inside the owning account, when they hold one.
     ///
-    /// A row with no stored role is the caller's own account admitted by the
-    /// tenant match alone, which is exactly the rule this replaced, so it
-    /// answers `owner`.
+    /// A row with no stored role is the caller's own account, admitted by the
+    /// tenant match, and is held as owner.
     async fn membership(&self, person: &Person, workspace: &Uuid7) -> Result<Option<Access>> {
         let binds = TenantBinds::of(person);
         let mut connection = self.database.acquire().await?;

@@ -1,7 +1,7 @@
 //! What the ownership verdict grants once a workspace is the caller's to open.
 //!
-//! The verdict used to carry one fact, the owning tenant. With team accounts it
-//! carries a second: how the caller holds that access. A member and an owner
+//! The verdict carries two facts: the owning tenant, and how the caller holds
+//! that access. A member and an owner
 //! open the same workspace, and only the owner writes its secrets and
 //! connectors. A platform operator reaches it from outside the account and has
 //! no role there at all, which is why the grant is an enum rather than a role

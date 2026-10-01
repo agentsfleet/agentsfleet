@@ -39,9 +39,9 @@
 ///
 /// Two arms admit. A membership row for the subject's user in the owning
 /// tenant admits with that row's role. The caller's own account — the user
-/// row's tenant, or the claim when no user row exists — admits as it always
-/// has, so a person whose account predates memberships keeps it, and a
-/// claim-bound credential (`$2` NULL) reaches nothing else. The role column is
+/// row's tenant, or the claim when no user row exists — admits whether or not
+/// a membership row backs it, and a claim-bound credential (`$2` NULL)
+/// reaches nothing else. The role column is
 /// NULL on that second arm when no membership row backs it.
 ///
 /// One statement and no subquery: the workspace by primary key, the user by
@@ -118,8 +118,9 @@ pub const SELECT_SUBJECT_ACCOUNTS: &str = concat!(
          SELECT me.tenant_id, NULL::text FROM me \
        ) arm ORDER BY arm.tenant_id, arm.role NULLS LAST \
      ) \
-     SELECT t.id::text AS tenant_id, held.role, \
-            COALESCE(owner.display_name, t.name) AS owner_name, me.tenant_id::text AS home_tenant_id \
+     SELECT t.id::text AS tenant_id, held.role, ",
+    owner_name_column!(),
+    ", me.tenant_id::text AS home_tenant_id \
      FROM held CROSS JOIN me \
      JOIN core.tenants t ON t.id = held.tenant_id ",
     owner_name_join!(2)
@@ -128,11 +129,11 @@ pub const SELECT_SUBJECT_ACCOUNTS: &str = concat!(
 /// The one account a claim-bound credential holds: its own.
 ///
 /// `$1` the tenant claim · `$2` the owner role's spelling. No row when the
-/// claim names no tenant, and the list is then empty rather than refused,
-/// exactly as it was before accounts had members.
+/// claim names no tenant, and the list is then empty rather than refused.
 pub const SELECT_TENANT_ACCOUNT: &str = concat!(
-    "SELECT t.id::text AS tenant_id, NULL::text AS role, \
-            COALESCE(owner.display_name, t.name) AS owner_name, t.id::text AS home_tenant_id \
+    "SELECT t.id::text AS tenant_id, NULL::text AS role, ",
+    owner_name_column!(),
+    ", t.id::text AS home_tenant_id \
      FROM core.tenants t ",
     owner_name_join!(2),
     "WHERE t.id = $1::uuid"
