@@ -11,7 +11,7 @@ expression: rendered.html
     <meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no">
     <meta name="color-scheme" content="light dark">
     <meta name="supported-color-schemes" content="light dark">
-    <title>You're invited to join John&#39;s account on agentsfleet</title>
+    <title>You&#39;re invited to join John&#39;s account on agentsfleet</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600&amp;family=Instrument+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
     <style>
