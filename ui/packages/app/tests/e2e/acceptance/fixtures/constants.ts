@@ -58,6 +58,10 @@ export const OPERATOR_FIXTURE_SCOPES = ["platform-library:write", "runner:read"]
 // loaded secret itself stays out of every uploaded artifact.
 export const VERCEL_BYPASS_STATE_FILENAME = ".vercel-bypass-state.json";
 
+// Resend's test inbox takes an invite email without delivering it; `+clerk_test` is Clerk's test-mode subaddress.
+export const TEST_INBOX_LOCAL_PREFIX = "delivered+clerk_test_";
+export const TEST_INBOX_DOMAIN = "resend.dev";
+
 // The regular fixture's second workspace, shared by every spec that exercises
 // the WorkspaceSwitcher or workspace-scoped deep links. Provisioned ONCE in
 // global-setup (before any worker exists) so parallel first runs can't race

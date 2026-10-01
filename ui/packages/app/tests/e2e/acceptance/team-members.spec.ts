@@ -5,18 +5,26 @@
  *
  * The owner is the persistent `admin` fixture, a tenant owner. The invitee is a
  * fresh signup per test, so no shared fixture's workspace list changes under a
- * parallel spec. Its address matches `PER_RUN_FIXTURE_RE`, so the global sweep
- * reaps one a failed cleanup leaves. DEV only, like every signup spec: Clerk's
- * test mode is what lets `+clerk_test` skip the emailed code.
+ * parallel spec. Its address is in Resend's test inbox, so the invite email
+ * the owner's action sends is accepted and delivered nowhere, and it matches
+ * `PER_RUN_FIXTURE_RE`, so the global sweep reaps one a failed cleanup leaves.
+ * DEV only, like every signup spec: Clerk's test mode is what lets
+ * `+clerk_test` skip the emailed code.
  */
 import * as crypto from "node:crypto";
 import * as path from "node:path";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { EMAIL_STATUS, type EmailStatus } from "@/lib/api/invites";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
 import { clientFor } from "./fixtures/api-client";
 import { signInAs } from "./fixtures/auth";
 import { deleteUser, findUserIdByEmail } from "./fixtures/clerk-admin";
-import { FIXTURE_KEY, VERCEL_BYPASS_STATE_FILENAME } from "./fixtures/constants";
+import {
+  FIXTURE_KEY,
+  TEST_INBOX_DOMAIN,
+  TEST_INBOX_LOCAL_PREFIX,
+  VERCEL_BYPASS_STATE_FILENAME,
+} from "./fixtures/constants";
 import { workspaceHref } from "./fixtures/nav";
 import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { signUpAs } from "./fixtures/signup";
@@ -26,9 +34,8 @@ const PASSWORD = "TeamInvitee!2026-stable";
 const FLOW_TIMEOUT_MS = 120_000;
 const OWNER_INVITES = "/v1/tenants/me/invites";
 const OWNER_MEMBERS = "/v1/tenants/me/members";
-const WAITING_INVITES = "/v1/me/invites";
+const WAITING_INVITES = "/v1/users/me/invites";
 const OWNER_WORKSPACES = "/v1/tenants/me/workspaces?limit=100";
-const OWNER_ROLE = "owner";
 const CURRENT_USER = "/v1/users/me";
 // The shared-thread journey's fleet, swept by prefix after each test.
 const THREAD_PREFIX = "team-thread-";
@@ -62,7 +69,7 @@ type CurrentUser = { display_name: string | null };
 type Invitee = { email: string; sessionJwt: string; page: Page; context: BrowserContext };
 
 function inviteeEmail(): string {
-  return `team-invitee-${crypto.randomBytes(4).toString("hex")}+clerk_test@e2e.agentsfleet.net`;
+  return `${TEST_INBOX_LOCAL_PREFIX}${crypto.randomBytes(4).toString("hex")}@${TEST_INBOX_DOMAIN}`;
 }
 
 function rowFor(page: Page, email: string) {
@@ -151,7 +158,8 @@ test.describe("teammates join an account", () => {
 
   // Which status the row shows depends on the deployment's relay, so the test
   // asks the backend which one it recorded, then holds the row to that label,
-  // with "Send again" exactly when the email did not go.
+  // with "Send again" exactly when the email failed: with no relay, sending
+  // again could only be refused.
   test("test_members_page_shows_email_status", async ({ page }) => {
     email = inviteeEmail();
     const owner = clientFor(FIXTURE_KEY.admin);
@@ -163,9 +171,10 @@ test.describe("teammates join an account", () => {
     await page.goto("/settings/members");
     const row = rowFor(page, email);
     await expect(row).toHaveCount(1);
-    await expect(row.getByText(EMAIL_STATUS_LABEL[status], { exact: true })).toBeVisible();
+    // The row carries a second, phone-width copy of the status that CSS hides here.
+    await expect(row.getByText(EMAIL_STATUS_LABEL[status], { exact: true }).filter({ visible: true })).toBeVisible();
     const sendAgain = row.getByRole("button", { name: /^send the invite email to .* again$/i });
-    await expect(sendAgain).toHaveCount(status === EMAIL_STATUS.sent ? 0 : 1);
+    await expect(sendAgain).toHaveCount(status === EMAIL_STATUS.failed ? 1 : 0);
   });
 
   test("test_invitee_accept_journey", async ({ browser }) => {
@@ -179,7 +188,7 @@ test.describe("teammates join an account", () => {
     const ownerName = waiting.items.find((row) => row.id === invite.id)?.account.owner_name;
     expect(ownerName).toBeTruthy();
     const ownWorkspaces = (await owner.get<OnePage<WorkspaceRow>>(OWNER_WORKSPACES)).items.filter(
-      (row) => row.role === OWNER_ROLE,
+      (row) => row.role === ACCOUNT_ROLE.owner,
     );
     const first = ownWorkspaces[0];
     expect(first).toBeDefined();
