@@ -93,12 +93,14 @@ impl Mailer for AsyncSmtpTransport<Tokio1Executor> {
 }
 
 /// A refusal the relay spoke, or a connection that never got that far.
+///
+/// A reply CODE is a refusal, and so are a client-side fault and a TLS failure:
+/// trying again would meet the same answer. A missing or unparseable reply is
+/// not: lettre reports a connection closed while it waited for the reply as a
+/// response error ("incomplete response"), and that is exactly the dropped
+/// connection the one retry exists for.
 fn classify(error: &lettre::transport::smtp::Error) -> Delivery {
-    let spoke = error.is_transient()
-        || error.is_permanent()
-        || error.is_response()
-        || error.is_client()
-        || error.is_tls();
+    let spoke = error.is_transient() || error.is_permanent() || error.is_client() || error.is_tls();
     if spoke {
         Delivery::Refused {
             reply: error.status().map(u16::from),
