@@ -132,8 +132,7 @@ mod tests {
             more: false,
         };
         let refused = page_response(&page, &accounts)
-            .err()
-            .expect("a row from an unheld account refuses the page");
+            .expect_err("a row from an unheld account refuses the page");
         assert_eq!(
             refused.into_response().status(),
             StatusCode::INTERNAL_SERVER_ERROR
