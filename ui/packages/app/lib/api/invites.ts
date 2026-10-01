@@ -9,6 +9,23 @@ import { decodeWorkspaceAccount, type WorkspaceAccount } from "./workspaces";
 
 const OWNER_INVITES_PATH = "/v1/tenants/me/invites";
 const WAITING_INVITES_PATH = "/v1/me/invites";
+const SEND_SEGMENT = "send";
+
+/** What became of an invite's most recent email. Mirrors `EMAIL_STATUS_SENT`,
+ * `EMAIL_STATUS_FAILED` and `EMAIL_STATUS_UNCONFIGURED` in
+ * `rustd/crates/afd_tenant/src/team/invitation/mail_status.rs`. */
+export const EMAIL_STATUS = {
+  sent: "sent",
+  failed: "failed",
+  unconfigured: "unconfigured",
+} as const;
+
+export type EmailStatus = (typeof EMAIL_STATUS)[keyof typeof EMAIL_STATUS];
+
+const EMAIL_STATUSES: ReadonlySet<string> = new Set(Object.values(EMAIL_STATUS));
+
+const isEmailStatus = (value: unknown): value is EmailStatus =>
+  typeof value === "string" && EMAIL_STATUSES.has(value);
 
 /** One invite, as the account's owner sees it. */
 export type InviteSummary = {
@@ -22,6 +39,10 @@ export type InviteSummary = {
   created_at: number;
   /** The dashboard page the invitee opens to accept it. */
   link: string;
+  /** What became of its most recent email. */
+  email_status: EmailStatus;
+  /** When the relay last accepted its email, epoch milliseconds; null if never. */
+  email_sent_at: number | null;
 };
 
 /** One invite waiting for the caller's address. */
@@ -46,7 +67,9 @@ const decodeInvite = (value: unknown): InviteSummary => {
     !isNonEmptyString(value.role) ||
     !isEpochMs(value.expires_at) ||
     !isEpochMs(value.created_at) ||
-    !isNonEmptyString(value.link)
+    !isNonEmptyString(value.link) ||
+    !isEmailStatus(value.email_status) ||
+    !(value.email_sent_at === null || isEpochMs(value.email_sent_at))
   ) {
     throw new Error("invite is invalid");
   }
@@ -57,6 +80,8 @@ const decodeInvite = (value: unknown): InviteSummary => {
     expires_at: value.expires_at,
     created_at: value.created_at,
     link: value.link,
+    email_status: value.email_status,
+    email_sent_at: value.email_sent_at,
   };
 };
 
@@ -105,6 +130,16 @@ export async function listInvites(token: string): Promise<InviteSummary[]> {
 // DELETE /v1/tenants/me/invites/{invite_id} — idempotent: 204 either way.
 export async function revokeInvite(token: string, inviteId: string): Promise<void> {
   await request<void>(invitePath(inviteId), { method: "DELETE" }, token);
+}
+
+// POST /v1/tenants/me/invites/{invite_id}/send — a new email attempt. 200 means
+// the relay took it; a relay that is not set up or refused answers 503
+// `UZ-INV-005`, which the client raises as an ApiError like any refusal.
+export async function sendInviteEmail(token: string, inviteId: string): Promise<void> {
+  const response = await request<unknown>(`${invitePath(inviteId)}/${SEND_SEGMENT}`, { method: "POST" }, token);
+  if (!isRecord(response) || response.email_status !== EMAIL_STATUS.sent) {
+    throw new Error("invite email answer is invalid");
+  }
 }
 
 // GET /v1/me/invites — invites waiting for the signed-in person's address.
