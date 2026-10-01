@@ -3,7 +3,9 @@ import { isNonEmptyString, isRecord } from "./decode";
 
 const CREATE_WORKSPACE_TIMEOUT_MS = 15_000;
 
-const WORKSPACE_LIST_PAGE_LIMIT = 100;
+export const WORKSPACE_LIST_PAGE_LIMIT = 100;
+
+const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
 
 /** The caller's role in a workspace's account. Mirrors `ROLE_OWNER` and
  * `ROLE_MEMBER` in `rustd/crates/afd_tenant/src/workspace/access.rs`. */
@@ -153,7 +155,7 @@ export async function listTenantWorkspaces(
     });
     if (startingAfter) query.set("starting_after", startingAfter);
     const response = await request<unknown>(
-      `/v1/tenants/me/workspaces?${query.toString()}`,
+      `${TENANT_WORKSPACES_PATH}?${query.toString()}`,
       { method: "GET" },
       token,
     );
@@ -181,19 +183,21 @@ export async function listTenantWorkspaces(
   };
 }
 
-// GET /v1/tenants/me/workspaces?limit=1 — the entry redirect's read. It only
-// needs the FIRST workspace (or proof there is none), so it must not pay the
-// complete cursor walk the switcher needs; one page of one is the whole ask.
+// GET /v1/tenants/me/workspaces — the entry redirect's read: one page, never
+// the complete cursor walk the switcher needs. The list spans every account
+// the caller joined, oldest first, so an invitee's first row is often the
+// inviter's older workspace; the caller's own workspace wins, and the first
+// row stands in for a caller who owns none on this page.
 export async function firstTenantWorkspace(
   token: string,
 ): Promise<TenantWorkspace | null> {
   const response = await request<unknown>(
-    "/v1/tenants/me/workspaces?limit=1",
+    `${TENANT_WORKSPACES_PATH}?limit=${WORKSPACE_LIST_PAGE_LIMIT}`,
     { method: "GET" },
     token,
   );
-  const page = decodeWorkspacePage(response);
-  return page.items[0] ?? null;
+  const { items } = decodeWorkspacePage(response);
+  return items.find((workspace) => workspace.role === ACCOUNT_ROLE.owner) ?? items[0] ?? null;
 }
 
 // POST /v1/workspaces — a blank name asks the backend to generate one.
