@@ -7,6 +7,7 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
@@ -19,7 +20,7 @@ use axum::Router;
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
 
-use crate::harness::{Fleet, send, vault};
+use crate::harness::{Failpoint, Fleet, TeamStep, send, vault};
 use crate::integration_workspace_members::fixture::{Members, owner_scopes};
 
 #[path = "support/fake_smtp.rs"]
@@ -54,6 +55,22 @@ async fn owner(members: &Members, relay: Option<u16>, deadline: Option<Duration>
         fleet = fleet.with_mail_deadline(deadline);
     }
     fleet.router()
+}
+
+/// John's routes over a live relay at `port`, with one team-store write
+/// broken on its first call.
+async fn owner_breaking(members: &Members, port: u16, step: TeamStep) -> (Router, Arc<Failpoint>) {
+    seal_relay(members, port).await;
+    let (fleet, failpoint) = Fleet::live(
+        members.database.clone(),
+        &members.john.subject,
+        owner_scopes(),
+    )
+    .with_live_ownership()
+    .with_dashboard_holding(&members.john.subject, owner_scopes())
+    .with_platform_admin(members.john.workspace.clone())
+    .with_team_fault(step, 1);
+    (fleet.router(), failpoint)
 }
 
 async fn seal_relay(members: &Members, port: u16) {
@@ -317,5 +334,176 @@ async fn test_send_again_unconfigured_refused() {
         text(&problem, "error_code"),
         error_code::INVITE_NOT_FOUND.as_str()
     );
+    members.cleanup().await;
+}
+
+/// How many sends an invite has counted, read from the row.
+async fn attempts_of(members: &Members, invite: &str) -> i32 {
+    let mut connection = members.database.acquire().await.expect("a connection");
+    sqlx::query_scalar("SELECT email_attempts FROM core.invites WHERE id = $1::uuid")
+        .bind(invite)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the invite row reads")
+}
+
+/// The count of a send fails after the invite commits: the invite is still
+/// created and listed, nothing is sent and nothing counted, and sending again
+/// delivers it as the first attempt.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_email_count_failure_keeps_invite() {
+    let members = Members::create().await;
+    members.seed().await;
+    let relay = FakeRelay::start(vec![Session::Accept]).await;
+    let (router, failpoint) = owner_breaking(&members, relay.port, TeamStep::BeginEmail).await;
+    let (created, _address) = invite(&router, &members).await;
+    let id = text(&created, "id").to_owned();
+    assert_eq!(failpoint.fired(), 1);
+    assert!(relay.received().is_empty(), "nothing sent");
+    assert_eq!(attempts_of(&members, &id).await, 0, "nothing counted");
+    assert_eq!(listed_status(&router, &members, &id).await, STATUS_FAILED);
+
+    let path = format!("{INVITES}/{id}/send");
+    let (status, answered) = call(&router, &members, Method::POST, &path, "").await;
+    assert_eq!(status, StatusCode::OK, "{answered}");
+    let received = relay.received();
+    assert_eq!(received.len(), 1);
+    assert!(
+        received
+            .iter()
+            .all(|message| message.contains(&key_header(&id, 1)))
+    );
+    assert_eq!(listed_status(&router, &members, &id).await, STATUS_SENT);
+    members.cleanup().await;
+}
+
+/// The relay accepts but the record of it fails: the invite stands and the
+/// create answers `sent`, while the row, never stamped, lists as `failed`.
+/// Sending again then delivers a second message under the next key — the
+/// cost of reading an unrecorded send as failed, pinned here so a change to
+/// that choice is a visible one.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_email_unrecorded_keeps_invite() {
+    let members = Members::create().await;
+    members.seed().await;
+    let relay = FakeRelay::start(vec![Session::Accept, Session::Accept]).await;
+    let (router, failpoint) = owner_breaking(&members, relay.port, TeamStep::RecordEmail).await;
+    let (created, _address) = invite(&router, &members).await;
+    let id = text(&created, "id").to_owned();
+    assert_eq!(failpoint.fired(), 1);
+    assert_eq!(text(&created, "email_status"), STATUS_SENT);
+    assert_eq!(relay.received().len(), 1, "the relay took it");
+    assert_eq!(attempts_of(&members, &id).await, 1);
+    assert_eq!(listed_status(&router, &members, &id).await, STATUS_FAILED);
+
+    let path = format!("{INVITES}/{id}/send");
+    let (status, _) = call(&router, &members, Method::POST, &path, "").await;
+    assert_eq!(status, StatusCode::OK);
+    let received = relay.received();
+    assert_eq!(
+        received.len(),
+        2,
+        "a second message, not a deduplicated one"
+    );
+    assert!(
+        received
+            .last()
+            .is_some_and(|message| message.contains(&key_header(&id, 2)))
+    );
+    assert_eq!(listed_status(&router, &members, &id).await, STATUS_SENT);
+    members.cleanup().await;
+}
+
+/// Sending again: a revoked invite is not found and counts nothing; a relay
+/// that refuses is `503 UZ-INV-005` and the invite lists as `failed`.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_send_again_refusals_leave_the_row_true() {
+    let members = Members::create().await;
+    members.seed().await;
+    let relay = FakeRelay::start(vec![
+        Session::RefuseRecipient(550),
+        Session::RefuseRecipient(550),
+        Session::RefuseRecipient(550),
+    ])
+    .await;
+    let router = owner(&members, Some(relay.port), None).await;
+
+    let (refused, _address) = invite(&router, &members).await;
+    let refused = text(&refused, "id").to_owned();
+    let path = format!("{INVITES}/{refused}/send");
+    let (status, problem) = call(&router, &members, Method::POST, &path, "").await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{problem}");
+    assert_eq!(
+        text(&problem, "error_code"),
+        error_code::INVITE_EMAIL_UNAVAILABLE.as_str()
+    );
+    assert_eq!(
+        listed_status(&router, &members, &refused).await,
+        STATUS_FAILED
+    );
+
+    let (revoked, _address) = invite(&router, &members).await;
+    let revoked = text(&revoked, "id").to_owned();
+    let counted = attempts_of(&members, &revoked).await;
+    let (status, _) = call(
+        &router,
+        &members,
+        Method::DELETE,
+        &format!("{INVITES}/{revoked}"),
+        "",
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, problem) = call(
+        &router,
+        &members,
+        Method::POST,
+        &format!("{INVITES}/{revoked}/send"),
+        "",
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{problem}");
+    assert_eq!(
+        text(&problem, "error_code"),
+        error_code::INVITE_NOT_FOUND.as_str()
+    );
+    assert_eq!(
+        attempts_of(&members, &revoked).await,
+        counted,
+        "nothing counted"
+    );
+    assert!(relay.received().is_empty());
+    members.cleanup().await;
+}
+
+/// An invite whose email failed is still a working invite: its invitee sees
+/// it waiting and accepts it.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_failed_email_invite_is_still_acceptable() {
+    let members = Members::create().await;
+    members.seed().await;
+    let relay = FakeRelay::start(vec![Session::RefuseRecipient(550)]).await;
+    let router = owner(&members, Some(relay.port), None).await;
+    let body = json!({ "email": members.stranger.email }).to_string();
+    let (status, created) = call(&router, &members, Method::POST, INVITES, &body).await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(text(&created, "email_status"), STATUS_FAILED);
+    let id = text(&created, "id");
+
+    let strangers = members.router(&members.stranger, owner_scopes());
+    let accept = format!("/v1/me/invites/{id}/accept");
+    let response = send(
+        &strangers,
+        Method::POST,
+        &accept,
+        Some(&members.stranger.token),
+        "",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
     members.cleanup().await;
 }
