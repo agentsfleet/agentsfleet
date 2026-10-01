@@ -53,6 +53,8 @@ pub enum TenantRoute {
     Invites,
     /// One invite into the caller's own account.
     Invite,
+    /// Sending one invite's email again.
+    InviteEmail,
     /// The people in the caller's own account.
     Members,
     /// One member of the caller's own account.
@@ -82,6 +84,7 @@ impl TenantRoute {
         Self::CurrentUser,
         Self::Invites,
         Self::Invite,
+        Self::InviteEmail,
         Self::Members,
         Self::Member,
         Self::InvitesForMe,
@@ -109,7 +112,10 @@ impl TenantRoute {
             | Self::CurrentUser
             | Self::Members
             | Self::InvitesForMe => &[Verb::Get],
-            Self::CreateWorkspace | Self::CliCredentials | Self::InviteAcceptance => &[Verb::Post],
+            Self::CreateWorkspace
+            | Self::CliCredentials
+            | Self::InviteEmail
+            | Self::InviteAcceptance => &[Verb::Post],
             Self::CliCredential | Self::Invite | Self::Member => &[Verb::Delete],
             Self::ApiKeys | Self::ModelEntries | Self::Invites => &[Verb::Get, Verb::Post],
             Self::ApiKey | Self::ModelEntry => &[Verb::Patch, Verb::Delete],
@@ -163,6 +169,10 @@ impl TenantRoute {
             Self::Invites => ("/v1/tenants/me/invites", Scopes::Always(WORKSPACE_ADMIN)),
             Self::Invite => (
                 "/v1/tenants/me/invites/{invite_id}",
+                Scopes::Always(WORKSPACE_ADMIN),
+            ),
+            Self::InviteEmail => (
+                "/v1/tenants/me/invites/{invite_id}/send",
                 Scopes::Always(WORKSPACE_ADMIN),
             ),
             Self::Members => ("/v1/tenants/me/members", Scopes::Always(WORKSPACE_ADMIN)),

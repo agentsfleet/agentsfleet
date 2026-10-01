@@ -9,20 +9,21 @@ use std::sync::Arc;
 
 use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_tenant::team::{Email, Invitation, Invitee, NewInvite, Waiting};
-use afd_wire::team::{AcceptedInviteResponse, CreateInviteRequest, InviteSummary, WaitingInvite};
+use afd_tenant::team::{Email, Invitee, NewInvite, Waiting};
+use afd_wire::team::{AcceptedInviteResponse, CreateInviteRequest, WaitingInvite};
 use afd_wire::workspace::WorkspaceAccount;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
-use url::Url;
 
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
 use crate::services::{Services, TenantTeam as _, TerminalCredentials as _};
 
+use super::invite_email::email_new_invite;
+use super::invite_view::{link_or_refuse, summary};
 use super::{DETAIL_TENANT_REQUIRED, one_page, tenant_of};
 
 /// The scoped events each verb's failures are logged under.
@@ -40,14 +41,8 @@ const DETAIL_BODY: &str = "Malformed JSON body";
 /// The refusal a path segment that is not an identifier earns.
 const DETAIL_INVITE_ID: &str = "invite_id must be a valid UUIDv7";
 
-/// The refusal a dashboard base that is not a URL earns: a deployment fault.
-const DETAIL_LINK: &str = "Invite link could not be built";
-
 /// The state a conflicting invite's 409 names.
 const STATE_INVITED: &str = "invited_or_member";
-
-/// The dashboard path an invite's accept page lives under.
-const INVITES_PATH: &str = "invites";
 
 /// `POST /v1/tenants/me/invites` — invite an address into the caller's account.
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -68,7 +63,7 @@ const INVITES_PATH: &str = "invites";
     ),
     request_body = CreateInviteRequest,
     responses(
-        (status = 201, description = afd_http::openapi::CREATED, body = InviteSummary),
+        (status = 201, description = afd_http::openapi::CREATED, body = afd_wire::team::InviteSummary),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -99,7 +94,7 @@ pub(crate) async fn create<D: Services>(
         inviter: &inviter.id,
         email: &email,
     };
-    let invite = services
+    let mut invite = services
         .team()
         .invite(&new, services.now())
         .await
@@ -110,6 +105,8 @@ pub(crate) async fn create<D: Services>(
                 Refusal::at(EVENT_CREATE)(error)
             }
         })?;
+    let link = link_or_refuse(services.dashboard(), &invite.id)?;
+    email_new_invite(&*services, &mut invite, person.subject().as_str(), &link).await;
     let summary = summary(services.dashboard(), &invite)?;
     Ok((StatusCode::CREATED, Json(summary)).into_response())
 }
@@ -128,7 +125,7 @@ pub(crate) async fn create<D: Services>(
         "`null` and `total` counts them all. ",
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = afd_wire::tenant::PageResponse<InviteSummary>),
+        (status = 200, description = afd_http::openapi::OK, body = afd_wire::tenant::PageResponse<afd_wire::team::InviteSummary>),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
@@ -293,22 +290,8 @@ pub(crate) async fn accept<D: Services>(
 }
 
 /// The invite a path names, or the refusal a malformed one earns.
-fn invite_id_of(raw: &str) -> Result<Uuid7, Refusal> {
+pub(super) fn invite_id_of(raw: &str) -> Result<Uuid7, Refusal> {
     Uuid7::parse(raw).map_err(|_unparseable| Refusal::malformed(DETAIL_INVITE_ID))
-}
-
-/// One invite, with the dashboard page that accepts it.
-fn summary<'a>(dashboard: &str, invite: &'a Invitation) -> Result<InviteSummary<'a>, Refusal> {
-    let link = invite_link(dashboard, &invite.id)
-        .ok_or_else(|| Refusal::coded(error_code::INTERNAL_OPERATION_FAILED, DETAIL_LINK))?;
-    Ok(InviteSummary {
-        id: Cow::Borrowed(invite.id.as_str()),
-        email: Cow::Borrowed(&invite.email),
-        role: Cow::Borrowed(invite.role.wire()),
-        expires_at: invite.expires_at_ms,
-        created_at: invite.created_at_ms,
-        link: Cow::Owned(link),
-    })
 }
 
 /// One waiting invite, with the account it joins.
@@ -320,50 +303,5 @@ fn waiting_invite(waiting: &Waiting) -> WaitingInvite<'_> {
             owner_name: Cow::Borrowed(&waiting.owner_name),
         },
         expires_at: waiting.expires_at_ms,
-    }
-}
-
-/// `{dashboard}/invites/{invite_id}`, built by path segment.
-///
-/// Through `path_segments_mut`, as the connector's own dashboard URLs are,
-/// so a base carrying a trailing slash or a sub-path still yields one
-/// well-formed URL. `None` for a base that is not a URL.
-fn invite_link(dashboard: &str, invite: &Uuid7) -> Option<String> {
-    let mut url = Url::parse(dashboard).ok()?;
-    url.path_segments_mut()
-        .ok()?
-        .pop_if_empty()
-        .extend([INVITES_PATH, invite.as_str()]);
-    Some(url.into())
-}
-
-#[cfg(test)]
-#[expect(
-    clippy::expect_used,
-    reason = "test module: an unmet precondition should fail the test loudly"
-)]
-mod tests {
-    use afd_core::id::Uuid7;
-
-    use super::invite_link;
-
-    const INVITE: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011";
-
-    #[test]
-    fn an_invite_link_is_one_well_formed_url_whatever_the_base_ends_with() {
-        let invite = Uuid7::parse(INVITE).expect("the fixture identifier is UUIDv7");
-        for base in [
-            "https://app.test",
-            "https://app.test/",
-            "https://app.test/dash/",
-        ] {
-            let link = invite_link(base, &invite).expect("a URL base yields a link");
-            assert!(
-                link.ends_with(&format!("/invites/{INVITE}")),
-                "{base} gave {link}"
-            );
-            assert!(!link.contains("//invites"), "{base} gave {link}");
-        }
-        assert_eq!(invite_link("not a url", &invite), None);
     }
 }

@@ -38,6 +38,20 @@ pub struct InviteSummary<'a> {
     pub created_at: i64,
     /// The dashboard page the invitee opens to accept it.
     pub link: Cow<'a, str>,
+    /// What became of its most recent email: `sent`, `failed`, or
+    /// `unconfigured` when this deployment has no mail relay set up.
+    pub email_status: Cow<'a, str>,
+    /// When the relay last accepted its email, epoch milliseconds; `null` if
+    /// it never has.
+    pub email_sent_at: Option<i64>,
+}
+
+/// `POST /v1/tenants/me/invites/{invite_id}/send` — the invite email went.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InviteEmailResponse<'a> {
+    /// `sent`: the relay accepted the email.
+    pub email_status: Cow<'a, str>,
 }
 
 /// One invite waiting for the caller's address.

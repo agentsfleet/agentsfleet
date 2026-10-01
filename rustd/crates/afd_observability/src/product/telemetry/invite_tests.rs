@@ -24,8 +24,14 @@ fn invite_email(outcome: InviteEmailOutcome) -> Telemetry {
 fn should_name_each_invite_email_outcome() {
     let named = [
         ("invite_email_sent", InviteEmailOutcome::Sent { reply: 250 }),
-        ("invite_email_failed", InviteEmailOutcome::Failed { reply: Some(550) }),
-        ("invite_email_unconfigured", InviteEmailOutcome::Unconfigured),
+        (
+            "invite_email_failed",
+            InviteEmailOutcome::Failed { reply: Some(550) },
+        ),
+        (
+            "invite_email_unconfigured",
+            InviteEmailOutcome::Unconfigured,
+        ),
     ];
     for (name, outcome) in named {
         let telemetry = invite_email(outcome);
@@ -44,9 +50,16 @@ fn should_carry_the_invite_and_reply_but_no_address() {
     assert_eq!(properties.get("invite_id"), Some(&Value::from(INVITE)));
     assert_eq!(properties.get("attempt"), Some(&Value::from(2)));
     assert_eq!(properties.get("reply"), Some(&Value::from(250)));
-    assert!(properties.values().all(|value| !value.to_string().contains('@')));
+    assert!(
+        properties
+            .values()
+            .all(|value| !value.to_string().contains('@'))
+    );
 
-    for outcome in [InviteEmailOutcome::Failed { reply: None }, InviteEmailOutcome::Unconfigured] {
+    for outcome in [
+        InviteEmailOutcome::Failed { reply: None },
+        InviteEmailOutcome::Unconfigured,
+    ] {
         let event = invite_email(outcome).event();
         assert!(!event.properties().contains_key("reply"));
     }

@@ -14,7 +14,7 @@
 macro_rules! select_invitation {
     () => {
         "SELECT id::text AS id, tenant_id::text AS tenant_id, email, role, expires_at, \
-         created_at, accepted_by::text AS accepted_by, revoked_at "
+         created_at, accepted_by::text AS accepted_by, revoked_at, email_status, email_sent_at "
     };
 }
 

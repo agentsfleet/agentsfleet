@@ -49,6 +49,8 @@ afd_fleet_lifecycle.workspace = true
 afd_fleet_runtime.workspace = true
 afd_http.workspace = true
 afd_library.workspace = true
+# The invite email's types: what a send is given and what it comes to.
+afd_mail.workspace = true
 afd_observability.workspace = true
 afd_sse.workspace = true
 # The published message a live-tail body borrows its payload bytes from; see

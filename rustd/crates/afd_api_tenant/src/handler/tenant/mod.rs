@@ -12,6 +12,8 @@ pub(crate) mod billing;
 pub(crate) mod cli_credential;
 pub(crate) mod identity;
 pub(crate) mod invite;
+pub(crate) mod invite_email;
+mod invite_view;
 pub(crate) mod member;
 pub(crate) mod model_entry;
 pub(crate) mod models;

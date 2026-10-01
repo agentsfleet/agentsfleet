@@ -30,8 +30,7 @@ use afd_billing::Accounts;
 use afd_credential::provider::Providers;
 use afd_credential::secrets::Registry;
 use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::{Kek, SecretBytes};
-use afd_db::Db;
+use afd_crypto::secret::SecretBytes;
 use afd_events::History;
 use afd_fleet::bundle::Bundles;
 use afd_fleet::lease::{Leases, Plane};
@@ -47,7 +46,7 @@ use afd_tenant::preference::Preferences;
 // reader ends up believing the login surface verifies bearer tokens.
 use afd_billing::tenant::Billing;
 use afd_credential::vault::Vault;
-use afd_dragonfly::Dragonfly;
+use afd_mail::InviteMailer;
 use afd_observability::Analytics;
 use afd_sse::Live;
 use afd_state::Credentials;
@@ -64,7 +63,7 @@ use afd_tenant::workspace::Workspaces;
 // reader ends up believing one of them can do the other's job.
 use afd_api::SchedulePlane;
 use afd_core::id::Uuid7;
-use afd_cron::{Fire, QStash, ScheduleService, Schedules, SigningKeys};
+use afd_cron::SigningKeys;
 use afd_ingress::Ingress;
 use afd_vault::Vault as SecretVault;
 
@@ -92,6 +91,7 @@ pub struct ServingPlane {
     fleets: Fleets,
     api_keys: ApiKeys,
     team: Team,
+    invite_mail: InviteMailer,
     cli_credentials: CliCredentials,
     billing: Billing,
     models: Models,
@@ -165,7 +165,7 @@ impl ServingPlane {
             live,
             analytics,
             login,
-            schedule,
+            mut schedule,
         } = parts;
         // One object-store owner, split into the half that READS a snapshot and
         // the half that WRITES one. A deployment with no upload handle still
@@ -209,6 +209,7 @@ impl ServingPlane {
             ),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             team: Team::new(database.clone(), Entropy::new()),
+            invite_mail: platform::invite_mailer(&database, &kek),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
             billing: Billing::new(database.clone()),
             models: Models::new(database.clone()),
@@ -238,21 +239,9 @@ impl ServingPlane {
             schedule_destination: schedule.destination.clone(),
             identity_webhook_secret,
             signups: afd_tenant::signup::Signups::new(database.clone(), Entropy::new()),
-            schedule_keys: schedule.keys,
-            schedules: SchedulePlane::new(
-                ScheduleService::new(
-                    Schedules::new(database.clone(), Entropy::new()),
-                    QStash::new(
-                        schedule.client,
-                        schedule.token,
-                        schedule.destination,
-                        schedule.api_base,
-                    ),
-                ),
-                Fire::new(admissions),
-                Entropy::new(),
-            ),
-            connectors: connect_flow(&database, &kek, &queue, vendor_client),
+            schedule_keys: schedule.keys.take(),
+            schedules: config::schedule_plane(&database, schedule, admissions),
+            connectors: platform::connect_flow(&database, &kek, &queue, vendor_client),
             live,
             analytics,
             api_url: login.api_url,
@@ -287,45 +276,8 @@ impl ServingPlane {
     }
 }
 
-/// The connect flow, over this deployment's own vault and a tenant's.
-///
-/// Lifted out of the constructor because it is the largest thing there that
-/// stands alone, and because the paragraph below wants somewhere to live that
-/// is not the middle of a struct literal.
-///
-/// The SAME key every other sealing store takes, twice over and deliberately:
-/// the platform half opens this deployment's own `<provider>-app` bags in the
-/// admin workspace, and the grant half seals a tenant's handle in theirs. Two
-/// `Vault` values over one table, for the reason the ingress beside them is
-/// two — a reader of the deployment's credentials and a writer of a
-/// workspace's are different surfaces, and one value serving both would let a
-/// connector route reach the wrong workspace's secrets by holding the wrong
-/// handle.
-fn connect_flow(
-    database: &Db,
-    kek: &Arc<Kek>,
-    queue: &Dragonfly,
-    vendor_client: reqwest::Client,
-) -> afd_connector::Connectors {
-    afd_connector::Connectors::new(
-        afd_connector::PlatformApp::new(SecretVault::new(
-            database.clone(),
-            Arc::clone(kek),
-            Entropy::new(),
-        )),
-        afd_connector::Grants::new(
-            SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new()),
-            database.clone(),
-            Entropy::new(),
-        ),
-        afd_connector::Exchange::new(vendor_client.clone()),
-        vendor_client,
-        queue.clone(),
-        Entropy::new(),
-    )
-}
-
 mod config;
+mod platform;
 
 pub use self::config::{LoginConfig, PlaneParts, ScheduleConfig};
 

@@ -15,7 +15,8 @@ use sqlx::Row as _;
 use sqlx::postgres::PgRow;
 
 use super::{
-    Acceptance, COLUMN_EXPIRES_AT, COLUMN_ID, COLUMN_TENANT_ID, INVITE_TTL_MS, Invitation,
+    Acceptance, COLUMN_EXPIRES_AT, COLUMN_ID, COLUMN_TENANT_ID, EmailStatus, INVITE_TTL_MS,
+    Invitation,
 };
 use crate::sql::invite as sql;
 use crate::team::{Accepted, Invitee, NewInvite, Team, Waiting, email};
@@ -92,6 +93,9 @@ impl Team {
             created_at_ms: now.as_millis(),
             accepted_by: None,
             revoked_at_ms: None,
+            // Nothing sent yet: the route sends next and records the result.
+            email_status: EmailStatus::Failed,
+            email_sent_at_ms: None,
         })
     }
 

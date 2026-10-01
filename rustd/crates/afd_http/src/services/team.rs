@@ -6,7 +6,10 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_tenant::team::{Accepted, Invitation, Invitee, Member, NewInvite, Removal, Team, Waiting};
+use afd_tenant::team::{
+    Accepted, EmailAttempt, EmailStatus, Invitation, Invitee, Member, NewInvite, Removal, Team,
+    Waiting,
+};
 
 /// Invites into an account, their acceptance, and its members.
 pub trait TenantTeam: Send + Sync + std::fmt::Debug + 'static {
@@ -16,6 +19,23 @@ pub trait TenantTeam: Send + Sync + std::fmt::Debug + 'static {
         new: &NewInvite<'_>,
         now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<Invitation>> + Send;
+
+    /// Counts one more email send of a pending invite. See [`Team::begin_email`].
+    fn begin_email(
+        &self,
+        tenant: &Uuid7,
+        invite: &Uuid7,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_tenant::Result<Option<EmailAttempt>>> + Send;
+
+    /// Records what became of one send. See [`Team::record_email`].
+    fn record_email(
+        &self,
+        invite: &Uuid7,
+        attempt: i32,
+        status: EmailStatus,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_tenant::Result<()>> + Send;
 
     /// The account's acceptable invitations. See [`Team::invitations`].
     fn invitations(
@@ -69,6 +89,25 @@ impl TenantTeam for Team {
         now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<Invitation>> + Send {
         Self::invite(self, new, now)
+    }
+
+    fn begin_email(
+        &self,
+        tenant: &Uuid7,
+        invite: &Uuid7,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_tenant::Result<Option<EmailAttempt>>> + Send {
+        Self::begin_email(self, tenant, invite, now)
+    }
+
+    fn record_email(
+        &self,
+        invite: &Uuid7,
+        attempt: i32,
+        status: EmailStatus,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_tenant::Result<()>> + Send {
+        Self::record_email(self, invite, attempt, status, now)
     }
 
     fn invitations(

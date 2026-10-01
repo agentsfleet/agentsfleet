@@ -111,3 +111,38 @@ WHERE id = $1::uuid";
 pub const SELECT_TENANT_WORKSPACE_IDS: &str = "\
 SELECT id::text FROM core.workspaces WHERE tenant_id = $1::uuid \
 ORDER BY workspaces.created_at, workspaces.id";
+
+/// Counts one more send of a pending invite, and reads what its email says.
+///
+/// `$1` tenant · `$2` invite · `$3` now · `$4` the owner role's spelling. One
+/// statement, so the attempt is committed before the send it names, and a
+/// send-again can never reuse an earlier attempt's idempotency key. No row
+/// means the invite is not this account's, or can no longer be accepted.
+/// The inviter is named by display name, else by address: the email has to
+/// say who it is from.
+pub const BEGIN_EMAIL_ATTEMPT: &str = concat!(
+    "WITH counted AS ( \
+       UPDATE core.invites SET email_attempts = email_attempts + 1, updated_at = $3 \
+       WHERE tenant_id = $1::uuid AND id = $2::uuid \
+         AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > $3 \
+       RETURNING tenant_id, email, invited_by, email_attempts \
+     ) \
+     SELECT c.email_attempts, c.email, \
+            COALESCE(inviter.display_name, inviter.email) AS inviter_name, \
+            COALESCE(owner.display_name, t.name) AS owner_name \
+     FROM counted c \
+     JOIN core.tenants t ON t.id = c.tenant_id \
+     JOIN core.users inviter ON inviter.id = c.invited_by ",
+    owner_name_join!(4)
+);
+
+/// Records what became of one send, unless a later send has begun since.
+///
+/// `$1` invite · `$2` the attempt this result is for · `$3` status · `$4` when
+/// the relay accepted it, or NULL · `$5` now. Guarded on the attempt, so two
+/// send-agains racing each other leave the newer one's result, whichever
+/// finishes last.
+pub const RECORD_EMAIL_RESULT: &str = "\
+UPDATE core.invites \
+SET email_status = $3, email_sent_at = COALESCE($4, email_sent_at), updated_at = $5 \
+WHERE id = $1::uuid AND email_attempts = $2";
