@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { BASE } from "./client";
 import { ApiError } from "./errors";
 import {
   EMAIL_STATUS,
@@ -15,6 +16,8 @@ import {
 // the real problem-body parsing, and the real decoders.
 
 const TOKEN = "tok_owner";
+// The invitee's side lives under the signed-in user's own routes.
+const WAITING_INVITES_PATH = "/v1/users/me/invites";
 const EXPIRES_AT = Date.UTC(2026, 9, 7);
 const CREATED_AT = Date.UTC(2026, 8, 30);
 const INVITE = {
@@ -160,7 +163,7 @@ describe("invites waiting for the caller", () => {
   it("should list waiting invites with the account each one joins", async () => {
     const spy = answer(200, { items: [WAITING], total: 1, next_cursor: null });
     await expect(listWaitingInvites(TOKEN)).resolves.toEqual([WAITING]);
-    expect(sent(spy).url).toContain("/v1/me/invites");
+    expect(sent(spy).url).toBe(`${BASE}${WAITING_INVITES_PATH}`);
   });
 
   it("should reject a waiting invite with no id, since the accept route names one", async () => {
@@ -179,7 +182,7 @@ describe("invites waiting for the caller", () => {
     const spy = answer(200, accepted);
     await expect(acceptInvite(TOKEN, INVITE.id)).resolves.toEqual(accepted);
     const { url, init } = sent(spy);
-    expect(url).toContain(`/v1/me/invites/${INVITE.id}/accept`);
+    expect(url).toBe(`${BASE}${WAITING_INVITES_PATH}/${INVITE.id}/accept`);
     expect(init.method).toBe("POST");
   });
 

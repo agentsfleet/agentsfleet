@@ -4,9 +4,36 @@ import { credential } from "@/lib/auth/credential";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
 import { readSessionScopes } from "@/lib/auth/platform";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
-import { listWaitingInvites, type WaitingInvite } from "@/lib/api/invites";
+import type { WaitingInvite } from "@/lib/api/invites";
+import { listWaitingInvitesCached } from "@/lib/invites";
 
 const NO_WAITING_INVITES: WaitingInvite[] = [];
+
+// The shell's reads for a signed-in session, run together.
+function readShell(token: string) {
+  return Promise.all([
+    // The switcher needs the complete workspace list; this
+    // is the one place that walks the complete cursor-paginated list off
+    // the page data path. `cache()` deduplicates that walk with the
+    // `[workspaceId]` guard and entry redirect.
+    listTenantWorkspacesCached(token).catch(() => ({
+      items: [],
+      total: 0,
+    })),
+    // Operator scopes gate the platform navigation. Empty set
+    // for an anonymous/no-token session.
+    readSessionScopes(),
+    // The header's balance. Cached per request, so a page that reads
+    // billing for itself shares this one round-trip. A failure resolves to
+    // null and the header omits the figure — a shell that cannot render
+    // because billing is down would be the worse trade.
+    getTenantBillingCached(token).catch(() => null),
+    // Invites waiting for this person's address, for the shell's one-line
+    // notice. Cached per request, so the Invites page shares this read; a
+    // failure hides the notice, and that page reports its own.
+    listWaitingInvitesCached(token).catch(() => NO_WAITING_INVITES),
+  ]);
+}
 
 export default async function DashboardLayout({
   children,
@@ -15,27 +42,7 @@ export default async function DashboardLayout({
 }) {
   const token = await credential();
   const [listResult, scopes, billing, waitingInvites] = token
-    ? await Promise.all([
-        // The switcher needs the complete workspace list; this
-        // is the one place that walks the complete cursor-paginated list off
-        // the page data path. `cache()` deduplicates that walk with the
-        // `[workspaceId]` guard and entry redirect.
-        listTenantWorkspacesCached(token).catch(() => ({
-          items: [],
-          total: 0,
-        })),
-        // Operator scopes gate the platform navigation. Empty set
-        // for an anonymous/no-token session.
-        readSessionScopes(),
-        // The header's balance. Cached per request, so a page that reads
-        // billing for itself shares this one round-trip. A failure resolves to
-        // null and the header omits the figure — a shell that cannot render
-        // because billing is down would be the worse trade.
-        getTenantBillingCached(token).catch(() => null),
-        // Invites waiting for this person's address, for the shell's one-line
-        // notice. A failure hides the notice; the Invites page reads its own.
-        listWaitingInvites(token).catch(() => NO_WAITING_INVITES),
-      ])
+    ? await readShell(token)
     : [{ items: [], total: 0 }, new Set<string>(), null, NO_WAITING_INVITES];
 
   // Shell controls derive the active workspace from `/w/<id>/…`; no

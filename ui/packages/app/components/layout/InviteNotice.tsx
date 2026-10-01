@@ -23,7 +23,7 @@ export function InviteNotice({ waiting }: { waiting: readonly WaitingInvite[] })
   const onInvites = pathname === INVITES_PATH || pathname.startsWith(`${INVITES_PATH}/`);
   if (waiting.length === 0 || onInvites) return null;
   return (
-    <Alert variant="info" className="rounded-none border-x-0 border-t-0 px-md py-xs text-sm" data-testid="invite-notice">
+    <Alert variant="info" className="mb-lg rounded-none border-x-0 border-t-0 px-md py-xs text-sm" data-testid="invite-notice">
       {inviteNoticeText(waiting)}{" "}
       <Link href={INVITES_PATH} className="underline underline-offset-2">
         Review

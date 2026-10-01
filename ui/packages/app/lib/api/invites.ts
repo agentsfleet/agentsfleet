@@ -8,7 +8,7 @@ import { decodeWorkspaceAccount, type WorkspaceAccount } from "./workspaces";
 // client never walks.
 
 const OWNER_INVITES_PATH = "/v1/tenants/me/invites";
-const WAITING_INVITES_PATH = "/v1/me/invites";
+const WAITING_INVITES_PATH = "/v1/users/me/invites";
 const SEND_SEGMENT = "send";
 
 /** What became of an invite's most recent email. Mirrors `EMAIL_STATUS_SENT`,
@@ -156,13 +156,13 @@ export async function sendInviteEmail(token: string, inviteId: string): Promise<
   }
 }
 
-// GET /v1/me/invites — invites waiting for the signed-in person's address.
+// GET /v1/users/me/invites — invites waiting for the signed-in person's address.
 export async function listWaitingInvites(token: string): Promise<WaitingInvite[]> {
   const response = await request<unknown>(WAITING_INVITES_PATH, { method: "GET" }, token);
   return decodeOnePage(response, decodeWaiting);
 }
 
-// POST /v1/me/invites/{invite_id}/accept — accepting again answers the same.
+// POST /v1/users/me/invites/{invite_id}/accept — accepting again answers the same.
 export async function acceptInvite(token: string, inviteId: string): Promise<AcceptedInvite> {
   const response = await request<unknown>(
     `${WAITING_INVITES_PATH}/${encodeURIComponent(inviteId)}/accept`,
