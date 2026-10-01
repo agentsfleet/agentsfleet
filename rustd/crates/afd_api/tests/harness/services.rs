@@ -33,7 +33,6 @@ use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
 use afd_tenant::preference::Preferences;
 use afd_tenant::session::Sessions as Logins;
-use afd_tenant::team::Team;
 use afd_tenant::workspace::Workspaces;
 use afd_vault::Vault as SecretVault;
 
@@ -41,7 +40,7 @@ use super::HarnessProviders;
 use super::stubs_runner::NoWork;
 use super::stubs_tenant::Ownership;
 use super::{
-    DEPLOYMENT, Directory, FIXTURE_APP_URL, Fleet, HarnessIngress, RecordingWriteback,
+    DEPLOYMENT, Directory, FIXTURE_APP_URL, Fleet, HarnessIngress, HarnessTeam, RecordingWriteback,
     SCHEDULE_DESTINATION,
 };
 
@@ -227,7 +226,7 @@ impl Services for Fleet {
 impl TenantSurface for Fleet {
     type WorkspaceDirectory = Workspaces;
     type ApiKeys = ApiKeys;
-    type Team = Team;
+    type Team = HarnessTeam;
     type CliCredentials = CliCredentials;
     type Billing = Billing;
     type Catalogue = Models;
@@ -247,7 +246,7 @@ impl TenantSurface for Fleet {
         &self.api_keys
     }
 
-    fn team(&self) -> &Team {
+    fn team(&self) -> &HarnessTeam {
         &self.team
     }
 

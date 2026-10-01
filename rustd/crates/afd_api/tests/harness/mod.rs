@@ -79,7 +79,6 @@ use afd_tenant::apikey::ApiKeys;
 use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
 use afd_tenant::session::Sessions as Logins;
-use afd_tenant::team::Team;
 use afd_tenant::workspace::Workspaces;
 // Aliased for the reason the composition root aliases it: `afd_credential::vault`
 // is the runner plane's reader and this is the workspace-admin surface.
@@ -102,6 +101,7 @@ use self::readiness::{NOWHERE_GITHUB, unreachable_pool};
 mod stubs_runner;
 mod stubs_tenant;
 mod support;
+mod team_faults;
 
 /// Signed deliveries, as a provider would present them.
 pub(crate) mod webhook;
@@ -111,6 +111,7 @@ pub(crate) use self::stubs_ingress::{HarnessIngress, Recorded, Scripted};
 pub(crate) use self::stubs_provider::HarnessProviders;
 pub(crate) use self::stubs_runner::NoWork;
 pub(crate) use self::stubs_tenant::{DEPLOYMENT, OWNED_WORKSPACE, OneWorkspace, Ownership};
+pub(crate) use self::team_faults::{Failpoint, HarnessTeam, TeamStep};
 /// Where this fixture deployment's schedule fires would arrive.
 ///
 /// A real destination shape, because it is half of what a fire token's subject
@@ -226,7 +227,7 @@ pub(crate) struct Fleet {
     workspaces: Ownership,
     workspace_directory: Workspaces,
     api_keys: ApiKeys,
-    team: Team,
+    team: HarnessTeam,
     invite_mail: afd_mail::InviteMailer,
     cli_credentials: CliCredentials,
     logins: Logins,

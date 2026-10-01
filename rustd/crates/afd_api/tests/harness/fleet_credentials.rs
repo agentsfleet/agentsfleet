@@ -42,6 +42,18 @@ impl Fleet {
         self
     }
 
+    /// Breaks call `ordinal` of one team-store write; the failpoint comes back
+    /// so the suite can prove it fired.
+    pub(crate) fn with_team_fault(
+        mut self,
+        step: super::TeamStep,
+        ordinal: usize,
+    ) -> (Self, std::sync::Arc<super::Failpoint>) {
+        let (team, failpoint) = self.team.breaking(step, ordinal);
+        self.team = team;
+        (self, failpoint)
+    }
+
     /// Configures the secret a signup event is verified against.
     ///
     /// `None` is the default and it is a real deployment state rather than an
