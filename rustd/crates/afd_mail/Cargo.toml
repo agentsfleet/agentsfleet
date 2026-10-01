@@ -11,6 +11,11 @@ readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+# M-TEST-UTIL. Unlocks `InviteMailer::with_deadline`, so a caller's suite can
+# prove a stalled relay in milliseconds rather than the production deadline.
+test-util = []
+
 [dependencies]
 # The registry codes a failure is reported under, and the admin workspace id.
 afd_core.workspace = true

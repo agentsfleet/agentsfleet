@@ -72,17 +72,6 @@ pub enum Grant {
     Platform,
 }
 
-impl Grant {
-    /// The caller's role in the owning account, when they have one.
-    #[must_use]
-    pub const fn role(self) -> Option<Role> {
-        match self {
-            Self::Membership(role) => Some(role),
-            Self::Platform => None,
-        }
-    }
-}
-
 /// The ownership verdict: whose workspace this is, and how the caller holds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Access {
@@ -98,7 +87,7 @@ pub struct Access {
     reason = "test module: an unmet precondition should fail the test loudly"
 )]
 mod tests {
-    use super::{Grant, ROLE_MEMBER, ROLE_OWNER, Role};
+    use super::{ROLE_MEMBER, ROLE_OWNER, Role};
 
     #[test]
     fn every_role_round_trips_through_its_stored_spelling() {
@@ -118,12 +107,6 @@ mod tests {
             "a row this build cannot read is a datastore fault, never a denial"
         );
         assert!(!refused.is_datastore_unavailable());
-    }
-
-    #[test]
-    fn only_a_membership_carries_a_role() {
-        assert_eq!(Grant::Membership(Role::Member).role(), Some(Role::Member));
-        assert_eq!(Grant::Platform.role(), None);
     }
 
     /// The contributor auth page names both roles and the refusal a member

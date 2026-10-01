@@ -25,7 +25,7 @@ use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
 use crate::services::{InviteMail as _, Services, TenantTeam as _};
 
-use super::invite::invite_id_of;
+use super::invite::{EVENT_TENANT, invite_id_of};
 use super::invite_view::link_or_refuse;
 use super::{DETAIL_TENANT_REQUIRED, tenant_of};
 
@@ -37,7 +37,6 @@ const MILLIS_PER_DAY: i64 = 24 * 60 * 60 * 1000;
 const _: () = assert!(INVITE_VALID_DAYS * MILLIS_PER_DAY == INVITE_TTL_MS);
 
 const EVENT_SEND: &str = "invite_send_failed";
-const EVENT_TENANT: &str = "invite_tenant_unresolved";
 const EVENT_UNRECORDED: &str = "invite_email_unrecorded";
 
 /// The refusal send-again earns for an invite that cannot be accepted.

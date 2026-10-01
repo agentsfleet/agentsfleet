@@ -24,7 +24,7 @@ use crate::services::{Services, TenantTeam as _, TerminalCredentials as _};
 
 use super::invite_email::email_new_invite;
 use super::invite_view::{link_or_refuse, summary};
-use super::{DETAIL_TENANT_REQUIRED, one_page, tenant_of};
+use super::{DETAIL_JSON_BODY, DETAIL_TENANT_REQUIRED, one_page, tenant_of};
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_CREATE: &str = "invite_create_failed";
@@ -32,11 +32,8 @@ const EVENT_LIST: &str = "invite_list_failed";
 const EVENT_REVOKE: &str = "invite_revoke_failed";
 const EVENT_WAITING: &str = "invite_waiting_failed";
 const EVENT_ACCEPT: &str = "invite_accept_failed";
-const EVENT_TENANT: &str = "invite_tenant_unresolved";
+pub(super) const EVENT_TENANT: &str = "invite_tenant_unresolved";
 const EVENT_PERSON: &str = "invite_person_unresolved";
-
-/// The refusal a create body this daemon cannot read earns.
-const DETAIL_BODY: &str = "Malformed JSON body";
 
 /// The refusal a path segment that is not an identifier earns.
 const DETAIL_INVITE_ID: &str = "invite_id must be a valid UUIDv7";
@@ -84,7 +81,7 @@ pub(crate) async fn create<D: Services>(
 ) -> Result<Response, Refusal> {
     let person = identity.person();
     let request = afd_http::handler::read_body::<CreateInviteRequest<'_>>(&body)
-        .map_err(|_unreadable| Refusal::malformed(DETAIL_BODY))?;
+        .map_err(|_unreadable| Refusal::malformed(DETAIL_JSON_BODY))?;
     let email =
         Email::parse(&request.email, afd_mail::deliverable).map_err(Refusal::at(EVENT_CREATE))?;
     let tenant = tenant_of(&services, person, DETAIL_TENANT_REQUIRED, EVENT_TENANT).await?;

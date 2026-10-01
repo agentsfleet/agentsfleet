@@ -16,6 +16,7 @@ use afd_core::id::Uuid7;
 use afd_db::test_util::mint_id;
 use afd_mail::{IDEMPOTENCY_HEADER, SMTP_RELAY_BAG};
 use afd_observability::{InviteEmailOutcome, Recorded, Telemetry};
+use afd_tenant::team::{EMAIL_STATUS_FAILED, EMAIL_STATUS_SENT, EMAIL_STATUS_UNCONFIGURED};
 use afd_vault::{SecretBody, SecretName};
 use axum::Router;
 use http::{Method, StatusCode};
@@ -34,8 +35,6 @@ const MEMBERS: &str = "/v1/tenants/me/members";
 const FROM: &str = "hello@agentsfleet.test";
 const LOOPBACK: &str = "127.0.0.1";
 const STALL_DEADLINE: Duration = Duration::from_millis(500);
-const STATUS_SENT: &str = "sent";
-const STATUS_FAILED: &str = "failed";
 const MAILPIT_SMTP_PORT: &str = "TEST_MAILPIT_SMTP_PORT";
 const MAILPIT_URL: &str = "TEST_MAILPIT_URL";
 
@@ -182,9 +181,25 @@ fn key_header(invite: &str, attempt: u32) -> String {
 }
 
 async fn mailpit_get(path: &str) -> Value {
+    mailpit_fetch(mailpit_url(path, &[])).await
+}
+
+/// The messages addressed to `address`. The query rides percent-encoded: a
+/// raw `+` in an address would decode as a space and match every earlier
+/// run's mail, since Mailpit is not reset between runs.
+async fn mailpit_search_to(address: &str) -> Value {
+    let query = format!("to:{address}");
+    mailpit_fetch(mailpit_url("/api/v1/search", &[("query", query.as_str())])).await
+}
+
+fn mailpit_url(path: &str, query: &[(&str, &str)]) -> reqwest::Url {
     let base =
         std::env::var(MAILPIT_URL).expect("make test-integration-rustd exports the Mailpit URL");
-    let body = reqwest::get(format!("{base}{path}"))
+    reqwest::Url::parse_with_params(&format!("{base}{path}"), query).expect("a Mailpit URL")
+}
+
+async fn mailpit_fetch(url: reqwest::Url) -> Value {
+    let body = reqwest::get(url)
         .await
         .expect("Mailpit answers")
         .text()
@@ -206,7 +221,7 @@ async fn test_invite_email_carries_accept_link() {
         .expect("a port number");
     let router = owner(&members, Some(port), None).await;
     let (created, address) = invite(&router, &members).await;
-    assert_eq!(text(&created, "email_status"), STATUS_SENT);
+    assert_eq!(text(&created, "email_status"), EMAIL_STATUS_SENT);
     assert!(
         created
             .get("email_sent_at")
@@ -214,7 +229,7 @@ async fn test_invite_email_carries_accept_link() {
             .is_some()
     );
 
-    let found = mailpit_get(&format!("/api/v1/search?query=to:{address}")).await;
+    let found = mailpit_search_to(&address).await;
     let messages = found
         .get("messages")
         .and_then(Value::as_array)
@@ -257,7 +272,7 @@ async fn test_send_retry_reuses_idempotency_key() {
     let relay = FakeRelay::start(vec![Session::DropAfterData, Session::Accept]).await;
     let router = owner(&members, Some(relay.port), None).await;
     let (created, _address) = invite(&router, &members).await;
-    assert_eq!(text(&created, "email_status"), STATUS_SENT);
+    assert_eq!(text(&created, "email_status"), EMAIL_STATUS_SENT);
     let received = relay.received();
     assert_eq!(received.len(), 2);
     let key = key_header(text(&created, "id"), 1);
@@ -278,8 +293,11 @@ async fn test_unconfigured_email_keeps_invite() {
     let router = owner(&members, None, None).await;
     let (created, _address) = invite(&router, &members).await;
     let id = text(&created, "id");
-    assert_eq!(text(&created, "email_status"), "unconfigured");
-    assert_eq!(listed_status(&router, &members, id).await, "unconfigured");
+    assert_eq!(text(&created, "email_status"), EMAIL_STATUS_UNCONFIGURED);
+    assert_eq!(
+        listed_status(&router, &members, id).await,
+        EMAIL_STATUS_UNCONFIGURED
+    );
     members.cleanup().await;
 }
 
@@ -301,10 +319,10 @@ async fn test_failed_email_keeps_invite() {
     let router = owner(&members, Some(relay.port), Some(STALL_DEADLINE)).await;
     for _case in 0..4 {
         let (created, _address) = invite(&router, &members).await;
-        assert_eq!(text(&created, "email_status"), STATUS_FAILED);
+        assert_eq!(text(&created, "email_status"), EMAIL_STATUS_FAILED);
         assert_eq!(
             listed_status(&router, &members, text(&created, "id")).await,
-            STATUS_FAILED
+            EMAIL_STATUS_FAILED
         );
     }
     assert!(relay.received().is_empty());
@@ -322,12 +340,12 @@ async fn test_send_again_after_failure() {
     let router = owner(&members, Some(relay.port), None).await;
     let (created, _address) = invite(&router, &members).await;
     let id = text(&created, "id").to_owned();
-    assert_eq!(text(&created, "email_status"), STATUS_FAILED);
+    assert_eq!(text(&created, "email_status"), EMAIL_STATUS_FAILED);
 
     let path = format!("{INVITES}/{id}/send");
     let (status, answered) = call(&router, &members, Method::POST, &path, "").await;
     assert_eq!(status, StatusCode::OK, "{answered}");
-    assert_eq!(text(&answered, "email_status"), STATUS_SENT);
+    assert_eq!(text(&answered, "email_status"), EMAIL_STATUS_SENT);
     let received = relay.received();
     assert_eq!(received.len(), 1);
     assert!(
@@ -335,7 +353,10 @@ async fn test_send_again_after_failure() {
             .iter()
             .all(|message| message.contains(&key_header(&id, 2)))
     );
-    assert_eq!(listed_status(&router, &members, &id).await, STATUS_SENT);
+    assert_eq!(
+        listed_status(&router, &members, &id).await,
+        EMAIL_STATUS_SENT
+    );
     members.cleanup().await;
 }
 
@@ -398,7 +419,10 @@ async fn test_email_count_failure_keeps_invite() {
     assert_eq!(failpoint.fired(), 1);
     assert!(relay.received().is_empty(), "nothing sent");
     assert_eq!(attempts_of(&members, &id).await, 0, "nothing counted");
-    assert_eq!(listed_status(&router, &members, &id).await, STATUS_FAILED);
+    assert_eq!(
+        listed_status(&router, &members, &id).await,
+        EMAIL_STATUS_FAILED
+    );
 
     let path = format!("{INVITES}/{id}/send");
     let (status, answered) = call(&router, &members, Method::POST, &path, "").await;
@@ -410,7 +434,10 @@ async fn test_email_count_failure_keeps_invite() {
             .iter()
             .all(|message| message.contains(&key_header(&id, 1)))
     );
-    assert_eq!(listed_status(&router, &members, &id).await, STATUS_SENT);
+    assert_eq!(
+        listed_status(&router, &members, &id).await,
+        EMAIL_STATUS_SENT
+    );
     members.cleanup().await;
 }
 
@@ -429,10 +456,13 @@ async fn test_email_unrecorded_keeps_invite() {
     let (created, _address) = invite(&router, &members).await;
     let id = text(&created, "id").to_owned();
     assert_eq!(failpoint.fired(), 1);
-    assert_eq!(text(&created, "email_status"), STATUS_SENT);
+    assert_eq!(text(&created, "email_status"), EMAIL_STATUS_SENT);
     assert_eq!(relay.received().len(), 1, "the relay took it");
     assert_eq!(attempts_of(&members, &id).await, 1);
-    assert_eq!(listed_status(&router, &members, &id).await, STATUS_FAILED);
+    assert_eq!(
+        listed_status(&router, &members, &id).await,
+        EMAIL_STATUS_FAILED
+    );
 
     let path = format!("{INVITES}/{id}/send");
     let (status, _) = call(&router, &members, Method::POST, &path, "").await;
@@ -448,7 +478,10 @@ async fn test_email_unrecorded_keeps_invite() {
             .last()
             .is_some_and(|message| message.contains(&key_header(&id, 2)))
     );
-    assert_eq!(listed_status(&router, &members, &id).await, STATUS_SENT);
+    assert_eq!(
+        listed_status(&router, &members, &id).await,
+        EMAIL_STATUS_SENT
+    );
     members.cleanup().await;
 }
 
@@ -478,7 +511,7 @@ async fn test_send_again_refusals_leave_the_row_true() {
     );
     assert_eq!(
         listed_status(&router, &members, &refused).await,
-        STATUS_FAILED
+        EMAIL_STATUS_FAILED
     );
 
     let (revoked, _address) = invite(&router, &members).await;
@@ -527,7 +560,7 @@ async fn test_failed_email_invite_is_still_acceptable() {
     let body = json!({ "email": members.stranger.email }).to_string();
     let (status, created) = call(&router, &members, Method::POST, INVITES, &body).await;
     assert_eq!(status, StatusCode::CREATED, "{created}");
-    assert_eq!(text(&created, "email_status"), STATUS_FAILED);
+    assert_eq!(text(&created, "email_status"), EMAIL_STATUS_FAILED);
     let id = text(&created, "id");
 
     let strangers = members.router(&members.stranger, owner_scopes());

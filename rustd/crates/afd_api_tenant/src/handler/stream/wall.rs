@@ -258,7 +258,7 @@ async fn refresh<D: Services>(wall: &mut Wall<D>) -> Tick {
         .authorize(&wall.principal, &wall.workspace)
         .await
     {
-        Ok(Some(_tenant)) => {}
+        Ok(Some(_access)) => {}
         Ok(None) => {
             // Detach before returning, so no frame already queued on an
             // attached channel can still reach a caller who lost the right

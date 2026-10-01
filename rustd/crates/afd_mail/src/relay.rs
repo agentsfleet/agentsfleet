@@ -23,14 +23,14 @@ const FIELD_PASSWORD: &str = "password";
 const FIELD_FROM_ADDRESS: &str = "from_address";
 
 /// The port SMTP over implicit Transport Layer Security (TLS) answers on.
-pub const SMTPS_PORT: u16 = 465;
+pub(crate) const SMTPS_PORT: u16 = 465;
 
 /// The one host name that means loopback without being an address.
 const LOCALHOST: &str = "localhost";
 
 /// How a connection to the relay is protected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Security {
+pub(crate) enum Security {
     /// TLS from the first byte: port 465.
     Implicit,
     /// A plain connection upgraded with STARTTLS before any credential is
@@ -48,7 +48,7 @@ impl Security {
     /// Derived rather than configured, so no bag can ask for plaintext to a
     /// host on the network.
     #[must_use]
-    pub fn of(host: &str, port: u16) -> Self {
+    pub(crate) fn of(host: &str, port: u16) -> Self {
         if is_loopback(host) {
             Self::Plain
         } else if port == SMTPS_PORT {

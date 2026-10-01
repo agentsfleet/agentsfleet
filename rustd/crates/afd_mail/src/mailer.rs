@@ -25,7 +25,7 @@ use crate::{InviteLetter, render_invite};
 /// Creating an invite waits for it, so this bounds what a slow relay costs the
 /// owner's click; past it the invite records `failed` and the owner can send
 /// again.
-pub const MAIL_SEND_DEADLINE: Duration = Duration::from_secs(10);
+pub(crate) const MAIL_SEND_DEADLINE: Duration = Duration::from_secs(10);
 
 const EVENT_STARTED: &str = "invite_email_started";
 const EVENT_COMPLETED: &str = "invite_email_completed";
@@ -90,6 +90,7 @@ impl InviteMailer {
     }
 
     /// The same mailer under another deadline, for a suite proving the stall.
+    #[cfg(any(test, feature = "test-util"))]
     #[must_use]
     pub const fn with_deadline(mut self, deadline: Duration) -> Self {
         self.deadline = deadline;

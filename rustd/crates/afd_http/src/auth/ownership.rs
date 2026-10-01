@@ -31,7 +31,7 @@ use std::sync::Arc;
 use afd_auth::principal::Principal;
 use afd_core::error_code::{self, ErrorCode};
 use afd_core::id::Uuid7;
-use afd_tenant::workspace::access::{Access, Grant};
+use afd_tenant::workspace::access::Access;
 use afd_tenant::workspace::crossing;
 use axum::RequestExt as _;
 use axum::extract::{RawPathParams, Request, State};
@@ -74,9 +74,6 @@ pub struct Owned {
     pub workspace: Uuid7,
     /// The tenant the authorizing statement resolved.
     pub tenant: Uuid7,
-    /// How the caller holds the workspace: a role in the owning account, or a
-    /// platform crossing.
-    pub grant: Grant,
 }
 
 /// Everything the ownership layer holds, resolved once when a route is mounted.
@@ -187,11 +184,7 @@ async fn authorize<D: Services>(
                     "workspace_owner_only",
                 );
             }
-            let verdict = Owned {
-                workspace,
-                tenant,
-                grant,
-            };
+            let verdict = Owned { workspace, tenant };
             request.extensions_mut().insert(verdict.clone());
             let mut response = next.run(request).await;
             // Onto the response too, for the reporting layer outside this one:
