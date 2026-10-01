@@ -310,7 +310,7 @@ writing a secret and connecting an integration. Each is refused with
 | Caller | Reaches | Refused |
 |---|---|---|
 | `owner` of the account | every workspace route, plus the account's invites and members | nothing by role |
-| `member` of the account | every workspace in the account: fleets, steering, streams, schedules, approvals, secret names | routes needing `secret:write` or `connector:write`, with `403 UZ-AUTH-026` |
+| `member` of the account | every workspace in the account: fleets, steering, streams, schedules, approvals, secret names, and every stored secret through the fleets they write | routes needing `secret:write` or `connector:write`, with `403 UZ-AUTH-026` |
 | platform operator holding `workspace:any` | any account's workspace, with every method | nothing by role; each crossing is logged (§Platform crossing) |
 | anyone else | nothing | `403 UZ-AUTH-001`, `Workspace access denied` |
 
@@ -340,6 +340,19 @@ The role then withholds it inside somebody else's account
 **The withheld list names capabilities.** `OWNER_ONLY` holds `secret:write` and
 `connector:write`. A route mounted later that needs either is withheld from
 members with no change to the route.
+
+**A member uses every secret, through fleets.** The role withholds writing a
+secret, not using one. A member who installs or edits a fleet can declare any
+secret stored in the workspace, and the runner receives its value at lease
+(`rustd/crates/afd_credential/src/secrets/mod.rs`). An invited member is
+trusted with the workspace's secrets (Indy, Oct 01, 2026). To keep a secret
+from a person, keep that person out of the account.
+
+**The platform admin account invites like any other.** A member of the account
+that holds the platform admin workspace reaches that workspace, and through
+its fleets the platform bags in its vault: `smtp-relay`, the `<provider>-app`
+secrets and the platform model key. Accepted as is (Indy, Oct 01, 2026); invite
+into the operator's account only people trusted with the deployment.
 
 **One statement decides.** `AUTHORIZE_WORKSPACE`
 (`rustd/crates/afd_tenant/src/sql/workspace.rs`) joins the workspace, the
@@ -376,6 +389,18 @@ calling these routes manages their own account, never the one they joined.
 invite's address. Accepting twice leaves one membership and returns the same
 body.
 
+**An invite address must be one the mailer can send to.** Creating an invite
+runs the address through the parser the invite email uses
+(`afd_mail::deliverable`), so the route answers `400` rather than storing an
+invite whose every send would fail. The dashboard's form checks first, for
+instant feedback.
+
+**A tenant API key acts as its creator here too.** Every route in this table
+admits a session, a CLI credential or a tenant API key (`PersonIdentity`). A
+key can invite an address and remove a member, so a leaked key can add a member
+who outlasts the key: revoke the key, then remove that member. Kept as is
+(Indy, Oct 01, 2026).
+
 | Code | Status | Cause | Fix |
 |---|---|---|---|
 | `UZ-INV-001` | 404 | No acceptable invite has that identifier: never issued, expired, revoked, or accepted by someone else | Ask the owner for a new invite |
@@ -390,6 +415,11 @@ body.
 Creating an invite sends one email to the invited address. It names the
 inviter and the account, and it carries the accept link. `afd_mail` renders it
 from `rustd/crates/afd_mail/templates/invite.{html,txt}`.
+
+The names appear as the inviter's profile spells them, in the subject and the
+body. The templates escape them and the subject header is encoded, so a name
+cannot add markup or a header. Names are not shortened or filtered (Indy,
+Oct 01, 2026).
 
 The email goes through the Simple Mail Transfer Protocol (SMTP) relay named by
 the `smtp-relay` platform bag. That bag lives in the admin workspace's vault,
