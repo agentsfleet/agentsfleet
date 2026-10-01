@@ -56,7 +56,7 @@ async fn an_email_attempt_is_counted_named_and_recorded_while_latest() {
 
     let tenant_id = id(&tenant);
     let inviter = id(&user);
-    let email = Email::parse("Bob@Example.test").expect("an address");
+    let email = Email::parse("Bob@Example.test", |_| true).expect("an address");
     let invite = team
         .invite(
             &NewInvite {

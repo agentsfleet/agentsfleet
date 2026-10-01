@@ -23,5 +23,5 @@ pub use self::invite::{
     ACCOUNT_LABEL_SUFFIX, INVITE_VALID_DAYS, InviteLetter, RenderedEmail, account_label,
     render_invite,
 };
-pub use self::mailer::{InviteMailer, InviteSend, MAIL_SEND_DEADLINE, Outcome};
+pub use self::mailer::{InviteMailer, InviteSend, MAIL_SEND_DEADLINE, Outcome, deliverable};
 pub use self::relay::{SMTP_RELAY_BAG, SMTPS_PORT, Security};

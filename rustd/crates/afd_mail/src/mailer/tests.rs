@@ -211,6 +211,21 @@ async fn should_fail_within_deadline_when_vault_read_stalls() {
     assert_eq!(outcome, Outcome::Failed { reply: None });
 }
 
+/// An address is deliverable exactly when the recipient parse accepts it, so
+/// an address shaped like one but refused here never becomes an invite.
+#[test]
+fn deliverable_is_the_recipient_parse() {
+    assert!(super::deliverable(RECIPIENT));
+    let past_local_limit = format!("{}@example.test", "a".repeat(65));
+    for refused in [
+        "not an address",
+        "a<b@example.test",
+        past_local_limit.as_str(),
+    ] {
+        assert!(!super::deliverable(refused), "{refused:?} was deliverable");
+    }
+}
+
 /// An address the builder refuses fails this send without reaching a relay.
 #[tokio::test]
 async fn an_unparseable_recipient_fails_before_delivery() {

@@ -163,6 +163,15 @@ pub(crate) async fn send_with<M: Mailer>(
     }
 }
 
+/// Whether an invite email can be addressed to `address`.
+///
+/// The parser `build` runs on every recipient, so the invite route refuses an
+/// address here rather than storing an invite whose every send would fail.
+#[must_use]
+pub fn deliverable(address: &str) -> bool {
+    address.parse::<lettre::Address>().is_ok()
+}
+
 fn build(from: &Mailbox, invite: &InviteSend<'_>) -> crate::Result<lettre::Message> {
     let rendered = render_invite(&invite.letter)?;
     let to: Mailbox = invite.to.parse()?;
