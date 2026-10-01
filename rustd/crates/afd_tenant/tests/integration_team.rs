@@ -417,7 +417,7 @@ async fn should_keep_one_owner_when_two_owners_remove_each_other_concurrently() 
         let refused: Vec<_> = outcomes
             .iter()
             .filter_map(|outcome| outcome.as_ref().err())
-            .map(|refusal| refusal.code())
+            .map(afd_tenant::Error::code)
             .collect();
         assert_eq!(removed, 1, "round {round}: exactly one owner goes");
         assert_eq!(
