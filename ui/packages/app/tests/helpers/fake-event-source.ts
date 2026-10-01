@@ -1,6 +1,9 @@
 import type { LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 
+// The code the daemon names an access loss with; no client branches on it.
+const ACCESS_REVOKED_CODE = "UZ-AUTH-001";
+
 // The one EventSource double for every Server-Sent Events test.
 //
 // It dispatches exactly as a browser does. The daemon names every frame with
@@ -96,6 +99,13 @@ export class FakeEventSource {
   heartbeat(): void {
     const ev = { data: "" } as MessageEvent;
     for (const fn of this.listeners.get("heartbeat") ?? []) fn(ev);
+  }
+
+  // The daemon's last frame to a caller who lost access, as
+  // rustd/crates/afd_sse/src/frame.rs `Frame::access_revoked` writes it.
+  revokeAccess(): void {
+    const ev = { data: JSON.stringify({ kind: FRAME_KIND.ACCESS_REVOKED, error_code: ACCESS_REVOKED_CODE }) } as MessageEvent;
+    for (const fn of this.listeners.get(FRAME_KIND.ACCESS_REVOKED) ?? []) fn(ev);
   }
 
   fail(): void {

@@ -3,6 +3,7 @@
 import { cn, EYEBROW_CLASS, WakePulse } from "@agentsfleet/design-system";
 import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";
 import { useWorkspaceStream } from "@/components/domain/useWorkspaceStream";
+import { ACCESS_REVOKED_MESSAGE } from "@/components/domain/FleetConnectionNotice";
 
 /**
  * The wall's one honest answer to "is this page still telling me the truth?"
@@ -18,17 +19,25 @@ const CONNECTING_COPY = "connecting…";
 const RECONNECTING_COPY = "reconnecting…";
 const OFFLINE_COPY = "offline";
 const LIVE_SUFFIX = "live";
+// A sentence, unlike the one-word states, so it keeps its own capitals.
+const SENTENCE_CLASS = "normal-case tracking-label";
 
 type Props = {
   liveTotal: number;
 };
 
-/** What the badge says, and whether its dot should pulse. */
+type Reading = { text: string; live: boolean; sentence?: boolean };
+
+/** What the badge says, whether its dot should pulse, and whether it is a sentence. */
 function reading(
   connectionStatus: string,
   helloReceived: boolean,
   liveTotal: number,
-): { text: string; live: boolean } | null {
+): Reading | null {
+  // Terminal: the stream ended because the caller lost access to the workspace.
+  if (connectionStatus === CONNECTION_STATUS.REVOKED) {
+    return { text: ACCESS_REVOKED_MESSAGE, live: false, sentence: true };
+  }
   if (connectionStatus === CONNECTION_STATUS.RECONNECTING) {
     return { text: RECONNECTING_COPY, live: false };
   }
@@ -64,7 +73,7 @@ export default function WallLiveBadge({ liveTotal }: Props) {
      * and it is the tag `jsx-a11y(prefer-tag-over-role)` asks for over a span
      * wearing the role by hand.
      */
-    <output className={cn(EYEBROW_CLASS, "text-muted-foreground inline-flex items-center gap-2")}>
+    <output className={cn(EYEBROW_CLASS, "text-muted-foreground inline-flex items-center gap-2", shown.sentence && SENTENCE_CLASS)}>
       <WakePulse
         live={shown.live}
         className="inline-block w-2 h-2 rounded-full bg-pulse"

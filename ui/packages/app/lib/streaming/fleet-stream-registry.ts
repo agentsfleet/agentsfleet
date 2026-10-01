@@ -1,5 +1,5 @@
 import { type EventRow } from "@/lib/api/events";
-import { FRAME_KIND, streamFleetEventsUrl } from "@/lib/api/events-types";
+import { FRAME_KIND, ROUTED_FRAME_KINDS, streamFleetEventsUrl } from "@/lib/api/events-types";
 import type { FleetFacts } from "@/lib/events/run-summary";
 import { landFrames, onFrame, recoverGap, type LiveEntry } from "./fleet-stream-dispatch";
 import { mergeFacts } from "./fleet-stream-facts";
@@ -104,9 +104,10 @@ function startEventSource(entry: LiveEntry, fleetId: string): void {
   };
   // Named frames dispatch only to their matching listener, never onmessage.
   // Keep both paths: the daemon uses message for its no-kind fallback.
-  for (const name of Object.values(FRAME_KIND)) {
+  for (const name of ROUTED_FRAME_KINDS) {
     es.addEventListener(name, handleFrame as (e: Event) => void);
   }
+  es.addEventListener(FRAME_KIND.ACCESS_REVOKED, () => onAccessRevoked(entry, es));
   es.onmessage = handleFrame;
   es.addEventListener(HEARTBEAT_EVENT, () => {
     if (entry.eventSource !== es) return;
@@ -143,9 +144,24 @@ function onEventSourceError(entry: LiveEntry, fleetId: string): void {
   );
 }
 
+// The daemon's last frame to a caller who lost access. It closes the stream and
+// refuses the next request the same way, so every way back is shut here: the
+// pending retry, the silence timer, the tab-visible and network-online signals,
+// and the operator's retry, which reads the terminal status.
+function onAccessRevoked(entry: LiveEntry, es: EventSource): void {
+  if (entry.eventSource !== es) return;
+  cancelPendingReconnect(entry);
+  entry.recoveryWindow.dispose();
+  entry.detachRecovery?.();
+  entry.detachRecovery = null;
+  es.close();
+  entry.eventSource = null;
+  patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.REVOKED });
+}
+
 export function retryConnection(fleetId: string): void {
   const entry = REGISTRY.get(fleetId);
-  if (!entry) return;
+  if (!entry || entry.snapshot.connectionStatus === CONNECTION_STATUS.REVOKED) return;
   cancelPendingReconnect(entry);
   entry.recoveryWindow.dispose();
   entry.eventSource?.close();
