@@ -107,6 +107,16 @@ mod tests {
     }
 
     #[test]
+    fn an_address_of_exactly_the_smtp_limit_is_accepted() {
+        let domain = "@example.com";
+        let local = "a".repeat(super::MAX_LEN - domain.len());
+        let longest = format!("{local}{domain}");
+        assert_eq!(longest.len(), super::MAX_LEN);
+        Email::parse(&longest).expect("the longest address SMTP carries");
+        Email::parse(&format!("a{longest}")).expect_err("one byte past it");
+    }
+
+    #[test]
     fn an_address_longer_than_smtp_carries_is_refused() {
         let long = format!("{}@example.com", "a".repeat(250));
         Email::parse(&long).expect_err("longer than SMTP carries");

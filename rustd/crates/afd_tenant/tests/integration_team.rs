@@ -14,7 +14,7 @@ use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
-use afd_tenant::team::{Email, Invitee, NewInvite, Removal, Team};
+use afd_tenant::team::{Email, EmailStatus, INVITE_TTL_MS, Invitee, NewInvite, Removal, Team};
 use afd_tenant::workspace::access::{ROLE_MEMBER, ROLE_OWNER};
 
 use crate::access_lane::{Signup, delete_accounts, hold, id, sign_up};
@@ -118,6 +118,19 @@ impl Fixture {
         .await
         .expect("the membership count reads");
         held
+    }
+
+    /// The role `person` holds in John's account, if any.
+    async fn role_in_johns(&self, person: &Person) -> Option<String> {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query_scalar(
+            "SELECT role FROM core.memberships WHERE tenant_id = $1::uuid AND user_id = $2::uuid",
+        )
+        .bind(&self.john.tenant)
+        .bind(&person.user)
+        .fetch_optional(&mut *connection)
+        .await
+        .expect("the role reads")
     }
 
     /// How many owners John's account has.
@@ -427,6 +440,367 @@ async fn should_keep_one_owner_when_two_owners_remove_each_other_concurrently() 
         );
         assert_eq!(fixture.owners_in_johns().await, 1, "round {round}");
     }
+    fixture.cleanup().await;
+}
+
+/// Another account naming John's invite revokes nothing: the revoke is scoped
+/// to the account that issued it, so John's invite stays listed and Carol can
+/// still accept it.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_leave_invite_pending_when_another_account_revokes_it() {
+    let fixture = Fixture::create().await;
+    let invite = fixture
+        .invite(&fixture.carol.email, NOW)
+        .await
+        .expect("John invites Carol");
+    let stranger = id(&fixture.bob.tenant);
+    fixture
+        .team
+        .revoke_invitation(&stranger, &invite, NOW)
+        .await
+        .expect("a revoke of nothing of yours is quiet");
+
+    let listed = fixture
+        .team
+        .invitations(&id(&fixture.john.tenant), NOW)
+        .await
+        .expect("the list reads");
+    assert!(listed.iter().any(|row| row.id == invite), "still pending");
+    fixture
+        .team
+        .accept(&invite, &fixture.carol.invitee(), NOW)
+        .await
+        .expect("Carol can still accept");
+    assert_eq!(fixture.memberships_in_johns(&fixture.carol).await, 1);
+    fixture.cleanup().await;
+}
+
+/// An accept racing a revoke settles one way: Carol joins and the invite is
+/// spent, or the revoke wins and she is told it is gone with no membership.
+/// Never a membership from a revoked invite, never a refusal after a join.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_settle_one_outcome_when_accept_races_revoke() {
+    let fixture = Fixture::create().await;
+    let tenant = id(&fixture.john.tenant);
+    for round in 0..RACE_ROUNDS {
+        let invite = fixture
+            .invite(&fixture.carol.email, NOW)
+            .await
+            .expect("John invites Carol");
+        let carol = fixture.carol.invitee();
+        let (accepted, revoked) = tokio::join!(
+            fixture.team.accept(&invite, &carol, NOW),
+            fixture.team.revoke_invitation(&tenant, &invite, NOW),
+        );
+        revoked.expect("the revoke answers");
+        let joined = fixture.memberships_in_johns(&fixture.carol).await;
+        match accepted {
+            Ok(_) => assert_eq!(joined, 1, "round {round}: an accept that lands joins"),
+            Err(refusal) => {
+                assert_eq!(
+                    refusal.code(),
+                    error_code::INVITE_NOT_FOUND,
+                    "round {round}"
+                );
+                assert_eq!(joined, 0, "round {round}: a refused accept joins nothing");
+            }
+        }
+        if joined == 1 {
+            fixture
+                .team
+                .remove(&tenant, &fixture.carol.user_id)
+                .await
+                .expect("Carol leaves for the next round");
+        }
+    }
+    fixture.cleanup().await;
+}
+
+/// The instant an invite expires it is closed everywhere at once: the list,
+/// the invitee's waiting list, a send, an accept, and a fresh invite to the
+/// same address supersedes it. One millisecond earlier it is still open.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_treat_invite_as_closed_everywhere_when_now_equals_expiry() {
+    let fixture = Fixture::create().await;
+    let tenant = id(&fixture.john.tenant);
+    let issued = UnixMillis::from_millis(NOW.as_millis() - INVITE_TTL_MS);
+    let just_before = UnixMillis::from_millis(NOW.as_millis() - 1);
+    let invite = fixture
+        .invite(&fixture.carol.email, issued)
+        .await
+        .expect("an invite that expires at NOW");
+
+    let open = fixture
+        .team
+        .invitations(&tenant, just_before)
+        .await
+        .expect("lists");
+    assert!(
+        open.iter().any(|row| row.id == invite),
+        "open a millisecond early"
+    );
+
+    let listed = fixture.team.invitations(&tenant, NOW).await.expect("lists");
+    assert!(
+        !listed.iter().any(|row| row.id == invite),
+        "closed in the list"
+    );
+    let waiting = fixture
+        .team
+        .waiting_for(&fixture.carol.email, NOW)
+        .await
+        .expect("the waiting list reads");
+    assert!(
+        !waiting.iter().any(|row| row.id == invite.as_str()),
+        "closed for Carol"
+    );
+    assert!(
+        fixture
+            .team
+            .begin_email(&tenant, &invite, NOW)
+            .await
+            .expect("answers")
+            .is_none(),
+        "nothing to send"
+    );
+    let refused = fixture
+        .team
+        .accept(&invite, &fixture.carol.invitee(), NOW)
+        .await
+        .expect_err("closed to accept");
+    assert_eq!(refused.code(), error_code::INVITE_NOT_FOUND);
+    fixture
+        .invite(&fixture.carol.email, NOW)
+        .await
+        .expect("a fresh invite supersedes the closed one");
+    fixture.cleanup().await;
+}
+
+/// Two invites to one address at once: one issues, the other is the conflict,
+/// and neither is a datastore failure.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_issue_one_invite_when_two_owners_invite_same_address_concurrently() {
+    let fixture = Fixture::create().await;
+    for round in 0..RACE_ROUNDS {
+        let address = format!("dave+{}@example.test", mint_id());
+        let (first, second) =
+            tokio::join!(fixture.invite(&address, NOW), fixture.invite(&address, NOW),);
+        let outcomes = [first, second];
+        let issued = outcomes.iter().filter(|outcome| outcome.is_ok()).count();
+        let refused: Vec<_> = outcomes
+            .iter()
+            .filter_map(|outcome| outcome.as_ref().err())
+            .map(afd_tenant::Error::code)
+            .collect();
+        assert_eq!(issued, 1, "round {round}: one invite issues");
+        assert_eq!(refused, [error_code::INVITE_CONFLICT], "round {round}");
+    }
+    fixture.cleanup().await;
+}
+
+/// Someone who joined another way before accepting keeps the role they hold:
+/// the accept stamps the invite and grants nothing over it.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_keep_existing_role_when_member_accepts_invite() {
+    let fixture = Fixture::create().await;
+    let invite = fixture
+        .invite(&fixture.carol.email, NOW)
+        .await
+        .expect("John invites Carol");
+    hold(
+        &fixture.database,
+        &fixture.john.tenant,
+        &fixture.carol.user,
+        ROLE_OWNER,
+    )
+    .await;
+
+    let accepted = fixture
+        .team
+        .accept(&invite, &fixture.carol.invitee(), NOW)
+        .await
+        .expect("the accept answers");
+    assert!(accepted.workspaces.contains(&fixture.john.workspace));
+    assert_eq!(
+        fixture.role_in_johns(&fixture.carol).await.as_deref(),
+        Some(ROLE_OWNER)
+    );
+    assert_eq!(fixture.memberships_in_johns(&fixture.carol).await, 1);
+    let listed = fixture
+        .team
+        .invitations(&id(&fixture.john.tenant), NOW)
+        .await
+        .expect("lists");
+    assert!(
+        !listed.iter().any(|row| row.id == invite),
+        "the invite is spent"
+    );
+    fixture.cleanup().await;
+}
+
+/// The invitee's waiting list matches their address in any case and drops an
+/// invite once it is revoked; the owner's list drops it once it is accepted.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_list_only_open_invites_when_revoked_or_accepted() {
+    let fixture = Fixture::create().await;
+    let tenant = id(&fixture.john.tenant);
+    let invite = fixture
+        .invite(&fixture.carol.email, NOW)
+        .await
+        .expect("John invites Carol");
+    let shouted = fixture.carol.email.to_uppercase();
+    let waiting = fixture
+        .team
+        .waiting_for(&shouted, NOW)
+        .await
+        .expect("reads");
+    let found = waiting
+        .iter()
+        .find(|row| row.id == invite.as_str())
+        .expect("found in any case");
+    assert_eq!(found.tenant, fixture.john.tenant);
+
+    fixture
+        .team
+        .revoke_invitation(&tenant, &invite, NOW)
+        .await
+        .expect("revokes");
+    let waiting = fixture
+        .team
+        .waiting_for(&fixture.carol.email, NOW)
+        .await
+        .expect("reads");
+    assert!(
+        !waiting.iter().any(|row| row.id == invite.as_str()),
+        "revoked is gone"
+    );
+
+    let second = fixture
+        .invite(&fixture.carol.email, NOW)
+        .await
+        .expect("a fresh invite");
+    fixture
+        .team
+        .accept(&second, &fixture.carol.invitee(), NOW)
+        .await
+        .expect("accepted");
+    let listed = fixture.team.invitations(&tenant, NOW).await.expect("lists");
+    assert!(
+        !listed.iter().any(|row| row.id == second),
+        "accepted is gone"
+    );
+    fixture.cleanup().await;
+}
+
+/// The email record's edges: a send that began and never recorded reads as
+/// failed; a later failed attempt keeps the earlier delivery's instant; an
+/// accepted invite has nothing left to send.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_read_failed_when_attempt_began_and_never_recorded() {
+    let fixture = Fixture::create().await;
+    let tenant = id(&fixture.john.tenant);
+    let later = UnixMillis::from_millis(NOW.as_millis() + 1);
+    let invite = fixture
+        .invite(&fixture.carol.email, NOW)
+        .await
+        .expect("John invites Carol");
+    let status_of = |rows: &[afd_tenant::team::Invitation]| {
+        let row = rows.iter().find(|row| row.id == invite).expect("listed");
+        (row.email_status, row.email_sent_at_ms)
+    };
+
+    fixture
+        .team
+        .begin_email(&tenant, &invite, NOW)
+        .await
+        .expect("begins")
+        .expect("pending");
+    let listed = fixture.team.invitations(&tenant, NOW).await.expect("lists");
+    assert_eq!(
+        status_of(&listed),
+        (EmailStatus::Failed, None),
+        "begun, never recorded"
+    );
+
+    let second = fixture
+        .team
+        .begin_email(&tenant, &invite, NOW)
+        .await
+        .expect("begins")
+        .expect("pending");
+    fixture
+        .team
+        .record_email(&invite, second.attempt, EmailStatus::Sent, NOW)
+        .await
+        .expect("records");
+    let third = fixture
+        .team
+        .begin_email(&tenant, &invite, later)
+        .await
+        .expect("begins")
+        .expect("pending");
+    fixture
+        .team
+        .record_email(&invite, third.attempt, EmailStatus::Failed, later)
+        .await
+        .expect("records");
+    let listed = fixture
+        .team
+        .invitations(&tenant, later)
+        .await
+        .expect("lists");
+    assert_eq!(
+        status_of(&listed),
+        (EmailStatus::Failed, Some(NOW.as_millis())),
+        "the last delivery's instant survives a later failure"
+    );
+
+    fixture
+        .team
+        .accept(&invite, &fixture.carol.invitee(), later)
+        .await
+        .expect("accepted");
+    assert!(
+        fixture
+            .team
+            .begin_email(&tenant, &invite, later)
+            .await
+            .expect("answers")
+            .is_none(),
+        "an accepted invite has nothing to send"
+    );
+    fixture.cleanup().await;
+}
+
+/// An invite into an account that does not exist is a datastore refusal the
+/// unique-index arm does not swallow as a conflict.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_report_query_failure_when_insert_fails_other_than_unique() {
+    let fixture = Fixture::create().await;
+    let nowhere = id(&mint_id());
+    let email = Email::parse(&fixture.carol.email).expect("an address");
+    let refused = fixture
+        .team
+        .invite(
+            &NewInvite {
+                tenant: &nowhere,
+                inviter: &fixture.john.user_id,
+                email: &email,
+            },
+            NOW,
+        )
+        .await
+        .expect_err("no such account");
+    assert_ne!(refused.code(), error_code::INVITE_CONFLICT);
+    assert_eq!(refused.code(), error_code::INTERNAL_DB_QUERY);
     fixture.cleanup().await;
 }
 
