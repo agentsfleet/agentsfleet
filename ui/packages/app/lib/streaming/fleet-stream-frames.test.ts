@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { type EventRow, type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
-import { HEADLINE, OUTCOME } from "@/lib/events/event-summary";
+import { HEADLINE, OUTCOME, THREAD_STATUS } from "@/lib/events/event-summary";
 import { maxServerCreatedAt, mergeBackfill, rfc3339Seconds } from "./fleet-stream-frames";
-import type { FleetEvent } from "./fleet-stream-row";
+import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
 import { MS_PER_SECOND, evt, row } from "@/tests/helpers/fleet-stream-fixtures";
 
 // The merge and the watermark: how a page of durable rows folds into the
@@ -11,6 +11,21 @@ import { MS_PER_SECOND, evt, row } from "@/tests/helpers/fleet-stream-fixtures";
 // `fleet-stream-frames.tools.test.ts`.
 
 describe("mergeBackfill", () => {
+  // A waiting row never moves back. A server page read before the
+  // runner took the message still says `queued`; the live tab has since seen
+  // `event_received`, and that frame is spent, so a regression here would hold
+  // the row at "Queued" until the turn completes.
+  it("should keep a received row running when a server page restates it as queued", () => {
+    const live = evt({ id: "e1", status: AGENTSFLEET_EVENT_STATUS.RECEIVED, text: "check the tests" });
+    const merged = mergeBackfill([live], [
+      row({ event_id: "e1", status: THREAD_STATUS.QUEUED, response_text: null }),
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.status).toBe(AGENTSFLEET_EVENT_STATUS.RECEIVED);
+    expect(merged[0]).toBe(live);
+  });
+
   it("dedupes by id and sorts the union oldest-first", () => {
     const prev = [evt({ id: "e2", createdAt: new Date(2000) })];
     const merged = mergeBackfill(prev, [
@@ -21,7 +36,7 @@ describe("mergeBackfill", () => {
   });
 
   it("test_backfill_keeps_unchanged_identity", () => {
-    const failed = row({ event_id: "e2", status: "agent_error", created_at: 2 * MS_PER_SECOND, failure_label: "timeout" });
+    const failed = row({ event_id: "e2", status: AGENTSFLEET_EVENT_STATUS.AGENT_ERROR, created_at: 2 * MS_PER_SECOND, failure_label: "timeout" });
     const page = [
       row({ event_id: "e1", status: "processed", created_at: MS_PER_SECOND, request_json: JSON.stringify({ message: "hi" }) }),
       failed,

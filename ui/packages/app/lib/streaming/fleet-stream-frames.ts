@@ -11,6 +11,7 @@ import {
 import {
   AGENTSFLEET_EVENT_STATUS,
   EMPTY_PAYLOAD,
+  TERMINAL_STATUSES,
   closeReasoningSpan,
   figure,
   rowToEvent,
@@ -263,11 +264,11 @@ export function mergeBackfill(
   // `response_text`, and it omits `request_json` too), so taking the row
   // wholesale would blank a message the operator has already read. The live
   // text is kept for the same reason `tools` is.
-  // An in-progress ("received") backfill row never clobbers live chunks:
-  // the live accumulation is newer than the list snapshot.
+  // An in-progress backfill row ("received", or "queued" for a message still
+  // waiting) never clobbers the live row: the stream is newer than the page.
   const authoritative = new Map<string, EventRow>();
   for (const r of rows) {
-    if (seen.has(r.event_id) && r.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED) {
+    if (seen.has(r.event_id) && TERMINAL_STATUSES.has(r.status)) {
       authoritative.set(r.event_id, r);
     }
   }
