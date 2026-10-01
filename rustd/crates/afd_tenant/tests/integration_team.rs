@@ -14,6 +14,7 @@ use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
+use afd_tenant::error::InviteConflict;
 use afd_tenant::team::{Email, EmailStatus, INVITE_TTL_MS, Invitee, NewInvite, Removal, Team};
 use afd_tenant::workspace::access::{ROLE_MEMBER, ROLE_OWNER};
 
@@ -104,6 +105,16 @@ impl Fixture {
     /// `person` as a member of John's account.
     async fn add_member(&self, person: &Person) {
         hold(&self.database, &self.john.tenant, &person.user, ROLE_MEMBER).await;
+    }
+
+    /// When `invite` was accepted and revoked, as stored.
+    async fn stamps(&self, invite: &Uuid7) -> (Option<i64>, Option<i64>) {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query_as("SELECT accepted_at, revoked_at FROM core.invites WHERE id = $1::uuid")
+            .bind(invite.as_str())
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the invite reads")
     }
 
     /// How many memberships `person` holds in John's account: zero or one.
@@ -325,11 +336,13 @@ async fn test_invite_and_member_conflicts() {
         .await
         .expect_err("one pending invite per address");
     assert_eq!(twice.code(), error_code::INVITE_CONFLICT);
+    assert_eq!(twice.invite_conflict(), Some(InviteConflict::Invited));
     let member = fixture
         .invite(&fixture.bob.email, NOW)
         .await
         .expect_err("Bob is already a member");
     assert_eq!(member.code(), error_code::INVITE_CONFLICT);
+    assert_eq!(member.invite_conflict(), Some(InviteConflict::Member));
 
     let stranger = format!("dave+{}@example.test", mint_id());
     fixture
@@ -364,6 +377,30 @@ async fn test_invite_and_member_conflicts() {
             .expect("removing again is quiet"),
         Removal::Absent
     );
+    fixture.cleanup().await;
+}
+
+/// An account's own user holds it as owner even without a membership row, so
+/// inviting their address is refused as a member's; an accepted invite would
+/// write a member row and demote them in their own account.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_refuse_inviting_an_owner_no_membership_row_backs() {
+    let fixture = Fixture::create().await;
+    let mut connection = fixture.database.acquire().await.expect("an API connection");
+    sqlx::query("DELETE FROM core.memberships WHERE tenant_id = $1::uuid AND user_id = $2::uuid")
+        .bind(&fixture.john.tenant)
+        .bind(&fixture.john.user)
+        .execute(&mut *connection)
+        .await
+        .expect("John's account predates memberships");
+    drop(connection);
+    let refused = fixture
+        .invite(&fixture.john.email, NOW)
+        .await
+        .expect_err("John already holds his account");
+    assert_eq!(refused.code(), error_code::INVITE_CONFLICT);
+    assert_eq!(refused.invite_conflict(), Some(InviteConflict::Member));
     fixture.cleanup().await;
 }
 
@@ -496,6 +533,16 @@ async fn should_settle_one_outcome_when_accept_races_revoke() {
         );
         revoked.expect("the revoke answers");
         let joined = fixture.memberships_in_johns(&fixture.carol).await;
+        let (accepted_at, revoked_at) = fixture.stamps(&invite).await;
+        assert!(
+            accepted_at.is_none() || revoked_at.is_none(),
+            "round {round}: an invite is accepted or revoked, never both"
+        );
+        assert_eq!(
+            joined == 1,
+            accepted_at.is_some() && revoked_at.is_none(),
+            "round {round}: a membership only from an accepted, unrevoked invite"
+        );
         match accepted {
             Ok(_) => assert_eq!(joined, 1, "round {round}: an accept that lands joins"),
             Err(refusal) => {

@@ -168,8 +168,11 @@ pub const DETAIL_INVITE_NOT_FOUND: &str = "Invite not found";
 /// The refusal an accept from the wrong account earns. Names no address.
 pub const DETAIL_INVITE_EMAIL_MISMATCH: &str = "Invite is for another email address";
 
-/// The refusal a second invite, or an invite for a member, earns.
-pub const DETAIL_INVITE_CONFLICT: &str = "Address already invited or a member";
+/// The refusal inviting an address that belongs to the account earns.
+pub const DETAIL_INVITE_MEMBER: &str = "Address already a member";
+
+/// The refusal inviting an address with a pending invite earns.
+pub const DETAIL_INVITE_PENDING: &str = "Address already invited";
 
 /// The refusal removing an account's last owner earns.
 pub const DETAIL_MEMBER_LAST_OWNER: &str = "Account must keep an owner";

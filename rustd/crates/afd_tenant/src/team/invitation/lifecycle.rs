@@ -18,6 +18,7 @@ use super::{
     Acceptance, COLUMN_EXPIRES_AT, COLUMN_ID, COLUMN_TENANT_ID, EmailStatus, INVITE_TTL_MS,
     Invitation,
 };
+use crate::error::InviteConflict;
 use crate::sql::invite as sql;
 use crate::team::{Accepted, Invitee, NewInvite, Team, Waiting, email};
 use crate::workspace::access::{ROLE_OWNER, Role};
@@ -58,7 +59,7 @@ impl Team {
             .await
             .map_err(&raise)?;
         if member.is_some() {
-            return Err(error::invite_conflict());
+            return Err(error::invite_conflict(InviteConflict::Member));
         }
         sqlx::query(sql::REVOKE_EXPIRED_PENDING)
             .bind(new.tenant.as_str())
@@ -91,6 +92,7 @@ impl Team {
             role: Role::Member,
             expires_at_ms,
             created_at_ms: now.as_millis(),
+            accepted_at_ms: None,
             accepted_by: None,
             revoked_at_ms: None,
             // Nothing sent yet: the route sends next and records the result.
@@ -273,7 +275,7 @@ fn waiting(row: &PgRow) -> Result<Waiting> {
 /// Tells a second pending invitation apart from a broken statement.
 fn classify_insert(source: sqlx::Error) -> crate::Error {
     if violates_unique(&source, PENDING_CONSTRAINT) {
-        error::invite_conflict()
+        error::invite_conflict(InviteConflict::Invited)
     } else {
         error::query(CONTEXT_ISSUE)(source)
     }

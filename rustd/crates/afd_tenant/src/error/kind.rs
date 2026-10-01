@@ -1,6 +1,6 @@
 //! Private failure vocabulary owned by the tenant crate.
 
-use super::{ApiKeyField, SessionField};
+use super::{ApiKeyField, InviteConflict, SessionField};
 
 /// What actually went wrong. Private so a new variant is not a breaking change.
 #[derive(Debug, thiserror::Error)]
@@ -128,8 +128,8 @@ pub(crate) enum ErrorKind {
     #[error("the invite was sent to a different address than the caller's")]
     InviteEmailMismatch,
 
-    #[error("the address already has a pending invite or belongs to the account")]
-    InviteConflict,
+    #[error("the address {conflict}")]
+    InviteConflict { conflict: InviteConflict },
 
     #[error("removing this member would leave the account with no owner")]
     MemberLastOwner,

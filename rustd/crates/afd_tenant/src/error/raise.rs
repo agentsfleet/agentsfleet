@@ -1,6 +1,6 @@
 //! Contextual constructors for tenant failures.
 
-use super::{ApiKeyField, Error, ErrorKind, SessionField};
+use super::{ApiKeyField, Error, ErrorKind, InviteConflict, SessionField};
 
 /// Reports a statement that failed, naming what it was doing.
 pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
@@ -168,9 +168,9 @@ pub(crate) fn invite_email_mismatch() -> Error {
     Error::new(ErrorKind::InviteEmailMismatch)
 }
 
-/// Reports a second pending invite, or an invite for a member.
-pub(crate) fn invite_conflict() -> Error {
-    Error::new(ErrorKind::InviteConflict)
+/// Reports an address that already has a pending invite or belongs to the account.
+pub(crate) fn invite_conflict(conflict: InviteConflict) -> Error {
+    Error::new(ErrorKind::InviteConflict { conflict })
 }
 
 /// Reports a removal that would leave the account with no owner.

@@ -5,16 +5,21 @@
 //! equality and the partial indexes in `schema/923_workspace_invites.sql`
 //! serve it.
 
-/// Whether an address already belongs to the account.
+/// Whether an address already belongs to the account: a member, or a user
+/// whose own account it is.
 ///
 /// `$1` tenant · `$2` the lowercased address. The stored address is lowercased
 /// here because users are written as the identity provider spelled them; an
 /// account's members are few, so this walks their rows by the tenant prefix of
-/// `uq_memberships_tenant_id_user_id` and reads each user by primary key.
+/// `uq_memberships_tenant_id_user_id` and reads each user by primary key. The
+/// second arm finds the account's own user even without a membership row,
+/// which access admits as owner; an invite would otherwise demote them.
 pub const SELECT_MEMBER_BY_EMAIL: &str = "\
 SELECT 1 FROM core.memberships m \
 JOIN core.users u ON u.id = m.user_id \
 WHERE m.tenant_id = $1::uuid AND lower(u.email) = $2 \
+UNION ALL \
+SELECT 1 FROM core.users u WHERE u.tenant_id = $1::uuid AND lower(u.email) = $2 \
 LIMIT 1";
 
 /// Retires an expired pending invite for the address, so a new one can be
