@@ -22,7 +22,7 @@ use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
 use crate::services::{Services, TenantKeys as _};
 
-use super::{DETAIL_JSON_BODY, parameter, tenant_of};
+use super::{DETAIL_MALFORMED_BODY, parameter, tenant_of};
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_MINT: &str = "apikey_mint_failed";
@@ -79,7 +79,7 @@ pub(crate) async fn mint<D: Services>(
 ) -> Result<Response, Refusal> {
     let person = identity.person();
     let request = afd_http::handler::read_body::<MintApiKeyRequest<'_>>(&body)
-        .map_err(|_unreadable| Refusal::malformed(DETAIL_JSON_BODY))?;
+        .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_BODY))?;
     let (name, description) = KeyName::parse(&request.key_name)
         .and_then(|name| {
             Description::parse(request.description.as_deref())
