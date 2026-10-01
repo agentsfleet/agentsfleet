@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M208
 **Workstream:** 003
 **Date:** Sep 30, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — without email an owner must carry the link to the invitee by hand
 **Categories:** API, DOCS, UI
 **Batch:** B1 — third of three M208 workstreams in one Pull Request (PR)
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** `feat/m208-team-accounts`
+**Baseline revision:** `3b61121c3c7da8b97cc348cca1d1dbfb99c3bce4`
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M208_001 (`core.invites`, its email-status columns, the invite routes, the members page, and §1's `smtp-relay` enumeration)
 **Provenance:** LLM-drafted (Claude Opus 5.5, Sep 30, 2026; amended Oct 1, 2026 for the SMTP transport); decisions in Discovery are Indy's
