@@ -7,9 +7,10 @@
 //! question on its own refresh tick (`wall.rs`), where it also re-reads the
 //! fleet set; a single fleet has no set to refresh, so it carries only this.
 //!
-//! A re-check that cannot reach the datastore keeps the stream, for the reason
-//! the wall gives: ending every open stream on a blip turns a short outage into
-//! a reconnect storm aimed at the thing that is already down.
+//! A re-check that cannot reach the datastore, or does not answer within
+//! [`RECHECK_BUDGET`], keeps the stream, for the reason the wall gives: ending
+//! every open stream on a blip turns a short outage into a reconnect storm
+//! aimed at the thing that is already down.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -29,6 +30,13 @@ use crate::services::{Services, WorkspaceOwnership as _};
 /// The heartbeat's interval: the stream wakes then anyway, so a revocation
 /// lands within one heartbeat and adds no wake-up of its own.
 const RECHECK_INTERVAL: Duration = afd_sse::HEARTBEAT_INTERVAL;
+
+/// How long a re-check may hold the stream's frames.
+///
+/// Frames wait while the check runs. Past this budget the check counts as an
+/// outage and asks again on the next beat, so a slow pool delays a revocation
+/// by one beat rather than every viewer's frames by the pool's acquire timeout.
+const RECHECK_BUDGET: Duration = Duration::from_millis(500);
 
 /// Everything a guarded stream carries between frames.
 struct Guard<D> {
@@ -80,18 +88,18 @@ async fn step<D: Services>(mut guard: Guard<D>) -> Option<(Frame, Guard<D>)> {
     }
 }
 
-/// Whether the caller may still read the workspace; an outage answers yes.
+/// Whether the caller may still read the workspace; an outage, or a check past
+/// [`RECHECK_BUDGET`], answers yes.
 ///
 /// `&mut` rather than `&`, as the wall's refresh takes it: the boxed stream
 /// inside is `Send` but not `Sync`, so a shared borrow held across the read
 /// would make the stream's future unsendable.
 async fn still_admitted<D: Services>(guard: &mut Guard<D>) -> bool {
-    let answer = guard
+    let check = guard
         .services
         .workspaces()
-        .authorize(&guard.principal, &guard.workspace)
-        .await;
-    if let Ok(None) = answer {
+        .authorize(&guard.principal, &guard.workspace);
+    if let Ok(Ok(None)) = tokio::time::timeout(RECHECK_BUDGET, check).await {
         let workspace_id = guard.workspace.as_str();
         tracing::debug!(workspace_id, event = "fleet_stream_revoked");
         return false;
