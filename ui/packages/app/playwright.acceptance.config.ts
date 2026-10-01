@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import { createHash } from "node:crypto";
 import * as path from "node:path";
-import { VERCEL_BYPASS_STATE_FILENAME } from "./tests/e2e/acceptance/fixtures/constants";
+import { FRAME_BUDGET_TAG, VERCEL_BYPASS_STATE_FILENAME } from "./tests/e2e/acceptance/fixtures/constants";
 import { loadWorktreeEnv } from "./tests/e2e/acceptance/fixtures/env-loader";
 
 // Load <worktree-root>/.env so CLERK_SECRET_KEY / CLERK_WEBHOOK_SECRET land
@@ -60,6 +60,8 @@ const REMOTE_ENV_EXPECT_TIMEOUT_MS = 10_000;
 // live-counter → pulse-wall — whole-wall count assertions in the shared
 //              regular workspace; they run after the journey group is done
 //              seeding and never concurrently with each other.
+// frame-budget — tests that time the page's own frames (FRAME_BUDGET_TAG);
+//              they wait for both chains, so no other test shares the CPU.
 // fetch-audit — resets a global app-side fetch counter; runs strictly last.
 const PREFLIGHT_SPEC = "**/_smoke.spec.ts";
 const OPERATOR_CATALOG_SPEC = "**/platform-library-onboarding.spec.ts";
@@ -74,7 +76,9 @@ const PROJECT_OPERATOR_CATALOG = "operator-catalog";
 const PROJECT_OPERATOR_JOURNEY = "operator-journey";
 const PROJECT_LIVE_COUNTER = "live-counter";
 const PROJECT_PULSE_WALL = "pulse-wall";
+const PROJECT_FRAME_BUDGET = "frame-budget";
 const PROJECT_FETCH_AUDIT = "fetch-audit";
+const FRAME_BUDGET = new RegExp(FRAME_BUDGET_TAG);
 
 const CHROMIUM = { ...devices["Desktop Chrome"] };
 
@@ -127,6 +131,7 @@ export default defineConfig({
         PULSE_WALL_SPEC,
         FETCH_AUDIT_SPEC,
       ],
+      grepInvert: FRAME_BUDGET,
       dependencies: [PROJECT_PREFLIGHT],
       use: CHROMIUM,
     },
@@ -155,11 +160,18 @@ export default defineConfig({
       use: CHROMIUM,
     },
     {
+      name: PROJECT_FRAME_BUDGET,
+      grep: FRAME_BUDGET,
+      // After both chains, so every other worker is idle while it measures.
+      dependencies: [PROJECT_PULSE_WALL, PROJECT_OPERATOR_JOURNEY],
+      use: CHROMIUM,
+    },
+    {
       name: PROJECT_FETCH_AUDIT,
       testMatch: FETCH_AUDIT_SPEC,
       // Strictly last: the audit reset touches an app-global counter, so it
       // must outlast BOTH the wall chain and the operator chain.
-      dependencies: [PROJECT_PULSE_WALL, PROJECT_OPERATOR_JOURNEY],
+      dependencies: [PROJECT_FRAME_BUDGET],
       use: CHROMIUM,
     },
   ],

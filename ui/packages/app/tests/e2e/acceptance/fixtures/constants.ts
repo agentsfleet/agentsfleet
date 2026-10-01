@@ -64,6 +64,11 @@ export const VERCEL_BYPASS_STATE_FILENAME = ".vercel-bypass-state.json";
 // the list-then-create in ensureSecondWorkspace; specs only ever resolve it.
 export const SECOND_WORKSPACE_NAME = "fixture-secondary";
 
+// Tags a test that times the page's own frames. A second worker streaming
+// beside it on a shared runner doubles the frame time it measures, so the
+// suite runs every test carrying this tag alone, after the parallel groups.
+export const FRAME_BUDGET_TAG = "@frame-budget";
+
 /**
  * `@clerk/nextjs` major version that the harness was tested against. A bump
  * of this dependency's major is intentionally a breaking change: clerkMiddleware
