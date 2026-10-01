@@ -1,0 +1,13 @@
+---
+source: crates/afd_mail/src/invite/tests.rs
+expression: rendered.text
+---
+John invited you to join John's account on agentsfleet.
+
+Open this link to accept. Sign in with this email address first if you are asked to:
+
+https://app.agentsfleet.test/invites/0190f5a2-4b2d-7c11-8d5e-2a5f31d98210
+
+If you were not expecting it, you can ignore this email.
+
+agentsfleet

@@ -1,0 +1,9 @@
+{{ inviter_name }} invited you to join {{ account_name }} on agentsfleet.
+
+Open this link to accept. Sign in with this email address first if you are asked to:
+
+{{ invite_url }}
+
+If you were not expecting it, you can ignore this email.
+
+agentsfleet

@@ -40,4 +40,4 @@ pub mod test_util;
 pub use self::delivery::{Delivery, MAX_RUN};
 pub use self::error::{Error, Result};
 pub use self::export::{CountingExporter, CountingLogExporter, LogDrops, SpanDrops};
-pub use self::product::{Analytics, Telemetry};
+pub use self::product::{Analytics, InviteEmailOutcome, Telemetry};

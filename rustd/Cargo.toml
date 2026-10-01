@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_observability", "crates/afd_outbound", "crates/afd_dragonfly", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_mail", "crates/afd_observability", "crates/afd_outbound", "crates/afd_dragonfly", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.51.0"
@@ -102,6 +102,11 @@ afd_identity = { path = "crates/afd_identity" }
 afd_cron = { path = "crates/afd_cron" }
 afd_ingress = { path = "crates/afd_ingress" }
 afd_library = { path = "crates/afd_library" }
+# Product email: the invite rendered from templates kept in this repository and
+# sent over SMTP through the relay the `smtp-relay` platform bag names. Its own
+# crate so the transport, its TLS posture and the templates have one owner, and
+# the tenant store never links a mail client.
+afd_mail = { path = "crates/afd_mail" }
 afd_observability = { path = "crates/afd_observability" }
 afd_outbound = { path = "crates/afd_outbound" }
 afd_dragonfly = { path = "crates/afd_dragonfly" }
@@ -742,6 +747,27 @@ futures-util = { version = "0.3.34", default-features = false, features = ["std"
 # code and same versions report 5, adding `features = ["log"]` reports 0.
 # M176 §Coverage decision carries the full measurement.
 tracing = { version = "0.1.44", default-features = false, features = ["std", "attributes"] }
+# The email templates. Variables are checked against a Rust struct at compile
+# time, and HTML escaping is on by default for `.html` templates, so a display
+# name carrying markup renders as text. Only `derive` and `std`: no runtime
+# template loading, no filters this workspace does not call.
+askama = { version = "0.16.1", default-features = false, features = ["derive", "std"] }
+# The SMTP client. Defaults are off because they pull `native-tls` and a
+# connection pool: TLS here is rustls on `aws-lc-rs`, the one provider this
+# workspace links (see the crypto backend note above), and trust anchors come
+# from `rustls-platform-verifier`, as reqwest's do, which is why `Dockerfile`
+# installs `ca-certificates`. One message per invite needs no pool.
+lettre = { version = "0.11.23", default-features = false, features = [
+    "builder",
+    "smtp-transport",
+    "tokio1",
+    "tokio1-rustls",
+    "aws-lc-rs",
+    "rustls-platform-verifier",
+] }
+# Reviewed snapshots of the rendered email, so a template change shows up as a
+# diff in review rather than as a surprise in an inbox.
+insta = { version = "1.48.0", default-features = false }
 # The subscriber, which §6 wires to OTLP. It is a dev-dependency until then for
 # a reason worth stating: `tracing::warn!` checks whether its callsite is
 # ENABLED before it evaluates its arguments, so with no subscriber installed a
