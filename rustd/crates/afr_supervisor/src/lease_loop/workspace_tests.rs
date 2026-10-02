@@ -13,8 +13,11 @@ use tokio::sync::mpsc;
 use crate::client::Verb;
 use crate::test_support::{
     Answer, Behaviour, FAILURE_REASON, FLEET_ID, FakeAgent, FakeEngine, LEASE_ID, OUTCOME,
-    PROCESSED, Rig, STARTUP_POSTURE, daemon, lease, reported,
+    PROCESSED, RENEWAL_TERMINATE, Rig, STARTUP_POSTURE, Writes, daemon, lease, reported,
 };
+
+/// Why a failed landing must leave the turn unrun.
+const NO_TURN: &str = "the model is never invoked";
 
 /// The bundle's instructions.
 const SKILL: &[u8] = b"skill";
@@ -39,9 +42,21 @@ fn bundle() -> (Bytes, String) {
 
 /// A rig whose daemon serves the bundle and whose sandboxes take `engine`.
 fn rig(engine: FakeEngine) -> (Rig, String) {
+    rig_ending_renewal(engine, false)
+}
+
+/// [`rig`], with a daemon that ends the lease at its first renewal when
+/// `lose_lease` is set.
+fn rig_ending_renewal(engine: FakeEngine, lose_lease: bool) -> (Rig, String) {
     let (archive, name) = bundle();
-    let serves = move |call: &crate::client::Call| {
-        (call.verb == Verb::Bundle).then(|| Answer::Reply(archive.clone()))
+    let serves = move |call: &crate::client::Call| match call.verb {
+        Verb::Bundle => Some(Answer::Reply(archive.clone())),
+        Verb::Renew if lose_lease => Some(Answer::Fail(crate::error::refused(
+            Verb::Renew,
+            409,
+            Some(afd_core::error_code::RUN_LEASE_LOST),
+        ))),
+        _other => None,
     };
     (
         Rig::new(daemon(serves), engine, FakeAgent::new(Behaviour::Answer)),
@@ -76,7 +91,7 @@ async fn a_bundles_support_files_land_in_the_workspace_before_the_turn() {
 #[tokio::test(start_paused = true)]
 async fn support_files_that_will_not_land_fail_the_start_before_the_turn() {
     let (mut rig, name) = rig(FakeEngine {
-        refuse_writes: true,
+        writes: Writes::Refuse,
         ..FakeEngine::default()
     });
 
@@ -85,14 +100,33 @@ async fn support_files_that_will_not_land_fail_the_start_before_the_turn() {
         .unwrap();
 
     assert_eq!(reported(&rig.calls())[FAILURE_REASON], STARTUP_POSTURE);
-    assert_eq!(
-        rig.runs.load(Ordering::SeqCst),
-        0,
-        "the model is never invoked"
-    );
+    assert_eq!(rig.runs.load(Ordering::SeqCst), 0, NO_TURN);
     assert_eq!(
         rig.destroyed.load(Ordering::SeqCst),
         1,
         "the sandbox is still destroyed"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_lease_that_ends_while_its_bundle_lands_stops_the_landing() {
+    let (mut rig, name) = rig_ending_renewal(
+        FakeEngine {
+            writes: Writes::Stall,
+            ..FakeEngine::default()
+        },
+        true,
+    );
+
+    rig.run(&lease(LEASE_ID, FLEET_ID, Some(&name)))
+        .await
+        .unwrap();
+
+    assert_eq!(reported(&rig.calls())[FAILURE_REASON], RENEWAL_TERMINATE);
+    assert_eq!(rig.runs.load(Ordering::SeqCst), 0, NO_TURN);
+    assert_eq!(
+        rig.destroyed.load(Ordering::SeqCst),
+        1,
+        "the sandbox is freed at once"
     );
 }

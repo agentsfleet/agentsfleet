@@ -30,7 +30,7 @@ mod rig;
 mod sandbox;
 
 pub(crate) use self::rig::{Rig, daemon, position, reported};
-pub(crate) use self::sandbox::FakeEngine;
+pub(crate) use self::sandbox::{FakeEngine, Writes};
 
 /// A canonical lease identifier.
 pub(crate) const LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8057";

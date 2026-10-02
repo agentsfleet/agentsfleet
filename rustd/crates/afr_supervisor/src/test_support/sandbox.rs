@@ -9,11 +9,19 @@ use afr_sandbox::{Engine, Sandbox, SandboxRequest};
 use bytes::Bytes;
 use tokio::sync::mpsc;
 
+/// How a fake executor answers a file write.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum Writes {
+    /// Takes it.
+    #[default]
+    Accept,
+    /// Refuses it, as a read-only workspace would.
+    Refuse,
+    /// Never answers, as a stopped executor would.
+    Stall,
+}
+
 /// An engine whose sandboxes count their teardowns.
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "each flag injects one independent fault into the sandbox a test is given"
-)]
 #[derive(Debug, Default)]
 pub(crate) struct FakeEngine {
     pub(crate) refuse: bool,
@@ -25,8 +33,8 @@ pub(crate) struct FakeEngine {
     pub(crate) destroyed: Arc<AtomicUsize>,
     /// Where each sandbox's executor reports the files written into it.
     pub(crate) written: Option<mpsc::UnboundedSender<(String, Bytes)>>,
-    /// Whether those executors refuse every file write.
-    pub(crate) refuse_writes: bool,
+    /// How those executors answer a file write.
+    pub(crate) writes: Writes,
 }
 
 #[async_trait::async_trait]
@@ -45,7 +53,7 @@ impl Engine for FakeEngine {
             destroyed: Arc::clone(&self.destroyed),
             executor: FakeExecutor {
                 written: self.written.clone(),
-                refuse_writes: self.refuse_writes,
+                writes: self.writes,
             },
         }))
     }
@@ -78,7 +86,7 @@ impl Sandbox for FakeSandbox {
 #[derive(Debug)]
 struct FakeExecutor {
     written: Option<mpsc::UnboundedSender<(String, Bytes)>>,
-    refuse_writes: bool,
+    writes: Writes,
 }
 
 #[async_trait::async_trait]
@@ -103,8 +111,10 @@ impl Executor for FakeExecutor {
     }
 
     async fn write_file(&self, path: &str, data: Bytes) -> afr_executor::Result<()> {
-        if self.refuse_writes {
-            return Err(std::io::Error::other("read-only workspace").into());
+        match self.writes {
+            Writes::Accept => {}
+            Writes::Refuse => return Err(std::io::Error::other("read-only workspace").into()),
+            Writes::Stall => std::future::pending::<()>().await,
         }
         if let Some(written) = &self.written {
             let _reader_gone = written.send((path.to_owned(), data));
