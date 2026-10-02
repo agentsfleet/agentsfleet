@@ -6,7 +6,7 @@
 
 | Fact | Value |
 |---|---|
-| Language | Rust, in the `rustd` workspace beside `agentsfleetd`. Wire types come from `afd_wire`, decoded leniently on the runner side, because the daemon port's faults were all "something the Zig daemon tolerated" that strict Rust did not |
+| Language | Rust, in the `rustd` workspace beside `agentsfleetd`, under the same principles: one error type per crate through `afd_core::error_shell!`, one source per constant, pure logic apart from I/O. The wire is `afd_wire` and nothing else; nothing in the runner refers to the Zig runner. Daemon→runner types decode leniently, so a runner never refuses a field a newer daemon adds |
 | Process model | A trusted **supervisor** runs the lease loop and the agent loop; a per-lease **sandbox** executes tool calls and nothing else |
 | Hosts | Bare metal or a VM, multi-tenant from the first release |
 | Sandbox engine | Firecracker microVMs for code-running leases from many tenants, on hosts that expose `/dev/kvm`. bubblewrap (Landlock, seccomp, cgroup v2, a per-lease network namespace) ships first, and stays as the engine for development, CI and hosts without `/dev/kvm` |
@@ -55,22 +55,41 @@ agentsfleet-runner (one binary; a VM or a bare-metal host)
  └──────────────────────────────────────────────────────────────────────┘
 ```
 
-**The agent loop runs outside the sandbox.** The Zig runner runs NullClaw inside the sandbox with the provider key handed in, and builds its redaction set from it (`src/runner/engine/runner.zig`). Moving the loop out means a prompt-injected command cannot read the model key, and it makes the sandbox a plain executor, so bubblewrap and a microVM sit behind one interface. A model call starts while the workspace is still restoring, because nothing about the call needs the sandbox.
+**The agent loop runs outside the sandbox.** No model key ever enters a sandbox, so a prompt-injected command cannot read one, and the sandbox is a plain executor, so bubblewrap and a microVM sit behind one interface. A model call starts while the workspace is still restoring, because nothing about the call needs the sandbox.
 
 **The executor is small and ours.** One process per lease inside the sandbox serves spawn, write, read and kill for processes on pseudo-terminals, file reads and writes, and `apply_patch`. Its methods mirror Codex's `exec-server` (`~/Projects/oss/rs/codex/codex-rs/exec-server/README.md`), so the Codex engine and our loop drive the same shapes.
 
 **Every call ends exactly once.** When a run ends for any reason — answer, crash, kill, timeout — the supervisor closes each call still open as `interrupted`, live and in the trace ([Runner Fleet](./runner_fleet.md) §Live activity).
 
+## Crates
+
+```
+rustd/crates/
+  afd_wire              the one wire, shared with agentsfleetd (exists)
+  afd_core              error_shell!, timing constants (exists; no datastore dependency)
+  afr_executor          executor protocol, in-sandbox server, supervisor-side client
+  afr_sandbox           engine interface; bubblewrap engine now, Firecracker engine next
+  afr_agent             agent loop, tool router, events, run trace
+  afr_providers         Anthropic Messages, OpenAI Responses, OpenAI-compatible chat
+  afr_tools             hosted tools, then exec_command, apply_patch, propose_change
+  afr_supervisor        lease loop, renewal, report spool, activity, memory, minting,
+                        bundles, storage sweep, capability report, control-plane client
+  agentsfleet_runner    binary: composition root only
+  agentsfleet_executor  binary: the executor inside a sandbox (a microVM's init, later)
+```
+
+Dependencies point one way: the binaries → `afr_supervisor` → `afr_agent` → `afr_providers` and `afr_tools` → `afr_executor`, with `afr_supervisor` → `afr_sandbox` → `afr_executor`. Every runner crate may depend on `afd_wire` and `afd_core` and on nothing else from `agentsfleetd`, and none links a datastore crate. The executor is its own small binary because it lives inside every sandbox and, under Firecracker, inside every guest image.
+
 ## Sandbox engines
 
-The Zig runner's sandbox carries over and gains what process tools need. Fleets on shared hosts now run their own programs — build scripts, test suites, package installs, Python the model writes — so the sandbox is the only thing between two tenants' processes and one kernel:
+Fleets on shared hosts run their own programs — build scripts, test suites, package installs, Python the model writes — so the sandbox is the only thing between two tenants' processes and one kernel:
 
 - bubblewrap: a fresh user, PID, IPC, UTS, mount and network namespace per lease; `--cap-drop ALL`, `--disable-userns`, `--clearenv`, `--die-with-parent`, `--new-session`.
 - `no_new_privs`, then Landlock, then seccomp. The seccomp filter refuses `io_uring`, `ptrace`, `process_vm_readv`/`writev`, `unshare`, `bpf`, `keyctl` and `perf_event_open`; the last four are calls Codex's own filter leaves open.
-- cgroup v2 limits on memory, processor, process count and I/O, with whole-tree kill (`src/runner/engine/CgroupScope.zig` carries the first three today).
-- An enforced disk quota on the writable layer; the Zig runner's `disk_write_limit_mb` is declared but not enforced.
+- cgroup v2 limits on memory, processor, process count and I/O, with whole-tree kill.
+- An enforced disk quota on the writable layer, sized by the lease's `disk_write_limit_mb`.
 - A supervisor whose capability set is only what sandbox setup needs (mounts, cgroups, namespaces), while tenant code never holds a capability; and a kernel patch cadence for runner hosts.
-- The per-lease network allowlist: a network namespace, a virtual ethernet pair and nftables rules, with rendered resolver files ([Runner Fleet](./runner_fleet.md) §Egress model). The Zig runner refuses a lease that selects it, because it is unbuilt (`src/runner/child_supervisor.zig`).
+- The per-lease network allowlist: a network namespace, a virtual ethernet pair and nftables rules, with rendered resolver files ([Runner Fleet](./runner_fleet.md) §Egress model).
 
 **The remaining risk is the shared kernel**, and Firecracker removes it. A kernel privilege-escalation bug escapes every namespace sandbox on the host at once, while a microVM gives each lease its own kernel. Firecracker needs read and write access to `/dev/kvm`: bare metal has it, and cloud VMs expose it only where the provider offers nested virtualization. Both engines sit behind one interface and share everything outside the boundary itself: the supervisor, the executor (a microVM's vsock surfaces on the host as a Unix socket), the toolbox image (a microVM's read-only root disk), the per-lease disk image (its data disk), cgroups, and the test lanes. Firecracker's jailer applies the same cgroup and namespace barrier around each microVM before dropping privileges. The engine is a host attribute the control plane assigns ([Runner Fleet](./runner_fleet.md) §Assigned policy and reconciliation). Fleets that run processes lease only to runners whose engine allows it; lease assignment carries no such filter today.
 
@@ -98,7 +117,7 @@ Artifacts a fleet saves for the user live beside the snapshots and are downloade
 
 - **Model keys** stay in the supervisor.
 - **Repository reads.** The supervisor clones with a read-only, one-hour, repository-scoped token from the mint verb (`rustd/crates/afd_credential/src/credential/github/request.rs`). The token never enters the sandbox.
-- **Tools that need a login reuse today's mint path.** Fleets already name credentials and never hold them: a `${secrets.github.token}` placeholder resolves through `POST /v1/runners/me/credentials/mint`, which today the sandboxed child requests from its supervisor over the pipe (`src/runner/engine/credential_request.zig`). The Rust runner keeps that verb and its scopes; the supervisor calls it directly. What is new is only where a token lands. Today it is substituted into one request inside our own tool and dies with the call. A command-line tool such as the GitHub one needs it as a file or variable, so the supervisor writes it into `/run/creds` for that lease. Each token is bound to the hosts it is for, and the lease's allowlist admits only those hosts.
+- **Tools that need a login reuse today's mint path.** Fleets already name credentials and never hold them: a `${secrets.github.token}` placeholder resolves through `POST /v1/runners/me/credentials/mint`, and the supervisor calls that verb. What is new is only where a token lands. Today it is substituted into one request inside our own tool and dies with the call. A command-line tool such as the GitHub one needs it as a file or variable, so the supervisor writes it into `/run/creds` for that lease. Each token is bound to the hosts it is for, and the lease's allowlist admits only those hosts.
 - **A placeholder-swap proxy can replace the file later without fleets noticing.** The mint path stays the same, and the supervisor writes a placeholder into `/run/creds` instead of the token. Every sandbox connection already leaves through the host-side end of the lease's network namespace, and the toolbox's trust store has an empty slot for a proxy's certificate. Adding the proxy reverses the no-interception rule in [Runner Fleet](./runner_fleet.md) §Traps, and that reversal is recorded when it ships.
 
 ## Coding engines
@@ -115,13 +134,13 @@ The fleet uses real git inside the sandbox: branches, several commits, the norma
 2. mints a write token for that one call and pushes;
 3. opens a draft Pull Request.
 
-When a fleet requires approval, the push runs in the continuation lease after someone approves. This moves today's boundary outside the sandbox without changing its rules. The daemon compiles the rules (`rustd/crates/afd_gate/src/policy/egress/write.rs`), and the Zig runner enforces them inside its own process (`src/runner/engine/runtime/policy_http_request.zig`). A write token inside the sandbox would be readable by every program there, including a dependency's install hook. A repository-scoped write token "can force-push to `main` as easily as it can open a draft Pull Request", in the words of the rules' own module documentation.
+When a fleet requires approval, the push runs in the continuation lease after someone approves. The daemon compiles the rules (`rustd/crates/afd_gate/src/policy/egress/write.rs`), and the supervisor enforces them outside the sandbox. A write token inside the sandbox would be readable by every program there, including a dependency's install hook. A repository-scoped write token "can force-push to `main` as easily as it can open a draft Pull Request", in the words of the rules' own module documentation.
 
 ## Why Rust
 
 - **Memory safety is checked by the compiler.** The Zig runner relies on rules a reviewer enforces by hand: one owner per resource, init and deinit pairing, idempotent cleanup, draining before deinit (`docs/greptile-learnings/RULES.md`, OWN, ZIG, DEINIT, DIDEM, DRAIN). It once needed a memory-leak lane of its own.
 - **The language is stable.** Zig is pre-1.0: the rulebook carries a rule for the Zig 0.15 ArrayList change (ZAL), and the NullClaw fork patches around Zig 0.16's process I/O.
-- **One copy of the wire.** The daemon's `afd_wire` types become the runner's, so the Zig copy of the wire types and its drift faults go away.
+- **One wire.** The runner speaks `afd_wire`, the daemon's own types, so a mismatch between the two sides fails to compile.
 - **The next work already exists in Rust.** Pseudo-terminals, patch application, the bubblewrap helper, Landlock and seccomp bindings, S3 presigning and Firecracker itself.
 
 The costs are the rewrite, slower compiles, async complexity and larger binaries. Speed is not a reason: both compile to native code.
@@ -158,4 +177,5 @@ The costs are the rewrite, slower compiles, async complexity and larger binaries
 | Oct 02, 2026 | Scoped short-lived tokens now; the placeholder-swap proxy later | Indy: "I would go for 1, with the focus on move to 2 later" |
 | Oct 02, 2026 | The supervisor pushes repository writes | Indy chose "Supervisor pushes (Recommended)" |
 | Oct 02, 2026 | Code-running leases from different tenants may share a host; hardening and kernel patching are the boundary until Firecracker | Indy chose "No, share freely" when asked whether a host should refuse a second tenant's code-running lease |
-| Oct 02, 2026 | Firecracker is the production engine for code-running leases; bubblewrap ships first and stays for development, CI and hosts without `/dev/kvm` | Indy: "i think we must shoot for firecracker then", "if its throwawy work" and "i want to know what is quick to test the end to end case". Bubblewrap first is the agent default, awaiting his confirmation: with both engines nothing is thrown away, and it is the quickest end-to-end path |
+| Oct 02, 2026 | Firecracker is the production engine for code-running leases; bubblewrap ships first and stays for development, CI and hosts without `/dev/kvm` | Indy: "i think we must shoot for firecracker then", then "Yes bubblewrap first, and firecracker next." Firecracker is installed on production hosts later; every runner reports whether `/dev/kvm` exists |
+| Oct 02, 2026 | The Rust runner is independent: no second copy of the wire, nothing in its code, comments or tests refers to the Zig runner, and it follows `rustd` principles | Indy: "A second copy of the wire will not be existing, none of the rust code will point to the zig." and "the rust code is independent and follows our current rustd/ principles" |
