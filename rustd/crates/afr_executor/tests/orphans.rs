@@ -12,10 +12,15 @@ use rustix::process::{Pid, Signal, kill_process};
 
 use crate::support::{finish, start};
 
-/// The leader forks and exits at once; the child starts a session of its own,
-/// says its pid, and sleeps holding the output. `setsid sleep 600 &` without
-/// the `setsid` binary, which macOS does not ship.
-const ORPHAN: &str = r#"use POSIX (); if (fork) { exit 0 } POSIX::setsid(); $| = 1; print "$$\n"; exec "sleep", "600""#;
+/// The leader forks and exits; the child starts a session of its own, says
+/// its pid, and sleeps holding the output. `setsid sleep 600 &` without the
+/// `setsid` binary, which macOS does not ship.
+///
+/// The leader waits on a pipe until the child has left its group. Exiting at
+/// once raced the executor, which ends a leader's group the moment the leader
+/// exits: under load that kill landed before `setsid`, and the child died
+/// without ever becoming the orphan this file is about.
+const ORPHAN: &str = r#"use POSIX (); pipe(my $r, my $w); if (fork) { close $w; <$r>; exit 0 } close $r; POSIX::setsid(); $| = 1; print "$$\n"; close $w; exec "sleep", "600""#;
 
 /// Long enough for the drain grace and a loaded machine, far short of the
 /// orphan's sleep.
