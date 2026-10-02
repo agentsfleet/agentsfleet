@@ -33,15 +33,7 @@ use tracing_subscriber::{Layer, Registry, reload};
 use crate::telemetry::Exports;
 use crate::tty::Rendering;
 
-/// The environment variable naming how much to log.
-///
-/// Its VALUE is a level — `error`, `warn`, `info`, `debug`, `trace`, `off` —
-/// so `AGENTSFLEET_LOG_LEVEL=debug agentsfleetd serve`. Not a file: records go
-/// to stderr, and where they go from there is the collector's business.
-///
-/// Spelled in full rather than as a bare `AGENTSFLEET_LOG`, so the name says
-/// which knob it is at the call site and in a deployment manifest.
-pub const LOG_LEVEL_VAR: &str = "AGENTSFLEET_LOG_LEVEL";
+pub use afd_core::env::LOG_LEVEL_VAR;
 
 /// Where a record goes when nobody chose.
 ///

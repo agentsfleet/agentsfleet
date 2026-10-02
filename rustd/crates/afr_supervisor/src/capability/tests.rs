@@ -1,7 +1,7 @@
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 use afr_sandbox::{HostProbe, Kvm};
 
-use super::{capability_report, selftest};
+use super::{capability_report, probe_answer, selftest};
 
 fn probe(kvm: Kvm, toolbox_filesystem: bool) -> HostProbe {
     HostProbe {
@@ -103,4 +103,27 @@ fn the_report_carries_the_wire_mechanisms_without_egress() {
         "a sandbox here has no network to enforce"
     );
     assert_eq!(report.cgroup_controllers.len(), 4);
+}
+
+/// The probe command answers with the heartbeat's report and every check, so
+/// an operator reads on the host exactly what the daemon will be told.
+#[test]
+fn the_probe_answer_is_the_report_plus_every_check() {
+    let host = probe(Kvm::Absent, false);
+
+    let answer = probe_answer(&host);
+
+    assert_eq!(answer.capability_report, capability_report(&host));
+    let names: Vec<_> = answer.checks.iter().map(|check| check.name.as_ref()).collect();
+    assert_eq!(
+        names,
+        ["landlock", "seccomp", "bubblewrap", "cgroup_controllers", "kvm", "toolbox_filesystem"]
+    );
+    let refused: Vec<_> = answer
+        .checks
+        .iter()
+        .filter(|check| !check.ok)
+        .map(|check| check.name.as_ref())
+        .collect();
+    assert_eq!(refused, ["kvm", "toolbox_filesystem"]);
 }
