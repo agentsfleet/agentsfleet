@@ -158,19 +158,35 @@ function ReloadingPage() {
   return <InviteDialog onSettled={reloadThatNeverEnds} />;
 }
 
+// Sends one invite on a page whose reload never ends, then clicks Done.
+async function inviteThenDone() {
+  actions.createInviteAction.mockResolvedValue({ ok: true, data: INVITE });
+  render(<ReloadingPage />, { wrapper: TooltipProvider });
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: INVITE_BUTTON }));
+  const dialog = await screen.findByRole("dialog");
+  await user.type(within(dialog).getByLabelText(EMAIL_FIELD), INVITE.email);
+  await user.click(within(dialog).getByRole("button", { name: SEND }));
+  const ready = await screen.findByTestId(INVITE_READY);
+  await user.click(within(ready).getByRole("button", { name: DONE }));
+  return user;
+}
+
 describe("closing once the invite exists", () => {
   it("should close on Done while the page is still reloading its lists", async () => {
-    actions.createInviteAction.mockResolvedValue({ ok: true, data: INVITE });
-    render(<ReloadingPage />, { wrapper: TooltipProvider });
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: INVITE_BUTTON }));
-    const dialog = await screen.findByRole("dialog");
-    await user.type(within(dialog).getByLabelText(EMAIL_FIELD), INVITE.email);
-    await user.click(within(dialog).getByRole("button", { name: SEND }));
-    const ready = await screen.findByTestId(INVITE_READY);
-
-    await user.click(within(ready).getByRole("button", { name: DONE }));
+    await inviteThenDone();
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("should open the next invite ready to send while that reload still runs", async () => {
+    const user = await inviteThenDone();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    await user.click(screen.getByRole("button", { name: INVITE_BUTTON }));
+    const next = await screen.findByRole("dialog");
+
+    expect(within(next).getByRole<HTMLButtonElement>("button", { name: SEND }).disabled).toBe(false);
+    expect(within(next).getByRole<HTMLButtonElement>("button", { name: CANCEL }).disabled).toBe(false);
   });
 });
