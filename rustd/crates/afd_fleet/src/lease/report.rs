@@ -39,6 +39,7 @@ use crate::error::{Result, lease_not_found, stale_fence};
 use crate::lease::commit::{Committed, TerminalReport};
 use crate::lease::pull::Plane;
 use crate::lease::settle::Reported;
+use crate::lease::tool_trace::{self, TraceOwner};
 use crate::lease::verdict::{Terminal, Verdict};
 use afd_billing::rates::Posture;
 use afd_billing::{Cumulative, Meter, Nanos};
@@ -124,13 +125,24 @@ impl Plane {
             return Err(lease_not_found());
         };
 
-        let verdict = Verdict::of(
-            request.outcome,
-            request.failure_reason,
-            request.failure_detail.as_ref(),
+        let tool_calls = tool_trace::stored(
+            request.tool_calls,
+            TraceOwner {
+                fleet_id: lease.fleet_id.as_str(),
+                event_id: &lease.event_id,
+                fence: lease.fence.as_i64(),
+            },
         );
         let meter = self.price_final_slice(&lease, request).await;
-        let report = terminal(lease_id, runner_id, &lease, meter, verdict, request, now);
+        let report = terminal(
+            lease_id,
+            runner_id,
+            &lease,
+            meter,
+            request,
+            tool_calls.as_deref(),
+            now,
+        );
 
         match self.leases.commit_report(report).await? {
             Committed::Fenced => Err(stale_fence()),
@@ -205,8 +217,8 @@ fn terminal<'a>(
     runner_id: &'a Uuid7,
     lease: &'a Reported,
     meter: Meter,
-    verdict: Verdict<'a>,
     request: &'a ReportRequest<'a>,
+    tool_calls: Option<&'a str>,
     now: UnixMillis,
 ) -> TerminalReport<'a> {
     TerminalReport {
@@ -215,10 +227,15 @@ fn terminal<'a>(
         lease,
         meter,
         outcome: Terminal {
-            verdict,
+            verdict: Verdict::of(
+                request.outcome,
+                request.failure_reason,
+                request.failure_detail.as_ref(),
+            ),
             response_text: request.response_text.as_ref(),
             tokens: i64::try_from(request.tokens).unwrap_or(i64::MAX),
             wall_ms: i64::try_from(request.telemetry.wall_ms).unwrap_or(i64::MAX),
+            tool_calls,
         },
         last_event_id: request.checkpoint.last_event_id.as_ref(),
         last_response: request.checkpoint.last_response.as_ref(),

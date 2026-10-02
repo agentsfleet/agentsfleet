@@ -54,13 +54,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/crates/afd_wire/src/activity.rs`, `rustd/crates/afd_wire/src/report.rs`, `rustd/crates/afd_wire/src/event.rs`, `rustd/crates/afd_wire/src/tool_trace.rs`, `rustd/crates/afd_wire/src/lib.rs` | EDIT / CREATE | Outcome fields, `ToolCallStatus`, trace types, bounds and their validator; `EventDetail.tool_calls` |
-| `rustd/crates/afd_fleet/src/lease/activity/published.rs`, `rustd/crates/afd_fleet/src/lease/activity/tests.rs` | EDIT | Bridge the outcome onto `fleet:{id}:activity` |
-| `rustd/crates/afd_api_runner/src/handler/runner/report.rs`, `rustd/crates/afd_fleet/src/lease/finalize.rs`, `rustd/crates/afd_events/src/sql.rs` | EDIT | Narrow the trace apart from the report; fence call ids; write it in the settling `UPDATE` |
-| `rustd/crates/afd_events/src/history/statement.rs`, `rustd/crates/afd_events/src/history/detail.rs`, `rustd/crates/afd_api_tenant/src/handler/event/mod.rs` | EDIT | `tool_calls` as a body column on the detail and thread reads, never the list |
+| `rustd/crates/afd_wire/src/activity.rs`, `rustd/crates/afd_wire/src/activity/tests.rs`, `rustd/crates/afd_wire/src/report.rs`, `rustd/crates/afd_wire/src/report/tests.rs`, `rustd/crates/afd_wire/src/event.rs`, `rustd/crates/afd_wire/src/tool_trace.rs`, `rustd/crates/afd_wire/src/tool_trace/tests.rs`, `rustd/crates/afd_wire/src/lib.rs` | EDIT / CREATE | Outcome fields, `ToolCallStatus`, trace types, bounds and their validator, the raw carrier the report holds; `EventDetail.tool_calls`. The activity tests moved to a sibling at the length cap |
+| `rustd/crates/afd_fleet/src/lease/activity/published.rs`, `rustd/crates/afd_fleet/src/lease/activity/tests.rs`, `rustd/crates/afd_api_runner/src/handler/runner/activity.rs` | EDIT | Bridge the outcome onto `fleet:{id}:activity`; refuse an edge past its bound |
+| `rustd/crates/afd_fleet/src/lease/tool_trace.rs`, `rustd/crates/afd_fleet/src/lease/tool_trace/tests.rs`, `rustd/crates/afd_fleet/src/lease/mod.rs`, `rustd/crates/afd_fleet/src/lease/report.rs`, `rustd/crates/afd_fleet/src/lease/verdict.rs`, `rustd/crates/afd_fleet/src/lease/finalize.rs`, `rustd/crates/afd_events/src/sql.rs` | CREATE / EDIT | Narrow the trace apart from the report; fence call ids (one function for frames and trace); write it in the settling `UPDATE` |
+| `rustd/crates/afd_events/src/history/statement.rs`, `rustd/crates/afd_events/src/history/detail.rs`, `rustd/crates/afd_events/src/history/queued.rs`, `rustd/crates/afd_events/src/history/queued/tests.rs`, `rustd/crates/afd_api_tenant/src/handler/event/mod.rs`, `rustd/crates/afd_api_tenant/src/handler/fleet/message/tests.rs`, `rustd/crates/afd_api_tenant/src/handler/stream.rs` | EDIT | `tool_calls` as a body column on the detail and thread reads, never the list; the stream description names the outcome fields |
 | `schema/924_fleet_events_tool_calls.sql`, `rustd/crates/afd_db/src/migration.rs` | CREATE / EDIT | Forward `ADD COLUMN IF NOT EXISTS tool_calls JSONB`, registered in `MIGRATIONS` |
-| `public/openapi.json` | EDIT | Regenerated; new fields declare `x-stability` |
-| `rustd/crates/agentsfleetd/tests/support/e2e_wire.rs`, `rustd/crates/agentsfleetd/tests/integration_runner_activity.rs`, `rustd/crates/agentsfleetd/tests/integration_tool_trace.rs`, `rustd/crates/afd_db/tests/migrations.rs` | EDIT / CREATE | Runner-shaped bodies and live-datastore proofs (`#[ignore]`d, run by `make test-integration-rustd`) |
+| `public/openapi.json`, `rustd/crates/afd_api/src/openapi.rs`, `rustd/crates/afd_api/src/openapi/stability.rs`, `rustd/crates/afd_api/src/openapi/stability/tests.rs` | EDIT / CREATE | Regenerated; `x-stability` declared by a derived pass, because the derive takes no field extensions |
+| `rustd/crates/agentsfleetd/tests/daemon_suite.rs`, `rustd/crates/agentsfleetd/tests/integration_runner_activity_call_id.rs`, `rustd/crates/agentsfleetd/tests/integration_tool_trace.rs`, `rustd/crates/agentsfleetd/tests/integration_tenant_registry.rs`, `rustd/crates/afd_db/tests/db_suite.rs`, `rustd/crates/afd_db/tests/integration_fleet_events_tool_calls.rs` | EDIT / CREATE | Runner-shaped bodies and live-datastore proofs (`#[ignore]`d, run by `make test-integration-rustd`); the tenant fixture helpers become shared |
+| `rustd/crates/afd_bench/src/lane/lease/drain/runner.rs`, `rustd/crates/afd_fleet/tests/integration_report_owes_destination.rs`, `rustd/crates/afd_fleet/tests/support/fleet_report_commit.rs` | EDIT | Existing literals take the new optional field |
 
 ## Applicable Rules
 
@@ -92,35 +93,35 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 `ToolCallCompleted` gains optional `status` (`succeeded | failed | interrupted`), `output_head`, `output_tail`, `output_line_count`, and `exit_code` for calls that ran a process. A trace type carries up to 200 calls (call id, name, arguments, status, edges, line count, exit code, `duration_ms`) and `omitted_call_count`, with a validator that enforces every bound. A frame from an older runner still parses.
 
-- **Dimension 1.1** — A completion round-trips with each status, both edges and an exit code → Test `test_tool_call_completed_outcome_roundtrip`
-- **Dimension 1.2** — A completion without outcome fields parses with each absent → Test `test_tool_call_completed_without_outcome_parses`
-- **Dimension 1.3** — The validator refuses 201 calls, a 65537-byte trace, a 2049-byte argument object and an edge over 1 KiB → Test `test_tool_trace_validator_enforces_bounds`
+- **Dimension 1.1** — A completion round-trips with each status, both edges and an exit code → Test `test_tool_call_completed_outcome_roundtrip` — DONE (`afd_wire/src/activity/tests.rs`)
+- **Dimension 1.2** — A completion without outcome fields parses with each absent → Test `test_tool_call_completed_without_outcome_parses` — DONE (`afd_wire/src/activity/tests.rs`)
+- **Dimension 1.3** — The validator refuses 201 calls, a 65537-byte trace, a 2049-byte argument object and an edge over 1 KiB → Test `test_tool_trace_validator_enforces_bounds` — DONE (`afd_wire/src/tool_trace/tests.rs`)
 
 ### §2 — The daemon publishes the outcome live
 
 `Published::ToolCallCompleted` bridges the five fields onto `fleet:{id}:activity`.
 
-- **Dimension 2.1** — The bridge publishes `status`, `output_head`, `output_tail`, `output_line_count`, `exit_code` → Test `test_published_completed_carries_outcome`
-- **Dimension 2.2** — A runner batch posted to the activity verb reaches the channel with the outcome → Test `test_activity_tool_outcome_reaches_channel`
+- **Dimension 2.1** — The bridge publishes `status`, `output_head`, `output_tail`, `output_line_count`, `exit_code` → Test `test_published_completed_carries_outcome` — DONE (`afd_fleet/src/lease/activity/tests.rs`)
+- **Dimension 2.2** — A runner batch posted to the activity verb reaches the channel with the outcome → Test `test_activity_tool_outcome_reaches_channel` — DONE (`agentsfleetd/tests/integration_runner_activity_call_id.rs`; an edge past its bound refuses the batch)
 
 ### §3 — The report's trace is stored with the result it belongs to
 
 The report takes `tool_calls` as raw JSON and narrows it after its own fields, so a bad trace never refuses a report. Each call id is rewritten to the fenced `{fence}:{n}` the live frames use. `UPDATE_FLEET_EVENT_RESULT` writes the trace beside `response_text`; a fenced-out report writes neither, and a trace failing a bound is stored `NULL` and logged.
 
-- **Dimension 3.1** — A report with a valid, absent or malformed trace parses, and only a valid trace survives → Test `test_report_tool_calls_never_refuse_report`
-- **Dimension 3.2** — An over-bound trace is stored `NULL`, the report settles 2xx and `report_tool_trace_dropped` logs → Test `test_oversize_tool_trace_dropped_report_settles`
-- **Dimension 3.3** — A settled report stores the trace with fenced call ids → Test `test_report_writes_tool_calls_with_result`
-- **Dimension 3.4** — A stale-fence report writes neither result nor trace → Test `test_fenced_report_writes_no_tool_calls`
-- **Dimension 3.5** — Migrating a populated database leaves existing rows `NULL` → Test `test_tool_calls_column_upgrade_keeps_rows_null`
+- **Dimension 3.1** — A report with a valid, absent or malformed trace parses, and only a valid trace survives → Test `test_report_tool_calls_never_refuse_report` — DONE (`afd_wire/src/report/tests.rs`)
+- **Dimension 3.2** — An over-bound trace is stored `NULL`, the report settles 2xx and `report_tool_trace_dropped` logs → Test `test_oversize_tool_trace_dropped_report_settles` — DONE (`agentsfleetd/tests/integration_tool_trace.rs`; the log line is proven in `afd_fleet/src/lease/tool_trace/tests.rs`, because the booted daemon logs to no capture)
+- **Dimension 3.3** — A settled report stores the trace with fenced call ids → Test `test_report_writes_tool_calls_with_result` — DONE (`agentsfleetd/tests/integration_tool_trace.rs`)
+- **Dimension 3.4** — A stale-fence report writes neither result nor trace → Test `test_fenced_report_writes_no_tool_calls` — DONE (`agentsfleetd/tests/integration_tool_trace.rs`)
+- **Dimension 3.5** — Migrating a populated database leaves existing rows `NULL` → Test `test_tool_calls_column_upgrade_keeps_rows_null` — DONE (`afd_db/tests/integration_fleet_events_tool_calls.rs`)
 
 ### §4 — The thread and the single-event read serve the trace
 
 `tool_calls` joins `body_columns!`, `EventDetailRow` and `EventDetail`. The events list never selects it, `event_complete` stays body-free (the browser re-reads the detail at settle, `ui/packages/app/lib/streaming/fleet-stream-detail-reader.ts:28`), and the 512 KiB thread page (`rustd/crates/afd_api_tenant/src/handler/fleet/message.rs:53`) counts it.
 
-- **Dimension 4.1** — The detail read returns the stored trace, and `null` for a row without one → Test `test_event_detail_serves_tool_calls`
-- **Dimension 4.2** — Thread items carry `tool_calls` and the page budget counts their bytes → Test `test_thread_page_budget_counts_tool_calls`
-- **Dimension 4.3** — The events list response has no `tool_calls` key → Test `test_event_list_omits_tool_calls`
-- **Dimension 4.4** — `public/openapi.json` matches the regenerated document → Test `test_openapi_build_is_the_source`
+- **Dimension 4.1** — The detail read returns the stored trace, and `null` for a row without one → Test `test_event_detail_serves_tool_calls` — DONE (`agentsfleetd/tests/integration_tool_trace.rs`, detail and thread reads)
+- **Dimension 4.2** — Thread items carry `tool_calls` and the page budget counts their bytes → Test `test_thread_page_budget_counts_tool_calls` — DONE (`afd_api_tenant/src/handler/fleet/message/tests.rs`, unit: the budget is decided before any datastore)
+- **Dimension 4.3** — The events list response has no `tool_calls` key → Test `test_event_list_omits_tool_calls` — DONE (`agentsfleetd/tests/integration_tool_trace.rs`)
+- **Dimension 4.4** — `public/openapi.json` matches the regenerated document → Test `test_openapi_build_is_the_source` — DONE (`afd_api/tests/openapi_artifact.rs`, regenerated)
 
 ## Interfaces
 
@@ -154,7 +155,7 @@ afd_wire::tool_trace bounds (one value each, shared with the Rust runner):
 
 ## Invariants
 
-1. A stored trace never exceeds `TRACE_MAX_CALLS` or `TRACE_MAX_BYTES` — the daemon validates before the write and is the authority (Dimension 1.3).
+1. A stored trace never exceeds `TRACE_MAX_CALLS` calls, and the trace the runner sent never exceeds `TRACE_MAX_BYTES` — the daemon validates before the write and is the authority (Dimension 1.3). The bytes are measured as sent, so the runner's own check agrees with the daemon's; fencing each call id adds at most 21 bytes per call after the check.
 2. A trace is written only by the statement that settles its event (Dimension 3.4).
 3. No trace can refuse a report — it is parsed after the report's own fields, as raw JSON (Dimension 3.1).
 
@@ -179,7 +180,7 @@ afd_wire::tool_trace bounds (one value each, shared with the Rust runner):
 | 3.4 | integration | `test_fenced_report_writes_no_tool_calls` | stale token → row unchanged, `tool_calls` `NULL` |
 | 3.5 | integration | `test_tool_calls_column_upgrade_keeps_rows_null` | populated db + slot 924 → old rows `NULL` |
 | 4.1 | integration | `test_event_detail_serves_tool_calls` | detail read → stored trace; traceless row → `null` |
-| 4.2 | integration | `test_thread_page_budget_counts_tool_calls` | heavy traces → page ≤ 512 KiB, cursor set |
+| 4.2 | unit | `test_thread_page_budget_counts_tool_calls` | heavy traces → page ≤ 512 KiB, cursor set |
 | 4.3 | integration | `test_event_list_omits_tool_calls` | list item JSON has no `tool_calls` key |
 | 4.4 | unit | `test_openapi_build_is_the_source` | regenerated document equals `public/openapi.json` |
 
@@ -237,5 +238,6 @@ N/A — no files deleted.
 
 - **Consults** — Indy (in-session, Oct 02, 2026): "Codex-style tool rows and others ensure we are able to show more information"; on visibility, "The tool call preview like we see in codex nothing must be hidden, isnt codex displaying all"; secret values stay masked under `AGENTS.orly.md` §Hard Safety. Re-scoped the same day after "The port is a fresh port, since we always have the last binary with us and running": capture moved to the Rust runner, and this spec keeps the wire and the daemon. Codex lessons kept: typed status, every call ends once, durable means finished.
 - **Metrics review** — No analytics or funnel playbook update required: no new user action; one operator log event added.
+- **Implementation notes (Oct 02, 2026)** — The live `tool_call_completed` frame's edges are held to the trace's edge bound at the activity verb, so the daemon never publishes an edge it would refuse to store. `x-stability` existed nowhere in the repository and `utoipa` 5.5 takes no extensions on a derived field, so `afd_api/src/openapi/stability.rs` declares it as a derived pass; `EventDetail.tool_calls` is `beta` while the chat and the Rust runner settle its shape.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.

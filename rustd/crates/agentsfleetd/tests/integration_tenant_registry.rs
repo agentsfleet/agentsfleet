@@ -42,7 +42,7 @@ use crate::e2e_seed_keys::{seed_activatable_key, seed_tenant_key};
 /// Prefixed the way the production minting spells a tenant key, unique per
 /// scenario: the digest column is globally unique and this lane shares one
 /// database, so a fixed spelling would collide with its own previous run.
-fn mint_tenant_token() -> String {
+pub(crate) fn mint_tenant_token() -> String {
     let bits = format!(
         "{}{}",
         afd_db::test_util::mint_id(),
@@ -61,7 +61,7 @@ fn mint_tenant_token() -> String {
 /// this walk. What the real provider answers is a user document whose
 /// `public_metadata.scopes` carries space-separated wire scopes; this listener
 /// answers exactly that shape and nothing else.
-async fn provider_listener() -> String {
+pub(crate) async fn provider_listener() -> String {
     let app = axum::Router::new().route(
         "/users/{subject}",
         axum::routing::get(|| async {

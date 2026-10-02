@@ -164,5 +164,6 @@ fn processed<'a>(lease: &'a LeasePayload<'a>) -> ReportRequest<'a> {
             last_event_id: Cow::Borrowed(&lease.event.event_id),
             last_response: Cow::Borrowed(RESPONSE),
         },
+        tool_calls: None,
     }
 }
