@@ -83,6 +83,13 @@ async fn test_tool_call_details_refused_for_a_lease_not_held() {
     let unknown = afd_db::test_util::mint_id();
     let (status, _) = post_records(&http, &run, (&unknown, fence), &calls).await;
     assert_eq!(status, 404, "an unknown lease is not found");
+    let report = report_with(&unknown, &run, fence, trace(1));
+    let refused = post(&http, &run, REPORTS, &report).await;
+    assert_eq!(
+        refused.status().as_u16(),
+        404,
+        "and its report, trace and all, is refused before anything is read"
+    );
 
     execute(
         &run,
@@ -239,6 +246,54 @@ async fn test_nul_tool_trace_dropped_report_settles() {
         Some("processed")
     );
 
+    supervisor.shutdown().await;
+    run.cleanup().await;
+}
+
+/// Posts racing for one event serialise on the lease row, so together they
+/// keep no more than the budget: 24 posts of one 64 KiB record each, released
+/// together, store exactly 16 and skip exactly 8.
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn test_concurrent_posts_never_pass_the_event_budget() {
+    let mut supervisor = Supervisor::new();
+    let (run, http, lease_id, fence) = leased(&mut supervisor).await;
+    let output = "a".repeat(DETAIL_FIELD_MAX_BYTES - 2);
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(24));
+    let url = format!("{}/v1/runners/me/leases/{lease_id}/tool-calls", run.base);
+    let mut posts = tokio::task::JoinSet::new();
+    for n in 1..=24_u64 {
+        let (http, url, token, barrier) = (
+            http.clone(),
+            url.clone(),
+            run.token.clone(),
+            barrier.clone(),
+        );
+        let body =
+            serde_json::to_vec(&json!({"fencing_token": fence, "calls": [record(n, &output)]}))
+                .expect("the body serializes");
+        posts.spawn(async move {
+            barrier.wait().await;
+            let answer = http
+                .post(url)
+                .bearer_auth(token)
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body(body)
+                .send()
+                .await
+                .expect("the daemon answers");
+            (answer.status().as_u16(), body_of(answer).await)
+        });
+    }
+    let (mut stored, mut skipped) = (0, 0);
+    while let Some(answer) = posts.join_next().await {
+        let (status, body) = answer.expect("the post task completes");
+        assert_eq!(status, 200, "{body}");
+        stored += body["stored_count"].as_u64().expect("a count");
+        skipped += body["skipped_count"].as_u64().expect("a count");
+    }
+    assert_eq!((stored, skipped), (16, 8), "exactly the budget, once");
+    assert_eq!(rows(&run).await, 16);
     supervisor.shutdown().await;
     run.cleanup().await;
 }
