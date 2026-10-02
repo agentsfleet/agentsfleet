@@ -58,11 +58,10 @@ pub enum ToolCallStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolTraceCall<'a> {
-    /// Which call this is: the runner's own counter, 1 to 64 bytes. Send the
-    /// decimal `call_number` the call's full record is posted under, so "show
-    /// all" can find it. The daemon stores and serves it as `{fence}:{counter}`,
-    /// the id the call's live frames carry. The bounds apply to what the runner
-    /// sends.
+    /// Which call this is: the decimal `call_number` the call's full record is
+    /// posted under, from 1. Anything else makes "show all" unable to find the
+    /// call, so the trace is dropped. The daemon stores and serves it as
+    /// `{fence}:{call_number}`, the id the call's live frames carry.
     #[serde(borrow)]
     pub call_id: Cow<'a, str>,
     /// Which tool.
@@ -115,7 +114,8 @@ pub enum TraceRejection {
     TooManyCalls,
     /// More than [`TRACE_MAX_BYTES`] encoded.
     TooLarge,
-    /// A call id outside 1 to [`CALL_ID_MAX_BYTES`] bytes.
+    /// A call id that is not a decimal call number from 1 to `i64::MAX`, the
+    /// number the call's full record is posted and read under.
     CallIdUnusable,
     /// An arguments object over [`ARGS_MAX_BYTES`] encoded.
     ArgumentsTooLarge,
@@ -169,11 +169,11 @@ impl ToolTrace<'_> {
 impl ToolTraceCall<'_> {
     /// Check one call's own bounds.
     fn validate(&self) -> Result<(), TraceRejection> {
-        if !(1..=CALL_ID_MAX_BYTES).contains(&self.call_id.len()) {
-            return Err(TraceRejection::CallIdUnusable);
-        }
         if !self.strings_free_of_nul() {
             return Err(TraceRejection::HoldsNul);
+        }
+        if !call_number_usable(&self.call_id) {
+            return Err(TraceRejection::CallIdUnusable);
         }
         if encoded_len(&self.arguments) > ARGS_MAX_BYTES {
             return Err(TraceRejection::ArgumentsTooLarge);
@@ -241,6 +241,18 @@ impl<'a> RawToolTrace<'a> {
         trace.validate()?;
         Ok(trace)
     }
+}
+
+/// Whether `call_id` is a call number the record verb keys by: decimal
+/// digits naming 1 to `i64::MAX`, within [`CALL_ID_MAX_BYTES`].
+///
+/// The trace's id is what "show all" resolves, as `{fence}:{call_id}`, so an
+/// id the read cannot parse would be a call whose full output can never be
+/// opened.
+fn call_number_usable(call_id: &str) -> bool {
+    call_id.len() <= CALL_ID_MAX_BYTES
+        && call_id.bytes().all(|byte| byte.is_ascii_digit())
+        && call_id.parse::<i64>().is_ok_and(|number| number >= 1)
 }
 
 /// Whether one output edge is within [`OUTPUT_EDGE_MAX_BYTES`] and

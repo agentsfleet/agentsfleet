@@ -19220,7 +19220,7 @@
           },
           "call_id": {
             "type": "string",
-            "description": "Which call this is: the runner's own counter, 1 to 64 bytes. Send the\ndecimal `call_number` the call's full record is posted under, so \"show\nall\" can find it. The daemon stores and serves it as `{fence}:{counter}`,\nthe id the call's live frames carry. The bounds apply to what the runner\nsends."
+            "description": "Which call this is: the decimal `call_number` the call's full record is\nposted under, from 1. Anything else makes \"show all\" unable to find the\ncall, so the trace is dropped. The daemon stores and serves it as\n`{fence}:{call_number}`, the id the call's live frames carry."
           },
           "duration_ms": {
             "type": "integer",
