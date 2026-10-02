@@ -93,7 +93,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — The reducer keeps each call's arguments and outcome
 
-`readToolStep` reads `args_redacted` when it is a JSON object, and `status`, `output_head`, `output_tail` and `output_line_count` when well-typed; anything else reads as absent. A repeat start under an open call id merges the arguments and keeps the first start's clock.
+`readToolStep` reads `args_redacted` when it is a JSON object, and `status`, `output_head`, `output_tail`, `output_line_count` and `exit_code` when well-typed; anything else reads as absent. A repeat start under an open call id merges the arguments and keeps the first start's clock.
 
 - **Dimension 1.1** — A start with object arguments stores them on its call → Test `test_started_frame_keeps_arguments`
 - **Dimension 1.2** — A repeat start under the same id merges arguments and keeps the start clock → Test `test_repeat_start_merges_arguments_keeps_clock`
@@ -113,7 +113,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §3 — Each call renders as a Codex cell
 
-Bullet `•`: shimmer while running (static dim under reduced motion), `text-success` on `succeeded`, `text-destructive` on `failed` and `interrupted`, dim with no outcome. Header: the bold verb (`-ing` while running, past tense when done; `Interrupted` replaces it), the target in mono, then dim ` · 1.2s`. Copy: `file_write` Wrote ·path· (+N), `file_append` Appended, `file_delete` Deleted, `http_request` Requesting/Requested ·method· ·url·, `memory_store` Remembered ·key·, `memory_forget` Forgot ·key·, `calculator` Calculated ·operation·, unknown tools Called ·name·(·compact arguments·). Output: dim mono under `└`, three rows, then dim "+N lines" and a "show all" control. Empty output on success reads `(no output)`; a call with no recorded outcome reads `(output unavailable)`. The full arguments sit behind a collapsed Accordion.
+Bullet `•`: shimmer while running (static dim under reduced motion), `text-success` on `succeeded`, `text-destructive` on `failed` and `interrupted`, dim with no outcome. Header: the bold verb (`-ing` while running, past tense when done; `Interrupted` replaces it), the target in mono, then dim ` · 1.2s`. Copy: `file_write` Wrote ·path· (+N), `file_append` Appended, `file_delete` Deleted, `http_request` Requesting/Requested ·method· ·url·, `memory_store` Remembered ·key·, `memory_forget` Forgot ·key·, `calculator` Calculated ·operation·, unknown tools Called ·name·(·compact arguments·). Output: dim mono under `└`, three rows, then dim "+N lines" and a "show all" control. Empty output on success reads `(no output)`; a call with no recorded outcome reads `(output unavailable)`. The full arguments sit behind a collapsed Accordion. `exec_command` renders Codex's command cell: `Running`, then `Ran`, with the command on the header line, at most two dim `│` rail lines of a longer command and then `… +N lines`, and a red ` (exit N)` on a non-zero exit.
 
 - **Dimension 3.1** — Each hosted tool renders its verb and target, running and done → Test `test_tool_cell_names_verb_and_target`
 - **Dimension 3.2** — An unknown tool renders `Called name(arguments)` → Test `test_unknown_tool_cell_calls_by_name`
@@ -122,6 +122,7 @@ Bullet `•`: shimmer while running (static dim under reduced motion), `text-suc
 - **Dimension 3.5** — Empty output reads `(no output)`; no outcome reads `(output unavailable)` → Test `test_tool_cell_names_empty_and_unknown_output`
 - **Dimension 3.6** — The shimmer stops under `prefers-reduced-motion` → Test `test_running_bullet_respects_reduced_motion`
 - **Dimension 3.7** — A live run in the real page shows a shimmering cell turning into a green "Requested GET …" with its output → Test `test_live_tool_cell_settles_green`
+- **Dimension 3.8** — A four-line command renders `Ran` with its first line, two rail lines and `… +1 lines`; exit code 2 adds a red ` (exit 2)` → Test `test_command_cell_renders_like_codex`
 
 ### §4 — Reads fold under Explored
 
@@ -156,7 +157,7 @@ The group map sends `tool-call:file_read`, `tool-call:file_read_hashed`, `tool-c
 
 ```
 FleetToolCall += { args?: Record<string, unknown>; status?: "succeeded"|"failed"|"interrupted";
-                   outputHead?: string; outputTail?: string; outputLineCount?: number }
+                   outputHead?: string; outputTail?: string; outputLineCount?: number; exitCode?: number }
 EventDetail   += { tool_calls: { calls: SavedToolCall[]; omitted_call_count: number } | null }
 tool-call part : { toolName, args, argsText, result?: { head, tail, lineCount }, isError, timing }
 Group keys     : "group-reasoning" · "group-explore" · "group-tool"
@@ -208,6 +209,7 @@ Proxy          : /live/v1/workspaces/{ws}/fleets/{fleet}/events/{event}/tool-cal
 | 3.5 | unit | `test_tool_cell_names_empty_and_unknown_output` | empty success → `(no output)`; no status → `(output unavailable)` |
 | 3.6 | unit | `test_running_bullet_respects_reduced_motion` | reduced-motion media → no shimmer animation class |
 | 3.7 | e2e | `test_live_tool_cell_settles_green` | fixture frames → shimmer, then green "Requested GET …" and output |
+| 3.8 | unit | `test_command_cell_renders_like_codex` | 4-line command, exit 2 → `Ran` + 1 header line + 2 rail lines + `… +1 lines` + ` (exit 2)` |
 | 4.1 | unit | `test_consecutive_reads_fold_under_explored` | read a, read b, recall q → "Read a, b", "Search q in memory" |
 | 4.2 | unit | `test_non_read_call_splits_explored` | read, write, read → Explored, Wrote, Explored |
 | 4.3 | unit | `test_explored_header_tracks_running` | one running → "Exploring"; all done → "Explored" |
