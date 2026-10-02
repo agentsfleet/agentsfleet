@@ -13,13 +13,25 @@
 //! own event channel, owned by the caller that spawned it, so no table of open
 //! processes is shared behind a lock: the connection task owns the senders and
 //! the caller owns the receivers.
+//!
+//! # The two ends
+//!
+//! [`serve`] is the in-sandbox end: it serves one connection and owns every
+//! process it starts. [`Client`] is the supervisor's end and implements
+//! [`Executor`] over the socket. Both read the other's messages as untrusted.
 
 pub mod error;
 
 mod api;
+mod client;
+mod edges;
+mod protocol;
+mod server;
 
 pub use self::api::{
     DirEntry, Ending, EntryKind, Executor, FileContent, Process, ProcessEvent, ProcessId, Spawn,
     Stream,
 };
+pub use self::client::Client;
 pub use self::error::{Error, Result};
+pub use self::server::{WORKSPACE_ROOT, serve};

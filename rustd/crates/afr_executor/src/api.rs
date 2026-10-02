@@ -172,12 +172,17 @@ impl Spawn {
 }
 
 /// A started process: its identifier and the channel its events arrive on.
+///
+/// The channel is unbounded so that one caller slow to drain it never stalls
+/// the connection every other process's events share. What it can hold is
+/// bounded where the output is produced: the executor forwards at most a head
+/// and a tail of each process's output.
 #[derive(Debug)]
 pub struct Process {
     /// What to name it in [`Executor::write`] and [`Executor::kill`].
     pub id: ProcessId,
     /// Output, then exactly one [`ProcessEvent::Ended`].
-    pub events: mpsc::Receiver<ProcessEvent>,
+    pub events: mpsc::UnboundedReceiver<ProcessEvent>,
 }
 
 /// What a directory entry is.

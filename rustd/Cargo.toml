@@ -825,6 +825,17 @@ tempfile = { version = "3.27.0", default-features = false }
 # The resolved dependency graph, read by the test that proves the runner binary
 # links no datastore or daemon-plane crate.
 cargo_metadata = { version = "0.23.1", default-features = false }
+# The system-call numbers the sandbox's seccomp program refuses; rustix exposes
+# the calls, not their numbers. Codex's `linux-sandbox` reads them from here too.
+libc = { version = "0.2.189", default-features = false }
+# The sandbox's kernel lane is an example with its own `main`, so a test
+# binary cannot run it by accident; this gives it libtest's reporting and
+# filters anyway.
+libtest-mimic = { version = "0.8.2", default-features = false }
+# The executor's file calls: a directory handle that refuses any path leaving
+# it, through `..` or a symbolic link, on every platform — capability-based
+# confinement from the Bytecode Alliance rather than a hand-written resolver.
+cap-std = { version = "4.0.3", default-features = false }
 
 [workspace.lints.rust]
 # Every rustc warning is an error; individual lints below raise their own level
