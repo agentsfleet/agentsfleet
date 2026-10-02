@@ -94,3 +94,16 @@ pub(crate) async fn handle<D: Services>(
         Err(error) => refuse(&error, EVENT),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use afd_wire::tool_detail::DETAIL_POST_MAX_BYTES;
+
+    use super::DETAIL_TOO_LARGE;
+
+    /// The refusal states the cap the handler enforces.
+    #[test]
+    fn the_size_refusal_names_the_cap_it_enforces() {
+        assert!(DETAIL_TOO_LARGE.contains(&DETAIL_POST_MAX_BYTES.to_string()));
+    }
+}

@@ -101,15 +101,22 @@ fn narrow_all<'a>(calls: &[RawToolCallRecord<'a>]) -> (BTreeMap<u64, Admissible<
 }
 
 /// The records that fit what the event has left, lowest call number first.
-fn within_budget(
-    candidates: BTreeMap<u64, Admissible<'_>>,
+///
+/// `spent` is everything the lease already keeps, and `replaced` what each
+/// posted call's current record spends: keeping a replacement swaps its old
+/// size for its new one, and skipping it leaves the old record — and its
+/// spend — in place.
+fn within_budget<'a>(
+    candidates: BTreeMap<u64, Admissible<'a>>,
     spent: usize,
-) -> (Vec<Admissible<'_>>, Vec<Skip>) {
+    replaced: &BTreeMap<u64, usize>,
+) -> (Vec<Admissible<'a>>, Vec<Skip>) {
     let mut total = spent;
     let mut kept = Vec::new();
     let mut over = Vec::new();
-    for admissible in candidates.into_values() {
-        let after = total.saturating_add(admissible.bytes);
+    for (number, admissible) in candidates {
+        let old = replaced.get(&number).copied().unwrap_or_default();
+        let after = total.saturating_sub(old).saturating_add(admissible.bytes);
         if after > DETAIL_EVENT_MAX_BYTES {
             over.push(Skip {
                 position: admissible.position,
@@ -122,6 +129,21 @@ fn within_budget(
         }
     }
     (kept, over)
+}
+
+/// What one post's transaction decided.
+#[derive(Debug)]
+enum Kept {
+    /// No live lease of this runner's under that id.
+    NoLease,
+    /// The lease is not the fleet's current holder, or the post is not its own.
+    Fenced(DetailTarget),
+    /// Written: how many records, and those that did not fit.
+    Stored {
+        target: DetailTarget,
+        stored: usize,
+        over: Vec<Skip>,
+    },
 }
 
 impl Plane {
@@ -139,23 +161,31 @@ impl Plane {
         request: &ToolCallRecordsRequest<'_>,
         now: UnixMillis,
     ) -> Result<ToolCallRecordsStored> {
-        let Some(target) = self.leases.detail_target(lease_id, runner_id, now).await? else {
-            return Err(lease_not_found());
-        };
-        if !target.holds(request.fencing_token) {
-            let fleet_id = target.fleet_id.as_str();
-            let presented = request.fencing_token;
-            let live_seq = target.live_seq;
-            tracing::debug!(
-                fleet_id,
-                fencing_token = presented,
-                live_seq,
-                event = EVENT_FENCED
-            );
-            return Err(stale_fence());
-        }
         let (candidates, mut skipped) = narrow_all(&request.calls);
-        let (stored_count, over) = self.leases.keep_records(&target, candidates, now).await?;
+        let presented = request.fencing_token;
+        let decided = self
+            .leases
+            .keep_records(lease_id, runner_id, presented, candidates, now)
+            .await?;
+        let (target, stored_count, over) = match decided {
+            Kept::NoLease => return Err(lease_not_found()),
+            Kept::Fenced(target) => {
+                let fleet_id = target.fleet_id.as_str();
+                let live_seq = target.live_seq;
+                tracing::debug!(
+                    fleet_id,
+                    fencing_token = presented,
+                    live_seq,
+                    event = EVENT_FENCED
+                );
+                return Err(stale_fence());
+            }
+            Kept::Stored {
+                target,
+                stored,
+                over,
+            } => (target, stored, over),
+        };
         skipped.extend(over);
         for skip in &skipped {
             log_skip(&target, *skip);

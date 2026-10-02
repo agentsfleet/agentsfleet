@@ -75,32 +75,9 @@ async fn test_tool_calls_column_upgrade_keeps_rows_null() {
         "the upgrade must apply slot 924 and nothing else"
     );
 
-    let mut connection = db.acquire().await.expect("a pooled connection");
-    let column = sqlx::query(
-        "SELECT data_type, is_nullable, column_default
-         FROM information_schema.columns
-         WHERE table_schema = 'core' AND table_name = 'fleet_events'
-           AND column_name = 'tool_calls'",
-    )
-    .fetch_one(&mut *connection)
-    .await
-    .expect("core.fleet_events.tool_calls exists after slot 924");
-    assert_eq!(
-        column.try_get::<String, _>("data_type").expect("decodes"),
-        "jsonb"
-    );
-    assert_eq!(
-        column.try_get::<String, _>("is_nullable").expect("decodes"),
-        "YES"
-    );
-    assert_eq!(
-        column
-            .try_get::<Option<String>, _>("column_default")
-            .expect("decodes"),
-        None,
-        "no default: a placeholder trace would read as calls nobody made"
-    );
+    assert_column_shape(&db).await;
 
+    let mut connection = db.acquire().await.expect("a pooled connection");
     let rows = sqlx::query(
         "SELECT event_id, response_text, tool_calls::text AS tool_calls
          FROM core.fleet_events WHERE fleet_id = $1::uuid ORDER BY event_id",
@@ -132,6 +109,35 @@ async fn test_tool_calls_column_upgrade_keeps_rows_null() {
     drop(connection);
 
     database.cleanup().await;
+}
+
+/// The column the slot asked for: JSONB, nullable, no default.
+async fn assert_column_shape(db: &afd_db::Db) {
+    let mut connection = db.acquire().await.expect("a pooled connection");
+    let column = sqlx::query(
+        "SELECT data_type, is_nullable, column_default
+         FROM information_schema.columns
+         WHERE table_schema = 'core' AND table_name = 'fleet_events'
+           AND column_name = 'tool_calls'",
+    )
+    .fetch_one(&mut *connection)
+    .await
+    .expect("core.fleet_events.tool_calls exists after slot 924");
+    assert_eq!(
+        column.try_get::<String, _>("data_type").expect("decodes"),
+        "jsonb"
+    );
+    assert_eq!(
+        column.try_get::<String, _>("is_nullable").expect("decodes"),
+        "YES"
+    );
+    assert_eq!(
+        column
+            .try_get::<Option<String>, _>("column_default")
+            .expect("decodes"),
+        None,
+        "no default: a placeholder trace would read as calls nobody made"
+    );
 }
 
 /// A tenant, a workspace, a fleet, and two events it settled.

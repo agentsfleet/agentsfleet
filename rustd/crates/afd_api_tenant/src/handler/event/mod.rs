@@ -262,8 +262,9 @@ fn page_response(page: &[EventRow], limit: i64) -> EventsResponse<'_> {
 /// One stored row, as the expanded read shows it.
 ///
 /// The bodies sit between `status` and `tokens` because that is the order the
-/// daemon this ports already emits; the tool trace joins them there — see `afd_wire::event::EventDetail` on why
-/// the two wire types are not one type plus two fields.
+/// daemon this ports already emits, and the tool trace joins them there. See
+/// `afd_wire::event::EventDetail` on why the two wire types are not one type
+/// plus its body fields.
 pub(crate) fn expanded(event: &EventDetailRow) -> EventDetail<'_> {
     let row = &event.row;
     EventDetail {

@@ -65,6 +65,24 @@ fn test_tool_trace_validator_enforces_bounds() {
         "201 calls"
     );
 
+    // The leaf is over its own bound here, which the object bound beats.
+    assert_eq!(
+        trace(vec![call_with_argument("k", ARGS_MAX_BYTES - 7)]).validate(),
+        Err(TraceRejection::ArgumentsTooLarge),
+        "2049-byte arguments"
+    );
+
+    let mut long_edge = call("1");
+    long_edge.output_tail = Some(Cow::Owned("a".repeat(OUTPUT_EDGE_MAX_BYTES + 1)));
+    assert_eq!(
+        trace(vec![long_edge]).validate(),
+        Err(TraceRejection::EdgeTooLarge),
+        "1025-byte edge"
+    );
+}
+
+#[test]
+fn a_trace_over_its_byte_bound_is_too_large() {
     // Leaves just under their own bound, so only the trace total breaks.
     let wide: Vec<_> = (1..=40)
         .map(|n| {
@@ -80,20 +98,16 @@ fn test_tool_trace_validator_enforces_bounds() {
         .len();
     assert!(encoded > TRACE_MAX_BYTES, "fixture is over: {encoded}");
     assert_eq!(trace(wide).validate(), Err(TraceRejection::TooLarge));
+}
 
+#[test]
+fn arguments_are_bounded_as_an_object_and_by_each_key_and_leaf() {
     // `{"k":"…"}` is 8 bytes of framing around the value.
     let at_cap = call_with_argument("k", ARGS_MAX_BYTES - 8);
     let encoded = serde_json::to_vec(&at_cap.arguments)
         .expect("encodes")
         .len();
     assert_eq!(encoded, ARGS_MAX_BYTES);
-    // The leaf is over its own bound here, which the object bound beats.
-    assert_eq!(
-        trace(vec![call_with_argument("k", ARGS_MAX_BYTES - 7)]).validate(),
-        Err(TraceRejection::ArgumentsTooLarge),
-        "2049-byte arguments"
-    );
-
     assert_eq!(
         trace(vec![call_with_argument("k", ARGS_LEAF_MAX_BYTES)]).validate(),
         Ok(())
@@ -102,14 +116,52 @@ fn test_tool_trace_validator_enforces_bounds() {
         trace(vec![call_with_argument("k", ARGS_LEAF_MAX_BYTES + 1)]).validate(),
         Err(TraceRejection::ArgumentTooLong)
     );
-
-    let mut long_edge = call("1");
-    long_edge.output_tail = Some(Cow::Owned("a".repeat(OUTPUT_EDGE_MAX_BYTES + 1)));
+    let long_key = "k".repeat(ARGS_LEAF_MAX_BYTES + 1);
+    let mut keyed = call("1");
+    keyed.arguments.insert(long_key.clone(), json!(1));
     assert_eq!(
-        trace(vec![long_edge]).validate(),
-        Err(TraceRejection::EdgeTooLarge),
-        "1025-byte edge"
+        trace(vec![keyed]).validate(),
+        Err(TraceRejection::ArgumentTooLong),
+        "a key is bounded like a leaf"
     );
+    let mut nested = call("1");
+    nested
+        .arguments
+        .insert("outer".to_owned(), json!({ long_key: 1 }));
+    assert_eq!(
+        trace(vec![nested]).validate(),
+        Err(TraceRejection::ArgumentTooLong)
+    );
+}
+
+#[test]
+fn a_nul_anywhere_in_a_call_drops_the_trace() {
+    let mut cases = Vec::new();
+    let mut edge = call("1");
+    edge.output_head = Some(Cow::Borrowed("bin\u{0}ary"));
+    cases.push(edge);
+    let mut tail = call("1");
+    tail.output_tail = Some(Cow::Borrowed("\u{0}"));
+    cases.push(tail);
+    let mut named = call("1");
+    named.name = Cow::Borrowed("sh\u{0}");
+    cases.push(named);
+    cases.push(call("1\u{0}"));
+    for arguments in [json!("x\u{0}"), json!(["\u{0}"]), json!({"in\u{0}": 1})] {
+        let mut argued = call("1");
+        argued.arguments.insert("k".to_owned(), arguments);
+        cases.push(argued);
+    }
+    let mut keyed = call("1");
+    keyed.arguments.insert("k\u{0}".to_owned(), json!(1));
+    cases.push(keyed);
+    for case in cases {
+        assert_eq!(
+            trace(vec![case.clone()]).validate(),
+            Err(TraceRejection::HoldsNul),
+            "{case:?}"
+        );
+    }
 }
 
 #[test]
@@ -220,6 +272,7 @@ fn every_rejection_has_its_own_spelling() {
         TraceRejection::ArgumentTooLong,
         TraceRejection::EdgeTooLarge,
         TraceRejection::Malformed,
+        TraceRejection::HoldsNul,
     ];
     let mut spellings: Vec<_> = all.iter().map(|reason| reason.as_str()).collect();
     spellings.sort_unstable();
@@ -283,4 +336,49 @@ fn a_raw_trace_compares_by_its_text_and_reports_its_size() {
     assert_ne!(first, other);
     assert_eq!(first.byte_len(), 3);
     assert_eq!(serde_json::to_string(&first).ok().as_deref(), Some("[1]"));
+}
+
+/// Every published bound on the trace is the constant that enforces it.
+#[test]
+fn published_descriptions_state_the_bounds_they_enforce() {
+    use super::{CALL_ID_MAX_BYTES, OUTPUT_EDGE_MAX_LINES};
+    let openapi = include_str!("../../../../../public/openapi.json");
+    let document: serde_json::Value = serde_json::from_str(openapi).expect("the spec parses");
+    let field = |schema: &str, property: &str| {
+        document
+            .pointer(&format!(
+                "/components/schemas/{schema}/properties/{property}/description"
+            ))
+            .and_then(Value::as_str)
+            .map(|text| text.split_whitespace().collect::<Vec<_>>().join(" "))
+            .unwrap_or_default()
+    };
+    let cases: [(&str, &str, &[usize]); 5] = [
+        ("ToolTraceCall", "call_id", &[CALL_ID_MAX_BYTES]),
+        (
+            "ToolTraceCall",
+            "arguments",
+            &[ARGS_MAX_BYTES, ARGS_LEAF_MAX_BYTES],
+        ),
+        (
+            "ToolTraceCall",
+            "output_head",
+            &[OUTPUT_EDGE_MAX_LINES, OUTPUT_EDGE_MAX_BYTES],
+        ),
+        (
+            "ToolTraceCall",
+            "output_tail",
+            &[OUTPUT_EDGE_MAX_LINES, OUTPUT_EDGE_MAX_BYTES],
+        ),
+        ("ToolTrace", "calls", &[TRACE_MAX_CALLS]),
+    ];
+    for (schema, property, bounds) in cases {
+        let text = field(schema, property);
+        for bound in bounds {
+            assert!(
+                text.contains(&bound.to_string()),
+                "{schema}.{property} lacks {bound}: {text}"
+            );
+        }
+    }
 }

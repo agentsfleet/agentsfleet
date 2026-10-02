@@ -12,6 +12,7 @@ use std::sync::Arc;
 use afd_core::error_code;
 use afd_events::{CallAddress, ToolCallRow};
 use afd_wire::tool_detail::ToolCallDetail;
+use afd_wire::tool_trace::{fenced_call_id, parse_fenced_call_id};
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
@@ -28,9 +29,6 @@ const EVENT_TOOL_CALL: &str = "fleet_tool_call_detail_failed";
 /// The refusal a call this workspace, fleet and event do not hold earns.
 const DETAIL_TOOL_CALL_NOT_FOUND: &str = "Tool call not found";
 
-/// Ends the fence in a call id.
-const CALL_ID_SEPARATOR: char = ':';
-
 /// The segments the read's template carries.
 #[derive(Debug, Deserialize)]
 pub(crate) struct ToolCallPath {
@@ -43,22 +41,14 @@ pub(crate) struct ToolCallPath {
 }
 
 /// The fence and call number a `{fence}:{n}` id names, if it names one.
-///
-/// A call number is 1 or more; a fence is any integer the column can hold.
 fn parse_call_id(call_id: &str) -> Option<CallAddress> {
-    let (fence, number) = call_id.split_once(CALL_ID_SEPARATOR)?;
-    let fence: i64 = fence.parse().ok()?;
-    let call_number: i64 = number.parse().ok().filter(|number| *number >= 1)?;
-    Some(CallAddress { fence, call_number })
+    parse_fenced_call_id(call_id).map(|(fence, call_number)| CallAddress { fence, call_number })
 }
 
 /// The kept record, as the read answers it.
 fn detail(call: CallAddress, row: &ToolCallRow) -> ToolCallDetail<'_> {
     ToolCallDetail {
-        call_id: Cow::Owned(format!(
-            "{}{CALL_ID_SEPARATOR}{}",
-            call.fence, call.call_number
-        )),
+        call_id: Cow::Owned(fenced_call_id(call.fence, &call.call_number.to_string())),
         // The column is a JSONB object, so its text always parses; the
         // default is the parser's signature, not a reachable answer.
         arguments: serde_json::from_str(&row.arguments).unwrap_or_default(),

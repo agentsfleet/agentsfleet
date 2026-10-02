@@ -8,7 +8,7 @@ use afd_core::test_util::trace::Capture;
 use afd_wire::tool_trace::{RawToolTrace, TRACE_MAX_CALLS};
 use serde_json::{Value, json};
 
-use super::{EVENT_TRACE_DROPPED, TraceOwner, fenced, stored};
+use super::{EVENT_TRACE_DROPPED, TraceOwner, stored};
 
 /// The fence the fixture lease holds.
 const FENCE: i64 = 7;
@@ -30,12 +30,6 @@ fn call(n: usize) -> Value {
 fn stored_from(sent: &str) -> Option<Value> {
     let raw: RawToolTrace<'_> = serde_json::from_str(sent).expect("any JSON is carried");
     stored(Some(raw), OWNER).map(|text| serde_json::from_str(&text).expect("stored JSON"))
-}
-
-#[test]
-fn a_call_id_is_prefixed_with_its_lease_fence() {
-    assert_eq!(fenced(FENCE, "3"), "7:3");
-    assert_eq!(fenced(12, "a:b"), "12:a:b", "the first `:` ends the fence");
 }
 
 #[test]

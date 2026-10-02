@@ -14646,6 +14646,7 @@
                 "description": "Every tool call the run made, with its arguments and how it ended.\n\n`null` when nothing was recorded: a run older than this field, a runner\nthat does not record calls, or a trace that broke a bound and was\ndropped. `null` never means no tools ran."
               }
             ],
+            "description": "Beta: this field may change shape before it is stable.",
             "x-stability": "beta"
           },
           "updated_at": {
@@ -18992,34 +18993,34 @@
         "properties": {
           "arguments": {
             "type": "object",
-            "description": "Every argument the call was made with, secret values masked.",
+            "description": "Every argument the call was made with, secret values masked. Beta: this field may change shape before it is stable.",
             "x-stability": "beta"
           },
           "call_id": {
             "type": "string",
-            "description": "The call, as the thread names it: `{fence}:{n}`.",
+            "description": "The call, as the thread names it: `{fence}:{n}`. Beta: this field may change shape before it is stable.",
             "x-stability": "beta"
           },
           "output": {
             "type": "string",
-            "description": "Everything the call returned.",
+            "description": "Everything the call returned. Beta: this field may change shape before it is stable.",
             "x-stability": "beta"
           },
           "output_line_count": {
             "type": "integer",
             "format": "int64",
-            "description": "How many lines the whole output had, before any cut.",
+            "description": "How many lines the whole output had, before any cut. Beta: this field may change shape before it is stable.",
             "minimum": 0,
             "x-stability": "beta"
           },
           "truncated": {
             "type": "boolean",
-            "description": "Whether the output was cut to fit 65536 bytes.",
+            "description": "Whether the output was cut to fit 65536 bytes. Beta: this field may change shape before it is stable.",
             "x-stability": "beta"
           },
           "truncated_arguments": {
             "type": "boolean",
-            "description": "Whether the arguments were cut to fit 65536 bytes.",
+            "description": "Whether the arguments were cut to fit 65536 bytes. Beta: this field may change shape before it is stable.",
             "x-stability": "beta"
           }
         },
@@ -19066,17 +19067,18 @@
         "properties": {
           "arguments": {
             "type": "object",
-            "description": "Every argument the call was made with, secret values masked. At most\n65536 bytes encoded."
+            "description": "Every argument the call was made with, secret values masked. At most\n65536 bytes encoded, with no NUL character."
           },
           "call_number": {
             "type": "integer",
             "format": "int64",
             "description": "The call's number in its run, from 1: the `n` of the `{fence}:{n}`\ncall id the live frames and the trace carry.",
-            "minimum": 0
+            "maximum": 9223372036854775807,
+            "minimum": 1
           },
           "output": {
             "type": "string",
-            "description": "Everything the call returned, at most 65536 bytes."
+            "description": "Everything the call returned, at most 65536 bytes, with no NUL\ncharacter."
           },
           "output_line_count": {
             "type": "integer",
@@ -19129,13 +19131,13 @@
         "properties": {
           "skipped_count": {
             "type": "integer",
-            "description": "Records refused for their shape, a bound, or the event's budget.",
+            "description": "Records refused for their shape, a bound, or the event's budget. Beta: this field may change shape before it is stable.",
             "minimum": 0,
             "x-stability": "beta"
           },
           "stored_count": {
             "type": "integer",
-            "description": "Records written or replaced.",
+            "description": "Records written or replaced. Beta: this field may change shape before it is stable.",
             "minimum": 0,
             "x-stability": "beta"
           }
@@ -19214,11 +19216,11 @@
         "properties": {
           "arguments": {
             "type": "object",
-            "description": "The arguments the call was made with, secret values masked. At most\n2048 bytes encoded, and no string inside longer than 256 bytes."
+            "description": "The arguments the call was made with, secret values masked. At most\n2048 bytes encoded, no string or key inside longer than 256 bytes, and\nno NUL character anywhere."
           },
           "call_id": {
             "type": "string",
-            "description": "Which call this is, 1 to 64 bytes. The runner sends its own counter;\nthe daemon stores it as `{fence}:{counter}`, the id the live frames of\nthe same call carry."
+            "description": "Which call this is. The runner sends its own counter, 1 to 64 bytes:\nthe decimal `call_number` it posts the call's full record under, so\n\"show all\" can find it. The daemon stores and serves it as\n`{fence}:{counter}`, the id the live frames of the same call carry; the\nbounds apply to what the runner sends."
           },
           "duration_ms": {
             "type": "integer",

@@ -3,7 +3,7 @@
 use utoipa::openapi::schema::{AllOf, AnyOf, Array, Object, OneOf, Ref};
 use utoipa::openapi::{ComponentsBuilder, OpenApi, OpenApiBuilder, Schema};
 
-use super::{BETA, BETA_FIELDS, STABILITY, declare_beta, extensions_of};
+use super::{BETA, BETA_FIELDS, BETA_NOTE, STABILITY, declare_beta, parts_of};
 
 /// The class a property publishes, read back from the serialized document.
 fn published_class(document: &OpenApi, schema: &str, property: &str) -> Option<String> {
@@ -25,6 +25,17 @@ fn every_beta_field_is_published_beta() {
                 published_class(&document, schema, property).as_deref(),
                 Some(BETA),
                 "{schema}.{property}"
+            );
+            let value = serde_json::to_value(&document).expect("the document serializes");
+            let description = value
+                .pointer(&format!(
+                    "/components/schemas/{schema}/properties/{property}/description"
+                ))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            assert!(
+                description.ends_with(BETA_NOTE),
+                "{schema}.{property}: {description}"
             );
         }
     }
@@ -73,10 +84,12 @@ fn a_field_the_document_lacks_is_answered_not_invented() {
 fn an_object_and_a_nullable_reference_carry_their_class() {
     let mut shapes = [Schema::Object(Object::new()), Schema::OneOf(OneOf::new())];
     for shape in &mut shapes {
-        extensions_of(shape)
-            .expect("a field of this shape can carry a class")
+        let (extensions, description) =
+            parts_of(shape).expect("a field of this shape can carry a class");
+        extensions
             .get_or_insert_with(Default::default)
             .insert(STABILITY.to_owned(), BETA.into());
+        *description = Some(BETA_NOTE.to_owned());
         let value = serde_json::to_value(&*shape).expect("a schema serializes");
         assert_eq!(value[STABILITY], BETA, "{value}");
     }
@@ -86,6 +99,6 @@ fn an_object_and_a_nullable_reference_carry_their_class() {
         Schema::AnyOf(AnyOf::new()),
     ] {
         let mut other = other;
-        assert!(extensions_of(&mut other).is_none());
+        assert!(parts_of(&mut other).is_none());
     }
 }

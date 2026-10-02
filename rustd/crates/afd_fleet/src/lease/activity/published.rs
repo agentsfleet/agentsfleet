@@ -7,12 +7,11 @@
 //! `lease/tool_trace.rs`'s to say, because the stored trace uses the same ids.
 
 use afd_wire::activity::ActivityFrame;
-use afd_wire::tool_trace::ToolCallStatus;
+use afd_wire::tool_trace::{ToolCallStatus, fenced_call_id};
 use serde::Serialize;
 use serde_json::value::RawValue;
 
 use super::Target;
-use crate::lease::tool_trace::fenced;
 
 /// One frame as the dashboard reads it.
 ///
@@ -86,7 +85,10 @@ impl<'a> Published<'a> {
         frame: &'a ActivityFrame<'a>,
     ) -> core::result::Result<Self, serde_json::Error> {
         let event_id = target.event_id.as_str();
-        let call_id = fenced_call_id(target.fence, frame.call_id());
+        // A frame that names no call publishes none; the id is never invented.
+        let call_id = frame
+            .call_id()
+            .map(|call| fenced_call_id(target.fence, call));
         Ok(match frame {
             ActivityFrame::ToolCallStarted(body) => Self::ToolCallStarted {
                 event_id,
@@ -121,11 +123,4 @@ impl<'a> Published<'a> {
             },
         })
     }
-}
-
-/// The runner's call id as the channel publishes it: `{fence}:{call_id}`.
-///
-/// A frame that names no call publishes none; the id is never invented.
-pub(super) fn fenced_call_id(fence: i64, call_id: Option<&str>) -> Option<String> {
-    call_id.map(|call| fenced(fence, call))
 }

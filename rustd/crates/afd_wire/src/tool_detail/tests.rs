@@ -3,8 +3,8 @@
 use serde_json::json;
 
 use super::{
-    DETAIL_FIELD_MAX_BYTES, DetailRejection, RawToolCallRecord, ToolCallDetail, ToolCallRecord,
-    ToolCallRecordsRequest, ToolCallRecordsStored,
+    DETAIL_FIELD_MAX_BYTES, DETAIL_RECORD_MIN_BYTES, DetailRejection, RawToolCallRecord,
+    ToolCallDetail, ToolCallRecord, ToolCallRecordsRequest, ToolCallRecordsStored,
 };
 
 /// A record as a runner posts it, with `output` and an empty argument object.
@@ -22,8 +22,12 @@ fn narrowed(sent: &str) -> Result<usize, DetailRejection> {
 
 #[test]
 fn a_record_within_its_bounds_is_kept_and_counted() {
+    assert_eq!(
+        narrowed(&record(3, "hello")),
+        Ok(DETAIL_RECORD_MIN_BYTES),
+        "a tiny record still spends the per-row minimum"
+    );
     // `{}` is two bytes of arguments beside the output.
-    assert_eq!(narrowed(&record(3, "hello")), Ok(7));
     let at_cap = "a".repeat(DETAIL_FIELD_MAX_BYTES);
     assert_eq!(
         narrowed(&record(1, &at_cap)),
@@ -123,4 +127,58 @@ fn the_answers_round_trip() {
     let sent = record(2, "x");
     let typed: ToolCallRecord<'_> = serde_json::from_str(&sent).expect("a record decodes typed");
     assert_eq!(typed.validate(), Ok(()));
+}
+
+#[test]
+fn a_record_holding_a_nul_is_skipped_not_fatal() {
+    assert_eq!(
+        narrowed(&record(1, "a\u{0}b")),
+        Err(DetailRejection::Malformed)
+    );
+    for arguments in [
+        json!({"k": "x\u{0}"}),
+        json!({"k\u{0}": 1}),
+        json!({"k": ["\u{0}"]}),
+    ] {
+        let sent = json!({"call_number": 1, "arguments": arguments, "truncated_arguments": false,
+                          "output": "", "output_line_count": 0, "truncated": false});
+        assert_eq!(
+            narrowed(&sent.to_string()),
+            Err(DetailRejection::Malformed),
+            "{sent}"
+        );
+    }
+}
+
+/// Every published byte figure on this surface is the constant that enforces
+/// it, so a bound cannot move without its description failing here.
+#[test]
+fn published_descriptions_state_the_bounds_they_enforce() {
+    use super::DETAIL_POST_MAX_BYTES;
+    let openapi = include_str!("../../../../../public/openapi.json");
+    let document: serde_json::Value = serde_json::from_str(openapi).expect("the spec parses");
+    let text = |pointer: &str| {
+        document
+            .pointer(pointer)
+            .and_then(serde_json::Value::as_str)
+            .map(|text| text.split_whitespace().collect::<Vec<_>>().join(" "))
+            .unwrap_or_default()
+    };
+    let post = text("/paths/~1v1~1runners~1me~1leases~1{lease_id}~1tool-calls/post/description");
+    for bound in [DETAIL_POST_MAX_BYTES, DETAIL_FIELD_MAX_BYTES] {
+        assert!(post.contains(&bound.to_string()), "{bound}: {post}");
+    }
+    let read = text(
+        "/paths/~1v1~1workspaces~1{workspace_id}~1fleets~1{fleet_id}~1events~1{event_id}~1tool-calls~1{call_id}/get/description",
+    );
+    assert!(read.contains(&DETAIL_FIELD_MAX_BYTES.to_string()), "{read}");
+    for property in ["arguments", "output"] {
+        let field = text(&format!(
+            "/components/schemas/ToolCallRecord/properties/{property}/description"
+        ));
+        assert!(
+            field.contains(&DETAIL_FIELD_MAX_BYTES.to_string()),
+            "{property}: {field}"
+        );
+    }
 }
