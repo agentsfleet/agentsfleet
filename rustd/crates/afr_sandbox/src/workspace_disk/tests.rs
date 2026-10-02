@@ -24,7 +24,10 @@ const GROUP: u32 = 100;
 
 #[test]
 fn test_format_arguments_make_a_journal_free_disk_its_owner_may_write() {
-    let arguments = strings(format_arguments(Path::new("/s/workspace.img"), (USER, GROUP)));
+    let arguments = strings(format_arguments(
+        Path::new("/s/workspace.img"),
+        (USER, GROUP),
+    ));
 
     assert_eq!(
         arguments,

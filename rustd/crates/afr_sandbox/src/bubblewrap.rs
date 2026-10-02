@@ -30,6 +30,9 @@ const PROC: &str = "/proc";
 const DEV: &str = "/dev";
 /// Where a private scratch file system is mounted.
 const TMP: &str = "/tmp";
+/// Where a private runtime directory is mounted, beneath which the executor's
+/// socket directory is bound.
+const RUN: &str = "/run";
 
 /// A fresh namespace of every kind a tool call could share with the host.
 const NAMESPACES: [&str; 5] = [
@@ -93,6 +96,9 @@ pub fn arguments(layout: &Layout<'_>) -> Vec<OsString> {
     flag(&[PROC_FLAG.as_ref(), PROC.as_ref()]);
     flag(&[DEV_FLAG.as_ref(), DEV.as_ref()]);
     flag(&[TMPFS_FLAG.as_ref(), TMP.as_ref()]);
+    // A private `/run`, so the socket directory's mount point exists whatever
+    // the image's own `/run` holds; image builders empty it.
+    flag(&[TMPFS_FLAG.as_ref(), RUN.as_ref()]);
     flag(&[
         BIND.as_ref(),
         layout.workspace.as_os_str(),

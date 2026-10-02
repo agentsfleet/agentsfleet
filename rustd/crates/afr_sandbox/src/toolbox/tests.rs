@@ -101,3 +101,39 @@ async fn test_a_toolbox_that_cannot_be_mounted_is_refused() {
 fn test_an_adopted_root_is_used_as_given() {
     assert_eq!(Toolbox::at(PathBuf::from("/")).root(), Path::new("/"));
 }
+
+#[tokio::test]
+async fn test_a_toolbox_mounts_once_and_is_adopted_after() {
+    let dir = tempfile::tempdir().unwrap();
+    let scratch = dir.path().join("scratch");
+    fs::write(&scratch, BYTES).unwrap();
+    let image = ToolboxImage::verify(&named(dir.path(), &sha256_of(&scratch).unwrap())).unwrap();
+    // `true` stands in for `mount`, so the mount point is made and "mounted".
+    let tools = HostTools {
+        mount: PathBuf::from("/usr/bin/true"),
+        ..HostTools::default()
+    };
+
+    let toolbox = Toolbox::mount(&image, &tools, &dir.path().join("mounts"))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        toolbox.root(),
+        dir.path().join("mounts").join(image.digest())
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn test_a_toolbox_that_is_not_mounted_cannot_be_unmounted() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let refused = Toolbox::at(dir.path().to_owned()).unmount();
+
+    refused.unwrap_err();
+    assert!(
+        dir.path().exists(),
+        "nothing is removed while still mounted"
+    );
+}

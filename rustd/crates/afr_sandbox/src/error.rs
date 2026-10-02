@@ -22,7 +22,7 @@ use afd_core::error_code::{self, ErrorCode};
 
 mod raise;
 
-pub(crate) use self::raise::{cgroup, program, refused, unconfined};
+pub(crate) use self::raise::{cgroup, lease_id_unsafe, program, refused, unconfined};
 
 afd_core::error_shell!(
     /// A sandbox failure, with the backtrace of where it was raised.
@@ -108,6 +108,13 @@ pub(crate) enum ErrorKind {
     Unconfined {
         /// What remained.
         detail: &'static str,
+    },
+
+    /// A lease identifier that is not one plain path component.
+    #[error("the lease identifier {lease_id:?} is not a single path component")]
+    LeaseIdUnsafe {
+        /// The identifier as it arrived.
+        lease_id: String,
     },
 
     /// The unsandboxed engine was asked for in a release build.

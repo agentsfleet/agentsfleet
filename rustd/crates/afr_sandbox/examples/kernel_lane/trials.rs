@@ -32,15 +32,10 @@ const REFUSED: [libc::c_long; 5] = [
     libc::SYS_io_uring_setup,
 ];
 /// Calls each numbered system call and prints the errno each one set.
-const PROBE_SYSCALLS: &str = "import ctypes, sys\n\
-libc = ctypes.CDLL(None, use_errno=True)\n\
-seen = []\n\
-for number in map(int, sys.argv[1:]):\n\
-    ctypes.set_errno(0)\n\
-    libc.syscall(number, 0, 0, 0, 0, 0)\n\
-    seen.append(ctypes.get_errno())\n\
-print(' '.join(map(str, seen)))\n";
-/// Forks until the kernel refuses, then prints how many children it made.
+const PROBE_SYSCALLS: &str = "import ctypes, sys\nlibc = ctypes.CDLL(None, use_errno=True)\n\
+     seen = []\nfor number in map(int, sys.argv[1:]):\n    ctypes.set_errno(0)\n    \
+     libc.syscall(number, 0, 0, 0, 0, 0)\n    seen.append(ctypes.get_errno())\n\
+     print(\" \".join(map(str, seen)))\n";
 /// The mechanism a refusal names when Landlock is missing, and a trial's lease name.
 const LANDLOCK: &str = "landlock";
 /// The disk-limit trial's lease name.
@@ -63,8 +58,7 @@ fn fork_bomb() -> String {
 type Body = fn(&Lane) -> Result<(), Failed>;
 
 /// Runs every trial against `lane`, one at a time.
-pub(crate) fn run(arguments: &Arguments, lane: Lane) -> Conclusion {
-    let lane = Arc::new(lane);
+pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
     let rows: [(&str, Body); 11] = [
         ("test_sandbox_process_has_no_capabilities", no_capabilities),
         ("test_seccomp_refuses_listed_syscalls", seccomp_refuses),
@@ -87,7 +81,7 @@ pub(crate) fn run(arguments: &Arguments, lane: Lane) -> Conclusion {
     let trials = rows
         .into_iter()
         .map(|(name, body)| {
-            let lane = Arc::clone(&lane);
+            let lane = Arc::clone(lane);
             Trial::test(name, move || body(&lane))
         })
         .collect();

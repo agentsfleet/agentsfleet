@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use afr_executor::{DirEntry, Executor, FileContent, Process, ProcessId, Spawn};
 use bytes::Bytes;
@@ -46,6 +47,7 @@ impl Executor for Idle {
 /// A sandbox that remembers its name and counts its own destruction.
 #[derive(Debug)]
 struct Named {
+    panics: bool,
     #[expect(
         dead_code,
         reason = "read through the derived Debug rendering the tests inspect"
@@ -61,6 +63,7 @@ impl Sandbox for Named {
         &self.executor
     }
     async fn destroy(self: Box<Self>) -> Result<()> {
+        assert!(!self.panics, "a teardown that panics");
         self.destroyed.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -72,6 +75,10 @@ struct Counting {
     started: AtomicU64,
     destroyed: Arc<AtomicU64>,
     refuse: bool,
+    /// How long each start takes once counted.
+    delay: Duration,
+    /// Whether each sandbox it starts fails loudly when destroyed.
+    panics: bool,
 }
 
 #[async_trait::async_trait]
@@ -81,9 +88,15 @@ impl Engine for Counting {
             return Err(crate::error::refused("landlock"));
         }
         self.started.fetch_add(1, Ordering::SeqCst);
+        // A zero sleep still waits for the timer, which the yields in
+        // `settle` never turn; only a delayed start sleeps at all.
+        if !self.delay.is_zero() {
+            tokio::time::sleep(self.delay).await;
+        }
         Ok(Box::new(Named {
             name: request.lease_id.to_owned(),
             destroyed: Arc::clone(&self.destroyed),
+            panics: self.panics,
             executor: Idle,
         }))
     }
@@ -209,4 +222,71 @@ async fn test_a_slot_that_fails_to_start_is_logged_and_the_lease_starts_cold() {
         Some("warm-1")
     );
     slots.shutdown().await;
+}
+
+/// A slot still starting when the keeper shuts down is waited for and torn
+/// down, never abandoned with its cgroup and disk in place.
+#[tokio::test(start_paused = true)]
+async fn test_shutdown_waits_for_a_start_still_in_flight() {
+    let inner = Arc::new(Counting {
+        delay: Duration::from_secs(1),
+        ..Counting::default()
+    });
+    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
+    settle().await;
+    assert_eq!(
+        inner.started.load(Ordering::SeqCst),
+        1,
+        "the slot is mid-start"
+    );
+
+    slots.shutdown().await;
+
+    assert_eq!(inner.destroyed.load(Ordering::SeqCst), 1);
+}
+
+/// A lease that stops waiting after its claim is answered never strands the
+/// slot it was handed: the keeper takes it back and tears it down.
+#[tokio::test]
+async fn test_a_slot_whose_lease_stopped_waiting_is_retired() {
+    use futures_util::FutureExt as _;
+    let inner = Arc::new(Counting::default());
+    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
+    settle().await;
+
+    let abandoned = slots
+        .prepare(SandboxRequest {
+            lease_id: "lease-f",
+            limits: Limits::default(),
+        })
+        .now_or_never();
+    settle().await;
+
+    assert!(
+        abandoned.is_none(),
+        "the claim was still waiting when dropped"
+    );
+    assert_eq!(inner.destroyed.load(Ordering::SeqCst), 1);
+    slots.shutdown().await;
+}
+
+/// A keeper that dies is reported by shutdown rather than ignored.
+#[tokio::test]
+async fn test_a_keeper_that_dies_is_reported_at_shutdown() {
+    let inner = Arc::new(Counting {
+        panics: true,
+        ..Counting::default()
+    });
+    let capture = afd_core::test_util::trace::Capture::install();
+    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
+    settle().await;
+
+    slots.shutdown().await;
+
+    assert!(
+        capture
+            .only("sandbox_warm_slot_left")
+            .field("reason")
+            .is_some_and(|reason| reason.contains("panicked"))
+    );
 }

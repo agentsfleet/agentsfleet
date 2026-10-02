@@ -18,8 +18,9 @@ readonly HERE
 readonly MANIFEST="${TOOLBOX_MANIFEST:-$HERE/manifest.txt}"
 readonly SNAPSHOT_MIRROR="http://snapshot.debian.org/archive/debian"
 # Mount points the sandbox binds onto; the image is read-only, so they must
-# already exist in it.
-readonly MOUNT_POINTS=(workspace run/agentsfleet opt/agentsfleet)
+# already exist in it. `/run` is not one: mmdebstrap empties it, and the
+# sandbox mounts its own.
+readonly MOUNT_POINTS=(workspace opt/agentsfleet)
 readonly ENTRY_POINT="opt/agentsfleet/agentsfleet-runner"
 
 if [ "$#" -ne 1 ]; then

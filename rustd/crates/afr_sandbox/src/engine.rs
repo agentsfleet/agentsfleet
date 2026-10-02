@@ -1,6 +1,7 @@
 //! The interface every engine meets.
 
 use std::fmt;
+use std::path::{Component, Path, PathBuf};
 
 use afr_executor::Executor;
 
@@ -48,6 +49,21 @@ pub struct SandboxRequest<'a> {
     pub limits: Limits,
 }
 
+impl SandboxRequest<'_> {
+    /// The lease's own directory under `base`.
+    ///
+    /// # Errors
+    /// The lease identifier is not exactly one plain path component, so it
+    /// could name a directory outside `base` or one shared with another lease.
+    pub fn lease_dir(&self, base: &Path) -> Result<PathBuf> {
+        let mut parts = Path::new(self.lease_id).components();
+        match (parts.next(), parts.next()) {
+            (Some(Component::Normal(name)), None) => Ok(base.join(name)),
+            _escapes => Err(crate::error::lease_id_unsafe(self.lease_id)),
+        }
+    }
+}
+
 /// Builds one sandbox per lease.
 #[async_trait::async_trait]
 pub trait Engine: Send + Sync + fmt::Debug {
@@ -70,3 +86,6 @@ pub trait Sandbox: Send + Sync + fmt::Debug {
     /// and the type system, not a flag, is what says so.
     async fn destroy(self: Box<Self>) -> Result<()>;
 }
+
+#[cfg(test)]
+mod tests;
