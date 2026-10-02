@@ -78,6 +78,10 @@ mod integration_serve;
 mod integration_telemetry;
 #[path = "integration_tenant_registry.rs"]
 mod integration_tenant_registry;
+#[path = "integration_tool_call_details.rs"]
+mod integration_tool_call_details;
+#[path = "integration_tool_call_details_lifecycle.rs"]
+mod integration_tool_call_details_lifecycle;
 #[path = "integration_tool_trace.rs"]
 mod integration_tool_trace;
 #[path = "integration_unreadable_config.rs"]

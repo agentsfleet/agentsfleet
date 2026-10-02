@@ -19,12 +19,14 @@ fn published_class(document: &OpenApi, schema: &str, property: &str) -> Option<S
 #[test]
 fn every_beta_field_is_published_beta() {
     let document = crate::openapi::document();
-    for &(schema, property) in BETA_FIELDS {
-        assert_eq!(
-            published_class(&document, schema, property).as_deref(),
-            Some(BETA),
-            "{schema}.{property}"
-        );
+    for &(schema, properties) in BETA_FIELDS {
+        for &property in properties {
+            assert_eq!(
+                published_class(&document, schema, property).as_deref(),
+                Some(BETA),
+                "{schema}.{property}"
+            );
+        }
     }
 }
 
@@ -45,11 +47,9 @@ fn a_field_the_document_lacks_is_answered_not_invented() {
     let missing = declare_beta(
         &mut document,
         &[
-            ("Holder", "inline"),
-            ("Holder", "shared"),
-            ("Holder", "absent"),
-            ("Listed", "items"),
-            ("Nowhere", "field"),
+            ("Holder", &["inline", "shared", "absent"]),
+            ("Listed", &["items"]),
+            ("Nowhere", &["field"]),
         ],
     );
     assert_eq!(
@@ -66,7 +66,7 @@ fn a_field_the_document_lacks_is_answered_not_invented() {
         Some(BETA)
     );
     let mut bare = OpenApiBuilder::new().build();
-    assert_eq!(declare_beta(&mut bare, &[("A", "b")]), [("A", "b")]);
+    assert_eq!(declare_beta(&mut bare, &[("A", &["b"])]), [("A", "b")]);
 }
 
 #[test]

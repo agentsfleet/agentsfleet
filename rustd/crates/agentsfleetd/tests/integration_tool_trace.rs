@@ -26,7 +26,7 @@ use crate::tail::lease;
 use crate::wire::{field, json as body_of, post, report_body};
 
 /// The report verb every case here settles through.
-const REPORTS: &str = "/v1/runners/me/reports";
+pub(crate) const REPORTS: &str = "/v1/runners/me/reports";
 
 /// A trace of `count` calls, numbered from 1 as the runner numbers them.
 fn trace(count: usize) -> Value {
@@ -197,7 +197,7 @@ async fn test_fenced_report_writes_no_tool_calls() {
 }
 
 /// A tenant credential for the scenario's workspace, read with `fleet:read`.
-async fn tenant_reader(supervisor: &mut Supervisor) -> (Scenario, String) {
+pub(crate) async fn tenant_reader(supervisor: &mut Supervisor) -> (Scenario, String) {
     let provider_base = provider_listener().await;
     let run = scenario_with_provider(supervisor, Some(&provider_base)).await;
     let token = mint_tenant_token();
@@ -206,7 +206,12 @@ async fn tenant_reader(supervisor: &mut Supervisor) -> (Scenario, String) {
 }
 
 /// One authenticated tenant read, answered as its JSON body.
-async fn tenant_get(http: &reqwest::Client, run: &Scenario, token: &str, path: &str) -> Value {
+pub(crate) async fn tenant_get(
+    http: &reqwest::Client,
+    run: &Scenario,
+    token: &str,
+    path: &str,
+) -> Value {
     let response = http
         .get(format!("{}{path}", run.base))
         .bearer_auth(token)
@@ -218,7 +223,7 @@ async fn tenant_get(http: &reqwest::Client, run: &Scenario, token: &str, path: &
 }
 
 /// Settles a lease the caller holds with `tool_calls`.
-async fn settle_with(
+pub(crate) async fn settle_with(
     http: &reqwest::Client,
     run: &Scenario,
     (lease_id, fence): (String, u64),

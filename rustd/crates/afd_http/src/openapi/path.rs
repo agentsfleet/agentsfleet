@@ -139,6 +139,21 @@ pub struct Event {
     pub event_id: String,
 }
 
+/// One tool call of one event.
+#[derive(Debug, IntoParams)]
+#[into_params(parameter_in = Path)]
+pub struct ToolCall {
+    /// `UUIDv7` of the workspace.
+    pub workspace_id: String,
+    /// `UUIDv7` of the fleet.
+    pub fleet_id: String,
+    /// `UUIDv7` of the event.
+    pub event_id: String,
+    /// The call, as the thread names it: `{fence}:{n}`. Opaque; send it as
+    /// the thread gave it, percent-encoded.
+    pub call_id: String,
+}
+
 /// One memory a fleet holds.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]

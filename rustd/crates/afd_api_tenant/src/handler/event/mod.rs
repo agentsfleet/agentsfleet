@@ -31,6 +31,7 @@
 //! apart if it wanted to — see `afd_core::error_code::EVENT_NOT_FOUND`.
 
 mod query;
+pub(crate) mod tool_call;
 
 use std::borrow::Cow;
 use std::sync::Arc;

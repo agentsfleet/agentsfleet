@@ -40,6 +40,7 @@ use utoipa::OpenApi as _;
     crate::handler::connector::status::disconnect,
     crate::handler::connector::status::read,
     crate::handler::event::detail,
+    crate::handler::event::tool_call::read,
     crate::handler::event::fleet_list,
     crate::handler::event::workspace_list,
     crate::handler::fleet::detail::patch,
