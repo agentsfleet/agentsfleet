@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import {
@@ -133,6 +133,44 @@ describe("Dialog", () => {
       </Dialog>,
     );
     expect(screen.getByText("Close")).toBeInTheDocument();
+  });
+
+  it("should disable the close X while closeDisabled is set, so a click on it closes nothing", () => {
+    const onOpenChange = vi.fn();
+    render(
+      <Dialog open onOpenChange={onOpenChange}>
+        <DialogContent closeDisabled>
+          <DialogTitle>Sending</DialogTitle>
+        </DialogContent>
+      </Dialog>,
+    );
+    const close = screen.getByRole("button", { name: "Close" });
+    expect(close).toBeDisabled();
+    fireEvent.click(close);
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("should close from the X again once closeDisabled clears", () => {
+    const onOpenChange = vi.fn();
+    const { rerender } = render(
+      <Dialog open onOpenChange={onOpenChange}>
+        <DialogContent closeDisabled>
+          <DialogTitle>Sending</DialogTitle>
+        </DialogContent>
+      </Dialog>,
+    );
+    rerender(
+      <Dialog open onOpenChange={onOpenChange}>
+        <DialogContent closeDisabled={false}>
+          <DialogTitle>Sent</DialogTitle>
+        </DialogContent>
+      </Dialog>,
+    );
+    const close = screen.getByRole("button", { name: "Close" });
+    expect(close).toBeEnabled();
+    fireEvent.click(close);
+    expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false);
   });
 
   it("DialogContent applies surface utilities", () => {

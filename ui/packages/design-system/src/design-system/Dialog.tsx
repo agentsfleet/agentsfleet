@@ -39,9 +39,21 @@ export function DialogOverlay({ className, ref, ...props }: DialogOverlayProps) 
   );
 }
 
-export type DialogContentProps = ComponentProps<typeof DialogPrimitive.Content>;
+export type DialogContentProps = ComponentProps<typeof DialogPrimitive.Content> & {
+  /** Disables the close X while the dialog refuses to close (a send in flight),
+   * so it reads as unavailable instead of looking live and doing nothing. */
+  closeDisabled?: boolean;
+};
 
-export function DialogContent({ className, children, ref, onOpenAutoFocus, onCloseAutoFocus, ...props }: DialogContentProps) {
+export function DialogContent({
+  className,
+  children,
+  closeDisabled = false,
+  ref,
+  onOpenAutoFocus,
+  onCloseAutoFocus,
+  ...props
+}: DialogContentProps) {
   const openerRef = useRef<Element | null>(null);
   return (
     <DialogPortal>
@@ -77,27 +89,33 @@ export function DialogContent({ className, children, ref, onOpenAutoFocus, onClo
         }}
       >
         {children}
-        <DialogClose asChild>
-          <Button variant="ghost" size="icon" className="absolute right-sm top-sm">
-          <svg
-            className="h-4 w-4"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M18 6 6 18" />
-            <path d="m6 6 12 12" />
-          </svg>
-          <span className="sr-only">Close</span>
-          </Button>
-        </DialogClose>
+        <DialogCloseButton disabled={closeDisabled} />
       </DialogPrimitive.Content>
     </DialogPortal>
+  );
+}
+
+function DialogCloseButton({ disabled }: { disabled: boolean }) {
+  return (
+    <DialogClose asChild>
+      <Button variant="ghost" size="icon" className="absolute right-sm top-sm" disabled={disabled}>
+        <svg
+          className="h-4 w-4"
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M18 6 6 18" />
+          <path d="m6 6 12 12" />
+        </svg>
+        <span className="sr-only">Close</span>
+      </Button>
+    </DialogClose>
   );
 }
 

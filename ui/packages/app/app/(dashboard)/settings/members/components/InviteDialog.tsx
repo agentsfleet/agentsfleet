@@ -86,7 +86,7 @@ export default function InviteDialog({ onSettled }: { onSettled: () => void }) {
           Invite
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent closeDisabled={pending}>
         {created ? (
           <InviteReady invite={created} onDone={() => handleOpenChange(false)} />
         ) : (

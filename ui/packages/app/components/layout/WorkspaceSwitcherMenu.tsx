@@ -28,10 +28,6 @@ import { useWorkspaceCreation } from "./WorkspaceCreationProvider";
 import { type SwitcherSection, switcherSections, WORKSPACE_LABEL } from "./workspace-groups";
 import { WorkspaceSwitcherTrigger } from "./WorkspaceSwitcherTrigger";
 
-// An owner's name reads in sentence case at the label size; the menu label's
-// eyebrow capitals would shout "JOHN'S ACCOUNT".
-const ACCOUNT_LABEL_CLASS = "normal-case text-label leading-label tracking-label text-muted-foreground";
-
 type WorkspaceSwitcherMenuProps = {
   open: boolean;
   workspaces: TenantWorkspace[];
@@ -229,7 +225,7 @@ function WorkspaceSection({ section, activeId, firstMenuId, firstItemRef, onPick
   if (section.label === null) return <>{items}</>;
   return (
     <DropdownMenuGroup aria-labelledby={labelId}>
-      <DropdownMenuLabel id={labelId} className={ACCOUNT_LABEL_CLASS}>
+      <DropdownMenuLabel id={labelId} variant="name">
         {section.label}
       </DropdownMenuLabel>
       {items}
