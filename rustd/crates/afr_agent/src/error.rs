@@ -25,14 +25,6 @@ afd_core::error_shell!(
 /// Every way this crate fails.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
-    /// A filesystem or socket call failed.
-    #[error("an input/output call failed")]
-    Io {
-        /// The operating system's reason.
-        #[from]
-        source: std::io::Error,
-    },
-
     /// The sandbox's executor failed under a call the run made.
     #[error("the executor failed")]
     Executor {
@@ -50,9 +42,7 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
-            ErrorKind::Io { .. } | ErrorKind::Executor { .. } => {
-                error_code::INTERNAL_OPERATION_FAILED
-            }
+            ErrorKind::Executor { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 }

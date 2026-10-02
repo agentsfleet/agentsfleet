@@ -114,10 +114,7 @@ pub fn signals() -> Option<&'static Signals> {
 /// ordinary in a test binary, a bug at boot, and in neither case a reason to
 /// refuse to serve. The slot it leaves behind is [`signals`].
 pub fn install(env: &dyn EnvSource) -> bool {
-    let level = env
-        .get(LOG_LEVEL_VAR)
-        .and_then(|raw| raw.trim().parse().ok())
-        .unwrap_or(DEFAULT_LEVEL);
+    let level = afd_core::env::log_level(env, DEFAULT_LEVEL);
     let (slot, handle) = reload::Layer::new(Attached::None);
     // The slot is layered FIRST, so what it holds is a layer over the bare
     // registry: a reloadable layer's type names the subscriber beneath it, and

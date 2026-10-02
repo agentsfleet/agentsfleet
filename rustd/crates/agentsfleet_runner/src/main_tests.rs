@@ -45,7 +45,7 @@ fn every_entry_parses_and_nothing_else_does() {
 /// aid must not stop a runner starting.
 #[test]
 fn the_log_level_comes_from_the_environment_or_the_default() {
-    let unreadable = MapEnv::from_pairs([(super::LOG_LEVEL_VAR, "loud")]);
+    let unreadable = MapEnv::from_pairs([(afd_core::env::LOG_LEVEL_VAR, "loud")]);
 
     super::install_logs(&unreadable);
 
