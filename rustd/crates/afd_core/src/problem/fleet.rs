@@ -215,6 +215,15 @@ pub(super) const FLEET: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::TOOL_CALL_NOT_FOUND,
+        status: 404,
+        title: "Tool call not found",
+        hint: "No full output was kept for that call on this event. Use the call_id the thread shows, as {fence}:{n}. A call in another workspace answers the same.",
+        user_message: Some(
+            "The full output of this call wasn't kept. The thread still shows its first and last lines.",
+        ),
+    },
+    Problem {
         code: error_code::AGENTSFLEET_OPERATION_CONFLICT,
         status: 409,
         title: "Operation already used",

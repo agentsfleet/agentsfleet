@@ -19,24 +19,42 @@ const BETA: &str = "beta";
 
 /// The response fields published `beta`, as `(schema, property)`.
 ///
-/// `EventDetail.tool_calls` is read by the chat while its rendering is still
-/// being built, and the runner that fills it is new; both may still reshape it.
-pub(super) const BETA_FIELDS: &[(&str, &str)] = &[("EventDetail", "tool_calls")];
+/// The response fields published `beta`: each schema, with its properties.
+///
+/// The tool-call fields are read by the chat while its rendering is still
+/// being built, and the runner that fills them is new; both may reshape them.
+pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
+    ("EventDetail", &["tool_calls"]),
+    (
+        "ToolCallDetail",
+        &[
+            "call_id",
+            "arguments",
+            "truncated_arguments",
+            "output",
+            "output_line_count",
+            "truncated",
+        ],
+    ),
+    ("ToolCallRecordsStored", &["stored_count", "skipped_count"]),
+];
 
 /// Publishes `fields` as `beta`, answering the entries the document lacks.
 pub(super) fn declare_beta<'a>(
     document: &mut OpenApi,
-    fields: &[(&'a str, &'a str)],
+    fields: &[(&'a str, &[&'a str])],
 ) -> Vec<(&'a str, &'a str)> {
     let mut missing = Vec::new();
-    for &(schema, property) in fields {
-        match property_of(document, schema, property).and_then(extensions_of) {
-            Some(extensions) => {
-                extensions
-                    .get_or_insert_with(Extensions::default)
-                    .insert(STABILITY.to_owned(), BETA.into());
+    for &(schema, properties) in fields {
+        for &property in properties {
+            match property_of(document, schema, property).and_then(extensions_of) {
+                Some(extensions) => {
+                    extensions
+                        .get_or_insert_with(Extensions::default)
+                        .insert(STABILITY.to_owned(), BETA.into());
+                }
+                None => missing.push((schema, property)),
             }
-            None => missing.push((schema, property)),
         }
     }
     missing
