@@ -16,11 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M208
 **Workstream:** 003
 **Date:** Sep 30, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — without email an owner must carry the link to the invitee by hand
 **Categories:** API, DOCS, UI
 **Batch:** B1 — third of three M208 workstreams in one Pull Request (PR)
 **Branch:** `feat/m208-team-accounts`
+**Folded-into:** `M208_001`
 **Baseline revision:** `3b61121c3c7da8b97cc348cca1d1dbfb99c3bce4`
 **Test Baseline:** unit=2884 integration=683 — at `3b61121c3`: unit 2884 passed / 0 failed / 708 ignored (`make test-unit-all`, Rust half; TypeScript 3308 + 142 + 640 = 4090; Zig runner passed) · integration 683 passed / 0 failed (`make test-integration-rustd`, 681 + 2 exclusive). Final counts land at CHORE(close).
 **Baseline evidence:** `playbooks/operations/acceptance/baselines/M208_001-3b61121c3.md`
@@ -57,7 +58,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_mail/` (+ `rustd/Cargo.toml`, `rustd/Cargo.lock`) | CREATE | render the invite (askama) and send it over SMTP (lettre): bounded deadline, idempotency header, typed outcome |
 | `rustd/crates/afd_mail/templates/invite.{html,txt}` | CREATE | the invite email; the HTML ports the relay account's `invitation_dev` design; three variables |
 | `rustd/crates/afd_mail/templates/layout.html` | CREATE | the brand every email extends: design-system colors (light, and dark where the client honours it), Bricolage Grotesque and Instrument Sans, the pulse-dot wordmark, the footer |
-| `rustd/crates/afd_api_tenant/src/handler/tenant/invite_email.rs` | EDIT | a compile-time check that the email's `INVITE_VALID_DAYS` equals `INVITE_TTL_MS` |
+| `rustd/crates/afd_api_tenant/src/handler/tenant/invite_email.rs` | EDIT | email the invite after it commits; the letter takes `INVITE_VALID_DAYS` from `afd_tenant`, the one source of the seven days |
 | `rustd/crates/afd_tenant/src/team/invitation/lifecycle.rs` | EDIT | send after the invite commits; record status and attempts; send again |
 | `rustd/crates/afd_http/src/route/tenant.rs` | EDIT | `POST /v1/tenants/me/invites/{invite_id}/send` |
 | `rustd/crates/afd_api_tenant/src/handler/tenant/invite.rs` | EDIT | responses carry `email_status` |
@@ -131,13 +132,13 @@ Each `invited` row on the members page shows "Email sent", "Email not sent" or "
 
 - **Dimension 4.1** — send-again after a failure sends under a new key and flips to `sent` → Test `test_send_again_after_failure` — DONE (`afd_api/tests/integration_invite_email.rs`)
 - **Dimension 4.2** — send-again while unconfigured is `503 UZ-INV-005` → Test `test_send_again_unconfigured_refused` — DONE (`afd_api/tests/integration_invite_email.rs`)
-- **Dimension 4.3** — the members page shows each status with its actions → Test `test_members_page_shows_email_status` — written (`ui/packages/app/tests/e2e/acceptance/team-members.spec.ts`); the view is unit-proven in `MembersView.test.tsx`; the journey runs on DEV after merge
+- **Dimension 4.3** — the members page shows each status with its actions → Test `test_members_page_shows_email_status` — written (`ui/packages/app/tests/e2e/acceptance/team-members.spec.ts`); the view is unit-proven in `MembersView.test.tsx`; the journey runs on DEV after merge, under `orly override spec.dimensions` (Indy, Oct 01, 2026)
 
 ### §5 — Real delivery on DEV
 
 After §1's sync runs on DEV and this change reaches DEV, an invite to a test mailbox arrives, and its link, opened while signed in as that mailbox's account, accepts. DEV runs `main`, so this runs after merge, as M208_001's R2 does.
 
-- **Dimension 5.1** — a real invite email arrives and its link accepts, recorded with the relay's message id → Test `test_dev_invite_email_round_trip` (manual — Indy, after merge)
+- **Dimension 5.1** — a real invite email arrives and its link accepts, recorded with the relay's message id → Test `test_dev_invite_email_round_trip` (manual — Indy, after merge, under `orly override spec.dimensions`, Oct 01, 2026)
 
 ### §6 — Documentation
 
@@ -208,14 +209,14 @@ Template         rustd/crates/afd_mail/templates/invite.{html,txt}  {inviter_nam
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Email sends once, failures keep the invite (§2, §3, §4) | `make test-integration-rustd` | exit 0 | P0 | |
-| R2 | Owner sees status and actions (§4) | `cd ui/packages/app && bunx playwright test --config=playwright.acceptance.config.ts --project=journeys -g test_members_page_shows_email_status` | `1 passed` | P0 | |
-| R3 | Real email on DEV (§5) | manual: Session Notes carry the relay message id and the accepted invite | present | P1 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S3b | Versions in sync | `make check-version` | exit 0 | P0 | |
-| S4 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| R1 | Email sends once, failures keep the invite (§2, §3, §4) | `make test-integration-rustd` | exit 0 | P0 || ✅ `make test-integration-rustd` 751 passed, 0 failed @ `bd23e1555` |
+| R2 | Owner sees status and actions (§4) | `cd ui/packages/app && bunx playwright test --config=playwright.acceptance.config.ts --project=journeys -g test_members_page_shows_email_status` | `1 passed` | P0 || post-merge on DEV (override, Indy Oct 01) |
+| R3 | Real email on DEV (§5) | manual: Session Notes carry the relay message id and the accepted invite | present | P1 || post-merge on DEV (override, Indy Oct 01) |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 || ✅ `make harness-verify` ALL GATES GREEN (pre-commit, every commit) |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 || ✅ Rust 2998 passed / 0 failed; TypeScript 3483 + 142 + 641; Zig passed |
+| S3 | Lint green | `make lint-all` | exit 0 | P0 || ✅ `make lint-all` exit 0 |
+| S3b | Versions in sync | `make check-version` | exit 0 | P0 || ✅ `make check-version` all versions match 0.51.0 |
+| S4 | No secrets | `gitleaks detect` | exit 0 | P0 || ✅ gitleaks: no leaks found (pre-commit, every commit) |
 
 **Command source rule:** every declared `conform` and `verify.*` command from `.oracle/orly.json` appears verbatim above (`make test-integration-rustd` is R1). See `dispatch/lifecycle.md` for timing.
 
@@ -260,11 +261,16 @@ N/A — no files deleted.
 - **Template** — decisions `9c96e2e8` and `956040a2`: Indy wants templates over SMTP. Resend's stored templates exist only on `POST /emails` (resend.com/docs/api-reference/emails/send-email), and its SMTP guide covers headers and `Resend-Idempotency-Key` only (resend.com/docs/send-with-smtp), so the template lives here, rendered by askama, which checks variables at compile time and escapes HTML. Three variables, since only the invitee's address is known at invite time: `inviter_name`, `account_name`, `invite_url`; company name and address are template text; no `first_name`. The HTML ports Indy's Resend dev template `invitation_dev` (sender hello@agentsfleet.net; `invitation_dev-1` sends from hello@agentsfleet.dev).
 - **Amendment** — Oct 1, 2026: this spec moved from Resend's HTTP API to SMTP. §1's playbook, the sync case, §2's transport, §3's failure codes, Interfaces, Failure Modes, Metrics and the test names follow; the invite module is `team/invitation/` since M208_001's refactor (`bfb021bf8`); Dimension 2.4 and Invariant 5 are added for template escaping; Dimension 6.1 tests `docs/AUTH.md`, which this repository can read, in place of the public page.
 - **Test layers and local eyeball** — Oct 1, 2026, Indy: "Do all three. Anything less misses a failure class" — askama with `insta` snapshots for the template, lettre's `StubTransport` for the send path, Mailpit for the real SMTP exchange; Mailpit runs in `docker-compose.yml`, in Continuous Integration (CI) and in `make test-integration-rustd`. The members page and the email are eyeballed on the local Docker stack ("it can be on docker like here, where i can check on http://... url"): the daemon sends to Mailpit and Indy reads the mail at Mailpit's web page. That needs plaintext SMTP outside `test-util`, so the rule is now loopback-only plaintext (§2, Invariant 6). Template HTML is fetched from Resend's API (Indy: "Fetch via Resend API").
-- **Metrics review** — pending.
-- **Skill-chain outcomes** — pending.
+- **Metrics review** — Oct 2, 2026: the email outcome reaches product telemetry as `invite_email_sent|failed|unconfigured` through one `InviteEmailOutcome` type; the send's log pair is `invite_email_started` then completed or failed. No census counter was added: invite and invite-email counters moved to M208_004 §4 under Indy's deferral below.
+- **Skill-chain outcomes** — Oct 1–2, 2026. `/review` (Oct 1): eight specialists plus adversarial; every judgment finding decided by Indy (Review entry below). Rust idiom audit (Oct 2, asked by Indy: traits, callables, clones, mutexes, `error_shell!`, logging, duplication, `afd_core` reuse): four auditors; fixes landed in `d5ebc105d`, `370682f58`, `2b1a60cc9`, `f8e5814cb`. Scoped re-review of `894eaf51f^..HEAD` (Oct 2): seven specialists plus adversarial; fixes in `bbe2b6e94`, `fab79cc5f`, `a6104d56b`, `e4531e99b`, then a cycle-2 pass. `/orly-write-unit-test`: TypeScript 100% statements, branches, functions and lines (`bun run test:coverage`); Rust patch coverage recorded in the Pull Request's Make section. `/orly-write-integration-test`: the live lane covers every route this spec adds.
 - **Security review** — Oct 1, 2026, asked by Indy ("Are there any security vulnerability here"). Three findings, each read from source:
   1. **Mail abuse** — any signed-up owner can invite any address and send again without limit, from our domain, carrying their own display name; the only limit is the instance-wide in-flight ceiling (`afd_http/src/admission/mod.rs`), and `begin_email` counts attempts without capping them. Indy, on per-invite and per-account caps in this PR: "Skip this".
   2. **Address verification left to Clerk alone** — accept matches the invite against the user's stored address (`afd_api_tenant/.../invite.rs:269-274`), and signup stored the primary address without reading its verification status, so the guarantee rested entirely on Clerk's settings. Not a live hole: Clerk verifies the address at sign-up (Indy: "This is handled by Clerk? i had to put in an OTP and continue" — the email-code path). Indy: "Check Clerk, guard in code (Recommended)". Signup now also refuses an unverified primary with 400 and `signup_failed_total{reason="unverified_email"}` (`afd_api_ingress/src/handler/webhook/identity_route.rs`; census ceiling 6 → 7), as a backstop should a sign-up method that admits unverified addresses ever be enabled; the acceptance bootstraps replay the `verified` status a real Clerk delivery carries. Open: which sign-up methods the Clerk instance enables beyond email codes, and whether each verifies — read from the Clerk dashboard.
   3. **Stored address never follows a change at Clerk** — only `user.created` is handled. Indy: "Skip this for now".
 - **Send again on a sent invite** — Oct 1, 2026, Indy: "Keep things simple, i dont want to add more scope on invite, the use case is John has fleets, and invites Bob, if bob for somereason didnt receive resends, and can revoke or cancel the invite." A relay that accepted the email does not prove Bob received it, so "Send again" shows on every invite with a relay (sent or failed) and stays hidden only when email is not set up; the backend already accepted it in every state.
-- **Deferrals** — §5 runs after merge because DEV runs `main`; R3 needs Indy's ack quote before the Pull Request. Invite send caps (security finding 1): Indy, "Skip this". Address sync on `user.updated` (security finding 3): Indy, "Skip this for now".
+- **Review decisions** — Oct 1, 2026, Indy: invite button reads **Send** and the success view "Invite sent"; members may use workspace secrets through fleets they write; platform admins invite like anyone; addresses are refused by shape, not capped at 64 characters ("accept valid emails only"); API keys keep the team routes ("Leave as is"); `/v1/users/me/invites`, 409 `current_state`, invite foreign-key indexes in unshipped slot 923, and the send-again idempotency exception. All recorded in `docs/AUTH.md` and `docs/REST_API_DESIGN_GUIDELINES.md`.
+- **Re-review dispositions** — Oct 2, 2026. Fixed: the stream re-check now closes after four unanswered checks and the wall shares its budget; a stream refused at open ends like a revocation; IP-domain invites are refused; accept parses before it commits; the dashboard base must be http(s) with no credentials, query or fragment; revoke after the invitee joined answers 409 `member`. Kept by Indy's earlier calls: no invite send cap ("Skip this"), the not-set-up tooltip and warning tone, no send-again without a relay.
+- **Deferrals** — §5 runs after merge because DEV runs `main`.
+  > Indy (2026-10-01 23:55): "Yes, record it (Recommended)" — context: AskUserQuestion on recording the post-merge `spec.dimensions` override; M208_001 Dimensions 4.1/4.2 (R2) and this spec's Dimensions 4.3/5.1 (rubric R2, R3) are graded on DEV after merge.
+  > Indy (2026-10-01 23:55): "Defer to a follow-up (Recommended)" — context: team-list paging, deleting old invite rows, hiding expired invites, team-action metrics, and sending after the 201 move to `docs/v2/pending/M208_004_P3_API_OBS_UI_TEAM_LISTS_PAGE_AND_INVITES_AGE_OUT.md`.
+  Earlier calls: invite send caps (security finding 1): Indy, "Skip this". Address sync on `user.updated` (security finding 3): Indy, "Skip this for now".
