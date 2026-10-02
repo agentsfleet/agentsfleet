@@ -35,6 +35,9 @@ pub const USERNAME: &str = "relay";
 /// The password the relay's bag names, which no record or `Debug` may print.
 pub const PASSWORD: &str = "relay-password";
 
+/// The window a fixture letter states, which the reviewed snapshots print.
+pub const VALID_DAYS: i64 = 7;
+
 /// The line that ends a message's data.
 const END_OF_DATA: &str = ".\r\n";
 

@@ -4,6 +4,7 @@
 )]
 
 use super::{InviteLetter, account_label, render_invite};
+use crate::test_util::VALID_DAYS;
 
 const LINK: &str = "https://app.agentsfleet.test/invites/0190f5a2-4b2d-7c11-8d5e-2a5f31d98210";
 
@@ -12,6 +13,7 @@ fn letter<'a>(inviter_name: &'a str, owner_name: &'a str) -> InviteLetter<'a> {
         inviter_name,
         owner_name,
         invite_url: LINK,
+        valid_days: VALID_DAYS,
     }
 }
 

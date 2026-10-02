@@ -20,13 +20,6 @@ use crate::Result;
 /// the invites page name the account identically.
 pub(crate) const ACCOUNT_LABEL_SUFFIX: &str = "'s account";
 
-/// How many days the email says the invite stays acceptable.
-///
-/// The daemon checks this against `afd_tenant`'s `INVITE_TTL_MS` at compile
-/// time (`afd_api_tenant/src/handler/tenant/invite_email.rs`), so the email can
-/// never promise a window the invite does not keep.
-pub const INVITE_VALID_DAYS: i64 = 7;
-
 /// The subject line, around the account's label.
 const SUBJECT_PREFIX: &str = "You're invited to join ";
 const SUBJECT_SUFFIX: &str = " on agentsfleet";
@@ -41,6 +34,8 @@ pub struct InviteLetter<'a> {
     pub owner_name: &'a str,
     /// The dashboard page that accepts this invite.
     pub invite_url: &'a str,
+    /// How many days the invite stays acceptable, as the invite store decides.
+    pub valid_days: i64,
 }
 
 /// One email, rendered and ready to address.
@@ -92,14 +87,14 @@ pub(crate) fn render_invite(letter: &InviteLetter<'_>) -> Result<RenderedEmail> 
         inviter_name: letter.inviter_name,
         account_name: &account_name,
         invite_url: letter.invite_url,
-        valid_days: INVITE_VALID_DAYS,
+        valid_days: letter.valid_days,
     }
     .render()?;
     let text = InviteText {
         inviter_name: letter.inviter_name,
         account_name: &account_name,
         invite_url: letter.invite_url,
-        valid_days: INVITE_VALID_DAYS,
+        valid_days: letter.valid_days,
     }
     .render()?;
     Ok(RenderedEmail {

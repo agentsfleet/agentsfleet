@@ -7,7 +7,7 @@
 //! relay plugs in by changing the bag.
 //!
 //! Rendering and delivery stay apart: [`render_invite`] is a pure function of
-//! its three variables, and [`InviteMailer`] owns the relay, the deadline and
+//! its letter, and [`InviteMailer`] owns the relay, the deadline and
 //! the retry. The caller — the invite route — commits the invite and its
 //! attempt number first, so nothing here can lose an invite.
 
@@ -19,7 +19,7 @@ mod relay;
 
 pub use self::deliver::IDEMPOTENCY_HEADER;
 pub use self::error::{Error, Result};
-pub use self::invite::{INVITE_VALID_DAYS, InviteLetter};
+pub use self::invite::InviteLetter;
 pub(crate) use self::invite::{RenderedEmail, render_invite};
 pub use self::mailer::{InviteMailer, InviteSend, deliverable};
 pub use self::relay::SMTP_RELAY_BAG;

@@ -11,8 +11,11 @@
 //! second, hand-written grammar can disagree with it. The store links no mail
 //! client: the parser arrives as a function. What stays here is what the
 //! product adds on top: nothing longer than SMTP carries, and a domain with a
-//! dot in it, since an invite goes to a person on the internet and never to a
-//! bare host name the parser would accept.
+//! dot in it that is not an IP address, since an invite goes to a person on
+//! the internet and never to a bare host name or an address the parser would
+//! accept.
+
+use std::net::IpAddr;
 
 use crate::{Result, error};
 
@@ -24,6 +27,9 @@ const AT: char = '@';
 
 /// What an internet domain carries and a bare host name does not.
 const DOT: char = '.';
+
+/// What wraps an IP address written as a domain literal (`[10.0.0.1]`).
+const LITERAL_BRACKETS: [char; 2] = ['[', ']'];
 
 /// An invite address: trimmed, lowercased, and one its email can be sent to.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,14 +44,15 @@ impl Email {
     /// The address `raw` names, normalised, if `deliverable` accepts it.
     ///
     /// # Errors
-    /// Refuses anything longer than SMTP carries, a domain with no dot, and
-    /// any address `deliverable` refuses.
+    /// Refuses anything longer than SMTP carries, a domain with no dot, an IP
+    /// address for a domain, bracketed or not, and any address `deliverable`
+    /// refuses.
     pub fn parse(raw: &str, deliverable: impl FnOnce(&str) -> bool) -> Result<Self> {
         let address = fold(raw);
-        let dotted = address
+        let internet = address
             .rsplit_once(AT)
-            .is_some_and(|(_, domain)| domain.contains(DOT));
-        (address.len() <= MAX_LEN && dotted && deliverable(&address))
+            .is_some_and(|(_, domain)| is_internet_domain(domain));
+        (address.len() <= MAX_LEN && internet && deliverable(&address))
             .then_some(Self(address))
             .ok_or_else(error::email_invalid)
     }
@@ -55,6 +62,13 @@ impl Email {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+/// A domain an invite can go to: dotted, and not an IP address a relay would
+/// dial directly.
+fn is_internet_domain(domain: &str) -> bool {
+    let bare = domain.trim_matches(LITERAL_BRACKETS);
+    domain.contains(DOT) && bare.parse::<IpAddr>().is_err()
 }
 
 #[cfg(test)]
@@ -112,6 +126,31 @@ mod tests {
         for raw in ["bob@example", "bob", ""] {
             assert!(Email::parse(raw, any).is_err(), "{raw:?}");
         }
+    }
+
+    /// The parser takes an IP address for a domain, so an invite could make
+    /// the relay deliver to any host; the product rule refuses it, bracketed or
+    /// bare, IPv4 or IPv6.
+    #[test]
+    fn a_domain_that_is_an_ip_address_is_refused_whatever_the_parser_says() {
+        assert!(afd_mail::deliverable("bob@10.0.0.1"), "the parser takes it");
+        for raw in [
+            "bob@10.0.0.1",
+            "bob@[10.0.0.1]",
+            "bob@[::1]",
+            "bob@::ffff:10.0.0.1",
+            "bob@[::ffff:10.0.0.1]",
+        ] {
+            assert!(Email::parse(raw, any).is_err(), "{raw:?} was accepted");
+            assert!(
+                Email::parse(raw, afd_mail::deliverable).is_err(),
+                "{raw:?} was accepted with the route's parser"
+            );
+        }
+        assert!(
+            Email::parse("bob@10.0.0.1.example.com", any).is_ok(),
+            "a name that starts with digits is still a name"
+        );
     }
 
     #[test]

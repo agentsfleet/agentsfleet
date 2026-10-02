@@ -11,14 +11,14 @@ use afd_core::error_code;
 use http::{Method, StatusCode};
 use serde_json::json;
 
-use crate::harness;
-use crate::integration_team_routes::{INVITES, MEMBERS, call, find, send_again, text};
+use crate::harness::{self, text};
+use crate::integration_team_routes::{INVITES, MEMBERS, call, find, send_again};
 use crate::integration_workspace_members::fixture::{Members, owner_scopes};
 
 /// An owner naming another account's invite or member through their own
 /// `/tenants/me` routes reaches nothing: the revoke and the removal are quiet
 /// no-ops, the send is not found and counts no attempt, and John's invite and
-/// Bob's membership stand.
+/// Bob's membership stand. An invite already accepted is no different.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_owner_routes_never_reach_another_account() {
@@ -64,7 +64,37 @@ async fn test_owner_routes_never_reach_another_account() {
         find(&roster, "user_id", &bob.user).is_some(),
         "Bob stays: {roster}"
     );
+    another_account_cannot_revoke_an_accepted_invite(&members).await;
     members.cleanup().await;
+}
+
+/// The stranger accepts John's invite, then Bob, from his own account, revokes
+/// it: a quiet 204 that tells him nothing, and the stranger stays a member.
+async fn another_account_cannot_revoke_an_accepted_invite(members: &Members) {
+    let (john, bob, stranger) = (&members.john, &members.bob, &members.stranger);
+    let johns = members.router(john, owner_scopes());
+    let body = json!({ "email": stranger.email }).to_string();
+    let (status, invite) = call(&johns, Method::POST, INVITES, john, &body).await;
+    assert_eq!(status, StatusCode::CREATED, "{invite}");
+    let invite = text(&invite, "id").expect("an id").to_owned();
+    let strangers = members.router(stranger, owner_scopes());
+    let accept = format!("/v1/users/me/invites/{invite}/accept");
+    let (status, accepted) = call(&strangers, Method::POST, &accept, stranger, "").await;
+    assert_eq!(status, StatusCode::OK, "{accepted}");
+
+    let bobs = members.router(bob, owner_scopes());
+    let revoke = format!("{INVITES}/{invite}");
+    let (status, answered) = call(&bobs, Method::DELETE, &revoke, bob, "").await;
+    assert_eq!(
+        status,
+        StatusCode::NO_CONTENT,
+        "nothing of Bob's: {answered}"
+    );
+    let (_, roster) = call(&johns, Method::GET, MEMBERS, john, "").await;
+    assert!(
+        find(&roster, "user_id", &stranger.user).is_some(),
+        "the stranger stays: {roster}"
+    );
 }
 
 /// Bob is a member of John's account and owns his own: his `/tenants/me`

@@ -99,8 +99,9 @@ pub struct Created {
 impl Workspaces {
     /// One page of the workspaces across `tenants`, oldest first.
     ///
-    /// `tenants` is bound as one array, borrowed as [`super::accounts::
-    /// Accounts::tenants`] lends it, so the walk copies no identifier.
+    /// `tenants` is bound as one array, borrowed as
+    /// [`super::accounts::Accounts::tenants`] lends it, so the walk copies no
+    /// identifier.
     ///
     /// `filter` holds the walk to an exact name; `after` is the decoded
     /// cursor when the caller is resuming.

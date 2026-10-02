@@ -11,7 +11,8 @@ use afd_mail::test_util::FROM;
 use afd_tenant::team::EMAIL_STATUS_SENT;
 use serde_json::Value;
 
-use crate::integration_invite_email::{invite, owner_fleet, text};
+use crate::harness::text;
+use crate::integration_invite_email::{id_of, invite, owner_fleet};
 use crate::integration_workspace_members::fixture::Members;
 
 const MAILPIT_SMTP_PORT: &str = "TEST_MAILPIT_SMTP_PORT";
@@ -57,7 +58,7 @@ async fn test_invite_email_carries_accept_link() {
         .expect("a port number");
     let router = owner_fleet(&members, Some(port)).await.router();
     let (created, address) = invite(&router, &members).await;
-    assert_eq!(text(&created, "email_status"), EMAIL_STATUS_SENT);
+    assert_eq!(text(&created, "email_status"), Some(EMAIL_STATUS_SENT));
     assert!(
         created
             .get("email_sent_at")
@@ -74,26 +75,28 @@ async fn test_invite_email_carries_accept_link() {
     assert_eq!(messages.len(), 1, "{found}");
     let id = messages
         .first()
-        .map(|message| text(message, "ID").to_owned())
-        .unwrap_or_default();
+        .and_then(|message| text(message, "ID"))
+        .expect("Mailpit names the message");
     let message = mailpit_get(&format!("/api/v1/message/{id}")).await;
-    let link = text(&created, "link");
+    let link = text(&created, "link").expect("the invite answers its link");
     // pin test: literal is the contract
     assert_eq!(
         text(&message, "Subject"),
-        "You're invited to join John's account on agentsfleet"
+        Some("You're invited to join John's account on agentsfleet")
     );
     assert_eq!(
         message.pointer("/From/Address").and_then(Value::as_str),
         Some(FROM)
     );
-    assert!(text(&message, "Text").contains(link) && text(&message, "Text").contains("John"));
-    assert!(text(&message, "HTML").contains(link));
+    let plain = text(&message, "Text").expect("the message has a text part");
+    assert!(plain.contains(link) && plain.contains("John"));
+    let html = text(&message, "HTML").expect("the message has an HTML part");
+    assert!(html.contains(link));
     let headers = mailpit_get(&format!("/api/v1/message/{id}/headers")).await;
     let key = headers
         .pointer(&format!("/{IDEMPOTENCY_HEADER}/0"))
         .and_then(Value::as_str);
-    let expected = format!("invite-{}-1", text(&created, "id"));
+    let expected = format!("invite-{}-1", id_of(&created));
     assert_eq!(key, Some(expected.as_str()));
     members.cleanup().await;
 }

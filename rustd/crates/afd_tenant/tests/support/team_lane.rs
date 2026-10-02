@@ -8,6 +8,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_db::test_util::mint_id;
 use afd_tenant::team::{Email, EmailAttempt, Invitation, NewInvite, Waiting};
 use afd_tenant::workspace::access::ROLE_OWNER;
 
@@ -15,6 +16,9 @@ use crate::access_lane::{Account, Fixture, id};
 
 /// What a readback reports when the lane gives it no connection.
 const NO_CONNECTION: &str = "an API connection";
+
+/// Where a UUID spells its variant, as `afd_core::id` reads it.
+const VARIANT_AT: usize = 19;
 
 impl Fixture {
     /// John invites `address`, as of `at`.
@@ -91,6 +95,34 @@ impl Fixture {
         .fetch_optional(&mut *connection)
         .await
         .expect("the role reads")
+    }
+
+    /// Adds a workspace to John's account whose identifier Postgres takes and
+    /// this daemon cannot read: a version-7 UUID with no RFC 4122 variant.
+    pub(crate) async fn add_unreadable_workspace(&self) -> String {
+        let mut unreadable = mint_id();
+        unreadable.replace_range(VARIANT_AT..=VARIANT_AT, "0");
+        let mut connection = self.database.acquire().await.expect(NO_CONNECTION);
+        sqlx::query(
+            "INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
+             VALUES ($1::uuid, $2::uuid, NULL, NULL, 2)",
+        )
+        .bind(&unreadable)
+        .bind(&self.john.tenant)
+        .execute(&mut *connection)
+        .await
+        .expect("Postgres takes the unreadable workspace");
+        unreadable
+    }
+
+    /// Removes the workspace `id`.
+    pub(crate) async fn remove_workspace(&self, id: &str) {
+        let mut connection = self.database.acquire().await.expect(NO_CONNECTION);
+        sqlx::query("DELETE FROM core.workspaces WHERE id = $1::uuid")
+            .bind(id)
+            .execute(&mut *connection)
+            .await
+            .expect("the workspace is removed");
     }
 
     /// How many owners John's account has.

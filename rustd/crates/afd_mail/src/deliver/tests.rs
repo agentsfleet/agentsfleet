@@ -18,7 +18,7 @@ use super::{
     Attempted, Delivery, IDEMPOTENCY_HEADER, IdempotencyKey, Mailer, message, send_once_retrying,
 };
 use crate::relay::TlsCache;
-use crate::test_util::{FROM, FakeRelay, Session};
+use crate::test_util::{FROM, FakeRelay, Session, VALID_DAYS};
 use crate::{InviteLetter, RenderedEmail, render_invite};
 
 /// The invite every message in this crate's suites is for.
@@ -232,6 +232,7 @@ fn test_crlf_in_owner_name_stays_in_subject() {
         inviter_name: hostile,
         owner_name: hostile,
         invite_url: INVITE_URL,
+        valid_days: VALID_DAYS,
     })
     .expect("the invite renders");
     let subject = Subject::from(rendered.subject.clone());

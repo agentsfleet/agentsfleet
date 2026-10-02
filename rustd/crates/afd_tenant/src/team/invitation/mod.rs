@@ -15,6 +15,7 @@ pub use self::mail_status::{
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_core::timing::DAY_MS;
 use sqlx::Row as _;
 use sqlx::postgres::PgRow;
 
@@ -23,8 +24,12 @@ use crate::sql::{COLUMN_EMAIL, COLUMN_ID, COLUMN_ROLE, COLUMN_TENANT_ID};
 use crate::workspace::access::Role;
 use crate::{Result, error, stored};
 
-/// How long an invitation can be accepted: seven days.
-pub const INVITE_TTL_MS: i64 = 7 * 24 * 60 * 60 * 1000;
+/// How many days an invitation can be accepted. The invite email states this
+/// count, so it never promises a window the invitation does not keep.
+pub const INVITE_VALID_DAYS: i64 = 7;
+
+/// How long an invitation can be accepted, in milliseconds.
+pub const INVITE_TTL_MS: i64 = INVITE_VALID_DAYS * DAY_MS;
 
 /// The table an invitation is read from, as a malformed row reports it.
 const TABLE: &str = "core.invites";

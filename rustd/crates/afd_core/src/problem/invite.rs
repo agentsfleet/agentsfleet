@@ -31,7 +31,7 @@ pub(super) const INVITE: &[Problem] = &[
         code: error_code::INVITE_CONFLICT,
         status: 409,
         title: "Already invited or a member",
-        hint: "The address has a pending invite or already belongs to the account. Revoke the pending invite to send a new one.",
+        hint: "The address has a pending invite or already belongs to the account. Revoke the pending invite to send a new one, or remove the member.",
         user_message: Some("That person already has an invite or is already a member."),
     },
     Problem {

@@ -175,6 +175,14 @@ pub(crate) fn error_code(problem: &Value) -> Option<&str> {
     problem.get(ERROR_CODE).and_then(Value::as_str)
 }
 
+/// A string field of a JSON object, when it holds one.
+///
+/// `None` for an absent key or a value of another type, so a suite asserts
+/// presence where it needs a value rather than reading an empty string.
+pub(crate) fn text<'v>(value: &'v Value, key: &str) -> Option<&'v str> {
+    value.get(key).and_then(Value::as_str)
+}
+
 /// The rows a page carries.
 ///
 /// Strict on purpose: a page with no `items` array is a broken answer, and

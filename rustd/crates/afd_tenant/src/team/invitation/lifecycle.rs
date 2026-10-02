@@ -207,16 +207,18 @@ impl Team {
         let locked = Invitation::read(&row)?;
         let tenant = locked.tenant.as_str();
         self.settle(&mut transaction, &locked, invitee, now).await?;
-        let workspaces: Vec<String> = sqlx::query_scalar(sql::SELECT_TENANT_WORKSPACE_IDS)
+        let rows: Vec<String> = sqlx::query_scalar(sql::SELECT_TENANT_WORKSPACE_IDS)
             .bind(tenant)
             .fetch_all(&mut *transaction)
             .await
             .map_err(&raise)?;
-        transaction.commit().await.map_err(&raise)?;
-        let workspaces = workspaces
+        // Parsed before the commit: a row this daemon cannot read rolls the
+        // join back, never leaving a membership whose every accept answers 500.
+        let workspaces = rows
             .iter()
             .map(|workspace| stored::uuid(TABLE_WORKSPACES, COLUMN_ID, workspace))
             .collect::<Result<_>>()?;
+        transaction.commit().await.map_err(&raise)?;
 
         let invite_id = invitation.as_str();
         let user_id = invitee.user.as_str();
