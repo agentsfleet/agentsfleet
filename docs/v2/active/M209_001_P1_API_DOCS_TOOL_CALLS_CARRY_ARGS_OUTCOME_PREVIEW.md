@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M209
 **Workstream:** 001
 **Date:** Oct 02, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing: the chat can say only that a tool ran and for how long, never what it did or how it ended
 **Categories:** API, DOCS
 **Batch:** B1 — wire and daemon; runs in parallel with the Rust runner, which emits these fields; M209_003 shares the Pull Request
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** feat/m209-tool-call-outcomes
+**Baseline revision:** 0d79b0318e687b8862ee8dbd4f622069bc6ba1a4
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** none — tests drive the daemon with hand-built runner frames (`rustd/crates/agentsfleetd/tests/support/e2e_wire.rs`)
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 02, 2026) from a source trace on `main`; re-scoped the same day when Indy chose a fresh Rust runner, which moved capture into the runner
