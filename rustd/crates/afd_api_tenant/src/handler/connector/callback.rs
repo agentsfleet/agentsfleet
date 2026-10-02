@@ -35,7 +35,7 @@ use axum::response::Response;
 use http::Method;
 
 use super::landing::{connected, relayed};
-use super::{EVENT_WRITE, provider_of, relay_uri, state_secret, unconfigured};
+use super::{EVENT_WRITE, provider_of, state_secret, unconfigured};
 use crate::auth::{Acting, PersonIdentity};
 use crate::handler::{BrokenEscape, Refusal, decoded_parameter};
 use crate::services::{Services, WorkspaceConnectors as _, WorkspaceOwnership as _};
@@ -241,7 +241,7 @@ pub(crate) async fn complete<D: Services>(
         return Err(unconfigured());
     };
     let secret = state_secret(&services).await?;
-    let redirect_uri = relay_uri(&services, provider);
+    let redirect_uri = callback::relay_uri(services.dashboard(), provider);
 
     // Step 1 — the signature, the window, and whether this is the person who
     // started it. Touches no store, which is what keeps a replayed callback
