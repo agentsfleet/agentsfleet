@@ -20,7 +20,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Priority:** P1 — operator-facing: Indy's ask is that nothing a tool returned stays hidden; the thread shows the edges, this serves the rest
 **Categories:** API, DOCS
 **Batch:** B1 — after M209_001 in the same Pull Request; the Rust runner posts these records
-**Branch:** feat/m209-tool-call-outcomes
+**Branch:** `feat/m209-tool-call-outcomes`
 **Folded-into:** `M209_001`
 **Baseline revision:** 0d79b0318e687b8862ee8dbd4f622069bc6ba1a4
 **Test Baseline:** unit=3001 integration=3618 — at `0d79b0318`, whose tests are `93e96897a`'s (a `docs/`-only delta): unit 3001 passed / 0 failed / 779 ignored (`make test-unit-all`, Rust half; CI `test` run 36990590586; TypeScript CLI 1776 / app 382 / website 22 / design system 60 files passed) · integration 3618 passed / 0 failed (CI `test-integration-rustd` run 36990590709, which runs `make test-coverage-rustd`, both tiers). Final counts land in Pull Request Session Notes.

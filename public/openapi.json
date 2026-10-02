@@ -14643,7 +14643,7 @@
               },
               {
                 "$ref": "#/components/schemas/ToolTrace",
-                "description": "Every tool call the run made, with its arguments and how it ended.\n\n`null` when nothing was recorded: a run older than this field, a runner\nthat does not record calls, or a trace that broke a bound and was\ndropped. `null` never means no tools ran."
+                "description": "Every tool call the run made, with its arguments and how it ended.\n\n`null` when nothing was recorded. That is a run older than this field,\na runner that does not record calls, or a trace dropped for breaking a\nbound. `null` never means no tools ran."
               }
             ],
             "description": "Beta: this field may change shape before it is stable.",
@@ -18912,7 +18912,7 @@
       },
       "ToolCallCompleted": {
         "type": "object",
-        "description": "A tool call finished.\n\nThe outcome fields are absent from runners that do not report one; a\nreader shows such a call as finished with no outcome rather than inventing\nsuccess.",
+        "description": "A tool call finished.\n\nThe outcome fields are absent from runners that do not report one. A\nreader shows such a call as finished with no outcome, never as a success.",
         "required": [
           "name",
           "ms"
@@ -19172,7 +19172,7 @@
       },
       "ToolCallStatus": {
         "type": "string",
-        "description": "How one tool call ended.\n\nEvery call ends exactly once. A call the run never finished — a crash, a\nkill, a timeout — ends `interrupted`, so no call is left running in a\nbrowser or missing from the record.",
+        "description": "How one tool call ended.\n\nEvery call ends exactly once. A call the run never finished, after a crash,\na kill or a timeout, ends `interrupted`. So no call is left running in a\nbrowser or missing from the record.",
         "enum": [
           "succeeded",
           "failed",
@@ -19220,7 +19220,7 @@
           },
           "call_id": {
             "type": "string",
-            "description": "Which call this is. The runner sends its own counter, 1 to 64 bytes:\nthe decimal `call_number` it posts the call's full record under, so\n\"show all\" can find it. The daemon stores and serves it as\n`{fence}:{counter}`, the id the live frames of the same call carry; the\nbounds apply to what the runner sends."
+            "description": "Which call this is: the runner's own counter, 1 to 64 bytes. Send the\ndecimal `call_number` the call's full record is posted under, so \"show\nall\" can find it. The daemon stores and serves it as `{fence}:{counter}`,\nthe id the call's live frames carry. The bounds apply to what the runner\nsends."
           },
           "duration_ms": {
             "type": "integer",

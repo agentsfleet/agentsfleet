@@ -38,8 +38,8 @@ pub const TRACE_MAX_BYTES: usize = 64 * 1024;
 
 /// How one tool call ended.
 ///
-/// Every call ends exactly once. A call the run never finished — a crash, a
-/// kill, a timeout — ends `interrupted`, so no call is left running in a
+/// Every call ends exactly once. A call the run never finished, after a crash,
+/// a kill or a timeout, ends `interrupted`. So no call is left running in a
 /// browser or missing from the record.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,11 +58,11 @@ pub enum ToolCallStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolTraceCall<'a> {
-    /// Which call this is. The runner sends its own counter, 1 to 64 bytes:
-    /// the decimal `call_number` it posts the call's full record under, so
-    /// "show all" can find it. The daemon stores and serves it as
-    /// `{fence}:{counter}`, the id the live frames of the same call carry; the
-    /// bounds apply to what the runner sends.
+    /// Which call this is: the runner's own counter, 1 to 64 bytes. Send the
+    /// decimal `call_number` the call's full record is posted under, so "show
+    /// all" can find it. The daemon stores and serves it as `{fence}:{counter}`,
+    /// the id the call's live frames carry. The bounds apply to what the runner
+    /// sends.
     #[serde(borrow)]
     pub call_id: Cow<'a, str>,
     /// Which tool.
