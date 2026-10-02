@@ -42,6 +42,9 @@ serde_json.workspace = true
 # person writes refuses a misspelled key inside a runner-bound shape that is
 # itself lenient.
 serde_ignored.workspace = true
+# `bundle::BundleDigest`'s hex name, the spelling the importer stores and the
+# runner fetches by.
+hex.workspace = true
 thiserror.workspace = true
 # `test_util::trace` only: the capture is a `tracing` layer. Optional, so the
 # value layer links neither outside `test-util`.

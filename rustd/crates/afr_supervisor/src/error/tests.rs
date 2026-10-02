@@ -1,0 +1,130 @@
+#![expect(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test target: a fixture that cannot be built is a broken test"
+)]
+
+use afd_core::error_code;
+
+use super::{Error, ErrorKind, raise};
+use crate::client::Verb;
+
+const VERBS: [Verb; 9] = [
+    Verb::Heartbeat,
+    Verb::Lease,
+    Verb::Renew,
+    Verb::Activity,
+    Verb::Report,
+    Verb::Hydrate,
+    Verb::Capture,
+    Verb::Bundle,
+    Verb::Mint,
+];
+
+#[test]
+fn every_verb_logs_under_its_own_family() {
+    let codes: Vec<_> = VERBS.iter().map(|verb| verb.code()).collect();
+
+    assert_eq!(codes[7], error_code::FLEET_BUNDLE_FETCH_FAILED);
+    assert_eq!(codes[5], error_code::MEM_UNAVAILABLE);
+    assert_eq!(codes[6], error_code::MEM_UNAVAILABLE);
+    assert_eq!(
+        codes
+            .iter()
+            .filter(|code| **code == error_code::INTERNAL_OPERATION_FAILED)
+            .count(),
+        6
+    );
+    assert_eq!(Verb::Renew.to_string(), "Renew");
+    assert!(Verb::Bundle.reads() && Verb::Hydrate.reads() && !Verb::Report.reads());
+}
+
+#[test]
+fn a_refusal_carries_the_daemons_code_through() {
+    let body = br#"{"error_code":"UZ-RUN-015","detail":"over budget"}"#;
+    let refusal = raise::refused_with_body(Verb::Renew, 402, body);
+
+    assert_eq!(
+        refusal.refusal_code(),
+        Some(error_code::RUN_BUDGET_EXCEEDED)
+    );
+    assert_eq!(refusal.code(), error_code::RUN_BUDGET_EXCEEDED);
+    assert!(!refusal.is_retryable());
+    assert!(
+        refusal.to_string().contains("refused the Renew call (402)"),
+        "{refusal}"
+    );
+}
+
+#[test]
+fn a_refusal_without_a_known_code_falls_back_by_status_then_verb() {
+    let unknown = raise::refused_with_body(Verb::Renew, 409, br#"{"error_code":"UZ-NOPE-999"}"#);
+    let unreadable = raise::refused_with_body(Verb::Report, 400, b"<html>");
+    let unauthorized = raise::refused(Verb::Lease, 401, None);
+
+    assert_eq!(unknown.code(), error_code::RUN_LEASE_LOST);
+    assert_eq!(unreadable.code(), error_code::INTERNAL_OPERATION_FAILED);
+    assert_eq!(unreadable.refusal_code(), None);
+    assert!(unauthorized.is_unauthorized());
+    assert_eq!(unauthorized.code(), error_code::RUN_INVALID_RUNNER_TOKEN);
+}
+
+#[test]
+fn a_blip_is_retryable_and_names_its_verb_family() {
+    let busy = raise::unavailable(Verb::Hydrate, 503);
+
+    assert!(busy.is_retryable());
+    assert!(!busy.is_unauthorized());
+    assert_eq!(busy.refusal_code(), None);
+    assert_eq!(busy.code(), error_code::MEM_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn a_transport_failure_is_retryable() {
+    let unreachable = reqwest::Client::new()
+        .get("http://127.0.0.1:1/")
+        .send()
+        .await
+        .unwrap_err();
+    let failure = raise::transport(Verb::Bundle)(unreachable);
+
+    assert!(failure.is_retryable());
+    assert_eq!(failure.code(), error_code::FLEET_BUNDLE_FETCH_FAILED);
+    assert!(std::error::Error::source(&failure).is_some());
+}
+
+#[test]
+fn local_failures_log_as_internal() {
+    let decode = serde_json::from_str::<u8>("x").unwrap_err();
+    let encode = serde_json::from_str::<u8>("y").unwrap_err();
+    let persist = tempfile::NamedTempFile::new()
+        .unwrap()
+        .persist("/no/such/dir/x")
+        .unwrap_err();
+    let failures: Vec<Error> = vec![
+        raise::malformed(Verb::Lease)(decode),
+        raise::encode(encode),
+        raise::config("unset"),
+        std::io::Error::other("disk").into(),
+        persist.into(),
+        afd_core::id::Uuid7::parse("nope").unwrap_err().into(),
+        afr_sandbox::Error::from(std::io::Error::other("no landlock")).into(),
+    ];
+
+    for failure in &failures {
+        assert_eq!(
+            failure.code(),
+            error_code::INTERNAL_OPERATION_FAILED,
+            "{failure}"
+        );
+        assert!(!failure.is_retryable());
+    }
+    assert_eq!(
+        raise::tampered("abc").code(),
+        error_code::FLEET_BUNDLE_INVALID
+    );
+    assert!(matches!(
+        raise::tampered("abc").kind(),
+        ErrorKind::BundleTampered { .. }
+    ));
+}
