@@ -132,6 +132,11 @@ async fn a_wall_whose_rechecks_go_unanswered_closes_without_access_revoked() {
         closing.field("workspace_id"),
         Some(wall.fixture.workspace.as_str())
     );
+    assert_eq!(
+        closing.field("stream"),
+        Some("wall"),
+        "the record names its stream"
+    );
     drop(capture);
     wall.close().await;
 }

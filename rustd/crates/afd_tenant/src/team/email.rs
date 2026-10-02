@@ -15,6 +15,8 @@
 //! the internet and never to a bare host name or an address the parser would
 //! accept.
 
+use url::Host;
+
 use crate::{Result, error};
 
 /// The longest address SMTP carries (RFC 5321 section 4.5.3.1.3, path minus brackets).
@@ -59,17 +61,12 @@ impl Email {
     }
 }
 
-/// A domain an invite can go to: dotted, and ending in a top-level domain
-/// that starts with a letter, as every real one does. That refuses every IP
-/// form a resolver would still dial (`10.0.0.1`, `[::1]`, `127.1`,
-/// `0x7f.0.0.1`), since each ends in a digit or a bracket.
+/// A domain an invite can go to: a dotted name as the URL host parser reads
+/// it, the host rules browsers apply. Every IP spelling a resolver would still
+/// dial (`10.0.0.1`, `127.1`, `0x7f.0.0.1`, `[::1]`) parses as an address,
+/// not a name, and a Unicode name is read in its ASCII form.
 fn is_internet_domain(domain: &str) -> bool {
-    domain.contains(DOT)
-        && domain
-            .rsplit(DOT)
-            .next()
-            .and_then(|top_level| top_level.chars().next())
-            .is_some_and(|first| first.is_ascii_alphabetic())
+    matches!(Host::parse(domain), Ok(Host::Domain(name)) if name.contains(DOT))
 }
 
 #[cfg(test)]
@@ -157,6 +154,9 @@ mod tests {
             "bob@10.0.0.1.example.com",
             "bob@1password.com",
             "bob@163.com",
+            "bob@münchen.de",
+            "bob@пример.рф",
+            "bob@xn--e1afmkfd.xn--p1ai",
         ] {
             assert!(
                 Email::parse(raw, any).is_ok(),
