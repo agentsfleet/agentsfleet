@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use tokio::sync::{mpsc, oneshot};
-use tokio::task::JoinHandle;
+use tokio::task::{JoinHandle, JoinSet};
 
 use crate::engine::{Engine, Limits, Sandbox, SandboxRequest};
 use crate::error::Result;
@@ -53,7 +53,8 @@ impl WarmSlots {
         }
     }
 
-    /// Stops refilling and destroys every slot still waiting for a lease.
+    /// Stops refilling, waits for every start in flight, and destroys every
+    /// slot no lease claimed.
     pub async fn shutdown(self) {
         drop(self.claims);
         if let Err(stopped) = self.keeper.await {
@@ -99,18 +100,22 @@ async fn keep(
     limits: Limits,
 ) {
     let (ready, mut waiting) = mpsc::channel(slots.max(1));
+    // Every start in flight, owned here so shutdown can wait for each one: a
+    // start abandoned mid-way leaves its cgroup and disk behind.
+    let mut fills = JoinSet::new();
     let mut started = 0_u64;
-    let mut refill = || {
+    let mut refill = |fills: &mut JoinSet<()>| {
         started += 1;
-        tokio::spawn(fill(Arc::clone(&inner), ready.clone(), started, limits));
+        fills.spawn(fill(Arc::clone(&inner), ready.clone(), started, limits));
     };
     for _ in 0..slots {
-        refill();
+        refill(&mut fills);
     }
     while let Some(reply) = requests.recv().await {
+        while fills.try_join_next().is_some() {}
         let slot = waiting.try_recv().ok();
         if slot.is_some() {
-            refill();
+            refill(&mut fills);
         }
         if let Err(Some(unclaimed)) = reply.send(slot) {
             // The lease stopped waiting; this slot is still unused but no
@@ -118,10 +123,13 @@ async fn keep(
             retire(unclaimed).await;
         }
     }
+    // Closed first, so a start still in flight retires its own sandbox rather
+    // than handing it to nobody.
     waiting.close();
     while let Some(slot) = waiting.recv().await {
         retire(slot).await;
     }
+    while fills.join_next().await.is_some() {}
 }
 
 /// Starts one slot and offers it to the keeper; a closed keeper retires it.

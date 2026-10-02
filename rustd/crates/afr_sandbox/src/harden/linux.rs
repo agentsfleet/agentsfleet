@@ -4,12 +4,12 @@ use std::collections::BTreeMap;
 
 use landlock::{
     ABI, Access as _, AccessFs, CompatLevel, Compatible as _, Ruleset, RulesetAttr as _,
-    RulesetCreatedAttr as _, RulesetStatus, path_beneath_rules,
+    RulesetCreatedAttr as _, path_beneath_rules,
 };
 use seccompiler::{BpfProgram, SeccompAction, SeccompFilter, SeccompRule, TargetArch};
 
 use super::{WRITABLE, WRITABLE_DEVICES};
-use crate::error::{Result, unconfined};
+use crate::error::Result;
 
 /// The oldest Landlock interface the ruleset needs: Linux 6.2, which governs
 /// renames across directories and truncation as well as writes.
@@ -36,28 +36,25 @@ const REFUSED: [libc::c_long; 10] = [
 
 /// Reads everywhere; writes only beneath [`WRITABLE`] and to [`WRITABLE_DEVICES`].
 pub(super) fn restrict_file_system() -> Result<()> {
-    let status = Ruleset::default()
+    // A hard requirement: a kernel that can enforce only part of the ruleset
+    // is an error here, never a partially confined sandbox.
+    Ruleset::default()
         .set_compatibility(CompatLevel::HardRequirement)
         .handle_access(AccessFs::from_all(LANDLOCK_ABI))?
         .create()?
-        .add_rules(path_beneath_rules(
-            [ROOT],
-            AccessFs::from_read(LANDLOCK_ABI),
-        ))?
-        .add_rules(path_beneath_rules(
-            WRITABLE,
-            AccessFs::from_all(LANDLOCK_ABI),
-        ))?
-        .add_rules(path_beneath_rules(
-            WRITABLE_DEVICES,
-            AccessFs::from_all(LANDLOCK_ABI),
-        ))?
+        .add_rules(
+            path_beneath_rules([ROOT], AccessFs::from_read(LANDLOCK_ABI))
+                .chain(path_beneath_rules(
+                    WRITABLE,
+                    AccessFs::from_all(LANDLOCK_ABI),
+                ))
+                .chain(path_beneath_rules(
+                    WRITABLE_DEVICES,
+                    AccessFs::from_all(LANDLOCK_ABI),
+                )),
+        )?
         .restrict_self()?;
-    if status.ruleset == RulesetStatus::FullyEnforced {
-        Ok(())
-    } else {
-        Err(unconfined("Landlock is not fully enforced"))
-    }
+    Ok(())
 }
 
 /// Installs the program that answers [`REFUSED`] with `EPERM`.

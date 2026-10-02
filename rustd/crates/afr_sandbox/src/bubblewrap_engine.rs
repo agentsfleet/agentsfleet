@@ -134,8 +134,11 @@ impl Engine for BubblewrapEngine {
         let lease_id = request.lease_id;
         let event = EVENT_PREPARE_STARTED;
         tracing::info!(lease_id, event);
-        let dir = self.config.state_dir.join(lease_id);
-        fs::create_dir_all(&dir)?;
+        let dir = request.lease_dir(&self.config.state_dir)?;
+        fs::create_dir_all(&self.config.state_dir)?;
+        // Fresh, never reused: a directory already there belongs to a lease
+        // this one must not inherit, and the boot sweep is what removes it.
+        fs::create_dir(&dir)?;
         let mut parts = Parts::new(dir);
         match self.build(&mut parts, request).await {
             Ok(client) => {
@@ -180,3 +183,6 @@ impl Sandbox for Bubblewrapped {
         parts.teardown().await
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -8,9 +8,10 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use futures_util::StreamExt as _;
+use futures_util::future::OptionFuture;
 use tokio::process::{Child, ChildStderr, Command};
 use tokio::task::JoinHandle;
-use tokio_util::codec::{FramedRead, LinesCodec};
+use tokio_util::codec::{FramedRead, LinesCodec, LinesCodecError};
 
 use crate::cgroup::LeaseCgroup;
 use crate::error::{Error, ErrorKind, Result, cgroup};
@@ -68,8 +69,13 @@ impl Parts {
 
     /// Starts bubblewrap inside the cgroup whose `cgroup.procs` is `procs`.
     pub(super) fn spawn(&mut self, bwrap: &Path, argv: Vec<OsString>, procs: &Path) -> Result<()> {
+        // `create` is a no-op on a cgroup file system, which publishes the file
+        // with the cgroup; on a plain directory it lets the engine be proven
+        // without root.
         let join = fs::OpenOptions::new()
             .write(true)
+            .create(true)
+            .truncate(false)
             .open(procs)
             .map_err(cgroup(CGROUP_PROCS))?;
         let descriptor = join.as_raw_fd();
@@ -100,16 +106,15 @@ impl Parts {
         let Some(child) = self.child.as_mut() else {
             return std::future::pending().await;
         };
-        match child.wait().await {
-            Ok(status) => {
-                let reason = match self.stderr.take() {
-                    Some(drain) => drain.await.unwrap_or_default(),
-                    None => String::new(),
-                };
-                ErrorKind::Exited { status, reason }.into()
-            }
-            Err(error) => error.into(),
-        }
+        let waited = child.wait().await;
+        // The error stream closes with the process, so its drain finishes.
+        let reason = OptionFuture::from(self.stderr.take())
+            .await
+            .and_then(std::result::Result::ok)
+            .unwrap_or_default();
+        waited.map_or_else(Error::from, |status| {
+            ErrorKind::Exited { status, reason }.into()
+        })
     }
 
     /// Ends every process, then removes the cgroup, the disk and the directory.
@@ -132,8 +137,8 @@ impl Parts {
         if let Some(cgroup) = &cgroup {
             keep(cgroup.kill());
         }
-        if let Some(mut child) = child {
-            keep(child.kill().await.map_err(Error::from));
+        if let Some(child) = child {
+            keep(end(child).await);
         }
         if let Some(drain) = stderr {
             drain.abort();
@@ -164,8 +169,17 @@ impl Parts {
     }
 }
 
+/// Kills bubblewrap unless it has already gone: the cgroup kill usually got
+/// there first, and a sandbox that died on its own is not a teardown failure.
+async fn end(mut child: Child) -> Result<()> {
+    if child.try_wait()?.is_none() {
+        child.kill().await?;
+    }
+    Ok(())
+}
+
 /// Moves the calling process into the cgroup open on `descriptor`.
-fn enter(descriptor: RawFd) -> std::io::Result<()> {
+pub(super) fn enter(descriptor: RawFd) -> std::io::Result<()> {
     // SAFETY: the descriptor was opened by the parent before the fork and is
     // still open in this child, which owns its copy until exec.
     let procs = unsafe { BorrowedFd::borrow_raw(descriptor) };
@@ -175,17 +189,30 @@ fn enter(descriptor: RawFd) -> std::io::Result<()> {
 
 /// Logs each line the sandbox writes to its error stream and keeps the last
 /// few, for the refusal that quotes them.
+///
+/// An over-long line is skipped, not fatal: the codec discards it to its
+/// newline, the stream pauses once with `None`, and reading resumes — so the
+/// reason a sandbox gives after a flood is still the one quoted. Only a `None`
+/// that follows no overrun is the end of the stream.
 async fn drain(stream: ChildStderr) -> String {
     let mut lines = FramedRead::new(stream, LinesCodec::new_with_max_length(LINE_MAX_BYTES));
     let mut last = VecDeque::with_capacity(TAIL_LINES);
-    while let Some(read) = lines.next().await {
-        let Ok(line) = read else { continue };
-        let event = EVENT_SANDBOX_STDERR;
-        tracing::debug!(line, event);
-        if last.len() == TAIL_LINES {
-            last.pop_front();
+    let mut overran = false;
+    loop {
+        match lines.next().await {
+            Some(Ok(line)) => {
+                overran = false;
+                let event = EVENT_SANDBOX_STDERR;
+                tracing::debug!(line, event);
+                if last.len() == TAIL_LINES {
+                    last.pop_front();
+                }
+                last.push_back(line);
+            }
+            Some(Err(LinesCodecError::MaxLineLengthExceeded)) => overran = true,
+            None if overran => overran = false,
+            Some(Err(LinesCodecError::Io(_))) | None => break,
         }
-        last.push_back(line);
     }
     Vec::from(last).join("\n")
 }

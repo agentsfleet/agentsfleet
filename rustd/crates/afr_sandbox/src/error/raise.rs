@@ -40,6 +40,14 @@ pub(crate) fn cgroup(file: &'static str) -> impl Fn(std::io::Error) -> Error {
     move |source| ErrorKind::Cgroup { file, source }.into()
 }
 
+/// Refuses a lease whose identifier could name a directory not its own.
+pub(crate) fn lease_id_unsafe(lease_id: &str) -> Error {
+    ErrorKind::LeaseIdUnsafe {
+        lease_id: lease_id.to_owned(),
+    }
+    .into()
+}
+
 /// Refuses to serve from a process that still holds what it must not.
 pub(crate) fn unconfined(detail: &'static str) -> Error {
     ErrorKind::Unconfined { detail }.into()

@@ -114,6 +114,18 @@ impl Toolbox {
     pub fn root(&self) -> &Path {
         &self.root
     }
+
+    /// Detaches the host's mount of the image and removes its mount point.
+    /// Sandboxes already started keep their own bind of it.
+    ///
+    /// # Errors
+    /// The kernel refuses the unmount, or the mount point cannot be removed.
+    #[cfg(target_os = "linux")]
+    pub fn unmount(self) -> Result<()> {
+        rustix::mount::unmount(&self.root, rustix::mount::UnmountFlags::empty())?;
+        fs::remove_dir(&self.root)?;
+        Ok(())
+    }
 }
 
 /// The image's SHA-256, read in chunks so a large image never sits in memory.

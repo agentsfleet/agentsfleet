@@ -2,11 +2,13 @@
 
 use std::ffi::OsString;
 use std::fs;
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
 use std::time::Duration;
 
-use afr_sandbox::bubblewrap::{SANDBOX_SOCKET, SANDBOX_SUBCOMMAND, SANDBOX_WORKSPACE};
+use afr_sandbox::bubblewrap::SANDBOX_SUBCOMMAND;
 use afr_sandbox::{
     BubblewrapConfig, BubblewrapEngine, HostTools, ProbePaths, Toolbox, ToolboxImage, probe,
 };
@@ -25,6 +27,17 @@ const MAX_USER_NAMESPACES: &str = "/proc/sys/user/max_user_namespaces";
 const APPARMOR_USERNS: &str = "/proc/sys/kernel/apparmor_restrict_unprivileged_userns";
 /// Where each run's leases and toolbox mount live; short, for socket paths.
 const STATE_PREFIX: &str = "afr-lane-";
+/// Where, under the lane's state, each lease's directory is made; apart from
+/// the toolbox mount, so no lease name can land on it.
+const LEASES_DIR: &str = "leases";
+/// Where, under the lane's state, the toolbox is mounted.
+const TOOLBOX_DIR: &str = "toolbox";
+/// The lane binary's name where the sandbox binds it from.
+const ENTRY_NAME: &str = "agentsfleet-runner";
+/// Readable and executable by everyone, writable by nobody but root.
+const ENTRY_MODE: u32 = 0o755;
+/// The state directory: traversable, but listable and writable by root only.
+const STATE_MODE: u32 = 0o711;
 /// How long a sandbox may take to answer.
 const READY_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -44,7 +57,7 @@ impl Lane {
 
     /// Where a lease's directory goes.
     pub(crate) fn lease_dir(&self, lease_id: &str) -> PathBuf {
-        self.state.path().join(lease_id)
+        self.state.path().join(LEASES_DIR).join(lease_id)
     }
 }
 
@@ -95,7 +108,15 @@ pub(crate) fn main() -> ExitCode {
     };
     let mut arguments = libtest_mimic::Arguments::from_args();
     arguments.test_threads = Some(1);
-    crate::trials::run(&arguments, lane).exit_code()
+    let lane = Arc::new(lane);
+    let conclusion = crate::trials::run(&arguments, &lane);
+    // The toolbox is mounted inside the lane's state, which cannot be removed
+    // while it is; a run that leaves nothing behind can run again.
+    if let Err(left) = lane.config.toolbox.clone().unmount() {
+        eprintln!("the lane's toolbox stayed mounted: {left}");
+        return ExitCode::FAILURE;
+    }
+    conclusion.exit_code()
 }
 
 fn build(image: &Path) -> Result<Lane, String> {
@@ -111,16 +132,16 @@ fn build(image: &Path) -> Result<Lane, String> {
         .block_on(Toolbox::mount(
             &image,
             &tools,
-            &state.path().join("toolbox"),
+            &state.path().join(TOOLBOX_DIR),
         ))
         .map_err(|error| error.to_string())?;
-    let entry = std::env::current_exe().map_err(|error| error.to_string())?;
+    let entry = install_entry(state.path()).map_err(|error| error.to_string())?;
     let config = BubblewrapConfig {
         tools,
         probe: ProbePaths::default(),
         toolbox,
         cgroup_root,
-        state_dir: state.path().to_owned(),
+        state_dir: state.path().join(LEASES_DIR),
         entry,
         entry_args: vec![OsString::from(SANDBOX_SUBCOMMAND)],
         ready_timeout: READY_TIMEOUT,
@@ -130,6 +151,22 @@ fn build(image: &Path) -> Result<Lane, String> {
         image,
         state,
     })
+}
+
+/// Copies this binary where the sandbox can read it, as a runner host keeps
+/// `agentsfleet-runner` under `/usr/local/bin`.
+///
+/// Root inside the sandbox's user namespace holds no capability over a file
+/// whose owner is unmapped there, so the build's own output, under a user's
+/// `0750` home, cannot be bound in.
+fn install_entry(state: &Path) -> std::io::Result<PathBuf> {
+    let entry = state.join(ENTRY_NAME);
+    fs::copy(std::env::current_exe()?, &entry)?;
+    fs::set_permissions(&entry, fs::Permissions::from_mode(ENTRY_MODE))?;
+    // The lease directories live beside it, so the directory itself must be
+    // traversable from inside too.
+    fs::set_permissions(state, fs::Permissions::from_mode(STATE_MODE))?;
+    Ok(entry)
 }
 
 /// Makes the lane's own cgroup and delegates the lease controllers to it.
@@ -144,18 +181,10 @@ fn delegate() -> std::io::Result<PathBuf> {
 
 /// The sandbox side: harden, then serve the executor until the lane hangs up.
 pub(crate) fn serve() -> ExitCode {
-    if let Err(refused) = afr_sandbox::harden() {
-        eprintln!("the sandbox would not harden: {refused}");
-        return ExitCode::FAILURE;
-    }
-    let served = crate::run::runtime().block_on(afr_executor::serve(
-        Path::new(SANDBOX_SOCKET),
-        Path::new(SANDBOX_WORKSPACE),
-    ));
-    match served {
+    match afr_sandbox::serve_sandboxed() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("the executor stopped: {error}");
+            eprintln!("the sandbox stopped: {error}");
             ExitCode::FAILURE
         }
     }

@@ -47,3 +47,10 @@ bytes.workspace = true
 libtest-mimic.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "test-util", "time"] }
+
+# Confines a child process and reads back what it said; it has its own `main`
+# because confinement cannot be undone inside a harness with tests left to run.
+[[test]]
+name = "confine"
+path = "tests/confine.rs"
+harness = false

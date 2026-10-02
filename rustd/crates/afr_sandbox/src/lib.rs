@@ -23,6 +23,7 @@ mod engine;
 mod harden;
 mod host;
 mod probe;
+mod serve;
 mod toolbox;
 mod unsandboxed;
 mod warm_slots;
@@ -46,6 +47,7 @@ pub use self::probe::{
     MECHANISM_BUBBLEWRAP, MECHANISM_LANDLOCK, MECHANISM_SECCOMP, MECHANISM_TOOLBOX_FILESYSTEM,
     ProbePaths, REQUIRED_CONTROLLERS, SECCOMP_ACTIONS_PATH, probe,
 };
+pub use self::serve::serve_sandboxed;
 pub use self::toolbox::{TOOLBOX_PREFIX, TOOLBOX_SUFFIX, Toolbox, ToolboxImage};
 pub use self::unsandboxed::UnsandboxedEngine;
 pub use self::warm_slots::WarmSlots;
