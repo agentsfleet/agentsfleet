@@ -5,20 +5,17 @@
 //! resolves an unnamed method to the WRITE rung — so a HEAD that reached the
 //! router would have been answered by a read handler behind a write gate.
 //! Dormant in Zig because the request never arrives; live in axum by default.
+//!
+//! What the two probes report is `router_probes.rs`, which sends through the
+//! helper here.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
 
 use afd_api::route::{AuthRoute, OpsRoute, Route, RunnerRoute, TenantRoute};
-use afd_api::router::{ReadyInputs, ready_decision};
+use afd_api::router::ReadyInputs;
 use axum::response::Response;
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::Fleet;
 
@@ -28,24 +25,16 @@ use self::harness::Fleet;
 /// — which paths exist, which methods they answer, and what an unmounted one
 /// does — and a guarded route answers those questions from its refusal exactly
 /// as well as from its handler. The credential matrix is `runner_plane.rs`.
-async fn send(method: Method, path: &str, inputs: ReadyInputs) -> Response {
+pub(crate) async fn send(method: Method, path: &str, inputs: ReadyInputs) -> Response {
     let router = Fleet::new().reporting(inputs).router();
     harness::send(&router, method, path, None, "").await
 }
 
 /// Every dependency reachable.
-const ALL_HEALTHY: ReadyInputs = ReadyInputs {
+pub(crate) const ALL_HEALTHY: ReadyInputs = ReadyInputs {
     database: true,
     queue: true,
 };
-
-/// Reads a response body back as JSON.
-async fn json_body(response: Response) -> Value {
-    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .expect("a probe body is small and in memory");
-    serde_json::from_slice(&bytes).expect("a probe answers JSON")
-}
 
 /// HEAD is refused, not answered by the GET handler behind it.
 #[tokio::test]
@@ -82,104 +71,6 @@ async fn test_every_tabled_route_is_served() {
         unserved.is_empty(),
         "tabled routes with no handler: {unserved:?}"
     );
-}
-
-/// Liveness answers for the process and says nothing about dependencies.
-#[tokio::test]
-async fn test_healthz_is_liveness_only() {
-    let alive = send(
-        Method::GET,
-        "/healthz",
-        ReadyInputs {
-            database: false,
-            queue: false,
-        },
-    )
-    .await;
-
-    assert_eq!(
-        alive.status(),
-        StatusCode::OK,
-        "a dependency outage must not make liveness flap — that gets the \
-         process killed, which does nothing about the dependency"
-    );
-
-    let body = json_body(alive).await;
-    assert_eq!(body["status"], "ok");
-    assert_eq!(body["service"], "agentsfleetd");
-    assert!(body.get("version").is_some(), "the build is reported");
-    assert!(body.get("commit").is_some(), "the commit is reported");
-    assert!(
-        body.get("database").is_none() && body.get("queue").is_none(),
-        "the dependency fields were deliberately dropped from /healthz — \
-         liveness does not probe, and a merge must not put them back"
-    );
-}
-
-/// Readiness reports each dependency separately, and answers 200 when all are up.
-#[tokio::test]
-async fn test_readyz_is_green_when_every_dependency_answers() {
-    let ready = send(Method::GET, "/readyz", ALL_HEALTHY).await;
-    assert_eq!(ready.status(), StatusCode::OK);
-
-    let body = json_body(ready).await;
-    assert_eq!(body["ready"], true);
-    assert_eq!(body["database"], true);
-    assert_eq!(body["queue"], true);
-}
-
-/// One red dependency takes the instance out of rotation, and names itself.
-#[tokio::test]
-async fn test_readyz_is_red_and_says_which_dependency() {
-    let degraded = send(
-        Method::GET,
-        "/readyz",
-        ReadyInputs {
-            database: true,
-            queue: false,
-        },
-    )
-    .await;
-
-    assert_eq!(
-        degraded.status(),
-        StatusCode::SERVICE_UNAVAILABLE,
-        "503 takes the instance out of rotation; a restart would not help"
-    );
-
-    let body = json_body(degraded).await;
-    assert_eq!(body["ready"], false);
-    assert_eq!(
-        body["database"], true,
-        "a healthy dependency still reports healthy — the fields are separate \
-         so an operator knows which incident they have"
-    );
-    assert_eq!(body["queue"], false);
-}
-
-/// The decision fails closed on either dependency.
-#[test]
-fn test_ready_decision_needs_every_dependency() {
-    assert!(ready_decision(ALL_HEALTHY));
-    for inputs in [
-        ReadyInputs {
-            database: false,
-            queue: true,
-        },
-        ReadyInputs {
-            database: true,
-            queue: false,
-        },
-        ReadyInputs {
-            database: false,
-            queue: false,
-        },
-    ] {
-        assert!(
-            !ready_decision(inputs),
-            "{inputs:?} must not be ready: health.zig's readyDecision is an AND"
-        );
-    }
 }
 
 /// Exactly the ported routes are mounted; every other tabled one answers 404.
@@ -274,78 +165,98 @@ async fn test_the_callback_pair_keeps_a_guard_each_through_the_merge() {
 }
 
 /// Whether this binary serves `route`, as a statement independent of the loop.
+///
+/// A `match` rather than one pattern, so a route family added to the table does
+/// not compile here until it is classified.
 const fn is_mounted(route: Route) -> bool {
+    match route {
+        Route::Ops(ops) => matches!(ops, OpsRoute::Healthz | OpsRoute::Readyz),
+        Route::Runner(runner) => runner_is_mounted(runner),
+        Route::Auth(auth) => auth_is_mounted(auth),
+        Route::Tenant(tenant) => tenant_is_mounted(tenant),
+        Route::RunnerOps(_)
+        | Route::Admin(_)
+        // M180 §2 and §3's signed ingress, and §4's connector family —
+        // both mounts are total, so no verb in either is unserved. Only
+        // the QStash fire is reachable by this loop; the rest name a fleet
+        // or a provider in their templates and are skipped above. Listed
+        // as families anyway, for the reason the note above gives: a
+        // served route left out because the loop cannot reach it makes the
+        // matcher and the router disagree the moment the skip is lifted.
+        | Route::Webhook(_)
+        | Route::Connector(_)
+        // Every workspace and per-fleet route. The loop above reaches
+        // neither, because each template names a workspace or a fleet —
+        // which is exactly why both were missing from this matcher until
+        // the test below started grading it against the whole table. Listed
+        // for the reason that note gives: a served route left out makes the
+        // matcher and the router disagree the moment the skip is lifted.
+        | Route::Workspace(_)
+        | Route::Fleet(_) => true,
+    }
+}
+
+/// The runner-self routes this binary serves.
+const fn runner_is_mounted(route: RunnerRoute) -> bool {
     matches!(
         route,
-        Route::Ops(OpsRoute::Healthz | OpsRoute::Readyz)
-            | Route::Runner(
-                RunnerRoute::SelfRecord
-                    | RunnerRoute::Heartbeat
-                    | RunnerRoute::Lease
-                    | RunnerRoute::Report
-                    | RunnerRoute::Renew
-                    | RunnerRoute::Activity
-                    | RunnerRoute::MemoryHydrate
-                    | RunnerRoute::MemoryCapture
-                    | RunnerRoute::Bundle
-                    | RunnerRoute::CredentialsMint
-            )
-            | Route::RunnerOps(_)
-            | Route::Admin(_)
-            // The device-flow login surface, plus the identity-provider
-            // delivery beside it. That one is proven by a Svix signature
-            // rather than by a bearer, so it mounts through the Auth family's
-            // tenant-then-ingress fallthrough — the same shape the connector
-            // family already used. It answers 405 to the GET this loop sends,
-            // which is a served path refusing a method, not an absent one.
-            | Route::Auth(
-                AuthRoute::CreateSession
-                    | AuthRoute::PollSession
-                    | AuthRoute::ApproveSession
-                    | AuthRoute::VerifySession
-                    | AuthRoute::DeleteSession
-                    | AuthRoute::DeleteAllSessions
-                    | AuthRoute::IdentityEventClerk
-            )
-            // M180 §2 and §3's signed ingress, and §4's connector family —
-            // both mounts are total, so no verb in either is unserved. Only
-            // the QStash fire is reachable by this loop; the rest name a fleet
-            // or a provider in their templates and are skipped above. Listed
-            // as families anyway, for the reason the note above gives: a
-            // served route left out because the loop cannot reach it makes the
-            // matcher and the router disagree the moment the skip is lifted.
-            | Route::Webhook(_)
-            | Route::Connector(_)
-            // Every workspace and per-fleet route. The loop above reaches
-            // neither, because each template names a workspace or a fleet —
-            // which is exactly why both were missing from this matcher until
-            // the test below started grading it against the whole table. Listed
-            // for the reason that note gives: a served route left out makes the
-            // matcher and the router disagree the moment the skip is lifted.
-            | Route::Workspace(_)
-            | Route::Fleet(_)
-            | Route::Tenant(
-                TenantRoute::ApiKeys
-                    | TenantRoute::ApiKey
-                    | TenantRoute::CliCredentials
-                    | TenantRoute::CliCredential
-                    | TenantRoute::Billing
-                    | TenantRoute::BillingCharges
-                    | TenantRoute::Workspaces
-                    | TenantRoute::CreateWorkspace
-                    | TenantRoute::ModelLibrary
-                    | TenantRoute::FleetBundles
-                    | TenantRoute::Provider
-                    | TenantRoute::ModelEntries
-                    | TenantRoute::ModelEntry
-                    | TenantRoute::CurrentUser
-                    | TenantRoute::Invites
-                    | TenantRoute::Invite
-                    | TenantRoute::InviteEmail
-                    | TenantRoute::Members
-                    | TenantRoute::Member
-                    | TenantRoute::InvitesForMe
-                    | TenantRoute::InviteAcceptance
-            )
+        RunnerRoute::SelfRecord
+            | RunnerRoute::Heartbeat
+            | RunnerRoute::Lease
+            | RunnerRoute::Report
+            | RunnerRoute::Renew
+            | RunnerRoute::Activity
+            | RunnerRoute::MemoryHydrate
+            | RunnerRoute::MemoryCapture
+            | RunnerRoute::Bundle
+            | RunnerRoute::CredentialsMint
+    )
+}
+
+/// The device-flow login surface, plus the identity-provider delivery beside
+/// it.
+///
+/// That one is proven by a Svix signature rather than by a bearer, so it
+/// mounts through the Auth family's tenant-then-ingress fallthrough — the same
+/// shape the connector family already used. It answers 405 to the GET this
+/// loop sends, which is a served path refusing a method, not an absent one.
+const fn auth_is_mounted(route: AuthRoute) -> bool {
+    matches!(
+        route,
+        AuthRoute::CreateSession
+            | AuthRoute::PollSession
+            | AuthRoute::ApproveSession
+            | AuthRoute::VerifySession
+            | AuthRoute::DeleteSession
+            | AuthRoute::DeleteAllSessions
+            | AuthRoute::IdentityEventClerk
+    )
+}
+
+/// The tenant self-service routes this binary serves.
+const fn tenant_is_mounted(route: TenantRoute) -> bool {
+    matches!(
+        route,
+        TenantRoute::ApiKeys
+            | TenantRoute::ApiKey
+            | TenantRoute::CliCredentials
+            | TenantRoute::CliCredential
+            | TenantRoute::Billing
+            | TenantRoute::BillingCharges
+            | TenantRoute::Workspaces
+            | TenantRoute::CreateWorkspace
+            | TenantRoute::ModelLibrary
+            | TenantRoute::FleetBundles
+            | TenantRoute::Provider
+            | TenantRoute::ModelEntries
+            | TenantRoute::ModelEntry
+            | TenantRoute::CurrentUser
+            | TenantRoute::Invites
+            | TenantRoute::Invite
+            | TenantRoute::InviteEmail
+            | TenantRoute::Members
+            | TenantRoute::Member
+            | TenantRoute::InvitesForMe
+            | TenantRoute::InviteAcceptance
     )
 }

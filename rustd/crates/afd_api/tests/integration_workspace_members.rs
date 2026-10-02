@@ -17,8 +17,6 @@ pub(crate) mod fixture;
 use std::time::Duration;
 
 use afd_core::error_code;
-use afd_dragonfly::SubscriptionHub;
-use afd_events::ACTOR_PREFIX;
 use afd_sse::KIND_ACCESS_REVOKED;
 use afd_tenant::workspace::access::{ROLE_MEMBER, ROLE_OWNER};
 use axum::Router;
@@ -27,7 +25,7 @@ use http::{Method, StatusCode};
 use serde_json::Value;
 
 use self::fixture::{Members, Person, owner_scopes, platform_scopes};
-use crate::harness::{self, json_body, send};
+use crate::harness::{self, exchange, items, send};
 use crate::integration_fleet_streams::fixture::{next_chunk, stream_ends};
 
 const LIST: &str = "/v1/tenants/me/workspaces";
@@ -39,16 +37,13 @@ fn fleets_of(person: &Person) -> String {
 
 /// The listed item for `workspace`, when the list carries it.
 fn item<'list>(list: &'list Value, workspace: &Person) -> Option<&'list Value> {
-    list.get("items")?
-        .as_array()?
+    items(list)
         .iter()
         .find(|item| item.get("id").and_then(Value::as_str) == Some(workspace.workspace.as_str()))
 }
 
 async fn get(router: &Router, path: &str, who: &Person) -> (StatusCode, Value) {
-    let response = send(router, Method::GET, path, Some(&who.token), "").await;
-    let status = response.status();
-    (status, json_body(response).await)
+    exchange(router, Method::GET, path, Some(&who.token), "").await
 }
 
 async fn open(router: &Router, path: &str, who: &Person) -> BodyDataStream {
@@ -74,26 +69,13 @@ async fn past_heartbeats(body: &mut BodyDataStream) -> String {
     event
 }
 
-async fn live_hub() -> SubscriptionHub {
-    SubscriptionHub::start(harness::dragonfly_config())
-        .await
-        .expect("the lane's subscription connection starts")
-}
-
 /// Dimension 2.1: Bob opens, lists, streams and steers John's workspace, and
 /// the list names the account it is in and Bob's role there.
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_member_reaches_owner_workspace() {
     let members = Members::create().await;
-    members.seed().await;
-    let hub = live_hub().await;
-    let router = members.live_router(
-        &members.bob,
-        owner_scopes(),
-        harness::connect_redis().await,
-        hub.clone(),
-    );
+    let (router, hub) = members.live(&members.bob, owner_scopes()).await;
     let (john, bob) = (&members.john, &members.bob);
 
     let (status, list) = get(&router, LIST, bob).await;
@@ -118,8 +100,14 @@ async fn test_member_reaches_owner_workspace() {
     let (status, fleets) = get(&router, &fleets_of(john), bob).await;
     assert_eq!(status, StatusCode::OK, "{fleets}");
 
-    let thread = format!("{}/{}/messages", fleets_of(john), members.fleet.as_str());
-    let steered = send(&router, Method::POST, &thread, Some(&bob.token), STEER).await;
+    let steered = send(
+        &router,
+        Method::POST,
+        &members.thread(),
+        Some(&bob.token),
+        STEER,
+    )
+    .await;
     assert_eq!(
         steered.status(),
         StatusCode::ACCEPTED,
@@ -143,14 +131,13 @@ async fn test_member_reaches_owner_workspace() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_non_member_refused_unchanged() {
     let members = Members::create().await;
-    members.seed().await;
     let router = members.router(&members.stranger, owner_scopes());
 
     let (status, refused) = get(&router, &fleets_of(&members.john), &members.stranger).await;
 
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(
-        refused.get("error_code").and_then(Value::as_str),
+        harness::error_code(&refused),
         Some(error_code::AUTH_FORBIDDEN.as_str())
     );
     assert_eq!(
@@ -170,14 +157,13 @@ async fn test_non_member_refused_unchanged() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_member_refused_owner_only_routes() {
     let members = Members::create().await;
-    members.seed().await;
     let router = members.router(&members.bob, owner_scopes());
     let secrets = format!("/v1/workspaces/{}/secrets", members.john.workspace.as_str());
 
     let (status, listed) = get(&router, &secrets, &members.bob).await;
     assert_eq!(status, StatusCode::OK, "a member reads the names: {listed}");
 
-    let written = send(
+    let (status, refused) = exchange(
         &router,
         Method::PUT,
         &format!("{secrets}/FIXTURE"),
@@ -185,11 +171,9 @@ async fn test_member_refused_owner_only_routes() {
         r#"{"value":"x"}"#,
     )
     .await;
-    let status = written.status();
-    let refused = json_body(written).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{refused}");
     assert_eq!(
-        refused.get("error_code").and_then(Value::as_str),
+        harness::error_code(&refused),
         Some(error_code::AUTH_OWNER_ONLY.as_str())
     );
     members.cleanup().await;
@@ -201,24 +185,14 @@ async fn test_member_refused_owner_only_routes() {
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_removed_member_stream_ends() {
     let members = Members::create().await;
-    members.seed().await;
-    let hub = live_hub().await;
-    let router = members.live_router(
-        &members.bob,
-        owner_scopes(),
-        harness::connect_redis().await,
-        hub.clone(),
-    );
-    let john = &members.john;
-    let wall = format!("/v1/workspaces/{}/events/stream", john.workspace.as_str());
-    let tail = format!(
-        "{}/{}/events/stream",
-        fleets_of(john),
-        members.fleet.as_str()
+    let (router, hub) = members.live(&members.bob, owner_scopes()).await;
+    let wall = format!(
+        "/v1/workspaces/{}/events/stream",
+        members.john.workspace.as_str()
     );
     let mut wall_body = open(&router, &wall, &members.bob).await;
     assert!(next_chunk(&mut wall_body).await.contains("event: hello"));
-    let mut tail_body = open(&router, &tail, &members.bob).await;
+    let mut tail_body = open(&router, &members.tail(), &members.bob).await;
     assert!(next_chunk(&mut tail_body).await.contains("event: hello"));
 
     members.remove_bob().await;
@@ -248,28 +222,18 @@ async fn test_removed_member_stream_ends() {
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_single_owner_paths_unchanged() {
     let members = Members::create().await;
-    members.seed().await;
-    let hub = live_hub().await;
-    let router = members.live_router(
-        &members.john,
-        owner_scopes(),
-        harness::connect_redis().await,
-        hub.clone(),
-    );
+    let (router, hub) = members.live(&members.john, owner_scopes()).await;
     let john = &members.john;
 
     let (status, list) = get(&router, LIST, john).await;
     assert_eq!(status, StatusCode::OK, "{list}");
-    let items = list
-        .get("items")
-        .and_then(Value::as_array)
-        .expect("a list of items");
+    let listed = items(&list);
     assert_eq!(
-        items.len(),
+        listed.len(),
         1,
         "John holds one account with one workspace: {list}"
     );
-    let only = items.first().expect("the one workspace");
+    let only = listed.first().expect("the one workspace");
     assert_eq!(only.get("role").and_then(Value::as_str), Some(ROLE_OWNER));
     assert_eq!(
         only.pointer("/account/tenant_id").and_then(Value::as_str),
@@ -278,8 +242,14 @@ async fn test_single_owner_paths_unchanged() {
 
     let (status, _fleets) = get(&router, &fleets_of(john), john).await;
     assert_eq!(status, StatusCode::OK);
-    let thread = format!("{}/{}/messages", fleets_of(john), members.fleet.as_str());
-    let steered = send(&router, Method::POST, &thread, Some(&john.token), STEER).await;
+    let steered = send(
+        &router,
+        Method::POST,
+        &members.thread(),
+        Some(&john.token),
+        STEER,
+    )
+    .await;
     assert_eq!(steered.status(), StatusCode::ACCEPTED);
 
     hub.shutdown();
@@ -293,22 +263,17 @@ async fn test_single_owner_paths_unchanged() {
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_platform_write_acts_attributed() {
     let members = Members::create().await;
-    members.seed().await;
-    let hub = live_hub().await;
     let operator = &members.stranger;
-    let router = members.live_router(
-        operator,
-        platform_scopes(),
-        harness::connect_redis().await,
-        hub.clone(),
-    );
+    let (router, hub) = members.live(operator, platform_scopes()).await;
 
-    let thread = format!(
-        "{}/{}/messages",
-        fleets_of(&members.john),
-        members.fleet.as_str()
-    );
-    let steered = send(&router, Method::POST, &thread, Some(&operator.token), STEER).await;
+    let steered = send(
+        &router,
+        Method::POST,
+        &members.thread(),
+        Some(&operator.token),
+        STEER,
+    )
+    .await;
     assert_eq!(
         steered.status(),
         StatusCode::ACCEPTED,
@@ -316,7 +281,7 @@ async fn test_platform_write_acts_attributed() {
     );
     assert_eq!(
         members.admitted_actors().await,
-        [format!("{ACTOR_PREFIX}{}", operator.subject)],
+        [operator.actor()],
         "one admission, attributed to the operator"
     );
 

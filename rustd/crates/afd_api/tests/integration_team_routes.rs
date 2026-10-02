@@ -20,7 +20,7 @@ use serde_json::{Value, json};
 
 use afd_auth::scope::ScopeSet;
 
-use crate::harness::send;
+use crate::harness::{self, exchange, items};
 use crate::integration_workspace_members::fixture::{Members, Person, owner_scopes};
 
 pub(crate) const INVITES: &str = "/v1/tenants/me/invites";
@@ -30,6 +30,7 @@ const MINE: &str = "/v1/users/me/invites";
 const STATE_INVITED: &str = "invited";
 const STATE_MEMBER: &str = "member";
 
+/// One request as `who`, answered as its status and its JSON body.
 pub(crate) async fn call(
     router: &Router,
     method: Method,
@@ -37,26 +38,13 @@ pub(crate) async fn call(
     who: &Person,
     body: &str,
 ) -> (StatusCode, Value) {
-    let response = send(router, method, path, Some(&who.token), body).await;
-    let status = response.status();
-    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .expect("a test body is in memory");
-    (
-        status,
-        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
-    )
+    exchange(router, method, path, Some(&who.token), body).await
 }
 
-fn items(page: &Value) -> Vec<Value> {
-    page.get("items")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default()
-}
-
-pub(crate) fn code(problem: &Value) -> Option<&str> {
-    problem.get("error_code").and_then(Value::as_str)
+/// `who` sends `invite`'s email again.
+pub(crate) async fn send_again(router: &Router, who: &Person, invite: &str) -> (StatusCode, Value) {
+    let path = format!("{INVITES}/{invite}/send");
+    call(router, Method::POST, &path, who, "").await
 }
 
 /// A string field of a JSON object, when it holds one.
@@ -65,9 +53,9 @@ pub(crate) fn text<'v>(value: &'v Value, key: &str) -> Option<&'v str> {
 }
 
 /// The item in a page whose `key` is `wanted`.
-pub(crate) fn find(page: &Value, key: &str, wanted: &str) -> Option<Value> {
+pub(crate) fn find<'page>(page: &'page Value, key: &str, wanted: &str) -> Option<&'page Value> {
     items(page)
-        .into_iter()
+        .iter()
         .find(|item| text(item, key) == Some(wanted))
 }
 
@@ -82,7 +70,6 @@ struct Routers {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn invites_and_members_travel_the_routes_end_to_end() {
     let members = Members::create().await;
-    members.seed().await;
     let routers = Routers {
         john: members.router(&members.john, owner_scopes()),
         bob: members.router(&members.bob, owner_scopes()),
@@ -117,7 +104,10 @@ async fn john_invites_the_stranger(routers: &Routers, members: &Members) -> Stri
 
     let (status, twice) = call(&routers.john, Method::POST, INVITES, john, &body).await;
     assert_eq!(status, StatusCode::CONFLICT);
-    assert_eq!(code(&twice), Some(error_code::INVITE_CONFLICT.as_str()));
+    assert_eq!(
+        harness::error_code(&twice),
+        Some(error_code::INVITE_CONFLICT.as_str())
+    );
     assert_eq!(text(&twice, "current_state"), Some(STATE_INVITED));
 
     let (_, listed) = call(&routers.john, Method::GET, INVITES, john, "").await;
@@ -139,7 +129,7 @@ async fn the_stranger_accepts(routers: &Routers, members: &Members, invite: &str
     let (status, elsewhere) = call(&routers.bob, Method::POST, &accept, bob, "").await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(
-        code(&elsewhere),
+        harness::error_code(&elsewhere),
         Some(error_code::INVITE_EMAIL_MISMATCH.as_str())
     );
     let (status, accepted) = call(&routers.stranger, Method::POST, &accept, stranger, "").await;
@@ -156,12 +146,20 @@ async fn the_stranger_accepts(routers: &Routers, members: &Members, invite: &str
     let body = json!({ "email": stranger.email }).to_string();
     let (status, again) = call(&routers.john, Method::POST, INVITES, john, &body).await;
     assert_eq!(status, StatusCode::CONFLICT, "{again}");
+    assert_eq!(
+        harness::error_code(&again),
+        Some(error_code::INVITE_CONFLICT.as_str())
+    );
     assert_eq!(text(&again, "current_state"), Some(STATE_MEMBER));
     // And John revoking the invite she joined through hears the same, rather
     // than a 204 that would say she was kept out.
     let revoke = format!("{INVITES}/{invite}");
     let (status, joined) = call(&routers.john, Method::DELETE, &revoke, john, "").await;
     assert_eq!(status, StatusCode::CONFLICT, "{joined}");
+    assert_eq!(
+        harness::error_code(&joined),
+        Some(error_code::INVITE_CONFLICT.as_str())
+    );
     assert_eq!(text(&joined, "current_state"), Some(STATE_MEMBER));
 }
 
@@ -169,11 +167,9 @@ async fn the_stranger_accepts(routers: &Routers, members: &Members, invite: &str
 async fn john_manages_the_account(routers: &Routers, members: &Members, invite: &str) {
     let (john, bob, stranger) = (&members.john, &members.bob, &members.stranger);
     let (_, roster) = call(&routers.john, Method::GET, MEMBERS, john, "").await;
-    let role_of = |user: &str| {
-        find(&roster, "user_id", user).and_then(|m| text(&m, "role").map(str::to_owned))
-    };
-    assert_eq!(role_of(&john.user).as_deref(), Some(ROLE_OWNER));
-    assert_eq!(role_of(&stranger.user).as_deref(), Some(ROLE_MEMBER));
+    let role_of = |user: &str| find(&roster, "user_id", user).and_then(|m| text(m, "role"));
+    assert_eq!(role_of(&john.user), Some(ROLE_OWNER));
+    assert_eq!(role_of(&stranger.user), Some(ROLE_MEMBER));
     let joined_of = |user: &str| {
         find(&roster, "user_id", user).and_then(|m| m.get("joined_at").and_then(Value::as_i64))
     };
@@ -193,7 +189,10 @@ async fn john_manages_the_account(routers: &Routers, members: &Members, invite: 
     let own = format!("{MEMBERS}/{}", john.user);
     let (status, last) = call(&routers.john, Method::DELETE, &own, john, "").await;
     assert_eq!(status, StatusCode::CONFLICT);
-    assert_eq!(code(&last), Some(error_code::MEMBER_LAST_OWNER.as_str()));
+    assert_eq!(
+        harness::error_code(&last),
+        Some(error_code::MEMBER_LAST_OWNER.as_str())
+    );
     let theirs = format!("{MEMBERS}/{}", stranger.user);
     for _twice in 0..2 {
         let (status, _) = call(&routers.john, Method::DELETE, &theirs, john, "").await;
@@ -219,36 +218,22 @@ async fn john_manages_the_account(routers: &Routers, members: &Members, invite: 
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_team_routes_refuse_malformed_and_unauthorized_calls() {
     let members = Members::create().await;
-    members.seed().await;
     let (john, stranger) = (&members.john, &members.stranger);
     let johns = members.router(john, owner_scopes());
 
-    for path in [
-        format!("{INVITES}/not-an-id"),
-        format!("{MEMBERS}/not-an-id"),
-    ] {
-        let (status, problem) = call(&johns, Method::DELETE, &path, john, "").await;
-        assert_eq!(status, StatusCode::BAD_REQUEST, "{path}: {problem}");
-    }
-    for body in [
-        json!({ "email": "not an address" }).to_string(),
-        // Shaped like an address, but the mail library refuses it, so every
-        // send of the invite would fail.
-        json!({ "email": "a<b@example.com" }).to_string(),
-        json!({ "email": stranger.email, "role": "owner" }).to_string(),
-        "{".to_owned(),
-    ] {
-        let (status, problem) = call(&johns, Method::POST, INVITES, john, &body).await;
-        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}: {problem}");
-    }
+    refuses_malformed_calls(&johns, john, stranger).await;
 
-    let anonymous = send(&johns, Method::GET, INVITES, None, "").await;
-    assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
+    let (status, anonymous) = exchange(&johns, Method::GET, INVITES, None, "").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        harness::error_code(&anonymous),
+        Some(error_code::AUTH_UNAUTHORIZED.as_str())
+    );
     let unscoped = members.router(john, ScopeSet::EMPTY);
     let (status, problem) = call(&unscoped, Method::GET, INVITES, john, "").await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{problem}");
     assert_eq!(
-        code(&problem),
+        harness::error_code(&problem),
         Some(error_code::AUTH_INSUFFICIENT_SCOPE.as_str())
     );
 
@@ -265,4 +250,36 @@ async fn test_team_routes_refuse_malformed_and_unauthorized_calls() {
     );
     assert_eq!(first, again, "a replayed accept answers as the first");
     members.cleanup().await;
+}
+
+/// Malformed path ids and malformed bodies are each a `400` with the
+/// invalid-request code.
+async fn refuses_malformed_calls(johns: &Router, john: &Person, stranger: &Person) {
+    for path in [
+        format!("{INVITES}/not-an-id"),
+        format!("{MEMBERS}/not-an-id"),
+    ] {
+        let (status, problem) = call(johns, Method::DELETE, &path, john, "").await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{path}: {problem}");
+        assert_eq!(
+            harness::error_code(&problem),
+            Some(error_code::INVALID_REQUEST.as_str())
+        );
+    }
+    for body in [
+        json!({ "email": "not an address" }).to_string(),
+        // Shaped like an address, but the mail library refuses it, so every
+        // send of the invite would fail.
+        json!({ "email": "a<b@example.com" }).to_string(),
+        json!({ "email": stranger.email, "role": "owner" }).to_string(),
+        "{".to_owned(),
+    ] {
+        let (status, problem) = call(johns, Method::POST, INVITES, john, &body).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}: {problem}");
+        assert_eq!(
+            harness::error_code(&problem),
+            Some(error_code::INVALID_REQUEST.as_str()),
+            "{body}"
+        );
+    }
 }

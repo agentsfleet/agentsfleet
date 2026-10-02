@@ -33,13 +33,19 @@ mod openapi_stream_frames;
 
 #[path = "openapi_contract.rs"]
 mod openapi_contract;
+#[path = "openapi_contract_schemas.rs"]
+mod openapi_contract_schemas;
 #[path = "route_inventory.rs"]
 mod route_inventory;
+#[path = "route_meta_scopes.rs"]
+mod route_meta_scopes;
 #[path = "route_meta_total.rs"]
 mod route_meta_total;
 #[path = "route_verbs.rs"]
 mod route_verbs;
 #[path = "router.rs"]
 mod router;
+#[path = "router_probes.rs"]
+mod router_probes;
 #[path = "span_route_template.rs"]
 mod span_route_template;

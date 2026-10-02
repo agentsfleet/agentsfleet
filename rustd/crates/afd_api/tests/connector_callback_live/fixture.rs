@@ -22,6 +22,7 @@ use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_dragonfly::Dragonfly;
+use afd_tenant::workspace::access::Grant;
 use afd_vault::{SecretBody, SecretName};
 use sqlx::Row as _;
 
@@ -140,7 +141,7 @@ impl Fixture {
         .with_owned_workspace(self.workspace.clone())
         .with_platform_admin(self.admin.clone())
         .with_live_connectors(self.database.clone(), self.queue.clone(), provider.url());
-        fleet.ownership().cross_as_platform();
+        fleet.ownership().hold_as(Grant::Platform);
         fleet.router()
     }
 

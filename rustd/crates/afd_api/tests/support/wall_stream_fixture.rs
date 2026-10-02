@@ -225,9 +225,7 @@ pub(crate) struct Wall {
 impl Wall {
     pub(crate) async fn open(fixture: Fixture) -> Self {
         fixture.seed().await;
-        let hub = SubscriptionHub::start(harness::dragonfly_config())
-            .await
-            .expect("the lane's subscription connection starts");
+        let hub = harness::live_hub().await;
         let fleet = Fleet::live(
             fixture.database.clone(),
             SUBJECT,

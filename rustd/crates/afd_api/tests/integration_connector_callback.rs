@@ -311,21 +311,13 @@ async fn test_callback_records_platform_crossing() {
     let capture = Capture::install();
     let landed = complete(&router, &fixture, PROVIDER, &state).await;
     assert_eq!(landed.status(), StatusCode::FOUND);
-    let workspace = fixture.workspace.as_str();
-    let recorded: Vec<_> = capture
-        .events()
-        .into_iter()
-        .filter(|event| {
-            event.fields.get("event").map(String::as_str) == Some(EVENT_CROSSING)
-                && event.fields.get("target_workspace").map(String::as_str) == Some(workspace)
-        })
-        .collect();
-    assert_eq!(recorded.len(), 1, "{recorded:?}");
-    assert!(
-        recorded
-            .iter()
-            .all(|event| event.fields.get("method").map(String::as_str) == Some("POST"))
+    let recorded = capture.only(EVENT_CROSSING);
+    assert_eq!(
+        recorded.field("target_workspace"),
+        Some(fixture.workspace.as_str()),
+        "{recorded:?}"
     );
+    assert_eq!(recorded.field("method"), Some("POST"));
     assert!(fixture.grant(PROVIDER).await.is_some());
 
     provider.close();

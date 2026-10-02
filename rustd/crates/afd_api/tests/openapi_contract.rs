@@ -20,6 +20,9 @@
 //!
 //! Both are mechanical, and the defects they catch are the ones a
 //! route × method comparison is structurally blind to.
+//!
+//! The few schemas and media types whose shape is itself the promise are
+//! `openapi_contract_schemas.rs`, which reads the same document.
 #![expect(
     clippy::expect_used,
     reason = "a document utoipa just built must serialize; a failure here is the
@@ -37,7 +40,7 @@ const METHODS: [&str; 5] = ["get", "post", "put", "patch", "delete"];
 const BODYLESS: [&str; 4] = ["204", "302", "303", "304"];
 
 /// Where a schema reference points when it resolves.
-const SCHEMA_PREFIX: &str = "#/components/schemas/";
+pub(crate) const SCHEMA_PREFIX: &str = "#/components/schemas/";
 
 /// The verbs whose operations carry a document in.
 const WRITES: [&str; 3] = ["post", "put", "patch"];
@@ -79,7 +82,7 @@ const BODILESS_WRITES: [(&str, &str, &str); 6] = [
 ];
 
 /// The generated document, as the bytes that ship.
-fn document() -> serde_json::Value {
+pub(crate) fn document() -> serde_json::Value {
     serde_json::to_value(afd_api::openapi::document()).expect("the generated document serializes")
 }
 
@@ -187,105 +190,6 @@ fn test_every_reference_resolves() {
         "a reference names a schema the document does not carry:\n  {}",
         dangling.join("\n  "),
     );
-}
-
-/// The lease's egress rules and the runner's posture are two schemas.
-///
-/// Both Rust types are named `NetworkPolicy`, after the two Zig types they
-/// port, and utoipa keys components by name alone. Before the aliases the
-/// document said a run's egress rules were a three-word string, and every
-/// reference still resolved.
-#[test]
-fn test_the_run_egress_rules_and_the_runner_posture_are_two_schemas() {
-    let document = document();
-    let schemas = document
-        .get("components")
-        .and_then(|components| components.get("schemas"))
-        .expect("the document carries schemas");
-    let shape_of = |owner: &str| -> Option<serde_json::Value> {
-        schemas
-            .get(owner)?
-            .get("properties")?
-            .get("network_policy")?
-            .get("$ref")?
-            .as_str()?
-            .strip_prefix(SCHEMA_PREFIX)
-            .and_then(|name| schemas.get(name))
-            .and_then(|schema| schema.get("type"))
-            .cloned()
-    };
-
-    assert_eq!(
-        shape_of("ExecutionPolicy"),
-        Some(serde_json::json!("object")),
-        "a run's egress rules are an allow list, not a posture word"
-    );
-    assert_eq!(
-        shape_of("AssignedPolicy"),
-        Some(serde_json::json!("string")),
-        "a runner's posture is one of three words"
-    );
-}
-
-/// A tar is binary bytes under its own media type, and a stream is events.
-///
-/// utoipa reads a byte slice as an array of integers, which a generated client
-/// parses as JSON and fails on the first byte of a tar; the document names a
-/// binary string instead. Neither the body gate nor the reference gate would
-/// notice that reverting, nor a stream published under `application/json`.
-#[test]
-fn test_the_tar_and_the_streams_publish_under_their_own_media_types() {
-    let document = document();
-    let media_types = |path: &str| -> Option<Vec<String>> {
-        document
-            .get("paths")?
-            .get(path)?
-            .get("get")?
-            .get("responses")?
-            .get("200")?
-            .get("content")?
-            .as_object()
-            .map(|content| content.keys().cloned().collect())
-    };
-    let tar = document
-        .get("paths")
-        .and_then(|paths| paths.get("/v1/runners/me/bundles/{content_hash}"))
-        .and_then(|item| item.get("get"))
-        .and_then(|operation| operation.get("responses"))
-        .and_then(|responses| responses.get("200"))
-        .and_then(|response| response.get("content"))
-        .and_then(|content| content.get("application/x-tar"))
-        .and_then(|media| media.get("schema"))
-        .and_then(|schema| schema.get("$ref"))
-        .and_then(serde_json::Value::as_str)
-        .and_then(|target| target.strip_prefix(SCHEMA_PREFIX))
-        .and_then(|name| document.get("components")?.get("schemas")?.get(name));
-
-    assert_eq!(
-        media_types("/v1/runners/me/bundles/{content_hash}"),
-        Some(vec!["application/x-tar".to_owned()])
-    );
-    assert_eq!(
-        tar.and_then(|schema| schema.get("type"))
-            .and_then(serde_json::Value::as_str),
-        Some("string")
-    );
-    assert_eq!(
-        tar.and_then(|schema| schema.get("format"))
-            .and_then(serde_json::Value::as_str),
-        Some("binary"),
-        "a byte array is parsed as JSON by every generated client"
-    );
-    for path in [
-        "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream",
-        "/v1/workspaces/{workspace_id}/events/stream",
-    ] {
-        assert_eq!(
-            media_types(path),
-            Some(vec!["text/event-stream".to_owned()]),
-            "{path}"
-        );
-    }
 }
 
 /// Every write that reads a body says what it reads.

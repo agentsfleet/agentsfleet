@@ -12,11 +12,12 @@ use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_dragonfly::{Dragonfly, SubscriptionHub};
+use afd_events::ACTOR_PREFIX;
 use afd_tenant::test_util::{Signup, delete_accounts, sign_up};
 use afd_tenant::workspace::access::ROLE_MEMBER;
 use axum::Router;
 
-use crate::harness::Fleet;
+use crate::harness::{self, Fleet};
 
 /// What a signed-up owner holds: the grant signup writes to the provider.
 pub(crate) fn owner_scopes() -> ScopeSet {
@@ -55,6 +56,11 @@ impl Person {
             workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
         }
     }
+
+    /// The actor every message this person sends is recorded under.
+    pub(crate) fn actor(&self) -> String {
+        format!("{ACTOR_PREFIX}{}", self.subject)
+    }
 }
 
 /// John's account, Bob's membership in it, and a stranger.
@@ -69,20 +75,24 @@ pub(crate) struct Members {
 }
 
 impl Members {
+    /// Three people signed up, John's fleet, and Bob's membership in John's
+    /// account: every suite on this fixture starts from all of it.
     pub(crate) async fn create() -> Self {
         let lane = TestDatabase::shared();
-        Self {
+        let members = Self {
             database: lane.open(DbRole::Api, &[]).await,
             john: Person::minted("John"),
             bob: Person::minted("Bob"),
             stranger: Person::minted("Stranger"),
             fleet: Uuid7::parse(&mint_id()).expect("a minted fleet is canonical"),
             lane,
-        }
+        };
+        members.seed().await;
+        members
     }
 
     /// The three accounts, John's fleet, and Bob's membership in John's account.
-    pub(crate) async fn seed(&self) {
+    async fn seed(&self) {
         for person in [&self.john, &self.bob, &self.stranger] {
             self.sign_up(person).await;
         }
@@ -145,15 +155,30 @@ impl Members {
             .expect("John's fleet's admissions read")
     }
 
-    /// A router signed in as `who`, deciding access from these rows.
-    pub(crate) fn router(&self, who: &Person, scopes: ScopeSet) -> Router {
+    /// How many sends `invite` has counted, read from its row.
+    pub(crate) async fn email_attempts(&self, invite: &str) -> i32 {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query_scalar("SELECT email_attempts FROM core.invites WHERE id = $1::uuid")
+            .bind(invite)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the invite row reads")
+    }
+
+    /// The daemon `who` signs in to, deciding access from these rows: a
+    /// builder, for the suite that arranges more before it routes.
+    pub(crate) fn fleet(&self, who: &Person, scopes: ScopeSet) -> Fleet {
         Fleet::live(self.database.clone(), &who.subject, scopes)
             .with_live_ownership()
             .with_dashboard_holding(&who.subject, scopes)
-            .router()
     }
 
-    /// The same, able to steer and stream through the lane's Dragonfly.
+    /// A router signed in as `who`, deciding access from these rows.
+    pub(crate) fn router(&self, who: &Person, scopes: ScopeSet) -> Router {
+        self.fleet(who, scopes).router()
+    }
+
+    /// The same, able to steer and stream through `queue` and `hub`.
     pub(crate) fn live_router(
         &self,
         who: &Person,
@@ -161,12 +186,33 @@ impl Members {
         queue: Dragonfly,
         hub: SubscriptionHub,
     ) -> Router {
-        Fleet::live(self.database.clone(), &who.subject, scopes)
-            .with_live_ownership()
-            .with_dashboard_holding(&who.subject, scopes)
+        self.fleet(who, scopes)
             .with_steering_queue(self.database.clone(), queue)
             .with_live_hub(hub)
             .router()
+    }
+
+    /// A router for `who` over the lane's Dragonfly, and the hub its streams
+    /// read through, which the caller shuts down.
+    pub(crate) async fn live(&self, who: &Person, scopes: ScopeSet) -> (Router, SubscriptionHub) {
+        let hub = harness::live_hub().await;
+        let router = self.live_router(who, scopes, harness::connect_redis().await, hub.clone());
+        (router, hub)
+    }
+
+    /// John's fleets, under his workspace.
+    fn fleets(&self) -> String {
+        format!("/v1/workspaces/{}/fleets", self.john.workspace.as_str())
+    }
+
+    /// The message thread of John's fleet, where a steer is posted.
+    pub(crate) fn thread(&self) -> String {
+        format!("{}/{}/messages", self.fleets(), self.fleet.as_str())
+    }
+
+    /// The live tail of John's fleet.
+    pub(crate) fn tail(&self) -> String {
+        format!("{}/{}/events/stream", self.fleets(), self.fleet.as_str())
     }
 
     pub(crate) async fn cleanup(self) {

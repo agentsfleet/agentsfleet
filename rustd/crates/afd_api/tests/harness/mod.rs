@@ -130,8 +130,8 @@ pub(crate) const SCHEDULE_DESTINATION: &str =
 pub(crate) const SCHEDULE_API_BASE: &str = "https://qstash.fixture.test/v2";
 
 pub(crate) use self::support::{
-    ERROR_CODE, concrete_path, connect_redis, dragonfly_config, file_runner, json_body, presented,
-    runner_id, send, send_with_headers, tenant,
+    ERROR_CODE, concrete_path, connect_redis, dragonfly_config, error_code, exchange, file_runner,
+    items, json_body, live_hub, presented, runner_id, send, send_with_headers, tenant,
 };
 
 /// A Postgres nobody is listening on.
@@ -243,13 +243,8 @@ pub(crate) struct Fleet {
     signups: afd_tenant::signup::Signups,
     /// What a signup event is verified against — `None` refuses every one.
     identity_webhook_secret: Option<afd_crypto::secret::SecretBytes>,
-    /// The dashboard base a connect relays through.
-    ///
-    /// A field rather than the constant so ONE case can make it unusable. Every
-    /// other fixture keeps `FIXTURE_APP_URL`, because a base that is not a URL
-    /// makes every connect refuse for a reason that test was not about — which
-    /// is exactly why the refusal needs its own case rather than a shared one.
-    dashboard_base: String,
+    /// The dashboard base a connect relays through, parsed as boot parses it.
+    dashboard_base: afd_connector::Dashboard,
     preferences: Preferences,
     approvals: Inbox,
     grants: IntegrationGrants,

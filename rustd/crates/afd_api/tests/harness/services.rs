@@ -137,7 +137,7 @@ impl Services for Fleet {
     /// connect proves: the `redirect_uri` a code is minted against is built
     /// from this, and a base that is not a URL would make every connect refuse
     /// for a reason no test was about.
-    fn dashboard(&self) -> &str {
+    fn dashboard(&self) -> &afd_connector::Dashboard {
         &self.dashboard_base
     }
 

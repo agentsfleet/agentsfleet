@@ -17,7 +17,7 @@ use http::{Method, StatusCode};
 use serde_json::Value;
 use sqlx::Acquire as _;
 
-use self::harness::{Fleet, json_body, send};
+use self::harness::{Fleet, items, json_body, send};
 
 const SUBJECT: &str = "user_live_memory_operator";
 const FIRST_KEY: &str = "deployment-style";
@@ -129,13 +129,6 @@ async fn assert_missing_fleet(router: &axum::Router, fixture: &Fixture) {
     )
     .await;
     assert_eq!(missing_fleet.status(), StatusCode::NOT_FOUND);
-}
-
-fn items(document: &Value) -> &[Value] {
-    document
-        .get("items")
-        .and_then(Value::as_array)
-        .expect("a memory page carries items")
 }
 
 fn text<'value>(document: &'value Value, field: &str) -> &'value str {
