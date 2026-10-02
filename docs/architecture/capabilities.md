@@ -73,7 +73,7 @@ These are the tool primitives NullClaw exposes. The fleet's `tools:` allowlist g
 | `memory_store` / `memory_recall` / `memory_list` / `memory_forget` | Durable scratchpad keyed by string. Survives run boundaries and full restart. The "where I am" snapshot mechanism. Store writes or replaces a key, recall searches key and content, list filters, forget deletes one key. | Yes — the fleet reads and writes. |
 | `shell` (gated) | Read-only commands like `docker ps`, `kubectl get`. Not part of the initial platform-ops surface. | Yes, when explicitly enabled. |
 
-Scheduled wakes are not a child tool. A Fleet declares its primary cron in `TRIGGER.md`, or an operator manages schedules through the schedule API / `agentsfleet schedule`; `agentsfleetd` stores the schedule, QStash owns the clock, and the runner receives only the resulting event.
+Scheduled wakes were not a child tool until Oct 02, 2026. A Fleet declares its primary cron in `TRIGGER.md`, or an operator manages schedules through the schedule API / `agentsfleet schedule`; `agentsfleetd` stores the schedule and QStash owns the clock. The Rust runner adds the fleet itself as a third author: `cron_*` and `schedule` call a runner verb onto the same schedule plane, so a fleet can plan its own follow-ups while the runner still owns no timer and receives only the resulting event. The Zig runner refuses those tools. The full catalog, with the runtime each tool executes in, is [Runner execution](./runner_execution.md) §"Tool catalog".
 
 ---
 
