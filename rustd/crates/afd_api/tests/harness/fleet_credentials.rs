@@ -20,20 +20,34 @@ impl Fleet {
     /// secret belonging to the deployment, so a daemon that was given no admin
     /// workspace has nowhere to read it from and fails closed. Leaving the
     /// default alone is how a suite reaches that branch.
-    /// Points this fixture's connect relay at `base`.
-    ///
-    /// Exists for the one case that needs an UNUSABLE base: `relay_uri` refuses
-    /// a dashboard base that is not a URL, and answers it as unconfigured
-    /// because a boot-time misconfiguration is what it is. Sending somebody to
-    /// a page that cannot exist would be the alternative.
-    pub(crate) fn with_dashboard_base(mut self, base: &str) -> Self {
-        base.clone_into(&mut self.dashboard_base);
-        self
-    }
-
     pub(crate) fn with_platform_admin(mut self, workspace: Uuid7) -> Self {
         self.platform_admin = Some(workspace);
         self
+    }
+
+    /// Bounds the invite email's send, for the case proving a stalled relay.
+    pub(crate) fn with_mail_deadline(mut self, deadline: std::time::Duration) -> Self {
+        self.invite_mail = self.invite_mail.with_deadline(deadline);
+        self
+    }
+
+    /// Keeps every product event the routes report, for the suite to read.
+    pub(crate) fn with_recorded_analytics(mut self) -> (Self, afd_observability::Recorded) {
+        let (analytics, recorded) = afd_observability::Analytics::recording();
+        self.analytics = analytics;
+        (self, recorded)
+    }
+
+    /// Breaks call `ordinal` of one team-store write; the failpoint comes back
+    /// so the suite can prove it fired.
+    pub(crate) fn with_team_fault(
+        mut self,
+        step: super::TeamStep,
+        ordinal: usize,
+    ) -> (Self, std::sync::Arc<super::Failpoint>) {
+        let (team, failpoint) = self.team.breaking(step, ordinal);
+        self.team = team;
+        (self, failpoint)
     }
 
     /// Configures the secret a signup event is verified against.

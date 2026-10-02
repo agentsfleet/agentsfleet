@@ -12,10 +12,12 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_db::constraint::violates_unique;
 use sqlx::Row as _;
 
 use crate::sql::workspace as sql;
-use crate::{Result, error};
+use crate::sql::{COLUMN_ID, COLUMN_TENANT_ID};
+use crate::{Result, error, stored};
 
 use super::Workspaces;
 use super::name::{self, Chosen};
@@ -31,9 +33,6 @@ const CONTEXT_CREATE: &str = "create workspace";
 
 /// The context the tenant-existence read reports under.
 const CONTEXT_TENANT: &str = "check tenant exists";
-
-/// Postgres's unique-violation SQLSTATE.
-const UNIQUE_VIOLATION: &str = "23505";
 
 /// The index that arbitrates a per-tenant name.
 ///
@@ -58,6 +57,8 @@ pub struct WorkspaceRow {
     pub name: Option<String>,
     /// When it was created; the walk's sort key.
     pub created_at_ms: i64,
+    /// The account it belongs to, one of those the page was asked for.
+    pub tenant_id: Uuid7,
 }
 
 /// One page of the walk, and whether a row exists beyond it.
@@ -96,7 +97,11 @@ pub struct Created {
 }
 
 impl Workspaces {
-    /// One page of `tenant`'s workspaces, oldest first.
+    /// One page of the workspaces across `tenants`, oldest first.
+    ///
+    /// `tenants` is bound as one array, borrowed as
+    /// [`super::accounts::Accounts::tenants`] lends it, so the walk copies no
+    /// identifier.
     ///
     /// `filter` holds the walk to an exact name; `after` is the decoded
     /// cursor when the caller is resuming.
@@ -106,7 +111,7 @@ impl Workspaces {
     /// cannot read.
     pub async fn page(
         &self,
-        tenant: &Uuid7,
+        tenants: &[&str],
         filter: Option<&str>,
         after: Option<&After>,
         limit: u32,
@@ -117,20 +122,20 @@ impl Workspaces {
         let mut connection = self.database.acquire().await?;
         let query = match (filter, after) {
             (None, None) => sqlx::query(sql::SELECT_TENANT_WORKSPACES_PAGE_FIRST)
-                .bind(tenant.as_str())
+                .bind(tenants)
                 .bind(fetch),
             (None, Some(boundary)) => sqlx::query(sql::SELECT_TENANT_WORKSPACES_PAGE_AFTER)
-                .bind(tenant.as_str())
+                .bind(tenants)
                 .bind(boundary.created_at_ms)
                 .bind(boundary.id.as_str())
                 .bind(fetch),
             (Some(name), None) => sqlx::query(sql::SELECT_TENANT_WORKSPACES_PAGE_FIRST_BY_NAME)
-                .bind(tenant.as_str())
+                .bind(tenants)
                 .bind(name)
                 .bind(fetch),
             (Some(name), Some(boundary)) => {
                 sqlx::query(sql::SELECT_TENANT_WORKSPACES_PAGE_AFTER_BY_NAME)
-                    .bind(tenant.as_str())
+                    .bind(tenants)
                     .bind(name)
                     .bind(boundary.created_at_ms)
                     .bind(boundary.id.as_str())
@@ -181,7 +186,7 @@ impl Workspaces {
         }
 
         if let Some(name) = chosen {
-            let id = self.mint_id(now)?;
+            let id = self.entropy.uuid7(now)?;
             return match self
                 .insert(&mut connection, &id, tenant, name.as_str(), created_by, now)
                 .await
@@ -190,7 +195,9 @@ impl Workspaces {
                     id,
                     name: name.as_str().to_owned(),
                 }),
-                Err(source) if is_name_conflict(&source) => Err(error::workspace_name_exists()),
+                Err(source) if violates_unique(&source, NAME_CONSTRAINT) => {
+                    Err(error::workspace_name_exists())
+                }
                 Err(source) => Err(error::query(CONTEXT_CREATE)(source)),
             };
         }
@@ -198,13 +205,16 @@ impl Workspaces {
         let mut attempt = 0;
         loop {
             let name = name::generate(&self.entropy)?;
-            let id = self.mint_id(now)?;
+            let id = self.entropy.uuid7(now)?;
             match self
                 .insert(&mut connection, &id, tenant, &name, created_by, now)
                 .await
             {
                 Ok(()) => return Ok(Created { id, name }),
-                Err(source) if is_name_conflict(&source) && attempt + 1 < GENERATED_ATTEMPTS => {
+                Err(source)
+                    if violates_unique(&source, NAME_CONSTRAINT)
+                        && attempt + 1 < GENERATED_ATTEMPTS =>
+                {
                     attempt += 1;
                 }
                 // Exhausted, or broken some other way. Either way the chain
@@ -234,32 +244,17 @@ impl Workspaces {
             .await
             .map(|_outcome| ())
     }
-
-    /// Draws a fresh workspace identifier.
-    fn mint_id(&self, now: UnixMillis) -> Result<Uuid7> {
-        Ok(Uuid7::encode(now, self.entropy.uuid_randomness()?)?)
-    }
 }
 
 /// Reads one row by column name, through [`error::query`] with one context —
 /// a `try_get` failure already names the column and the type it refused.
 fn read_row(row: &sqlx::postgres::PgRow) -> Result<WorkspaceRow> {
     let unreadable = error::query(CONTEXT_ROW);
+    let tenant: String = row.try_get(COLUMN_TENANT_ID).map_err(&unreadable)?;
     Ok(WorkspaceRow {
-        id: row.try_get("id").map_err(&unreadable)?,
+        id: row.try_get(COLUMN_ID).map_err(&unreadable)?,
         name: row.try_get("name").map_err(&unreadable)?,
         created_at_ms: row.try_get("created_at").map_err(&unreadable)?,
-    })
-}
-
-/// Tells a lost name race apart from a broken statement.
-///
-/// By exact constraint, not by SQLSTATE alone: the table carries a second
-/// unique constraint on `(id, tenant_id)`, and an identifier collision — one
-/// entropy draw repeating another to the bit — is not a fact about the NAME.
-fn is_name_conflict(source: &sqlx::Error) -> bool {
-    source.as_database_error().is_some_and(|failure| {
-        failure.code().is_some_and(|code| code == UNIQUE_VIOLATION)
-            && failure.constraint() == Some(NAME_CONSTRAINT)
+        tenant_id: stored::tenant(&tenant)?,
     })
 }

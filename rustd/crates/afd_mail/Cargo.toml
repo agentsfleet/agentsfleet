@@ -1,0 +1,55 @@
+[package]
+name = "afd_mail"
+description = "Product email: renders the invite from this repository's templates and sends it over SMTP through the relay the smtp-relay platform bag names."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks `InviteMailer::with_deadline`, so a caller's suite can
+# prove a stalled relay in milliseconds rather than the production deadline,
+# and `test_util::FakeRelay`, the scripted loopback SMTP relay this crate's
+# suite and `afd_api`'s both drive lettre's real transport against. The relay
+# listens and answers on tokio's sockets, hence `net`, `io-util` and `rt`.
+test-util = ["tokio/rt", "tokio/net", "tokio/io-util"]
+
+[dependencies]
+# The registry codes a failure is reported under, and the admin workspace id.
+afd_core.workspace = true
+# The relay password stays inside `SecretString` until the transport is built.
+afd_crypto.workspace = true
+# `InviteEmailOutcome`: what a send comes to is the value the invite route
+# records and reports, one type rather than a copy mapped field for field.
+afd_observability.workspace = true
+# Where the `smtp-relay` bag is read from: the admin workspace's vault.
+afd_vault.workspace = true
+askama.workspace = true
+lettre.workspace = true
+# The `smtp-relay` bag, read by derive rather than walked field by field.
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+# The send deadline.
+tokio = { workspace = true, features = ["time"] }
+tracing.workspace = true
+
+[dev-dependencies]
+# `test_util::trace::Capture`, which the log-privacy tests read events through.
+afd_core = { workspace = true, features = ["test-util"] }
+# `test_util::unreachable_db`, the vault the mailer suite reads the relay
+# through when that read must fail: every acquire refuses, no datastore needed.
+afd_db = { workspace = true, features = ["test-util"] }
+insta.workspace = true
+# `net` and `io-util` for the loopback SMTP relay (`src/test_util.rs`)
+# that the reply-code and send tests drive lettre's real transport against. The
+# tests run on one thread, which is also what `Capture` reads events from.
+tokio = { workspace = true, features = ["macros", "rt", "time", "net", "io-util"] }
+
+[lints]
+workspace = true

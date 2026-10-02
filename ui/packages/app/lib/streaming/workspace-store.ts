@@ -253,6 +253,9 @@ export class WorkspaceStore {
   }
 
   #applyFleetFrame(fleetId: string, frame: WorkspaceLiveFrame) {
+    // A tile changes when work starts: a message still waiting for a runner
+    // moves nothing a tile shows, and its received frame follows.
+    if (frame.kind === FRAME_KIND.EVENT_ADMITTED) return;
     const held = this.#eventsByFleet.get(fleetId) ?? [];
     // A chunk or a tool call for a row the wall already holds changes nothing
     // a tile shows. Anything else is folded as before: a chunk for a row the
@@ -325,5 +328,7 @@ function toConnectionStatus(status: WorkspaceConnectionStatus): ConnectionStatus
       return CONNECTION_STATUS.RECONNECTING;
     case WORKSPACE_CONNECTION_STATUS.CONNECTING:
       return CONNECTION_STATUS.CONNECTING;
+    case WORKSPACE_CONNECTION_STATUS.REVOKED:
+      return CONNECTION_STATUS.REVOKED;
   }
 }

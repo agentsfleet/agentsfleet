@@ -16,6 +16,7 @@ use afd_core::id::Uuid7;
 use afd_events::{
     Cursor, EventDetailRow, EventRow, Filter, History, Result as EventResult, Steer, Steered,
 };
+use afd_wire::tail::TailFrame;
 
 /// Everything the event-history routes act through.
 pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
@@ -168,6 +169,10 @@ pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
         request_json: &str,
         operation_id: &str,
     ) -> impl Future<Output = EventResult<Option<String>>> + Send;
+
+    /// Puts `frame` on `fleet`'s live tail, best-effort — no answer, because
+    /// a frame the queue refuses must not change the steer's.
+    fn announce(&self, fleet: &str, frame: &TailFrame<'_>) -> impl Future<Output = ()> + Send;
 }
 
 /// The production ingress answers directly.
@@ -192,5 +197,9 @@ impl FleetSteering for Steer {
         operation_id: &str,
     ) -> impl Future<Output = EventResult<Option<String>>> + Send {
         Self::replayed(self, fleet, workspace, actor, request_json, operation_id)
+    }
+
+    fn announce(&self, fleet: &str, frame: &TailFrame<'_>) -> impl Future<Output = ()> + Send {
+        Self::announce(self, fleet, frame)
     }
 }

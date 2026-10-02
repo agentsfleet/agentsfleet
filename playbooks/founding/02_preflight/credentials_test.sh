@@ -421,6 +421,36 @@ test_issue_tracker_docs_pin_current_source_scopes() {
   fi
 }
 
+test_smtp_relay_is_a_post_deploy_input() {
+  local name="smtp-relay is a post-deploy input"
+  local playbook="$script_dir/001_playbook.md"
+  local stage output status
+
+  # The invite email degrades to `unconfigured` without the relay, so the
+  # item must never block a gate that runs before the first deployment.
+  for stage in bootstrap deployment; do
+    status=0
+    output="$(run_gate "$stage" "" all)" || status=$?
+    if [ "$status" -ne 0 ]; then
+      bad "$name" "$stage gate failed with every item present: $output"
+      return
+    fi
+    if [[ "$output" == *"smtp-relay/"* ]]; then
+      bad "$name" "$stage gate read the post-deploy smtp-relay item"
+      return
+    fi
+  done
+  # Backticks below are literal Markdown delimiters.
+  # shellcheck disable=SC2016
+  if ! rg --fixed-strings --quiet \
+    '| `smtp-relay` (`host`, `port`, `username`, `password`, `from_address`) |' \
+    "$playbook"; then
+    bad "$name" "the post-deploy table does not list smtp-relay and its five fields"
+  else
+    ok "$name"
+  fi
+}
+
 test_unknown_stage_fails_closed() {
   local name="unknown stage fails closed"
   local output status=0
@@ -446,6 +476,7 @@ test_workflows_load_only_current_connector_boot_secret
 test_workflows_seed_the_connector_signing_row
 test_dev_deploy_sets_the_daemons_own_log_level
 test_issue_tracker_docs_pin_current_source_scopes
+test_smtp_relay_is_a_post_deploy_input
 test_unknown_stage_fails_closed
 
 echo ""

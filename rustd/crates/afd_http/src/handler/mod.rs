@@ -1,8 +1,10 @@
 //! Shared request parsing and refusal rendering for every API plane.
 
 pub mod encoding;
+mod id_path;
 pub mod library_onboard;
 pub use self::encoding::BrokenEscape;
+pub use self::id_path::{IdPath, IdSegment};
 mod refusable;
 mod refusal;
 
@@ -140,8 +142,17 @@ pub const DETAIL_FLEET_ID: &str = "fleet_id must be a valid UUIDv7";
 /// A malformed refusal for a segment that is not a `UUIDv7`, so the `::uuid`
 /// cast in the statements below is never the thing that fails.
 pub fn parse_fleet_id(raw: &str) -> Result<afd_core::id::Uuid7, Refusal> {
-    afd_core::id::Uuid7::parse(raw)
-        .map_err(|_not_an_identifier| Refusal::malformed(DETAIL_FLEET_ID))
+    parse_id(raw, DETAIL_FLEET_ID)
+}
+
+/// The identifier a path segment names, or the malformed refusal `detail`
+/// says for one that is not a `UUIDv7`.
+///
+/// # Errors
+/// [`Refusal::malformed`] with `detail`, so the `::uuid` cast in a statement
+/// is never the thing that fails.
+pub fn parse_id(raw: &str, detail: &'static str) -> Result<afd_core::id::Uuid7, Refusal> {
+    afd_core::id::Uuid7::parse(raw).map_err(|_not_an_identifier| Refusal::malformed(detail))
 }
 
 /// How a refused library read is classified for the outcome family.

@@ -184,7 +184,8 @@ async fn a_workspace_cursor_is_accepted() {
 #[tokio::test]
 async fn a_name_filter_outside_its_bounds_is_refused() {
     let long = "a".repeat(129);
-    for wrong in ["", long.as_str()] {
+    // `%00` decodes to NUL, which no stored name can carry.
+    for wrong in ["", long.as_str(), "a%00b"] {
         let path = format!("{WORKSPACES}?name={wrong}");
         let response = send(WORKSPACE_ADMIN, Method::GET, &path, Some(TENANT_KEY), "").await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");

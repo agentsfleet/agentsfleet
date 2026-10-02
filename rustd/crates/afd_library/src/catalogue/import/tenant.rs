@@ -28,7 +28,7 @@
 //! and a row nobody could see would be an onboarding that silently did nothing.
 
 use afd_core::clock::UnixMillis;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 
@@ -96,11 +96,9 @@ impl TenantCatalog {
     /// row — a wasted identifier costs nothing, where reading first to decide
     /// whether to mint would be the check-then-act the upsert exists to avoid.
     fn mint(&self) -> Result<Uuid7> {
-        let mut bytes = [0u8; ENTROPY_LEN];
         self.entropy
-            .fill(&mut bytes)
-            .map_err(|source| Error::from(ErrorKind::Entropy { source }))?;
-        Uuid7::encode(self.now, bytes).map_err(|source| Error::from(ErrorKind::Mint { source }))
+            .uuid7(self.now)
+            .map_err(|source| Error::from(ErrorKind::Entropy { source }))
     }
 }
 

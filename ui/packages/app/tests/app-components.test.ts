@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
 const TOAST_FADE_MS = 240;
 const mocks = vi.hoisted(() => ({
   trackAppEvent: vi.fn(), trackNavigationClicked: vi.fn(),
@@ -37,7 +38,7 @@ vi.mock("lucide-react", () => {
     LayoutDashboardIcon: icon("LayoutDashboardIcon"), BoxIcon: icon("BoxIcon"), BotIcon: icon("BotIcon"), SettingsIcon: icon("SettingsIcon"),
     KeyIcon: icon("KeyIcon"), BookOpenIcon: icon("BookOpenIcon"), ZapIcon: icon("ZapIcon"), ShieldIcon: icon("ShieldIcon"),
     KeyRoundIcon: icon("KeyRoundIcon"), LibraryIcon: icon("LibraryIcon"), PlugIcon: icon("PlugIcon"), CheckCircle2Icon: icon("CheckCircle2Icon"), ServerIcon: icon("ServerIcon"),
-    BrainCircuitIcon: icon("BrainCircuitIcon"), BoxesIcon: icon("BoxesIcon"), CreditCardIcon: icon("CreditCardIcon"), MenuIcon: icon("MenuIcon"),
+    BrainCircuitIcon: icon("BrainCircuitIcon"), BoxesIcon: icon("BoxesIcon"), CreditCardIcon: icon("CreditCardIcon"), UsersIcon: icon("UsersIcon"), MenuIcon: icon("MenuIcon"),
     PanelLeftCloseIcon: icon("PanelLeftCloseIcon"), PanelLeftOpenIcon: icon("PanelLeftOpenIcon"), SunIcon: icon("SunIcon"), MoonIcon: icon("MoonIcon"), ChevronDownIcon: icon("ChevronDownIcon"), ChevronRightIcon: icon("ChevronRightIcon"), PlusIcon: icon("PlusIcon"), FolderIcon: icon("FolderIcon"),
   };
 });
@@ -119,8 +120,8 @@ describe("app components", () => {
         Shell,
         {
           workspaces: [
-            { id: "ws_1", name: "Alpha", created_at: 1 },
-            { id: "ws_2", name: "Beta", created_at: 2 },
+            { id: "ws_1", name: "Alpha", created_at: 1, ...OWN_ACCOUNT },
+            { id: "ws_2", name: "Beta", created_at: 2, ...OWN_ACCOUNT },
           ],
         } as never,
         React.createElement("div", null, "content"),
@@ -133,8 +134,8 @@ describe("app components", () => {
         Shell,
         {
           workspaces: [
-            { id: "ws_1", name: "Alpha", created_at: 1 },
-            { id: "ws_2", name: "Beta", created_at: 2 },
+            { id: "ws_1", name: "Alpha", created_at: 1, ...OWN_ACCOUNT },
+            { id: "ws_2", name: "Beta", created_at: 2, ...OWN_ACCOUNT },
           ],
         } as never,
         React.createElement("div", null, "next route content"),
@@ -320,7 +321,7 @@ describe("app components", () => {
         // normal children slot regardless of how it arrived.
         React.createElement(
           Shell,
-          { operatorScopes, workspaces: [{ id: "ws_1", name: "Alpha", created_at: 1 }] } as React.ComponentProps<typeof Shell>,
+          { operatorScopes, workspaces: [{ id: "ws_1", name: "Alpha", created_at: 1, ...OWN_ACCOUNT }] } as React.ComponentProps<typeof Shell>,
           React.createElement("div"),
         ),
       );

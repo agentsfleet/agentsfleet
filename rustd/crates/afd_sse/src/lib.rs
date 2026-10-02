@@ -37,7 +37,9 @@ use std::time::Duration;
 pub use crate::ceiling::{Ceiling, Slot};
 pub use crate::error::{Error, Result};
 pub use crate::fanin::{Delta, FanIn};
-pub use crate::frame::{DEFAULT_KIND, Data, Frame, KIND_CATCHING_UP, KIND_HELLO};
+pub use crate::frame::{
+    DEFAULT_KIND, Data, Frame, KIND_ACCESS_REVOKED, KIND_CATCHING_UP, KIND_HELLO,
+};
 pub use crate::live::Live;
 pub use crate::tail::tail;
 

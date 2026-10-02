@@ -48,6 +48,8 @@ pub enum WorkspaceRoute {
     Approval,
     /// Deciding an approval gate.
     ApprovalResolve,
+    /// The members of the workspace's account, by name.
+    Members,
 }
 
 impl WorkspaceRoute {
@@ -67,6 +69,7 @@ impl WorkspaceRoute {
         Self::Approvals,
         Self::Approval,
         Self::ApprovalResolve,
+        Self::Members,
     ];
 
     /// The verbs this route identity serves.
@@ -85,7 +88,8 @@ impl WorkspaceRoute {
             | Self::Preferences
             | Self::Approvals
             | Self::Approval
-            | Self::LibraryEntries => &[Verb::Get],
+            | Self::LibraryEntries
+            | Self::Members => &[Verb::Get],
             Self::Preference => &[Verb::Put],
             Self::ApprovalResolve => &[Verb::Post],
             Self::FleetLibrary | Self::Fleets | Self::Secrets => &[Verb::Get, Verb::Post],
@@ -176,6 +180,7 @@ impl WorkspaceRoute {
                 workspace_path!("/approvals/{gate_id}/{decision}"),
                 Scopes::Always(APPROVAL_RESOLVE),
             ),
+            Self::Members => (api, workspace_path!("/members"), Scopes::Always(FLEET_READ)),
         };
         RouteMeta::new(Guard::Bearer, class, template, scopes)
     }

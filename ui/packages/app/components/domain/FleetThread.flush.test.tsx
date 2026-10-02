@@ -110,7 +110,7 @@ function turn(reply: string, status: FleetEvent["status"]): FleetEvent {
 }
 
 function thread() {
-  return <FleetThread workspaceId="ws_flush" fleetId="fleet_flush" senderLabel={SENDER} initial={[]} viewer={shell.user} />;
+  return <FleetThread workspaceId="ws_flush" fleetId="fleet_flush" senderLabel={SENDER} initial={[]} viewer={shell.user} senderNames={[]} />;
 }
 
 function flush(view: ReturnType<typeof render>, event: FleetEvent) {

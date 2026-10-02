@@ -22,9 +22,9 @@ use std::error::Error as _;
 use afd_library::error::one_of_each_kind;
 
 /// How many kinds the sample declares.
-const SAMPLES: usize = 8;
+const SAMPLES: usize = 7;
 /// How many carry a `source()` — the chain an operator follows to the cause.
-const WITH_SOURCE: usize = 3;
+const WITH_SOURCE: usize = 2;
 /// How many distinct registry codes the kinds report between them.
 const DISTINCT_CODES: usize = 7;
 

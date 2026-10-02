@@ -73,16 +73,10 @@ pub(crate) enum ErrorKind {
     #[error("the fleet declared a credential this workspace does not hold")]
     CredentialMissing,
 
-    #[error("could not draw the entropy a registry entry is minted from")]
+    #[error("a registry entry identifier could not be minted")]
     Entropy {
         #[source]
         source: afd_crypto::error::Error,
-    },
-
-    #[error("a minted registry-entry identifier was not well-formed")]
-    Mint {
-        #[source]
-        source: afd_core::error::Error,
     },
 
     #[error("the credential directory would not describe a registry page's rows")]
@@ -133,11 +127,11 @@ impl Error {
             // shape is wrong answers this one — the shape is a fact the
             // operator who stored it can act on.
             ErrorKind::VaultDataInvalid => (error_code::VAULT_DATA_INVALID, DETAIL_VAULT_INVALID),
-            // Two failures of this instance rather than of its input: a host
-            // that cannot draw entropy, and a mint that produced something
-            // `Uuid7` refuses. Neither is the caller's to correct, and both
-            // answer the same internal code `afd_tenant` gives them.
-            ErrorKind::Entropy { .. } | ErrorKind::Mint { .. } => {
+            // A failure of this instance rather than of its input: the host
+            // could not draw entropy, or the mint could not encode it. Not the
+            // caller's to correct, so it answers the internal code
+            // `afd_tenant` gives a failed mint.
+            ErrorKind::Entropy { .. } => {
                 (error_code::INTERNAL_OPERATION_FAILED, DETAIL_DATABASE_ERROR)
             }
             // The one provider-family failure an operator can ACT on: the
@@ -300,11 +294,6 @@ pub(crate) fn vault_data_invalid() -> Error {
 /// `From` cannot mean both.
 pub(crate) fn entropy_drained(source: afd_crypto::error::Error) -> Error {
     ErrorKind::Entropy { source }.into()
-}
-
-/// Reports a minted identifier the domain type refused.
-pub(crate) fn mint_failed(source: afd_core::error::Error) -> Error {
-    ErrorKind::Mint { source }.into()
 }
 
 /// Reports a declared credential with no vault row.

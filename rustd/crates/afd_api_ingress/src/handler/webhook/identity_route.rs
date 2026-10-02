@@ -47,7 +47,6 @@ use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
 use axum::{Json, body::Bytes};
 use http::{HeaderMap, StatusCode};
-use serde::Deserialize;
 
 use crate::handler::Refusal;
 use crate::services::{
@@ -55,6 +54,7 @@ use crate::services::{
 };
 use afd_wire::ingress::IdentityAnswer;
 
+use super::identity_event::IdentityEvent;
 use super::verify::{header, wall};
 use super::{Ignored, within_cap};
 
@@ -78,74 +78,11 @@ const DETAIL_UNREADABLE: &str = "The request body is not an identity event";
 /// sent a person this daemon cannot name.
 const DETAIL_NO_ADDRESS: &str = "The identity event carries no usable primary email address";
 
-/// The identity provider's `user.created` payload, tolerant of unknown fields.
-///
-/// Unknown fields are ignored rather than refused, which is the port's rule and
-/// not laxity: the provider adds fields to these payloads without notice, and a
-/// daemon that refused an unrecognised one would go down on a vendor's release
-/// note.
-#[derive(Debug, Deserialize)]
-struct IdentityEvent {
-    /// Which event this is.
-    #[serde(rename = "type")]
-    kind: String,
-    /// The person it is about.
-    data: IdentityUser,
-}
-
-/// The person an identity event describes.
-#[derive(Debug, Deserialize)]
-struct IdentityUser {
-    /// The provider's own subject, and the account's unique key.
-    id: String,
-    /// Every address the provider holds for them.
-    #[serde(default)]
-    email_addresses: Vec<IdentityEmail>,
-    /// Which of those is primary.
-    #[serde(default)]
-    primary_email_address_id: Option<String>,
-    #[serde(default)]
-    first_name: Option<String>,
-    #[serde(default)]
-    last_name: Option<String>,
-}
-
-/// One address the provider holds.
-#[derive(Debug, Deserialize)]
-struct IdentityEmail {
-    /// Its own id, which `primary_email_address_id` names.
-    id: String,
-    /// The address itself.
-    email_address: String,
-}
-
-impl IdentityUser {
-    /// The address an account is opened under.
-    ///
-    /// The one the provider MARKED primary, and only that one. Falling back to
-    /// the first address in the list would open an account under whichever
-    /// address happened to sort first — a different person's inbox, when a
-    /// provider reports several.
-    fn primary_email(&self) -> Option<&str> {
-        let primary = self.primary_email_address_id.as_deref()?;
-        self.email_addresses
-            .iter()
-            .find(|address| address.id == primary)
-            .map(|address| address.email_address.as_str())
-    }
-
-    /// What to call them, when the provider said anything at all.
-    fn display_name(&self) -> Option<String> {
-        let given = self.first_name.as_deref().unwrap_or_default().trim();
-        let family = self.last_name.as_deref().unwrap_or_default().trim();
-        match (given.is_empty(), family.is_empty()) {
-            (true, true) => None,
-            (true, false) => Some(family.to_owned()),
-            (false, true) => Some(given.to_owned()),
-            (false, false) => Some(format!("{given} {family}")),
-        }
-    }
-}
+/// The refusal for a primary address the provider has not verified. An invite
+/// is accepted by matching this address, so an unproven one would let anyone
+/// who typed someone else's address join that person's teams.
+const DETAIL_UNVERIFIED_ADDRESS: &str =
+    "The identity event's primary email address is not verified";
 
 /// `POST /v1/auth/identity-events/clerk`.
 ///
@@ -238,13 +175,15 @@ pub(crate) async fn receive<D: Services>(
             .into_response());
     }
 
-    let Some(email) = event.data.primary_email() else {
-        producers::fleet::signup_failed(SignupFailure::MissingEmail);
-        return Err(Refusal::coded(
-            error_code::INVALID_REQUEST,
-            DETAIL_NO_ADDRESS,
-        ));
-    };
+    let email = event.data.verified_email().map_err(|reason| {
+        producers::fleet::signup_failed(reason);
+        let detail = if reason == SignupFailure::UnverifiedEmail {
+            DETAIL_UNVERIFIED_ADDRESS
+        } else {
+            DETAIL_NO_ADDRESS
+        };
+        Refusal::coded(error_code::INVALID_REQUEST, detail)
+    })?;
     // An address with no local part is the same fault as no address at all —
     // see `signup::personal_tenant_name` on why this refuses rather than
     // substituting a name.

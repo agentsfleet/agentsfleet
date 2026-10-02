@@ -66,7 +66,8 @@ fn plane() -> ServingPlane {
         analytics: Analytics::silent(),
         login: LoginConfig {
             code_pepper: SecretBytes::new(b"plane-test-pepper".to_vec()),
-            app_url: "https://app.fixture.test".to_owned(),
+            app_url: afd_connector::Dashboard::parse("https://app.fixture.test")
+                .expect("the fixture dashboard is a URL"),
             api_url: "https://api.fixture.test".into(),
         },
     })

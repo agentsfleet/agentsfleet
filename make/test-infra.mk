@@ -42,6 +42,12 @@ AGENTSFLEET_API_HOST_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_PORT
 export AGENTSFLEET_PG_HOST_PORT
 export AGENTSFLEET_QSTASH_HOST_PORT
 export AGENTSFLEET_DRAGONFLY_BASE_PORT AGENTSFLEET_DRAGONFLY_LAST_PORT AGENTSFLEET_API_HOST_PORT
+# Mailpit's SMTP port and web page, also on the dragonfly service, the next two
+# past the API port: still inside the twelve-port slot scripts/test-infra-ports.sh
+# allocates per worktree.
+AGENTSFLEET_MAILPIT_SMTP_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_PORT) + 6 )))
+AGENTSFLEET_MAILPIT_UI_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_PORT) + 7 )))
+export AGENTSFLEET_MAILPIT_SMTP_PORT AGENTSFLEET_MAILPIT_UI_PORT
 
 # The live ports are still discovered from the running container rather than
 # assumed from the values above, so these stay the single source of truth about
@@ -137,6 +143,12 @@ TEST_DRAGONFLY_BAD_CA ?= $(CURDIR)/.tmp/redis-bad-ca.crt
 # container (see scripts/dragonfly-cluster.sh).
 TEST_DRAGONFLY_CONTROL ?= docker compose --project-directory $(CURDIR) exec -T dragonfly bash /scripts/dragonfly-cluster.sh
 export TEST_DATABASE_URL TEST_DRAGONFLY_URL TEST_DRAGONFLY_TLS_URL TEST_DRAGONFLY_CA_CERT TEST_DRAGONFLY_BAD_CA TEST_DRAGONFLY_CONTROL
+
+# The invite email's sink: the port a suite's `smtp-relay` bag names, and the
+# API it reads the delivered message back from.
+TEST_MAILPIT_SMTP_PORT ?= $(AGENTSFLEET_MAILPIT_SMTP_PORT)
+TEST_MAILPIT_URL ?= http://127.0.0.1:$(AGENTSFLEET_MAILPIT_UI_PORT)
+export TEST_MAILPIT_SMTP_PORT TEST_MAILPIT_URL
 # QStash local dev server (docker-compose `qstash` service). The emulator ships a
 # hardcoded local identity and rejects anything else (a different user 404s, a
 # different password 401s), so this is a fixture we reproduce, not a credential we
@@ -180,9 +192,9 @@ _ensure-test-infra:
 	@# sibling worktree's containers are simply different containers. The sweep that
 	@# used to live here force-removed them by fixed name, which is what let one
 	@# worktree's test run destroy another's mid-flight.
-	@echo "→ [infra] Host ports: postgres=$(AGENTSFLEET_PG_HOST_PORT) qstash=$(AGENTSFLEET_QSTASH_HOST_PORT) dragonfly=$(AGENTSFLEET_DRAGONFLY_BASE_PORT)-$(AGENTSFLEET_DRAGONFLY_LAST_PORT) api=$(AGENTSFLEET_API_HOST_PORT)"
-	@echo "→ [infra] Starting postgres + dragonfly + qstash (waiting for healthchecks)..."
-	@docker compose up -d --wait --remove-orphans postgres dragonfly qstash
+	@echo "→ [infra] Host ports: postgres=$(AGENTSFLEET_PG_HOST_PORT) qstash=$(AGENTSFLEET_QSTASH_HOST_PORT) dragonfly=$(AGENTSFLEET_DRAGONFLY_BASE_PORT)-$(AGENTSFLEET_DRAGONFLY_LAST_PORT) api=$(AGENTSFLEET_API_HOST_PORT) mailpit=$(AGENTSFLEET_MAILPIT_SMTP_PORT)/$(AGENTSFLEET_MAILPIT_UI_PORT)"
+	@echo "→ [infra] Starting postgres + dragonfly + qstash + mailpit (waiting for healthchecks)..."
+	@docker compose up -d --wait --remove-orphans postgres dragonfly qstash mailpit
 	@mkdir -p "$(CURDIR)/.tmp"
 	@echo "→ [infra] Extracting the datastore TLS CA cert..."
 	@# No `>/dev/null`: a failed copy used to be silent, and the `test -s` below
@@ -200,7 +212,7 @@ _ensure-test-infra:
 	  echo "✗ [infra] datastore CA cert is stale (container $$container_sha != local $$local_sha)"; \
 	  exit 1; \
 	fi
-	@echo "✓ [infra] postgres + dragonfly + qstash ready; datastore CA cert at $(TEST_DRAGONFLY_CA_CERT)"
+	@echo "✓ [infra] postgres + dragonfly + qstash + mailpit ready; datastore CA cert at $(TEST_DRAGONFLY_CA_CERT)"
 
 # Drop and recreate all app schemas so every test-integration run starts from a clean
 # state. Needed because several tests in the suite (rbac, tenant_provider, event_loop) leave

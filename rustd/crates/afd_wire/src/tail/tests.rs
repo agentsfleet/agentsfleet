@@ -19,13 +19,19 @@ const SCOPE_KEYS: [&str; 2] = ["fleet_id", "workspace_id"];
 /// The anchor the SSE layer reads the frame's name from.
 const KIND_ANCHOR: &str = "{\"kind\":\"";
 
+/// A person's actor, as a steer records it.
+const STEER_ACTOR: &str = "steer:user_1";
+
+/// A steer's event type.
+const CHAT: &str = "chat";
+
 fn row() -> EventSummary<'static> {
     EventSummary {
         fleet_id: Cow::Borrowed("fleet-1"),
         event_id: Cow::Borrowed("1725000000000-0"),
         workspace_id: Cow::Borrowed("ws-1"),
-        actor: Cow::Borrowed("steer:user_1"),
-        event_type: Cow::Borrowed("chat"),
+        actor: Cow::Borrowed(STEER_ACTOR),
+        event_type: Cow::Borrowed(CHAT),
         status: Cow::Borrowed("processed"),
         tokens: Some(1200),
         wall_ms: Some(12_000),
@@ -51,16 +57,29 @@ fn rendered(frame: &TailFrame<'_>) -> (String, Value) {
     (text, value)
 }
 
+/// A steer's admission, as the route publishes it.
+fn admitted() -> TailFrame<'static> {
+    TailFrame::EventAdmitted {
+        event_id: Cow::Borrowed("1725000000000-3"),
+        actor: Cow::Borrowed(STEER_ACTOR),
+        event_type: Cow::Borrowed(CHAT),
+        message: Cow::Borrowed("check the tests"),
+        created_at: 1_725_000_000_000,
+    }
+}
+
 /// The name is the leading field on every variant, which is the property
 /// `afd_sse` dispatches on and the one a field reorder would silently lose.
 #[test]
 fn should_lead_every_frame_with_its_kind() {
     let frames = [
+        admitted(),
         TailFrame::EventReceived {
             event_id: Cow::Borrowed("e"),
             actor: Cow::Borrowed("cron"),
             event_type: Cow::Borrowed("cron"),
             created_at: 1,
+            message: None,
             counters: Some(COUNTERS),
         },
         TailFrame::EventComplete {
@@ -86,6 +105,7 @@ fn should_lead_every_frame_with_its_kind() {
         },
     ];
     let expected = [
+        "event_admitted",
         "event_received",
         "event_complete",
         "gate_opened",
@@ -154,14 +174,17 @@ fn should_spell_a_runless_gates_event_as_null() {
     assert_eq!(value["event_id"], Value::Null, "{text}");
 }
 
-/// Every frame carries the counters, not only the completion.
+/// Every frame that follows a counter's move carries the counters, not only
+/// the completion.
 ///
 /// This is the defect the snapshot exists to close. `events_processed` moves
 /// `AFTER INSERT ON core.fleet_events` — at receive — but a gate park returns
 /// before the completion is published, so a client hearing counters only on
 /// `event_complete` reads short by exactly the events awaiting a human. A
 /// frame-by-frame assertion is what keeps a later variant from being added
-/// without them.
+/// without them. `event_admitted` is the one frame left out, and on purpose:
+/// no counter moves at admission, and reading them would put a query on every
+/// steer's path to its 202.
 #[test]
 fn should_carry_the_counters_on_every_frame_kind() {
     let frames = [
@@ -170,6 +193,7 @@ fn should_carry_the_counters_on_every_frame_kind() {
             actor: Cow::Borrowed("cron"),
             event_type: Cow::Borrowed("cron"),
             created_at: 1,
+            message: None,
             counters: Some(COUNTERS),
         },
         TailFrame::EventComplete {
@@ -248,6 +272,7 @@ fn should_omit_the_counters_entirely_when_none_were_read() {
         actor: Cow::Borrowed("cron"),
         event_type: Cow::Borrowed("cron"),
         created_at: 1,
+        message: None,
         counters: None,
     });
     let object = value.as_object().expect("a frame is an object");
@@ -262,4 +287,34 @@ fn should_omit_the_counters_entirely_when_none_were_read() {
     // The frame still arrives and still names itself: an absent snapshot
     // costs the tail its figures, never the marker.
     assert_eq!(value["kind"], json!("event_received"));
+}
+
+/// The admitted frame carries what a screen needs to draw the turn, and no
+/// counters: nothing is counted until a runner has it.
+#[test]
+fn should_carry_the_typed_message_on_an_admitted_frame() {
+    let (text, value) = rendered(&admitted());
+    assert_eq!(value["event_id"], json!("1725000000000-3"), "{text}");
+    assert_eq!(value["actor"], json!(STEER_ACTOR), "{text}");
+    assert_eq!(value["message"], json!("check the tests"), "{text}");
+    assert_eq!(value["created_at"], json!(1_725_000_000_000_i64), "{text}");
+    assert!(value.get("events_processed").is_none(), "{text}");
+}
+
+/// A received frame names the message only when the publisher had one: a
+/// webhook's frame carries no `message` key at all, never an empty string.
+#[test]
+fn should_carry_a_message_on_a_received_frame_only_when_given() {
+    let frame = |message: Option<&'static str>| TailFrame::EventReceived {
+        event_id: Cow::Borrowed("e"),
+        actor: Cow::Borrowed(STEER_ACTOR),
+        event_type: Cow::Borrowed(CHAT),
+        created_at: 1,
+        message: message.map(Cow::Borrowed),
+        counters: None,
+    };
+    let (text, value) = rendered(&frame(Some("hi")));
+    assert_eq!(value["message"], json!("hi"), "{text}");
+    let (text, value) = rendered(&frame(None));
+    assert!(value.get("message").is_none(), "{text}");
 }

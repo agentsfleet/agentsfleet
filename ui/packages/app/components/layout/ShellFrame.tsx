@@ -1,8 +1,10 @@
 import { DashboardShellHeader, Spinner } from "@agentsfleet/design-system";
+import type { WaitingInvite } from "@/lib/api/invites";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import type { TenantBilling } from "@/lib/types";
 import { BalanceLink } from "./BalanceLink";
 import ClientOnlyAuthUserButton from "./ClientOnlyAuthUserButton";
+import { InviteNotice } from "./InviteNotice";
 import {
   DesktopSidebarNavigation,
 } from "./SidebarNavigation";
@@ -19,6 +21,8 @@ type ShellFrameProps = {
   operatorScopes?: string[];
   /** Null when the read failed or there is no session: the header says nothing. */
   billing?: TenantBilling | null;
+  /** Invites waiting for the signed-in person; empty hides the notice. */
+  waitingInvites?: readonly WaitingInvite[];
 };
 
 export function ShellFrame({
@@ -26,6 +30,7 @@ export function ShellFrame({
   workspaces = [],
   operatorScopes = [],
   billing = null,
+  waitingInvites = [],
 }: ShellFrameProps) {
   const knownWorkspaceIds = workspaces.map((workspace) => workspace.id);
   return (
@@ -70,6 +75,7 @@ export function ShellFrame({
 
         <main className="app-dashboard-canvas min-h-0 overflow-y-auto has-[#fleet-chat-transcript]:overflow-hidden md:has-[[data-page-layout]]:overflow-hidden">
           <div className="flex min-h-full w-full flex-col has-[#fleet-chat-transcript]:h-full has-[#fleet-chat-transcript]:min-h-0 md:has-[[data-page-layout]]:h-full md:has-[[data-page-layout]]:min-h-0">
+            <InviteNotice waiting={waitingInvites} />
             {children}
             {/* Next can briefly remove the outgoing route before its loader
                 mounts. CSS fills that empty slot in the same paint. */}

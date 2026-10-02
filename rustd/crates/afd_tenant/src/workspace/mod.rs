@@ -18,6 +18,9 @@
 //! `Result<Option<T>>` convention `core_api` runs on, and the reason it is the
 //! convention.
 
+pub mod access;
+pub mod accounts;
+pub mod crossing;
 pub mod directory;
 pub mod name;
 
@@ -26,9 +29,16 @@ use afd_auth::scope::Scope;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
+use sqlx::Row as _;
+use sqlx::postgres::PgRow;
 
+use self::access::{Access, Grant, Role};
 use crate::sql::workspace as sql;
-use crate::{Result, error};
+use crate::sql::{COLUMN_ROLE, COLUMN_TENANT_ID};
+use crate::{Result, error, stored};
+
+/// The context an access read's failure reports under.
+const CONTEXT_AUTHORIZE: &str = "authorize workspace";
 
 /// Resolves who owns a workspace, and keeps the tenant's directory of them.
 ///
@@ -50,7 +60,8 @@ impl Workspaces {
         Self { database, entropy }
     }
 
-    /// The tenant owning `workspace`, when this principal's does.
+    /// The owning tenant and the caller's grant, when this principal may open
+    /// `workspace`.
     ///
     /// # The ordering is load-bearing
     ///
@@ -67,7 +78,7 @@ impl Workspaces {
         &self,
         principal: &Principal,
         workspace: &Uuid7,
-    ) -> Result<Option<Uuid7>> {
+    ) -> Result<Option<Access>> {
         let Some(person) = principal.person() else {
             // A runner has no tenant authority at all, so the statement could
             // never match. Refused without a round trip rather than by asking a
@@ -80,75 +91,66 @@ impl Workspaces {
             return Ok(None);
         }
 
-        if let Some(tenant) = self.owner_matching(person, workspace).await? {
-            return Ok(Some(tenant));
+        if let Some(access) = self.membership(person, workspace).await? {
+            return Ok(Some(access));
         }
-        self.cross_tenant_override(principal, person, workspace)
-            .await
+        self.cross_tenant_override(principal, workspace).await
     }
 
-    /// The owning tenant, when it is the one this principal resolves to.
-    async fn owner_matching(&self, person: &Person, workspace: &Uuid7) -> Result<Option<Uuid7>> {
+    /// The caller's grant from inside the owning account, when they hold one.
+    ///
+    /// A row with no stored role is the caller's own account, admitted by the
+    /// tenant match, and is held as owner.
+    async fn membership(&self, person: &Person, workspace: &Uuid7) -> Result<Option<Access>> {
         let binds = TenantBinds::of(person);
         let mut connection = self.database.acquire().await?;
-        let row: Option<(String,)> = sqlx::query_as(sql::AUTHORIZE_WORKSPACE)
+        let row = sqlx::query(sql::AUTHORIZE_WORKSPACE)
             .bind(workspace.as_str())
             .bind(binds.subject)
             .bind(binds.claim)
             .fetch_optional(connection.as_mut())
             .await
-            .map_err(error::query("authorize workspace"))?;
-        row.map(|(tenant,)| parse_tenant(&tenant)).transpose()
+            .map_err(error::query(CONTEXT_AUTHORIZE))?;
+        row.map(|row| {
+            let (tenant, role) = held_row(&row, CONTEXT_AUTHORIZE)?;
+            Ok(Access {
+                tenant,
+                grant: Grant::Membership(role),
+            })
+        })
+        .transpose()
     }
 
-    /// The audited platform-wide override, for the few principals holding it.
+    /// The platform-wide override, for the few principals holding it.
     ///
     /// Engages ONLY after the tenant-scoped check has already denied, and only
-    /// for a principal holding the platform-wide workspace scope. Every use is
-    /// recorded before it is honoured, because this is the sole path by which
-    /// one tenant's operator reaches another tenant's workspace and an
-    /// unrecorded one would be indistinguishable from the cross-tenant read
-    /// this whole layer exists to stop.
+    /// for a principal holding the platform-wide workspace scope. This is the
+    /// sole path by which one tenant's operator reaches another tenant's
+    /// workspace, so every use is recorded before it is honoured — by the
+    /// caller that honours it, through [`crossing::audit`], because only that
+    /// caller knows the method and an open stream re-asks this on every beat.
     async fn cross_tenant_override(
         &self,
         principal: &Principal,
-        person: &Person,
         workspace: &Uuid7,
-    ) -> Result<Option<Uuid7>> {
+    ) -> Result<Option<Access>> {
         if !principal.scopes().contains(Scope::WorkspaceAny) {
             return Ok(None);
         }
         let mut connection = self.database.acquire().await?;
-        let row: Option<(String,)> = sqlx::query_as(sql::SELECT_WORKSPACE_TENANT)
+        let tenant: Option<String> = sqlx::query_scalar(sql::SELECT_WORKSPACE_TENANT)
             .bind(workspace.as_str())
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query("resolve workspace tenant"))?;
-        let Some((tenant,)) = row else {
-            return Ok(None);
-        };
-        let tenant = parse_tenant(&tenant)?;
-
-        // Emitted BEFORE the override is honoured, so a crash between the
-        // decision and the work still leaves the record. Hoisted fields: the
-        // `log` bridge duplicates every expression and llvm-cov scores the
-        // dead copy.
-        let subject = person.subject().as_str();
-        let acting_tenant = person.tenant().as_str();
-        let target_tenant = tenant.as_str();
-        let target_workspace = workspace.as_str();
-        // `warn`, and it is the one refusal-adjacent event in this file that
-        // earns it: an operator crossing a tenant boundary is rare, legitimate,
-        // and exactly what somebody reviewing an incident needs to find.
-        tracing::warn!(
-            subject,
-            acting_tenant,
-            target_tenant,
-            target_workspace,
-            event = "cross_tenant_workspace_override",
-            "a platform-scoped principal reached another tenant's workspace"
-        );
-        Ok(Some(tenant))
+        tenant
+            .map(|tenant| {
+                Ok(Access {
+                    tenant: stored::tenant(&tenant)?,
+                    grant: Grant::Platform,
+                })
+            })
+            .transpose()
     }
 
     /// The tenant a subject belongs to, with no workspace to check against.
@@ -164,11 +166,8 @@ impl Workspaces {
         let Some(person) = principal.person() else {
             return Ok(None);
         };
-        match person.credential() {
-            PersonCredential::TenantApiKey | PersonCredential::CliCredential => {
-                return Ok(Some(person.tenant().clone()));
-            }
-            PersonCredential::SessionToken { .. } => {}
+        if !reads_user_row(person) {
+            return Ok(Some(person.tenant().clone()));
         }
 
         let mut connection = self.database.acquire().await?;
@@ -178,7 +177,7 @@ impl Workspaces {
             .await
             .map_err(error::query("resolve subject tenant"))?;
         match row {
-            Some((tenant,)) => parse_tenant(&tenant).map(Some),
+            Some((tenant,)) => stored::tenant(&tenant).map(Some),
             // The claim stands when no user row exists, which is the same
             // fallback the `COALESCE` above encodes.
             None => Ok(Some(person.tenant().clone())),
@@ -209,22 +208,34 @@ impl<'a> TenantBinds<'a> {
     /// and here a runner never reaches this function at all — it was refused one
     /// frame up, by not being a `Person`. The type says so, so there is no arm.
     fn of(person: &'a Person) -> Self {
-        // Only a browser session binds the subject. A claim-bound credential
-        // resolved its tenant through the user row at authentication time, so
-        // re-reading it here would be a second round trip for a value the
-        // principal already carries — and its claim is therefore authoritative.
-        let subject = match person.credential() {
-            PersonCredential::SessionToken { .. } => Some(person.subject().as_str()),
-            PersonCredential::TenantApiKey | PersonCredential::CliCredential => None,
-        };
         Self {
-            subject,
+            subject: reads_user_row(person).then(|| person.subject().as_str()),
             claim: Some(person.tenant().as_str()),
         }
     }
 }
 
-/// A stored tenant identifier, or a report that the column holds something else.
-fn parse_tenant(value: &str) -> Result<Uuid7> {
-    Uuid7::parse(value).map_err(error::row_malformed("core.workspaces", "tenant_id"))
+/// Whether `person`'s tenant is read from their user row.
+///
+/// Only a browser session's is. A claim-bound credential resolved its tenant
+/// through the user row at authentication time, so reading it again would be
+/// a second round trip for a value the principal already carries, and its
+/// claim is therefore authoritative.
+fn reads_user_row(person: &Person) -> bool {
+    match person.credential() {
+        PersonCredential::SessionToken { .. } => true,
+        PersonCredential::TenantApiKey | PersonCredential::CliCredential => false,
+    }
+}
+
+/// The tenant an access row names and the role it is held with, failures
+/// reported under `context`.
+///
+/// A row with no stored role is the caller's own account admitted without a
+/// membership row, and it is held as its owner.
+fn held_row(row: &PgRow, context: &'static str) -> Result<(Uuid7, Role)> {
+    let unreadable = error::query(context);
+    let tenant: String = row.try_get(COLUMN_TENANT_ID).map_err(&unreadable)?;
+    let role: Option<String> = row.try_get(COLUMN_ROLE).map_err(&unreadable)?;
+    Ok((stored::tenant(&tenant)?, Role::held(role.as_deref())?))
 }

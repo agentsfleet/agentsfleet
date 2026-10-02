@@ -177,6 +177,17 @@ export type FleetCountersSnapshot = {
 };
 
 export type ActivityLiveFrame =
+  // A person's message, accepted and waiting for a runner: the id the send's
+  // 202 names, who sent it, and what they typed. Fields past the identifier
+  // are optional on the TYPE because the wire is untrusted.
+  | {
+      kind: typeof FRAME_KIND.EVENT_ADMITTED;
+      event_id: string;
+      actor: string;
+      event_type?: EventTypeValue;
+      message?: string;
+      created_at?: number;
+    }
   // The row as the lease verb opened it: who raised it, how it entered, and
   // the row's own instant. Every field past the identifier is optional on the
   // TYPE because the wire is untrusted; the reducer guards each and falls back.
@@ -187,6 +198,8 @@ export type ActivityLiveFrame =
       actor: string;
       event_type?: EventTypeValue;
       created_at?: number;
+      /** What a person typed, on a steer's frame only. */
+      message?: string;
     } & FleetCountersSnapshot)
 
   | {

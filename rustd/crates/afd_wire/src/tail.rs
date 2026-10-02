@@ -1,13 +1,15 @@
 //! The frames the daemon itself publishes on a fleet's live tail.
 //!
 //! The runner forwards its mid-run frames through [`crate::activity`]; these
-//! are the daemon's own. The brackets open and close a run — `event_received`
-//! when the lease verb records the row, `event_complete` when a report or a
-//! gate refusal ends it — and the gate frames say when a human was asked and
-//! when they answered. All of them ride `fleet:{id}:activity` beside the
-//! runner's, and the dashboard's stream registry and the CLI's steer tail
-//! switch on the `kind` spellings here (`ui/packages/app/lib/api/events.ts`,
-//! `cli/src/commands/fleet_steer_events.ts`).
+//! are the daemon's own. `event_admitted` says a person's message was accepted,
+//! before any runner has it; the brackets open and close a run —
+//! `event_received` when the lease verb records the row, `event_complete` when
+//! a report or a gate refusal ends it — and the gate frames say when a human
+//! was asked and when they answered. All of them ride `fleet:{id}:activity`
+//! beside the runner's. The dashboard's stream registry switches on every
+//! `kind` spelling here (`ui/packages/app/lib/api/events.ts`); the CLI's steer
+//! tail reads `event_complete` and passes over the rest
+//! (`cli/src/commands/fleet_steer_events.ts`).
 //!
 //! # Every frame is self-sufficient
 //!
@@ -144,6 +146,23 @@ pub struct FleetCounters {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TailFrame<'a> {
+    /// A person's message was accepted and waits for a runner.
+    ///
+    /// Published once, by the steer route, after the admission commits and
+    /// before the 202, so every screen on the fleet shows the message while
+    /// it waits. A replayed send publishes nothing: its first send did.
+    EventAdmitted {
+        /// The canonical event identifier, the one the 202 answers with.
+        event_id: Cow<'a, str>,
+        /// Who sent the message.
+        actor: Cow<'a, str>,
+        /// How the event entered the system.
+        event_type: Cow<'a, str>,
+        /// What was typed, at most [`crate::event::STEER_MESSAGE_MAX_BYTES`].
+        message: Cow<'a, str>,
+        /// Epoch milliseconds the admission was recorded.
+        created_at: i64,
+    },
     /// The narrative log opened: a run is about to start.
     EventReceived {
         /// The canonical event identifier.
@@ -154,6 +173,11 @@ pub enum TailFrame<'a> {
         event_type: Cow<'a, str>,
         /// Epoch milliseconds the row was created.
         created_at: i64,
+        /// What a person typed, on a steer only: absent for every other
+        /// actor, above [`crate::event::STEER_MESSAGE_MAX_BYTES`], or when the
+        /// stored body does not parse.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        message: Option<Cow<'a, str>>,
         /// Where the fleet's counters stand after this frame — absolute, so
         /// the client ASSIGNS them rather than adding to them.
         ///

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createTenantWorkspace, listTenantWorkspaces } from "@/lib/api/workspaces";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -131,13 +132,18 @@ describe("createTenantWorkspace", () => {
 });
 
 describe("listTenantWorkspaces", () => {
+  // Each item names its account and the caller's role in it: the first page is
+  // the caller's own account, the second one they joined as a member.
+  const OWN = { account: { tenant_id: "tenant_x", owner_name: "Xan" }, role: ACCOUNT_ROLE.owner };
+  const JOINED = { account: { tenant_id: "tenant_y", owner_name: "John" }, role: ACCOUNT_ROLE.member };
+
   it("walks every cursor page and returns one complete oldest-first list", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            items: [{ id: "ws_1", name: "one", created_at: 1 }],
+            items: [{ id: "ws_1", name: "one", created_at: 1, ...OWN }],
             tenant_id: "tenant_x",
             total: null,
             next_cursor: "1:ws_1",
@@ -148,7 +154,7 @@ describe("listTenantWorkspaces", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            items: [{ id: "ws_2", name: "two", created_at: 2 }],
+            items: [{ id: "ws_2", name: "two", created_at: 2, ...JOINED }],
             tenant_id: "tenant_x",
             total: null,
             next_cursor: null,
@@ -161,8 +167,8 @@ describe("listTenantWorkspaces", () => {
 
     expect(result).toEqual({
       items: [
-        { id: "ws_1", name: "one", created_at: 1 },
-        { id: "ws_2", name: "two", created_at: 2 },
+        { id: "ws_1", name: "one", created_at: 1, ...OWN },
+        { id: "ws_2", name: "two", created_at: 2, ...JOINED },
       ],
       tenant_id: "tenant_x",
       total: 2,
@@ -236,5 +242,31 @@ describe("listTenantWorkspaces", () => {
     const schema =
       operation.responses?.["200"]?.content?.["application/json"]?.schema;
     expect(schema?.$ref).toContain("WorkspacesResponse");
+  });
+});
+
+describe("listTenantWorkspaces account and role", () => {
+  // A workspace the list cannot place under an account would land in the wrong
+  // switcher group, so an item that does not say whose it is fails the read.
+  const OWNED = { id: "ws_1", name: "one", created_at: 1 };
+  const ACCOUNT = { tenant_id: "tenant_x", owner_name: "Xan" };
+
+  function pageOf(item: unknown) {
+    return mockFetchOnce(200, { items: [item], tenant_id: "tenant_x", total: null, next_cursor: null });
+  }
+
+  it("should reject an item whose role this dashboard does not know", async () => {
+    pageOf({ ...OWNED, account: ACCOUNT, role: "viewer" });
+    await expect(listTenantWorkspaces("tok_1")).rejects.toThrow("workspace item is invalid");
+  });
+
+  it("should reject an item that names no account", async () => {
+    pageOf({ ...OWNED, role: ACCOUNT_ROLE.member });
+    await expect(listTenantWorkspaces("tok_1")).rejects.toThrow("workspace account is invalid");
+  });
+
+  it("should reject an account with a blank owner name", async () => {
+    pageOf({ ...OWNED, account: { ...ACCOUNT, owner_name: "" }, role: ACCOUNT_ROLE.member });
+    await expect(listTenantWorkspaces("tok_1")).rejects.toThrow("workspace account is invalid");
   });
 });

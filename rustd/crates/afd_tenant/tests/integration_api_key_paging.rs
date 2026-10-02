@@ -25,8 +25,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_core::clock::UnixMillis;
+use afd_core::error_code;
 use afd_core::paging::Cursor;
-use afd_tenant::apikey::{ApiKeySort, KeyRow};
+use afd_tenant::apikey::{ApiKeySort, Description, KeyName, KeyRow, MintRequest};
 
 /// How far apart the corpus spaces two keys that must NOT tie.
 ///
@@ -170,6 +172,30 @@ async fn test_list_keyset_pagination_by_name() {
         vec!["zulu"],
         "the remainder resumes after the boundary NAME, without repeating it"
     );
+
+    lane.cleanup().await;
+}
+
+/// A second key under a name the account already uses is the caller's
+/// conflict, decided by the unique index at the insert, not a datastore
+/// failure.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_refuse_duplicate_name_when_index_rejects_insert() {
+    let lane = ApiKeyLane::create().await;
+    lane.mint_key("alpha", NOW_MS).await;
+    let request = MintRequest {
+        tenant: &lane.tenant,
+        name: KeyName::parse("alpha").expect("a well-formed name"),
+        description: Description::parse(None).expect("an absent description is legal"),
+        created_by: "fixture|apikey-collision",
+    };
+    let taken = lane
+        .keys
+        .mint(&request, UnixMillis::from_millis(NOW_MS + STEP_MS))
+        .await
+        .expect_err("the name is taken");
+    assert_eq!(taken.code(), error_code::APIKEY_NAME_TAKEN);
 
     lane.cleanup().await;
 }

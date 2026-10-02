@@ -14,7 +14,11 @@ import {
   subscribe,
   type ConnectionStatus,
 } from "@/lib/streaming/fleet-stream-registry";
-import type { FleetEvent, FleetEventStatus } from "@/lib/streaming/fleet-stream-row";
+import {
+  AGENTSFLEET_EVENT_STATUS,
+  type FleetEvent,
+  type FleetEventStatus,
+} from "@/lib/streaming/fleet-stream-row";
 import type { InstallStepId } from "@/lib/streaming/install-steps";
 import { setEventDetailReader } from "@/lib/streaming/fleet-stream-reply-registry";
 import { readEventDetailRoute } from "@/lib/streaming/fleet-stream-detail-reader";
@@ -136,7 +140,10 @@ export function convertEvent(event: FleetEvent): ThreadMessageLike {
         actor: event.actor,
         requestJson: event.custom?.requestJson,
         status: event.status,
-        queued: event.clientTimestamp === true,
+        // Waiting for a runner: this tab's own send before the daemon opened
+        // it, or any sender's message the thread read or admitted frame says
+        // is still on the queue.
+        queued: event.clientTimestamp === true || event.status === AGENTSFLEET_EVENT_STATUS.QUEUED,
         submittedAtMs: event.submittedAtMs,
         // The reply itself is not here: it is the reply message's content
         // (`toReplyMessage`), and carrying it would change this message on

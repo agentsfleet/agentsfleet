@@ -170,7 +170,7 @@ impl Ingress {
         fleet: &Uuid7,
         now: UnixMillis,
     ) -> Result<Uuid7> {
-        let id = Uuid7::encode(now, self.entropy.uuid_randomness()?)?;
+        let id = self.entropy.uuid7(now)?;
         let mut connection = self.database.acquire().await?;
         let bound: Option<String> = sqlx::query_scalar(sql::INSERT_RESIDENT)
             .bind(id.as_str())

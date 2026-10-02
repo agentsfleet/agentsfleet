@@ -9,17 +9,25 @@
 
 use std::fmt;
 
+use afd_connector::Dashboard;
 use afd_core::env::EnvSource;
 use afd_crypto::secret::Kek;
 use afd_identity::ProviderSecret;
 
 use super::knobs::{
-    ENCRYPTION_MASTER_KEY_KNOB, OIDC_AUDIENCE_KNOB, OIDC_ISSUER_KNOB, OIDC_JWKS_URL_KNOB,
-    PROVIDER_API_BASE_KNOB, PROVIDER_SECRET_KNOB, R2_KNOBS, SSE_MAX_STREAMS_DEFAULT,
-    SSE_MAX_STREAMS_KNOB, WHY_API_BASE, WHY_AUDIENCE, WHY_ISSUER, WHY_KEK, WHY_R2, WHY_SECRET,
-    WHY_SSE_MAX_STREAMS,
+    APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, OIDC_AUDIENCE_KNOB, OIDC_ISSUER_KNOB,
+    OIDC_JWKS_URL_KNOB, PROVIDER_API_BASE_KNOB, PROVIDER_SECRET_KNOB, R2_KNOBS,
+    SSE_MAX_STREAMS_DEFAULT, SSE_MAX_STREAMS_KNOB, WHY_API_BASE, WHY_APP_URL, WHY_AUDIENCE,
+    WHY_ISSUER, WHY_KEK, WHY_R2, WHY_SECRET, WHY_SSE_MAX_STREAMS,
 };
 use super::{BundleStoreConfig, Fault, IdentityConfig};
+
+/// The dashboard base `raw` names, parsed once so a base that is not a URL
+/// refuses boot rather than failing every connect and invite link on its own.
+pub(super) fn dashboard(raw: &str, faults: &mut Vec<Fault>) -> Option<Dashboard> {
+    let parsed = Dashboard::parse(raw).ok_or(WHY_APP_URL);
+    classify(faults, true, APP_URL_KNOB, WHY_APP_URL, parsed)
+}
 
 /// Resolves the snapshot store, which a boot may legitimately not have.
 ///

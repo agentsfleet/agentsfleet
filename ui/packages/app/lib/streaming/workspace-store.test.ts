@@ -220,3 +220,24 @@ describe("joining after the greeting", () => {
     expect(store.workspaceSnapshot().catchingUp).toBe(true);
   });
 });
+
+describe("a message waiting for a runner", () => {
+  it("test_wall_ignores_admitted_frame", () => {
+    const before = store.snapshot(FLEET_A);
+    push(FLEET_A, {
+      kind: FRAME_KIND.EVENT_ADMITTED,
+      fleet_id: FLEET_A,
+      event_id: "e1",
+      actor: "steer:user_bob",
+      message: "check the tests",
+      created_at: 1,
+    });
+    flushFrame();
+    // The tile is the one it was: same feed, same object.
+    expect(store.snapshot(FLEET_A)).toBe(before);
+    // The run's received frame is what moves it.
+    push(FLEET_A, received(FLEET_A, "e1", STANDING));
+    flushFrame();
+    expect(store.snapshot(FLEET_A).feed).not.toEqual(before.feed);
+  });
+});

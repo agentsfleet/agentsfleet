@@ -13,11 +13,15 @@ import { CONNECTION_STATUS, type ConnectionStatus } from "./useFleetEventStream"
 // old indicator pulsed ONLY when already live, so the one moment the operator
 // wanted a sign of life — while connecting — was the one moment it sat still.
 
+/** What a stream ended by `access_revoked` reads as, here and on the wall's badge. */
+export const ACCESS_REVOKED_LABEL = "No access";
+
 const STATUS_LABEL: Record<ConnectionStatus, string> = {
   [CONNECTION_STATUS.CONNECTING]: "Connecting…",
   [CONNECTION_STATUS.LIVE]: "Live",
   [CONNECTION_STATUS.RECONNECTING]: "Reconnecting…",
   [CONNECTION_STATUS.OFFLINE]: "Not live",
+  [CONNECTION_STATUS.REVOKED]: ACCESS_REVOKED_LABEL,
 };
 
 const STATUS_CLASS: Record<ConnectionStatus, string> = {
@@ -25,6 +29,7 @@ const STATUS_CLASS: Record<ConnectionStatus, string> = {
   [CONNECTION_STATUS.LIVE]: "text-pulse",
   [CONNECTION_STATUS.RECONNECTING]: "text-warning",
   [CONNECTION_STATUS.OFFLINE]: "text-destructive",
+  [CONNECTION_STATUS.REVOKED]: "text-destructive",
 };
 
 /** How long the arrival cue plays before the steady pulse takes over. */

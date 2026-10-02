@@ -117,6 +117,7 @@ fn test_every_fleet_producer_runs_its_body() {
         SignupFailure::BadSignature,
         SignupFailure::StaleTimestamp,
         SignupFailure::MissingEmail,
+        SignupFailure::UnverifiedEmail,
         SignupFailure::DatabaseError,
         SignupFailure::PoolUnavailable,
         SignupFailure::MetadataWriteback,

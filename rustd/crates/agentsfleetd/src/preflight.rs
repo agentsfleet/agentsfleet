@@ -129,7 +129,7 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
     // or header list this build cannot use — those are typos that would
     // otherwise surface as a collector that never receives anything.
     let otlp = self::otlp::otlp(env, &mut faults);
-    let dashboard = optional_url(APP_URL_KNOB, APP_URL_DEFAULT);
+    let dashboard = read::dashboard(&optional_url(APP_URL_KNOB, APP_URL_DEFAULT), &mut faults);
     let deployment = optional_url(API_URL_KNOB, API_URL_DEFAULT);
     let identity = identity(env, &mut faults);
     // Answers `None` for BOTH "configured nothing" and "configured badly", and
@@ -153,29 +153,39 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
             )
         });
 
-    match (api_pool, redis, kek, identity, session_code_pepper) {
-        (Some(api_pool), Some(redis), Some(kek), Some(identity), Some(session_code_pepper))
-            if faults.is_empty() =>
-        {
-            Ok(BootConfig {
-                api_pool,
-                redis,
-                kek,
-                session_code_pepper,
-                app_url: dashboard,
-                api_url: deployment,
-                identity,
-                bundles,
-                platform_admin_workspace,
-                qstash_token: optional_secret(env, QSTASH_TOKEN_KNOB),
-                qstash_url: optional(env, QSTASH_URL_KNOB),
-                identity_webhook_secret: optional(env, IDENTITY_WEBHOOK_SECRET_KNOB),
-                qstash_keys: signing_keys(env),
-                sse_max_streams,
-                posthog,
-                otlp,
-            })
-        }
+    match (
+        api_pool,
+        redis,
+        kek,
+        identity,
+        session_code_pepper,
+        dashboard,
+    ) {
+        (
+            Some(api_pool),
+            Some(redis),
+            Some(kek),
+            Some(identity),
+            Some(session_code_pepper),
+            Some(dashboard),
+        ) if faults.is_empty() => Ok(BootConfig {
+            api_pool,
+            redis,
+            kek,
+            session_code_pepper,
+            app_url: dashboard,
+            api_url: deployment,
+            identity,
+            bundles,
+            platform_admin_workspace,
+            qstash_token: optional_secret(env, QSTASH_TOKEN_KNOB),
+            qstash_url: optional(env, QSTASH_URL_KNOB),
+            identity_webhook_secret: optional(env, IDENTITY_WEBHOOK_SECRET_KNOB),
+            qstash_keys: signing_keys(env),
+            sse_max_streams,
+            posthog,
+            otlp,
+        }),
         // Anything else: a knob that is missing or unusable, the identity
         // provider included. Every one of them has already pushed its own
         // fault, so the refusal names them all rather than the first.

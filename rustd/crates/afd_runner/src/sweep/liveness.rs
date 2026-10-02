@@ -26,7 +26,7 @@
 use std::time::Duration;
 
 use afd_core::clock::{self, UnixMillis};
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use afd_core::spelling;
 use afd_core::timing::{HEARTBEAT_INTERVAL_MS, RUNNER_OFFLINE_AFTER_MS};
 use afd_crypto::entropy::Entropy;
@@ -115,9 +115,7 @@ impl Liveness {
 
     /// A fresh identifier for one event row.
     fn event_id(&self, now: UnixMillis) -> Result<Uuid7> {
-        let mut bytes = [0u8; ENTROPY_LEN];
-        self.entropy.fill(&mut bytes)?;
-        Ok(Uuid7::encode(now, bytes)?)
+        Ok(self.entropy.uuid7(now)?)
     }
 
     /// The runners this pass has to look at.

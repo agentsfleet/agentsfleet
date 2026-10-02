@@ -95,6 +95,26 @@ impl Display for ApiKeyField {
     }
 }
 
+/// What already stands between an address and a new invite into an account.
+///
+/// Both answer `UZ-INV-003`; the remedy differs, so a refusal says which.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InviteConflict {
+    /// The address belongs to one of the account's members.
+    Member,
+    /// The address has an invite into the account that can still be accepted.
+    Invited,
+}
+
+impl Display for InviteConflict {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Member => "already belongs to the account",
+            Self::Invited => "already has a pending invite",
+        })
+    }
+}
+
 impl Error {
     /// Raises `kind` as an error, capturing a backtrace.
     ///
@@ -129,6 +149,15 @@ impl Error {
         )
     }
 
+    /// What refused an invite, when an invite was refused for a conflict.
+    #[must_use]
+    pub const fn invite_conflict(&self) -> Option<InviteConflict> {
+        match self.inner.kind {
+            ErrorKind::InviteConflict { conflict } => Some(conflict),
+            _ => None,
+        }
+    }
+
     /// The registry code this failure answers with.
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
@@ -140,19 +169,17 @@ impl Error {
             ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } => {
                 error_code::INTERNAL_DB_UNAVAILABLE
             }
-            ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } => {
-                error_code::INTERNAL_DB_QUERY
+            ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::RoleUnknown { .. } => error_code::INTERNAL_DB_QUERY,
+            // One internal code for two failures the caller shares an
+            // inability to correct. One is this instance's own: a
+            // cryptographic step — a draw, an identifier, a key — that failed.
+            // A machine collision reaching the edge means the mint's retry
+            // already lost twice in a row. The log's source chain separates them.
+            ErrorKind::Crypto { .. } | ErrorKind::CliCredentialMachineCollision => {
+                error_code::INTERNAL_OPERATION_FAILED
             }
-            // One internal code for four failures the caller shares an
-            // inability to correct. Two are this instance's own — a mint that
-            // failed, a host that cannot draw entropy. A missing wallet is
-            // operator surgery or a defect, because signup bootstrap writes it
-            // in the tenant-create transaction; a machine collision reaching
-            // the edge means the mint's retry already lost twice in a row. The
-            // SENTENCES separate them where separation helps.
-            ErrorKind::Mint { .. }
-            | ErrorKind::Entropy { .. }
-            | ErrorKind::CliCredentialMachineCollision => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::SessionFieldInvalid { field } => match field {
                 SessionField::PublicKey => error_code::INVALID_PUBLIC_KEY,
                 SessionField::TokenName => error_code::INVALID_TOKEN_NAME,
@@ -180,7 +207,8 @@ impl Error {
             ErrorKind::ApiKeyFieldInvalid { .. }
             | ErrorKind::CliCredentialMachineNameInvalid
             | ErrorKind::WorkspaceNameInvalid
-            | ErrorKind::WorkspaceNameTooLong => error_code::INVALID_REQUEST,
+            | ErrorKind::WorkspaceNameTooLong
+            | ErrorKind::EmailInvalid => error_code::INVALID_REQUEST,
             ErrorKind::WorkspaceNameExists => error_code::WORKSPACE_NAME_EXISTS,
             // A 401 and not a 403: the session's tenant is GONE, so the
             // credential itself is stale and re-authenticating is the remedy.
@@ -195,6 +223,10 @@ impl Error {
             ErrorKind::ApiKeyReadonlyField => error_code::APIKEY_READONLY_FIELD,
             ErrorKind::ApiKeyMustRevokeFirst => error_code::APIKEY_MUST_REVOKE_FIRST,
             ErrorKind::CliCredentialNotFound => error_code::AUTH_CLI_CREDENTIAL_NOT_FOUND,
+            ErrorKind::InviteNotFound => error_code::INVITE_NOT_FOUND,
+            ErrorKind::InviteEmailMismatch => error_code::INVITE_EMAIL_MISMATCH,
+            ErrorKind::InviteConflict { .. } => error_code::INVITE_CONFLICT,
+            ErrorKind::MemberLastOwner => error_code::MEMBER_LAST_OWNER,
         }
     }
 
@@ -217,8 +249,8 @@ impl Error {
             // cause is in the log beside the request id.
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
-            | ErrorKind::Mint { .. }
-            | ErrorKind::Entropy { .. }
+            | ErrorKind::RoleUnknown { .. }
+            | ErrorKind::Crypto { .. }
             | ErrorKind::CliCredentialMachineCollision => DETAIL_DATABASE_ERROR,
             ErrorKind::SessionFieldInvalid { field } => match field {
                 SessionField::PublicKey => DETAIL_SESSION_PUBLIC_KEY,
@@ -253,33 +285,23 @@ impl Error {
             ErrorKind::WorkspaceNameExists => DETAIL_WORKSPACE_NAME_EXISTS,
             ErrorKind::WorkspaceTenantVanished => DETAIL_WORKSPACE_TENANT_VANISHED,
             ErrorKind::LibraryPageUnavailable { .. } => DETAIL_LIBRARY_PAGE_UNAVAILABLE,
+            ErrorKind::InviteNotFound => DETAIL_INVITE_NOT_FOUND,
+            ErrorKind::InviteEmailMismatch => DETAIL_INVITE_EMAIL_MISMATCH,
+            ErrorKind::InviteConflict { conflict } => match conflict {
+                InviteConflict::Member => DETAIL_INVITE_MEMBER,
+                InviteConflict::Invited => DETAIL_INVITE_PENDING,
+            },
+            ErrorKind::MemberLastOwner => DETAIL_MEMBER_LAST_OWNER,
+            ErrorKind::EmailInvalid => DETAIL_INVITE_EMAIL_INVALID,
         }
     }
 }
 
-impl From<afd_db::Error> for Error {
-    fn from(source: afd_db::Error) -> Self {
-        Self::new(ErrorKind::Datastore { source })
-    }
-}
-
-impl From<afd_dragonfly::Error> for Error {
-    fn from(source: afd_dragonfly::Error) -> Self {
-        Self::new(ErrorKind::Queue { source })
-    }
-}
-
-impl From<afd_core::error::Error> for Error {
-    fn from(source: afd_core::error::Error) -> Self {
-        Self::new(ErrorKind::Mint { source })
-    }
-}
-
-impl From<afd_crypto::error::Error> for Error {
-    fn from(source: afd_crypto::error::Error) -> Self {
-        Self::new(ErrorKind::Entropy { source })
-    }
-}
+afd_core::error_lifts!(Error, ErrorKind:
+    afd_db::Error => Datastore,
+    afd_dragonfly::Error => Queue,
+    afd_crypto::error::Error => Crypto,
+);
 
 mod raise;
 

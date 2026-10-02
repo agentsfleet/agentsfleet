@@ -101,6 +101,7 @@ use self::readiness::{NOWHERE_GITHUB, unreachable_pool};
 mod stubs_runner;
 mod stubs_tenant;
 mod support;
+mod team_faults;
 
 /// Signed deliveries, as a provider would present them.
 pub(crate) mod webhook;
@@ -109,7 +110,8 @@ pub(crate) use self::stubs_identity::{RecordingWriteback, WroteBack};
 pub(crate) use self::stubs_ingress::{HarnessIngress, Recorded, Scripted};
 pub(crate) use self::stubs_provider::HarnessProviders;
 pub(crate) use self::stubs_runner::NoWork;
-pub(crate) use self::stubs_tenant::{DEPLOYMENT, OWNED_WORKSPACE, OneWorkspace};
+pub(crate) use self::stubs_tenant::{DEPLOYMENT, OWNED_WORKSPACE, OneWorkspace, Ownership};
+pub(crate) use self::team_faults::{Failpoint, HarnessTeam, TeamStep};
 /// Where this fixture deployment's schedule fires would arrive.
 ///
 /// A real destination shape, because it is half of what a fire token's subject
@@ -128,8 +130,8 @@ pub(crate) const SCHEDULE_DESTINATION: &str =
 pub(crate) const SCHEDULE_API_BASE: &str = "https://qstash.fixture.test/v2";
 
 pub(crate) use self::support::{
-    ERROR_CODE, connect_redis, dragonfly_config, file_runner, json_body, presented, runner_id,
-    send, send_with_headers, tenant,
+    ERROR_CODE, concrete_path, connect_redis, dragonfly_config, error_code, exchange, file_runner,
+    items, json_body, live_hub, presented, runner_id, send, send_with_headers, tenant, text,
 };
 
 /// A Postgres nobody is listening on.
@@ -222,9 +224,11 @@ pub(crate) struct Fleet {
     runners: Runners,
     leases: NoWork,
     bundles: Bundles,
-    workspaces: OneWorkspace,
+    workspaces: Ownership,
     workspace_directory: Workspaces,
     api_keys: ApiKeys,
+    team: HarnessTeam,
+    invite_mail: afd_mail::InviteMailer,
     cli_credentials: CliCredentials,
     logins: Logins,
     fleets: Fleets,
@@ -239,13 +243,8 @@ pub(crate) struct Fleet {
     signups: afd_tenant::signup::Signups,
     /// What a signup event is verified against — `None` refuses every one.
     identity_webhook_secret: Option<afd_crypto::secret::SecretBytes>,
-    /// The dashboard base a connect relays through.
-    ///
-    /// A field rather than the constant so ONE case can make it unusable. Every
-    /// other fixture keeps `FIXTURE_APP_URL`, because a base that is not a URL
-    /// makes every connect refuse for a reason that test was not about — which
-    /// is exactly why the refusal needs its own case rather than a shared one.
-    dashboard_base: String,
+    /// The dashboard base a connect relays through, parsed as boot parses it.
+    dashboard_base: afd_connector::Dashboard,
     preferences: Preferences,
     approvals: Inbox,
     grants: IntegrationGrants,
@@ -299,6 +298,7 @@ impl CredentialDirectory for Directory {
 const DEFAULT_STREAM_CEILING: usize = 64;
 
 mod fleet;
+mod fleet_access;
 mod fleet_credentials;
 mod fleet_seams;
 

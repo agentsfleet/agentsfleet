@@ -95,3 +95,27 @@ fn constructors_preserve_each_refusal_status_and_header() {
         Some(&HeaderValue::from_static("1"))
     );
 }
+
+/// The `current_state` a rendered refusal carries, when it carries one.
+async fn current_state(refusal: Refusal) -> Option<String> {
+    let body = axum::body::to_bytes(refusal.into_response().into_body(), usize::MAX)
+        .await
+        .ok()?;
+    let document: serde_json::Value = serde_json::from_slice(&body).ok()?;
+    document
+        .get("current_state")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+}
+
+/// An error the call site names a state for is a conflict carrying it; any
+/// other renders as `at` would, with no state a client could branch on.
+#[tokio::test]
+async fn conflict_or_at_names_a_state_only_for_the_errors_the_call_site_picks() {
+    let named =
+        Refusal::conflict_or_at("fixture", |_: &DomainRefusal| Some("paused"))(DomainRefusal);
+    assert_eq!(current_state(named).await.as_deref(), Some("paused"));
+
+    let plain = Refusal::conflict_or_at("fixture", |_: &DomainRefusal| None)(DomainRefusal);
+    assert_eq!(current_state(plain).await, None);
+}

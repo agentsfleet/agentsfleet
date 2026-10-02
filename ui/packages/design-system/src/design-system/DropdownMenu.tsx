@@ -1,6 +1,7 @@
 "use client";
 
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { cva, type VariantProps } from "class-variance-authority";
 import { type ComponentProps, type HTMLAttributes } from "react";
 import { cn } from "../utils";
 import { EYEBROW_CLASS } from "./eyebrow";
@@ -67,20 +68,30 @@ export function DropdownMenuItem({ className, inset, ref, ...props }: DropdownMe
   );
 }
 
-export type DropdownMenuLabelProps = ComponentProps<typeof DropdownMenuPrimitive.Label> & {
-  inset?: boolean;
-};
+// `eyebrow` heads a section in capitals ("WORKSPACE"). `name` carries a proper
+// noun ("John's account") in sentence case at the label size, where capitals
+// would shout it. Each variant owns its whole typography, so neither depends on
+// the stylesheet's rule order to beat the other.
+const dropdownMenuLabelVariants = cva("px-2.5 py-1.5 text-muted-foreground", {
+  variants: {
+    variant: {
+      eyebrow: EYEBROW_CLASS,
+      name: "font-sans text-label leading-label tracking-label",
+    },
+  },
+  defaultVariants: { variant: "eyebrow" },
+});
 
-export function DropdownMenuLabel({ className, inset, ref, ...props }: DropdownMenuLabelProps) {
+export type DropdownMenuLabelProps = ComponentProps<typeof DropdownMenuPrimitive.Label> &
+  VariantProps<typeof dropdownMenuLabelVariants> & {
+    inset?: boolean;
+  };
+
+export function DropdownMenuLabel({ className, inset, variant, ref, ...props }: DropdownMenuLabelProps) {
   return (
     <DropdownMenuPrimitive.Label
       ref={ref}
-      className={cn(
-        "px-2.5 py-1.5 text-muted-foreground",
-        EYEBROW_CLASS,
-        inset && "pl-8",
-        className,
-      )}
+      className={cn(dropdownMenuLabelVariants({ variant }), inset && "pl-8", className)}
       {...props}
     />
   );

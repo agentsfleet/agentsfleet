@@ -40,6 +40,8 @@ mod fleet_messages_steer;
 mod fleet_streams;
 #[path = "integration_auth_sessions.rs"]
 mod integration_auth_sessions;
+#[path = "integration_fleet_admitted.rs"]
+mod integration_fleet_admitted;
 #[path = "integration_fleet_install_credentials.rs"]
 mod integration_fleet_install_credentials;
 #[path = "integration_fleet_lifecycle.rs"]
@@ -48,6 +50,16 @@ mod integration_fleet_lifecycle;
 mod integration_fleet_memories;
 #[path = "integration_fleet_streams.rs"]
 mod integration_fleet_streams;
+#[path = "integration_invite_email.rs"]
+mod integration_invite_email;
+#[path = "integration_invite_email_mailpit.rs"]
+mod integration_invite_email_mailpit;
+#[path = "integration_invite_email_send.rs"]
+mod integration_invite_email_send;
+#[path = "integration_team_routes.rs"]
+mod integration_team_routes;
+#[path = "integration_team_routes_scope.rs"]
+mod integration_team_routes_scope;
 #[path = "integration_tenant.rs"]
 mod integration_tenant;
 #[path = "integration_tenant_cli.rs"]
@@ -58,6 +70,8 @@ mod integration_tenant_models;
 mod integration_tenant_money;
 #[path = "integration_tenant_provider.rs"]
 mod integration_tenant_provider;
+#[path = "integration_wall_recheck.rs"]
+mod integration_wall_recheck;
 #[path = "integration_wall_ticks.rs"]
 mod integration_wall_ticks;
 #[path = "integration_workspace_approvals.rs"]
@@ -66,6 +80,8 @@ mod integration_workspace_approvals;
 mod integration_workspace_approvals_listing;
 #[path = "integration_workspace_library_entries.rs"]
 mod integration_workspace_library_entries;
+#[path = "integration_workspace_members.rs"]
+mod integration_workspace_members;
 #[path = "integration_workspace_preferences.rs"]
 mod integration_workspace_preferences;
 #[path = "tenant_api_keys.rs"]
@@ -84,6 +100,10 @@ mod tenant_models;
 mod tenant_provider_route;
 #[path = "tenant_shape_parity.rs"]
 mod tenant_shape_parity;
+#[path = "tenant_shape_parity_pages.rs"]
+mod tenant_shape_parity_pages;
+#[path = "tenant_shape_parity_team.rs"]
+mod tenant_shape_parity_team;
 #[path = "tenant_workspaces.rs"]
 mod tenant_workspaces;
 #[path = "workspace_approvals.rs"]
@@ -98,6 +118,8 @@ mod workspace_fleet_libraries;
 mod workspace_fleets;
 #[path = "workspace_fleets_input.rs"]
 mod workspace_fleets_input;
+#[path = "workspace_member_roles.rs"]
+mod workspace_member_roles;
 #[path = "workspace_preferences.rs"]
 mod workspace_preferences;
 #[path = "workspace_secrets.rs"]

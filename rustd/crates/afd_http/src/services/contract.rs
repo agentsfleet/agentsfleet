@@ -11,6 +11,7 @@
 //! the file about the tenant surface.
 
 use afd_admin::{Models as AdminModels, PlatformKeys};
+use afd_connector::Dashboard;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet::bundle::Bundles;
@@ -241,11 +242,12 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// Beside [`Services::deployment`] and never the same string. Every
     /// connector redirect is built from this one: the `redirect_uri` a provider
     /// mints its code against, the relay the browser is sent back through, and
-    /// the page a completed connect lands on. Reading it from a request's
-    /// `Host` would let a provider's registered callback and this daemon's idea
-    /// of it disagree, which fails as `redirect_uri_mismatch` at the vendor and
-    /// reads like a rotated credential.
-    fn dashboard(&self) -> &str;
+    /// the page a completed connect lands on, and so is an invite's accept
+    /// link. Reading it from a request's `Host` would let a provider's
+    /// registered callback and this daemon's idea of it disagree, which fails
+    /// as `redirect_uri_mismatch` at the vendor and reads like a rotated
+    /// credential. Parsed at boot, so no request re-parses it or refuses over it.
+    fn dashboard(&self) -> &Dashboard;
 
     /// What the steer verb acts through.
     type Steering: FleetSteering;

@@ -1,0 +1,13 @@
+---
+source: crates/afd_mail/src/invite/tests.rs
+expression: rendered.text
+---
+John invited you to join John's account on agentsfleet.
+
+Once you join, you share its fleets and their threads with the rest of the team. Sign in with this email address, then open this link to accept:
+
+https://app.agentsfleet.test/invites/0190f5a2-4b2d-7c11-8d5e-2a5f31d98210
+
+This invitation expires in 7 days. If you were not expecting it, you can ignore this email.
+
+agentsfleet · https://agentsfleet.net

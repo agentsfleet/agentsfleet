@@ -105,11 +105,16 @@ pub(crate) async fn poll_for_seeded_lease(http: &reqwest::Client, run: &Scenario
 }
 
 /// [`poll_for_seeded_lease`], for any event the scenario has put on its fleet.
+///
+/// A lease for another event is not this call's to settle, so the loop moves
+/// past it — but it keeps count, because a budget spent on leftovers and a
+/// budget spent on `lease: null` are different failures with different fixes.
 pub(crate) async fn poll_for_lease(
     http: &reqwest::Client,
     run: &Scenario,
     event_id: &str,
 ) -> (String, u64) {
+    let mut elsewhere = Vec::new();
     for _poll in 0..(READY_PARTITIONS * ROTATIONS) {
         let response = post(http, run, "/v1/runners/me/leases", &json!({})).await;
         // Asserted on EVERY turn, not once before the loop: a caller that
@@ -124,30 +129,68 @@ pub(crate) async fn poll_for_lease(
         let Some(lease) = body.get("lease").filter(|value| !value.is_null()) else {
             continue;
         };
-        if field(field(lease, "event"), "event_id") == &json!(event_id) {
+        let event = field(lease, "event");
+        if field(event, "event_id") == &json!(event_id) {
             return claim(lease);
         }
+        elsewhere.push(
+            field(event, "fleet_id")
+                .as_str()
+                .expect("a lease's event names its fleet")
+                .to_owned(),
+        );
     }
     panic!(
         "the event {event_id} was never offered in {ROTATIONS} rotations of the \
-         readiness index.\n\
-         \n\
-         Every poll answered 200 with `lease: null`, so the daemon did not fail: \
-         it found nothing it would hand this runner. Read the daemon's own log \
-         before theorising — `AFD_TEST_LOG=1` is the switch; `RUST_LOG` alone \
-         writes to a sink — and find the poll that DID reach the fleet's \
-         partition, one in {READY_PARTITIONS}: the reason it declined is on \
-         that line. The last time this fired, the line was \
-         `assign_entry_undecodable_dropped`: the seed had appended the \
-         pre-ledger field set, the reader refused the entry for want of \
-         `event_id`, dropped it so the fleet stayed leasable, and every later \
-         poll correctly found the stream empty. The seed now admits through the \
-         ledger (`e2e_event.rs`).\n\
-         \n\
-         Also worth ruling out: a fleet in the lane database whose `config_json` \
-         will not parse — the pull path resolves one and refuses the runner \
-         with UZ-INTERNAL-003 — and a runner already holding a lease, since a \
-         runner holds one lease and a poll that lands on residue takes the slot."
+         readiness index.\n\n{}",
+        never_offered(&elsewhere)
+    )
+}
+
+/// How many fleet ids a failed poll names before it stops listing them.
+const NAMED_ELSEWHERE: usize = 8;
+
+/// Why [`poll_for_lease`] came back empty-handed, from what it was handed.
+fn never_offered(elsewhere: &[String]) -> String {
+    if elsewhere.is_empty() {
+        return format!(
+            "Every poll answered 200 with `lease: null`, so the daemon did not \
+             fail: it found nothing it would hand this runner. Read the daemon's \
+             own log before theorising — `AFD_TEST_LOG=1` is the switch; \
+             `RUST_LOG` alone writes to a sink — and find the poll that DID reach \
+             the fleet's partition, one in {READY_PARTITIONS}: the reason it \
+             declined is on that line. The last time this fired, the line was \
+             `assign_entry_undecodable_dropped`: the seed had appended the \
+             pre-ledger field set, the reader refused the entry for want of \
+             `event_id`, dropped it so the fleet stayed leasable, and every later \
+             poll correctly found the stream empty. The seed now admits through \
+             the ledger (`e2e_event.rs`).\n\n\
+             Also worth ruling out: a fleet in the lane database whose \
+             `config_json` will not parse — the pull path resolves one and \
+             refuses the runner with UZ-INTERNAL-003."
+        );
+    }
+    let named = elsewhere
+        .iter()
+        .take(NAMED_ELSEWHERE)
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "{} of the polls were answered with a lease for ANOTHER event, on fleets \
+         [{named}{}]. The daemon was handing out work, just not this work: every \
+         such lease spent one of this partition's visits. A fleet that is not \
+         this scenario's is a leftover an earlier scenario or suite left \
+         leasable — `Scenario::cleanup` retires its fleet so the reclaim sweeper \
+         cannot re-mark it (`e2e_retire.rs`); find the suite that skipped it. A \
+         lease on THIS scenario's fleet for another event means the fixture \
+         appended twice and the oldest entry is the one owed.",
+        elsewhere.len(),
+        if elsewhere.len() > NAMED_ELSEWHERE {
+            ", among others"
+        } else {
+            ""
+        },
     )
 }
 

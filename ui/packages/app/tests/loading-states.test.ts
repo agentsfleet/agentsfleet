@@ -32,6 +32,17 @@ describe("dashboard segment loading states", () => {
       expectsTitle: "Billing",
     },
     {
+      name: "settings/members",
+      importer: () => import("../app/(dashboard)/settings/members/loading"),
+      expectsTitle: "Members",
+    },
+    {
+      // One loader covers both Invites routes; the linked one nests under it.
+      name: "invites",
+      importer: () => import("../app/(dashboard)/invites/loading"),
+      expectsTitle: "Invites",
+    },
+    {
       // Secrets is its own standalone page — its loader paints the real
       // title, not the stale "Models" it borrowed when /credentials redirected.
       name: "secrets",

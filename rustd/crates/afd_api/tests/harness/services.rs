@@ -38,9 +38,9 @@ use afd_vault::Vault as SecretVault;
 
 use super::HarnessProviders;
 use super::stubs_runner::NoWork;
-use super::stubs_tenant::OneWorkspace;
+use super::stubs_tenant::Ownership;
 use super::{
-    DEPLOYMENT, Directory, FIXTURE_APP_URL, Fleet, HarnessIngress, RecordingWriteback,
+    DEPLOYMENT, Directory, FIXTURE_APP_URL, Fleet, HarnessIngress, HarnessTeam, RecordingWriteback,
     SCHEDULE_DESTINATION,
 };
 
@@ -49,7 +49,7 @@ impl Services for Fleet {
     type SignupMetadata = RecordingWriteback;
     type Leases = NoWork;
     type Sessions = Logins;
-    type Workspaces = OneWorkspace;
+    type Workspaces = Ownership;
     type Fleets = Fleets;
     type Secrets = SecretVault;
     type Preferences = Preferences;
@@ -86,7 +86,7 @@ impl Services for Fleet {
         &self.logins
     }
 
-    fn workspaces(&self) -> &OneWorkspace {
+    fn workspaces(&self) -> &Ownership {
         &self.workspaces
     }
 
@@ -137,7 +137,7 @@ impl Services for Fleet {
     /// connect proves: the `redirect_uri` a code is minted against is built
     /// from this, and a base that is not a URL would make every connect refuse
     /// for a reason no test was about.
-    fn dashboard(&self) -> &str {
+    fn dashboard(&self) -> &afd_connector::Dashboard {
         &self.dashboard_base
     }
 
@@ -226,11 +226,17 @@ impl Services for Fleet {
 impl TenantSurface for Fleet {
     type WorkspaceDirectory = Workspaces;
     type ApiKeys = ApiKeys;
+    type Team = HarnessTeam;
     type CliCredentials = CliCredentials;
     type Billing = Billing;
     type Catalogue = Models;
     type TenantProviders = HarnessProviders;
     type Signups = afd_tenant::signup::Signups;
+    type InviteMail = afd_mail::InviteMailer;
+
+    fn invite_mail(&self) -> &afd_mail::InviteMailer {
+        &self.invite_mail
+    }
 
     fn workspace_directory(&self) -> &Workspaces {
         &self.workspace_directory
@@ -238,6 +244,10 @@ impl TenantSurface for Fleet {
 
     fn api_keys(&self) -> &ApiKeys {
         &self.api_keys
+    }
+
+    fn team(&self) -> &HarnessTeam {
+        &self.team
     }
 
     fn cli_credentials(&self) -> &CliCredentials {

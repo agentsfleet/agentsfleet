@@ -20,6 +20,10 @@ const NEVER_SEEN: i64 = 0;
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn liveness_and_retention_converge_real_runner_rows() {
+    // The liveness pass expires EVERY abandoned active lease in the lane, and
+    // the reclaim fixtures strand one on purpose; run beside them, this pass
+    // flips that lease before their reclaim pass can surface it.
+    let _lane = crate::integration_reclaim_faults::RECLAIM_LANE.lock().await;
     let fixture = Fixture::create().await;
     fixture.seed().await;
 

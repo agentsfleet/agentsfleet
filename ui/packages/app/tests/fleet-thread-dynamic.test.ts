@@ -52,6 +52,7 @@ describe("FleetThreadDynamic", () => {
         senderLabel: "reviewer",
         initial: [],
         viewer: null,
+        senderNames: [],
       }),
     );
     await waitFor(async () => {
@@ -67,6 +68,7 @@ describe("FleetThreadDynamic", () => {
         senderLabel: "github-pr-reviewer",
         initial: [],
         viewer: null,
+        senderNames: [],
       }),
     );
     const inner = await findByTestId("mounted-inner");

@@ -1,7 +1,7 @@
 //! Operator-driven administrative state changes for runners.
 
 use afd_core::clock::UnixMillis;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use afd_wire::admin::{AdminState, RunnerAdminAction};
 use afd_wire::runner::AssignedPolicy;
 use sqlx::{Acquire as _, Row as _};
@@ -246,9 +246,7 @@ impl Runners {
     }
 
     pub(super) fn admin_event_id(&self, now: UnixMillis) -> Result<Uuid7> {
-        let mut bytes = [0u8; ENTROPY_LEN];
-        self.entropy().fill(&mut bytes)?;
-        Uuid7::encode(now, bytes).map_err(Into::into)
+        Ok(self.entropy().uuid7(now)?)
     }
 }
 

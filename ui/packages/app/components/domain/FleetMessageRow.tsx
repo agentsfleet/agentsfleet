@@ -80,6 +80,8 @@ export type FleetMessageRowProps = {
   messageRole: string;
   dimmed?: boolean;
   failed?: boolean;
+  /** Names the sender above the bubble: someone else's turn in a shared thread. */
+  showSender?: boolean;
 };
 
 export function FleetMessageRow({
@@ -89,6 +91,7 @@ export function FleetMessageRow({
   messageRole,
   dimmed,
   failed,
+  showSender,
 }: FleetMessageRowProps) {
   const isOperator = tone === ROW_TONE.OPERATOR;
   return (
@@ -121,6 +124,12 @@ export function FleetMessageRow({
             isOperator ? "max-w-prose items-end" : "w-full items-start",
           )}
         >
+          {showSender ? (
+            // Seen, not read: the bubble's own sr-only prefix already says it.
+            <span aria-hidden="true" className="text-label leading-label text-muted-foreground" data-testid="fleet-message-sender">
+              {sender}
+            </span>
+          ) : null}
           <div
             className={cn(
             // Both turns read at `reading`. The operator's message used to be

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SCOPE } from "@/lib/auth/scopes";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 // The actions module is the dashboard's defence-in-depth gate: it must fail
@@ -56,6 +57,10 @@ import {
   deleteAdminModelAction,
   setPlatformDefaultAction,
 } from "@/app/(dashboard)/admin/models/actions";
+
+// A workspace in an account the admin joined, which lists before their own.
+const JOINED_WORKSPACE = { id: "ws-joined", role: ACCOUNT_ROLE.member };
+const OWNED_WORKSPACE_ID = "ws-own";
 
 const MODEL = {
   id: "u1",
@@ -160,7 +165,7 @@ describe("setPlatformDefaultAction — two-step vault write + activation", () =>
 
   it("stores the key in the admin workspace vault then activates the catalogued default (no base_url)", async () => {
     // First owned workspace from the authoritative list is the storage workspace.
-    listTenantWorkspacesCachedMock.mockResolvedValueOnce({ items: [{ id: "ws-1" }], total: 1 });
+    listTenantWorkspacesCachedMock.mockResolvedValueOnce({ items: [{ id: "ws-1", role: ACCOUNT_ROLE.owner }], total: 1 });
     setPlatformDefaultMock.mockResolvedValueOnce({ provider: "fireworks", model: "glm-5.2", active: true });
 
     const r = await setPlatformDefaultAction({ provider: "fireworks", model: "glm-5.2", api_key: "sk-secret" });
@@ -184,7 +189,7 @@ describe("setPlatformDefaultAction — two-step vault write + activation", () =>
   });
 
   it("threads base_url into both the vault payload and the activation for an openai-compatible default", async () => {
-    listTenantWorkspacesCachedMock.mockResolvedValueOnce({ items: [{ id: "ws-9" }], total: 1 });
+    listTenantWorkspacesCachedMock.mockResolvedValueOnce({ items: [{ id: "ws-9", role: ACCOUNT_ROLE.owner }], total: 1 });
     setPlatformDefaultMock.mockResolvedValueOnce({ provider: "openai-compatible", model: "glm-5.2", active: true });
 
     const r = await setPlatformDefaultAction({
@@ -216,12 +221,31 @@ describe("setPlatformDefaultAction — two-step vault write + activation", () =>
     });
   });
 
-  it("fails with a clear error when there is no active workspace to store the key in", async () => {
-    listTenantWorkspacesCachedMock.mockResolvedValueOnce({ items: [], total: 0 });
+  // The list spans every account the admin has joined, oldest first, so its
+  // head can be a teammate's workspace whose vault the admin cannot write.
+  it("stores the key in the workspace the admin owns when the list leads with a joined account's", async () => {
+    listTenantWorkspacesCachedMock.mockResolvedValueOnce({
+      items: [JOINED_WORKSPACE, { id: OWNED_WORKSPACE_ID, role: ACCOUNT_ROLE.owner }],
+      total: 2,
+    });
+    setPlatformDefaultMock.mockResolvedValueOnce({ provider: "fireworks", model: "glm-5.2", active: true });
 
     const r = await setPlatformDefaultAction({ provider: "fireworks", model: "glm-5.2", api_key: "sk-secret" });
 
-    expect(r).toEqual({ ok: false, error: "No active workspace to store the platform key in" });
+    expect(r.ok).toBe(true);
+    expect(createSecretMock).toHaveBeenCalledWith(OWNED_WORKSPACE_ID, expect.objectContaining({ name: "fireworks" }), "tok");
+    expect(setPlatformDefaultMock).toHaveBeenCalledWith("tok", expect.objectContaining({ source_workspace_id: OWNED_WORKSPACE_ID }));
+  });
+
+  it.each([
+    { what: "no workspace at all", items: [] },
+    { what: "only joined accounts' workspaces", items: [JOINED_WORKSPACE] },
+  ])("fails with a clear error when the admin owns no workspace to store the key in ($what)", async ({ items }) => {
+    listTenantWorkspacesCachedMock.mockResolvedValueOnce({ items, total: items.length });
+
+    const r = await setPlatformDefaultAction({ provider: "fireworks", model: "glm-5.2", api_key: "sk-secret" });
+
+    expect(r).toEqual({ ok: false, error: "No workspace you own to store the platform key in" });
     // No vault write, no activation when the workspace can't be resolved.
     expect(createSecretMock).not.toHaveBeenCalled();
     expect(setPlatformDefaultMock).not.toHaveBeenCalled();

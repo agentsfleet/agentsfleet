@@ -33,12 +33,6 @@ impl Fleet {
         self
     }
 
-    /// Authorizes a minted workspace rather than the datastore-free fixture id.
-    pub(crate) fn with_owned_workspace(mut self, workspace: Uuid7) -> Self {
-        self.workspaces = OneWorkspace::owning(workspace);
-        self
-    }
-
     /// Runs the device-flow service over a live, test-owned Dragonfly connection.
     ///
     /// Only the session service is replaced. The remaining queue-backed seams
@@ -223,31 +217,6 @@ impl Fleet {
         self
     }
 
-    /// Accepts an unmarked bearer as a browser dashboard session.
-    ///
-    /// Session tokens do not use the credential directory: their verified
-    /// claims are the identity. Rebuilding the two plane registries here keeps
-    /// the fixture on the production authentication path while replacing only
-    /// the key-set verifier that would otherwise need network access.
-    pub(crate) fn with_dashboard(mut self, subject: &str) -> Self {
-        use afd_auth::verifier::VerifiedClaims;
-
-        let subject = Subject::new(subject).expect("the fixture subject is not blank");
-        let claims = VerifiedClaims {
-            subject: subject.clone(),
-            tenant: Some(tenant()),
-            workspace_scope: None,
-            scope_claim: None,
-        };
-        self.capabilities = self.capabilities.with(&subject, ScopeSet::EMPTY);
-        self.authenticator = Planes::new(
-            self.directory.clone(),
-            self.capabilities.clone(),
-            MockVerifier::accepting(claims),
-        );
-        self
-    }
-
     /// Backs this instance with an in-memory snapshot store holding `body`
     /// under `content_hash`.
     ///
@@ -278,11 +247,6 @@ impl Fleet {
     /// The capability source, for a suite that narrows a subject.
     pub(crate) const fn capabilities(&self) -> &MockCapabilities {
         &self.capabilities
-    }
-
-    /// A handle a long-lived stream test can revoke after the router opens.
-    pub(crate) fn ownership(&self) -> OneWorkspace {
-        self.workspaces.clone()
     }
 
     /// The live fleet store, for a stream fixture that changes rows directly.

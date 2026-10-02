@@ -1,4 +1,5 @@
-//! The eleven product events, as one closed set.
+//! The product events, as one closed set: the eleven ported ones, then the
+//! invite email's.
 //!
 //! # Why an enum where the daemon this ports has eleven structs
 //!
@@ -143,6 +144,43 @@ pub enum Telemetry {
         /// The request that bootstrapped it.
         request_id: String,
     },
+    /// An invite email was handed to the relay, refused, or not sent for want
+    /// of one. Reported under one of three names, by [`InviteEmailOutcome`].
+    InviteEmail {
+        /// The owner who issued or re-sent the invite.
+        actor: String,
+        /// The account the invite is into.
+        tenant_id: String,
+        /// The invite.
+        invite_id: String,
+        /// Which send this was: the first is 1, and each send-again adds one.
+        /// The invite row's own count, so it crosses no integer conversion.
+        attempt: i32,
+        /// What became of it.
+        outcome: InviteEmailOutcome,
+    },
+}
+
+/// What became of one invite email.
+///
+/// One type for the send and its report: `afd_mail`'s invite send returns it,
+/// and the route records and reports that same value, so the email the invite
+/// row records and the event the analytics counts cannot disagree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InviteEmailOutcome {
+    /// The relay accepted it, with this SMTP reply code.
+    Sent {
+        /// The relay's reply code.
+        reply: u16,
+    },
+    /// The relay refused it, never answered, or the deadline passed; `reply`
+    /// is the relay's code when it spoke one.
+    Failed {
+        /// The relay's reply code, when it answered.
+        reply: Option<u16>,
+    },
+    /// No usable `smtp-relay` bag, or no admin workspace to hold one.
+    Unconfigured,
 }
 
 impl Telemetry {
@@ -165,6 +203,11 @@ impl Telemetry {
             Self::FleetTriggered { .. } => "fleet_triggered",
             Self::FleetCompleted { .. } => "fleet_completed",
             Self::SignupBootstrapped { .. } => "signup_bootstrapped",
+            Self::InviteEmail { outcome, .. } => match outcome {
+                InviteEmailOutcome::Sent { .. } => "invite_email_sent",
+                InviteEmailOutcome::Failed { .. } => "invite_email_failed",
+                InviteEmailOutcome::Unconfigured => "invite_email_unconfigured",
+            },
         }
     }
 
@@ -182,7 +225,8 @@ impl Telemetry {
             | Self::AuthLoginCompleted { actor, .. }
             | Self::FleetTriggered { actor, .. }
             | Self::FleetCompleted { actor, .. }
-            | Self::SignupBootstrapped { actor, .. } => Some(actor),
+            | Self::SignupBootstrapped { actor, .. }
+            | Self::InviteEmail { actor, .. } => Some(actor),
             Self::ServerStarted { .. }
             | Self::WorkerStarted { .. }
             | Self::StartupFailed { .. }
@@ -204,3 +248,7 @@ impl Telemetry {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "telemetry/invite_tests.rs"]
+mod invite_tests;

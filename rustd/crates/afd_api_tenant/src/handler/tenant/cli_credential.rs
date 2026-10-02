@@ -34,13 +34,12 @@ use crate::client::Origin;
 use crate::handler::Refusal;
 use crate::services::{Services, TerminalCredentials as _};
 
+use super::DETAIL_MALFORMED_BODY;
+
 /// The scoped events each verb's failures are logged under.
 const EVENT_MINT: &str = "cli_credential_mint_failed";
 const EVENT_REVOKE: &str = "cli_credential_revoke_failed";
 const EVENT_SUBJECT: &str = "cli_credential_subject_unresolved";
-
-/// The refusal a body this daemon cannot read earns.
-const DETAIL_MINT_BODY: &str = "Malformed JSON body";
 
 /// The refusal a path segment that is not an identifier earns.
 const DETAIL_CREDENTIAL_ID: &str = "id must be a valid UUIDv7";
@@ -83,7 +82,7 @@ pub(crate) async fn mint<D: Services>(
 ) -> Result<Response, Refusal> {
     let person = identity.person();
     let request = afd_http::handler::read_body::<MintCliCredentialRequest<'_>>(&body)
-        .map_err(|_unreadable| Refusal::malformed(DETAIL_MINT_BODY))?;
+        .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_BODY))?;
     let machine = MachineName::parse(&request.machine_name).map_err(Refusal::at(EVENT_MINT))?;
 
     let user = services

@@ -65,7 +65,7 @@ use std::sync::Arc;
 
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_dragonfly::Dragonfly;
+use afd_dragonfly::{Dragonfly, FleetStreams};
 
 pub use self::admission::{Admission, Key, Producer, Reply};
 use self::budget::Ceiling;
@@ -143,6 +143,13 @@ impl Admissions {
     #[must_use]
     pub fn for_tests(database: Db, queue: Dragonfly) -> Self {
         Self::new(database, queue, Entropy::new())
+    }
+
+    /// The live tails over this ledger's queue, for a producer announcing
+    /// what it admitted — the handle the lease plane's `streams()` is too.
+    #[must_use]
+    pub fn streams(&self) -> FleetStreams {
+        FleetStreams::new(self.queue.clone())
     }
 }
 

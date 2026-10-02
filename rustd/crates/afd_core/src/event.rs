@@ -51,6 +51,13 @@ pub mod status {
     /// [`GATE_BLOCKED`]: the daemon refuses at a gate, and the runner reports a
     /// failure it observed.
     pub const FLEET_ERROR: &str = "fleet_error";
+
+    /// A thread row for a message admitted and waiting for a runner.
+    ///
+    /// Never stored: `core.fleet_events` gains the row only at lease. The
+    /// thread read derives it from the admission ledger's undelivered rows,
+    /// so a screen opened while a message waits shows it waiting.
+    pub const QUEUED: &str = "queued";
 }
 
 /// Why a gate refused an event, as `core.fleet_events.failure_label`.

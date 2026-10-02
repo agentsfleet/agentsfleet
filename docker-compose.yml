@@ -96,11 +96,39 @@ services:
       # below shares this network namespace, so its API port is published here.
       - "${AGENTSFLEET_DRAGONFLY_BASE_PORT:-7001}-${AGENTSFLEET_DRAGONFLY_LAST_PORT:-7005}:${AGENTSFLEET_DRAGONFLY_BASE_PORT:-7001}-${AGENTSFLEET_DRAGONFLY_LAST_PORT:-7005}"
       - "${AGENTSFLEET_API_HOST_PORT:-3000}:3000"
+      # Mailpit shares this namespace too (see the mailpit service): its SMTP
+      # port, and the web page a person reads the captured mail on.
+      - "127.0.0.1:${AGENTSFLEET_MAILPIT_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${AGENTSFLEET_MAILPIT_UI_PORT:-8025}:8025"
     volumes:
       - ./scripts/dragonfly-cluster.sh:/scripts/dragonfly-cluster.sh:ro
       - dragonfly-data:/data
     healthcheck:
       test: ["CMD", "bash", "/scripts/dragonfly-cluster.sh", "healthy"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mailpit:
+    # The SMTP sink the invite email lands in, locally and in the integration
+    # lane. It accepts any credentials and keeps every message for reading at
+    # its web page or its API, so a test asserts on the real SMTP exchange and
+    # a person can open the rendered email in a browser.
+    #
+    # In the dragonfly service's network namespace, beside the daemon, so the
+    # daemon reaches it on 127.0.0.1 — the one kind of host `afd_mail` sends
+    # to without TLS (`afd_mail::Security::of`). Its ports are published on
+    # the dragonfly service for that reason.
+    image: axllent/mailpit:v1.31.3
+    network_mode: "service:dragonfly"
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    depends_on:
+      dragonfly:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
       interval: 5s
       timeout: 5s
       retries: 20

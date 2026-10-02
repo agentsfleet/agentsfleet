@@ -137,9 +137,7 @@ impl Leases {
         meter: afd_billing::Meter,
         now: UnixMillis,
     ) -> Result<Renewed> {
-        let mut bytes = [0u8; afd_core::id::ENTROPY_LEN];
-        self.entropy().fill(&mut bytes)?;
-        let ledger_id = Uuid7::encode(now, bytes)?;
+        let ledger_id = self.entropy().uuid7(now)?;
 
         let renew = RenewRow {
             lease_id,

@@ -75,6 +75,40 @@ describe("DropdownMenu", () => {
     }
   });
 
+  // Pinned byte-for-byte: the label variants must not move a single class of the
+  // eyebrow every existing menu heading renders.
+  it("should keep the eyebrow typography exactly when no variant is given", () => {
+    render(
+      <DropdownMenu open>
+        <DropdownMenuContent>
+          <DropdownMenuLabel data-testid="default">Workspace</DropdownMenuLabel>
+          <DropdownMenuLabel data-testid="eyebrow" variant="eyebrow">Workspace</DropdownMenuLabel>
+        </DropdownMenuContent>
+      </DropdownMenu>,
+    );
+    const eyebrow =
+      "px-2.5 py-1.5 text-muted-foreground font-sans text-eyebrow uppercase leading-eyebrow tracking-eyebrow";
+    expect(screen.getByTestId("default").className).toBe(eyebrow);
+    expect(screen.getByTestId("eyebrow").className).toBe(eyebrow);
+  });
+
+  it("should set a name label in sentence case at the label size, with no eyebrow class left to fight", () => {
+    render(
+      <DropdownMenu open>
+        <DropdownMenuContent>
+          <DropdownMenuLabel data-testid="name" variant="name" inset>
+            John&apos;s account
+          </DropdownMenuLabel>
+        </DropdownMenuContent>
+      </DropdownMenu>,
+    );
+    const classes = screen.getByTestId("name").className.split(" ");
+    expect(classes).toEqual(
+      expect.arrayContaining(["font-sans", "text-label", "leading-label", "tracking-label", "text-muted-foreground", "pl-8"]),
+    );
+    expect(classes.filter((cls) => cls === "uppercase" || cls === "normal-case" || cls.endsWith("-eyebrow"))).toEqual([]);
+  });
+
   it("DropdownMenuSeparator applies horizontal rule utilities", () => {
     render(
       <DropdownMenu open>

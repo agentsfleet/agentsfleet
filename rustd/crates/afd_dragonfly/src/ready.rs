@@ -35,7 +35,6 @@
 pub mod partition;
 
 use afd_core::clock::UnixMillis;
-use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use futures_util::future::try_join_all;
 
@@ -106,7 +105,7 @@ impl ReadyToken {
     /// Returns an unmintable error when `entropy` refuses the draw or `now`
     /// has no version-7 spelling.
     pub fn mint(entropy: &Entropy, now: UnixMillis) -> Result<Self> {
-        let minted = Uuid7::encode(now, entropy.uuid_randomness()?)?;
+        let minted = entropy.uuid7(now)?;
         Ok(Self(minted.as_str().to_owned()))
     }
 }

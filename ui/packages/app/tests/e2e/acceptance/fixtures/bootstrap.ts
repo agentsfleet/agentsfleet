@@ -25,11 +25,21 @@ const FIXTURE_FIRST_NAME: Record<FixtureKey, string> = {
   [FIXTURE_KEY.operator]: "Operator",
 };
 
+// The daemon opens an account only under a primary address the provider
+// verified, as a real Clerk sign-up's is, so the replay says so too.
+const CLERK_EMAIL_VERIFIED = "verified" as const;
+
+interface ClerkEmailAddress {
+  id: string;
+  email_address: string;
+  verification: { status: typeof CLERK_EMAIL_VERIFIED };
+}
+
 interface UserCreatedPayload {
   type: "user.created";
   data: {
     id: string;
-    email_addresses: Array<{ id: string; email_address: string }>;
+    email_addresses: Array<ClerkEmailAddress>;
     primary_email_address_id: string;
     first_name: string;
     last_name: string;
@@ -41,7 +51,7 @@ function buildPayload(fixture: ProvisionedUser): UserCreatedPayload {
     type: "user.created",
     data: {
       id: fixture.clerkUserId,
-      email_addresses: [{ id: "idn_x", email_address: fixture.email }],
+      email_addresses: [{ id: "idn_x", email_address: fixture.email, verification: { status: CLERK_EMAIL_VERIFIED } }],
       primary_email_address_id: "idn_x",
       first_name: FIXTURE_FIRST_NAME[fixture.key],
       last_name: "Fixture",

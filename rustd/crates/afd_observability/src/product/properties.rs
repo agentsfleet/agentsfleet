@@ -35,6 +35,12 @@ const KEY_ERROR_CODE: &str = "error_code";
 /// The operator-readable sentence beside that code.
 const KEY_MESSAGE: &str = "message";
 
+/// The invite an invite-email event is about.
+const KEY_INVITE_ID: &str = "invite_id";
+/// Which send of that invite it was.
+const KEY_ATTEMPT: &str = "attempt";
+/// The relay's SMTP reply code.
+const KEY_REPLY: &str = "reply";
 /// `PostHog`'s own deduplication key.
 ///
 /// Not ours to rename: ingestion drops a second event carrying an `$insert_id`
@@ -177,6 +183,32 @@ impl Telemetry {
                 put("created", (*created).into());
                 put(KEY_REQUEST_ID, request_id.as_str().into());
             }
+            Self::InviteEmail {
+                tenant_id,
+                invite_id,
+                attempt,
+                outcome,
+                ..
+            } => {
+                put(KEY_TENANT_ID, tenant_id.as_str().into());
+                put(KEY_INVITE_ID, invite_id.as_str().into());
+                put(KEY_ATTEMPT, (*attempt).into());
+                if let Some(reply) = outcome.reply() {
+                    put(KEY_REPLY, reply.into());
+                }
+            }
+        }
+    }
+}
+
+impl super::InviteEmailOutcome {
+    /// The relay's reply code, when it spoke one. Absent rather than `null`,
+    /// so "no reply" is not a cohort of its own.
+    const fn reply(self) -> Option<u16> {
+        match self {
+            Self::Sent { reply } => Some(reply),
+            Self::Failed { reply } => reply,
+            Self::Unconfigured => None,
         }
     }
 }

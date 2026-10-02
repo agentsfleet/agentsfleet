@@ -8,7 +8,8 @@
 //! refused rather than provisioned. Each of those is the schema's answer.
 //!
 //! One walk over one fixture, not four fixtures: the reads are independent and
-//! the seed is the expensive part.
+//! the seed is the expensive part. `integration_cli_credential_race.rs` reuses
+//! the fixture for two logins racing on one machine.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -108,16 +109,17 @@ async fn profile_answers_the_joined_person_and_refuses_an_unknown_subject() {
     fixture.cleanup().await;
 }
 
-struct Fixture {
+/// One tenant and its people over the lane's database, shared with the race.
+pub(crate) struct Fixture {
     lane: TestDatabase,
-    database: afd_db::Db,
-    tenant: String,
-    user: String,
+    pub(crate) database: afd_db::Db,
+    pub(crate) tenant: String,
+    pub(crate) user: String,
     anonymous_user: String,
 }
 
 impl Fixture {
-    async fn create() -> Self {
+    pub(crate) async fn create() -> Self {
         let lane = TestDatabase::shared();
         Self {
             database: lane.open(DbRole::Api, &[]).await,
@@ -170,7 +172,7 @@ impl Fixture {
         count
     }
 
-    async fn cleanup(self) {
+    pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)

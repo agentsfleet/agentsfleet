@@ -55,6 +55,9 @@ STUB
 
 cat >"$stub_dir/curl" <<'STUB'
 #!/usr/bin/env bash
+# -e makes each `jq -e` key check below fail the write; without it they ran
+# and their verdict was discarded.
+set -euo pipefail
 output=""
 method=GET
 payload=""
@@ -118,6 +121,14 @@ case "$EXPECTED_NAME" in
       (.name == "slack-app" or .data != null)
       and ((.data // {}) | keys == [
         "client_id", "client_secret", "signing_secret"
+      ])
+    ' "$payload" >/dev/null
+    ;;
+  smtp-relay)
+    jq -e '
+      (.name == "smtp-relay" or .data != null)
+      and ((.data // {}) | keys == [
+        "from_address", "host", "password", "port", "username"
       ])
     ' "$payload" >/dev/null
     ;;
@@ -224,6 +235,20 @@ test_maps_every_provider_field_name() {
   ok "$name"
 }
 
+test_secret_sync_maps_smtp_relay() {
+  local name="maps exactly the five smtp-relay fields"
+  local output status=0
+  : >"$work_dir/calls"
+  output="$(run_sync smtp-relay 0)" || status=$?
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "$output"
+  elif [[ "$output" == *provider-secret-sentinel* ]]; then
+    bad "$name" "the relay password reached output"
+  else
+    ok "$name"
+  fi
+}
+
 test_rejects_invalid_inputs_before_writes() {
   local name="rejects invalid inputs before writes"
   local arguments case_entry expected output status
@@ -307,6 +332,7 @@ test_requires_explicit_write_approval
 test_creates_complete_github_bag_without_leaking
 test_replaces_existing_bag_in_one_put
 test_maps_every_provider_field_name
+test_secret_sync_maps_smtp_relay
 test_rejects_invalid_inputs_before_writes
 test_rejects_invalid_environment
 test_rejects_failed_or_mismatched_api_responses

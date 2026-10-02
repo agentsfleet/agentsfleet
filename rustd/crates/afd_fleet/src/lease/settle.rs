@@ -20,7 +20,7 @@
 //! to avoid; it does not compile.
 
 use afd_core::clock::UnixMillis;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use sqlx::{PgConnection, Row as _};
 
 use crate::error::{Result, query, row_malformed};
@@ -179,9 +179,7 @@ impl Leases {
         succeeded: bool,
         now: UnixMillis,
     ) -> Result<Settled> {
-        let mut bytes = [0u8; ENTROPY_LEN];
-        self.entropy().fill(&mut bytes)?;
-        let ledger_id = Uuid7::encode(now, bytes)?;
+        let ledger_id = self.entropy().uuid7(now)?;
 
         let settle = SettleRow {
             lease_id,

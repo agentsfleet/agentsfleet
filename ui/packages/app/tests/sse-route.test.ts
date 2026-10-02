@@ -188,3 +188,56 @@ describe("SSE route handler — upstream errors", () => {
     expect(await res.text()).toBe("Upstream error 502");
   });
 });
+
+// A member removed while their tab slept is refused at open. An EventSource
+// sees only a bare `error` for that and would reconnect forever, so the proxy
+// re-says the refusal as the frame that ends the stream.
+describe("SSE route handler — refused at open for lost access", () => {
+  const FORBIDDEN = 403;
+  const PROBLEM_JSON = "application/problem+json";
+  const problem = (errorCode: string) => JSON.stringify({ title: "Forbidden", error_code: errorCode });
+  // pin test: literal is the contract — the bytes the daemon writes for
+  // `Frame::access_revoked` (rustd/crates/afd_sse/src/frame.rs).
+  const ACCESS_REVOKED_WIRE =
+    'id: 0\nevent: access_revoked\ndata: {"kind":"access_revoked","error_code":"UZ-AUTH-001"}\n\n';
+
+  it("should answer one access_revoked frame as a 200 stream when the daemon refuses with UZ-AUTH-001", async () => {
+    getTokenFn.mockResolvedValueOnce("tk");
+    fetchSpy.mockResolvedValueOnce(
+      new Response(problem(ERROR_CODE.AUTH_FORBIDDEN), { status: FORBIDDEN, headers: { "content-type": PROBLEM_JSON } }),
+    );
+    const res = await GET(makeReq(), paramsOf("ws_1", "zomb_1"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/event-stream");
+    expect(res.headers.get("cache-control")).toBe("no-cache, no-transform");
+    expect(await res.text()).toBe(ACCESS_REVOKED_WIRE);
+  });
+
+  it("should forward any other 403 unchanged, so a missing scope is not read as lost access", async () => {
+    getTokenFn.mockResolvedValueOnce("tk");
+    const body = problem(ERROR_CODE.INSUFFICIENT_SCOPE);
+    fetchSpy.mockResolvedValueOnce(new Response(body, { status: FORBIDDEN, headers: { "content-type": PROBLEM_JSON } }));
+    const res = await GET(makeReq(), paramsOf("ws_1", "zomb_1"));
+    expect(res.status).toBe(FORBIDDEN);
+    expect(res.headers.get("content-type")).toBe(PROBLEM_JSON);
+    expect(await res.text()).toBe(body);
+  });
+
+  it("should forward a 403 whose body is not the daemon's problem JSON unchanged", async () => {
+    getTokenFn.mockResolvedValueOnce("tk");
+    fetchSpy.mockResolvedValueOnce(new Response("forbidden by proxy", { status: FORBIDDEN, headers: { "content-type": "text/html" } }));
+    const res = await GET(makeReq(), paramsOf("ws_1", "zomb_1"));
+    expect(res.status).toBe(FORBIDDEN);
+    expect(res.headers.get("content-type")).toBe("text/html");
+    expect(await res.text()).toBe("forbidden by proxy");
+  });
+
+  it("should forward a 500 that carries UZ-AUTH-001 unchanged, since only a 403 is a refusal", async () => {
+    getTokenFn.mockResolvedValueOnce("tk");
+    const body = problem(ERROR_CODE.AUTH_FORBIDDEN);
+    fetchSpy.mockResolvedValueOnce(new Response(body, { status: 500, headers: { "content-type": PROBLEM_JSON } }));
+    const res = await GET(makeReq(), paramsOf("ws_1", "zomb_1"));
+    expect(res.status).toBe(500);
+    expect(await res.text()).toBe(body);
+  });
+});

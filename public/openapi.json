@@ -1892,7 +1892,7 @@
           "Authentication"
         ],
         "summary": "Bulk-abort every in-flight login session for the caller",
-        "description": "Caller-scoped bulk delete. Enumerates every session with the caller's `clerk_user_id` whose status is `pending` or `verification_pending` and transitions each to `aborted` with `reason=\"explicit_cancel\"`. Does NOT revoke already-minted JWTs — Clerk revocation is a separate problem; an active CLI continues to work until its short-lived JWT expires. This endpoint clears in-flight login sessions only. ",
+        "description": "Caller-scoped bulk delete. Enumerates every session with the caller's `clerk_user_id` whose status is `pending` or `verification_pending` and transitions each to `aborted` with `reason=\"explicit_cancel\"`. Does NOT revoke already-minted JWTs; revoking those is the identity provider's concern, and an active CLI continues to work until its short-lived JWT expires. This endpoint clears in-flight login sessions only. ",
         "operationId": "delete_all_auth_sessions",
         "responses": {
           "200": {
@@ -2051,7 +2051,7 @@
           "Authentication"
         ],
         "summary": "Explicit cancel of a single login session",
-        "description": "Used by the dashboard's \"cancel this login\" button and by the future sessions surface. Transitions the named session to `aborted` with `reason=\"explicit_cancel\"`. The Clerk JWT MUST match the session's `clerk_user_id` (set on `PATCH /v1/auth/sessions/{id}/approve`); otherwise 403. ",
+        "description": "Used by the dashboard's \"cancel this login\" button and by the future sessions surface. Transitions the named session to `aborted` with `reason=\"explicit_cancel\"`. The dashboard session token MUST match the session's `clerk_user_id` (set on `PATCH /v1/auth/sessions/{id}/approve`); otherwise 403. ",
         "operationId": "delete_auth_session",
         "parameters": [
           {
@@ -4194,7 +4194,7 @@
           "Fleet"
         ],
         "summary": "Register a runner",
-        "description": "Enrolls a runner into the fleet and assigns its policy. Requires an existing operator credential (Clerk JWT or `agt_t` API key with admin role); there is no enrollment token. Mints a durable `agt_r` runner token, returned once, and stores only its SHA-256 hash. The host applies the policy assigned here and never declares its own. ",
+        "description": "Enrolls a runner into the fleet and assigns its policy. Requires an existing operator credential (a dashboard session token or an `agt_t` API key with admin role); there is no enrollment token. Mints a durable `agt_r` runner token, returned once, and stores only its SHA-256 hash. The host applies the policy assigned here and never declares its own. ",
         "operationId": "register_runner",
         "requestBody": {
           "content": {
@@ -5494,6 +5494,585 @@
         ]
       }
     },
+    "/v1/tenants/me/invites": {
+      "get": {
+        "tags": [
+          "Invites"
+        ],
+        "summary": "List pending invites",
+        "description": "Returns every invite into the caller's own account that can still be accepted, newest first, each with its accept `link`. An account's invites are few, so the list is one page: `next_cursor` is always `null` and `total` counts them all. ",
+        "operationId": "list_invites",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageResponse_InviteSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Invites"
+        ],
+        "summary": "Invite a person into your account",
+        "description": "Invites one email address into the caller's own account as a member. A member opens and steers every workspace in the account and cannot store secrets, connect integrations, or manage members. The invite expires after 7 days. `link` is the dashboard page the invitee opens to accept it. An address that already has a pending invite, or already belongs to the account, is refused with 409 `UZ-INV-003`. Its `current_state` is `invited` when a pending invite exists, and `member` when the address already belongs to the account. Retrying after an uncertain response is safe: the retry is refused with that 409, and the invite list shows the first one. ",
+        "operationId": "create_invite",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/tenants/me/invites/{invite_id}": {
+      "delete": {
+        "tags": [
+          "Invites"
+        ],
+        "summary": "Revoke an invite",
+        "description": "Revokes one pending invite into the caller's own account, so its link stops working. Idempotent: an invite already revoked, or never this account's, also answers 204, as does one accepted by someone who has since left. One accepted by someone who still belongs to the account is refused with 409 `UZ-INV-003` and `current_state` `member`. They joined, so remove them instead. ",
+        "operationId": "revoke_invite",
+        "parameters": [
+          {
+            "name": "invite_id",
+            "in": "path",
+            "description": "`UUIDv7` of the invite.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "description": "The request could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/tenants/me/invites/{invite_id}/send": {
+      "post": {
+        "tags": [
+          "Invites"
+        ],
+        "summary": "Send an invite's email again",
+        "description": "Sends the invite email for one pending invite into the caller's own account, as a new attempt. An operation, in the side-effecting RPC category. Each call sends one more email and takes no `Idempotency-Key`. Use it when the invite's `email_status` is `failed`. When the mail relay is not set up, refuses, or does not answer, the route answers 503 `UZ-INV-005`. The invite stays valid either way, so its `link` can be shared by hand. An invite that expired, was revoked, or was accepted answers 404 `UZ-INV-001`. ",
+        "operationId": "send_invite_email",
+        "parameters": [
+          {
+            "name": "invite_id",
+            "in": "path",
+            "description": "`UUIDv7` of the invite.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteEmailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such resource, or none this caller may see",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/tenants/me/members": {
+      "get": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "List the people in your account",
+        "description": "Returns every member of the caller's own account, oldest membership first, with each one's role: `owner` or `member`. One page: `next_cursor` is always `null` and `total` counts them all. ",
+        "operationId": "list_members",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageResponse_MemberSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/tenants/me/members/{user_id}": {
+      "delete": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "Remove a member",
+        "description": "Removes one person from the caller's own account. Their open streams end within 15 seconds and their next request to the account's workspaces is refused. Idempotent: somebody who is not a member also answers 204. The account's last owner cannot be removed: 409 `UZ-INV-004`. ",
+        "operationId": "remove_member",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "description": "`UUIDv7` of the member's user.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "description": "The request could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/tenants/me/models": {
       "get": {
         "tags": [
@@ -6216,7 +6795,7 @@
           "Workspaces"
         ],
         "summary": "List the tenant's workspaces",
-        "description": "Returns a stable oldest-first cursor page of workspaces owned by the caller's authoritative tenant. Pass `starting_after` from `next_cursor` to continue. The optional `name` filter uses exact equality and supports reconciliation after an uncertain workspace- create response. ",
+        "description": "Returns a stable oldest-first cursor page of the workspaces in every account the caller holds. Those are their own account and each account they joined through an invite. Each item names its account and the caller's role there, `owner` or `member`. A tenant API key or a command-line credential holds only its own account. `tenant_id` is the caller's own account. Pass `starting_after` from `next_cursor` to continue. The optional `name` filter uses exact equality and supports reconciliation after an uncertain workspace-create response. ",
         "operationId": "list_tenant_workspaces",
         "parameters": [
           {
@@ -6347,6 +6926,191 @@
           },
           "403": {
             "description": "The caller is not a person this tenant knows",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/users/me/invites": {
+      "get": {
+        "tags": [
+          "Invites"
+        ],
+        "summary": "List invites waiting for you",
+        "description": "Returns every still-acceptable invite sent to the calling person's email address, from any account, newest first. Each item names the account it joins. One page: `next_cursor` is always `null`. ",
+        "operationId": "list_my_invites",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageResponse_WaitingInvite"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is not a person this tenant knows",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/users/me/invites/{invite_id}/accept": {
+      "post": {
+        "tags": [
+          "Invites"
+        ],
+        "summary": "Accept an invite",
+        "description": "Makes the caller a member of the account the invite opens. An operation, in the multi-resource-transaction category: it writes the membership and stamps the invite accepted, together. The signed-in person's email address must equal the invite's, or it is refused with 403 `UZ-INV-002`, which does not name the address. An invite that expired, was revoked, or was accepted by somebody else answers 404 `UZ-INV-001`. Accepting again while still a member answers 200 with the account's current workspaces. A member removed since gets 404 `UZ-INV-001`. ",
+        "operationId": "accept_invite",
+        "parameters": [
+          {
+            "name": "invite_id",
+            "in": "path",
+            "description": "`UUIDv7` of the invite.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedInviteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such resource, or none this caller may see",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -8056,7 +8820,7 @@
           "Workspaces"
         ],
         "summary": "Stream live activity for a whole workspace",
-        "description": "Opens ONE Server-Sent Events (SSE) stream carrying live activity for every fleet the caller can read in the workspace. It is the Fleets Wall's single connection, replacing one stream per tile. The first frame is `event: hello`. Its `data` is `{\"kind\":\"hello\",\"fleet_ids\":[...]}` for the current readable fleet set. Activity frame `data` contains the publisher payload with `fleet_id` added as the leading field. The frame kinds are the ones `GET …/fleets/{fleet_id}/events/stream` documents. No publisher payload carries `fleet_id` itself, so the tag is the frame's one scope. The client routes each frame by that tag. A stalled client can overflow its bounded server queue. The server then sends `event: catching_up` with `{\"kind\":\"catching_up\",\"dropped\":N}`. `dropped` is the new drop count since the previous signal. It is 0 when the server missed frames it cannot count. Read missed events through `GET /v1/workspaces/{workspace_id}/events` after either. These control frames use identifier 0 and do not advance the activity sequence. Activity identifiers start at 0 for each connection. The route ignores `Last-Event-ID`. The connection adjusts its fan-in as fleets appear or disappear. A caller whose workspace access is revoked stops receiving on the next refresh. At capacity the route returns 503 `UZ-API-002` with `Retry-After`. After a reconnect opens, recover the gap through `GET /v1/workspaces/{workspace_id}/events`. After 15 seconds without a frame, the stream sends `event: heartbeat` with `data: {\"kind\":\"heartbeat\"}`. Heartbeats have no `id` and do not advance the activity sequence. ",
+        "description": "Opens ONE Server-Sent Events (SSE) stream carrying live activity for every fleet the caller can read in the workspace. It is the Fleets Wall's single connection, replacing one stream per tile. The first frame is `event: hello`. Its `data` is `{\"kind\":\"hello\",\"fleet_ids\":[...]}` for the current readable fleet set. Activity frame `data` contains the publisher payload with `fleet_id` added as the leading field. The frame kinds are the ones `GET …/fleets/{fleet_id}/events/stream` documents. No publisher payload carries `fleet_id` itself, so the tag is the frame's one scope. The client routes each frame by that tag. A stalled client can overflow its bounded server queue. The server then sends `event: catching_up` with `{\"kind\":\"catching_up\",\"dropped\":N}`. `dropped` is the new drop count since the previous signal. It is 0 when the server missed frames it cannot count. Read missed events through `GET /v1/workspaces/{workspace_id}/events` after either. These control frames use identifier 0 and do not advance the activity sequence. Activity identifiers start at 0 for each connection. The route ignores `Last-Event-ID`. The connection adjusts its fan-in as fleets appear or disappear. The stream re-checks the caller's access every 10 seconds. When access is gone, it sends `event: access_revoked` with `data: {\"kind\":\"access_revoked\",\"error_code\":\"UZ-AUTH-001\"}` and closes; do not reconnect after it. If access cannot be checked for about 40 seconds, the stream closes without that frame. Reconnect as after any drop. At capacity the route returns 503 `UZ-API-002` with `Retry-After`. After a reconnect opens, recover the gap through `GET /v1/workspaces/{workspace_id}/events`. After 15 seconds without a frame, the stream sends `event: heartbeat` with `data: {\"kind\":\"heartbeat\"}`. Heartbeats have no `id` and do not advance the activity sequence. ",
         "operationId": "stream_workspace_events",
         "parameters": [
           {
@@ -9209,7 +9973,7 @@
           "Fleets"
         ],
         "summary": "Stream live fleet activity",
-        "description": "Opens a Server-Sent Events (SSE) stream for new fleet activity. Each activity message includes `id`, `event`, and `data`. `event` is the `kind` field that leads `data`. The first frame is `event: hello`, sent as soon as the subscription attaches and before any activity. Its `data` is `{\"kind\":\"hello\",\"fleet_ids\":[\"<fleet_id>\"],\"counters\":{}}` — the one fleet this connection carries. It uses identifier 0 and does not advance the activity sequence, so a client may report the stream live without waiting for a heartbeat. An instance holding no pub/sub connection sends no `hello`. The daemon brackets every run. `event_received` carries `event_id`, `actor`, `event_type` and `created_at` when a run's row is written. `event_complete` carries the terminal row as `GET …/events` lists it, without `fleet_id` and `workspace_id`. The completion adds `fleet_status` and `pending_approvals`. It also carries `final_reply`, the reply text, when that text is at most 64 KiB. Without it, read the event detail. `gate_opened` and `gate_resolved` carry `gate_id`, `event_id` and `pending_approvals`. `event_id` is null for a gate raised outside a run. A resolved gate adds `status` and `resolved_by`. The runner's frames ride the same stream: `chunk`, `tool_call_started`, `tool_call_progress` and `tool_call_completed`. Each tool frame carries `event_id` and `name`. Newer runners add `call_id`, which every frame of one call shares and no other call of the event reuses. If the server drops frames for this connection, it sends `event: catching_up`. Its `data` is `{\"kind\":\"catching_up\",\"dropped\":N}`. `dropped` counts frames dropped since the previous signal. It is 0 when the server missed frames it cannot count. After either, read missed events through `GET …/events`. `catching_up` uses identifier 0 and does not advance the activity sequence. Identifiers restart at 0 for each connection. The route ignores `Last-Event-ID`. At capacity, the route returns 503 `UZ-API-002` with `Retry-After`. Read missed events before reconnecting. After 15 seconds without activity, the stream sends `event: heartbeat` with `data: {\"kind\":\"heartbeat\"}`. Heartbeats have no `id` and do not advance the activity sequence. ",
+        "description": "Opens a Server-Sent Events (SSE) stream for new fleet activity. Each activity message includes `id`, `event`, and `data`. `event` is the `kind` field that leads `data`. The first frame is `event: hello`, sent as soon as the subscription attaches and before any activity. Its `data` is `{\"kind\":\"hello\",\"fleet_ids\":[\"<fleet_id>\"],\"counters\":{}}` — the one fleet this connection carries. It uses identifier 0 and does not advance the activity sequence, so a client may report the stream live without waiting for a heartbeat. An instance holding no pub/sub connection sends no `hello`. `event_admitted` arrives when a person's message is accepted, before any runner has it. It carries `event_id`, `actor`, `event_type`, `message` and `created_at`, and its `event_id` is the one the send returned. The daemon brackets every run. `event_received` carries `event_id`, `actor`, `event_type` and `created_at` when a run's row is written. A person's message adds `message`, the text they typed. `event_complete` carries the terminal row as `GET …/events` lists it, without `fleet_id` and `workspace_id`. The completion adds `fleet_status` and `pending_approvals`. It also carries `final_reply`, the reply text, when that text is at most 64 KiB. Without it, read the event detail. `gate_opened` and `gate_resolved` carry `gate_id`, `event_id` and `pending_approvals`. `event_id` is null for a gate raised outside a run. A resolved gate adds `status` and `resolved_by`. The runner's frames ride the same stream: `chunk`, `tool_call_started`, `tool_call_progress` and `tool_call_completed`. Each tool frame carries `event_id` and `name`. Newer runners add `call_id`, which every frame of one call shares and no other call of the event reuses. If the server drops frames for this connection, it sends `event: catching_up`. Its `data` is `{\"kind\":\"catching_up\",\"dropped\":N}`. `dropped` counts frames dropped since the previous signal. It is 0 when the server missed frames it cannot count. After either, read missed events through `GET …/events`. `catching_up` uses identifier 0 and does not advance the activity sequence. Identifiers restart at 0 for each connection. The route ignores `Last-Event-ID`. At capacity, the route returns 503 `UZ-API-002` with `Retry-After`. Read missed events before reconnecting. After 15 seconds without activity, the stream sends `event: heartbeat` with `data: {\"kind\":\"heartbeat\"}`. Heartbeats have no `id` and do not advance the activity sequence. The stream re-checks the caller's access every 15 seconds. When access is gone, it sends `event: access_revoked` with `data: {\"kind\":\"access_revoked\",\"error_code\":\"UZ-AUTH-001\"}` and closes. Do not reconnect after it: the next request is refused with the same code. If access cannot be checked for about a minute, the stream closes without that frame. Reconnect as after any drop. ",
         "operationId": "stream_fleet_events",
         "parameters": [
           {
@@ -9940,7 +10704,7 @@
           "Fleets"
         ],
         "summary": "List a fleet's chat thread with bodies",
-        "description": "Returns the newest chat events first. Each item carries the trigger payload (`request_json`) and the agent's full answer (`response_text`). One request replaces reading the event list and then each event's detail. A page holds at most `limit` items and at most 512 KiB of encoded items. The newest item always ships, even alone. Follow `next_cursor` to read the rest. ",
+        "description": "Returns the newest chat events first. Each item carries the trigger payload (`request_json`) and the agent's full answer (`response_text`). One request replaces reading the event list and then each event's detail. A page holds at most `limit` items and at most 512 KiB of encoded items. The newest item always ships, even alone. Follow `next_cursor` to read the rest. Any page can also list messages still waiting for a runner, older than its cursor, with status `queued` and no answer yet. ",
         "operationId": "list_fleet_messages",
         "parameters": [
           {
@@ -11224,6 +11988,104 @@
         ]
       }
     },
+    "/v1/workspaces/{workspace_id}/members": {
+      "get": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "List who can work in a workspace",
+        "description": "Returns the members of the account that owns the workspace, with each one's name and role, so a thread can name who sent each turn. Each `actor` equals the `actor` of the messages that member sends. No email addresses: every member of the account can read this list. One page: `next_cursor` is always `null`. ",
+        "operationId": "list_workspace_members",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageResponse_WorkspaceMember"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/workspaces/{workspace_id}/onboarding": {
       "get": {
         "tags": [
@@ -12053,6 +12915,27 @@
           "replayed": {
             "type": "boolean",
             "description": "Whether an earlier delivery already produced it.\n\nReported rather than hidden. A provider debugging a duplicate wants to\nknow this daemon saw the repeat and declined to run twice. That is a\ndifferent fact from the delivery having been lost."
+          }
+        }
+      },
+      "AcceptedInviteResponse": {
+        "type": "object",
+        "description": "`POST /v1/users/me/invites/{invite_id}/accept` — the account joined.",
+        "required": [
+          "tenant_id",
+          "workspace_ids"
+        ],
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "The account the caller is now a member of."
+          },
+          "workspace_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Its workspaces, oldest first, each now open to the caller."
           }
         }
       },
@@ -13236,6 +14119,20 @@
             "format": "int32",
             "description": "Tool results retained in the working window.",
             "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateInviteRequest": {
+        "type": "object",
+        "description": "`POST /v1/tenants/me/invites` — invite one address into the caller's account.",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "The address to invite. Stored lowercased; accepting requires the\nsigned-in account's address to equal it. A domain literal, an IP\ndomain, a domain without a dot, or over 254 characters is refused\nwith 400 `UZ-REQ-001`."
           }
         },
         "additionalProperties": false
@@ -14559,6 +15456,72 @@
           }
         }
       },
+      "InviteEmailResponse": {
+        "type": "object",
+        "description": "`POST /v1/tenants/me/invites/{invite_id}/send` — the invite email went.",
+        "required": [
+          "email_status"
+        ],
+        "properties": {
+          "email_status": {
+            "type": "string",
+            "description": "`sent`: the relay accepted the email."
+          }
+        }
+      },
+      "InviteSummary": {
+        "type": "object",
+        "description": "One invite, as the account's owner sees it.",
+        "required": [
+          "id",
+          "email",
+          "role",
+          "expires_at",
+          "created_at",
+          "link",
+          "email_status"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it was issued, epoch milliseconds."
+          },
+          "email": {
+            "type": "string",
+            "description": "The address it is for, lowercased."
+          },
+          "email_sent_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the relay last accepted its email, epoch milliseconds; `null` if\nit never has."
+          },
+          "email_status": {
+            "type": "string",
+            "description": "What became of its most recent email: `sent`, `failed`, or\n`unconfigured` when this deployment has no mail relay set up."
+          },
+          "expires_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it stops being acceptable, epoch milliseconds."
+          },
+          "id": {
+            "type": "string",
+            "description": "The invite's identifier."
+          },
+          "link": {
+            "type": "string",
+            "description": "The dashboard page the invitee opens to accept it."
+          },
+          "role": {
+            "type": "string",
+            "description": "The role accepting it grants: `member`."
+          }
+        }
+      },
       "LeaseKind": {
         "type": "string",
         "description": "Whether the lease was the event's first claim or a later reclaim.",
@@ -14688,6 +15651,42 @@
           "version": {
             "type": "string",
             "description": "The version this binary was cut from."
+          }
+        }
+      },
+      "MemberSummary": {
+        "type": "object",
+        "description": "One member of the caller's account.",
+        "required": [
+          "user_id",
+          "email",
+          "role",
+          "joined_at"
+        ],
+        "properties": {
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Their name, `null` when the identity provider supplied none."
+          },
+          "email": {
+            "type": "string",
+            "description": "Their address."
+          },
+          "joined_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When they joined the account, epoch milliseconds."
+          },
+          "role": {
+            "type": "string",
+            "description": "Their role: `owner` or `member`."
+          },
+          "user_id": {
+            "type": "string",
+            "description": "The member's user identifier."
           }
         }
       },
@@ -15445,6 +16444,253 @@
                   ],
                   "format": "int64",
                   "description": "When it stopped working, if it has.\n\nEmitted as `null` rather than omitted — here and on every optional in\nthis module. The Zig daemon serialises through `res.json(value, .{})`,\nand std.json's default emits null optionals, so a row is always the\nsame set of keys. Omission would be a shape change a dashboard's\n`\"revoked_at\" in row` check can feel."
+                }
+              }
+            },
+            "description": "The rows on this page, in the requested order."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the next page resumes, or `null` on the last page.\n\nAlways emitted, never omitted, for the module's null rule."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many rows the collection holds in total.\n\nPage-stable — the count carries no keyset predicate — so a client\nwalking pages sees one number rather than a shrinking one. Whether more\npages exist is answered by `next_cursor` being non-null, not by a flag."
+          }
+        }
+      },
+      "PageResponse_InviteSummary": {
+        "type": "object",
+        "description": "One page of a list, in the envelope every list on this API shares.\n\nEach page carries three keys: `items`, `total` and `next_cursor`. A\n`next_cursor` of `null` means you have reached the last page.",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "One invite, as the account's owner sees it.",
+              "required": [
+                "id",
+                "email",
+                "role",
+                "expires_at",
+                "created_at",
+                "link",
+                "email_status"
+              ],
+              "properties": {
+                "created_at": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "When it was issued, epoch milliseconds."
+                },
+                "email": {
+                  "type": "string",
+                  "description": "The address it is for, lowercased."
+                },
+                "email_sent_at": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64",
+                  "description": "When the relay last accepted its email, epoch milliseconds; `null` if\nit never has."
+                },
+                "email_status": {
+                  "type": "string",
+                  "description": "What became of its most recent email: `sent`, `failed`, or\n`unconfigured` when this deployment has no mail relay set up."
+                },
+                "expires_at": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "When it stops being acceptable, epoch milliseconds."
+                },
+                "id": {
+                  "type": "string",
+                  "description": "The invite's identifier."
+                },
+                "link": {
+                  "type": "string",
+                  "description": "The dashboard page the invitee opens to accept it."
+                },
+                "role": {
+                  "type": "string",
+                  "description": "The role accepting it grants: `member`."
+                }
+              }
+            },
+            "description": "The rows on this page, in the requested order."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the next page resumes, or `null` on the last page.\n\nAlways emitted, never omitted, for the module's null rule."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many rows the collection holds in total.\n\nPage-stable — the count carries no keyset predicate — so a client\nwalking pages sees one number rather than a shrinking one. Whether more\npages exist is answered by `next_cursor` being non-null, not by a flag."
+          }
+        }
+      },
+      "PageResponse_MemberSummary": {
+        "type": "object",
+        "description": "One page of a list, in the envelope every list on this API shares.\n\nEach page carries three keys: `items`, `total` and `next_cursor`. A\n`next_cursor` of `null` means you have reached the last page.",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "One member of the caller's account.",
+              "required": [
+                "user_id",
+                "email",
+                "role",
+                "joined_at"
+              ],
+              "properties": {
+                "display_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Their name, `null` when the identity provider supplied none."
+                },
+                "email": {
+                  "type": "string",
+                  "description": "Their address."
+                },
+                "joined_at": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "When they joined the account, epoch milliseconds."
+                },
+                "role": {
+                  "type": "string",
+                  "description": "Their role: `owner` or `member`."
+                },
+                "user_id": {
+                  "type": "string",
+                  "description": "The member's user identifier."
+                }
+              }
+            },
+            "description": "The rows on this page, in the requested order."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the next page resumes, or `null` on the last page.\n\nAlways emitted, never omitted, for the module's null rule."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many rows the collection holds in total.\n\nPage-stable — the count carries no keyset predicate — so a client\nwalking pages sees one number rather than a shrinking one. Whether more\npages exist is answered by `next_cursor` being non-null, not by a flag."
+          }
+        }
+      },
+      "PageResponse_WaitingInvite": {
+        "type": "object",
+        "description": "One page of a list, in the envelope every list on this API shares.\n\nEach page carries three keys: `items`, `total` and `next_cursor`. A\n`next_cursor` of `null` means you have reached the last page.",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "One invite waiting for the caller's address.",
+              "required": [
+                "id",
+                "account",
+                "expires_at"
+              ],
+              "properties": {
+                "account": {
+                  "$ref": "#/components/schemas/WorkspaceAccount",
+                  "description": "The account accepting it joins."
+                },
+                "expires_at": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "When it stops being acceptable, epoch milliseconds."
+                },
+                "id": {
+                  "type": "string",
+                  "description": "The invite's identifier, which the accept route names."
+                }
+              }
+            },
+            "description": "The rows on this page, in the requested order."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the next page resumes, or `null` on the last page.\n\nAlways emitted, never omitted, for the module's null rule."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many rows the collection holds in total.\n\nPage-stable — the count carries no keyset predicate — so a client\nwalking pages sees one number rather than a shrinking one. Whether more\npages exist is answered by `next_cursor` being non-null, not by a flag."
+          }
+        }
+      },
+      "PageResponse_WorkspaceMember": {
+        "type": "object",
+        "description": "One page of a list, in the envelope every list on this API shares.\n\nEach page carries three keys: `items`, `total` and `next_cursor`. A\n`next_cursor` of `null` means you have reached the last page.",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "One member of a workspace's account, as its thread names senders.\n\nNo address: every member of an account can read this list, and a name is\nall a thread needs.",
+              "required": [
+                "user_id",
+                "role",
+                "actor"
+              ],
+              "properties": {
+                "actor": {
+                  "type": "string",
+                  "description": "The actor their messages record, `steer:<subject>`: what a thread\nrow's `actor` equals when this member sent it."
+                },
+                "display_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Their name, `null` when the identity provider supplied none."
+                },
+                "role": {
+                  "type": "string",
+                  "description": "Their role: `owner` or `member`."
+                },
+                "user_id": {
+                  "type": "string",
+                  "description": "The member's user identifier."
                 }
               }
             },
@@ -17560,6 +18806,30 @@
           }
         }
       },
+      "WaitingInvite": {
+        "type": "object",
+        "description": "One invite waiting for the caller's address.",
+        "required": [
+          "id",
+          "account",
+          "expires_at"
+        ],
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/WorkspaceAccount",
+            "description": "The account accepting it joins."
+          },
+          "expires_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it stops being acceptable, epoch milliseconds."
+          },
+          "id": {
+            "type": "string",
+            "description": "The invite's identifier, which the accept route names."
+          }
+        }
+      },
       "WebhookUrl": {
         "type": "object",
         "description": "Where one declared webhook trigger is delivered.",
@@ -17578,14 +18848,68 @@
           }
         }
       },
+      "WorkspaceAccount": {
+        "type": "object",
+        "description": "The account a listed workspace belongs to.",
+        "required": [
+          "tenant_id",
+          "owner_name"
+        ],
+        "properties": {
+          "owner_name": {
+            "type": "string",
+            "description": "What a person calls the account: its owner's display name, or the\naccount's own name when the owner has none."
+          },
+          "tenant_id": {
+            "type": "string",
+            "description": "The account's tenant."
+          }
+        }
+      },
+      "WorkspaceMember": {
+        "type": "object",
+        "description": "One member of a workspace's account, as its thread names senders.\n\nNo address: every member of an account can read this list, and a name is\nall a thread needs.",
+        "required": [
+          "user_id",
+          "role",
+          "actor"
+        ],
+        "properties": {
+          "actor": {
+            "type": "string",
+            "description": "The actor their messages record, `steer:<subject>`: what a thread\nrow's `actor` equals when this member sent it."
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Their name, `null` when the identity provider supplied none."
+          },
+          "role": {
+            "type": "string",
+            "description": "Their role: `owner` or `member`."
+          },
+          "user_id": {
+            "type": "string",
+            "description": "The member's user identifier."
+          }
+        }
+      },
       "WorkspaceSummary": {
         "type": "object",
         "description": "One workspace as the list shows it.",
         "required": [
           "id",
-          "created_at"
+          "created_at",
+          "account",
+          "role"
         ],
         "properties": {
+          "account": {
+            "$ref": "#/components/schemas/WorkspaceAccount",
+            "description": "The account it belongs to, which is how a dashboard groups the list."
+          },
           "created_at": {
             "type": "integer",
             "format": "int64",
@@ -17601,12 +18925,16 @@
               "null"
             ],
             "description": "Its name — `null` on rows older than naming, emitted either way for\nthe tenant module's null rule."
+          },
+          "role": {
+            "type": "string",
+            "description": "The caller's role in that account: `owner` or `member`."
           }
         }
       },
       "WorkspacesResponse": {
         "type": "object",
-        "description": "`GET /v1/tenants/me/workspaces` — one page of the tenant's workspaces.",
+        "description": "`GET /v1/tenants/me/workspaces` — one page of the workspaces across every\naccount the caller holds.",
         "required": [
           "items",
           "tenant_id"
@@ -17628,7 +18956,7 @@
           },
           "tenant_id": {
             "type": "string",
-            "description": "Whose list this is — the authoritative resolution, carried so a client\ncan pin its local state to the right tenant."
+            "description": "The caller's own account — the authoritative resolution, carried so a\nclient can pin its local state to the right person. Items from accounts\nthe caller joined name theirs in `account`."
           },
           "total": {
             "type": [

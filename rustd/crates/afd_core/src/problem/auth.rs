@@ -150,6 +150,13 @@ pub(super) const AUTH: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::AUTH_OWNER_ONLY,
+        status: 403,
+        title: "Owner only",
+        hint: "Only the account owner can store secrets, connect integrations, or manage members. Ask the owner to make this change.",
+        user_message: Some("Only the account owner can do this."),
+    },
+    Problem {
         code: error_code::AUTH_CLI_CREDENTIAL_NOT_FOUND,
         status: 404,
         title: "Command-line credential not found",

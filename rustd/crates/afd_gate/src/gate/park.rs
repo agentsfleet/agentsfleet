@@ -37,7 +37,7 @@
 use std::borrow::Cow;
 
 use afd_core::clock::UnixMillis;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use afd_dragonfly::streams::FleetStreams;
 use afd_wire::tail::{FleetCounters, TailFrame};
 use sqlx::Row as _;
@@ -228,9 +228,7 @@ impl Gates {
     /// minted here, through the workspace's one entropy surface rather than a
     /// second source with its own failure mode.
     fn mint(&self, now: UnixMillis) -> Result<Uuid7> {
-        let mut bytes = [0u8; ENTROPY_LEN];
-        self.entropy().fill(&mut bytes)?;
-        Ok(Uuid7::encode(now, bytes)?)
+        Ok(self.entropy().uuid7(now)?)
     }
 
     /// Absorb a park fault into the fail-closed answer, saying what dropped.

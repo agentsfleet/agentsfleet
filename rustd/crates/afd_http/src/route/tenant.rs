@@ -49,6 +49,20 @@ pub enum TenantRoute {
     CliCredential,
     /// The calling person's own identity.
     CurrentUser,
+    /// Invites into the caller's own account.
+    Invites,
+    /// One invite into the caller's own account.
+    Invite,
+    /// Sending one invite's email again.
+    InviteEmail,
+    /// The people in the caller's own account.
+    Members,
+    /// One member of the caller's own account.
+    Member,
+    /// Invites waiting for the caller's address, from any account.
+    InvitesForMe,
+    /// Accepting one of them.
+    InviteAcceptance,
 }
 
 impl TenantRoute {
@@ -68,6 +82,13 @@ impl TenantRoute {
         Self::CliCredentials,
         Self::CliCredential,
         Self::CurrentUser,
+        Self::Invites,
+        Self::Invite,
+        Self::InviteEmail,
+        Self::Members,
+        Self::Member,
+        Self::InvitesForMe,
+        Self::InviteAcceptance,
     ];
 
     /// The verbs this route identity serves.
@@ -88,10 +109,15 @@ impl TenantRoute {
             | Self::Workspaces
             | Self::ModelLibrary
             | Self::FleetBundles
-            | Self::CurrentUser => &[Verb::Get],
-            Self::CreateWorkspace | Self::CliCredentials => &[Verb::Post],
-            Self::CliCredential => &[Verb::Delete],
-            Self::ApiKeys | Self::ModelEntries => &[Verb::Get, Verb::Post],
+            | Self::CurrentUser
+            | Self::Members
+            | Self::InvitesForMe => &[Verb::Get],
+            Self::CreateWorkspace
+            | Self::CliCredentials
+            | Self::InviteEmail
+            | Self::InviteAcceptance => &[Verb::Post],
+            Self::CliCredential | Self::Invite | Self::Member => &[Verb::Delete],
+            Self::ApiKeys | Self::ModelEntries | Self::Invites => &[Verb::Get, Verb::Post],
             Self::ApiKey | Self::ModelEntry => &[Verb::Patch, Verb::Delete],
             Self::Provider => &[Verb::Get, Verb::Put, Verb::Delete],
         }
@@ -140,6 +166,25 @@ impl TenantRoute {
             // `billing:read` was being told their credential was rejected,
             // because the probe before this route existed needed one.
             Self::CurrentUser => ("/v1/users/me", Scopes::Always(NONE)),
+            Self::Invites => ("/v1/tenants/me/invites", Scopes::Always(WORKSPACE_ADMIN)),
+            Self::Invite => (
+                "/v1/tenants/me/invites/{invite_id}",
+                Scopes::Always(WORKSPACE_ADMIN),
+            ),
+            Self::InviteEmail => (
+                "/v1/tenants/me/invites/{invite_id}/send",
+                Scopes::Always(WORKSPACE_ADMIN),
+            ),
+            Self::Members => ("/v1/tenants/me/members", Scopes::Always(WORKSPACE_ADMIN)),
+            Self::Member => (
+                "/v1/tenants/me/members/{user_id}",
+                Scopes::Always(WORKSPACE_ADMIN),
+            ),
+            Self::InvitesForMe => ("/v1/users/me/invites", Scopes::Always(NONE)),
+            Self::InviteAcceptance => (
+                "/v1/users/me/invites/{invite_id}/accept",
+                Scopes::Always(NONE),
+            ),
         };
         RouteMeta::new(Guard::Bearer, RouteClass::Api, template, scopes)
     }

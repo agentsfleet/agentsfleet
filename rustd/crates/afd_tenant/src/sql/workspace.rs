@@ -29,19 +29,32 @@
 //! returns a connection to the pool between requests and a session-level
 //! setting would leak one tenant's identifier onto the next request.
 
-/// Does this principal's effective tenant own this workspace?
+/// May this principal open this workspace, and with which role?
 ///
 /// `$1` workspace id · `$2` the identity provider's subject, or NULL · `$3` the
-/// tenant claim, or NULL. Answers the owning tenant when allowed, and NO ROW
-/// otherwise — which is what keeps "denied" distinguishable from "the datastore
-/// would not answer" all the way up (RULE ECL).
+/// tenant claim, or NULL. Answers the owning tenant and the caller's stored
+/// role when allowed, and NO ROW otherwise — which is what keeps "denied"
+/// distinguishable from "the datastore would not answer" all the way up
+/// (RULE ECL).
+///
+/// Two arms admit. A membership row for the subject's user in the owning
+/// tenant admits with that row's role. The caller's own account — the user
+/// row's tenant, or the claim when no user row exists — admits whether or not
+/// a membership row backs it, and a claim-bound credential (`$2` NULL)
+/// reaches nothing else. The role column is
+/// NULL on that second arm when no membership row backs it.
+///
+/// One statement and no subquery: the workspace by primary key, the user by
+/// `uq_users_oidc_subject`, the membership by `uq_memberships_tenant_id_user_id`.
+/// Each probe returns at most one row, so the plan is three index lookups
+/// whatever the table sizes.
 pub const AUTHORIZE_WORKSPACE: &str = "\
-SELECT w.tenant_id::text \
+SELECT w.tenant_id::text, m.role \
 FROM core.workspaces w \
+LEFT JOIN core.users u ON u.oidc_subject = $2 \
+LEFT JOIN core.memberships m ON m.tenant_id = w.tenant_id AND m.user_id = u.id \
 WHERE w.id = $1::uuid \
-  AND w.tenant_id = COALESCE( \
-        (SELECT u.tenant_id FROM core.users u WHERE u.oidc_subject = $2), \
-        $3::uuid)";
+  AND (m.id IS NOT NULL OR w.tenant_id = COALESCE(u.tenant_id, $3::uuid))";
 
 /// The tenant owning one workspace, for the audited cross-tenant override.
 ///
@@ -81,48 +94,90 @@ pub const INSERT_WORKSPACE: &str = "\
 INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
 VALUES ($1::uuid, $2::uuid, $3, $4, $5)";
 
-// The four page selects below split what `tenant_workspaces.zig` merges into
-// one CTE statement. The merge existed to fold the tenant resolve into the
-// page read; here the resolve is `tenant_of`, the ONE statement every tenant
-// route shares — a second spelling of the authority order to save its round
-// trip would be two places for that order to drift apart. The walk itself is
-// the Zig one: oldest first, `(created_at, id)` keyset, exact-name filter.
+// The list is two statements: the accounts a caller holds, then one keyset
+// page across all of them. Folding the account read into the page would put a
+// second spelling of the access arms beside `AUTHORIZE_WORKSPACE`, and two
+// spellings drift. The walk is unchanged: oldest first, `(created_at, id)`
+// keyset, exact-name filter, now over `tenant_id = ANY(...)`, which
+// `idx_workspaces_tenant_id_created_at_id` serves per account.
 
-/// The first page of a tenant's workspaces.
-pub const SELECT_TENANT_WORKSPACES_PAGE_FIRST: &str = "\
-SELECT id::text, name, created_at \
-FROM core.workspaces \
-WHERE tenant_id = $1::uuid \
-ORDER BY created_at ASC, id ASC \
-LIMIT $2";
+/// The accounts a signed-in person holds, with their role in each.
+///
+/// `$1` the identity provider's subject · `$2` the owner role's spelling.
+/// Every membership row, plus the person's own account whether or not a
+/// membership row backs it: the same two arms [`AUTHORIZE_WORKSPACE`] admits
+/// by. The last column is the person's own account, repeated on every row.
+/// No row at all means no user row, and the caller falls back to the claim.
+pub const SELECT_SUBJECT_ACCOUNTS: &str = concat!(
+    "WITH me AS ( \
+       SELECT id, tenant_id FROM core.users WHERE oidc_subject = $1 \
+     ), held AS ( \
+       SELECT DISTINCT ON (arm.tenant_id) arm.tenant_id, arm.role FROM ( \
+         SELECT m.tenant_id, m.role FROM core.memberships m JOIN me ON m.user_id = me.id \
+         UNION ALL \
+         SELECT me.tenant_id, NULL::text FROM me \
+       ) arm ORDER BY arm.tenant_id, arm.role NULLS LAST \
+     ) \
+     SELECT t.id::text AS tenant_id, held.role, ",
+    owner_name_column!(),
+    ", me.tenant_id::text AS home_tenant_id \
+     FROM held CROSS JOIN me \
+     JOIN core.tenants t ON t.id = held.tenant_id ",
+    owner_name_join!(2)
+);
+
+/// The one account a claim-bound credential holds: its own.
+///
+/// `$1` the tenant claim · `$2` the owner role's spelling. No row when the
+/// claim names no tenant, and the list is then empty rather than refused.
+pub const SELECT_TENANT_ACCOUNT: &str = concat!(
+    "SELECT t.id::text AS tenant_id, NULL::text AS role, ",
+    owner_name_column!(),
+    ", t.id::text AS home_tenant_id \
+     FROM core.tenants t ",
+    owner_name_join!(2),
+    "WHERE t.id = $1::uuid"
+);
+
+/// The first page of the workspaces across a person's accounts.
+pub const SELECT_TENANT_WORKSPACES_PAGE_FIRST: &str = concat!(
+    workspace_page!(),
+    "ORDER BY created_at ASC, id ASC LIMIT $2"
+);
 
 /// The page after a boundary row.
-pub const SELECT_TENANT_WORKSPACES_PAGE_AFTER: &str = "\
-SELECT id::text, name, created_at \
-FROM core.workspaces \
-WHERE tenant_id = $1::uuid \
-  AND (created_at, id) > ($2, $3::uuid) \
-ORDER BY created_at ASC, id ASC \
-LIMIT $4";
+pub const SELECT_TENANT_WORKSPACES_PAGE_AFTER: &str = concat!(
+    workspace_page!(),
+    "AND (created_at, id) > ($2, $3::uuid) ORDER BY created_at ASC, id ASC LIMIT $4"
+);
 
 /// The first page, held to an exact name.
 ///
 /// The filter a client reconciling its own create uses, so it can find the
 /// row it just made without walking the whole list.
-pub const SELECT_TENANT_WORKSPACES_PAGE_FIRST_BY_NAME: &str = "\
-SELECT id::text, name, created_at \
-FROM core.workspaces \
-WHERE tenant_id = $1::uuid \
-  AND name = $2 \
-ORDER BY created_at ASC, id ASC \
-LIMIT $3";
+pub const SELECT_TENANT_WORKSPACES_PAGE_FIRST_BY_NAME: &str = concat!(
+    workspace_page!(),
+    "AND name = $2 ORDER BY created_at ASC, id ASC LIMIT $3"
+);
 
 /// The page after a boundary row, held to an exact name.
-pub const SELECT_TENANT_WORKSPACES_PAGE_AFTER_BY_NAME: &str = "\
-SELECT id::text, name, created_at \
-FROM core.workspaces \
-WHERE tenant_id = $1::uuid \
-  AND name = $2 \
-  AND (created_at, id) > ($3, $4::uuid) \
-ORDER BY created_at ASC, id ASC \
-LIMIT $5";
+pub const SELECT_TENANT_WORKSPACES_PAGE_AFTER_BY_NAME: &str = concat!(
+    workspace_page!(),
+    "AND name = $2 AND (created_at, id) > ($3, $4::uuid) \
+     ORDER BY created_at ASC, id ASC LIMIT $5"
+);
+
+#[cfg(test)]
+mod tests {
+    use super::{SELECT_SUBJECT_ACCOUNTS, SELECT_TENANT_ACCOUNT};
+
+    /// The macro is handed a parameter NUMBER; the statements must come out
+    /// comparing the owner role to that parameter, or every account would be
+    /// named by nobody.
+    #[test]
+    fn the_owner_name_join_compares_the_role_to_the_slot_it_is_given() {
+        for statement in [SELECT_SUBJECT_ACCOUNTS, SELECT_TENANT_ACCOUNT] {
+            assert!(statement.contains("om.role = $2 AND"), "{statement}");
+        }
+    }
+}

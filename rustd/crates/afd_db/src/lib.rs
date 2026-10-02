@@ -41,6 +41,7 @@
 )]
 
 pub mod config;
+pub mod constraint;
 pub mod error;
 pub mod migrate;
 pub mod migration;

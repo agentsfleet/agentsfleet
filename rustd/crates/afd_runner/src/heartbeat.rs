@@ -19,7 +19,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
 use afd_observability::producers;
 use afd_wire::runner::{CapabilityReport, HeartbeatRequest, SelftestReport};
@@ -193,9 +193,7 @@ impl Runners {
 
     /// Draws the identifier a transition event is written under.
     fn event_id(&self, now: UnixMillis) -> Result<Uuid7> {
-        let mut bytes = [0u8; ENTROPY_LEN];
-        self.entropy().fill(&mut bytes)?;
-        Ok(Uuid7::encode(now, bytes)?)
+        Ok(self.entropy().uuid7(now)?)
     }
 }
 

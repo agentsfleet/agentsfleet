@@ -160,3 +160,22 @@ pub const DETAIL_BILLING_WALLET_MISSING: &str =
 /// because this is `tenant_billing.zig`'s exact spelling and a cursor may be
 /// judged by either binary mid-cutover.
 pub const DETAIL_CHARGES_CURSOR_INVALID: &str = "invalid cursor";
+
+/// The refusal an invite that can no longer be accepted earns: never issued,
+/// expired, revoked, or already somebody else's.
+pub const DETAIL_INVITE_NOT_FOUND: &str = "Invite not found";
+
+/// The refusal an accept from the wrong account earns. Names no address.
+pub const DETAIL_INVITE_EMAIL_MISMATCH: &str = "Invite is for another email address";
+
+/// The refusal inviting an address that belongs to the account earns.
+pub const DETAIL_INVITE_MEMBER: &str = "Address already a member";
+
+/// The refusal inviting an address with a pending invite earns.
+pub const DETAIL_INVITE_PENDING: &str = "Address already invited";
+
+/// The refusal removing an account's last owner earns.
+pub const DETAIL_MEMBER_LAST_OWNER: &str = "Account must keep an owner";
+
+/// The refusal an address that is not one earns.
+pub const DETAIL_INVITE_EMAIL_INVALID: &str = "email must be a valid address";

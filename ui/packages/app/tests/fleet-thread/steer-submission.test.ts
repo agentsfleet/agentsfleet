@@ -99,7 +99,7 @@ describe("FleetThread — steer submission", () => {
     const appendOptimistic = vi.fn().mockReturnValue("temp_7");
     mockStream([], { appendOptimistic });
     postSteerMock.mockResolvedValueOnce(ACCEPTED("evt_real_7"));
-    render(React.createElement(FleetThread, { workspaceId: WS, fleetId: ZID, senderLabel: "", initial: [], viewer: null }));
+    render(React.createElement(FleetThread, { workspaceId: WS, fleetId: ZID, senderLabel: "", initial: [], viewer: null, senderNames: [] }));
     await capturedOnNew.current!(appendMessage("deploy the canary"));
     expect(appendOptimistic).toHaveBeenCalledWith("deploy the canary", ACTOR.PENDING_STEER, undefined);
   });

@@ -97,7 +97,7 @@ impl Services for ServingPlane {
 
     /// Where a PERSON goes, which is a different deployment fact from
     /// [`Services::deployment`] below and never the same string.
-    fn dashboard(&self) -> &str {
+    fn dashboard(&self) -> &afd_connector::Dashboard {
         &self.app_url
     }
 
@@ -213,11 +213,17 @@ impl Services for ServingPlane {
 impl TenantSurface for ServingPlane {
     type WorkspaceDirectory = Workspaces;
     type ApiKeys = ApiKeys;
+    type Team = afd_tenant::team::Team;
     type CliCredentials = CliCredentials;
     type Billing = Billing;
     type Catalogue = Models;
     type TenantProviders = Providers;
     type Signups = afd_tenant::signup::Signups;
+    type InviteMail = afd_mail::InviteMailer;
+
+    fn invite_mail(&self) -> &Self::InviteMail {
+        &self.invite_mail
+    }
 
     fn signups(&self) -> &Self::Signups {
         &self.signups
@@ -229,6 +235,10 @@ impl TenantSurface for ServingPlane {
 
     fn api_keys(&self) -> &ApiKeys {
         &self.api_keys
+    }
+
+    fn team(&self) -> &Self::Team {
+        &self.team
     }
 
     fn cli_credentials(&self) -> &CliCredentials {

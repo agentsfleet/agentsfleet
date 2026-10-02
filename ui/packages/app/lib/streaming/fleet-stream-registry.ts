@@ -1,5 +1,5 @@
 import { type EventRow } from "@/lib/api/events";
-import { FRAME_KIND, streamFleetEventsUrl } from "@/lib/api/events-types";
+import { FRAME_KIND, ROUTED_FRAME_KINDS, streamFleetEventsUrl } from "@/lib/api/events-types";
 import type { FleetFacts } from "@/lib/events/run-summary";
 import { landFrames, onFrame, recoverGap, type LiveEntry } from "./fleet-stream-dispatch";
 import { mergeFacts } from "./fleet-stream-facts";
@@ -104,9 +104,10 @@ function startEventSource(entry: LiveEntry, fleetId: string): void {
   };
   // Named frames dispatch only to their matching listener, never onmessage.
   // Keep both paths: the daemon uses message for its no-kind fallback.
-  for (const name of Object.values(FRAME_KIND)) {
+  for (const name of ROUTED_FRAME_KINDS) {
     es.addEventListener(name, handleFrame as (e: Event) => void);
   }
+  es.addEventListener(FRAME_KIND.ACCESS_REVOKED, () => onAccessRevoked(entry, es));
   es.onmessage = handleFrame;
   es.addEventListener(HEARTBEAT_EVENT, () => {
     if (entry.eventSource !== es) return;
@@ -143,9 +144,25 @@ function onEventSourceError(entry: LiveEntry, fleetId: string): void {
   );
 }
 
+// The daemon's last frame to a caller who lost access. It closes the stream and
+// refuses the next request the same way, so every way back is shut here: the
+// pending retry, the silence timer, the tab-visible and network-online signals,
+// and the operator's retry, which reads the terminal status. Only a new mount
+// asks again (`subscribe`).
+function onAccessRevoked(entry: LiveEntry, es: EventSource): void {
+  if (entry.eventSource !== es) return;
+  cancelPendingReconnect(entry);
+  entry.recoveryWindow.dispose();
+  entry.detachRecovery?.();
+  entry.detachRecovery = null;
+  es.close();
+  entry.eventSource = null;
+  patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.REVOKED });
+}
+
 export function retryConnection(fleetId: string): void {
   const entry = REGISTRY.get(fleetId);
-  if (!entry) return;
+  if (!entry || entry.snapshot.connectionStatus === CONNECTION_STATUS.REVOKED) return;
   cancelPendingReconnect(entry);
   entry.recoveryWindow.dispose();
   entry.eventSource?.close();
@@ -167,6 +184,25 @@ function teardown(entry: Entry, fleetId: string): void {
   REGISTRY.delete(fleetId);
 }
 
+// Opens the entry's stream and the tab-visible and network-online signals that
+// restart it. An entry gets these once per life: on creation, and again on a
+// mount after `access_revoked` shut them.
+function connect(entry: LiveEntry, fleetId: string): void {
+  entry.detachRecovery = attachRecoveryListeners({
+    hasConnection: () => entry.eventSource !== null && !entry.recoveryWindow.isStale(),
+    recover: () => {
+      if (entry.eventSource) onEventSourceError(entry, fleetId);
+      cancelPendingReconnect(entry);
+      entry.reconnectAttempts = 0;
+      if (entry.snapshot.connectionStatus !== CONNECTION_STATUS.LIVE) {
+        patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.CONNECTING });
+      }
+      startEventSource(entry, fleetId);
+    },
+  });
+  startEventSource(entry, fleetId);
+}
+
 export function subscribe(
   workspaceId: string,
   fleetId: string,
@@ -176,20 +212,14 @@ export function subscribe(
   let entry = REGISTRY.get(fleetId);
   if (!entry) {
     entry = adopt(workspaceId, fleetId, initial);
-    const tracked = entry;
-    entry.detachRecovery = attachRecoveryListeners({
-      hasConnection: () => tracked.eventSource !== null && !tracked.recoveryWindow.isStale(),
-      recover: () => {
-        if (tracked.eventSource) onEventSourceError(tracked, fleetId);
-        cancelPendingReconnect(tracked);
-        tracked.reconnectAttempts = 0;
-        if (tracked.snapshot.connectionStatus !== CONNECTION_STATUS.LIVE) {
-          patchSnapshot(tracked, { connectionStatus: CONNECTION_STATUS.CONNECTING });
-        }
-        startEventSource(tracked, fleetId);
-      },
-    });
-    startEventSource(entry, fleetId);
+    connect(entry, fleetId);
+  } else if (entry.snapshot.connectionStatus === CONNECTION_STATUS.REVOKED) {
+    // A new mount is a new request: access may have come back since the stream
+    // ended, by a fresh invite. A caller still removed is refused once more
+    // with `access_revoked`, so this costs one request per mount, never a loop.
+    entry.reconnectAttempts = 0;
+    patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.CONNECTING });
+    connect(entry, fleetId);
   }
   if (entry.idleTimer) {
     clearTimeout(entry.idleTimer);

@@ -226,7 +226,7 @@ impl Fleets {
             .await?;
         let mut connection = self.database.acquire().await?;
 
-        let id = self.mint_id(now)?;
+        let id = self.entropy.uuid7(now)?;
         let name = self
             .insert_with_retry(&mut connection, workspace, &id, &authored, request, now)
             .await?;
@@ -307,10 +307,5 @@ impl Fleets {
             })
             .await
             .map_err(Into::into)
-    }
-
-    /// Draws a fresh fleet identifier.
-    fn mint_id(&self, now: UnixMillis) -> Result<Uuid7> {
-        Ok(Uuid7::encode(now, self.entropy.uuid_randomness()?)?)
     }
 }

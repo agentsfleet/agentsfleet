@@ -30,7 +30,20 @@
 //! Every viewer of a fleet writes the same published bytes; see [`body`].
 
 mod body;
+mod guard;
+mod revocable;
 mod wall;
+
+/// The `data` line of the frame a revoked stream ends on, as both stream
+/// descriptions quote it. A macro rather than a `const` because `concat!`
+/// takes only literals, and this is the one place the literal is written.
+/// Gated with the descriptions that use it: without `openapi` nothing does.
+#[cfg(feature = "openapi")]
+macro_rules! access_revoked_data {
+    () => {
+        "`data: {\"kind\":\"access_revoked\",\"error_code\":\"UZ-AUTH-001\"}` "
+    };
+}
 
 #[cfg(test)]
 mod transport_tests;
@@ -85,9 +98,13 @@ const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
         "identifier 0 and does not advance the activity sequence, so a client ",
         "may report the stream live without waiting for a heartbeat. An ",
         "instance holding no pub/sub connection sends no `hello`. ",
-        "The daemon brackets every run. ",
+        "`event_admitted` arrives when a person's message is accepted, before ",
+        "any runner has it. It carries `event_id`, `actor`, `event_type`, ",
+        "`message` and `created_at`, and its `event_id` is the one the send ",
+        "returned. The daemon brackets every run. ",
         "`event_received` carries `event_id`, `actor`, `event_type` and ",
-        "`created_at` when a run's row is written. `event_complete` carries ",
+        "`created_at` when a run's row is written. A person's message adds ",
+        "`message`, the text they typed. `event_complete` carries ",
         "the terminal row as `GET …/events` lists it, without `fleet_id` and ",
         "`workspace_id`. The completion adds `fleet_status` and ",
         "`pending_approvals`. It also carries `final_reply`, the reply text, ",
@@ -111,6 +128,12 @@ const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
         "events before reconnecting. After 15 seconds without activity, the ",
         "stream sends `event: heartbeat` with `data: {\"kind\":\"heartbeat\"}`. ",
         "Heartbeats have no `id` and do not advance the activity sequence. ",
+        "The stream re-checks the caller's access every 15 seconds. When ",
+        "access is gone, it sends `event: access_revoked` with ",
+        access_revoked_data!(),
+        "and closes. Do not reconnect after it: the next request is refused ",
+        "with the same code. If access cannot be checked for about a minute, ",
+        "the stream closes without that frame. Reconnect as after any drop. ",
     ),
     params(
         afd_http::openapi::path::Fleet,
@@ -127,6 +150,7 @@ const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
 pub(crate) async fn fleet<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
+    Acting(principal): Acting,
     Path(FleetPath { fleet_id }): Path<FleetPath>,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
@@ -143,7 +167,9 @@ pub(crate) async fn fleet<D: Services>(
         .map_err(Refusal::at(EVENT_FLEET_STREAM))?
         .ok_or_else(|| Refusal::coded(error_code::AGENTSFLEET_NOT_FOUND, DETAIL_FLEET_NOT_FOUND))?;
 
-    Ok(serve(services.live().tail_of(fleet.as_str()), slot))
+    let tail = services.live().tail_of(fleet.as_str());
+    let frames = guard::guarded(tail, Arc::clone(&services), principal, owned.workspace);
+    Ok(serve(frames, slot))
 }
 
 /// `GET /v1/workspaces/{workspace_id}/events/stream`.
@@ -173,9 +199,14 @@ pub(crate) async fn fleet<D: Services>(
         "These control frames use identifier 0 and ",
         "do not advance the activity sequence. Activity identifiers start at ",
         "0 for each connection. The route ignores `Last-Event-ID`. The ",
-        "connection adjusts its fan-in as fleets appear or disappear. A ",
-        "caller whose workspace access is revoked stops receiving on the next ",
-        "refresh. At capacity the route returns 503 `UZ-API-002` with ",
+        "connection adjusts its fan-in as fleets appear or disappear. The ",
+        "stream re-checks the caller's access every 10 seconds. When access ",
+        "is gone, it sends `event: access_revoked` with ",
+        access_revoked_data!(),
+        "and closes; do not reconnect after it. If access cannot be checked ",
+        "for about 40 seconds, the stream closes without that frame. Reconnect ",
+        "as after any drop. ",
+        "At capacity the route returns 503 `UZ-API-002` with ",
         "`Retry-After`. After a reconnect opens, recover the gap through `GET ",
         "/v1/workspaces/{workspace_id}/events`. After 15 seconds without a ",
         "frame, the stream sends `event: heartbeat` with ",

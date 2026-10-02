@@ -86,7 +86,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let entropy = source
         .uuid_randomness()
         .expect_err("a mocked source told to fail refuses the draw");
-    let identifier = afd_core::id::Uuid7::parse("").expect_err("an empty identifier is refused");
     vec![
         ("invalid", InvalidBundle::MissingSkill.into()),
         ("source", SourceFailure::RateLimited.into()),
@@ -103,11 +102,9 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             "pool",
             afd_db::error::invalid_bool_knob("MIGRATE_ON_START").into(),
         ),
-        // The two onboarding failures that are this instance's rather than the
-        // caller's. Neither is lifted — both are raised where the mint happens
-        // — so a sample is the only way their shared code and sentence are
-        // ever read.
+        // The onboarding failure that is this instance's rather than the
+        // caller's. It is not lifted, since it is raised where the mint
+        // happens, so a sample is the only way its code and sentence are read.
         ("entropy", ErrorKind::Entropy { source: entropy }.into()),
-        ("mint", ErrorKind::Mint { source: identifier }.into()),
     ]
 }

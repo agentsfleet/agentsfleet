@@ -41,9 +41,7 @@ impl Watched {
         ])
         .await;
         fixture.seed().await;
-        let hub = SubscriptionHub::start(harness::dragonfly_config())
-            .await
-            .expect("live hub");
+        let hub = harness::live_hub().await;
         let publisher = FleetStreams::new(
             Dragonfly::connect(&harness::dragonfly_config())
                 .await

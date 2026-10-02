@@ -100,7 +100,7 @@ impl Sessions {
     /// Refuses a public key or a token name the bounds will not take, reports a
     /// host that cannot draw entropy, and reports a queue that would not answer.
     pub async fn open(&self, opening: &Opening<'_>, now: UnixMillis) -> Result<Opened> {
-        let session_id = self.mint_id(now)?;
+        let session_id = self.entropy.uuid7(now)?;
         let state = SessionState {
             session_id: session_id.as_str().to_owned(),
             status: SessionStatus::Pending,
@@ -310,11 +310,6 @@ impl Sessions {
             &[session_id.as_bytes(), code.as_bytes()],
         )
         .to_hex()
-    }
-
-    /// Draws a fresh session identifier.
-    fn mint_id(&self, now: UnixMillis) -> Result<Uuid7> {
-        Ok(Uuid7::encode(now, self.entropy.uuid_randomness()?)?)
     }
 }
 

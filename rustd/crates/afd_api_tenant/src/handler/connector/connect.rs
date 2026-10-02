@@ -18,13 +18,14 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_connector::callback::relay_uri;
 use afd_connector::{Started, Starting};
 use afd_wire::connector::ConsentRedirect;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 
-use super::{EVENT_WRITE, provider_of, relay_uri, state_secret, unconfigured};
+use super::{EVENT_WRITE, provider_of, state_secret, unconfigured};
 use crate::auth::{PersonIdentity, WorkspaceContext};
 use crate::handler::Refusal;
 use crate::services::{Services, WorkspaceConnectors as _};
@@ -74,7 +75,7 @@ pub(crate) async fn start<D: Services>(
         return Err(unconfigured());
     };
     let secret = state_secret(&services).await?;
-    let redirect_uri = relay_uri(&services, provider)?;
+    let redirect_uri = relay_uri(services.dashboard(), provider);
 
     let started = services
         .connectors()

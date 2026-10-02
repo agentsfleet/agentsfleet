@@ -6,6 +6,8 @@
 )]
 
 use afd_core::env::MapEnv;
+use afd_core::error_code;
+use agentsfleetd::BootFailure;
 use agentsfleetd::preflight::{
     API_URL_KNOB, APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, Fault, PLATFORM_ADMIN_WORKSPACE_KNOB,
     R2_ACCESS_KEY_ID_KNOB, R2_ACCOUNT_ID_KNOB, R2_BUCKET_KNOB, R2_SECRET_ACCESS_KEY_KNOB,
@@ -37,7 +39,8 @@ fn with_optional<'a>(optional: impl IntoIterator<Item = (&'a str, &'a str)>) -> 
 fn unset_optional_settings_resolve_to_documented_defaults() {
     let config = preflight(&with_optional([])).expect("the required environment boots");
 
-    assert_eq!(config.app_url(), "https://app.agentsfleet.net");
+    // The parsed form, which carries the root path's slash.
+    assert_eq!(config.app_url().as_str(), "https://app.agentsfleet.net/");
     assert_eq!(config.api_url(), "https://api.agentsfleet.net");
     assert_eq!(config.sse_max_streams(), 256);
     assert!(config.posthog().is_none());
@@ -63,7 +66,7 @@ fn complete_optional_settings_survive_preflight() {
     ]))
     .expect("complete optional groups are accepted");
 
-    assert_eq!(config.app_url(), "https://dashboard.example.test");
+    assert_eq!(config.app_url().as_str(), "https://dashboard.example.test/");
     assert_eq!(config.api_url(), "https://api.example.test");
     assert_eq!(config.sse_max_streams(), 7);
     let analytics = config.posthog().expect("the analytics key enables output");
@@ -116,4 +119,48 @@ fn invalid_optionals_are_reported_together() {
             ..
         }
     )));
+}
+
+/// A dashboard base no page can hang off refuses boot, naming the knob, rather
+/// than booting a daemon whose every connect and invite link would fail. That
+/// includes a base that is not a bare http(s) URL, which is what the refusal
+/// promises.
+///
+/// The successor of `afd_api`'s `a_dashboard_base_that_is_not_a_url_is_refused_
+/// rather_than_relayed_to`: the base used to be parsed per connect and refused
+/// there as `UZ-CONN-001`. It is parsed once, here, so the guarantee lives
+/// here, as the boot refusal's own code.
+#[test]
+fn a_dashboard_base_that_is_not_a_url_refuses_boot() {
+    for base in [
+        "not a url at all",
+        "/relative",
+        "mailto:ops@example.test",
+        "ftp://dashboard.example.test",
+        "file:///srv/dashboard",
+        "https://u:p@dashboard.example.test",
+        "https://dashboard.example.test/?q=1",
+        "https://dashboard.example.test/#f",
+    ] {
+        let refusal = preflight(&with_optional([(APP_URL_KNOB, base)]))
+            .expect_err("an unusable dashboard base refuses boot");
+        assert_eq!(
+            refusal.knobs(),
+            [APP_URL_KNOB],
+            "{base}: only the dashboard"
+        );
+        assert!(
+            matches!(
+                refusal.faults(),
+                [Fault::Invalid { why, .. }] if why.contains("http(s) URL")
+            ),
+            "{base}: {:?}",
+            refusal.faults()
+        );
+        assert_eq!(
+            BootFailure::from(refusal).code(),
+            error_code::STARTUP_ENV_CHECK,
+            "{base}: refused as the environment, before anything opens"
+        );
+    }
 }

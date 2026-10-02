@@ -50,10 +50,20 @@
 //! The same id with a different payload — another message, or another sender
 //! — is refused rather than answered: the first message's event would tell the
 //! sender the second one landed.
+//!
+//! # Announcing is the route's, and best-effort
+//!
+//! [`Steer::announce`] puts an `event_admitted` frame on the fleet's live tail
+//! so every screen shows the message while it waits for a runner. The route
+//! calls it with the words it read, after [`Steer::append`] answered with an
+//! admission instant; a repeat has none, because its first send announced it.
+//! A frame the queue refuses is logged by the publisher and costs nothing
+//! else: the message is durable, and a reload reads it from the ledger.
 
 use afd_admission::{Admission, Admissions, Key, Producer, Repeated, Reply};
 use afd_core::error_code;
 use afd_wire::event::EventType;
+use afd_wire::tail::TailFrame;
 
 use crate::error::{Result, operation_conflict};
 
@@ -80,13 +90,33 @@ pub const ACTOR_PREFIX: &str = "steer:";
 /// while automation did.
 pub const ACTOR_MACHINE: &str = "steer:api";
 
+/// The actor a person's steer records: [`ACTOR_PREFIX`], then their subject.
+///
+/// The one place the two are joined, so the route that writes the actor and
+/// the members list that names it cannot spell it two ways.
+#[must_use]
+pub fn steer_actor(subject: &str) -> String {
+    format!("{ACTOR_PREFIX}{subject}")
+}
+
+/// Whether `actor` is a steer's, a person's or [`ACTOR_MACHINE`].
+///
+/// The reading side of [`steer_actor`]: only a steer's body names typed words.
+#[must_use]
+pub fn is_steer_actor(actor: &str) -> bool {
+    actor.starts_with(ACTOR_PREFIX)
+}
+
 /// What a steer was answered with.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Steered {
     /// The event the message became.
     pub event_id: String,
-    /// Whether an earlier send of the same operation id already admitted it.
-    pub replayed: bool,
+    /// Epoch milliseconds THIS call admitted the message, or `None` when an
+    /// earlier send of the same operation id already had — one field rather
+    /// than a flag beside an instant, since a fresh admission always has one
+    /// and a repeat never does.
+    pub admitted_at: Option<i64>,
 }
 
 impl Steered {
@@ -94,8 +124,14 @@ impl Steered {
     const fn repeat(event_id: String) -> Self {
         Self {
             event_id,
-            replayed: true,
+            admitted_at: None,
         }
+    }
+
+    /// Whether an earlier send of the same operation id already admitted it.
+    #[must_use]
+    pub const fn replayed(&self) -> bool {
+        self.admitted_at.is_none()
     }
 }
 
@@ -165,8 +201,14 @@ impl Steer {
         );
         Ok(Steered {
             event_id: admitted.stored.id,
-            replayed: false,
+            admitted_at: Some(admitted.stored.created_at),
         })
+    }
+
+    /// Puts `frame` on `fleet`'s live tail, best-effort: a queue that will
+    /// not take it is logged by the publisher and changes no answer.
+    pub async fn announce(&self, fleet: &str, frame: &TailFrame<'_>) {
+        self.admissions.streams().publish_frame(fleet, frame).await;
     }
 
     /// The event a caller's operation already became on `fleet`, or `None`
@@ -291,3 +333,7 @@ fn steer_admission<'a>(
         reply: Reply::None,
     }
 }
+
+#[cfg(test)]
+#[path = "steer/tests.rs"]
+mod tests;

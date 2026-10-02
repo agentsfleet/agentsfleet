@@ -42,12 +42,14 @@ mod fleets;
 mod grant;
 mod ingress;
 mod leasing;
+mod mail;
 mod memory;
 mod model_entry;
 mod preference;
 mod provider;
 mod schedule;
 mod signup;
+mod team;
 mod tenant;
 mod vault;
 
@@ -61,6 +63,7 @@ pub use self::fleets::WorkspaceFleets;
 pub use self::grant::FleetGrants;
 pub use self::ingress::{APPROVAL_IDENTITY, WebhookIngress};
 pub use self::leasing::Leasing;
+pub use self::mail::InviteMail;
 pub use self::memory::FleetMemories;
 pub use self::model_entry::TenantModelEntries;
 pub use self::preference::WorkspacePreferences;
@@ -69,6 +72,7 @@ pub use self::schedule::{FleetSchedules, SchedulePlane};
 pub use self::signup::{
     Bootstrapped, IdentityWebhookSecret, NewAccount, SignupMetadata, Signups, personal_tenant_name,
 };
+pub use self::team::TenantTeam;
 pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, WorkspaceOwnership};
 pub use self::vault::WorkspaceSecrets;
 

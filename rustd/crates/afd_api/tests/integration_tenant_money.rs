@@ -16,10 +16,14 @@ use afd_db::test_util::{TestDatabase, mint_id};
 use http::{Method, StatusCode, header};
 use serde_json::Value;
 
-use self::harness::{Fleet, json_body, send, send_with_headers};
+use self::harness::{Fleet, exchange, items, json_body, send, send_with_headers};
 
 const SUBJECT: &str = "user_live_money_catalogue";
 const BALANCE: i64 = 42_000;
+
+/// The caller's wallet, and the first page of its charges, one row long.
+const BILLING: &str = "/v1/tenants/me/billing";
+const FIRST_CHARGE: &str = "/v1/tenants/me/billing/charges?limit=1";
 
 /// The fleet the seeded charges name, and the name they captured.
 ///
@@ -61,7 +65,7 @@ async fn exercise_catalogue(router: &axum::Router, fixture: &Fixture) {
         .expect("the validator is visible ASCII")
         .to_owned();
     let first = json_body(first).await;
-    assert_eq!(items(&first).len(), 1);
+    assert_eq!(models(&first).len(), 1);
     assert_eq!(first.get("total"), Some(&Value::Null));
     let cursor = text(&first, "next_cursor").to_owned();
 
@@ -93,21 +97,23 @@ async fn exercise_catalogue(router: &axum::Router, fixture: &Fixture) {
     .await;
     assert_eq!(next.status(), StatusCode::OK);
     let next = json_body(next).await;
-    assert_eq!(items(&next).len(), 1);
+    assert_eq!(models(&next).len(), 1);
     assert_eq!(next.get("next_cursor"), Some(&Value::Null));
 }
 
 async fn exercise_billing(router: &axum::Router, fixture: &Fixture) {
-    let wallet = send(
-        router,
-        Method::GET,
-        "/v1/tenants/me/billing",
-        Some(&fixture.token),
-        "",
-    )
-    .await;
-    assert_eq!(wallet.status(), StatusCode::OK);
-    let wallet = json_body(wallet).await;
+    assert_wallet_reads_its_balance(router, fixture).await;
+    assert_charges_page_through(router, fixture).await;
+
+    fixture.remove_wallet().await;
+    let missing = send(router, Method::GET, BILLING, Some(&fixture.token), "").await;
+    assert_eq!(missing.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+/// The wallet answers its seeded balance and is not exhausted.
+async fn assert_wallet_reads_its_balance(router: &axum::Router, fixture: &Fixture) {
+    let (status, wallet) = exchange(router, Method::GET, BILLING, Some(&fixture.token), "").await;
+    assert_eq!(status, StatusCode::OK);
     assert_eq!(
         wallet.get("balance_nanos").and_then(Value::as_i64),
         Some(BALANCE)
@@ -116,46 +122,24 @@ async fn exercise_billing(router: &axum::Router, fixture: &Fixture) {
         wallet.get("is_exhausted").and_then(Value::as_bool),
         Some(false)
     );
+}
 
-    let first = send(
-        router,
-        Method::GET,
-        "/v1/tenants/me/billing/charges?limit=1",
-        Some(&fixture.token),
-        "",
-    )
-    .await;
-    assert_eq!(first.status(), StatusCode::OK);
-    let first = json_body(first).await;
+/// Both pages of charges hold one row each, and each names its fleet.
+async fn assert_charges_page_through(router: &axum::Router, fixture: &Fixture) {
+    let token = Some(fixture.token.as_str());
+    let (status, first) = exchange(router, Method::GET, FIRST_CHARGE, token, "").await;
+    assert_eq!(status, StatusCode::OK);
     assert_eq!(items(&first).len(), 1);
     assert_charge_names_its_fleet(first_item(&first));
-    let cursor = text(&first, "next_cursor").to_owned();
+    let cursor = text(&first, "next_cursor");
 
-    let next = send(
-        router,
-        Method::GET,
-        &format!("/v1/tenants/me/billing/charges?limit=1&cursor={cursor}"),
-        Some(&fixture.token),
-        "",
-    )
-    .await;
-    assert_eq!(next.status(), StatusCode::OK);
-    let next = json_body(next).await;
+    let resumed = format!("{FIRST_CHARGE}&cursor={cursor}");
+    let (status, next) = exchange(router, Method::GET, &resumed, token, "").await;
+    assert_eq!(status, StatusCode::OK);
     assert_eq!(items(&next).len(), 1);
     // The resumed page runs a SECOND select list, maintained by hand beside
     // its twin. Asserting only the first page leaves that one unproven.
     assert_charge_names_its_fleet(first_item(&next));
-
-    fixture.remove_wallet().await;
-    let missing = send(
-        router,
-        Method::GET,
-        "/v1/tenants/me/billing",
-        Some(&fixture.token),
-        "",
-    )
-    .await;
-    assert_eq!(missing.status(), StatusCode::INTERNAL_SERVER_ERROR);
 }
 
 /// The page's first charge, which every caller here has already counted.
@@ -186,15 +170,13 @@ fn assert_charge_names_its_fleet(charge: &Value) {
     );
 }
 
-fn items(document: &Value) -> &[Value] {
+/// The rows a catalogue page carries: the one envelope that names them
+/// `models` rather than `items`.
+fn models(document: &Value) -> &[Value] {
     document
-        .get(if document.get("models").is_some() {
-            "models"
-        } else {
-            "items"
-        })
+        .get("models")
         .and_then(Value::as_array)
-        .expect("a page carries its collection")
+        .expect("a catalogue page carries its models")
 }
 
 fn text<'value>(document: &'value Value, field: &str) -> &'value str {

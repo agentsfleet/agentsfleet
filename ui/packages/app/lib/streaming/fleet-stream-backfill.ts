@@ -2,6 +2,7 @@ import { type EventRow, type EventsPage } from "@/lib/api/events";
 import { backfillFleetEventsUrl, backfillWorkspaceEventsUrl, type EventsQuery } from "@/lib/api/events-types";
 import type { Entry } from "./fleet-stream-entry";
 import { maxServerCreatedAt, rfc3339Seconds } from "./fleet-stream-frames";
+import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
 
 // The reconnect gap-recovery walk. Split out of the registry's lifecycle file
 // so that file stays under the LENGTH GATE and the walk is testable without a
@@ -37,6 +38,8 @@ export type BackfillRequest = {
   fleetId: string;
   /** Newest server-confirmed created_at, or null for a never-seeded fleet. */
   anchorMs: number | null;
+  /** Where the watermark starts when the walk reaches back past it; the anchor otherwise. */
+  watermarkMs?: number | null;
   /** False once the owning entry has been torn down mid-flight. */
   stillCurrent: () => boolean;
   /** Every row the walk fetched, all pages in one call, once per walk. */
@@ -115,7 +118,7 @@ async function runBackfillWalk(req: BackfillWalkRequest): Promise<BackfillOutcom
 async function walkPages(req: BackfillWalkRequest, fetched: EventRow[]): Promise<BackfillOutcome> {
   const { anchorMs, stillCurrent, pageUrl } = req;
   const floorMs = anchorMs === null ? null : Math.max(anchorMs - BACKFILL_OVERLAP_MS, 0);
-  let watermark = anchorMs;
+  let watermark = req.watermarkMs === undefined ? anchorMs : req.watermarkMs;
   let cursor: string | undefined;
 
   for (let page = 0; page < BACKFILL_MAX_PAGES; page += 1) {
@@ -185,11 +188,27 @@ async function walkEntry(entry: Entry, fleetId: string, walk: EntryWalk): Promis
     const outcome = await runBackfill({
       workspaceId: entry.workspaceId,
       fleetId,
-      anchorMs: entry.serverSinceMs,
+      anchorMs: recoveryAnchorMs(entry),
+      watermarkMs: entry.serverSinceMs,
       ...walk,
     });
     if (outcome.ok) entry.serverSinceMs = outcome.watermark;
   } catch (err) {
     warnBackfillFailure(err);
   }
+}
+
+// A waiting row's history row carries its admission time, so a message leased
+// during an outage lands below the watermark when it waited longer than the
+// overlap. The walk reaches back to the oldest message this thread still shows
+// as waiting; the watermark itself never moves back for it.
+function recoveryAnchorMs(entry: Entry): number | null {
+  let anchor = entry.serverSinceMs;
+  if (anchor === null) return null;
+  for (const event of entry.snapshot.events) {
+    if (event.status === AGENTSFLEET_EVENT_STATUS.QUEUED) {
+      anchor = Math.min(anchor, event.createdAt.getTime());
+    }
+  }
+  return anchor;
 }

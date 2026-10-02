@@ -22,7 +22,7 @@ use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
 use crate::services::{Services, TenantKeys as _};
 
-use super::{parameter, tenant_of};
+use super::{DETAIL_MALFORMED_BODY, parameter, tenant_of};
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_MINT: &str = "apikey_mint_failed";
@@ -30,9 +30,6 @@ const EVENT_LIST: &str = "apikey_list_failed";
 const EVENT_REVOKE: &str = "apikey_revoke_failed";
 const EVENT_DELETE: &str = "apikey_delete_failed";
 const EVENT_TENANT: &str = "apikey_tenant_unresolved";
-
-/// The refusal a body this daemon cannot read earns.
-const DETAIL_MINT_BODY: &str = "Malformed JSON body";
 
 /// The refusal a patch body that is not `{"active": false}` earns.
 const DETAIL_PATCH_BODY: &str = "PATCH body must be {\"active\": false}";
@@ -82,7 +79,7 @@ pub(crate) async fn mint<D: Services>(
 ) -> Result<Response, Refusal> {
     let person = identity.person();
     let request = afd_http::handler::read_body::<MintApiKeyRequest<'_>>(&body)
-        .map_err(|_unreadable| Refusal::malformed(DETAIL_MINT_BODY))?;
+        .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_BODY))?;
     let (name, description) = KeyName::parse(&request.key_name)
         .and_then(|name| {
             Description::parse(request.description.as_deref())

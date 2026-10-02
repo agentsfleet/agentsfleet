@@ -152,7 +152,9 @@ const SUFFIX_LEN: usize = 4;
 const FALLBACK_WORD: &str = "workspace";
 
 /// Bytes drawn per generated name: one per word choice, plus the suffix.
-const ENTROPY_LEN: usize = 8 + SUFFIX_LEN;
+///
+/// Public so a suite scripting the draw queues exactly one name's worth.
+pub const ENTROPY_LEN: usize = 8 + SUFFIX_LEN;
 
 /// Generates a name in the shape `adjective-noun-suffix`.
 ///
