@@ -53,6 +53,12 @@ pub(super) const EVENT_STREAM_UNVERIFIED: &str = "stream_closed_unverified";
 /// The event a refused re-check is logged under.
 const EVENT_ACCESS_REVOKED: &str = "stream_access_revoked";
 
+/// The `stream` field of a fleet stream's re-check records.
+pub(super) const STREAM_FLEET: &str = "fleet";
+
+/// The `stream` field of a workspace wall's re-check records.
+pub(super) const STREAM_WALL: &str = "wall";
+
 /// The reason a re-check past [`RECHECK_BUDGET`] is logged with.
 pub(super) const REASON_BUDGET: &str = "recheck exceeded its budget";
 
@@ -126,14 +132,17 @@ pub(super) enum Verdict {
 pub(super) struct Watch<R> {
     question: R,
     unanswered: u32,
+    /// Which stream the records name: [`STREAM_FLEET`] or [`STREAM_WALL`].
+    stream: &'static str,
 }
 
 impl<R: Recheck> Watch<R> {
-    /// A watch that has asked nothing yet.
-    pub(super) const fn new(question: R) -> Self {
+    /// A watch for `stream` that has asked nothing yet.
+    pub(super) const fn new(question: R, stream: &'static str) -> Self {
         Self {
             question,
             unanswered: 0,
+            stream,
         }
     }
 
@@ -164,7 +173,8 @@ impl<R: Recheck> Watch<R> {
             return Verdict::Admitted;
         }
         let workspace_id = self.question.workspace().as_str();
-        tracing::debug!(workspace_id, event = EVENT_ACCESS_REVOKED);
+        let stream = self.stream;
+        tracing::debug!(workspace_id, stream, event = EVENT_ACCESS_REVOKED);
         Verdict::Revoked
     }
 
@@ -179,7 +189,8 @@ impl<R: Recheck> Watch<R> {
         };
         let error_code = code.as_str();
         let workspace_id = self.question.workspace().as_str();
-        tracing::warn!(error_code, workspace_id, reason, event);
+        let stream = self.stream;
+        tracing::warn!(error_code, workspace_id, stream, reason, event);
         verdict
     }
 }

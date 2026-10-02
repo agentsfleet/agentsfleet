@@ -157,6 +157,7 @@ fn a_base_that_is_not_a_bare_http_url_is_refused_when_it_is_read() {
         "file:///srv/dashboard",
         "https://u:p@app.example.test",
         "https://u@app.example.test",
+        "https://:p@app.example.test",
         "https://app.example.test/?q=1",
         "https://app.example.test/#f",
     ] {

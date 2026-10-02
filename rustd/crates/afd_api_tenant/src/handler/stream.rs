@@ -204,7 +204,7 @@ pub(crate) async fn fleet<D: Services>(
         "is gone, it sends `event: access_revoked` with ",
         access_revoked_data!(),
         "and closes; do not reconnect after it. If access cannot be checked ",
-        "for about a minute, the stream closes without that frame. Reconnect ",
+        "for about 40 seconds, the stream closes without that frame. Reconnect ",
         "as after any drop. ",
         "At capacity the route returns 503 `UZ-API-002` with ",
         "`Retry-After`. After a reconnect opens, recover the gap through `GET ",

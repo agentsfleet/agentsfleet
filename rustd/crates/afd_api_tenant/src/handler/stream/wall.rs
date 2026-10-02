@@ -37,7 +37,9 @@ use afd_sse::{FanIn, Frame, KIND_CATCHING_UP};
 use futures_util::stream::BoxStream;
 use tokio::time::Instant;
 
-use super::revocable::{Membership, Recheck as _, Turn, Verdict, Watch, until_revoked};
+use super::revocable::{
+    Membership, Recheck as _, STREAM_WALL, Turn, Verdict, Watch, until_revoked,
+};
 use crate::services::{Services, WorkspaceFleets as _};
 
 /// How often the fleet set and the caller's membership are re-read.
@@ -147,7 +149,7 @@ pub(super) fn frames<D: Services>(
     fan_in.sync_to(opening);
     let now = Instant::now();
     let wall = Wall {
-        watch: Watch::new(Membership::new(services, principal, workspace)),
+        watch: Watch::new(Membership::new(services, principal, workspace), STREAM_WALL),
         fan_in,
         next_refresh: now + REFRESH_INTERVAL,
         announced: false,

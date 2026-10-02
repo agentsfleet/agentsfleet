@@ -15,8 +15,6 @@
 //! the internet and never to a bare host name or an address the parser would
 //! accept.
 
-use std::net::IpAddr;
-
 use crate::{Result, error};
 
 /// The longest address SMTP carries (RFC 5321 section 4.5.3.1.3, path minus brackets).
@@ -27,9 +25,6 @@ const AT: char = '@';
 
 /// What an internet domain carries and a bare host name does not.
 const DOT: char = '.';
-
-/// What wraps an IP address written as a domain literal (`[10.0.0.1]`).
-const LITERAL_BRACKETS: [char; 2] = ['[', ']'];
 
 /// An invite address: trimmed, lowercased, and one its email can be sent to.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,11 +59,17 @@ impl Email {
     }
 }
 
-/// A domain an invite can go to: dotted, and not an IP address a relay would
-/// dial directly.
+/// A domain an invite can go to: dotted, and ending in a top-level domain
+/// that starts with a letter, as every real one does. That refuses every IP
+/// form a resolver would still dial (`10.0.0.1`, `[::1]`, `127.1`,
+/// `0x7f.0.0.1`), since each ends in a digit or a bracket.
 fn is_internet_domain(domain: &str) -> bool {
-    let bare = domain.trim_matches(LITERAL_BRACKETS);
-    domain.contains(DOT) && bare.parse::<IpAddr>().is_err()
+    domain.contains(DOT)
+        && domain
+            .rsplit(DOT)
+            .next()
+            .and_then(|top_level| top_level.chars().next())
+            .is_some_and(|first| first.is_ascii_alphabetic())
 }
 
 #[cfg(test)]
@@ -140,6 +141,11 @@ mod tests {
             "bob@[::1]",
             "bob@::ffff:10.0.0.1",
             "bob@[::ffff:10.0.0.1]",
+            "bob@127.1",
+            "bob@10.1",
+            "bob@0177.0.0.1",
+            "bob@0x7f.0.0.1",
+            "bob@127.0x1",
         ] {
             assert!(Email::parse(raw, any).is_err(), "{raw:?} was accepted");
             assert!(
@@ -147,10 +153,16 @@ mod tests {
                 "{raw:?} was accepted with the route's parser"
             );
         }
-        assert!(
-            Email::parse("bob@10.0.0.1.example.com", any).is_ok(),
-            "a name that starts with digits is still a name"
-        );
+        for raw in [
+            "bob@10.0.0.1.example.com",
+            "bob@1password.com",
+            "bob@163.com",
+        ] {
+            assert!(
+                Email::parse(raw, any).is_ok(),
+                "{raw:?}: a name with digits is still a name"
+            );
+        }
     }
 
     #[test]
