@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M210
 **Workstream:** 001
 **Date:** Oct 02, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the foundation every later runner capability stands on: outage repair, workspaces carried between leases, Codex as an engine
 **Categories:** API, INFRA
 **Batch:** B1 — the first Rust runner workstream; the agent loop, providers and cutover follow in their own spec
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** feat/m210-rust-runner-foundation
+**Baseline revision:** 0d79b0318e687b8862ee8dbd4f622069bc6ba1a4
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 02, 2026) from Indy's in-session decisions and a source trace on `main`; Codex at `~/Projects/oss/rs/codex` `2e5fea64e`, IronClaw at `~/Projects/oss/rs/ironclaw` `b0b999d96`, ZeroClaw at `~/Projects/oss/zeroclaw` `74362c2d6`
