@@ -76,11 +76,11 @@ rustd/crates/
   afr_tools             the catalog: supervisor-side and sandbox-side handlers
   afr_supervisor        lease loop, renewal, report spool, activity, memory, minting,
                         bundles, storage sweep, capability report, control-plane client
-  agentsfleet_runner    binary: composition root only
-  agentsfleet_executor  binary: the executor inside a sandbox (a microVM's init, later)
+  agentsfleet_runner    the one binary: composition root; `agentsfleet-runner sandbox`
+                        is the sub-mode that runs inside each sandbox (a microVM's init, later)
 ```
 
-Dependencies point one way: the binaries → `afr_supervisor` → `afr_agent` → `afr_providers` and `afr_tools` → `afr_executor`, with `afr_supervisor` → `afr_sandbox` → `afr_executor`. Every runner crate may depend on `afd_wire` and `afd_core` and on nothing else from `agentsfleetd`, and none links a datastore crate. The executor is its own small binary because it lives inside every sandbox and, under Firecracker, inside every guest image.
+Dependencies point one way: the binary → `afr_supervisor` → `afr_agent` → `afr_providers` and `afr_tools` → `afr_executor`, with `afr_supervisor` → `afr_sandbox` → `afr_executor`. Every runner crate may depend on `afd_wire` and `afd_core` and on nothing else from `agentsfleetd`, and none links a datastore crate. There is one binary. The executor is its `sandbox` sub-mode, re-executed inside the sandbox the way Codex re-executes itself as `codex-linux-sandbox`; that entry constructs only `afr_executor`'s server, never a control-plane client, and the binary is bound read-only into every sandbox and, under Firecracker, into every guest image.
 
 ## Tool catalog
 
@@ -203,4 +203,5 @@ The costs are the rewrite, slower compiles, async complexity and larger binaries
 | Oct 02, 2026 | Firecracker is the production engine for code-running leases; bubblewrap ships first and stays for development, CI and hosts without `/dev/kvm` | Indy: "i think we must shoot for firecracker then", then "Yes bubblewrap first, and firecracker next." Firecracker is installed on production hosts later; every runner reports whether `/dev/kvm` exists |
 | Oct 02, 2026 | The Rust runner is independent: no second copy of the wire, nothing in its code, comments or tests refers to the Zig runner, and it follows `rustd` principles | Indy: "A second copy of the wire will not be existing, none of the rust code will point to the zig." and "the rust code is independent and follows our current rustd/ principles" |
 | Oct 02, 2026 | The runner carries every published tool; the loop stays in the supervisor and routes the code-running tools into the sandbox | Indy: "i need all the tools … the sandbox isnt just a sandbox but a harness that decide to operate like codex so that is critical to realize the fleets i plan to use"; chose "Supervisor loop, sandbox tools" |
+| Oct 02, 2026 | One binary: the in-sandbox entry is `agentsfleet-runner sandbox`, a sub-mode, not a second artifact | Indy: "why do we need two ? agentsfleet-runner, agentsfleet-executor … i thought its just one binary?" then "agentsfleet-runner"; chose `sandbox` for the sub-mode |
 | Oct 02, 2026 | `cron_*` and `schedule` become fleet tools through a runner verb onto the daemon's schedule plane; supersedes "Scheduled wakes are not a child tool" in [Capabilities](./capabilities.md) §"2. The platform tools the fleet can call" | Indy chose "Yes, runner verb onto daemon schedules" |
