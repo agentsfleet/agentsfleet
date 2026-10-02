@@ -11,7 +11,7 @@
 
 use std::process::ExitCode;
 
-use afd_core::env::{LOG_LEVEL_VAR, ProcessEnv};
+use afd_core::env::ProcessEnv;
 use afd_core::error_code;
 use clap::{Parser, Subcommand};
 use tracing::level_filters::LevelFilter;
@@ -105,10 +105,7 @@ fn run() -> ExitCode {
 
 /// Sends structured records to stderr at the level the environment names.
 fn install_logs(env: &impl afd_core::env::EnvSource) {
-    let level = env
-        .get(LOG_LEVEL_VAR)
-        .and_then(|raw| raw.trim().parse().ok())
-        .unwrap_or(DEFAULT_LEVEL);
+    let level = afd_core::env::log_level(env, DEFAULT_LEVEL);
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_max_level(level)

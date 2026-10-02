@@ -36,19 +36,18 @@ impl Executor for Canned {
         if self.refuse {
             return Err(std::io::Error::other("the socket is gone").into());
         }
-        let (sender, events) = tokio::sync::mpsc::channel(4);
+        let (sender, events) = tokio::sync::mpsc::unbounded_channel();
         let output = ProcessEvent::Output {
             stream: Stream::Stdout,
             data: Bytes::from_static(b"out"),
         };
-        sender.send(output).await.unwrap();
+        sender.send(output).unwrap();
         if let Some(ending) = self.ending {
             sender
                 .send(ProcessEvent::Ended {
                     ending,
                     omitted_bytes: 0,
                 })
-                .await
                 .unwrap();
         }
         Ok(Process {
