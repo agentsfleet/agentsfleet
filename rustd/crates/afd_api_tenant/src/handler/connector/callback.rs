@@ -29,11 +29,13 @@ use std::sync::Arc;
 use afd_connector::{Finishing, Handoff, Landed, Provider, Rejected, callback, github};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
+use afd_tenant::workspace::crossing;
 use axum::extract::{Path, RawQuery, State};
 use axum::response::Response;
+use http::Method;
 
 use super::landing::{connected, relayed};
-use super::{EVENT_WRITE, provider_of, relay_uri, state_secret, unconfigured};
+use super::{EVENT_WRITE, provider_of, state_secret, unconfigured};
 use crate::auth::{Acting, PersonIdentity};
 use crate::handler::{BrokenEscape, Refusal, decoded_parameter};
 use crate::services::{Services, WorkspaceConnectors as _, WorkspaceOwnership as _};
@@ -101,8 +103,8 @@ const REASON_SLOT_SPENT: &str = "state_slot_spent";
 /// # Errors
 /// `UZ-CONN-004` for a provider this daemon does not ship, `UZ-REQ-001` for a
 /// callback carrying no state or a query this daemon cannot decode, and
-/// `UZ-CONN-001` for a dashboard base that is not a URL, or a destination that
-/// cannot be written as a `Location` header.
+/// `UZ-CONN-001` for a destination that cannot be written as a `Location`
+/// header.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/v1/connectors/{provider}/callback",
@@ -157,8 +159,7 @@ pub(crate) async fn relay<D: Services>(
             location: location.as_deref(),
             installation_id: installation_id.as_deref(),
         },
-    )
-    .ok_or_else(unconfigured)?;
+    );
 
     relayed(&destination)
 }
@@ -210,6 +211,7 @@ pub(crate) async fn complete<D: Services>(
     State(services): State<Arc<D>>,
     Acting(principal): Acting,
     person: PersonIdentity,
+    method: Method,
     Path(provider_segment): Path<String>,
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
@@ -239,7 +241,7 @@ pub(crate) async fn complete<D: Services>(
         return Err(unconfigured());
     };
     let secret = state_secret(&services).await?;
-    let redirect_uri = relay_uri(&services, provider)?;
+    let redirect_uri = callback::relay_uri(services.dashboard(), provider);
 
     // Step 1 — the signature, the window, and whether this is the person who
     // started it. Touches no store, which is what keeps a replayed callback
@@ -261,17 +263,21 @@ pub(crate) async fn complete<D: Services>(
     // their workspace is not theirs.
     let workspace = Uuid7::parse(verified.workspace())
         .map_err(|_unparseable| state_refused(provider, Rejected::Malformed.reason()))?;
-    let owned = services
+    // No member role check here, and none is needed: a connect is started on
+    // a workspace route the ownership layer withholds from members, and the
+    // state is bound to the identity that started it. No member ever holds a
+    // state to finish, so what is left to ask is whether the starter still
+    // holds the workspace.
+    let access = services
         .workspaces()
         .authorize(&principal, &workspace)
         .await
-        .map_err(Refusal::at(EVENT_OWNERSHIP))?;
-    if owned.is_none() {
-        return Err(Refusal::coded(
-            error_code::AUTH_FORBIDDEN,
-            DETAIL_FOREIGN_WORKSPACE,
-        ));
-    }
+        .map_err(Refusal::at(EVENT_OWNERSHIP))?
+        .ok_or_else(|| Refusal::coded(error_code::AUTH_FORBIDDEN, DETAIL_FOREIGN_WORKSPACE))?;
+    // This check runs outside the ownership layer, so the crossing record the
+    // layer leaves for every other workspace write is left here, before the
+    // grant lands.
+    crossing::audit(&principal, &access, &workspace, method.as_str());
 
     // Step 3 — the single-use slot, spent last and exactly once. A slot already
     // spent or expired answers exactly as a forged state does: both mean start

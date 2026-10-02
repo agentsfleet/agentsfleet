@@ -2,7 +2,10 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
 
+// Every listed workspace names its account and the caller's role in it; these
+// are all the caller's own, the shape a solo account's list has.
 type Snapshot = {
   error: unknown;
   module: { default: React.ComponentType<Record<string, unknown>> } | null;
@@ -198,7 +201,7 @@ describe("shell intent controls", () => {
     showLoaded(loader);
     view.rerender(
       <ShellControls
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1 }]}
+        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1, ...OWN_ACCOUNT }]}
         operatorScopes={["runner:read"]}
         sidebarNavId="test-sidebar"
       />,
@@ -225,7 +228,7 @@ describe("shell intent controls", () => {
     expect(await loader.importModule()).toHaveProperty("default");
     const view = render(
       <WorkspaceSwitcher
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1 }]}
+        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1, ...OWN_ACCOUNT }]}
       />,
     );
     const trigger = screen.getByTestId("workspace-switcher");
@@ -243,7 +246,7 @@ describe("shell intent controls", () => {
     loader.snapshot = { error: null, module: null, status: "loading" };
     view.rerender(
       <WorkspaceSwitcher
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1 }]}
+        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1, ...OWN_ACCOUNT }]}
       />,
     );
     expect(trigger.getAttribute("aria-busy")).toBe("true");
@@ -251,7 +254,7 @@ describe("shell intent controls", () => {
     state.pathname = "/w/ws_missing/fleets";
     view.rerender(
       <WorkspaceSwitcher
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1 }]}
+        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1, ...OWN_ACCOUNT }]}
       />,
     );
     await waitFor(() =>
@@ -263,7 +266,7 @@ describe("shell intent controls", () => {
     showError(loader);
     view.rerender(
       <WorkspaceSwitcher
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1 }]}
+        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1, ...OWN_ACCOUNT }]}
       />,
     );
     await userEvent.click(
@@ -274,7 +277,7 @@ describe("shell intent controls", () => {
     showLoaded(loader);
     view.rerender(
       <WorkspaceSwitcher
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1 }]}
+        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1, ...OWN_ACCOUNT }]}
       />,
     );
     expect(state.renderedProps).toMatchObject({ open: true });
@@ -282,7 +285,7 @@ describe("shell intent controls", () => {
     state.pathname = "/w/ws_missing/events";
     view.rerender(
       <WorkspaceSwitcher
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1 }]}
+        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1, ...OWN_ACCOUNT }]}
       />,
     );
     await waitFor(() =>

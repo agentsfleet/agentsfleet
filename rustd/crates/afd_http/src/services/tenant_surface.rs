@@ -13,8 +13,8 @@
 //! implementor writes two `impl` blocks instead of one.
 
 use crate::services::{
-    ModelCatalogue, Signups, TenantBilling, TenantKeys, TenantModelEntries, TenantProviders,
-    TenantWorkspaces, TerminalCredentials,
+    InviteMail, ModelCatalogue, Signups, TenantBilling, TenantKeys, TenantModelEntries,
+    TenantProviders, TenantTeam, TenantWorkspaces, TerminalCredentials,
 };
 
 /// The tenant-scoped half of [`Services`](super::Services).
@@ -40,6 +40,12 @@ pub trait TenantSurface {
 
     /// The tenant api-key store.
     fn api_keys(&self) -> &Self::ApiKeys;
+
+    /// The people in an account: invites into it and the members who accepted.
+    type Team: TenantTeam;
+
+    /// The account's invite and member store.
+    fn team(&self) -> &Self::Team;
 
     /// A person's own command-line credentials.
     ///
@@ -101,4 +107,14 @@ pub trait TenantSurface {
     /// this tenant activated and whose key pays for it. One accessor returning
     /// both would put the credential surface behind every catalogue browse.
     fn tenant_providers(&self) -> &Self::TenantProviders;
+
+    /// What an invite's email is sent through.
+    ///
+    /// An associated type for the reason [`Self::Team`] is one: the production
+    /// mailer reads the relay out of a vault and dials it, and a suite proving
+    /// the invite routes' refusals must reach neither.
+    type InviteMail: InviteMail;
+
+    /// The invite email sender.
+    fn invite_mail(&self) -> &Self::InviteMail;
 }

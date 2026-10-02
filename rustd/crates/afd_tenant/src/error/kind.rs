@@ -1,6 +1,6 @@
 //! Private failure vocabulary owned by the tenant crate.
 
-use super::{ApiKeyField, SessionField};
+use super::{ApiKeyField, InviteConflict, SessionField};
 
 /// What actually went wrong. Private so a new variant is not a breaking change.
 #[derive(Debug, thiserror::Error)]
@@ -24,6 +24,12 @@ pub(crate) enum ErrorKind {
         source: sqlx::Error,
     },
 
+    #[error("a stored role holds {stored}, which this build does not know")]
+    RoleUnknown {
+        /// The stored bytes, so the log names what a newer daemon wrote.
+        stored: Box<str>,
+    },
+
     #[error("a {table} row holds a value this daemon cannot read: {column}")]
     RowMalformed {
         table: &'static str,
@@ -32,14 +38,11 @@ pub(crate) enum ErrorKind {
         source: afd_core::error::Error,
     },
 
-    #[error("an identifier could not be minted from the current instant")]
-    Mint {
-        #[from]
-        source: afd_core::error::Error,
-    },
-
-    #[error("could not draw the entropy a credential is minted from")]
-    Entropy {
+    /// Every `afd_crypto` failure lands here: a draw from the entropy source,
+    /// an identifier minted from it, or a key or tag it was handed. The source
+    /// says which.
+    #[error("a cryptographic operation failed")]
+    Crypto {
         #[source]
         source: afd_crypto::error::Error,
     },
@@ -115,6 +118,21 @@ pub(crate) enum ErrorKind {
 
     #[error("the session's tenant claim names no tenant row")]
     WorkspaceTenantVanished,
+
+    #[error("no invite that can still be accepted carries that id")]
+    InviteNotFound,
+
+    #[error("the invite was sent to a different address than the caller's")]
+    InviteEmailMismatch,
+
+    #[error("the address {conflict}")]
+    InviteConflict { conflict: InviteConflict },
+
+    #[error("removing this member would leave the account with no owner")]
+    MemberLastOwner,
+
+    #[error("an invite address was refused")]
+    EmailInvalid,
 
     #[error("the catalogue page statement would not answer")]
     LibraryPageUnavailable {

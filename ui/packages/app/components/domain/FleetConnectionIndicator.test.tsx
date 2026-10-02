@@ -43,6 +43,13 @@ describe("FleetConnectionIndicator", () => {
     expect(container.querySelector('[data-connection="live"]')?.getAttribute("data-arrived")).toBeNull();
   });
 
+  it("says there is no access, without motion, once the stream is revoked", () => {
+    const { container } = render(<FleetConnectionIndicator status={CONNECTION_STATUS.REVOKED} />);
+    const indicator = container.querySelector(`[data-connection="${CONNECTION_STATUS.REVOKED}"]`);
+    expect(indicator?.getAttribute("aria-label")).toBe("Connection status: No access");
+    expect(container.innerHTML).not.toContain("animate-pulse");
+  });
+
   it("does not announce an arrival for a surface that mounts already live", () => {
     const { container } = render(<FleetConnectionIndicator status={CONNECTION_STATUS.LIVE} />);
     expect(container.querySelector('[data-connection="live"]')?.getAttribute("data-arrived")).toBeNull();

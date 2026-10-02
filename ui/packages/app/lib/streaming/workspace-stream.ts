@@ -4,7 +4,8 @@ import {
   type WorkspaceHelloFrame,
   type WorkspaceLiveFrame,
 } from "@/lib/api/events";
-import { FRAME_KIND, streamWorkspaceEventsUrl } from "@/lib/api/events-types";
+import { FRAME_KIND, ROUTED_FRAME_KINDS, streamWorkspaceEventsUrl } from "@/lib/api/events-types";
+import { cancelPendingReconnect } from "@/lib/streaming/fleet-stream-reconnect";
 import { isWorkspaceFrame, parseWorkspaceFrame } from "@/lib/streaming/workspace-stream-parse";
 
 // One EventSource per WORKSPACE, demultiplexed to per-fleet subscribers.
@@ -30,6 +31,8 @@ export const WORKSPACE_CONNECTION_STATUS = {
   CONNECTING: "connecting",
   LIVE: "live",
   RECONNECTING: "reconnecting",
+  // Terminal: the daemon ended the stream with `access_revoked`.
+  REVOKED: "revoked",
 } as const;
 export type WorkspaceConnectionStatus =
   (typeof WORKSPACE_CONNECTION_STATUS)[keyof typeof WORKSPACE_CONNECTION_STATUS];
@@ -47,7 +50,6 @@ const IDLE_RELEASE_MS = 30_000;
 const RECONNECT_BACKOFF_BASE_MS = 1_000;
 const RECONNECT_BACKOFF_CAP_MS = 15_000;
 const RECONNECT_MAX_BACKOFF_ATTEMPTS = 5;
-const WORKSPACE_FRAME_EVENT_NAMES = Object.values(FRAME_KIND);
 
 type Entry = {
   workspaceId: string;
@@ -98,10 +100,26 @@ function startEventSource(entry: Entry): void {
     if (isReconnect) void backfillGap(entry);
   };
   const handleFrame = (event: Event) => onFrame(entry, event as MessageEvent);
-  for (const eventName of WORKSPACE_FRAME_EVENT_NAMES) {
+  for (const eventName of ROUTED_FRAME_KINDS) {
     es.addEventListener(eventName, handleFrame);
   }
-  es.onerror = () => onEventSourceError(entry);
+  es.addEventListener(FRAME_KIND.ACCESS_REVOKED, () => onAccessRevoked(entry, es));
+  // A stream this entry let go of has nothing left to report.
+  es.onerror = () => {
+    if (entry.eventSource === es) onEventSourceError(entry);
+  };
+}
+
+// The daemon's last frame to a caller who lost access. It closes the stream and
+// refuses the next request the same way, so the wall stops here until a new
+// mount asks again (`ensureEntry`).
+function onAccessRevoked(entry: Entry, es: EventSource): void {
+  if (entry.eventSource !== es) return;
+  cancelPendingReconnect(entry);
+  es.close();
+  entry.eventSource = null;
+  entry.greeting = null;
+  setStatus(entry, WORKSPACE_CONNECTION_STATUS.REVOKED);
 }
 
 // One walk at a time. A gap reported during a walk may hold frames lost after
@@ -198,6 +216,14 @@ function ensureEntry(workspaceId: string, backfill: BackfillFn | null): Entry {
   if (!entry) {
     entry = createEntry(workspaceId, backfill);
     REGISTRY.set(workspaceId, entry);
+    startEventSource(entry);
+  } else if (entry.refCount === 0 && entry.status === WORKSPACE_CONNECTION_STATUS.REVOKED) {
+    // A wall mounting on an entry held only by its idle grace is a new request:
+    // access may have come back since, by a fresh invite. A caller still
+    // removed is refused once more with `access_revoked`. A listener joining a
+    // wall still on screen asks nothing; that wall already has its answer.
+    entry.reconnectAttempts = 0;
+    setStatus(entry, WORKSPACE_CONNECTION_STATUS.CONNECTING);
     startEventSource(entry);
   }
   if (backfill !== null) entry.backfill = backfill;

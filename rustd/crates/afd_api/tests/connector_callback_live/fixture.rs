@@ -22,6 +22,7 @@ use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_dragonfly::Dragonfly;
+use afd_tenant::workspace::access::Grant;
 use afd_vault::{SecretBody, SecretName};
 use sqlx::Row as _;
 
@@ -127,6 +128,21 @@ impl Fixture {
         .with_platform_admin(self.admin.clone())
         .with_live_connectors(self.database.clone(), self.queue.clone(), provider.url())
         .router()
+    }
+
+    /// The owner's daemon, with the workspace held as a platform operator
+    /// crossing into another account rather than as its owner.
+    pub(crate) fn router_crossing(&self, provider: &FakeProvider) -> axum::Router {
+        let fleet = harness::Fleet::live(
+            self.database.clone(),
+            &self.subject,
+            ScopeSet::from_scopes(&Scope::ALL),
+        )
+        .with_owned_workspace(self.workspace.clone())
+        .with_platform_admin(self.admin.clone())
+        .with_live_connectors(self.database.clone(), self.queue.clone(), provider.url());
+        fleet.ownership().hold_as(Grant::Platform);
+        fleet.router()
     }
 
     /// The workspaces `core.connector_installs` routes `account` to, for

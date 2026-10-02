@@ -4,7 +4,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { FRAME_KIND } from "@/lib/api/events-types";
-import { FIXTURE_KEY } from "./fixtures/constants";
+import { FIXTURE_KEY, FRAME_BUDGET_TAG } from "./fixtures/constants";
 import { sseFrame as frame } from "./fixtures/sse";
 import type { TimedFrame } from "./fixtures/page-event-stream";
 import { withReplyPage } from "./fixtures/reply-page";
@@ -106,7 +106,7 @@ test("test_interleaved_reasoning_folds_once", async ({ page }) => {
   });
 });
 
-test("test_streaming_reply_costs_no_long_tasks", async ({ page }, testInfo) => {
+test("test_streaming_reply_costs_no_long_tasks", { tag: FRAME_BUDGET_TAG }, async ({ page }, testInfo) => {
   await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream }) => {
     // A thread with a real history first, then the measured reply beneath it.
     const now = Date.now();

@@ -31,6 +31,8 @@ use crate::harness;
 
 use afd_connector::Provider;
 use afd_core::error_code;
+use afd_core::test_util::trace::Capture;
+use afd_tenant::workspace::crossing::EVENT_CROSSING;
 use http::{Method, StatusCode, header};
 use serde_json::Value;
 
@@ -288,6 +290,35 @@ async fn a_completed_connect_seals_the_grant_under_the_providers_own_key() {
         Some(PROVIDER.id())
     );
     assert_eq!(provider.exchanges(), 1);
+
+    provider.close();
+    fixture.cleanup().await;
+}
+
+/// The callback re-authorises the workspace outside the ownership layer, so
+/// it leaves the crossing record itself: a platform operator finishing a
+/// connect in another account's workspace is recorded once, as a write,
+/// before the grant lands.
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn test_callback_records_platform_crossing() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let provider = FakeProvider::answering(&[&slack_answer(&fixture, BOT_TOKEN)]).await;
+    let router = fixture.router_crossing(&provider);
+    let state = start_connect(&router, &fixture, PROVIDER).await;
+
+    let capture = Capture::install();
+    let landed = complete(&router, &fixture, PROVIDER, &state).await;
+    assert_eq!(landed.status(), StatusCode::FOUND);
+    let recorded = capture.only(EVENT_CROSSING);
+    assert_eq!(
+        recorded.field("target_workspace"),
+        Some(fixture.workspace.as_str()),
+        "{recorded:?}"
+    );
+    assert_eq!(recorded.field("method"), Some("POST"));
+    assert!(fixture.grant(PROVIDER).await.is_some());
 
     provider.close();
     fixture.cleanup().await;

@@ -2,7 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 
-import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
+import type { AppendMessage } from "@assistant-ui/react";
 import { GUIDANCE, OUTCOME, outcomeFor } from "@/lib/events/event-summary";
 import { __resetPendingSendsForTests } from "@/lib/streaming/pending-sends";
 
@@ -88,8 +88,11 @@ vi.mock("@/components/domain/useFleetEventStream", async () => {
 
 import { FleetThread } from "@/components/domain/FleetThread";
 import type { EventDetail, EventRow } from "@/lib/api/events";
+// The mocked module spreads the real one, so `convertEvent` is the production
+// converter: a row renders here exactly as the live stream would hand it over.
 import {
   CONNECTION_STATUS,
+  convertEvent,
   type FleetEvent,
 } from "@/components/domain/useFleetEventStream";
 
@@ -129,28 +132,6 @@ export function ev(
   };
 }
 
-export function toThreadMessage(e: FleetEvent): ThreadMessageLike {
-  return {
-    role: e.role,
-    id: e.id,
-    createdAt: e.createdAt,
-    content: [{ type: "text", text: e.text }],
-    metadata: {
-      custom: {
-        actor: e.actor,
-        requestJson: e.custom?.requestJson,
-        status: e.status,
-        queued: e.clientTimestamp === true,
-        submittedAtMs: e.submittedAtMs,
-        replyRecovering: e.replyRecovering,
-        outcome: e.outcome,
-        failureLabel: e.failureLabel,
-        failureDetail: e.failureDetail,
-      },
-    },
-  };
-}
-
 export type StreamMockOverrides = {
   events?: FleetEvent[];
   isRunning?: boolean;
@@ -174,7 +155,7 @@ export function mockStream(
     reconcileOptimistic: opts?.reconcileOptimistic ?? vi.fn(),
     discardOptimistic: opts?.discardOptimistic ?? vi.fn(),
     retryConnection: opts?.retryConnection ?? vi.fn(),
-    convertEvent: toThreadMessage,
+    convertEvent,
   });
 }
 
@@ -197,6 +178,7 @@ export function threadElement(initial: EventRow[] = []) {
     senderLabel: FLEET_NAME,
     initial,
     viewer: TEST_SUBJECT,
+    senderNames: [],
   });
 }
 

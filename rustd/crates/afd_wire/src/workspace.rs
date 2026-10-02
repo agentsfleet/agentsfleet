@@ -55,16 +55,33 @@ pub struct WorkspaceSummary<'a> {
     pub name: Option<Cow<'a, str>>,
     /// When it was created; the walk's sort key.
     pub created_at: i64,
+    /// The account it belongs to, which is how a dashboard groups the list.
+    pub account: WorkspaceAccount<'a>,
+    /// The caller's role in that account: `owner` or `member`.
+    pub role: Cow<'a, str>,
 }
 
-/// `GET /v1/tenants/me/workspaces` — one page of the tenant's workspaces.
+/// The account a listed workspace belongs to.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WorkspaceAccount<'a> {
+    /// The account's tenant.
+    pub tenant_id: Cow<'a, str>,
+    /// What a person calls the account: its owner's display name, or the
+    /// account's own name when the owner has none.
+    pub owner_name: Cow<'a, str>,
+}
+
+/// `GET /v1/tenants/me/workspaces` — one page of the workspaces across every
+/// account the caller holds.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WorkspacesResponse<'a> {
     /// The rows on this page, oldest first.
     pub items: Vec<WorkspaceSummary<'a>>,
-    /// Whose list this is — the authoritative resolution, carried so a client
-    /// can pin its local state to the right tenant.
+    /// The caller's own account — the authoritative resolution, carried so a
+    /// client can pin its local state to the right person. Items from accounts
+    /// the caller joined name theirs in `account`.
     pub tenant_id: Cow<'a, str>,
     /// Always `null`: the walk never counts, and the key stays because a
     /// client may already branch on its presence.

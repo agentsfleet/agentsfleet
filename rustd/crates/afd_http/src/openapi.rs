@@ -142,6 +142,10 @@ pub mod tag {
     pub const CONNECTORS: &str = "Connectors";
     /// Tenant api-keys.
     pub const API_KEYS: &str = "API Keys";
+    /// Invites into an account.
+    pub const INVITES: &str = "Invites";
+    /// The people who belong to an account.
+    pub const MEMBERS: &str = "Members";
     /// Command-line credentials.
     pub const CLI_CREDENTIALS: &str = "CLI Credentials";
     /// Signed inbound deliveries.

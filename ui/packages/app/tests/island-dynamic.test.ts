@@ -71,6 +71,13 @@ const ISLANDS: Island[] = [
     rawComponent: "CreateApiKeyDialog",
   },
   {
+    name: "InviteDialog",
+    shim: "InviteDialogDynamic",
+    rawImportFragment: "settings/members/components/InviteDialog",
+    callSite: "app/(dashboard)/settings/members/components/MembersView.tsx",
+    rawComponent: "InviteDialog",
+  },
+  {
     name: "AddRunnerDialog",
     shim: "AddRunnerDialogDynamic",
     rawImportFragment: "admin/runners/components/AddRunnerDialog",
@@ -116,6 +123,7 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/RenameSecretDialog
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm", () => ({ default: () => null }));
 vi.mock("@/components/layout/CreateWorkspaceDialog", () => ({ default: () => null }));
 vi.mock("@/app/(dashboard)/settings/api-keys/components/CreateApiKeyDialog", () => ({ default: () => null }));
+vi.mock("@/app/(dashboard)/settings/members/components/InviteDialog", () => ({ default: () => null }));
 vi.mock("@/app/(dashboard)/admin/runners/components/AddRunnerDialog", () => ({ default: () => null }));
 // Named export — the shim's `.then` mapper reads `mod.EditPolicyDialog`, not `default`.
 vi.mock("@/app/(dashboard)/admin/runners/components/EditPolicyDialog", () => ({ EditPolicyDialog: () => null }));
@@ -147,6 +155,7 @@ import RenameCredentialDialogDynamic from "@/components/domain/island-dynamic/Re
 import AddCredentialFormDynamic from "@/components/domain/island-dynamic/AddSecretFormDynamic";
 import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
 import CreateApiKeyDialogDynamic from "@/components/domain/island-dynamic/CreateApiKeyDialogDynamic";
+import InviteDialogDynamic from "@/components/domain/island-dynamic/InviteDialogDynamic";
 import AddRunnerDialogDynamic from "@/components/domain/island-dynamic/AddRunnerDialogDynamic";
 import EditPolicyDialogDynamic from "@/components/domain/island-dynamic/EditPolicyDialogDynamic";
 
@@ -192,6 +201,10 @@ describe("dynamic island shims mount their inner component", () => {
     [
       "CreateApiKeyDialogDynamic",
       React.createElement(CreateApiKeyDialogDynamic, { onCreated: noop }),
+    ],
+    [
+      "InviteDialogDynamic",
+      React.createElement(InviteDialogDynamic, { onSettled: noop }),
     ],
     [
       "AddRunnerDialogDynamic",

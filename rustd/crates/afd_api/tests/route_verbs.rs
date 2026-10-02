@@ -53,34 +53,6 @@ use self::harness::Fleet;
 /// The one status that means "this route is served and this method is not".
 const UNSERVED: StatusCode = StatusCode::METHOD_NOT_ALLOWED;
 
-/// What every path parameter is filled with while probing.
-///
-/// A UUID rather than a word, so a substitution can never collide with a
-/// literal sibling segment: `/v1/auth/sessions/{session_id}` and
-/// `/v1/auth/sessions/all` are different routes, and a placeholder spelled
-/// `all` would silently probe the wrong one.
-const PARAMETER_FILL: &str = "00000000-0000-7000-8000-000000000000";
-
-/// A concrete path for `template`, with every `{parameter}` filled.
-///
-/// `matchit` matches any non-empty segment against a parameter, so the value
-/// only has to be non-empty and free of `/`.
-fn concrete(template: &str) -> String {
-    let mut path = String::with_capacity(template.len());
-    let mut rest = template;
-    while let Some(open) = rest.find('{') {
-        let close = rest[open..]
-            .find('}')
-            .expect("a route template closes every parameter it opens")
-            + open;
-        path.push_str(&rest[..open]);
-        path.push_str(PARAMETER_FILL);
-        rest = &rest[close + 1..];
-    }
-    path.push_str(rest);
-    path
-}
-
 /// The methods `route`'s own mount answers, discovered by probing each verb.
 async fn mounted(state: &Arc<Fleet>, route: Route) -> BTreeSet<Verb> {
     let handler = unlayered_mount::<Fleet>(route).expect("every tabled route is mounted");
@@ -88,7 +60,7 @@ async fn mounted(state: &Arc<Fleet>, route: Route) -> BTreeSet<Verb> {
     let router = Router::new()
         .route(template, handler)
         .with_state(Arc::clone(state));
-    let path = concrete(template);
+    let path = harness::concrete_path(template, None);
 
     let mut served = BTreeSet::new();
     for verb in Verb::ALL.iter().copied() {

@@ -11,8 +11,13 @@ pub(crate) mod api_key;
 pub(crate) mod billing;
 pub(crate) mod cli_credential;
 pub(crate) mod identity;
+pub(crate) mod invite;
+pub(crate) mod invite_email;
+mod invite_view;
+pub(crate) mod member;
 pub(crate) mod model_entry;
 pub(crate) mod models;
+mod own;
 pub(crate) mod provider;
 pub(crate) mod workspace;
 
@@ -67,6 +72,18 @@ use afd_core::id::Uuid7;
 
 use crate::handler::{Refusal, parameter};
 use crate::services::{Services, WorkspaceOwnership as _};
+
+/// A whole list as its one page: every row, the count of them, no cursor.
+///
+/// For the lists an account keeps small by nature, its invites and its
+/// members, where a cursor would promise a second page that cannot exist.
+fn one_page<'a, T>(items: Vec<T>) -> afd_wire::tenant::PageResponse<'a, T> {
+    afd_wire::tenant::PageResponse {
+        total: i64::try_from(items.len()).unwrap_or(i64::MAX),
+        items,
+        next_cursor: None,
+    }
+}
 
 /// Which tenant this principal acts for, or the refusal.
 ///

@@ -43,6 +43,14 @@ export const EVENT_STATUS = {
   GATE_BLOCKED: "gate_blocked",
 } as const;
 
+// A status the thread read and the admitted frame carry but no row stores: a
+// message accepted and waiting for a runner (afd_core::event::status::QUEUED).
+// Kept apart from EVENT_STATUS, whose members are the stored vocabulary and
+// the set a "latest run" is chosen from; a waiting message is not a run yet.
+export const THREAD_STATUS = {
+  QUEUED: "queued",
+} as const;
+
 // ── Sender labels ─────────────────────────────────────────────────────────
 // The actor field carries an opaque account identifier for a steer, which no
 // operator can read. The rendered sender is a word, never an identifier.
@@ -86,6 +94,11 @@ export function isSteerBy(actor: string, subject: string | null): boolean {
 const OPAQUE_ID = /^(user_|sess_|org_)/i;
 const CONTINUATION_PREFIX = "continuation:";
 
+/** The actor a message speaks for: a continuation carries the one it resumed. */
+export function baseActorOf(actor: string): string {
+  return actor.startsWith(CONTINUATION_PREFIX) ? actor.slice(CONTINUATION_PREFIX.length) : actor;
+}
+
 /**
  * The name rendered beside a message. `fleetName` is the console's own fleet —
  * the design labels the fleet's messages with the fleet's name, not the word
@@ -94,9 +107,7 @@ const CONTINUATION_PREFIX = "continuation:";
  */
 export function senderLabelFor(actor: string, fleetName?: string): string {
   // A continuation of a steer is still that operator speaking, not a new actor.
-  const base = actor.startsWith(CONTINUATION_PREFIX)
-    ? actor.slice(CONTINUATION_PREFIX.length)
-    : actor;
+  const base = baseActorOf(actor);
   if (base === ACTOR.API_STEER) return SENDER.API;
   if (base.startsWith(ACTOR.STEER_PREFIX)) return SENDER.OPERATOR;
   if (base === ACTOR.FLEET) return fleetName && fleetName.length > 0 ? fleetName : SENDER.FLEET_FALLBACK;
@@ -210,7 +221,7 @@ const UNFINISHED_REPLY_SENTENCE = "This fleet couldn’t complete the reply.";
 export function outcomeFor(
   row: Pick<EventRow, "status" | "failure_label"> & Partial<Pick<EventRow, "failure_detail">>,
 ): string {
-  if (row.status === EVENT_STATUS.RECEIVED) return OUTCOME.WORKING;
+  if (row.status === EVENT_STATUS.RECEIVED || row.status === THREAD_STATUS.QUEUED) return OUTCOME.WORKING;
   if (row.failure_label) {
     // A runner failure may follow completed tool actions. The raw detail belongs
     // in diagnostics, not in a user-facing sentence or a blind retry prompt.

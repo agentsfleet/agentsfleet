@@ -15,7 +15,6 @@ use super::{Error, ErrorKind};
 // column names the table and the column, and only its reader knows those.
 afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_core::error::Error => Identifier,
     afd_crypto::error::Error => Entropy,
 );
 
@@ -77,7 +76,6 @@ pub(crate) fn charges_cursor_invalid() -> Error {
     reason = "a sample builder whose own preconditions fail should stop the suite"
 )]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
-    let identifier = afd_core::id::Uuid7::parse("not-an-id").expect_err("the fixture is malformed");
     let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
 
     vec![
@@ -87,10 +85,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             row_malformed("billing.usage_ledger", "tenant_id")(
                 afd_core::id::Uuid7::parse("not-an-id").expect_err("the fixture is malformed"),
             ),
-        ),
-        (
-            "identifier",
-            ErrorKind::Identifier { source: identifier }.into(),
         ),
         ("wallet missing", billing_wallet_missing()),
         ("charges cursor invalid", charges_cursor_invalid()),

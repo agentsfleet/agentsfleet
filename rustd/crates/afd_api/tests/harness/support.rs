@@ -8,12 +8,12 @@ use afd_auth::credential::{CredentialKind, Presented};
 use afd_auth::directory::{CredentialRecord, Liveness};
 use afd_auth::mock::MockDirectory;
 use afd_core::id::Uuid7;
-use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
+use afd_dragonfly::{Dragonfly, SubscriptionHub};
 use axum::Router;
 use axum::body::Body;
 use axum::response::Response;
-use http::{Method, Request};
+use http::{Method, Request, StatusCode};
 use serde_json::Value;
 use tower::ServiceExt as _;
 
@@ -25,6 +25,9 @@ use std::time::Duration;
 /// against another read the code through this name, so a test cannot quietly
 /// compare two absent fields and pass.
 pub(crate) const ERROR_CODE: &str = "error_code";
+
+/// The field a page envelope carries its rows under.
+const ITEMS: &str = "items";
 
 const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
@@ -44,6 +47,16 @@ pub(crate) async fn connect_redis() -> Dragonfly {
     afd_dragonfly::test_util::connect_live(&dragonfly_config())
         .await
         .expect("the lane's Dragonfly must be reachable")
+}
+
+/// The subscription hub a live stream reads through, over [`dragonfly_config`].
+///
+/// The caller shuts it down: a hub left running holds the lane's subscription
+/// connection past the test that opened it.
+pub(crate) async fn live_hub() -> SubscriptionHub {
+    SubscriptionHub::start(dragonfly_config())
+        .await
+        .expect("the lane's subscription connection starts")
 }
 
 /// The tenant every fixture person acts in.
@@ -130,4 +143,86 @@ pub(crate) async fn json_body(response: Response) -> Value {
         .await
         .expect("a test response body is small and in memory");
     serde_json::from_slice(&bytes).expect("the response must be valid JSON")
+}
+
+/// One request through [`send`], answered as its status and its JSON body.
+///
+/// An empty body reads as `null`, which is what a `204` carries. Any other
+/// body must parse: a route that stops answering JSON fails here instead of
+/// reading as a refusal with no code.
+pub(crate) async fn exchange(
+    router: &Router,
+    method: Method,
+    path: &str,
+    credential: Option<&str>,
+    body: &str,
+) -> (StatusCode, Value) {
+    let response = send(router, method, path, credential, body).await;
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("a test response body is small and in memory");
+    let answered = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).expect("a response with a body answers JSON")
+    };
+    (status, answered)
+}
+
+/// The registry code a refusal carries, read through [`ERROR_CODE`].
+pub(crate) fn error_code(problem: &Value) -> Option<&str> {
+    problem.get(ERROR_CODE).and_then(Value::as_str)
+}
+
+/// A string field of a JSON object, when it holds one.
+///
+/// `None` for an absent key or a value of another type, so a suite asserts
+/// presence where it needs a value rather than reading an empty string.
+pub(crate) fn text<'v>(value: &'v Value, key: &str) -> Option<&'v str> {
+    value.get(key).and_then(Value::as_str)
+}
+
+/// The rows a page carries.
+///
+/// Strict on purpose: a page with no `items` array is a broken answer, and
+/// reading it as an empty one would let an emptiness assertion pass over it.
+pub(crate) fn items(page: &Value) -> &[Value] {
+    page.get(ITEMS)
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .expect("a page carries an items array")
+}
+
+/// What every path parameter is filled with while probing.
+///
+/// A UUID rather than a word, so a substitution can never collide with a
+/// literal sibling segment: `/v1/auth/sessions/{session_id}` and
+/// `/v1/auth/sessions/all` are different routes, and a placeholder spelled
+/// `all` would silently probe the wrong one.
+const PARAMETER_FILL: &str = "00000000-0000-7000-8000-000000000000";
+
+/// A concrete path for `template`, with every `{parameter}` filled.
+///
+/// `matchit` matches any non-empty segment against a parameter, so the value
+/// only has to be non-empty and free of `/`. `workspace`, when given, fills
+/// `{workspace_id}` instead, for a suite whose ownership stub owns one.
+pub(crate) fn concrete_path(template: &str, workspace: Option<&str>) -> String {
+    let mut path = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(open) = rest.find('{') {
+        let close = rest[open..]
+            .find('}')
+            .expect("a route template closes every parameter it opens")
+            + open;
+        path.push_str(&rest[..open]);
+        let fill = match workspace {
+            Some(owned) if &rest[open..=close] == afd_api::route::WORKSPACE_PARAMETER => owned,
+            _ => PARAMETER_FILL,
+        };
+        path.push_str(fill);
+        rest = &rest[close + 1..];
+    }
+    path.push_str(rest);
+    path
 }

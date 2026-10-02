@@ -43,6 +43,15 @@ pub fn tenant_handler_for<D: Services>(verb: TenantRoute) -> Option<MethodRouter
         }
         TenantRoute::CliCredentials => Some(post(handler::tenant::mint_cli::<D>)),
         TenantRoute::CurrentUser => Some(get(handler::tenant::current_user::<D>)),
+        TenantRoute::Invites => {
+            Some(get(handler::tenant::invite::list::<D>).post(handler::tenant::invite::create::<D>))
+        }
+        TenantRoute::Invite => Some(delete(handler::tenant::invite::revoke::<D>)),
+        TenantRoute::InviteEmail => Some(post(handler::tenant::invite_email::send::<D>)),
+        TenantRoute::Members => Some(get(handler::tenant::member::list::<D>)),
+        TenantRoute::Member => Some(delete(handler::tenant::member::remove::<D>)),
+        TenantRoute::InvitesForMe => Some(get(handler::tenant::invite::waiting::<D>)),
+        TenantRoute::InviteAcceptance => Some(post(handler::tenant::invite::accept::<D>)),
         TenantRoute::CliCredential => Some(delete(handler::tenant::revoke_cli::<D>)),
         TenantRoute::Billing => Some(get(handler::tenant::billing_snapshot::<D>)),
         TenantRoute::BillingCharges => Some(get(handler::tenant::billing_charges::<D>)),
@@ -92,6 +101,7 @@ pub fn workspace_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<Method
         ),
         WorkspaceRoute::LibraryEntries => Some(get(handler::library_entry::list::<D>)),
         WorkspaceRoute::LibraryEntry => Some(delete(handler::library_entry::remove::<D>)),
+        WorkspaceRoute::Members => Some(get(handler::tenant::member::in_workspace::<D>)),
     }
 }
 

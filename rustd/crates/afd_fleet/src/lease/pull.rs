@@ -198,7 +198,7 @@ impl Plane {
         // were read after the row landed, because the insert is what moves them.
         if delivery == crate::lease::event::Delivery::First {
             self.leases
-                .publish_received(&acquired, now, received.counters)
+                .publish_received(&acquired, received.opened_at, received.counters)
                 .await;
         }
         self.billed(acquired, installed, delivery, runner_id, now)

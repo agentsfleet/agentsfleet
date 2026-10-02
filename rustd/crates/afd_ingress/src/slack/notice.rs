@@ -93,7 +93,7 @@ impl Ingress {
     /// Reports entropy or an instant that would not mint the row's id, and a
     /// ledger that would not record it.
     pub async fn owe_notice(&self, owed: NoticeOwed<'_>, now: UnixMillis) -> Result<bool> {
-        let row = Uuid7::encode(now, self.entropy.uuid_randomness()?)?;
+        let row = self.entropy.uuid7(now)?;
         let mut connection = self.database.acquire().await?;
         let written = obligation::owe(
             connection.as_mut(),

@@ -65,12 +65,16 @@ async fn test_replayed_append_decides_from_its_insert() {
     let again = send(&steer, &lane, REQUEST_JSON)
         .await
         .expect("the repeat is answered");
-    assert!(!first.replayed, "a fresh admission is not a replay");
+    assert!(!first.replayed(), "a fresh admission is not a replay");
+    assert!(
+        first.admitted_at.is_some(),
+        "a fresh admission answers with its instant, which its frame carries"
+    );
     assert_eq!(
         again,
         Steered {
             event_id: first.event_id,
-            replayed: true
+            admitted_at: None,
         }
     );
 

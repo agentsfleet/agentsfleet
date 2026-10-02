@@ -265,6 +265,23 @@ impl Refusal {
             ))
         }
     }
+    /// Renders `error` as `event`'s refusal, as a conflict when `state_of`
+    /// names the state that refuses it.
+    ///
+    /// For a store that answers one error type for a conflict and for
+    /// everything else: the call site says which errors are conflicts and what
+    /// each one's `current_state` is, and every other error renders as
+    /// [`Refusal::at`] would.
+    pub fn conflict_or_at<E: Refusable>(
+        event: &'static str,
+        state_of: impl FnOnce(&E) -> Option<&'static str>,
+    ) -> impl FnOnce(E) -> Self {
+        move |error| match state_of(&error) {
+            Some(state) => Self::conflict_at(event, state)(error),
+            None => Self::at(event)(error),
+        }
+    }
+
     /// A conflict whose sentence the CALL SITE composes.
     ///
     /// [`Refusal::conflict_at`] with the detail as a parameter, for the one

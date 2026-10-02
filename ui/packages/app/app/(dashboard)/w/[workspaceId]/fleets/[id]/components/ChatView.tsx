@@ -4,6 +4,7 @@ import type { EventDetail } from "@/lib/api/events";
 import type { FleetRunSummary } from "@/lib/events/run-summary";
 import FleetThreadDynamic from "@/components/domain/FleetThreadDynamic";
 import { useFleetRunSummary } from "@/components/domain/useFleetRunSummary";
+import type { SenderName } from "@/lib/events/sender-names";
 import FleetStatusLine from "./FleetStatusLine";
 
 type Props = {
@@ -17,6 +18,8 @@ type Props = {
   approvalsHref: string;
   /** The signed-in user as the server saw them; the thread's ledger is keyed by it. */
   viewer: string | null;
+  /** The account members the thread names its senders by. */
+  senderNames: readonly SenderName[];
 };
 
 // The chat surface: the thread with its status line under the composer, both
@@ -34,6 +37,7 @@ export function ChatView({
   initialSummary,
   approvalsHref,
   viewer,
+  senderNames,
 }: Props) {
   const summary = useFleetRunSummary(workspaceId, fleetId, initial, initialSummary);
 
@@ -45,6 +49,7 @@ export function ChatView({
         senderLabel={senderLabel}
         initial={initial}
         viewer={viewer}
+        senderNames={senderNames}
       />
       <div className="mx-auto w-full max-w-measure shrink-0">
         <FleetStatusLine

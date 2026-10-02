@@ -47,9 +47,9 @@ pub use self::history::{
     Cursor, DEFAULT_LIMIT, EventDetailRow, EventRow, Filter, History, MAX_LIMIT,
     THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT, glob_to_like, next_cursor, parse_since, prefix_to_like,
 };
-pub use self::steer::{ACTOR_MACHINE, ACTOR_PREFIX, Steer, Steered};
+pub use self::steer::{ACTOR_MACHINE, ACTOR_PREFIX, Steer, Steered, is_steer_actor, steer_actor};
 
 /// Every history read's text, named, so the plan suite can `EXPLAIN` exactly
 /// what `History` runs rather than a copy of it.
 #[cfg(feature = "test-util")]
-pub use self::history::statement::READ_TEXTS;
+pub use self::history::statement::{QUEUED_READ_TEXTS, READ_TEXTS};

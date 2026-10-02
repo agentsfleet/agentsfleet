@@ -54,6 +54,7 @@ vi.mock("lucide-react", () => ({
   BrainCircuitIcon: () => React.createElement("svg", { "data-icon": "BrainCircuitIcon" }),
   BoxesIcon: () => React.createElement("svg", { "data-icon": "BoxesIcon" }),
   CreditCardIcon: () => React.createElement("svg", { "data-icon": "CreditCardIcon" }),
+  UsersIcon: () => React.createElement("svg", { "data-icon": "UsersIcon" }),
   MenuIcon: () => React.createElement("svg", { "data-icon": "MenuIcon" }),
   PanelLeftCloseIcon: () => React.createElement("svg", { "data-icon": "PanelLeftCloseIcon" }),
   PanelLeftOpenIcon: () => React.createElement("svg", { "data-icon": "PanelLeftOpenIcon" }),
@@ -71,7 +72,10 @@ vi.mock("lucide-react", () => ({
 vi.mock("@/lib/workspace", () => ({
   listTenantWorkspacesCached: vi
     .fn()
-    .mockResolvedValue({ items: [{ id: "ws_1", name: "Alpha", created_at: 1 }], total: 1 }),
+    .mockResolvedValue({
+      items: [{ id: "ws_1", name: "Alpha", created_at: 1, account: { tenant_id: "tenant_own", owner_name: "You" }, role: "owner" }],
+      total: 1,
+    }),
 }));
 
 // RootLayout reads the theme cookie server-side (SSR data-theme stamp).

@@ -215,7 +215,7 @@ impl Plane {
         let received = self.leases.record_received(acquired, now).await?;
         if received.delivery == Delivery::First {
             self.leases
-                .publish_received(acquired, now, received.counters)
+                .publish_received(acquired, received.opened_at, received.counters)
                 .await;
         }
         self.refused(acquired, label::CONFIG_UNREADABLE, runner_id, reason, now)

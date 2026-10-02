@@ -5,6 +5,7 @@ import {
   type ThreadPage,
 } from "@/lib/api/events";
 import { listAllMemories } from "@/lib/api/memory";
+import { listWorkspaceMembers, type WorkspaceMember } from "@/lib/api/tenant-members";
 import { FLEET_VIEW, type FleetView } from "./FleetSubnavigation";
 
 /** Turns the chat view opens with — one thread request, bodies included. */
@@ -15,6 +16,9 @@ export const CHAT_TURNS = 20;
 export type ChatViewData = {
   view: typeof FLEET_VIEW.chat;
   thread: Promise<ThreadPage | null>;
+  /** Who the thread can name. A failed read names no one, and every sender
+   * falls back to its actor label. */
+  members: Promise<WorkspaceMember[] | null>;
 };
 
 /** Events opens on the page the URL cursor names. */
@@ -89,6 +93,7 @@ export function startViewData(view: FleetView, args: ViewDataArgs): ViewData {
         thread: listFleetMessages(args.workspaceId, args.fleetId, args.token, {
           limit: CHAT_TURNS,
         }).catch(() => null),
+        members: listWorkspaceMembers(args.workspaceId, args.token).catch(() => null),
       };
   }
 }

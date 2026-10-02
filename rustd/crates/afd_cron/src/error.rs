@@ -72,12 +72,6 @@ pub(crate) enum ErrorKind {
         source: afd_crypto::error::Error,
     },
 
-    #[error("a minted schedule identifier is not a canonical one")]
-    IdentifierShape {
-        #[source]
-        source: afd_core::error::Error,
-    },
-
     /// The fire's acceptance could not be recorded.
     ///
     /// Replaces the queue variant this crate used to carry: a queue that will
@@ -174,7 +168,7 @@ impl Error {
                 error_code::INTERNAL_OPERATION_FAILED,
                 detail::UPSTREAM_UNAVAILABLE,
             ),
-            ErrorKind::Identifier { .. } | ErrorKind::IdentifierShape { .. } => (
+            ErrorKind::Identifier { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 detail::OPERATION_FAILED,
             ),

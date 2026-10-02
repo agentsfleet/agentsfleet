@@ -3,6 +3,7 @@
 import { cn, EYEBROW_CLASS, WakePulse } from "@agentsfleet/design-system";
 import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";
 import { useWorkspaceStream } from "@/components/domain/useWorkspaceStream";
+import { ACCESS_REVOKED_LABEL } from "@/components/domain/FleetConnectionIndicator";
 
 /**
  * The wall's one honest answer to "is this page still telling me the truth?"
@@ -19,29 +20,42 @@ const RECONNECTING_COPY = "reconnecting…";
 const OFFLINE_COPY = "offline";
 const LIVE_SUFFIX = "live";
 
+// Every state but one reads quietly beside the pulse-coloured dot. Lost access
+// is an end rather than a pause, so it takes the destructive tone, dot and
+// all, as FleetConnectionIndicator says it.
+type Tone = { text: string; dot: string };
+const QUIET_TONE: Tone = { text: "text-muted-foreground", dot: "bg-pulse" };
+const REVOKED_TONE: Tone = { text: "text-destructive", dot: "bg-destructive" };
+
 type Props = {
   liveTotal: number;
 };
 
-/** What the badge says, and whether its dot should pulse. */
+type Reading = { text: string; live: boolean; tone: Tone };
+
+function quiet(text: string, live = false): Reading {
+  return { text, live, tone: QUIET_TONE };
+}
+
+/** What the badge says, whether its dot should pulse, and in which tone. */
 function reading(
   connectionStatus: string,
   helloReceived: boolean,
   liveTotal: number,
-): { text: string; live: boolean } | null {
-  if (connectionStatus === CONNECTION_STATUS.RECONNECTING) {
-    return { text: RECONNECTING_COPY, live: false };
+): Reading | null {
+  // Terminal: the stream ended because the caller lost access to the workspace.
+  if (connectionStatus === CONNECTION_STATUS.REVOKED) {
+    return { text: ACCESS_REVOKED_LABEL, live: false, tone: REVOKED_TONE };
   }
-  if (connectionStatus === CONNECTION_STATUS.OFFLINE) {
-    return { text: OFFLINE_COPY, live: false };
-  }
+  if (connectionStatus === CONNECTION_STATUS.RECONNECTING) return quiet(RECONNECTING_COPY);
+  if (connectionStatus === CONNECTION_STATUS.OFFLINE) return quiet(OFFLINE_COPY);
   // Connected at the socket but no `hello` yet means the server has not said
   // which fleets it is streaming, so nothing here is confirmed.
   if (connectionStatus !== CONNECTION_STATUS.LIVE || !helloReceived) {
-    return { text: CONNECTING_COPY, live: false };
+    return quiet(CONNECTING_COPY);
   }
   if (liveTotal === 0) return null;
-  return { text: `${liveTotal} ${LIVE_SUFFIX}`, live: true };
+  return quiet(`${liveTotal} ${LIVE_SUFFIX}`, true);
 }
 
 export default function WallLiveBadge({ liveTotal }: Props) {
@@ -64,10 +78,10 @@ export default function WallLiveBadge({ liveTotal }: Props) {
      * and it is the tag `jsx-a11y(prefer-tag-over-role)` asks for over a span
      * wearing the role by hand.
      */
-    <output className={cn(EYEBROW_CLASS, "text-muted-foreground inline-flex items-center gap-2")}>
+    <output className={cn(EYEBROW_CLASS, "inline-flex items-center gap-2", shown.tone.text)}>
       <WakePulse
         live={shown.live}
-        className="inline-block w-2 h-2 rounded-full bg-pulse"
+        className={cn("inline-block w-2 h-2 rounded-full", shown.tone.dot)}
         aria-hidden="true"
       />
       {shown.text}

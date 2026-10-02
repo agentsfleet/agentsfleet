@@ -155,6 +155,15 @@ pub const AUTH_CLI_CREDENTIAL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AUTH
 /// show a person, or the client is emitting a code the product cannot explain.
 pub const AUTH_CLI_CREDENTIAL_EXCHANGE_FAILED: ErrorCode = ErrorCode::declare("UZ-AUTH-025");
 
+/// A member of an account reached a route only its owner may use.
+///
+/// Distinct from [`AUTH_FORBIDDEN`]: the workspace IS the caller's to open, and
+/// this route is not theirs to use in it. Distinct from
+/// [`AUTH_INSUFFICIENT_SCOPE`]: the caller may hold the scope, and the member
+/// role subtracts it inside somebody else's account. Obtaining a scope cannot
+/// fix this one; only the owner can act.
+pub const AUTH_OWNER_ONLY: ErrorCode = ErrorCode::declare("UZ-AUTH-026");
+
 /// The tenant api-key resolved to a row that is no longer active.
 ///
 /// `ERR_APIKEY_REVOKED`, and the tenant-key counterpart of

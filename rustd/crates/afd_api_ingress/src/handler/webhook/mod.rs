@@ -30,6 +30,7 @@ pub(crate) mod receive_route;
 pub(crate) mod svix_route;
 
 mod delivery;
+mod identity_event;
 mod verify;
 pub(crate) mod verify_platform;
 mod verify_svix;

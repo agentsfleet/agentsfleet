@@ -280,6 +280,13 @@ pub(super) const SELECT_THREAD_PAGE_AFTER: &str = concat!(
     newest_first!(5)
 );
 
+// The waiting read is the ledger's, not `core.fleet_events`', so its texts
+// share nothing above and live beside this file.
+mod queued;
+#[cfg(feature = "test-util")]
+pub use self::queued::QUEUED_READ_TEXTS;
+pub(super) use self::queued::{SELECT_THREAD_QUEUED, SELECT_THREAD_QUEUED_AFTER};
+
 /// Every listing and thread text, named, for the suite that asks Postgres how
 /// it plans each one.
 #[cfg(feature = "test-util")]

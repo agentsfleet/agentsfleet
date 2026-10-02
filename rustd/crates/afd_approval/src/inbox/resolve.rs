@@ -280,6 +280,9 @@ impl Inbox {
                 actor: Cow::Borrowed(&actor),
                 event_type: Cow::Borrowed(kind),
                 created_at: now.as_millis(),
+                // A continuation carries no typed words: a person's message
+                // is announced on its own admission.
+                message: None,
                 counters,
             };
             FleetStreams::new(self.queue.clone())

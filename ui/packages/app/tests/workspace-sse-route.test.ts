@@ -21,8 +21,12 @@ const TOKEN = "session_token";
 const CONTENT_TYPE_JSON = "application/json";
 const CONTENT_TYPE_STREAM = "text/event-stream";
 const CONTENT_TYPE_TEXT = "text/plain";
+const CONTENT_TYPE_PROBLEM = "application/problem+json";
+const STATUS_OK = 200;
 const STATUS_BAD_REQUEST = 400;
 const STATUS_UNAUTHORIZED = 401;
+const STATUS_FORBIDDEN = 403;
+const STATUS_INTERNAL = 500;
 const STATUS_BAD_GATEWAY = 502;
 const STATUS_UNAVAILABLE = 503;
 
@@ -151,5 +155,60 @@ describe("workspace SSE route", () => {
 
     expect(res.status).toBe(STATUS_BAD_GATEWAY);
     expect(await res.text()).toBe("Upstream returned no body");
+  });
+});
+
+// A member removed while their tab slept is refused at open. The wall's
+// EventSource sees only a bare `error` for that and would reconnect forever,
+// so the proxy re-says the refusal as the frame that ends the stream.
+describe("workspace SSE route refused at open for lost access", () => {
+  const problem = (errorCode: string) => JSON.stringify({ title: "Forbidden", error_code: errorCode });
+  // pin test: literal is the contract — the bytes the daemon writes for
+  // `Frame::access_revoked` (rustd/crates/afd_sse/src/frame.rs).
+  const ACCESS_REVOKED_WIRE =
+    'id: 0\nevent: access_revoked\ndata: {"kind":"access_revoked","error_code":"UZ-AUTH-001"}\n\n';
+
+  it("should answer one access_revoked frame as a 200 stream when the daemon refuses with UZ-AUTH-001", async () => {
+    getTokenFn.mockResolvedValueOnce(TOKEN);
+    fetchSpy.mockResolvedValueOnce(
+      new Response(problem(ERROR_CODE.AUTH_FORBIDDEN), {
+        status: STATUS_FORBIDDEN,
+        headers: { "content-type": CONTENT_TYPE_PROBLEM },
+      }),
+    );
+
+    const res = await GET(makeReq(), paramsOf());
+
+    expect(res.status).toBe(STATUS_OK);
+    expect(res.headers.get("content-type")).toBe(CONTENT_TYPE_STREAM);
+    expect(res.headers.get("x-accel-buffering")).toBe("no");
+    expect(await res.text()).toBe(ACCESS_REVOKED_WIRE);
+  });
+
+  it("should forward any other 403 unchanged, so a missing scope is not read as lost access", async () => {
+    getTokenFn.mockResolvedValueOnce(TOKEN);
+    const body = problem(ERROR_CODE.INSUFFICIENT_SCOPE);
+    fetchSpy.mockResolvedValueOnce(
+      new Response(body, { status: STATUS_FORBIDDEN, headers: { "content-type": CONTENT_TYPE_PROBLEM } }),
+    );
+
+    const res = await GET(makeReq(), paramsOf());
+
+    expect(res.status).toBe(STATUS_FORBIDDEN);
+    expect(res.headers.get("content-type")).toBe(CONTENT_TYPE_PROBLEM);
+    expect(await res.text()).toBe(body);
+  });
+
+  it("should forward a 500 that carries UZ-AUTH-001 unchanged, since only a 403 is a refusal", async () => {
+    getTokenFn.mockResolvedValueOnce(TOKEN);
+    const body = problem(ERROR_CODE.AUTH_FORBIDDEN);
+    fetchSpy.mockResolvedValueOnce(
+      new Response(body, { status: STATUS_INTERNAL, headers: { "content-type": CONTENT_TYPE_PROBLEM } }),
+    );
+
+    const res = await GET(makeReq(), paramsOf());
+
+    expect(res.status).toBe(STATUS_INTERNAL);
+    expect(await res.text()).toBe(body);
   });
 });

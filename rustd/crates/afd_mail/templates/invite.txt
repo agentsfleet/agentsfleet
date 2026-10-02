@@ -1,0 +1,9 @@
+{{ inviter_name }} invited you to join {{ account_name }} on agentsfleet.
+
+Once you join, you share its fleets and their threads with the rest of the team. Sign in with this email address, then open this link to accept:
+
+{{ invite_url }}
+
+This invitation expires in {{ valid_days }} days. If you were not expecting it, you can ignore this email.
+
+agentsfleet · https://agentsfleet.net

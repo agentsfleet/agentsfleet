@@ -11,8 +11,10 @@
 
 use std::sync::Arc;
 
+use afd_connector::Dashboard;
 use afd_core::id::Uuid7;
 use afd_cron::SigningKeys;
+use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
 use afd_dragonfly::Dragonfly;
@@ -130,8 +132,8 @@ pub struct ScheduleConfig {
 pub struct LoginConfig {
     /// The key a verification code's digest is taken under.
     pub code_pepper: SecretBytes,
-    /// Where a person goes to approve a login.
-    pub app_url: String,
+    /// Where a person goes to approve a login, and every other dashboard page.
+    pub app_url: Dashboard,
     /// This deployment's own base URL, as a minted credential records it.
     ///
     /// Beside `app_url` because the two are read from configuration together
@@ -140,4 +142,29 @@ pub struct LoginConfig {
     /// deployment that minted it are one fact, and a client-asserted host
     /// would let them disagree.
     pub api_url: Box<str>,
+}
+
+/// The schedule plane over `schedule`: the management service and its
+/// scheduler client, and the fire verb over the shared admissions ledger.
+///
+/// Takes the configuration whole, after the plane has copied out the
+/// destination and the signing keys it keeps for verifying a fire.
+pub(super) fn schedule_plane(
+    database: &Db,
+    schedule: ScheduleConfig,
+    admissions: afd_admission::Admissions,
+) -> afd_api::SchedulePlane {
+    afd_api::SchedulePlane::new(
+        afd_cron::ScheduleService::new(
+            afd_cron::Schedules::new(database.clone(), Entropy::new()),
+            afd_cron::QStash::new(
+                schedule.client,
+                schedule.token,
+                schedule.destination,
+                schedule.api_base,
+            ),
+        ),
+        afd_cron::Fire::new(admissions),
+        Entropy::new(),
+    )
 }

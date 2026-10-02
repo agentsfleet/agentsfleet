@@ -28,6 +28,7 @@
 mod cursor;
 mod detail;
 mod filter;
+mod queued;
 mod row;
 pub(crate) mod statement;
 
@@ -194,14 +195,20 @@ impl History {
                 .bind(at.created_at)
                 .bind(at.event_id.as_str()),
         };
+        let bound = limit.clamp(1, THREAD_MAX_LIMIT + 1);
         let mut connection = self.database.acquire().await?;
         let rows = scoped
-            .bind(limit.clamp(1, THREAD_MAX_LIMIT + 1))
+            .bind(bound)
             .fetch_all(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_THREAD))?;
-
-        rows.iter().map(EventDetailRow::read).collect()
+        let delivered = rows
+            .iter()
+            .map(EventDetailRow::read)
+            .collect::<Result<Vec<_>>>()?;
+        let waiting = queued::waiting(&mut connection, workspace, fleet, cursor, bound).await?;
+        let cut = usize::try_from(bound).unwrap_or(usize::MAX);
+        Ok(queued::merged(delivered, waiting, cut))
     }
 
     /// The listing both entry points run: the text their scope, cursor and

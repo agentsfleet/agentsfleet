@@ -42,8 +42,7 @@ fn invalid(body: &ImportBody) -> InvalidBundle {
         | ErrorKind::ArchiveTask { .. }
         | ErrorKind::Redirect { .. }
         | ErrorKind::ArchivePath { .. }
-        | ErrorKind::Entropy { .. }
-        | ErrorKind::Mint { .. } => {
+        | ErrorKind::Entropy { .. } => {
             panic!("validation cannot reach an I/O boundary")
         }
     }

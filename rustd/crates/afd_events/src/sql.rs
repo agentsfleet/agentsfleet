@@ -16,6 +16,28 @@
 //!
 //! [`Acquired`]: https://docs.rs/afd_fleet
 
+/// The inbound-event insert, with the tail of its `VALUES` list — the
+/// `created_at` expression, then `$8` for `updated_at` — and any column
+/// `RETURNING` adds after the arm flag.
+macro_rules! insert_fleet_event {
+    ($stamps:literal, $returning:literal) => {
+        concat!(
+            "\
+INSERT INTO core.fleet_events
+  (fleet_id, event_id, workspace_id, actor, event_type,
+   status, request_json, resumes_event_id, created_at, updated_at)
+VALUES ($1::uuid, $2, $3::uuid, $4, $5, $9, $6::jsonb, $7, ",
+            $stamps,
+            "
+ON CONFLICT (fleet_id, event_id) DO UPDATE SET
+    resumes_event_id = COALESCE(core.fleet_events.resumes_event_id,
+                                EXCLUDED.resumes_event_id)
+RETURNING (xmax = 0) AS inserted",
+            $returning
+        )
+    };
+}
+
 /// Record an inbound event.
 ///
 /// The conflict arm on `(fleet_id, event_id)` is the idempotence boundary for
@@ -51,15 +73,34 @@
 ///
 /// `$1` fleet, `$2` event, `$3` workspace, `$4` actor, `$5` type, `$6` body,
 /// `$7` resumes-event, `$8` now, `$9` status.
-pub const INSERT_FLEET_EVENT: &str = "\
-INSERT INTO core.fleet_events
-  (fleet_id, event_id, workspace_id, actor, event_type,
-   status, request_json, resumes_event_id, created_at, updated_at)
-VALUES ($1::uuid, $2, $3::uuid, $4, $5, $9, $6::jsonb, $7, $8, $8)
-ON CONFLICT (fleet_id, event_id) DO UPDATE SET
-    resumes_event_id = COALESCE(core.fleet_events.resumes_event_id,
-                                EXCLUDED.resumes_event_id)
-RETURNING (xmax = 0) AS inserted";
+pub const INSERT_FLEET_EVENT: &str = insert_fleet_event!("$8, $8)", "");
+
+/// [`INSERT_FLEET_EVENT`] as the lease path runs it: a steer's row is stamped
+/// with the instant it was ADMITTED, not the instant a runner took it.
+///
+/// A thread page merges history with the ledger's waiting steers on one key,
+/// `(created_at, event_id)`, and a waiting steer sits at its admission time.
+/// Stamped at lease, the same message jumped above a page cursor already
+/// handed out: the resumed history read skipped it as too new and the resumed
+/// waiting read skipped it as delivered, so a reader paging back never saw it.
+/// Stamped at admission, the row keeps the key it was listed under.
+///
+/// The instant is the ledger's stored `created_at`, looked up by the logical
+/// id's two integers on the partial index the delivery stamp rides, which a
+/// first delivery always matches: the stamp follows this insert. Anything else
+/// — a webhook, a schedule, an id the ledger never minted (both NULL) — keeps
+/// `$8`. Returns the stored `created_at` as well, so the received frame
+/// announces the row's own instant.
+///
+/// `$1`–`$9` as [`INSERT_FLEET_EVENT`], then `$10` the logical id's
+/// `created_at`, `$11` its `seq`, `$12` the steer producer.
+pub const INSERT_LEASED_FLEET_EVENT: &str = insert_fleet_event!(
+    "COALESCE((SELECT a.created_at FROM core.fleet_admissions a
+            WHERE a.fleet_id = $1::uuid AND a.created_at = $10::bigint
+              AND a.seq = $11::bigint AND a.producer = $12
+              AND a.delivered_at IS NULL), $8), $8)",
+    ", created_at"
+);
 
 /// What a closing statement hands back: the terminal row as the events list
 /// would serve it, joined to the two fleet facts the live tail publishes with
@@ -247,3 +288,7 @@ SELECT status FROM core.fleet_events WHERE fleet_id = $1::uuid AND event_id = $2
 /// the row, not the operator's visibility, since the console renders the cause
 /// as one line anyway.
 pub const MAX_FAILURE_DETAIL_BYTES: usize = 512;
+
+#[cfg(test)]
+#[path = "sql/tests.rs"]
+mod tests;

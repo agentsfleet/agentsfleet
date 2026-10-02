@@ -49,6 +49,8 @@ afd_fleet_lifecycle.workspace = true
 afd_fleet_runtime.workspace = true
 afd_http.workspace = true
 afd_library.workspace = true
+# The invite email's types: what a send is given and what it comes to.
+afd_mail.workspace = true
 afd_observability.workspace = true
 afd_sse.workspace = true
 # The published message a live-tail body borrows its payload bytes from; see
@@ -57,6 +59,9 @@ afd_dragonfly.workspace = true
 afd_tenant.workspace = true
 afd_vault.workspace = true
 afd_wire.workspace = true
+# The invite link is built by path segment from the dashboard base, the way
+# the connector's own dashboard URLs are, never by string formatting.
+url.workspace = true
 # The document generator, reachable only under `openapi`. Optional at every
 # member that names it, so the default resolve is unchanged.
 utoipa = { workspace = true, optional = true }

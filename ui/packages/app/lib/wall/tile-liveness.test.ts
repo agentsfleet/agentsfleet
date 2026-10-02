@@ -37,6 +37,13 @@ describe("deriveTileLiveness — the tile is always exactly one kind (Inv. 1)", 
     }
   });
 
+  it("an active fleet whose stream lost access degrades to snapshot, never a stale live", () => {
+    expect(deriveTileLiveness(AGENTSFLEET_STATUS.ACTIVE, CONNECTION_STATUS.REVOKED)).toEqual({
+      kind: "snapshot",
+      reason: SNAPSHOT_CAPPED_OR_ERRORED,
+    });
+  });
+
   it("an installing fleet streams (its state is transient, not drained)", () => {
     expect(tileShouldStream(AGENTSFLEET_STATUS.INSTALLING)).toBe(true);
     expect(deriveTileLiveness(AGENTSFLEET_STATUS.INSTALLING, CONNECTION_STATUS.LIVE).kind).toBe("live");

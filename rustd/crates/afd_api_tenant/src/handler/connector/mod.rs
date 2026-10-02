@@ -36,10 +36,8 @@ pub(crate) mod status;
 
 use std::sync::Arc;
 
-use afd_connector::Provider;
 // Aliased: this module has a `callback` of its own — the two HANDLERS — and the
 // crate's is where the URLs those handlers travel through are composed.
-use afd_connector::callback as connector_urls;
 use afd_core::error_code;
 use afd_crypto::secret::SecretBytes;
 
@@ -61,29 +59,6 @@ const EVENT_SECRET: &str = "connector_state_secret_failed";
 /// `callback.zig`'s `NOT_CONFIGURED_FALLBACK`. An operator's fault rather than
 /// a tenant's, which is why [`error_code::CONNECTOR_NOT_CONFIGURED`] is a 503.
 pub(crate) const DETAIL_NOT_CONFIGURED: &str = "Connector is not configured";
-
-/// Where a provider sends the browser back, for this deployment.
-///
-/// Built from the dashboard's own base URL rather than from the request, so the
-/// value a code is minted against and the value the exchange echoes are one
-/// fact — see [`Services::dashboard`] and [`afd_connector::callback`].
-///
-/// # Errors
-/// `UZ-CONN-001` for a dashboard base that is not a URL. A boot-time
-/// misconfiguration, refused rather than sending somebody to a page that cannot
-/// exist, and it answers as unconfigured because that is what it is.
-pub(crate) fn relay_uri<D: Services>(
-    services: &Arc<D>,
-    provider: Provider,
-) -> Result<String, Refusal> {
-    connector_urls::relay_uri(services.dashboard(), provider).ok_or_else(|| {
-        tracing::error!(
-            provider = provider.id(),
-            event = "connector_dashboard_base_unusable",
-        );
-        unconfigured()
-    })
-}
 
 /// What this deployment signs connector install states with.
 ///

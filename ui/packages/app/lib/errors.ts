@@ -103,6 +103,10 @@ const MINTED_CODES = {
  */
 export const ERROR_CODE = {
   ...MINTED_CODES,
+  /** A workspace that is not the caller's, and the code an `access_revoked`
+   * frame carries. Mirrors `AUTH_FORBIDDEN` in
+   * `rustd/crates/afd_core/src/error_code/auth.rs`. */
+  AUTH_FORBIDDEN: "UZ-AUTH-001",
   /** A steer's operation id already names another message. Mirrors
    * `AGENTSFLEET_OPERATION_CONFLICT` in `rustd/crates/afd_core/src/error_code/fleet.rs`. */
   AGENTSFLEET_OPERATION_CONFLICT: "UZ-AGT-016",

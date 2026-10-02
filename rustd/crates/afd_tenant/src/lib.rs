@@ -34,6 +34,14 @@ pub mod preference;
 pub mod session;
 pub mod signup;
 pub mod sql;
+pub mod team;
 pub mod workspace;
+
+mod stored;
+
+// The rows a suite seeds an account with, shared by this crate's suites and
+// `afd_api`'s. Behind `test-util` so no shipped build carries them.
+#[cfg(feature = "test-util")]
+pub mod test_util;
 
 pub use self::error::{Error, Result};

@@ -53,7 +53,7 @@ const DETAIL_UNPROVEN: &str = "person identity required";
 /// Says nothing about which class WOULD work. A caller holding an api-key
 /// learns that this endpoint is not for api-keys from the documentation, not
 /// from an error message enumerating what else it might try.
-pub const DETAIL_NOT_DASHBOARD: &str = "Clerk user context missing";
+pub const DETAIL_NOT_DASHBOARD: &str = "User context missing";
 
 /// The refusal a credential that is not a person's earns on the command-line
 /// credential surface.

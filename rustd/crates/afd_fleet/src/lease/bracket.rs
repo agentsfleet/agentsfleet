@@ -33,7 +33,9 @@
 use std::borrow::Cow;
 
 use afd_core::clock::UnixMillis;
-use afd_events::Closed;
+use afd_core::error_code;
+use afd_events::{Closed, is_steer_actor};
+use afd_wire::event::{STEER_MESSAGE_MAX_BYTES, SteerRequest};
 use afd_wire::tail::{FleetCounters, TailFrame, TailRow};
 
 use crate::lease::envelope::Acquired;
@@ -41,14 +43,47 @@ use crate::lease::store::Leases;
 
 const MAX_INLINE_FINAL_REPLY_BYTES: usize = 64 * 1024;
 
+/// The event a steer body this daemon cannot show is logged under.
+const EVENT_STEER_BODY_UNREADABLE: &str = "steer_body_unreadable";
+
 fn inline_final_reply(reply: Option<&str>) -> Option<Cow<'_, str>> {
     reply
         .filter(|text| text.len() <= MAX_INLINE_FINAL_REPLY_BYTES)
         .map(Cow::Borrowed)
 }
 
+/// What a person typed, for the received frame: a steer's `message`, within
+/// the bound the route admitted it under, or `None`.
+///
+/// Every other producer's body is its own shape and names no typed words, so
+/// only a `steer:` actor is read. A steer body that does not parse, or holds
+/// more than the bound, was never written by the route as it stands; it is
+/// warned once, without its text, and the frame goes out without a message.
+fn steer_message(acquired: &Acquired) -> Option<Cow<'_, str>> {
+    if !is_steer_actor(&acquired.actor) {
+        return None;
+    }
+    serde_json::from_str::<SteerRequest<'_>>(&acquired.request_json)
+        .ok()
+        .map(|request| request.message)
+        .filter(|message| message.len() <= STEER_MESSAGE_MAX_BYTES)
+        .or_else(|| {
+            let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+            let fleet_id = acquired.fleet_id.as_str();
+            let event_id = acquired.event_id.as_str();
+            tracing::warn!(
+                error_code = code,
+                fleet_id,
+                event_id,
+                event = EVENT_STEER_BODY_UNREADABLE,
+            );
+            None
+        })
+}
+
 impl Leases {
-    /// Announce that `acquired`'s narrative log opened at `now`.
+    /// Announce that `acquired`'s narrative log opened, stamped `opened_at`:
+    /// the row's own `created_at`, which for a steer is its admission instant.
     ///
     /// Published once, on the delivery that wrote the row: a redelivery finds
     /// the row already there and a second announcement would put a duplicate
@@ -56,14 +91,15 @@ impl Leases {
     pub async fn publish_received(
         &self,
         acquired: &Acquired,
-        now: UnixMillis,
+        opened_at: UnixMillis,
         counters: Option<FleetCounters>,
     ) {
         let frame = TailFrame::EventReceived {
             event_id: Cow::Borrowed(&acquired.event_id),
             actor: Cow::Borrowed(&acquired.actor),
             event_type: Cow::Borrowed(&acquired.event_type),
-            created_at: now.as_millis(),
+            created_at: opened_at.as_millis(),
+            message: steer_message(acquired),
             counters,
         };
         self.streams()
@@ -88,7 +124,75 @@ impl Leases {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_INLINE_FINAL_REPLY_BYTES, inline_final_reply};
+    use afd_core::test_util::trace::Capture;
+    use afd_wire::event::STEER_MESSAGE_MAX_BYTES;
+
+    use super::{
+        EVENT_STEER_BODY_UNREADABLE, MAX_INLINE_FINAL_REPLY_BYTES, inline_final_reply,
+        steer_message,
+    };
+    use crate::lease::envelope::Acquired;
+    use crate::lease::test_dead;
+
+    /// A leased event raised by `actor` with the body `request_json`.
+    fn leased(actor: &str, request_json: &str) -> Acquired {
+        Acquired {
+            actor: actor.to_owned(),
+            request_json: request_json.to_owned(),
+            ..test_dead::acquired()
+        }
+    }
+
+    #[test]
+    fn test_event_received_carries_steer_message() {
+        let steer = leased("steer:user_1", r#"{"message":"check the tests"}"#);
+        assert_eq!(steer_message(&steer).as_deref(), Some("check the tests"));
+        let webhook = leased("webhook:github", r#"{"message":"not typed by a person"}"#);
+        assert_eq!(
+            steer_message(&webhook),
+            None,
+            "only a steer names typed words"
+        );
+        let continuation = leased("continuation:steer:user_1", r#"{"message":"x"}"#);
+        assert_eq!(
+            steer_message(&continuation),
+            None,
+            "a continuation is not a new message"
+        );
+    }
+
+    #[test]
+    fn test_event_received_without_parsable_body() {
+        let log = Capture::install();
+        let broken = leased("steer:user_1", "{");
+        assert_eq!(steer_message(&broken), None);
+        let line = log.only(EVENT_STEER_BODY_UNREADABLE).fields;
+        assert_eq!(
+            line.get("event_id").map(String::as_str),
+            Some(broken.event_id.as_str())
+        );
+        assert!(
+            line.values().all(|value| !value.contains('{')),
+            "the unreadable body never reaches the log: {line:?}"
+        );
+    }
+
+    /// The bound the route admits under, at its edge: exactly the bound is
+    /// shown, one byte over is dropped and warned.
+    #[test]
+    fn should_bound_a_received_message_at_the_admission_limit() {
+        let log = Capture::install();
+        let at_limit = "a".repeat(STEER_MESSAGE_MAX_BYTES);
+        let body = serde_json::json!({ "message": at_limit }).to_string();
+        assert_eq!(
+            steer_message(&leased("steer:user_1", &body)).map(|text| text.len()),
+            Some(STEER_MESSAGE_MAX_BYTES)
+        );
+        let over = format!("{at_limit}a");
+        let body = serde_json::json!({ "message": over }).to_string();
+        assert_eq!(steer_message(&leased("steer:user_1", &body)), None);
+        let _warned = log.only(EVENT_STEER_BODY_UNREADABLE);
+    }
 
     #[test]
     fn inline_answer_accepts_empty_and_exact_limit_but_skips_oversized() {

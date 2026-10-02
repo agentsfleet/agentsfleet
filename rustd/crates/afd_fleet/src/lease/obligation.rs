@@ -20,7 +20,7 @@
 
 use afd_connector::Provider;
 use afd_core::clock::UnixMillis;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use afd_dragonfly::OutboundJob;
 use afd_outbound::obligation::{self, Delivery};
 use sqlx::PgConnection;
@@ -143,9 +143,7 @@ impl Leases {
         delivery: Delivery<'_>,
         now: UnixMillis,
     ) -> Result<Option<Uuid7>> {
-        let mut bytes = [0u8; ENTROPY_LEN];
-        self.entropy().fill(&mut bytes)?;
-        let row_id = Uuid7::encode(now, bytes)?;
+        let row_id = self.entropy().uuid7(now)?;
 
         let written = obligation::owe(connection, row_id.as_str(), delivery, now).await?;
         Ok(written.then_some(row_id))

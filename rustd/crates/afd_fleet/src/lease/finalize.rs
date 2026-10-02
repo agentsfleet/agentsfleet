@@ -39,7 +39,7 @@
 //! [`truncate`].
 
 use afd_core::clock::UnixMillis;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_core::id::Uuid7;
 use afd_dragonfly::EventId;
 use afd_events::Closed;
 
@@ -242,9 +242,7 @@ impl Leases {
         event_id: &str,
         now: UnixMillis,
     ) -> Result<()> {
-        let mut bytes = [0u8; ENTROPY_LEN];
-        self.entropy().fill(&mut bytes)?;
-        let row_id = Uuid7::encode(now, bytes)?;
+        let row_id = self.entropy().uuid7(now)?;
 
         let mut connection = self.pool().acquire().await?;
         sqlx::query(sql::report::INSERT_RUNNER_EVENT)

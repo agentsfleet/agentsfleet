@@ -16,7 +16,9 @@ pub(crate) mod fixture;
 use std::time::Duration;
 
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_dragonfly::SubscriptionHub;
+use afd_fleet_lifecycle::Fleets;
+use afd_sse::KIND_ACCESS_REVOKED;
+use axum::body::BodyDataStream;
 
 use self::fixture::{Fixture, SUBJECT, Wall, data_of, next_chunk, open_stream, stream_ends};
 use self::harness::Fleet;
@@ -41,14 +43,38 @@ const ONE_CONNECTION: &str = "1";
 /// the seed and the opening, over the lane's TLS — are not refused by it.
 const SHORT_ACQUIRE_MS: &str = "1500";
 
+/// A second fleet joins the workspace, and the store's live set is refreshed
+/// to carry it before any clock is paused; the new fleet's id comes back.
+async fn add_a_second_fleet(fixture: &Fixture, fleet_store: &Fleets) -> String {
+    let second = fixture.seed_second_fleet().await;
+    fleet_store.invalidate_live_set(&fixture.workspace).await;
+    let refreshed = fleet_store
+        .live_set(&fixture.workspace)
+        .await
+        .expect("the invalidated set refreshes before the clock is paused");
+    assert!(refreshed.contains(&second));
+    second
+}
+
+/// A revoked wall says why it is closing, and then nothing follows.
+async fn assert_revoked_wall_closes(body: &mut BodyDataStream) {
+    let last = next_chunk(body).await;
+    assert!(
+        last.contains(&format!("event: {KIND_ACCESS_REVOKED}")),
+        "a revoked wall says why it is closing: {last}"
+    );
+    assert!(
+        stream_ends(body).await,
+        "revoked membership closes the wall"
+    );
+}
+
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_workspace_stream_announces_its_live_fleet_set() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let hub = SubscriptionHub::start(harness::dragonfly_config())
-        .await
-        .expect("the lane's subscription connection starts");
+    let hub = harness::live_hub().await;
     let fleet = Fleet::live(
         fixture.database.clone(),
         SUBJECT,
@@ -61,13 +87,7 @@ async fn a_workspace_stream_announces_its_live_fleet_set() {
     let router = fleet.router();
     let mut body = open_stream(&router, &fixture).await;
 
-    let second = fixture.seed_second_fleet().await;
-    fleet_store.invalidate_live_set(&fixture.workspace).await;
-    let refreshed = fleet_store
-        .live_set(&fixture.workspace)
-        .await
-        .expect("the invalidated set refreshes before the clock is paused");
-    assert!(refreshed.contains(&second));
+    let second = add_a_second_fleet(&fixture, &fleet_store).await;
     // Skip the tick's ten seconds on the paused clock, then let real time
     // run again before reading: the changed `hello` reads the fleets'
     // counters from Postgres, and a paused runtime that goes idle on a socket
@@ -83,10 +103,7 @@ async fn a_workspace_stream_announces_its_live_fleet_set() {
     ownership.revoke();
     tokio::time::pause();
     tokio::time::advance(Duration::from_secs(11)).await;
-    assert!(
-        stream_ends(&mut body).await,
-        "revoked membership closes the wall"
-    );
+    assert_revoked_wall_closes(&mut body).await;
     drop(body);
     hub.shutdown();
     tokio::time::resume();

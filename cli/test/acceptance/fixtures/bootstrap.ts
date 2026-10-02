@@ -20,11 +20,21 @@
 import { ACCEPTANCE_TARGET_ENV } from "./constants.ts";
 import { newMsgId, signSvix } from "./svix.ts";
 
+// The daemon opens an account only under a primary address the provider
+// verified, as a real Clerk sign-up's is, so the replay says so too.
+const CLERK_EMAIL_VERIFIED = "verified" as const;
+
+interface ClerkEmailAddress {
+  id: string;
+  email_address: string;
+  verification: { status: typeof CLERK_EMAIL_VERIFIED };
+}
+
 interface UserCreatedPayload {
   readonly type: "user.created";
   readonly data: {
     readonly id: string;
-    readonly email_addresses: ReadonlyArray<{ id: string; email_address: string }>;
+    readonly email_addresses: ReadonlyArray<ClerkEmailAddress>;
     readonly primary_email_address_id: string;
     readonly first_name: string;
     readonly last_name: string;
@@ -45,7 +55,7 @@ function buildPayload(opts: BootstrapFixtureOptions): UserCreatedPayload {
     type: "user.created",
     data: {
       id: opts.clerkUserId,
-      email_addresses: [{ id: "idn_x", email_address: opts.email }],
+      email_addresses: [{ id: "idn_x", email_address: opts.email, verification: { status: CLERK_EMAIL_VERIFIED } }],
       primary_email_address_id: "idn_x",
       first_name: deriveFirstName(opts.email),
       last_name: "Fixture",
