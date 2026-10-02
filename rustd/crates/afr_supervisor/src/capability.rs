@@ -11,15 +11,12 @@ use std::borrow::Cow;
 use afd_wire::runner::{
     CapabilityReport, NetworkPolicy, SandboxTier, SelftestCheck, SelftestReport,
 };
-use afr_sandbox::{HostProbe, Kvm};
+use afr_sandbox::{
+    HostProbe, Kvm, MECHANISM_BUBBLEWRAP, MECHANISM_LANDLOCK, MECHANISM_SECCOMP,
+    REQUIRED_CONTROLLERS,
+};
 use serde::Serialize;
 
-/// The controllers a sandbox's cgroup cannot do without.
-const REQUIRED_CONTROLLERS: [&str; 3] = ["cpu", "memory", "pids"];
-
-const CHECK_LANDLOCK: &str = "landlock";
-const CHECK_SECCOMP: &str = "seccomp";
-const CHECK_BUBBLEWRAP: &str = "bubblewrap";
 const CHECK_CGROUP: &str = "cgroup_controllers";
 const CHECK_KVM: &str = "kvm";
 const CHECK_TOOLBOX: &str = "toolbox_filesystem";
@@ -64,22 +61,52 @@ pub fn selftest<'a>(
     tier: SandboxTier,
     network: NetworkPolicy,
 ) -> SelftestReport<'a> {
+    let checks = checks(probe);
+    SelftestReport {
+        all_ok: checks.iter().all(|check| check.ok),
+        checks,
+        sandbox_tier: spelling(tier),
+        network_policy: spelling(network),
+    }
+}
+
+/// What `agentsfleet-runner probe` answers: the report a heartbeat carries,
+/// and every check, which adds the facts the report has no field for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProbeAnswer<'a> {
+    /// The mechanisms, as a heartbeat states them.
+    pub capability_report: CapabilityReport<'a>,
+    /// Each fact as a named check with its prose.
+    pub checks: Vec<SelftestCheck<'a>>,
+}
+
+/// The probe command's answer for this host.
+#[must_use]
+pub fn probe_answer(probe: &HostProbe) -> ProbeAnswer<'_> {
+    ProbeAnswer {
+        capability_report: capability_report(probe),
+        checks: checks(probe),
+    }
+}
+
+/// Every fact the probe found, as a named check.
+fn checks<'a>(probe: &HostProbe) -> Vec<SelftestCheck<'a>> {
     let kvm = match probe.kvm {
         Kvm::Usable => (true, KVM_USABLE),
         Kvm::Denied => (false, KVM_DENIED),
         Kvm::Absent => (false, KVM_ABSENT),
     };
-    let checks = vec![
+    vec![
         check(
-            CHECK_LANDLOCK,
+            MECHANISM_LANDLOCK,
             verdict(probe.landlock, LANDLOCK_ON, LANDLOCK_OFF),
         ),
         check(
-            CHECK_SECCOMP,
+            MECHANISM_SECCOMP,
             verdict(probe.seccomp, SECCOMP_ON, SECCOMP_OFF),
         ),
         check(
-            CHECK_BUBBLEWRAP,
+            MECHANISM_BUBBLEWRAP,
             verdict(probe.bubblewrap, BUBBLEWRAP_ON, BUBBLEWRAP_OFF),
         ),
         check(
@@ -91,13 +118,7 @@ pub fn selftest<'a>(
             CHECK_TOOLBOX,
             verdict(probe.toolbox_filesystem, TOOLBOX_ON, TOOLBOX_OFF),
         ),
-    ];
-    SelftestReport {
-        all_ok: checks.iter().all(|check| check.ok),
-        checks,
-        sandbox_tier: spelling(tier),
-        network_policy: spelling(network),
-    }
+    ]
 }
 
 fn has_required_controllers(probe: &HostProbe) -> bool {

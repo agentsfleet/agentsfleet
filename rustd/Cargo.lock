@@ -985,6 +985,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentsfleet_runner"
+version = "0.51.0"
+dependencies = [
+ "afd_core",
+ "afr_sandbox",
+ "afr_supervisor",
+ "cargo_metadata",
+ "clap",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "agentsfleetd"
 version = "0.51.0"
 dependencies = [
@@ -1018,6 +1032,10 @@ dependencies = [
  "afd_tenant",
  "afd_vault",
  "afd_wire",
+ "afr_agent",
+ "afr_executor",
+ "afr_sandbox",
+ "afr_supervisor",
  "axum",
  "base64 0.23.1",
  "clap",
@@ -1032,6 +1050,7 @@ dependencies = [
  "reqwest",
  "serde_json",
  "sqlx",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",

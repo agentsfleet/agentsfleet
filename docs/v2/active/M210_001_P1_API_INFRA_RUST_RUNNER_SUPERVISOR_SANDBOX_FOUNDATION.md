@@ -56,6 +56,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `rustd/Cargo.toml`, `rustd/crates/agentsfleet_runner/` | EDIT / CREATE | Workspace member; one binary whose `run`, `probe` and `sandbox` entries only compose library crates |
 | `rustd/crates/afr_supervisor/` (`client.rs`, `config.rs`, `lease_loop.rs`, `turns.rs`, `worker_pool.rs`, `heartbeat.rs`, `renew.rs`, `report.rs`, `report_spool.rs`, `activity.rs`, `credentials.rs`, `memory.rs`, `bundles.rs`, `storage_home.rs`, `capability.rs`, `error.rs`) | CREATE | The daemon-facing duties, one concern per file |
+| `rustd/crates/afd_core/src/env.rs`, `rustd/crates/agentsfleetd/src/logs.rs`, `rustd/crates/agentsfleetd/src/lib.rs` | EDIT | The log-level knob both binaries read, declared once; the daemon's test target names the runner crates its end-to-end suite drives |
 | `rustd/crates/afd_core/src/bundle.rs`, `rustd/crates/afd_library/src/prepare.rs` | CREATE / EDIT | One bundle digest the importer names a bundle by and the runner verifies against |
 | `rustd/crates/afr_sandbox/` (`engine.rs`, `probe.rs`, `host.rs`, `bubblewrap.rs`, `bubblewrap_engine.rs`, `harden.rs` (Landlock and seccomp), `cgroup.rs`, `workspace_disk.rs`, `toolbox.rs`, `warm_slots.rs`, `unsandboxed.rs`, `error.rs`) | CREATE | Engine interface, the hardened bubblewrap engine, and a test-only unsandboxed engine release builds refuse |
 | `rustd/crates/afr_executor/` (`protocol.rs`, `server.rs`, `client.rs`, `process.rs`, `fs.rs`, `error.rs`) | CREATE | Executor protocol, the in-sandbox server and the supervisor's client |
@@ -164,7 +165,7 @@ The integration lane runs the runner against the real daemon with compose Postgr
 ## Interfaces
 
 ```
-agentsfleet-runner run           supervisor (systemd unit)
+agentsfleet-runner run           supervisor (systemd unit); refuses to start, exit 2, until an agent engine is built in
 agentsfleet-runner probe         capability report: /dev/kvm, toolbox filesystem mountable
 agentsfleet-runner sandbox       the in-sandbox entry; the binary is bound read-only into each sandbox
 
@@ -313,5 +314,6 @@ N/A — no files deleted. The Zig runner stays until the cutover spec deletes it
 - **PLAN decisions** — Indy (Oct 02, 2026) chose "Lenient + guarded PATCH" for runner-bound decoding; on pushing `main`: "No fast forward in your worktree and keep moving , let it go in the PR"; and set patch coverage at 99% for Rust and 100% for TypeScript, which `codecov.yml` already enforces. Agent defaults, flagged for Indy in the Pull Request: runner errors reuse registry codes (the `afd_bench` precedent in `docs/RUST_ERROR_STANDARD.md`, since no client reads them); `/dev/kvm` and EROFS reach the daemon as self-test checks until the Firecracker spec adds the wire field it reads; Linux-only crates sit under `cfg(target_os = "linux")` dependencies, as Codex's `linux-sandbox` does.
 - **Sandbox crate choices (agent)** — loop mounts go through the host's `mount -o loop`, because the maintained loop-device crates (`loopdev-3`, `sys-mount`) build with `bindgen` and would put libclang on every Linux workspace build; cgroups are typed writes of named files, because `cgroups-rs` supports v2 and `cgroup.kill` but pulls in `zbus`. The toolbox build is reproducible: two builds hashed `c4e5f5bb23d5683d1c30e8656675a1734f1ea2f0ae586515812220c4477a0ad6`.
 - **Kernel lane (agent, Oct 03, 2026)** — `make test-runner-kernel` passes all 11 kernel-tier trials in an OrbStack Ubuntu 24.04 arm64 VM (kernel 7.0.14; Landlock in the LSM list, EROFS built in, `cpu memory pids` delegated, no `/dev/kvm`). The start budget later specs guard, lease-accept to executor-ready, p50 of 5, debug build: **cold 15.5 ms, warm 0.44 ms** (five runs: cold 12.6–22.0 ms, warm 0.28–3.3 ms). Code inside a real bubblewrap sandbox cannot record coverage, because `--clearenv` drops the profile variable; `harden()` is covered by `tests/confine.rs`, which re-executes the test binary as a single-threaded child that confines itself and writes its profile under `/tmp`.
+- **`run` without an agent engine (agent, flagged for Indy)** — this workstream ships no agent engine, and a runner that leased events with nothing to run them would fail real work, so `agentsfleet-runner run` refuses at startup with `run_refused` and exit 2; the next runner workstream composes `afr_supervisor::run` there with its loop. The supervisor itself is proven end to end by Dimension 7.1.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.

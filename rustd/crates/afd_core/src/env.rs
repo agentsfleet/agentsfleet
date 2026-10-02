@@ -7,6 +7,17 @@
 //! role and knob resolution in [`crate::config`] gets exercised at all without
 //! one test's `DATABASE_URL_API` leaking into another's.
 
+/// The environment variable naming how much to log, read by the daemon and
+/// the runner alike.
+///
+/// Its VALUE is a level — `error`, `warn`, `info`, `debug`, `trace`, `off` —
+/// so `AGENTSFLEET_LOG_LEVEL=debug agentsfleetd serve`. Not a file: records go
+/// to stderr, and where they go from there is the collector's business.
+///
+/// Spelled in full rather than as a bare `AGENTSFLEET_LOG`, so the name says
+/// which knob it is at the call site and in a deployment manifest.
+pub const LOG_LEVEL_VAR: &str = "AGENTSFLEET_LOG_LEVEL";
+
 /// A source of configuration values, keyed by environment-variable name.
 pub trait EnvSource {
     /// The value for `key`, or `None` when it is unset.
