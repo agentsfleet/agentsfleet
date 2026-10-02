@@ -76,5 +76,6 @@ pub mod team;
 pub mod tenant;
 pub mod tenant_model_entry;
 pub mod tenant_provider;
+pub mod tool_trace;
 pub mod workspace;
 pub mod workspace_library;

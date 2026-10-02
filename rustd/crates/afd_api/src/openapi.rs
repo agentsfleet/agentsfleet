@@ -17,6 +17,8 @@ use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityRequirement
 use utoipa::openapi::{Content, Ref, RefOr};
 use utoipa::{OpenApi as _, ToSchema as _};
 
+mod stability;
+
 use crate::Route;
 use crate::envelope::CONTENT_TYPE_PROBLEM_JSON;
 use crate::route::{Guard, Verb};
@@ -102,6 +104,9 @@ pub fn document() -> utoipa::openapi::OpenApi {
     );
     require_the_credential_each_route_guards(&mut document);
     describe_every_refusal_as_a_problem(&mut document);
+    // A field this misses stays `stable`; `every_beta_field_is_published_beta`
+    // fails on it rather than the document carrying a silent gap.
+    let _missing = stability::declare_beta(&mut document, stability::BETA_FIELDS);
     document
 }
 

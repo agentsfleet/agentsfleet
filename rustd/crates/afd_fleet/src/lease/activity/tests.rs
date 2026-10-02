@@ -62,6 +62,11 @@ fn every_frame(call_id: Option<&'static str>) -> [ActivityFrame<'static>; 4] {
             name: Cow::Borrowed(TOOL),
             ms: 2,
             call_id,
+            status: None,
+            output_head: None,
+            output_tail: None,
+            output_line_count: None,
+            exit_code: None,
         }),
         ActivityFrame::FleetResponseChunk(FleetResponseChunk {
             text: Cow::Borrowed("answer"),
@@ -214,4 +219,41 @@ fn first_chunk_marker_distinguishes_the_only_safe_stream_entry() {
     assert_eq!(value["stream_start"], false);
     assert_eq!(value["stream_contiguous"], false);
     assert!(value.get("text_kind").is_none());
+}
+
+#[test]
+fn test_published_completed_carries_outcome() {
+    use afd_wire::tool_trace::ToolCallStatus;
+    let frame = ActivityFrame::ToolCallCompleted(ToolCallCompleted {
+        name: Cow::Borrowed(TOOL),
+        ms: 2,
+        call_id: Some(Cow::Borrowed(RUNNER_CALL)),
+        status: Some(ToolCallStatus::Failed),
+        output_head: Some(Cow::Borrowed("error: denied")),
+        output_tail: Some(Cow::Borrowed("exit")),
+        output_line_count: Some(40),
+        exit_code: Some(2),
+    });
+    let value = published(&frame);
+    assert_eq!(value["kind"], "tool_call_completed");
+    assert_eq!(value["status"], "failed");
+    assert_eq!(value["output_head"], "error: denied");
+    assert_eq!(value["output_tail"], "exit");
+    assert_eq!(value["output_line_count"], 40);
+    assert_eq!(value["exit_code"], 2);
+
+    let [.., completed, _chunk] = every_frame(None);
+    let bare = published(&completed);
+    for absent in [
+        "status",
+        "output_head",
+        "output_tail",
+        "output_line_count",
+        "exit_code",
+    ] {
+        assert!(
+            bare.get(absent).is_none(),
+            "no {absent} is invented: {bare}"
+        );
+    }
 }

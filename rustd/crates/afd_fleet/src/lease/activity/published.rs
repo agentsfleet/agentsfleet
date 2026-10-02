@@ -3,26 +3,16 @@
 //! Split from [`super`], which authorizes and publishes; this decides only the
 //! shape a frame takes on `fleet:{id}:activity`.
 //!
-//! # A call id is scoped to the lease that sent it
-//!
-//! The runner numbers a run's tool calls from 1 and repeats the number on every
-//! frame of one call. A reclaimed lease re-runs the SAME event
-//! (`lease/reclaim.rs`) and the runner's counter starts over, so the dead run's
-//! call 1 and the new run's call 1 would publish one id, and a reader pairing
-//! frames on that id alone would merge two calls. Prefixing the lease's fence,
-//! which is distinct per claim, gives every lease of an event its own ids.
+//! Call ids are published fenced, `{fence}:{call_id}`; why is
+//! `lease/tool_trace.rs`'s to say, because the stored trace uses the same ids.
 
 use afd_wire::activity::ActivityFrame;
+use afd_wire::tool_trace::ToolCallStatus;
 use serde::Serialize;
 use serde_json::value::RawValue;
 
 use super::Target;
-
-/// Ends the fence in a published `call_id`.
-///
-/// A fence renders as a decimal integer, which never holds `:`, so the first
-/// `:` always ends it whatever the runner's own id carries.
-const CALL_ID_SEPARATOR: char = ':';
+use crate::lease::tool_trace::fenced;
 
 /// One frame as the dashboard reads it.
 ///
@@ -66,6 +56,17 @@ pub(super) enum Published<'a> {
         ms: i64,
         #[serde(skip_serializing_if = "Option::is_none")]
         call_id: Option<String>,
+        /// The outcome, each absent when the runner reported none.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status: Option<ToolCallStatus>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        output_head: Option<&'a str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        output_tail: Option<&'a str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        output_line_count: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        exit_code: Option<i32>,
     },
 }
 
@@ -112,6 +113,11 @@ impl<'a> Published<'a> {
                 name: &body.name,
                 ms: body.ms,
                 call_id,
+                status: body.status,
+                output_head: body.output_head.as_deref(),
+                output_tail: body.output_tail.as_deref(),
+                output_line_count: body.output_line_count,
+                exit_code: body.exit_code,
             },
         })
     }
@@ -121,5 +127,5 @@ impl<'a> Published<'a> {
 ///
 /// A frame that names no call publishes none; the id is never invented.
 pub(super) fn fenced_call_id(fence: i64, call_id: Option<&str>) -> Option<String> {
-    call_id.map(|call| format!("{fence}{CALL_ID_SEPARATOR}{call}"))
+    call_id.map(|call| fenced(fence, call))
 }
