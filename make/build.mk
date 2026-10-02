@@ -2,7 +2,7 @@
 # BUILD & REGISTRY — container builds and pushes
 # =============================================================================
 
-.PHONY: build build-dev push-dev push _docker_login _dist-daemons _builder-image sync-version check-version
+.PHONY: build build-dev push-dev push _docker_login _dist-daemons _builder-image sync-version check-version toolbox-image
 
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.1.0")
 # The commit, computed once and EXPORTED. It tags the image below, and
@@ -141,3 +141,12 @@ _docker_login:
 	else \
 		echo "Error: No credentials. Set GITHUB_TOKEN or DOCKER_USER/DOCKER_PASS." >&2; exit 1; \
 	fi
+
+# The runner's toolbox: the read-only root every sandbox runs on. Reproducible
+# from scripts/toolbox/manifest.txt, so the file name (its SHA-256) names the
+# exact root file system; the runner refuses an image whose bytes disagree.
+# Linux only, as root (mmdebstrap builds a chroot): `sudo make toolbox-image`.
+TOOLBOX_DIR ?= $(CURDIR)/dist/toolbox
+
+toolbox-image:  ## Build the runner's toolbox image (Linux, root; mmdebstrap + erofs-utils) into $(TOOLBOX_DIR)
+	@bash scripts/toolbox/build.sh "$(TOOLBOX_DIR)"

@@ -20,4 +20,30 @@ afd_core.workspace = true
 # an addition rather than a rewrite.
 afr_executor.workspace = true
 async-trait.workspace = true
+# The executor's socket answers a few milliseconds after the sandbox starts;
+# a constant-delay retry waits for it without a hand-written loop.
+backon.workspace = true
+# The bubblewrap launcher's error stream, read a line at a time with a cap.
+futures-util.workspace = true
+# The toolbox image is named by its SHA-256.
+hex.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "sync", "time"] }
+tokio-util = { workspace = true, features = ["codec"] }
+tracing.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# The kernel interfaces a sandbox confines itself with, each the crate Codex's
+# own `linux-sandbox` uses.
+landlock.workspace = true
+libc.workspace = true
+rustix.workspace = true
+seccompiler.workspace = true
+
+[dev-dependencies]
+afd_core = { workspace = true, features = ["test-util"] }
+bytes.workspace = true
+libtest-mimic.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "test-util", "time"] }
