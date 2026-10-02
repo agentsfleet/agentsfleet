@@ -136,7 +136,7 @@ The fleet uses real git inside the sandbox: branches, several commits, the norma
 2. mints a write token for that one call and pushes;
 3. opens a draft Pull Request.
 
-When a fleet requires approval, the push runs in the continuation lease after someone approves. The daemon compiles the rules (`rustd/crates/afd_gate/src/policy/egress/write.rs`), and the supervisor enforces them outside the sandbox. A write token inside the sandbox would be readable by every program there, including a dependency's install hook. A repository-scoped write token "can force-push to `main` as easily as it can open a draft Pull Request", in the words of the rules' own module documentation.
+When a fleet requires approval, the push runs in the continuation lease after someone approves. The daemon compiles the rules (`rustd/crates/afd_gate/src/policy/egress/write.rs`), and the supervisor enforces them outside the sandbox. The loop renders the same rules into the prompt as a trusted repair context — the one repository, the daemon-named repair branch, the trusted base — because a write-bound fleet's instructions require that input before writing and nothing else supplies it. A write token inside the sandbox would be readable by every program there, including a dependency's install hook. A repository-scoped write token "can force-push to `main` as easily as it can open a draft Pull Request", in the words of the rules' own module documentation.
 
 ## Why Rust
 
