@@ -56,6 +56,7 @@ fn test_capability_probe_states_every_mechanism_it_finds() {
         }
     );
     assert_eq!(found.missing(), None);
+    assert!(found.has_required_controllers());
 }
 
 #[test]
@@ -94,6 +95,14 @@ fn test_a_host_missing_a_mechanism_names_the_first_one() {
         "the earlier gap is still reported first"
     );
     fs::write(&paths.filesystems, "\terofs\n").unwrap();
+    // Throughput limits are required too: a host without `io` builds nothing.
+    assert_eq!(probe(&paths).missing(), Some("io"));
+    assert!(!probe(&paths).has_required_controllers());
+    fs::write(
+        paths.cgroup_root.join("cgroup.subtree_control"),
+        "cpu io memory",
+    )
+    .unwrap();
     assert_eq!(probe(&paths).missing(), Some("pids"));
     assert_eq!(
         missing(&|| fs::set_permissions(&paths.bwrap, fs::Permissions::from_mode(0o644)).unwrap()),

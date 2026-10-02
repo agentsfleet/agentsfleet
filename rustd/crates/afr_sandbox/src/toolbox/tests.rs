@@ -6,7 +6,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::{Toolbox, ToolboxImage, is_mount_point, sha256_of};
+use super::{Toolbox, ToolboxImage, sha256_of};
 use crate::host::HostTools;
 
 /// The SHA-256 of `toolbox bytes`, so an image can be named correctly.
@@ -67,16 +67,6 @@ fn test_an_image_named_without_a_digest_is_refused() {
     ToolboxImage::verify(&dir.path().join("absent.erofs")).unwrap_err();
 }
 
-#[test]
-fn test_mountinfo_names_the_mount_point_field() {
-    let mountinfo = "36 35 98:0 / /mnt/toolbox/abc ro,relatime - erofs /dev/loop0 ro\n\
-                     37 35 98:1 /mnt/toolbox/abc /elsewhere rw - ext4 /dev/vda rw\n";
-
-    assert!(is_mount_point(mountinfo, Path::new("/mnt/toolbox/abc")));
-    assert!(!is_mount_point(mountinfo, Path::new("/mnt/toolbox")));
-    assert!(!is_mount_point("", Path::new("/mnt/toolbox/abc")));
-}
-
 #[tokio::test]
 async fn test_a_toolbox_that_cannot_be_mounted_is_refused() {
     let dir = tempfile::tempdir().unwrap();
@@ -99,28 +89,42 @@ async fn test_a_toolbox_that_cannot_be_mounted_is_refused() {
 
 #[test]
 fn test_an_adopted_root_is_used_as_given() {
-    assert_eq!(Toolbox::at(PathBuf::from("/")).root(), Path::new("/"));
+    let toolbox = Toolbox::at(PathBuf::from("/"), "abc".to_owned());
+
+    assert_eq!((toolbox.root(), toolbox.digest()), (Path::new("/"), "abc"));
 }
 
+/// A mount that reports success but leaves no loop device of the image behind
+/// is refused: what is verified is what is mounted, not what was asked for.
 #[tokio::test]
-async fn test_a_toolbox_mounts_once_and_is_adopted_after() {
+async fn test_a_mount_that_is_not_the_image_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     let scratch = dir.path().join("scratch");
     fs::write(&scratch, BYTES).unwrap();
     let image = ToolboxImage::verify(&named(dir.path(), &sha256_of(&scratch).unwrap())).unwrap();
-    // `true` stands in for `mount`, so the mount point is made and "mounted".
+    // `true` stands in for `mount`: it succeeds and mounts nothing.
     let tools = HostTools {
         mount: PathBuf::from("/usr/bin/true"),
         ..HostTools::default()
     };
+    let capture = afd_core::test_util::trace::Capture::install();
 
-    let toolbox = Toolbox::mount(&image, &tools, &dir.path().join("mounts"))
-        .await
-        .unwrap();
+    let refused = Toolbox::mount(&image, &tools, &dir.path().join("mounts")).await;
 
-    assert_eq!(
-        toolbox.root(),
-        dir.path().join("mounts").join(image.digest())
+    refused.unwrap_err();
+    // Logged with the digest it was for; on Linux, the attempt to detach what
+    // was mounted at the root is logged beside it.
+    let failed: Vec<_> = capture
+        .events()
+        .into_iter()
+        .filter(|event| event.field("event") == Some("sandbox_toolbox_mount_failed"))
+        .collect();
+    assert!(
+        failed
+            .iter()
+            .any(|event| event.field("digest") == Some(image.digest())
+                && event.field("error_code").is_some()),
+        "{failed:?}"
     );
 }
 
@@ -129,11 +133,63 @@ async fn test_a_toolbox_mounts_once_and_is_adopted_after() {
 fn test_a_toolbox_that_is_not_mounted_cannot_be_unmounted() {
     let dir = tempfile::tempdir().unwrap();
 
-    let refused = Toolbox::at(dir.path().to_owned()).unmount();
+    let refused = Toolbox::at(dir.path().to_owned(), "abc".to_owned()).unmount();
 
     refused.unwrap_err();
     assert!(
         dir.path().exists(),
         "nothing is removed while still mounted"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn test_only_a_loop_device_is_named_and_by_its_kernel_name() {
+    let sys = tempfile::tempdir().unwrap();
+    fs::create_dir(sys.path().join("7:3")).unwrap();
+    fs::write(
+        sys.path().join("7:3/uevent"),
+        "MAJOR=7\nMINOR=3\nDEVNAME=loop3\n",
+    )
+    .unwrap();
+    fs::create_dir(sys.path().join("7:4")).unwrap();
+    fs::write(sys.path().join("7:4/uevent"), "MAJOR=7\nMINOR=4\n").unwrap();
+
+    assert_eq!(
+        super::loop_node(sys.path(), 7, 3).unwrap(),
+        Path::new("/dev/loop3")
+    );
+    super::loop_node(sys.path(), 7, 4).unwrap_err();
+    super::loop_node(sys.path(), 7, 5).unwrap_err();
+    let disk = super::loop_node(sys.path(), 8, 0).unwrap_err();
+    assert!(
+        disk.to_string().contains("input/output"),
+        "a disk is never hashed: {disk}"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn test_a_device_is_verified_by_its_bytes_and_a_wrong_one_is_detached() {
+    let dir = tempfile::tempdir().unwrap();
+    let device = dir.path().join("loop3");
+    fs::write(&device, BYTES).unwrap();
+    let digest = sha256_of(&device).unwrap();
+    let capture = afd_core::test_util::trace::Capture::install();
+
+    Toolbox::at(dir.path().to_owned(), digest)
+        .verify_device(&device)
+        .unwrap();
+    let wrong = Toolbox::at(dir.path().to_owned(), "0".repeat(64));
+    let refused = wrong.verify_device(&device).unwrap_err();
+    wrong.detach();
+
+    assert!(refused.to_string().contains("does not hash"), "{refused}");
+    // Nothing is mounted there, so the detach is refused and said so.
+    assert!(
+        capture
+            .only("sandbox_toolbox_mount_failed")
+            .field("error_code")
+            .is_some()
     );
 }

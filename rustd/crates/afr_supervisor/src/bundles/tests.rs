@@ -76,8 +76,8 @@ async fn a_verified_bundle_is_cached_and_served_from_the_cache() {
     ]);
     let (plane, mut calls) = plane(move |_call| Answer::Reply(canonical.clone()));
 
-    let fetched = cache.fetch(&plane, &name).await.unwrap();
-    let cached = cache.fetch(&plane, &name).await.unwrap();
+    let fetched = cache.fetch(&plane, &name).await.unwrap().unwrap();
+    let cached = cache.fetch(&plane, &name).await.unwrap().unwrap();
 
     assert_eq!(fetched, cached);
     assert!(fetched.ends_with(format!("{name}.tar")));
@@ -93,7 +93,7 @@ async fn a_bundle_without_a_trigger_hashes_an_empty_one() {
     let name = named(&[b"skill", b"\0", b"\0", b"notes.md", b"\0", b"n", b"\0"]);
     let (plane, _calls) = plane(move |_call| Answer::Reply(canonical.clone()));
 
-    assert!(cache.fetch(&plane, &name).await.is_ok());
+    assert!(cache.fetch(&plane, &name).await.unwrap().is_some());
 }
 
 #[tokio::test]
@@ -128,4 +128,33 @@ async fn bytes_that_are_not_a_canonical_bundle_are_refused() {
         None,
         "an empty archive has no root document"
     );
+}
+
+#[tokio::test]
+async fn a_skill_only_bundle_answers_404_and_the_run_goes_on_without_one() {
+    let (_root, cache, home) = cache();
+    let name = named(&[b"skill", b"\0", b"\0"]);
+    let (plane, mut calls) = plane(|_call| {
+        Answer::Fail(crate::error::refused(
+            Verb::Bundle,
+            404,
+            Some(afd_core::error_code::FLEET_BUNDLE_NOT_FOUND),
+        ))
+    });
+
+    let fetched = cache.fetch(&plane, &name).await.unwrap();
+
+    assert_eq!(fetched, None);
+    assert_eq!(drain(&mut calls).len(), 1, "a 404 is an answer, not a blip");
+    assert_eq!(fs::read_dir(home.bundles()).unwrap().count(), 0);
+}
+
+#[tokio::test]
+async fn any_other_refusal_is_still_a_failure() {
+    let (_root, cache, _home) = cache();
+    let name = named(&[b"skill", b"\0", b"\0"]);
+    let (plane, _calls) =
+        plane(|_call| Answer::Fail(crate::error::refused(Verb::Bundle, 403, None)));
+
+    assert!(cache.fetch(&plane, &name).await.is_err());
 }

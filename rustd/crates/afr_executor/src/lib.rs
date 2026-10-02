@@ -16,9 +16,11 @@
 //!
 //! # The two ends
 //!
-//! [`serve`] is the in-sandbox end: it serves one connection and owns every
-//! process it starts. [`Client`] is the supervisor's end and implements
-//! [`Executor`] over the socket. Both read the other's messages as untrusted.
+//! [`bind`] claims the socket and [`Listener::serve`] serves one connection,
+//! owning every process it starts: binding is split from serving so the
+//! sandbox can claim its socket before it drops the right to create one.
+//! [`Client`] is the supervisor's end and implements [`Executor`] over the
+//! socket. Both read the other's messages as untrusted.
 
 pub mod error;
 
@@ -29,9 +31,9 @@ mod protocol;
 mod server;
 
 pub use self::api::{
-    DirEntry, Ending, EntryKind, Executor, FileContent, Process, ProcessEvent, ProcessId, Spawn,
-    Stream,
+    DirEntry, Ending, EntryKind, Executor, FileContent, Listing, Process, ProcessEvent, ProcessId,
+    Spawn, Stream,
 };
 pub use self::client::Client;
 pub use self::error::{Error, Result};
-pub use self::server::{WORKSPACE_ROOT, serve};
+pub use self::server::{Listener, WORKSPACE_ROOT, bind, serve};

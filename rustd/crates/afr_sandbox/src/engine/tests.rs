@@ -32,3 +32,25 @@ fn test_a_lease_identifier_that_could_leave_its_base_is_refused() {
         );
     }
 }
+
+/// A sandbox with no process to watch, keeping every default.
+#[derive(Debug)]
+struct Watchless;
+
+#[async_trait::async_trait]
+impl super::Sandbox for Watchless {
+    fn executor(&self) -> &dyn afr_executor::Executor {
+        unreachable!("never driven")
+    }
+
+    async fn destroy(self: Box<Self>) -> crate::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn test_a_sandbox_with_nothing_to_watch_counts_as_running() {
+    let mut sandbox = Watchless;
+
+    assert!(super::Sandbox::is_running(&mut sandbox));
+}

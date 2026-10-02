@@ -45,6 +45,17 @@ impl ErrorCode {
     pub const fn as_str(self) -> &'static str {
         self.0
     }
+
+    /// The declared code spelled `spelling`, or `None` when this build declares
+    /// no such code.
+    ///
+    /// For a code read off the wire, such as a problem body's `error_code`: a
+    /// spelling this build does not know stays unknown rather than being
+    /// guessed into the nearest declared one.
+    #[must_use]
+    pub fn lookup(spelling: &str) -> Option<Self> {
+        REGISTRY.iter().copied().find(|code| code.0 == spelling)
+    }
 }
 
 impl Display for ErrorCode {

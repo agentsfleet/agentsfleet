@@ -40,6 +40,27 @@ pub(crate) fn cgroup(file: &'static str) -> impl Fn(std::io::Error) -> Error {
     move |source| ErrorKind::Cgroup { file, source }.into()
 }
 
+/// Reports a cgroup that would not go, naming it.
+pub(crate) fn cgroup_left(path: &std::path::Path) -> impl Fn(std::io::Error) -> Error {
+    move |source| {
+        ErrorKind::CgroupLeft {
+            path: path.to_owned(),
+            source,
+        }
+        .into()
+    }
+}
+
+/// Refuses a toolbox other than the one this runner was configured for.
+#[cfg(target_os = "linux")]
+pub(crate) fn toolbox_unexpected(actual: &str, expected: &str) -> Error {
+    ErrorKind::ToolboxUnexpected {
+        actual: actual.to_owned(),
+        expected: expected.to_owned(),
+    }
+    .into()
+}
+
 /// Refuses a lease whose identifier could name a directory not its own.
 pub(crate) fn lease_id_unsafe(lease_id: &str) -> Error {
     ErrorKind::LeaseIdUnsafe {

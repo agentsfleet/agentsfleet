@@ -832,6 +832,13 @@ libc = { version = "0.2.189", default-features = false }
 # binary cannot run it by accident; this gives it libtest's reporting and
 # filters anyway.
 libtest-mimic = { version = "0.8.2", default-features = false }
+# `std::io` adapters for the RustCrypto hashers, which dropped their own
+# `io::Write` in 0.11: the toolbox image is streamed through SHA-256 with
+# `io::copy` rather than a hand-written read loop.
+digest-io = { version = "0.1.0", default-features = false }
+# `/proc/<pid>/status`, parsed: the thread count and capability sets a sandbox
+# checks before it serves, without a hand-written field reader.
+procfs-core = { version = "0.18.0", default-features = false }
 # The executor's file calls: a directory handle that refuses any path leaving
 # it, through `..` or a symbolic link, on every platform — capability-based
 # confinement from the Bytecode Alliance rather than a hand-written resolver.

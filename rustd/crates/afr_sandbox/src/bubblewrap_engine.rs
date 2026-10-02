@@ -2,36 +2,44 @@
 //! toolbox, the lease's own cgroup and its own workspace disk.
 
 use std::ffi::OsString;
-use std::fs;
+use std::fs::{self, DirBuilder};
+use std::os::unix::fs::DirBuilderExt as _;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use afr_executor::{Client, Executor};
-use backon::{ConstantBuilder, Retryable as _};
+use rustix::fs::{Gid, Uid};
 
 use crate::bubblewrap::{self, Layout, SOCKET_NAME};
 use crate::cgroup::{DEFAULT_IO_BYTES_PER_SECOND, LeaseCgroup};
 use crate::engine::{Engine, Sandbox, SandboxRequest};
-use crate::error::{ErrorKind, Result, refused};
+use crate::error::{ErrorKind, Result, refused, toolbox_unexpected};
 use crate::host::HostTools;
 use crate::probe::{ProbePaths, probe};
 use crate::toolbox::Toolbox;
 use crate::workspace_disk::WorkspaceDisk;
 
 mod parts;
+mod sweep;
 
 use self::parts::Parts;
 
 /// The directory each lease's executor socket is made in.
 const RUN_DIR: &str = "run";
-/// How often the socket is tried while the executor binds it.
-const CONNECT_DELAY: Duration = Duration::from_millis(2);
+/// A lease's directory: others may pass through to the binds beneath it, but
+/// not list or write it.
+const LEASE_DIR_MODE: u32 = 0o711;
+/// The socket directory: its owner alone, and the owner is the sandbox.
+const RUN_DIR_MODE: u32 = 0o700;
 /// The event a lease's sandbox start is logged under.
 const EVENT_PREPARE_STARTED: &str = "sandbox_prepare_started";
 /// The event a ready sandbox is logged under.
 const EVENT_PREPARE_COMPLETED: &str = "sandbox_prepare_completed";
-/// The event a sandbox that could not be built is logged under.
-const EVENT_REFUSED: &str = "sandbox_refused";
+/// The event a sandbox that could not be built is logged under; the
+/// supervisor, which knows what the lease was for, logs the refusal itself.
+const EVENT_PREPARE_FAILED: &str = "sandbox_prepare_failed";
+/// The event a host that can build no sandbox at all is logged under.
+const EVENT_HOST_REFUSED: &str = "sandbox_host_refused";
 
 /// Everything the engine builds sandboxes from.
 #[derive(Debug, Clone)]
@@ -42,14 +50,20 @@ pub struct BubblewrapConfig {
     pub probe: ProbePaths,
     /// The mounted, verified toolbox.
     pub toolbox: Toolbox,
+    /// The toolbox digest this runner was released with; any other is refused.
+    pub toolbox_digest: String,
     /// The delegated cgroup each lease's cgroup is made under.
     pub cgroup_root: PathBuf,
-    /// Where each lease's directory is made.
+    /// Where each lease's directory is made. Swept when the engine is built.
     pub state_dir: PathBuf,
     /// The binary that hardens and serves inside; `agentsfleet-runner`.
     pub entry: PathBuf,
     /// What it is told; `sandbox`.
     pub entry_args: Vec<OsString>,
+    /// The host user and group bubblewrap runs as when the runner is root.
+    pub sandbox_ids: (u32, u32),
+    /// The log level passed to the process inside, when one is set.
+    pub log_level: Option<OsString>,
     /// How long a sandbox may take to answer before the lease is refused.
     pub ready_timeout: Duration,
 }
@@ -58,26 +72,73 @@ pub struct BubblewrapConfig {
 #[derive(Debug)]
 pub struct BubblewrapEngine {
     config: BubblewrapConfig,
+    /// Who owns what the sandbox writes, on the host.
     owner: (u32, u32),
+    /// Who bubblewrap is started as; `None` when the runner already is not
+    /// root, and starts it as itself.
+    run_as: Option<(u32, u32)>,
 }
 
 impl BubblewrapEngine {
-    /// An engine for this host, or a refusal naming what it lacks.
+    /// An engine for this host, or a refusal naming what it lacks. Sweeps
+    /// what a previous run left in its state directory first.
     ///
     /// # Errors
     /// The host lacks Landlock, seccomp, bubblewrap, the toolbox's file system
-    /// or a cgroup controller, so no sandbox could be built.
+    /// or a cgroup controller, or the toolbox is not the configured one.
     pub fn new(config: BubblewrapConfig) -> Result<Self> {
-        if let Some(missing) = probe(&config.probe).missing() {
-            let event = EVENT_REFUSED;
-            tracing::error!(missing, event, "this host cannot build a sandbox");
-            return Err(refused(missing));
+        let checked = match probe(&config.probe).missing() {
+            Some(missing) => Err(refused(missing)),
+            None if config.toolbox.digest() != config.toolbox_digest => Err(toolbox_unexpected(
+                config.toolbox.digest(),
+                &config.toolbox_digest,
+            )),
+            None => Ok(()),
+        };
+        if let Err(error) = checked {
+            let missing = error.missing_mechanism();
+            let error_code = error.code().as_str();
+            let reason = error.to_string();
+            let event = EVENT_HOST_REFUSED;
+            tracing::error!(
+                missing,
+                error_code,
+                reason,
+                event,
+                "this host cannot build a sandbox"
+            );
+            return Err(error);
         }
-        let owner = (
+        let root = rustix::process::geteuid().is_root();
+        let run_as = root.then_some(config.sandbox_ids);
+        let owner = run_as.unwrap_or((
             rustix::process::getuid().as_raw(),
             rustix::process::getgid().as_raw(),
-        );
-        Ok(Self { config, owner })
+        ));
+        let engine = Self {
+            config,
+            owner,
+            run_as,
+        };
+        engine.sweep();
+        Ok(engine)
+    }
+
+    async fn start(&self, request: SandboxRequest<'_>) -> Result<Bubblewrapped> {
+        let dir = request.lease_dir(&self.config.state_dir)?;
+        fs::create_dir_all(&self.config.state_dir)?;
+        // Fresh, never reused: a directory already there belongs to a lease
+        // this one must not inherit, and the boot sweep is what removes it.
+        DirBuilder::new().mode(LEASE_DIR_MODE).create(&dir)?;
+        let mut parts = Parts::new(request.lease_id, dir);
+        match self.build(&mut parts, request).await {
+            Ok(client) => Ok(Bubblewrapped { client, parts }),
+            Err(error) => {
+                // Released off the runtime; what it could not remove it logs.
+                let _logged = parts.teardown().await;
+                Err(error)
+            }
+        }
     }
 
     async fn build(&self, parts: &mut Parts, request: SandboxRequest<'_>) -> Result<Client> {
@@ -98,31 +159,39 @@ impl BubblewrapEngine {
         )?);
         cgroup.limit_io(device, DEFAULT_IO_BYTES_PER_SECOND)?;
         let procs = cgroup.procs();
-        let run_dir = parts.dir().join(RUN_DIR);
-        fs::create_dir(&run_dir)?;
+        let run_dir = self.run_dir(parts.dir())?;
         let argv = bubblewrap::arguments(&Layout {
             toolbox: self.config.toolbox.root(),
             workspace: &workspace,
             run_dir: &run_dir,
             entry: &self.config.entry,
             entry_args: &self.config.entry_args,
+            log_level: self.config.log_level.as_deref(),
         });
-        parts.spawn(&self.config.tools.bwrap, argv, &procs)?;
+        parts.spawn(&self.config.tools.bwrap, argv, &procs, self.run_as)?;
         self.ready(parts, &run_dir.join(SOCKET_NAME)).await
+    }
+
+    /// The socket directory, owned by the user the sandbox runs as and no one
+    /// else: the one place it binds its socket before confining itself.
+    fn run_dir(&self, lease_dir: &Path) -> Result<PathBuf> {
+        let run_dir = lease_dir.join(RUN_DIR);
+        DirBuilder::new().mode(RUN_DIR_MODE).create(&run_dir)?;
+        if self.run_as.is_some() {
+            let (uid, gid) = (Uid::from_raw(self.owner.0), Gid::from_raw(self.owner.1));
+            rustix::fs::chown(&run_dir, Some(uid), Some(gid))?;
+        }
+        Ok(run_dir)
     }
 
     /// Connects once the executor answers, or refuses when the sandbox exits
     /// first or the timeout passes.
     async fn ready(&self, parts: &mut Parts, socket: &Path) -> Result<Client> {
         let waited = self.config.ready_timeout;
-        let tries =
-            usize::try_from(waited.as_millis() / CONNECT_DELAY.as_millis()).unwrap_or(usize::MAX);
-        let backoff = ConstantBuilder::default()
-            .with_delay(CONNECT_DELAY)
-            .with_max_times(tries);
-        let connect = (|| Client::connect(socket)).retry(backoff);
         tokio::select! {
-            client = connect => client.map_err(|_unanswered| ErrorKind::NotReady { waited }.into()),
+            client = Client::connect_within(socket, waited) => {
+                client.map_err(|_unanswered| ErrorKind::NotReady { waited }.into())
+            }
             exited = parts.exited() => Err(exited),
         }
     }
@@ -134,30 +203,17 @@ impl Engine for BubblewrapEngine {
         let lease_id = request.lease_id;
         let event = EVENT_PREPARE_STARTED;
         tracing::info!(lease_id, event);
-        let dir = request.lease_dir(&self.config.state_dir)?;
-        fs::create_dir_all(&self.config.state_dir)?;
-        // Fresh, never reused: a directory already there belongs to a lease
-        // this one must not inherit, and the boot sweep is what removes it.
-        fs::create_dir(&dir)?;
-        let mut parts = Parts::new(dir);
-        match self.build(&mut parts, request).await {
-            Ok(client) => {
+        match self.start(request).await {
+            Ok(sandbox) => {
                 let event = EVENT_PREPARE_COMPLETED;
                 tracing::info!(lease_id, event);
-                Ok(Box::new(Bubblewrapped { client, parts }))
+                Ok(Box::new(sandbox))
             }
             Err(error) => {
-                let reason = error.to_string();
                 let error_code = error.code().as_str();
-                let event = EVENT_REFUSED;
-                tracing::error!(
-                    lease_id,
-                    error_code,
-                    reason,
-                    event,
-                    "the lease's sandbox could not be built"
-                );
-                parts.teardown_after_refusal(lease_id).await;
+                let reason = error.to_string();
+                let event = EVENT_PREPARE_FAILED;
+                tracing::warn!(lease_id, error_code, reason, event);
                 Err(error)
             }
         }
@@ -175,6 +231,10 @@ struct Bubblewrapped {
 impl Sandbox for Bubblewrapped {
     fn executor(&self) -> &dyn Executor {
         &self.client
+    }
+
+    fn is_running(&mut self) -> bool {
+        self.parts.is_running()
     }
 
     async fn destroy(self: Box<Self>) -> Result<()> {

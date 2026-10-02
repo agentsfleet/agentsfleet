@@ -4,6 +4,7 @@
     clippy::unwrap_used,
     clippy::indexing_slicing,
     clippy::assertions_on_result_states,
+    clippy::panic,
     reason = "test support: a fixture that cannot be built is a broken test"
 )]
 
@@ -17,7 +18,7 @@ use afd_wire::lease::{BundleManifest, LeasePayload};
 use afd_wire::memory::MemoryDelta;
 use afd_wire::report::{Completed, ExecutionResult, ResultOutcome};
 use afr_agent::{AgentEngine, AgentRun, RunOutput};
-use afr_executor::{DirEntry, Executor, FileContent, Process, ProcessId, Spawn};
+use afr_executor::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
 use afr_sandbox::{Engine, Sandbox, SandboxRequest};
 use bytes::Bytes;
 use serde::Serialize;
@@ -25,12 +26,38 @@ use tokio::sync::mpsc;
 
 use crate::client::{Call, ControlPlane, RunnerApi};
 
+mod rig;
+
+pub(crate) use self::rig::{Rig, daemon, position, reported};
+
 /// A canonical lease identifier.
 pub(crate) const LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8057";
 /// A canonical fleet identifier.
 pub(crate) const FLEET_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8058";
 /// The fencing token every fake lease carries.
 pub(crate) const FENCING: u64 = 504;
+/// When every fake lease is granted until, in Unix milliseconds: thirty
+/// seconds after the fixed clock's zero.
+pub(crate) const GRANTED_UNTIL: i64 = 30_000;
+
+/// The cadence and retry delay the fake daemon answers with, in milliseconds.
+pub(crate) const INTERVAL_MS: u32 = 1000;
+
+/// The report fields, and the spellings, the lease tests read back.
+pub(crate) const FAILURE_REASON: &str = "failure_reason";
+pub(crate) const OUTCOME: &str = "outcome";
+pub(crate) const PROCESSED: &str = "processed";
+pub(crate) const RENEWAL_TERMINATE: &str = "renewal_terminate";
+pub(crate) const STARTUP_POSTURE: &str = "startup_posture";
+pub(crate) const RUNNER_CRASH: &str = "runner_crash";
+
+/// The wall clock every lease test reads: fixed at zero, so a lease's deadline
+/// is measured in the paused tokio time the tests advance.
+pub(crate) fn clock() -> Box<dyn afd_core::clock::Clock> {
+    Box::new(afd_core::clock::FixedClock::at(
+        afd_core::clock::UnixMillis::from_millis(0),
+    ))
+}
 
 /// What the fake daemon does with one call.
 pub(crate) enum Answer {
@@ -40,6 +67,8 @@ pub(crate) enum Answer {
     Fail(crate::Error),
     /// Never answers.
     Stall,
+    /// Replies 2xx with these bytes once this long has passed.
+    Late(Duration, Bytes),
 }
 
 /// A reply of `value`, encoded.
@@ -71,6 +100,10 @@ where
             Answer::Reply(bytes) => Ok(bytes),
             Answer::Fail(failure) => Err(failure),
             Answer::Stall => std::future::pending().await,
+            Answer::Late(after, bytes) => {
+                tokio::time::sleep(after).await;
+                Ok(bytes)
+            }
         }
     }
 }
@@ -117,6 +150,8 @@ pub(crate) enum Behaviour {
     Break,
     /// Never finishes on its own.
     Hang,
+    /// Panics mid-run.
+    Panic,
 }
 
 /// An agent engine that counts its runs and how many overlap.
@@ -159,8 +194,11 @@ impl AgentEngine for FakeAgent {
         self.running.fetch_sub(1, Ordering::SeqCst);
         match self.behaviour {
             Behaviour::Answer => Ok(answer()),
-            Behaviour::Break => Err(std::io::Error::other("engine broke").into()),
+            Behaviour::Break => {
+                Err(afr_executor::Error::from(std::io::Error::other("engine broke")).into())
+            }
             Behaviour::Hang => std::future::pending().await,
+            Behaviour::Panic => panic!("the fake engine panics on purpose"),
         }
     }
 }
@@ -173,7 +211,7 @@ async fn exercise(executor: &dyn Executor) {
     assert!(executor.kill(id).await.is_ok());
     assert!(executor.read_file("a", 1).await.is_ok());
     assert!(executor.write_file("a", Bytes::new()).await.is_ok());
-    assert!(executor.list_dir("/").await.unwrap().is_empty());
+    assert!(executor.list_dir("/").await.unwrap().entries.is_empty());
 }
 
 /// The result a successful fake run answers with.
@@ -202,6 +240,9 @@ pub(crate) fn answer() -> RunOutput {
 #[derive(Debug, Default)]
 pub(crate) struct FakeEngine {
     pub(crate) refuse: bool,
+    /// Panics on the first prepare only, the way a bug in the supervisor
+    /// would take its worker down.
+    pub(crate) panic_once: bool,
     pub(crate) fail_teardown: bool,
     pub(crate) prepared: Arc<AtomicUsize>,
     pub(crate) destroyed: Arc<AtomicUsize>,
@@ -213,7 +254,11 @@ impl Engine for FakeEngine {
         if self.refuse {
             return Err(std::io::Error::other("no landlock").into());
         }
-        self.prepared.fetch_add(1, Ordering::SeqCst);
+        let prepared = self.prepared.fetch_add(1, Ordering::SeqCst);
+        assert!(
+            !(self.panic_once && prepared == 0),
+            "the fake engine panics on its first prepare"
+        );
         Ok(Box::new(FakeSandbox {
             fail_teardown: self.fail_teardown,
             destroyed: Arc::clone(&self.destroyed),
@@ -271,7 +316,10 @@ impl Executor for FakeExecutor {
         Ok(())
     }
 
-    async fn list_dir(&self, _path: &str) -> afr_executor::Result<Vec<DirEntry>> {
-        Ok(Vec::new())
+    async fn list_dir(&self, _path: &str) -> afr_executor::Result<Listing> {
+        Ok(Listing {
+            entries: Vec::new(),
+            truncated: false,
+        })
     }
 }

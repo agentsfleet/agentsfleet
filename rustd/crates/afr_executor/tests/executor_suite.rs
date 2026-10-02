@@ -7,10 +7,14 @@
 
 #[path = "files.rs"]
 mod files;
+#[path = "input.rs"]
+mod input;
 #[path = "lifecycle.rs"]
 mod lifecycle;
 #[path = "link.rs"]
 mod link;
+#[path = "orphans.rs"]
+mod orphans;
 #[path = "processes.rs"]
 mod processes;
 #[path = "protocol.rs"]

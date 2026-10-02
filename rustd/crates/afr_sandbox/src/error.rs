@@ -22,7 +22,9 @@ use afd_core::error_code::{self, ErrorCode};
 
 mod raise;
 
-pub(crate) use self::raise::{cgroup, lease_id_unsafe, program, refused, unconfined};
+#[cfg(target_os = "linux")]
+pub(crate) use self::raise::toolbox_unexpected;
+pub(crate) use self::raise::{cgroup, cgroup_left, lease_id_unsafe, program, refused, unconfined};
 
 afd_core::error_shell!(
     /// A sandbox failure, with the backtrace of where it was raised.
@@ -75,6 +77,26 @@ pub(crate) enum ErrorKind {
         /// The kernel's reason.
         #[source]
         source: std::io::Error,
+    },
+
+    /// A cgroup could not be removed: still busy after its kill, or refused.
+    #[error("the cgroup {path} could not be removed")]
+    CgroupLeft {
+        /// The cgroup's directory.
+        path: PathBuf,
+        /// The kernel's reason.
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// The toolbox is not the image this runner was configured to run.
+    #[cfg(target_os = "linux")]
+    #[error("the toolbox is {actual}, but this runner is configured for {expected}")]
+    ToolboxUnexpected {
+        /// The digest of the image that is mounted.
+        actual: String,
+        /// The digest the configuration names.
+        expected: String,
     },
 
     /// The sandbox exited before its executor answered.

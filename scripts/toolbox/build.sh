@@ -4,19 +4,28 @@
 #
 #     bash scripts/toolbox/build.sh <output-dir>
 #
-# Prints the image's path. Everything that could vary between two builds is
-# pinned: the packages by a snapshot.debian.org timestamp, every file's time by
-# SOURCE_DATE_EPOCH (derived from that same timestamp), and the file system's
-# UUID by the manifest. Two builds of one manifest on one architecture are
-# byte-identical, which the runner's kernel lane proves.
+# Prints the image's path. Everything the manifest can pin is pinned: the
+# packages by a snapshot.debian.org timestamp, every file's time by
+# SOURCE_DATE_EPOCH (derived from that same timestamp), the file system's UUID,
+# and the archive key the packages are checked against.
 #
-# Needs mmdebstrap and mkfs.erofs (Debian/Ubuntu: `mmdebstrap erofs-utils`).
+# What reproducible means here, exactly: two builds of one manifest on one
+# architecture, by the same versions of mmdebstrap, apt, dpkg and erofs-utils,
+# are byte-identical — the runner's kernel lane proves it. A different host
+# tool version may lay the image out differently, so the release names the
+# digest it shipped and the runner refuses any other.
+#
+# Needs root, mmdebstrap, mkfs.erofs and Debian's archive keyring
+# (Debian/Ubuntu: `mmdebstrap erofs-utils debian-archive-keyring`).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly HERE
 readonly MANIFEST="${TOOLBOX_MANIFEST:-$HERE/manifest.txt}"
 readonly SNAPSHOT_MIRROR="http://snapshot.debian.org/archive/debian"
+# The key every package is verified against, named rather than left to
+# whatever the host's apt happens to trust.
+readonly KEYRING="${TOOLBOX_KEYRING:-/usr/share/keyrings/debian-archive-keyring.gpg}"
 # Mount points the sandbox binds onto; the image is read-only, so they must
 # already exist in it. `/run` is not one: mmdebstrap empties it, and the
 # sandbox mounts its own.
@@ -67,6 +76,7 @@ mmdebstrap \
   --variant=minbase \
   --include="$include" \
   --aptopt='Acquire::Check-Valid-Until "false"' \
+  --keyring="$KEYRING" \
   "${hooks[@]}" \
   "$suite" "$work/root.tar" "$SNAPSHOT_MIRROR/$snapshot"
 

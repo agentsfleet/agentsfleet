@@ -20,9 +20,21 @@ fn read(pairs: &[(&str, &str)]) -> crate::Result<Config> {
 fn a_complete_environment_reads_with_the_default_home() {
     let config = read(&[(ENV_API_URL, URL), (ENV_RUNNER_TOKEN, TOKEN)]).unwrap();
 
-    assert_eq!(config.api_url(), URL);
+    assert_eq!(config.api_url().as_str(), "https://api.example.test/");
     assert_eq!(config.token().expose(), TOKEN);
     assert_eq!(config.storage_home(), Path::new(DEFAULT_STORAGE_HOME));
+}
+
+#[test]
+fn a_path_prefix_survives_as_a_directory_routes_join_under() {
+    let config = read(&[
+        (ENV_API_URL, "https://h.test/api"),
+        (ENV_RUNNER_TOKEN, TOKEN),
+    ])
+    .unwrap();
+    let joined = config.api_url().join("v1/runners/me/leases").unwrap();
+
+    assert_eq!(joined.as_str(), "https://h.test/api/v1/runners/me/leases");
 }
 
 #[test]
@@ -58,6 +70,10 @@ fn each_missing_or_malformed_setting_refuses_by_name() {
         (
             vec![(ENV_API_URL, "ftp://x"), (ENV_RUNNER_TOKEN, TOKEN)],
             "not an http or https address",
+        ),
+        (
+            vec![(ENV_API_URL, "not a url"), (ENV_RUNNER_TOKEN, TOKEN)],
+            "address is not usable",
         ),
         (
             vec![(ENV_API_URL, URL)],

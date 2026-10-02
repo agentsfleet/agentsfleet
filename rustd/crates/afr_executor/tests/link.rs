@@ -12,7 +12,7 @@ use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{UnixListener, UnixStream};
 
-use crate::support::{finish, scratch};
+use crate::support::{PATH_REFUSED, PATIENCE, finish, is_lost, refused_with, scratch};
 
 /// The executor's side of the socket, driven line by line.
 struct Fake {
@@ -39,7 +39,7 @@ impl Fake {
 async fn connect() -> (tempfile::TempDir, Client, Fake) {
     let (scratch, socket, _root) = scratch();
     let listener = UnixListener::bind(&socket).unwrap();
-    let client = Client::connect(&socket).await.unwrap();
+    let client = Client::connect_within(&socket, PATIENCE).await.unwrap();
     let (stream, _peer): (UnixStream, _) = listener.accept().await.unwrap();
     let (read, writer) = stream.into_split();
     (
@@ -77,9 +77,10 @@ async fn answers_and_notifications_reach_their_callers_past_noise() {
         r#"{"jsonrpc":"2.0","result":null,"id":99}"#,
         r#"{"jsonrpc":"2.0","method":"process/output","params":{"process_id":7,"stream":"stdout","data":"%%%"}}"#,
         r#"{"jsonrpc":"2.0","method":"process/exited","params":[7]}"#,
+        r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"ending":{"kind":"vanished"},"omitted_bytes":0}}"#,
         r#"{"jsonrpc":"2.0","method":"process/output","params":{"process_id":7,"stream":"stdout","data":"aGk="}}"#,
         r#"{"jsonrpc":"2.0","method":"process/output","params":{"process_id":7,"stream":"stderr","data":"IQ=="}}"#,
-        r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"exit_code":2,"signal":null,"timed_out":false,"omitted_bytes":5}}"#,
+        r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"ending":{"kind":"exited","code":2},"omitted_bytes":5}}"#,
     ] {
         fake.say(noise).await;
     }
@@ -91,21 +92,21 @@ async fn answers_and_notifications_reach_their_callers_past_noise() {
 }
 
 #[tokio::test]
-async fn an_exit_names_a_timeout_then_a_signal_then_a_status() {
+async fn every_ending_the_wire_spells_reaches_the_caller_as_itself() {
     let (_scratch, client, mut fake) = connect().await;
     let client = std::sync::Arc::new(client);
     let mut endings = Vec::new();
-    for (process, exit) in [
-        (1, r#""exit_code":null,"signal":15,"timed_out":true"#),
-        (2, r#""exit_code":null,"signal":9,"timed_out":false"#),
-        (3, r#""exit_code":null,"signal":null,"timed_out":false"#),
+    for (process, ending) in [
+        (1, r#"{"kind":"timed_out"}"#),
+        (2, r#"{"kind":"signaled","code":9}"#),
+        (3, r#"{"kind":"interrupted"}"#),
     ] {
         let spawner = std::sync::Arc::clone(&client);
         let spawning = tokio::spawn(async move { spawner.spawn(Spawn::program("x")).await });
         started(&mut fake, process).await;
         let started = spawning.await.unwrap().unwrap();
         fake.say(&format!(
-            r#"{{"jsonrpc":"2.0","method":"process/exited","params":{{"process_id":{process},{exit},"omitted_bytes":0}}}}"#
+            r#"{{"jsonrpc":"2.0","method":"process/exited","params":{{"process_id":{process},"ending":{ending},"omitted_bytes":0}}}}"#
         ))
         .await;
         endings.push(finish(started).await.endings);
@@ -133,7 +134,7 @@ async fn an_error_answer_is_a_refusal_with_its_code() {
 
     let refused = reading.await.unwrap().unwrap_err();
 
-    assert!(refused.is_path_refused(), "{refused}");
+    assert!(refused_with(&refused, PATH_REFUSED), "{refused}");
 }
 
 #[tokio::test]
@@ -146,10 +147,8 @@ async fn a_spawn_answer_that_is_not_a_process_fails_the_spawn() {
 
     let refused = spawning.await.unwrap().unwrap_err();
 
-    assert!(
-        !refused.is_connection_lost() && !refused.is_path_refused(),
-        "{refused}"
-    );
+    assert!(refused.to_string().contains("did not decode"), "{refused}");
+    assert!(!is_lost(&refused));
 }
 
 #[tokio::test]
@@ -167,6 +166,28 @@ async fn calls_waiting_when_the_executor_vanishes_fail_as_lost() {
 
     drop(fake);
 
-    assert!(reading.await.unwrap().unwrap_err().is_connection_lost());
-    assert!(spawning.await.unwrap().unwrap_err().is_connection_lost());
+    assert!(is_lost(&reading.await.unwrap().unwrap_err()));
+    assert!(is_lost(&spawning.await.unwrap().unwrap_err()));
+}
+
+#[tokio::test]
+async fn a_process_whose_caller_left_before_it_started_is_killed() {
+    let (_scratch, client, mut fake) = connect().await;
+    let client = std::sync::Arc::new(client);
+    let spawner = std::sync::Arc::clone(&client);
+    let spawning = tokio::spawn(async move { spawner.spawn(Spawn::program("x")).await });
+    let id = fake.request().await["id"].clone();
+
+    spawning.abort();
+    let _cancelled = spawning.await;
+    fake.say(&format!(
+        r#"{{"jsonrpc":"2.0","result":{{"process_id":4}},"id":{id}}}"#
+    ))
+    .await;
+    let follow_up = tokio::time::timeout(PATIENCE, fake.request())
+        .await
+        .unwrap();
+
+    assert_eq!(follow_up["method"], "process/kill");
+    assert_eq!(follow_up["params"]["process_id"], 4);
 }

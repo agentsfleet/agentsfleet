@@ -1,4 +1,10 @@
-//! What one lease's sandbox owns, and the one teardown every path ends with.
+//! What one lease's sandbox owns, and the one release every path ends with.
+//!
+//! [`Parts`] is the single owner of a lease's process, cgroup, workspace disk
+//! and directory. [`Parts::teardown`] releases them and reports what it could
+//! not; dropping `Parts` releases whatever is still held — a cancelled start, a
+//! sandbox nobody destroyed — and logs what it could not. Both run the same
+//! [`Parts::release`], once.
 
 use std::collections::VecDeque;
 use std::ffi::OsString;
@@ -13,12 +19,10 @@ use tokio::process::{Child, ChildStderr, Command};
 use tokio::task::JoinHandle;
 use tokio_util::codec::{FramedRead, LinesCodec, LinesCodecError};
 
-use crate::cgroup::LeaseCgroup;
+use crate::cgroup::{CGROUP_PROCS, LeaseCgroup};
 use crate::error::{Error, ErrorKind, Result, cgroup};
 use crate::workspace_disk::WorkspaceDisk;
 
-/// The control file a joining process writes to, as a failure names it.
-const CGROUP_PROCS: &str = "cgroup.procs";
 /// What a process writes to `cgroup.procs` to move itself.
 const SELF: &[u8] = b"0";
 /// The longest error-stream line kept whole.
@@ -27,13 +31,18 @@ const LINE_MAX_BYTES: usize = 4_096;
 const TAIL_LINES: usize = 20;
 /// The event each line the sandbox writes to its error stream is logged under.
 const EVENT_SANDBOX_STDERR: &str = "sandbox_stderr";
+/// The event a teardown's start is logged under.
+const EVENT_TEARDOWN_STARTED: &str = "sandbox_teardown_started";
+/// The event a teardown that removed everything is logged under.
+const EVENT_TEARDOWN_COMPLETED: &str = "sandbox_teardown_completed";
 /// The event a teardown that left something behind is logged under.
 const EVENT_TEARDOWN_FAILED: &str = "sandbox_teardown_failed";
 
-/// Everything one lease's sandbox owns; built a piece at a time, torn down at once.
+/// Everything one lease's sandbox owns; built a piece at a time, released once.
 #[derive(Debug)]
 pub(super) struct Parts {
-    dir: PathBuf,
+    lease_id: String,
+    dir: Option<PathBuf>,
     disk: Option<WorkspaceDisk>,
     cgroup: Option<LeaseCgroup>,
     child: Option<Child>,
@@ -42,9 +51,10 @@ pub(super) struct Parts {
 
 impl Parts {
     /// Nothing built yet, in the lease's own directory.
-    pub(super) fn new(dir: PathBuf) -> Self {
+    pub(super) fn new(lease_id: &str, dir: PathBuf) -> Self {
         Self {
-            dir,
+            lease_id: lease_id.to_owned(),
+            dir: Some(dir),
             disk: None,
             cgroup: None,
             child: None,
@@ -54,7 +64,7 @@ impl Parts {
 
     /// The lease's directory.
     pub(super) fn dir(&self) -> &Path {
-        &self.dir
+        self.dir.as_deref().unwrap_or(Path::new(""))
     }
 
     /// Takes ownership of the lease's workspace disk.
@@ -67,8 +77,16 @@ impl Parts {
         self.cgroup.insert(cgroup)
     }
 
-    /// Starts bubblewrap inside the cgroup whose `cgroup.procs` is `procs`.
-    pub(super) fn spawn(&mut self, bwrap: &Path, argv: Vec<OsString>, procs: &Path) -> Result<()> {
+    /// Starts bubblewrap inside the cgroup whose `cgroup.procs` is `procs`,
+    /// as host user `ids` when given — what a root runner passes, so nothing
+    /// the sandbox does happens as host root.
+    pub(super) fn spawn(
+        &mut self,
+        bwrap: &Path,
+        argv: Vec<OsString>,
+        procs: &Path,
+        ids: Option<(u32, u32)>,
+    ) -> Result<()> {
         // `create` is a no-op on a cgroup file system, which publishes the file
         // with the cgroup; on a plain directory it lets the engine be proven
         // without root.
@@ -86,10 +104,17 @@ impl Parts {
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        if let Some((uid, gid)) = ids {
+            // The standard library also drops every supplementary group when
+            // root sets a user, so no host group survives either.
+            command.uid(uid).gid(gid);
+        }
         // SAFETY: the hook runs in the child between fork and exec, where only
         // async-signal-safe calls are sound. It makes one `write` system call on
         // a descriptor opened before the fork and allocates nothing, so every
-        // process bubblewrap starts is born inside the lease's cgroup.
+        // process bubblewrap starts is born inside the lease's cgroup. The
+        // kernel checks the write against the opener's credentials, so it holds
+        // after the user change above.
         unsafe { command.pre_exec(move || enter(descriptor)) };
         let mut child = command.spawn()?;
         drop(join);
@@ -117,65 +142,104 @@ impl Parts {
         })
     }
 
-    /// Ends every process, then removes the cgroup, the disk and the directory.
-    /// Every step runs whatever an earlier one reported; the first failure is
-    /// the one returned.
-    pub(super) async fn teardown(self) -> Result<()> {
-        let Self {
-            dir,
-            disk,
-            cgroup,
-            child,
-            stderr,
-        } = self;
+    /// Whether bubblewrap is still running.
+    pub(super) fn is_running(&mut self) -> bool {
+        self.child
+            .as_mut()
+            .is_some_and(|child| matches!(child.try_wait(), Ok(None)))
+    }
+
+    /// Ends every process, then releases the cgroup, the disk and the
+    /// directory, off the async runtime: removing a cgroup waits for the
+    /// kernel to reap.
+    pub(super) async fn teardown(mut self) -> Result<()> {
+        let lease_id = self.lease_id.clone();
+        let event = EVENT_TEARDOWN_STARTED;
+        tracing::debug!(lease_id, event);
+        if let Some(drain) = self.stderr.take() {
+            drain.abort();
+        }
+        let released = tokio::task::spawn_blocking(move || self.release())
+            .await
+            .map_err(|stopped| Error::from(std::io::Error::other(stopped)))
+            .and_then(|released| released);
+        log_release(&lease_id, released.as_ref().err());
+        released
+    }
+
+    /// Releases everything still held, in the one order that works: processes
+    /// die before their cgroup goes, and the disk is unmounted before its
+    /// directory is removed. A disk that will not unmount keeps its directory,
+    /// image and all, for the boot sweep: an attached loop device is never
+    /// left on a file nobody can name.
+    fn release(&mut self) -> Result<()> {
         let mut first = None;
         let mut keep = |step: Result<()>| {
             if let Err(error) = step {
                 first.get_or_insert(error);
             }
         };
-        if let Some(cgroup) = &cgroup {
+        if let Some(cgroup) = &self.cgroup {
             keep(cgroup.kill());
         }
-        if let Some(child) = child {
-            keep(end(child).await);
+        if let Some(mut child) = self.child.take() {
+            // Usually already gone with its cgroup; a sandbox that died on its
+            // own is not a teardown failure.
+            if matches!(child.try_wait(), Ok(None)) {
+                keep(child.start_kill().map_err(Error::from));
+            }
         }
-        if let Some(drain) = stderr {
-            drain.abort();
+        if let Some(cgroup) = self.cgroup.take() {
+            keep(cgroup.remove());
         }
-        if let Some(cgroup) = cgroup {
-            keep(cgroup.remove().await);
+        let disk_released = self.disk.take().is_none_or(|disk| {
+            let released = disk.release();
+            let ok = released.is_ok();
+            keep(released);
+            ok
+        });
+        if let Some(dir) = self.dir.take().filter(|_| disk_released) {
+            keep(fs::remove_dir_all(dir).map_err(Error::from));
         }
-        if let Some(disk) = disk {
-            keep(disk.release());
-        }
-        keep(fs::remove_dir_all(&dir).map_err(Error::from));
         first.map_or(Ok(()), Err)
     }
+}
 
-    /// Tears down after a refused start, logging rather than returning what it
-    /// could not remove: the refusal is the error the caller needs.
-    pub(super) async fn teardown_after_refusal(self, lease_id: &str) {
-        if let Err(left) = self.teardown().await {
-            let reason = left.to_string();
-            let event = EVENT_TEARDOWN_FAILED;
-            tracing::warn!(
-                lease_id,
-                reason,
-                event,
-                "a refused sandbox left something behind"
-            );
+impl Drop for Parts {
+    fn drop(&mut self) {
+        // After a teardown nothing is left; after a cancelled start or a
+        // sandbox nobody destroyed, this is the only cleanup there will be.
+        let held = self.dir.is_some()
+            || self.disk.is_some()
+            || self.cgroup.is_some()
+            || self.child.is_some();
+        if held {
+            let released = self.release();
+            log_release(&self.lease_id, released.as_ref().err());
         }
     }
 }
 
-/// Kills bubblewrap unless it has already gone: the cgroup kill usually got
-/// there first, and a sandbox that died on its own is not a teardown failure.
-async fn end(mut child: Child) -> Result<()> {
-    if child.try_wait()?.is_none() {
-        child.kill().await?;
+/// Logs how a release ended.
+fn log_release(lease_id: &str, failed: Option<&Error>) {
+    match failed {
+        None => {
+            let event = EVENT_TEARDOWN_COMPLETED;
+            tracing::debug!(lease_id, event);
+        }
+        Some(error) => {
+            let error_code = error.code().as_str();
+            let reason = error.to_string();
+            let event = EVENT_TEARDOWN_FAILED;
+            tracing::warn!(
+                lease_id,
+                error_code,
+                reason,
+                event,
+                "a sandbox left something behind for the boot sweep"
+            );
+        }
     }
-    Ok(())
 }
 
 /// Moves the calling process into the cgroup open on `descriptor`.

@@ -6,7 +6,7 @@
 use std::fs;
 use std::path::Path;
 
-use super::{LeaseCgroup, drained};
+use super::LeaseCgroup;
 use crate::engine::Limits;
 
 const LIMITS: Limits = Limits {
@@ -57,17 +57,10 @@ fn test_swap_is_zeroed_where_the_kernel_accounts_it() {
 }
 
 #[test]
-fn test_io_is_limited_only_where_the_controller_is() {
+fn test_io_is_limited_on_the_workspace_device() {
     let root = tempfile::tempdir().unwrap();
     let (made, dir) = plain(root.path(), "lease-3");
 
-    made.limit_io((7, 3), 1_024).unwrap();
-    assert!(
-        !dir.join("io.max").exists(),
-        "no io controller, no io limit"
-    );
-
-    fs::write(dir.join("cgroup.controllers"), "cpu io memory pids").unwrap();
     made.limit_io((7, 3), 1_024).unwrap();
     // pin test: literal is the contract
     assert_eq!(read(&dir, "io.max"), "7:3 rbps=1024 wbps=1024");
@@ -112,39 +105,17 @@ fn test_undo_removes_an_empty_cgroup_and_logs_one_it_cannot() {
     );
 }
 
-#[tokio::test]
-async fn test_kill_writes_one_and_remove_names_what_stopped_it() {
+#[test]
+fn test_kill_writes_one_and_remove_names_the_cgroup_that_stayed() {
     let root = tempfile::tempdir().unwrap();
     let (made, dir) = plain(root.path(), "lease-8");
 
     made.kill().unwrap();
     assert_eq!(read(&dir, "cgroup.kill"), "1");
     // Without the kernel the kill lands as a file, so the removal finds a
-    // non-empty directory and says which control file it was working through.
-    let left = made.remove().await.unwrap_err();
+    // non-empty directory: refused at once, not retried, and named.
+    let left = made.remove().unwrap_err();
 
-    assert!(left.to_string().contains("cgroup.procs"), "{left}");
-}
-
-#[tokio::test(start_paused = true)]
-async fn test_remove_gives_up_on_a_cgroup_that_never_drains() {
-    let root = tempfile::tempdir().unwrap();
-    let (made, dir) = plain(root.path(), "lease-9");
-    fs::write(dir.join(super::CGROUP_EVENTS), "populated 1\n").unwrap();
-
-    let stuck = made.remove().await.unwrap_err();
-
-    assert!(stuck.to_string().contains(super::CGROUP_EVENTS), "{stuck}");
-}
-
-#[test]
-fn test_drained_reads_the_events_file() {
-    let dir = tempfile::tempdir().unwrap();
-    let events = dir.path().join(super::CGROUP_EVENTS);
-
-    assert!(drained(&events), "no file, nothing to wait for");
-    fs::write(&events, "populated 1\nfrozen 0\n").unwrap();
-    assert!(!drained(&events));
-    fs::write(&events, "populated 0\nfrozen 0\n").unwrap();
-    assert!(drained(&events));
+    assert!(left.to_string().contains("lease-8"), "{left}");
+    assert!(left.to_string().contains("could not be removed"), "{left}");
 }

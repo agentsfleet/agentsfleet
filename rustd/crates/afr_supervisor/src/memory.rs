@@ -13,7 +13,7 @@ use crate::error::Result;
 ///
 /// # Errors
 /// A refusal, or a retryable failure that outlasted its attempts.
-pub async fn hydrate(plane: &ControlPlane, fleet_id: &Uuid7) -> Result<Body> {
+pub(crate) async fn hydrate(plane: &ControlPlane, fleet_id: &Uuid7) -> Result<Body> {
     retrying(|| plane.hydrate(fleet_id)).await
 }
 
@@ -25,7 +25,7 @@ pub async fn hydrate(plane: &ControlPlane, fleet_id: &Uuid7) -> Result<Body> {
 /// # Errors
 /// A refusal — a stale token among them — or a retryable failure that outlasted
 /// its attempts.
-pub async fn capture(
+pub(crate) async fn capture(
     plane: &ControlPlane,
     fleet_id: &Uuid7,
     lease: &LeasePayload<'_>,

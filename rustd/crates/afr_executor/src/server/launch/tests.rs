@@ -8,7 +8,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use tokio::sync::mpsc;
 
-use super::terminal::{TerminalInput, read_terminal};
+use super::terminal::{TerminalInput, Write, read_terminal};
 use super::{Input as _, leader, pump};
 use crate::api::Stream;
 
@@ -62,10 +62,51 @@ fn a_process_with_no_usable_pid_leads_no_group() {
 }
 
 #[tokio::test]
-async fn a_terminal_whose_writer_was_lost_refuses_writes() {
-    let mut input = TerminalInput(None);
+async fn a_terminal_whose_writer_stopped_refuses_writes() {
+    let (writes, stopped) = std::sync::mpsc::channel();
+    drop(stopped);
+    let mut input = TerminalInput(writes);
 
     let refused = input.write(Bytes::from_static(b"x")).await.unwrap_err();
 
+    assert_eq!(refused.kind(), std::io::ErrorKind::BrokenPipe);
+}
+
+#[tokio::test]
+async fn a_terminal_writer_stops_after_a_failed_write() {
+    /// A terminal that refuses every write, as one with nothing on its far
+    /// end does.
+    struct Refusing;
+    impl std::io::Write for Refusing {
+        fn write(&mut self, _bytes: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::ErrorKind::BrokenPipe.into())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut input = TerminalInput::start(Box::new(Refusing)).unwrap();
+
+    let first = input.write(Bytes::from_static(b"x")).await.unwrap_err();
+    let after = input.write(Bytes::from_static(b"y")).await.unwrap_err();
+
+    assert_eq!(first.kind(), std::io::ErrorKind::BrokenPipe);
+    assert_eq!(
+        after.kind(),
+        std::io::ErrorKind::BrokenPipe,
+        "the writer is gone"
+    );
+}
+
+#[tokio::test]
+async fn a_terminal_writer_that_drops_a_write_unanswered_refuses_it() {
+    let (writes, queued) = std::sync::mpsc::channel::<Write>();
+    // The writer takes the write and goes away without saying how it went.
+    let gone = std::thread::spawn(move || drop(queued.recv()));
+    let mut input = TerminalInput(writes);
+
+    let refused = input.write(Bytes::from_static(b"x")).await.unwrap_err();
+
+    gone.join().unwrap();
     assert_eq!(refused.kind(), std::io::ErrorKind::BrokenPipe);
 }

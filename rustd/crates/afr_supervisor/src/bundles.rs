@@ -29,31 +29,38 @@ const DIGEST_HEX_LEN: usize = 64;
 const EXTENSION: &str = "tar";
 const EVENT_CACHE_HIT: &str = "bundle_cache_hit";
 const EVENT_MATERIALIZED: &str = "bundle_materialized";
+const EVENT_SKILL_ONLY: &str = "bundle_skill_only";
 
 /// The verified-bundle cache under the storage home.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BundleCache {
+pub(crate) struct BundleCache {
     dir: PathBuf,
 }
 
 impl BundleCache {
     /// The cache under `home`.
-    #[must_use]
-    pub fn new(home: &StorageHome) -> Self {
+    pub(crate) fn new(home: &StorageHome) -> Self {
         Self {
             dir: home.bundles(),
         }
     }
 
-    /// The verified bundle named `content_hash`, from the cache or the daemon.
+    /// The verified bundle named `content_hash`, from the cache or the daemon,
+    /// or `None` for a skill-only bundle.
     ///
     /// A cached copy is verified again before it is trusted; one that no longer
-    /// verifies is fetched afresh.
+    /// verifies is fetched afresh. A bundle with no support files stores no
+    /// snapshot, so the daemon answers 404 for it and the run goes on with none
+    /// (`afd_wire::lease::BundleManifest`).
     ///
     /// # Errors
     /// A name that is not a digest, a download that fails or does not verify,
     /// or a cache write that fails.
-    pub async fn fetch(&self, plane: &ControlPlane, content_hash: &str) -> Result<PathBuf> {
+    pub(crate) async fn fetch(
+        &self,
+        plane: &ControlPlane,
+        content_hash: &str,
+    ) -> Result<Option<PathBuf>> {
         if !is_digest(content_hash) {
             return Err(error::tampered(content_hash));
         }
@@ -61,9 +68,17 @@ impl BundleCache {
         if fs::read(&path).is_ok_and(|cached| digest(&cached).as_deref() == Some(content_hash)) {
             let event = EVENT_CACHE_HIT;
             tracing::debug!(content_hash, event);
-            return Ok(path);
+            return Ok(Some(path));
         }
-        let bytes = retrying(|| plane.bundle(content_hash)).await?;
+        let bytes = match retrying(|| plane.bundle(content_hash)).await {
+            Ok(bytes) => bytes,
+            Err(absent) if absent.is_not_found() => {
+                let event = EVENT_SKILL_ONLY;
+                tracing::debug!(content_hash, event);
+                return Ok(None);
+            }
+            Err(failure) => return Err(failure),
+        };
         if digest(&bytes).as_deref() != Some(content_hash) {
             return Err(error::tampered(content_hash));
         }
@@ -72,7 +87,7 @@ impl BundleCache {
         file.persist(&path)?;
         let event = EVENT_MATERIALIZED;
         tracing::info!(content_hash, event);
-        Ok(path)
+        Ok(Some(path))
     }
 }
 

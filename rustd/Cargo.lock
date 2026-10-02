@@ -918,6 +918,7 @@ version = "0.51.0"
 dependencies = [
  "afd_core",
  "async-trait",
+ "backon",
  "base64 0.23.1",
  "bytes",
  "cap-std",
@@ -943,11 +944,13 @@ dependencies = [
  "async-trait",
  "backon",
  "bytes",
+ "digest-io",
  "futures-util",
  "hex",
  "landlock",
  "libc",
  "libtest-mimic",
+ "procfs-core",
  "rustix",
  "seccompiler",
  "sha2 0.11.0",
@@ -956,6 +959,8 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -971,6 +976,7 @@ dependencies = [
  "axum",
  "backon",
  "bytes",
+ "futures-util",
  "hex",
  "reqwest",
  "serde",
@@ -982,6 +988,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "url",
 ]
 
 [[package]]
@@ -994,6 +1001,7 @@ dependencies = [
  "cargo_metadata",
  "clap",
  "serde_json",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1986,6 +1994,15 @@ dependencies = [
  "const-oid",
  "crypto-common 0.2.2",
  "ctutils",
+]
+
+[[package]]
+name = "digest-io"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2de63d600bc7fab91180bc17385f29b342468dc8ef2af09dceba450a293de3da"
+dependencies = [
+ "digest 0.11.3",
 ]
 
 [[package]]
@@ -3832,6 +3849,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "procfs-core"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6401bf7b6af22f78b563665d15a22e9aef27775b79b149a66ca022468a4e405"
+dependencies = [
+ "bitflags 2.13.2",
+ "hex",
 ]
 
 [[package]]

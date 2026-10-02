@@ -7,30 +7,32 @@
 //! up — tells the coordinator the fleet is free, which is what keeps a fleet
 //! from staying busy forever on a lost grant.
 
-use std::collections::hash_map::Entry;
 use std::collections::{HashMap, VecDeque};
 
 use afd_core::id::Uuid7;
 use tokio::sync::{mpsc, oneshot};
 
+/// One claimer: the fleet it asked for, and where its turn goes.
+type Claim = (Uuid7, oneshot::Sender<Turn>);
+
 /// What a worker asks of the coordinator.
 #[derive(Debug)]
 enum Request {
-    /// Wait for `fleet` to be free, then hold it.
-    Claim(Uuid7, oneshot::Sender<Turn>),
-    /// `fleet` is free again.
+    /// Wait for the fleet to be free, then hold it.
+    Claim(Claim),
+    /// The fleet is free again.
     Release(Uuid7),
 }
 
 /// Asks for turns.
 #[derive(Debug, Clone)]
-pub struct FleetTurns {
+pub(crate) struct FleetTurns {
     requests: mpsc::UnboundedSender<Request>,
 }
 
 /// One fleet, held; dropping it frees the fleet.
 #[derive(Debug)]
-pub struct Turn {
+pub(crate) struct Turn {
     fleet: Option<Uuid7>,
     requests: mpsc::UnboundedSender<Request>,
 }
@@ -46,7 +48,7 @@ impl Drop for Turn {
 
 impl FleetTurns {
     /// A handle for workers, and the coordinator the caller must run.
-    pub fn start() -> (Self, impl Future<Output = ()> + Send + 'static) {
+    pub(crate) fn start() -> (Self, impl Future<Output = ()> + Send + 'static) {
         let (requests, receiver) = mpsc::unbounded_channel();
         let coordinator = coordinate(receiver, requests.downgrade());
         (Self { requests }, coordinator)
@@ -54,43 +56,50 @@ impl FleetTurns {
 
     /// Waits until `fleet` is free, and holds it until the turn is dropped.
     ///
-    /// `None` only when the coordinator has already stopped.
-    pub async fn claim(&self, fleet: &Uuid7) -> Option<Turn> {
+    /// `None` only when the coordinator has already stopped. The one copy of
+    /// the identifier made here is the claimer's own: it rides to the
+    /// coordinator and comes back inside the turn.
+    pub(crate) async fn claim(&self, fleet: &Uuid7) -> Option<Turn> {
         let (granted, grant) = oneshot::channel();
         self.requests
-            .send(Request::Claim(fleet.clone(), granted))
+            .send(Request::Claim((fleet.clone(), granted)))
             .ok()?;
         grant.await.ok()
     }
 }
 
 /// Grants turns until every handle and turn is gone.
+///
+/// A fleet in the table is busy; its queue holds the claims waiting for it.
+/// The first claim's identifier becomes the table's key and the turn gets the
+/// one copy it needs to release; a waiting claim keeps its own identifier and
+/// receives it back in its turn.
 async fn coordinate(
     mut requests: mpsc::UnboundedReceiver<Request>,
     own: mpsc::WeakUnboundedSender<Request>,
 ) {
-    let mut busy: HashMap<Uuid7, VecDeque<oneshot::Sender<Turn>>> = HashMap::new();
+    let mut busy: HashMap<Uuid7, VecDeque<Claim>> = HashMap::new();
     while let Some(request) = requests.recv().await {
         match request {
-            Request::Claim(fleet, granted) => match busy.entry(fleet) {
-                Entry::Occupied(mut waiting) => waiting.get_mut().push_back(granted),
-                Entry::Vacant(free) => {
-                    let fleet = free.key().clone();
-                    free.insert(VecDeque::new());
-                    grant(&own, fleet, granted);
+            Request::Claim((fleet, granted)) => {
+                if let Some(waiting) = busy.get_mut(&fleet) {
+                    waiting.push_back((fleet, granted));
+                } else {
+                    busy.insert(fleet.clone(), VecDeque::new());
+                    grant(&own, (fleet, granted));
                 }
-            },
+            }
             Request::Release(fleet) => match busy.get_mut(&fleet).and_then(VecDeque::pop_front) {
-                Some(next) => grant(&own, fleet, next),
+                Some(next) => grant(&own, next),
                 None => drop(busy.remove(&fleet)),
             },
         }
     }
 }
 
-/// Hands `fleet` to a claimer. A claimer that already gave up drops the turn
+/// Hands a claim its turn. A claimer that already gave up drops the turn
 /// unread, and its drop frees the fleet for the next.
-fn grant(own: &mpsc::WeakUnboundedSender<Request>, fleet: Uuid7, granted: oneshot::Sender<Turn>) {
+fn grant(own: &mpsc::WeakUnboundedSender<Request>, (fleet, granted): Claim) {
     if let Some(requests) = own.upgrade() {
         drop(granted.send(Turn {
             fleet: Some(fleet),

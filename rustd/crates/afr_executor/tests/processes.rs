@@ -11,7 +11,9 @@ use afr_executor::{Ending, Executor as _, Spawn};
 use bytes::Bytes;
 use rustix::process::{Pid, test_kill_process};
 
-use crate::support::{KIB, finish, read_until, start};
+use crate::support::{
+    INVALID_PARAMS, KIB, PATH_REFUSED, UNKNOWN_PROCESS, finish, read_until, refused_with, start,
+};
 
 #[tokio::test]
 async fn test_executor_spawn_streams_output() {
@@ -135,19 +137,16 @@ async fn a_process_starts_in_the_directory_it_names_and_sees_only_its_environmen
 }
 
 #[tokio::test]
-async fn a_program_that_does_not_exist_is_refused_at_spawn() {
+async fn a_program_that_does_not_exist_is_the_callers_mistake_on_pipes_and_terminals() {
     let harness = start().await;
 
-    let refused = harness
-        .client
-        .spawn(Spawn::program("no-such-program-anywhere"))
-        .await
-        .unwrap_err();
+    let on_pipes = Spawn::program("no-such-program-anywhere");
+    let on_terminal = Spawn::program("no-such-program-anywhere").terminal();
+    for spawn in [on_pipes, on_terminal] {
+        let refused = harness.client.spawn(spawn).await.unwrap_err();
 
-    assert!(
-        !refused.is_path_refused() && !refused.is_connection_lost(),
-        "{refused}"
-    );
+        assert!(refused_with(&refused, INVALID_PARAMS), "{refused}");
+    }
 }
 
 #[tokio::test]
@@ -160,7 +159,7 @@ async fn a_working_directory_outside_the_workspace_is_refused() {
         .await
         .unwrap_err();
 
-    assert!(refused.is_path_refused(), "{refused}");
+    assert!(refused_with(&refused, PATH_REFUSED), "{refused}");
 }
 
 #[tokio::test]
@@ -179,6 +178,6 @@ async fn a_process_that_already_ended_is_unknown_to_kill_and_write() {
         .await
         .unwrap_err();
 
-    assert!(killed.is_unknown_process(), "{killed}");
-    assert!(written.is_unknown_process(), "{written}");
+    assert!(refused_with(&killed, UNKNOWN_PROCESS), "{killed}");
+    assert!(refused_with(&written, UNKNOWN_PROCESS), "{written}");
 }

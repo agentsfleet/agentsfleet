@@ -6,6 +6,10 @@
 //! the supervisor in the order they were queued. Nothing here is shared behind
 //! a lock: a process is reached through its control channel, and the
 //! workspace handle is read-only.
+//!
+//! Binding is split from serving. [`bind`] needs no runtime and no workspace,
+//! so the sandbox claims its socket first and then drops the right to create
+//! one before any request is read.
 
 mod files;
 mod launch;
@@ -28,36 +32,73 @@ use crate::error::Result;
 /// Where the workspace disk is mounted inside every sandbox.
 pub const WORKSPACE_ROOT: &str = "/workspace";
 
-/// The executor bound its socket and waits for the supervisor.
+/// The executor took its socket and waits for the supervisor.
 const EVENT_SERVE_STARTED: &str = "executor_serve_started";
 /// The supervisor's connection closed and every process it started has ended.
 const EVENT_SERVE_COMPLETED: &str = "executor_serve_completed";
+/// The executor could not serve: no workspace, or no connection.
+const EVENT_SERVE_FAILED: &str = "executor_serve_failed";
 
-/// Serves one supervisor connection on `socket`, confining file calls and
-/// working directories to `root`, until the connection closes.
+/// A bound executor socket, not yet serving.
+#[derive(Debug)]
+pub struct Listener {
+    socket: std::os::unix::net::UnixListener,
+}
+
+/// Claims `socket` for the executor.
 ///
-/// Every process the connection started has ended when this returns: a
-/// connection that closes takes its processes with it.
+/// Synchronous, and needs no runtime: the sandbox binds before it hardens
+/// itself, then serves with what it kept.
 ///
 /// # Errors
-/// When the socket cannot be bound, `root` cannot be opened, or no connection
-/// arrives.
+/// When `socket` exists already or cannot be created.
+pub fn bind(socket: &Path) -> Result<Listener> {
+    let socket = std::os::unix::net::UnixListener::bind(socket)?;
+    socket.set_nonblocking(true)?;
+    Ok(Listener { socket })
+}
+
+impl Listener {
+    /// Serves one supervisor connection, confining file calls and working
+    /// directories to `root`, until the connection closes.
+    ///
+    /// Every process the connection started has ended when this returns: a
+    /// connection that closes takes its processes with it.
+    ///
+    /// # Errors
+    /// When `root` cannot be opened, or no connection arrives.
+    pub async fn serve(self, root: &Path) -> Result<()> {
+        let event = EVENT_SERVE_STARTED;
+        tracing::info!(event, "the executor is listening");
+        let served = accept(self.socket, root).await;
+        match &served {
+            Ok(()) => {
+                let event = EVENT_SERVE_COMPLETED;
+                tracing::info!(event, "the executor's connection closed");
+            }
+            Err(failure) => {
+                let event = EVENT_SERVE_FAILED;
+                let error_code = failure.code().as_str();
+                let reason = failure.wire_message();
+                tracing::warn!(event, error_code, reason, "the executor could not serve");
+            }
+        }
+        served
+    }
+}
+
+/// [`bind`] then [`Listener::serve`], for a caller with nothing to do between.
+///
+/// # Errors
+/// As [`bind`] and [`Listener::serve`].
 pub async fn serve(socket: &Path, root: &Path) -> Result<()> {
-    let listener = UnixListener::bind(socket)?;
-    let workspace = Arc::new(Workspace::open(root)?);
-    let event = EVENT_SERVE_STARTED;
-    tracing::info!(event, "the executor is listening");
-
-    let served = accept(&listener, workspace).await;
-
-    let event = EVENT_SERVE_COMPLETED;
-    let ok = served.is_ok();
-    tracing::info!(event, ok, "the executor's connection closed");
-    served
+    bind(socket)?.serve(root).await
 }
 
 /// Takes the one connection and serves it to its end.
-async fn accept(listener: &UnixListener, workspace: Arc<Workspace>) -> Result<()> {
+async fn accept(socket: std::os::unix::net::UnixListener, root: &Path) -> Result<()> {
+    let listener = UnixListener::from_std(socket)?;
+    let workspace = Arc::new(Workspace::open(root)?);
     let (stream, _peer) = listener.accept().await?;
     let (read, write) = stream.into_split();
     let (outbound, queued) = mpsc::unbounded_channel();
@@ -67,8 +108,7 @@ async fn accept(listener: &UnixListener, workspace: Arc<Workspace>) -> Result<()
     ));
     Session::new(workspace, outbound).run(read).await;
     // The session dropped the last sender, so the writer drains and ends.
-    let _drained = writer.await;
-    Ok(())
+    Ok(writer.await?)
 }
 
 /// Writes every queued line until the queue closes or the socket does.

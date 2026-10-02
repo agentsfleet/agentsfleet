@@ -1,15 +1,16 @@
 //! Starting a process: on pipes, or on a pseudo-terminal.
 //!
 //! The two differ only in how a process is started, written to and read; once
-//! started, both are a [`Spawned`] — a group leader's pid, an input, an exit
-//! and an output channel — and the same task drives either.
+//! started, both are a [`Spawned`] — a group leader's pid, an input, an exit,
+//! an output channel and the readers feeding it — and the same task drives
+//! either.
 
 use std::collections::BTreeMap;
 use std::io;
 use std::os::unix::process::ExitStatusExt as _;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::process::Stdio;
+use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -19,9 +20,10 @@ use tokio::io::{AsyncRead, AsyncWriteExt as _};
 use tokio::process::ChildStdin;
 use tokio::sync::mpsc;
 use tokio_util::io::ReaderStream;
+use tokio_util::task::AbortOnDropHandle;
 
 use super::files::Workspace;
-use crate::api::Stream;
+use crate::api::{Ending, Stream};
 use crate::edges::Chunk;
 use crate::error::{self, Result};
 use crate::protocol::SpawnParams;
@@ -36,45 +38,18 @@ const DEFAULT_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
 /// A process needs a program to run.
 const DETAIL_NO_PROGRAM: &str = "argv must name a program";
 
-/// When a process ends, and how.
-pub(super) type Exit = Pin<Box<dyn Future<Output = Status> + Send>>;
+/// When a process's leader ends, and how.
+pub(super) type Exit = Pin<Box<dyn Future<Output = Ending> + Send>>;
 
-/// How a process ended, as the operating system reported it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Status {
-    /// It exited with this code.
-    Code(i32),
-    /// This signal ended it.
-    Signal(i32),
-    /// Waiting for it failed, so how it ended is unknown.
-    Lost,
-}
-
-impl Status {
-    /// The exit code, when it exited.
-    pub(super) const fn code(self) -> Option<i32> {
-        match self {
-            Self::Code(code) => Some(code),
-            Self::Signal(_) | Self::Lost => None,
-        }
-    }
-
-    /// The signal, when one ended it.
-    pub(super) const fn signal(self) -> Option<i32> {
-        match self {
-            Self::Signal(signal) => Some(signal),
-            Self::Code(_) | Self::Lost => None,
-        }
-    }
-}
-
-impl From<std::process::ExitStatus> for Status {
-    fn from(status: std::process::ExitStatus) -> Self {
+/// How a waited-for process ended. A wait that failed leaves the ending
+/// unknown, which is what [`Ending::Interrupted`] says.
+pub(super) fn ending_of(waited: io::Result<ExitStatus>) -> Ending {
+    waited.map_or(Ending::Interrupted, |status| {
         status.signal().map_or_else(
-            || status.code().map_or(Self::Lost, Self::Code),
-            Self::Signal,
+            || status.code().map_or(Ending::Interrupted, Ending::Exited),
+            Ending::Signaled,
         )
-    }
+    })
 }
 
 /// What to start, checked against the workspace.
@@ -130,12 +105,15 @@ pub(super) struct Spawned {
     pub(super) exit: Exit,
     /// Output as it is read, closed once every reader reaches its end.
     pub(super) output: mpsc::Receiver<Chunk>,
+    /// The tasks reading output, stopped when this is dropped: a descendant
+    /// that left the group may hold a pipe open long after the leader ends.
+    pub(super) readers: Vec<AbortOnDropHandle<()>>,
 }
 
 /// Starts processes one way.
 pub(super) trait Launcher: Send + Sync {
     /// Starts `plan` as the leader of a new process group.
-    fn launch(&self, plan: &Plan) -> io::Result<Spawned>;
+    fn launch(&self, plan: &Plan) -> Result<Spawned>;
 }
 
 /// A process's input.
@@ -158,7 +136,7 @@ pub(super) fn launcher(terminal: bool) -> &'static dyn Launcher {
 struct Pipes;
 
 impl Launcher for Pipes {
-    fn launch(&self, plan: &Plan) -> io::Result<Spawned> {
+    fn launch(&self, plan: &Plan) -> Result<Spawned> {
         let mut child = tokio::process::Command::new(&plan.program)
             .args(&plan.arguments)
             .env_clear()
@@ -181,14 +159,17 @@ impl Launcher for Pipes {
             .zip(stderr)
             .map(|((i, o), e)| (i, o, e))
             .ok_or_else(missing_pipe)?;
-        tokio::spawn(pump(stdout, Stream::Stdout, sender.clone()));
-        tokio::spawn(pump(stderr, Stream::Stderr, sender));
-        let exit = Box::pin(async move { child.wait().await.map_or(Status::Lost, Status::from) });
+        let readers = vec![
+            AbortOnDropHandle::new(tokio::spawn(pump(stdout, Stream::Stdout, sender.clone()))),
+            AbortOnDropHandle::new(tokio::spawn(pump(stderr, Stream::Stderr, sender))),
+        ];
+        let exit = Box::pin(async move { ending_of(child.wait().await) });
         Ok(Spawned {
             pid,
             input: Box::new(PipeInput(stdin)),
             exit,
             output,
+            readers,
         })
     }
 }

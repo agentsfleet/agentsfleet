@@ -25,13 +25,21 @@ async-trait.workspace = true
 backon.workspace = true
 # The bubblewrap launcher's error stream, read a line at a time with a cap.
 futures-util.workspace = true
-# The toolbox image is named by its SHA-256.
+# The toolbox image is named by its SHA-256, streamed through the hasher.
+digest-io.workspace = true
 hex.workspace = true
 sha2.workspace = true
+# The process status a sandbox reads before it serves.
+procfs-core.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "sync", "time"] }
 tokio-util = { workspace = true, features = ["codec"] }
 tracing.workspace = true
+# The in-sandbox process logs to the error stream the supervisor drains.
+tracing-subscriber.workspace = true
+# A warm slot is named like a lease: unique, so a restart never meets its own
+# leftovers under the same name.
+uuid.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # The kernel interfaces a sandbox confines itself with, each the crate Codex's

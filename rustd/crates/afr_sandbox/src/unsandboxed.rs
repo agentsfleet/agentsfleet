@@ -10,7 +10,6 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use afr_executor::{Client, Executor};
-use backon::{ConstantBuilder, Retryable as _};
 use tokio::task::JoinHandle;
 
 use crate::bubblewrap::SOCKET_NAME;
@@ -19,10 +18,8 @@ use crate::error::{ErrorKind, Result};
 
 /// The workspace directory inside each lease's scratch directory.
 const WORKSPACE_DIR: &str = "workspace";
-/// How often the socket is tried while the executor binds it.
-const CONNECT_DELAY: Duration = Duration::from_millis(2);
-/// How many tries before the start is abandoned.
-const CONNECT_TRIES: usize = 500;
+/// How long the in-process executor may take to bind its socket.
+const CONNECT_WITHIN: Duration = Duration::from_secs(1);
 /// How long a closed session may take to end its processes.
 const SERVER_GRACE: Duration = Duration::from_secs(5);
 
@@ -81,10 +78,7 @@ impl Engine for UnsandboxedEngine {
 
 /// Connects once the executor has bound its socket.
 async fn connect(socket: &Path) -> Result<Client> {
-    let backoff = ConstantBuilder::default()
-        .with_delay(CONNECT_DELAY)
-        .with_max_times(CONNECT_TRIES);
-    Ok((|| Client::connect(socket)).retry(backoff).await?)
+    Ok(Client::connect_within(socket, CONNECT_WITHIN).await?)
 }
 
 /// A scratch directory with an executor serving it.
@@ -99,6 +93,10 @@ struct Unconfined {
 impl Sandbox for Unconfined {
     fn executor(&self) -> &dyn Executor {
         &self.client
+    }
+
+    fn is_running(&mut self) -> bool {
+        !self.server.is_finished()
     }
 
     async fn destroy(self: Box<Self>) -> Result<()> {

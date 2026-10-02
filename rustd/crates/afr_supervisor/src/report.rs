@@ -12,7 +12,7 @@ use afr_agent::RunOutput;
 
 /// How a lease's run ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Ending {
+pub(crate) enum Ending {
     /// The engine ran the turn to its end; the result may itself be a failure
     /// the fleet caused.
     Ran {
@@ -32,8 +32,7 @@ pub enum Ending {
 }
 
 /// The report for `lease`, which ran for `wall`.
-#[must_use]
-pub fn report<'a>(
+pub(crate) fn report<'a>(
     lease: &'a LeasePayload<'a>,
     ending: &'a Ending,
     wall: Duration,

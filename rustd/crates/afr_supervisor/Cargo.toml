@@ -38,11 +38,16 @@ serde_json.workspace = true
 # persisted only once complete, so a crash never leaves half a report.
 tempfile.workspace = true
 thiserror.workspace = true
+# The daemon's address, parsed once at boot; every route joins under it.
+url.workspace = true
 tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
 # The token that stops a run when its lease is refused, and stops the pool at
 # shutdown.
 tokio-util.workspace = true
 tracing.workspace = true
+# `catch_unwind` around an agent run, so a panicking engine still has its
+# sandbox torn down.
+futures-util.workspace = true
 
 [dev-dependencies]
 # The bundle tests' independent oracle for the digest.

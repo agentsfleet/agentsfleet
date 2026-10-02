@@ -10,47 +10,48 @@ use afd_wire::runner::{
 };
 use afr_sandbox::HostProbe;
 use tokio::sync::watch;
-use tokio_util::sync::CancellationToken;
 
 use crate::capability::{capability_report, selftest};
-use crate::client::ControlPlane;
+use crate::client::{ControlPlane, endless};
 use crate::error::Result;
+use crate::halt::Halt;
 
+/// The shortest pause between beats, whatever the daemon asks: a reply saying
+/// zero must not turn the heartbeat into a busy loop.
+pub(crate) const MIN_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1);
 const EVENT_FAILED: &str = "heartbeat_failed";
-const EVENT_UNAUTHORIZED: &str = "heartbeat_unauthorized";
 
 /// What the daemon most recently told this runner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Assignment {
+pub(crate) struct Assignment {
     /// Whether to take work, finish it, or stop.
-    pub status: HeartbeatStatus,
-    /// How many leases to run at once.
-    pub workers: WorkerCount,
+    pub(crate) status: HeartbeatStatus,
+    /// How many leases to run at once; zero until a policy arrives.
+    pub(crate) workers: u32,
     /// How long until the next beat.
-    pub interval: Duration,
+    pub(crate) interval: Duration,
 }
 
 impl Assignment {
-    /// What a runner assumes before its first beat is answered.
-    #[must_use]
-    pub fn initial() -> Self {
+    /// What a runner assumes before its first beat is answered: no work, since
+    /// it has no policy to work under.
+    pub(crate) const fn initial() -> Self {
         Self {
             status: HeartbeatStatus::Ok,
-            workers: WorkerCount::default(),
+            workers: 0,
             interval: Duration::from_millis(HEARTBEAT_INTERVAL_MS.unsigned_abs()),
         }
     }
 
     /// Whether worker number `worker` should take new work.
-    #[must_use]
-    pub const fn takes_work(self, worker: u32) -> bool {
-        matches!(self.status, HeartbeatStatus::Ok) && worker < self.workers.get()
+    pub(crate) const fn takes_work(self, worker: u32) -> bool {
+        matches!(self.status, HeartbeatStatus::Ok) && worker < self.workers
     }
 }
 
 /// The beat, and what it remembers between beats.
 #[derive(Debug)]
-pub struct Heartbeat<'a> {
+pub(crate) struct Heartbeat<'a> {
     plane: &'a ControlPlane,
     probe: &'a HostProbe,
     label: Option<(SandboxTier, NetworkPolicy)>,
@@ -60,8 +61,7 @@ pub struct Heartbeat<'a> {
 
 impl<'a> Heartbeat<'a> {
     /// A beat over `plane`, reporting `probe`.
-    #[must_use]
-    pub fn new(plane: &'a ControlPlane, probe: &'a HostProbe) -> Self {
+    pub(crate) const fn new(plane: &'a ControlPlane, probe: &'a HostProbe) -> Self {
         Self {
             plane,
             probe,
@@ -73,12 +73,9 @@ impl<'a> Heartbeat<'a> {
 
     /// Beats once, carrying a self-test when one was asked for.
     ///
-    /// A self-test is labelled with the assignment it ran under, so it waits
-    /// for the first beat that brings one.
-    ///
-    /// # Errors
-    /// Any classified failure of the call, or a reply that does not decode.
-    pub async fn beat(&mut self) -> Result<Assignment> {
+    /// A null policy is a row the daemon could not read, and the runner fails
+    /// closed on it: no workers, and no label for a self-test to run under.
+    pub(crate) async fn beat(&mut self) -> Result<Assignment> {
         let selftest = self
             .label
             .filter(|_| self.selftest_due)
@@ -89,56 +86,57 @@ impl<'a> Heartbeat<'a> {
         };
         let body = self.plane.heartbeat(&request).await?;
         let reply: HeartbeatResponse<'_> = body.decode()?;
+        let policy = reply.assigned_policy.as_ref();
         self.selftest_due = reply.selftest_requested;
-        if let Some(policy) = &reply.assigned_policy {
-            self.label = Some((policy.sandbox_tier, policy.network_policy));
-            self.last.workers = WorkerCount::clamping(policy.worker_count);
-        }
-        self.last.status = reply.status;
-        self.last.interval = Duration::from_millis(u64::from(reply.heartbeat_interval_ms));
+        self.label = policy.map(|policy| (policy.sandbox_tier, policy.network_policy));
+        self.last = Assignment {
+            status: reply.status,
+            workers: policy.map_or(0, |policy| WorkerCount::clamping(policy.worker_count).get()),
+            interval: Duration::from_millis(u64::from(reply.heartbeat_interval_ms))
+                .max(MIN_HEARTBEAT_INTERVAL),
+        };
         Ok(self.last)
     }
 
-    /// Beats until `shutdown`, publishing each assignment.
+    /// Beats until the runner stops serving, publishing each assignment.
     ///
-    /// A refused token, or a `stop`, ends the runner: neither is answered by
-    /// waiting. Any other failure keeps the last assignment and beats again.
-    pub async fn keep_beating(
+    /// A `stop` ends the runner, leases in flight included, and so does a
+    /// refused token. Any other failure keeps the last assignment and beats
+    /// again, sooner the first time and backing off after.
+    pub(crate) async fn keep_beating(
         mut self,
         assignment: &watch::Sender<Assignment>,
-        shutdown: &CancellationToken,
+        halt: &Halt,
     ) {
+        let mut retries = endless();
+        let mut pause = Duration::ZERO;
         loop {
-            let interval = self.last.interval;
             tokio::select! {
-                () = shutdown.cancelled() => return,
-                () = tokio::time::sleep(interval) => {}
+                () = halt.serving().cancelled() => return,
+                () = tokio::time::sleep(pause) => {}
             }
             match self.beat().await {
                 Ok(beat) => {
-                    if beat.status == HeartbeatStatus::Stop {
-                        shutdown.cancel();
-                    }
+                    retries = endless();
+                    pause = beat.interval;
                     assignment.send_replace(beat);
+                    if beat.status == HeartbeatStatus::Stop {
+                        halt.stop();
+                    }
                 }
+                Err(failure) if halt.stops_on(&failure) => return,
                 Err(failure) => {
                     let code = failure.code().as_str();
-                    if failure.is_unauthorized() {
-                        let event = EVENT_UNAUTHORIZED;
-                        tracing::error!(
-                            error_code = code,
-                            event,
-                            "the daemon refused this runner's token"
-                        );
-                        shutdown.cancel();
-                        return;
-                    }
                     let event = EVENT_FAILED;
                     tracing::warn!(
                         error_code = code,
                         event,
                         "a heartbeat failed; the last assignment stands"
                     );
+                    pause = retries
+                        .next()
+                        .unwrap_or(self.last.interval)
+                        .min(self.last.interval);
                 }
             }
         }

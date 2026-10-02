@@ -12,8 +12,10 @@
 //! counted and logged.
 
 use std::io;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
+use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_wire::activity::{ActivityFrame, ActivityRequest};
 use afr_agent::EventSink;
@@ -23,50 +25,53 @@ use tokio::time::Instant;
 use crate::client::ControlPlane;
 
 /// Batches waiting or in flight at once; the next is dropped.
-pub const MAX_BATCHES_HELD: usize = 4;
+pub(crate) const MAX_BATCHES_HELD: usize = 4;
 /// The most frame bytes one batch carries; a single larger frame rides alone.
-pub const MAX_BATCH_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_BATCH_BYTES: usize = 64 * 1024;
 /// How long a partial batch waits for company before it is sent anyway.
 const FLUSH_EVERY: Duration = Duration::from_millis(250);
 const EVENT_BATCH_DROPPED: &str = "activity_batch_dropped";
 const EVENT_POST_FAILED: &str = "activity_frame_write_failed";
 
-/// The run's side: hands frames to the pump without waiting.
+/// The run's side: hands frames to the pump without waiting, and notes when
+/// the first answer chunk went by, which is the run's time to first token.
 #[derive(Debug)]
-pub struct ActivitySink {
+pub(crate) struct ActivitySink {
     frames: mpsc::UnboundedSender<ActivityFrame<'static>>,
+    started: Instant,
+    first_chunk: OnceLock<Duration>,
+}
+
+impl ActivitySink {
+    /// When the first answer chunk was emitted, measured from the sink's start.
+    pub(crate) fn first_chunk(&self) -> Option<Duration> {
+        self.first_chunk.get().copied()
+    }
 }
 
 impl EventSink for ActivitySink {
     fn emit(&self, frame: ActivityFrame<'static>) {
+        if matches!(frame, ActivityFrame::FleetResponseChunk(_)) {
+            self.first_chunk.get_or_init(|| self.started.elapsed());
+        }
         // A closed pump means the lease is ending; a frame then has no reader.
         drop(self.frames.send(frame));
     }
 }
 
-/// What a finished pump observed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Pumped {
-    /// Batches dropped because [`MAX_BATCHES_HELD`] were already held.
-    pub dropped: u64,
-    /// When the first answer chunk arrived, measured from the pump's start.
-    pub first_chunk: Option<Duration>,
-}
-
 /// The posting side: batches frames and posts them, for one lease.
 #[derive(Debug)]
-pub struct ActivityPump<'a> {
+pub(crate) struct ActivityPump<'a> {
     plane: &'a ControlPlane,
     lease_id: &'a Uuid7,
     frames: mpsc::UnboundedReceiver<ActivityFrame<'static>>,
-    held: std::sync::Arc<Semaphore>,
-    started: Instant,
-    pumped: Pumped,
+    held: Arc<Semaphore>,
+    /// Batches dropped because [`MAX_BATCHES_HELD`] were already held.
+    dropped: u64,
 }
 
 /// A sink for the run and the pump that posts what it emits.
-#[must_use]
-pub fn channel<'a>(
+pub(crate) fn channel<'a>(
     plane: &'a ControlPlane,
     lease_id: &'a Uuid7,
 ) -> (ActivitySink, ActivityPump<'a>) {
@@ -75,29 +80,24 @@ pub fn channel<'a>(
         plane,
         lease_id,
         frames: receiver,
-        held: std::sync::Arc::new(Semaphore::new(MAX_BATCHES_HELD)),
-        started: Instant::now(),
-        pumped: Pumped {
-            dropped: 0,
-            first_chunk: None,
-        },
+        held: Arc::new(Semaphore::new(MAX_BATCHES_HELD)),
+        dropped: 0,
     };
-    (ActivitySink { frames: sender }, pump)
+    let sink = ActivitySink {
+        frames: sender,
+        started: Instant::now(),
+        first_chunk: OnceLock::new(),
+    };
+    (sink, pump)
 }
 
 /// One batch, and the permit that counts it as held until it is posted.
 type Held = (Vec<ActivityFrame<'static>>, OwnedSemaphorePermit);
 
 impl ActivityPump<'_> {
-    /// What the pump has observed so far.
-    #[must_use]
-    pub const fn pumped(&self) -> Pumped {
-        self.pumped
-    }
-
     /// Batches and posts until the sink is dropped and every held batch is
     /// sent.
-    pub async fn run(&mut self) {
+    pub(crate) async fn run(&mut self) {
         let (posts, mut queued) = mpsc::unbounded_channel::<Held>();
         let plane = self.plane;
         let lease_id = self.lease_id;
@@ -120,11 +120,15 @@ impl ActivityPump<'_> {
                 biased;
                 frame = self.frames.recv() => {
                     let Some(frame) = frame else { break };
-                    self.observe(&frame);
                     let size = encoded_len(&frame);
                     if !batch.is_empty() && bytes + size > MAX_BATCH_BYTES {
                         self.hand_off(&posts, std::mem::take(&mut batch));
                         bytes = 0;
+                    }
+                    if batch.is_empty() {
+                        // A quiet spell left the tick's deadline behind; the
+                        // new batch gets a full period, not a burst of ticks.
+                        flush.reset();
                     }
                     batch.push(frame);
                     bytes += size;
@@ -146,30 +150,23 @@ impl ActivityPump<'_> {
         posts: &mpsc::UnboundedSender<Held>,
         frames: Vec<ActivityFrame<'static>>,
     ) {
-        match std::sync::Arc::clone(&self.held).try_acquire_owned() {
+        match Arc::clone(&self.held).try_acquire_owned() {
             // The poster outlives the batcher inside `run`, so it is listening.
             Ok(permit) => drop(posts.send((frames, permit))),
             Err(_full) => {
-                self.pumped.dropped += 1;
+                self.dropped += 1;
+                let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
                 let lease_id = self.lease_id.as_str();
-                let dropped = self.pumped.dropped;
+                let dropped = self.dropped;
                 let event = EVENT_BATCH_DROPPED;
                 tracing::warn!(
+                    error_code = code,
                     lease_id,
                     dropped,
                     event,
                     "the live tail fell behind; a batch was dropped"
                 );
             }
-        }
-    }
-
-    /// Notes the first answer chunk, which is the run's time to first token.
-    fn observe(&mut self, frame: &ActivityFrame<'static>) {
-        if self.pumped.first_chunk.is_none()
-            && matches!(frame, ActivityFrame::FleetResponseChunk(_))
-        {
-            self.pumped.first_chunk = Some(self.started.elapsed());
         }
     }
 }
@@ -207,14 +204,6 @@ impl io::Write for Counter {
 
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
-    }
-}
-
-#[cfg(test)]
-impl Counter {
-    /// What was counted.
-    const fn counted(&self) -> usize {
-        self.0
     }
 }
 

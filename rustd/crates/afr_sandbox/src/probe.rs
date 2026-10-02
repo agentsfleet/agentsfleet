@@ -32,7 +32,10 @@ pub const MECHANISM_BUBBLEWRAP: &str = "bubblewrap";
 /// See [`MECHANISM_LANDLOCK`]; the toolbox's file system is EROFS.
 pub const MECHANISM_TOOLBOX_FILESYSTEM: &str = "erofs";
 /// The cgroup controllers every lease's limits are written through.
-pub const REQUIRED_CONTROLLERS: [&str; 3] = ["cpu", "memory", "pids"];
+///
+/// `io` is among them: a host that cannot cap a lease's disk throughput cannot
+/// keep one lease from starving the others, so it builds no sandbox.
+pub const REQUIRED_CONTROLLERS: [&str; 4] = ["cpu", "io", "memory", "pids"];
 
 /// The seccomp action every refused system call answers with.
 const SECCOMP_ERRNO_ACTION: &str = "errno";
@@ -149,11 +152,20 @@ impl HostProbe {
         ]
         .into_iter()
         .find_map(|(present, name)| (!present).then_some(name))
-        .or_else(|| {
-            REQUIRED_CONTROLLERS
-                .into_iter()
-                .find(|wanted| !self.cgroup_controllers.iter().any(|have| have == wanted))
-        })
+        .or_else(|| self.missing_controller())
+    }
+
+    /// Whether every controller a lease's limits need is delegated here.
+    #[must_use]
+    pub fn has_required_controllers(&self) -> bool {
+        self.missing_controller().is_none()
+    }
+
+    /// The first required controller this host does not delegate.
+    fn missing_controller(&self) -> Option<&'static str> {
+        REQUIRED_CONTROLLERS
+            .into_iter()
+            .find(|wanted| !self.cgroup_controllers.iter().any(|have| have == wanted))
     }
 }
 

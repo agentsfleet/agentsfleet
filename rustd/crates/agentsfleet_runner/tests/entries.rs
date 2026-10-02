@@ -7,11 +7,22 @@
 
 use std::process::{Command, Output};
 
+use afr_supervisor::config::{ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME};
+
 /// The built binary under test.
 const BINARY: &str = env!("CARGO_BIN_EXE_agentsfleet-runner");
 
 /// What `run` logs when it refuses to start.
 const RUN_REFUSED: &str = "run_refused";
+
+/// What `run` logs when its boot fails.
+const RUN_FAILED: &str = "run_failed";
+
+/// A daemon address nothing answers on; `run` must refuse before dialling it.
+const UNREACHABLE_DAEMON: &str = "http://127.0.0.1:9";
+
+/// A token of the runner's shape.
+const TOKEN: &str = "agt_r_entries_test";
 
 /// The exit status of an entry this build refuses.
 const REFUSED: i32 = 2;
@@ -42,17 +53,44 @@ fn probe_answers_with_the_report_and_every_check() {
     assert_eq!(probed.status.success(), all_mechanisms, "{answer}");
 }
 
-/// `run` refuses before it contacts anything, naming why, with the status a
-/// service manager does not restart.
+/// Without its environment, `run` fails at boot and names why.
 #[test]
-fn run_refuses_without_an_agent_engine() {
+fn run_fails_at_boot_without_its_environment() {
     let ran = entry("run");
 
-    assert_eq!(ran.status.code(), Some(REFUSED));
+    assert_eq!(ran.status.code(), Some(1));
     assert!(
-        String::from_utf8_lossy(&ran.stderr).contains(RUN_REFUSED),
+        String::from_utf8_lossy(&ran.stderr).contains(RUN_FAILED),
         "{}",
         String::from_utf8_lossy(&ran.stderr)
+    );
+}
+
+/// With a valid environment, `run` boots — storage home opened and swept,
+/// host probed — and refuses before it contacts the daemon: exit 2 where the
+/// host could build a sandbox, 1 where it could not, `run_refused` either way.
+#[test]
+fn run_boots_then_refuses_without_an_agent_engine() {
+    let home = tempfile::tempdir().expect("a storage home");
+    let ran = Command::new(BINARY)
+        .arg("run")
+        .env_clear()
+        .env(ENV_API_URL, UNREACHABLE_DAEMON)
+        .env(ENV_RUNNER_TOKEN, TOKEN)
+        .env(ENV_STORAGE_HOME, home.path())
+        .output()
+        .expect("the runner binary starts");
+
+    let stderr = String::from_utf8_lossy(&ran.stderr);
+    assert!(stderr.contains(RUN_REFUSED), "{stderr}");
+    let host_can_sandbox = afr_sandbox::probe(&afr_sandbox::ProbePaths::default())
+        .missing()
+        .is_none();
+    let expected = if host_can_sandbox { REFUSED } else { 1 };
+    assert_eq!(ran.status.code(), Some(expected), "{stderr}");
+    assert!(
+        home.path().exists(),
+        "the storage home was opened, not removed"
     );
 }
 

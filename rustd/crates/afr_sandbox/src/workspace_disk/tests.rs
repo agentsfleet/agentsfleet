@@ -123,3 +123,37 @@ fn test_absent_forgives_only_a_missing_file() {
     absent(std::io::ErrorKind::NotFound.into()).unwrap();
     absent(std::io::ErrorKind::PermissionDenied.into()).unwrap_err();
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn test_a_disk_that_will_not_unmount_keeps_its_image() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("workspace.img"), "").unwrap();
+    fs::create_dir(dir.path().join("workspace")).unwrap();
+
+    // Nothing is mounted there, so the kernel refuses the unmount.
+    WorkspaceDisk::leftover(dir.path()).release().unwrap_err();
+
+    assert!(dir.path().join("workspace.img").exists());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn test_a_leftover_disk_with_nothing_mounted_is_removed() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("workspace.img"), "").unwrap();
+    fs::create_dir(dir.path().join("workspace")).unwrap();
+
+    WorkspaceDisk::leftover(dir.path())
+        .release_leftover()
+        .unwrap();
+    WorkspaceDisk::leftover(dir.path())
+        .release_leftover()
+        .unwrap();
+
+    assert_eq!(
+        fs::read_dir(dir.path()).unwrap().count(),
+        0,
+        "and twice is no failure"
+    );
+}

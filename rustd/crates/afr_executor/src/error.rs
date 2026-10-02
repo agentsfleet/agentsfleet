@@ -12,9 +12,20 @@
 //! `afd_bench` does (`docs/RUST_ERROR_STANDARD.md`); the `event` field on the
 //! log line says which failure it was. Minting a `UZ-RUN-*` code would publish
 //! it in `public/openapi.json` for a condition no client can observe.
+//!
+//! # What the other end of the socket is told
+//!
+//! [`Error::rpc_code`] sorts a failure into the caller's mistake (invalid
+//! params), a refusal the executor names (a path outside the workspace, a
+//! process it does not have, a full input queue) and its own fault (internal
+//! error), so a model reading the answer can tell which it can fix.
+
+use std::io;
 
 use afd_core::error_code::{self, ErrorCode};
-use jsonrpsee_types::error::{INTERNAL_ERROR_CODE, INVALID_PARAMS_CODE};
+use jsonrpsee_types::error::{
+    CALL_EXECUTION_FAILED_CODE, INTERNAL_ERROR_CODE, INVALID_PARAMS_CODE,
+};
 
 use crate::protocol::{PATH_REFUSED_CODE, UNKNOWN_PROCESS_CODE};
 
@@ -25,7 +36,8 @@ mod raise;
 mod tests;
 
 pub(crate) use self::raise::{
-    connection_lost, invalid_params, path_refused, refused, unknown_process,
+    connection_lost, input_backlog_full, invalid_params, not_a_file, path_refused,
+    program_unavailable, refused, unknown_process, unresponsive,
 };
 
 afd_core::error_shell!(
@@ -41,12 +53,19 @@ pub(crate) enum ErrorKind {
     Io {
         /// The operating system's reason.
         #[from]
-        source: std::io::Error,
+        source: io::Error,
     },
 
     /// The other end of the socket went away.
     #[error("the executor connection closed")]
     ConnectionLost,
+
+    /// The executor did not answer in time, so its connection is given up.
+    #[error("the executor did not answer {method} in time")]
+    Unresponsive {
+        /// The call that went unanswered.
+        method: &'static str,
+    },
 
     /// The executor answered a call with an error.
     #[error("the executor refused the call ({code}): {message}")]
@@ -81,10 +100,6 @@ pub(crate) enum ErrorKind {
         source: tokio_util::codec::LinesCodecError,
     },
 
-    /// A path leaves the workspace, or the sandbox will not open it.
-    #[error("the path is outside the workspace or not permitted")]
-    PathRefused,
-
     /// A blocking task serving a call did not finish.
     #[error("a blocking task did not finish")]
     Task {
@@ -93,9 +108,29 @@ pub(crate) enum ErrorKind {
         source: tokio::task::JoinError,
     },
 
+    /// A path leaves the workspace.
+    #[error("the path is outside the workspace")]
+    PathRefused,
+
+    /// A file call named something that is not a regular file — a pipe, a
+    /// socket, a device — which could block the executor or reach past it.
+    #[error("the path is not a regular file")]
+    NotAFile,
+
     /// No such process on this executor.
     #[error("no process with that identifier")]
     UnknownProcess,
+
+    /// A process's input queue is full because the process is not reading it.
+    #[error("the process is not reading its input fast enough")]
+    InputBacklogFull,
+
+    /// The program could not be found or started.
+    #[error("the program could not be started: {reason}")]
+    ProgramUnavailable {
+        /// Why, as the launcher put it.
+        reason: String,
+    },
 
     /// A call's parameters were well-formed but unusable.
     #[error("{detail}")]
@@ -115,39 +150,6 @@ impl Error {
         error_code::INTERNAL_OPERATION_FAILED
     }
 
-    /// Whether the call named a path outside the workspace.
-    #[must_use]
-    pub fn is_path_refused(&self) -> bool {
-        matches!(
-            self.kind(),
-            ErrorKind::PathRefused
-                | ErrorKind::Refused {
-                    code: PATH_REFUSED_CODE,
-                    ..
-                }
-        )
-    }
-
-    /// Whether the call named a process the executor does not have — one that
-    /// never existed, or one that already ended.
-    #[must_use]
-    pub fn is_unknown_process(&self) -> bool {
-        matches!(
-            self.kind(),
-            ErrorKind::UnknownProcess
-                | ErrorKind::Refused {
-                    code: UNKNOWN_PROCESS_CODE,
-                    ..
-                }
-        )
-    }
-
-    /// Whether the executor, or its sandbox, went away under the call.
-    #[must_use]
-    pub fn is_connection_lost(&self) -> bool {
-        matches!(self.kind(), ErrorKind::ConnectionLost)
-    }
-
     /// What the other end is told: the failure and, when it has one, its
     /// cause — never the registry code or a backtrace, which are this host's.
     pub(crate) fn wire_message(&self) -> String {
@@ -161,10 +163,31 @@ impl Error {
         match self.kind() {
             ErrorKind::PathRefused => PATH_REFUSED_CODE,
             ErrorKind::UnknownProcess => UNKNOWN_PROCESS_CODE,
+            ErrorKind::InputBacklogFull => CALL_EXECUTION_FAILED_CODE,
             ErrorKind::InvalidParams { .. }
             | ErrorKind::Malformed { .. }
-            | ErrorKind::Encoding { .. } => INVALID_PARAMS_CODE,
+            | ErrorKind::Encoding { .. }
+            | ErrorKind::NotAFile
+            | ErrorKind::ProgramUnavailable { .. } => INVALID_PARAMS_CODE,
+            ErrorKind::Io { source } if is_caller_mistake(source) => INVALID_PARAMS_CODE,
             _internal => INTERNAL_ERROR_CODE,
         }
     }
+}
+
+/// Whether an operating-system refusal is about what the caller asked for —
+/// a name that is not there, or is the wrong kind of thing — rather than
+/// about the executor.
+fn is_caller_mistake(failure: &io::Error) -> bool {
+    matches!(
+        failure.kind(),
+        io::ErrorKind::NotFound
+            | io::ErrorKind::NotADirectory
+            | io::ErrorKind::IsADirectory
+            | io::ErrorKind::AlreadyExists
+            | io::ErrorKind::DirectoryNotEmpty
+            | io::ErrorKind::PermissionDenied
+            | io::ErrorKind::InvalidInput
+            | io::ErrorKind::InvalidFilename
+    )
 }

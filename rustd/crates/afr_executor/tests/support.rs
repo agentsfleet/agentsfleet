@@ -20,6 +20,27 @@ pub(crate) const MIB: usize = KIB * KIB;
 /// How long any one test waits on the executor before failing.
 pub(crate) const PATIENCE: Duration = Duration::from_secs(20);
 
+/// The executor's answer to a path outside the workspace.
+pub(crate) const PATH_REFUSED: i32 = -32_010;
+/// The executor's answer to a process it does not have.
+pub(crate) const UNKNOWN_PROCESS: i32 = -32_011;
+/// The executor's answer to the caller's own mistake.
+pub(crate) const INVALID_PARAMS: i32 = -32_602;
+/// The executor's answer to a write past a process's input queue.
+pub(crate) const BACKLOG_FULL: i32 = -32_000;
+
+/// Whether `error` is the executor refusing a call with `code`.
+pub(crate) fn refused_with(error: &afr_executor::Error, code: i32) -> bool {
+    error
+        .to_string()
+        .contains(&format!("refused the call ({code})"))
+}
+
+/// Whether `error` says the executor went away.
+pub(crate) fn is_lost(error: &afr_executor::Error) -> bool {
+    error.to_string().contains("the executor connection closed")
+}
+
 /// An executor serving a scratch workspace, and a client connected to it.
 pub(crate) struct Harness {
     pub(crate) client: Client,
@@ -58,13 +79,9 @@ pub(crate) fn serve(socket: &Path, root: &Path) -> JoinHandle<afr_executor::Resu
 
 /// Connects once the executor is listening.
 pub(crate) async fn connect(socket: &Path) -> Client {
-    for _attempt in 0..200 {
-        if let Ok(client) = Client::connect(socket).await {
-            return client;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    panic!("the executor never listened on {}", socket.display());
+    Client::connect_within(socket, PATIENCE)
+        .await
+        .expect("the executor listened in time")
 }
 
 /// Everything a process said, by stream, and how it ended.

@@ -2,7 +2,8 @@
 //!
 //! The supervisor mints; a sandbox never asks the daemon for anything. A token
 //! minted here lives in the supervisor's memory and reaches a tool only through
-//! the call that needs it.
+//! the call that needs it. The tool catalog is this module's caller: a hosted
+//! tool whose lease names a mintable integration asks for its token here.
 
 use std::borrow::Cow;
 use std::fmt;
