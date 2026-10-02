@@ -10,12 +10,14 @@
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
+    clippy::indexing_slicing,
+    reason = "test target: an unmet precondition should fail the test loudly, and a step \
+              indexes the JSON it just built"
 )]
 
 use afd_crypto::entropy::Entropy;
 use afd_runner::Runners;
-use afd_wire::tool_detail::{DETAIL_EVENT_MAX_BYTES, DETAIL_FIELD_MAX_BYTES};
+use afd_wire::tool_detail::DETAIL_FIELD_MAX_BYTES;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 
@@ -164,7 +166,6 @@ async fn test_tool_call_detail_repost_replaces_its_record() {
         .await
         .expect("the daemon answers");
     assert_eq!(body_of(read).await["output"], "replaced");
-    assert!(DETAIL_EVENT_MAX_BYTES / DETAIL_FIELD_MAX_BYTES == 16);
     supervisor.shutdown().await;
     run.cleanup().await;
 }
@@ -267,7 +268,7 @@ async fn test_concurrent_posts_never_pass_the_event_budget() {
             http.clone(),
             url.clone(),
             run.token.clone(),
-            barrier.clone(),
+            std::sync::Arc::clone(&barrier),
         );
         let body =
             serde_json::to_vec(&json!({"fencing_token": fence, "calls": [record(n, &output)]}))

@@ -10,7 +10,9 @@
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
+    clippy::indexing_slicing,
+    reason = "test target: an unmet precondition should fail the test loudly, and a step \
+              indexes the JSON it just built"
 )]
 
 use afd_wire::tool_detail::{DETAIL_FIELD_MAX_BYTES, DETAIL_POST_MAX_BYTES};
@@ -274,7 +276,8 @@ async fn test_member_reads_tool_call_detail() {
     let (run, token) = tenant_reader(&mut supervisor).await;
     let http = reqwest::Client::new();
     let (lease_id, fence) = lease(&http, &run).await;
-    let output: String = (1..=224).map(|n| format!("line {n}\n")).collect();
+    let lines: Vec<String> = (1..=224).map(|n| format!("line {n}")).collect();
+    let output = format!("{}\n", lines.join("\n"));
     let mut kept = record(3, &output);
     kept["arguments"] = json!({"url": "https://example.test/deploys/9312", "method": "GET"});
     let (status, _) = post_records(&http, &run, (&lease_id, fence), &[kept.clone()]).await;

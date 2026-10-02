@@ -7,8 +7,10 @@
 
 #![expect(
     clippy::expect_used,
+    clippy::indexing_slicing,
     clippy::unwrap_used,
-    reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
+    reason = "a test asserts by panicking, and indexes the JSON it built; the manifest's \
+              restriction set is for the daemon"
 )]
 
 use afd_events::{Cursor, EventDetailRow, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT};

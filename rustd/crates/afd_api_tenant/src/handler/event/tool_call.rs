@@ -29,15 +29,18 @@ const EVENT_TOOL_CALL: &str = "fleet_tool_call_detail_failed";
 /// The refusal a call this workspace, fleet and event do not hold earns.
 const DETAIL_TOOL_CALL_NOT_FOUND: &str = "Tool call not found";
 
-/// The segments the read's template carries.
+/// The segments the read's template carries, each renamed from its segment.
 #[derive(Debug, Deserialize)]
 pub(crate) struct ToolCallPath {
     /// The fleet named in the path, still text.
-    pub fleet_id: String,
+    #[serde(rename = "fleet_id")]
+    pub fleet: String,
     /// The event named in the path.
-    pub event_id: String,
+    #[serde(rename = "event_id")]
+    pub event: String,
     /// The call, as the thread names it.
-    pub call_id: String,
+    #[serde(rename = "call_id")]
+    pub call: String,
 }
 
 /// The fence and call number a `{fence}:{n}` id names, if it names one.
@@ -93,9 +96,9 @@ pub(crate) async fn read<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(ToolCallPath {
-        fleet_id,
-        event_id,
-        call_id,
+        fleet: fleet_id,
+        event: event_id,
+        call: call_id,
     }): Path<ToolCallPath>,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet(&fleet_id)?;
