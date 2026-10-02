@@ -17,13 +17,14 @@ export function inviteNoticeText(waiting: readonly WaitingInvite[]): string {
 }
 
 // One line, only while something waits, and not on the page that already
-// lists them.
+// lists them. It sits inside the padded canvas, where strip styling reads as a
+// broken box, so it keeps the standard alert's own look.
 export function InviteNotice({ waiting }: { waiting: readonly WaitingInvite[] }) {
   const pathname = usePathname();
   const onInvites = pathname === INVITES_PATH || pathname.startsWith(`${INVITES_PATH}/`);
   if (waiting.length === 0 || onInvites) return null;
   return (
-    <Alert variant="info" className="mb-lg rounded-none border-x-0 border-t-0 px-md py-xs text-sm" data-testid="invite-notice">
+    <Alert variant="info" className="mb-lg" data-testid="invite-notice">
       {inviteNoticeText(waiting)}{" "}
       <Link href={INVITES_PATH} className="underline underline-offset-2">
         Review

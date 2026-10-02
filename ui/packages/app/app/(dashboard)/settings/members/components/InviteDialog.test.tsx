@@ -25,6 +25,8 @@ const INVITE: InviteSummary = {
 const INVITE_BUTTON = "Invite";
 const EMAIL_FIELD = "Email";
 const SEND = "Send";
+const CANCEL = "Cancel";
+const CLOSE = "Close";
 const INVITE_READY = "invite-ready";
 const INVITE_LINK = "Invite link";
 const ENTER_AN_ADDRESS = "Enter an email address";
@@ -120,6 +122,27 @@ describe("a create that settles", () => {
     });
     await screen.findByTestId(INVITE_READY);
     await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("should disable the close X alongside Cancel while a create is in flight, and free both once it answers", async () => {
+    const answer = Promise.withResolvers<unknown>();
+    actions.createInviteAction.mockReturnValue(answer.promise);
+    const { dialog, send, user } = await openDialog();
+    await send(INVITE.email);
+    const close = within(dialog).getByRole("button", { name: CLOSE }) as HTMLButtonElement;
+    const cancel = within(dialog).getByRole("button", { name: CANCEL }) as HTMLButtonElement;
+    expect(close.disabled).toBe(true);
+    expect(cancel.disabled).toBe(true);
+
+    // A refusal keeps the form up, so both buttons are still there to check.
+    await act(async () => {
+      answer.resolve(DUPLICATE_REFUSED);
+    });
+    await within(dialog).findByRole("alert");
+    expect(close.disabled).toBe(false);
+    expect(cancel.disabled).toBe(false);
+    await user.click(close);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 });

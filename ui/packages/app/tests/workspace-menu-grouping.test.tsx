@@ -43,6 +43,15 @@ describe("workspace menu grouped by account", () => {
     expect(items.findIndex((text) => text.includes("bob-home"))).toBeLessThan(items.findIndex((text) => text.includes("mary-001")));
   });
 
+  it("should set an account's name in sentence case under the menu's eyebrow heading", () => {
+    render(<WorkspaceSwitcherMenu open workspaces={[MARY_001, BOB_HOME]} onOpenChange={vi.fn()} />);
+    const menu = screen.getByRole("menu");
+    const account = within(menu).getByText(accountLabel(JOHNS.owner_name)).className.split(" ");
+    expect(account).toEqual(expect.arrayContaining(["text-label", "leading-label", "tracking-label"]));
+    expect(account).not.toContain("uppercase");
+    expect(within(menu).getByText("Workspace").className.split(" ")).toContain("uppercase");
+  });
+
   it("should label nothing while the person holds only their own account", () => {
     render(<WorkspaceSwitcherMenu open workspaces={[BOB_HOME]} onOpenChange={vi.fn()} />);
     expect(screen.queryByText(OWN_ACCOUNT_LABEL)).toBeNull();
