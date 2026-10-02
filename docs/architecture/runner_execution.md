@@ -44,7 +44,7 @@ agentsfleet-runner (one binary; a VM or a bare-metal host)
  ┌ supervisor — trusted, outside every sandbox ─────────────────────────┐
  │ lease loop · renew · report spool · memory hydrate and push          │
  │ agent loop + model providers            (model keys live only here)  │
- │ tool router · leak scan · events → activity frames                   │
+ │ tool catalog · router · leak scan · events → activity frames         │
  │ workspace restore and save · git clone · credential minting · push   │
  └───────────────┬──────────────────────────────────────────────────────┘
                  │ one executor connection per lease (a Unix socket)
@@ -52,7 +52,7 @@ agentsfleet-runner (one binary; a VM or a bare-metal host)
  │ /            toolbox, read-only                                      │
  │ /workspace   restored, writable, disk quota                          │
  │ /run/creds   memory-only, short-lived scoped tokens, never saved     │
- │ executor: processes on pseudo-terminals, files, apply_patch          │
+ │ executor: processes on pseudo-terminals, files, apply_patch, Chromium│
  │ own network namespace + allowlist · cgroups · seccomp · no caps      │
  └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -73,7 +73,7 @@ rustd/crates/
   afr_sandbox           engine interface; bubblewrap engine now, Firecracker engine next
   afr_agent             agent loop, tool router, events, run trace
   afr_providers         Anthropic Messages, OpenAI Responses, OpenAI-compatible chat
-  afr_tools             hosted tools, then exec_command, apply_patch, propose_change
+  afr_tools             the catalog: supervisor-side and sandbox-side handlers
   afr_supervisor        lease loop, renewal, report spool, activity, memory, minting,
                         bundles, storage sweep, capability report, control-plane client
   agentsfleet_runner    binary: composition root only
@@ -81,6 +81,27 @@ rustd/crates/
 ```
 
 Dependencies point one way: the binaries → `afr_supervisor` → `afr_agent` → `afr_providers` and `afr_tools` → `afr_executor`, with `afr_supervisor` → `afr_sandbox` → `afr_executor`. Every runner crate may depend on `afd_wire` and `afd_core` and on nothing else from `agentsfleetd`, and none links a datastore crate. The executor is its own small binary because it lives inside every sandbox and, under Firecracker, inside every guest image.
+
+## Tool catalog
+
+The runner is the harness, in Codex's shape: the catalog holds every tool the published tools page names, each with the runtime it executes in; the lease's `ExecutionPolicy.tools` selects which of them the model is offered; the model picks by function calling; the router runs the handler where its runtime says. A policy naming a tool the catalog does not host refuses the lease loudly, the disposition the Zig bridge has today (`src/runner/engine/tool_bridge.zig`), because a bundle running with a quietly different tool set is not the bundle its author wrote. A model call to a name outside the policy is a tool error the model sees, and the run continues. The scheduling tools write rows in `core.fleet_schedules` through the daemon; nothing in the runner sleeps or ticks.
+
+| Tool | Runtime | Needs |
+|---|---|---|
+| `http_request`, `web_fetch`, `pushover` | supervisor | the network policy, the origin rules, placeholders in `Authorization` only |
+| `web_search` | the provider, as a hosted tool spec | a provider that offers one; a tool error with a code otherwise |
+| `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | supervisor | the hydrated store and the fenced push |
+| `calculator`, `update_plan` | supervisor | nothing |
+| `message` | supervisor, through a runner verb, to the event's thread | the messages verb |
+| `schedule`, `cron_add`, `cron_list`, `cron_remove`, `cron_update`, `cron_run`, `cron_runs` | supervisor, through a runner verb onto the daemon's plane that QStash fires | the verb; QStash keeps the clock and the runner owns no timer |
+| `delegate`, `spawn` | supervisor: a nested loop sharing the lease's sandbox and budget | Codex's `spawn_agent`, `wait_agent` and `send_input` shape |
+| `shell`, `exec_command`, `write_stdin` | sandbox, through the executor | a process on a pseudo-terminal under the cgroup, output edges |
+| `git` | sandbox, on a clone the supervisor made on the host side | the read token stays in the supervisor; the push is `propose_change` |
+| `file_read`, `file_read_hashed`, `file_write`, `file_append`, `file_delete`, `file_edit`, `file_edit_hashed`, `apply_patch` | sandbox, through the executor's file calls | `/workspace` |
+| `image` | supervisor reads the file through the executor and attaches it to the next model turn | a provider that takes images |
+| `browser`, `browser_open`, `screenshot` | sandbox: Chromium from the toolbox, driven over the Chrome DevTools Protocol (CDP) through the process's pipes | Chromium in the toolbox; the sandbox allowlist for any host beyond loopback |
+
+A lease whose tools are all supervisor-side starts no sandbox.
 
 ## Sandbox engines
 
@@ -181,3 +202,5 @@ The costs are the rewrite, slower compiles, async complexity and larger binaries
 | Oct 02, 2026 | Code-running leases from different tenants may share a host; hardening and kernel patching are the boundary until Firecracker | Indy chose "No, share freely" when asked whether a host should refuse a second tenant's code-running lease |
 | Oct 02, 2026 | Firecracker is the production engine for code-running leases; bubblewrap ships first and stays for development, CI and hosts without `/dev/kvm` | Indy: "i think we must shoot for firecracker then", then "Yes bubblewrap first, and firecracker next." Firecracker is installed on production hosts later; every runner reports whether `/dev/kvm` exists |
 | Oct 02, 2026 | The Rust runner is independent: no second copy of the wire, nothing in its code, comments or tests refers to the Zig runner, and it follows `rustd` principles | Indy: "A second copy of the wire will not be existing, none of the rust code will point to the zig." and "the rust code is independent and follows our current rustd/ principles" |
+| Oct 02, 2026 | The runner carries every published tool; the loop stays in the supervisor and routes the code-running tools into the sandbox | Indy: "i need all the tools … the sandbox isnt just a sandbox but a harness that decide to operate like codex so that is critical to realize the fleets i plan to use"; chose "Supervisor loop, sandbox tools" |
+| Oct 02, 2026 | `cron_*` and `schedule` become fleet tools through a runner verb onto the daemon's schedule plane; supersedes "Scheduled wakes are not a child tool" in [Capabilities](./capabilities.md) §"2. The platform tools the fleet can call" | Indy chose "Yes, runner verb onto daemon schedules" |
