@@ -20,7 +20,7 @@ use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
 use tokio::time::Instant;
 
-use super::revocable::{Membership, Recheck, Turn, Verdict, Watch, until_revoked};
+use super::revocable::{Membership, Recheck, STREAM_FLEET, Turn, Verdict, Watch, until_revoked};
 use crate::services::Services;
 
 /// How often an open fleet stream re-asks its caller's access.
@@ -50,7 +50,7 @@ pub(super) fn guarded<D: Services>(
 fn watched<R: Recheck>(frames: BoxStream<'static, Frame>, recheck: R) -> BoxStream<'static, Frame> {
     let guard = Guard {
         frames,
-        watch: Watch::new(recheck),
+        watch: Watch::new(recheck, STREAM_FLEET),
         next_check: Instant::now() + RECHECK_INTERVAL,
     };
     until_revoked(guard, step)

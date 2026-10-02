@@ -16,7 +16,7 @@ use futures_util::stream::{self, BoxStream};
 
 use super::super::revocable::{
     EVENT_RECHECK_DEFERRED, EVENT_STREAM_UNVERIFIED, MAX_DEFERRED_RECHECKS, REASON_BUDGET,
-    RECHECK_BUDGET,
+    RECHECK_BUDGET, STREAM_FLEET,
 };
 use super::{RECHECK_INTERVAL, Recheck, watched};
 
@@ -159,6 +159,11 @@ fn assert_unanswered(record: &CapturedEvent, code: ErrorCode, reason: &str) {
     assert_eq!(record.level, tracing::Level::WARN);
     assert_eq!(record.field("error_code"), Some(code.as_str()));
     assert_eq!(record.field("workspace_id"), Some(WORKSPACE));
+    assert_eq!(
+        record.field("stream"),
+        Some(STREAM_FLEET),
+        "the record names its stream"
+    );
     assert_eq!(record.field("reason"), Some(reason));
     assert!(
         record.fields.values().all(|value| !value.contains('@')),
