@@ -4,32 +4,47 @@
 //! inside may not keep. Codex's `linux-sandbox` launches bubblewrap the same
 //! way; this one adds `--disable-userns` and `--clearenv`, and hardens further
 //! from the inside (`crate::harden`).
+//!
+//! # What the binds allow
+//!
+//! bubblewrap mounts every `--bind` `nosuid,nodev` unless asked otherwise, so
+//! nothing on the workspace disk or in the socket directory can raise a
+//! privilege or open a device. The process inside runs as [`SANDBOX_UID`],
+//! never as root, and the runner starts bubblewrap itself as an unprivileged
+//! host user, so a file the sandbox creates is never owned by host root.
 
 use std::ffi::{OsStr, OsString};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-/// Where the workspace disk appears inside the sandbox.
-pub const SANDBOX_WORKSPACE: &str = "/workspace";
+use afd_core::env::LOG_LEVEL_VAR;
+
+/// Where the workspace disk appears inside the sandbox: the root the executor
+/// confines every path to.
+pub const SANDBOX_WORKSPACE: &str = afr_executor::WORKSPACE_ROOT;
 /// Where the executor's socket directory appears inside the sandbox.
 pub const SANDBOX_RUN_DIR: &str = "/run/agentsfleet";
-/// The executor's socket, inside the sandbox.
-pub const SANDBOX_SOCKET: &str = "/run/agentsfleet/executor.sock";
 /// The socket's file name, the same on both sides of the bind.
 pub const SOCKET_NAME: &str = "executor.sock";
+/// The user a sandboxed process runs as, inside its user namespace.
+pub const SANDBOX_UID: u32 = 1000;
+/// The group a sandboxed process runs as, inside its user namespace.
+pub const SANDBOX_GID: u32 = 1000;
+
+/// The executor's socket, inside the sandbox.
+#[must_use]
+pub fn sandbox_socket() -> PathBuf {
+    Path::new(SANDBOX_RUN_DIR).join(SOCKET_NAME)
+}
 /// Where the runner binary is bound, read-only, inside the sandbox.
 pub const SANDBOX_ENTRY: &str = "/opt/agentsfleet/agentsfleet-runner";
 /// The runner's sub-command that hardens and serves inside the sandbox.
 pub const SANDBOX_SUBCOMMAND: &str = "sandbox";
-/// The only environment variable a sandboxed process starts with.
-const PATH_VARIABLE: &str = "PATH";
-/// Its value: the toolbox's program directories.
-const SANDBOX_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 /// Where `/proc` is mounted fresh for the new process namespace.
 const PROC: &str = "/proc";
 /// Where a minimal device tree is mounted.
 const DEV: &str = "/dev";
 /// Where a private scratch file system is mounted.
-const TMP: &str = "/tmp";
+pub(crate) const SANDBOX_TMP: &str = "/tmp";
 /// Where a private runtime directory is mounted, beneath which the executor's
 /// socket directory is bound.
 const RUN: &str = "/run";
@@ -63,6 +78,10 @@ const DEV_FLAG: &str = "--dev";
 const TMPFS_FLAG: &str = "--tmpfs";
 /// Sets one environment variable.
 const SETENV_FLAG: &str = "--setenv";
+/// Sets the user the process runs as inside its namespace.
+const UID_FLAG: &str = "--uid";
+/// Sets the group the process runs as inside its namespace.
+const GID_FLAG: &str = "--gid";
 /// Sets the working directory.
 const CHDIR_FLAG: &str = "--chdir";
 /// Ends bubblewrap's own options.
@@ -81,6 +100,9 @@ pub struct Layout<'a> {
     pub entry: &'a Path,
     /// What it is told after its own name; `sandbox` for the runner.
     pub entry_args: &'a [OsString],
+    /// The log level the process inside logs at, passed through the cleared
+    /// environment when the runner has one set.
+    pub log_level: Option<&'a OsStr>,
 }
 
 /// Bubblewrap's arguments for `layout`, ending with the entry and its own.
@@ -95,7 +117,7 @@ pub fn arguments(layout: &Layout<'_>) -> Vec<OsString> {
     flag(&[RO_BIND.as_ref(), layout.toolbox.as_os_str(), "/".as_ref()]);
     flag(&[PROC_FLAG.as_ref(), PROC.as_ref()]);
     flag(&[DEV_FLAG.as_ref(), DEV.as_ref()]);
-    flag(&[TMPFS_FLAG.as_ref(), TMP.as_ref()]);
+    flag(&[TMPFS_FLAG.as_ref(), SANDBOX_TMP.as_ref()]);
     // A private `/run`, so the socket directory's mount point exists whatever
     // the image's own `/run` holds; image builders empty it.
     flag(&[TMPFS_FLAG.as_ref(), RUN.as_ref()]);
@@ -114,10 +136,17 @@ pub fn arguments(layout: &Layout<'_>) -> Vec<OsString> {
         layout.entry.as_os_str(),
         SANDBOX_ENTRY.as_ref(),
     ]);
+    // The executor puts its own default `PATH` on every process it starts;
+    // the sandbox's entry needs none.
+    if let Some(level) = layout.log_level {
+        flag(&[SETENV_FLAG.as_ref(), LOG_LEVEL_VAR.as_ref(), level]);
+    }
+    let (uid, gid) = (SANDBOX_UID.to_string(), SANDBOX_GID.to_string());
     flag(&[
-        SETENV_FLAG.as_ref(),
-        PATH_VARIABLE.as_ref(),
-        SANDBOX_PATH.as_ref(),
+        UID_FLAG.as_ref(),
+        uid.as_ref(),
+        GID_FLAG.as_ref(),
+        gid.as_ref(),
     ]);
     flag(&[CHDIR_FLAG.as_ref(), SANDBOX_WORKSPACE.as_ref()]);
     flag(&[END_OF_OPTIONS.as_ref(), SANDBOX_ENTRY.as_ref()]);

@@ -30,13 +30,14 @@ async fn test_an_unsandboxed_lease_runs_a_process_and_is_removed() {
         .unwrap();
     let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
 
-    let sandbox = engine
+    let mut sandbox = engine
         .prepare(SandboxRequest {
             lease_id: "l1",
             limits: Limits::default(),
         })
         .await
         .unwrap();
+    assert!(sandbox.is_running(), "its executor is serving");
     let mut process = sandbox
         .executor()
         .spawn(Spawn::program("/bin/echo").arg("hi"))

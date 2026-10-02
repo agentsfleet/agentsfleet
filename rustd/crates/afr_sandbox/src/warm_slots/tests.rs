@@ -7,111 +7,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use afr_executor::{DirEntry, Executor, FileContent, Process, ProcessId, Spawn};
-use bytes::Bytes;
-
+use self::fakes::{Counting, name_of, settle};
 use super::WarmSlots;
-use crate::engine::{Engine, Limits, Sandbox, SandboxRequest};
-use crate::error::Result;
+use crate::engine::{Engine, Limits, SandboxRequest};
 
-/// An executor nothing calls; a warm slot is only handed out, never driven.
-#[derive(Debug)]
-struct Idle;
-
-fn unused<T>() -> afr_executor::Result<T> {
-    Err(std::io::Error::other("an idle fake").into())
-}
-
-#[async_trait::async_trait]
-impl Executor for Idle {
-    async fn spawn(&self, _spawn: Spawn) -> afr_executor::Result<Process> {
-        unused()
-    }
-    async fn write(&self, _process: ProcessId, _data: Bytes) -> afr_executor::Result<()> {
-        unused()
-    }
-    async fn kill(&self, _process: ProcessId) -> afr_executor::Result<()> {
-        unused()
-    }
-    async fn read_file(&self, _path: &str, _max_bytes: u64) -> afr_executor::Result<FileContent> {
-        unused()
-    }
-    async fn write_file(&self, _path: &str, _data: Bytes) -> afr_executor::Result<()> {
-        unused()
-    }
-    async fn list_dir(&self, _path: &str) -> afr_executor::Result<Vec<DirEntry>> {
-        unused()
-    }
-}
-
-/// A sandbox that remembers its name and counts its own destruction.
-#[derive(Debug)]
-struct Named {
-    panics: bool,
-    #[expect(
-        dead_code,
-        reason = "read through the derived Debug rendering the tests inspect"
-    )]
-    name: String,
-    destroyed: Arc<AtomicU64>,
-    executor: Idle,
-}
-
-#[async_trait::async_trait]
-impl Sandbox for Named {
-    fn executor(&self) -> &dyn Executor {
-        &self.executor
-    }
-    async fn destroy(self: Box<Self>) -> Result<()> {
-        assert!(!self.panics, "a teardown that panics");
-        self.destroyed.fetch_add(1, Ordering::SeqCst);
-        Ok(())
-    }
-}
-
-/// An engine that names each sandbox after its request and counts them.
-#[derive(Debug, Default)]
-struct Counting {
-    started: AtomicU64,
-    destroyed: Arc<AtomicU64>,
-    refuse: bool,
-    /// How long each start takes once counted.
-    delay: Duration,
-    /// Whether each sandbox it starts fails loudly when destroyed.
-    panics: bool,
-}
-
-#[async_trait::async_trait]
-impl Engine for Counting {
-    async fn prepare(&self, request: SandboxRequest<'_>) -> Result<Box<dyn Sandbox>> {
-        if self.refuse {
-            return Err(crate::error::refused("landlock"));
-        }
-        self.started.fetch_add(1, Ordering::SeqCst);
-        // A zero sleep still waits for the timer, which the yields in
-        // `settle` never turn; only a delayed start sleeps at all.
-        if !self.delay.is_zero() {
-            tokio::time::sleep(self.delay).await;
-        }
-        Ok(Box::new(Named {
-            name: request.lease_id.to_owned(),
-            destroyed: Arc::clone(&self.destroyed),
-            panics: self.panics,
-            executor: Idle,
-        }))
-    }
-}
-
-/// What a sandbox handed out was named, read through its debug rendering.
-fn name_of(sandbox: &dyn Sandbox) -> String {
-    format!("{sandbox:?}")
-}
-
-async fn settle() {
-    for _ in 0..50 {
-        tokio::task::yield_now().await;
-    }
-}
+mod fakes;
 
 #[tokio::test]
 async fn test_warm_slot_single_use() {
@@ -133,9 +33,11 @@ async fn test_warm_slot_single_use() {
         .await
         .unwrap();
 
-    assert!(name_of(first.as_ref()).contains("warm-1"), "{first:?}");
-    assert!(
-        name_of(second.as_ref()).contains("warm-2"),
+    let (first_name, second_name) = (name_of(first.as_ref()), name_of(second.as_ref()));
+    assert!(first_name.contains("\"warm-"), "{first_name}");
+    assert!(second_name.contains("\"warm-"), "{second_name}");
+    assert_ne!(
+        first_name, second_name,
         "a replacement, never the first again"
     );
     first.destroy().await.unwrap();
@@ -199,15 +101,17 @@ async fn test_zero_slots_makes_every_start_cold() {
     slots.shutdown().await;
 }
 
-#[tokio::test]
-async fn test_a_slot_that_fails_to_start_is_logged_and_the_lease_starts_cold() {
+/// A start that keeps failing is retried with backoff for as long as the
+/// keeper runs, each failure logged with its code; shutdown cuts the wait short.
+#[tokio::test(start_paused = true)]
+async fn test_a_slot_that_keeps_failing_is_retried_until_shutdown() {
     let inner = Arc::new(Counting {
-        refuse: true,
+        refusals: AtomicU64::new(u64::MAX),
         ..Counting::default()
     });
     let capture = afd_core::test_util::trace::Capture::install();
-    let slots = WarmSlots::start(inner, 1, Limits::default());
-    settle().await;
+    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
+    tokio::time::sleep(Duration::from_secs(5)).await;
 
     let refused = slots
         .prepare(SandboxRequest {
@@ -215,12 +119,80 @@ async fn test_a_slot_that_fails_to_start_is_logged_and_the_lease_starts_cold() {
             limits: Limits::default(),
         })
         .await;
+    slots.shutdown().await;
 
     assert!(refused.is_err(), "the cold start is refused the same way");
-    assert_eq!(
-        capture.only("sandbox_warm_slot_failed").field("lease_id"),
-        Some("warm-1")
+    let failures: Vec<_> = capture
+        .events()
+        .into_iter()
+        .filter(|event| event.field("event") == Some("sandbox_warm_slot_failed"))
+        .collect();
+    assert!(failures.len() >= 3, "retried: {failures:?}");
+    assert!(
+        failures
+            .iter()
+            .all(|event| event.field("error_code").is_some())
     );
+}
+
+/// A host that refused a few starts still ends up with its slot.
+#[tokio::test(start_paused = true)]
+async fn test_a_slot_that_failed_a_few_times_is_started_after_all() {
+    let inner = Arc::new(Counting {
+        refusals: AtomicU64::new(2),
+        ..Counting::default()
+    });
+    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let warm = slots
+        .prepare(SandboxRequest {
+            lease_id: "lease-g",
+            limits: Limits::default(),
+        })
+        .await
+        .unwrap();
+
+    assert!(name_of(warm.as_ref()).contains("\"warm-"), "{warm:?}");
+    warm.destroy().await.unwrap();
+    slots.shutdown().await;
+}
+
+/// A slot whose sandbox died while it waited is retired, never handed out.
+#[tokio::test]
+async fn test_a_slot_that_died_is_never_handed_to_a_lease() {
+    let inner = Arc::new(Counting {
+        dead: true,
+        ..Counting::default()
+    });
+    let capture = afd_core::test_util::trace::Capture::install();
+    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
+    settle().await;
+
+    let cold = slots
+        .prepare(SandboxRequest {
+            lease_id: "lease-h",
+            limits: Limits::default(),
+        })
+        .await
+        .unwrap();
+    settle().await;
+
+    assert!(
+        name_of(cold.as_ref()).contains("lease-h"),
+        "started cold instead"
+    );
+    assert!(
+        capture
+            .only("sandbox_warm_slot_died")
+            .field("error_code")
+            .is_some()
+    );
+    assert!(
+        inner.destroyed.load(Ordering::SeqCst) >= 1,
+        "the dead slot was retired"
+    );
+    cold.destroy().await.unwrap();
     slots.shutdown().await;
 }
 

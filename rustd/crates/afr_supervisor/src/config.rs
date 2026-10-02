@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use afd_core::env::EnvSource;
 use afd_wire::paths::RUNNER_TOKEN_PREFIX;
+use url::Url;
 
 use crate::error::{self, Result};
 
@@ -16,18 +17,22 @@ use crate::error::{self, Result};
 pub const ENV_API_URL: &str = "AGENTSFLEET_API_URL";
 /// The runner's `agt_r` token, minted once by a platform admin.
 pub const ENV_RUNNER_TOKEN: &str = "AGENTSFLEET_RUNNER_TOKEN";
-/// The host-local root for the spool, the bundle cache and lease scratch.
+/// The host-local root for the spool, the bundle cache and lease sandboxes.
 pub const ENV_STORAGE_HOME: &str = "RUNNER_STORAGE_HOME";
 /// Where the storage home lives when none is set: a directory that survives a
 /// reboot, because the report spool exists to outlive one.
 pub const DEFAULT_STORAGE_HOME: &str = "/var/lib/agentsfleet-runner";
 
 const DETAIL_API_URL_MISSING: &str = "AGENTSFLEET_API_URL is not set";
-const DETAIL_API_URL_INVALID: &str = "AGENTSFLEET_API_URL is not an http or https address";
+const DETAIL_API_URL_SCHEME: &str = "AGENTSFLEET_API_URL is not an http or https address";
 const DETAIL_TOKEN_MISSING: &str = "AGENTSFLEET_RUNNER_TOKEN is not set";
 const DETAIL_TOKEN_SHAPE: &str = "AGENTSFLEET_RUNNER_TOKEN is not an agt_r runner token";
 /// The schemes a daemon address may use.
-const SCHEMES: [&str; 2] = ["http://", "https://"];
+const SCHEMES: [&str; 2] = ["http", "https"];
+/// What a redacted secret prints as.
+const REDACTED: &str = "RunnerToken(redacted)";
+/// The separator a base path ends in, so a route joins under it.
+const SLASH: char = '/';
 
 /// The runner's token. Its `Debug` never prints it.
 #[derive(Clone, PartialEq, Eq)]
@@ -47,13 +52,10 @@ impl fmt::Debug for RunnerToken {
     }
 }
 
-/// What a redacted secret prints as.
-const REDACTED: &str = "RunnerToken(redacted)";
-
 /// The runner's configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
-    api_url: String,
+    api_url: Url,
     token: RunnerToken,
     storage_home: PathBuf,
 }
@@ -64,12 +66,17 @@ impl Config {
     /// loop.
     ///
     /// # Errors
-    /// A missing or malformed address or token.
+    /// A missing, unparseable or non-http(s) address, or a missing or
+    /// malformed token.
     pub fn from_env(env: &impl EnvSource) -> Result<Self> {
-        let api_url =
-            present(env, ENV_API_URL).ok_or_else(|| error::config(DETAIL_API_URL_MISSING))?;
-        if !SCHEMES.iter().any(|scheme| api_url.starts_with(scheme)) {
-            return Err(error::config(DETAIL_API_URL_INVALID));
+        let raw = present(env, ENV_API_URL).ok_or_else(|| error::config(DETAIL_API_URL_MISSING))?;
+        let mut api_url = Url::parse(&raw).map_err(error::address)?;
+        if !SCHEMES.contains(&api_url.scheme()) {
+            return Err(error::config(DETAIL_API_URL_SCHEME));
+        }
+        if !api_url.path().ends_with(SLASH) {
+            let directory = format!("{}{SLASH}", api_url.path());
+            api_url.set_path(&directory);
         }
         let token =
             present(env, ENV_RUNNER_TOKEN).ok_or_else(|| error::config(DETAIL_TOKEN_MISSING))?;
@@ -85,9 +92,10 @@ impl Config {
         })
     }
 
-    /// The daemon's base address.
+    /// The daemon's base address, always ending in `/` so a route joins under
+    /// any path prefix it carries.
     #[must_use]
-    pub fn api_url(&self) -> &str {
+    pub const fn api_url(&self) -> &Url {
         &self.api_url
     }
 

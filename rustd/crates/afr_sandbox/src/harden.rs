@@ -8,20 +8,23 @@
 #[cfg(target_os = "linux")]
 use std::fs;
 
+use procfs_core::FromRead as _;
+use procfs_core::process::Status;
+
+use crate::bubblewrap::{SANDBOX_TMP, SANDBOX_WORKSPACE};
 use crate::error::{Result, unconfined};
 
 /// The process status file the checks read.
 #[cfg(target_os = "linux")]
 const PROC_SELF_STATUS: &str = "/proc/self/status";
-/// The status line counting this process's threads.
-const THREADS: &str = "Threads:";
-/// The status line holding the effective capability set, in hexadecimal.
-const CAP_EFFECTIVE: &str = "CapEff:";
-/// The status line holding the permitted capability set, in hexadecimal.
-const CAP_PERMITTED: &str = "CapPrm:";
+/// Pseudo-terminals, which `--dev` mounts and an interactive process writes.
+const DEV_PTS: &str = "/dev/pts";
 
 /// Trees a sandboxed process may write beneath; everything else is read-only.
-pub const WRITABLE: [&str; 4] = ["/workspace", "/tmp", "/run/agentsfleet", "/dev/pts"];
+///
+/// The executor's socket directory is not among them: the socket is bound
+/// before confinement, and the directory is a host path no tenant may fill.
+pub const WRITABLE: [&str; 3] = [SANDBOX_WORKSPACE, SANDBOX_TMP, DEV_PTS];
 /// Single devices it may also write: what shells and pseudo-terminals open.
 pub const WRITABLE_DEVICES: [&str; 5] = [
     "/dev/null",
@@ -54,25 +57,24 @@ pub fn harden() -> Result<()> {
     Err(crate::error::refused(crate::probe::MECHANISM_LANDLOCK))
 }
 
-/// One field of a `/proc/<pid>/status` text, trimmed.
-fn field<'a>(status: &'a str, key: &str) -> Option<&'a str> {
-    status
-        .lines()
-        .find_map(|line| line.strip_prefix(key))
-        .map(str::trim)
+/// `/proc/<pid>/status` text, parsed, or a refusal: a status that does not
+/// parse proves nothing about the process.
+fn parse(status: &str) -> Result<Status> {
+    Status::from_read(status.as_bytes())
+        .map_err(|_unparsed| unconfined("the process status does not parse"))
 }
 
 /// Refuses unless exactly one thread exists, read from `/proc/<pid>/status` text.
 ///
 /// # Errors
-/// More than one thread, or no thread count at all.
+/// More than one thread, or a status that does not parse.
 pub fn single_threaded(status: &str) -> Result<()> {
-    match field(status, THREADS).and_then(|count| count.parse::<u32>().ok()) {
-        Some(1) => Ok(()),
-        Some(_) => Err(unconfined(
+    if parse(status)?.threads == 1 {
+        Ok(())
+    } else {
+        Err(unconfined(
             "a second thread exists, so confinement would miss it",
-        )),
-        None => Err(unconfined("the process status does not count threads")),
+        ))
     }
 }
 
@@ -80,14 +82,10 @@ pub fn single_threaded(status: &str) -> Result<()> {
 /// read from `/proc/<pid>/status` text.
 ///
 /// # Errors
-/// Either set is non-empty or missing.
+/// Either set is non-empty, or the status does not parse.
 pub fn capabilities_dropped(status: &str) -> Result<()> {
-    let empty = |key| {
-        field(status, key)
-            .and_then(|hex| u64::from_str_radix(hex, 16).ok())
-            .is_some_and(|set| set == 0)
-    };
-    if empty(CAP_EFFECTIVE) && empty(CAP_PERMITTED) {
+    let status = parse(status)?;
+    if status.capeff == 0 && status.capprm == 0 {
         Ok(())
     } else {
         Err(unconfined("a capability survived"))

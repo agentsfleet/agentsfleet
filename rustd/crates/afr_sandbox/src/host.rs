@@ -10,7 +10,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use crate::error::{Result, program};
+use crate::error::{Error, Result, program as failed};
 
 /// Where Debian and Ubuntu install `mke2fs`.
 pub const MKE2FS_PATH: &str = "/usr/sbin/mke2fs";
@@ -21,6 +21,12 @@ pub const MOUNT_PATH: &str = "/usr/bin/mount";
 pub(crate) const MKE2FS: &str = "mke2fs";
 /// The name a failed `mount` is reported under.
 pub(crate) const MOUNT: &str = "mount";
+/// The event a host program's start is logged under.
+const EVENT_PROGRAM_STARTED: &str = "sandbox_host_program_started";
+/// The event a host program that succeeded is logged under.
+const EVENT_PROGRAM_COMPLETED: &str = "sandbox_host_program_completed";
+/// The event a host program that failed is logged under.
+const EVENT_PROGRAM_FAILED: &str = "sandbox_host_program_failed";
 /// How much of a failed program's error stream a report keeps.
 const STDERR_TAIL_BYTES: usize = 2_048;
 
@@ -47,22 +53,46 @@ impl Default for HostTools {
 
 /// Runs `path` with `args` to completion, refusing on a non-zero exit with the
 /// tail of what it wrote to standard error.
+///
+/// The program is killed if the caller stops waiting: a cancelled lease start
+/// leaves no `mount` or `mke2fs` running behind it.
 pub(crate) async fn run<I, S>(name: &'static str, path: &Path, args: I) -> Result<()>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    let output = tokio::process::Command::new(path)
+    let program = name;
+    let event = EVENT_PROGRAM_STARTED;
+    tracing::debug!(program, event);
+    let ran = tokio::process::Command::new(path)
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
+        .kill_on_drop(true)
         .output()
-        .await?;
-    if output.status.success() {
-        return Ok(());
+        .await
+        .map_err(Error::from)
+        .and_then(|output| {
+            if output.status.success() {
+                Ok(())
+            } else {
+                Err(failed(name, output.status, tail(&output.stderr)))
+            }
+        });
+    match &ran {
+        Ok(()) => {
+            let event = EVENT_PROGRAM_COMPLETED;
+            tracing::debug!(program, event);
+        }
+        Err(error) => {
+            let error_code = error.code().as_str();
+            let reason = error.to_string();
+            let event = EVENT_PROGRAM_FAILED;
+            tracing::warn!(program, error_code, reason, event);
+        }
     }
-    Err(program(name, output.status, tail(&output.stderr)))
+    ran
 }
 
 /// The last [`STDERR_TAIL_BYTES`] of `bytes`, as text, cut on a character
@@ -70,11 +100,8 @@ where
 pub(crate) fn tail(bytes: &[u8]) -> String {
     let text = String::from_utf8_lossy(bytes);
     let trimmed = text.trim_end();
-    let start = trimmed.len().saturating_sub(STDERR_TAIL_BYTES);
-    let boundary = (start..=trimmed.len())
-        .find(|&index| trimmed.is_char_boundary(index))
-        .unwrap_or(trimmed.len());
-    trimmed.get(boundary..).unwrap_or_default().to_owned()
+    let start = trimmed.ceil_char_boundary(trimmed.len().saturating_sub(STDERR_TAIL_BYTES));
+    trimmed.get(start..).unwrap_or_default().to_owned()
 }
 
 #[cfg(test)]

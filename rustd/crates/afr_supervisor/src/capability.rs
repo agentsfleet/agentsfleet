@@ -11,10 +11,7 @@ use std::borrow::Cow;
 use afd_wire::runner::{
     CapabilityReport, NetworkPolicy, SandboxTier, SelftestCheck, SelftestReport,
 };
-use afr_sandbox::{
-    HostProbe, Kvm, MECHANISM_BUBBLEWRAP, MECHANISM_LANDLOCK, MECHANISM_SECCOMP,
-    REQUIRED_CONTROLLERS,
-};
+use afr_sandbox::{HostProbe, Kvm, MECHANISM_BUBBLEWRAP, MECHANISM_LANDLOCK, MECHANISM_SECCOMP};
 use serde::Serialize;
 
 const CHECK_CGROUP: &str = "cgroup_controllers";
@@ -111,7 +108,7 @@ fn checks<'a>(probe: &HostProbe) -> Vec<SelftestCheck<'a>> {
         ),
         check(
             CHECK_CGROUP,
-            verdict(has_required_controllers(probe), CGROUP_ON, CGROUP_OFF),
+            verdict(probe.has_required_controllers(), CGROUP_ON, CGROUP_OFF),
         ),
         check(CHECK_KVM, kvm),
         check(
@@ -119,15 +116,6 @@ fn checks<'a>(probe: &HostProbe) -> Vec<SelftestCheck<'a>> {
             verdict(probe.toolbox_filesystem, TOOLBOX_ON, TOOLBOX_OFF),
         ),
     ]
-}
-
-fn has_required_controllers(probe: &HostProbe) -> bool {
-    REQUIRED_CONTROLLERS.iter().all(|required| {
-        probe
-            .cgroup_controllers
-            .iter()
-            .any(|found| found == required)
-    })
 }
 
 const fn verdict(ok: bool, on: &'static str, off: &'static str) -> (bool, &'static str) {

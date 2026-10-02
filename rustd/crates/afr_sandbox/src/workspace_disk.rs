@@ -7,6 +7,7 @@
 use std::ffi::OsString;
 use std::fs;
 use std::io::ErrorKind;
+use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::{Path, PathBuf};
 
 use crate::error::Result;
@@ -22,6 +23,8 @@ const EXT4: &str = "ext4";
 const TYPE_FLAG: &str = "-t";
 /// Mount options: a loop device, and nothing on the disk may raise privilege.
 const WORKSPACE_OPTIONS: &str = "loop,nosuid,nodev";
+/// The image's permissions: root reads and writes it, nobody else.
+const IMAGE_MODE: u32 = 0o600;
 /// The event a leftover from a failed build is logged under.
 const EVENT_DISK_LEFT: &str = "sandbox_workspace_left";
 
@@ -58,7 +61,13 @@ impl WorkspaceDisk {
     }
 
     async fn build(&self, tools: &HostTools, bytes: u64, owner: (u32, u32)) -> Result<()> {
-        fs::File::create(&self.image)?.set_len(bytes)?;
+        // Readable by root alone: the raw image is every file the lease wrote.
+        fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(IMAGE_MODE)
+            .open(&self.image)?
+            .set_len(bytes)?;
         host::run(MKE2FS, &tools.mke2fs, format_arguments(&self.image, owner)).await?;
         fs::create_dir(&self.mount_point)?;
         host::run(
@@ -76,9 +85,13 @@ impl WorkspaceDisk {
             fs::remove_file(&self.image),
         ] {
             if let Err(error) = leftover.or_else(absent) {
-                let reason = error.to_string();
+                let error_code = crate::Error::from(error).code().as_str();
                 let event = EVENT_DISK_LEFT;
-                tracing::warn!(reason, event, "a failed workspace disk left a file behind");
+                tracing::warn!(
+                    error_code,
+                    event,
+                    "a failed workspace disk left a file behind"
+                );
             }
         }
     }
@@ -101,13 +114,40 @@ impl WorkspaceDisk {
 
     /// Unmounts the disk, which frees its loop device, then deletes the image.
     ///
+    /// The image is deleted only once nothing is mounted from it: an unmount
+    /// the kernel refuses leaves both the mount point and the image in place,
+    /// so a loop device is never left attached to a file nobody can name.
+    ///
     /// # Errors
     /// The kernel refuses the unmount, or the files cannot be removed.
     #[cfg(target_os = "linux")]
     pub fn release(self) -> Result<()> {
-        rustix::mount::unmount(&self.mount_point, rustix::mount::UnmountFlags::empty())?;
-        fs::remove_dir(&self.mount_point)?;
-        fs::remove_file(&self.image)?;
+        crate::mounts::unmount(&self.mount_point, false).and_then(|()| self.remove_files())
+    }
+
+    /// Adopts whatever disk a previous run left in `dir`, mounted or not.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn leftover(dir: &Path) -> Self {
+        Self {
+            image: dir.join(IMAGE_NAME),
+            mount_point: dir.join(MOUNT_DIR),
+        }
+    }
+
+    /// Releases a leftover: unmounted first only if something is mounted, and
+    /// a file already gone is not a failure.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn release_leftover(self) -> Result<()> {
+        crate::mounts::is_mount_root(&self.mount_point)
+            .then(|| crate::mounts::unmount(&self.mount_point, false))
+            .transpose()?;
+        self.remove_files()
+    }
+
+    #[cfg(target_os = "linux")]
+    fn remove_files(&self) -> Result<()> {
+        fs::remove_dir(&self.mount_point).or_else(absent)?;
+        fs::remove_file(&self.image).or_else(absent)?;
         Ok(())
     }
 }

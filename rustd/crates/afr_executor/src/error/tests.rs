@@ -1,14 +1,30 @@
 use std::error::Error as _;
+use std::io;
 
-use super::{connection_lost, invalid_params, path_refused, refused, unknown_process};
+use jsonrpsee_types::error::{
+    CALL_EXECUTION_FAILED_CODE, INTERNAL_ERROR_CODE, INVALID_PARAMS_CODE,
+};
+
+use super::{
+    Error, connection_lost, input_backlog_full, invalid_params, not_a_file, path_refused,
+    program_unavailable, refused, unknown_process, unresponsive,
+};
+use crate::protocol::{PATH_REFUSED_CODE, UNKNOWN_PROCESS_CODE};
 
 #[test]
 fn every_failure_without_a_cause_renders_and_reports_none() {
     for (failure, variant) in [
         (connection_lost(), "ConnectionLost"),
+        (unresponsive("fs/read"), "Unresponsive"),
         (refused(-32_603, "the executor fell over"), "Refused"),
         (path_refused(), "PathRefused"),
+        (not_a_file(), "NotAFile"),
         (unknown_process(), "UnknownProcess"),
+        (input_backlog_full(), "InputBacklogFull"),
+        (
+            program_unavailable("not on the PATH".to_owned()),
+            "ProgramUnavailable",
+        ),
         (invalid_params("argv must name a program"), "InvalidParams"),
     ] {
         let rendered = failure.to_string();
@@ -21,6 +37,55 @@ fn every_failure_without_a_cause_renders_and_reports_none() {
             rendered
                 .strip_prefix("[UZ-INTERNAL-003] ")
                 .and_then(|rest| rest.lines().next()),
+        );
+    }
+}
+
+#[test]
+fn each_refusal_answers_with_the_code_that_says_whose_it_is() {
+    for (failure, code) in [
+        (path_refused(), PATH_REFUSED_CODE),
+        (unknown_process(), UNKNOWN_PROCESS_CODE),
+        (input_backlog_full(), CALL_EXECUTION_FAILED_CODE),
+        (not_a_file(), INVALID_PARAMS_CODE),
+        (program_unavailable(String::new()), INVALID_PARAMS_CODE),
+        (invalid_params("bad"), INVALID_PARAMS_CODE),
+        (connection_lost(), INTERNAL_ERROR_CODE),
+    ] {
+        assert_eq!(failure.rpc_code(), code, "{failure}");
+    }
+}
+
+#[test]
+fn an_operating_system_refusal_is_the_callers_only_when_it_is_about_the_name() {
+    let callers = [
+        io::ErrorKind::NotFound,
+        io::ErrorKind::NotADirectory,
+        io::ErrorKind::IsADirectory,
+        io::ErrorKind::AlreadyExists,
+        io::ErrorKind::DirectoryNotEmpty,
+        io::ErrorKind::PermissionDenied,
+        io::ErrorKind::InvalidInput,
+        io::ErrorKind::InvalidFilename,
+    ];
+    let executors = [
+        io::ErrorKind::StorageFull,
+        io::ErrorKind::BrokenPipe,
+        io::ErrorKind::Other,
+    ];
+
+    for kind in callers {
+        assert_eq!(
+            Error::from(io::Error::from(kind)).rpc_code(),
+            INVALID_PARAMS_CODE,
+            "{kind:?}"
+        );
+    }
+    for kind in executors {
+        assert_eq!(
+            Error::from(io::Error::from(kind)).rpc_code(),
+            INTERNAL_ERROR_CODE,
+            "{kind:?}"
         );
     }
 }

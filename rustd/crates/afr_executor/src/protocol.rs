@@ -1,8 +1,10 @@
 //! The wire between the supervisor and the executor: JSON-RPC 2.0, one message
 //! per line, over the sandbox's Unix socket.
 //!
-//! The envelopes are `jsonrpsee-types`', so this module spells only what is
-//! ours: the method names, their parameters and results, and the two
+//! The envelopes are `jsonrpsee-types`', and the values the caller sees —
+//! [`Ending`], [`Stream`], [`Listing`](crate::api::Listing) — travel as they
+//! are, so this module spells only what is the wire's own: the method names,
+//! the parameters and results with no caller-side type, and the two
 //! notifications a process produces. Bytes travel as standard base64, because
 //! output and files need not be text.
 
@@ -13,12 +15,12 @@ use base64::prelude::{BASE64_STANDARD, Engine as _};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
-use crate::api::{Ending, EntryKind, Stream};
+use crate::api::{Ending, Stream};
 use crate::error::Result;
 
 /// `process/spawn`: start a process.
 pub(crate) const METHOD_SPAWN: &str = "process/spawn";
-/// `process/write`: write to a process's input.
+/// `process/write`: queue bytes for a process's input.
 pub(crate) const METHOD_WRITE: &str = "process/write";
 /// `process/kill`: end a process's group.
 pub(crate) const METHOD_KILL: &str = "process/kill";
@@ -39,7 +41,8 @@ pub(crate) const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 /// The most a single read answers with, so the reply fits in one frame.
 pub(crate) const MAX_READ_BYTES: u64 = 8 * 1024 * 1024;
 
-/// A path that leaves the workspace, or one the sandbox will not open.
+/// A path that leaves the workspace. Clear of the codes `jsonrpsee-types`
+/// reserves, inside the range the specification leaves to servers.
 pub(crate) const PATH_REFUSED_CODE: i32 = -32_010;
 /// A process this executor does not have, or no longer has.
 pub(crate) const UNKNOWN_PROCESS_CODE: i32 = -32_011;
@@ -110,86 +113,11 @@ pub(crate) struct WriteFileParams<'a> {
     pub(crate) content: String,
 }
 
-/// `fs/list` parameters.
+/// `fs/list` parameters; the result is a [`Listing`](crate::api::Listing).
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct ListParams<'a> {
     /// The directory, inside the workspace.
     pub(crate) path: Cow<'a, str>,
-}
-
-/// `fs/list` result.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct ListResult {
-    /// Every entry, unsorted.
-    pub(crate) entries: Vec<EntryWire>,
-}
-
-/// One listed entry as the wire spells it.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct EntryWire {
-    /// Its name.
-    pub(crate) name: String,
-    /// What it is.
-    pub(crate) kind: KindWire,
-    /// Its size in bytes.
-    pub(crate) size: u64,
-}
-
-/// [`EntryKind`] as the wire spells it.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum KindWire {
-    /// A regular file.
-    File,
-    /// A directory.
-    Directory,
-    /// A symbolic link.
-    Symlink,
-    /// Anything else.
-    Other,
-}
-
-impl From<KindWire> for EntryKind {
-    fn from(kind: KindWire) -> Self {
-        match kind {
-            KindWire::File => Self::File,
-            KindWire::Directory => Self::Directory,
-            KindWire::Symlink => Self::Symlink,
-            KindWire::Other => Self::Other,
-        }
-    }
-}
-
-/// [`Stream`] as the wire spells it.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum StreamWire {
-    /// Standard output.
-    Stdout,
-    /// Standard error.
-    Stderr,
-    /// The pseudo-terminal.
-    Terminal,
-}
-
-impl From<Stream> for StreamWire {
-    fn from(stream: Stream) -> Self {
-        match stream {
-            Stream::Stdout => Self::Stdout,
-            Stream::Stderr => Self::Stderr,
-            Stream::Terminal => Self::Terminal,
-        }
-    }
-}
-
-impl From<StreamWire> for Stream {
-    fn from(stream: StreamWire) -> Self {
-        match stream {
-            StreamWire::Stdout => Self::Stdout,
-            StreamWire::Stderr => Self::Stderr,
-            StreamWire::Terminal => Self::Terminal,
-        }
-    }
 }
 
 /// `process/output` parameters.
@@ -198,41 +126,20 @@ pub(crate) struct OutputParams {
     /// The process that wrote it.
     pub(crate) process_id: u64,
     /// Where it wrote it.
-    pub(crate) stream: StreamWire,
+    pub(crate) stream: Stream,
     /// The bytes, base64.
     pub(crate) data: String,
 }
 
 /// `process/exited` parameters.
-///
-/// `timed_out` wins over the rest; a signal wins over an exit code; neither
-/// means the executor lost track of the process.
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct ExitedParams {
     /// The process that ended.
     pub(crate) process_id: u64,
-    /// Its exit status, when it exited.
-    pub(crate) exit_code: Option<i32>,
-    /// The signal that ended it, when one did.
-    pub(crate) signal: Option<i32>,
-    /// Whether its timeout ended it.
-    pub(crate) timed_out: bool,
+    /// How it ended.
+    pub(crate) ending: Ending,
     /// Output dropped between the kept head and tail.
     pub(crate) omitted_bytes: u64,
-}
-
-impl ExitedParams {
-    /// How the process ended, in the caller's terms.
-    pub(crate) fn ending(&self) -> Ending {
-        if self.timed_out {
-            Ending::TimedOut
-        } else {
-            self.signal.map_or_else(
-                || self.exit_code.map_or(Ending::Interrupted, Ending::Exited),
-                Ending::Signaled,
-            )
-        }
-    }
 }
 
 /// Bytes as the wire carries them.

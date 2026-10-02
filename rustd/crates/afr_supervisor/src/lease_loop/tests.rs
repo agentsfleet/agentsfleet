@@ -1,127 +1,50 @@
 #![expect(
     clippy::unwrap_used,
     clippy::indexing_slicing,
-    clippy::assertions_on_result_states,
     reason = "test target: a fixture that cannot be built is a broken test"
 )]
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use afd_core::id::Uuid7;
-use afd_wire::memory::MemoryHydrateResponse;
-use afr_sandbox::Limits;
 use bytes::Bytes;
+use tokio::time::Instant;
 
-use super::Lessee;
-use crate::bundles::BundleCache;
+use super::ACTIVITY_DRAIN_WAIT;
 use crate::client::{Call, Verb};
 use crate::error;
-use crate::report_spool::{Delivery, ReportSpool};
-use crate::storage_home::StorageHome;
+use crate::renew::RENEWAL_TICK;
+use crate::report_spool::ReportSpool;
 use crate::test_support::{
-    Answer, Behaviour, FENCING, FLEET_ID, FakeAgent, FakeEngine, LEASE_ID, drain, json, lease,
-    plane,
+    Answer, Behaviour, FAILURE_REASON, FENCING, FLEET_ID, FakeAgent, FakeEngine, LEASE_ID, OUTCOME,
+    PROCESSED, RENEWAL_TERMINATE, RUNNER_CRASH, Rig, STARTUP_POSTURE, daemon, lease, position,
+    reported,
 };
 use crate::turns::FleetTurns;
-
-/// The report field a failed run names its class in.
-const FAILURE_REASON: &str = "failure_reason";
-/// The class a sandbox that would not build reports.
-const STARTUP_POSTURE: &str = "startup_posture";
-/// The class a lease the daemon ended mid-run reports.
-const RENEWAL_TERMINATE: &str = "renewal_terminate";
-
-/// The daemon every lease test talks to; `special` answers first when it has an answer.
-fn daemon(
-    special: impl Fn(&Call) -> Option<Answer> + Send + Sync + 'static,
-) -> impl Fn(&Call) -> Answer + Send + Sync + 'static {
-    move |call| {
-        special(call).unwrap_or_else(|| match call.verb {
-            Verb::Hydrate => json(&MemoryHydrateResponse { memory: Vec::new() }),
-            Verb::Capture => json(&serde_json::json!({"stored": 1, "skipped": 0})),
-            _ => json(&serde_json::json!({"ok": true, "lease_expires_at": 1})),
-        })
-    }
-}
 
 /// One answer the test daemon gives before its defaults.
 type Special = fn(&Call) -> Option<Answer>;
 
-struct Rig {
-    _root: tempfile::TempDir,
-    lessee: Lessee,
-    home: StorageHome,
-    calls: tokio::sync::mpsc::UnboundedReceiver<Call>,
-    runs: Arc<AtomicUsize>,
-    prepared: Arc<AtomicUsize>,
-    destroyed: Arc<AtomicUsize>,
+fn rig(special: Special, engine: FakeEngine, behaviour: Behaviour) -> Rig {
+    Rig::new(daemon(special), engine, FakeAgent::new(behaviour))
 }
 
-fn rig(
-    answer: impl Fn(&Call) -> Answer + Send + Sync + 'static,
-    engine: FakeEngine,
-    behaviour: Behaviour,
-) -> Rig {
-    let root = tempfile::tempdir().unwrap();
-    let home = StorageHome::open(root.path()).unwrap();
-    let (plane, calls) = plane(answer);
-    let agent = FakeAgent::new(behaviour);
-    let (runs, prepared, destroyed) = (
-        Arc::clone(&agent.runs),
-        Arc::clone(&engine.prepared),
-        Arc::clone(&engine.destroyed),
-    );
-    let lessee = Lessee {
-        plane,
-        engine: Box::new(engine),
-        agent: Box::new(agent),
-        spool: ReportSpool::new(&home),
-        bundles: BundleCache::new(&home),
-        limits: Limits::default(),
-    };
-    Rig {
-        _root: root,
-        lessee,
-        home,
-        calls,
-        runs,
-        prepared,
-        destroyed,
-    }
+fn healthy(_call: &Call) -> Option<Answer> {
+    None
 }
 
-impl Rig {
-    async fn run(&mut self) -> (crate::Result<Option<Delivery>>, Vec<Call>) {
-        let (turns, coordinator) = FleetTurns::start();
-        tokio::spawn(coordinator);
-        let outcome = self
-            .lessee
-            .run(&turns, &lease(LEASE_ID, FLEET_ID, None))
-            .await;
-        (outcome, drain(&mut self.calls))
-    }
-}
-
-fn reported(calls: &[Call]) -> serde_json::Value {
-    let report = calls
-        .iter()
-        .rfind(|call| call.verb == Verb::Report)
-        .unwrap();
-    serde_json::from_slice(report.body.as_ref().unwrap()).unwrap()
-}
-
-fn position(calls: &[Call], verb: Verb) -> Option<usize> {
-    calls.iter().position(|call| call.verb == verb)
+fn renewal_lost(call: &Call) -> Option<Answer> {
+    (call.verb == Verb::Renew).then(|| Answer::Fail(error::refused(Verb::Renew, 409, None)))
 }
 
 #[tokio::test(start_paused = true)]
 async fn test_memory_push_fenced_before_report() {
-    let mut rig = rig(daemon(|_| None), FakeEngine::default(), Behaviour::Answer);
+    let mut rig = rig(healthy, FakeEngine::default(), Behaviour::Answer);
 
-    let (outcome, calls) = rig.run().await;
+    rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
 
-    assert_eq!(outcome.unwrap(), Some(Delivery::Accepted));
+    let calls = rig.calls();
     let pushed = position(&calls, Verb::Capture).unwrap();
     assert!(position(&calls, Verb::Hydrate).unwrap() < pushed);
     assert!(
@@ -132,7 +55,7 @@ async fn test_memory_push_fenced_before_report() {
         serde_json::from_slice(calls[pushed].body.as_ref().unwrap()).unwrap();
     assert_eq!(push["fencing_token"], FENCING);
     assert_eq!(push["memory"][0]["key"], "k");
-    assert_eq!(reported(&calls)["outcome"], "processed");
+    assert_eq!(reported(&calls)[OUTCOME], PROCESSED);
     assert!(
         position(&calls, Verb::Activity).is_some(),
         "the run's chunk reached the live tail"
@@ -142,16 +65,81 @@ async fn test_memory_push_fenced_before_report() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn renewal_keeps_the_lease_through_a_slow_settle_and_stops_once_answered() {
+    let slow_push: Special = |call| {
+        (call.verb == Verb::Capture).then(|| {
+            Answer::Late(
+                RENEWAL_TICK * 3,
+                Bytes::from_static(br#"{"stored":1,"skipped":0}"#),
+            )
+        })
+    };
+    let mut rig = rig(slow_push, FakeEngine::default(), Behaviour::Answer);
+
+    rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
+    tokio::time::sleep(RENEWAL_TICK * 4).await;
+
+    let calls = rig.calls();
+    let renewals: Vec<_> = calls
+        .iter()
+        .enumerate()
+        .filter(|(_, call)| call.verb == Verb::Renew)
+        .map(|(at, _)| at)
+        .collect();
+    let report = position(&calls, Verb::Report).unwrap();
+    assert!(
+        renewals.len() >= 2,
+        "the push outlasted two ticks: {renewals:?}"
+    );
+    assert!(
+        renewals.iter().all(|at| *at < report),
+        "no renewal once the report was answered"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_report_settles_before_a_stalled_live_tail_and_the_wait_is_bounded() {
+    let stalled: Special = |call| (call.verb == Verb::Activity).then_some(Answer::Stall);
+    let mut rig = rig(stalled, FakeEngine::default(), Behaviour::Answer);
+    let started = Instant::now();
+
+    rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
+
+    assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED);
+    let waited = started.elapsed();
+    assert!(
+        waited >= ACTIVITY_DRAIN_WAIT && waited < ACTIVITY_DRAIN_WAIT * 2,
+        "{waited:?}"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_skill_only_bundle_runs_without_one() {
+    let absent: Special = |call| {
+        (call.verb == Verb::Bundle).then(|| Answer::Fail(error::refused(Verb::Bundle, 404, None)))
+    };
+    let mut rig = rig(absent, FakeEngine::default(), Behaviour::Answer);
+    let digest = "a".repeat(64);
+
+    rig.run(&lease(LEASE_ID, FLEET_ID, Some(&digest)))
+        .await
+        .unwrap();
+
+    assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED);
+    assert_eq!(rig.runs.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_sandbox_that_cannot_be_built_refuses_the_lease() {
     let engine = FakeEngine {
         refuse: true,
         ..FakeEngine::default()
     };
-    let mut rig = rig(daemon(|_| None), engine, Behaviour::Answer);
+    let mut rig = rig(healthy, engine, Behaviour::Answer);
 
-    let (outcome, calls) = rig.run().await;
+    rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
 
-    assert!(outcome.is_ok());
+    let calls = rig.calls();
     assert_eq!(reported(&calls)[FAILURE_REASON], STARTUP_POSTURE);
     assert_eq!(
         rig.runs.load(Ordering::SeqCst),
@@ -163,15 +151,12 @@ async fn a_sandbox_that_cannot_be_built_refuses_the_lease() {
 
 #[tokio::test(start_paused = true)]
 async fn a_4xx_renewal_mid_run_ends_it_and_still_tears_down() {
-    let lost = |call: &Call| {
-        (call.verb == Verb::Renew).then(|| Answer::Fail(error::refused(Verb::Renew, 409, None)))
-    };
-    let mut rig = rig(daemon(lost), FakeEngine::default(), Behaviour::Hang);
+    let mut rig = rig(renewal_lost, FakeEngine::default(), Behaviour::Hang);
 
-    let (_outcome, calls) = rig.run().await;
+    rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
 
+    let calls = rig.calls();
     assert_eq!(reported(&calls)[FAILURE_REASON], RENEWAL_TERMINATE);
-    assert_eq!(rig.runs.load(Ordering::SeqCst), 1);
     assert_eq!(
         rig.destroyed.load(Ordering::SeqCst),
         1,
@@ -185,11 +170,31 @@ async fn a_4xx_renewal_mid_run_ends_it_and_still_tears_down() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_renewal_refused_before_the_fleet_is_free_never_starts_the_run() {
-    let lost = |call: &Call| {
-        (call.verb == Verb::Renew).then(|| Answer::Fail(error::refused(Verb::Renew, 409, None)))
+async fn a_stop_ends_a_lease_in_flight_and_still_tears_down() {
+    let mut rig = rig(healthy, FakeEngine::default(), Behaviour::Hang);
+    let stopping = async {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        rig.lessee.halt.stop();
     };
-    let mut rig = rig(daemon(lost), FakeEngine::default(), Behaviour::Answer);
+
+    let granted = lease(LEASE_ID, FLEET_ID, None);
+    let (ran, ()) = tokio::join!(rig.run(&granted), stopping);
+
+    ran.unwrap();
+    let report = reported(&rig.calls());
+    assert_eq!(report[FAILURE_REASON], RENEWAL_TERMINATE);
+    assert!(
+        report["failure_detail"]
+            .as_str()
+            .unwrap()
+            .contains("told to stop")
+    );
+    assert_eq!(rig.destroyed.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_renewal_refused_before_the_fleet_is_free_never_starts_the_run() {
+    let mut rig = rig(renewal_lost, FakeEngine::default(), Behaviour::Answer);
     let (turns, coordinator) = FleetTurns::start();
     tokio::spawn(coordinator);
     let _busy = turns.claim(&Uuid7::parse(FLEET_ID).unwrap()).await;
@@ -199,38 +204,38 @@ async fn a_renewal_refused_before_the_fleet_is_free_never_starts_the_run() {
         .await
         .unwrap();
 
-    assert_eq!(
-        reported(&drain(&mut rig.calls))[FAILURE_REASON],
-        RENEWAL_TERMINATE
-    );
+    assert_eq!(reported(&rig.calls())[FAILURE_REASON], RENEWAL_TERMINATE);
     assert_eq!(rig.prepared.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_engine_failure_reports_a_crash_and_a_failed_teardown_is_only_logged() {
-    let engine = FakeEngine {
-        fail_teardown: true,
-        ..FakeEngine::default()
-    };
-    let mut rig = rig(daemon(|_| None), engine, Behaviour::Break);
+async fn an_engine_that_fails_or_panics_reports_a_crash_and_is_torn_down() {
+    for behaviour in [Behaviour::Break, Behaviour::Panic] {
+        let engine = FakeEngine {
+            fail_teardown: true,
+            ..FakeEngine::default()
+        };
+        let mut rig = rig(healthy, engine, behaviour);
 
-    let (outcome, calls) = rig.run().await;
+        rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
 
-    assert!(outcome.is_ok());
-    assert_eq!(reported(&calls)[FAILURE_REASON], "runner_crash");
-    assert_eq!(rig.destroyed.load(Ordering::SeqCst), 1);
+        let settled = (
+            reported(&rig.calls())[FAILURE_REASON].clone(),
+            rig.destroyed.load(Ordering::SeqCst),
+        );
+        assert_eq!(settled, (RUNNER_CRASH.into(), 1), "{behaviour:?}");
+    }
 }
 
 #[tokio::test(start_paused = true)]
 async fn a_lease_that_cannot_start_reports_why() {
-    let digest = "a".repeat(64);
+    let tampered = "a".repeat(64);
     let cases: [(Special, Option<&str>, Verb); 3] = [
         (
             |call| {
-                (call.verb == Verb::Bundle)
-                    .then(|| Answer::Fail(error::refused(Verb::Bundle, 404, None)))
+                (call.verb == Verb::Bundle).then(|| Answer::Reply(Bytes::from_static(b"not a tar")))
             },
-            Some(&digest),
+            Some(&tampered),
             Verb::Bundle,
         ),
         (
@@ -247,17 +252,12 @@ async fn a_lease_that_cannot_start_reports_why() {
             Verb::Hydrate,
         ),
     ];
-    for (case, bundle, last_setup_call) in cases {
-        let mut rig = rig(daemon(case), FakeEngine::default(), Behaviour::Answer);
-        let (turns, coordinator) = FleetTurns::start();
-        tokio::spawn(coordinator);
+    for (special, bundle, stopped_at) in cases {
+        let mut rig = rig(special, FakeEngine::default(), Behaviour::Answer);
 
-        rig.lessee
-            .run(&turns, &lease(LEASE_ID, FLEET_ID, bundle))
-            .await
-            .unwrap();
+        rig.run(&lease(LEASE_ID, FLEET_ID, bundle)).await.unwrap();
 
-        let calls = drain(&mut rig.calls);
+        let calls = rig.calls();
         assert_eq!(reported(&calls)[FAILURE_REASON], STARTUP_POSTURE);
         assert_eq!(rig.prepared.load(Ordering::SeqCst), 0);
         let setup: Vec<_> = calls
@@ -267,37 +267,30 @@ async fn a_lease_that_cannot_start_reports_why() {
             .collect();
         assert_eq!(
             setup.last(),
-            Some(&last_setup_call),
+            Some(&stopped_at),
             "it stopped at the step that failed"
         );
     }
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_failed_memory_push_still_reports_and_an_unposted_report_stays_spooled() {
-    let flaky = |call: &Call| match call.verb {
-        Verb::Capture => Some(Answer::Fail(error::refused(Verb::Capture, 409, None))),
-        Verb::Report => Some(Answer::Fail(error::unavailable(Verb::Report, 503))),
-        _ => None,
-    };
-    let mut rig = rig(daemon(flaky), FakeEngine::default(), Behaviour::Answer);
+async fn a_lease_arriving_as_the_pool_shuts_down_is_reported_not_run() {
+    let mut rig = rig(healthy, FakeEngine::default(), Behaviour::Answer);
+    let (turns, coordinator) = FleetTurns::start();
+    drop(coordinator);
 
-    let (outcome, calls) = rig.run().await;
+    rig.lessee
+        .run(&turns, &lease(LEASE_ID, FLEET_ID, None))
+        .await
+        .unwrap();
 
-    assert_eq!(outcome.unwrap(), None, "kept, not lost");
-    assert!(position(&calls, Verb::Report).is_some());
-    assert_eq!(ReportSpool::new(&rig.home).pending().unwrap().len(), 1);
+    assert_eq!(reported(&rig.calls())[FAILURE_REASON], STARTUP_POSTURE);
+    assert_eq!(rig.prepared.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
 async fn a_lease_with_an_identifier_out_of_form_is_refused() {
-    let rig = rig(daemon(|_| None), FakeEngine::default(), Behaviour::Answer);
-    let (turns, _coordinator) = FleetTurns::start();
+    let rig = rig(healthy, FakeEngine::default(), Behaviour::Answer);
 
-    assert!(
-        rig.lessee
-            .run(&turns, &lease("nope", FLEET_ID, None))
-            .await
-            .is_err()
-    );
+    assert!(rig.run(&lease("nope", FLEET_ID, None)).await.is_err());
 }

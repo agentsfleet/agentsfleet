@@ -114,10 +114,21 @@ fn the_probe_answer_is_the_report_plus_every_check() {
     let answer = probe_answer(&host);
 
     assert_eq!(answer.capability_report, capability_report(&host));
-    let names: Vec<_> = answer.checks.iter().map(|check| check.name.as_ref()).collect();
+    let names: Vec<_> = answer
+        .checks
+        .iter()
+        .map(|check| check.name.as_ref())
+        .collect();
     assert_eq!(
         names,
-        ["landlock", "seccomp", "bubblewrap", "cgroup_controllers", "kvm", "toolbox_filesystem"]
+        [
+            "landlock",
+            "seccomp",
+            "bubblewrap",
+            "cgroup_controllers",
+            "kvm",
+            "toolbox_filesystem"
+        ]
     );
     let refused: Vec<_> = answer
         .checks

@@ -28,19 +28,17 @@ fn every_verb_logs_under_its_own_family() {
     assert_eq!(codes[7], error_code::FLEET_BUNDLE_FETCH_FAILED);
     assert_eq!(codes[5], error_code::MEM_UNAVAILABLE);
     assert_eq!(codes[6], error_code::MEM_UNAVAILABLE);
-    assert_eq!(
-        codes
-            .iter()
-            .filter(|code| **code == error_code::INTERNAL_OPERATION_FAILED)
-            .count(),
-        6
-    );
+    let internal = codes
+        .iter()
+        .filter(|code| **code == error_code::INTERNAL_OPERATION_FAILED)
+        .count();
+    assert_eq!(internal, 6);
     assert_eq!(Verb::Renew.to_string(), "Renew");
     assert!(Verb::Bundle.reads() && Verb::Hydrate.reads() && !Verb::Report.reads());
 }
 
 #[test]
-fn a_refusal_carries_the_daemons_code_through() {
+fn a_refusal_carries_the_daemons_code_and_status_through() {
     let body = br#"{"error_code":"UZ-RUN-015","detail":"over budget"}"#;
     let refusal = raise::refused_with_body(Verb::Renew, 402, body);
 
@@ -48,8 +46,9 @@ fn a_refusal_carries_the_daemons_code_through() {
         refusal.refusal_code(),
         Some(error_code::RUN_BUDGET_EXCEEDED)
     );
+    assert_eq!(refusal.refusal_status(), Some(402));
     assert_eq!(refusal.code(), error_code::RUN_BUDGET_EXCEEDED);
-    assert!(!refusal.is_retryable());
+    assert!(!refusal.is_retryable() && !refusal.is_not_found());
     assert!(
         refusal.to_string().contains("refused the Renew call (402)"),
         "{refusal}"
@@ -61,12 +60,23 @@ fn a_refusal_without_a_known_code_falls_back_by_status_then_verb() {
     let unknown = raise::refused_with_body(Verb::Renew, 409, br#"{"error_code":"UZ-NOPE-999"}"#);
     let unreadable = raise::refused_with_body(Verb::Report, 400, b"<html>");
     let unauthorized = raise::refused(Verb::Lease, 401, None);
+    let absent = raise::refused(Verb::Bundle, 404, None);
 
     assert_eq!(unknown.code(), error_code::RUN_LEASE_LOST);
     assert_eq!(unreadable.code(), error_code::INTERNAL_OPERATION_FAILED);
     assert_eq!(unreadable.refusal_code(), None);
     assert!(unauthorized.is_unauthorized());
     assert_eq!(unauthorized.code(), error_code::RUN_INVALID_RUNNER_TOKEN);
+    assert!(absent.is_not_found() && !absent.is_unauthorized());
+}
+
+#[test]
+fn a_stopped_runner_names_its_refused_token() {
+    let stopped = raise::token_refused();
+
+    assert!(stopped.is_unauthorized());
+    assert_eq!(stopped.code(), error_code::RUN_INVALID_RUNNER_TOKEN);
+    assert_eq!(stopped.refusal_status(), None);
 }
 
 #[test]
@@ -75,7 +85,7 @@ fn a_blip_is_retryable_and_names_its_verb_family() {
 
     assert!(busy.is_retryable());
     assert!(!busy.is_unauthorized());
-    assert_eq!(busy.refusal_code(), None);
+    assert_eq!((busy.refusal_code(), busy.refusal_status()), (None, None));
     assert_eq!(busy.code(), error_code::MEM_UNAVAILABLE);
 }
 
@@ -101,14 +111,19 @@ fn local_failures_log_as_internal() {
         .unwrap()
         .persist("/no/such/dir/x")
         .unwrap_err();
+    let unbuildable = reqwest::Client::builder()
+        .user_agent("\n")
+        .build()
+        .unwrap_err();
     let failures: Vec<Error> = vec![
         raise::malformed(Verb::Lease)(decode),
         raise::encode(encode),
         raise::config("unset"),
+        raise::address(url::Url::parse("no scheme").unwrap_err()),
+        raise::client(unbuildable),
         std::io::Error::other("disk").into(),
         persist.into(),
         afd_core::id::Uuid7::parse("nope").unwrap_err().into(),
-        afr_sandbox::Error::from(std::io::Error::other("no landlock")).into(),
     ];
 
     for failure in &failures {

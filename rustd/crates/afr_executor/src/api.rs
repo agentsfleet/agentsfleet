@@ -5,6 +5,7 @@ use std::fmt;
 use std::time::Duration;
 
 use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 use crate::error::Result;
@@ -28,7 +29,8 @@ impl ProcessId {
 }
 
 /// Which stream a chunk of output came from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Stream {
     /// The process's standard output, when it runs on pipes.
     Stdout,
@@ -39,16 +41,22 @@ pub enum Stream {
 }
 
 /// How a process ended: exactly one of these, exactly once.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// The executor's `process/exited` carries this as it is, so the wire and the
+/// caller spell an ending one way: `{"kind":"exited","code":0}`,
+/// `{"kind":"signaled","code":9}`, `{"kind":"timed_out"}`,
+/// `{"kind":"interrupted"}`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "code", rename_all = "snake_case")]
 pub enum Ending {
     /// It exited with this status.
     Exited(i32),
-    /// A signal ended it.
+    /// This signal ended it.
     Signaled(i32),
     /// Its timeout elapsed and the executor killed its group.
     TimedOut,
-    /// The executor or its sandbox went away before the process reported an
-    /// end, so the supervisor closed it.
+    /// No status reached the caller: the executor or its sandbox went away,
+    /// or the executor could not learn how the process ended.
     Interrupted,
 }
 
@@ -186,7 +194,8 @@ pub struct Process {
 }
 
 /// What a directory entry is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum EntryKind {
     /// A regular file.
     File,
@@ -199,7 +208,7 @@ pub enum EntryKind {
 }
 
 /// One entry of a listed directory.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DirEntry {
     /// The entry's name, without its directory.
     pub name: String,
@@ -207,6 +216,15 @@ pub struct DirEntry {
     pub kind: EntryKind,
     /// Its size in bytes, as the file system reports it.
     pub size: u64,
+}
+
+/// A directory's entries, up to the most one answer carries.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Listing {
+    /// The entries, in no particular order.
+    pub entries: Vec<DirEntry>,
+    /// Whether the directory held more than were listed.
+    pub truncated: bool,
 }
 
 /// A file's bytes, up to the limit the caller asked for.
@@ -227,18 +245,22 @@ pub trait Executor: Send + Sync + fmt::Debug {
     /// Starts a process and returns the channel its events arrive on.
     async fn spawn(&self, spawn: Spawn) -> Result<Process>;
 
-    /// Writes to a running process's input.
+    /// Queues bytes for a running process's input.
+    ///
+    /// Answered once the bytes are queued, not once the process has read
+    /// them, so a process that never reads cannot stall its caller; a write
+    /// past the queue's bound is refused instead.
     async fn write(&self, process: ProcessId, data: Bytes) -> Result<()>;
 
     /// Ends a process and every descendant in its group.
     async fn kill(&self, process: ProcessId) -> Result<()>;
 
-    /// Reads a file, at most `max_bytes` of it.
+    /// Reads a regular file, at most `max_bytes` of it.
     async fn read_file(&self, path: &str, max_bytes: u64) -> Result<FileContent>;
 
-    /// Writes a file, replacing what was there.
+    /// Writes a regular file, replacing what was there.
     async fn write_file(&self, path: &str, data: Bytes) -> Result<()>;
 
-    /// Lists a directory.
-    async fn list_dir(&self, path: &str) -> Result<Vec<DirEntry>>;
+    /// Lists a directory, up to the most one answer carries.
+    async fn list_dir(&self, path: &str) -> Result<Listing>;
 }

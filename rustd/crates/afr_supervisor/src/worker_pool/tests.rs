@@ -7,159 +7,120 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use afd_core::limits::WorkerCount;
 use afd_wire::lease::LeaseResponse;
-use afd_wire::memory::MemoryHydrateResponse;
 use afd_wire::runner::HeartbeatStatus;
-use afr_sandbox::Limits;
 use bytes::Bytes;
 use tokio::sync::watch;
-use tokio_util::sync::CancellationToken;
 
-use super::serve;
-use crate::bundles::BundleCache;
-use crate::client::{Call, Verb};
+use super::{MIN_POLL_PAUSE, serve};
+use crate::client::Verb;
 use crate::error;
 use crate::heartbeat::Assignment;
-use crate::lease_loop::Lessee;
-use crate::report_spool::ReportSpool;
-use crate::storage_home::StorageHome;
-use crate::test_support::{Answer, Behaviour, FLEET_ID, FakeAgent, FakeEngine, json, lease, plane};
+use crate::test_support::{
+    Answer, Behaviour, FLEET_ID, FakeAgent, FakeEngine, Rig, daemon, json, lease,
+};
 
-const OTHER_LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a8060";
+const FIRST_LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a8060";
 const SECOND_LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a8061";
 
 /// A daemon whose n-th lease poll is answered by `polls(n)`.
-fn daemon(
-    polls: impl Fn(usize) -> Answer + Send + Sync + 'static,
-) -> impl Fn(&Call) -> Answer + Send + Sync + 'static {
-    let polled = AtomicUsize::new(0);
-    move |call| match call.verb {
-        Verb::Lease => polls(polled.fetch_add(1, Ordering::SeqCst)),
-        Verb::Hydrate => json(&MemoryHydrateResponse { memory: Vec::new() }),
-        _ => json(&serde_json::json!({"ok": true, "stored": 0, "skipped": 0})),
-    }
+fn polling(polls: impl Fn(usize) -> Answer + Send + Sync + 'static) -> Rig {
+    polling_with(polls, FakeEngine::default())
 }
 
-fn idle() -> Answer {
+fn polling_with(
+    polls: impl Fn(usize) -> Answer + Send + Sync + 'static,
+    engine: FakeEngine,
+) -> Rig {
+    let polled = AtomicUsize::new(0);
+    let answer = daemon(move |call| {
+        (call.verb == Verb::Lease).then(|| polls(polled.fetch_add(1, Ordering::SeqCst)))
+    });
+    Rig::new(answer, engine, FakeAgent::new(Behaviour::Answer))
+}
+
+fn granted(lease_id: &str) -> Answer {
     json(&LeaseResponse {
-        lease: None,
-        retry_after_ms: Some(500),
+        lease: Some(lease(lease_id, FLEET_ID, None)),
+        retry_after_ms: None,
     })
 }
 
-fn lessee(
-    answer: impl Fn(&Call) -> Answer + Send + Sync + 'static,
-    agent: FakeAgent,
-    home: &StorageHome,
-) -> Arc<Lessee> {
-    Arc::new(Lessee {
-        plane: plane(answer).0,
-        engine: Box::new(FakeEngine::default()),
-        agent: Box::new(agent),
-        spool: ReportSpool::new(home),
-        bundles: BundleCache::new(home),
-        limits: Limits::default(),
+fn idle(retry_after_ms: Option<u32>) -> Answer {
+    json(&LeaseResponse {
+        lease: None,
+        retry_after_ms,
     })
 }
 
 fn assigned(workers: u32) -> Assignment {
     Assignment {
-        workers: WorkerCount::clamping(workers),
+        workers,
         ..Assignment::initial()
+    }
+}
+
+async fn until(count: &AtomicUsize, at_least: usize) {
+    while count.load(Ordering::SeqCst) < at_least {
+        tokio::time::sleep(Duration::from_millis(10)).await;
     }
 }
 
 #[tokio::test(start_paused = true)]
 async fn test_worker_pool_runs_distinct_fleets() {
-    let root = tempfile::tempdir().unwrap();
-    let home = StorageHome::open(root.path()).unwrap();
-    let agent = FakeAgent::new(Behaviour::Answer);
-    let (runs, peak) = (Arc::clone(&agent.runs), Arc::clone(&agent.peak));
-    let answer = daemon(|polled| match polled {
-        0 => json(&LeaseResponse {
-            lease: Some(lease(OTHER_LEASE, FLEET_ID, None)),
-            retry_after_ms: None,
-        }),
-        1 => json(&LeaseResponse {
-            lease: Some(lease(SECOND_LEASE, FLEET_ID, None)),
-            retry_after_ms: None,
-        }),
-        _ => idle(),
+    let rig = polling(|polled| match polled {
+        0 => granted(FIRST_LEASE),
+        1 => granted(SECOND_LEASE),
+        _ => idle(Some(500)),
     });
     let (_published, watching) = watch::channel(assigned(2));
-    let shutdown = CancellationToken::new();
-    let pool = tokio::spawn(serve(
-        lessee(answer, agent, &home),
-        watching,
-        shutdown.clone(),
-    ));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
 
-    while runs.load(Ordering::SeqCst) < 2 {
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    until(&rig.runs, 2).await;
     tokio::time::sleep(Duration::from_secs(1)).await;
-    shutdown.cancel();
+    rig.shutdown.cancel();
     pool.await.unwrap();
 
     assert_eq!(
-        runs.load(Ordering::SeqCst),
+        rig.runs.load(Ordering::SeqCst),
         2,
         "both of the fleet's events ran"
     );
-    assert_eq!(peak.load(Ordering::SeqCst), 1, "never at the same time");
+    assert_eq!(rig.peak.load(Ordering::SeqCst), 1, "never at the same time");
 }
 
 #[tokio::test(start_paused = true)]
 async fn a_refused_token_stops_the_pool() {
-    let root = tempfile::tempdir().unwrap();
-    let home = StorageHome::open(root.path()).unwrap();
-    let answer = daemon(|_| Answer::Fail(error::refused(Verb::Lease, 401, None)));
+    let rig = polling(|_| Answer::Fail(error::refused(Verb::Lease, 401, None)));
     let (_published, watching) = watch::channel(assigned(1));
-    let shutdown = CancellationToken::new();
 
-    serve(
-        lessee(answer, FakeAgent::new(Behaviour::Answer), &home),
-        watching,
-        shutdown.clone(),
-    )
-    .await;
+    serve(Arc::clone(&rig.lessee), watching).await;
 
-    assert!(shutdown.is_cancelled());
+    assert!(rig.lessee.halt.token_refused());
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_pool_grows_with_its_assignment_and_rides_out_bad_polls() {
-    let root = tempfile::tempdir().unwrap();
-    let home = StorageHome::open(root.path()).unwrap();
+async fn failed_polls_back_off_and_a_zero_hint_is_floored() {
     let polls = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&polls);
-    let answer = daemon(move |polled| {
+    let rig = polling(move |polled| {
         counted.fetch_add(1, Ordering::SeqCst);
         match polled {
-            0 => Answer::Fail(error::unavailable(Verb::Lease, 503)),
-            1 => Answer::Reply(Bytes::from_static(b"[")),
-            2 => json(&LeaseResponse {
-                lease: Some(lease("nope", FLEET_ID, None)),
-                retry_after_ms: None,
-            }),
-            _ => json(&LeaseResponse {
-                lease: None,
-                retry_after_ms: None,
-            }),
+            0..=5 => Answer::Fail(error::unavailable(Verb::Lease, 503)),
+            6 => Answer::Reply(Bytes::from_static(b"[")),
+            7 => granted("nope"),
+            _ => idle(Some(0)),
         }
     });
     let (published, watching) = watch::channel(assigned(1));
-    let pool = tokio::spawn(serve(
-        lessee(answer, FakeAgent::new(Behaviour::Answer), &home),
-        watching,
-        CancellationToken::new(),
-    ));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
 
-    tokio::time::sleep(Duration::from_secs(5)).await;
-    published.send_replace(assigned(2));
-    tokio::time::sleep(Duration::from_secs(5)).await;
-    // Draining, then gone: no worker is wanted and no assignment can come.
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let early = polls.load(Ordering::SeqCst);
+    until(&polls, 9).await;
+    let floored = polls.load(Ordering::SeqCst);
+    tokio::time::sleep(MIN_POLL_PAUSE * 4).await;
+    let later = polls.load(Ordering::SeqCst);
     published.send_replace(Assignment {
         status: HeartbeatStatus::Drain,
         ..assigned(2)
@@ -168,7 +129,39 @@ async fn the_pool_grows_with_its_assignment_and_rides_out_bad_polls() {
     pool.await.unwrap();
 
     assert!(
-        polls.load(Ordering::SeqCst) > 4,
-        "every bad poll was ridden out"
+        early < 6,
+        "six blips took longer than two seconds to spend: {early}"
+    );
+    assert!(
+        later - floored <= 5,
+        "a zero hint polls at most every {MIN_POLL_PAUSE:?}"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_worker_that_panics_is_started_again() {
+    let engine = FakeEngine {
+        panic_once: true,
+        ..FakeEngine::default()
+    };
+    let rig = polling_with(
+        |polled| match polled {
+            0 => granted(FIRST_LEASE),
+            1 => granted(SECOND_LEASE),
+            _ => idle(Some(500)),
+        },
+        engine,
+    );
+    let (_published, watching) = watch::channel(assigned(1));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
+
+    until(&rig.runs, 1).await;
+    rig.shutdown.cancel();
+    pool.await.unwrap();
+
+    assert_eq!(
+        rig.prepared.load(Ordering::SeqCst),
+        2,
+        "the second lease ran on a fresh worker"
     );
 }

@@ -3,12 +3,16 @@
     reason = "a test reads the argument it just located"
 )]
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
 use super::{Layout, arguments};
 
 fn argv() -> Vec<String> {
+    with_level(Some("debug"))
+}
+
+fn with_level(level: Option<&str>) -> Vec<String> {
     let entry_args = [OsString::from("sandbox")];
     arguments(&Layout {
         toolbox: Path::new("/srv/toolbox/abc"),
@@ -16,6 +20,7 @@ fn argv() -> Vec<String> {
         run_dir: Path::new("/srv/leases/l1/run"),
         entry: Path::new("/usr/local/bin/agentsfleet-runner"),
         entry_args: &entry_args,
+        log_level: level.map(OsStr::new),
     })
     .into_iter()
     .map(|part| part.into_string().unwrap_or_default())
@@ -88,12 +93,36 @@ fn test_the_command_is_the_bound_runner_told_to_serve() {
         argv[argv.len() - 3..],
         ["--", "/opt/agentsfleet/agentsfleet-runner", "sandbox"]
     );
+    // The executor owns `PATH`; the only variable passed in is the log level.
     assert_eq!(
-        after(&argv, "--setenv", "PATH")[2],
-        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        after(&argv, "--setenv", "AGENTSFLEET_LOG_LEVEL")[2],
+        "debug"
     );
+    assert!(!with_level(None).iter().any(|part| part == "--setenv"));
+    assert!(!argv.iter().any(|part| part == "PATH"));
     assert_eq!(
         after(&argv, "--chdir", "/workspace")[..2],
         ["--chdir", "/workspace"]
+    );
+}
+
+#[test]
+fn test_the_process_inside_runs_as_an_unprivileged_user() {
+    let argv = argv();
+    let (uid, gid) = (
+        super::SANDBOX_UID.to_string(),
+        super::SANDBOX_GID.to_string(),
+    );
+
+    assert_ne!(super::SANDBOX_UID, 0, "never root inside");
+    assert_eq!(after(&argv, "--uid", &uid)[..2], ["--uid", uid.as_str()]);
+    assert_eq!(after(&argv, "--gid", &gid)[..2], ["--gid", gid.as_str()]);
+}
+
+#[test]
+fn test_the_socket_lies_in_the_socket_directory() {
+    assert_eq!(
+        super::sandbox_socket(),
+        Path::new(super::SANDBOX_RUN_DIR).join(super::SOCKET_NAME)
     );
 }

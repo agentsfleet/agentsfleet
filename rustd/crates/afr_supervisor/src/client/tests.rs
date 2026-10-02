@@ -24,14 +24,19 @@ use crate::test_support::{Answer, FLEET_ID, LEASE_ID, drain, json, plane};
 
 #[tokio::test]
 async fn every_verb_goes_to_its_own_path() {
-    let (plane, mut calls) = plane(|_call| json(&serde_json::json!({})));
+    let (plane, mut calls) = plane(|call| match call.verb {
+        Verb::Renew => json(&RenewResponse {
+            lease_expires_at: 7,
+        }),
+        _other => json(&serde_json::json!({})),
+    });
     assert!(format!("{plane:?}").contains("FakeApi"));
 
     send_every_verb(&plane).await;
 
     let routes: Vec<_> = drain(&mut calls)
         .into_iter()
-        .map(|call| (call.verb, call.path, call.body.is_some()))
+        .map(|call| (call.verb, call.path.into_owned(), call.body.is_some()))
         .collect();
     let lease_root = format!("/v1/runners/me/leases/{LEASE_ID}");
     let memory = format!("/v1/runners/me/memory/{FLEET_ID}");
@@ -72,14 +77,13 @@ async fn send_every_verb(plane: &super::ControlPlane) {
         fencing_token: 1,
         memory: Vec::new(),
     };
-    let mint = MintCredentialRequest {
-        lease_id: LEASE_ID.into(),
-        integration: "github".into(),
-        scope: None,
-    };
     plane.heartbeat(&heartbeat).await.unwrap();
     plane.lease().await.unwrap();
-    plane.renew(&lease).await.unwrap();
+    assert_eq!(
+        plane.renew(&lease).await.unwrap(),
+        7,
+        "renewal returns its new expiry"
+    );
     plane
         .activity(&lease, &ActivityRequest { frames: Vec::new() })
         .await
@@ -88,6 +92,11 @@ async fn send_every_verb(plane: &super::ControlPlane) {
     plane.hydrate(&fleet).await.unwrap();
     plane.capture(&fleet, &push).await.unwrap();
     plane.bundle("ab").await.unwrap();
+    let mint = MintCredentialRequest {
+        lease_id: LEASE_ID.into(),
+        integration: "github".into(),
+        scope: None,
+    };
     plane.mint(&mint).await.unwrap();
 }
 
@@ -209,7 +218,7 @@ fn api(base: &str, token: &str) -> crate::Result<HttpRunnerApi> {
 fn call(verb: Verb, path: &str, body: Option<&'static [u8]>) -> Call {
     Call {
         verb,
-        path: path.to_owned(),
+        path: path.to_owned().into(),
         body: body.map(Bytes::from_static),
     }
 }
@@ -298,5 +307,20 @@ fn a_token_no_header_can_carry_is_refused_before_any_call() {
     assert!(
         refused.to_string().contains("a header cannot carry"),
         "{refused}"
+    );
+}
+
+#[tokio::test]
+async fn a_route_joins_under_the_daemons_path_prefix() {
+    let (base, mut seen) = daemon().await;
+    let api = api(&format!("{base}gateway"), "agt_r_token").unwrap();
+
+    api.send(call(Verb::Lease, "/v1/runners/me/leases", None))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        seen.recv().await.unwrap().path,
+        "/gateway/v1/runners/me/leases"
     );
 }

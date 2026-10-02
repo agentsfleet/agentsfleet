@@ -55,7 +55,10 @@ mod tests {
         let named = BundleDigest::new(b"skill", None).finish();
 
         // pin test: literal is the contract
-        assert_eq!(named, "0b8f5cc070407bc630e301f32d852d26a955a5a1b16d3a257c57fe414346b349");
+        assert_eq!(
+            named,
+            "0b8f5cc070407bc630e301f32d852d26a955a5a1b16d3a257c57fe414346b349"
+        );
     }
 
     /// Moving a byte across a part boundary changes the name.

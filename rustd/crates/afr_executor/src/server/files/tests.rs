@@ -3,12 +3,14 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the runner"
 )]
 
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{OpenOptionsExt as _, symlink};
 
 use base64::prelude::{BASE64_STANDARD, Engine as _};
+use jsonrpsee_types::error::INVALID_PARAMS_CODE;
 
-use super::Workspace;
-use crate::protocol::KindWire;
+use super::{MAX_LIST_ENTRIES, Workspace};
+use crate::api::EntryKind;
+use crate::protocol::PATH_REFUSED_CODE;
 
 /// A workspace beside a directory outside it, with a secret in the outside one.
 fn fixture() -> (tempfile::TempDir, Workspace) {
@@ -39,7 +41,7 @@ fn test_executor_refuses_path_escape() {
         workspace.list("link").unwrap_err(),
         workspace.directory(Some("../outside")).unwrap_err(),
     ] {
-        assert!(refused.is_path_refused(), "{refused}");
+        assert_eq!(refused.rpc_code(), PATH_REFUSED_CODE, "{refused}");
     }
     assert!(
         !scratch.path().join("outside/planted").exists(),
@@ -82,15 +84,15 @@ fn a_listing_names_each_kind_and_size() {
     let mut listed = workspace.list("").unwrap().entries;
     listed.sort_by(|left, right| left.name.cmp(&right.name));
 
-    let kinds: Vec<(String, KindWire, u64)> = listed
+    let kinds: Vec<(String, EntryKind, u64)> = listed
         .into_iter()
         .map(|entry| (entry.name, entry.kind, entry.size))
         .collect();
     assert!(matches!(kinds.as_slice(), [
-        (alias, KindWire::Symlink, _),
-        (dir, KindWire::Directory, _),
-        (file, KindWire::File, 3),
-        (sock, KindWire::Other, _),
+        (alias, EntryKind::Symlink, _),
+        (dir, EntryKind::Directory, _),
+        (file, EntryKind::File, 3),
+        (sock, EntryKind::Other, _),
     ] if alias == "alias" && dir == "dir" && file == "file" && sock == "sock"));
 }
 
@@ -110,21 +112,87 @@ fn the_working_directory_is_the_root_unless_one_is_named() {
 }
 
 #[test]
-fn a_missing_file_is_a_failure_but_not_a_refused_path() {
+fn a_missing_name_is_the_callers_mistake_not_a_refused_path() {
     let (_scratch, workspace) = fixture();
 
     let missing = workspace.read("absent", 8).unwrap_err();
+    let no_directory = workspace.directory(Some("absent")).unwrap_err();
 
-    assert!(!missing.is_path_refused());
+    for refused in [&missing, &no_directory] {
+        assert_eq!(refused.rpc_code(), INVALID_PARAMS_CODE, "{refused}");
+    }
     assert!(
         missing.wire_message().contains(": "),
         "the cause rides along: {}",
         missing.wire_message()
     );
+}
+
+#[test]
+fn a_real_permission_refusal_is_told_apart_from_an_escape() {
+    let (scratch, workspace) = fixture();
+    let locked = scratch.path().join("workspace/locked");
+    std::fs::write(&locked, b"x").unwrap();
+    std::fs::set_permissions(&locked, std::os::unix::fs::PermissionsExt::from_mode(0o000)).unwrap();
+    if rustix::process::geteuid().is_root() {
+        // Root reads through mode bits, so there is no refusal to sort.
+        return;
+    }
+
+    let refused = workspace.read("locked", 8).unwrap_err();
+
+    assert_eq!(refused.rpc_code(), INVALID_PARAMS_CODE, "{refused}");
     assert!(
-        !workspace
-            .directory(Some("absent"))
-            .unwrap_err()
-            .is_path_refused()
+        refused.wire_message().contains("ermission denied"),
+        "{}",
+        refused.wire_message()
     );
+}
+
+#[test]
+fn a_pipe_is_refused_without_waiting_for_a_writer_or_a_reader() {
+    let (scratch, workspace) = fixture();
+    let fifo = scratch.path().join("workspace/fifo");
+    let made = std::process::Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .unwrap();
+    assert!(made.success(), "mkfifo made the pipe");
+
+    let read = workspace.read("fifo", 8).unwrap_err();
+    let written = workspace.write("fifo", b"x").unwrap_err();
+    // With a reader waiting, a non-blocking open for writing succeeds, and
+    // the type check after it is what refuses.
+    let reader = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(rustix::fs::OFlags::NONBLOCK.bits().cast_signed())
+        .open(&fifo)
+        .unwrap();
+    let written_to_reader = workspace.write("fifo", b"x").unwrap_err();
+    drop(reader);
+
+    for refused in [read, written, written_to_reader] {
+        assert_eq!(refused.rpc_code(), INVALID_PARAMS_CODE, "{refused}");
+        assert!(refused.wire_message().contains("not a regular file"));
+    }
+}
+
+#[test]
+fn a_directory_past_the_cap_is_listed_up_to_it_and_says_so() {
+    let (scratch, workspace) = fixture();
+    let crowded = scratch.path().join("workspace/crowded");
+    std::fs::create_dir(&crowded).unwrap();
+    for name in 0..=MAX_LIST_ENTRIES {
+        std::fs::write(crowded.join(name.to_string()), b"").unwrap();
+    }
+    std::fs::remove_file(crowded.join("0")).unwrap();
+
+    let exactly = workspace.list("crowded").unwrap();
+    std::fs::write(crowded.join("0"), b"").unwrap();
+    let past = workspace.list("crowded").unwrap();
+
+    assert_eq!(exactly.entries.len(), MAX_LIST_ENTRIES);
+    assert!(!exactly.truncated, "a full listing that fits is not cut");
+    assert_eq!(past.entries.len(), MAX_LIST_ENTRIES);
+    assert!(past.truncated);
 }

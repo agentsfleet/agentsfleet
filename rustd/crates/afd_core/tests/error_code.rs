@@ -144,3 +144,19 @@ rejects!(
     should_reject_a_family_separator_in_the_family,
     "UZ-RE_Q-001"
 );
+
+/// Every declared code is found by its own spelling, and nothing else is.
+#[test]
+fn test_lookup_finds_declared_codes_only() {
+    for code in REGISTRY {
+        assert_eq!(ErrorCode::lookup(code.as_str()), Some(*code));
+    }
+
+    assert_eq!(
+        ErrorCode::lookup("UZ-RUN-011"),
+        Some(error_code::RUN_LEASE_LOST)
+    );
+    for unknown in ["UZ-NOPE-999", "uz-run-011", "UZ-RUN-11", ""] {
+        assert_eq!(ErrorCode::lookup(unknown), None, "{unknown:?}");
+    }
+}

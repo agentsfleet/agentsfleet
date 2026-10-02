@@ -30,7 +30,8 @@ mod raise;
 #[cfg(test)]
 pub(crate) use self::raise::refused;
 pub(crate) use self::raise::{
-    client, config, encode, malformed, refused_with_body, tampered, transport, unavailable,
+    address, client, config, encode, malformed, refused_with_body, tampered, token_refused,
+    transport, unavailable,
 };
 
 afd_core::error_shell!(
@@ -62,6 +63,14 @@ pub(crate) enum ErrorKind {
     Config {
         /// Which setting, and what is wrong with it.
         detail: &'static str,
+    },
+
+    /// The daemon's address does not parse, or a path does not join it.
+    #[error("the daemon's address is not usable")]
+    Address {
+        /// The parser's reason.
+        #[source]
+        source: url::ParseError,
     },
 
     /// The HTTP client could not be built: no usable TLS backend.
@@ -102,6 +111,10 @@ pub(crate) enum ErrorKind {
         code: Option<ErrorCode>,
     },
 
+    /// The runner stopped because the daemon refused its token.
+    #[error("the daemon refused this runner's token, so the runner stopped")]
+    TokenRefused,
+
     /// The daemon's reply did not decode as the verb's reply shape.
     #[error("the daemon's {verb} reply did not decode")]
     Malformed {
@@ -134,14 +147,6 @@ pub(crate) enum ErrorKind {
         #[from]
         source: afd_core::error::Error,
     },
-
-    /// No sandbox could be built for a lease.
-    #[error("a sandbox could not be built")]
-    Sandbox {
-        /// The engine's reason.
-        #[from]
-        source: afr_sandbox::Error,
-    },
 }
 
 /// The one alias every signature in this crate spells.
@@ -167,10 +172,28 @@ impl Error {
         }
     }
 
+    /// The status the daemon refused with, when this is a refusal.
+    #[must_use]
+    pub const fn refusal_status(&self) -> Option<u16> {
+        match self.kind() {
+            ErrorKind::Refused { status, .. } => Some(*status),
+            _other => None,
+        }
+    }
+
     /// Whether the daemon refused this runner's token.
     #[must_use]
     pub const fn is_unauthorized(&self) -> bool {
-        matches!(self.kind(), ErrorKind::Refused { status: 401, .. })
+        matches!(
+            self.kind(),
+            ErrorKind::Refused { status: 401, .. } | ErrorKind::TokenRefused
+        )
+    }
+
+    /// Whether the daemon has nothing under the name asked for.
+    #[must_use]
+    pub const fn is_not_found(&self) -> bool {
+        matches!(self.kind(), ErrorKind::Refused { status: 404, .. })
     }
 
     /// The registry code this failure is logged under.
@@ -180,7 +203,9 @@ impl Error {
             ErrorKind::Refused {
                 code: Some(code), ..
             } => *code,
-            ErrorKind::Refused { status: 401, .. } => error_code::RUN_INVALID_RUNNER_TOKEN,
+            ErrorKind::Refused { status: 401, .. } | ErrorKind::TokenRefused => {
+                error_code::RUN_INVALID_RUNNER_TOKEN
+            }
             ErrorKind::Refused {
                 verb: Verb::Renew, ..
             } => error_code::RUN_LEASE_LOST,
@@ -192,10 +217,10 @@ impl Error {
             ErrorKind::Io { .. }
             | ErrorKind::Persist { .. }
             | ErrorKind::Config { .. }
+            | ErrorKind::Address { .. }
             | ErrorKind::Client { .. }
             | ErrorKind::Encode { .. }
-            | ErrorKind::Identifier { .. }
-            | ErrorKind::Sandbox { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            | ErrorKind::Identifier { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 }

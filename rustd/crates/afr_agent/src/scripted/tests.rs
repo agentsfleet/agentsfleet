@@ -12,7 +12,7 @@ use afd_wire::lease::LeasePayload;
 use afd_wire::memory::MemoryDelta;
 use afd_wire::report::ResultOutcome;
 use afr_executor::{
-    DirEntry, Ending, Executor, FileContent, Process, ProcessEvent, ProcessId, Spawn, Stream,
+    Ending, Executor, FileContent, Listing, Process, ProcessEvent, ProcessId, Spawn, Stream,
 };
 use bytes::Bytes;
 
@@ -67,8 +67,8 @@ impl Executor for Canned {
     async fn write_file(&self, _path: &str, _data: Bytes) -> afr_executor::Result<()> {
         Ok(())
     }
-    async fn list_dir(&self, _path: &str) -> afr_executor::Result<Vec<DirEntry>> {
-        Ok(Vec::new())
+    async fn list_dir(&self, _path: &str) -> afr_executor::Result<Listing> {
+        Ok(Listing::default())
     }
 }
 

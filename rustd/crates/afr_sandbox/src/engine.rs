@@ -80,6 +80,13 @@ pub trait Sandbox: Send + Sync + fmt::Debug {
     /// The executor running inside it.
     fn executor(&self) -> &dyn Executor;
 
+    /// Whether the sandbox is still up. A warm slot whose sandbox died while
+    /// it waited is discarded on claim rather than handed to a lease; an
+    /// engine with no process to watch keeps the default.
+    fn is_running(&mut self) -> bool {
+        true
+    }
+
     /// Ends every process inside, then removes what it held.
     ///
     /// Takes the sandbox by value: a destroyed sandbox cannot be used again,

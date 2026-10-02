@@ -161,3 +161,79 @@ fn a_two_byte_and_a_four_byte_character_cut_at_a_chunk_end_go_whole_to_the_tail(
         assert_eq!(head.len(), kept, "{input:?}");
     }
 }
+
+#[test]
+fn continuation_bytes_meeting_a_nearly_spent_head_are_cut_without_underflow() {
+    // Three bytes of head left, then bytes that continue no character: the
+    // old walk counted four continuations back from a cut at three.
+    let mut edges = OutputEdges::new(EDGE_BYTES);
+    let mut head = Vec::new();
+    let filler = Chunk {
+        stream: Stream::Stdout,
+        data: Bytes::from(vec![b'a'; EDGE_BYTES - 3]),
+    };
+    edges.feed(filler, &mut |live| head.extend_from_slice(&live.data));
+    let stray = Chunk {
+        stream: Stream::Stdout,
+        data: Bytes::from_static(b"\x80\x80\x80\x80"),
+    };
+    edges.feed(stray, &mut |live| head.extend_from_slice(&live.data));
+    let mut tail = Vec::new();
+    let omitted = edges.finish(&mut |kept| tail.extend_from_slice(&kept.data));
+
+    assert_eq!(
+        head.len(),
+        EDGE_BYTES,
+        "not text, so cut where the cap falls"
+    );
+    assert!(tail.is_empty(), "a stray continuation cannot open the tail");
+    assert_eq!(omitted, 1);
+}
+
+#[test]
+fn every_short_head_against_stray_continuations_is_cut_in_range() {
+    for left in 1..=4 {
+        let input = [vec![b'a'; 8 - left], vec![0x80; 8]].concat();
+        let (head, tail, omitted) = run(8, &input, 8 - left);
+
+        assert_eq!(head.len(), 8, "head of {left}");
+        assert_eq!(
+            head.len() as u64 + tail.len() as u64 + omitted,
+            input.len() as u64
+        );
+    }
+}
+
+#[test]
+fn a_tail_opening_with_bytes_that_are_not_text_keeps_them() {
+    // Undecodable bytes past one character's continuation are not a cut
+    // character, so the tail keeps them.
+    let input = [&b"abcd"[..], &[0xff; 5], b"z"].concat();
+    let (head, tail, omitted) = run(4, &input, 4);
+
+    assert_eq!(head, b"abcd");
+    assert_eq!(tail, [&[0xff; 3][..], b"z"].concat());
+    assert_eq!(omitted, 2, "only what the tail's cap dropped");
+}
+
+#[test]
+fn a_cut_character_spread_over_short_tail_chunks_is_dropped_whole() {
+    // The tail's cap drops the euro sign's first two bytes; its last byte is
+    // a chunk of its own, ahead of the text that follows.
+    let mut edges = OutputEdges::new(4);
+    let mut head = Vec::new();
+    let pieces: [&[u8]; 4] = [b"aaaa", b"\xe2\x82", b"\xac", b"zzz"];
+    for piece in pieces {
+        let chunk = Chunk {
+            stream: Stream::Stdout,
+            data: Bytes::copy_from_slice(piece),
+        };
+        edges.feed(chunk, &mut |live| head.extend_from_slice(&live.data));
+    }
+    let mut tail = Vec::new();
+    let omitted = edges.finish(&mut |kept| tail.extend_from_slice(&kept.data));
+
+    assert_eq!(head, b"aaaa");
+    assert_eq!(tail, b"zzz", "the stray byte goes, and the tail is text");
+    assert_eq!(omitted, 3);
+}

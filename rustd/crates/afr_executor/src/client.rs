@@ -5,22 +5,30 @@
 //! and waits on a one-shot reply. When the socket closes, every waiting call
 //! fails and every open process ends `Interrupted` — once, because the link
 //! drops each sender as it ends it.
+//!
+//! Every call has a deadline. An executor that stops answering — stopped,
+//! wedged, its sandbox frozen — fails the call and gives up the link with it,
+//! so the supervisor is never left waiting on a sandbox that will not speak.
 
 use std::borrow::Cow;
+use std::io;
 use std::path::Path;
+use std::time::Duration;
 
+use backon::{ConstantBuilder, Retryable as _};
 use bytes::Bytes;
 use serde::Serialize;
 use serde_json::value::RawValue;
 use tokio::net::UnixStream;
 use tokio::sync::{mpsc, oneshot};
+use tokio_util::sync::CancellationToken;
 
-use crate::api::{DirEntry, Executor, FileContent, Process, ProcessId, Spawn};
+use crate::api::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
 use crate::error::{self, Result};
 use crate::protocol::{
-    KillParams, ListParams, ListResult, METHOD_KILL, METHOD_LIST_DIR, METHOD_READ_FILE,
-    METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, ReadParams, ReadResult, SpawnParams,
-    WriteFileParams, WriteParams, decode, encode,
+    KillParams, ListParams, METHOD_KILL, METHOD_LIST_DIR, METHOD_READ_FILE, METHOD_SPAWN,
+    METHOD_WRITE, METHOD_WRITE_FILE, ReadParams, ReadResult, SpawnParams, WriteFileParams,
+    WriteParams, decode, encode,
 };
 
 mod link;
@@ -29,6 +37,12 @@ use self::link::{Call, Link, Reply};
 
 /// How many calls may wait for the link to send them.
 const CALL_BACKLOG: usize = 64;
+/// How long a call waits for the executor's answer. Every call is answered
+/// promptly by a live executor — a write is answered once queued, a read is
+/// capped — so this bounds a stopped one, not a slow one.
+pub(crate) const CALL_DEADLINE: Duration = Duration::from_secs(30);
+/// The pause between attempts to reach a socket that is not listening yet.
+const CONNECT_RETRY_DELAY: Duration = Duration::from_millis(10);
 
 /// A connection to one sandbox's executor.
 ///
@@ -36,21 +50,47 @@ const CALL_BACKLOG: usize = 64;
 #[derive(Debug)]
 pub struct Client {
     calls: mpsc::Sender<Call>,
+    lost: CancellationToken,
+    deadline: Duration,
 }
 
 impl Client {
-    /// Connects to the executor listening on `socket`.
+    /// Connects to the executor on `socket`, retrying until it listens or
+    /// `deadline` passes.
+    ///
+    /// The executor binds its socket as it starts, so a supervisor that
+    /// starts one connects within the time a start takes rather than at once.
     ///
     /// # Errors
-    /// When nothing accepts on `socket`.
-    pub async fn connect(socket: &Path) -> Result<Self> {
-        let stream = UnixStream::connect(socket).await?;
-        let (calls, queue) = mpsc::channel(CALL_BACKLOG);
-        tokio::spawn(Link::new(stream, queue).run());
-        Ok(Self { calls })
+    /// The last attempt's failure once `deadline` passes, or at once for a
+    /// failure that waiting cannot fix, such as a refused permission.
+    pub async fn connect_within(socket: &Path, deadline: Duration) -> Result<Self> {
+        let attempts = deadline.as_millis() / CONNECT_RETRY_DELAY.as_millis();
+        let policy = ConstantBuilder::new()
+            .with_delay(CONNECT_RETRY_DELAY)
+            .with_max_times(usize::try_from(attempts).unwrap_or(usize::MAX));
+        let stream = (|| UnixStream::connect(socket))
+            .retry(policy)
+            .when(not_listening_yet)
+            .await?;
+        Ok(Self::over(stream, CALL_DEADLINE))
     }
 
-    /// Sends one call and waits for the reply `wrap` routes back.
+    /// A client over a connected `stream` whose calls wait at most `deadline`.
+    pub(crate) fn over(stream: UnixStream, deadline: Duration) -> Self {
+        let (calls, queue) = mpsc::channel(CALL_BACKLOG);
+        let lost = CancellationToken::new();
+        tokio::spawn(Link::new(stream, queue, lost.clone()).run());
+        Self {
+            calls,
+            lost,
+            deadline,
+        }
+    }
+
+    /// Sends one call and waits, until the deadline, for the reply `wrap`
+    /// routes back. A call past its deadline gives up the link: an executor
+    /// that does not answer one call will not answer the next.
     async fn ask<P: Serialize, T>(
         &self,
         method: &'static str,
@@ -59,15 +99,23 @@ impl Client {
     ) -> Result<T> {
         let params = serde_json::value::to_raw_value(params)?;
         let (reply, answer) = oneshot::channel();
-        self.calls
-            .send(Call {
-                method,
-                params,
-                reply: wrap(reply),
-            })
-            .await
-            .map_err(|_closed| error::connection_lost())?;
-        answer.await.map_err(|_closed| error::connection_lost())?
+        let call = Call {
+            method,
+            params,
+            reply: wrap(reply),
+        };
+        let answered = tokio::time::timeout(self.deadline, async {
+            self.calls
+                .send(call)
+                .await
+                .map_err(|_closed| error::connection_lost())?;
+            answer.await.map_err(|_closed| error::connection_lost())?
+        })
+        .await;
+        answered.unwrap_or_else(|_elapsed| {
+            self.lost.cancel();
+            Err(error::unresponsive(method))
+        })
     }
 
     /// A call whose result is a value, decoded through the object-only gate:
@@ -80,6 +128,15 @@ impl Client {
         let raw: Box<RawValue> = self.ask(method, params, Reply::Value).await?;
         Ok(afd_core::json::object_from_slice(raw.get().as_bytes())?)
     }
+}
+
+/// Whether a failed connect is an executor that has not bound its socket yet,
+/// or has a socket file and is not accepting yet — the two that waiting fixes.
+fn not_listening_yet(failure: &io::Error) -> bool {
+    matches!(
+        failure.kind(),
+        io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+    )
 }
 
 #[async_trait::async_trait]
@@ -136,19 +193,14 @@ impl Executor for Client {
             .map(drop)
     }
 
-    async fn list_dir(&self, path: &str) -> Result<Vec<DirEntry>> {
+    async fn list_dir(&self, path: &str) -> Result<Listing> {
         let params = ListParams {
             path: Cow::Borrowed(path),
         };
-        let listed: ListResult = self.fetch(METHOD_LIST_DIR, &params).await?;
-        Ok(listed
-            .entries
-            .into_iter()
-            .map(|entry| DirEntry {
-                name: entry.name,
-                kind: entry.kind.into(),
-                size: entry.size,
-            })
-            .collect())
+        self.fetch(METHOD_LIST_DIR, &params).await
     }
 }
+
+#[cfg(test)]
+#[path = "client/tests.rs"]
+mod tests;

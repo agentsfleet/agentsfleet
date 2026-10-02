@@ -10,8 +10,9 @@ use afr_executor::Ending;
 use afr_sandbox::{BubblewrapEngine, Engine, Limits, ProbePaths, SandboxRequest, WarmSlots};
 use libtest_mimic::{Arguments, Conclusion, Failed, Trial};
 
+use crate::confinement::{landlock_denies, no_capabilities, plants_nothing, seccomp_refuses};
 use crate::lane::{Lane, missing};
-use crate::run::{Outcome, run as run_command, runtime, shell};
+use crate::run::{expect, in_sandbox, runtime};
 
 /// Workspace disk a limit trial fills past.
 const SMALL_DISK: u64 = 64 * 1024 * 1024;
@@ -23,20 +24,7 @@ const FEW_PIDS: u32 = 64;
 const STARTS: usize = 5;
 /// The signal the out-of-memory killer sends.
 const SIGKILL: i32 = 9;
-/// The system calls the seccomp program refuses, probed by number.
-const REFUSED: [libc::c_long; 5] = [
-    libc::SYS_unshare,
-    libc::SYS_bpf,
-    libc::SYS_keyctl,
-    libc::SYS_perf_event_open,
-    libc::SYS_io_uring_setup,
-];
-/// Calls each numbered system call and prints the errno each one set.
-const PROBE_SYSCALLS: &str = "import ctypes, sys\nlibc = ctypes.CDLL(None, use_errno=True)\n\
-     seen = []\nfor number in map(int, sys.argv[1:]):\n    ctypes.set_errno(0)\n    \
-     libc.syscall(number, 0, 0, 0, 0, 0)\n    seen.append(ctypes.get_errno())\n\
-     print(\" \".join(map(str, seen)))\n";
-/// The mechanism a refusal names when Landlock is missing, and a trial's lease name.
+/// The mechanism a refusal names when Landlock is missing.
 const LANDLOCK: &str = "landlock";
 /// The disk-limit trial's lease name.
 const DISK: &str = "disk";
@@ -59,8 +47,12 @@ type Body = fn(&Lane) -> Result<(), Failed>;
 
 /// Runs every trial against `lane`, one at a time.
 pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
-    let rows: [(&str, Body); 11] = [
+    let rows: [(&str, Body); 12] = [
         ("test_sandbox_process_has_no_capabilities", no_capabilities),
+        (
+            "test_sandbox_cannot_plant_files_on_the_host",
+            plants_nothing,
+        ),
         ("test_seccomp_refuses_listed_syscalls", seccomp_refuses),
         (
             "test_landlock_denies_write_outside_workspace",
@@ -86,63 +78,6 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
         })
         .collect();
     libtest_mimic::run(arguments, trials)
-}
-
-/// Runs `script` in a fresh sandbox with `limits`, then destroys it.
-fn in_sandbox(
-    lane: &Lane,
-    lease_id: &str,
-    limits: Limits,
-    script: &str,
-) -> Result<Outcome, Failed> {
-    runtime().block_on(async {
-        let engine = lane.engine();
-        let sandbox = engine
-            .prepare(SandboxRequest { lease_id, limits })
-            .await
-            .map_err(|error| error.to_string())?;
-        let outcome = run_command(sandbox.executor(), shell(script)).await;
-        sandbox.destroy().await.map_err(|error| error.to_string())?;
-        outcome.map_err(Failed::from)
-    })
-}
-
-fn expect(holds: bool, why: impl Into<String>) -> Result<(), Failed> {
-    if holds {
-        Ok(())
-    } else {
-        Err(Failed::from(why.into()))
-    }
-}
-
-fn no_capabilities(lane: &Lane) -> Result<(), Failed> {
-    let status = in_sandbox(lane, "caps", Limits::default(), "cat /proc/self/status")?;
-    afr_sandbox::capabilities_dropped(&status.output)
-        .map_err(|error| Failed::from(error.to_string()))
-}
-
-fn seccomp_refuses(lane: &Lane) -> Result<(), Failed> {
-    let numbers: Vec<String> = REFUSED.iter().map(ToString::to_string).collect();
-    let script = format!("python3 -c \"$PROBE\" {}", numbers.join(" "));
-    let script = format!("PROBE='{PROBE_SYSCALLS}'; {script}");
-    let seen = in_sandbox(lane, "seccomp", Limits::default(), &script)?;
-    let eperm = libc::EPERM.to_string();
-    expect(
-        seen.output.split_whitespace().count() == REFUSED.len()
-            && seen.output.split_whitespace().all(|errno| errno == eperm),
-        format!("every refused call answers EPERM, got {:?}", seen.output),
-    )
-}
-
-fn landlock_denies(lane: &Lane) -> Result<(), Failed> {
-    let script = "echo x > /workspace/x && echo workspace-ok; \
-                  (echo y > /dev/landlock-probe) 2>/dev/null && echo dev-leaked || echo dev-denied; \
-                  (echo z > /opt/x) 2>/dev/null && echo opt-leaked || echo opt-denied";
-    let said = in_sandbox(lane, LANDLOCK, Limits::default(), script)?.output;
-    expect(
-        said.contains("workspace-ok") && said.contains("dev-denied") && said.contains("opt-denied"),
-        format!("writes land only in the workspace, got {said:?}"),
-    )
 }
 
 fn disk_limit(lane: &Lane) -> Result<(), Failed> {

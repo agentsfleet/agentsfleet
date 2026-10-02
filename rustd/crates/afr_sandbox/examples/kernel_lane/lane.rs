@@ -8,6 +8,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
+use afd_core::env::LOG_LEVEL_VAR;
 use afr_sandbox::bubblewrap::SANDBOX_SUBCOMMAND;
 use afr_sandbox::{
     BubblewrapConfig, BubblewrapEngine, HostTools, ProbePaths, Toolbox, ToolboxImage, probe,
@@ -18,7 +19,11 @@ pub(crate) const TOOLBOX_VARIABLE: &str = "AFR_TOOLBOX_IMAGE";
 /// The delegated cgroup every lease's cgroup is made under.
 const LANE_CGROUP: &str = "/sys/fs/cgroup/afr-kernel-lane";
 /// The controllers the lane delegates to each lease.
-const CONTROLLERS: &str = "+cpu +memory +pids";
+const CONTROLLERS: &str = "+cpu +io +memory +pids";
+/// The cgroup v2 root, which must hand the controllers down first.
+const CGROUP_V2_ROOT: &str = "/sys/fs/cgroup";
+/// The unprivileged host user and group bubblewrap runs as: `nobody`.
+pub(crate) const SANDBOX_IDS: (u32, u32) = (65_534, 65_534);
 /// The file a cgroup enables its children's controllers in.
 const SUBTREE_CONTROL: &str = "cgroup.subtree_control";
 /// The cap on user namespaces; zero means bubblewrap cannot start.
@@ -91,7 +96,16 @@ pub(crate) fn missing(paths: &ProbePaths, toolbox: Option<&str>, root: bool) -> 
 pub(crate) fn main() -> ExitCode {
     let toolbox = std::env::var(TOOLBOX_VARIABLE).ok();
     let root = rustix::process::geteuid().is_root();
-    let gaps = missing(&ProbePaths::default(), toolbox.as_deref(), root);
+    // The controllers are delegated first, so the probe reads the cgroup the
+    // leases are made under; a host that cannot delegate them is a gap too.
+    let delegated = if root { delegate().ok() } else { None };
+    let paths = ProbePaths {
+        cgroup_root: delegated
+            .clone()
+            .unwrap_or_else(|| PathBuf::from(LANE_CGROUP)),
+        ..ProbePaths::default()
+    };
+    let gaps = missing(&paths, toolbox.as_deref(), root);
     if !gaps.is_empty() {
         eprintln!("the kernel lane refuses to run, rather than skip; this host lacks:");
         for gap in &gaps {
@@ -99,7 +113,7 @@ pub(crate) fn main() -> ExitCode {
         }
         return ExitCode::FAILURE;
     }
-    let lane = match build(toolbox.as_deref().map_or(Path::new(""), Path::new)) {
+    let lane = match build(toolbox.as_deref().map_or(Path::new(""), Path::new), paths) {
         Ok(lane) => lane,
         Err(reason) => {
             eprintln!("the kernel lane could not set up: {reason}");
@@ -119,9 +133,9 @@ pub(crate) fn main() -> ExitCode {
     conclusion.exit_code()
 }
 
-fn build(image: &Path) -> Result<Lane, String> {
+fn build(image: &Path, probe: ProbePaths) -> Result<Lane, String> {
     let image = ToolboxImage::verify(image).map_err(|error| error.to_string())?;
-    let cgroup_root = delegate().map_err(|error| error.to_string())?;
+    let cgroup_root = probe.cgroup_root.clone();
     let state = tempfile::Builder::new()
         .prefix(STATE_PREFIX)
         .tempdir_in("/tmp")
@@ -138,12 +152,15 @@ fn build(image: &Path) -> Result<Lane, String> {
     let entry = install_entry(state.path()).map_err(|error| error.to_string())?;
     let config = BubblewrapConfig {
         tools,
-        probe: ProbePaths::default(),
+        probe,
+        toolbox_digest: image.digest().to_owned(),
         toolbox,
         cgroup_root,
         state_dir: state.path().join(LEASES_DIR),
         entry,
         entry_args: vec![OsString::from(SANDBOX_SUBCOMMAND)],
+        sandbox_ids: SANDBOX_IDS,
+        log_level: std::env::var_os(LOG_LEVEL_VAR),
         ready_timeout: READY_TIMEOUT,
     };
     Ok(Lane {
@@ -171,6 +188,7 @@ fn install_entry(state: &Path) -> std::io::Result<PathBuf> {
 
 /// Makes the lane's own cgroup and delegates the lease controllers to it.
 fn delegate() -> std::io::Result<PathBuf> {
+    fs::write(Path::new(CGROUP_V2_ROOT).join(SUBTREE_CONTROL), CONTROLLERS)?;
     let root = PathBuf::from(LANE_CGROUP);
     if !root.exists() {
         fs::create_dir(&root)?;

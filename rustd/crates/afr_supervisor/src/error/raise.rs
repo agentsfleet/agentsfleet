@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 
-use afd_core::error_code::{ErrorCode, REGISTRY};
+use afd_core::error_code::ErrorCode;
 use serde::Deserialize;
 
 use super::{Error, ErrorKind};
@@ -16,7 +16,6 @@ afd_core::error_lifts!(Error, ErrorKind:
     std::io::Error => Io,
     tempfile::PersistError => Persist,
     afd_core::error::Error => Identifier,
-    afr_sandbox::Error => Sandbox,
 );
 
 /// The one field of a problem body the runner reads.
@@ -29,6 +28,11 @@ struct Problem<'a> {
 /// Reports a setting the runner cannot start without.
 pub(crate) fn config(detail: &'static str) -> Error {
     ErrorKind::Config { detail }.into()
+}
+
+/// Reports an address that does not parse, or a path that does not join it.
+pub(crate) fn address(source: url::ParseError) -> Error {
+    ErrorKind::Address { source }.into()
 }
 
 /// Reports an HTTP client that could not be built.
@@ -59,8 +63,13 @@ pub(crate) fn refused_with_body(verb: Verb, status: u16, body: &[u8]) -> Error {
     let code = serde_json::from_slice::<Problem<'_>>(body)
         .ok()
         .and_then(|problem| problem.error_code)
-        .and_then(|named| REGISTRY.iter().copied().find(|code| code.as_str() == named));
+        .and_then(|named| ErrorCode::lookup(&named));
     refused(verb, status, code)
+}
+
+/// Reports a runner that stopped because the daemon refused its token.
+pub(crate) fn token_refused() -> Error {
+    ErrorKind::TokenRefused.into()
 }
 
 /// Reports a reply that did not decode as its verb's shape.
