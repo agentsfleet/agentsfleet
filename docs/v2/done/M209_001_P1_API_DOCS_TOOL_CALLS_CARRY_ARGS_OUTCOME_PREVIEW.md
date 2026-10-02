@@ -22,8 +22,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — wire and daemon; runs in parallel with the Rust runner, which emits these fields; M209_003 shares the Pull Request
 **Branch:** feat/m209-tool-call-outcomes
 **Baseline revision:** 0d79b0318e687b8862ee8dbd4f622069bc6ba1a4
-**Test Baseline:** pending — measured before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit=3001 integration=3618 — at `0d79b0318`, whose tests are `93e96897a`'s (a `docs/`-only delta): unit 3001 passed / 0 failed / 779 ignored (`make test-unit-all`, Rust half; CI `test` run 36990590586; TypeScript CLI 1776 / app 382 / website 22 / design system 60 files passed) · integration 3618 passed / 0 failed (CI `test-integration-rustd` run 36990590709, which runs `make test-coverage-rustd`, both tiers). Final counts land in Pull Request Session Notes.
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M209_001-0d79b0318.md`
 **Depends on:** none — tests drive the daemon with hand-built runner frames (`rustd/crates/agentsfleetd/tests/support/e2e_wire.rs`)
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 02, 2026) from a source trace on `main`; re-scoped the same day when Indy chose a fresh Rust runner, which moved capture into the runner
 **Canonical architecture:** `docs/architecture/runner_fleet.md` §Live activity (the SSE tail); `docs/architecture/data_flow.md` §The list read and the detail read are different reads; `docs/architecture/runner_execution.md` §Process model (who emits)
@@ -40,7 +40,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** feat(api): carry tool-call outcomes and the run trace to the fleet thread
 - **Intent (one sentence):** Whatever a runner reports about each tool call reaches the operator's thread intact, live and after a reload, and a bad trace never costs a run its result.
-- **Handshake** — pending until the implementing agent performs PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** — performed at PLAN (Oct 02, 2026): "what a runner reports about each tool call reaches the thread intact, live and after a reload, and a bad trace never costs a run its result." Assumptions stated before EXECUTE: the 64 KiB bound is measured on the bytes the runner sent, fencing adding at most 21 bytes per call; `arguments` is an object whose string values hold the 256-byte bound; `x-stability` is declared by a derived pass in `afd_api/src/openapi.rs`; live completion edges carry the trace's edge bound.
 
 ## Implementing agent — read these first
 
@@ -239,5 +239,5 @@ N/A — no files deleted.
 - **Consults** — Indy (in-session, Oct 02, 2026): "Codex-style tool rows and others ensure we are able to show more information"; on visibility, "The tool call preview like we see in codex nothing must be hidden, isnt codex displaying all"; secret values stay masked under `AGENTS.orly.md` §Hard Safety. Re-scoped the same day after "The port is a fresh port, since we always have the last binary with us and running": capture moved to the Rust runner, and this spec keeps the wire and the daemon. Codex lessons kept: typed status, every call ends once, durable means finished.
 - **Metrics review** — No analytics or funnel playbook update required: no new user action; one operator log event added.
 - **Implementation notes (Oct 02, 2026)** — The live `tool_call_completed` frame's edges are held to the trace's edge bound at the activity verb, so the daemon never publishes an edge it would refuse to store. `x-stability` existed nowhere in the repository and `utoipa` 5.5 takes no extensions on a derived field, so `afd_api/src/openapi/stability.rs` declares it as a derived pass; `EventDetail.tool_calls` is `beta` while the chat and the Rust runner settle its shape.
-- **Skill-chain outcomes** — pending.
+- **Skill-chain outcomes** — `/orly-write-unit-test` (boundary audit, Oct 03, 2026): every changed Rust source line covered, 692 / 692 (`make test-coverage-rustd`); one gap found and closed — no test raced posts against the budget, so 24 barrier-released posts now prove exactly 16 kept, and the same race keeps 21 with the lease-row lock removed. `/orly-write-integration-test`: done — every Dimension crossing Postgres or Dragonfly has a live test (`integration_tool_trace.rs`, `integration_tool_call_details*.rs`, `integration_tool_call_refusals.rs`, `afd_db`'s slot-924 upgrade). gstack `/review`: five readers, findings fixed or kept with reasons (M209_003 Discovery). `orly-babysit-prs`: runs after the push.
 - **Deferrals** — none.

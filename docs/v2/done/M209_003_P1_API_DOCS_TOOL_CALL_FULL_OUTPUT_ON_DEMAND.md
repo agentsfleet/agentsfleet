@@ -16,14 +16,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M209
 **Workstream:** 003
 **Date:** Oct 02, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing: Indy's ask is that nothing a tool returned stays hidden; the thread shows the edges, this serves the rest
 **Categories:** API, DOCS
 **Batch:** B1 — after M209_001 in the same Pull Request; the Rust runner posts these records
 **Branch:** feat/m209-tool-call-outcomes
+**Folded-into:** `M209_001`
 **Baseline revision:** 0d79b0318e687b8862ee8dbd4f622069bc6ba1a4
-**Test Baseline:** pending — measured before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit=3001 integration=3618 — at `0d79b0318`, whose tests are `93e96897a`'s (a `docs/`-only delta): unit 3001 passed / 0 failed / 779 ignored (`make test-unit-all`, Rust half; CI `test` run 36990590586; TypeScript CLI 1776 / app 382 / website 22 / design system 60 files passed) · integration 3618 passed / 0 failed (CI `test-integration-rustd` run 36990590709, which runs `make test-coverage-rustd`, both tiers). Final counts land in Pull Request Session Notes.
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M209_001-0d79b0318.md`
 **Depends on:** M209_001 — fenced call ids and the trace this record completes
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 02, 2026) from a source trace on `main`; re-scoped the same day when Indy chose a fresh Rust runner, which moved record capture into the runner
 **Canonical architecture:** `docs/architecture/runner_fleet.md` §Live activity (the SSE tail); `docs/architecture/data_flow.md` §The list read and the detail read are different reads
@@ -40,7 +41,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** feat(api): keep each tool call's full output for "show all"
 - **Intent (one sentence):** An operator who wants more than a call's first and last lines can open everything it took and returned, minus secret values.
-- **Handshake** — pending until the implementing agent performs PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** — performed at PLAN (Oct 03, 2026): "an operator who wants more than a call's first and last lines can open everything it took and returned, minus secret values." Assumptions stated before EXECUTE: the 1 MiB budget is per event and per fence; the table carries `byte_count`, the runner's own measure; a body over 256 KiB is refused whole with `413 UZ-REQ-002` while items are narrowed one at a time; every malformed `{fence}:{n}` answers 404.
 
 ## Implementing agent — read these first
 
@@ -230,5 +231,5 @@ N/A — no files deleted.
 - **Metrics review** — No analytics or funnel playbook update required: the "show all" click is not a funnel step; one operator log event added.
 - **Implementation notes (Oct 03, 2026)** — The table carries `byte_count`, the bytes the runner measured (arguments encoded compactly, plus output), because Postgres renders `arguments` as JSONB text with spaces of its own and a budget summed from that text would disagree with the runner's. The budget is per event and per fence: settlement keeps one fence's records, so a reclaimed lease starts with the whole 1 MiB. A post over 256 KiB is refused whole with `413 UZ-REQ-002`; a call named twice in one post keeps its last record and counts the earlier one as skipped. Posts for one event serialize on the event row (`FOR NO KEY UPDATE`), so two cannot both pass the budget.
 - **Review (gstack `/review`, Oct 03, 2026)** — five readers (testing, security, maintainability with API contract and simplification, performance with data migration, adversarial). Fixed: a NUL in a trace string would fail the settling `UPDATE` and cost the run its answer, so the trace is now dropped as `holds_nul` (M209_001's validator); a NUL in a record failed the whole post, so the record is skipped as malformed; the fence check and the write were not atomic, so the post now locks its own lease row (`FOR NO KEY UPDATE OF l`) in the transaction that writes, which also keeps a settle from waiting on a post while it holds the tenant wallet; the first post under a new fence clears dead fences' records, so an event reclaimed many times holds one lease's budget; a skipped replacement no longer lets the event's records pass 1 MiB; each record spends at least `DETAIL_RECORD_MIN_BYTES`, so tiny records cannot multiply rows; argument keys are bounded like leaves; `call_number` publishes its 1 to `i64::MAX` range; the `{fence}:{n}` grammar lives once in `afd_wire::tool_trace`; each beta field's description says so; published byte figures are pinned to their constants by test. Tests added: another runner's, an expired and an unknown lease; another workspace's fleet; replace-in-place and replace-at-cap; NUL in a record and in a trace. Kept as is, with reasons: `EventDetail.tool_calls` is `null` when not recorded, matching `response_text` beside it; the post answers `{stored_count, skipped_count}`, the memory push's shape, rather than a 207 per-item body the runner has no use for; records live as long as their event, like the answer they belong to; no migration in this repository sets `lock_timeout`, and slot 924's `ADD COLUMN` takes no rewrite.
-- **Skill-chain outcomes** — pending.
+- **Skill-chain outcomes** — `/orly-write-unit-test` (boundary audit, Oct 03, 2026): every changed Rust source line covered, 692 / 692 (`make test-coverage-rustd`); one gap found and closed — no test raced posts against the budget, so 24 barrier-released posts now prove exactly 16 kept, and the same race keeps 21 with the lease-row lock removed. `/orly-write-integration-test`: done — every Dimension crossing Postgres or Dragonfly has a live test (`integration_tool_trace.rs`, `integration_tool_call_details*.rs`, `integration_tool_call_refusals.rs`, `afd_db`'s slot-924 upgrade). gstack `/review`: five readers, findings fixed or kept with reasons (M209_003 Discovery). `orly-babysit-prs`: runs after the push.
 - **Deferrals** — none.
