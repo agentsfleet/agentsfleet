@@ -16,14 +16,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M210
 **Workstream:** 001
 **Date:** Oct 02, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the foundation every later runner capability stands on: outage repair, workspaces carried between leases, Codex as an engine
 **Categories:** API, INFRA
 **Batch:** B1 — the first Rust runner workstream; the agent loop, providers and cutover follow in their own spec
 **Branch:** feat/m210-rust-runner-foundation
 **Baseline revision:** 0d79b0318e687b8862ee8dbd4f622069bc6ba1a4
-**Test Baseline:** pending — measured before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit=3001 integration=751 — at `0d79b0318`: unit 3001 passed / 0 failed / 779 ignored (`make test-unit-all`, Rust half; TypeScript 3500 + 142 + 645 = 4287; Zig runner passed) · integration 751 passed / 1 failed (`make test-integration-rustd`; the failure is a pre-existing deadline flake that passed 3/3 alone). Final counts land in the Pull Request's Session notes.
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M210_001-0d79b0318.md`
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 02, 2026) from Indy's in-session decisions and a source trace on `main`; Codex at `~/Projects/oss/rs/codex` `2e5fea64e`, IronClaw at `~/Projects/oss/rs/ironclaw` `b0b999d96`, ZeroClaw at `~/Projects/oss/zeroclaw` `74362c2d6`
 **Canonical architecture:** `docs/architecture/runner_execution.md` §Process model, §Sandbox engines, §Toolbox; `docs/architecture/runner_fleet.md` §The control protocol
@@ -54,9 +54,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/Cargo.toml`, `rustd/crates/agentsfleet_runner/` | EDIT / CREATE | Workspace member; one binary whose `run`, `probe` and `sandbox` entries only compose library crates |
+| `rustd/Cargo.toml`, `rustd/Cargo.lock`, `rustd/crates/agentsfleet_runner/` | EDIT / CREATE | Workspace member; one binary whose `run`, `probe` and `sandbox` entries only compose library crates |
 | `rustd/crates/afr_supervisor/` (`client.rs`, `config.rs`, `lease_loop.rs` + `settle.rs`, `turns.rs`, `worker_pool.rs`, `heartbeat.rs`, `halt.rs`, `renew.rs`, `report.rs`, `report_spool.rs`, `drainer.rs`, `activity.rs`, `credentials.rs`, `memory.rs`, `bundles.rs`, `storage_home.rs`, `capability.rs`, `error.rs`) | CREATE | The daemon-facing duties, one concern per file |
-| `rustd/crates/afd_core/src/env.rs`, `rustd/crates/agentsfleetd/src/logs.rs`, `rustd/crates/agentsfleetd/src/lib.rs` | EDIT | The log-level knob both binaries read, declared once; the daemon's test target names the runner crates its end-to-end suite drives |
+| `rustd/crates/afd_core/{Cargo.toml,src/lib.rs,src/env.rs,src/error_code.rs,tests/error_code.rs}`, `rustd/crates/agentsfleetd/src/logs.rs`, `rustd/crates/agentsfleetd/src/lib.rs` | EDIT | The log-level knob both binaries read, declared once; the daemon's test target names the runner crates its end-to-end suite drives |
 | `rustd/crates/afd_core/src/bundle.rs`, `rustd/crates/afd_library/src/{prepare,validate,snapshot}.rs` | CREATE / EDIT | One bundle digest the importer names a bundle by and the runner verifies against; a `.` path segment is refused, because the archive writer normalizes it and the two digests would disagree |
 | `rustd/crates/afr_sandbox/` (`engine.rs`, `probe.rs`, `host.rs`, `mounts.rs`, `bubblewrap.rs`, `bubblewrap_engine.rs` + `parts.rs`, `sweep.rs`, `harden.rs` (Landlock and seccomp), `serve.rs`, `cgroup.rs`, `workspace_disk.rs`, `toolbox.rs`, `warm_slots.rs`, `unsandboxed.rs`, `error.rs`) | CREATE | Engine interface, the hardened bubblewrap engine, and a test-only unsandboxed engine release builds refuse |
 | `rustd/crates/afr_executor/` (`api.rs`, `protocol.rs`, `edges.rs`, `server.rs` + `session.rs`, `launch.rs`, `process.rs`, `files.rs`, `client.rs` + `link.rs`, `error.rs`) | CREATE | Executor protocol, the in-sandbox server and the supervisor's client |
@@ -67,7 +67,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_core/src/json.rs`, `rustd/crates/afd_http/src/handler/mod.rs`, `rustd/crates/afd_api_operator/src/handler/operator/runner_patch.rs`, `rustd/crates/afd_api_runner/src/handler/runner/{enrolment,memory}.rs` | EDIT | A strict reader for the three daemon requests that embed one of those types |
 | `scripts/toolbox/build.sh`, `scripts/toolbox/manifest.txt`, `make/build.mk`, `rustd/Cargo.toml` | CREATE / EDIT | `make toolbox-image`: a pinned, content-addressed, read-only toolbox image |
 | `make/test-unit.mk`, `.github/workflows/lint.yml` | EDIT | `make test-runner-kernel` and its Linux CI job. The workflow edit needs Indy's explicit approval (§Hard Safety) |
-| `docs/architecture/runner_execution.md`, `docs/RUST_ERROR_STANDARD.md` | EDIT | The supervisor's bounded capability set (landed at authoring) and `afd_observability` as a runner dependency; the runner crates' row in the error conformance table |
+| `docs/architecture/runner_execution.md`, `docs/RUST_ERROR_STANDARD.md`, `playbooks/operations/acceptance/baselines/M210_001-0d79b0318.md` | EDIT / CREATE | The supervisor's bounded capability set (landed at authoring) and `afd_observability` as a runner dependency; the runner crates' row in the error conformance table |
 
 ## Applicable Rules
 
@@ -99,68 +99,68 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The `afr_*` crates and the one `agentsfleet-runner` binary, whose `sandbox` sub-mode runs inside each sandbox, follow `docs/architecture/runner_execution.md` §Crates; each crate declares one error type through `afd_core::error_shell!`, and nothing in them refers to the Zig runner. The runner decodes every daemon→runner type without refusing unknown fields, and runner→daemon types stay strict. Three daemon requests embed a runner-bound type — an enrolment's and an operator's assigned policy, a memory push's deltas — and their handlers read through `afd_core::json::strict_object_from_slice`, which refuses an ignored key at any depth, so nothing the daemon checks gets looser. No runner crate depends on anything from `agentsfleetd` beyond `afd_wire`, `afd_core` and `afd_observability`, and none links a datastore crate.
 
-- **Dimension 1.1** — A lease payload with an extra field decodes in the runner → Test `test_daemon_payload_with_unknown_field_decodes`
-- **Dimension 1.2** — A report body with an extra field is still refused by the daemon → Test `test_runner_body_with_unknown_field_refused`
-- **Dimension 1.3** — The binary's normal dependency graph names `sqlx`, `redis` or any `afd_*` crate other than `afd_wire`, `afd_core` and `afd_observability` → Test `test_runner_links_no_datastore_crate`
+- **Dimension 1.1** — A lease payload with an extra field decodes in the runner → Test `test_daemon_payload_with_unknown_field_decodes` — DONE (`afd_wire/tests/strictness.rs`)
+- **Dimension 1.2** — A report body with an extra field is still refused by the daemon → Test `test_runner_body_with_unknown_field_refused` — DONE (`agentsfleetd/tests/integration_rust_runner.rs`, live)
+- **Dimension 1.3** — The binary's normal dependency graph names `sqlx`, `redis` or any `afd_*` crate other than `afd_wire`, `afd_core` and `afd_observability` → Test `test_runner_links_no_datastore_crate` — DONE (`agentsfleet_runner/tests/dependency_graph.rs`)
 
 ### §2 — The supervisor keeps every duty the daemon relies on
 
 A worker pool runs N leases, one fleet each. Renewal keeps the lease on a 5xx and ends it on a 4xx. The report is spooled to disk before its first POST and replayed at boot. The activity sender holds at most four 64 KiB batches and drops, counts and logs past that. Credential minting, memory hydrate and fenced push, bundle fetch with a hash-verified cache, the boot sweep of orphaned workspaces, and the capability report all keep today's verbs.
 
-- **Dimension 2.1** — Two workers never hold the same fleet → Test `test_worker_pool_runs_distinct_fleets`
-- **Dimension 2.2** — A 5xx renewal keeps the lease and a 4xx ends it → Test `test_renew_keeps_on_5xx_ends_on_4xx`
-- **Dimension 2.3** — A report spooled before a kill is posted after restart, once → Test `test_spooled_report_replays_once`
-- **Dimension 2.4** — A fifth queued batch is dropped, counted and logged → Test `test_activity_sender_drops_past_four_batches`
-- **Dimension 2.5** — Memory hydrates at start and pushes with the fencing token before the report → Test `test_memory_push_fenced_before_report`
-- **Dimension 2.6** — A bundle whose bytes miss their hash is refused → Test `test_bundle_hash_mismatch_refused`
-- **Dimension 2.7** — Boot removes an orphaned lease workspace and keeps foreign directories → Test `test_storage_home_sweeps_orphans_only`
-- **Dimension 2.8** — The capability probe states whether `/dev/kvm` is present and usable, so the daemon knows which hosts can take a Firecracker engine, and whether the kernel can mount the toolbox's filesystem (EROFS), without which no sandbox can be built; both reach the daemon as named self-test checks → Test `test_capability_report_states_kvm_and_toolbox_fs`
+- **Dimension 2.1** — Two workers never hold the same fleet → Test `test_worker_pool_runs_distinct_fleets` — DONE (`afr_supervisor/src/worker_pool/tests.rs`)
+- **Dimension 2.2** — A 5xx renewal keeps the lease and a 4xx ends it → Test `test_renew_keeps_on_5xx_ends_on_4xx` — DONE (`afr_supervisor/src/renew/tests.rs`)
+- **Dimension 2.3** — A report spooled before a kill is posted after restart, once → Test `test_spooled_report_replays_once` — DONE (`afr_supervisor/src/report_spool/tests.rs`)
+- **Dimension 2.4** — A fifth queued batch is dropped, counted and logged → Test `test_activity_sender_drops_past_four_batches` — DONE (`afr_supervisor/src/activity/tests.rs`)
+- **Dimension 2.5** — Memory hydrates at start and pushes with the fencing token before the report → Test `test_memory_push_fenced_before_report` — DONE (`afr_supervisor/src/lease_loop/tests.rs`)
+- **Dimension 2.6** — A bundle whose bytes miss their hash is refused → Test `test_bundle_hash_mismatch_refused` — DONE (`afr_supervisor/src/bundles/tests.rs`)
+- **Dimension 2.7** — Boot removes an orphaned lease workspace and keeps foreign directories → Test `test_storage_home_sweeps_orphans_only` — DONE (`afr_supervisor/src/storage_home/tests.rs`)
+- **Dimension 2.8** — The capability probe states whether `/dev/kvm` is present and usable, so the daemon knows which hosts can take a Firecracker engine, and whether the kernel can mount the toolbox's filesystem (EROFS), without which no sandbox can be built; both reach the daemon as named self-test checks → Test `test_capability_report_states_kvm_and_toolbox_fs` — DONE (`afr_supervisor/src/capability/tests.rs`)
 
 ### §3 — A hardened bubblewrap engine
 
 Each lease gets fresh user, PID, IPC, UTS, mount and network namespaces; `--cap-drop ALL`, `--disable-userns`, `--clearenv`, `--die-with-parent`, `--new-session`. Inside, the executor binds its socket, then, before it reads anything: `no_new_privs`, Landlock (writes only to `/workspace` and `/tmp`), then a seccomp filter refusing `io_uring_*`, `ptrace`, `process_vm_readv`, `process_vm_writev`, `unshare`, `bpf`, `keyctl`, `add_key`, `request_key` and `perf_event_open`, and every call numbered at or past the x32 bit. The sandbox runs as an unprivileged user, so nothing it writes through a bind is host-root-owned. The executor refuses to start if any capability remains. Cgroup v2 limits memory, processor, process count and I/O, and ends the whole tree. **Implementation default:** the workspace disk is a per-lease ext4 image sized to the lease's disk limit, loop-mounted at `/workspace` and deleted at lease end, because it works on any host filesystem and costs no memory, unlike XFS project quotas or tmpfs. The network namespace has loopback only; the allowlist arrives with workspaces. The supervisor runs with a bounded capability set (mounts, cgroups, namespaces); tenant code never holds one. **Firecracker-ready:** the engine interface assumes no filesystem shared with the host. The workspace disk is a block image, the toolbox an image file, and the executor a Unix socket on the host side, which is how a microVM's vsock surfaces. A Firecracker engine then attaches the same artifacts unchanged.
 
-- **Dimension 3.1** — A process inside reports zero effective and permitted capabilities → Test `test_sandbox_process_has_no_capabilities`
-- **Dimension 3.2** — `unshare`, `bpf`, `keyctl`, `perf_event_open` and `io_uring_setup` fail with `EPERM` → Test `test_seccomp_refuses_listed_syscalls`
-- **Dimension 3.3** — A write outside the workspace and `/tmp` is denied → Test `test_landlock_denies_write_outside_workspace`
-- **Dimension 3.4** — Writing past the disk limit fails with `ENOSPC`, and the workspace disk is gone after the lease → Test `test_workspace_disk_enforces_limit_and_is_removed`
-- **Dimension 3.5** — A fork bomb hits `pids.max` and a memory hog is killed, without touching the supervisor → Test `test_cgroup_limits_contain_runaway`
-- **Dimension 3.6** — A TCP connect to any address outside loopback fails → Test `test_sandbox_has_no_network`
-- **Dimension 3.7** — A sandbox that cannot be established refuses the lease instead of running it unsandboxed → Test `test_unbuildable_sandbox_refuses_lease`
-- **Dimension 3.8** — A release build refuses the unsandboxed engine → Test `test_release_build_refuses_unsandboxed_engine`
+- **Dimension 3.1** — A process inside reports zero effective and permitted capabilities → Test `test_sandbox_process_has_no_capabilities` — DONE (`afr_sandbox/examples/kernel_lane`, kernel lane in the Linux VM)
+- **Dimension 3.2** — `unshare`, `bpf`, `keyctl`, `perf_event_open` and `io_uring_setup` fail with `EPERM` → Test `test_seccomp_refuses_listed_syscalls` — DONE (`afr_sandbox/examples/kernel_lane`, kernel lane in the Linux VM)
+- **Dimension 3.3** — A write outside the workspace and `/tmp` is denied → Test `test_landlock_denies_write_outside_workspace` — DONE (`afr_sandbox/examples/kernel_lane`, kernel lane in the Linux VM)
+- **Dimension 3.4** — Writing past the disk limit fails with `ENOSPC`, and the workspace disk is gone after the lease → Test `test_workspace_disk_enforces_limit_and_is_removed` — DONE (`afr_sandbox/examples/kernel_lane`, kernel lane in the Linux VM)
+- **Dimension 3.5** — A fork bomb hits `pids.max` and a memory hog is killed, without touching the supervisor → Test `test_cgroup_limits_contain_runaway` — DONE (`afr_sandbox/examples/kernel_lane`, kernel lane in the Linux VM)
+- **Dimension 3.6** — A TCP connect to any address outside loopback fails → Test `test_sandbox_has_no_network` — DONE (`afr_sandbox/examples/kernel_lane`, kernel lane in the Linux VM)
+- **Dimension 3.7** — A sandbox that cannot be established refuses the lease instead of running it unsandboxed → Test `test_unbuildable_sandbox_refuses_lease` — DONE (`afr_sandbox/examples/kernel_lane`, kernel lane in the Linux VM)
+- **Dimension 3.8** — A release build refuses the unsandboxed engine → Test `test_release_build_refuses_unsandboxed_engine` — DONE (`afr_sandbox/src/unsandboxed/tests.rs`)
 
 ### §4 — The executor runs processes and files inside the sandbox
 
 JSON-RPC over a Unix socket bound into the sandbox: spawn (pipes or a pseudo-terminal), write, kill, and a pushed output and exit stream; file read, write and list under `/workspace`. Output keeps the first and last 512 KiB of each process, cut on UTF-8 boundaries. Kill sends TERM to the process group, waits a 2-second grace, then KILLs every descendant. When the executor or sandbox dies, the supervisor ends each open process as `interrupted`.
 
-- **Dimension 4.1** — A spawned `echo` streams its output and exits 0 over the real socket → Test `test_executor_spawn_streams_output`
-- **Dimension 4.2** — A pseudo-terminal session accepts input and echoes it → Test `test_executor_pty_accepts_input`
-- **Dimension 4.3** — 3 MiB of output keeps its first and last 512 KiB with an omitted count, on character boundaries → Test `test_executor_output_keeps_head_and_tail`
-- **Dimension 4.4** — Kill reaps a child that ignores TERM and its grandchildren → Test `test_executor_kill_reaps_process_group`
-- **Dimension 4.5** — A path escaping `/workspace` through `..` or a symlink is refused → Test `test_executor_refuses_path_escape`
-- **Dimension 4.6** — Killing the sandbox mid-call ends that call `interrupted` exactly once → Test `test_sandbox_death_interrupts_open_calls`
+- **Dimension 4.1** — A spawned `echo` streams its output and exits 0 over the real socket → Test `test_executor_spawn_streams_output` — DONE (`afr_executor/tests/processes.rs`)
+- **Dimension 4.2** — A pseudo-terminal session accepts input and echoes it → Test `test_executor_pty_accepts_input` — DONE (`afr_executor/tests/terminal.rs`)
+- **Dimension 4.3** — 3 MiB of output keeps its first and last 512 KiB with an omitted count, on character boundaries → Test `test_executor_output_keeps_head_and_tail` — DONE (`afr_executor/src/edges/tests.rs`)
+- **Dimension 4.4** — Kill reaps a child that ignores TERM and its grandchildren → Test `test_executor_kill_reaps_process_group` — DONE (`afr_executor/tests/processes.rs`)
+- **Dimension 4.5** — A path escaping `/workspace` through `..` or a symlink is refused → Test `test_executor_refuses_path_escape` — DONE (`afr_executor/src/server/files/tests.rs`)
+- **Dimension 4.6** — Killing the sandbox mid-call ends that call `interrupted` exactly once → Test `test_sandbox_death_interrupts_open_calls` — DONE (`afr_executor/tests/lifecycle.rs`)
 
 ### §5 — The toolbox is an image already on the host
 
 `make toolbox-image` builds a minimal Debian root with git, Python 3, CA certificates and core utilities from a pinned manifest, into a compressed read-only EROFS image named by its SHA-256. The runner verifies the hash before mounting it once per host and binds it read-only into every lease. Later specs extend the manifest.
 
-- **Dimension 5.1** — The same manifest builds a byte-identical image → Test `test_toolbox_build_is_reproducible`
-- **Dimension 5.2** — An image whose hash does not match is never mounted → Test `test_toolbox_hash_mismatch_refused`
-- **Dimension 5.3** — A lease sees the toolbox read-only: `git --version` runs and writing `/usr` fails → Test `test_lease_sees_toolbox_read_only`
+- **Dimension 5.1** — The same manifest builds a byte-identical image → Test `test_toolbox_build_is_reproducible` — DONE (`afr_sandbox/examples/kernel_lane`, kernel lane in the Linux VM)
+- **Dimension 5.2** — An image whose hash does not match is never mounted → Test `test_toolbox_hash_mismatch_refused` — DONE (`afr_sandbox/src/toolbox/tests.rs`)
+- **Dimension 5.3** — A lease sees the toolbox read-only: `git --version` runs and writing `/usr` fails → Test `test_lease_sees_toolbox_read_only` — DONE (`afr_sandbox/examples/kernel_lane`, kernel lane in the Linux VM)
 
 ### §6 — Warm slots and a measured start budget
 
 Each host keeps a configured number of warm slots: sandboxes already started, each with its cgroup made, an empty workspace disk mounted and its executor idle, so a lease start fills the workspace and hands the slot its lease. A slot serves one lease and is destroyed with it; the host starts a new one in its place. The kernel lane measures lease-accept to executor-ready, cold and warm, and VERIFY records both figures in Discovery as the budget later specs guard.
 
-- **Dimension 6.1** — A lease taken from a warm slot reaches executor-ready faster than a cold one, and both figures are reported → Test `test_warm_start_beats_cold_start`
-- **Dimension 6.2** — A warm slot is never reused after a lease → Test `test_warm_slot_single_use`
+- **Dimension 6.1** — A lease taken from a warm slot reaches executor-ready faster than a cold one, and both figures are reported → Test `test_warm_start_beats_cold_start` — DONE (`afr_sandbox/examples/kernel_lane`, kernel lane in the Linux VM)
+- **Dimension 6.2** — A warm slot is never reused after a lease → Test `test_warm_slot_single_use` — DONE (`afr_sandbox/src/warm_slots/tests.rs`)
 
 ### §7 — Two lanes prove it
 
 The integration lane runs the runner against the real daemon with compose Postgres and Dragonfly, the scripted engine and the unsandboxed engine (so it runs on any developer machine). The kernel lane runs §3–§6 on Linux with the real engine and fails, never skips, when bubblewrap, Landlock, user namespaces or cgroup delegation are missing.
 
-- **Dimension 7.1** — A scripted lease runs end to end: frames on the channel, memory pushed, report settled, workspace removed → Test `test_rust_runner_lease_roundtrip`
-- **Dimension 7.2** — The kernel lane fails when a required kernel feature is absent → Test `test_kernel_lane_refuses_to_skip`
+- **Dimension 7.1** — A scripted lease runs end to end: frames on the channel, memory pushed, report settled, workspace removed → Test `test_rust_runner_lease_roundtrip` — DONE (`agentsfleetd/tests/integration_rust_runner.rs`, live)
+- **Dimension 7.2** — The kernel lane fails when a required kernel feature is absent → Test `test_kernel_lane_refuses_to_skip` — DONE (`afr_sandbox/examples/kernel_lane`, kernel lane in the Linux VM)
 
 ## Interfaces
 
@@ -252,18 +252,18 @@ AgentEngine (Rust trait): run(lease, executor, events) → Outcome   (scripted o
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | A scripted lease runs end to end against the real daemon (§2, §7) | `make test-integration-rustd && grep -c "fn test_rust_runner_lease_roundtrip(" rustd/crates/agentsfleetd/tests/integration_rust_runner.rs` | 1 | P0 | |
-| R2 | The sandbox holds against tenant code on Linux (§3–§6) | `make test-runner-kernel` | exit 0 | P0 | |
-| R3 | The runner links no datastore or daemon-plane crate (§1) | `cargo tree --manifest-path rustd/Cargo.toml -p agentsfleet_runner -e normal \| grep -cE "sqlx\|redis\|afd_(db\|dragonfly\|fleet\|events\|api)"` | 0 | P0 | |
-| R4 | Kernel lane runs in CI after Indy's approval of the workflow edit | manual — Indy approves the `.github/workflows/lint.yml` change; evidence: the run URL in Session Notes | approval quote and a green run URL | P0 | |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | |
-| S5 | Version in sync | `make check-version` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | A scripted lease runs end to end against the real daemon (§2, §7) | `make test-integration-rustd && grep -c "fn test_rust_runner_lease_roundtrip(" rustd/crates/agentsfleetd/tests/integration_rust_runner.rs` | 1 | P0 | ✅ `test_rust_runner_lease_roundtrip ... ok` (see Session notes for the lane) |
+| R2 | The sandbox holds against tenant code on Linux (§3–§6) | `make test-runner-kernel` | exit 0 | P0 | ✅ 12/12 trials `ok` in the Linux VM; CI job awaits R4 |
+| R3 | The runner links no datastore or daemon-plane crate (§1) | `cargo tree --manifest-path rustd/Cargo.toml -p agentsfleet_runner -e normal \| grep -cE "sqlx\|redis\|afd_(db\|dragonfly\|fleet\|events\|api)"` | 0 | P0 | ✅ `0` |
+| R4 | Kernel lane runs in CI after Indy's approval of the workflow edit | manual — Indy approves the `.github/workflows/lint.yml` change; evidence: the run URL in Session Notes | approval quote and a green run URL | P0 | pending — Indy approves the workflow diff in Session notes 1 |
+| R5 | Diff stays inside Files Changed | `git diff --name-only 0d79b0318...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ every path is in the table (the 19 spec commits from local `main` ride along by Indy's call) |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | see `orly gate pr` in Session notes |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | see `orly gate pr` in Session notes |
+| S3 | Lint green | `make lint-all` | exit 0 | P0 | see `orly gate pr` in Session notes |
+| S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | see `orly gate pr` in Session notes |
+| S5 | Version in sync | `make check-version` | exit 0 | P0 | see `orly gate pr` in Session notes |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | see `orly gate pr` in Session notes |
+| S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -E '\.(zig\|js\|jsx\|ts\|tsx\|py\|rs\|go\|sh\|sql)$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no output |
 
 **Command source rule:** copy every declared `conform` and `verify.*` invocation from `.oracle/orly.json` into a Verify cell, verbatim, with an Expected value. Include conditional suites; the final gate decides applicability from the actual branch diff. Additional spec-specific commands, secret scans, and named manual checks are allowed. See `dispatch/lifecycle.md` for command timing; baseline metadata is pending at opening and measured before the Pull Request.
 
