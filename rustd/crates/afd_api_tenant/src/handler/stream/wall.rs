@@ -14,7 +14,9 @@
 //! A tick that cannot reach Postgres keeps serving the set it already has and
 //! asks again on the next beat. Ending the stream would turn a two-second
 //! outage into every dashboard in the fleet reconnecting at once — which is the
-//! load the outage was already about.
+//! load the outage was already about. The membership half is the re-check
+//! both streams share (`revocable.rs`): budgeted, logged, and capped. An
+//! outage that outlasts the cap ends the wall without `access_revoked`.
 //!
 //! # A lagging viewer re-reads the counters at most once per beat
 //!
@@ -35,8 +37,8 @@ use afd_sse::{FanIn, Frame, KIND_CATCHING_UP};
 use futures_util::stream::BoxStream;
 use tokio::time::Instant;
 
-use super::revocable::{Turn, until_revoked};
-use crate::services::{Services, WorkspaceFleets as _, WorkspaceOwnership as _};
+use super::revocable::{Membership, Recheck as _, Turn, Verdict, Watch, until_revoked};
+use crate::services::{Services, WorkspaceFleets as _};
 
 /// How often the fleet set and the caller's membership are re-read.
 ///
@@ -58,15 +60,17 @@ enum Tick {
     /// The caller may no longer read this workspace. The stream sends
     /// `access_revoked` and closes.
     Revoked,
+    /// The caller's access went unanswered too many ticks running. The stream
+    /// closes without `access_revoked`, and the reconnect is authorized at open.
+    Unverified,
 }
 
 /// Everything one workspace stream carries between frames.
 struct Wall<D> {
-    services: Arc<D>,
-    workspace: Uuid7,
-    /// Held so the tick can re-ask THIS caller's membership, which is a
-    /// question no other viewer's answer can stand in for.
-    principal: Principal,
+    /// THIS caller's membership, re-asked on every tick: no other viewer's
+    /// answer can stand in for it. Its services and workspace are the ones
+    /// the wall reads its set and counters through.
+    watch: Watch<Membership<D>>,
     fan_in: FanIn,
     next_refresh: Instant,
     /// Whether the opening `hello` has been sent.
@@ -143,9 +147,7 @@ pub(super) fn frames<D: Services>(
     fan_in.sync_to(opening);
     let now = Instant::now();
     let wall = Wall {
-        services,
-        workspace,
-        principal,
+        watch: Watch::new(Membership::new(services, principal, workspace)),
         fan_in,
         next_refresh: now + REFRESH_INTERVAL,
         announced: false,
@@ -166,6 +168,8 @@ async fn step<D: Services>(mut wall: Wall<D>) -> Option<Turn<Wall<D>>> {
         if Instant::now() >= wall.next_refresh {
             match refresh(&mut wall).await {
                 Tick::Revoked => return Some(Turn::Revoked),
+                // An outage is not a revocation: the wall ends with no frame.
+                Tick::Unverified => return None,
                 Tick::Changed => return Some(announce(wall).await),
                 Tick::Steady => {}
             }
@@ -203,7 +207,8 @@ async fn step<D: Services>(mut wall: Wall<D>) -> Option<Turn<Wall<D>>> {
 async fn announce<D: Services>(mut wall: Wall<D>) -> Turn<Wall<D>> {
     wall.recount.paid();
     let carried = wall.fan_in.fleets();
-    let frame = hello(wall.services.as_ref(), &wall.workspace, carried).await;
+    let membership = wall.watch.question();
+    let frame = hello(membership.services(), membership.workspace(), carried).await;
     Turn::Frame(frame, wall)
 }
 
@@ -241,26 +246,22 @@ async fn hello<D: Services>(services: &D, workspace: &Uuid7, carried: Vec<String
 async fn refresh<D: Services>(wall: &mut Wall<D>) -> Tick {
     wall.next_refresh = Instant::now() + REFRESH_INTERVAL;
 
-    match wall
-        .services
-        .workspaces()
-        .authorize(&wall.principal, &wall.workspace)
-        .await
-    {
-        Ok(Some(_access)) => {}
-        Ok(None) => {
+    match wall.watch.verdict().await {
+        Verdict::Admitted => {}
+        Verdict::Deferred => return Tick::Steady,
+        Verdict::Unverified => return Tick::Unverified,
+        Verdict::Revoked => {
             // Detach before returning, so no frame already queued on an
             // attached channel can still reach a caller who lost the right
             // to it.
             wall.fan_in.sync_to(&BTreeSet::new());
-            let workspace_id = wall.workspace.as_str();
-            tracing::debug!(workspace_id, event = "workspace_stream_revoked");
             return Tick::Revoked;
         }
-        Err(_deferred) => return Tick::Steady,
     }
 
-    match wall.services.fleets().live_set(&wall.workspace).await {
+    let membership = wall.watch.question();
+    let workspace = membership.workspace();
+    match membership.services().fleets().live_set(workspace).await {
         Ok(fleets) => {
             if wall.fan_in.sync_to(&fleets).is_change() {
                 Tick::Changed
