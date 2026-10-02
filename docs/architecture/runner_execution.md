@@ -9,7 +9,7 @@
 | Language | Rust, in the `rustd` workspace beside `agentsfleetd`. Wire types come from `afd_wire`, decoded leniently on the runner side, because the daemon port's faults were all "something the Zig daemon tolerated" that strict Rust did not |
 | Process model | A trusted **supervisor** runs the lease loop and the agent loop; a per-lease **sandbox** executes tool calls and nothing else |
 | Hosts | Bare metal or a VM, multi-tenant from the first release |
-| Sandbox engine | bubblewrap with Landlock, seccomp, cgroup v2 and a per-lease network namespace. Firecracker microVMs are a later, additional engine |
+| Sandbox engine | Firecracker microVMs for code-running leases from many tenants, on hosts that expose `/dev/kvm`. bubblewrap (Landlock, seccomp, cgroup v2, a per-lease network namespace) ships first, and stays as the engine for development, CI and hosts without `/dev/kvm` |
 | Toolbox | A read-only root filesystem built once per release and present on every host. No container image is pulled or unpacked on the lease path |
 | Workspace | Per lease, restored from and saved to R2 (or any S3-compatible store, such as a self-hosted RustFS). Only the supervisor moves bytes |
 | Model keys | Supervisor only; never inside a sandbox |
@@ -72,7 +72,7 @@ The Zig runner's sandbox carries over and gains what process tools need. Fleets 
 - A supervisor whose capability set is only what sandbox setup needs (mounts, cgroups, namespaces), while tenant code never holds a capability; and a kernel patch cadence for runner hosts.
 - The per-lease network allowlist: a network namespace, a virtual ethernet pair and nftables rules, with rendered resolver files ([Runner Fleet](./runner_fleet.md) §Egress model). The Zig runner refuses a lease that selects it, because it is unbuilt (`src/runner/child_supervisor.zig`).
 
-**The remaining risk is the shared kernel.** A kernel privilege-escalation bug escapes every namespace sandbox on the host at once. Code-running leases from different tenants share hosts by decision, so hardening and a kernel patch cadence carry that risk until the additional engine exists. Firecracker microVMs, resumed from a snapshot, are the additional engine for that risk; they need hardware virtualisation, which bare metal has and most VMs do not. The engine is a host attribute the control plane assigns ([Runner Fleet](./runner_fleet.md) §Assigned policy and reconciliation). Fleets that run processes lease only to runners whose engine allows it; lease assignment carries no such filter today.
+**The remaining risk is the shared kernel**, and Firecracker removes it. A kernel privilege-escalation bug escapes every namespace sandbox on the host at once, while a microVM gives each lease its own kernel. Firecracker needs read and write access to `/dev/kvm`: bare metal has it, and cloud VMs expose it only where the provider offers nested virtualization. Both engines sit behind one interface and share everything outside the boundary itself: the supervisor, the executor (a microVM's vsock surfaces on the host as a Unix socket), the toolbox image (a microVM's read-only root disk), the per-lease disk image (its data disk), cgroups, and the test lanes. Firecracker's jailer applies the same cgroup and namespace barrier around each microVM before dropping privileges. The engine is a host attribute the control plane assigns ([Runner Fleet](./runner_fleet.md) §Assigned policy and reconciliation). Fleets that run processes lease only to runners whose engine allows it; lease assignment carries no such filter today.
 
 ## Toolbox
 
@@ -117,6 +117,15 @@ The fleet uses real git inside the sandbox: branches, several commits, the norma
 
 When a fleet requires approval, the push runs in the continuation lease after someone approves. This moves today's boundary outside the sandbox without changing its rules. The daemon compiles the rules (`rustd/crates/afd_gate/src/policy/egress/write.rs`), and the Zig runner enforces them inside its own process (`src/runner/engine/runtime/policy_http_request.zig`). A write token inside the sandbox would be readable by every program there, including a dependency's install hook. A repository-scoped write token "can force-push to `main` as easily as it can open a draft Pull Request", in the words of the rules' own module documentation.
 
+## Why Rust
+
+- **Memory safety is checked by the compiler.** The Zig runner relies on rules a reviewer enforces by hand: one owner per resource, init and deinit pairing, idempotent cleanup, draining before deinit (`docs/greptile-learnings/RULES.md`, OWN, ZIG, DEINIT, DIDEM, DRAIN). It once needed a memory-leak lane of its own.
+- **The language is stable.** Zig is pre-1.0: the rulebook carries a rule for the Zig 0.15 ArrayList change (ZAL), and the NullClaw fork patches around Zig 0.16's process I/O.
+- **One copy of the wire.** The daemon's `afd_wire` types become the runner's, so the Zig copy of the wire types and its drift faults go away.
+- **The next work already exists in Rust.** Pseudo-terminals, patch application, the bubblewrap helper, Landlock and seccomp bindings, S3 presigning and Firecracker itself.
+
+The costs are the rewrite, slower compiles, async complexity and larger binaries. Speed is not a reason: both compile to native code.
+
 ## What comes from where
 
 | Piece | Source | Form |
@@ -149,3 +158,4 @@ When a fleet requires approval, the push runs in the continuation lease after so
 | Oct 02, 2026 | Scoped short-lived tokens now; the placeholder-swap proxy later | Indy: "I would go for 1, with the focus on move to 2 later" |
 | Oct 02, 2026 | The supervisor pushes repository writes | Indy chose "Supervisor pushes (Recommended)" |
 | Oct 02, 2026 | Code-running leases from different tenants may share a host; hardening and kernel patching are the boundary until Firecracker | Indy chose "No, share freely" when asked whether a host should refuse a second tenant's code-running lease |
+| Oct 02, 2026 | Firecracker is the production engine for code-running leases; bubblewrap ships first and stays for development, CI and hosts without `/dev/kvm` | Indy: "i think we must shoot for firecracker then", "if its throwawy work" and "i want to know what is quick to test the end to end case". Bubblewrap first is the agent default, awaiting his confirmation: with both engines nothing is thrown away, and it is the quickest end-to-end path |
