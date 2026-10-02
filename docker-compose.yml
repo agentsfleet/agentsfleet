@@ -98,8 +98,8 @@ services:
       - "${AGENTSFLEET_API_HOST_PORT:-3000}:3000"
       # Mailpit shares this namespace too (see the mailpit service): its SMTP
       # port, and the web page a person reads the captured mail on.
-      - "${AGENTSFLEET_MAILPIT_SMTP_PORT:-1025}:1025"
-      - "${AGENTSFLEET_MAILPIT_UI_PORT:-8025}:8025"
+      - "127.0.0.1:${AGENTSFLEET_MAILPIT_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${AGENTSFLEET_MAILPIT_UI_PORT:-8025}:8025"
     volumes:
       - ./scripts/dragonfly-cluster.sh:/scripts/dragonfly-cluster.sh:ro
       - dragonfly-data:/data
