@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M209
 **Workstream:** 001
 **Date:** Oct 02, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing: the chat can say only that a tool ran and for how long, never what it did or how it ended
 **Categories:** API, DOCS
 **Batch:** B1 — wire and daemon; runs in parallel with the Rust runner, which emits these fields; M209_003 shares the Pull Request

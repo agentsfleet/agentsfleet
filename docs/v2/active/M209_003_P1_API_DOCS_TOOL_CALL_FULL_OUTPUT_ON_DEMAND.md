@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M209
 **Workstream:** 003
 **Date:** Oct 02, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing: Indy's ask is that nothing a tool returned stays hidden; the thread shows the edges, this serves the rest
 **Categories:** API, DOCS
 **Batch:** B1 — after M209_001 in the same Pull Request; the Rust runner posts these records
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** feat/m209-tool-call-outcomes
+**Baseline revision:** 0d79b0318e687b8862ee8dbd4f622069bc6ba1a4
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M209_001 — fenced call ids and the trace this record completes
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 02, 2026) from a source trace on `main`; re-scoped the same day when Indy chose a fresh Rust runner, which moved record capture into the runner
