@@ -20,7 +20,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Priority:** P1 — operator-facing: the chat can say only that a tool ran and for how long, never what it did or how it ended
 **Categories:** API, DOCS
 **Batch:** B1 — wire and daemon; runs in parallel with the Rust runner, which emits these fields; M209_003 shares the Pull Request
-**Branch:** feat/m209-tool-call-outcomes
+**Branch:** `feat/m209-tool-call-outcomes`
 **Baseline revision:** 0d79b0318e687b8862ee8dbd4f622069bc6ba1a4
 **Test Baseline:** unit=3001 integration=3618 — at `0d79b0318`, whose tests are `93e96897a`'s (a `docs/`-only delta): unit 3001 passed / 0 failed / 779 ignored (`make test-unit-all`, Rust half; CI `test` run 36990590586; TypeScript CLI 1776 / app 382 / website 22 / design system 60 files passed) · integration 3618 passed / 0 failed (CI `test-integration-rustd` run 36990590709, which runs `make test-coverage-rustd`, both tiers). Final counts land in Pull Request Session Notes.
 **Baseline evidence:** `playbooks/operations/acceptance/baselines/M209_001-0d79b0318.md`

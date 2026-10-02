@@ -79,9 +79,8 @@ pub struct FleetResponseChunk<'a> {
 
 /// A tool call finished.
 ///
-/// The outcome fields are absent from runners that do not report one; a
-/// reader shows such a call as finished with no outcome rather than inventing
-/// success.
+/// The outcome fields are absent from runners that do not report one. A
+/// reader shows such a call as finished with no outcome, never as a success.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
