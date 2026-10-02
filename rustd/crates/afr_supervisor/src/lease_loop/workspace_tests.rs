@@ -100,7 +100,7 @@ async fn support_files_that_will_not_land_fail_the_start_before_the_turn() {
         .unwrap();
 
     assert_eq!(reported(&rig.calls())[FAILURE_REASON], STARTUP_POSTURE);
-    assert_eq!(rig.runs.load(Ordering::SeqCst), 0, NO_TURN);
+    assert_eq!(rig.runs.load(Ordering::SeqCst), 0, "{NO_TURN}");
     assert_eq!(
         rig.destroyed.load(Ordering::SeqCst),
         1,
@@ -123,7 +123,7 @@ async fn a_lease_that_ends_while_its_bundle_lands_stops_the_landing() {
         .unwrap();
 
     assert_eq!(reported(&rig.calls())[FAILURE_REASON], RENEWAL_TERMINATE);
-    assert_eq!(rig.runs.load(Ordering::SeqCst), 0, NO_TURN);
+    assert_eq!(rig.runs.load(Ordering::SeqCst), 0);
     assert_eq!(
         rig.destroyed.load(Ordering::SeqCst),
         1,
