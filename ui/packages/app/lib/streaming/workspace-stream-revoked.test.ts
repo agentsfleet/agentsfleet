@@ -80,3 +80,34 @@ describe("workspace-stream — access revoked", () => {
     expect(getWorkspaceConnectionStatus(WS)).toBe(WORKSPACE_CONNECTION_STATUS.LIVE);
   });
 });
+
+// An owner who removes a teammate can invite them back. The wall they return to
+// inside the idle grace is a new mount, and it must ask again.
+describe("workspace-stream — access restored", () => {
+  it("should open a fresh stream when a wall mounts on a revoked entry inside the idle grace", () => {
+    const release = subscribeFleet(WS, FLEET_A, () => {});
+    onlySource().revokeAccess();
+    release();
+
+    const statuses: string[] = [];
+    subscribeStatus(WS, (status) => statuses.push(status));
+    expect(statuses).toEqual([WORKSPACE_CONNECTION_STATUS.CONNECTING]);
+    expect(FakeEventSource.instances).toHaveLength(2);
+    FakeEventSource.instances.at(-1)?.open();
+
+    expect(getWorkspaceConnectionStatus(WS)).toBe(WORKSPACE_CONNECTION_STATUS.LIVE);
+  });
+
+  it("should settle back on revoked, with no retry, when the caller is still removed", async () => {
+    const release = subscribeFleet(WS, FLEET_A, () => {});
+    onlySource().revokeAccess();
+    release();
+
+    subscribeFleet(WS, FLEET_A, () => {});
+    FakeEventSource.instances.at(-1)?.revokeAccess();
+    await vi.advanceTimersByTimeAsync(PAST_EVERY_RETRY_MS);
+
+    expect(FakeEventSource.instances).toHaveLength(2);
+    expect(getWorkspaceConnectionStatus(WS)).toBe(WORKSPACE_CONNECTION_STATUS.REVOKED);
+  });
+});

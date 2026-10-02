@@ -111,7 +111,8 @@ function startEventSource(entry: Entry): void {
 }
 
 // The daemon's last frame to a caller who lost access. It closes the stream and
-// refuses the next request the same way, so the wall stops here for good.
+// refuses the next request the same way, so the wall stops here until a new
+// mount asks again (`ensureEntry`).
 function onAccessRevoked(entry: Entry, es: EventSource): void {
   if (entry.eventSource !== es) return;
   cancelPendingReconnect(entry);
@@ -215,6 +216,14 @@ function ensureEntry(workspaceId: string, backfill: BackfillFn | null): Entry {
   if (!entry) {
     entry = createEntry(workspaceId, backfill);
     REGISTRY.set(workspaceId, entry);
+    startEventSource(entry);
+  } else if (entry.refCount === 0 && entry.status === WORKSPACE_CONNECTION_STATUS.REVOKED) {
+    // A wall mounting on an entry held only by its idle grace is a new request:
+    // access may have come back since, by a fresh invite. A caller still
+    // removed is refused once more with `access_revoked`. A listener joining a
+    // wall still on screen asks nothing; that wall already has its answer.
+    entry.reconnectAttempts = 0;
+    setStatus(entry, WORKSPACE_CONNECTION_STATUS.CONNECTING);
     startEventSource(entry);
   }
   if (backfill !== null) entry.backfill = backfill;
