@@ -12,6 +12,8 @@ use std::fs;
 use std::io::{self, Read, Write as _};
 use std::path::PathBuf;
 
+use bytes::Bytes;
+
 use afd_core::bundle::BundleDigest;
 use tempfile::NamedTempFile;
 
@@ -60,15 +62,18 @@ impl BundleCache {
         &self,
         plane: &ControlPlane,
         content_hash: &str,
-    ) -> Result<Option<PathBuf>> {
+    ) -> Result<Option<Bundle>> {
         if !is_digest(content_hash) {
             return Err(error::tampered(content_hash));
         }
         let path = self.dir.join(content_hash).with_extension(EXTENSION);
-        if fs::read(&path).is_ok_and(|cached| digest(&cached).as_deref() == Some(content_hash)) {
+        if let Some(cached) = fs::read(&path)
+            .ok()
+            .and_then(|bytes| verified(&bytes, content_hash))
+        {
             let event = EVENT_CACHE_HIT;
             tracing::debug!(content_hash, event);
-            return Ok(Some(path));
+            return Ok(Some(cached));
         }
         let bytes = match retrying(|| plane.bundle(content_hash)).await {
             Ok(bytes) => bytes,
@@ -79,15 +84,13 @@ impl BundleCache {
             }
             Err(failure) => return Err(failure),
         };
-        if digest(&bytes).as_deref() != Some(content_hash) {
-            return Err(error::tampered(content_hash));
-        }
+        let bundle = verified(&bytes, content_hash).ok_or_else(|| error::tampered(content_hash))?;
         let mut file = NamedTempFile::new_in(&self.dir)?;
         file.write_all(&bytes)?;
         file.persist(&path)?;
         let event = EVENT_MATERIALIZED;
         tracing::info!(content_hash, event);
-        Ok(Some(path))
+        Ok(Some(bundle))
     }
 }
 
@@ -99,36 +102,68 @@ fn is_digest(name: &str) -> bool {
             .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }
 
-/// The import digest of a canonical bundle tar, or `None` when the bytes are
-/// not one: unreadable, or not opening with `SKILL.md`.
-fn digest(tar: &[u8]) -> Option<String> {
-    let parts = tar::Archive::new(tar)
-        .entries()
-        .ok()?
-        .map(read_entry)
-        .collect::<Option<Vec<_>>>()?;
-    let ((skill_path, skill), rest) = parts.split_first()?;
-    if skill_path != SKILL_PATH {
-        return None;
+/// A verified Fleet Bundle: its documents and the support files a lease's
+/// workspace receives, read once from the canonical archive.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Bundle {
+    skill: Bytes,
+    trigger: Bytes,
+    files: Vec<(String, Bytes)>,
+}
+
+impl Bundle {
+    /// Reads a canonical bundle archive, or `None` when the bytes are not one:
+    /// unreadable, or not opening with `SKILL.md`.
+    fn read(tar: &[u8]) -> Option<Self> {
+        let mut parts = tar::Archive::new(tar)
+            .entries()
+            .ok()?
+            .map(read_entry)
+            .collect::<Option<Vec<_>>>()?
+            .into_iter();
+        let (skill_path, skill) = parts.next()?;
+        if skill_path != SKILL_PATH {
+            return None;
+        }
+        let mut files: Vec<_> = parts.collect();
+        let trigger = match files.first() {
+            Some((path, _)) if path == TRIGGER_PATH => files.remove(0).1,
+            _absent => Bytes::new(),
+        };
+        Some(Self {
+            skill,
+            trigger,
+            files,
+        })
     }
-    let (trigger, files) = match rest.split_first() {
-        Some(((path, trigger), files)) if path == TRIGGER_PATH => (trigger.as_slice(), files),
-        _absent => (&[][..], rest),
-    };
-    let mut digest = BundleDigest::new(skill, Some(trigger));
-    for (path, content) in files {
-        digest.support_file(path, content);
+
+    /// The name the importer gave this bundle.
+    fn digest(&self) -> String {
+        let mut digest = BundleDigest::new(&self.skill, Some(&self.trigger));
+        for (path, content) in &self.files {
+            digest.support_file(path, content);
+        }
+        digest.finish()
     }
-    Some(digest.finish())
+
+    /// The support files, by their path inside the workspace.
+    pub(crate) fn support_files(&self) -> &[(String, Bytes)] {
+        &self.files
+    }
 }
 
 /// One entry's path and content, or `None` when it does not read.
-fn read_entry<R: Read>(entry: io::Result<tar::Entry<'_, R>>) -> Option<(String, Vec<u8>)> {
+fn read_entry<R: Read>(entry: io::Result<tar::Entry<'_, R>>) -> Option<(String, Bytes)> {
     let mut entry = entry.ok()?;
     let path = entry.path().ok()?.to_str()?.to_owned();
     let mut content = Vec::new();
     entry.read_to_end(&mut content).ok()?;
-    Some((path, content))
+    Some((path, Bytes::from(content)))
+}
+
+/// The bundle `bytes` hold, when they read and carry `content_hash`'s name.
+fn verified(bytes: &[u8], content_hash: &str) -> Option<Bundle> {
+    Bundle::read(bytes).filter(|bundle| bundle.digest() == content_hash)
 }
 
 #[cfg(test)]

@@ -64,7 +64,7 @@ impl Workspace {
     pub(super) fn read(&self, path: &str, max_bytes: u64) -> Result<ReadResult> {
         let limit = max_bytes.min(MAX_READ_BYTES);
         let mut content = Vec::new();
-        self.regular(path, OpenOptions::new().read(true))?
+        self.regular(path, OpenOptions::new().read(true), Parents::Keep)?
             .take(limit.saturating_add(1))
             .read_to_end(&mut content)?;
         let kept = usize::try_from(limit).unwrap_or(usize::MAX);
@@ -76,11 +76,14 @@ impl Workspace {
         })
     }
 
-    /// Writes a regular file, replacing what was there.
+    /// Writes a regular file, replacing what was there and making any missing
+    /// parent directories, all inside the workspace.
     pub(super) fn write(&self, path: &str, content: &[u8]) -> Result<()> {
         let mut options = OpenOptions::new();
         options.write(true).create(true).truncate(true);
-        Ok(self.regular(path, &mut options)?.write_all(content)?)
+        Ok(self
+            .regular(path, &mut options, Parents::Make)?
+            .write_all(content)?)
     }
 
     /// Lists a directory, up to [`MAX_LIST_ENTRIES`] of it.
@@ -98,11 +101,23 @@ impl Workspace {
     }
 
     /// Opens `path` without blocking and refuses anything but a regular file.
-    fn regular(&self, path: &str, options: &mut OpenOptions) -> Result<File> {
-        let file = self
-            .dir
-            .open_with(self.inside(path)?, options.custom_flags(NONBLOCK))
-            .map_err(confined)?;
+    ///
+    /// With [`Parents::Make`], an open that fails because a directory is
+    /// missing makes the directories and tries once more. The open is always
+    /// tried first, so an escape is refused as one before anything is made.
+    fn regular(&self, path: &str, options: &mut OpenOptions, parents: Parents) -> Result<File> {
+        let inside = self.inside(path)?;
+        options.custom_flags(NONBLOCK);
+        let file = match (self.dir.open_with(inside, options), parents) {
+            (Err(missing), Parents::Make) if missing.kind() == io::ErrorKind::NotFound => {
+                if let Some(parent) = inside.parent() {
+                    self.dir.create_dir_all(parent).map_err(confined)?;
+                }
+                self.dir.open_with(inside, options)
+            }
+            (opened, _either) => opened,
+        }
+        .map_err(confined)?;
         if file.metadata()?.is_file() {
             Ok(file)
         } else {
@@ -156,6 +171,15 @@ fn described(entry: &cap_std::fs::DirEntry) -> io::Result<DirEntry> {
 /// that no system call produced, which is how it is told from a real `EACCES`;
 /// a pipe with no reader refuses a non-blocking open for writing with
 /// `ENXIO`, and that is a file that is not a regular one.
+/// Whether opening a file may make its missing parent directories.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Parents {
+    /// Only what exists is opened: a read.
+    Keep,
+    /// Missing directories are made: a write.
+    Make,
+}
+
 fn confined(failure: io::Error) -> Error {
     match failure.raw_os_error() {
         None if failure.kind() == io::ErrorKind::PermissionDenied => error::path_refused(),

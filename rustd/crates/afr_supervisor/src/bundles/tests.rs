@@ -58,7 +58,7 @@ async fn test_bundle_hash_mismatch_refused() {
 
 #[tokio::test]
 async fn a_verified_bundle_is_cached_and_served_from_the_cache() {
-    let (_root, cache, _home) = cache();
+    let (_root, cache, home) = cache();
     let canonical = tar(&[
         ("SKILL.md", b"skill"),
         ("TRIGGER.md", b"t"),
@@ -80,7 +80,16 @@ async fn a_verified_bundle_is_cached_and_served_from_the_cache() {
     let cached = cache.fetch(&plane, &name).await.unwrap().unwrap();
 
     assert_eq!(fetched, cached);
-    assert!(fetched.ends_with(format!("{name}.tar")));
+    let files = fetched.support_files();
+    assert_eq!(files.len(), 1);
+    assert_eq!(
+        (files[0].0.as_str(), files[0].1.as_ref()),
+        ("tools/a.py", &b"print(1)"[..])
+    );
+    assert!(
+        home.bundles().join(format!("{name}.tar")).exists(),
+        "the archive is cached"
+    );
     let calls = drain(&mut calls);
     assert_eq!(calls.len(), 1, "the second fetch is a cache hit");
     assert_eq!(calls[0].verb, Verb::Bundle);
@@ -122,9 +131,9 @@ async fn bytes_that_are_not_a_canonical_bundle_are_refused() {
         "refused before any call"
     );
     assert_eq!(drain(&mut calls).len(), 1);
-    assert_eq!(super::digest(b"not a tar"), None);
+    assert_eq!(super::Bundle::read(b"not a tar"), None);
     assert_eq!(
-        super::digest(&[]),
+        super::Bundle::read(&[]),
         None,
         "an empty archive has no root document"
     );

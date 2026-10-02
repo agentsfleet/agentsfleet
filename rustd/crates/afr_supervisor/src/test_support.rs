@@ -18,8 +18,7 @@ use afd_wire::lease::{BundleManifest, LeasePayload};
 use afd_wire::memory::MemoryDelta;
 use afd_wire::report::{Completed, ExecutionResult, ResultOutcome};
 use afr_agent::{AgentEngine, AgentRun, RunOutput};
-use afr_executor::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
-use afr_sandbox::{Engine, Sandbox, SandboxRequest};
+use afr_executor::{Executor, ProcessId, Spawn};
 use bytes::Bytes;
 use serde::Serialize;
 use tokio::sync::mpsc;
@@ -27,8 +26,11 @@ use tokio::sync::mpsc;
 use crate::client::{Call, ControlPlane, RunnerApi};
 
 mod rig;
+#[path = "test_support/sandbox.rs"]
+mod sandbox;
 
 pub(crate) use self::rig::{Rig, daemon, position, reported};
+pub(crate) use self::sandbox::FakeEngine;
 
 /// A canonical lease identifier.
 pub(crate) const LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8057";
@@ -233,93 +235,5 @@ pub(crate) fn answer() -> RunOutput {
             content: "v".into(),
             category: "core".into(),
         }],
-    }
-}
-
-/// An engine whose sandboxes count their teardowns.
-#[derive(Debug, Default)]
-pub(crate) struct FakeEngine {
-    pub(crate) refuse: bool,
-    /// Panics on the first prepare only, the way a bug in the supervisor
-    /// would take its worker down.
-    pub(crate) panic_once: bool,
-    pub(crate) fail_teardown: bool,
-    pub(crate) prepared: Arc<AtomicUsize>,
-    pub(crate) destroyed: Arc<AtomicUsize>,
-}
-
-#[async_trait::async_trait]
-impl Engine for FakeEngine {
-    async fn prepare(&self, _request: SandboxRequest<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
-        if self.refuse {
-            return Err(std::io::Error::other("no landlock").into());
-        }
-        let prepared = self.prepared.fetch_add(1, Ordering::SeqCst);
-        assert!(
-            !(self.panic_once && prepared == 0),
-            "the fake engine panics on its first prepare"
-        );
-        Ok(Box::new(FakeSandbox {
-            fail_teardown: self.fail_teardown,
-            destroyed: Arc::clone(&self.destroyed),
-        }))
-    }
-}
-
-#[derive(Debug)]
-struct FakeSandbox {
-    fail_teardown: bool,
-    destroyed: Arc<AtomicUsize>,
-}
-
-#[async_trait::async_trait]
-impl Sandbox for FakeSandbox {
-    fn executor(&self) -> &dyn Executor {
-        &FakeExecutor
-    }
-
-    async fn destroy(self: Box<Self>) -> afr_sandbox::Result<()> {
-        self.destroyed.fetch_add(1, Ordering::SeqCst);
-        if self.fail_teardown {
-            return Err(std::io::Error::other("busy mount").into());
-        }
-        Ok(())
-    }
-}
-
-/// An executor that refuses to spawn and answers everything else emptily.
-#[derive(Debug)]
-struct FakeExecutor;
-
-#[async_trait::async_trait]
-impl Executor for FakeExecutor {
-    async fn spawn(&self, _spawn: Spawn) -> afr_executor::Result<Process> {
-        Err(std::io::Error::other("no processes here").into())
-    }
-
-    async fn write(&self, _process: ProcessId, _data: Bytes) -> afr_executor::Result<()> {
-        Ok(())
-    }
-
-    async fn kill(&self, _process: ProcessId) -> afr_executor::Result<()> {
-        Ok(())
-    }
-
-    async fn read_file(&self, _path: &str, _max_bytes: u64) -> afr_executor::Result<FileContent> {
-        Ok(FileContent {
-            data: Bytes::new(),
-            truncated: false,
-        })
-    }
-
-    async fn write_file(&self, _path: &str, _data: Bytes) -> afr_executor::Result<()> {
-        Ok(())
-    }
-
-    async fn list_dir(&self, _path: &str) -> afr_executor::Result<Listing> {
-        Ok(Listing {
-            entries: Vec::new(),
-            truncated: false,
-        })
     }
 }
