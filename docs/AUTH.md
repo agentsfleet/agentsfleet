@@ -366,7 +366,12 @@ most one row, so the plan is three index lookups at any table size.
 
 **Open streams re-check.** A fleet's event stream re-checks access on each
 15-second heartbeat, and the workspace wall on each 10-second refresh. A
-removed member's streams send `event: access_revoked` and close.
+removed member's streams send `event: access_revoked` and close. A re-check
+that errs or runs past 500 ms is deferred and logged; four deferrals in a
+row close the stream without that frame, and reconnecting re-authorises at
+open. The dashboard's stream proxy turns a 403 `UZ-AUTH-001` at open into
+the same `access_revoked` frame, so a member removed while a tab slept stops
+too.
 
 ### Invites
 
