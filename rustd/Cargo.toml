@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_mail", "crates/afd_observability", "crates/afd_outbound", "crates/afd_dragonfly", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_mail", "crates/afd_observability", "crates/afd_outbound", "crates/afd_dragonfly", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/afr_agent", "crates/afr_executor", "crates/afr_sandbox", "crates/afr_supervisor", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.51.0"
@@ -134,6 +134,14 @@ afd_vault = { path = "crates/afd_vault" }
 # datastore, no runtime and no router.
 afd_webhook = { path = "crates/afd_webhook" }
 afd_wire = { path = "crates/afd_wire" }
+# The Rust runner: the supervisor outside every sandbox, the sandbox engines,
+# the executor that runs inside each one, and the agent-engine seam. They depend
+# on `afd_wire`, `afd_core` and `afd_observability` and on nothing else from the
+# daemon (`docs/architecture/runner_execution.md` §Crates).
+afr_agent = { path = "crates/afr_agent" }
+afr_executor = { path = "crates/afr_executor" }
+afr_sandbox = { path = "crates/afr_sandbox" }
+afr_supervisor = { path = "crates/afr_supervisor" }
 
 # `default-features = false` throughout, features named explicitly, so a member
 # cannot silently acquire a feature a sibling enabled (M-CARGO-WORKSPACE).
@@ -794,6 +802,29 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
     # rides `std`, which is already here, and asking for it by name fails
     # resolution rather than doing nothing.
 ] }
+
+# The keys a derive skipped, with their dotted path: the strict reader a
+# person-written request goes through when it embeds a lenient runner-bound
+# type (`afd_core::json::strict_object_from_slice`).
+serde_ignored = { version = "0.1.14", default-features = false }
+# The runner's kernel surface, Linux only, each the crate Codex's own sandbox
+# uses (`codex-rs/linux-sandbox/Cargo.toml`): safe system calls for process
+# groups, signals, `no_new_privs` and mounts; Landlock rulesets; a seccomp
+# program compiled to classic BPF in Rust, the library Firecracker ships.
+rustix = { version = "1.1.5", default-features = false, features = ["std", "fs", "mount", "process", "thread"] }
+landlock = { version = "0.4.7", default-features = false }
+seccompiler = { version = "0.5.0", default-features = false }
+# Pseudo-terminals for the executor's interactive processes; Codex's choice.
+portable-pty = { version = "0.9.0", default-features = false }
+# The JSON-RPC 2.0 envelope the executor protocol rides — request, response,
+# notification and error object — rather than a hand-written copy of the spec.
+jsonrpsee-types = { version = "0.26.1", default-features = false }
+# Scratch directories and atomically persisted files: the report spool, the
+# bundle cache and every test that needs a real filesystem.
+tempfile = { version = "3.27.0", default-features = false }
+# The resolved dependency graph, read by the test that proves the runner binary
+# links no datastore or daemon-plane crate.
+cargo_metadata = { version = "0.23.1", default-features = false }
 
 [workspace.lints.rust]
 # Every rustc warning is an error; individual lints below raise their own level

@@ -76,10 +76,10 @@ pub(crate) async fn handle<D: Services>(State(services): State<Arc<D>>, body: By
     // Strict, where the heartbeat is lenient, and the asymmetry is the point:
     // an operator typing an enrolment needs to be told their request was wrong,
     // while a runner beating every ten seconds needs its liveness to land
-    // whatever its build sends. `RegisterRequest` carries
-    // `deny_unknown_fields`, so a misspelled key is refused here rather than
-    // silently assigning a policy nobody asked for.
-    let Ok(request) = afd_http::handler::read_body::<RegisterRequest<'_>>(&body) else {
+    // whatever its build sends. The strict reader refuses a misspelled key at
+    // any depth — including inside the assigned policy, a shape the runner reads
+    // leniently — rather than silently assigning a policy nobody asked for.
+    let Ok(request) = afd_http::handler::read_strict_body::<RegisterRequest<'_>>(&body) else {
         return reject(DETAIL_MALFORMED_BODY);
     };
 

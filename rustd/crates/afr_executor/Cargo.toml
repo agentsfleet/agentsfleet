@@ -1,0 +1,27 @@
+[package]
+name = "afr_executor"
+description = "The runner's executor: processes and files inside one sandbox, served over a Unix socket, and the supervisor's client for it."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+afd_core.workspace = true
+# The executor seam is `dyn`: the agent loop holds whichever engine's executor
+# the lease got, so the trait needs object-safe async methods.
+async-trait.workspace = true
+# Output chunks are reference-counted slices: a chunk read once is handed to
+# the activity stream and the trace without a copy.
+bytes.workspace = true
+thiserror.workspace = true
+# Each process's events arrive on its own channel, owned by whoever spawned it.
+tokio = { workspace = true, features = ["sync"] }

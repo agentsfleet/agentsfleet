@@ -351,6 +351,7 @@ version = "0.51.0"
 dependencies = [
  "base64 0.23.1",
  "serde",
+ "serde_ignored",
  "serde_json",
  "sha2 0.11.0",
  "thiserror",
@@ -894,6 +895,50 @@ dependencies = [
  "serde",
  "serde_json",
  "utoipa",
+]
+
+[[package]]
+name = "afr_agent"
+version = "0.51.0"
+dependencies = [
+ "afd_core",
+ "afd_wire",
+ "afr_executor",
+ "async-trait",
+ "thiserror",
+]
+
+[[package]]
+name = "afr_executor"
+version = "0.51.0"
+dependencies = [
+ "afd_core",
+ "async-trait",
+ "bytes",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "afr_sandbox"
+version = "0.51.0"
+dependencies = [
+ "afd_core",
+ "afr_executor",
+ "async-trait",
+ "thiserror",
+]
+
+[[package]]
+name = "afr_supervisor"
+version = "0.51.0"
+dependencies = [
+ "afd_core",
+ "afd_wire",
+ "afr_agent",
+ "afr_executor",
+ "afr_sandbox",
+ "thiserror",
 ]
 
 [[package]]
@@ -4014,6 +4059,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",
+]
+
+[[package]]
+name = "serde_ignored"
+version = "0.1.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "115dffd5f3853e06e746965a20dcbae6ee747ae30b543d91b0e089668bb07798"
+dependencies = [
+ "serde",
+ "serde_core",
 ]
 
 [[package]]

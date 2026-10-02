@@ -118,7 +118,9 @@ pub(crate) async fn capture<D: Services>(
         return malformed(DETAIL_FLEET_ID);
     };
     // Borrowed out of `body`: every delta's content goes straight into a column.
-    let Ok(request) = afd_http::handler::read_body::<MemoryPushRequest<'_>>(&body) else {
+    // Strict because a delta is also what hydrate answers with, and the runner
+    // reads that leniently; a pushed delta still carries exactly three keys.
+    let Ok(request) = afd_http::handler::read_strict_body::<MemoryPushRequest<'_>>(&body) else {
         return malformed(DETAIL_MALFORMED);
     };
 

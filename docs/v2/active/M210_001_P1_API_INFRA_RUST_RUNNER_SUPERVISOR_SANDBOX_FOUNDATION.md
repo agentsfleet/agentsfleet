@@ -61,7 +61,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afr_agent/` (`engine.rs`, `error.rs`), `rustd/crates/afr_agent/tests/support/scripted.rs` | CREATE | The agent-engine trait; a scripted test engine as its only implementation here |
 | `rustd/crates/afr_sandbox/tests/kernel_lane.rs` | CREATE | Real-sandbox proofs on Linux, refusing to skip silently |
 | `rustd/crates/agentsfleetd/Cargo.toml`, `rustd/crates/agentsfleetd/tests/integration_rust_runner.rs` | EDIT / CREATE | The runner against the real daemon in the integration lane |
-| `rustd/crates/afd_wire/src/lease.rs`, `rustd/crates/afd_wire/src/policy.rs` | EDIT | Drop `deny_unknown_fields` from daemon→runner types only |
+| `rustd/crates/afd_wire/src/{lease,event,policy,runner,memory,credentials,activity,report}.rs`, `rustd/crates/afd_wire/tests/{strictness,memory_shapes}.rs`, `public/openapi.json` | EDIT | Drop `deny_unknown_fields` from the 23 types the runner reads; their published schemas lose `additionalProperties: false` |
+| `rustd/crates/afd_core/src/json.rs`, `rustd/crates/afd_http/src/handler/mod.rs`, `rustd/crates/afd_api_operator/src/handler/operator/runner_patch.rs`, `rustd/crates/afd_api_runner/src/handler/runner/{enrolment,memory}.rs` | EDIT | A strict reader for the three daemon requests that embed one of those types |
 | `scripts/toolbox/build.sh`, `scripts/toolbox/manifest.txt`, `make/build.mk` | CREATE / EDIT | `make toolbox-image`: a pinned, content-addressed, read-only toolbox image |
 | `make/test-unit.mk`, `.github/workflows/lint.yml` | EDIT | `make test-runner-kernel` and its Linux CI job. The workflow edit needs Indy's explicit approval (§Hard Safety) |
 | `docs/architecture/runner_execution.md` | EDIT | Landed at authoring: the supervisor's bounded capability set |
@@ -94,11 +95,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — Crates, one binary with a sandbox sub-mode, the one wire
 
-The `afr_*` crates and the one `agentsfleet-runner` binary, whose `sandbox` sub-mode runs inside each sandbox, follow `docs/architecture/runner_execution.md` §Crates; each crate declares one error type through `afd_core::error_shell!`, and nothing in them refers to the Zig runner. The runner decodes every daemon→runner type without refusing unknown fields; production daemon code never deserializes those types (no reader outside tests), so dropping `deny_unknown_fields` from them loosens nothing the daemon checks, and runner→daemon types stay strict. No runner crate depends on anything from `agentsfleetd` beyond `afd_wire` and `afd_core`, and none links a datastore crate.
+The `afr_*` crates and the one `agentsfleet-runner` binary, whose `sandbox` sub-mode runs inside each sandbox, follow `docs/architecture/runner_execution.md` §Crates; each crate declares one error type through `afd_core::error_shell!`, and nothing in them refers to the Zig runner. The runner decodes every daemon→runner type without refusing unknown fields, and runner→daemon types stay strict. Three daemon requests embed a runner-bound type — an enrolment's and an operator's assigned policy, a memory push's deltas — and their handlers read through `afd_core::json::strict_object_from_slice`, which refuses an ignored key at any depth, so nothing the daemon checks gets looser. No runner crate depends on anything from `agentsfleetd` beyond `afd_wire`, `afd_core` and `afd_observability`, and none links a datastore crate.
 
 - **Dimension 1.1** — A lease payload with an extra field decodes in the runner → Test `test_daemon_payload_with_unknown_field_decodes`
 - **Dimension 1.2** — A report body with an extra field is still refused by the daemon → Test `test_runner_body_with_unknown_field_refused`
-- **Dimension 1.3** — The binary's normal dependency graph names `sqlx`, `redis` or any `afd_*` crate other than `afd_wire` and `afd_core` → Test `test_runner_links_no_datastore_crate`
+- **Dimension 1.3** — The binary's normal dependency graph names `sqlx`, `redis` or any `afd_*` crate other than `afd_wire`, `afd_core` and `afd_observability` → Test `test_runner_links_no_datastore_crate`
 
 ### §2 — The supervisor keeps every duty the daemon relies on
 
@@ -111,7 +112,7 @@ A worker pool runs N leases, one fleet each. Renewal keeps the lease on a 5xx an
 - **Dimension 2.5** — Memory hydrates at start and pushes with the fencing token before the report → Test `test_memory_push_fenced_before_report`
 - **Dimension 2.6** — A bundle whose bytes miss their hash is refused → Test `test_bundle_hash_mismatch_refused`
 - **Dimension 2.7** — Boot removes an orphaned lease workspace and keeps foreign directories → Test `test_storage_home_sweeps_orphans_only`
-- **Dimension 2.8** — The capability report states whether `/dev/kvm` is present and usable, so the daemon knows which hosts can take a Firecracker engine, and whether the kernel can mount the toolbox's filesystem (EROFS), without which no sandbox can be built → Test `test_capability_report_states_kvm_and_toolbox_fs`
+- **Dimension 2.8** — The capability probe states whether `/dev/kvm` is present and usable, so the daemon knows which hosts can take a Firecracker engine, and whether the kernel can mount the toolbox's filesystem (EROFS), without which no sandbox can be built; both reach the daemon as named self-test checks → Test `test_capability_report_states_kvm_and_toolbox_fs`
 
 ### §3 — A hardened bubblewrap engine
 
@@ -214,7 +215,7 @@ AgentEngine (Rust trait): run(lease, executor, events) → Outcome   (scripted o
 |-----------|------|------|---------------------------------------------|
 | 1.1 | unit | `test_daemon_payload_with_unknown_field_decodes` | lease JSON + `"future": 1` → decodes |
 | 1.2 | integration | `test_runner_body_with_unknown_field_refused` | report + `"future": 1` → daemon refuses |
-| 1.3 | unit | `test_runner_links_no_datastore_crate` | normal graph: no `sqlx`, `redis`, or `afd_*` beyond `afd_wire`, `afd_core` |
+| 1.3 | unit | `test_runner_links_no_datastore_crate` | normal graph: no `sqlx`, `redis`, or `afd_*` beyond `afd_wire`, `afd_core`, `afd_observability` |
 | 2.1 | unit | `test_worker_pool_runs_distinct_fleets` | 2 workers, 1 fleet with 2 events → never concurrent |
 | 2.2 | unit | `test_renew_keeps_on_5xx_ends_on_4xx` | fake daemon 503 → keep; 409 → kill and end |
 | 2.3 | unit | `test_spooled_report_replays_once` | spool, kill before POST, restart → one POST |
@@ -222,7 +223,7 @@ AgentEngine (Rust trait): run(lease, executor, events) → Outcome   (scripted o
 | 2.5 | unit | `test_memory_push_fenced_before_report` | run end → push with token, then report |
 | 2.6 | unit | `test_bundle_hash_mismatch_refused` | tampered bytes → refused, not cached |
 | 2.7 | unit | `test_storage_home_sweeps_orphans_only` | orphan lease dir + foreign dir → only orphan removed |
-| 2.8 | unit | `test_capability_report_states_kvm_and_toolbox_fs` | fake `/dev/kvm` present and absent, `erofs` listed and missing in a fake `/proc/filesystems` → report says each |
+| 2.8 | unit | `test_capability_report_states_kvm_and_toolbox_fs` | fake `/dev/kvm` present and absent, `erofs` listed and missing in a fake `/proc/filesystems` → probe and self-test checks say each |
 | 3.1 | kernel | `test_sandbox_process_has_no_capabilities` | `/proc/self/status` CapEff and CapPrm all zero |
 | 3.2 | kernel | `test_seccomp_refuses_listed_syscalls` | each listed call → `EPERM` |
 | 3.3 | kernel | `test_landlock_denies_write_outside_workspace` | write `/opt/x` → denied; `/workspace/x` → ok |
@@ -308,5 +309,6 @@ N/A — no files deleted. The Zig runner stays until the cutover spec deletes it
 - **Independence** — Indy (Oct 02, 2026): "A second copy of the wire will not be existing, none of the rust code will point to the zig." and "the rust code is independent and follows our current rustd/ principles". Daemon→runner types decode leniently so a runner never refuses a field a newer daemon adds; real-sandbox proofs once skipped silently everywhere (`M170_001`), hence Dimension 7.2.
 - **One binary** — Indy (Oct 02, 2026): "why do we need two ? agentsfleet-runner, agentsfleet-executor … i thought its just one binary?" then "agentsfleet-runner". The in-sandbox entry is the `sandbox` sub-mode of the one binary (Indy chose the name), as Codex re-executes itself as `codex-linux-sandbox`; the sub-mode constructs only `afr_executor`'s server.
 - **Metrics review** — No analytics or funnel playbook update required: no user surface; three operator log events added.
+- **PLAN decisions** — Indy (Oct 02, 2026) chose "Lenient + guarded PATCH" for runner-bound decoding; on pushing `main`: "No fast forward in your worktree and keep moving , let it go in the PR"; and set patch coverage at 99% for Rust and 100% for TypeScript, which `codecov.yml` already enforces. Agent defaults, flagged for Indy in the Pull Request: runner errors reuse registry codes (the `afd_bench` precedent in `docs/RUST_ERROR_STANDARD.md`, since no client reads them); `/dev/kvm` and EROFS reach the daemon as self-test checks until the Firecracker spec adds the wire field it reads; Linux-only crates sit under `cfg(target_os = "linux")` dependencies, as Codex's `linux-sandbox` does.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
