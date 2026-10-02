@@ -7,6 +7,7 @@
 
 import { credential } from "@/lib/auth/credential";
 import { API_ORIGIN } from "@/lib/api/client";
+import { accessRevokedResponse, eventStreamResponse, isAccessRefusal } from "@/lib/api/event-stream-proxy";
 import { ERROR_CODE } from "@/lib/errors";
 
 export const runtime = "nodejs";
@@ -42,6 +43,9 @@ export async function GET(req: Request, { params }: Params) {
 
   if (!upstream.ok) {
     const text = await upstream.text().catch(() => "");
+    // A member removed while their tab slept is refused here, at open, where
+    // the browser would see only a bare `error` and reconnect forever.
+    if (isAccessRefusal(upstream.status, text)) return accessRevokedResponse();
     return new Response(text || `Upstream error ${upstream.status}`, {
       status: upstream.status,
       headers: {
@@ -56,15 +60,5 @@ export async function GET(req: Request, { params }: Params) {
     });
   }
 
-  return new Response(upstream.body, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      // Defend against intermediary buffering (nginx, etc.) that would
-      // bunch frames and defeat the live-tail UX.
-      "X-Accel-Buffering": "no",
-    },
-  });
+  return eventStreamResponse(upstream.body);
 }

@@ -1,8 +1,6 @@
 import type { LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
-
-// The code the daemon names an access loss with; no client branches on it.
-const ACCESS_REVOKED_CODE = "UZ-AUTH-001";
+import { ERROR_CODE } from "@/lib/errors";
 
 // The one EventSource double for every Server-Sent Events test.
 //
@@ -104,7 +102,7 @@ export class FakeEventSource {
   // The daemon's last frame to a caller who lost access, as
   // rustd/crates/afd_sse/src/frame.rs `Frame::access_revoked` writes it.
   revokeAccess(): void {
-    const ev = { data: JSON.stringify({ kind: FRAME_KIND.ACCESS_REVOKED, error_code: ACCESS_REVOKED_CODE }) } as MessageEvent;
+    const ev = { data: JSON.stringify({ kind: FRAME_KIND.ACCESS_REVOKED, error_code: ERROR_CODE.AUTH_FORBIDDEN }) } as MessageEvent;
     for (const fn of this.listeners.get(FRAME_KIND.ACCESS_REVOKED) ?? []) fn(ev);
   }
 

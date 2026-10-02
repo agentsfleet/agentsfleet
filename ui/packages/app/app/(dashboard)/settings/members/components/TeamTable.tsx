@@ -7,9 +7,7 @@ import {
   type DataTableColumn,
   IconAction,
   Time,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
+  TooltipButton,
   cn,
 } from "@agentsfleet/design-system";
 import { BanIcon, SendIcon, UserMinusIcon } from "lucide-react";
@@ -99,17 +97,17 @@ function MemberName({ member }: { member: MemberSummary }) {
 }
 
 // "Email not set up" leaves nothing to send again, so it says why and what to
-// do instead; the trigger is a button, so a keyboard reaches that too.
+// do instead; the trigger is the system's button, so a keyboard reaches that
+// too and sees the shared focus ring. `link` is the variant with no chrome;
+// `eyebrow` is the size that sits on a text line, whose side padding would
+// indent it from the status lines it stands among, hence `px-0`.
 function EmailStatusLabel({ status }: { status: EmailStatus }) {
   const className = cn(STATUS_TEXT_CLASS, EMAIL_STATUS_TONE[status]);
   if (status !== EMAIL_STATUS.unconfigured) return <span className={className}>{EMAIL_STATUS_LABEL[status]}</span>;
   return (
-    <Tooltip>
-      <TooltipTrigger type="button" className={cn(className, "cursor-default border-0 bg-transparent p-0")}>
-        {EMAIL_STATUS_LABEL[status]}
-      </TooltipTrigger>
-      <TooltipContent>{NO_RELAY_EXPLAINED}</TooltipContent>
-    </Tooltip>
+    <TooltipButton variant="link" size="eyebrow" className={cn(className, "px-0")} tooltip={NO_RELAY_EXPLAINED}>
+      {EMAIL_STATUS_LABEL[status]}
+    </TooltipButton>
   );
 }
 
