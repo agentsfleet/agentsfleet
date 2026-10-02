@@ -27,7 +27,8 @@ import {
   Time,
 } from "@agentsfleet/design-system";
 import { PlusIcon } from "lucide-react";
-import { EMAIL_STATUS, type EmailStatus, type InviteSummary } from "@/lib/api/invites";
+import type { InviteSummary } from "@/lib/api/invites";
+import { EMAIL_STATUS, type EmailStatus } from "@/lib/api/invites-types";
 import { presentErrorString } from "@/lib/errors";
 import { createInviteAction } from "../actions";
 

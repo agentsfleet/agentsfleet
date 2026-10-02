@@ -1,6 +1,7 @@
 import { request } from "./client";
 import { decodeOnePage, isEpochMs, isNonEmptyString, isRecord } from "./decode";
-import { isAccountRole, type AccountRole } from "./workspaces";
+import { isAccountRole } from "./workspaces";
+import type { AccountRole } from "./workspaces-types";
 
 // The people in the caller's own account. Removing one is idempotent, and the
 // backend refuses to remove the last owner with 409 `UZ-INV-004`.

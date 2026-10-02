@@ -1,5 +1,6 @@
 import { request } from "./client";
 import { decodeOnePage, isEpochMs, isNonEmptyString, isRecord } from "./decode";
+import { EMAIL_STATUS, type EmailStatus } from "./invites-types";
 import { decodeWorkspaceAccount, type WorkspaceAccount } from "./workspaces";
 
 // Invites into the caller's own account (the owner's side) and invites waiting
@@ -10,17 +11,6 @@ import { decodeWorkspaceAccount, type WorkspaceAccount } from "./workspaces";
 const OWNER_INVITES_PATH = "/v1/tenants/me/invites";
 const WAITING_INVITES_PATH = "/v1/users/me/invites";
 const SEND_SEGMENT = "send";
-
-/** What became of an invite's most recent email. Mirrors `EMAIL_STATUS_SENT`,
- * `EMAIL_STATUS_FAILED` and `EMAIL_STATUS_UNCONFIGURED` in
- * `rustd/crates/afd_tenant/src/team/invitation/mail_status.rs`. */
-export const EMAIL_STATUS = {
-  sent: "sent",
-  failed: "failed",
-  unconfigured: "unconfigured",
-} as const;
-
-export type EmailStatus = (typeof EMAIL_STATUS)[keyof typeof EMAIL_STATUS];
 
 const EMAIL_STATUSES: ReadonlySet<string> = new Set(Object.values(EMAIL_STATUS));
 

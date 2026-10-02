@@ -18,8 +18,8 @@ vi.mock("@/components/domain/island-dynamic/InviteDialogDynamic", async () => ({
   default: (await vi.importActual<{ default: unknown }>("./InviteDialog")).default,
 }));
 
-import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
-import { EMAIL_STATUS } from "@/lib/api/invites";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
+import { EMAIL_STATUS } from "@/lib/api/invites-types";
 import type { MemberSummary } from "@/lib/api/tenant-members";
 import {
   BOB,

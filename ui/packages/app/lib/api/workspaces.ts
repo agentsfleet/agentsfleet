@@ -1,20 +1,12 @@
 import { request } from "./client";
 import { isNonEmptyString, isRecord } from "./decode";
+import { ACCOUNT_ROLE, type AccountRole } from "./workspaces-types";
 
 const CREATE_WORKSPACE_TIMEOUT_MS = 15_000;
 
 export const WORKSPACE_LIST_PAGE_LIMIT = 100;
 
 const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
-
-/** The caller's role in a workspace's account. Mirrors `ROLE_OWNER` and
- * `ROLE_MEMBER` in `rustd/crates/afd_tenant/src/workspace/access.rs`. */
-export const ACCOUNT_ROLE = {
-  owner: "owner",
-  member: "member",
-} as const;
-
-export type AccountRole = (typeof ACCOUNT_ROLE)[keyof typeof ACCOUNT_ROLE];
 
 /** The account a workspace belongs to, which is how the switcher groups. */
 export type WorkspaceAccount = {
@@ -139,15 +131,19 @@ const decodeCreateWorkspace = (
   };
 };
 
-// GET /v1/tenants/me/workspaces — complete stable cursor walk.
-// The backend resolves tenant_id from the authenticated principal.
-export async function listTenantWorkspaces(
+// GET /v1/tenants/me/workspaces, one page at a time along the stable cursor,
+// handing each page to `visit` until it answers true or the pages end. The
+// backend resolves tenant_id from the authenticated principal; a page that
+// names another tenant, or a cursor seen before, ends the walk with an error.
+// Resolves to that tenant: the walk always reads at least one page.
+async function walkTenantWorkspacePages(
   token: string,
-): Promise<TenantWorkspaceListResponse> {
-  const items: TenantWorkspace[] = [];
+  visit: (page: TenantWorkspacePageResponse) => boolean,
+): Promise<string> {
   const seenCursors = new Set<string>();
   let tenantId: string | null = null;
   let startingAfter: string | null = null;
+  let done = false;
 
   do {
     const query = new URLSearchParams({
@@ -164,7 +160,7 @@ export async function listTenantWorkspaces(
       throw new Error("workspace pagination changed tenant");
     }
     tenantId = page.tenant_id;
-    items.push(...page.items);
+    done = visit(page);
     const nextCursor = page.next_cursor;
     if (nextCursor !== null) {
       if (seenCursors.has(nextCursor)) {
@@ -173,8 +169,20 @@ export async function listTenantWorkspaces(
       seenCursors.add(nextCursor);
     }
     startingAfter = nextCursor;
-  } while (startingAfter !== null);
+  } while (!done && startingAfter !== null);
 
+  return tenantId;
+}
+
+// The complete walk the switcher needs.
+export async function listTenantWorkspaces(
+  token: string,
+): Promise<TenantWorkspaceListResponse> {
+  const items: TenantWorkspace[] = [];
+  const tenantId = await walkTenantWorkspacePages(token, (page) => {
+    items.push(...page.items);
+    return false;
+  });
   return {
     items,
     tenant_id: tenantId,
@@ -183,21 +191,24 @@ export async function listTenantWorkspaces(
   };
 }
 
-// GET /v1/tenants/me/workspaces — the entry redirect's read: one page, never
-// the complete cursor walk the switcher needs. The list spans every account
-// the caller joined, oldest first, so an invitee's first row is often the
-// inviter's older workspace; the caller's own workspace wins, and the first
-// row stands in for a caller who owns none on this page.
+// The entry redirect's read. The list spans every account the caller joined,
+// oldest first, so an invitee's first rows are often the inviter's older
+// workspaces; the caller's own workspace wins. The walk stops at the first page
+// holding one, which is page one for nearly everyone, and the first row stands
+// in for a caller who owns none.
 export async function firstTenantWorkspace(
   token: string,
 ): Promise<TenantWorkspace | null> {
-  const response = await request<unknown>(
-    `${TENANT_WORKSPACES_PATH}?limit=${WORKSPACE_LIST_PAGE_LIMIT}`,
-    { method: "GET" },
-    token,
-  );
-  const { items } = decodeWorkspacePage(response);
-  return items.find((workspace) => workspace.role === ACCOUNT_ROLE.owner) ?? items[0] ?? null;
+  const found: { owned: TenantWorkspace | null; first: TenantWorkspace | null } = {
+    owned: null,
+    first: null,
+  };
+  await walkTenantWorkspacePages(token, ({ items }) => {
+    found.owned = items.find((workspace) => workspace.role === ACCOUNT_ROLE.owner) ?? null;
+    found.first ??= items[0] ?? null;
+    return found.owned !== null;
+  });
+  return found.owned ?? found.first;
 }
 
 // POST /v1/workspaces — a blank name asks the backend to generate one.

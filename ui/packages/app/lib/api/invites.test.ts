@@ -1,16 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BASE } from "./client";
 import { ApiError } from "./errors";
-import {
-  EMAIL_STATUS,
-  INVITE_EMAIL_REQUEST_TIMEOUT_MS,
-  acceptInvite,
-  createInvite,
-  listInvites,
-  listWaitingInvites,
-  revokeInvite,
-  sendInviteEmail,
-} from "./invites";
+import { INVITE_EMAIL_REQUEST_TIMEOUT_MS, acceptInvite, createInvite, listInvites, listWaitingInvites, revokeInvite, sendInviteEmail } from "./invites";
+import { EMAIL_STATUS } from "./invites-types";
 
 // The network is the only thing stood in for: every call runs the real client,
 // the real problem-body parsing, and the real decoders.

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { ACCOUNT_ROLE, createTenantWorkspace, listTenantWorkspaces } from "@/lib/api/workspaces";
+import { createTenantWorkspace, listTenantWorkspaces } from "@/lib/api/workspaces";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 
 afterEach(() => {
   vi.restoreAllMocks();

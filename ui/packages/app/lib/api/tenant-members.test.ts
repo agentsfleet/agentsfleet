@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "./errors";
 import { listMembers, listWorkspaceMembers, removeMember } from "./tenant-members";
-import { ACCOUNT_ROLE } from "./workspaces";
+import { ACCOUNT_ROLE } from "./workspaces-types";
 
 const TOKEN = "tok_owner";
 const OWNER = { user_id: "user_john", display_name: "John", email: "john@example.com", role: ACCOUNT_ROLE.owner, joined_at: 1 };

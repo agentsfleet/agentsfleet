@@ -1,4 +1,5 @@
-import { ACCOUNT_ROLE, type TenantWorkspace } from "@/lib/api/workspaces";
+import type { TenantWorkspace } from "@/lib/api/workspaces";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 
 // The switcher's menu, cut into sections by account. A person holding only
 // their own account sees one unlabelled section. Once they hold another

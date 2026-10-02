@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ACCOUNT_ROLE, type TenantWorkspace } from "@/lib/api/workspaces";
+import type { TenantWorkspace } from "@/lib/api/workspaces";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import { accountLabel, OWN_ACCOUNT_LABEL, switcherSections } from "./workspace-groups";
 
 const OWN = { tenant_id: "tenant_me", owner_name: "Me" };

@@ -8,8 +8,9 @@ import { TooltipProvider } from "@agentsfleet/design-system";
 const actions = vi.hoisted(() => ({ createInviteAction: vi.fn() }));
 vi.mock("../actions", () => actions);
 
-import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
-import { EMAIL_STATUS, type EmailStatus, type InviteSummary } from "@/lib/api/invites";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
+import type { InviteSummary } from "@/lib/api/invites";
+import { EMAIL_STATUS, type EmailStatus } from "@/lib/api/invites-types";
 import InviteDialog from "./InviteDialog";
 
 const INVITE: InviteSummary = {
