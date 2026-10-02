@@ -90,17 +90,17 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — The wire carries outcomes and the trace
 
-`ToolCallCompleted` gains optional `status` (`succeeded | failed | interrupted`), `output_head`, `output_tail` and `output_line_count`. A trace type carries up to 200 calls (call id, name, arguments, status, edges, line count, `duration_ms`) and `omitted_call_count`, with a validator that enforces every bound. A frame from an older runner still parses.
+`ToolCallCompleted` gains optional `status` (`succeeded | failed | interrupted`), `output_head`, `output_tail`, `output_line_count`, and `exit_code` for calls that ran a process. A trace type carries up to 200 calls (call id, name, arguments, status, edges, line count, exit code, `duration_ms`) and `omitted_call_count`, with a validator that enforces every bound. A frame from an older runner still parses.
 
-- **Dimension 1.1** — A completion round-trips with each status and both edges → Test `test_tool_call_completed_outcome_roundtrip`
+- **Dimension 1.1** — A completion round-trips with each status, both edges and an exit code → Test `test_tool_call_completed_outcome_roundtrip`
 - **Dimension 1.2** — A completion without outcome fields parses with each absent → Test `test_tool_call_completed_without_outcome_parses`
 - **Dimension 1.3** — The validator refuses 201 calls, a 65537-byte trace, a 2049-byte argument object and an edge over 1 KiB → Test `test_tool_trace_validator_enforces_bounds`
 
 ### §2 — The daemon publishes the outcome live
 
-`Published::ToolCallCompleted` bridges the four fields onto `fleet:{id}:activity`.
+`Published::ToolCallCompleted` bridges the five fields onto `fleet:{id}:activity`.
 
-- **Dimension 2.1** — The bridge publishes `status`, `output_head`, `output_tail`, `output_line_count` → Test `test_published_completed_carries_outcome`
+- **Dimension 2.1** — The bridge publishes `status`, `output_head`, `output_tail`, `output_line_count`, `exit_code` → Test `test_published_completed_carries_outcome`
 - **Dimension 2.2** — A runner batch posted to the activity verb reaches the channel with the outcome → Test `test_activity_tool_outcome_reaches_channel`
 
 ### §3 — The report's trace is stored with the result it belongs to
@@ -128,6 +128,7 @@ The report takes `tool_calls` as raw JSON and narrows it after its own fields, s
 tool_call_completed (outcome fields optional, absent from older runners)
   { "name": "file_read", "ms": 12, "call_id": "7:3", "status": "succeeded",
     "output_head": "# agentsfleet\n…", "output_tail": "…\nMIT", "output_line_count": 214 }
+  exit_code: optional integer, present when the call ran a process (Codex shows it as " (exit N)")
 
 ReportRequest.tool_calls (optional; narrowed after the report's own fields)
 EventDetail.tool_calls   (null = not recorded)
@@ -167,10 +168,10 @@ afd_wire::tool_trace bounds (one value each, shared with the Rust runner):
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `test_tool_call_completed_outcome_roundtrip` | each status → JSON → equal value |
+| 1.1 | unit | `test_tool_call_completed_outcome_roundtrip` | each status, with and without `exit_code: 2` → JSON → equal value |
 | 1.2 | unit | `test_tool_call_completed_without_outcome_parses` | `{name, ms}` → outcome fields absent |
 | 1.3 | unit | `test_tool_trace_validator_enforces_bounds` | 201 calls, 65537 bytes, 2049-byte arguments, 1025-byte edge → each refused |
-| 2.1 | unit | `test_published_completed_carries_outcome` | wire frame → published JSON has all four fields |
+| 2.1 | unit | `test_published_completed_carries_outcome` | wire frame → published JSON has all five fields |
 | 2.2 | integration | `test_activity_tool_outcome_reaches_channel` | POST batch → subscriber reads the outcome |
 | 3.1 | unit | `test_report_tool_calls_never_refuse_report` | `tool_calls: 7` → report parses, trace dropped |
 | 3.2 | integration | `test_oversize_tool_trace_dropped_report_settles` | 201 calls → 2xx, column `NULL`, warn logged |
