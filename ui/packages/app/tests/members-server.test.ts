@@ -25,7 +25,7 @@ import {
 } from "@/app/(dashboard)/settings/members/actions";
 import { ERROR_CODE } from "@/lib/errors";
 import { SIGN_IN_PATH } from "@/lib/auth/sign-in-redirect";
-import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 
 const MEMBERS_PATH = "/v1/tenants/me/members";
 const INVITES_PATH = "/v1/tenants/me/invites";

@@ -13,7 +13,7 @@ vi.mock("@agentsfleet/design-system", () => ({
   },
 }));
 
-import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import type { MemberSummary } from "@/lib/api/tenant-members";
 import { CONFIRM_KIND, TeamConfirm, type ConfirmTarget } from "./TeamConfirm";
 

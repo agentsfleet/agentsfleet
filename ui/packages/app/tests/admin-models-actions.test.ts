@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SCOPE } from "@/lib/auth/scopes";
-import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 // The actions module is the dashboard's defence-in-depth gate: it must fail

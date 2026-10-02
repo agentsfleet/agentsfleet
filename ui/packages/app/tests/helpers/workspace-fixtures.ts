@@ -1,4 +1,4 @@
-import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 
 // A listed workspace's account and the caller's role in it when the caller owns
 // it: every workspace in a solo account's list has this shape. Spread it into a

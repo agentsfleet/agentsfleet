@@ -4,7 +4,7 @@ import { withToken, type ActionResult } from "@/lib/actions/with-token";
 import { requireScope } from "@/lib/actions/require-scope";
 import { SCOPE } from "@/lib/auth/scopes";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
-import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import { createSecret } from "@/lib/api/secrets";
 import {
   listAdminModels,

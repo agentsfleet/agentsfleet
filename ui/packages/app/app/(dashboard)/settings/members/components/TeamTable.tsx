@@ -11,9 +11,10 @@ import {
   cn,
 } from "@agentsfleet/design-system";
 import { BanIcon, SendIcon, UserMinusIcon } from "lucide-react";
-import { EMAIL_STATUS, type EmailStatus, type InviteSummary } from "@/lib/api/invites";
+import type { InviteSummary } from "@/lib/api/invites";
+import { EMAIL_STATUS, type EmailStatus } from "@/lib/api/invites-types";
 import type { MemberSummary } from "@/lib/api/tenant-members";
-import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import { memberName } from "./TeamConfirm";
 
 export const TEAM_CAPTION = "People";

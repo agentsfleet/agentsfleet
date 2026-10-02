@@ -19,7 +19,8 @@ vi.mock("@/components/layout/WorkspaceCreationProvider", () => ({
 
 import WorkspaceSwitcherMenu from "@/components/layout/WorkspaceSwitcherMenu";
 import { accountLabel, OWN_ACCOUNT_LABEL } from "@/components/layout/workspace-groups";
-import { ACCOUNT_ROLE, type TenantWorkspace } from "@/lib/api/workspaces";
+import type { TenantWorkspace } from "@/lib/api/workspaces";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 
 const MINE = { tenant_id: "tenant_bob", owner_name: "Bob" };
 const JOHNS = { tenant_id: "tenant_john", owner_name: "John" };

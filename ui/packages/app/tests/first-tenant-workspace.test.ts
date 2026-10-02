@@ -6,9 +6,11 @@ vi.mock("@/lib/api/client", () => ({
   requestWithEtag: vi.fn(),
 }));
 
-import { ACCOUNT_ROLE, WORKSPACE_LIST_PAGE_LIMIT, firstTenantWorkspace } from "@/lib/api/workspaces";
+import { WORKSPACE_LIST_PAGE_LIMIT, firstTenantWorkspace } from "@/lib/api/workspaces";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 
 const TOKEN = "tok";
+const CURSOR = "cur_1";
 const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const WORKSPACE = {
   id: "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
@@ -37,10 +39,10 @@ function pageWith(items: unknown[]) {
 }
 
 describe("firstTenantWorkspace", () => {
-  it("test_entry_redirect_single_page: reads one page and never walks continuations", async () => {
+  it("test_entry_redirect_single_page: stops at the first page holding an owned workspace", async () => {
     requestMock.mockReset();
-    // A next_cursor is present — a walker would follow it; the redirect must not.
-    requestMock.mockResolvedValue({ ...pageWith([WORKSPACE]), next_cursor: "cur_1" });
+    // A next_cursor is present; the owned row on this page ends the walk anyway.
+    requestMock.mockResolvedValue({ ...pageWith([WORKSPACE]), next_cursor: CURSOR });
 
     const first = await firstTenantWorkspace(TOKEN);
 
@@ -57,6 +59,40 @@ describe("firstTenantWorkspace", () => {
     requestMock.mockReset();
     requestMock.mockResolvedValue(pageWith([JOINED, WORKSPACE]));
     await expect(firstTenantWorkspace(TOKEN)).resolves.toMatchObject({ id: WORKSPACE.id });
+  });
+
+  it("should walk past a full page of joined workspaces to the caller's own", async () => {
+    requestMock.mockReset();
+    requestMock
+      .mockResolvedValueOnce({ ...pageWith([JOINED]), next_cursor: CURSOR })
+      .mockResolvedValueOnce(pageWith([WORKSPACE]));
+
+    await expect(firstTenantWorkspace(TOKEN)).resolves.toMatchObject({ id: WORKSPACE.id });
+    expect(requestMock).toHaveBeenCalledTimes(2);
+    expect(requestMock).toHaveBeenLastCalledWith(
+      `/v1/tenants/me/workspaces?limit=${WORKSPACE_LIST_PAGE_LIMIT}&starting_after=${CURSOR}`,
+      { method: "GET" },
+      TOKEN,
+    );
+  });
+
+  it("should fall back to the first page's first row when no page holds an owned workspace", async () => {
+    requestMock.mockReset();
+    const LATER_JOINED = { ...JOINED, id: "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f33" };
+    requestMock
+      .mockResolvedValueOnce({ ...pageWith([JOINED]), next_cursor: CURSOR })
+      .mockResolvedValueOnce(pageWith([LATER_JOINED]));
+
+    await expect(firstTenantWorkspace(TOKEN)).resolves.toMatchObject({ id: JOINED.id });
+    expect(requestMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("should refuse a cursor the walk has already followed", async () => {
+    requestMock.mockReset();
+    requestMock.mockResolvedValue({ ...pageWith([JOINED]), next_cursor: CURSOR });
+
+    await expect(firstTenantWorkspace(TOKEN)).rejects.toThrow("workspace pagination repeated a cursor");
+    expect(requestMock).toHaveBeenCalledTimes(2);
   });
 
   it("should fall back to the first joined workspace for a caller who owns none", async () => {

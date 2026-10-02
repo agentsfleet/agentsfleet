@@ -2,7 +2,7 @@ import { happyBilling, mockFetchBilling } from "./harness";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { authMock } from "../helpers/dashboard-mocks";
-import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import type { WorkspaceMember } from "@/lib/api/tenant-members";
 import type { SenderName } from "@/lib/events/sender-names";
 

@@ -14,7 +14,7 @@ vi.mock("@/lib/api/tenant-members", () => ({ listWorkspaceMembers: listWorkspace
 
 import { CHAT_TURNS, startViewData, type ChatViewData } from "./view-data";
 import { FLEET_VIEW } from "./FleetSubnavigation";
-import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import type { WorkspaceMember } from "@/lib/api/tenant-members";
 
 const CURSOR = "cur_1";

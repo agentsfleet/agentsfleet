@@ -14,8 +14,8 @@
 import * as crypto from "node:crypto";
 import * as path from "node:path";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { EMAIL_STATUS, type EmailStatus } from "@/lib/api/invites";
-import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
+import { EMAIL_STATUS, type EmailStatus } from "@/lib/api/invites-types";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import { clientFor } from "./fixtures/api-client";
 import { signInAs } from "./fixtures/auth";
 import { deleteUser, findUserIdByEmail } from "./fixtures/clerk-admin";

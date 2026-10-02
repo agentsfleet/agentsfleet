@@ -2,8 +2,9 @@ import React from "react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
-import { ACCOUNT_ROLE } from "@/lib/api/workspaces";
-import { EMAIL_STATUS, type InviteSummary } from "@/lib/api/invites";
+import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
+import type { InviteSummary } from "@/lib/api/invites";
+import { EMAIL_STATUS } from "@/lib/api/invites-types";
 import type { MemberSummary } from "@/lib/api/tenant-members";
 import { MembersView } from "@/app/(dashboard)/settings/members/components/MembersView";
 
