@@ -183,7 +183,8 @@ impl Fleet {
             billing: Billing::new(database.clone()),
             providers,
             catalogue: Models::new(database),
-            dashboard_base: FIXTURE_APP_URL.to_owned(),
+            dashboard_base: afd_connector::Dashboard::parse(FIXTURE_APP_URL)
+                .expect("the fixture dashboard is a URL"),
             now: UnixMillis::from_millis(FROZEN),
         }
     }
@@ -313,7 +314,8 @@ impl Fleet {
             libraries: Libraries::new(database.clone()),
             library_imports: LibraryImports::without_store(database, Entropy::new())
                 .with_github_api_base(NOWHERE_GITHUB),
-            dashboard_base: FIXTURE_APP_URL.to_owned(),
+            dashboard_base: afd_connector::Dashboard::parse(FIXTURE_APP_URL)
+                .expect("the fixture dashboard is a URL"),
             now: UnixMillis::from_millis(FROZEN),
         }
     }

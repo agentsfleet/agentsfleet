@@ -7,10 +7,6 @@
 //! `secret:write` or `connector:write`, and on no other. That the role is read
 //! from a real membership row is the live suite's claim, not this one's.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
 
@@ -19,16 +15,19 @@ use afd_api::route::{RouteClass, WorkspaceRoute};
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::error_code;
 use afd_core::test_util::trace::Capture;
+use afd_tenant::workspace::access::{Grant, Role};
 use afd_tenant::workspace::crossing::EVENT_CROSSING;
 use axum::Router;
-use axum::response::Response;
 use http::StatusCode;
-use serde_json::Value;
 
-use self::harness::{ERROR_CODE, Fleet, OWNED_WORKSPACE, concrete_path, send};
+use self::harness::{Fleet, OWNED_WORKSPACE, concrete_path, exchange, send};
 
 const TERMINAL: &str = "afc_0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e";
 const SUBJECT: &str = "user_2member_roles";
+
+/// The captured fields a crossing record is read by.
+const FIELD_EVENT: &str = "event";
+const FIELD_METHOD: &str = "method";
 
 /// The capabilities the role withholds from a member.
 const OWNER_ONLY: [Scope; 2] = [Scope::SecretWrite, Scope::ConnectorWrite];
@@ -68,21 +67,9 @@ fn workspace_requests() -> Vec<(String, http::Method, bool)> {
 fn router(as_member: bool) -> Router {
     let fleet = Fleet::new().with_terminal(TERMINAL, SUBJECT, ScopeSet::from_scopes(&Scope::ALL));
     if as_member {
-        fleet.ownership().join_as_member();
+        fleet.ownership().hold_as(Grant::Membership(Role::Member));
     }
     fleet.router()
-}
-
-/// The registry code a response carries, when its body is a problem.
-async fn code_of(response: Response) -> Option<String> {
-    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .expect("a test response body is small and in memory");
-    serde_json::from_slice::<Value>(&bytes)
-        .ok()?
-        .get(ERROR_CODE)?
-        .as_str()
-        .map(str::to_owned)
 }
 
 /// Dimension 2.3: a member reaches every workspace route except the
@@ -98,10 +85,10 @@ async fn test_member_refused_owner_only_routes() {
     );
 
     for (path, method, owner_only) in requests {
-        let response = send(&router, method.clone(), &path, Some(TERMINAL), "{}").await;
-        let status = response.status();
-        let code = code_of(response).await;
-        let refused_as_member = code.as_deref() == Some(error_code::AUTH_OWNER_ONLY.as_str());
+        let (status, answered) =
+            exchange(&router, method.clone(), &path, Some(TERMINAL), "{}").await;
+        let code = harness::error_code(&answered);
+        let refused_as_member = code == Some(error_code::AUTH_OWNER_ONLY.as_str());
         if owner_only {
             assert_eq!(status, StatusCode::FORBIDDEN, "{method} {path}");
             assert!(refused_as_member, "{method} {path} answered {code:?}");
@@ -116,10 +103,9 @@ async fn test_member_refused_owner_only_routes() {
 async fn test_an_owner_is_never_refused_as_a_member() {
     let router = router(false);
     for (path, method, _) in workspace_requests() {
-        let response = send(&router, method.clone(), &path, Some(TERMINAL), "{}").await;
-        let code = code_of(response).await;
+        let (_, answered) = exchange(&router, method.clone(), &path, Some(TERMINAL), "{}").await;
         assert_ne!(
-            code.as_deref(),
+            harness::error_code(&answered),
             Some(error_code::AUTH_OWNER_ONLY.as_str()),
             "{method} {path} refused an owner"
         );
@@ -138,18 +124,31 @@ async fn test_access_check_outage_is_not_denial() {
         .with_terminal(TERMINAL, SUBJECT, ScopeSet::from_scopes(&Scope::ALL))
         .with_live_ownership()
         .router();
+    assert_answers_the_outage(&router).await;
+}
+
+/// The ownership stub's refusal is that same outage, raised by the same
+/// resolver: a suite that refuses through it proves a datastore blip, never
+/// some other failure answering with its status.
+#[tokio::test]
+async fn test_a_refusing_ownership_stub_answers_the_datastore_outage() {
+    let fleet = Fleet::new().with_terminal(TERMINAL, SUBJECT, ScopeSet::from_scopes(&Scope::ALL));
+    fleet.ownership().refuse();
+    assert_answers_the_outage(&fleet.router()).await;
+}
+
+/// A fleet list through `router` answers `503` with the unreachable-datastore code.
+async fn assert_answers_the_outage(router: &Router) {
     let path = concrete_path(
         WorkspaceRoute::Fleets.meta().template,
         Some(OWNED_WORKSPACE),
     );
 
-    let response = send(&router, http::Method::GET, &path, Some(TERMINAL), "").await;
-    let status = response.status();
-    let code = code_of(response).await;
+    let (status, answered) = exchange(router, http::Method::GET, &path, Some(TERMINAL), "").await;
 
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{answered}");
     assert_eq!(
-        code.as_deref(),
+        harness::error_code(&answered),
         Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str())
     );
 }
@@ -162,24 +161,27 @@ async fn test_layer_records_platform_crossings() {
         WorkspaceRoute::Fleets.meta().template,
         Some(OWNED_WORKSPACE),
     );
-    for (crossing, expected) in [(true, 1), (false, 0)] {
+    for crossing in [true, false] {
         let fleet =
             Fleet::new().with_terminal(TERMINAL, SUBJECT, ScopeSet::from_scopes(&Scope::ALL));
         if crossing {
-            fleet.ownership().cross_as_platform();
+            fleet.ownership().hold_as(Grant::Platform);
         }
         let router = fleet.router();
         let capture = Capture::install();
         let _answered = send(&router, http::Method::GET, &path, Some(TERMINAL), "").await;
 
-        let recorded: Vec<_> = capture
-            .events()
-            .into_iter()
-            .filter(|event| event.fields.get("event").map(String::as_str) == Some(EVENT_CROSSING))
-            .collect();
-        assert_eq!(recorded.len(), expected, "crossing: {crossing}");
-        for event in recorded {
-            assert_eq!(event.fields.get("method").map(String::as_str), Some("GET"));
+        if crossing {
+            let recorded = capture.only(EVENT_CROSSING);
+            assert_eq!(recorded.field(FIELD_METHOD), Some("GET"));
+        } else {
+            assert!(
+                capture
+                    .events()
+                    .iter()
+                    .all(|event| event.field(FIELD_EVENT) != Some(EVENT_CROSSING)),
+                "the account's own owner crosses nothing"
+            );
         }
     }
 }

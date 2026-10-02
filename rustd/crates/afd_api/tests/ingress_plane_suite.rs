@@ -9,6 +9,10 @@ mod harness;
 mod app_ingress_route;
 #[path = "connector_events_route.rs"]
 mod connector_events_route;
+#[path = "identity_signup_events.rs"]
+mod identity_signup_events;
+#[path = "identity_signup_live.rs"]
+mod identity_signup_live;
 mod identity_signup_route;
 #[path = "ingress_plane_ownership.rs"]
 mod ingress_plane_ownership;

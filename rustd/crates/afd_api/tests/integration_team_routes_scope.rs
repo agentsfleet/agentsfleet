@@ -11,18 +11,9 @@ use afd_core::error_code;
 use http::{Method, StatusCode};
 use serde_json::json;
 
-use crate::integration_team_routes::{INVITES, MEMBERS, call, code, find, text};
+use crate::harness;
+use crate::integration_team_routes::{INVITES, MEMBERS, call, find, send_again, text};
 use crate::integration_workspace_members::fixture::{Members, owner_scopes};
-
-/// How many sends John's invite has counted, read from the row.
-async fn attempts_of(members: &Members, invite: &str) -> i32 {
-    let mut connection = members.database.acquire().await.expect("a connection");
-    sqlx::query_scalar("SELECT email_attempts FROM core.invites WHERE id = $1::uuid")
-        .bind(invite)
-        .fetch_one(&mut *connection)
-        .await
-        .expect("the invite row reads")
-}
 
 /// An owner naming another account's invite or member through their own
 /// `/tenants/me` routes reaches nothing: the revoke and the removal are quiet
@@ -32,7 +23,6 @@ async fn attempts_of(members: &Members, invite: &str) -> i32 {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_owner_routes_never_reach_another_account() {
     let members = Members::create().await;
-    members.seed().await;
     let (john, bob, stranger) = (&members.john, &members.bob, &members.stranger);
     let johns = members.router(john, owner_scopes());
     let strangers = members.router(stranger, owner_scopes());
@@ -40,7 +30,7 @@ async fn test_owner_routes_never_reach_another_account() {
     let (status, invite) = call(&johns, Method::POST, INVITES, john, &body).await;
     assert_eq!(status, StatusCode::CREATED, "{invite}");
     let invite = text(&invite, "id").expect("an id").to_owned();
-    let counted = attempts_of(&members, &invite).await;
+    let counted = members.email_attempts(&invite).await;
 
     let revoke = format!("{INVITES}/{invite}");
     let (status, _) = call(&strangers, Method::DELETE, &revoke, stranger, "").await;
@@ -49,12 +39,14 @@ async fn test_owner_routes_never_reach_another_account() {
         StatusCode::NO_CONTENT,
         "nothing of theirs to revoke"
     );
-    let resend = format!("{INVITES}/{invite}/send");
-    let (status, problem) = call(&strangers, Method::POST, &resend, stranger, "").await;
+    let (status, problem) = send_again(&strangers, stranger, &invite).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{problem}");
-    assert_eq!(code(&problem), Some(error_code::INVITE_NOT_FOUND.as_str()));
     assert_eq!(
-        attempts_of(&members, &invite).await,
+        harness::error_code(&problem),
+        Some(error_code::INVITE_NOT_FOUND.as_str())
+    );
+    assert_eq!(
+        members.email_attempts(&invite).await,
         counted,
         "no send counted"
     );
@@ -81,7 +73,6 @@ async fn test_owner_routes_never_reach_another_account() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_member_manages_only_own_account() {
     let members = Members::create().await;
-    members.seed().await;
     let (john, bob, stranger) = (&members.john, &members.bob, &members.stranger);
     let johns = members.router(john, owner_scopes());
     let bobs = members.router(bob, owner_scopes());
