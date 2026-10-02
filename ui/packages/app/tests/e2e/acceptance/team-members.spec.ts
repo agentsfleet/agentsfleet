@@ -13,7 +13,7 @@
  */
 import * as crypto from "node:crypto";
 import * as path from "node:path";
-import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { EMAIL_STATUS, type EmailStatus } from "@/lib/api/invites-types";
 import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import { clientFor } from "./fixtures/api-client";
@@ -64,12 +64,20 @@ type InviteRow = { id: string; email: string; link: string; email_status: EmailS
 type MemberRow = { user_id: string; email: string };
 type WorkspaceRow = { id: string; name: string | null; role: string };
 type WaitingRow = { id: string; account: { owner_name: string } };
-type CurrentUser = { display_name: string | null };
+// `display_name` is absent, not null, for an account that never set one.
+type CurrentUser = { display_name?: string };
 
 type Invitee = { email: string; sessionJwt: string; page: Page; context: BrowserContext };
 
 function inviteeEmail(): string {
   return `${TEST_INBOX_LOCAL_PREFIX}${crypto.randomBytes(4).toString("hex")}@${TEST_INBOX_DOMAIN}`;
+}
+
+// A named teammate's turn shows their name; an unnamed one shows no line.
+async function expectSenderLine(turn: Locator, name: string | null): Promise<void> {
+  const line = turn.getByTestId(SENDER_LINE);
+  if (name === null) await expect(line).toHaveCount(0);
+  else await expect(line).toHaveText(name);
 }
 
 function rowFor(page: Page, email: string) {
@@ -224,10 +232,11 @@ test.describe("teammates join an account", () => {
     const fleet = await seedFleet(FIXTURE_KEY.admin, workspaceId, { name: `${THREAD_PREFIX}${tag}` });
     try {
       await waitForFleetActive(FIXTURE_KEY.admin, workspaceId, fleet.id);
-      const johnName = (await owner.get<CurrentUser>(CURRENT_USER)).display_name;
-      const bobName = (await bobApi.get<CurrentUser>(CURRENT_USER)).display_name;
-      expect(johnName).toBeTruthy();
-      expect(bobName).toBeTruthy();
+      // A teammate's turn carries their name only when their account has one
+      // (lib/events/sender-names.ts), and these fixtures sign up without one,
+      // so each sender line is held to what the backend recorded.
+      const johnName = (await owner.get<CurrentUser>(CURRENT_USER)).display_name ?? null;
+      const bobName = (await bobApi.get<CurrentUser>(CURRENT_USER)).display_name ?? null;
 
       await signInAs(page, FIXTURE_KEY.admin);
       const thread = workspaceHref(workspaceId, `fleets/${fleet.id}`);
@@ -241,14 +250,14 @@ test.describe("teammates join an account", () => {
       await send(invitee.page, bobSays);
       const onJohns = page.getByLabel(CHAT_LABEL).locator(PERSON_TURN).filter({ hasText: bobSays });
       await expect(onJohns).toBeVisible({ timeout: LIVE_MS });
-      await expect(onJohns.getByTestId(SENDER_LINE)).toHaveText(bobName!);
+      await expectSenderLine(onJohns, bobName);
 
       // John answers; Bob's screen names John, and John's own turn names no one.
       const johnSays = `ship it ${tag}`;
       await send(page, johnSays);
       const onBobs = invitee.page.getByLabel(CHAT_LABEL).locator(PERSON_TURN).filter({ hasText: johnSays });
       await expect(onBobs).toBeVisible({ timeout: LIVE_MS });
-      await expect(onBobs.getByTestId(SENDER_LINE)).toHaveText(johnName!);
+      await expectSenderLine(onBobs, johnName);
       const ownTurn = page.getByLabel(CHAT_LABEL).locator(PERSON_TURN).filter({ hasText: johnSays });
       await expect(ownTurn.getByTestId(SENDER_LINE)).toHaveCount(0);
 

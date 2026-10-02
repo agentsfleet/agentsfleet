@@ -54,12 +54,16 @@ export default function InviteDialog({ onSettled }: { onSettled: () => void }) {
   const [created, setCreated] = useState<InviteSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // React entangles the page's list reload, which `onSettled` starts, with
+  // this send, so `pending` outlives the send by that reload. Only a send with
+  // no invite yet holds the dialog open.
+  const sending = pending && created === null;
 
   // Closing from any path starts the next invite afresh; the form itself
   // unmounts with the dialog. A send in flight finishes here first, or its
   // answer would land in the next invite.
   function handleOpenChange(next: boolean) {
-    if (!next && pending) return;
+    if (!next && sending) return;
     setOpen(next);
     if (next) return;
     setCreated(null);
@@ -87,11 +91,11 @@ export default function InviteDialog({ onSettled }: { onSettled: () => void }) {
           Invite
         </Button>
       </DialogTrigger>
-      <DialogContent closeDisabled={pending}>
+      <DialogContent closeDisabled={sending}>
         {created ? (
           <InviteReady invite={created} onDone={() => handleOpenChange(false)} />
         ) : (
-          <InviteForm error={error} pending={pending} onSend={send} onCancel={() => handleOpenChange(false)} />
+          <InviteForm error={error} pending={sending} onSend={send} onCancel={() => handleOpenChange(false)} />
         )}
       </DialogContent>
     </Dialog>
