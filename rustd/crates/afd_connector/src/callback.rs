@@ -1,5 +1,5 @@
 //! The three dashboard URLs one connect round-trip travels through, and the
-//! dashboard base every one of them, and the invite link, hangs off.
+//! dashboard base every one of them, the invite link and the login link hang off.
 //!
 //! # Why they are one module and not three call sites
 //!
@@ -79,32 +79,45 @@ pub struct Handoff<'h> {
     pub installation_id: Option<&'h str>,
 }
 
+/// The schemes a browser follows a dashboard link over.
+const SCHEMES: [&str; 2] = ["http", "https"];
+
 /// The dashboard's base URL, checked once at boot, and the pages under it.
 ///
 /// Parsed where the deployment is configured rather than per request, so a
 /// base that is not a URL refuses boot instead of failing each connect and
-/// each invite on its own. Every page is built by path segment through
+/// each invite on its own. Every page here is built by path segment through
 /// `path_segments_mut`, so a base carrying a trailing slash, a sub-path, or a
 /// port produces one well-formed URL — where `{s}{s}` concatenation gives
 /// `https://host//api/...` for the first and silently drops the sub-path for
-/// the second.
+/// the second. The command-line login link is the one exception: `afd_tenant`
+/// builds it as text from [`Dashboard::as_str`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dashboard(Url);
 
 impl Dashboard {
     /// `raw` as a dashboard base, or `None` when no page can hang off it.
     ///
-    /// Refuses text that is not an absolute URL, and a URL with no path to
-    /// extend, such as `mailto:`.
+    /// Refuses anything but an absolute `http` or `https` URL, and one carrying
+    /// a username, a password, a query or a fragment: each page appends path
+    /// segments, and those would sit after the path or leak into every link.
     #[must_use]
     pub fn parse(raw: &str) -> Option<Self> {
         Url::parse(raw)
             .ok()
-            .filter(|base| !base.cannot_be_a_base())
+            .filter(|base| SCHEMES.contains(&base.scheme()) && Self::is_bare(base))
             .map(Self)
     }
 
-    /// The base itself, for a surface that composes its own links from text.
+    /// Whether `base` carries nothing but a scheme, a host, a port and a path.
+    fn is_bare(base: &Url) -> bool {
+        base.username().is_empty()
+            && base.password().is_none()
+            && base.query().is_none()
+            && base.fragment().is_none()
+    }
+
+    /// The base itself, for the one surface that composes its link from text.
     #[must_use]
     pub fn as_str(&self) -> &str {
         self.0.as_str()
@@ -114,8 +127,8 @@ impl Dashboard {
     #[must_use]
     pub fn page<'s>(&self, segments: impl IntoIterator<Item = &'s str>) -> Url {
         let mut page = self.0.clone();
-        // `parse` refused every base that cannot carry a path, so the segments
-        // always land and there is no arm where they do not.
+        // `parse` admits only http(s), and a URL of either scheme always has a
+        // path to extend, so the segments always land.
         if let Ok(mut path) = page.path_segments_mut() {
             path.pop_if_empty().extend(segments);
         }

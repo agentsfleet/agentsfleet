@@ -1,9 +1,12 @@
 //! One identifier path segment, parsed before the handler runs.
 //!
-//! A route naming one resource by `UUIDv7` used to take `Path<String>` and
-//! parse it in its body, each with the same `map_err` beside its own sentence.
-//! Here the parse is the extractor's, and the sentence is the one fact a route
-//! supplies, through the marker type it names.
+//! A route naming one resource by `UUIDv7` can take this in place of
+//! `Path<String>` and a `map_err` in its body. The parse is the extractor's,
+//! and the sentence is the one fact a route supplies, through the marker type
+//! it names. The team routes under `/v1/tenants/me/invites` and
+//! `/v1/tenants/me/members`, and the invite accept, take it. Older routes,
+//! such as the API key and command-line credential verbs, still parse their
+//! segment by hand.
 
 use std::marker::PhantomData;
 

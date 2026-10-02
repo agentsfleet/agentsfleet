@@ -15,8 +15,8 @@ use afd_tenant::team::{EMAIL_STATUS_FAILED, EMAIL_STATUS_SENT};
 use http::{Method, StatusCode};
 use serde_json::json;
 
-use crate::harness::{self, TeamStep, items};
-use crate::integration_invite_email::{invite, key_header, listed_status, owner_fleet, text};
+use crate::harness::{self, TeamStep, items, text};
+use crate::integration_invite_email::{id_of, invite, key_header, listed_status, owner_fleet};
 use crate::integration_team_routes::{INVITES, MEMBERS, call, send_again};
 use crate::integration_workspace_members::fixture::Members;
 
@@ -29,12 +29,12 @@ async fn test_send_again_after_failure() {
     let relay = FakeRelay::start(vec![Session::RefuseAuth(535), Session::Accept]).await;
     let router = owner_fleet(&members, Some(relay.port())).await.router();
     let (created, _address) = invite(&router, &members).await;
-    let id = text(&created, "id").to_owned();
-    assert_eq!(text(&created, "email_status"), EMAIL_STATUS_FAILED);
+    let id = id_of(&created).to_owned();
+    assert_eq!(text(&created, "email_status"), Some(EMAIL_STATUS_FAILED));
 
     let (status, answered) = send_again(&router, &members.john, &id).await;
     assert_eq!(status, StatusCode::OK, "{answered}");
-    assert_eq!(text(&answered, "email_status"), EMAIL_STATUS_SENT);
+    assert_eq!(text(&answered, "email_status"), Some(EMAIL_STATUS_SENT));
     let received = relay.received();
     assert_eq!(received.len(), 1);
     assert!(
@@ -57,7 +57,7 @@ async fn test_send_again_unconfigured_refused() {
     let members = Members::create().await;
     let router = owner_fleet(&members, None).await.router();
     let (created, _address) = invite(&router, &members).await;
-    let (status, problem) = send_again(&router, &members.john, text(&created, "id")).await;
+    let (status, problem) = send_again(&router, &members.john, id_of(&created)).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(
         harness::error_code(&problem),
@@ -89,7 +89,7 @@ async fn test_send_again_refusals_leave_the_row_true() {
     let router = owner_fleet(&members, Some(relay.port())).await.router();
 
     let (refused, _address) = invite(&router, &members).await;
-    let refused = text(&refused, "id").to_owned();
+    let refused = id_of(&refused).to_owned();
     let (status, problem) = send_again(&router, &members.john, &refused).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{problem}");
     assert_eq!(
@@ -102,7 +102,7 @@ async fn test_send_again_refusals_leave_the_row_true() {
     );
 
     let (revoked, _address) = invite(&router, &members).await;
-    let revoked = text(&revoked, "id").to_owned();
+    let revoked = id_of(&revoked).to_owned();
     let counted = members.email_attempts(&revoked).await;
     let revoke = format!("{INVITES}/{revoked}");
     let (status, _) = call(&router, Method::DELETE, &revoke, &members.john, "").await;
@@ -135,7 +135,7 @@ async fn test_email_count_failure_keeps_invite() {
         .with_team_fault(TeamStep::BeginEmail, 1);
     let router = fleet.router();
     let (created, _address) = invite(&router, &members).await;
-    let id = text(&created, "id").to_owned();
+    let id = id_of(&created).to_owned();
     assert_eq!(failpoint.fired(), 1);
     assert!(relay.received().is_empty(), "nothing sent");
     assert_eq!(members.email_attempts(&id).await, 0, "nothing counted");
@@ -175,9 +175,9 @@ async fn test_email_unrecorded_keeps_invite() {
         .with_team_fault(TeamStep::RecordEmail, 1);
     let router = fleet.router();
     let (created, _address) = invite(&router, &members).await;
-    let id = text(&created, "id").to_owned();
+    let id = id_of(&created).to_owned();
     assert_eq!(failpoint.fired(), 1);
-    assert_eq!(text(&created, "email_status"), EMAIL_STATUS_SENT);
+    assert_eq!(text(&created, "email_status"), Some(EMAIL_STATUS_SENT));
     assert_eq!(relay.received().len(), 1, "the relay took it");
     assert_eq!(members.email_attempts(&id).await, 1);
     assert_eq!(
@@ -244,7 +244,7 @@ async fn test_invite_gone_before_its_email_sends_nothing() {
     let (created, _address) = invite(&fleet.router(), &members).await;
     assert_eq!(failpoint.fired(), 1);
     assert!(relay.received().is_empty());
-    assert_eq!(members.email_attempts(text(&created, "id")).await, 0);
+    assert_eq!(members.email_attempts(id_of(&created)).await, 0);
     members.cleanup().await;
 }
 
@@ -270,7 +270,7 @@ async fn test_member_removal_store_failure_keeps_member() {
     let (_, listed) = call(&router, Method::GET, MEMBERS, &members.john, "").await;
     let kept = items(&listed)
         .iter()
-        .any(|item| text(item, "user_id") == members.bob.user);
+        .any(|item| text(item, "user_id") == Some(members.bob.user.as_str()));
     assert!(kept, "{listed}");
     members.cleanup().await;
 }

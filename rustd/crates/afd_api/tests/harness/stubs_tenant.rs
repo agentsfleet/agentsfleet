@@ -49,8 +49,9 @@ pub(crate) const DEPLOYMENT: &str = "https://api.fixture.test";
 pub(crate) struct OneWorkspace {
     owned: Uuid7,
     authorized: Arc<AtomicBool>,
-    /// Whether the store answers at all: set, every read is an error, the
-    /// way an ownership store that cannot reach its database answers.
+    /// Whether the store answers at all: set, every read goes to the outage
+    /// resolver, the way an ownership store that cannot reach its database
+    /// answers.
     refusing: Arc<AtomicBool>,
     /// How many ownership reads were asked for, answered or refused: the
     /// proof a periodic re-read ran at all, which its silence cannot give.
@@ -204,10 +205,16 @@ impl WorkspaceOwnership for OneWorkspace {
         }))
     }
 
-    fn tenant_of(
+    /// The principal's own tenant, or, while [`OneWorkspace::refuse`] is in
+    /// force, what the production resolver answers over its dead pool: the
+    /// outage for a session, whose account is read from its user row.
+    async fn tenant_of(
         &self,
         principal: &afd_auth::principal::Principal,
-    ) -> impl Future<Output = afd_tenant::Result<Option<Uuid7>>> + Send {
-        std::future::ready(Ok(principal.tenant().cloned()))
+    ) -> afd_tenant::Result<Option<Uuid7>> {
+        if self.refusing.load(Ordering::Acquire) {
+            return self.outage.tenant_of(principal).await;
+        }
+        Ok(principal.tenant().cloned())
     }
 }

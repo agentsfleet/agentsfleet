@@ -13,10 +13,9 @@ use std::sync::Arc;
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_core::timing::DAY_MS;
-use afd_mail::{INVITE_VALID_DAYS, InviteLetter, InviteSend};
+use afd_mail::{InviteLetter, InviteSend};
 use afd_observability::{InviteEmailOutcome, Telemetry};
-use afd_tenant::team::{EmailAttempt, EmailStatus, INVITE_TTL_MS, Invitation};
+use afd_tenant::team::{EmailAttempt, EmailStatus, INVITE_VALID_DAYS, Invitation};
 use afd_wire::team::InviteEmailResponse;
 use axum::Json;
 use axum::extract::State;
@@ -29,11 +28,8 @@ use super::invite::InvitePath;
 use super::invite_view::invite_link;
 use super::own::OwnTenant;
 
-// The email tells the invitee how long the link lasts; the store decides it.
-// Fail the build, not the reader, when the two drift.
-const _: () = assert!(INVITE_VALID_DAYS * DAY_MS == INVITE_TTL_MS);
-
-/// Pairs by verb with `afd_tenant`'s send records; a failed send-again.
+/// A send-again the invite store failed. The send itself is bracketed by
+/// `afd_mail`'s `invite_email_started` and `invite_email_failed`.
 const EVENT_SEND: &str = "invite_send_failed";
 const EVENT_UNRECORDED: &str = "invite_email_unrecorded";
 
@@ -137,6 +133,7 @@ fn send_of<'a>(invite: &'a Uuid7, attempt: &'a EmailAttempt, link: &'a str) -> I
             inviter_name: &attempt.inviter_name,
             owner_name: &attempt.owner_name,
             invite_url: link,
+            valid_days: INVITE_VALID_DAYS,
         },
     }
 }

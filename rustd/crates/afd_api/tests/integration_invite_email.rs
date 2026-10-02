@@ -24,7 +24,7 @@ use axum::Router;
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
 
-use crate::harness::{Fleet, items, send, vault};
+use crate::harness::{Fleet, items, send, text, vault};
 use crate::integration_team_routes::{INVITES, call};
 use crate::integration_workspace_members::fixture::{Members, owner_scopes};
 
@@ -69,9 +69,9 @@ pub(crate) async fn invite(router: &Router, members: &Members) -> (Value, String
     (created, address)
 }
 
-/// A string field, or empty when the value carries none.
-pub(crate) fn text<'v>(value: &'v Value, key: &str) -> &'v str {
-    value.get(key).and_then(Value::as_str).unwrap_or_default()
+/// The identifier an invite answers with, which every invite carries.
+pub(crate) fn id_of(invite: &Value) -> &str {
+    text(invite, "id").expect("an invite answers its id")
 }
 
 /// The invite still pending in John's list, with the status it carries.
@@ -80,9 +80,10 @@ pub(crate) async fn listed_status(router: &Router, members: &Members, invite: &s
     assert_eq!(status, StatusCode::OK);
     let item = items(&page)
         .iter()
-        .find(|item| text(item, "id") == invite)
+        .find(|item| text(item, "id") == Some(invite))
         .expect("the invite stays pending");
-    text(item, "email_status").to_owned()
+    let status = text(item, "email_status").expect("a listed invite carries its status");
+    status.to_owned()
 }
 
 /// The idempotency header a send of `invite` carries on its `attempt`.
@@ -116,10 +117,10 @@ async fn test_send_retry_reuses_idempotency_key() {
     let relay = FakeRelay::start(vec![Session::DropAfterData, Session::Accept]).await;
     let router = owner_fleet(&members, Some(relay.port())).await.router();
     let (created, _address) = invite(&router, &members).await;
-    assert_eq!(text(&created, "email_status"), EMAIL_STATUS_SENT);
+    assert_eq!(text(&created, "email_status"), Some(EMAIL_STATUS_SENT));
     let received = relay.received();
     assert_eq!(received.len(), 2);
-    let key = key_header(text(&created, "id"), 1);
+    let key = key_header(id_of(&created), 1);
     assert!(
         received.iter().all(|message| message.contains(&key)),
         "{received:?}"
@@ -135,8 +136,11 @@ async fn test_unconfigured_email_keeps_invite() {
     let members = Members::create().await;
     let router = owner_fleet(&members, None).await.router();
     let (created, _address) = invite(&router, &members).await;
-    let id = text(&created, "id");
-    assert_eq!(text(&created, "email_status"), EMAIL_STATUS_UNCONFIGURED);
+    let id = id_of(&created);
+    assert_eq!(
+        text(&created, "email_status"),
+        Some(EMAIL_STATUS_UNCONFIGURED)
+    );
     assert_eq!(
         listed_status(&router, &members, id).await,
         EMAIL_STATUS_UNCONFIGURED
@@ -164,9 +168,9 @@ async fn test_failed_email_keeps_invite() {
         .router();
     for _case in 0..4 {
         let (created, _address) = invite(&router, &members).await;
-        assert_eq!(text(&created, "email_status"), EMAIL_STATUS_FAILED);
+        assert_eq!(text(&created, "email_status"), Some(EMAIL_STATUS_FAILED));
         assert_eq!(
-            listed_status(&router, &members, text(&created, "id")).await,
+            listed_status(&router, &members, id_of(&created)).await,
             EMAIL_STATUS_FAILED
         );
     }
@@ -185,8 +189,8 @@ async fn test_failed_email_invite_is_still_acceptable() {
     let body = json!({ "email": members.stranger.email }).to_string();
     let (status, created) = call(&router, Method::POST, INVITES, &members.john, &body).await;
     assert_eq!(status, StatusCode::CREATED, "{created}");
-    assert_eq!(text(&created, "email_status"), EMAIL_STATUS_FAILED);
-    let id = text(&created, "id");
+    assert_eq!(text(&created, "email_status"), Some(EMAIL_STATUS_FAILED));
+    let id = id_of(&created);
 
     let strangers = members.router(&members.stranger, owner_scopes());
     let accept = format!("/v1/users/me/invites/{id}/accept");
@@ -217,11 +221,11 @@ async fn test_invite_email_reports_each_outcome() {
     let (sent, _address) = invite(&router, &members).await;
     let (refused, _address) = invite(&router, &members).await;
     assert_eq!(
-        reported(&recorded, text(&sent, "id")),
+        reported(&recorded, id_of(&sent)),
         [(1, InviteEmailOutcome::Sent { reply: 250 })]
     );
     assert_eq!(
-        reported(&recorded, text(&refused, "id")),
+        reported(&recorded, id_of(&refused)),
         [(1, InviteEmailOutcome::Failed { reply: Some(550) })]
     );
     let actors: Vec<String> = recorded
@@ -242,7 +246,7 @@ async fn test_invite_email_reports_each_outcome() {
     let (unconfigured, quietly) = owner_fleet(&members, None).await.with_recorded_analytics();
     let (quiet, _address) = invite(&unconfigured.router(), &members).await;
     assert_eq!(
-        reported(&quietly, text(&quiet, "id")),
+        reported(&quietly, id_of(&quiet)),
         [(1, InviteEmailOutcome::Unconfigured)]
     );
     members.cleanup().await;

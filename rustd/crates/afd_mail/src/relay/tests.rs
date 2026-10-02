@@ -185,7 +185,9 @@ fn transport_builds_for_implicit_and_starttls() {
 /// The TLS parameters are built for the relay's host once and kept, shared by
 /// every clone of the mailer that holds the cache; a bag naming another host
 /// still gets a transport, built for that host, while the first stays cached.
-/// A loopback relay builds none.
+/// A loopback relay builds none. Whichever host is asked, cached or not, the
+/// parameters handed back name that host, so a certificate is never checked
+/// against another relay's name.
 #[test]
 fn should_build_tls_once_per_host() {
     let cache = TlsCache::default();
@@ -208,5 +210,16 @@ fn should_build_tls_once_per_host() {
             format!("TlsCache(Some({REMOTE_HOST:?}))"),
             "{host}"
         );
+    }
+    for host in [
+        REMOTE_HOST,
+        OTHER_REMOTE_HOST,
+        REMOTE_HOST,
+        OTHER_REMOTE_HOST,
+    ] {
+        let parameters = cache
+            .parameters(host)
+            .expect("parameters build without dialling");
+        assert_eq!(parameters.domain(), host, "built for the host asked");
     }
 }

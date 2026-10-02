@@ -20,7 +20,7 @@ use serde_json::{Value, json};
 
 use afd_auth::scope::ScopeSet;
 
-use crate::harness::{self, exchange, items};
+use crate::harness::{self, exchange, items, text};
 use crate::integration_workspace_members::fixture::{Members, Person, owner_scopes};
 
 pub(crate) const INVITES: &str = "/v1/tenants/me/invites";
@@ -45,11 +45,6 @@ pub(crate) async fn call(
 pub(crate) async fn send_again(router: &Router, who: &Person, invite: &str) -> (StatusCode, Value) {
     let path = format!("{INVITES}/{invite}/send");
     call(router, Method::POST, &path, who, "").await
-}
-
-/// A string field of a JSON object, when it holds one.
-pub(crate) fn text<'v>(value: &'v Value, key: &str) -> Option<&'v str> {
-    value.get(key).and_then(Value::as_str)
 }
 
 /// The item in a page whose `key` is `wanted`.

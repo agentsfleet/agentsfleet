@@ -122,7 +122,9 @@ fn invalid_optionals_are_reported_together() {
 }
 
 /// A dashboard base no page can hang off refuses boot, naming the knob, rather
-/// than booting a daemon whose every connect and invite link would fail.
+/// than booting a daemon whose every connect and invite link would fail. That
+/// includes a base that is not a bare http(s) URL, which is what the refusal
+/// promises.
 ///
 /// The successor of `afd_api`'s `a_dashboard_base_that_is_not_a_url_is_refused_
 /// rather_than_relayed_to`: the base used to be parsed per connect and refused
@@ -130,7 +132,16 @@ fn invalid_optionals_are_reported_together() {
 /// here, as the boot refusal's own code.
 #[test]
 fn a_dashboard_base_that_is_not_a_url_refuses_boot() {
-    for base in ["not a url at all", "/relative", "mailto:ops@example.test"] {
+    for base in [
+        "not a url at all",
+        "/relative",
+        "mailto:ops@example.test",
+        "ftp://dashboard.example.test",
+        "file:///srv/dashboard",
+        "https://u:p@dashboard.example.test",
+        "https://dashboard.example.test/?q=1",
+        "https://dashboard.example.test/#f",
+    ] {
         let refusal = preflight(&with_optional([(APP_URL_KNOB, base)]))
             .expect_err("an unusable dashboard base refuses boot");
         assert_eq!(

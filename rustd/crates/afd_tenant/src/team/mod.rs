@@ -19,7 +19,7 @@ use crate::workspace::access::Role;
 pub use self::email::Email;
 pub use self::invitation::{
     Acceptance, EMAIL_STATUS_FAILED, EMAIL_STATUS_SENT, EMAIL_STATUS_UNCONFIGURED, EmailAttempt,
-    EmailStatus, INVITE_TTL_MS, Invitation,
+    EmailStatus, INVITE_TTL_MS, INVITE_VALID_DAYS, Invitation,
 };
 
 /// Invites, acceptance and members, over one pool.

@@ -62,6 +62,8 @@ mod team_lane;
 
 #[path = "integration_api_key_paging.rs"]
 mod integration_api_key_paging;
+#[path = "integration_cli_credential_race.rs"]
+mod integration_cli_credential_race;
 #[path = "integration_device_flow.rs"]
 mod integration_device_flow;
 #[path = "integration_identity.rs"]

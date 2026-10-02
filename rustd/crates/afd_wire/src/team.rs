@@ -17,7 +17,9 @@ use crate::workspace::WorkspaceAccount;
 #[serde(deny_unknown_fields)]
 pub struct CreateInviteRequest<'a> {
     /// The address to invite. Stored lowercased; accepting requires the
-    /// signed-in account's address to equal it.
+    /// signed-in account's address to equal it. A domain literal, an IP
+    /// domain, a domain without a dot, or over 254 characters is refused
+    /// with 400 `UZ-REQ-001`.
     #[serde(borrow)]
     pub email: Cow<'a, str>,
 }

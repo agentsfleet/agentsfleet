@@ -147,6 +147,26 @@ fn a_base_that_is_not_a_url_is_refused_when_it_is_read() {
     }
 }
 
+/// Boot promises an absolute http(s) URL: another scheme is no page a browser
+/// opens, credentials would ride every link, and a query or a fragment would
+/// sit after every path segment a page appends.
+#[test]
+fn a_base_that_is_not_a_bare_http_url_is_refused_when_it_is_read() {
+    for base in [
+        "ftp://app.example.test",
+        "file:///srv/dashboard",
+        "https://u:p@app.example.test",
+        "https://u@app.example.test",
+        "https://app.example.test/?q=1",
+        "https://app.example.test/#f",
+    ] {
+        assert_eq!(Dashboard::parse(base), None, "`{base}` is no base");
+    }
+    for base in ["http://localhost:3000", "https://app.example.test/dash/"] {
+        assert!(Dashboard::parse(base).is_some(), "`{base}` is a base");
+    }
+}
+
 /// The base reads back as the URL it parsed to.
 #[test]
 fn a_base_reads_back_as_the_url_it_parsed_to() {

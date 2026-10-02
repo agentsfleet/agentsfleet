@@ -25,9 +25,21 @@ use self::harness::{Fleet, OWNED_WORKSPACE, concrete_path, exchange, send};
 const TERMINAL: &str = "afc_0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e";
 const SUBJECT: &str = "user_2member_roles";
 
+/// A browser session's bearer; the harness verifier accepts any.
+const SESSION: &str = "session";
+
+/// The owner's invite list, a team route resolved through `OwnTenant`.
+const INVITES: &str = "/v1/tenants/me/invites";
+
+/// What `OwnTenant` logs a caller whose account will not resolve under, and
+/// what the invite list logs a failed read under.
+const EVENT_TEAM_TENANT: &str = "team_tenant_unresolved";
+const EVENT_INVITE_LIST: &str = "invite_list_failed";
+
 /// The captured fields a crossing record is read by.
 const FIELD_EVENT: &str = "event";
 const FIELD_METHOD: &str = "method";
+const FIELD_ERROR_CODE: &str = "error_code";
 
 /// The capabilities the role withholds from a member.
 const OWNER_ONLY: [Scope; 2] = [Scope::SecretWrite, Scope::ConnectorWrite];
@@ -135,6 +147,35 @@ async fn test_a_refusing_ownership_stub_answers_the_datastore_outage() {
     let fleet = Fleet::new().with_terminal(TERMINAL, SUBJECT, ScopeSet::from_scopes(&Scope::ALL));
     fleet.ownership().refuse();
     assert_answers_the_outage(&fleet.router()).await;
+}
+
+/// A team route whose caller's account cannot be resolved answers that same
+/// outage from `OwnTenant`, before any team statement runs. A session, since
+/// only a session's account is read from its user row.
+#[tokio::test]
+async fn test_a_team_route_answers_the_outage_when_the_account_will_not_resolve() {
+    let fleet = Fleet::new()
+        .with_dashboard_holding(SUBJECT, ScopeSet::from_scopes(&[Scope::WorkspaceAdmin]));
+    fleet.ownership().refuse();
+    let router = fleet.router();
+    let capture = Capture::install();
+
+    let (status, answered) = exchange(&router, http::Method::GET, INVITES, Some(SESSION), "").await;
+
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{answered}");
+    let unavailable = Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str());
+    assert_eq!(harness::error_code(&answered), unavailable);
+    assert_eq!(
+        capture.only(EVENT_TEAM_TENANT).field(FIELD_ERROR_CODE),
+        unavailable
+    );
+    assert!(
+        capture
+            .events()
+            .iter()
+            .all(|event| event.field(FIELD_EVENT) != Some(EVENT_INVITE_LIST)),
+        "the list never ran"
+    );
 }
 
 /// A fleet list through `router` answers `503` with the unreachable-datastore code.

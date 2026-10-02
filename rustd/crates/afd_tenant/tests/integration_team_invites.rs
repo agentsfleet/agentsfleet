@@ -1,6 +1,7 @@
 //! An owner's invites against live Postgres, past the spec's Dimensions: a
 //! revoke scoped to its account, an invite closed at its expiry instant, the
-//! lists that drop a closed invite, and a revoke that lost to a join.
+//! lists that drop a closed invite, a revoke that lost to a join, and an
+//! accept that fails whole.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -181,5 +182,67 @@ async fn should_refuse_revoking_an_invite_its_invitee_joined_through() {
         .revoke_invitation(&tenant, &invite, NOW)
         .await
         .expect("a spent invite whose invitee left revokes quietly");
+    fixture.cleanup().await;
+}
+
+/// Another account naming an invite Carol already joined through learns
+/// nothing: its revoke answers as a revoke of nothing does, and John's invite
+/// and Carol's membership are untouched.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_answer_quietly_when_another_account_revokes_an_accepted_invite() {
+    let fixture = Fixture::create().await;
+    let invite = fixture
+        .invite(&fixture.carol.email, NOW)
+        .await
+        .expect("John invites Carol");
+    fixture
+        .team
+        .accept(&invite, &fixture.carol.invitee(), NOW)
+        .await
+        .expect("Carol joins");
+
+    let stranger = id(&fixture.bob.tenant);
+    fixture
+        .team
+        .revoke_invitation(&stranger, &invite, NOW)
+        .await
+        .expect("a revoke of nothing of yours is quiet, accepted or not");
+    let (accepted_at, revoked_at) = fixture.stamps(&invite).await;
+    assert_eq!((accepted_at.is_some(), revoked_at), (true, None));
+    assert_eq!(fixture.memberships_in_johns(&fixture.carol).await, 1);
+    fixture.cleanup().await;
+}
+
+/// A workspace row this daemon cannot read fails the accept before it
+/// commits: Carol is not left a member whose every accept answers 500, the
+/// invite stays open, and once the row is gone the same accept lands.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_roll_back_the_join_when_a_workspace_row_cannot_be_read() {
+    let fixture = Fixture::create().await;
+    let invite = fixture
+        .invite(&fixture.carol.email, NOW)
+        .await
+        .expect("John invites Carol");
+    let unreadable = fixture.add_unreadable_workspace().await;
+
+    let refused = fixture
+        .team
+        .accept(&invite, &fixture.carol.invitee(), NOW)
+        .await
+        .expect_err("an unreadable workspace fails the accept");
+    assert_eq!(refused.code(), error_code::INTERNAL_DB_QUERY);
+    assert_eq!(fixture.memberships_in_johns(&fixture.carol).await, 0);
+    assert_eq!(fixture.stamps(&invite).await, (None, None), "still open");
+
+    fixture.remove_workspace(&unreadable).await;
+    let accepted = fixture
+        .team
+        .accept(&invite, &fixture.carol.invitee(), NOW)
+        .await
+        .expect("the retry lands once the row is readable");
+    assert_eq!(accepted.workspaces, [id(&fixture.john.workspace)]);
+    assert_eq!(fixture.memberships_in_johns(&fixture.carol).await, 1);
     fixture.cleanup().await;
 }

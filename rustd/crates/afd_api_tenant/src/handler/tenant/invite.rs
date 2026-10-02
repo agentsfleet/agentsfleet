@@ -78,6 +78,8 @@ const STATE_MEMBER: &str = "member";
         "expires after 7 days. `link` is the dashboard page the invitee opens ",
         "to accept it. An address that already has a pending invite, or ",
         "already belongs to the account, is refused with 409 `UZ-INV-003`. ",
+        "Its `current_state` is `invited` when a pending invite exists, and ",
+        "`member` when the address already belongs to the account. ",
         "Retrying after an uncertain response is safe: the retry is refused ",
         "with that 409, and the invite list shows the first one. ",
     ),

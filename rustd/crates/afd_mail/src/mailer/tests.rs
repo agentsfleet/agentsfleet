@@ -19,7 +19,7 @@ use crate::InviteLetter;
 use crate::deliver::tests::{DOMAIN_LITERAL, INVITE, INVITE_URL, RECIPIENT, Scripted};
 use crate::deliver::{Delivery, Mailer};
 use crate::relay::{Server, TlsCache};
-use crate::test_util::FROM;
+use crate::test_util::{FROM, VALID_DAYS};
 
 mod relay_read;
 
@@ -49,6 +49,7 @@ fn invite(id: &Uuid7) -> InviteSend<'_> {
             inviter_name: INVITER,
             owner_name: INVITER,
             invite_url: INVITE_URL,
+            valid_days: VALID_DAYS,
         },
     }
 }

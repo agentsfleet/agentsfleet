@@ -94,8 +94,8 @@ pub const APP_URL_KNOB: &str = "APP_URL";
 pub(super) const APP_URL_DEFAULT: &str = "https://app.agentsfleet.net";
 
 /// Why [`APP_URL_KNOB`] must parse: every link a person follows hangs off it.
-pub(super) const WHY_APP_URL: &str =
-    "an absolute http(s) URL; every connector redirect and invite link is built under it";
+pub(super) const WHY_APP_URL: &str = "an absolute http(s) URL with no credentials, query or \
+     fragment; every connector redirect and invite link is built under it";
 
 /// This deployment's own base URL, as a minted credential records it.
 ///
