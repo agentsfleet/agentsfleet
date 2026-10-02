@@ -72,7 +72,7 @@ The Zig runner's sandbox carries over and gains what process tools need. Fleets 
 - A non-root service unit, and a kernel patch cadence for runner hosts.
 - The per-lease network allowlist: a network namespace, a virtual ethernet pair and nftables rules, with rendered resolver files ([Runner Fleet](./runner_fleet.md) §Egress model). The Zig runner refuses a lease that selects it, because it is unbuilt (`src/runner/child_supervisor.zig`).
 
-**The remaining risk is the shared kernel.** A kernel privilege-escalation bug escapes every namespace sandbox on the host at once. Firecracker microVMs, resumed from a snapshot, are the additional engine for that risk; they need hardware virtualisation, which bare metal has and most VMs do not. The engine is a host attribute the control plane assigns ([Runner Fleet](./runner_fleet.md) §Assigned policy and reconciliation). Fleets that run processes lease only to runners whose engine allows it; lease assignment carries no such filter today.
+**The remaining risk is the shared kernel.** A kernel privilege-escalation bug escapes every namespace sandbox on the host at once. Code-running leases from different tenants share hosts by decision, so hardening and a kernel patch cadence carry that risk until the additional engine exists. Firecracker microVMs, resumed from a snapshot, are the additional engine for that risk; they need hardware virtualisation, which bare metal has and most VMs do not. The engine is a host attribute the control plane assigns ([Runner Fleet](./runner_fleet.md) §Assigned policy and reconciliation). Fleets that run processes lease only to runners whose engine allows it; lease assignment carries no such filter today.
 
 ## Toolbox
 
@@ -147,4 +147,5 @@ When a fleet requires approval, the push runs in the continuation lease after so
 | Oct 02, 2026 | Subscriptions and API keys; Codex first-class | Indy: "Subscripts and API keys, but support Codex as first class citizen, anthropic seems to have issues on terms and requests via API keys" |
 | Oct 02, 2026 | Multi-tenant on bare metal or VMs from the first release; Firecracker is an additional engine | Indy: "everyone can run isolated multiple tenants with fleets must use a baremetal host or have a runner run from a VM from day 1. To me firecracker is an additional approach to think on isolation." |
 | Oct 02, 2026 | Scoped short-lived tokens now; the placeholder-swap proxy later | Indy: "I would go for 1, with the focus on move to 2 later" |
-| Oct 02, 2026 | The supervisor pushes repository writes | Agent default while Indy was away; awaiting his confirmation |
+| Oct 02, 2026 | The supervisor pushes repository writes | Indy chose "Supervisor pushes (Recommended)" |
+| Oct 02, 2026 | Code-running leases from different tenants may share a host; hardening and kernel patching are the boundary until Firecracker | Indy chose "No, share freely" when asked whether a host should refuse a second tenant's code-running lease |
