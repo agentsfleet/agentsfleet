@@ -91,7 +91,11 @@ fn an_object_and_a_nullable_reference_carry_their_class() {
             .insert(STABILITY.to_owned(), BETA.into());
         *description = Some(BETA_NOTE.to_owned());
         let value = serde_json::to_value(&*shape).expect("a schema serializes");
-        assert_eq!(value[STABILITY], BETA, "{value}");
+        assert_eq!(
+            value.get(STABILITY).and_then(serde_json::Value::as_str),
+            Some(BETA),
+            "{value}"
+        );
     }
     for other in [
         Schema::Array(Array::new(Object::new())),

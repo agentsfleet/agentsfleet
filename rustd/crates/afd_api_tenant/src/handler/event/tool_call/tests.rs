@@ -1,4 +1,8 @@
-#![expect(clippy::expect_used, reason = "a test asserts by panicking")]
+#![expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "a test asserts by panicking, and indexes the JSON it built"
+)]
 
 use afd_events::{CallAddress, ToolCallRow};
 

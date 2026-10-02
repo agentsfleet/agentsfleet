@@ -10,7 +10,9 @@
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
+    clippy::indexing_slicing,
+    reason = "test target: an unmet precondition should fail the test loudly, and a step \
+              indexes the JSON it just built"
 )]
 
 use afd_wire::tool_trace::TRACE_MAX_CALLS;
