@@ -1,5 +1,6 @@
 //! The team store's races against live Postgres: two owners removing each
-//! other, an accept against a revoke, and two invites to one address. Each
+//! other, an accept against a revoke, an accept against a fresh invite, and two
+//! invites to one address. Each
 //! runs a dozen rounds, since a lost lock order shows in most but not all.
 #![cfg(feature = "test-util")]
 #![expect(
@@ -133,6 +134,42 @@ async fn accept_against_revoke(fixture: &Fixture, round: usize) {
             );
         }
     }
+}
+
+/// An accept racing a new invite to the same address: Carol joins, and the
+/// invite is refused as a conflict. Never a pending invite issued, and
+/// emailed, to someone already in the account. The member check used to read
+/// before the accept committed, then the accept cleared the one-pending-invite
+/// index and the new invite slipped in.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_refuse_new_invite_when_it_races_an_accept_for_the_same_address() {
+    let fixture = Fixture::create().await;
+    let tenant = id(&fixture.john.tenant);
+    let carol = fixture.carol.invitee();
+    for round in 0..RACE_ROUNDS {
+        let earlier = fixture
+            .invite(&fixture.carol.email, NOW)
+            .await
+            .expect("John invites Carol");
+        let (accepted, issued) = tokio::join!(
+            fixture.team.accept(&earlier, &carol, NOW),
+            fixture.invite(&fixture.carol.email, NOW),
+        );
+        accepted.expect("Carol's accept of the earlier invite lands");
+        let refusal = issued.expect_err("no new invite for a member");
+        assert_eq!(refusal.code(), error_code::INVITE_CONFLICT, "round {round}");
+        assert!(
+            fixture.johns_invites(NOW).await.is_empty(),
+            "round {round}: nothing left pending for Carol"
+        );
+        fixture
+            .team
+            .remove(&tenant, &fixture.carol.user_id)
+            .await
+            .expect("Carol leaves for the next round");
+    }
+    fixture.cleanup().await;
 }
 
 /// Two invites to one address at once: one issues, the other is the conflict,
