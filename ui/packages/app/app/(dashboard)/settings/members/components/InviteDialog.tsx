@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -53,30 +53,37 @@ export default function InviteDialog({ onSettled }: { onSettled: () => void }) {
   const [open, setOpen] = useState(false);
   const [created, setCreated] = useState<InviteSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  // True only while the create is in flight. Not a transition: React would
+  // entangle it with the page's list reload that `onSettled` starts, and the
+  // dialog, even one reopened for the next invite, would wait on that reload.
+  const [sending, setSending] = useState(false);
 
   // Closing from any path starts the next invite afresh; the form itself
   // unmounts with the dialog. A send in flight finishes here first, or its
   // answer would land in the next invite.
   function handleOpenChange(next: boolean) {
-    if (!next && pending) return;
+    if (!next && sending) return;
     setOpen(next);
     if (next) return;
     setCreated(null);
     setError(null);
   }
 
-  function send(email: string) {
+  async function send(email: string) {
     setError(null);
-    startTransition(async () => {
-      const result = await createInviteAction(email);
-      onSettled();
-      if (!result.ok) {
-        setError(presentErrorString({ errorCode: result.errorCode, message: result.error, action: "create the invite" }));
-        return;
-      }
-      setCreated(result.data);
-    });
+    setSending(true);
+    let result: Awaited<ReturnType<typeof createInviteAction>>;
+    try {
+      result = await createInviteAction(email);
+    } finally {
+      setSending(false);
+    }
+    onSettled();
+    if (!result.ok) {
+      setError(presentErrorString({ errorCode: result.errorCode, message: result.error, action: "create the invite" }));
+      return;
+    }
+    setCreated(result.data);
   }
 
   return (
@@ -87,11 +94,11 @@ export default function InviteDialog({ onSettled }: { onSettled: () => void }) {
           Invite
         </Button>
       </DialogTrigger>
-      <DialogContent closeDisabled={pending}>
+      <DialogContent closeDisabled={sending}>
         {created ? (
           <InviteReady invite={created} onDone={() => handleOpenChange(false)} />
         ) : (
-          <InviteForm error={error} pending={pending} onSend={send} onCancel={() => handleOpenChange(false)} />
+          <InviteForm error={error} pending={sending} onSend={send} onCancel={() => handleOpenChange(false)} />
         )}
       </DialogContent>
     </Dialog>
@@ -101,7 +108,7 @@ export default function InviteDialog({ onSettled }: { onSettled: () => void }) {
 type InviteFormProps = {
   error: string | null;
   pending: boolean;
-  onSend: (email: string) => void;
+  onSend: (email: string) => Promise<void>;
   onCancel: () => void;
 };
 
