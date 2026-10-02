@@ -14,7 +14,6 @@ use afd_wire::activity::{
     ActivityFrame, FleetResponseChunk, ToolCallCompleted, ToolCallProgress, ToolCallStarted,
 };
 
-use super::published::fenced_call_id;
 use super::{Published, Target, first_visible_candidate_ms};
 
 /// The fencing token the fixture lease holds.
@@ -117,8 +116,6 @@ fn one_runner_call_id_under_two_fences_publishes_two_ids() {
         second["call_id"],
         serde_json::Value::from(format!("{}:{RUNNER_CALL}", FENCE + 1))
     );
-    // A runner id carrying the separator still reads back past the first one.
-    assert_eq!(fenced_call_id(FENCE, Some("a:b")).as_deref(), Some("7:a:b"));
 }
 
 #[test]

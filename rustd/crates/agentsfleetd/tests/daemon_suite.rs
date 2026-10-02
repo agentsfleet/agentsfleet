@@ -82,6 +82,8 @@ mod integration_tenant_registry;
 mod integration_tool_call_details;
 #[path = "integration_tool_call_details_lifecycle.rs"]
 mod integration_tool_call_details_lifecycle;
+#[path = "integration_tool_call_refusals.rs"]
+mod integration_tool_call_refusals;
 #[path = "integration_tool_trace.rs"]
 mod integration_tool_trace;
 #[path = "integration_unreadable_config.rs"]

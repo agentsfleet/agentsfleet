@@ -125,14 +125,7 @@ impl Plane {
             return Err(lease_not_found());
         };
 
-        let tool_calls = tool_trace::stored(
-            request.tool_calls,
-            TraceOwner {
-                fleet_id: lease.fleet_id.as_str(),
-                event_id: &lease.event_id,
-                fence: lease.fence.as_i64(),
-            },
-        );
+        let tool_calls = stored_trace(&lease, request);
         let meter = self.price_final_slice(&lease, request).await;
         let report = terminal(
             lease_id,
@@ -241,6 +234,16 @@ fn terminal<'a>(
         last_response: request.checkpoint.last_response.as_ref(),
         now,
     }
+}
+
+/// The run's tool trace as the event row stores it, fenced to `lease`.
+fn stored_trace(lease: &Reported, request: &ReportRequest<'_>) -> Option<String> {
+    let owner = TraceOwner {
+        fleet_id: lease.fleet_id.as_str(),
+        event_id: &lease.event_id,
+        fence: lease.fence.as_i64(),
+    };
+    tool_trace::stored(request.tool_calls, owner)
 }
 
 /// The lease's facts, as the caller of the verb receives them.

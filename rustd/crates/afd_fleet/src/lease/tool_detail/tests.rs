@@ -4,6 +4,8 @@
     reason = "a test asserts by panicking, and indexes what it built"
 )]
 
+use std::collections::BTreeMap;
+
 use afd_core::test_util::trace::Capture;
 use afd_wire::tool_detail::{
     DETAIL_EVENT_MAX_BYTES, DETAIL_FIELD_MAX_BYTES, DetailRejection, ToolCallRecordsRequest,
@@ -82,7 +84,7 @@ fn a_call_named_twice_keeps_its_last_record() {
         [Skip {
             position: 0,
             reason: DetailRejection::Malformed,
-            bytes: 3,
+            bytes: afd_wire::tool_detail::DETAIL_RECORD_MIN_BYTES,
         }]
     );
 }
@@ -97,7 +99,7 @@ fn the_budget_keeps_the_lowest_calls_that_fit() {
     let request: ToolCallRecordsRequest<'_> = serde_json::from_str(&body).expect("a post");
     let (candidates, skipped) = narrow_all(&request.calls);
     assert!(skipped.is_empty());
-    let (kept, over) = within_budget(candidates, 0);
+    let (kept, over) = within_budget(candidates, 0, &BTreeMap::new());
     assert_eq!(kept.len(), 16, "16 × 64 KiB is the whole 1 MiB");
     assert_eq!(over.len(), 4);
     assert!(
@@ -107,7 +109,7 @@ fn the_budget_keeps_the_lowest_calls_that_fit() {
     assert_eq!(kept.last().map(|kept| kept.record.call_number), Some(16));
 
     let (candidates, _) = narrow_all(&request.calls);
-    let (kept, over) = within_budget(candidates, DETAIL_EVENT_MAX_BYTES);
+    let (kept, over) = within_budget(candidates, DETAIL_EVENT_MAX_BYTES, &BTreeMap::new());
     assert!(
         kept.is_empty(),
         "an event already at its budget keeps nothing more"
@@ -132,4 +134,35 @@ fn a_skip_is_logged_by_position_and_size_never_content() {
     assert_eq!(line.field("position"), Some("2"));
     assert_eq!(line.field("bytes"), Some("70000"));
     assert_eq!(line.field("agentsfleet_event_id"), Some("1700000000000-0"));
+}
+
+/// One KiB, the unit the budget cases below are written in.
+const KIB: usize = 1024;
+
+#[test]
+fn a_replacement_spends_only_its_difference_and_never_breaks_the_cap() {
+    // Calls 1 and 2 are kept at 32 KiB each, inside 990 KiB the lease keeps.
+    let replaced = BTreeMap::from([(1, 32 * KIB), (2, 32 * KIB)]);
+    let records = [record(1, 64 * KIB - 2), record(2, 64 * KIB - 2)];
+    let body = post(&records);
+    let request: ToolCallRecordsRequest<'_> = serde_json::from_str(&body).expect("a post");
+    let (candidates, _) = narrow_all(&request.calls);
+    let (kept, over) = within_budget(candidates, 990 * KIB, &replaced);
+    assert_eq!(
+        kept.iter()
+            .map(|kept| kept.record.call_number)
+            .collect::<Vec<_>>(),
+        [1],
+        "990 − 32 + 64 fits; the second swap would carry the event to 1054 KiB"
+    );
+    assert_eq!(over.len(), 1);
+
+    // A smaller replacement fits even when the event is full.
+    let shrink = [record(1, 1)];
+    let body = post(&shrink);
+    let request: ToolCallRecordsRequest<'_> = serde_json::from_str(&body).expect("a post");
+    let (candidates, _) = narrow_all(&request.calls);
+    let full = BTreeMap::from([(1, 64 * KIB)]);
+    let (kept, over) = within_budget(candidates, DETAIL_EVENT_MAX_BYTES, &full);
+    assert_eq!((kept.len(), over.len()), (1, 0));
 }

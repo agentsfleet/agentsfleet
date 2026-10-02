@@ -58,16 +58,19 @@ pub enum ToolCallStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolTraceCall<'a> {
-    /// Which call this is, 1 to 64 bytes. The runner sends its own counter;
-    /// the daemon stores it as `{fence}:{counter}`, the id the live frames of
-    /// the same call carry.
+    /// Which call this is. The runner sends its own counter, 1 to 64 bytes:
+    /// the decimal `call_number` it posts the call's full record under, so
+    /// "show all" can find it. The daemon stores and serves it as
+    /// `{fence}:{counter}`, the id the live frames of the same call carry; the
+    /// bounds apply to what the runner sends.
     #[serde(borrow)]
     pub call_id: Cow<'a, str>,
     /// Which tool.
     #[serde(borrow)]
     pub name: Cow<'a, str>,
     /// The arguments the call was made with, secret values masked. At most
-    /// 2048 bytes encoded, and no string inside longer than 256 bytes.
+    /// 2048 bytes encoded, no string or key inside longer than 256 bytes, and
+    /// no NUL character anywhere.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub arguments: Map<String, Value>,
     /// How the call ended.
@@ -116,13 +119,17 @@ pub enum TraceRejection {
     CallIdUnusable,
     /// An arguments object over [`ARGS_MAX_BYTES`] encoded.
     ArgumentsTooLarge,
-    /// A string inside the arguments over [`ARGS_LEAF_MAX_BYTES`].
+    /// A string or key inside the arguments over [`ARGS_LEAF_MAX_BYTES`].
     ArgumentTooLong,
     /// An output edge over [`OUTPUT_EDGE_MAX_BYTES`] or
     /// [`OUTPUT_EDGE_MAX_LINES`].
     EdgeTooLarge,
     /// Not a trace at all: the JSON is the wrong shape.
     Malformed,
+    /// A string holds a NUL character, which a stored trace cannot: Postgres
+    /// `jsonb` refuses `\u0000`, and the trace is written in the statement
+    /// that settles the run.
+    HoldsNul,
 }
 
 impl TraceRejection {
@@ -137,6 +144,7 @@ impl TraceRejection {
             Self::ArgumentTooLong => "argument_too_long",
             Self::EdgeTooLarge => "edge_too_large",
             Self::Malformed => "malformed",
+            Self::HoldsNul => "holds_nul",
         }
     }
 }
@@ -164,10 +172,13 @@ impl ToolTraceCall<'_> {
         if !(1..=CALL_ID_MAX_BYTES).contains(&self.call_id.len()) {
             return Err(TraceRejection::CallIdUnusable);
         }
+        if !self.strings_free_of_nul() {
+            return Err(TraceRejection::HoldsNul);
+        }
         if encoded_len(&self.arguments) > ARGS_MAX_BYTES {
             return Err(TraceRejection::ArgumentsTooLarge);
         }
-        if !self.arguments.values().all(leaves_fit) {
+        if !fields_fit(&self.arguments) {
             return Err(TraceRejection::ArgumentTooLong);
         }
         let edges = [self.output_head.as_deref(), self.output_tail.as_deref()];
@@ -175,6 +186,16 @@ impl ToolTraceCall<'_> {
             return Err(TraceRejection::EdgeTooLarge);
         }
         Ok(())
+    }
+
+    /// Whether every string the call carries, arguments included, is free of
+    /// NUL.
+    fn strings_free_of_nul(&self) -> bool {
+        let edges = [self.output_head.as_deref(), self.output_tail.as_deref()];
+        free_of_nul(&self.call_id)
+            && free_of_nul(&self.name)
+            && edges.into_iter().flatten().all(free_of_nul)
+            && fields_free_of_nul(&self.arguments)
     }
 }
 
@@ -232,7 +253,16 @@ pub fn edge_fits(edge: &str) -> bool {
     edge.len() <= OUTPUT_EDGE_MAX_BYTES && edge.lines().count() <= OUTPUT_EDGE_MAX_LINES
 }
 
-/// Whether every string inside `value` is within [`ARGS_LEAF_MAX_BYTES`].
+/// Whether every key and string inside `fields` is within
+/// [`ARGS_LEAF_MAX_BYTES`].
+fn fields_fit(fields: &Map<String, Value>) -> bool {
+    fields
+        .iter()
+        .all(|(key, value)| key.len() <= ARGS_LEAF_MAX_BYTES && leaves_fit(value))
+}
+
+/// Whether every key and string inside `value` is within
+/// [`ARGS_LEAF_MAX_BYTES`].
 ///
 /// Recursion is bounded by the parser, which refuses documents nested past its
 /// own depth limit before a value reaches here.
@@ -240,7 +270,7 @@ fn leaves_fit(value: &Value) -> bool {
     match value {
         Value::String(text) => text.len() <= ARGS_LEAF_MAX_BYTES,
         Value::Array(items) => items.iter().all(leaves_fit),
-        Value::Object(fields) => fields.values().all(leaves_fit),
+        Value::Object(fields) => fields_fit(fields),
         Value::Null | Value::Bool(_) | Value::Number(_) => true,
     }
 }
@@ -249,9 +279,17 @@ fn leaves_fit(value: &Value) -> bool {
 ///
 /// Encoding maps with string keys, strings and integers cannot fail; a failure
 /// would answer the largest size, which every bound refuses.
-fn encoded_len<T: Serialize>(value: &T) -> usize {
+pub(crate) fn encoded_len<T: Serialize>(value: &T) -> usize {
     serde_json::to_vec(value).map_or(usize::MAX, |bytes| bytes.len())
 }
+
+#[path = "tool_trace/call_id.rs"]
+mod call_id;
+#[path = "tool_trace/nul.rs"]
+mod nul;
+
+pub use self::call_id::{CALL_ID_SEPARATOR, fenced_call_id, parse_fenced_call_id};
+pub use self::nul::{fields_free_of_nul, free_of_nul};
 
 #[cfg(test)]
 #[path = "tool_trace/tests.rs"]

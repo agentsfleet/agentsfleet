@@ -18,23 +18,10 @@
 //! report has parsed. One that is not a trace, or that breaks a bound, is
 //! dropped and logged, and the report settles without it.
 
-use afd_wire::tool_trace::RawToolTrace;
-
-/// Ends the fence in a fenced call id.
-///
-/// A fence renders as a decimal integer, which never holds `:`, so the first
-/// `:` always ends it whatever the runner's own id carries.
-const CALL_ID_SEPARATOR: char = ':';
+use afd_wire::tool_trace::{RawToolTrace, fenced_call_id};
 
 /// A report's trace was not stored; the run settles without it.
 const EVENT_TRACE_DROPPED: &str = "report_tool_trace_dropped";
-
-/// The runner's call id as the daemon publishes and stores it:
-/// `{fence}:{call_id}`.
-#[must_use]
-pub(crate) fn fenced(fence: i64, call_id: &str) -> String {
-    format!("{fence}{CALL_ID_SEPARATOR}{call_id}")
-}
 
 /// Who a trace belongs to, for the line a dropped one is logged under.
 #[derive(Debug, Clone, Copy)]
@@ -73,7 +60,7 @@ pub(crate) fn stored(raw: Option<RawToolTrace<'_>>, owner: TraceOwner<'_>) -> Op
         }
     };
     for call in &mut trace.calls {
-        call.call_id = fenced(owner.fence, &call.call_id).into();
+        call.call_id = fenced_call_id(owner.fence, &call.call_id).into();
     }
     // A narrowed trace is strings, integers and a JSON object, which always
     // encode; the `ok()` is the signature's, not a reachable drop.

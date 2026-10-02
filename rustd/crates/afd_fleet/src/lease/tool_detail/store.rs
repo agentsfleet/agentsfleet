@@ -9,14 +9,12 @@ use afd_core::id::Uuid7;
 use serde_json::Value;
 use sqlx::{Acquire as _, PgConnection, Row as _};
 
-use super::{Admissible, DetailTarget, Skip, within_budget};
+use super::{Admissible, DetailTarget, Kept, within_budget};
 use crate::error::{Result, query};
+use crate::lease::settle::Reported;
 use crate::lease::sql;
 use crate::lease::sql::tool_detail as statement;
 use crate::lease::store::Leases;
-
-/// Statement name, for the context a query failure carries.
-const CONTEXT_TARGET: &str = "tool detail lease load";
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_KEEP: &str = "tool detail keep";
@@ -25,70 +23,50 @@ const CONTEXT_KEEP: &str = "tool detail keep";
 const CONTEXT_DROP: &str = "tool detail dead fence drop";
 
 impl Leases {
-    /// The lease `lease_id` names, if `runner_id` holds it live.
-    pub(super) async fn detail_target(
+    /// One post, in one transaction: lock the lease, check its fence, clear
+    /// dead fences' records, and write the records that fit.
+    ///
+    /// The lease row stays locked until the commit, so nothing can supersede
+    /// the lease between the fence check and the write (`SELECT_LIVE_LEASE`).
+    pub(super) async fn keep_records(
         &self,
         lease_id: &str,
         runner_id: &Uuid7,
-        now: UnixMillis,
-    ) -> Result<Option<DetailTarget>> {
-        let mut connection = self.pool().acquire().await?;
-        let found = sqlx::query(statement::SELECT_LIVE_LEASE)
-            .bind(lease_id)
-            .bind(runner_id.as_str())
-            .bind(sql::LEASE_STATUS_ACTIVE)
-            .bind(now.as_millis())
-            .fetch_optional(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_TARGET))?;
-        let Some(row) = found else {
-            return Ok(None);
-        };
-        Ok(Some(DetailTarget {
-            fleet_id: row.try_get(0).map_err(query(CONTEXT_TARGET))?,
-            workspace_id: row.try_get(1).map_err(query(CONTEXT_TARGET))?,
-            event_id: row.try_get(2).map_err(query(CONTEXT_TARGET))?,
-            fence: row.try_get(3).map_err(query(CONTEXT_TARGET))?,
-            live_seq: row.try_get(4).map_err(query(CONTEXT_TARGET))?,
-        }))
-    }
-
-    /// Writes the records that fit the event's budget, in one transaction.
-    ///
-    /// Answers how many were written and which did not fit.
-    pub(super) async fn keep_records(
-        &self,
-        target: &DetailTarget,
+        presented: u64,
         candidates: BTreeMap<u64, Admissible<'_>>,
         now: UnixMillis,
-    ) -> Result<(usize, Vec<Skip>)> {
+    ) -> Result<Kept> {
+        let mut connection = self.pool().acquire().await?;
+        let mut transaction = connection.begin().await.map_err(query(CONTEXT_KEEP))?;
+        let Some(target) = locked_target(&mut transaction, lease_id, runner_id, now).await? else {
+            return Ok(Kept::NoLease);
+        };
+        if !target.holds(presented) {
+            return Ok(Kept::Fenced(target));
+        }
+        drop_others(
+            &mut transaction,
+            &target.fleet_id,
+            &target.event_id,
+            target.fence,
+        )
+        .await?;
         let numbers: Vec<i64> = candidates
             .keys()
             .map(|&number| i64::try_from(number).unwrap_or(i64::MAX))
             .collect();
-        let mut connection = self.pool().acquire().await?;
-        let mut transaction = connection.begin().await.map_err(query(CONTEXT_KEEP))?;
-        sqlx::query(statement::LOCK_EVENT)
-            .bind(&target.fleet_id)
-            .bind(&target.event_id)
-            .execute(&mut *transaction)
-            .await
-            .map_err(query(CONTEXT_KEEP))?;
-        let spent: i64 = sqlx::query_scalar(statement::SELECT_KEPT_BYTES)
-            .bind(&target.fleet_id)
-            .bind(&target.event_id)
-            .bind(target.fence)
-            .bind(&numbers)
-            .fetch_one(&mut *transaction)
-            .await
-            .map_err(query(CONTEXT_KEEP))?;
-        let (kept, over) = within_budget(candidates, usize::try_from(spent).unwrap_or(usize::MAX));
+        let (spent, replaced) = spend(&mut transaction, &target, &numbers).await?;
+        let (kept, over) = within_budget(candidates, spent, &replaced);
         let stored = kept.len();
         if stored > 0 {
-            self.upsert(&mut transaction, target, kept, now).await?;
+            self.upsert(&mut transaction, &target, kept, now).await?;
         }
         transaction.commit().await.map_err(query(CONTEXT_KEEP))?;
-        Ok((stored, over))
+        Ok(Kept::Stored {
+            target,
+            stored,
+            over,
+        })
     }
 
     /// One statement writing every kept record, its columns as arrays.
@@ -138,7 +116,7 @@ impl Leases {
         Ok(())
     }
 
-    /// Delete every other lease's records of the event that settled.
+    /// Delete every other lease's records of the event `lease` settles.
     ///
     /// Runs on the settling transaction's connection, beside the answer.
     ///
@@ -147,19 +125,94 @@ impl Leases {
     pub(crate) async fn drop_other_fences(
         &self,
         connection: &mut PgConnection,
-        fleet_id: &Uuid7,
-        event_id: &str,
-        fence: i64,
+        lease: &Reported,
     ) -> Result<()> {
-        sqlx::query(statement::DELETE_OTHER_FENCES)
-            .bind(fleet_id.as_str())
-            .bind(event_id)
-            .bind(fence)
-            .execute(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_DROP))?;
-        Ok(())
+        drop_others(
+            connection,
+            lease.fleet_id.as_str(),
+            &lease.event_id,
+            lease.fence.as_i64(),
+        )
+        .await
     }
+}
+
+/// The lease `lease_id` names, if `runner_id` holds it live, locked.
+async fn locked_target(
+    connection: &mut PgConnection,
+    lease_id: &str,
+    runner_id: &Uuid7,
+    now: UnixMillis,
+) -> Result<Option<DetailTarget>> {
+    let found = sqlx::query(statement::SELECT_LIVE_LEASE)
+        .bind(lease_id)
+        .bind(runner_id.as_str())
+        .bind(sql::LEASE_STATUS_ACTIVE)
+        .bind(now.as_millis())
+        .fetch_optional(&mut *connection)
+        .await
+        .map_err(query(CONTEXT_KEEP))?;
+    let Some(row) = found else {
+        return Ok(None);
+    };
+    Ok(Some(DetailTarget {
+        fleet_id: row.try_get(0).map_err(query(CONTEXT_KEEP))?,
+        workspace_id: row.try_get(1).map_err(query(CONTEXT_KEEP))?,
+        event_id: row.try_get(2).map_err(query(CONTEXT_KEEP))?,
+        fence: row.try_get(3).map_err(query(CONTEXT_KEEP))?,
+        live_seq: row.try_get(4).map_err(query(CONTEXT_KEEP))?,
+    }))
+}
+
+/// What the lease already keeps, and what each posted call's record spends.
+async fn spend(
+    connection: &mut PgConnection,
+    target: &DetailTarget,
+    numbers: &[i64],
+) -> Result<(usize, BTreeMap<u64, usize>)> {
+    let spent: i64 = sqlx::query_scalar(statement::SELECT_KEPT_BYTES)
+        .bind(&target.fleet_id)
+        .bind(&target.event_id)
+        .bind(target.fence)
+        .fetch_one(&mut *connection)
+        .await
+        .map_err(query(CONTEXT_KEEP))?;
+    let rows: Vec<(i64, i64)> = sqlx::query_as(statement::SELECT_REPLACED_BYTES)
+        .bind(&target.fleet_id)
+        .bind(&target.event_id)
+        .bind(target.fence)
+        .bind(numbers)
+        .fetch_all(&mut *connection)
+        .await
+        .map_err(query(CONTEXT_KEEP))?;
+    let replaced = rows
+        .into_iter()
+        .map(|(number, bytes)| (to_usize(number), to_usize(bytes)))
+        .map(|(number, bytes)| (u64::try_from(number).unwrap_or_default(), bytes))
+        .collect();
+    Ok((to_usize(spent), replaced))
+}
+
+/// A stored count as a size; a negative one, which nothing writes, is zero.
+fn to_usize(stored: i64) -> usize {
+    usize::try_from(stored).unwrap_or_default()
+}
+
+/// Delete every record of the event outside `fence`.
+async fn drop_others(
+    connection: &mut PgConnection,
+    fleet_id: &str,
+    event_id: &str,
+    fence: i64,
+) -> Result<()> {
+    sqlx::query(statement::DELETE_OTHER_FENCES)
+        .bind(fleet_id)
+        .bind(event_id)
+        .bind(fence)
+        .execute(&mut *connection)
+        .await
+        .map_err(query(CONTEXT_DROP))?;
+    Ok(())
 }
 
 /// The upsert's arrays, one per column, filled in step.

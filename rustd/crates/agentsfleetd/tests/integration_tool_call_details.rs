@@ -199,35 +199,41 @@ async fn test_event_detail_budget_caps_records() {
     run.cleanup().await;
 }
 
-/// Dimension 1.6. Settlement keeps only the settling fence's records.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn test_settle_drops_dead_lease_details() {
-    let mut supervisor = Supervisor::new();
-    let (run, http, lease_id, fence) = leased(&mut supervisor).await;
-    // A dead lease's record, as a reclaim would have left it.
+/// A dead lease's record, as a reclaim would have left it, under `fence`.
+async fn plant_dead_record(run: &Scenario, fence: u64) {
     let dead = afd_db::test_util::mint_id();
     execute(
-        &run,
+        run,
         &format!(
             "INSERT INTO core.fleet_tool_call_details \
              (id, workspace_id, fleet_id, event_id, fencing_token, call_number, arguments, \
               truncated_arguments, output, output_line_count, truncated, byte_count, \
               created_at, updated_at) \
-             SELECT '{dead}'::uuid, workspace_id, fleet_id, event_id, {}, 1, '{{}}'::jsonb, \
-                    false, 'dead', 1, false, 6, 0, 0 \
-             FROM core.fleet_events WHERE fleet_id = $1::uuid AND event_id = $2",
-            fence - 1
+             SELECT '{dead}'::uuid, workspace_id, fleet_id, event_id, {fence}, 1, '{{}}'::jsonb, \
+                    false, 'dead', 1, false, 256, 0, 0 \
+             FROM core.fleet_events WHERE fleet_id = $1::uuid AND event_id = $2"
         ),
     )
     .await;
+}
+
+/// Dimension 1.6. Settlement keeps only the settling fence's records, and the
+/// current lease's first post already clears a dead lease's.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn test_settle_drops_dead_lease_details() {
+    let mut supervisor = Supervisor::new();
+    let (run, http, lease_id, fence) = leased(&mut supervisor).await;
+    plant_dead_record(&run, fence - 1).await;
     let (status, _) = post_records(&http, &run, (&lease_id, fence), &[record(1, "live")]).await;
     assert_eq!(status, 200);
     assert_eq!(
         (rows_at(&run, fence - 1).await, rows_at(&run, fence).await),
-        (1, 1)
+        (0, 1),
+        "the current lease's post clears the dead lease's record"
     );
 
+    plant_dead_record(&run, fence - 1).await;
     let settled = post(
         &http,
         &run,
@@ -236,11 +242,7 @@ async fn test_settle_drops_dead_lease_details() {
     )
     .await;
     assert_eq!(settled.status().as_u16(), 200);
-    assert_eq!(
-        rows_at(&run, fence - 1).await,
-        0,
-        "the dead lease's record goes"
-    );
+    assert_eq!(rows_at(&run, fence - 1).await, 0, "settlement drops it too");
     assert_eq!(rows_at(&run, fence).await, 1, "the settling lease's stays");
     supervisor.shutdown().await;
     run.cleanup().await;

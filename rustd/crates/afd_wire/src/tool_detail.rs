@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use serde_json::{Map, Value};
 
+use crate::tool_trace::{encoded_len, fields_free_of_nul, free_of_nul};
+
 /// The most bytes one record's output, or its encoded arguments, may hold.
 pub const DETAIL_FIELD_MAX_BYTES: usize = 64 * 1024;
 
@@ -21,6 +23,13 @@ pub const DETAIL_EVENT_MAX_BYTES: usize = 1024 * 1024;
 /// The largest body one post may send.
 pub const DETAIL_POST_MAX_BYTES: usize = 256 * 1024;
 
+/// The least a kept record spends of its event's budget, however small it is.
+///
+/// Each row costs storage beyond its payload — an id, its keys, three index
+/// entries — so an event cannot keep hundreds of thousands of tiny records
+/// inside a byte budget that counted only their payload.
+pub const DETAIL_RECORD_MIN_BYTES: usize = 256;
+
 /// One finished call as the runner records it.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,14 +37,19 @@ pub const DETAIL_POST_MAX_BYTES: usize = 256 * 1024;
 pub struct ToolCallRecord<'a> {
     /// The call's number in its run, from 1: the `n` of the `{fence}:{n}`
     /// call id the live frames and the trace carry.
+    #[cfg_attr(
+        feature = "openapi",
+        schema(minimum = 1, maximum = 9_223_372_036_854_775_807_u64)
+    )]
     pub call_number: u64,
     /// Every argument the call was made with, secret values masked. At most
-    /// 65536 bytes encoded.
+    /// 65536 bytes encoded, with no NUL character.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub arguments: Map<String, Value>,
     /// Whether the runner cut the arguments to fit.
     pub truncated_arguments: bool,
-    /// Everything the call returned, at most 65536 bytes.
+    /// Everything the call returned, at most 65536 bytes, with no NUL
+    /// character.
     #[serde(borrow)]
     pub output: Cow<'a, str>,
     /// How many lines the whole output had, before any cut.
@@ -46,10 +60,13 @@ pub struct ToolCallRecord<'a> {
 
 impl ToolCallRecord<'_> {
     /// The bytes this record spends of its event's budget: its arguments
-    /// encoded, plus its output.
+    /// encoded, plus its output, and never less than
+    /// [`DETAIL_RECORD_MIN_BYTES`].
     #[must_use]
     pub fn byte_count(&self) -> usize {
-        arguments_len(&self.arguments).saturating_add(self.output.len())
+        encoded_len(&self.arguments)
+            .saturating_add(self.output.len())
+            .max(DETAIL_RECORD_MIN_BYTES)
     }
 
     /// Check this record's own bounds.
@@ -61,7 +78,10 @@ impl ToolCallRecord<'_> {
         if !numbered {
             return Err(DetailRejection::Malformed);
         }
-        if arguments_len(&self.arguments) > DETAIL_FIELD_MAX_BYTES
+        if !free_of_nul(&self.output) || !fields_free_of_nul(&self.arguments) {
+            return Err(DetailRejection::Malformed);
+        }
+        if encoded_len(&self.arguments) > DETAIL_FIELD_MAX_BYTES
             || self.output.len() > DETAIL_FIELD_MAX_BYTES
         {
             return Err(DetailRejection::TooLarge);
@@ -108,8 +128,8 @@ impl<'a> RawToolCallRecord<'a> {
 /// Why one record was not kept.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DetailRejection {
-    /// Not a record: the wrong shape, or a call number outside 1 to
-    /// `i64::MAX`.
+    /// Not a record: the wrong shape, a call number outside 1 to `i64::MAX`,
+    /// or a NUL character the store cannot hold.
     Malformed,
     /// Arguments or output over [`DETAIL_FIELD_MAX_BYTES`].
     TooLarge,
@@ -173,14 +193,6 @@ pub struct ToolCallDetail<'a> {
     pub output_line_count: u64,
     /// Whether the output was cut to fit 65536 bytes.
     pub truncated: bool,
-}
-
-/// How many bytes `arguments` encodes to as compact JSON.
-///
-/// A map of string keys and JSON values always encodes; a failure would
-/// answer the largest size, which every bound refuses.
-fn arguments_len(arguments: &Map<String, Value>) -> usize {
-    serde_json::to_vec(arguments).map_or(usize::MAX, |bytes| bytes.len())
 }
 
 #[cfg(test)]

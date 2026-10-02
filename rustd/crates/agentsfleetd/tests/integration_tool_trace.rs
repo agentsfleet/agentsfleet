@@ -29,7 +29,7 @@ use crate::wire::{field, json as body_of, post, report_body};
 pub(crate) const REPORTS: &str = "/v1/runners/me/reports";
 
 /// A trace of `count` calls, numbered from 1 as the runner numbers them.
-fn trace(count: usize) -> Value {
+pub(crate) fn trace(count: usize) -> Value {
     let calls: Vec<Value> = (1..=count)
         .map(|n| {
             json!({"call_id": n.to_string(), "name": "file_read",
@@ -42,7 +42,7 @@ fn trace(count: usize) -> Value {
 }
 
 /// The report a run sends, carrying `tool_calls`.
-fn report_with(lease_id: &str, run: &Scenario, fence: u64, tool_calls: Value) -> Value {
+pub(crate) fn report_with(lease_id: &str, run: &Scenario, fence: u64, tool_calls: Value) -> Value {
     let mut body = report_body(lease_id, &run.event_id, fence);
     body["tool_calls"] = tool_calls;
     body
@@ -68,7 +68,7 @@ async fn nullable_column(run: &Scenario, column: &str) -> Option<String> {
 }
 
 /// The stored trace of the scenario's event, parsed, or `None`.
-async fn stored_trace(run: &Scenario) -> Option<Value> {
+pub(crate) async fn stored_trace(run: &Scenario) -> Option<Value> {
     nullable_column(run, "tool_calls")
         .await
         .map(|text| serde_json::from_str(&text).expect("the column holds JSON"))
