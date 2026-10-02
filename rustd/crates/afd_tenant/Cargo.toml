@@ -51,6 +51,9 @@ sha2.workspace = true
 sqlx = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tracing.workspace = true
+# The invite domain rule reads a host the way browsers do: a name, never an
+# IP spelling, with Unicode names in their ASCII form.
+url.workspace = true
 petname.workspace = true
 
 [features]
