@@ -253,6 +253,7 @@ N/A — no files deleted.
 
 ## Out of Scope
 
+- A cap on invite sends (per invite or per account): Indy, Oct 02, 2026, "Skip this (or ignore) I donot see this issue in day 1, a future spec".
 - A retention sweep for closed invite rows (§2) — revisit when a data-retention rule lands in `docs/` or someone asks for an invited address to be erased.
 - A client-side expiry filter, and an "expired" state on the `/invites/{invite_id}` card (§3).
 - A `member_removed` product event, and any invitee-domain property.
