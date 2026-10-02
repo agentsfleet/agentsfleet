@@ -24,7 +24,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Baseline revision:** pending — record the full comparison commit at CHORE(open)
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
-**Depends on:** M209_001 (frame outcome, saved trace), M209_003 (full call read)
+**Depends on:** M209_001 (frame outcome, saved trace), M209_003 (full call read). Production rows need the Rust runner that emits them (`docs/architecture/runner_execution.md`); every test here drives fixture frames
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 02, 2026) from a source trace on `main` at `93e96897a`; assistant-ui read from the installed `@assistant-ui/react` 0.15.22 / core 0.3.21; Codex TUI rules read at `~/Projects/oss/rs/codex` `2e5fea64e`
 **Canonical architecture:** `docs/architecture/user_flow.md` §chat surface; `docs/architecture/runner_fleet.md` §Live activity
 
@@ -288,4 +288,5 @@ Proxy          : /live/v1/workspaces/{ws}/fleets/{fleet}/events/{event}/tool-cal
 - **Consults** — Indy (in-session, Oct 02, 2026): "Codex-style tool rows and others ensure we are able to show more information"; "The tool call preview like we see in codex nothing must be hidden, isnt codex displaying all / i need the visuals as well really cool"; chose "Full output on click (Recommended)"; then "just explore the rust code of codex as well and make our agentsfleet robust." The ASCII sample shown in-session is the target look. Agent defaults: current Codex's 3-row preview (the screenshots mix builds), per-turn figures and timestamps as the extras, approvals and warnings moved to the next milestone.
 - **Metrics review** — No analytics or funnel playbook update required: no new tracked user action.
 - **Skill-chain outcomes** — pending.
+- **Re-scope (Oct 02, 2026)** — Indy chose a fresh Rust runner ("The port is a fresh port, since we always have the last binary with us and running."). This spec's rendering is unchanged; its frames come from that runner, and Codex engine events map onto the same frames (`docs/architecture/runner_execution.md` §Coding engines).
 - **Deferrals** — none.
