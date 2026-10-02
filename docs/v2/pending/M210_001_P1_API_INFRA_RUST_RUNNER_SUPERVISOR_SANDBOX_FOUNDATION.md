@@ -34,7 +34,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** Against a real `agentsfleetd`, the Rust runner leases an event, starts a hardened bubblewrap sandbox from the toolbox, executes a scripted turn's tool calls through its in-sandbox executor, streams their frames, renews, pushes memory, spools and posts the report, and destroys the sandbox. A process inside cannot reach the network, gain a capability, write outside its workspace or exceed its memory, process or disk limits.
 **Problem:** Outage repair needs a fleet to run real programs — git, builds, tests, Python — inside a boundary that holds against tenant code, with the model key kept out of that boundary, a disk quota that is enforced, and a test lane that proves a lease end to end against the daemon (none exists, `docs/architecture/testing.md:197`). Indy chose a fresh Rust runner, independent of the Zig one, to provide it.
-**Solution summary:** New `afr_*` crates and two binaries in `rustd`, following its principles (`docs/architecture/runner_execution.md` §Crates). A supervisor speaks the ten runner verbs through `afd_wire` and keeps every duty the daemon relies on: worker pool, renewal, a report spooled before posting, a bounded activity sender, credential minting, memory hydrate and push, bundle fetch, the startup sweep, the capability report. A bubblewrap engine builds each lease's sandbox from a read-only toolbox image, a per-lease disk image and a hardened profile, and `agentsfleet-executor` inside serves process and file calls over a Unix socket. The agent loop is a trait whose only implementation here is a scripted test engine; providers, tools and the cutover come next.
+**Solution summary:** New `afr_*` crates and two binaries in `rustd`, following its principles (`docs/architecture/runner_execution.md` §Crates). A supervisor speaks the ten runner verbs through `afd_wire` and keeps every duty the daemon relies on: worker pool, renewal, a report spooled before posting, a bounded activity sender, credential minting, memory hydrate and push, bundle fetch, the startup sweep, the capability report. A bubblewrap engine builds each lease's sandbox from a read-only toolbox image, a per-lease workspace disk and a hardened profile, and `agentsfleet-executor` inside serves process and file calls over a Unix socket. The agent loop is a trait whose only implementation here is a scripted test engine; providers, tools and the cutover come next.
 
 ## PR Intent & comprehension handshake
 
@@ -56,7 +56,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `rustd/Cargo.toml`, `rustd/crates/agentsfleet_runner/`, `rustd/crates/agentsfleet_executor/` | EDIT / CREATE | Workspace members; two binaries that only compose library crates |
 | `rustd/crates/afr_supervisor/` (`client.rs`, `lease_loop.rs`, `worker_pool.rs`, `renew.rs`, `report_spool.rs`, `activity.rs`, `credentials.rs`, `memory.rs`, `bundles.rs`, `storage_home.rs`, `capability.rs`, `error.rs`) | CREATE | The daemon-facing duties, one concern per file |
-| `rustd/crates/afr_sandbox/` (`engine.rs`, `bubblewrap.rs`, `seccomp.rs`, `landlock.rs`, `cgroup.rs`, `disk.rs`, `toolbox.rs`, `warm_pool.rs`, `unsandboxed.rs`, `error.rs`) | CREATE | Engine interface, the hardened bubblewrap engine, and a test-only unsandboxed engine release builds refuse |
+| `rustd/crates/afr_sandbox/` (`engine.rs`, `bubblewrap.rs`, `seccomp.rs`, `landlock.rs`, `cgroup.rs`, `workspace_disk.rs`, `toolbox.rs`, `warm_slots.rs`, `unsandboxed.rs`, `error.rs`) | CREATE | Engine interface, the hardened bubblewrap engine, and a test-only unsandboxed engine release builds refuse |
 | `rustd/crates/afr_executor/` (`protocol.rs`, `server.rs`, `client.rs`, `process.rs`, `fs.rs`, `error.rs`) | CREATE | Executor protocol, the in-sandbox server and the supervisor's client |
 | `rustd/crates/afr_agent/` (`engine.rs`, `error.rs`), `rustd/crates/afr_agent/tests/support/scripted.rs` | CREATE | The agent-engine trait; a scripted test engine as its only implementation here |
 | `rustd/crates/afr_sandbox/tests/kernel_lane.rs` | CREATE | Real-sandbox proofs on Linux, refusing to skip silently |
@@ -68,7 +68,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Applicable Rules
 
-- **`docs/greptile-learnings/RULES.md`** — UFS (limits, paths, syscall lists and method names are constants), OWN (each sandbox, cgroup, disk image and child has one owner and one cleanup), FLS (drain executor output and child pipes on every exit path), TIM (renew window, grace periods and timeouts are explicit), ECL (5xx renew keeps the lease, 4xx ends it), STR (the executor is proven over its real socket), FXS, TCF, TST-NAM, OBS, ERR-RS, NDC.
+- **`docs/greptile-learnings/RULES.md`** — UFS (limits, paths, syscall lists and method names are constants), OWN (each sandbox, cgroup, workspace disk and child has one owner and one cleanup), FLS (drain executor output and child pipes on every exit path), TIM (renew window, grace periods and timeouts are explicit), ECL (5xx renew keeps the lease, 4xx ends it), STR (the executor is proven over its real socket), FXS, TCF, TST-NAM, OBS, ERR-RS, NDC.
 - `dispatch/write_rust.md` + `docs/RUST_ERROR_STANDARD.md` — one `ErrorKind` per crate through `afd_core::error_shell!`; every refusal keeps its cause.
 - `dispatch/write_shell.md` — the toolbox build script: quoted expansions, temp-file cleanup.
 - `docs/LOGGING_STANDARD.md` — scoped events with `error_code`; never log a secret, a token or tool output.
@@ -111,16 +111,16 @@ A worker pool runs N leases, one fleet each. Renewal keeps the lease on a 5xx an
 - **Dimension 2.5** — Memory hydrates at start and pushes with the fencing token before the report → Test `test_memory_push_fenced_before_report`
 - **Dimension 2.6** — A bundle whose bytes miss their hash is refused → Test `test_bundle_hash_mismatch_refused`
 - **Dimension 2.7** — Boot removes an orphaned lease workspace and keeps foreign directories → Test `test_storage_home_sweeps_orphans_only`
-- **Dimension 2.8** — The capability report states whether `/dev/kvm` is present and usable, so the daemon knows which hosts can take a Firecracker engine → Test `test_capability_report_states_kvm`
+- **Dimension 2.8** — The capability report states whether `/dev/kvm` is present and usable, so the daemon knows which hosts can take a Firecracker engine, and whether the kernel can mount the toolbox's filesystem (EROFS), without which no sandbox can be built → Test `test_capability_report_states_kvm_and_toolbox_fs`
 
 ### §3 — A hardened bubblewrap engine
 
-Each lease gets fresh user, PID, IPC, UTS, mount and network namespaces; `--cap-drop ALL`, `--disable-userns`, `--clearenv`, `--die-with-parent`, `--new-session`. Inside, before the executor reads anything: `no_new_privs`, Landlock, then a seccomp filter refusing `io_uring_*`, `ptrace`, `process_vm_readv`, `process_vm_writev`, `unshare`, `bpf`, `keyctl` and `perf_event_open`. The executor refuses to start if any capability remains. Cgroup v2 limits memory, processor, process count and I/O, and ends the whole tree. **Implementation default:** the writable area is a per-lease ext4 image sized to the lease's disk limit, loop-mounted and deleted at lease end, because it works on any host filesystem and costs no memory, unlike XFS project quotas or tmpfs. The network namespace has loopback only; the allowlist arrives with workspaces. The supervisor runs with a bounded capability set (mounts, cgroups, namespaces); tenant code never holds one. **Firecracker-ready:** the engine interface assumes no filesystem shared with the host. The workspace is a block image, the toolbox an image file, and the executor a Unix socket on the host side, which is how a microVM's vsock surfaces. A Firecracker engine then attaches the same artifacts unchanged.
+Each lease gets fresh user, PID, IPC, UTS, mount and network namespaces; `--cap-drop ALL`, `--disable-userns`, `--clearenv`, `--die-with-parent`, `--new-session`. Inside, before the executor reads anything: `no_new_privs`, Landlock, then a seccomp filter refusing `io_uring_*`, `ptrace`, `process_vm_readv`, `process_vm_writev`, `unshare`, `bpf`, `keyctl` and `perf_event_open`. The executor refuses to start if any capability remains. Cgroup v2 limits memory, processor, process count and I/O, and ends the whole tree. **Implementation default:** the workspace disk is a per-lease ext4 image sized to the lease's disk limit, loop-mounted at `/workspace` and deleted at lease end, because it works on any host filesystem and costs no memory, unlike XFS project quotas or tmpfs. The network namespace has loopback only; the allowlist arrives with workspaces. The supervisor runs with a bounded capability set (mounts, cgroups, namespaces); tenant code never holds one. **Firecracker-ready:** the engine interface assumes no filesystem shared with the host. The workspace disk is a block image, the toolbox an image file, and the executor a Unix socket on the host side, which is how a microVM's vsock surfaces. A Firecracker engine then attaches the same artifacts unchanged.
 
 - **Dimension 3.1** — A process inside reports zero effective and permitted capabilities → Test `test_sandbox_process_has_no_capabilities`
 - **Dimension 3.2** — `unshare`, `bpf`, `keyctl`, `perf_event_open` and `io_uring_setup` fail with `EPERM` → Test `test_seccomp_refuses_listed_syscalls`
 - **Dimension 3.3** — A write outside the workspace and `/tmp` is denied → Test `test_landlock_denies_write_outside_workspace`
-- **Dimension 3.4** — Writing past the disk limit fails with `ENOSPC`, and the image is gone after the lease → Test `test_disk_image_enforces_limit_and_is_removed`
+- **Dimension 3.4** — Writing past the disk limit fails with `ENOSPC`, and the workspace disk is gone after the lease → Test `test_workspace_disk_enforces_limit_and_is_removed`
 - **Dimension 3.5** — A fork bomb hits `pids.max` and a memory hog is killed, without touching the supervisor → Test `test_cgroup_limits_contain_runaway`
 - **Dimension 3.6** — A TCP connect to any address outside loopback fails → Test `test_sandbox_has_no_network`
 - **Dimension 3.7** — A sandbox that cannot be established refuses the lease instead of running it unsandboxed → Test `test_unbuildable_sandbox_refuses_lease`
@@ -145,12 +145,12 @@ JSON-RPC over a Unix socket bound into the sandbox: spawn (pipes or a pseudo-ter
 - **Dimension 5.2** — An image whose hash does not match is never mounted → Test `test_toolbox_hash_mismatch_refused`
 - **Dimension 5.3** — A lease sees the toolbox read-only: `git --version` runs and writing `/usr` fails → Test `test_lease_sees_toolbox_read_only`
 
-### §6 — Warm sandboxes and a measured start budget
+### §6 — Warm slots and a measured start budget
 
-Each host keeps a configured number of sandboxes pre-made (namespaces, cgroup, disk image mounted), so a lease start binds the workspace and starts the executor. The kernel lane measures lease-accept to executor-ready, cold and warm, and VERIFY records both figures in Discovery as the budget later specs guard.
+Each host keeps a configured number of warm slots: sandboxes already started, each with its cgroup made, an empty workspace disk mounted and its executor idle, so a lease start fills the workspace and hands the slot its lease. A slot serves one lease and is destroyed with it; the host starts a new one in its place. The kernel lane measures lease-accept to executor-ready, cold and warm, and VERIFY records both figures in Discovery as the budget later specs guard.
 
-- **Dimension 6.1** — A lease taken from the warm pool reaches executor-ready faster than a cold one, and both figures are reported → Test `test_warm_start_beats_cold_start`
-- **Dimension 6.2** — A warm sandbox is never reused after a lease → Test `test_warm_sandbox_single_use`
+- **Dimension 6.1** — A lease taken from a warm slot reaches executor-ready faster than a cold one, and both figures are reported → Test `test_warm_start_beats_cold_start`
+- **Dimension 6.2** — A warm slot is never reused after a lease → Test `test_warm_slot_single_use`
 
 ### §7 — Two lanes prove it
 
@@ -163,7 +163,7 @@ The integration lane runs the runner against the real daemon with compose Postgr
 
 ```
 agentsfleet-runner run           supervisor (systemd unit)
-agentsfleet-runner probe         capability report, including /dev/kvm
+agentsfleet-runner probe         capability report: /dev/kvm, toolbox filesystem mountable
 agentsfleet-executor            in-sandbox executor; bound read-only into each sandbox
 
 Executor (JSON-RPC 2.0, Unix socket bound at /run/agentsfleet/executor.sock inside the sandbox)
@@ -188,6 +188,7 @@ AgentEngine (Rust trait): run(lease, executor, events) → Outcome   (scripted o
 | Executor or sandbox dies | Crash, cgroup kill | Open calls end `interrupted`; the run reports its outcome (Dimension 4.6) |
 | Runaway process | Fork bomb, memory hog, disk fill | Cgroup and disk limits contain it; the supervisor is untouched (Dimensions 3.4, 3.5) |
 | Tampered toolbox | Wrong image on disk | Not mounted; leases refused until a verified image exists (Dimension 5.2) |
+| Host cannot mount the toolbox | Kernel lacks the toolbox's filesystem | Capability report says so; no sandbox can be built, so every lease is refused (Dimensions 2.8, 3.7) |
 | Live-tail backlog | Slow daemon | Batches past four dropped and counted; the report is unaffected (Dimension 2.4) |
 | Kernel lane host lacks a feature | CI image drift | Lane fails loudly (Dimension 7.2) |
 
@@ -221,11 +222,11 @@ AgentEngine (Rust trait): run(lease, executor, events) → Outcome   (scripted o
 | 2.5 | unit | `test_memory_push_fenced_before_report` | run end → push with token, then report |
 | 2.6 | unit | `test_bundle_hash_mismatch_refused` | tampered bytes → refused, not cached |
 | 2.7 | unit | `test_storage_home_sweeps_orphans_only` | orphan lease dir + foreign dir → only orphan removed |
-| 2.8 | unit | `test_capability_report_states_kvm` | fake `/dev/kvm` present and absent → report says each |
+| 2.8 | unit | `test_capability_report_states_kvm_and_toolbox_fs` | fake `/dev/kvm` present and absent, `erofs` listed and missing in a fake `/proc/filesystems` → report says each |
 | 3.1 | kernel | `test_sandbox_process_has_no_capabilities` | `/proc/self/status` CapEff and CapPrm all zero |
 | 3.2 | kernel | `test_seccomp_refuses_listed_syscalls` | each listed call → `EPERM` |
 | 3.3 | kernel | `test_landlock_denies_write_outside_workspace` | write `/opt/x` → denied; `/workspace/x` → ok |
-| 3.4 | kernel | `test_disk_image_enforces_limit_and_is_removed` | 64 MiB limit, write 80 MiB → `ENOSPC`; image gone after |
+| 3.4 | kernel | `test_workspace_disk_enforces_limit_and_is_removed` | 64 MiB limit, write 80 MiB → `ENOSPC`; workspace disk gone after |
 | 3.5 | kernel | `test_cgroup_limits_contain_runaway` | fork bomb → `pids.max`; 2 GiB hog → killed; supervisor alive |
 | 3.6 | kernel | `test_sandbox_has_no_network` | connect `1.1.1.1:443` → fails |
 | 3.7 | kernel | `test_unbuildable_sandbox_refuses_lease` | Landlock unavailable → lease refused, nothing executed |
@@ -240,7 +241,7 @@ AgentEngine (Rust trait): run(lease, executor, events) → Outcome   (scripted o
 | 5.2 | unit | `test_toolbox_hash_mismatch_refused` | flipped byte → not mounted, leases refused |
 | 5.3 | kernel | `test_lease_sees_toolbox_read_only` | `git --version` ok; `touch /usr/x` fails |
 | 6.1 | kernel | `test_warm_start_beats_cold_start` | warm p50 < cold p50; both logged |
-| 6.2 | unit | `test_warm_sandbox_single_use` | lease ends → its sandbox destroyed, pool refilled |
+| 6.2 | unit | `test_warm_slot_single_use` | lease ends → its sandbox destroyed, a new slot started |
 | 7.1 | integration | `test_rust_runner_lease_roundtrip` | scripted lease → frames, memory push, settled report, workspace removed |
 | 7.2 | kernel | `test_kernel_lane_refuses_to_skip` | feature probe fails → lane exits non-zero |
 
@@ -300,7 +301,8 @@ N/A — no files deleted. The Zig runner stays until the cutover spec deletes it
 
 ## Discovery (consult log)
 
-- **Consults** — Indy (in-session, Oct 02, 2026): "The port is a fresh port, since we always have the last binary with us and running." and "ensure we dont hoadwink and follow the runner zig as opposed to a fresh plate"; "preferrably avoiding Docker since its layer takes a while to load... I will need faster results as well"; multi-tenant on bare metal or VMs from the first release, Firecracker additional; "No, share freely" for code-running leases from different tenants. These supersede "the src/runner will be on zig no action needed there" (Sep 02, `M187_001`). Agent defaults: the per-lease ext4 disk image, 512 KiB output edges, a 2-second kill grace.
+- **Consults** — Indy (in-session, Oct 02, 2026): "The port is a fresh port, since we always have the last binary with us and running." and "ensure we dont hoadwink and follow the runner zig as opposed to a fresh plate"; "preferrably avoiding Docker since its layer takes a while to load... I will need faster results as well"; multi-tenant on bare metal or VMs from the first release, Firecracker additional; "No, share freely" for code-running leases from different tenants. These supersede "the src/runner will be on zig no action needed there" (Sep 02, `M187_001`). Agent defaults: the per-lease ext4 workspace disk, 512 KiB output edges, a 2-second kill grace.
+- **Naming** — Indy (Oct 02, 2026): "i think keep toolbox that is fine", reversing an earlier "base" pick. The read-only image is the toolbox, the per-lease writable image is the workspace disk, and a pre-started sandbox is a warm slot; `docs/architecture/runner_execution.md` §Facts carries all three.
 - **Engine sequencing** — Indy (Oct 02, 2026): "i think we must shoot for firecracker then", conditioned on "if its throwawy work", and asked for the quickest end-to-end path. With both engines behind one interface only Dimensions 3.1–3.3 are bubblewrap-specific, and bubblewrap stays as the development, CI and no-`/dev/kvm` engine. Indy confirmed: "Yes bubblewrap first, and firecracker next." A Firecracker spec follows this one; Dimension 2.8 makes every host report whether it can run it.
 - **Required human decision** — Indy's explicit approval of the `.github/workflows/lint.yml` edit that runs the kernel lane (`AGENTS.orly.md` §Hard Safety); R4 records it.
 - **Independence** — Indy (Oct 02, 2026): "A second copy of the wire will not be existing, none of the rust code will point to the zig." and "the rust code is independent and follows our current rustd/ principles". Daemon→runner types decode leniently so a runner never refuses a field a newer daemon adds; real-sandbox proofs once skipped silently everywhere (`M170_001`), hence Dimension 7.2.
