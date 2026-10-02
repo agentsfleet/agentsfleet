@@ -7,7 +7,7 @@
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
-use afd_dragonfly::{FleetStreams, Partition, ReadyIndex};
+use afd_dragonfly::{FleetStreams, ReadyIndex};
 use afd_runner::sweep::Sweep as _;
 use afd_runner::sweep::reclaim::Reclaim;
 
@@ -42,26 +42,24 @@ async fn reclaim_restores_only_a_fleet_with_deliverable_work() {
         "at least the fixture's deliverable fleet is re-marked"
     );
 
-    // Each fleet is looked for in ITS partition: the marks are spread by
-    // hash, and a sample of one partition says nothing about a fleet in
-    // another.
+    // Each fleet's own mark is read rather than sampled: a peek is a random
+    // sample of one partition, and once the lane holds more marks there than
+    // the sample takes, a mark that IS present can be missed.
     let index = ReadyIndex::new(queue.clone());
-    let deliverable = index
-        .peek(Partition::of(&fixture.deliverable), 100)
-        .await
-        .expect("the readiness index is readable");
     assert!(
-        deliverable
-            .iter()
-            .any(|ready| ready.fleet_id == fixture.deliverable),
+        index
+            .token_for(&fixture.deliverable)
+            .await
+            .expect("the readiness index is readable")
+            .is_some(),
         "a lost readiness hint is reconstructed from the stream"
     );
-    let empty = index
-        .peek(Partition::of(&fixture.empty), 100)
-        .await
-        .expect("the readiness index is readable");
     assert!(
-        empty.iter().all(|ready| ready.fleet_id != fixture.empty),
+        index
+            .token_for(&fixture.empty)
+            .await
+            .expect("the readiness index is readable")
+            .is_none(),
         "an empty stream does not create a false readiness hint"
     );
 

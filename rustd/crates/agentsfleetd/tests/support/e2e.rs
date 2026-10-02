@@ -45,7 +45,6 @@ use afd_core::clock::UnixMillis;
 use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_dragonfly::ReadyIndex;
 use afd_runner::Runners;
 use afd_wire::event::EventType;
 use agentsfleetd::serve::{Booted, boot};
@@ -53,6 +52,7 @@ use agentsfleetd::supervisor::Supervisor;
 
 use crate::e2e_db::scenario_database;
 use crate::e2e_event::{enqueue, enqueue_unsupported};
+use crate::e2e_retire::retire_fleet;
 use crate::e2e_seed::{
     DEEP_POOL, enrolment, seed_fleet, seed_model_rate, seed_platform_default, seed_wallet,
 };
@@ -325,23 +325,16 @@ impl Scenario {
         seed_wallet(&self.booted, &self.tenant, 0, self.seeded_at).await;
     }
 
-    /// Drops this scenario's database and clears its readiness mark.
+    /// Retires this scenario's fleet, then closes its pools.
     ///
-    /// Both halves, because the two datastores fail differently: a leaked
-    /// database is a slow accumulation the lane's reset eventually clears, while
-    /// a leaked ready mark competes for the next poll's bounded peek in the SAME
-    /// run. Takes `self` so the pools close before the drop — `WITH (FORCE)`
-    /// would evict them, and closing is the difference between a clean teardown
-    /// and one that relies on eviction.
+    /// Retired rather than only unmarked: a fleet left `active` with an open
+    /// lease is re-marked by the next daemon's reclaim sweeper and leased to
+    /// the next scenario's runner — see `e2e_retire`. Takes `self` so the
+    /// pools close with the scenario, and so no test can reach the fleet once
+    /// it is retired.
     pub(crate) async fn cleanup(self) {
         let Self { booted, fleet, .. } = self;
-
-        let index = ReadyIndex::new(booted.queue.clone());
-        if let Ok(token) = index.mark(&fleet).await {
-            let _cleared = index.clear_if_unchanged(&fleet, &token).await;
-        }
+        retire_fleet(&booted, &fleet).await;
         drop(booted);
-        // Nothing to drop: the scenario ran in the lane's own database, and its
-        // rows are keyed by identifiers no other scenario can name.
     }
 }
