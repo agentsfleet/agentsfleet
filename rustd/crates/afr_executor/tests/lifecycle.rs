@@ -175,7 +175,10 @@ async fn a_client_retries_a_socket_left_behind_with_no_one_listening() {
         .arg(&socket)
         .status()
         .unwrap();
-    assert!(left.success() && socket.exists(), "the socket file was left behind");
+    assert!(
+        left.success() && socket.exists(),
+        "the socket file was left behind"
+    );
 
     let refused = afr_executor::Client::connect_within(&socket, Duration::from_millis(100))
         .await
