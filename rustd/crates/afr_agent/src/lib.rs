@@ -9,6 +9,8 @@
 pub mod error;
 
 mod engine;
+#[cfg(feature = "test-util")]
+pub mod scripted;
 
 pub use self::engine::{AgentEngine, AgentRun, EventSink, RunOutput};
 pub use self::error::{Error, Result};
