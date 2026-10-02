@@ -7,6 +7,8 @@
 
 use std::sync::Arc;
 
+use afd_core::error_code;
+use afd_core::paging::{QUERY_LIMIT, QUERY_STARTING_AFTER};
 use afd_tenant::workspace::name::Chosen;
 use afd_wire::workspace::CreateWorkspaceRequest;
 use axum::Json;
@@ -22,8 +24,6 @@ use crate::handler::Refusal;
 use crate::request_id::RequestId;
 use crate::services::{Services, TenantWorkspaces as _, WorkspaceOwnership as _};
 
-use super::DETAIL_TENANT_REQUIRED;
-
 mod input;
 mod render;
 
@@ -37,6 +37,9 @@ use self::render::{created_response, page_response};
 const EVENT_LIST: &str = "workspace_list_failed";
 const EVENT_CREATE: &str = "workspace_create_failed";
 const EVENT_TENANT: &str = "workspace_tenant_unresolved";
+
+/// The exact-name filter's query parameter.
+const QUERY_NAME: &str = "name";
 
 /// The refusal a create body this daemon cannot read earns.
 pub const DETAIL_CREATE_BODY: &str = "Malformed JSON";
@@ -90,17 +93,15 @@ pub(crate) async fn list<D: Services>(
 ) -> Result<Response, Refusal> {
     let person = identity.person();
     let query = query.unwrap_or_default();
-    let limit = parse_limit(decoded(&query, "limit")?)?;
-    let after = parse_cursor(decoded(&query, "starting_after")?)?;
-    let filter = parse_name(decoded(&query, "name")?)?;
+    let limit = parse_limit(decoded(&query, QUERY_LIMIT)?)?;
+    let after = parse_cursor(decoded(&query, QUERY_STARTING_AFTER)?)?;
+    let filter = parse_name(decoded(&query, QUERY_NAME)?)?;
 
-    let principal = afd_auth::principal::Principal::Person(person.clone());
     let accounts = services
         .workspace_directory()
-        .accounts_of(&principal)
+        .accounts_of(person)
         .await
-        .map_err(Refusal::at(EVENT_TENANT))?
-        .ok_or_else(|| Refusal::forbidden(DETAIL_TENANT_REQUIRED))?;
+        .map_err(Refusal::at(EVENT_TENANT))?;
 
     let page = services
         .workspace_directory()
@@ -174,13 +175,12 @@ pub(crate) async fn create<D: Services>(
         .workspace_directory()
         .create(&tenant, chosen, person.subject().as_str(), services.now())
         .await
-        .map_err(|error| {
-            if error.code().as_str() == afd_core::error_code::WORKSPACE_NAME_EXISTS.as_str() {
-                Refusal::conflict_at(EVENT_CREATE, STATE_NAME_EXISTS)(error)
-            } else {
-                Refusal::at(EVENT_CREATE)(error)
-            }
-        })?;
+        .map_err(Refusal::conflict_or_at(
+            EVENT_CREATE,
+            |error: &afd_tenant::Error| {
+                (error.code() == error_code::WORKSPACE_NAME_EXISTS).then_some(STATE_NAME_EXISTS)
+            },
+        ))?;
     // Reported after the row is written, so the funnel counts workspaces that
     // exist. Fire-and-forget: the reporter queues and returns, because a person
     // waiting on a 201 must not also be waiting on an analytics endpoint.

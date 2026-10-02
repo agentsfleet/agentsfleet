@@ -16,13 +16,10 @@
 use afd_core::clock;
 use afd_core::event::status;
 use afd_core::id::Uuid7;
-use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
-use afd_db::{Db, Migrator};
 use afd_dragonfly::streams::FleetStreams;
 use afd_events::{Cursor, History, QUEUED_READ_TEXTS, Steer};
-use sqlx::{AssertSqlSafe, Row as _};
 
+use crate::integration_list_plans::{explain_generic, private_database};
 use crate::integration_steer_retry::clean;
 use crate::support::EventsLane;
 
@@ -203,22 +200,8 @@ async fn test_waiting_overflow_reaches_later_pages() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_queued_read_plans_on_the_undelivered_index() {
-    let database = TestDatabase::create().await;
-    let db: Db = database.open(DbRole::Migrator, &[]).await;
-    Migrator::new()
-        .run(&db)
-        .await
-        .expect("the private database migrates");
-    let tenant = mint_id();
+    let (database, db, tenant) = private_database().await;
     let mut connection = db.acquire().await.expect("a private connection");
-    sqlx::query(
-        "INSERT INTO core.tenants (id, name, created_at, updated_at) \
-         VALUES ($1::uuid, 'queued-plan', 1, 1)",
-    )
-    .bind(tenant.as_str())
-    .execute(&mut *connection)
-    .await
-    .expect("the tenant inserts");
     sqlx::query(SEED_LEDGER)
         .bind(tenant.as_str())
         .bind(1_700_000_000_000_i64)
@@ -232,17 +215,8 @@ async fn test_queued_read_plans_on_the_undelivered_index() {
         .await
         .expect("statistics refresh");
 
-    // The simple protocol, because the placeholders stay unbound; each text is
-    // this crate's own constant with a keyword in front of it.
     for (label, text) in QUEUED_READ_TEXTS {
-        let plan = sqlx::raw_sql(AssertSqlSafe(format!("EXPLAIN (GENERIC_PLAN) {text}")))
-            .fetch_all(&mut *connection)
-            .await
-            .expect("the waiting read explains")
-            .iter()
-            .map(|row| row.try_get::<String, _>(0).expect("a plan line is text"))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let plan = explain_generic(&mut connection, text).await;
         assert!(
             IN_FLIGHT_INDEXES.iter().any(|index| plan.contains(index)),
             "{label}: {plan}"

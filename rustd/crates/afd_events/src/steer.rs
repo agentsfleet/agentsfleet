@@ -90,6 +90,23 @@ pub const ACTOR_PREFIX: &str = "steer:";
 /// while automation did.
 pub const ACTOR_MACHINE: &str = "steer:api";
 
+/// The actor a person's steer records: [`ACTOR_PREFIX`], then their subject.
+///
+/// The one place the two are joined, so the route that writes the actor and
+/// the members list that names it cannot spell it two ways.
+#[must_use]
+pub fn steer_actor(subject: &str) -> String {
+    format!("{ACTOR_PREFIX}{subject}")
+}
+
+/// Whether `actor` is a steer's, a person's or [`ACTOR_MACHINE`].
+///
+/// The reading side of [`steer_actor`]: only a steer's body names typed words.
+#[must_use]
+pub fn is_steer_actor(actor: &str) -> bool {
+    actor.starts_with(ACTOR_PREFIX)
+}
+
 /// What a steer was answered with.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Steered {
@@ -316,3 +333,7 @@ fn steer_admission<'a>(
         reply: Reply::None,
     }
 }
+
+#[cfg(test)]
+#[path = "steer/tests.rs"]
+mod tests;

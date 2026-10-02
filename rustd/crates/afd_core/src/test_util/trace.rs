@@ -50,6 +50,14 @@ pub struct CapturedEvent {
     pub fields: HashMap<String, String>,
 }
 
+impl CapturedEvent {
+    /// One field's value as captured, when the event carries it.
+    #[must_use]
+    pub fn field(&self, name: &str) -> Option<&str> {
+        self.fields.get(name).map(String::as_str)
+    }
+}
+
 /// Records every event raised on this thread while it lives.
 ///
 /// Dropping it removes the subscriber first and then lets the next capture in:
@@ -111,7 +119,7 @@ impl Capture {
         let events = self.events();
         let mut matching = events
             .iter()
-            .filter(|event| event.fields.get(EVENT_FIELD).map(String::as_str) == Some(name));
+            .filter(|event| event.field(EVENT_FIELD) == Some(name));
         match (matching.next(), matching.next()) {
             (Some(one), None) => one.clone(),
             _ => panic!("expected exactly one {name} event, got {events:?}"),

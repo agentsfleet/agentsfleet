@@ -207,7 +207,8 @@ impl History {
             .map(EventDetailRow::read)
             .collect::<Result<Vec<_>>>()?;
         let waiting = queued::waiting(&mut connection, workspace, fleet, cursor, bound).await?;
-        Ok(queued::merged(delivered, waiting))
+        let cut = usize::try_from(bound).unwrap_or(usize::MAX);
+        Ok(queued::merged(delivered, waiting, cut))
     }
 
     /// The listing both entry points run: the text their scope, cursor and

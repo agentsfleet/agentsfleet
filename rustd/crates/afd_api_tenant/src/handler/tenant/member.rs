@@ -5,29 +5,38 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_events::ACTOR_PREFIX;
+use afd_events::steer_actor;
+use afd_http::handler::{IdPath, IdSegment};
 use afd_tenant::team::Member;
 use afd_wire::team::{MemberSummary, WorkspaceMember};
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
-use crate::auth::{PersonIdentity, WorkspaceContext};
+use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
 use crate::services::{Services, TenantTeam as _};
 
-use super::{DETAIL_TENANT_REQUIRED, one_page, tenant_of};
+use super::one_page;
+use super::own::OwnTenant;
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_LIST: &str = "member_list_failed";
+/// Pairs with `afd_tenant`'s `workspace_member_removed`.
 const EVENT_REMOVE: &str = "member_remove_failed";
 const EVENT_NAMES: &str = "workspace_members_failed";
-const EVENT_TENANT: &str = "member_tenant_unresolved";
 
 /// The refusal a path segment that is not an identifier earns.
 const DETAIL_USER_ID: &str = "user_id must be a valid UUIDv7";
+
+/// The `{user_id}` segment, which a malformed one refuses as [`DETAIL_USER_ID`].
+#[derive(Debug)]
+pub(crate) struct MemberSegment;
+
+impl IdSegment for MemberSegment {
+    const DETAIL: &'static str = DETAIL_USER_ID;
+}
 
 /// The state a last-owner 409 names.
 const STATE_LAST_OWNER: &str = "last_owner";
@@ -55,18 +64,11 @@ const STATE_LAST_OWNER: &str = "last_owner";
 ))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
-    identity: PersonIdentity,
+    owner: OwnTenant,
 ) -> Result<Response, Refusal> {
-    let tenant = tenant_of(
-        &services,
-        identity.person(),
-        DETAIL_TENANT_REQUIRED,
-        EVENT_TENANT,
-    )
-    .await?;
     let members = services
         .team()
-        .members(&tenant)
+        .members(owner.tenant())
         .await
         .map_err(Refusal::at(EVENT_LIST))?;
     Ok(Json(one_page(members.iter().map(member_summary).collect())).into_response())
@@ -100,28 +102,19 @@ pub(crate) async fn list<D: Services>(
 ))]
 pub(crate) async fn remove<D: Services>(
     State(services): State<Arc<D>>,
-    identity: PersonIdentity,
-    Path(user_id): Path<String>,
+    user: IdPath<MemberSegment>,
+    owner: OwnTenant,
 ) -> Result<Response, Refusal> {
-    let user = Uuid7::parse(&user_id).map_err(|_unparseable| Refusal::malformed(DETAIL_USER_ID))?;
-    let tenant = tenant_of(
-        &services,
-        identity.person(),
-        DETAIL_TENANT_REQUIRED,
-        EVENT_TENANT,
-    )
-    .await?;
     services
         .team()
-        .remove(&tenant, &user)
+        .remove(owner.tenant(), user.id())
         .await
-        .map_err(|error| {
-            if error.code() == error_code::MEMBER_LAST_OWNER {
-                Refusal::conflict_at(EVENT_REMOVE, STATE_LAST_OWNER)(error)
-            } else {
-                Refusal::at(EVENT_REMOVE)(error)
-            }
-        })?;
+        .map_err(Refusal::conflict_or_at(
+            EVENT_REMOVE,
+            |error: &afd_tenant::Error| {
+                (error.code() == error_code::MEMBER_LAST_OWNER).then_some(STATE_LAST_OWNER)
+            },
+        ))?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -177,6 +170,6 @@ fn workspace_member(member: &Member) -> WorkspaceMember<'_> {
         user_id: Cow::Borrowed(member.user.as_str()),
         display_name: member.display_name.as_deref().map(Cow::Borrowed),
         role: Cow::Borrowed(member.role.wire()),
-        actor: Cow::Owned(format!("{ACTOR_PREFIX}{}", member.subject)),
+        actor: Cow::Owned(steer_actor(&member.subject)),
     }
 }

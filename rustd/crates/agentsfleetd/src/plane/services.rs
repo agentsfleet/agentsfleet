@@ -97,7 +97,7 @@ impl Services for ServingPlane {
 
     /// Where a PERSON goes, which is a different deployment fact from
     /// [`Services::deployment`] below and never the same string.
-    fn dashboard(&self) -> &str {
+    fn dashboard(&self) -> &afd_connector::Dashboard {
         &self.app_url
     }
 

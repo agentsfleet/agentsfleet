@@ -74,7 +74,7 @@ pub(crate) async fn start<D: Services>(
         return Err(unconfigured());
     };
     let secret = state_secret(&services).await?;
-    let redirect_uri = relay_uri(&services, provider)?;
+    let redirect_uri = relay_uri(&services, provider);
 
     let started = services
         .connectors()

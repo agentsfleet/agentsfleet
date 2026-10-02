@@ -1,4 +1,5 @@
-//! The three dashboard URLs one connect round-trip travels through.
+//! The three dashboard URLs one connect round-trip travels through, and the
+//! dashboard base every one of them, and the invite link, hangs off.
 //!
 //! # Why they are one module and not three call sites
 //!
@@ -78,14 +79,54 @@ pub struct Handoff<'h> {
     pub installation_id: Option<&'h str>,
 }
 
-/// The `redirect_uri` this deployment mints authorization codes against.
+/// The dashboard's base URL, checked once at boot, and the pages under it.
 ///
-/// `None` for a dashboard base that is not a URL, which is a boot-time
-/// misconfiguration rather than anything a person did: the connect refuses
-/// rather than sending somebody to a page that cannot exist.
+/// Parsed where the deployment is configured rather than per request, so a
+/// base that is not a URL refuses boot instead of failing each connect and
+/// each invite on its own. Every page is built by path segment through
+/// `path_segments_mut`, so a base carrying a trailing slash, a sub-path, or a
+/// port produces one well-formed URL — where `{s}{s}` concatenation gives
+/// `https://host//api/...` for the first and silently drops the sub-path for
+/// the second.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Dashboard(Url);
+
+impl Dashboard {
+    /// `raw` as a dashboard base, or `None` when no page can hang off it.
+    ///
+    /// Refuses text that is not an absolute URL, and a URL with no path to
+    /// extend, such as `mailto:`.
+    #[must_use]
+    pub fn parse(raw: &str) -> Option<Self> {
+        Url::parse(raw)
+            .ok()
+            .filter(|base| !base.cannot_be_a_base())
+            .map(Self)
+    }
+
+    /// The base itself, for a surface that composes its own links from text.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    /// The page at `segments` under the base, each one encoded as one segment.
+    #[must_use]
+    pub fn page<'s>(&self, segments: impl IntoIterator<Item = &'s str>) -> Url {
+        let mut page = self.0.clone();
+        // `parse` refused every base that cannot carry a path, so the segments
+        // always land and there is no arm where they do not.
+        if let Ok(mut path) = page.path_segments_mut() {
+            path.pop_if_empty().extend(segments);
+        }
+        page
+    }
+}
+
+/// The `redirect_uri` this deployment mints authorization codes against.
 #[must_use]
-pub fn relay_uri(dashboard: &str, provider: Provider) -> Option<String> {
-    Some(relay(dashboard, provider)?.into())
+pub fn relay_uri(dashboard: &Dashboard, provider: Provider) -> String {
+    relay(dashboard, provider).into()
 }
 
 /// Where the browser goes when the provider hands the code back.
@@ -94,11 +135,9 @@ pub fn relay_uri(dashboard: &str, provider: Provider) -> Option<String> {
 /// parameters are OMITTED rather than sent empty: `location=` is a data centre
 /// named as the empty string, and the exchange would then redeem at the wrong
 /// accounts server for a provider that has several.
-///
-/// `None` as [`relay_uri`].
 #[must_use]
-pub fn relay_url(dashboard: &str, provider: Provider, handoff: Handoff<'_>) -> Option<String> {
-    let mut url = relay(dashboard, provider)?;
+pub fn relay_url(dashboard: &Dashboard, provider: Provider, handoff: Handoff<'_>) -> String {
+    let mut url = relay(dashboard, provider);
     {
         let mut query = url.query_pairs_mut();
         if let Some(code) = handoff.code {
@@ -112,188 +151,22 @@ pub fn relay_url(dashboard: &str, provider: Provider, handoff: Handoff<'_>) -> O
             query.append_pair(PARAM_INSTALLATION_ID, installation);
         }
     }
-    Some(url.into())
+    url.into()
 }
 
 /// Where a person lands once the connect has finished.
-///
-/// `None` as [`relay_uri`]. A connect that succeeded and cannot build this is
-/// still a connect that succeeded — see the caller on why that is a 200 rather
-/// than a failure.
 #[must_use]
-pub fn connected_url(dashboard: &str, workspace: &Uuid7) -> Option<String> {
-    let mut url = Url::parse(dashboard).ok()?;
-    url.path_segments_mut().ok()?.pop_if_empty().extend([
-        INTEGRATIONS_PATH,
-        workspace.as_str(),
-        INTEGRATIONS_LEAF,
-    ]);
-    Some(url.into())
+pub fn connected_url(dashboard: &Dashboard, workspace: &Uuid7) -> String {
+    dashboard
+        .page([INTEGRATIONS_PATH, workspace.as_str(), INTEGRATIONS_LEAF])
+        .into()
 }
 
 /// The relay path under `dashboard`, with no query on it yet.
-///
-/// Built through `path_segments_mut` rather than by formatting, so a base URL
-/// carrying a trailing slash, a sub-path, or a port produces one well-formed
-/// URL — where `{s}{s}` concatenation gives `https://host//api/...` for the
-/// first and silently drops the sub-path for the second.
-fn relay(dashboard: &str, provider: Provider) -> Option<Url> {
-    let mut url = Url::parse(dashboard).ok()?;
-    url.path_segments_mut()
-        .ok()?
-        .pop_if_empty()
-        .extend(RELAY_PATH)
-        .extend([provider.id(), RELAY_LEAF]);
-    Some(url)
+fn relay(dashboard: &Dashboard, provider: Provider) -> Url {
+    dashboard.page(RELAY_PATH.into_iter().chain([provider.id(), RELAY_LEAF]))
 }
 
 #[cfg(test)]
-mod tests {
-    #![expect(
-        clippy::expect_used,
-        reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
-    )]
-
-    use super::{Handoff, connected_url, relay_uri, relay_url};
-    use crate::provider::Provider;
-    use afd_core::id::Uuid7;
-
-    /// The dashboard base a suite builds URLs under.
-    const DASHBOARD: &str = "https://app.example.test";
-
-    /// A workspace identifier the destination is built for.
-    const WORKSPACE: &str = "01920000-0000-7000-8000-000000000001";
-
-    /// The relay spells the route the dashboard actually mounts.
-    ///
-    /// Its sibling below compares the minted URI against the returned one, and
-    /// both come out of `relay`, so it agrees with itself however the path is
-    /// built — it passed green while `RELAY_PATH` was one `"api/connectors"`
-    /// string that `path_segments_mut` encoded to a single `api%2Fconnectors`
-    /// segment. A vendor matches the registered callback URL literally, so the
-    /// literal is what has to be pinned.
-    #[test]
-    fn the_relay_spells_the_route_the_dashboard_mounts() {
-        assert_eq!(
-            relay_uri(DASHBOARD, Provider::GitHub).expect("a URL base"),
-            format!("{DASHBOARD}/api/connectors/github/callback"),
-        );
-        for provider in Provider::ALL.iter().copied() {
-            let minted = relay_uri(DASHBOARD, provider).expect("a URL base");
-            assert!(
-                !minted.contains('%'),
-                "`{provider}` relay carries percent-encoding: {minted}",
-            );
-        }
-    }
-
-    /// The relay a code is minted against is the relay it comes back to.
-    ///
-    /// The load-bearing property of this module: an exchange echoes the
-    /// redirect URI, so a relay that differed from the minted one by a slash
-    /// fails at the vendor with `redirect_uri_mismatch` — which reads like a
-    /// rotated client secret and sends an operator to the wrong place.
-    #[test]
-    fn the_minted_redirect_uri_is_the_relay_the_browser_returns_to() {
-        for provider in Provider::ALL.iter().copied() {
-            let minted = relay_uri(DASHBOARD, provider).expect("a URL base");
-            let returned = relay_url(
-                DASHBOARD,
-                provider,
-                Handoff {
-                    state: "s",
-                    ..Handoff::default()
-                },
-            )
-            .expect("a URL base");
-
-            assert_eq!(
-                returned.split('?').next(),
-                Some(minted.as_str()),
-                "`{provider}` must return to the relay its code was minted against",
-            );
-        }
-    }
-
-    /// A trailing slash on the configured base does not double.
-    ///
-    /// An operator writes `https://app.example.test/` as readily as without,
-    /// and `{s}{s}` concatenation turns that into `//api/connectors/...` — a
-    /// different path to the provider, and therefore a different redirect URI
-    /// from the one the code was minted against.
-    #[test]
-    fn a_trailing_slash_on_the_base_does_not_become_a_double_slash() {
-        assert_eq!(
-            relay_uri("https://app.example.test/", Provider::Slack),
-            relay_uri(DASHBOARD, Provider::Slack),
-        );
-    }
-
-    /// An absent parameter is omitted, never sent empty.
-    ///
-    /// `location=` is the one that bites: Zoho redeems only at the data centre
-    /// that issued the code, and an empty location reads as "unspecified" in
-    /// one place and as a value in another.
-    #[test]
-    fn an_absent_parameter_is_omitted_rather_than_sent_empty() {
-        let url = relay_url(
-            DASHBOARD,
-            Provider::Zoho,
-            Handoff {
-                code: Some("abc"),
-                state: "signed",
-                ..Handoff::default()
-            },
-        )
-        .expect("a URL base");
-
-        assert!(url.contains("code=abc"));
-        assert!(url.contains("state=signed"));
-        assert!(!url.contains("location"));
-        assert!(!url.contains("installation_id"));
-    }
-
-    /// Every parameter a provider can send survives encoding.
-    ///
-    /// The `&` is the case the hand-rolled encoder this replaces got wrong: a
-    /// code carrying one would otherwise split into two parameters and the
-    /// exchange would redeem a truncated code.
-    #[test]
-    fn a_parameter_carrying_a_separator_does_not_split_into_two() {
-        let url = relay_url(
-            DASHBOARD,
-            Provider::Slack,
-            Handoff {
-                code: Some("a&state=forged"),
-                state: "real",
-                ..Handoff::default()
-            },
-        )
-        .expect("a URL base");
-
-        assert!(url.contains("code=a%26state%3Dforged"));
-        assert_eq!(url.matches("state=").count(), 1);
-    }
-
-    /// A base that is not a URL builds nothing, rather than half a URL.
-    #[test]
-    fn a_base_that_is_not_a_url_answers_nothing() {
-        let workspace = Uuid7::parse(WORKSPACE).expect("a canonical identifier");
-
-        for base in ["", "not a url", "/relative"] {
-            assert_eq!(relay_uri(base, Provider::Jira), None, "`{base}` is no base");
-            assert_eq!(connected_url(base, &workspace), None, "`{base}` is no base");
-        }
-    }
-
-    /// The destination names the workspace the connect landed in.
-    #[test]
-    fn a_finished_connect_lands_on_its_own_workspaces_page() {
-        let workspace = Uuid7::parse(WORKSPACE).expect("a canonical identifier");
-
-        assert_eq!(
-            connected_url(DASHBOARD, &workspace).as_deref(),
-            Some("https://app.example.test/w/01920000-0000-7000-8000-000000000001/integrations"),
-        );
-    }
-}
+#[path = "callback/tests.rs"]
+mod tests;

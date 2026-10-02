@@ -5,7 +5,7 @@
 //! for the reason the access check gives it nothing else: an api-key or a
 //! terminal credential acts for the account it was minted in.
 
-use afd_auth::principal::{Person, Principal};
+use afd_auth::principal::Person;
 use afd_core::id::Uuid7;
 use sqlx::Row as _;
 use sqlx::postgres::PgRow;
@@ -58,23 +58,23 @@ impl Accounts {
 }
 
 impl Workspaces {
-    /// The accounts `principal` holds, with its role in each.
+    /// The accounts `person` holds, with their role in each.
+    ///
+    /// A person, not a principal: a runner holds no account, and taking the
+    /// type that cannot be one leaves no "none" answer to render.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, and a stored value this
-    /// build cannot read. A runner holds no account and answers `Ok(None)`.
-    pub async fn accounts_of(&self, principal: &Principal) -> Result<Option<Accounts>> {
-        let Some(person) = principal.person() else {
-            return Ok(None);
-        };
+    /// build cannot read.
+    pub async fn accounts_of(&self, person: &Person) -> Result<Accounts> {
         if reads_user_row(person)
             && let Some(accounts) = self.subject_accounts(person).await?
         {
-            return Ok(Some(accounts));
+            return Ok(accounts);
         }
         // A claim-bound credential, or a session whose subject has no user
         // row: the claim stands, the fallback `tenant_of` also takes.
-        self.claimed_account(person).await.map(Some)
+        self.claimed_account(person).await
     }
 
     /// Every account a signed-in person holds, or `None` with no user row.

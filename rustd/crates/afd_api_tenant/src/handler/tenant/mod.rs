@@ -17,6 +17,7 @@ mod invite_view;
 pub(crate) mod member;
 pub(crate) mod model_entry;
 pub(crate) mod models;
+mod own;
 pub(crate) mod provider;
 pub(crate) mod workspace;
 

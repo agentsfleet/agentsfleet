@@ -67,6 +67,13 @@ pub const HEARTBEAT_INTERVAL_MS: i64 = 10_000;
 /// `retry_after_ms`.
 pub const NO_WORK_RETRY_AFTER_MS: u32 = 1_000;
 
+/// One day, in the milliseconds every span here is counted in.
+///
+/// Not a lease value. It is the one spelling of a day for whatever counts in
+/// days — a rolling spend window, an invite's life, a `since=` duration — so no
+/// caller re-derives it from hours and minutes.
+pub const DAY_MS: i64 = 24 * 60 * 60 * 1_000;
+
 // The relationships, proven at compile time. `const` items are evaluated
 // whether or not anything reads them, so a value edited out of order fails the
 // BUILD rather than being caught by a test somebody might not run.

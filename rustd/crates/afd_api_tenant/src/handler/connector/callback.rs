@@ -103,8 +103,8 @@ const REASON_SLOT_SPENT: &str = "state_slot_spent";
 /// # Errors
 /// `UZ-CONN-004` for a provider this daemon does not ship, `UZ-REQ-001` for a
 /// callback carrying no state or a query this daemon cannot decode, and
-/// `UZ-CONN-001` for a dashboard base that is not a URL, or a destination that
-/// cannot be written as a `Location` header.
+/// `UZ-CONN-001` for a destination that cannot be written as a `Location`
+/// header.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/v1/connectors/{provider}/callback",
@@ -159,8 +159,7 @@ pub(crate) async fn relay<D: Services>(
             location: location.as_deref(),
             installation_id: installation_id.as_deref(),
         },
-    )
-    .ok_or_else(unconfigured)?;
+    );
 
     relayed(&destination)
 }
@@ -242,7 +241,7 @@ pub(crate) async fn complete<D: Services>(
         return Err(unconfigured());
     };
     let secret = state_secret(&services).await?;
-    let redirect_uri = relay_uri(&services, provider)?;
+    let redirect_uri = relay_uri(&services, provider);
 
     // Step 1 — the signature, the window, and whether this is the person who
     // started it. Touches no store, which is what keeps a replayed callback

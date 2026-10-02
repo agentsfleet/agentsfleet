@@ -66,23 +66,10 @@ pub(crate) const DETAIL_NOT_CONFIGURED: &str = "Connector is not configured";
 ///
 /// Built from the dashboard's own base URL rather than from the request, so the
 /// value a code is minted against and the value the exchange echoes are one
-/// fact — see [`Services::dashboard`] and [`afd_connector::callback`].
-///
-/// # Errors
-/// `UZ-CONN-001` for a dashboard base that is not a URL. A boot-time
-/// misconfiguration, refused rather than sending somebody to a page that cannot
-/// exist, and it answers as unconfigured because that is what it is.
-pub(crate) fn relay_uri<D: Services>(
-    services: &Arc<D>,
-    provider: Provider,
-) -> Result<String, Refusal> {
-    connector_urls::relay_uri(services.dashboard(), provider).ok_or_else(|| {
-        tracing::error!(
-            provider = provider.id(),
-            event = "connector_dashboard_base_unusable",
-        );
-        unconfigured()
-    })
+/// fact — see [`Services::dashboard`] and [`afd_connector::callback`]. The base
+/// was parsed at boot, so there is no request on which it fails to build.
+pub(crate) fn relay_uri<D: Services>(services: &Arc<D>, provider: Provider) -> String {
+    connector_urls::relay_uri(services.dashboard(), provider)
 }
 
 /// What this deployment signs connector install states with.

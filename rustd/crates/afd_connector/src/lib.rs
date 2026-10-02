@@ -77,7 +77,7 @@ pub mod test_util;
 pub mod zoho;
 
 pub use self::app::PlatformApp;
-pub use self::callback::Handoff;
+pub use self::callback::{Dashboard, Handoff};
 pub use self::complete::{Finishing, Landed};
 pub use self::connect::{Connectors, Spent, Started, Starting};
 pub use self::connection::Catalogued;

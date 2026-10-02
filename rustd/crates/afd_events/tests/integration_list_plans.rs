@@ -92,8 +92,9 @@ async fn run(connection: &mut PgConnection, statement: &'static str) {
         .unwrap_or_else(|failure| panic!("{statement}: {failure}"));
 }
 
-/// The generic plan of `text`, one line per plan row.
-async fn explain_generic(connection: &mut PgConnection, text: &str) -> String {
+/// The generic plan of `text`, one line per plan row. Shared with the
+/// waiting read's plan case in `integration_thread_queued.rs`.
+pub(crate) async fn explain_generic(connection: &mut PgConnection, text: &str) -> String {
     // The simple protocol, because the text's placeholders stay unbound: a
     // prepared EXPLAIN would ask for values. The text is this crate's own
     // constant with a keyword in front of it, never input.
@@ -109,7 +110,7 @@ async fn explain_generic(connection: &mut PgConnection, text: &str) -> String {
 
 /// A database of this test's own, migrated from `schema/`, and the tenant
 /// its decoys belong to.
-async fn private_database() -> (TestDatabase, Db, String) {
+pub(crate) async fn private_database() -> (TestDatabase, Db, String) {
     let database = TestDatabase::create().await;
     let db = database.open(DbRole::Migrator, &[]).await;
     Migrator::new()

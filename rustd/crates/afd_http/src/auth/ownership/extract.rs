@@ -28,34 +28,16 @@ impl<S: Send + Sync> axum::extract::FromRequestParts<S> for WorkspaceContext {
         parts: &mut http::request::Parts,
         _state: &S,
     ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
-        std::future::ready(
-            parts
-                .extensions
-                .get::<Owned>()
-                .cloned()
-                .map(Self)
-                .ok_or_else(|| {
-                    let request_id = RequestId::mint();
-                    let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-                    let request_id_field = request_id.as_str();
-                    // `error`: a handler asking whose workspace this is, mounted
-                    // on a route whose template carries no workspace, is a
-                    // routing table and a router disagreeing. No client
-                    // behaviour causes it and no retry fixes it.
-                    tracing::error!(
-                        error_code = code,
-                        request_id = request_id_field,
-                        event = "workspace_context_absent",
-                        "a workspace handler ran with no ownership verdict — its layer is not mounted"
-                    );
-                    ProblemResponse::new(
-                        error_code::INTERNAL_OPERATION_FAILED,
-                        DETAIL_NOT_YOURS,
-                        request_id,
-                    )
-                    .into_response()
-                }),
-        )
+        std::future::ready(parts.extensions.get::<Owned>().cloned().map(Self).ok_or_else(|| {
+            // `error`: a handler asking whose workspace this is, mounted on a
+            // route whose template carries no workspace, is a routing table
+            // and a router disagreeing. No client behaviour causes it and no
+            // retry fixes it.
+            layer_absent(
+                "workspace_context_absent",
+                "a workspace handler ran with no ownership verdict — its layer is not mounted",
+            )
+        }))
     }
 }
 
@@ -93,25 +75,34 @@ impl<S: Send + Sync> axum::extract::FromRequestParts<S> for Acting {
                 .cloned()
                 .map(Self)
                 .ok_or_else(|| {
-                    let request_id = RequestId::mint();
-                    let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-                    let request_id_field = request_id.as_str();
                     // `error`, for the reason the sibling above is: a handler
-                    // naming the caller, mounted on a route with no guard layer, is
-                    // the routing table and the router disagreeing.
-                    tracing::error!(
-                        error_code = code,
-                        request_id = request_id_field,
-                        event = "principal_absent",
-                        "a handler asked who the caller is with no guard in front of it"
-                    );
-                    ProblemResponse::new(
-                        error_code::INTERNAL_OPERATION_FAILED,
-                        DETAIL_NOT_YOURS,
-                        request_id,
+                    // naming the caller, mounted on a route with no guard
+                    // layer, is the routing table and the router disagreeing.
+                    layer_absent(
+                        "principal_absent",
+                        "a handler asked who the caller is with no guard in front of it",
                     )
-                    .into_response()
                 }),
         )
     }
+}
+
+/// The refusal for a handler whose layer is not mounted, logged as the routing
+/// fault it is: `event` names which layer, `message` what went missing.
+fn layer_absent(event: &'static str, message: &'static str) -> Response {
+    let request_id = RequestId::mint();
+    let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let request_id_field = request_id.as_str();
+    tracing::error!(
+        error_code = code,
+        request_id = request_id_field,
+        event,
+        message
+    );
+    ProblemResponse::new(
+        error_code::INTERNAL_OPERATION_FAILED,
+        DETAIL_NOT_YOURS,
+        request_id,
+    )
+    .into_response()
 }

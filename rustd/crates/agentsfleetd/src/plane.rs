@@ -120,7 +120,7 @@ pub struct ServingPlane {
     live: Live,
     analytics: Analytics,
     api_url: Box<str>,
-    app_url: String,
+    app_url: afd_connector::Dashboard,
 }
 
 impl ServingPlane {
@@ -249,7 +249,7 @@ impl ServingPlane {
                 afd_dragonfly::SessionStore::new(queue.clone()),
                 login.code_pepper,
                 Entropy::new(),
-                &login.app_url,
+                login.app_url.as_str(),
             ),
             // After `logins` above, which BORROWS it: a struct literal
             // evaluates its fields in order, so moving it first would leave

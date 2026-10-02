@@ -30,7 +30,7 @@ use jiff::tz::TimeZone;
 /// The rolling daily window's width.
 ///
 /// `budget.zig`'s `ROLLING_DAY_MS`, which is `std.time.ms_per_day`.
-const ROLLING_DAY_MS: i64 = 24 * 60 * 60 * 1_000;
+const ROLLING_DAY_MS: i64 = afd_core::timing::DAY_MS;
 
 /// Where each spend window opens.
 ///

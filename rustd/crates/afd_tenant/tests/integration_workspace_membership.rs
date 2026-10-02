@@ -11,7 +11,7 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_auth::principal::{PersonCredential, Principal, Runner};
+use afd_auth::principal::PersonCredential;
 use afd_auth::scope::ScopeSet;
 use afd_core::error_code;
 use afd_crypto::entropy::Entropy;
@@ -97,11 +97,11 @@ async fn the_accounts_a_person_holds_are_their_own_and_every_membership() {
     let workspaces = Workspaces::new(fixture.database.clone(), Entropy::new());
     let (john, bob) = (&fixture.john, &fixture.bob);
 
+    let bob_session = session(&bob.tenant, &bob.subject);
     let accounts = workspaces
-        .accounts_of(&session(&bob.tenant, &bob.subject))
+        .accounts_of(bob_session.person().expect("a session is a person"))
         .await
-        .expect("the account read answers")
-        .expect("a person holds accounts");
+        .expect("the account read answers");
     assert_eq!(accounts.home, id(&bob.tenant));
     assert_eq!(accounts.held.len(), 2, "{accounts:?}");
     let johns = accounts
@@ -137,10 +137,9 @@ async fn an_api_key_holds_only_its_own_account(workspaces: &Workspaces, bob: &Ac
         ScopeSet::EMPTY,
     );
     let by_key = workspaces
-        .accounts_of(&key)
+        .accounts_of(key.person().expect("a tenant api-key acts for a person"))
         .await
-        .expect("the account read answers")
-        .expect("a key holds its own account");
+        .expect("the account read answers");
     assert_eq!(
         by_key.held.len(),
         1,
@@ -153,21 +152,6 @@ async fn an_api_key_holds_only_its_own_account(workspaces: &Workspaces, bob: &Ac
     );
 }
 
-/// A runner acts for no person and holds no account.
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn should_answer_none_when_principal_is_a_runner() {
-    let fixture = Fixture::create().await;
-    let workspaces = Workspaces::new(fixture.database.clone(), Entropy::new());
-    let runner = Principal::Runner(Runner::new(id(&mint_id()), false));
-    let accounts = workspaces
-        .accounts_of(&runner)
-        .await
-        .expect("the account read answers");
-    assert_eq!(accounts, None);
-    fixture.cleanup().await;
-}
-
 /// A session whose subject has no user row falls back to the account its
 /// claim names, held as owner; a claim naming no account holds nothing.
 #[tokio::test]
@@ -177,11 +161,11 @@ async fn should_fall_back_to_claim_when_session_subject_has_no_user_row() {
     let workspaces = Workspaces::new(fixture.database.clone(), Entropy::new());
     let unknown = format!("user_unknown_{}", mint_id());
 
+    let claim = session(&fixture.john.tenant, &unknown);
     let claimed = workspaces
-        .accounts_of(&session(&fixture.john.tenant, &unknown))
+        .accounts_of(claim.person().expect("a session is a person"))
         .await
-        .expect("the account read answers")
-        .expect("a person holds the claimed account");
+        .expect("the account read answers");
     assert_eq!(claimed.home, id(&fixture.john.tenant));
     assert_eq!(claimed.held.len(), 1, "{claimed:?}");
     assert!(
@@ -191,11 +175,11 @@ async fn should_fall_back_to_claim_when_session_subject_has_no_user_row() {
     );
 
     let nowhere = mint_id();
+    let nowhere_claim = session(&nowhere, &unknown);
     let empty = workspaces
-        .accounts_of(&session(&nowhere, &unknown))
+        .accounts_of(nowhere_claim.person().expect("a session is a person"))
         .await
-        .expect("the account read answers")
-        .expect("a person always answers");
+        .expect("the account read answers");
     assert_eq!(empty.home, id(&nowhere));
     assert!(empty.held.is_empty(), "{empty:?}");
     fixture.cleanup().await;

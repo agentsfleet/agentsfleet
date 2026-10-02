@@ -78,6 +78,8 @@ mod integration_team_email;
 mod integration_team_invites;
 #[path = "integration_team_members.rs"]
 mod integration_team_members;
+#[path = "integration_team_privacy.rs"]
+mod integration_team_privacy;
 #[path = "integration_team_races.rs"]
 mod integration_team_races;
 #[path = "integration_workspace_access_plan.rs"]

@@ -30,6 +30,7 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use afd_core::error_code;
 use afd_dragonfly::Message;
 use afd_wire::tail::FleetCounters;
 
@@ -165,9 +166,13 @@ impl Frame {
     /// Sent once, and last. It carries the registry code the caller's next
     /// request would be refused with, so a client stops reconnecting instead
     /// of retrying into the same refusal, and can say why the view went quiet.
+    /// That code is always [`error_code::AUTH_FORBIDDEN`], the ownership
+    /// layer's refusal for a workspace that is not the caller's, so it is
+    /// named here rather than passed in by each stream.
     #[must_use]
-    pub fn access_revoked(error_code: &str) -> Self {
-        let data = serde_json::json!({ KIND_KEY: KIND_ACCESS_REVOKED, "error_code": error_code });
+    pub fn access_revoked() -> Self {
+        let code = error_code::AUTH_FORBIDDEN.as_str();
+        let data = serde_json::json!({ KIND_KEY: KIND_ACCESS_REVOKED, "error_code": code });
         Self {
             seq: SYNTHETIC_SEQ,
             kind: Cow::Borrowed(KIND_ACCESS_REVOKED),

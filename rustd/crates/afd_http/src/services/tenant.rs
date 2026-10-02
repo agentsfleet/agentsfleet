@@ -1,7 +1,7 @@
 //! The tenant plane's HTTP seams: ownership, the workspace directory, api-keys,
 //! and terminal credentials.
 
-use afd_auth::principal::Principal;
+use afd_auth::principal::{Person, Principal};
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::paging::Page;
@@ -79,15 +79,15 @@ impl WorkspaceOwnership for afd_tenant::workspace::Workspaces {
 /// while these verbs are ordinary handler calls whose stub refuses like every
 /// other store. One trait would force one stub to be both things.
 pub trait TenantWorkspaces: Send + Sync + std::fmt::Debug + 'static {
-    /// The accounts a principal holds, with its role in each.
+    /// The accounts a person holds, with their role in each.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, and a stored value this
-    /// daemon cannot read. A principal with no account answers `Ok(None)`.
+    /// daemon cannot read.
     fn accounts_of(
         &self,
-        principal: &Principal,
-    ) -> impl Future<Output = afd_tenant::Result<Option<Accounts>>> + Send;
+        person: &Person,
+    ) -> impl Future<Output = afd_tenant::Result<Accounts>> + Send;
 
     /// One page of the workspaces across `tenants`, oldest first.
     ///
@@ -121,9 +121,9 @@ pub trait TenantWorkspaces: Send + Sync + std::fmt::Debug + 'static {
 impl TenantWorkspaces for afd_tenant::workspace::Workspaces {
     fn accounts_of(
         &self,
-        principal: &Principal,
-    ) -> impl Future<Output = afd_tenant::Result<Option<Accounts>>> + Send {
-        Self::accounts_of(self, principal)
+        person: &Person,
+    ) -> impl Future<Output = afd_tenant::Result<Accounts>> + Send {
+        Self::accounts_of(self, person)
     }
 
     fn page(

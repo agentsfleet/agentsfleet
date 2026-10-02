@@ -6,6 +6,7 @@
 //! present and well formed, which is the property every accessor below relies
 //! on — nothing downstream re-validates, and nothing downstream can.
 
+use afd_connector::Dashboard;
 use afd_core::id::Uuid7;
 use afd_cron::SigningKeys;
 use afd_crypto::secret::{Kek, SecretBytes};
@@ -41,7 +42,7 @@ pub struct BootConfig {
     pub(super) redis: DragonflyConfig,
     pub(super) kek: Kek,
     pub(super) session_code_pepper: SecretBytes,
-    pub(super) app_url: Box<str>,
+    pub(super) app_url: Dashboard,
     pub(super) api_url: Box<str>,
     pub(super) identity: IdentityConfig,
     pub(super) bundles: Option<BundleStoreConfig>,
@@ -152,9 +153,10 @@ impl BootConfig {
         &self.session_code_pepper
     }
 
-    /// Where a person goes to approve a command-line login.
+    /// Where a person goes: the dashboard a login approval, a connector
+    /// redirect and an invite link all hang off.
     #[must_use]
-    pub const fn app_url(&self) -> &str {
+    pub const fn app_url(&self) -> &Dashboard {
         &self.app_url
     }
 

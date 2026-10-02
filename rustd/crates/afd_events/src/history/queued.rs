@@ -15,6 +15,8 @@
 //! the later fact. The merged page is re-sorted newest-first on the history
 //! read's own key, so the page cut and its cursor above stay honest.
 
+use std::collections::HashSet;
+
 use afd_admission::{Producer, logical_id};
 use afd_core::event::status;
 use afd_core::id::Uuid7;
@@ -64,20 +66,26 @@ pub(super) async fn waiting(
     rows.iter().map(read).collect()
 }
 
-/// `delivered` and `waiting` as one page, newest first, each event once.
+/// `delivered` and `waiting` as one page, newest first, each event once, cut
+/// to the `bound` rows each read was asked for.
+///
+/// Each read returns up to `bound`, so the merge can hold twice that. The rows
+/// past the cut are the oldest, and both reads find them again from the
+/// cursor the page leaves, so cutting loses nothing.
 pub(super) fn merged(
     delivered: Vec<EventDetailRow>,
     waiting: Vec<EventDetailRow>,
+    bound: usize,
 ) -> Vec<EventDetailRow> {
-    let mut page = delivered;
+    let seen: HashSet<&str> = delivered
+        .iter()
+        .map(|row| row.row.event_id.as_str())
+        .collect();
     let fresh: Vec<EventDetailRow> = waiting
         .into_iter()
-        .filter(|queued| {
-            !page
-                .iter()
-                .any(|row| row.row.event_id == queued.row.event_id)
-        })
+        .filter(|queued| !seen.contains(queued.row.event_id.as_str()))
         .collect();
+    let mut page = delivered;
     if fresh.is_empty() {
         return page;
     }
@@ -85,6 +93,7 @@ pub(super) fn merged(
     page.sort_by(|a, b| {
         (b.row.created_at, &b.row.event_id).cmp(&(a.row.created_at, &a.row.event_id))
     });
+    page.truncate(bound);
     page
 }
 

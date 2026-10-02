@@ -93,6 +93,10 @@ pub const APP_URL_KNOB: &str = "APP_URL";
 /// The dashboard [`APP_URL_KNOB`] falls back to.
 pub(super) const APP_URL_DEFAULT: &str = "https://app.agentsfleet.net";
 
+/// Why [`APP_URL_KNOB`] must parse: every link a person follows hangs off it.
+pub(super) const WHY_APP_URL: &str =
+    "an absolute http(s) URL; every connector redirect and invite link is built under it";
+
 /// This deployment's own base URL, as a minted credential records it.
 ///
 /// Optional with a default, exactly as [`APP_URL_KNOB`] is and for the same

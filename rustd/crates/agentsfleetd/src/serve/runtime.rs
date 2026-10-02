@@ -122,7 +122,7 @@ pub(super) async fn open_runtime(
         },
         login: crate::plane::LoginConfig {
             code_pepper: config.session_code_pepper().clone(),
-            app_url: config.app_url().to_owned(),
+            app_url: config.app_url().clone(),
             api_url: config.api_url().into(),
         },
     }));

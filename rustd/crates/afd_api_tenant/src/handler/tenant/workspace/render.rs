@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 
+use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_core::paging::Cursor;
 use afd_tenant::workspace::accounts::Accounts;
@@ -15,6 +16,9 @@ use crate::request_id::RequestId;
 
 /// A listed row whose account the caller does not hold: an internal fault.
 const DETAIL_ACCOUNT_UNHELD: &str = "Workspace list could not be assembled";
+
+/// The event that fault is logged under, before the 500 goes out.
+const EVENT_ACCOUNT_UNHELD: &str = "workspace_list_account_unheld";
 
 /// One page across the caller's accounts, the caller's own account id, and the
 /// cursor that continues it.
@@ -60,10 +64,10 @@ fn summary<'row>(
     accounts: &'row Accounts,
 ) -> Result<WorkspaceSummary<'row>, Refusal> {
     let account = accounts.get(&row.tenant_id).ok_or_else(|| {
-        Refusal::coded(
-            afd_core::error_code::INTERNAL_OPERATION_FAILED,
-            DETAIL_ACCOUNT_UNHELD,
-        )
+        let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+        let tenant_id = row.tenant_id.as_str();
+        tracing::error!(error_code = code, tenant_id, event = EVENT_ACCOUNT_UNHELD);
+        Refusal::coded(error_code::INTERNAL_OPERATION_FAILED, DETAIL_ACCOUNT_UNHELD)
     })?;
     Ok(WorkspaceSummary {
         id: Cow::Borrowed(&row.id),
@@ -96,14 +100,16 @@ pub(super) fn created_response<'created>(
     reason = "test module: an unmet precondition should fail the test loudly"
 )]
 mod tests {
+    use afd_core::error_code;
     use afd_core::id::Uuid7;
+    use afd_core::test_util::trace::Capture;
     use afd_tenant::workspace::access::Role;
     use afd_tenant::workspace::accounts::{Account, Accounts};
     use afd_tenant::workspace::directory::{WorkspacePage, WorkspaceRow};
     use axum::response::IntoResponse as _;
     use http::StatusCode;
 
-    use super::page_response;
+    use super::{EVENT_ACCOUNT_UNHELD, page_response};
 
     const HOME: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011";
     const STRANGER: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1022";
@@ -132,11 +138,23 @@ mod tests {
             }],
             more: false,
         };
+        let capture = Capture::install();
         let refused = page_response(&page, &accounts)
             .expect_err("a row from an unheld account refuses the page");
         assert_eq!(
             refused.into_response().status(),
             StatusCode::INTERNAL_SERVER_ERROR
+        );
+        // A 500 is never silent: the fault is logged once, as the error it is.
+        let logged = capture.only(EVENT_ACCOUNT_UNHELD);
+        assert_eq!(logged.level, tracing::Level::ERROR);
+        assert_eq!(
+            logged.fields.get("error_code").map(String::as_str),
+            Some(error_code::INTERNAL_OPERATION_FAILED.as_str())
+        );
+        assert_eq!(
+            logged.fields.get("tenant_id").map(String::as_str),
+            Some(STRANGER)
         );
     }
 }

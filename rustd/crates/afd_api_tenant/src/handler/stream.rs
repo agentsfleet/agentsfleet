@@ -31,6 +31,7 @@
 
 mod body;
 mod guard;
+mod revocable;
 mod wall;
 
 /// The `data` line of the frame a revoked stream ends on, as both stream
