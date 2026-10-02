@@ -35,6 +35,8 @@ mod e2e;
 mod e2e_db;
 #[path = "support/e2e_event.rs"]
 mod e2e_event;
+#[path = "support/e2e_retire.rs"]
+mod e2e_retire;
 #[path = "support/e2e_seed.rs"]
 mod e2e_seed;
 #[path = "support/e2e_seed_keys.rs"]

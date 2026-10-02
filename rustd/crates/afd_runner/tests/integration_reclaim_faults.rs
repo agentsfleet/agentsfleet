@@ -19,6 +19,8 @@ use crate::support::{Recorder, connect_redis};
 
 /// Held by every test that runs a reclaim pass: a pass sweeps every active
 /// fleet in the lane, so two passes in parallel claim each other's entries.
+/// The liveness pass holds it too, because it expires the abandoned lease a
+/// reclaim fixture strands.
 pub(crate) static RECLAIM_LANE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// A consumer no process reads under any more.
