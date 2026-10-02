@@ -60,12 +60,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afr_executor/` (`protocol.rs`, `server.rs`, `client.rs`, `process.rs`, `fs.rs`, `error.rs`) | CREATE | Executor protocol, the in-sandbox server and the supervisor's client |
 | `rustd/crates/afr_agent/` (`engine.rs`, `error.rs`, `scripted.rs` behind `test-util`) | CREATE | The agent-engine trait; a scripted test engine as its only implementation here, behind `test-util` so the daemon's integration lane can drive it |
 | `rustd/crates/afr_sandbox/tests/kernel_lane.rs` | CREATE | Real-sandbox proofs on Linux, refusing to skip silently |
-| `rustd/crates/agentsfleetd/Cargo.toml`, `rustd/crates/agentsfleetd/tests/integration_rust_runner.rs` | EDIT / CREATE | The runner against the real daemon in the integration lane |
+| `rustd/crates/agentsfleetd/Cargo.toml`, `rustd/crates/agentsfleetd/tests/daemon_suite.rs`, `rustd/crates/agentsfleetd/tests/integration_rust_runner.rs` | EDIT / CREATE | The runner against the real daemon in the integration lane |
 | `rustd/crates/afd_wire/src/{lease,event,policy,runner,memory,credentials,activity,report}.rs`, `rustd/crates/afd_wire/tests/{strictness,memory_shapes}.rs`, `public/openapi.json` | EDIT | Drop `deny_unknown_fields` from the 23 types the runner reads; their published schemas lose `additionalProperties: false` |
 | `rustd/crates/afd_core/src/json.rs`, `rustd/crates/afd_http/src/handler/mod.rs`, `rustd/crates/afd_api_operator/src/handler/operator/runner_patch.rs`, `rustd/crates/afd_api_runner/src/handler/runner/{enrolment,memory}.rs` | EDIT | A strict reader for the three daemon requests that embed one of those types |
 | `scripts/toolbox/build.sh`, `scripts/toolbox/manifest.txt`, `make/build.mk` | CREATE / EDIT | `make toolbox-image`: a pinned, content-addressed, read-only toolbox image |
 | `make/test-unit.mk`, `.github/workflows/lint.yml` | EDIT | `make test-runner-kernel` and its Linux CI job. The workflow edit needs Indy's explicit approval (§Hard Safety) |
-| `docs/architecture/runner_execution.md` | EDIT | Landed at authoring: the supervisor's bounded capability set |
+| `docs/architecture/runner_execution.md`, `docs/RUST_ERROR_STANDARD.md` | EDIT | The supervisor's bounded capability set (landed at authoring) and `afd_observability` as a runner dependency; the runner crates' row in the error conformance table |
 
 ## Applicable Rules
 
