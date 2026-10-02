@@ -40,6 +40,7 @@ use crate::report_spool::ReportSpool;
 use crate::turns::FleetTurns;
 
 mod settle;
+mod workspace;
 
 /// How long a settled lease waits for its live tail to finish posting.
 pub(crate) const ACTIVITY_DRAIN_WAIT: Duration = Duration::from_secs(5);
@@ -211,11 +212,17 @@ impl Lessee {
         let Some(_turn) = claimed else {
             return failed(FailureClass::StartupPosture, DETAIL_TURN);
         };
-        if let Some(bundle) = &lease.bundle
-            && let Err(failure) = self.bundles.fetch(&self.plane, &bundle.content_hash).await
-        {
-            return refuse(ids, &failure, EVENT_BUNDLE_FAILED, DETAIL_BUNDLE);
-        }
+        let bundle = match &lease.bundle {
+            Some(manifest) => match self
+                .bundles
+                .fetch(&self.plane, &manifest.content_hash)
+                .await
+            {
+                Ok(bundle) => bundle,
+                Err(failure) => return refuse(ids, &failure, EVENT_BUNDLE_FAILED, DETAIL_BUNDLE),
+            },
+            None => None,
+        };
         let hydrated = match memory::hydrate(&self.plane, &ids.fleet).await {
             Ok(hydrated) => hydrated,
             Err(failure) => return refuse(ids, &failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY),
@@ -240,10 +247,11 @@ impl Lessee {
             }
         };
         let ending = self
-            .drive(
+            .in_sandbox(
                 lease,
                 ids,
                 &memory.memory,
+                bundle.as_ref(),
                 sandbox.as_ref(),
                 sink,
                 interrupt,

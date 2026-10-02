@@ -49,6 +49,34 @@ fn test_executor_refuses_path_escape() {
     );
 }
 
+/// A bundle's support files land in nested directories the workspace does
+/// not have yet.
+#[test]
+fn a_write_makes_its_missing_parent_directories() {
+    let (scratch, workspace) = fixture();
+
+    workspace.write("docs/guides/setup.md", b"guide").unwrap();
+
+    let written = std::fs::read(scratch.path().join("workspace/docs/guides/setup.md")).unwrap();
+    assert_eq!(written, b"guide");
+}
+
+/// Making parents never follows a link out of the workspace.
+#[test]
+fn a_write_never_makes_parents_through_a_link_out() {
+    let (scratch, workspace) = fixture();
+    symlink(
+        scratch.path().join("outside"),
+        scratch.path().join("workspace/link"),
+    )
+    .unwrap();
+
+    let refused = workspace.write("link/deeper/planted", b"x").unwrap_err();
+
+    assert_eq!(refused.rpc_code(), PATH_REFUSED_CODE, "{refused}");
+    assert!(!scratch.path().join("outside/deeper").exists());
+}
+
 #[test]
 fn an_absolute_path_under_the_root_is_the_same_file() {
     let (scratch, workspace) = fixture();

@@ -68,7 +68,10 @@ impl Lessee {
             let code = failure.code().as_str();
             let lease_id = ids.lease.as_str();
             let event = EVENT_CAPTURE_FAILED;
-            tracing::warn!(
+            // Error, not warning: the fleet's next run starts without these
+            // items. The report still settles, because withholding it would
+            // lose the answer too and let the lease lapse into a re-run.
+            tracing::error!(
                 error_code = code,
                 lease_id,
                 event,
