@@ -22,6 +22,20 @@ UNION ALL \
 SELECT 1 FROM core.users u WHERE u.tenant_id = $1::uuid AND lower(u.email) = $2 \
 LIMIT 1";
 
+/// Locks the address's pending invites until the issuing transaction commits.
+///
+/// `$1` tenant · `$2` address. Taken before [`SELECT_MEMBER_BY_EMAIL`], on the
+/// same rows [`LOCK_INVITE`] holds while an accept runs: an accept in flight
+/// makes the issue wait, its accepted row then drops out of this predicate,
+/// and the member check that follows reads the membership it wrote. Without
+/// it the check could miss that join and the accept would clear the
+/// one-pending-invite index for an invite to someone already in.
+pub const LOCK_PENDING_FOR_EMAIL: &str = concat!(
+    "SELECT 1 FROM core.invites WHERE tenant_id = $1::uuid AND email = $2",
+    pending_invite!(),
+    "FOR UPDATE"
+);
+
 /// Retires an expired pending invite for the address, so a new one can be
 /// issued under the one-pending-invite index.
 ///

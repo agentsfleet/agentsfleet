@@ -6,7 +6,9 @@
 //! waits, then reads the first one's stamp and answers as it did. The
 //! transaction makes a failure between the two writes leave neither, since a
 //! membership with no accepted invitation behind it is access nobody can
-//! account for.
+//! account for. Issuing takes the same row locks on the address's pending
+//! invitations before it checks membership, so an accept already in flight
+//! finishes first and the check sees the person it let in.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -53,6 +55,14 @@ impl Team {
             .await
             .map_err(&raise)?;
 
+        // Serialises with an accept of an earlier invite to this address, so
+        // the member check below sees a join that commits first.
+        sqlx::query(sql::LOCK_PENDING_FOR_EMAIL)
+            .bind(new.tenant.as_str())
+            .bind(new.email.as_str())
+            .execute(&mut *transaction)
+            .await
+            .map_err(&raise)?;
         let member: Option<i32> = sqlx::query_scalar(sql::SELECT_MEMBER_BY_EMAIL)
             .bind(new.tenant.as_str())
             .bind(new.email.as_str())
