@@ -20,3 +20,14 @@ afd_wire.workspace = true
 afr_executor.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true
+
+[features]
+# M-TEST-UTIL. The scripted engine the supervisor's lanes drive a lease with:
+# a fixed turn whose every frame is known, so a sandbox or wire fault cannot
+# hide behind a model's choices.
+test-util = []
+
+[dev-dependencies]
+bytes.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }
