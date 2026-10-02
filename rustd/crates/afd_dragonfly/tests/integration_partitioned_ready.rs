@@ -210,14 +210,19 @@ async fn test_coordination_recovers_during_partition_movement() {
     let first = mark_and_lose_a_poll(&index, &fleet).await;
     cluster.move_slot(slot, owner, target).await;
 
-    let found = index
+    // A peek is a random sample of the partition, so it proves the moved slot
+    // answers; the mark itself is read by its own field, which a lane holding
+    // more marks in this partition than the sample takes cannot hide.
+    index
         .peek(partition, CANDIDATE_BUDGET)
         .await
-        .expect("a peek answers on the moved slot")
-        .into_iter()
-        .find(|ready| ready.fleet_id == fleet)
+        .expect("a peek answers on the moved slot");
+    let found = index
+        .token_for(&fleet)
+        .await
+        .expect("the mark is readable on the moved slot")
         .expect("the mark a lost poll left behind is found after the move");
-    assert_eq!(found.token, first, "the mark followed its slot unchanged");
+    assert_eq!(found, first, "the mark followed its slot unchanged");
 
     let second = index
         .mark(&fleet)
@@ -247,11 +252,9 @@ async fn test_coordination_recovers_during_partition_movement() {
 async fn mark_and_lose_a_poll(index: &ReadyIndex, fleet: &str) -> ReadyToken {
     let token = index.mark(fleet).await.expect("mark");
     let lost_poll = index
-        .peek(Partition::of(fleet), CANDIDATE_BUDGET)
+        .token_for(fleet)
         .await
-        .expect("peek")
-        .into_iter()
-        .find(|ready| ready.fleet_id == fleet)
+        .expect("token_for")
         .expect("the mark is visible before the move");
     drop(lost_poll);
     token
