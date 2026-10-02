@@ -1,0 +1,23 @@
+[package]
+name = "afr_supervisor"
+description = "The runner's supervisor: the daemon-facing duties a lease relies on, outside every sandbox."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+afd_core.workspace = true
+afd_wire.workspace = true
+afr_agent.workspace = true
+afr_executor.workspace = true
+afr_sandbox.workspace = true
+thiserror.workspace = true

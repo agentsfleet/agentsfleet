@@ -115,6 +115,41 @@ where
     Ok(value)
 }
 
+/// [`object_from_slice`], refusing any field `T` would have ignored, at any depth.
+///
+/// # Why a reader rather than `#[serde(deny_unknown_fields)]`
+///
+/// A type the runner reads stays lenient, so a daemon that grows a field never
+/// strands a runner built before it. Some of those types are also embedded in a
+/// request a PERSON writes — an operator's assigned policy, an enrolment — and
+/// there a misspelled key must still be refused rather than dropped. The rule
+/// belongs to the boundary that reads the body, not to the type, so the
+/// boundary chooses this reader. `serde_ignored` reports every key the derive
+/// skipped, with its dotted path; the first one becomes serde's own
+/// unknown-field refusal, so [`unknown_field_of`] names it exactly as it names
+/// a refusal from a closed struct.
+///
+/// # Errors
+/// Everything [`object_from_slice`] refuses, plus `unknown field` for the first
+/// ignored key, path included — `policy.wroker_count`, or
+/// `assigned_policy.?.wroker_count` where `?` is `serde_ignored`'s spelling of
+/// the `Option` the key sat inside.
+pub fn strict_object_from_slice<'de, T>(body: &'de [u8]) -> Result<T, serde_json::Error>
+where
+    T: serde::Deserialize<'de>,
+{
+    let mut format = serde_json::Deserializer::from_slice(body);
+    let mut ignored = None;
+    let value = serde_ignored::deserialize(ObjectOnly(&mut format), |path| {
+        ignored.get_or_insert_with(|| path.to_string());
+    })?;
+    format.end()?;
+    match ignored {
+        Some(path) => Err(serde::de::Error::unknown_field(&path, &[])),
+        None => Ok(value),
+    }
+}
+
 /// The field name from an `unknown field` refusal, when that is what failed.
 ///
 /// # Why a whitelist rather than logging the error
@@ -340,5 +375,53 @@ mod tests {
             failure.to_string().contains("api_key"),
             "serde's own diagnosis is preserved: {failure}"
         );
+    }
+
+    /// A lenient outer shape embedding a lenient inner one, which is how a
+    /// runner-bound policy rides inside an operator's request.
+    #[derive(Debug, Deserialize)]
+    struct Assignment {
+        policy: Assigned,
+    }
+
+    /// The embedded shape. No `deny_unknown_fields`: the runner reads it.
+    #[derive(Debug, Deserialize)]
+    struct Assigned {
+        worker_count: u32,
+    }
+
+    #[test]
+    fn the_strict_reader_refuses_a_nested_key_the_type_would_ignore() {
+        let body = br#"{"policy":{"worker_count":2,"wroker_count":3}}"#;
+        let lenient: Assignment = object_from_slice(body).unwrap();
+        assert_eq!(
+            lenient.policy.worker_count, 2,
+            "precondition: the type ignores it"
+        );
+
+        let refused = super::strict_object_from_slice::<Assignment>(body)
+            .expect_err("a person's misspelled key is refused, not dropped");
+
+        assert_eq!(
+            super::unknown_field_of(&refused).as_deref(),
+            Some("policy.wroker_count"),
+            "the refusal names the key with its path"
+        );
+    }
+
+    #[test]
+    fn the_strict_reader_reads_an_exact_body() {
+        let parsed: Assignment =
+            super::strict_object_from_slice(br#"{"policy":{"worker_count":4}}"#).unwrap();
+
+        assert_eq!(parsed.policy.worker_count, 4);
+    }
+
+    #[test]
+    fn the_strict_reader_keeps_the_object_and_trailing_byte_refusals() {
+        super::strict_object_from_slice::<Pair>(br#"["anthropic","sk-live"]"#)
+            .expect_err("an array is still not an object");
+        super::strict_object_from_slice::<Pair>(br#"{"provider":"a","api_key":"b"} more"#)
+            .expect_err("trailing content is still refused");
     }
 }

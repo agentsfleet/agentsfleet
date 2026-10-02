@@ -22,7 +22,6 @@ pub const CUSTOM_PROVIDER_PREFIX: &str = "custom:";
 // hand-written contract gave it.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct NetworkPolicy<'a> {
     /// Exact hostnames the run may reach.
     #[serde(borrow)]
@@ -62,7 +61,6 @@ pub enum HttpPathMatch {
 /// One required top-level JSON field, with exactly one expected value set.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct HttpJsonFieldRule<'a> {
     /// The field name the rule locks.
     #[serde(borrow)]
@@ -80,7 +78,6 @@ pub struct HttpJsonFieldRule<'a> {
 /// available for request-specific content.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct HttpRequestRule<'a> {
     /// The method this rule admits.
     pub method: HttpMethod,
@@ -97,7 +94,6 @@ pub struct HttpRequestRule<'a> {
 /// The provider-neutral request boundary for one exact host.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct HttpOriginPolicy<'a> {
     /// The host this boundary governs.
     #[serde(borrow)]
@@ -116,7 +112,6 @@ pub struct HttpOriginPolicy<'a> {
 /// The child mints a short-lived token at the tool boundary through the runner.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Mintable<'a> {
     /// The placeholder name the fleet references.
     #[serde(borrow)]
@@ -140,7 +135,6 @@ pub enum RepositoryAccess {
 /// The repositories a run is bound to, and how it may use them.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct RepositoryBinding<'a> {
     /// Repositories the run may reach.
     #[serde(borrow)]
@@ -156,7 +150,6 @@ pub struct RepositoryBinding<'a> {
 /// passthrough — the runner does not interpret `model`.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ContextBudget<'a> {
     /// Tool results retained in the working window.
     pub tool_window: u32,
@@ -174,7 +167,6 @@ pub struct ContextBudget<'a> {
 /// Everything a single run is permitted to do.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ExecutionPolicy<'a> {
     /// Where the run may reach on the network.
     #[serde(borrow)]

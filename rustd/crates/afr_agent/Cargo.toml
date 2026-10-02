@@ -1,0 +1,22 @@
+[package]
+name = "afr_agent"
+description = "The runner's agent-engine seam: what runs one lease's turn, and where its activity goes."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+afd_core.workspace = true
+afd_wire.workspace = true
+afr_executor.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true

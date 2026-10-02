@@ -49,15 +49,35 @@ pub fn read_body<'de, T>(body: &'de [u8]) -> Result<T, serde_json::Error>
 where
     T: serde::Deserialize<'de>,
 {
-    afd_core::json::object_from_slice(body).inspect_err(|failure| {
-        if let Some(field) = afd_core::json::unknown_field_of(failure) {
-            tracing::warn!(
-                event = EVENT_UNKNOWN_FIELD,
-                field = field,
-                "a request named a field this build does not carry; it was refused"
-            );
-        }
-    })
+    afd_core::json::object_from_slice(body).inspect_err(log_unknown_field)
+}
+
+/// [`read_body`] for a request that embeds a runner-bound shape.
+///
+/// The types the runner reads accept fields they do not carry, so a newer
+/// daemon never strands an older runner. An operator's assigned policy and an
+/// enrolment embed one of those shapes, and a person typing them still has a
+/// misspelled key refused, at any depth, with its path in the log
+/// ([`afd_core::json::strict_object_from_slice`]).
+///
+/// # Errors
+/// As [`read_body`], plus `unknown field` for the first key the type ignored.
+pub fn read_strict_body<'de, T>(body: &'de [u8]) -> Result<T, serde_json::Error>
+where
+    T: serde::Deserialize<'de>,
+{
+    afd_core::json::strict_object_from_slice(body).inspect_err(log_unknown_field)
+}
+
+/// Logs the NAME of a refused unknown field, and nothing for any other failure.
+fn log_unknown_field(failure: &serde_json::Error) {
+    if let Some(field) = afd_core::json::unknown_field_of(failure) {
+        tracing::warn!(
+            event = EVENT_UNKNOWN_FIELD,
+            field = field,
+            "a request named a field this build does not carry; it was refused"
+        );
+    }
 }
 
 /// Refuses a request this daemon cannot read at all.

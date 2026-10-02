@@ -28,7 +28,6 @@ pub const HYDRATE_WINDOW_BYTES: usize = 256 * 1024;
 // the runner's live lease.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct MemoryDelta<'a> {
     /// Stable key. A repeated key overwrites rather than accumulating.
     #[serde(borrow)]
@@ -64,7 +63,6 @@ pub struct MemoryPushRequest<'a> {
 /// What a fleet remembers, compacted to fit one window.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct MemoryHydrateResponse<'a> {
     /// The window's items.
     #[serde(borrow)]
@@ -84,7 +82,6 @@ pub struct MemoryHydrateResponse<'a> {
 // call site are two keys nothing type-checks.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct MemoryCaptureResponse {
     /// Deltas written, after upsert.
     pub stored: usize,

@@ -38,6 +38,10 @@ base64.workspace = true
 # shipped: the crates it guards — the runner enrolment body, the JWT header,
 # the JWKS document — call it from production paths.
 serde_json.workspace = true
+# `json::strict_object_from_slice`: the keys a derive skipped, so a request a
+# person writes refuses a misspelled key inside a runner-bound shape that is
+# itself lenient.
+serde_ignored.workspace = true
 thiserror.workspace = true
 # `test_util::trace` only: the capture is a `tracing` layer. Optional, so the
 # value layer links neither outside `test-util`.
