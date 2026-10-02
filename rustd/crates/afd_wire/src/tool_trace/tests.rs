@@ -165,17 +165,29 @@ fn a_nul_anywhere_in_a_call_drops_the_trace() {
 }
 
 #[test]
-fn a_call_id_outside_its_bound_refuses_the_trace() {
-    assert_eq!(
-        trace(vec![call(&"c".repeat(CALL_ID_MAX_BYTES))]).validate(),
-        Ok(())
-    );
-    for unusable in [String::new(), "c".repeat(CALL_ID_MAX_BYTES + 1)] {
+fn a_call_id_that_is_not_a_call_number_refuses_the_trace() {
+    assert_eq!(trace(vec![call(&i64::MAX.to_string())]).validate(), Ok(()));
+    // pin test: literal is the contract — these are ids a runner may send.
+    for unusable in [
+        "",
+        "0",
+        "-1",
+        "+3",
+        "abc",
+        "3a",
+        " 3",
+        "9223372036854775808",
+    ] {
         assert_eq!(
-            trace(vec![call(&unusable)]).validate(),
-            Err(TraceRejection::CallIdUnusable)
+            trace(vec![call(unusable)]).validate(),
+            Err(TraceRejection::CallIdUnusable),
+            "{unusable:?} names no call \"show all\" can open"
         );
     }
+    assert_eq!(
+        trace(vec![call(&"1".repeat(CALL_ID_MAX_BYTES + 1))]).validate(),
+        Err(TraceRejection::CallIdUnusable)
+    );
 }
 
 #[test]
@@ -341,7 +353,7 @@ fn a_raw_trace_compares_by_its_text_and_reports_its_size() {
 /// Every published bound on the trace is the constant that enforces it.
 #[test]
 fn published_descriptions_state_the_bounds_they_enforce() {
-    use super::{CALL_ID_MAX_BYTES, OUTPUT_EDGE_MAX_LINES};
+    use super::OUTPUT_EDGE_MAX_LINES;
     let openapi = include_str!("../../../../../public/openapi.json");
     let document: serde_json::Value = serde_json::from_str(openapi).expect("the spec parses");
     let field = |schema: &str, property: &str| {
@@ -353,8 +365,7 @@ fn published_descriptions_state_the_bounds_they_enforce() {
             .map(|text| text.split_whitespace().collect::<Vec<_>>().join(" "))
             .unwrap_or_default()
     };
-    let cases: [(&str, &str, &[usize]); 5] = [
-        ("ToolTraceCall", "call_id", &[CALL_ID_MAX_BYTES]),
+    let cases: [(&str, &str, &[usize]); 4] = [
         (
             "ToolTraceCall",
             "arguments",
