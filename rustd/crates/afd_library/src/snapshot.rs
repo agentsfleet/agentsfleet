@@ -50,3 +50,7 @@ fn append(builder: &mut tar::Builder<Vec<u8>>, path: &str, content: &[u8]) -> io
     header.set_cksum();
     builder.append_data(&mut header, path, content)
 }
+
+#[cfg(test)]
+#[path = "snapshot/tests.rs"]
+mod tests;
