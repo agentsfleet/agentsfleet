@@ -28,6 +28,7 @@ const EMAIL_FIELD = "Email";
 const SEND = "Send";
 const CANCEL = "Cancel";
 const CLOSE = "Close";
+const DONE = "Done";
 const INVITE_READY = "invite-ready";
 const INVITE_LINK = "Invite link";
 const ENTER_AN_ADDRESS = "Enter an email address";
@@ -144,6 +145,32 @@ describe("a create that settles", () => {
     expect(close.disabled).toBe(false);
     expect(cancel.disabled).toBe(false);
     await user.click(close);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+});
+
+// The members page reloads its lists in its own transition when a create
+// settles. React entangles that reload with the dialog's send, so the send's
+// pending flag outlived the send and Done was ignored until the reload ended.
+function ReloadingPage() {
+  const [, startTransition] = React.useTransition();
+  const reloadThatNeverEnds = () => startTransition(() => new Promise<void>(() => {}));
+  return <InviteDialog onSettled={reloadThatNeverEnds} />;
+}
+
+describe("closing once the invite exists", () => {
+  it("should close on Done while the page is still reloading its lists", async () => {
+    actions.createInviteAction.mockResolvedValue({ ok: true, data: INVITE });
+    render(<ReloadingPage />, { wrapper: TooltipProvider });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: INVITE_BUTTON }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(EMAIL_FIELD), INVITE.email);
+    await user.click(within(dialog).getByRole("button", { name: SEND }));
+    const ready = await screen.findByTestId(INVITE_READY);
+
+    await user.click(within(ready).getByRole("button", { name: DONE }));
+
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 });
