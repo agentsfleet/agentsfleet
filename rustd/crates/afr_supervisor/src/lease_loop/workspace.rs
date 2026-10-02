@@ -8,7 +8,7 @@ use afr_executor::Executor;
 use afr_sandbox::Sandbox;
 use tokio_util::sync::CancellationToken;
 
-use super::{Ids, Lessee, failed};
+use super::{DETAIL_RENEWAL, Ids, Lessee, failed};
 use crate::activity::ActivitySink;
 use crate::bundles::Bundle;
 use crate::report::Ending;
@@ -21,7 +21,8 @@ const EVENT_LANDING_FAILED: &str = "bundle_landing_failed";
 impl Lessee {
     /// Lands the bundle's support files in the workspace, then runs the turn.
     /// A bundle that will not land is a startup failure before the model is
-    /// invoked, as a missing one is.
+    /// invoked, as a missing one is; a lease that ends while it lands stops
+    /// the landing there, so its worker and sandbox are freed at once.
     #[expect(
         clippy::too_many_arguments,
         reason = "the lease, its identities, memory, bundle, sandbox, sink and interrupt are each the run's own"
@@ -36,7 +37,13 @@ impl Lessee {
         sink: ActivitySink,
         interrupt: &CancellationToken,
     ) -> Ending {
-        if let Err(failure) = materialize(sandbox.executor(), bundle).await {
+        let landed = tokio::select! {
+            landed = materialize(sandbox.executor(), bundle) => landed,
+            () = interrupt.cancelled() => {
+                return failed(FailureClass::RenewalTerminate, DETAIL_RENEWAL);
+            }
+        };
+        if let Err(failure) = landed {
             let code = failure.code().as_str();
             let lease_id = ids.lease.as_str();
             let event = EVENT_LANDING_FAILED;
