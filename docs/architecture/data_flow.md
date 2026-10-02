@@ -441,7 +441,7 @@ Three surfaces changed with it: the events table's prose cell, the fleet header'
 
 `tool_calls`, the run's bounded tool trace (at most 200 calls and 64 KiB; [Runner Fleet, Live activity](./runner_fleet.md#live-activity-the-sse-tail)), is a third body column under the same rule. The transcript and the single-event read select it, and the list never does. A row from before the column existed holds `NULL`, which reads as "not recorded", never as "no tools ran".
 
-A call's full arguments and output are a fourth body that no page read selects. They live in `core.fleet_tool_call_details`, one row per saved call, a child of `core.fleet_events` on `(fleet_id, event_id)` with cascade. The rows are keyed by the lease's fencing token and the runner's call number, and a page never reads them: "show all" reads one call through `GET …/events/{event_id}/tool-calls/{call_id}`. That keeps a thread page at its 512 KiB budget however much a run's tools returned.
+A call's full arguments and output are a fourth body that no page read selects. They live in a child table of `core.fleet_events`, one row per saved call, cascading on `(fleet_id, event_id)`. The rows are keyed by the lease's fencing token and the runner's call number, and a page never reads them: "show all" reads one call through `GET …/events/{event_id}/tool-calls/{call_id}`. That keeps a thread page at its 512 KiB budget however much a run's tools returned.
 
 The runner lease carries no second copy either. It used to hold its own `request_json`, a duplicate of the payload the event row already stored, written on every lease. Reclaim joins `core.fleet_events` on `(fleet_id, event_id)` to read the body instead; both tables cascade from the same parent, so the join cannot dangle.
 

@@ -28,6 +28,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | How does a new runner get enrolled? | [`runner_fleet.md`](./runner_fleet.md) §Registering a runner |
 | What are the runner protocol verbs? | [`runner_fleet.md`](./runner_fleet.md) §The control protocol |
 | What sandbox does a leased event run in? | [`runner_fleet.md`](./runner_fleet.md) §Running one event |
+| How does the Rust runner run a lease, and what survives to the next one? | [`runner_execution.md`](./runner_execution.md) §Process model, §Workspace between leases |
 | What network can a sandboxed fleet reach? | [`runner_fleet.md`](./runner_fleet.md) §Egress model |
 | Which sandbox tier may run whose work? | [`runner_fleet.md`](./runner_fleet.md) §Sandbox tiers |
 | How do steer, kill, and pause propagate? | [`runner_fleet.md`](./runner_fleet.md) §Steer, kill, pause |
