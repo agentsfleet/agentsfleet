@@ -164,7 +164,8 @@ export async function listWaitingInvites(token: string): Promise<WaitingInvite[]
   return decodeOnePage(response, decodeWaiting);
 }
 
-// POST /v1/users/me/invites/{invite_id}/accept — accepting again answers the same.
+// POST /v1/users/me/invites/{invite_id}/accept — accepting again answers 200
+// while still a member; a member removed since gets 404 `UZ-INV-001`.
 export async function acceptInvite(token: string, inviteId: string): Promise<AcceptedInvite> {
   const response = await request<unknown>(
     `${WAITING_INVITES_PATH}/${encodeURIComponent(inviteId)}/accept`,

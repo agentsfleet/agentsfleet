@@ -163,6 +163,15 @@ describe("an invite's email status", () => {
     const explained = "Email isn't set up for this deployment. Copy the link and share it instead.";
     await waitFor(() => expect(screen.getAllByText(explained).length).toBeGreaterThan(0));
   });
+
+  it("should reach that explanation through a button that keeps the shared focus ring and the warning tone", () => {
+    renderView([JOHN], [NO_RELAY]);
+    const trigger = within(actionsCellOf(NO_RELAY.email)).getByRole("button", { name: EMAIL_NOT_SET_UP });
+    expect(trigger.textContent).toBe(EMAIL_NOT_SET_UP);
+    expect(trigger.className).toMatch(/\bfocus-visible:ring-2\b/);
+    expect(trigger.className).toMatch(/\bfocus-visible:ring-ring\b/);
+    expect(trigger.className).toMatch(WARNING);
+  });
 });
 
 describe("a row at phone width", () => {
@@ -236,6 +245,11 @@ describe("focus after a removal", () => {
     await confirmIn(confirmLabel);
     await waitFor(() => expect(screen.queryByText(gone)).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("region", { name: TEAM_CAPTION })));
+  });
+
+  it("should draw no browser outline on the table it hands focus to, which its label announces", () => {
+    renderView();
+    expect(screen.getByRole("region", { name: TEAM_CAPTION }).className).toMatch(/\bfocus:outline-none\b/);
   });
 });
 

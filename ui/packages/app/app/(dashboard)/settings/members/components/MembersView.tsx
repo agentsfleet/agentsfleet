@@ -123,8 +123,9 @@ export function MembersView(props: Props) {
       <PageHeader description={MEMBERS_DESCRIPTION}>
         <PageTitle>{MEMBERS_TITLE}</PageTitle>
       </PageHeader>
-      {/* Reachable by script only, for the focus a removal hands back. */}
-      <Section ref={regionRef} tabIndex={-1} aria-label={TEAM_CAPTION}>
+      {/* Reachable by script only, for the focus a removal hands back. A screen
+          reader announces it by its label; no outline marks it for a mouse. */}
+      <Section ref={regionRef} tabIndex={-1} aria-label={TEAM_CAPTION} className="focus:outline-none">
         <SectionHeader as="p" actions={<InviteDialogDynamic onSettled={team.refresh} />}>
           {TEAM_CAPTION}
         </SectionHeader>
