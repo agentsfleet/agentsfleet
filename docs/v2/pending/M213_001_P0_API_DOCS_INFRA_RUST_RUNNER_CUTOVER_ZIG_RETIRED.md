@@ -44,7 +44,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Implementing agent — read these first
 
-1. `.github/workflows/release.yml` — the daemon's Alpine musl job (static ELF, zero `NEEDED`) is the shape the two runner binaries take; `compile-runner-amd64` is what changes.
+1. `.github/workflows/release.yml` — the daemon's Alpine musl job (static Executable and Linkable Format (ELF), zero `NEEDED`) is the shape the two runner binaries take; `compile-runner-amd64` is what changes.
 2. `.github/workflows/deploy-dev-build.yml`, `.github/workflows/deploy-dev-metal.yml` — the dev lane: build from the branch, install `RUNNER_BINARY` on metal; both gain the executor and the toolbox.
 3. `make/build.mk`, `make/test-unit.mk`, `make/quality.mk`, `make/dev.mk`, `make/test.mk` — every Zig target, cache variable and version check to remove or rewrite.
 4. `docs/architecture/runner_fleet.md` §"Running one event (NullClaw)", §"The split — two binaries, no sidecar"; `docs/architecture/testing.md` §"The Zig daemon is frozen and unmeasured" — the pages that describe Zig as current.
