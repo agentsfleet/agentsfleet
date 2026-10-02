@@ -11,6 +11,7 @@
 
 use std::sync::Arc;
 
+use afd_connector::Dashboard;
 use afd_core::id::Uuid7;
 use afd_cron::SigningKeys;
 use afd_crypto::entropy::Entropy;
@@ -131,8 +132,8 @@ pub struct ScheduleConfig {
 pub struct LoginConfig {
     /// The key a verification code's digest is taken under.
     pub code_pepper: SecretBytes,
-    /// Where a person goes to approve a login.
-    pub app_url: String,
+    /// Where a person goes to approve a login, and every other dashboard page.
+    pub app_url: Dashboard,
     /// This deployment's own base URL, as a minted credential records it.
     ///
     /// Beside `app_url` because the two are read from configuration together

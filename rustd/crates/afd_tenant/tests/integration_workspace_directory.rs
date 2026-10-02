@@ -41,11 +41,11 @@ async fn should_walk_keyset_across_held_accounts() {
             .await
             .expect("the shared name lands in each account");
     }
+    let bob = session(&fixture.bob.tenant, &fixture.bob.subject);
     let accounts = workspaces
-        .accounts_of(&session(&fixture.bob.tenant, &fixture.bob.subject))
+        .accounts_of(bob.person().expect("a session is a person"))
         .await
-        .expect("the account read answers")
-        .expect("Bob holds accounts");
+        .expect("the account read answers");
     let tenants = accounts.tenants();
     let whole = workspaces
         .page(&tenants, None, None, 50)

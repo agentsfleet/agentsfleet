@@ -252,7 +252,7 @@ fn actor_for(person: &afd_auth::principal::Person) -> String {
         // the whole point of a user-scoped credential is that a steer from a
         // terminal is attributable to one.
         PersonCredential::SessionToken { .. } | PersonCredential::CliCredential => {
-            format!("{}{}", afd_events::ACTOR_PREFIX, person.subject().as_str())
+            afd_events::steer_actor(person.subject().as_str())
         }
         PersonCredential::TenantApiKey => afd_events::ACTOR_MACHINE.to_owned(),
     }

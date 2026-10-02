@@ -7,14 +7,16 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_core::id::Uuid7;
+use afd_auth::principal::Person;
+use afd_http::handler::{IdPath, IdSegment};
+use afd_tenant::cli_credential::UserIdentity;
 use afd_tenant::error::InviteConflict;
 use afd_tenant::team::{Email, Invitee, NewInvite, Waiting};
 use afd_wire::team::{AcceptedInviteResponse, CreateInviteRequest, WaitingInvite};
 use afd_wire::workspace::WorkspaceAccount;
 use axum::Json;
 use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
@@ -23,20 +25,37 @@ use crate::handler::Refusal;
 use crate::services::{Services, TenantTeam as _, TerminalCredentials as _};
 
 use super::invite_email::email_new_invite;
-use super::invite_view::{link_or_refuse, summary};
-use super::{DETAIL_MALFORMED_BODY, DETAIL_TENANT_REQUIRED, one_page, tenant_of};
+use super::invite_view::{invite_link, summary};
+use super::own::{OwnTenant, own_tenant};
+use super::{DETAIL_MALFORMED_BODY, one_page};
 
-/// The scoped events each verb's failures are logged under.
+// The scoped events each verb's failures are logged under. A write's failure
+// pairs by name with `afd_tenant`'s success record for the same verb, named
+// beside it; the reads have no success record to pair with.
+/// Pairs with `workspace_invite_created`.
 const EVENT_CREATE: &str = "invite_create_failed";
 const EVENT_LIST: &str = "invite_list_failed";
+/// Pairs with `workspace_invite_revoked`.
 const EVENT_REVOKE: &str = "invite_revoke_failed";
 const EVENT_WAITING: &str = "invite_waiting_failed";
+/// Pairs with `workspace_invite_accepted`.
 const EVENT_ACCEPT: &str = "invite_accept_failed";
-pub(super) const EVENT_TENANT: &str = "invite_tenant_unresolved";
 const EVENT_PERSON: &str = "invite_person_unresolved";
 
 /// The refusal a path segment that is not an identifier earns.
 const DETAIL_INVITE_ID: &str = "invite_id must be a valid UUIDv7";
+
+/// The `{invite_id}` segment, which a malformed one refuses as
+/// [`DETAIL_INVITE_ID`].
+#[derive(Debug)]
+pub(crate) struct InviteSegment;
+
+impl IdSegment for InviteSegment {
+    const DETAIL: &'static str = DETAIL_INVITE_ID;
+}
+
+/// The invite a route's path names, parsed before its handler runs.
+pub(super) type InvitePath = IdPath<InviteSegment>;
 
 /// The state a conflicting invite's 409 names.
 /// `current_state` on a duplicate invite: the address has a pending invite.
@@ -85,12 +104,9 @@ pub(crate) async fn create<D: Services>(
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_BODY))?;
     let email =
         Email::parse(&request.email, afd_mail::deliverable).map_err(Refusal::at(EVENT_CREATE))?;
-    let tenant = tenant_of(&services, person, DETAIL_TENANT_REQUIRED, EVENT_TENANT).await?;
-    let inviter = services
-        .cli_credentials()
-        .user_of(person.subject().as_str())
-        .await
-        .map_err(Refusal::at(EVENT_PERSON))?;
+    // Two reads that need nothing from each other, so neither waits on the other.
+    let (tenant, inviter) =
+        tokio::try_join!(own_tenant(&services, person), me(&*services, person))?;
     let new = NewInvite {
         tenant: &tenant,
         inviter: &inviter.id,
@@ -101,10 +117,9 @@ pub(crate) async fn create<D: Services>(
         .invite(&new, services.now())
         .await
         .map_err(refusal_at(EVENT_CREATE))?;
-    let link = link_or_refuse(services.dashboard(), &invite.id)?;
+    let link = invite_link(services.dashboard(), &invite.id);
     email_new_invite(&*services, &mut invite, person.subject().as_str(), &link).await;
-    let summary = summary(services.dashboard(), &invite)?;
-    Ok((StatusCode::CREATED, Json(summary)).into_response())
+    Ok((StatusCode::CREATED, Json(summary(&invite, link))).into_response())
 }
 
 /// `GET /v1/tenants/me/invites` — the caller's account's pending invites.
@@ -131,19 +146,18 @@ pub(crate) async fn create<D: Services>(
 ))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
-    identity: PersonIdentity,
+    owner: OwnTenant,
 ) -> Result<Response, Refusal> {
-    let person = identity.person();
-    let tenant = tenant_of(&services, person, DETAIL_TENANT_REQUIRED, EVENT_TENANT).await?;
     let invites = services
         .team()
-        .invitations(&tenant, services.now())
+        .invitations(owner.tenant(), services.now())
         .await
         .map_err(Refusal::at(EVENT_LIST))?;
+    let dashboard = services.dashboard();
     let items = invites
         .iter()
-        .map(|invite| summary(services.dashboard(), invite))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|invite| summary(invite, invite_link(dashboard, &invite.id)))
+        .collect();
     Ok(Json(one_page(items)).into_response())
 }
 
@@ -176,15 +190,12 @@ pub(crate) async fn list<D: Services>(
 ))]
 pub(crate) async fn revoke<D: Services>(
     State(services): State<Arc<D>>,
-    identity: PersonIdentity,
-    Path(invite_id): Path<String>,
+    invite: InvitePath,
+    owner: OwnTenant,
 ) -> Result<Response, Refusal> {
-    let person = identity.person();
-    let invite = invite_id_of(&invite_id)?;
-    let tenant = tenant_of(&services, person, DETAIL_TENANT_REQUIRED, EVENT_TENANT).await?;
     services
         .team()
-        .revoke_invitation(&tenant, &invite, services.now())
+        .revoke_invitation(owner.tenant(), invite.id(), services.now())
         .await
         .map_err(refusal_at(EVENT_REVOKE))?;
     Ok(StatusCode::NO_CONTENT.into_response())
@@ -215,12 +226,7 @@ pub(crate) async fn waiting<D: Services>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
 ) -> Result<Response, Refusal> {
-    let person = identity.person();
-    let me = services
-        .cli_credentials()
-        .user_of(person.subject().as_str())
-        .await
-        .map_err(Refusal::at(EVENT_PERSON))?;
+    let me = me(&*services, identity.person()).await?;
     let waiting = services
         .team()
         .waiting_for(&me.email, services.now())
@@ -261,23 +267,17 @@ pub(crate) async fn waiting<D: Services>(
 ))]
 pub(crate) async fn accept<D: Services>(
     State(services): State<Arc<D>>,
+    invite: InvitePath,
     identity: PersonIdentity,
-    Path(invite_id): Path<String>,
 ) -> Result<Response, Refusal> {
-    let person = identity.person();
-    let invite = invite_id_of(&invite_id)?;
-    let me = services
-        .cli_credentials()
-        .user_of(person.subject().as_str())
-        .await
-        .map_err(Refusal::at(EVENT_PERSON))?;
+    let me = me(&*services, identity.person()).await?;
     let invitee = Invitee {
         user: &me.id,
         email: &me.email,
     };
     let accepted = services
         .team()
-        .accept(&invite, &invitee, services.now())
+        .accept(invite.id(), &invitee, services.now())
         .await
         .map_err(Refusal::at(EVENT_ACCEPT))?;
     Ok(Json(AcceptedInviteResponse {
@@ -291,19 +291,24 @@ pub(crate) async fn accept<D: Services>(
     .into_response())
 }
 
+/// The user row behind `person`, or the refusal a subject with none earns.
+async fn me<D: Services>(services: &D, person: &Person) -> Result<UserIdentity, Refusal> {
+    services
+        .cli_credentials()
+        .user_of(person.subject().as_str())
+        .await
+        .map_err(Refusal::at(EVENT_PERSON))
+}
+
 /// Renders an invite store failure as `event`'s refusal, naming the state a
 /// conflict carries so a client branches on it without re-reading the invite.
 fn refusal_at(event: &'static str) -> impl FnOnce(afd_tenant::Error) -> Refusal {
-    move |error| match error.invite_conflict() {
-        Some(InviteConflict::Invited) => Refusal::conflict_at(event, STATE_INVITED)(error),
-        Some(InviteConflict::Member) => Refusal::conflict_at(event, STATE_MEMBER)(error),
-        None => Refusal::at(event)(error),
-    }
-}
-
-/// The invite a path names, or the refusal a malformed one earns.
-pub(super) fn invite_id_of(raw: &str) -> Result<Uuid7, Refusal> {
-    Uuid7::parse(raw).map_err(|_unparseable| Refusal::malformed(DETAIL_INVITE_ID))
+    Refusal::conflict_or_at(event, |error: &afd_tenant::Error| {
+        error.invite_conflict().map(|conflict| match conflict {
+            InviteConflict::Invited => STATE_INVITED,
+            InviteConflict::Member => STATE_MEMBER,
+        })
+    })
 }
 
 /// One waiting invite, with the account it joins.

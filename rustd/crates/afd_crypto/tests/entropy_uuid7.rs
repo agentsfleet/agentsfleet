@@ -62,8 +62,13 @@ fn test_uuid7_keeps_the_identifier_refusal_as_its_cause() {
 
     assert!(!refused.is_entropy(), "the draw succeeded: {refused}");
     assert_eq!(refused.code(), error_code::INTERNAL_OPERATION_FAILED);
-    let cause = refused.source().expect("the identifier refusal is kept");
+    let cause = refused
+        .source()
+        .and_then(|cause| cause.downcast_ref::<afd_core::error::Error>())
+        .expect("the identifier layer's own error is kept as the cause");
     let direct = Uuid7::encode(UnixMillis::from_millis(-1), DRAWN)
         .expect_err("the same instant refuses directly");
-    assert_eq!(cause.to_string(), direct.to_string());
+    assert!(cause.is_id_shape(), "got {cause}");
+    assert_eq!(cause.code(), error_code::UUIDV7_INVALID_ID_SHAPE);
+    assert_eq!(cause.code(), direct.code());
 }

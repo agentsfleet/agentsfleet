@@ -38,7 +38,7 @@ fn person(credential: PersonCredential) -> Person {
 /// a person created it.
 #[test]
 fn a_steer_is_attributed_to_a_person_only_when_one_sent_it() {
-    let human = format!("{}{HUMAN}", afd_events::ACTOR_PREFIX);
+    let human = afd_events::steer_actor(HUMAN);
     let session = person(PersonCredential::SessionToken {
         workspace_scope: None,
     });

@@ -205,7 +205,7 @@ fn should_report_dropped_frames_without_burning_a_sequence_number() {
 /// says, carrying the code the caller's next request would be refused with.
 #[test]
 fn should_end_a_revoked_stream_on_a_frame_naming_its_refusal() {
-    let frame = Frame::access_revoked("UZ-AUTH-001");
+    let frame = Frame::access_revoked();
     assert_eq!(frame.seq, 0, "a control frame never advances the sequence");
     assert_eq!(frame.kind, Cow::Borrowed(KIND_ACCESS_REVOKED));
     assert_eq!(

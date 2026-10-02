@@ -34,7 +34,7 @@ use std::borrow::Cow;
 
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
-use afd_events::{ACTOR_PREFIX, Closed};
+use afd_events::{Closed, is_steer_actor};
 use afd_wire::event::{STEER_MESSAGE_MAX_BYTES, SteerRequest};
 use afd_wire::tail::{FleetCounters, TailFrame, TailRow};
 
@@ -60,7 +60,7 @@ fn inline_final_reply(reply: Option<&str>) -> Option<Cow<'_, str>> {
 /// more than the bound, was never written by the route as it stands; it is
 /// warned once, without its text, and the frame goes out without a message.
 fn steer_message(acquired: &Acquired) -> Option<Cow<'_, str>> {
-    if !acquired.actor.starts_with(ACTOR_PREFIX) {
+    if !is_steer_actor(&acquired.actor) {
         return None;
     }
     serde_json::from_str::<SteerRequest<'_>>(&acquired.request_json)

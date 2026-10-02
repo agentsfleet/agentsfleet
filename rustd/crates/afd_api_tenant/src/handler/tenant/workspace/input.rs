@@ -4,19 +4,10 @@
 use std::borrow::Cow;
 
 use afd_core::id::Uuid7;
-use afd_core::paging::{BoundaryKind, Cursor};
+use afd_core::paging::{BoundaryKind, Cursor, DEFAULT_LIMIT, MAX_LIMIT};
 use afd_tenant::workspace::directory::After;
 
 use crate::handler::Refusal;
-
-/// The list page a caller naming no `limit` gets.
-const LIST_LIMIT_DEFAULT: u32 = 50;
-
-/// The most rows one list page may carry.
-///
-/// One hundred where the charges walk allows two hundred — each is its own
-/// Zig handler's number, and parity keeps them apart.
-const LIST_LIMIT_MAX: u32 = 100;
 
 /// The refusal a query string this daemon cannot decode earns.
 pub const DETAIL_MALFORMED_QUERY: &str = "Malformed query string";
@@ -39,14 +30,17 @@ const NAME_FILTER_MAX_CODEPOINTS: usize = 128;
 
 /// The page size the caller asked for, or the one refusal any wrong spelling
 /// earns — `tenant_workspaces.zig` does not say which way a limit was wrong.
+///
+/// The bounds are the shared keyset ones, [`DEFAULT_LIMIT`] and [`MAX_LIMIT`];
+/// the charges walk allows two hundred, its own Zig handler's number.
 pub(super) fn parse_limit(raw: Option<Cow<'_, str>>) -> Result<u32, Refusal> {
     let Some(raw) = raw else {
-        return Ok(LIST_LIMIT_DEFAULT);
+        return Ok(DEFAULT_LIMIT);
     };
     let limit: u32 = raw
         .parse()
         .map_err(|_not_numeric| Refusal::malformed(DETAIL_INVALID_LIMIT))?;
-    if limit == 0 || limit > LIST_LIMIT_MAX {
+    if limit == 0 || limit > MAX_LIMIT {
         return Err(Refusal::malformed(DETAIL_INVALID_LIMIT));
     }
     Ok(limit)

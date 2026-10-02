@@ -6,15 +6,16 @@
 //! anywhere near a statement.
 
 use afd_core::clock::UnixMillis;
+use afd_core::timing::DAY_MS;
 use jiff::Timestamp;
 
 use crate::error::{Result, cursor_malformed};
 
-/// Milliseconds in each unit a `since=` duration may name.
+/// Milliseconds in each unit a `since=` duration may name; a day is
+/// [`DAY_MS`], spelled once in `afd_core`.
 const MS_PER_SECOND: i64 = 1_000;
 const MS_PER_MINUTE: i64 = 60 * MS_PER_SECOND;
 const MS_PER_HOUR: i64 = 60 * MS_PER_MINUTE;
-const MS_PER_DAY: i64 = 24 * MS_PER_HOUR;
 
 /// The exact length of the timestamp form `since=` accepts.
 ///
@@ -70,7 +71,7 @@ pub fn parse_since(input: &str, now: UnixMillis) -> Result<UnixMillis> {
         's' => Some(MS_PER_SECOND),
         'm' => Some(MS_PER_MINUTE),
         'h' => Some(MS_PER_HOUR),
-        'd' => Some(MS_PER_DAY),
+        'd' => Some(DAY_MS),
         _timestamp_form => None,
     };
     match unit_ms {

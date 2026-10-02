@@ -16,9 +16,8 @@
 //!
 //! On the relay leg nothing has landed yet: the browser arrived carrying the
 //! provider's code and this daemon could not name the dashboard page to hand
-//! it to. That is the deployment's misconfiguration, the same one a dashboard
-//! base that is not a URL raises, and it is refused as one rather than
-//! answered as a connect that never happened.
+//! it to. That is the deployment's misconfiguration, and it is refused as one
+//! rather than answered as a connect that never happened.
 
 use afd_connector::callback;
 use afd_core::id::Uuid7;
@@ -44,9 +43,7 @@ pub(super) fn relayed(destination: &str) -> Result<Response, Refusal> {
 /// A redirect to the connector's page, or a `200` saying the grant landed
 /// when no such page can be named.
 pub(super) fn connected<D: Services>(services: &D, workspace: &Uuid7) -> Response {
-    callback::connected_url(services.dashboard(), workspace)
-        .and_then(|destination| found(&destination))
-        .unwrap_or_else(sealed)
+    found(&callback::connected_url(services.dashboard(), workspace)).unwrap_or_else(sealed)
 }
 
 /// A redirect to `destination`, when it can be written as a header.
@@ -124,7 +121,7 @@ mod tests {
     }
 
     /// A relay this daemon cannot write is the deployment's misconfiguration,
-    /// answered as one: the same code a dashboard base that is not a URL earns,
+    /// answered as one: the code a connector this deployment did not set up earns,
     /// never a 200 that would tell the browser a connect it has not begun
     /// succeeded.
     #[tokio::test]

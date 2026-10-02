@@ -13,29 +13,27 @@ use std::sync::Arc;
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
+use afd_core::timing::DAY_MS;
 use afd_mail::{INVITE_VALID_DAYS, InviteLetter, InviteSend};
 use afd_observability::{InviteEmailOutcome, Telemetry};
-use afd_tenant::team::{EmailStatus, INVITE_TTL_MS, Invitation};
+use afd_tenant::team::{EmailAttempt, EmailStatus, INVITE_TTL_MS, Invitation};
 use afd_wire::team::InviteEmailResponse;
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
 
-use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
 use crate::services::{InviteMail as _, Services, TenantTeam as _};
 
-use super::invite::{EVENT_TENANT, invite_id_of};
-use super::invite_view::link_or_refuse;
-use super::{DETAIL_TENANT_REQUIRED, tenant_of};
-
-/// One day, in the milliseconds the invite's expiry is counted in.
-const MILLIS_PER_DAY: i64 = 24 * 60 * 60 * 1000;
+use super::invite::InvitePath;
+use super::invite_view::invite_link;
+use super::own::OwnTenant;
 
 // The email tells the invitee how long the link lasts; the store decides it.
 // Fail the build, not the reader, when the two drift.
-const _: () = assert!(INVITE_VALID_DAYS * MILLIS_PER_DAY == INVITE_TTL_MS);
+const _: () = assert!(INVITE_VALID_DAYS * DAY_MS == INVITE_TTL_MS);
 
+/// Pairs by verb with `afd_tenant`'s send records; a failed send-again.
 const EVENT_SEND: &str = "invite_send_failed";
 const EVENT_UNRECORDED: &str = "invite_email_unrecorded";
 
@@ -62,8 +60,8 @@ pub(super) async fn email_new_invite<D: Services>(
     actor: &str,
     link: &str,
 ) {
-    let tenant = invite.tenant.clone();
-    match email_invite(services, &tenant, &invite.id, actor, link).await {
+    let sent = email_invite(services, &invite.tenant, &invite.id, actor, link).await;
+    match sent {
         Ok(Some(emailed)) => {
             invite.email_status = emailed.status;
             invite.email_sent_at_ms =
@@ -91,19 +89,12 @@ pub(super) async fn email_invite<D: Services>(
     else {
         return Ok(None);
     };
-    let send = InviteSend {
-        invite_id: invite,
-        attempt: attempt.attempt,
-        to: &attempt.to,
-        letter: InviteLetter {
-            inviter_name: &attempt.inviter_name,
-            owner_name: &attempt.owner_name,
-            invite_url: link,
-        },
-    };
     let outcome = services
         .invite_mail()
-        .send(services.platform_admin_workspace(), &send)
+        .send(
+            services.platform_admin_workspace(),
+            &send_of(invite, &attempt, link),
+        )
         .await;
     let emailed = Emailed {
         status: status_of(outcome),
@@ -116,14 +107,38 @@ pub(super) async fn email_invite<D: Services>(
     {
         unrecorded(invite, &error);
     }
-    services.analytics().report(&Telemetry::InviteEmail {
-        actor: actor.to_owned(),
-        tenant_id: tenant.as_str().to_owned(),
-        invite_id: invite.as_str().to_owned(),
-        attempt: attempt.attempt,
-        outcome,
-    });
+    // Built only for a deployment that reports: the event owns its strings,
+    // and a silent sink would copy three of them to discard them.
+    let analytics = services.analytics();
+    if analytics.is_reporting() {
+        analytics.report(&Telemetry::InviteEmail {
+            actor: actor.to_owned(),
+            tenant_id: tenant.as_str().to_owned(),
+            invite_id: invite.as_str().to_owned(),
+            attempt: attempt.attempt,
+            outcome,
+        });
+    }
     Ok(Some(emailed))
+}
+
+/// What one send hands the mailer: the attempt's addressee and names, and the
+/// link that accepts `invite`.
+///
+/// The names arrive as the store resolved them — an inviter with no display
+/// name is named by their address, and the account by its owner's display
+/// name or else its own name — and go into the letter unchanged.
+fn send_of<'a>(invite: &'a Uuid7, attempt: &'a EmailAttempt, link: &'a str) -> InviteSend<'a> {
+    InviteSend {
+        invite_id: invite,
+        attempt: attempt.attempt,
+        to: &attempt.to,
+        letter: InviteLetter {
+            inviter_name: &attempt.inviter_name,
+            owner_name: &attempt.owner_name,
+            invite_url: link,
+        },
+    }
 }
 
 /// `POST /v1/tenants/me/invites/{invite_id}/send` — send an invite's email again.
@@ -157,15 +172,13 @@ pub(super) async fn email_invite<D: Services>(
 ))]
 pub(crate) async fn send<D: Services>(
     State(services): State<Arc<D>>,
-    identity: PersonIdentity,
-    Path(invite_id): Path<String>,
+    invite: InvitePath,
+    owner: OwnTenant,
 ) -> Result<Response, Refusal> {
-    let person = identity.person();
-    let invite = invite_id_of(&invite_id)?;
-    let tenant = tenant_of(&services, person, DETAIL_TENANT_REQUIRED, EVENT_TENANT).await?;
-    let link = link_or_refuse(services.dashboard(), &invite)?;
-    let actor = person.subject().as_str();
-    let emailed = email_invite(&*services, &tenant, &invite, actor, &link)
+    let invite = invite.id();
+    let link = invite_link(services.dashboard(), invite);
+    let actor = owner.person().subject().as_str();
+    let emailed = email_invite(&*services, owner.tenant(), invite, actor, &link)
         .await
         .map_err(Refusal::at(EVENT_SEND))?;
     match emailed.map(|emailed| emailed.status) {
@@ -205,4 +218,41 @@ fn unrecorded(invite: &Uuid7, error: &afd_tenant::Error) {
         reason,
         event = EVENT_UNRECORDED
     );
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "test module: an unmet precondition should fail the test loudly"
+)]
+mod tests {
+    use afd_core::id::Uuid7;
+    use afd_tenant::team::EmailAttempt;
+
+    use super::send_of;
+
+    const INVITE: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011";
+    const LINK: &str = "https://app.test/invites/0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011";
+
+    /// An inviter who never gave a name: the store names them by address and
+    /// the account by its own name, and the letter carries both as resolved,
+    /// never swapped and never the invitee's address in either place.
+    #[test]
+    fn a_nameless_inviters_letter_names_them_by_address_and_the_account_by_its_name() {
+        let invite = Uuid7::parse(INVITE).expect("the fixture identifier is UUIDv7");
+        let attempt = EmailAttempt {
+            attempt: 2,
+            to: "carol@example.test".to_owned(),
+            inviter_name: "john@example.test".to_owned(),
+            owner_name: "john-account".to_owned(),
+        };
+        let send = send_of(&invite, &attempt, LINK);
+        assert_eq!(
+            (send.letter.inviter_name, send.letter.owner_name),
+            ("john@example.test", "john-account")
+        );
+        assert_eq!((send.to, send.attempt), ("carol@example.test", 2));
+        assert_eq!(send.letter.invite_url, LINK);
+        assert_eq!(send.invite_id, &invite);
+    }
 }

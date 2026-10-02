@@ -5,6 +5,9 @@ use afd_core::event::status;
 use super::merged;
 use crate::history::{EventDetailRow, EventRow};
 
+/// A bound wider than any page these cases build, so only the cut case cuts.
+const WIDE: usize = 10;
+
 /// A thread row for `event_id` at `created_at`, in `state`.
 fn row(event_id: &str, created_at: i64, state: &str) -> EventDetailRow {
     EventDetailRow {
@@ -41,6 +44,7 @@ fn should_lead_the_page_with_a_message_still_waiting() {
     let page = merged(
         vec![row("10-1", 10, status::PROCESSED)],
         vec![row("20-2", 20, status::QUEUED)],
+        WIDE,
     );
     assert_eq!(
         ids(&page),
@@ -55,6 +59,7 @@ fn should_keep_the_history_row_when_both_reads_saw_one_event() {
     let page = merged(
         vec![row("20-2", 20, status::RECEIVED)],
         vec![row("20-2", 20, status::QUEUED)],
+        WIDE,
     );
     assert_eq!(ids(&page), [("20-2", status::RECEIVED)]);
 }
@@ -69,6 +74,7 @@ fn should_order_the_merged_page_on_the_history_key() {
             row("10-1", 10, status::PROCESSED),
         ],
         vec![row("20-2", 20, status::QUEUED)],
+        WIDE,
     );
     assert_eq!(
         ids(&page),
@@ -77,5 +83,47 @@ fn should_order_the_merged_page_on_the_history_key() {
             ("20-2", status::QUEUED),
             ("10-1", status::PROCESSED)
         ]
+    );
+}
+
+/// Each read returns up to the bound, so the merge can hold twice it; the page
+/// keeps the newest `bound` and leaves the oldest for the cursor to find again.
+#[test]
+fn should_cut_the_merged_page_to_the_bound_keeping_the_newest() {
+    let page = merged(
+        vec![
+            row("40-4", 40, status::RECEIVED),
+            row("10-1", 10, status::PROCESSED),
+        ],
+        vec![
+            row("30-3", 30, status::QUEUED),
+            row("20-2", 20, status::QUEUED),
+        ],
+        2,
+    );
+    assert_eq!(
+        ids(&page),
+        [("40-4", status::RECEIVED), ("30-3", status::QUEUED)]
+    );
+}
+
+/// Every waiting row already delivered is dropped, not only the first match,
+/// and a delivered page with nothing fresh comes back as it was.
+#[test]
+fn should_drop_every_waiting_row_the_history_read_already_returned() {
+    let page = merged(
+        vec![
+            row("20-2", 20, status::RECEIVED),
+            row("10-1", 10, status::PROCESSED),
+        ],
+        vec![
+            row("20-2", 20, status::QUEUED),
+            row("10-1", 10, status::QUEUED),
+        ],
+        WIDE,
+    );
+    assert_eq!(
+        ids(&page),
+        [("20-2", status::RECEIVED), ("10-1", status::PROCESSED)]
     );
 }

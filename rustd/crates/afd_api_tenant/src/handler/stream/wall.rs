@@ -30,13 +30,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use afd_auth::principal::Principal;
-use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_sse::{FanIn, Frame, KIND_CATCHING_UP};
-use futures_util::StreamExt as _;
-use futures_util::stream::{self, BoxStream};
+use futures_util::stream::BoxStream;
 use tokio::time::Instant;
 
+use super::revocable::{Turn, until_revoked};
 use crate::services::{Services, WorkspaceFleets as _, WorkspaceOwnership as _};
 
 /// How often the fleet set and the caller's membership are re-read.
@@ -72,8 +71,6 @@ struct Wall<D> {
     next_refresh: Instant,
     /// Whether the opening `hello` has been sent.
     announced: bool,
-    /// Whether `access_revoked` has been sent, after which nothing else is.
-    closed: bool,
     /// When a lag may next re-read the counters.
     recount: Recount,
 }
@@ -152,17 +149,13 @@ pub(super) fn frames<D: Services>(
         fan_in,
         next_refresh: now + REFRESH_INTERVAL,
         announced: false,
-        closed: false,
         recount: Recount::new(now),
     };
-    stream::unfold(wall, step).boxed()
+    until_revoked(wall, step)
 }
 
 /// The next frame, and the wall that produced it.
-async fn step<D: Services>(mut wall: Wall<D>) -> Option<(Frame, Wall<D>)> {
-    if wall.closed {
-        return None;
-    }
+async fn step<D: Services>(mut wall: Wall<D>) -> Option<Turn<Wall<D>>> {
     // The set is announced before any activity, so a client knows which tiles
     // to open before the first frame arrives for one of them.
     if !wall.announced {
@@ -172,11 +165,7 @@ async fn step<D: Services>(mut wall: Wall<D>) -> Option<(Frame, Wall<D>)> {
     loop {
         if Instant::now() >= wall.next_refresh {
             match refresh(&mut wall).await {
-                Tick::Revoked => {
-                    wall.closed = true;
-                    let refused = error_code::AUTH_FORBIDDEN.as_str();
-                    return Some((Frame::access_revoked(refused), wall));
-                }
+                Tick::Revoked => return Some(Turn::Revoked),
                 Tick::Changed => return Some(announce(wall).await),
                 Tick::Steady => {}
             }
@@ -205,17 +194,17 @@ async fn step<D: Services>(mut wall: Wall<D>) -> Option<(Frame, Wall<D>)> {
             if frame.kind == KIND_CATCHING_UP && wall.recount.lagged(Instant::now()) {
                 wall.announced = false;
             }
-            return Some((frame, wall));
+            return Some(Turn::Frame(frame, wall));
         }
     }
 }
 
 /// The `hello` for the set the wall carries now, which reads the counters.
-async fn announce<D: Services>(mut wall: Wall<D>) -> (Frame, Wall<D>) {
+async fn announce<D: Services>(mut wall: Wall<D>) -> Turn<Wall<D>> {
     wall.recount.paid();
     let carried = wall.fan_in.fleets();
     let frame = hello(wall.services.as_ref(), &wall.workspace, carried).await;
-    (frame, wall)
+    Turn::Frame(frame, wall)
 }
 
 /// The `hello` for the set the wall carries now, with where each fleet stands.
