@@ -149,12 +149,6 @@ command-line interface performs one exact-name GET and does not retry the POST.
 A deliberate same-name retry returns 409 and cannot create a second row. Do not
 generalize this exception to other POST endpoints.
 
-**Owner-approved invite email exception.** `POST
-/v1/tenants/me/invites/{invite_id}/send` accepts no replay key. Each call is a
-new email attempt with its own `Resend-Idempotency-Key`, so a retried call sends
-one more email by design. The dashboard sends again only on the owner's click.
-Approved by Indy on Oct 01, 2026. Do not generalize this exception either.
-
 **When in doubt:** if the client supplies the ID and the body fully describes the resource, use PUT. If the server assigns the ID, use POST. If only some fields change, use PATCH.
 
 ### Long-running operations
