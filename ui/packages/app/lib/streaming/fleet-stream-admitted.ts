@@ -46,6 +46,17 @@ export function receivedUpdate(existing: FleetEvent, frame: ReceivedFrame): Flee
   };
 }
 
+/** A waiting row a recovered "received" history row starts: the received frame
+ * fell in a gap. Any other row is returned as it is. */
+export function startWaiting(event: FleetEvent): FleetEvent {
+  if (event.status !== AGENTSFLEET_EVENT_STATUS.QUEUED) return event;
+  return {
+    ...event,
+    status: AGENTSFLEET_EVENT_STATUS.RECEIVED,
+    outcome: outcomeForStatus(AGENTSFLEET_EVENT_STATUS.RECEIVED),
+  };
+}
+
 // ── internals ────────────────────────────────────────────────────────────
 
 function waitingRow(frame: AdmittedFrame, message: string): FleetEvent {
