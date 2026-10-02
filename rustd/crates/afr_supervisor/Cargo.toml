@@ -15,9 +15,41 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
+# Identifiers, the lease clock, worker-count clamps, the environment seam and
+# the registry codes a failure is logged under.
 afd_core.workspace = true
+# The one wire: every verb's request and reply, spelled once.
 afd_wire.workspace = true
 afr_agent.workspace = true
 afr_executor.workspace = true
 afr_sandbox.workspace = true
+# `RunnerApi` is `dyn`: production holds the HTTP client, tests a fake.
+async-trait.workspace = true
+# Bounded exponential retry for the calls that may be retried, with a predicate
+# that refuses to retry a 4xx.
+backon.workspace = true
+bytes.workspace = true
+# A bundle's entries, read so `afd_core::bundle::BundleDigest` can name them.
+tar.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# The report spool and the bundle cache write through a temporary file that is
+# persisted only once complete, so a crash never leaves half a report.
+tempfile.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
+# The token that stops a run when its lease is refused, and stops the pool at
+# shutdown.
+tokio-util.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+# The bundle tests' independent oracle for the digest.
+hex.workspace = true
+sha2.workspace = true
+# The daemon side of `HttpRunnerApi`'s tests: a real listener, so a status code
+# and a header are proven on the socket rather than assumed by a mock.
+axum.workspace = true
+afd_core = { workspace = true, features = ["test-util"] }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "sync", "time", "macros", "net", "test-util"] }

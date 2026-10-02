@@ -350,6 +350,7 @@ name = "afd_core"
 version = "0.51.0"
 dependencies = [
  "base64 0.23.1",
+ "hex",
  "serde",
  "serde_ignored",
  "serde_json",
