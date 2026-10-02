@@ -82,7 +82,8 @@ fn steer_message(acquired: &Acquired) -> Option<Cow<'_, str>> {
 }
 
 impl Leases {
-    /// Announce that `acquired`'s narrative log opened at `now`.
+    /// Announce that `acquired`'s narrative log opened, stamped `opened_at`:
+    /// the row's own `created_at`, which for a steer is its admission instant.
     ///
     /// Published once, on the delivery that wrote the row: a redelivery finds
     /// the row already there and a second announcement would put a duplicate
@@ -90,14 +91,14 @@ impl Leases {
     pub async fn publish_received(
         &self,
         acquired: &Acquired,
-        now: UnixMillis,
+        opened_at: UnixMillis,
         counters: Option<FleetCounters>,
     ) {
         let frame = TailFrame::EventReceived {
             event_id: Cow::Borrowed(&acquired.event_id),
             actor: Cow::Borrowed(&acquired.actor),
             event_type: Cow::Borrowed(&acquired.event_type),
-            created_at: now.as_millis(),
+            created_at: opened_at.as_millis(),
             message: steer_message(acquired),
             counters,
         };

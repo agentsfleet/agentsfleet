@@ -87,6 +87,10 @@ pub struct Received {
     pub delivery: Delivery,
     /// The fleet's counters after the row landed, when this delivery wrote it.
     pub counters: Option<FleetCounters>,
+    /// The row's stored `created_at`: a steer's admission instant, otherwise
+    /// the `now` this delivery passed. The received frame carries it, so the
+    /// tail announces the instant the history read lists the row under.
+    pub opened_at: UnixMillis,
 }
 
 impl Leases {
@@ -104,7 +108,8 @@ impl Leases {
     /// parsed it — so there is nothing left here to validate.
     pub async fn record_received(&self, acquired: &Acquired, now: UnixMillis) -> Result<Received> {
         let mut connection = self.pool().acquire().await?;
-        let landed = sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
+        let admitted = afd_admission::logical_parts(&acquired.event_id);
+        let landed = sqlx::query(afd_events::sql::INSERT_LEASED_FLEET_EVENT)
             .bind(acquired.fleet_id.as_str())
             .bind(&acquired.event_id)
             .bind(acquired.workspace_id.as_str())
@@ -114,10 +119,15 @@ impl Leases {
             .bind(Option::<&str>::None)
             .bind(now.as_millis())
             .bind(afd_core::event::status::RECEIVED)
+            .bind(admitted.map(|(created_at, _)| created_at))
+            .bind(admitted.map(|(_, seq)| seq))
+            .bind(afd_admission::Producer::Steer.as_str())
             .fetch_one(&mut *connection)
             .await
             .map_err(query(CONTEXT_RECEIVED))?;
         let inserted: bool = landed.try_get(0).map_err(query(CONTEXT_RECEIVED))?;
+        let opened_at: i64 = landed.try_get(1).map_err(query(CONTEXT_RECEIVED))?;
+        let opened_at = UnixMillis::from_millis(opened_at);
 
         // Stamped on BOTH arms, before the arms diverge. A first delivery that
         // wrote the narrative row and then failed to stamp has committed the
@@ -129,7 +139,7 @@ impl Leases {
         // whose entry is gone and re-appends an event that already RAN, with
         // real provider spend. The statement's own `delivered_at IS NULL` guard
         // is what makes running it twice free.
-        stamp_admission_delivered(&mut connection, acquired, now).await?;
+        stamp_admission_delivered(&mut connection, admitted, acquired, now).await?;
 
         // A false flag is the conflict arm: the row was already there, so
         // somebody has already paid for this event. `rows_affected` cannot say
@@ -139,6 +149,7 @@ impl Leases {
             return Ok(Received {
                 delivery: self.redelivery_of(&mut connection, acquired).await?,
                 counters: None,
+                opened_at,
             });
         }
         let counters =
@@ -147,6 +158,7 @@ impl Leases {
         Ok(Received {
             delivery: Delivery::First,
             counters,
+            opened_at,
         })
     }
 
@@ -192,8 +204,9 @@ impl Leases {
 /// join no index can bound. Attempted on every delivery, first or repeat: see
 /// the call site for the unstamped row that costs.
 ///
-/// The logical id is parsed by the ledger's own
-/// [`logical_parts`](afd_admission::logical_parts), and `None` is an ordinary
+/// `admitted` is the logical id parsed by the ledger's own
+/// [`logical_parts`](afd_admission::logical_parts), once, for this and the
+/// insert's admission lookup. `None` is an ordinary
 /// answer: an id this ledger never minted — an approval's continuation, an
 /// event predating the table — has no row to stamp. A zero row count is
 /// ordinary for the same reason, and so is a row this delivery's predecessor
@@ -207,10 +220,11 @@ impl Leases {
 /// every delivery rather than only the first.
 async fn stamp_admission_delivered(
     connection: &mut sqlx::PgConnection,
+    admitted: Option<(i64, i64)>,
     acquired: &Acquired,
     now: UnixMillis,
 ) -> Result<()> {
-    let Some((created_at, seq)) = afd_admission::logical_parts(&acquired.event_id) else {
+    let Some((created_at, seq)) = admitted else {
         return Ok(());
     };
     sqlx::query(afd_admission::sql::MARK_DELIVERED)

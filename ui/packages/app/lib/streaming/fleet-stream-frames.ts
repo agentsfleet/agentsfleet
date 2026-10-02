@@ -21,7 +21,7 @@ import {
   type FleetEventStatus,
 } from "./fleet-stream-row";
 import { applyToolFrame } from "./fleet-stream-tool-frames";
-import { applyEventAdmitted, receivedUpdate } from "./fleet-stream-admitted";
+import { applyEventAdmitted, receivedUpdate, startWaiting } from "./fleet-stream-admitted";
 
 // Pure frame-transform helpers shared by the streaming registry: how each
 // live frame folds into the timeline, and how a page of durable rows merges
@@ -266,15 +266,18 @@ export function mergeBackfill(
   // text is kept for the same reason `tools` is.
   // An in-progress backfill row ("received", or "queued" for a message still
   // waiting) never clobbers the live row: the stream is newer than the page.
+  // The one exception moves forward only: a "received" row starts a live row
+  // still waiting, whose received frame fell in the gap the page recovers.
   const authoritative = new Map<string, EventRow>();
+  const started = new Set<string>();
   for (const r of rows) {
-    if (seen.has(r.event_id) && TERMINAL_STATUSES.has(r.status)) {
-      authoritative.set(r.event_id, r);
-    }
+    if (!seen.has(r.event_id)) continue;
+    if (TERMINAL_STATUSES.has(r.status)) authoritative.set(r.event_id, r);
+    else if (r.status === AGENTSFLEET_EVENT_STATUS.RECEIVED) started.add(r.event_id);
   }
   const kept = prev.map((e) => {
     const replacement = authoritative.get(e.id);
-    if (!replacement) return e;
+    if (!replacement) return started.has(e.id) ? startWaiting(e) : e;
     const reconciled = rowToEvent(replacement);
     // The reasoning span is the browser's own measure — no row carries it — so
     // it is kept, and a span still open closes here once: a terminal row is
