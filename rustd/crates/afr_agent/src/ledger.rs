@@ -12,7 +12,7 @@
 use std::borrow::Cow;
 use std::time::Instant;
 
-use afd_core::clock::saturating_millis_signed;
+use afd_core::clock::{saturating_millis, saturating_millis_signed};
 use afd_wire::activity::{ActivityFrame, ToolCallCompleted, ToolCallStarted};
 use afd_wire::tool_detail::ToolCallRecord;
 use afd_wire::tool_trace::{ToolCallStatus, ToolTrace};
@@ -25,8 +25,12 @@ use crate::records::record;
 use crate::scrub::{Clean, Scrub};
 use crate::trace::{Outcome, Trace, bounded_arguments};
 
+pub(crate) const EVENT_CALL_STARTED: &str = "tool_call_started";
+pub(crate) const EVENT_CALL_COMPLETED: &str = "tool_call_completed";
+
 /// Every call one run made.
 pub(crate) struct Ledger<'run> {
+    lease_id: &'run str,
     sink: &'run dyn EventSink,
     scrub: &'run Scrub,
     trace: Trace,
@@ -35,9 +39,11 @@ pub(crate) struct Ledger<'run> {
 }
 
 impl<'run> Ledger<'run> {
-    /// A ledger sending its frames to `sink`, masking through `scrub`.
-    pub(crate) fn new(sink: &'run dyn EventSink, scrub: &'run Scrub) -> Self {
+    /// Lease `lease_id`'s ledger, sending its frames to `sink` and masking
+    /// through `scrub`.
+    pub(crate) fn new(lease_id: &'run str, sink: &'run dyn EventSink, scrub: &'run Scrub) -> Self {
         Self {
+            lease_id,
             sink,
             scrub,
             trace: Trace::default(),
@@ -66,6 +72,11 @@ impl<'run> Ledger<'run> {
         let shown = self.scrub.clean_json(call.arguments.clone());
         let bounded = bounded_arguments(&shown);
         let args_redacted = serde_json::to_string(&bounded).unwrap_or_default();
+        let lease_id = self.lease_id;
+        let call_id = id.as_str();
+        let tool = call.name.as_str();
+        let event = EVENT_CALL_STARTED;
+        tracing::debug!(lease_id, call_id, tool, event);
         self.sink
             .emit(ActivityFrame::ToolCallStarted(ToolCallStarted {
                 name: Cow::Owned(call.name.clone()),
@@ -120,8 +131,15 @@ impl Opened<'_, '_> {
         text
     }
 
-    /// Sends the end frame and adds the trace row.
+    /// Logs the end, sends the end frame and adds the trace row.
     fn end(&mut self, bounded: Map<String, Value>, outcome: Outcome) {
+        let lease_id = self.ledger.lease_id;
+        let call_id = self.id.as_str();
+        let tool = self.name;
+        let status = outcome.status;
+        let duration_ms = saturating_millis(outcome.elapsed);
+        let event = EVENT_CALL_COMPLETED;
+        tracing::debug!(lease_id, call_id, tool, ?status, duration_ms, event);
         self.ledger
             .sink
             .emit(ActivityFrame::ToolCallCompleted(ToolCallCompleted {

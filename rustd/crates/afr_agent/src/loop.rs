@@ -20,12 +20,16 @@ use crate::ledger::Ledger;
 use crate::prompt::Prompt;
 use crate::router::Router;
 use crate::scrub::Scrub;
-use crate::turn::take;
+use crate::turn::{Turn, take};
 
 /// What a run stopped by its lease reports as its detail.
 const DETAIL_STOPPED: &str = "the run was stopped before it finished";
 const EVENT_CAP_REACHED: &str = "context_cap_reached";
+const EVENT_TURN_STARTED: &str = "provider_turn_started";
+const EVENT_TURN_COMPLETED: &str = "provider_turn_completed";
 const EVENT_PROVIDER_FAILED: &str = "provider_turn_failed";
+/// Why a turn the lease stopped did not complete.
+const REASON_STOPPED: &str = "lease_stopped";
 
 /// The agent engine that runs the model against the lease's tools.
 #[derive(Debug)]
@@ -103,7 +107,7 @@ impl<'run> Harness<'run> {
             specs: selection.specs().collect(),
             scrub,
             live: Live::new(run.events, scrub, started),
-            ledger: Ledger::new(run.events, scrub),
+            ledger: Ledger::new(&run.lease.lease_id, run.events, scrub),
             budget: Budget::new(&policy.context),
             instructions: scrub.clean(prompt.instructions).into_inner(),
             messages: vec![Message::User(scrub.clean(prompt.message).into_inner())],
@@ -117,21 +121,10 @@ impl<'run> Harness<'run> {
         let mut turns: u64 = 0;
         let ending = loop {
             turns += 1;
-            let request = Request {
-                model: self.model,
-                instructions: &self.instructions,
-                messages: &self.messages,
-                tools: if capped { &[] } else { &self.specs },
-                hosted: if capped { &[] } else { self.selection.hosted() },
-            };
-            let turn = tokio::select! {
-                biased;
-                () = self.stop.cancelled() => break Ending::Stopped,
-                turn = take(provider.stream(request), &mut self.live) => turn,
-            };
-            let turn = match turn {
-                Ok(turn) => turn,
-                Err(failure) => break Ending::Failed(failure),
+            let turn = match self.turn(provider, turns, capped).await {
+                Some(Ok(turn)) => turn,
+                Some(Err(failure)) => break Ending::Failed(failure),
+                None => break Ending::Stopped,
             };
             self.usage += turn.usage;
             if capped || turn.calls.is_empty() {
@@ -157,6 +150,53 @@ impl<'run> Harness<'run> {
             }
         };
         self.finish(ending)
+    }
+
+    /// One model turn, its start and its end logged as a pair
+    /// (`docs/LOGGING_STANDARD.md` §4 rule 1, at `debug` because a run makes
+    /// one per pass); `None` when the lease stopped it.
+    async fn turn(
+        &mut self,
+        provider: &dyn Provider,
+        number: u64,
+        capped: bool,
+    ) -> Option<afr_providers::Result<Turn>> {
+        let lease_id = self.lease_id;
+        let turn = number;
+        let event = EVENT_TURN_STARTED;
+        tracing::debug!(lease_id, turn, event);
+        let request = Request {
+            model: self.model,
+            instructions: &self.instructions,
+            messages: &self.messages,
+            tools: if capped { &[] } else { &self.specs },
+            hosted: if capped { &[] } else { self.selection.hosted() },
+        };
+        let taken = tokio::select! {
+            biased;
+            () = self.stop.cancelled() => None,
+            taken = take(provider.stream(request), &mut self.live) => Some(taken),
+        };
+        match &taken {
+            Some(Ok(done)) => {
+                let input_tokens = done.usage.input;
+                let output_tokens = done.usage.output;
+                let calls = done.calls.len();
+                let event = EVENT_TURN_COMPLETED;
+                tracing::debug!(lease_id, turn, input_tokens, output_tokens, calls, event);
+            }
+            Some(Err(failure)) => {
+                let code = failure.code().as_str();
+                let event = EVENT_PROVIDER_FAILED;
+                tracing::warn!(error_code = code, lease_id, turn, event);
+            }
+            None => {
+                let reason = REASON_STOPPED;
+                let event = EVENT_PROVIDER_FAILED;
+                tracing::debug!(lease_id, turn, reason, event);
+            }
+        }
+        taken
     }
 
     /// What the model said and called, as the conversation keeps it: scrubbed,
@@ -204,10 +244,6 @@ impl<'run> Harness<'run> {
                 self.scrub.text(&text).into_owned(),
             ),
             Ending::Failed(failure) => {
-                let code = failure.code().as_str();
-                let lease_id = self.lease_id;
-                let event = EVENT_PROVIDER_FAILED;
-                tracing::warn!(error_code = code, lease_id, event);
                 let detail = failure.detail().into();
                 (failed(failure.failure_class(), detail), String::new())
             }
