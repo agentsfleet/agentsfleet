@@ -9,8 +9,8 @@
 use std::borrow::Cow;
 
 use afd_wire::memory::{
-    MemoryCaptureResponse, MemoryDelta, MemoryHydrateResponse, PINNED_CATEGORY, SharedMemory,
-    Visibility,
+    MemoryCaptureResponse, MemoryDelta, MemoryHydrateResponse, PINNED_CATEGORY, RECALL_LIMIT_MAX,
+    SharedMemory, Visibility,
 };
 use garde::Validate as _;
 
@@ -95,6 +95,26 @@ fn test_a_hydrate_reply_carries_grants_only_when_given() {
     let bare: MemoryHydrateResponse<'_> = serde_json::from_str(r#"{"memory": []}"#).unwrap();
     assert!(!bare.publish);
     assert!(bare.shared.is_empty());
+}
+
+/// The published recall `limit` is the range the request type proves, so a
+/// client generated from the spec never sends a limit the daemon refuses.
+#[test]
+fn test_the_published_recall_limit_is_the_proved_range() {
+    let openapi = include_str!("../../../../public/openapi.json");
+    let document: serde_json::Value = serde_json::from_str(openapi).unwrap();
+    let limit = |bound: &str| {
+        document
+            .pointer(&format!(
+                "/components/schemas/MemoryRecallRequest/properties/limit/{bound}"
+            ))
+            .and_then(serde_json::Value::as_u64)
+    };
+    assert_eq!(limit("minimum"), Some(1));
+    assert_eq!(
+        limit("maximum").and_then(|max| usize::try_from(max).ok()),
+        Some(RECALL_LIMIT_MAX)
+    );
 }
 
 /// A delta holding NUL in any text field is malformed, and the report names
