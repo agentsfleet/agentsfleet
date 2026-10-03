@@ -77,12 +77,9 @@ pub(crate) fn budget(tool_window: u32, cap: u32) -> serde_json::Value {
         "stage_chunk_threshold": 0.75, "model": "m", "context_cap_tokens": cap})
 }
 
-/// The schema a fixture tool offers: its name, and any object.
+/// The schema a fixture tool offers: its name, and no arguments.
 fn schema(entry: &'static Entry) -> Schema {
-    Schema {
-        description: entry.name(),
-        parameters: serde_json::json!({"type": "object"}),
-    }
+    Schema::of::<afr_tools::stub::NoArguments>(entry.name())
 }
 
 /// A tool answering every call with `output`, or never answering when
@@ -114,7 +111,11 @@ impl Tool for Canned {
         &self.schema
     }
 
-    async fn call(&self, _arguments: &serde_json::Value, _context: ToolContext<'_, '_>) -> ToolOutput {
+    async fn call(
+        &self,
+        _arguments: &serde_json::Value,
+        _context: ToolContext<'_, '_>,
+    ) -> ToolOutput {
         if self.output.is_empty() {
             return std::future::pending().await;
         }
@@ -150,7 +151,11 @@ impl Tool for Exits {
         &self.schema
     }
 
-    async fn call(&self, _arguments: &serde_json::Value, _context: ToolContext<'_, '_>) -> ToolOutput {
+    async fn call(
+        &self,
+        _arguments: &serde_json::Value,
+        _context: ToolContext<'_, '_>,
+    ) -> ToolOutput {
         ToolOutput {
             text: format!("exited {}", self.code),
             exit_code: Some(self.code),

@@ -69,7 +69,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/src/lease/` (`tool_trace.rs`, `tool_detail.rs`) | EDIT | A report maps back to the drop reason it logs today |
 | `rustd/crates/afd_api/tests/` | EDIT / CREATE | Route suites for the limits, paths and filters |
 | `rustd/crates/afr_tools/src/` (`schema.rs`, `stub.rs`, `catalog.rs`), `rustd/crates/afr_agent/src/fixture.rs`, `rustd/crates/afr_providers/src/request.rs` | EDIT | `Schema` built only by `Schema::of`; read through accessors |
-| `CLAUDE.md`, `docs/REST_API_DESIGN_GUIDELINES.md` | EDIT | The rule beside the error-standard bullet; `Limit` and `Sentences` named in the guide |
+| `rustd/crates/{afd_api_tenant,afd_api_operator,afd_wire,afd_library,afd_fleet_runtime}/Cargo.toml` | EDIT | garde or `afd_validate` joins the crate's dependencies |
+| `CLAUDE.md` (a symlink; the edit lands in `AGENTS.md`), `docs/REST_API_DESIGN_GUIDELINES.md` | EDIT | The rule beside the error-standard bullet; `Limit` and `Sentences` named in the guide |
 
 ## Applicable Rules
 
@@ -147,7 +148,7 @@ Every `?limit` reads through `Limit` with its route's ceiling and sentences (`af
 
 `Schema`'s fields become private and `Schema::of::<T: JsonSchema>` its only constructor; providers and the catalog read through accessors. The stub and the loop fixture offer the schema of an empty argument type deriving `JsonSchema` with `deny_unknown_fields`.
 
-- **Dimension 6.1** — The stub's parameters are the schema derived for its empty argument type → Test `test_stub_schema_is_derived`
+- **Dimension 6.1** — The stub's parameters are the schema derived for its empty argument type → Test `test_stub_schema_is_derived` — DONE (`rustd/crates/afr_tools/src/stub/tests.rs`)
 
 ## Interfaces
 
@@ -219,11 +220,11 @@ cron/timezone/channel/name/segment parsers: fn parse(input: &garde::Valid<T>) ->
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | No hand-written report mapper remains (§1) | `grep -rn "fn detail_for\|fn entry_detail" rustd/crates --include='*.rs'` | no output | P0 | |
-| R2 | One provider bound (§4) | `grep -rn "const PROVIDER_MAX_BYTES" rustd/crates --include='*.rs' \| wc -l` | `1` | P0 | |
+| R1 | No hand-written report mapper remains (§1) | `grep -rn "fn detail_for\|fn entry_detail" rustd/crates --include='*.rs'` | no output | P0 | ✅ no output |
+| R2 | One provider bound (§4) | `grep -rn "const PROVIDER_MAX_BYTES" rustd/crates --include='*.rs' \| wc -l` | `1` | P0 | ✅ `1` |
 | R3 | Routes refuse with their sentences (§2, §4, §5) | `make test-integration-rustd` | exit 0 | P0 | |
-| R4 | Model schemas are derived (§6) | `cargo test --manifest-path rustd/Cargo.toml -p afr_tools test_stub_schema_is_derived` | exit 0 | P0 | |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from this table or a folded spec's | P0 | |
+| R4 | Model schemas are derived (§6) | `cargo test --manifest-path rustd/Cargo.toml -p afr_tools test_stub_schema_is_derived` | exit 0 | P0 | ✅ `test result: ok. 1 passed; 0 failed` |
+| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from this table or a folded spec's | P0 | ✅ this spec's commits (`git diff --name-only b697e15d3`) name 0 paths outside the table; the rest of `origin/main...HEAD` is M210_002's |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Lint green | `make lint-all` | exit 0 | P0 | |
@@ -292,6 +293,7 @@ cron/timezone/channel/name/segment parsers: fn parse(input: &garde::Valid<T>) ->
 - **Agent default:** the library reason-copy limits are one sentence naming all three caps, because the custom rule reports one path and `Sentences` keys on paths; the object-of-strings shape check stays in the handler, and the caps are now refused alongside `name`, ahead of the repository and ref checks.
 - **Agent default:** `PageLimit` is deleted and the three operator lists read `afd_core::paging::CEILING` (the same 50/100), because the Dead Code Sweep requires it and garde's `Valid<T>` does the guarding at the boundary; store page constants held as `i64` become a `Ceiling` through the const fn `paging::store_ceiling`.
 - **Agent default:** `?limit=+5` is refused as not-digits.
+- **Agent default:** the stub and the loop fixture share one argument type, `afr_tools::stub::NoArguments`, behind the `test-util` feature that already gates the stub; its doc line is one sentence for the model, because schemars hands a type's doc comment to the model as the schema's `description`.
 - **Open finding:** `stage_chunk_threshold` (`afd_fleet_runtime/src/config/raw/policy.rs:73`, `f32`) is a second float input with no bound, so Invariant 4's "the one float input" is wrong. TRIGGER.md cannot carry NaN today (serde_json refuses it; YAML `.nan` arrives as a string and fails as a type error), so nothing is exposed; bounding it needs a refusal reason `ContextBudget` does not have.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
