@@ -1,0 +1,36 @@
+[package]
+name = "afr_tools"
+description = "The runner's tool catalog: every published tool, where it runs, and the handlers this runner hosts."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# `error_shell!`, `error_lifts!` and the registry code a refusal is logged under.
+afd_core.workspace = true
+# A sandbox-side handler reaches `/workspace` through the lease's executor.
+afr_executor.workspace = true
+# `Tool` is `dyn`: the catalog holds production handlers, tests hold stubs.
+async-trait.workspace = true
+# A tool's parameters are a JSON Schema, and a call's arguments are JSON.
+serde_json.workspace = true
+thiserror.workspace = true
+
+[features]
+# M-TEST-UTIL. Stub handlers for any published tool, so the agent's and the
+# supervisor's suites prove routing and admission before every real handler
+# exists.
+test-util = []
+
+[dev-dependencies]
+bytes.workspace = true
+tokio = { workspace = true, features = ["macros", "rt"] }

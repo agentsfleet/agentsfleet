@@ -5,6 +5,7 @@ use std::fmt;
 use afd_wire::activity::ActivityFrame;
 use afd_wire::lease::LeasePayload;
 use afd_wire::memory::MemoryDelta;
+use afd_wire::policy::ExecutionPolicy;
 use afd_wire::report::ExecutionResult;
 use afr_executor::Executor;
 
@@ -60,9 +61,25 @@ pub struct RunOutput {
     pub memory: Vec<MemoryDelta<'static>>,
 }
 
+/// What a lease needs prepared before its turn runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Needs {
+    /// Whether any of its tools runs inside a sandbox. A lease whose tools all
+    /// run in the supervisor starts none.
+    pub sandbox: bool,
+}
+
 /// Runs one lease's turn.
 #[async_trait::async_trait]
 pub trait AgentEngine: Send + Sync + fmt::Debug {
+    /// Says what a lease under `policy` needs, before anything is prepared
+    /// for it.
+    ///
+    /// # Errors
+    /// The policy names a tool this engine cannot host. The lease is refused
+    /// rather than run with a quieter tool set than its author wrote.
+    fn admit(&self, policy: &ExecutionPolicy<'_>) -> Result<Needs>;
+
     /// Runs the turn to its end.
     ///
     /// A failure the fleet caused is a result, not an error: it comes back as

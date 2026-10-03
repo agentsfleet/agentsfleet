@@ -213,3 +213,13 @@ async fn a_run_debugs_without_the_leases_secrets() {
         "the api key must never render: {rendered}"
     );
 }
+
+#[test]
+fn a_script_needs_a_sandbox_only_when_it_runs_a_process() {
+    let lease: LeasePayload<'_> = serde_json::from_str(LEASE).unwrap();
+    let talks = ScriptedEngine::new([Step::Say("hi".to_owned())]);
+    let runs = ScriptedEngine::new([Step::Say("hi".to_owned()), echo()]);
+
+    assert!(!talks.admit(&lease.policy).unwrap().sandbox);
+    assert!(runs.admit(&lease.policy).unwrap().sandbox);
+}

@@ -1,0 +1,21 @@
+//! The tool catalog: every tool the published tools page names, the runtime
+//! each executes in, and the handlers this runner hosts.
+//!
+//! The runner is the harness in Codex's shape: a lease's
+//! `ExecutionPolicy.tools` selects which tools the model is offered, the model
+//! picks by function calling, and the router in `afr_agent` runs each handler
+//! where its [`Runtime`] says (`docs/architecture/runner_execution.md` §"Tool
+//! catalog").
+
+pub mod catalog;
+pub mod error;
+#[cfg(any(test, feature = "test-util"))]
+pub mod stub;
+
+mod runtime;
+mod schema;
+
+pub use self::catalog::{Catalog, Entry, Selection};
+pub use self::error::{Error, Result};
+pub use self::runtime::{Runtime, Tool, ToolContext, ToolErrorCode, ToolOutput};
+pub use self::schema::{Schema, ToolSpec};
