@@ -15,6 +15,7 @@ use std::io;
 use std::path::Path;
 use std::time::Duration;
 
+use afd_core::clock::saturating_millis;
 use backon::{ConstantBuilder, Retryable as _};
 use bytes::Bytes;
 use serde::Serialize;
@@ -141,15 +142,13 @@ fn not_listening_yet(failure: &io::Error) -> bool {
 
 #[async_trait::async_trait]
 impl Executor for Client {
-    async fn spawn(&self, spawn: Spawn) -> Result<Process> {
+    async fn spawn(&self, spawn: &Spawn) -> Result<Process> {
         let params = SpawnParams {
             argv: Cow::Borrowed(spawn.argv()),
             cwd: spawn.working_directory().map(Cow::Borrowed),
             env: Cow::Borrowed(spawn.environment()),
             pty: spawn.on_terminal(),
-            timeout_ms: spawn
-                .time_limit()
-                .map(|limit| u64::try_from(limit.as_millis()).unwrap_or(u64::MAX)),
+            timeout_ms: spawn.time_limit().map(saturating_millis),
         };
         self.ask(METHOD_SPAWN, &params, Reply::Process).await
     }

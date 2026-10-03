@@ -3,7 +3,7 @@
     reason = "a test fails loudly on a fixture it cannot build"
 )]
 
-use afr_executor::{Ending, ProcessEvent, Spawn};
+use afr_executor::{Ending, Spawn};
 
 use super::{UnsandboxedEngine, permitted};
 use crate::engine::{Engine, Limits, SandboxRequest};
@@ -38,18 +38,16 @@ async fn test_an_unsandboxed_lease_runs_a_process_and_is_removed() {
         .await
         .unwrap();
     assert!(sandbox.is_running(), "its executor is serving");
-    let mut process = sandbox
+    let process = sandbox
         .executor()
-        .spawn(Spawn::program("/bin/echo").arg("hi"))
+        .spawn(&Spawn::program("/bin/echo").arg("hi"))
         .await
         .unwrap();
     let mut output = Vec::new();
-    let ending = loop {
-        match process.events.recv().await.unwrap() {
-            ProcessEvent::Output { data, .. } => output.extend_from_slice(&data),
-            ProcessEvent::Ended { ending, .. } => break ending,
-        }
-    };
+    let ending = process
+        .ended(|_stream, data| output.extend_from_slice(&data))
+        .await
+        .unwrap();
     sandbox.destroy().await.unwrap();
 
     assert_eq!(

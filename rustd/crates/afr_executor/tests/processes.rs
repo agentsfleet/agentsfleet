@@ -21,7 +21,7 @@ async fn test_executor_spawn_streams_output() {
 
     let process = harness
         .client
-        .spawn(Spawn::program("echo").arg("hi"))
+        .spawn(&Spawn::program("echo").arg("hi"))
         .await
         .unwrap();
     let finished = finish(process).await;
@@ -35,7 +35,7 @@ async fn standard_error_and_a_failing_status_are_reported_as_they_are() {
     let harness = start().await;
 
     let spawn = Spawn::program("sh").args(["-c", "echo oops >&2; exit 3"]);
-    let finished = finish(harness.client.spawn(spawn).await.unwrap()).await;
+    let finished = finish(harness.client.spawn(&spawn).await.unwrap()).await;
 
     assert_eq!(finished.stderr, b"oops\n");
     assert!(finished.stdout.is_empty());
@@ -45,7 +45,7 @@ async fn standard_error_and_a_failing_status_are_reported_as_they_are() {
 #[tokio::test]
 async fn a_process_reads_what_is_written_to_it() {
     let harness = start().await;
-    let mut process = harness.client.spawn(Spawn::program("cat")).await.unwrap();
+    let mut process = harness.client.spawn(&Spawn::program("cat")).await.unwrap();
 
     harness
         .client
@@ -67,7 +67,7 @@ async fn test_executor_kill_reaps_process_group() {
     let script = "trap '' TERM; sleep 60 & echo $!; wait";
     let mut process = harness
         .client
-        .spawn(Spawn::program("sh").args(["-c", script]))
+        .spawn(&Spawn::program("sh").args(["-c", script]))
         .await
         .unwrap();
     let printed = read_until(&mut process, "\n").await;
@@ -99,7 +99,7 @@ async fn a_process_past_its_timeout_is_stopped_and_says_so() {
     let spawn = Spawn::program("sleep")
         .arg("30")
         .timeout(Duration::from_millis(100));
-    let finished = finish(harness.client.spawn(spawn).await.unwrap()).await;
+    let finished = finish(harness.client.spawn(&spawn).await.unwrap()).await;
 
     assert_eq!(finished.endings, [(Ending::TimedOut, 0)]);
 }
@@ -109,7 +109,7 @@ async fn output_past_both_edges_is_counted_not_sent() {
     let harness = start().await;
 
     let spawn = Spawn::program("sh").args(["-c", "yes | head -c 3000000"]);
-    let finished = finish(harness.client.spawn(spawn).await.unwrap()).await;
+    let finished = finish(harness.client.spawn(&spawn).await.unwrap()).await;
 
     let kept = finished.stdout.len() as u64;
     let [(Ending::Exited(0), omitted)] = finished.endings.as_slice() else {
@@ -128,7 +128,7 @@ async fn a_process_starts_in_the_directory_it_names_and_sees_only_its_environmen
         .args(["-c", "pwd; echo $GREETING; echo ${HOME:-unset}"])
         .cwd("sub")
         .env("GREETING", "hej");
-    let finished = finish(harness.client.spawn(spawn).await.unwrap()).await;
+    let finished = finish(harness.client.spawn(&spawn).await.unwrap()).await;
 
     let text = String::from_utf8(finished.stdout).unwrap();
     let lines: Vec<&str> = text.lines().collect();
@@ -143,7 +143,7 @@ async fn a_program_that_does_not_exist_is_the_callers_mistake_on_pipes_and_termi
     let on_pipes = Spawn::program("no-such-program-anywhere");
     let on_terminal = Spawn::program("no-such-program-anywhere").terminal();
     for spawn in [on_pipes, on_terminal] {
-        let refused = harness.client.spawn(spawn).await.unwrap_err();
+        let refused = harness.client.spawn(&spawn).await.unwrap_err();
 
         assert!(refused_with(&refused, INVALID_PARAMS), "{refused}");
     }
@@ -155,7 +155,7 @@ async fn a_working_directory_outside_the_workspace_is_refused() {
 
     let refused = harness
         .client
-        .spawn(Spawn::program("pwd").cwd("../"))
+        .spawn(&Spawn::program("pwd").cwd("../"))
         .await
         .unwrap_err();
 
@@ -165,7 +165,7 @@ async fn a_working_directory_outside_the_workspace_is_refused() {
 #[tokio::test]
 async fn a_process_that_already_ended_is_unknown_to_kill_and_write() {
     let harness = start().await;
-    let process = harness.client.spawn(Spawn::program("true")).await.unwrap();
+    let process = harness.client.spawn(&Spawn::program("true")).await.unwrap();
     let id = process.id;
     finish(process).await;
 

@@ -33,6 +33,7 @@
 //! opening a second file is one that gets 'fixed' by somebody who did not.
 
 use afd_core::clock::UnixMillis;
+use afd_core::spelling::to_spelling;
 /// The two flat objects a verified delivery becomes on the stream. Stream
 /// payloads rather than HTTP bodies, and wire all the same: a fleet's prose
 /// reads these field names, so `afd_wire` owns them.
@@ -219,8 +220,12 @@ fn pull_request(
     // rather than from a match this file would have to keep current against an
     // upstream `#[non_exhaustive]` enum. A digest cannot then spell an action
     // differently from the delivery it describes.
-    let action = wire_word(&payload.action);
-    let state = pull.state.as_ref().map(wire_word).unwrap_or_default();
+    let action = to_spelling(&payload.action).unwrap_or_default();
+    let state = pull
+        .state
+        .as_ref()
+        .and_then(to_spelling)
+        .unwrap_or_default();
     let url = pull
         .html_url
         .as_ref()
@@ -246,20 +251,6 @@ fn pull_request(
         received_at: received_at.into(),
     };
     encoded(&digest)
-}
-
-/// A `serde`-renamed enum's wire spelling.
-///
-/// Goes through the serializer rather than a `match` for a reason the upstream
-/// types force: both enums this is used on are `#[non_exhaustive]`, so a match
-/// needs a catch-all arm, and a catch-all silently spells a NEW upstream
-/// variant as the empty string. Asking serde asks the one attribute that
-/// already decided the spelling on the way in.
-fn wire_word<T: Serialize>(value: &T) -> String {
-    serde_json::to_value(value)
-        .ok()
-        .and_then(|encoded| encoded.as_str().map(str::to_owned))
-        .unwrap_or_default()
 }
 
 /// The four pull-request actions that mean there is new code to look at.

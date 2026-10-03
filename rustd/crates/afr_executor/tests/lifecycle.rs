@@ -16,10 +16,10 @@ async fn test_sandbox_death_interrupts_open_calls() {
     let harness = start().await;
     let quiet = harness
         .client
-        .spawn(Spawn::program("sleep").arg("30"))
+        .spawn(&Spawn::program("sleep").arg("30"))
         .await
         .unwrap();
-    let mut loud = harness.client.spawn(Spawn::program("yes")).await.unwrap();
+    let mut loud = harness.client.spawn(&Spawn::program("yes")).await.unwrap();
     read_until(&mut loud, "y\n").await;
 
     // The sandbox dies under both: the executor stops with no goodbye.
@@ -34,7 +34,7 @@ async fn test_sandbox_death_interrupts_open_calls() {
     assert_eq!(loud.endings, [(Ending::Interrupted, 0)]);
     let after = harness
         .client
-        .spawn(Spawn::program("true"))
+        .spawn(&Spawn::program("true"))
         .await
         .unwrap_err();
     assert!(is_lost(&after), "{after}");
@@ -47,7 +47,7 @@ async fn test_sandbox_death_interrupts_open_calls() {
 #[tokio::test]
 async fn dropping_the_client_ends_its_processes_and_the_executor() {
     let harness = start().await;
-    let mut loud = harness.client.spawn(Spawn::program("yes")).await.unwrap();
+    let mut loud = harness.client.spawn(&Spawn::program("yes")).await.unwrap();
     read_until(&mut loud, "y\n").await;
 
     drop(harness.client);
@@ -92,7 +92,7 @@ fn a_socket_is_bound_with_no_runtime_and_served_once_one_runs() {
         let client = crate::support::connect(&socket).await;
         let echoed = finish(
             client
-                .spawn(Spawn::program("echo").arg("bound"))
+                .spawn(&Spawn::program("echo").arg("bound"))
                 .await
                 .unwrap(),
         )

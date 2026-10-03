@@ -45,7 +45,8 @@ async fn answer_spawn(executor: &mut BufReader<UnixStream>, process: u64) {
 async fn a_call_the_executor_never_answers_times_out_and_gives_up_the_link() {
     let (client, executor) = silent();
     let mut executor = BufReader::new(executor);
-    let spawning = client.spawn(Spawn::program("sleep"));
+    let sleep = Spawn::program("sleep");
+    let spawning = client.spawn(&sleep);
     let (spawned, ()) = tokio::join!(spawning, answer_spawn(&mut executor, 1));
     let mut process = spawned.unwrap();
 
@@ -79,7 +80,8 @@ async fn a_call_the_executor_never_answers_times_out_and_gives_up_the_link() {
 async fn a_send_into_an_executor_that_stopped_reading_is_given_up_too() {
     let (client, executor) = silent();
     let mut executor = BufReader::new(executor);
-    let spawning = client.spawn(Spawn::program("sleep"));
+    let sleep = Spawn::program("sleep");
+    let spawning = client.spawn(&sleep);
     let (spawned, ()) = tokio::join!(spawning, answer_spawn(&mut executor, 1));
     let mut process = spawned.unwrap();
 

@@ -193,6 +193,20 @@ pub struct Process {
     pub events: mpsc::UnboundedReceiver<ProcessEvent>,
 }
 
+impl Process {
+    /// Reads the process to its end, handing each chunk of output to
+    /// `output`; `None` when the channel closed before an ending arrived.
+    pub async fn ended(mut self, mut output: impl FnMut(Stream, Bytes)) -> Option<Ending> {
+        while let Some(event) = self.events.recv().await {
+            match event {
+                ProcessEvent::Output { stream, data } => output(stream, data),
+                ProcessEvent::Ended { ending, .. } => return Some(ending),
+            }
+        }
+        None
+    }
+}
+
 /// What a directory entry is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -243,7 +257,7 @@ pub struct FileContent {
 #[async_trait::async_trait]
 pub trait Executor: Send + Sync + fmt::Debug {
     /// Starts a process and returns the channel its events arrive on.
-    async fn spawn(&self, spawn: Spawn) -> Result<Process>;
+    async fn spawn(&self, spawn: &Spawn) -> Result<Process>;
 
     /// Queues bytes for a running process's input.
     ///

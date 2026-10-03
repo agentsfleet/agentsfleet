@@ -8,12 +8,13 @@
 use std::borrow::Cow;
 use std::time::Instant;
 
+use afd_core::clock::saturating_millis_signed;
 use afd_wire::activity::{
     ActivityFrame, FleetResponseChunk, StreamTextKind, ToolCallCompleted, ToolCallStarted,
 };
 use afd_wire::memory::MemoryDelta;
 use afd_wire::report::{Completed, ExecutionResult, Failure, ResultOutcome};
-use afr_executor::{Ending, Executor, ProcessEvent, Spawn};
+use afr_executor::{Ending, Executor, Spawn};
 
 use crate::engine::{AgentEngine, AgentRun, EventSink, RunOutput};
 use crate::error::Result;
@@ -111,14 +112,12 @@ async fn run_tool(
         args_redacted: Cow::Borrowed(ARGS_REDACTED),
         call_id: Some(Cow::Owned(call.to_owned())),
     }));
-    let mut process = executor.spawn(spawn.clone()).await?;
-    let mut ending = Ending::Interrupted;
-    while let Some(event) = process.events.recv().await {
-        if let ProcessEvent::Ended { ending: end, .. } = event {
-            ending = end;
-        }
-    }
-    let elapsed = i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX);
+    let process = executor.spawn(spawn).await?;
+    let ending = process
+        .ended(|_stream, _data| ())
+        .await
+        .unwrap_or(Ending::Interrupted);
+    let elapsed = saturating_millis_signed(started.elapsed());
     events.emit(ActivityFrame::ToolCallCompleted(ToolCallCompleted {
         name: Cow::Borrowed(tool),
         ms: elapsed,

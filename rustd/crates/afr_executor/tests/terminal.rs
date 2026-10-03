@@ -14,7 +14,7 @@ async fn test_executor_pty_accepts_input() {
     let harness = start().await;
     let mut process = harness
         .client
-        .spawn(Spawn::program("cat").terminal())
+        .spawn(&Spawn::program("cat").terminal())
         .await
         .unwrap();
 
@@ -38,7 +38,7 @@ async fn a_terminal_process_that_exits_reports_its_output_and_status() {
     let spawn = Spawn::program("sh")
         .args(["-c", "echo ready; exit 4"])
         .terminal();
-    let finished = finish(harness.client.spawn(spawn).await.unwrap()).await;
+    let finished = finish(harness.client.spawn(&spawn).await.unwrap()).await;
 
     assert_eq!(
         finished.terminal, b"ready\r\n",

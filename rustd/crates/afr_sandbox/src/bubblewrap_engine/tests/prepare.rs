@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use afd_core::test_util::trace::Capture;
-use afr_executor::{Ending, ProcessEvent, Spawn};
+use afr_executor::{Ending, Spawn};
 
 use super::super::BubblewrapEngine;
 use super::support::{
@@ -26,18 +26,16 @@ async fn test_a_lease_runs_through_the_engine_and_keeps_a_disk_it_cannot_unmount
     let server = serve_leases(host.config.state_dir.clone());
 
     let sandbox = host.engine().prepare(request("lease-1")).await.unwrap();
-    let mut process = sandbox
+    let process = sandbox
         .executor()
-        .spawn(Spawn::program("/bin/echo").arg("hi"))
+        .spawn(&Spawn::program("/bin/echo").arg("hi"))
         .await
         .unwrap();
     let mut output = Vec::new();
-    let ending = loop {
-        match process.events.recv().await.unwrap() {
-            ProcessEvent::Output { data, .. } => output.extend_from_slice(&data),
-            ProcessEvent::Ended { ending, .. } => break ending,
-        }
-    };
+    let ending = process
+        .ended(|_stream, data| output.extend_from_slice(&data))
+        .await
+        .unwrap();
     let joined = fs::read_to_string(host.config.cgroup_root.join("lease-1/cgroup.procs")).unwrap();
     let io_limit = fs::read_to_string(host.config.cgroup_root.join("lease-1/io.max")).unwrap();
     let destroyed = sandbox.destroy().await;

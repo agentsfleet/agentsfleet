@@ -65,7 +65,7 @@ async fn started(fake: &mut Fake, process: u64) {
 async fn answers_and_notifications_reach_their_callers_past_noise() {
     let (_scratch, client, mut fake) = connect().await;
     let spawning =
-        tokio::spawn(async move { (client.spawn(Spawn::program("anything")).await, client) });
+        tokio::spawn(async move { (client.spawn(&Spawn::program("anything")).await, client) });
     started(&mut fake, 7).await;
     let (process, _client) = spawning.await.unwrap();
     let process = process.unwrap();
@@ -102,7 +102,7 @@ async fn every_ending_the_wire_spells_reaches_the_caller_as_itself() {
         (3, r#"{"kind":"interrupted"}"#),
     ] {
         let spawner = std::sync::Arc::clone(&client);
-        let spawning = tokio::spawn(async move { spawner.spawn(Spawn::program("x")).await });
+        let spawning = tokio::spawn(async move { spawner.spawn(&Spawn::program("x")).await });
         started(&mut fake, process).await;
         let started = spawning.await.unwrap().unwrap();
         fake.say(&format!(
@@ -140,7 +140,7 @@ async fn an_error_answer_is_a_refusal_with_its_code() {
 #[tokio::test]
 async fn a_spawn_answer_that_is_not_a_process_fails_the_spawn() {
     let (_scratch, client, mut fake) = connect().await;
-    let spawning = tokio::spawn(async move { client.spawn(Spawn::program("x")).await });
+    let spawning = tokio::spawn(async move { client.spawn(&Spawn::program("x")).await });
     let id = fake.request().await["id"].clone();
     fake.say(&format!(r#"{{"jsonrpc":"2.0","result":5,"id":{id}}}"#))
         .await;
@@ -160,7 +160,7 @@ async fn calls_waiting_when_the_executor_vanishes_fail_as_lost() {
         std::sync::Arc::clone(&client),
     );
     let reading = tokio::spawn(async move { reader.read_file("x", 1).await });
-    let spawning = tokio::spawn(async move { spawner.spawn(Spawn::program("x")).await });
+    let spawning = tokio::spawn(async move { spawner.spawn(&Spawn::program("x")).await });
     fake.request().await;
     fake.request().await;
 
@@ -175,7 +175,7 @@ async fn a_process_whose_caller_left_before_it_started_is_killed() {
     let (_scratch, client, mut fake) = connect().await;
     let client = std::sync::Arc::new(client);
     let spawner = std::sync::Arc::clone(&client);
-    let spawning = tokio::spawn(async move { spawner.spawn(Spawn::program("x")).await });
+    let spawning = tokio::spawn(async move { spawner.spawn(&Spawn::program("x")).await });
     let id = fake.request().await["id"].clone();
 
     spawning.abort();

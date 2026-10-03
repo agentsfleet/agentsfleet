@@ -58,6 +58,16 @@ impl ErrorCode {
     }
 }
 
+/// A failure that names its registry code, whichever crate raised it.
+///
+/// [`crate::error_shell!`] implements it for every crate-level error, so code
+/// that logs a failure from more than one crate takes `&impl Coded` once
+/// rather than repeating itself per error type.
+pub trait Coded: std::error::Error {
+    /// The registry code this failure answers with.
+    fn code(&self) -> ErrorCode;
+}
+
 impl Display for ErrorCode {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(self.0)

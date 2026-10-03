@@ -32,7 +32,7 @@ async fn orphaned(spawn: Spawn) -> (Vec<(Ending, u64)>, Duration, Option<Pid>) {
     let harness = start().await;
     let started = Instant::now();
 
-    let finished = finish(harness.client.spawn(spawn).await.unwrap()).await;
+    let finished = finish(harness.client.spawn(&spawn).await.unwrap()).await;
 
     let said = [finished.stdout, finished.terminal].concat();
     let pid = String::from_utf8_lossy(&said)
@@ -82,7 +82,7 @@ async fn a_timeout_still_ends_a_process_whose_descendant_left_the_group() {
         .timeout(Duration::from_millis(200));
     let started = Instant::now();
 
-    let finished = finish(harness.client.spawn(spawn).await.unwrap()).await;
+    let finished = finish(harness.client.spawn(&spawn).await.unwrap()).await;
 
     let pid = String::from_utf8_lossy(&finished.stdout)
         .trim()

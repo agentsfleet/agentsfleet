@@ -24,7 +24,7 @@ async fn a_large_write_to_a_process_that_never_reads_does_not_hold_its_timeout()
     let spawn = Spawn::program("sleep")
         .arg("30")
         .timeout(Duration::from_millis(300));
-    let process = harness.client.spawn(spawn).await.unwrap();
+    let process = harness.client.spawn(&spawn).await.unwrap();
     let started = Instant::now();
 
     harness.client.write(process.id, flood()).await.unwrap();
@@ -43,7 +43,7 @@ async fn writes_past_the_queue_are_refused_and_a_kill_still_lands() {
     let harness = start().await;
     let process = harness
         .client
-        .spawn(Spawn::program("sleep").arg("30"))
+        .spawn(&Spawn::program("sleep").arg("30"))
         .await
         .unwrap();
 
@@ -70,7 +70,7 @@ async fn a_terminal_process_that_never_reads_is_still_stopped_by_its_timeout() {
         .arg("30")
         .terminal()
         .timeout(Duration::from_millis(300));
-    let process = harness.client.spawn(spawn).await.unwrap();
+    let process = harness.client.spawn(&spawn).await.unwrap();
 
     harness.client.write(process.id, flood()).await.unwrap();
     let finished = finish(process).await;
