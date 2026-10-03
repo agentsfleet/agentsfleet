@@ -8,9 +8,12 @@ use std::collections::{BTreeSet, VecDeque};
 
 use cargo_metadata::{DependencyKind, MetadataCommand, Node, PackageId};
 
-/// The daemon crates a runner may link: the wire, the value layer, and the
-/// telemetry vocabulary. Anything else from the daemon is the control plane.
-const ALLOWED_DAEMON_CRATES: [&str; 3] = ["afd_wire", "afd_core", "afd_observability"];
+/// The daemon crates a runner may link: the wire, the value layer, the
+/// bounds the wire's types declare (`afd_validate`, which depends on garde
+/// alone), and the telemetry vocabulary. Anything else from the daemon is the
+/// control plane.
+const ALLOWED_DAEMON_CRATES: [&str; 4] =
+    ["afd_wire", "afd_core", "afd_validate", "afd_observability"];
 
 /// The prefix every daemon crate carries.
 const DAEMON_PREFIX: &str = "afd_";

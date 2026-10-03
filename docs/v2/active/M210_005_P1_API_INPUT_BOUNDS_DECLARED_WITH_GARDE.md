@@ -57,7 +57,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/Cargo.toml`, `rustd/Cargo.lock`, `rustd/crates/afd_validate/` | CREATE | Shared rules, `Limit`, `Sentences`; depends on garde and serde only |
+| `rustd/Cargo.toml`, `rustd/Cargo.lock`, `rustd/crates/afd_validate/`, `rustd/crates/agentsfleet_runner/tests/dependency_graph.rs` | CREATE / EDIT | Shared rules, `Limit`, `Sentences`; depends on garde alone, so the runner, which reads `afd_wire`, may link it |
 | `rustd/crates/afd_core/` (`Cargo.toml`, `src/paging.rs`, `src/paging/tests.rs`) | EDIT | `Paging::parse` reads its limit through `Limit` with the caller's ceiling |
 | `rustd/crates/afd_wire/src/` (`runner.rs`, `activity.rs`, `tool_trace.rs`, `tool_detail.rs`, `admin_catalogue.rs`, `admin_library.rs`, `secret.rs`, `tenant.rs`, `workspace.rs`, `team.rs`, `auth.rs`, `fleet.rs`) and their tests | EDIT | Request and wire types derive `Validate`; one `PROVIDER_MAX_BYTES` |
 | `rustd/crates/afd_runner/` (`Cargo.toml`; `src/` `validate.rs`, `bounds.rs`, `view.rs`, `view/`, `heartbeat.rs`, `store.rs`, `lib.rs`) | EDIT | Registration, policy, binds and capability bounds move to the wire types; enrolment (`store.rs`) proves the whole request through `registration`; `PageLimit` is deleted from `view/` and its re-export from `lib.rs` |
