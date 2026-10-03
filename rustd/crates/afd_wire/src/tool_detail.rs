@@ -8,11 +8,43 @@
 
 use std::borrow::Cow;
 
+use afd_validate::PathTable;
+use garde::Validate;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use serde_json::{Map, Value};
 
 use crate::tool_trace::{encoded_len, fields_free_of_nul, free_of_nul};
+
+/// The smallest call number: calls count from 1.
+const CALL_NUMBER_MIN: u64 = 1;
+
+/// The largest call number the stored column, a `bigint`, can hold.
+const CALL_NUMBER_MAX: u64 = i64::MAX.unsigned_abs();
+
+/// The path garde reports the record-wide NUL rule under: the record itself.
+const PATH_RECORD: &str = "";
+const PATH_CALL_NUMBER: &str = "call_number";
+const PATH_ARGUMENTS: &str = "arguments";
+const PATH_OUTPUT: &str = "output";
+
+/// The reason each broken bound is skipped under, malformed before too large
+/// as the checks read before they moved onto the type.
+const REASONS: PathTable<DetailRejection> = PathTable::new(
+    &[
+        (PATH_CALL_NUMBER, DetailRejection::Malformed),
+        (PATH_RECORD, DetailRejection::Malformed),
+        (PATH_ARGUMENTS, DetailRejection::TooLarge),
+        (PATH_OUTPUT, DetailRejection::TooLarge),
+    ],
+    DetailRejection::Malformed,
+);
+
+/// What the record-wide rule reports; the reason comes from [`REASONS`].
+const HOLDS_NUL: &str = "a string holds a NUL character";
+
+/// What the arguments rule reports; the reason comes from [`REASONS`].
+const ARGUMENTS_TOO_LARGE: &str = "the arguments encode past their bound";
 
 /// The most bytes one record's output, or its encoded arguments, may hold.
 pub const DETAIL_FIELD_MAX_BYTES: usize = 64 * 1024;
@@ -32,8 +64,11 @@ pub const DETAIL_RECORD_MIN_BYTES: usize = 256;
 
 /// One finished call as the runner records it.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
+// NUL is one rule over every string the record carries: Postgres refuses it in
+// `text` and in `jsonb` alike.
+#[garde(custom(record_free_of_nul))]
 pub struct ToolCallRecord<'a> {
     /// The call's number in its run, from 1: the `n` of the `{fence}:{n}`
     /// call id the live frames and the trace carry.
@@ -41,21 +76,45 @@ pub struct ToolCallRecord<'a> {
         feature = "openapi",
         schema(minimum = 1, maximum = 9_223_372_036_854_775_807_u64)
     )]
+    #[garde(range(min = CALL_NUMBER_MIN, max = CALL_NUMBER_MAX))]
     pub call_number: u64,
     /// Every argument the call was made with, secret values masked. At most
     /// 65536 bytes encoded, with no NUL character.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    #[garde(custom(arguments_fit))]
     pub arguments: Map<String, Value>,
     /// Whether the runner cut the arguments to fit.
+    #[garde(skip)]
     pub truncated_arguments: bool,
     /// Everything the call returned, at most 65536 bytes, with no NUL
     /// character.
     #[serde(borrow)]
+    #[garde(length(bytes, max = DETAIL_FIELD_MAX_BYTES))]
     pub output: Cow<'a, str>,
     /// How many lines the whole output had, before any cut.
+    #[garde(skip)]
     pub output_line_count: u64,
     /// Whether the runner cut the output to fit.
+    #[garde(skip)]
     pub truncated: bool,
+}
+
+/// Every string a record carries, arguments included, is free of NUL.
+fn record_free_of_nul<C: ?Sized>(record: &ToolCallRecord<'_>, _context: &C) -> garde::Result {
+    if free_of_nul(&record.output) && fields_free_of_nul(&record.arguments) {
+        Ok(())
+    } else {
+        Err(garde::Error::new(HOLDS_NUL))
+    }
+}
+
+/// The arguments, encoded, within [`DETAIL_FIELD_MAX_BYTES`].
+fn arguments_fit<C: ?Sized>(arguments: &Map<String, Value>, _context: &C) -> garde::Result {
+    if encoded_len(arguments) <= DETAIL_FIELD_MAX_BYTES {
+        Ok(())
+    } else {
+        Err(garde::Error::new(ARGUMENTS_TOO_LARGE))
+    }
 }
 
 impl ToolCallRecord<'_> {
@@ -67,26 +126,6 @@ impl ToolCallRecord<'_> {
         encoded_len(&self.arguments)
             .saturating_add(self.output.len())
             .max(DETAIL_RECORD_MIN_BYTES)
-    }
-
-    /// Check this record's own bounds.
-    ///
-    /// # Errors
-    /// The [`DetailRejection`] naming the bound it breaks.
-    pub fn validate(&self) -> Result<(), DetailRejection> {
-        let numbered = self.call_number >= 1 && i64::try_from(self.call_number).is_ok();
-        if !numbered {
-            return Err(DetailRejection::Malformed);
-        }
-        if !free_of_nul(&self.output) || !fields_free_of_nul(&self.arguments) {
-            return Err(DetailRejection::Malformed);
-        }
-        if encoded_len(&self.arguments) > DETAIL_FIELD_MAX_BYTES
-            || self.output.len() > DETAIL_FIELD_MAX_BYTES
-        {
-            return Err(DetailRejection::TooLarge);
-        }
-        Ok(())
     }
 }
 
@@ -120,8 +159,10 @@ impl<'a> RawToolCallRecord<'a> {
     pub fn narrow(self) -> Result<ToolCallRecord<'a>, DetailRejection> {
         let record: ToolCallRecord<'a> =
             serde_json::from_str(self.0.get()).map_err(|_shape| DetailRejection::Malformed)?;
-        record.validate()?;
-        Ok(record)
+        garde::Unvalidated::new(record)
+            .validate()
+            .map(garde::Valid::into_inner)
+            .map_err(|report| REASONS.pick(&report))
     }
 }
 
