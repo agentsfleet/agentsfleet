@@ -14,6 +14,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_state::sql::{LEASE_STATUS_ACTIVE, LEASE_STATUS_REPORTED};
 use afd_wire::paths::RUNNER_REPORTS;
 use agentsfleetd::supervisor::Supervisor;
 
@@ -120,7 +121,10 @@ async fn test_rust_runner_lease_roundtrip() {
 /// The lease is reported, and the event carries the scripted turn's outcome
 /// and answer — not merely a lease that left `leased`.
 async fn assert_settled(run: &crate::e2e::Scenario) {
-    assert_eq!(settled_status(run).await.as_deref(), Some("reported"));
+    assert_eq!(
+        settled_status(run).await.as_deref(),
+        Some(LEASE_STATUS_REPORTED)
+    );
     let status = crate::reads::event_column(run, &run.event_id, "status").await;
     assert_eq!(status.as_deref(), Some("processed"));
     let answer = crate::reads::event_column(run, &run.event_id, "response_text").await;
@@ -244,7 +248,10 @@ fn capable() -> afr_sandbox::HostProbe {
     }
 }
 
-/// The fleet's lease status once it leaves `leased`, or `None` past the deadline.
+/// The fleet's lease status once it leaves `active`, or `None` past the deadline.
+///
+/// A lease is born `active`, so a poll that stopped at the first row it saw
+/// passed only when the whole run fit between two reads.
 async fn settled_status(run: &crate::e2e::Scenario) -> Option<String> {
     let deadline = tokio::time::Instant::now() + SETTLE_DEADLINE;
     while tokio::time::Instant::now() < deadline {
@@ -259,7 +266,10 @@ async fn settled_status(run: &crate::e2e::Scenario) -> Option<String> {
             .fetch_optional(&mut *connection)
             .await
             .expect("the lease table reads");
-        if status.as_deref().is_some_and(|status| status != "leased") {
+        if status
+            .as_deref()
+            .is_some_and(|status| status != LEASE_STATUS_ACTIVE)
+        {
             return status;
         }
         tokio::time::sleep(SETTLE_POLL).await;
