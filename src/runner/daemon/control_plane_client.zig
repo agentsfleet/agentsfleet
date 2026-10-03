@@ -133,7 +133,9 @@ pub fn memoryHydrate(self: *LoopbackClient, alloc: Allocator, runner_token: []co
     const res = try self.get(alloc, path, runner_token, deadline_ms);
     defer alloc.free(res.body);
     try checkStatus(res.status);
-    return std.json.parseFromSlice(protocol.MemoryHydrateResponse, alloc, res.body, .{ .allocate = .alloc_always }) catch
+    // A newer daemon adds fields (a workspace's shared entries, the publish
+    // grant) this runner does not read; ignore them, as every other reply is.
+    return std.json.parseFromSlice(protocol.MemoryHydrateResponse, alloc, res.body, .{ .allocate = .alloc_always, .ignore_unknown_fields = true }) catch
         ClientError.MalformedResponse;
 }
 

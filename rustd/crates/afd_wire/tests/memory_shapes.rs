@@ -6,7 +6,9 @@
     reason = "test target: a shape that will not serialize is an unmet precondition"
 )]
 
-use afd_wire::memory::MemoryCaptureResponse;
+use std::borrow::Cow;
+
+use afd_wire::memory::{MemoryCaptureResponse, MemoryHydrateResponse, SharedMemory};
 
 /// A capture reply carries the two tallies a runner acts on, and only those.
 ///
@@ -37,4 +39,56 @@ fn test_a_capture_reply_round_trips() {
     let back: MemoryCaptureResponse = serde_json::from_slice(&bytes).unwrap();
 
     assert_eq!(back, reply);
+}
+
+/// A fleet with no grant hydrates in the shape every runner already parses.
+///
+/// The Zig runner that ships reads this reply strictly, so a field it does not
+/// know would leave every lease with empty memory. `shared` and `publish`
+/// appear only once a grant makes them mean something.
+#[test]
+fn test_a_hydrate_reply_without_grants_keeps_the_shape_runners_parse() {
+    let reply = MemoryHydrateResponse {
+        memory: Vec::new(),
+        shared: Vec::new(),
+        publish: false,
+    };
+
+    let json = serde_json::to_value(&reply).unwrap();
+
+    assert_eq!(json, serde_json::json!({"memory": []}));
+}
+
+/// A granted fleet's reply carries what it reads and that it may publish,
+/// and a reply without them reads back as no grant.
+#[test]
+fn test_a_hydrate_reply_carries_grants_only_when_given() {
+    let shared = SharedMemory {
+        key: Cow::Borrowed("incident:41"),
+        content: Cow::Borrowed("escalated"),
+        category: Cow::Borrowed("core"),
+        writer_fleet_id: Cow::Borrowed("fleet-2"),
+        writer_fleet_name: Cow::Borrowed("triage"),
+        updated_at: 7,
+    };
+    let reply = MemoryHydrateResponse {
+        memory: Vec::new(),
+        shared: vec![shared],
+        publish: true,
+    };
+
+    let json = serde_json::to_value(&reply).unwrap();
+    assert_eq!(
+        json.pointer("/publish"),
+        Some(&serde_json::Value::Bool(true))
+    );
+    assert_eq!(
+        json.pointer("/shared/0/writer_fleet_name")
+            .and_then(serde_json::Value::as_str),
+        Some("triage")
+    );
+
+    let bare: MemoryHydrateResponse<'_> = serde_json::from_str(r#"{"memory": []}"#).unwrap();
+    assert!(!bare.publish);
+    assert!(bare.shared.is_empty());
 }
