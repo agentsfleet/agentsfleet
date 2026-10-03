@@ -110,9 +110,9 @@ impl Scrub {
         }
     }
 
-    /// `text`, owned and masked.
-    pub(crate) fn clean(&self, text: &str) -> Clean<String> {
-        Clean(self.text(text).into_owned())
+    /// `text`, masked; the same buffer when there was nothing to mask.
+    pub(crate) fn clean(&self, text: String) -> Clean<String> {
+        Clean(self.masked(&text).unwrap_or(text))
     }
 
     /// `value` with every string, and every key, masked.

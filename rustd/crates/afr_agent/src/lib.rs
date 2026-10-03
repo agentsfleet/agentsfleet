@@ -19,6 +19,7 @@ mod fixture;
 #[path = "loop.rs"]
 mod harness;
 mod json;
+mod ledger;
 mod prompt;
 mod records;
 mod router;
