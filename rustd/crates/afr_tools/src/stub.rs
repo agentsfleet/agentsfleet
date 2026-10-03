@@ -4,12 +4,28 @@
 //! name and never touches the executor; a sandbox-side one reads
 //! [`STUB_PATH`] through it, so a suite can count that the call crossed.
 
+use schemars::JsonSchema;
+use serde::Deserialize;
+
 use crate::catalog::Entry;
 use crate::runtime::{Runtime, Tool, ToolContext, ToolErrorCode, ToolOutput};
 use crate::schema::Schema;
 
 /// The file a sandbox-side stub reads.
 pub const STUB_PATH: &str = "stub.txt";
+
+// The arguments a stub, or any test tool that reads none, takes: its schema is
+// the empty object that refuses every key, derived like a real tool's rather
+// than written as JSON beside it. The doc line below is what schemars hands
+// the model as the schema's description, so it is written for the model.
+/// Takes no arguments.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[expect(
+    clippy::empty_structs_with_brackets,
+    reason = "schemars renders a unit struct as `null`; the braces make it the empty object every provider's function wire expects"
+)]
+pub struct NoArguments {}
 
 /// A handler that proves where it ran.
 #[derive(Debug)]
@@ -24,10 +40,7 @@ impl Stub {
     pub fn new(entry: &'static Entry) -> Self {
         Self {
             entry,
-            schema: Schema {
-                description: entry.name(),
-                parameters: serde_json::json!({"type": "object", "properties": {}}),
-            },
+            schema: Schema::of::<NoArguments>(entry.name()),
         }
     }
 
@@ -48,7 +61,11 @@ impl Tool for Stub {
         &self.schema
     }
 
-    async fn call(&self, _arguments: &serde_json::Value, context: ToolContext<'_, '_>) -> ToolOutput {
+    async fn call(
+        &self,
+        _arguments: &serde_json::Value,
+        context: ToolContext<'_, '_>,
+    ) -> ToolOutput {
         match (self.runtime(), context.executor) {
             (Runtime::Sandbox, Some(executor)) => match executor.read_file(STUB_PATH, 1).await {
                 Ok(_) => ToolOutput::succeeded(self.name()),
@@ -63,3 +80,7 @@ impl Tool for Stub {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "stub/tests.rs"]
+mod tests;
