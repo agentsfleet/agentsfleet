@@ -161,6 +161,10 @@ test.describe("workspace-library", () => {
     await expect(dialog).toContainText(name);
     await dialog.getByRole("button", { name: REMOVE_LABEL }).click();
 
+    // The row disappears optimistically, before removal reaches the server.
+    // The dialog closes only after a successful answer; leaving sooner can
+    // cancel the queued action and keep the entry in the gallery.
+    await expect(dialog).not.toBeVisible();
     await expect(row).toHaveCount(0);
 
     // And it is gone from the place it was installable from.

@@ -60,3 +60,13 @@ fn a_line_ends_in_one_delimiter_and_an_unwritable_message_is_empty() {
     assert!(!body.contains(&DELIMITER), "one message, one line");
     assert_eq!(line(&unwritable), [DELIMITER].as_slice());
 }
+
+#[test]
+fn a_non_string_bytes_field_explains_the_expected_encoding() {
+    let refused = serde_json::from_str::<WriteParams>(r#"{"process_id":1,"data":5}"#).unwrap_err();
+    assert!(refused.is_data(), "{refused}");
+    assert!(
+        refused.to_string().contains("expected standard base64"),
+        "{refused}"
+    );
+}

@@ -4,7 +4,6 @@ import { useState } from "react";
 import {
   Badge,
   ConfirmDialog,
-  CopyButton,
   DataTable,
   type DataTableColumn,
   EmptyState,
@@ -38,12 +37,6 @@ import {
 } from "@/components/domain/island-dynamic/intent-module-loader";
 import { deletePlatformLibraryAction, patchPlatformLibraryAction } from "../actions";
 import {
-  COLUMN_ACTIONS,
-  COLUMN_BUNDLE,
-  COLUMN_NAME,
-  COLUMN_SOURCE,
-  COLUMN_STATUS,
-  COLUMN_TIME,
   DELETE,
   DELETE_ACTION,
   DELETE_CONFIRM_BODY,
@@ -53,27 +46,22 @@ import {
   EMPTY_TITLE,
   FETCH_BUNDLE,
   FETCH_UPDATE,
-  COPY_HASH_LABEL,
   FLEET_CATALOG_SECTION,
-  HASH_PREVIEW_LENGTH,
   PATCH_ACTION,
   PUBLISH,
   SOURCE_REF_PATTERN,
   UNPUBLISH,
 } from "../library-copy";
 import { rowActions, statusView } from "./catalog-status";
-
-// Em dash, not an empty cell: a row with no bundle has a definite absence, and
-// blank space reads as a rendering bug.
-const NO_HASH = "—";
+import { COLUMN_NAME, COLUMN_SOURCE, COLUMN_STATUS, COLUMN_TIME, COLUMN_ACTIONS } from "@/components/domain/fleet-library/table-copy";
 
 // This table draws its source exactly as the workspace Fleet library draws its
 // own, through one component, so the two surfaces cannot drift apart a glyph at
 // a time.
 //
 // The kind is derived rather than read: `core.fleet_library` stores no
-// `source_kind` (schema/450_fleet_library.sql), and an upload leaves
-// `source_repo` empty — the same predicate `rowActions` keys Fetch off, so the
+// `source_kind` (schema/450_fleet_library.sql). An upload source is not an
+// owner/repo slug, the same predicate `rowActions` keys Fetch off, so the
 // glyph and the affordance can never disagree about what a row is.
 function sourceKindOf(entry: PlatformCatalogEntry): string {
   return SOURCE_REF_PATTERN.test(entry.source_repo) ? SOURCE_KIND_GITHUB : SOURCE_KIND_UPLOAD;
@@ -88,7 +76,7 @@ function sourceCell(entry: PlatformCatalogEntry) {
   return (
     <SourceMark
       kind={sourceKindOf(entry)}
-      sourceRef={entry.source_repo}
+      sourceRef={entry.source_repo || entry.name}
       gitRef={entry.source_ref || undefined}
     />
   );
@@ -217,27 +205,6 @@ export default function PlatformCatalogTable({
           </Badge>
         );
       },
-    },
-    {
-      key: "bundle",
-      header: COLUMN_BUNDLE,
-      hideOnMobile: true,
-      sortValue: (row) => row.content_hash ?? "",
-      // The hash is how an operator confirms a refetch actually changed something —
-      // comparing two of them IS the job this column exists for. The cell shows a
-      // preview (the full hash would dominate the row) and copies the WHOLE hash,
-      // because a truncated one compares to nothing.
-      cell: (row) =>
-        row.content_hash ? (
-          <span className="flex items-center gap-1">
-            <code className="text-mono leading-mono text-muted-foreground">
-              {row.content_hash.slice(0, HASH_PREVIEW_LENGTH)}
-            </code>
-            <CopyButton value={row.content_hash} label={COPY_HASH_LABEL} />
-          </span>
-        ) : (
-          <code className="text-mono leading-mono text-muted-foreground">{NO_HASH}</code>
-        ),
     },
     {
       key: "updated_at",
