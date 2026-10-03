@@ -76,6 +76,8 @@ pub enum ToolErrorCode {
     UpstreamUnreachable,
     /// The upstream answered with a status outside 2xx.
     UpstreamStatus,
+    /// A store asked the workspace to read it, and this fleet may not publish.
+    WorkspaceMemoryNotGranted,
 }
 
 impl ToolErrorCode {
@@ -100,6 +102,7 @@ impl ToolErrorCode {
             Self::CredentialMintRefused => "credential_mint_refused",
             Self::UpstreamUnreachable => "upstream_unreachable",
             Self::UpstreamStatus => "upstream_status",
+            Self::WorkspaceMemoryNotGranted => "workspace_memory_not_granted",
         }
     }
 }

@@ -86,7 +86,7 @@ async fn drive(
     let output = engine
         .run(AgentRun {
             lease: &lease,
-            memory: &[],
+            memory: afr_memory::Seed::default(),
             executor,
             mint: &CountingMint::never(),
             checkpoint: &Discard,
@@ -193,6 +193,7 @@ async fn remembered_items_are_handed_back_for_the_push() {
         key: Cow::Borrowed("k"),
         content: Cow::Borrowed("c"),
         category: Cow::Borrowed("core"),
+        visibility: afd_wire::memory::Visibility::Fleet,
     };
     let (output, frames) = drive(&ScriptedEngine::new([Step::Remember(delta.clone())]), None).await;
 
@@ -206,7 +207,7 @@ async fn a_run_debugs_without_the_leases_secrets() {
     let sink = |_frame: ActivityFrame<'static>| {};
     let run = AgentRun {
         lease: &lease,
-        memory: &[],
+        memory: afr_memory::Seed::default(),
         executor: None,
         mint: &CountingMint::never(),
         checkpoint: &Discard,

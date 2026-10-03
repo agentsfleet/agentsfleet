@@ -85,6 +85,8 @@ afd_sse.workspace = true
 afd_state.workspace = true
 # The runner control plane behind the `/v1/runners` verbs.
 afd_fleet.workspace = true
+# Fleet memory, held once and shared by the lease plane and both route families.
+afd_memory.workspace = true
 afd_gate.workspace = true
 # The signed-ingress plane the webhook and App ingress routes resolve through.
 afd_ingress.workspace = true

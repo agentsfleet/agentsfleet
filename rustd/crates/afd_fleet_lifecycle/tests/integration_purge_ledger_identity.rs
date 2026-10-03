@@ -132,8 +132,9 @@ async fn seed_everything_the_purge_destroys(lane: &Lane, fleet: &Uuid7) {
 
     sqlx::query(
         "INSERT INTO memory.memory_entries
-           (id, key, content, category, fleet_id, created_at, updated_at)
-         VALUES ($1::uuid, 'note', 'remembered', 'fact', $2::uuid, $3, $3)",
+           (id, key, content, category, fleet_id, workspace_id, created_at, updated_at)
+         SELECT $1::uuid, 'note', 'remembered', 'fact', id, workspace_id, $3, $3
+         FROM core.fleets WHERE id = $2::uuid",
     )
     .bind(mint().as_str())
     .bind(fleet.as_str())

@@ -29,7 +29,7 @@ use crate::lease::affinity::Fence;
 use crate::lease::envelope::{Acquired, Kind};
 use crate::lease::pull::Plane;
 use crate::lease::store::Leases;
-use crate::memory::Memories;
+use afd_memory::Memories;
 
 /// A Dragonfly nobody listens on: port 1 is reserved and unbound.
 const NOWHERE_QUEUE: &str = "redis://127.0.0.1:1";

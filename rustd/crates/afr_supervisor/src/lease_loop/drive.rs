@@ -4,10 +4,10 @@
 use std::panic::AssertUnwindSafe;
 
 use afd_core::error_code;
-use afd_wire::memory::MemoryDelta;
 use afd_wire::report::FailureClass;
 use afr_agent::AgentRun;
 use afr_executor::Executor;
+use afr_memory::Seed;
 use futures_util::FutureExt as _;
 
 use super::{DETAIL_RENEWAL, LeaseRun, failed};
@@ -26,7 +26,7 @@ impl LeaseRun<'_> {
     /// lifetime when there is one, so the caller still destroys it.
     pub(super) async fn drive(
         &self,
-        memory: &[MemoryDelta<'_>],
+        memory: Seed<'_>,
         executor: Option<&dyn Executor>,
         sink: ActivitySink,
     ) -> Ending {

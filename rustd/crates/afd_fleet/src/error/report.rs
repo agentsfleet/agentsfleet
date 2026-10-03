@@ -112,19 +112,3 @@ pub(crate) fn row_malformed(
         })
     }
 }
-
-/// Reports a memory statement the durable store would not run.
-///
-/// The one raiser in this module that carries the caller's sentence, and the
-/// reason is the surface it serves. `UZ-MEM-003` answers four different
-/// operations — the role switch, the list, the search, the forget — and
-/// `handler.zig` writes a different sentence for each, because the one thing a
-/// reader of a 503 wants to know is which half of the surface is down.
-/// `Rejected` above carries a detail for the same reason; what neither does is
-/// let two sites describe ONE operation differently.
-///
-/// The `sqlx::Error` rides through as `#[source]`, so an operator still reads
-/// the statement's own cause beside the request id.
-pub(crate) fn memory_unavailable(detail: &'static str) -> impl Fn(sqlx::Error) -> Error {
-    move |source| Error::new(ErrorKind::MemoryUnavailable { detail, source })
-}

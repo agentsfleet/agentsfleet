@@ -1,10 +1,13 @@
-//! A fleet's durable memory: read at lease start, written back fenced.
+//! A fleet's durable memory: read at lease start, searched past the window
+//! when a recall falls short, and written back fenced.
 
 use std::borrow::Cow;
 
 use afd_core::id::Uuid7;
 use afd_wire::lease::LeasePayload;
-use afd_wire::memory::{MemoryDelta, MemoryPushRequest};
+use afd_wire::memory::{
+    MemoryDelta, MemoryPushRequest, MemoryRecallRequest, MemoryRecallResponse, SharedMemory,
+};
 use afr_agent::Checkpoint;
 
 use crate::client::{Body, ControlPlane, retrying};
@@ -91,6 +94,69 @@ impl Checkpoint for LeaseCheckpoint<'_> {
                 "a mid-run memory checkpoint was not written; the push before the report carries it"
             );
         }
+    }
+}
+
+/// Asks the daemon for memory a run's window missed, fenced by the lease's
+/// token. Never retried: a recall that gets no answer answers from the
+/// window, and a retry would only make the model wait longer for the same.
+#[derive(Debug)]
+pub(crate) struct Recaller<'a> {
+    plane: &'a ControlPlane,
+    fleet_id: &'a Uuid7,
+    lease: &'a LeasePayload<'a>,
+}
+
+impl<'a> Recaller<'a> {
+    /// Recalls for `fleet_id` under `lease`.
+    pub(crate) const fn new(
+        plane: &'a ControlPlane,
+        fleet_id: &'a Uuid7,
+        lease: &'a LeasePayload<'a>,
+    ) -> Self {
+        Self {
+            plane,
+            fleet_id,
+            lease,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl afr_memory::Recall for Recaller<'_> {
+    async fn recall(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> afr_memory::Result<MemoryRecallResponse<'static>> {
+        let request = MemoryRecallRequest {
+            lease_id: Cow::Borrowed(&self.lease.lease_id),
+            fencing_token: self.lease.fencing_token,
+            query: Cow::Borrowed(query),
+            limit,
+        };
+        let unanswered =
+            |failure: crate::error::Error| afr_memory::Error::unanswered(failure.code());
+        let body = self
+            .plane
+            .recall(self.fleet_id, &request)
+            .await
+            .map_err(unanswered)?;
+        let found = body
+            .decode::<MemoryRecallResponse<'_>>()
+            .map_err(unanswered)?;
+        Ok(MemoryRecallResponse {
+            memory: found
+                .memory
+                .into_iter()
+                .map(MemoryDelta::into_owned)
+                .collect(),
+            shared: found
+                .shared
+                .into_iter()
+                .map(SharedMemory::into_owned)
+                .collect(),
+        })
     }
 }
 

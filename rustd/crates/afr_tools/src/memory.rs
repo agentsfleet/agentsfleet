@@ -7,8 +7,8 @@
 
 use std::borrow::Cow;
 
-use afd_wire::memory::{MemoryDelta, PINNED_CATEGORY};
-use afr_memory::Forgotten;
+use afd_wire::memory::{MemoryDelta, PINNED_CATEGORY, Visibility};
+use afr_memory::{Forgotten, Recalled};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -26,6 +26,8 @@ const RECALLED_NOTHING: &str = "nothing remembered matches";
 const LISTED_NOTHING: &str = "nothing remembered";
 /// What a forget of an unknown key reads back.
 const FORGOT_NOTHING: &str = "nothing remembered under";
+/// What names the fleet that wrote a shared entry.
+const SHARED_BY: &str = "shared by";
 /// What a forget reads back after the key.
 const FORGOT: &str = "is forgotten for the rest of this run; the fleet's stored copy \
                       stays until a store under the same key replaces it";
@@ -42,6 +44,28 @@ pub(crate) struct Store {
     /// `core` (the default) is read first by every later run; `daily` expires
     /// after a retention sweep; any other label is kept by recency.
     category: Option<String>,
+    /// `fleet` (the default) keeps it to this fleet; `workspace` lets every
+    /// fleet granted to read shared memory recall it, naming this fleet.
+    visibility: Option<Reach>,
+}
+
+/// Who reads a stored memory, as the model names it.
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum Reach {
+    /// Only this fleet.
+    Fleet,
+    /// Every fleet in the workspace granted to read shared memory.
+    Workspace,
+}
+
+impl From<Reach> for Visibility {
+    fn from(reach: Reach) -> Self {
+        match reach {
+            Reach::Fleet => Self::Fleet,
+            Reach::Workspace => Self::Workspace,
+        }
+    }
 }
 
 /// `memory_recall`'s arguments.
@@ -87,12 +111,14 @@ impl Handler for MemoryStore {
             key,
             content,
             category,
+            visibility,
         } = arguments;
         let stored = format!("stored {key}");
         let delta = MemoryDelta {
             key: Cow::Owned(key),
             content: Cow::Owned(content),
             category: category.map_or(Cow::Borrowed(PINNED_CATEGORY), Cow::Owned),
+            visibility: visibility.map(Visibility::from).unwrap_or_default(),
         };
         match context.lease.memory.store(delta).await {
             Ok(()) => ToolOutput::succeeded(stored),
@@ -116,8 +142,8 @@ impl Handler for MemoryRecall {
         let limit = arguments.limit.unwrap_or(RECALL_DEFAULT).min(RECALL_MAX);
         match context.lease.memory.recall(&arguments.query, limit).await {
             Ok(recalled) => ToolOutput::succeeded(
-                lines(&recalled, |delta| {
-                    format!("{} ({}): {}", delta.key, delta.category, delta.content)
+                lines(&recalled, |found| {
+                    format!("{} ({}): {}", found.key, label(found), found.content)
                 })
                 .unwrap_or_else(|| format!("{RECALLED_NOTHING} {}", arguments.query)),
             ),
@@ -145,10 +171,8 @@ impl Handler for MemoryList {
             .await
         {
             Ok(listed) => ToolOutput::succeeded(
-                lines(&listed, |delta| {
-                    format!("{} ({})", delta.key, delta.category)
-                })
-                .unwrap_or_else(|| LISTED_NOTHING.to_owned()),
+                lines(&listed, |found| format!("{} ({})", found.key, label(found)))
+                    .unwrap_or_else(|| LISTED_NOTHING.to_owned()),
             ),
             Err(failure) => refused(&failure),
         }
@@ -176,19 +200,27 @@ impl Handler for MemoryForget {
 }
 
 /// Each entry on its own line as `render` writes it; `None` when there is none.
-fn lines(
-    entries: &[MemoryDelta<'_>],
-    render: impl Fn(&MemoryDelta<'_>) -> String,
-) -> Option<String> {
+fn lines(entries: &[Recalled<'_>], render: impl Fn(&Recalled<'_>) -> String) -> Option<String> {
     let rendered: Vec<String> = entries.iter().map(render).collect();
     (!rendered.is_empty()).then(|| rendered.join("\n"))
 }
 
+/// An entry's category, and — for one another fleet published — its writer.
+fn label(found: &Recalled<'_>) -> String {
+    found.writer.as_ref().map_or_else(
+        || found.category.to_string(),
+        |writer| format!("{}, {SHARED_BY} {writer}", found.category),
+    )
+}
+
 /// A call the backend refused, with the code the model reads: a store past
-/// the push is `memory_full`; anything else the model can correct.
+/// the push is `memory_full`, a share the fleet may not make is
+/// `workspace_memory_not_granted`; anything else the model can correct.
 fn refused(failure: &afr_memory::Error) -> ToolOutput {
     let code = if failure.is_full() {
         ToolErrorCode::MemoryFull
+    } else if failure.is_not_granted() {
+        ToolErrorCode::WorkspaceMemoryNotGranted
     } else {
         ToolErrorCode::InvalidArguments
     };
@@ -198,3 +230,7 @@ fn refused(failure: &afr_memory::Error) -> ToolOutput {
 #[cfg(test)]
 #[path = "memory/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "memory/shared_tests.rs"]
+mod shared_tests;

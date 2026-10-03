@@ -28,6 +28,7 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
         RunnerRoute::Activity => post(handler::runner::activity::handle::<D>),
         RunnerRoute::MemoryHydrate => get(handler::runner::memory::hydrate::<D>),
         RunnerRoute::MemoryCapture => post(handler::runner::memory::capture::<D>),
+        RunnerRoute::MemoryRecall => post(handler::runner::memory::recall::<D>),
         RunnerRoute::ToolCalls => post(handler::runner::tool_call::handle::<D>),
         RunnerRoute::Bundle => get(handler::runner::bundle::handle::<D>),
         RunnerRoute::CredentialsMint => post(handler::runner::credential::handle::<D>),

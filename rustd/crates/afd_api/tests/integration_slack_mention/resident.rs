@@ -12,8 +12,8 @@ use std::borrow::Cow;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_fleet::memory::Memories;
 use afd_ingress::slack::KIND_RESIDENT;
+use afd_memory::Memories;
 use afd_wire::memory::MemoryDelta;
 
 use super::fixture::Admitted;
@@ -169,6 +169,7 @@ async fn resident_memory_is_the_channel() {
         key: Cow::Borrowed("deploy-owner"),
         content: Cow::Borrowed("The platform team owns deploys."),
         category: Cow::Borrowed("core"),
+        visibility: afd_wire::memory::Visibility::Fleet,
     };
     memories
         .capture(
@@ -180,18 +181,22 @@ async fn resident_memory_is_the_channel() {
         .expect("the resident captures a fact");
 
     let recalled = memories
-        .list(&channel)
+        .hydrate(&channel)
         .await
         .expect("the channel's memory reads");
     assert!(
-        recalled.iter().any(|entry| entry.key == "deploy-owner"),
+        recalled
+            .memory
+            .iter()
+            .any(|entry| entry.key == "deploy-owner"),
         "the next thread in the channel recalls it"
     );
     assert!(
         memories
-            .list(&elsewhere)
+            .hydrate(&elsewhere)
             .await
             .expect("the other channel's memory reads")
+            .memory
             .is_empty(),
         "another channel's resident does not"
     );

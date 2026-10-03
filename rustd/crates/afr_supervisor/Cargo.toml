@@ -24,6 +24,8 @@ afd_core.workspace = true
 afd_wire.workspace = true
 afr_agent.workspace = true
 afr_executor.workspace = true
+# The memory seed a run starts from, and the recall seam past its window.
+afr_memory.workspace = true
 afr_sandbox.workspace = true
 # The runner token and every minted credential are held as one `Secret`.
 afr_secrets.workspace = true
