@@ -22,10 +22,7 @@ use crate::fixture::{Canned, Frames, Script, call, lease, say, unbounded};
 
 /// A loop hosting `tools`, every lease driven by `script`.
 pub(super) fn engine(tools: Vec<Box<dyn Tool>>, script: &Script) -> Loop {
-    let replay = script.replay();
-    Loop::new(Catalog::new(tools), move |_policy| {
-        Ok(Box::new(replay.clone()))
-    })
+    Loop::new(Catalog::new(tools), script.replay())
 }
 
 /// Runs `lease` on `engine` until it ends or `stop` is cancelled.

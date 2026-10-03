@@ -13,7 +13,7 @@ use afr_tools::catalog::CALCULATOR;
 use tokio_util::sync::CancellationToken;
 
 use super::tests::{completions, drive, engine};
-use crate::fixture::{Canned, Exits, Script, call, lease, say, unbounded};
+use crate::fixture::{API_KEY, Canned, Exits, GITHUB_TOKEN, Script, call, lease, say, unbounded};
 
 #[tokio::test]
 async fn test_unlisted_tool_refused_run_continues() {
@@ -145,4 +145,33 @@ async fn a_call_whose_process_exits_zero_ends_succeeded() {
         completions(&frames),
         [("1".to_owned(), ToolCallStatus::Succeeded)]
     );
+}
+
+#[tokio::test]
+async fn no_secret_value_is_sent_to_the_model_whoever_wrote_it() {
+    let script = Script::new([
+        vec![
+            say(API_KEY),
+            call(
+                "c",
+                CALCULATOR.name(),
+                serde_json::json!({"token": GITHUB_TOKEN}),
+            ),
+        ],
+        vec![say("done")],
+    ]);
+    let engine = engine(vec![Canned::boxed(&CALCULATOR, GITHUB_TOKEN)], &script);
+    let mut leased = lease(&[CALCULATOR.name()], unbounded());
+    leased.event.request_json = format!("{{\"message\":\"use {GITHUB_TOKEN}\"}}").into();
+    leased.instructions = format!("the key is {API_KEY}").into();
+
+    let (_output, _frames) = drive(&engine, &leased, &CancellationToken::new()).await;
+
+    let sent = format!("{:?}", script.sent());
+    assert!(
+        !sent.contains(API_KEY),
+        "the key never reaches a prompt: {sent}"
+    );
+    assert!(!sent.contains(GITHUB_TOKEN), "nor a credential: {sent}");
+    assert!(sent.contains("«secret:github.token»") && sent.contains("«secret:llm.api_key»"));
 }

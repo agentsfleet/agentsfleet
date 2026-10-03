@@ -74,16 +74,25 @@ impl Error {
         }
     }
 
-    /// The tool a refused lease named, for its log line.
+    /// What a refused lease named that this engine cannot host, for its log
+    /// line; none for a failure that refused nothing.
     #[must_use]
-    pub fn unhosted_tool(&self) -> Option<&str> {
+    pub fn unhosted(&self) -> Option<Unhosted<'_>> {
         match self.kind() {
-            ErrorKind::Executor { .. } | ErrorKind::Provider { .. } | ErrorKind::Scrub { .. } => {
-                None
-            }
-            ErrorKind::Tools { source } => source.unhosted_tool(),
+            ErrorKind::Tools { source } => source.unhosted_tool().map(Unhosted::Tool),
+            ErrorKind::Provider { source } => source.unhosted_provider().map(Unhosted::Provider),
+            ErrorKind::Executor { .. } | ErrorKind::Scrub { .. } => None,
         }
     }
+}
+
+/// What a refused lease named that the engine cannot host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unhosted<'a> {
+    /// A tool with no handler in the catalog.
+    Tool(&'a str),
+    /// A model provider with no wire.
+    Provider(&'a str),
 }
 
 #[cfg(test)]

@@ -11,7 +11,7 @@ use afd_core::test_util::trace::Capture;
 use afd_wire::lease::LeasePayload;
 use afr_tools::catalog::{BROWSER, CALCULATOR, FILE_READ, HTTP_REQUEST};
 
-use super::{DETAIL_UNHOSTED, EVENT_UNHOSTED};
+use super::{DETAIL_UNHOSTED, DETAIL_UNHOSTED_PROVIDER, EVENT_UNHOSTED, EVENT_UNHOSTED_PROVIDER};
 use crate::client::{Call, Verb};
 use crate::error;
 use crate::test_support::{
@@ -22,6 +22,12 @@ use crate::test_support::{
 
 /// The report field a failure's detail rides in.
 const FAILURE_DETAIL: &str = "failure_detail";
+/// The log field naming what a refused lease asked for.
+const FIELD_NAME: &str = "name";
+/// The log field carrying the registry code.
+const FIELD_ERROR_CODE: &str = "error_code";
+/// Why a refused lease's run count is zero.
+const NO_MODEL_CALL: &str = "no model call was made";
 
 fn rig() -> Rig {
     behaving(Behaviour::Answer, |_| None)
@@ -55,7 +61,7 @@ async fn test_unhosted_tool_refuses_lease() {
     let report = reported(&calls);
     assert_eq!(report[FAILURE_REASON], STARTUP_POSTURE);
     assert_eq!(report[FAILURE_DETAIL], DETAIL_UNHOSTED);
-    assert_eq!(rig.runs.load(Ordering::SeqCst), 0, "no model call was made");
+    assert_eq!(rig.runs.load(Ordering::SeqCst), 0, NO_MODEL_CALL);
     assert_eq!(
         rig.prepared.load(Ordering::SeqCst),
         0,
@@ -68,10 +74,10 @@ async fn test_unhosted_tool_refuses_lease() {
     );
     let refused = capture.only(EVENT_UNHOSTED);
     assert_eq!(refused.level, tracing::Level::ERROR);
-    assert_eq!(refused.field("name"), Some(BROWSER.name()));
+    assert_eq!(refused.field(FIELD_NAME), Some(BROWSER.name()));
     assert_eq!(refused.field("lease_id"), Some(LEASE_ID));
     assert_eq!(
-        refused.field("error_code"),
+        refused.field(FIELD_ERROR_CODE),
         Some(error_code::AGENTSFLEET_INVALID_CONFIG.as_str())
     );
 }
@@ -133,3 +139,30 @@ async fn should_catch_a_panicking_engine_on_a_supervisor_only_lease() {
     );
     assert_eq!(capture.only("engine_panicked").level, tracing::Level::ERROR);
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_lease_naming_a_provider_no_wire_speaks_is_refused_before_anything_starts() {
+    let capture = Capture::install();
+    let mut rig = rig();
+    let mut refused_lease = offering(&[CALCULATOR.name()]);
+    refused_lease.policy.provider = UNSPOKEN_PROVIDER.into();
+
+    rig.run(&refused_lease).await.unwrap();
+
+    let calls = rig.calls();
+    let report = reported(&calls);
+    assert_eq!(report[FAILURE_REASON], STARTUP_POSTURE);
+    assert_eq!(report[FAILURE_DETAIL], DETAIL_UNHOSTED_PROVIDER);
+    assert_eq!(rig.runs.load(Ordering::SeqCst), 0, NO_MODEL_CALL);
+    assert_eq!(position(&calls, Verb::Hydrate), None);
+    let refused = capture.only(EVENT_UNHOSTED_PROVIDER);
+    assert_eq!(refused.level, tracing::Level::ERROR);
+    assert_eq!(refused.field(FIELD_NAME), Some(UNSPOKEN_PROVIDER));
+    assert_eq!(
+        refused.field(FIELD_ERROR_CODE),
+        Some(error_code::AGENTSFLEET_INVALID_CONFIG.as_str())
+    );
+}
+
+/// A provider the daemon accepts and no runner wire speaks.
+const UNSPOKEN_PROVIDER: &str = "groq";

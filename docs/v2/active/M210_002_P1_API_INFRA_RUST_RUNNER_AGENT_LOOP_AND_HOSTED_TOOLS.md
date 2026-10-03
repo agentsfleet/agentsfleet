@@ -58,7 +58,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `rustd/Cargo.toml`, `rustd/Cargo.lock`, `rustd/crates/afr_tools/` (`Cargo.toml`, `src/catalog.rs`, `schema.rs`, `runtime.rs`, `http_request.rs`, `network.rs`, `origin_rules.rs`, `placeholders.rs`, `mint.rs`, `web_fetch.rs`, `pushover.rs`, `memory.rs`, `calculator.rs`, `plan.rs`, `error.rs`) | CREATE | The catalog with every published tool, its schema and runtime; the supervisor-side handlers; `network.rs` is the guarded transport the tools share |
 | `rustd/crates/afr_agent/` (`Cargo.toml`, `src/lib.rs`, `engine.rs`, `loop.rs`, `turn.rs`, `router.rs`, `prompt.rs`, `context.rs`, `events.rs`, `trace.rs`, `records.rs`, `scrub.rs`, `json.rs`, `ledger.rs`, `error.rs`) | CREATE / EDIT | The loop, routing, prompt, context budget, frames, trace, full records, the secret scrub and the one JSON walk it shares with the trace, and the ledger that ends each call once; `AgentRun` gains the runner verbs the loop calls |
-| `rustd/crates/afr_providers/` (`Cargo.toml`, `src/provider.rs`, `anthropic.rs`, `openai_responses.rs`, `openai_chat.rs`, `hosted.rs`, `retry.rs`, `usage.rs`, `error.rs`) | CREATE | One trait, three wires, hosted specs, bounded retry, usage split |
+| `rustd/crates/afr_providers/` (`Cargo.toml`, `src/provider.rs`, `connect.rs`, `dialect.rs`, `http.rs`, `sse.rs`, `retry.rs`, `anthropic.rs`, `openai_responses.rs`, `openai_chat.rs`, `error.rs`) | CREATE | One trait and a `Connect` seam; one transport generic over three dialects, with bounded retry and hosted specs |
 | `rustd/crates/afr_supervisor/` (`Cargo.toml`, `src/lease_loop.rs`, `src/lease_loop/`, `src/client.rs`, `src/records.rs`, `src/report.rs`, `src/test_support/`), `rustd/crates/afd_wire/src/paths.rs`, `rustd/crates/afr_agent/tests/support/scripted.rs` | EDIT / CREATE | Run the real loop; refuse a lease naming an unhosted tool; start no sandbox for a supervisor-only lease; `lease_loop.rs` (352 lines) splits; records post before the report on the `tool-calls` path, and the report carries the trace; the scripted engine stays for M210_001's lane |
 | `rustd/crates/agentsfleetd/tests/support/fake_github.rs`, `fake_grafana.rs`, `fake_elastic.rs`, `fake_model.rs`, `bundle_install.rs` | CREATE | Fakes speaking the upstream shapes the bundles read; installing a fixture bundle through the seed |
 | `rustd/crates/agentsfleetd/tests/integration_rust_runner_bundles.rs` | CREATE | The four bundles end to end (`#[ignore]`d, run by `make test-integration-rustd`) |
@@ -116,13 +116,13 @@ A run is turns until the model answers without a tool call, the context cap is r
 
 ### §3 — Three providers, one trait, the key stays in the supervisor
 
-`ExecutionPolicy.provider` selects Anthropic Messages, OpenAI Responses or OpenAI-compatible chat, dialled at `inference_host` or `base_url` with `api_key`. Each speaks its own tool-calling wire and streams. `web_search` is sent as the provider's hosted tool spec on Responses and Messages; on compatible chat the call is a tool error with a code. A 429 or 5xx is retried honouring `Retry-After` under a fixed ceiling; a 4xx ends the run `FleetError` with `failure_detail` naming the status and no `failure_reason`; a lost connection ends it `TransportLoss`. Usage sums across turns into `input_tokens`, `cached_input_tokens` and `output_tokens`.
+`ExecutionPolicy.provider` selects the wire with `api_key`: `anthropic` is Messages and `openai` is Responses, each at its public host, `custom:<url>` is OpenAI-compatible chat at that URL, and any other name refuses the lease at admission. Everything the model is sent passes the scrub. Each speaks its own tool-calling wire and streams. `web_search` is sent as the provider's hosted tool spec on Responses and Messages; on compatible chat the call is a tool error with a code. A 429 or 5xx is retried honouring `Retry-After` under a fixed ceiling; a 4xx ends the run `FleetError` with `failure_detail` naming the status and no `failure_reason`; a lost connection ends it `TransportLoss`. Usage sums across turns into `input_tokens`, `cached_input_tokens` and `output_tokens`.
 
-- **Dimension 3.1** — Each provider completes a tool-calling turn against a fake server speaking its wire → Test `test_each_provider_drives_a_tool_turn`
-- **Dimension 3.2** — A 429 with `Retry-After: 1` is retried once and succeeds; a 401 ends the run with the status in `failure_detail` → Test `test_provider_retry_honours_retry_after`
-- **Dimension 3.3** — The key appears in no log line, frame, trace, record or prompt of a run → Test `test_api_key_never_leaves_the_supervisor`
+- **Dimension 3.1** — Each provider completes a tool-calling turn against a fake server speaking its wire → Test `test_each_provider_drives_a_tool_turn` — DONE (`rustd/crates/afr_providers/tests/providers.rs`)
+- **Dimension 3.2** — A 429 with `Retry-After: 1` is retried once and succeeds; a 401 ends the run with the status in `failure_detail` → Test `test_provider_retry_honours_retry_after` — DONE (`rustd/crates/afr_providers/tests/providers.rs`)
+- **Dimension 3.3** — The key appears in no log line, frame, trace, record or prompt of a run → Test `test_api_key_never_leaves_the_supervisor` — DONE (`rustd/crates/afr_providers/tests/providers.rs`)
 - **Dimension 3.4** — Three turns' usage sums into the report's three counts → Test `test_report_sums_token_usage` — DONE (`rustd/crates/afr_agent/src/loop/budget_tests.rs`)
-- **Dimension 3.5** — `web_search` reaches Responses and Messages as a hosted spec and is a coded tool error on compatible chat → Test `test_web_search_is_a_hosted_spec`
+- **Dimension 3.5** — `web_search` reaches Responses and Messages as a hosted spec and is a coded tool error on compatible chat → Test `test_web_search_is_a_hosted_spec` — DONE (`rustd/crates/afr_providers/tests/providers.rs`)
 
 ### §4 — Supervisor-side tools under the lease's policy
 
@@ -169,8 +169,8 @@ The integration lane installs each fixture bundle through the seed (`rustd/crate
 Catalog entry: { name, runtime: Supervisor | Sandbox | Provider }
 Tool (trait):  name() · schema() · runtime() · call(arguments, ctx) → ToolOutput { text, exit_code?, error_code? }
 AgentEngine (M210_001 trait) + admit(policy) → Needs { sandbox } ← afr_agent::Loop { provider, catalog ∩ policy.tools, budget }
-Provider (trait): stream(request) → chunks { text(kind) | tool_call(id, name, arguments) | usage }
-                  hosted_specs(policy.tools) → the provider's own tool specs (web_search)
+Connect (trait): admit(policy) · connect(lease) → Box<dyn Provider>; Provider: stream(request) → chunks
+                 { text(kind) | tool_call(id, name, arguments) | usage }; web_search rides as the wire's own spec
 
 Trusted repair context (rendered into the system prompt, write-bound leases only)
   ## Trusted repair context
@@ -209,8 +209,8 @@ Mint:   POST /v1/runners/me/credentials/mint { lease_id, integration, scope? } �
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `tool_refused_not_hosted` (runner log, error; the Zig bridge's spelling, `docs/LOGGING_STANDARD.md` §8A) | ops | A policy names a tool without a handler | lease id, tool `name`, `error_code` | No policy content beyond the name | `test_unhosted_tool_refuses_lease` |
-| `provider_retry` (runner log, warn) | ops | A provider call is retried | lease id, provider, status, attempt | No request or response body | `test_provider_retry_honours_retry_after` |
+| `tool_refused_not_hosted` (runner log, error; the Zig bridge's spelling, `docs/LOGGING_STANDARD.md` §8A), and `provider_refused_not_hosted` for a provider | ops | A policy names a tool without a handler, or a provider with no wire | lease id, tool `name`, `error_code` | No policy content beyond the name | `test_unhosted_tool_refuses_lease` |
+| `provider_retry` (runner log, warn) | ops | A provider call is retried | lease id, provider, status, attempt, wait | No request or response body | `test_provider_retry_honours_retry_after` |
 | `tool_refused` (runner log, info) | ops | A call fails the policy | lease id, call id, tool, `error_code` | No arguments, no host beyond its name | `test_http_request_refuses_unlisted_host` |
 | `credential_minted` (runner log, info) | ops | A mintable is minted | lease id, integration, `expires_at_ms` | Never the token | `test_mintable_credential_minted_once` |
 | `context_cap_reached` (runner log, info) | ops | The loop stops offering tools | lease id, turn count, tokens | No prompt content | `test_loop_honours_context_budget` |

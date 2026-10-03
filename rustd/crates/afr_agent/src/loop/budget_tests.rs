@@ -18,7 +18,8 @@ use super::tests::{drive, engine};
 use crate::context::{CAP_REACHED, EVICTED};
 use crate::engine::{AgentEngine, AgentRun};
 use crate::fixture::{
-    API_KEY, Canned, Frames, GITHUB_TOKEN, Script, budget, call, lease, say, spent, unbounded,
+    API_KEY, Canned, Frames, GITHUB_TOKEN, Script, Unreachable, budget, call, lease, say, spent,
+    unbounded,
 };
 
 /// A cap no test here reaches.
@@ -238,9 +239,7 @@ async fn test_secret_values_masked_in_outputs() {
 
 #[tokio::test]
 async fn a_provider_that_cannot_be_reached_is_an_engine_error() {
-    let engine = super::Loop::new(afr_tools::Catalog::new(Vec::new()), |_policy| {
-        Err(Error::refused(404))
-    });
+    let engine = super::Loop::new(afr_tools::Catalog::new(Vec::new()), Unreachable);
     let lease = lease(&[], unbounded());
     let frames = Frames::default();
     let sink = frames.sink();
@@ -285,5 +284,5 @@ fn the_loop_admits_through_its_catalog() {
     let refused = engine
         .admit(&lease(&["browser"], unbounded()).policy)
         .unwrap_err();
-    assert_eq!(refused.unhosted_tool(), Some("browser"));
+    assert_eq!(refused.unhosted(), Some(crate::Unhosted::Tool("browser")));
 }

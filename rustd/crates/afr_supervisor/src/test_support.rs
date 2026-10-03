@@ -22,6 +22,7 @@ use afd_wire::tool_detail::ToolCallRecord;
 use afd_wire::tool_trace::{ToolCallStatus, ToolTrace, ToolTraceCall};
 use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_executor::{Executor, ProcessId, Spawn};
+use afr_providers::{Connect as _, Connector, Endpoints};
 use afr_tools::Catalog;
 use afr_tools::catalog::{CALCULATOR, FILE_READ, HTTP_REQUEST};
 use afr_tools::stub::Stub;
@@ -175,6 +176,7 @@ pub(crate) struct FakeAgent {
     pub(crate) peak: Arc<AtomicUsize>,
     running: AtomicUsize,
     catalog: Catalog,
+    connect: Connector,
 }
 
 impl FakeAgent {
@@ -189,6 +191,7 @@ impl FakeAgent {
                 Stub::boxed(&CALCULATOR),
                 Stub::boxed(&HTTP_REQUEST),
             ]),
+            connect: Connector::new(Endpoints::default()).unwrap(),
         }
     }
 }
@@ -196,6 +199,7 @@ impl FakeAgent {
 #[async_trait::async_trait]
 impl AgentEngine for FakeAgent {
     fn admit(&self, policy: &ExecutionPolicy<'_>) -> afr_agent::Result<Needs> {
+        self.connect.admit(policy)?;
         let sandbox = self.catalog.select(&policy.tools)?.needs_sandbox();
         Ok(Needs { sandbox })
     }

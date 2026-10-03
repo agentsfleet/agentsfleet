@@ -3,17 +3,20 @@
 //! One error type with `pub type Result<T, E = Error>` beside it, under the
 //! `afd_core::error_shell!` hull. A provider failure ends the run, and how the
 //! report names it depends on which failure it was: a refusal no retry changes
-//! is the fleet's error, with the status in its detail; a connection lost
-//! mid-turn is a transport loss.
+//! is the fleet's error, with the status in its detail; a connection lost or a
+//! turn the provider ended early is a transport loss.
 //!
-//! # Which code, and why none is new
+//! # Which codes, and why none is new
 //!
 //! An operator reads a provider failure on the host's journal, so it reuses the
 //! registry's internal code as the rest of the runner does; the log line's
-//! `event` says which failure it was.
+//! `event` says which failure it was. A policy naming a provider this runner
+//! does not speak is the fleet's configuration, and takes that code.
 
 use afd_core::error_code::{self, ErrorCode};
 use afd_wire::report::FailureClass;
+
+pub(crate) mod raise;
 
 afd_core::error_shell!(
     /// A provider failure, with the backtrace of where it was raised.
@@ -36,6 +39,37 @@ pub(crate) enum ErrorKind {
         /// The transport's reason.
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    /// The provider ended the turn early with an error of its own.
+    #[error("the model provider ended the turn early: {reason}")]
+    Ended {
+        /// The provider's own name for the error, never its message.
+        reason: String,
+    },
+
+    /// A request or a streamed event was not the JSON its wire defines.
+    #[error("the model provider's turn could not be written or read")]
+    Unreadable {
+        /// The parser's reason.
+        #[from]
+        source: serde_json::Error,
+    },
+
+    /// The policy names a provider this runner does not speak.
+    #[error("the policy names a model provider this runner does not speak: {provider}")]
+    Unhosted {
+        /// The provider, as the policy spells it.
+        provider: String,
+    },
+
+    /// The HTTP client could not be built.
+    #[error("the model providers' HTTP client could not be built")]
+    Client {
+        /// The client's reason. Lifted by name, never by `?`: a send that
+        /// fails is a lost connection, not a client that could not be built.
+        #[source]
+        source: reqwest::Error,
     },
 }
 
@@ -68,19 +102,43 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
-            ErrorKind::Refused { .. } | ErrorKind::Lost { .. } => {
-                error_code::INTERNAL_OPERATION_FAILED
-            }
+            ErrorKind::Unhosted { .. } => error_code::AGENTSFLEET_INVALID_CONFIG,
+            ErrorKind::Refused { .. }
+            | ErrorKind::Lost { .. }
+            | ErrorKind::Ended { .. }
+            | ErrorKind::Unreadable { .. }
+            | ErrorKind::Client { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 
-    /// The class the report names, where the failure has one. A refusal is
-    /// the fleet's error and carries none.
+    /// The class the report names, where the failure has one. A refusal, an
+    /// unreadable turn and a provider this runner does not speak are the
+    /// fleet's error and carry none.
     #[must_use]
     pub fn failure_class(&self) -> Option<FailureClass> {
         match self.kind() {
-            ErrorKind::Refused { .. } => None,
-            ErrorKind::Lost { .. } => Some(FailureClass::TransportLoss),
+            ErrorKind::Lost { .. } | ErrorKind::Ended { .. } => Some(FailureClass::TransportLoss),
+            ErrorKind::Refused { .. }
+            | ErrorKind::Unreadable { .. }
+            | ErrorKind::Unhosted { .. }
+            | ErrorKind::Client { .. } => None,
+        }
+    }
+
+    /// The provider a refused lease named, for its log line.
+    #[must_use]
+    pub fn unhosted_provider(&self) -> Option<&str> {
+        match self.kind() {
+            ErrorKind::Unhosted { provider } => Some(provider),
+            ErrorKind::Refused { .. }
+            | ErrorKind::Lost { .. }
+            | ErrorKind::Ended { .. }
+            | ErrorKind::Unreadable { .. }
+            | ErrorKind::Client { .. } => None,
         }
     }
 }
+
+#[cfg(test)]
+#[path = "error/tests.rs"]
+mod tests;

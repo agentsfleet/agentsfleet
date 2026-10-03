@@ -23,6 +23,25 @@ pub struct Call {
     pub arguments: serde_json::Value,
 }
 
+impl Call {
+    /// A call whose arguments arrived as `raw` JSON text: parsed when they
+    /// parse, and kept as the text the model wrote when they do not, so the
+    /// tool refuses them with a reason the model can read. Empty text is no
+    /// arguments.
+    pub(crate) fn parsed(id: String, name: String, raw: &str) -> Self {
+        let arguments = if raw.trim().is_empty() {
+            serde_json::Value::Object(serde_json::Map::new())
+        } else {
+            serde_json::from_str(raw).unwrap_or_else(|_| serde_json::Value::String(raw.to_owned()))
+        };
+        Self {
+            id,
+            name,
+            arguments,
+        }
+    }
+}
+
 /// One message of the conversation a turn continues.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Message {
@@ -100,6 +119,24 @@ pub enum Chunk {
     Call(Call),
     /// What the turn spent.
     Usage(Usage),
+}
+
+impl Chunk {
+    /// Answer text.
+    pub(crate) const fn answer(text: String) -> Self {
+        Self::Text {
+            kind: StreamTextKind::Answer,
+            text,
+        }
+    }
+
+    /// The model's reasoning.
+    pub(crate) const fn reasoning(text: String) -> Self {
+        Self::Text {
+            kind: StreamTextKind::Reasoning,
+            text,
+        }
+    }
 }
 
 /// A model provider.
