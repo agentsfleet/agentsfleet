@@ -1,33 +1,26 @@
 //! The agent loop: turns until the model answers without a tool call, the
 //! context cap is reached, the lease is stopped, or the provider fails.
 //!
-//! Each call gets a number from 1, one `tool_call_started` and one
-//! `tool_call_completed`, a trace row and a full record. A call open when the
-//! run ends is closed `interrupted` exactly once by [`OpenCall`]'s drop, which
-//! also covers a run whose future is dropped. `docs/architecture/runner_execution.md`
-//! §"Tool catalog" is the design.
+//! The [`Ledger`] keeps what each call did; this module runs the turns.
+//! `docs/architecture/runner_execution.md` §"Tool catalog" is the design.
 
 use std::fmt;
 use std::time::Instant;
 
 use afd_wire::policy::ExecutionPolicy;
 use afd_wire::report::{Completed, ExecutionResult, Failure, ResultOutcome};
-use afd_wire::tool_detail::ToolCallRecord;
-use afd_wire::tool_trace::ToolCallStatus;
 use afr_providers::{Call, Message, Provider, Request, Usage};
 use afr_tools::{Catalog, Selection, ToolSpec};
-use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
 use crate::context::{Budget, CAP_REACHED};
 use crate::engine::{AgentEngine, AgentRun, Needs, RunOutput};
 use crate::error::Result;
 use crate::events::Live;
+use crate::ledger::Ledger;
 use crate::prompt::Prompt;
-use crate::records::record;
 use crate::router::Router;
 use crate::scrub::Scrub;
-use crate::trace::{Outcome, Trace, bounded_arguments};
 use crate::turn::take;
 
 /// What a run stopped by its lease reports as its detail.
@@ -105,13 +98,11 @@ struct Harness<'run> {
     specs: Vec<ToolSpec<'run>>,
     scrub: &'run Scrub,
     live: Live<'run>,
+    ledger: Ledger<'run>,
     budget: Budget,
     instructions: String,
     messages: Vec<Message>,
     usage: Usage,
-    trace: Trace,
-    records: Vec<ToolCallRecord<'static>>,
-    calls: u64,
     started: Instant,
 }
 
@@ -129,13 +120,11 @@ impl<'run> Harness<'run> {
             specs: selection.specs().collect(),
             scrub,
             live: Live::new(run.events, scrub, started),
+            ledger: Ledger::new(run.events, scrub),
             budget: Budget::new(&policy.context),
             instructions: prompt.instructions,
             messages: vec![Message::User(prompt.message)],
             usage: Usage::default(),
-            trace: Trace::default(),
-            records: Vec::new(),
-            calls: 0,
             started,
         }
     }
@@ -191,37 +180,13 @@ impl<'run> Harness<'run> {
 
     /// Runs one call to its end; `None` when the lease stopped it.
     async fn call(&mut self, call: &Call) -> Option<Message> {
-        self.calls += 1;
-        let number = self.calls;
-        let id = number.to_string();
-        let shown = self.scrub.clean_json(call.arguments.clone());
-        let bounded = bounded_arguments(&shown);
-        let args_redacted = serde_json::to_string(&bounded).unwrap_or_default();
-        self.live.started(&id, &call.name, args_redacted);
-        let open = OpenCall {
-            live: &self.live,
-            trace: &mut self.trace,
-            number,
-            id: &id,
-            name: &call.name,
-            arguments: Some(bounded),
-            started: Instant::now(),
-        };
+        let open = self.ledger.open(call);
         let output = tokio::select! {
             biased;
             () = self.stop.cancelled() => return None,
             output = self.router.dispatch(&call.name, &call.arguments) => output,
         };
-        let text = self.scrub.clean(&output.text);
-        let failed = output.error_code.is_some() || output.exit_code.is_some_and(|code| code != 0);
-        let status = if failed {
-            ToolCallStatus::Failed
-        } else {
-            ToolCallStatus::Succeeded
-        };
-        let outcome = Outcome::ended(status, &text, output.exit_code, open.started.elapsed());
-        open.close(outcome);
-        self.records.push(record(number, shown, &text));
+        let text = open.close(output);
         Some(Message::ToolResult {
             call_id: call.id.clone(),
             output: text.into_inner(),
@@ -251,6 +216,7 @@ impl<'run> Harness<'run> {
             }
             Ending::Stopped => (failed(None, DETAIL_STOPPED.into()), String::new()),
         };
+        let (trace, records) = self.ledger.finish();
         RunOutput {
             result: ExecutionResult {
                 outcome,
@@ -264,8 +230,8 @@ impl<'run> Harness<'run> {
                 output_tokens: self.usage.output,
             },
             memory: Vec::new(),
-            trace: self.trace.finish(),
-            records: self.records,
+            trace,
+            records,
         }
     }
 }
@@ -275,38 +241,6 @@ fn failed(
     detail: std::borrow::Cow<'static, str>,
 ) -> ResultOutcome<'static> {
     ResultOutcome::Failed(Failure { class, detail })
-}
-
-/// A call between its start frame and its end. Closing it sends the end frame
-/// and the trace row; dropping it unclosed sends them as `interrupted`, so a
-/// call ends exactly once however the run ends.
-struct OpenCall<'a, 'run> {
-    live: &'a Live<'run>,
-    trace: &'a mut Trace,
-    number: u64,
-    id: &'a str,
-    name: &'a str,
-    arguments: Option<Map<String, Value>>,
-    started: Instant,
-}
-
-impl OpenCall<'_, '_> {
-    fn close(mut self, outcome: Outcome) {
-        self.end(outcome);
-    }
-
-    fn end(&mut self, outcome: Outcome) {
-        if let Some(arguments) = self.arguments.take() {
-            self.live.completed(self.id, self.name, &outcome);
-            self.trace.push(self.number, self.name, arguments, outcome);
-        }
-    }
-}
-
-impl Drop for OpenCall<'_, '_> {
-    fn drop(&mut self) {
-        self.end(Outcome::interrupted(self.started.elapsed()));
-    }
 }
 
 #[cfg(test)]

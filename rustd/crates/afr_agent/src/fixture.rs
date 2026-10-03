@@ -60,7 +60,7 @@ pub(crate) fn scrub() -> Scrub {
 
 /// `text` as the scrub hands it on.
 pub(crate) fn clean(text: &str) -> Clean<String> {
-    scrub().clean(text)
+    scrub().clean(text.to_owned())
 }
 
 /// `value` as the scrub hands it on.

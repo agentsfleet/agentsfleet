@@ -1,4 +1,5 @@
-//! The run's live frames: streamed text, and each tool call's start and end.
+//! The run's streamed text, as live frames. Each tool call's frames are the
+//! [`Ledger`](crate::ledger::Ledger)'s.
 //!
 //! Answer and reasoning text share one run-wide `stream_seq` from 0, the first
 //! chunk alone carries `stream_start` and its time since the run started, and
@@ -8,14 +9,11 @@
 use std::borrow::Cow;
 use std::time::Instant;
 
-use afd_core::clock::{saturating_millis, saturating_millis_signed};
-use afd_wire::activity::{
-    ActivityFrame, FleetResponseChunk, StreamTextKind, ToolCallCompleted, ToolCallStarted,
-};
+use afd_core::clock::saturating_millis;
+use afd_wire::activity::{ActivityFrame, FleetResponseChunk, StreamTextKind};
 
 use crate::engine::EventSink;
 use crate::scrub::{Carry, Scrub};
-use crate::trace::Outcome;
 
 /// Where one run's frames go, and the stream's position.
 pub(crate) struct Live<'run> {
@@ -70,31 +68,6 @@ impl<'run> Live<'run> {
     pub(crate) fn end_pass(&mut self) {
         self.answer = Carry::default();
         self.reasoning = Carry::default();
-    }
-
-    /// A call's start, with its scrubbed and bounded arguments.
-    pub(crate) fn started(&self, call: &str, name: &str, args_redacted: String) {
-        self.sink
-            .emit(ActivityFrame::ToolCallStarted(ToolCallStarted {
-                name: Cow::Owned(name.to_owned()),
-                args_redacted: Cow::Owned(args_redacted),
-                call_id: Some(Cow::Owned(call.to_owned())),
-            }));
-    }
-
-    /// A call's end.
-    pub(crate) fn completed(&self, call: &str, name: &str, outcome: &Outcome) {
-        self.sink
-            .emit(ActivityFrame::ToolCallCompleted(ToolCallCompleted {
-                name: Cow::Owned(name.to_owned()),
-                ms: saturating_millis_signed(outcome.elapsed),
-                call_id: Some(Cow::Owned(call.to_owned())),
-                status: Some(outcome.status),
-                output_head: outcome.head.clone().map(Cow::Owned),
-                output_tail: outcome.tail.clone().map(Cow::Owned),
-                output_line_count: outcome.line_count,
-                exit_code: outcome.exit_code,
-            }));
     }
 }
 

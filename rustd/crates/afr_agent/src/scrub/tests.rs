@@ -103,7 +103,7 @@ fn should_drop_a_partial_secret_left_at_the_end() {
 fn should_replace_a_nul_the_store_cannot_hold_in_text_keys_and_strings() {
     let scrub = scrub();
 
-    assert_eq!(*scrub.clean("bin\0ary"), "bin\u{fffd}ary");
+    assert_eq!(*scrub.clean("bin\0ary".to_owned()), "bin\u{fffd}ary");
     assert_eq!(
         scrub
             .clean_json(serde_json::json!({"k\0": ["v\0", 1]}))
