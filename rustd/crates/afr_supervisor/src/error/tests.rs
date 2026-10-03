@@ -9,7 +9,7 @@ use afd_core::error_code;
 use super::{Error, ErrorKind, raise};
 use crate::client::Verb;
 
-const VERBS: [Verb; 9] = [
+const VERBS: [Verb; 10] = [
     Verb::Heartbeat,
     Verb::Lease,
     Verb::Renew,
@@ -19,6 +19,7 @@ const VERBS: [Verb; 9] = [
     Verb::Capture,
     Verb::Bundle,
     Verb::Mint,
+    Verb::Records,
 ];
 
 #[test]
@@ -32,7 +33,7 @@ fn every_verb_logs_under_its_own_family() {
         .iter()
         .filter(|code| **code == error_code::INTERNAL_OPERATION_FAILED)
         .count();
-    assert_eq!(internal, 6);
+    assert_eq!(internal, 7);
     assert_eq!(Verb::Renew.to_string(), "renew");
     for verb in VERBS {
         assert_eq!(verb.to_string(), verb.as_str());

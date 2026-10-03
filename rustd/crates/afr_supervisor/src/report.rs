@@ -32,11 +32,13 @@ pub(crate) enum Ending {
     },
 }
 
-/// The report for `lease`, which ran for `wall`.
+/// The report for `lease`, which ran for `wall`, carrying `trace`: the run's
+/// trace encoded, when it called a tool.
 pub(crate) fn report<'a>(
     lease: &'a LeasePayload<'a>,
     ending: &'a Ending,
     wall: Duration,
+    trace: Option<&'a str>,
 ) -> ReportRequest<'a> {
     let (outcome, failure_reason, failure_detail) = verdict(ending);
     let (result, first_chunk) = match ending {
@@ -69,7 +71,7 @@ pub(crate) fn report<'a>(
             last_event_id: Cow::Borrowed(&lease.event.event_id),
             last_response: response_text,
         },
-        tool_calls: None,
+        tool_calls: trace.and_then(|encoded| serde_json::from_str(encoded).ok()),
     }
 }
 

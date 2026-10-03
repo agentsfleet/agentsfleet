@@ -905,12 +905,18 @@ dependencies = [
  "afd_core",
  "afd_wire",
  "afr_executor",
+ "afr_providers",
  "afr_tools",
+ "aho-corasick",
  "async-trait",
  "bytes",
+ "futures-util",
+ "serde",
  "serde_json",
  "thiserror 2.0.20",
  "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]
@@ -934,6 +940,18 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+]
+
+[[package]]
+name = "afr_providers"
+version = "0.51.1"
+dependencies = [
+ "afd_core",
+ "afd_wire",
+ "afr_tools",
+ "futures-util",
+ "serde_json",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

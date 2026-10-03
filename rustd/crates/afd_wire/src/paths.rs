@@ -48,3 +48,7 @@ pub const LEASE_ACTIVITY_SUFFIX: &str = "activity";
 /// Trailing segment of the per-lease renewal sub-resource. See
 /// [`LEASE_ACTIVITY_SUFFIX`] for why it is a bare segment.
 pub const LEASE_RENEW_SUFFIX: &str = "renew";
+
+/// Trailing segment of the per-lease tool-call records sub-resource. See
+/// [`LEASE_ACTIVITY_SUFFIX`] for why it is a bare segment.
+pub const LEASE_TOOL_CALLS_SUFFIX: &str = "tool-calls";

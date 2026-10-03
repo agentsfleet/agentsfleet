@@ -5,16 +5,29 @@
 //! [`EventSink`] its activity goes to; it returns the result the report
 //! carries and the memory to push. Before any of that, [`AgentEngine::admit`]
 //! refuses a lease naming a tool the engine cannot host and says whether the
-//! lease needs a sandbox. The [`Router`] runs each tool call where its runtime
-//! says; a scripted engine drives the supervisor's tests.
+//! lease needs a sandbox. [`Loop`] is the engine that runs the model against the
+//! lease's tools, and the [`Router`] runs each call where its runtime says; a
+//! scripted engine drives the supervisor's lanes.
 
 pub mod error;
 
+mod context;
 mod engine;
+mod events;
+#[cfg(test)]
+mod fixture;
+#[path = "loop.rs"]
+mod harness;
+mod prompt;
+mod records;
 mod router;
 #[cfg(feature = "test-util")]
 pub mod scripted;
+mod scrub;
+mod trace;
+mod turn;
 
 pub use self::engine::{AgentEngine, AgentRun, EventSink, Needs, RunOutput};
 pub use self::error::{Error, Result};
+pub use self::harness::{Connect, Loop};
 pub use self::router::Router;

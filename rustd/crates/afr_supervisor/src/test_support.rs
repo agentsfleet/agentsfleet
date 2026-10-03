@@ -18,6 +18,8 @@ use afd_wire::lease::{BundleManifest, LeasePayload};
 use afd_wire::memory::MemoryDelta;
 use afd_wire::policy::ExecutionPolicy;
 use afd_wire::report::{Completed, ExecutionResult, ResultOutcome};
+use afd_wire::tool_detail::ToolCallRecord;
+use afd_wire::tool_trace::{ToolCallStatus, ToolTrace, ToolTraceCall};
 use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_executor::{Executor, ProcessId, Spawn};
 use afr_tools::Catalog;
@@ -152,6 +154,9 @@ const LEASE_JSON: &str = include_str!("test_support/lease.json");
 pub(crate) enum Behaviour {
     /// Emits one chunk, drives the executor, and answers with one memory delta.
     Answer,
+    /// Answers as [`Behaviour::Answer`] does, with three calls' records and
+    /// their trace.
+    Calls,
     /// Fails as an engine.
     Break,
     /// Never finishes on its own.
@@ -215,6 +220,7 @@ impl AgentEngine for FakeAgent {
         self.running.fetch_sub(1, Ordering::SeqCst);
         match self.behaviour {
             Behaviour::Answer => Ok(answer()),
+            Behaviour::Calls => Ok(with_calls(3)),
             Behaviour::Break => {
                 Err(afr_executor::Error::from(std::io::Error::other("engine broke")).into())
             }
@@ -254,5 +260,42 @@ pub(crate) fn answer() -> RunOutput {
             content: "v".into(),
             category: "core".into(),
         }],
+        trace: None,
+        records: Vec::new(),
     }
+}
+
+/// What every call in [`with_calls`] returned.
+const CALL_OUTPUT: &str = "ok";
+
+/// [`answer`], having made `calls` calls: their records and their trace.
+pub(crate) fn with_calls(calls: u64) -> RunOutput {
+    let mut output = answer();
+    output.records = (1..=calls)
+        .map(|number| ToolCallRecord {
+            call_number: number,
+            arguments: serde_json::Map::new(),
+            truncated_arguments: false,
+            output: CALL_OUTPUT.into(),
+            output_line_count: 1,
+            truncated: false,
+        })
+        .collect();
+    output.trace = Some(ToolTrace {
+        calls: (1..=calls)
+            .map(|number| ToolTraceCall {
+                call_id: number.to_string().into(),
+                name: "calculator".into(),
+                arguments: serde_json::Map::new(),
+                status: ToolCallStatus::Succeeded,
+                output_head: Some(CALL_OUTPUT.into()),
+                output_tail: None,
+                output_line_count: Some(1),
+                exit_code: None,
+                duration_ms: 1,
+            })
+            .collect(),
+        omitted_call_count: 0,
+    });
+    output
 }

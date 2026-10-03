@@ -13,7 +13,7 @@ fn a_completed_run_reports_its_answer_tokens_and_timings() {
         first_chunk: Some(Duration::from_millis(120)),
     };
 
-    let report = report(&lease, &ending, Duration::from_secs(2));
+    let report = report(&lease, &ending, Duration::from_secs(2), None);
 
     assert_eq!(report.outcome, Outcome::Processed);
     assert_eq!(report.failure_reason, None);
@@ -50,7 +50,7 @@ fn a_fleet_failure_inside_a_finished_run_reports_its_class() {
         first_chunk: None,
     };
 
-    let report = report(&lease, &ending, Duration::ZERO);
+    let report = report(&lease, &ending, Duration::ZERO, None);
 
     assert_eq!(report.outcome, Outcome::FleetError);
     assert_eq!(report.failure_reason, Some(FailureClass::PolicyDeny));
@@ -66,7 +66,7 @@ fn a_run_that_never_finished_reports_zero_usage() {
         detail: "no sandbox",
     };
 
-    let report = report(&lease, &ending, Duration::from_millis(5));
+    let report = report(&lease, &ending, Duration::from_millis(5), None);
 
     assert_eq!(report.outcome, Outcome::FleetError);
     assert_eq!(report.failure_reason, Some(FailureClass::StartupPosture));

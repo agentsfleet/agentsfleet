@@ -1,0 +1,29 @@
+[package]
+name = "afr_providers"
+description = "The runner's model providers: one trait, the turn it streams, and the wires behind it."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# `error_shell!` and the registry code a provider failure is logged under.
+afd_core.workspace = true
+# The stream text kinds the live tail carries, and the failure classes a
+# report names.
+afd_wire.workspace = true
+# The tool specs a turn offers, and the provider-hosted tools.
+afr_tools.workspace = true
+# A turn streams as a `futures` stream of chunks.
+futures-util.workspace = true
+# A tool call's arguments.
+serde_json.workspace = true
+thiserror.workspace = true
