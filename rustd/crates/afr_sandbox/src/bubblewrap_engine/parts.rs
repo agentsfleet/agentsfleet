@@ -214,7 +214,18 @@ impl Drop for Parts {
             || self.cgroup.is_some()
             || self.child.is_some();
         if held {
-            let released = self.release();
+            // A cgroup can take seconds to empty. On a multi-thread runtime the
+            // worker first hands its other tasks to a sibling, so they are not
+            // held up; a current-thread runtime, or none, has no sibling to
+            // hand them to, and releases in place.
+            let flavor =
+                tokio::runtime::Handle::try_current().map(|runtime| runtime.runtime_flavor());
+            let released = match flavor {
+                Ok(tokio::runtime::RuntimeFlavor::MultiThread) => {
+                    tokio::task::block_in_place(|| self.release())
+                }
+                _single_or_none => self.release(),
+            };
             log_release(&self.lease_id, released.as_ref().err());
         }
     }

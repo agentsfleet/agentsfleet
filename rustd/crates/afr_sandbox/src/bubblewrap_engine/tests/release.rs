@@ -40,6 +40,19 @@ fn test_dropping_parts_releases_what_they_hold() {
     assert!(!lease.exists());
 }
 
+/// On a multi-thread runtime the worker hands its other tasks on first; the
+/// release is still done when the drop returns.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_dropping_parts_on_a_worker_releases_them_before_it_returns() {
+    let dir = tempfile::tempdir().unwrap();
+    let lease = dir.path().join("lease-6");
+    fs::create_dir(&lease).unwrap();
+
+    drop(Parts::new("lease-6", lease.clone()));
+
+    assert!(!lease.exists());
+}
+
 /// A start abandoned mid-way — its caller stopped waiting — is released when
 /// its parts drop: the launcher is killed and what could not go is logged.
 #[tokio::test]
