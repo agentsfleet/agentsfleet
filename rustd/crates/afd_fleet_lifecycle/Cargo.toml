@@ -60,6 +60,8 @@ moka.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+# The authored placement-tag bounds, declared on the tags they bound.
+garde.workspace = true
 
 [features]
 # M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a router

@@ -55,6 +55,11 @@ tracing.workspace = true
 # IP spelling, with Unicode names in their ASCII form.
 url.workspace = true
 petname.workspace = true
+# Every bound on a caller's value is declared on the struct built from it:
+# a machine or workspace name after its trim, a device-flow field, a key name.
+garde.workspace = true
+# The rules garde lacks (digits, a charset) and the report-to-variant table.
+afd_validate.workspace = true
 
 [features]
 # M-TEST-UTIL. Unlocks the seams the suites drive through the crates that own
