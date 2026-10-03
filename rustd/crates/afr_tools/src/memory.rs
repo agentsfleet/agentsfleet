@@ -48,8 +48,8 @@ pub(crate) struct Store {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Recall {
-    /// Text to look for in each memory's key, ignoring case; empty matches
-    /// every memory.
+    /// Text to look for in each memory's key and content, ignoring case;
+    /// empty matches every memory.
     query: String,
     /// The most memories to answer with: 5 when absent, never more than 50.
     limit: Option<usize>,
@@ -108,7 +108,7 @@ pub(crate) struct MemoryRecall;
 impl Handler for MemoryRecall {
     const ENTRY: &'static Entry = &MEMORY_RECALL;
     const DESCRIPTION: &'static str =
-        "Read remembered facts whose key holds the query, newest first.";
+        "Read remembered facts whose key or content holds the query, key matches first.";
     type Arguments = Recall;
 
     async fn run(&self, arguments: Recall, context: ToolContext<'_, '_>) -> ToolOutput {

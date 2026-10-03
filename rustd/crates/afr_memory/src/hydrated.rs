@@ -89,9 +89,13 @@ impl MemoryBackend for Hydrated<'_> {
             .ascii_case_insensitive(true)
             .build([query])
             .map_err(error::query)?;
+        let in_key = |delta: &&MemoryDelta<'_>| matcher.is_match(delta.key.as_ref());
+        let in_content_only =
+            |delta: &&MemoryDelta<'_>| !in_key(delta) && matcher.is_match(delta.content.as_ref());
         Ok(self
             .newest_first()
-            .filter(|delta| matcher.is_match(delta.key.as_ref()))
+            .filter(in_key)
+            .chain(self.newest_first().filter(in_content_only))
             .take(limit)
             .map(MemoryDelta::view)
             .collect())

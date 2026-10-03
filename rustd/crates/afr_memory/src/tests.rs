@@ -126,18 +126,25 @@ async fn a_forget_holds_for_the_run_and_leaves_the_push() {
 }
 
 #[tokio::test]
-async fn recall_matches_a_key_substring_ignoring_case_newest_first() {
+async fn recall_matches_key_then_content_ignoring_case_newest_first() {
     let window = window();
     let mut memory = boxed(Hydrated::new(&window));
     memory.store(entry("incident:43", "fly is green", "daily")).await.unwrap();
+    memory.store(entry("iad-runbook", "drain then restart", "daily")).await.unwrap();
 
     assert_eq!(keys(&memory.recall("INCIDENT", 5).await.unwrap()), ["incident:43", "incident:42"]);
-    assert_eq!(keys(&memory.recall("incident", 1).await.unwrap()), ["incident:43"]);
-    assert!(
-        memory.recall("fly", 5).await.unwrap().is_empty(),
-        "content is never searched: the key is the ceiling"
+    assert_eq!(
+        keys(&memory.recall("fly", 5).await.unwrap()),
+        ["incident:43", "deploy_target", "incident:42"],
+        "content is searched too, newest first"
     );
-    assert_eq!(memory.recall("", 5).await.unwrap().len(), 4, "an empty query holds in every key");
+    assert_eq!(
+        keys(&memory.recall("IAD", 5).await.unwrap()),
+        ["iad-runbook", "deploy_target", "incident:42"],
+        "a key match ranks ahead of every content match"
+    );
+    assert_eq!(keys(&memory.recall("fly", 1).await.unwrap()), ["incident:43"]);
+    assert_eq!(memory.recall("", 9).await.unwrap().len(), 5, "an empty query holds in every entry");
 }
 
 #[tokio::test]

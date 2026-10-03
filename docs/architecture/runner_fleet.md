@@ -735,7 +735,7 @@ Three routes serve three different volume shapes:
  agentsfleetd ──bounded OpenTelemetry Protocol (OTLP) exporters──► the same collector
 ```
 
-`agentsfleet-runner` creates no spans today. Its NullClaw observer returns no trace identifier, so adding a trace field to the runner protocol would move bytes without joining any runner span. The current trace is control-plane-owned: one selected `fleet.delivery` span after accepted settlement.
+The Zig runner creates no spans: its NullClaw observer returns no trace identifier. The Rust runner creates `runner.lease`, `invoke_agent`, `chat` and `execute_tool` spans but exports none of them until the runner-telemetry milestone (`M214_001`), so no runner span is there to join, and adding a trace field to the runner protocol would still move bytes for nothing. The current trace is control-plane-owned: one selected `fleet.delivery` span after accepted settlement.
 
 That span stays a **custom control-plane observation**, not a claimed runner trace — there is no runner span or trace context to join. Its attributes use the standard Generative Artificial Intelligence (GenAI) keys where the source fact matches (`gen_ai.operation.name=invoke_agent`, `gen_ai.agent.id`, `gen_ai.provider.name`, `gen_ai.request.model`, and typed `gen_ai.usage.*` counts) and product-namespaced `agentsfleet.*` keys for the correlation identifiers (`agentsfleet.event.id`, `agentsfleet.workspace.id`, `agentsfleet.tenant.id`). Correlation identity is allowed on a **span** precisely because it is not allowed on a **metric**: a span is a bounded per-event record, whereas a metric label creates a series that outlives the process. Prompt and response content never becomes a span attribute.
 
