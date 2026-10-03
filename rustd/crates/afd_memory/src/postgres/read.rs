@@ -116,7 +116,10 @@ pub(super) async fn page(
                 statement = statement.bind(value);
             }
             if let Some(boundary) = after {
-                statement = statement.bind(boundary.created_at_ms).bind(boundary.key);
+                statement = statement
+                    .bind(boundary.created_at_ms)
+                    .bind(boundary.key)
+                    .bind(boundary.fleet.as_str());
             }
             fetch(connection, statement.bind(limit), failure).await
         })
