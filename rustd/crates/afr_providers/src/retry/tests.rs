@@ -12,9 +12,11 @@ use super::{Unanswered, WAIT_CEILING, retry_after};
 
 const BACKOFF: Option<Duration> = Some(Duration::from_secs(1));
 
+/// An answer with `code` and an empty body, asking for `retry_after`.
 fn status(code: StatusCode, retry_after: Option<Duration>) -> Unanswered {
+    let answer = http::Response::builder().status(code).body("").unwrap();
     Unanswered::Status {
-        status: code,
+        response: Box::new(reqwest::Response::from(answer)),
         retry_after,
     }
 }
@@ -47,8 +49,8 @@ async fn should_retry_a_send_that_could_not_connect() {
     assert!(unanswered.retryable());
     assert_eq!(unanswered.status(), None);
     assert!(
-        unanswered.into_error().failure_class().is_some(),
-        "a lost connection"
+        unanswered.into_answer().unwrap_err().is_connect(),
+        "the transport's own failure, for rig to read"
     );
 }
 
@@ -79,12 +81,13 @@ fn should_stop_once_the_attempts_are_spent_or_the_wait_passes_the_ceiling() {
     assert_eq!(at_ceiling.wait(BACKOFF), Some(WAIT_CEILING));
 }
 
+// rig reads the refusal itself, so the last answer goes back as it arrived:
+// its status, and with it the provider's own code in the body.
 #[test]
-fn should_end_an_unanswered_turn_with_its_last_status() {
-    let refused = status(StatusCode::TOO_MANY_REQUESTS, None).into_error();
+fn should_hand_back_an_unanswered_turns_last_answer_as_it_arrived() {
+    let refused = status(StatusCode::TOO_MANY_REQUESTS, None).into_answer().unwrap();
 
-    assert!(refused.detail().contains("429"), "{}", refused.detail());
-    assert_eq!(refused.failure_class(), None);
+    assert_eq!(refused.status(), StatusCode::TOO_MANY_REQUESTS);
 }
 
 #[test]

@@ -45,20 +45,16 @@ fn should_admit_what_it_can_connect_and_nothing_else() {
     assert_eq!(unconnected.unhosted_provider(), Some("bedrock"));
 }
 
+// Where each wire posts is proven on a socket in `tests/providers.rs`; here,
+// that a connected provider names its wire and never its key.
 #[test]
-fn should_dial_each_wire_under_its_base_and_never_print_the_key() {
+fn should_connect_each_wire_and_never_print_the_key() {
     let connector = connector();
 
     let messages = format!("{:?}", connector.connect(&lease("anthropic")).unwrap());
     let chat = format!("{:?}", connector.connect(&lease("groq")).unwrap());
 
-    assert!(
-        messages.contains("https://api.anthropic.com/v1/messages"),
-        "{messages}"
-    );
-    assert!(
-        chat.contains("https://api.groq.com/openai/v1/chat/completions"),
-        "{chat}"
-    );
+    assert!(messages.contains("Messages"), "{messages}");
+    assert!(chat.contains("Chat"), "{chat}");
     assert!(!messages.contains(KEY) && !chat.contains(KEY));
 }

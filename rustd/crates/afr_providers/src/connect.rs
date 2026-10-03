@@ -12,13 +12,12 @@ use afd_wire::lease::LeasePayload;
 use afd_wire::policy::ExecutionPolicy;
 use reqwest::redirect;
 
-use crate::anthropic::Messages;
 use crate::error::{Result, raise};
-use crate::http::{ApiKey, Http};
-use crate::openai_chat::Chat;
-use crate::openai_responses::Responses;
 use crate::provider::Provider;
-use crate::registry::{Registry, Wire};
+use crate::registry::Registry;
+use crate::transport::Transport;
+use crate::turn::Turns;
+use crate::wire;
 
 /// How long a connection may take to open.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -87,15 +86,10 @@ impl Connect for Connector {
     fn connect(&self, lease: &LeasePayload<'_>) -> Result<Box<dyn Provider>> {
         let policy = &lease.policy;
         let route = self.registry.route(&policy.provider)?;
-        let client = self.client.clone();
-        let base = route.base.as_str();
-        let key = ApiKey::new(&policy.api_key);
         let lease_id = lease.lease_id.as_ref();
-        Ok(match route.wire {
-            Wire::Messages => Box::new(Http::new(client, base, key, lease_id, Messages)),
-            Wire::Responses => Box::new(Http::new(client, base, key, lease_id, Responses)),
-            Wire::Chat => Box::new(Http::new(client, base, key, lease_id, Chat)),
-        })
+        let transport = Transport::new(self.client.clone(), lease_id, &policy.provider);
+        let model = wire::model(&route, &policy.api_key, &policy.context.model, transport);
+        Ok(Box::new(Turns::new(model, route.wire, lease_id)))
     }
 }
 

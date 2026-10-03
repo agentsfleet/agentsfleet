@@ -1,11 +1,13 @@
 #![expect(
     clippy::unwrap_used,
+    clippy::panic,
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
 use std::collections::HashSet;
 
 use afd_wire::policy::CUSTOM_PROVIDER_PREFIX;
+use rig_core::providers::openai::wire::by_name;
 
 use super::{BUILTIN, HTTPS, ProviderSpec, Registry, Wire};
 
@@ -48,7 +50,7 @@ fn should_route_each_named_provider_to_its_wire_and_base() {
     assert_eq!(route("openai").wire, Wire::Responses);
     for (name, base) in [
         ("groq", "https://api.groq.com/openai/v1"),
-        ("mistral", "https://api.mistral.ai/v1"),
+        ("mistral", "https://api.mistral.ai/"),
         ("deepseek", "https://api.deepseek.com/"),
         ("openrouter", "https://openrouter.ai/api/v1"),
     ] {
@@ -99,9 +101,41 @@ fn should_name_an_entry_whose_base_does_not_parse() {
         aliases: Vec::new(),
         wire: Wire::Chat,
         base_url: "not a url".to_owned(),
+        dialect: None,
     };
 
     let failure = Registry::new([broken]).unwrap_err();
 
     assert!(failure.detail().contains("broken"), "{}", failure.detail());
+}
+
+// rig's dialect table is compiled into the library, so an upgrade that moves
+// a vendor's `/v1` between its base and its path shows up here, before a turn
+// posts to a doubled or missing segment. The host may differ: a regional
+// entry (moonshot's `.cn`) speaks the global dialect at its own host.
+#[test]
+fn should_name_only_dialects_rig_knows_under_the_path_rig_joins_to() {
+    let specs = builtin_specs();
+    let named: Vec<&ProviderSpec> = specs.iter().filter(|spec| spec.dialect.is_some()).collect();
+
+    for spec in &named {
+        let name = spec.dialect.as_deref().unwrap();
+        let dialect = by_name(name).unwrap_or_else(|| panic!("{name} is no rig dialect"));
+        let ours = reqwest::Url::parse(&spec.base_url).unwrap();
+        let rigs = reqwest::Url::parse(dialect.base_url).unwrap();
+        assert_eq!(spec.wire, Wire::Chat, "{}", spec.name);
+        assert_eq!(ours.path(), rigs.path(), "{}", spec.name);
+    }
+    assert!(named.len() >= 10, "every vendor rig has quirks for");
+}
+
+#[test]
+fn should_keep_a_vendor_whose_dialect_drops_tools_a_plain_gateway() {
+    let registry = Registry::builtin().unwrap();
+
+    let perplexity = registry.route("perplexity").unwrap();
+    let rigs = by_name("perplexity").unwrap();
+
+    assert!(!rigs.quirks.supports_tools, "the reason it stays a gateway");
+    assert_eq!(perplexity.dialect, None);
 }

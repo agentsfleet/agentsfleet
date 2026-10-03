@@ -14,6 +14,9 @@ const NOT_OFFERED: &str = "is not one of this run's tools";
 const HOSTED_ELSEWHERE: &str = "runs at the model provider, and this provider offers none";
 /// What a sandbox-side call on a run without a sandbox reads back.
 const NO_SANDBOX: &str = "runs in the sandbox, and this run has none";
+/// What a call from a turn cut at the output limit reads back.
+const CUT: &str = "was not run: the turn reached the model's output limit and its \
+                   arguments may be incomplete; call it again with shorter arguments";
 
 /// Routes one run's tool calls.
 #[derive(Debug)]
@@ -53,6 +56,12 @@ impl<'run> Router<'run> {
         };
         tool.call(arguments, ToolContext { executor }).await
     }
+}
+
+/// The answer to a call from a turn the provider cut at its output limit:
+/// its arguments may be incomplete, so it is never run.
+pub(crate) fn cut(name: &str) -> ToolOutput {
+    failed(ToolErrorCode::OutputLimitReached, name, CUT)
 }
 
 /// A call to a name with no handler in the lease's selection.

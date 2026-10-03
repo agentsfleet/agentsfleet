@@ -13,7 +13,7 @@ use afd_wire::activity::ActivityFrame;
 use afd_wire::lease::LeasePayload;
 use afr_tools::{Entry, Schema, Tool, ToolContext, ToolOutput};
 
-pub(crate) use self::model::{Script, Unreachable, call, say, spent};
+pub(crate) use self::model::{Script, Unreachable, call, ended, say, spent};
 use crate::scrub::{Clean, Scrub};
 
 #[path = "fixture/model.rs"]

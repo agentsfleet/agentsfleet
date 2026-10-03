@@ -8,14 +8,16 @@
 //! started, since its chunks have already gone out live. A wait the provider
 //! asks for past [`WAIT_CEILING`] is not waited: the lease would spend its time
 //! asleep, so the turn ends with the status instead.
+//!
+//! The last answer, a refusal included, is handed back as it arrived, so the
+//! wire library reading it keeps its status, its headers and the provider's
+//! own error code.
 
 use std::time::{Duration, SystemTime};
 
 use backon::{ExponentialBuilder, Retryable as _};
 use reqwest::header::{HeaderMap, RETRY_AFTER};
 use reqwest::{RequestBuilder, Response, StatusCode};
-
-use crate::error::{Error, Result};
 
 /// Sends per turn, the first included.
 pub(crate) const ATTEMPTS: usize = 3;
@@ -41,7 +43,9 @@ pub(crate) struct Retrying {
 enum Unanswered {
     /// The provider answered with a status other than success.
     Status {
-        status: StatusCode,
+        /// Boxed: a refusal is the rare arm, and the retry loop moves this
+        /// value on every attempt.
+        response: Box<Response>,
         retry_after: Option<Duration>,
     },
     /// The send never got a status.
@@ -52,8 +56,9 @@ impl Unanswered {
     /// Whether another send could be answered differently.
     fn retryable(&self) -> bool {
         match self {
-            Self::Status { status, .. } => {
-                *status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
+            Self::Status { response, .. } => {
+                let status = response.status();
+                status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
             }
             Self::Transport(failure) => failure.is_connect() || failure.is_timeout(),
         }
@@ -73,15 +78,17 @@ impl Unanswered {
 
     fn status(&self) -> Option<u16> {
         match self {
-            Self::Status { status, .. } => Some(status.as_u16()),
+            Self::Status { response, .. } => Some(response.status().as_u16()),
             Self::Transport(_) => None,
         }
     }
 
-    fn into_error(self) -> Error {
+    /// The answer the caller reads: the last response, refusal or not, or
+    /// the transport's failure.
+    fn into_answer(self) -> reqwest::Result<Response> {
         match self {
-            Self::Status { status, .. } => Error::refused(status.as_u16()),
-            Self::Transport(failure) => Error::lost(failure),
+            Self::Status { response, .. } => Ok(*response),
+            Self::Transport(failure) => Err(failure),
         }
     }
 }
@@ -90,18 +97,17 @@ impl Unanswered {
 /// attempts. `retrying` hears of each retry before its wait.
 ///
 /// # Errors
-/// A refusal with the last status, or a lost connection with the last
-/// transport failure.
+/// The last transport failure, for a send that never got a status.
 pub(crate) async fn send(
     build: impl Fn() -> RequestBuilder,
     mut retrying: impl FnMut(Retrying),
-) -> Result<Response> {
+) -> reqwest::Result<Response> {
     let policy = ExponentialBuilder::default()
         .with_min_delay(BACKOFF)
         .with_max_times(ATTEMPTS - 1)
         .with_jitter();
     let mut attempt = 0;
-    (|| async { answered(build().send().await) })
+    let sent = (|| async { answered(build().send().await) })
         .retry(policy)
         .when(Unanswered::retryable)
         .adjust(Unanswered::wait)
@@ -114,20 +120,19 @@ pub(crate) async fn send(
                 wait,
             });
         })
-        .await
-        .map_err(Unanswered::into_error)
+        .await;
+    sent.or_else(Unanswered::into_answer)
 }
 
 /// One send's result as an answer, or why it was not one.
 fn answered(sent: reqwest::Result<Response>) -> std::result::Result<Response, Unanswered> {
     let response = sent.map_err(Unanswered::Transport)?;
-    let status = response.status();
-    if status.is_success() {
+    if response.status().is_success() {
         return Ok(response);
     }
     let retry_after = retry_after(response.headers());
     Err(Unanswered::Status {
-        status,
+        response: Box::new(response),
         retry_after,
     })
 }

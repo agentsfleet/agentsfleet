@@ -3,10 +3,11 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use afd_core::env::MapEnv;
+use afd_core::env::{LOG_LEVEL_VAR, MapEnv};
 use clap::Parser as _;
+use tracing::Level;
 
-use super::{Cli, Command};
+use super::{Cli, Command, log_filter};
 
 /// The engine starts the binary inside each sandbox by the sandbox crate's
 /// spelling of the sub-command, so the two can never disagree.
@@ -53,4 +54,17 @@ fn the_log_level_comes_from_the_environment_or_the_default() {
         tracing::level_filters::LevelFilter::current(),
         super::DEFAULT_LEVEL
     );
+}
+
+// An operator debugging at trace must still not journal a model's raw reply,
+// which the model library traces whole before the loop scrubs it.
+#[test]
+fn the_log_filter_holds_the_model_library_to_its_warnings_at_any_level() {
+    let env = MapEnv::from_pairs([(LOG_LEVEL_VAR, "trace")]);
+
+    let filter = log_filter(&env);
+
+    assert!(filter.would_enable("agentsfleet_runner", &Level::TRACE));
+    assert!(!filter.would_enable("rig::completions", &Level::TRACE));
+    assert!(filter.would_enable("rig::completions", &Level::WARN));
 }

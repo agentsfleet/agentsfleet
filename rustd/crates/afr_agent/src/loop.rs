@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use afd_wire::policy::ExecutionPolicy;
 use afd_wire::report::{Completed, ExecutionResult, Failure, ResultOutcome};
-use afr_providers::{Call, Connect, Message, Provider, Request, Usage};
+use afr_providers::{Call, Connect, Message, Provider, Replay, Request, Usage};
 use afr_tools::{Catalog, Selection, ToolSpec};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
@@ -19,7 +19,7 @@ use crate::error::Result;
 use crate::events::Live;
 use crate::ledger::Ledger;
 use crate::prompt::Prompt;
-use crate::router::Router;
+use crate::router::{self, Router};
 use crate::scrub::Scrub;
 use crate::spans;
 use crate::turn::{Turn, take};
@@ -135,12 +135,12 @@ impl<'run> Harness<'run> {
             }
             let mut results = Vec::with_capacity(turn.calls.len());
             for call in &turn.calls {
-                match self.call(call).await {
+                match self.call(call, turn.cut).await {
                     Some(result) => results.push(result),
                     None => break,
                 }
             }
-            let said = self.remembered(turn.text, turn.calls);
+            let said = self.remembered(turn.text, turn.calls, turn.replay);
             self.messages.push(said);
             self.messages.extend(results);
             if self.stop.is_cancelled() {
@@ -207,8 +207,10 @@ impl<'run> Harness<'run> {
 
     /// What the model said and called, as the conversation keeps it: scrubbed,
     /// so no secret value is ever sent to the model, whoever wrote it. The
-    /// router ran each call with the arguments as the model wrote them.
-    fn remembered(&self, text: String, calls: Vec<Call>) -> Message {
+    /// router ran each call with the arguments as the model wrote them. The
+    /// provider's replay goes back unopened: it is the provider's own record
+    /// of its reasoning, signed where the provider signs it.
+    fn remembered(&self, text: String, calls: Vec<Call>, replay: Replay) -> Message {
         let calls = calls
             .into_iter()
             .map(|call| Call {
@@ -219,12 +221,20 @@ impl<'run> Harness<'run> {
         Message::Assistant {
             text: self.scrub.clean(text).into_inner(),
             calls,
+            replay,
         }
     }
 
-    /// Runs one call to its end; `None` when the lease stopped it.
-    async fn call(&mut self, call: &Call) -> Option<Message> {
-        let handler = self.router.dispatch(&call.name, &call.arguments);
+    /// Runs one call to its end, or answers it unrun when its turn was `cut`
+    /// at the output limit; `None` when the lease stopped it.
+    async fn call(&mut self, call: &Call, cut: bool) -> Option<Message> {
+        let router = &self.router;
+        let handler = async move {
+            if cut {
+                return router::cut(&call.name);
+            }
+            router.dispatch(&call.name, &call.arguments).await
+        };
         let text = tokio::select! {
             biased;
             () = self.stop.cancelled() => return None,
@@ -293,3 +303,7 @@ mod budget_tests;
 #[cfg(test)]
 #[path = "loop/turn_tests.rs"]
 mod turn_tests;
+
+#[cfg(test)]
+#[path = "loop/end_tests.rs"]
+mod end_tests;

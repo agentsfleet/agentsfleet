@@ -41,6 +41,9 @@ pub enum ToolErrorCode {
     HostedToolUnavailable,
     /// A sandbox-side tool was called on a run that has no sandbox.
     SandboxUnavailable,
+    /// The model's turn stopped at its output limit, so the call may have
+    /// been cut mid-argument and was not run.
+    OutputLimitReached,
 }
 
 impl ToolErrorCode {
@@ -51,6 +54,7 @@ impl ToolErrorCode {
             Self::NotOffered => "tool_not_offered",
             Self::HostedToolUnavailable => "hosted_tool_unavailable",
             Self::SandboxUnavailable => "sandbox_unavailable",
+            Self::OutputLimitReached => "output_limit_reached",
         }
     }
 }

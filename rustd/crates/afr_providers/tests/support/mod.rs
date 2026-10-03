@@ -182,10 +182,11 @@ pub(crate) fn engine(fake: &Fake) -> Loop {
         aliases: Vec::new(),
         wire,
         base_url,
+        dialect: None,
     };
     let registry = Registry::new([
         entry("anthropic", Wire::Messages, fake.base.clone()),
-        entry("openai", Wire::Responses, fake.base.clone()),
+        entry("openai", Wire::Responses, format!("{}/v1", fake.base)),
         entry(CHAT_PROVIDER, Wire::Chat, format!("{}/v1", fake.base)),
     ])
     .unwrap();
