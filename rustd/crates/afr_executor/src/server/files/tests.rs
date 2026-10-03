@@ -223,3 +223,48 @@ fn a_directory_past_the_cap_is_listed_up_to_it_and_says_so() {
     assert_eq!(past.entries.len(), MAX_LIST_ENTRIES);
     assert!(past.truncated);
 }
+
+#[test]
+fn a_write_reports_permission_denied_when_it_cannot_make_parents() {
+    if rustix::process::geteuid().is_root() {
+        // Root bypasses the mode-bit refusal this test exercises.
+        return;
+    }
+    let (scratch, workspace) = fixture();
+    let locked = scratch.path().join("workspace/ro");
+    std::fs::create_dir(&locked).unwrap();
+    std::fs::set_permissions(&locked, std::os::unix::fs::PermissionsExt::from_mode(0o555)).unwrap();
+    let refused = workspace.write("ro/sub/file", b"x").unwrap_err();
+    // Restore permissions before TempDir removes the fixture, even if an assertion fails.
+    std::fs::set_permissions(&locked, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    assert_eq!(refused.rpc_code(), INVALID_PARAMS_CODE, "{refused}");
+    assert!(
+        refused.wire_message().contains("ermission denied"),
+        "{}",
+        refused.wire_message()
+    );
+    assert!(
+        !locked.join("sub").exists(),
+        "no partial directory was made"
+    );
+}
+
+#[test]
+fn a_write_reports_a_parent_name_the_filesystem_cannot_create() {
+    // Beyond the component limit, with a missing directory before it so the
+    // initial open reports NotFound and parent creation encounters the refusal.
+    const OVERLONG_COMPONENT_BYTES: usize = 256;
+    let (scratch, workspace) = fixture();
+    let path = format!("missing/{}/file", "x".repeat(OVERLONG_COMPONENT_BYTES));
+    let refused = workspace.write(&path, b"x").unwrap_err();
+    assert_eq!(refused.rpc_code(), INVALID_PARAMS_CODE, "{refused}");
+    assert!(refused.wire_message().contains("too long"), "{refused}");
+    assert!(scratch.path().join("workspace/missing").is_dir());
+    assert_eq!(
+        std::fs::read_dir(scratch.path().join("workspace/missing"))
+            .unwrap()
+            .count(),
+        0,
+        "no file or overlong directory was created"
+    );
+}
