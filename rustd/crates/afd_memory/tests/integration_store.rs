@@ -49,11 +49,17 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
         .iter()
         .map(|entry| entry.key.as_ref())
         .collect();
+    // `pinned` and `scratch` were captured in one call at one instant, so
+    // their order falls to two UUIDv7 ids minted in the same millisecond,
+    // which is their random bits: only what the re-capture moved is pinned.
     assert_eq!(
-        keys,
-        ["chat", "scratch", "pinned"],
-        "newest first, a re-capture moved chat up"
+        keys.first(),
+        Some(&"chat"),
+        "newest first, a re-capture moved chat up: {keys:?}"
     );
+    let mut rest = keys.get(1..).unwrap_or_default().to_vec();
+    rest.sort_unstable();
+    assert_eq!(rest, ["pinned", "scratch"], "{keys:?}");
     assert!(
         hydrated.shared.is_empty() && !hydrated.publish,
         "no grant, no change"
