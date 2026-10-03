@@ -16395,14 +16395,14 @@
           },
           "publish": {
             "type": "boolean",
-            "description": "Whether this fleet may store an entry the workspace reads."
+            "description": "Whether this fleet may store an entry the workspace reads; left off\nthe wire when it may not."
           },
           "shared": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/SharedMemory"
             },
-            "description": "What other fleets in the workspace published, newest first; empty for\na fleet without the read grant."
+            "description": "What other fleets in the workspace published, newest first. Empty, and\nleft off the wire, for a fleet without the read grant, so its reply is\nthe shape every runner parses."
           }
         }
       },
@@ -16458,7 +16458,8 @@
           "limit": {
             "type": "integer",
             "description": "The most entries of each kind to answer with.",
-            "minimum": 0
+            "maximum": 50,
+            "minimum": 1
           },
           "query": {
             "type": "string",

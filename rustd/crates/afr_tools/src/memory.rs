@@ -7,7 +7,7 @@
 
 use std::borrow::Cow;
 
-use afd_wire::memory::{MemoryDelta, PINNED_CATEGORY, Visibility};
+use afd_wire::memory::{MemoryDelta, PINNED_CATEGORY, RECALL_LIMIT_MAX, Visibility};
 use afr_memory::{Forgotten, Recalled};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -18,8 +18,6 @@ use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
 
 /// How many entries a recall answers with when the model names no limit.
 const RECALL_DEFAULT: usize = 5;
-/// The most entries one recall answers with.
-const RECALL_MAX: usize = 50;
 /// What a recall that matched nothing reads back.
 const RECALLED_NOTHING: &str = "nothing remembered matches";
 /// What a list over an empty memory reads back.
@@ -139,7 +137,10 @@ impl Handler for MemoryRecall {
     type Arguments = Recall;
 
     async fn run(&self, arguments: Recall, context: ToolContext<'_, '_>) -> ToolOutput {
-        let limit = arguments.limit.unwrap_or(RECALL_DEFAULT).min(RECALL_MAX);
+        let limit = arguments
+            .limit
+            .unwrap_or(RECALL_DEFAULT)
+            .min(RECALL_LIMIT_MAX);
         match context.lease.memory.recall(&arguments.query, limit).await {
             Ok(recalled) => ToolOutput::succeeded(
                 lines(&recalled, |found| {

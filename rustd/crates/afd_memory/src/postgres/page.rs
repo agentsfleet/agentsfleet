@@ -1,15 +1,16 @@
 //! The operator surface's reads: one statement per view and page position.
 //!
 //! Copied from `http/handlers/memory/sql.zig`: fleet-scoped, bounded, and
-//! keyset-paged over `(created_at, key)` — `created_at` because an upsert moves
-//! `updated_at` mid-walk. Each read gains one predicate over the Zig: a fleet
-//! granted to read shared memory also sees other fleets' shared rows, through
-//! `$2`, which is the workspace for a granted reader and NULL otherwise — and a
-//! NULL compares true to nothing.
+//! keyset-paged over `(created_at, key, fleet_id)` — `created_at` because an
+//! upsert moves `updated_at` mid-walk, and `fleet_id` because two writers'
+//! shared rows can tie on the first two. Each read gains one predicate over the
+//! Zig: a fleet granted to read shared memory also sees other fleets' shared
+//! rows, through `$2`, which is the workspace for a granted reader and NULL
+//! otherwise — and a NULL compares true to nothing.
 //!
 //! Six statements rather than one built at run time, and one bind order for
-//! all six — fleet, shared workspace, filter where there is one, boundary pair
-//! where there is one, limit — so one pipeline serves every shape.
+//! all six — fleet, shared workspace, filter where there is one, boundary
+//! triple where there is one, limit — so one pipeline serves every shape.
 
 use crate::page::View;
 
@@ -26,18 +27,19 @@ SELECT fleet_id::text, key, content, category, workspace_visible, created_at, up
 FROM memory.memory_entries
 WHERE (fleet_id = $1::uuid OR (workspace_id = $2::uuid AND workspace_visible))
   AND (key ILIKE $3 ESCAPE '\\' OR content ILIKE $3 ESCAPE '\\')
-ORDER BY created_at DESC, key DESC
+ORDER BY created_at DESC, key DESC, fleet_id DESC
 LIMIT $4";
 
-/// [`SEARCH_ENTRIES`] past a boundary. `$4` instant, `$5` key, `$6` limit.
+/// [`SEARCH_ENTRIES`] past a boundary. `$4` instant, `$5` key, `$6` writer,
+/// `$7` limit.
 const SEARCH_ENTRIES_AFTER: &str = "\
 SELECT fleet_id::text, key, content, category, workspace_visible, created_at, updated_at
 FROM memory.memory_entries
 WHERE (fleet_id = $1::uuid OR (workspace_id = $2::uuid AND workspace_visible))
   AND (key ILIKE $3 ESCAPE '\\' OR content ILIKE $3 ESCAPE '\\')
-  AND (created_at, key) < ($4, $5)
-ORDER BY created_at DESC, key DESC
-LIMIT $6";
+  AND (created_at, key, fleet_id) < ($4, $5, $6::uuid)
+ORDER BY created_at DESC, key DESC, fleet_id DESC
+LIMIT $7";
 
 /// One category, first page. `$3` category, `$4` limit.
 const SELECT_ENTRIES_IN_CATEGORY: &str = "\
@@ -45,33 +47,33 @@ SELECT fleet_id::text, key, content, category, workspace_visible, created_at, up
 FROM memory.memory_entries
 WHERE (fleet_id = $1::uuid OR (workspace_id = $2::uuid AND workspace_visible))
   AND category = $3
-ORDER BY created_at DESC, key DESC LIMIT $4";
+ORDER BY created_at DESC, key DESC, fleet_id DESC LIMIT $4";
 
 /// [`SELECT_ENTRIES_IN_CATEGORY`] past a boundary. `$4` instant, `$5` key,
-/// `$6` limit.
+/// `$6` writer, `$7` limit.
 const SELECT_ENTRIES_IN_CATEGORY_AFTER: &str = "\
 SELECT fleet_id::text, key, content, category, workspace_visible, created_at, updated_at
 FROM memory.memory_entries
 WHERE (fleet_id = $1::uuid OR (workspace_id = $2::uuid AND workspace_visible))
   AND category = $3
-  AND (created_at, key) < ($4, $5)
-ORDER BY created_at DESC, key DESC LIMIT $6";
+  AND (created_at, key, fleet_id) < ($4, $5, $6::uuid)
+ORDER BY created_at DESC, key DESC, fleet_id DESC LIMIT $7";
 
 /// Everything, first page. `$3` limit.
 const SELECT_RECENT_ENTRIES: &str = "\
 SELECT fleet_id::text, key, content, category, workspace_visible, created_at, updated_at
 FROM memory.memory_entries
 WHERE (fleet_id = $1::uuid OR (workspace_id = $2::uuid AND workspace_visible))
-ORDER BY created_at DESC, key DESC LIMIT $3";
+ORDER BY created_at DESC, key DESC, fleet_id DESC LIMIT $3";
 
 /// [`SELECT_RECENT_ENTRIES`] past a boundary. `$3` instant, `$4` key,
-/// `$5` limit.
+/// `$5` writer, `$6` limit.
 const SELECT_RECENT_ENTRIES_AFTER: &str = "\
 SELECT fleet_id::text, key, content, category, workspace_visible, created_at, updated_at
 FROM memory.memory_entries
 WHERE (fleet_id = $1::uuid OR (workspace_id = $2::uuid AND workspace_visible))
-  AND (created_at, key) < ($3, $4)
-ORDER BY created_at DESC, key DESC LIMIT $5";
+  AND (created_at, key, fleet_id) < ($3, $4, $5::uuid)
+ORDER BY created_at DESC, key DESC, fleet_id DESC LIMIT $6";
 
 /// The statement `view` runs, on a first page or a continuation.
 pub(super) const fn statement(view: View<'_>, resuming: bool) -> &'static str {
@@ -140,7 +142,7 @@ mod tests {
     /// continuation seeks past the boundary.
     #[test]
     fn should_choose_one_statement_per_view_and_position() {
-        const SEEK: &str = "(created_at, key) <";
+        const SEEK: &str = "(created_at, key, fleet_id) <";
         let views = [View::Recent, View::Category("core"), View::Search("x")];
         let mut seen: Vec<_> = views
             .iter()

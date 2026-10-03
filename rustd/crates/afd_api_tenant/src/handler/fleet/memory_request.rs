@@ -27,6 +27,7 @@
 use afd_http::handler::encoding::{decode_bytes, decode_form};
 use std::borrow::Cow;
 
+use afd_core::id::Uuid7;
 use afd_core::paging::{Cursor, QUERY_LIMIT, QUERY_STARTING_AFTER};
 use afd_memory::page::View;
 use afd_wire::memory::MAX_KEY_LEN;
@@ -120,8 +121,24 @@ impl Lens {
 pub(super) struct Boundary {
     /// The boundary row's creation instant.
     pub(super) created_at_ms: i64,
+    /// Its writer, which breaks a tie between two fleets' entries under one
+    /// key.
+    pub(super) fleet: Uuid7,
     /// Its key, which breaks a tie inside one millisecond.
     pub(super) key: String,
+}
+
+/// Ends the writer in a cursor's row half, `{fleet}:{key}`.
+///
+/// A fleet identifier is a canonical UUID, which never holds `:`, so the first
+/// `:` always ends it whatever the key carries.
+const ROW_SEPARATOR: char = ':';
+
+/// The row half of the cursor a walk resumes after `fleet`'s entry `key`:
+/// the writer as well as the key, because a page holding shared entries can
+/// hold two writers' rows under one key in one millisecond.
+pub(super) fn row_id(fleet: &Uuid7, key: &str) -> String {
+    format!("{fleet}{ROW_SEPARATOR}{key}")
 }
 
 /// One list request, parsed into values that can only be valid.
@@ -225,17 +242,27 @@ fn limit(raw: Option<&str>, lens: &Lens) -> Result<i64, Refusal> {
 fn boundary(raw: Option<&str>) -> Result<Option<Boundary>, Refusal> {
     raw.map(|raw| {
         // Some other list's token reaches the same refusal as an unparseable
-        // one: this walk keys on `(created_at, key)`, and a text-boundary
-        // cursor names a sort it does not have.
-        match Cursor::parse(raw) {
-            Ok(Cursor::Timestamp { at_ms, id }) => Ok(Boundary {
+        // one: this walk keys on `(created_at, key, fleet)`, and a
+        // text-boundary cursor names a sort it does not have.
+        let resumed = match Cursor::parse(raw) {
+            Ok(Cursor::Timestamp { at_ms, id }) => row(&id).map(|(fleet, key)| Boundary {
                 created_at_ms: at_ms,
-                key: id,
+                fleet,
+                key: key.to_owned(),
             }),
-            Ok(Cursor::Text { .. }) | Err(..) => Err(Refusal::malformed(DETAIL_INVALID_CURSOR)),
-        }
+            Ok(Cursor::Text { .. }) | Err(..) => None,
+        };
+        resumed.ok_or_else(|| Refusal::malformed(DETAIL_INVALID_CURSOR))
     })
     .transpose()
+}
+
+/// The writer and key a cursor's row half names, or `None` when it names no
+/// row: [`row_id`] read back.
+fn row(id: &str) -> Option<(Uuid7, &str)> {
+    let (fleet, key) = id.split_once(ROW_SEPARATOR)?;
+    let fleet = Uuid7::parse(fleet).ok()?;
+    (!key.is_empty()).then_some((fleet, key))
 }
 
 /// The memory key named by the LAST segment of `path`, decoded.

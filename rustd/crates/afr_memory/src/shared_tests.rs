@@ -91,6 +91,58 @@ async fn test_recall_miss_cap_answers_from_the_window() {
     assert_eq!(keys, ["deploy-1"], "the window's answer");
 }
 
+/// The keys a recall past the window answered with, in order.
+fn keys_of(found: &[crate::Recalled<'_>]) -> Vec<String> {
+    found.iter().map(|hit| hit.key.to_string()).collect()
+}
+
+#[tokio::test]
+async fn a_recall_past_the_window_never_brings_back_a_key_the_run_forgot() {
+    let window = vec![entry("deploy-1")];
+    let daemon = Daemon::default();
+    let mut memory = Hydrated::new(Seed {
+        recall: Some(&daemon),
+        ..Seed::window(&window)
+    });
+    memory.forget("deploy-1").await.unwrap();
+    // Past the window too: the durable copy is not the window's to know of.
+    memory.forget("deploy-7").await.unwrap();
+
+    let found = memory.recall("deploy", LIMIT).await.unwrap();
+
+    assert_eq!(daemon.asked.load(Ordering::SeqCst), 1, "the miss asked");
+    assert_eq!(
+        keys_of(&found),
+        ["deploy-9"],
+        "a forgotten key stays forgotten for the run"
+    );
+}
+
+#[tokio::test]
+async fn a_recall_past_the_window_never_brings_back_a_key_the_run_overwrote() {
+    let window = vec![entry("deploy-1")];
+    let daemon = Daemon::default();
+    let mut memory = Hydrated::new(Seed {
+        recall: Some(&daemon),
+        ..Seed::window(&window)
+    });
+    // The run's own deploy-9 no longer holds "note"; agentsfleetd's still does.
+    let rewritten = MemoryDelta {
+        content: Cow::Borrowed("moved to fly"),
+        ..entry("deploy-9")
+    };
+    memory.store(rewritten).await.unwrap();
+
+    let found = memory.recall("note", LIMIT).await.unwrap();
+
+    assert_eq!(daemon.asked.load(Ordering::SeqCst), 1, "the miss asked");
+    assert_eq!(
+        keys_of(&found),
+        ["deploy-1", "deploy-7"],
+        "the stale copy of an overwritten key is never answered"
+    );
+}
+
 #[tokio::test]
 async fn a_full_window_and_a_refusing_daemon_both_answer_from_the_window() {
     let window: Vec<_> = (0..LIMIT)
