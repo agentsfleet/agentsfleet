@@ -16,8 +16,9 @@ use std::panic::AssertUnwindSafe;
 use std::time::Duration;
 
 use afd_core::clock::Clock;
-use afd_core::error_code;
+use afd_core::error_code::{self, Coded};
 use afd_core::id::Uuid7;
+use afd_core::spelling::to_spelling;
 use afd_wire::lease::LeasePayload;
 use afd_wire::memory::{MemoryDelta, MemoryHydrateResponse};
 use afd_wire::report::FailureClass;
@@ -92,6 +93,16 @@ pub(super) struct Ids {
     fleet: Uuid7,
 }
 
+/// One lease while it runs: what it was given, its identifiers, and the token
+/// that ends it early. Each step of the lease is a method on it, so none
+/// passes them along by hand.
+pub(super) struct LeaseRun<'a> {
+    lessee: &'a Lessee,
+    lease: &'a LeasePayload<'a>,
+    ids: Ids,
+    interrupt: CancellationToken,
+}
+
 /// Which of a lease's side tasks are still going.
 struct Live {
     renewing: bool,
@@ -105,41 +116,51 @@ impl Lessee {
     /// Identifiers that are not canonical; nothing has started then. Every
     /// failure after that ends in a report, spooled or posted.
     pub(crate) async fn run(&self, turns: &FleetTurns, lease: &LeasePayload<'_>) -> Result<()> {
-        let ids = Ids {
-            lease: Uuid7::parse(&lease.lease_id)?,
-            fleet: Uuid7::parse(&lease.event.fleet_id)?,
+        let run = LeaseRun {
+            lessee: self,
+            lease,
+            ids: Ids {
+                lease: Uuid7::parse(&lease.lease_id)?,
+                fleet: Uuid7::parse(&lease.event.fleet_id)?,
+            },
+            interrupt: CancellationToken::new(),
         };
-        let lease_id = ids.lease.as_str();
+        let lease_id = run.ids.lease.as_str();
         let event = EVENT_ACQUIRED;
         tracing::info!(lease_id, event);
-        match self.lease(turns, lease, &ids).await {
+        match run.lease(turns).await {
             Ending::Ran { .. } => {
                 let event = EVENT_COMPLETED;
                 tracing::info!(lease_id, event);
             }
             Ending::Failed { class, detail } => {
-                let class = format!("{class:?}");
+                // The spelling the report carries, so the log and the report
+                // name a failure alike.
+                let class = to_spelling(&class);
+                let class = class.as_deref();
                 let event = EVENT_FAILED;
                 tracing::info!(lease_id, class, detail, event);
             }
         }
         Ok(())
     }
+}
 
+impl LeaseRun<'_> {
     /// The run, its renewal and its live tail, then the settle.
-    async fn lease(&self, turns: &FleetTurns, lease: &LeasePayload<'_>, ids: &Ids) -> Ending {
+    async fn lease(&self, turns: &FleetTurns) -> Ending {
+        let lessee = self.lessee;
         let started = Instant::now();
-        let (sink, mut pump) = activity::channel(&self.plane, &ids.lease);
-        let interrupt = CancellationToken::new();
+        let (sink, mut pump) = activity::channel(&lessee.plane, &self.ids.lease);
         let renewal = Renewal::new(
-            &self.plane,
-            &ids.lease,
-            lease.lease_expires_at,
-            self.clock.as_ref(),
+            &lessee.plane,
+            &self.ids.lease,
+            self.lease.lease_expires_at,
+            lessee.clock.as_ref(),
         );
         let pumping = pump.run();
         let renewal = renewal.keep();
-        let work = self.work(turns, lease, ids, sink, &interrupt);
+        let work = self.work(turns, sink);
         tokio::pin!(pumping, renewal, work);
         let mut live = Live {
             renewing: true,
@@ -152,11 +173,11 @@ impl Lessee {
                 ending = &mut work => break ending,
                 class = &mut renewal, if live.renewing => {
                     live.renewing = false;
-                    interrupt.cancel();
+                    self.interrupt.cancel();
                     cut.get_or_insert(failed(class, DETAIL_RENEWAL));
                 }
-                () = self.halt.running().cancelled(), if !interrupt.is_cancelled() => {
-                    interrupt.cancel();
+                () = lessee.halt.running().cancelled(), if !self.interrupt.is_cancelled() => {
+                    self.interrupt.cancel();
                     cut.get_or_insert(failed(FailureClass::RenewalTerminate, DETAIL_STOPPED));
                 }
                 () = &mut pumping, if live.pumping => live.pumping = false,
@@ -164,7 +185,7 @@ impl Lessee {
         };
         let mut ending = cut.unwrap_or(ran);
         {
-            let settle = self.settle(ids, lease, &mut ending, started);
+            let settle = self.settle(&mut ending, started);
             tokio::pin!(settle);
             loop {
                 tokio::select! {
@@ -181,7 +202,7 @@ impl Lessee {
                 .is_err()
         {
             let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-            let lease_id = ids.lease.as_str();
+            let lease_id = self.ids.lease.as_str();
             let event = EVENT_DRAIN_ABANDONED;
             tracing::warn!(
                 error_code = code,
@@ -195,71 +216,52 @@ impl Lessee {
 
     /// Everything that holds the fleet's turn: setup, the run, teardown.
     ///
-    /// `interrupt` ends the run early; the sandbox is still destroyed, and the
-    /// caller's ending replaces whatever this returns.
-    async fn work(
-        &self,
-        turns: &FleetTurns,
-        lease: &LeasePayload<'_>,
-        ids: &Ids,
-        sink: ActivitySink,
-        interrupt: &CancellationToken,
-    ) -> Ending {
+    /// The interrupt ends the run early; the sandbox is still destroyed, and
+    /// the caller's ending replaces whatever this returns.
+    async fn work(&self, turns: &FleetTurns, sink: ActivitySink) -> Ending {
+        let lessee = self.lessee;
         let claimed = tokio::select! {
-            turn = turns.claim(&ids.fleet) => turn,
-            () = interrupt.cancelled() => return failed(FailureClass::RenewalTerminate, DETAIL_RENEWAL),
+            turn = turns.claim(&self.ids.fleet) => turn,
+            () = self.interrupt.cancelled() => {
+                return failed(FailureClass::RenewalTerminate, DETAIL_RENEWAL);
+            }
         };
         let Some(_turn) = claimed else {
             return failed(FailureClass::StartupPosture, DETAIL_TURN);
         };
-        let bundle = match &lease.bundle {
-            Some(manifest) => match self
+        let bundle = match &self.lease.bundle {
+            Some(manifest) => match lessee
                 .bundles
-                .fetch(&self.plane, &manifest.content_hash)
+                .fetch(&lessee.plane, &manifest.content_hash)
                 .await
             {
                 Ok(bundle) => bundle,
-                Err(failure) => return refuse(ids, &failure, EVENT_BUNDLE_FAILED, DETAIL_BUNDLE),
+                Err(failure) => return self.refuse(&failure, EVENT_BUNDLE_FAILED, DETAIL_BUNDLE),
             },
             None => None,
         };
-        let hydrated = match memory::hydrate(&self.plane, &ids.fleet).await {
+        let hydrated = match memory::hydrate(&lessee.plane, &self.ids.fleet).await {
             Ok(hydrated) => hydrated,
-            Err(failure) => return refuse(ids, &failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY),
+            Err(failure) => return self.refuse(&failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY),
         };
         let memory = match hydrated.decode::<MemoryHydrateResponse<'_>>() {
             Ok(memory) => memory,
-            Err(failure) => return refuse(ids, &failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY),
+            Err(failure) => return self.refuse(&failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY),
         };
         let request = SandboxRequest {
-            lease_id: ids.lease.as_str(),
-            limits: self.limits,
+            lease_id: self.ids.lease.as_str(),
+            limits: lessee.limits,
         };
-        let sandbox = match self.engine.prepare(request).await {
+        let sandbox = match lessee.engine.prepare(request).await {
             Ok(sandbox) => sandbox,
-            Err(failure) => {
-                let code = failure.code().as_str();
-                let lease_id = ids.lease.as_str();
-                let event = EVENT_SANDBOX_REFUSED;
-                let detail = DETAIL_SANDBOX;
-                tracing::error!(error_code = code, lease_id, event, detail);
-                return failed(FailureClass::StartupPosture, DETAIL_SANDBOX);
-            }
+            Err(failure) => return self.refuse(&failure, EVENT_SANDBOX_REFUSED, DETAIL_SANDBOX),
         };
         let ending = self
-            .in_sandbox(
-                lease,
-                ids,
-                &memory.memory,
-                bundle.as_ref(),
-                sandbox.as_ref(),
-                sink,
-                interrupt,
-            )
+            .in_sandbox(&memory.memory, bundle.as_ref(), sandbox.as_ref(), sink)
             .await;
         if let Err(failure) = sandbox.destroy().await {
             let code = failure.code().as_str();
-            let lease_id = ids.lease.as_str();
+            let lease_id = self.ids.lease.as_str();
             let event = EVENT_DESTROY_FAILED;
             tracing::warn!(
                 error_code = code,
@@ -275,15 +277,12 @@ impl Lessee {
     /// sandbox's lifetime, so the caller still destroys it.
     async fn drive(
         &self,
-        lease: &LeasePayload<'_>,
-        ids: &Ids,
         memory: &[MemoryDelta<'_>],
         sandbox: &dyn Sandbox,
         sink: ActivitySink,
-        interrupt: &CancellationToken,
     ) -> Ending {
-        let run = AssertUnwindSafe(self.agent.run(AgentRun {
-            lease,
+        let run = AssertUnwindSafe(self.lessee.agent.run(AgentRun {
+            lease: self.lease,
             memory,
             executor: Some(sandbox.executor()),
             events: &sink,
@@ -291,29 +290,24 @@ impl Lessee {
         .catch_unwind();
         let output = tokio::select! {
             output = run => Some(output),
-            () = interrupt.cancelled() => None,
+            () = self.interrupt.cancelled() => None,
         };
         let first_chunk = sink.first_chunk();
         drop(sink);
-        let lease_id = ids.lease.as_str();
         match output {
             Some(Ok(Ok(output))) => Ending::Ran {
                 output,
                 first_chunk,
             },
-            Some(Ok(Err(failure))) => {
-                let code = failure.code().as_str();
-                let event = EVENT_ENGINE_FAILED;
-                tracing::warn!(
-                    error_code = code,
-                    lease_id,
-                    event,
-                    "the agent engine failed"
-                );
-                failed(FailureClass::RunnerCrash, DETAIL_ENGINE)
-            }
+            Some(Ok(Err(failure))) => self.fail(
+                &failure,
+                FailureClass::RunnerCrash,
+                EVENT_ENGINE_FAILED,
+                DETAIL_ENGINE,
+            ),
             Some(Err(_panic)) => {
                 let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+                let lease_id = self.ids.lease.as_str();
                 let event = EVENT_ENGINE_PANICKED;
                 tracing::error!(
                     error_code = code,
@@ -326,19 +320,31 @@ impl Lessee {
             None => failed(FailureClass::RenewalTerminate, DETAIL_RENEWAL),
         }
     }
+
+    /// Logs why a lease could not start, and ends it at startup.
+    fn refuse(&self, failure: &impl Coded, event: &'static str, detail: &'static str) -> Ending {
+        self.fail(failure, FailureClass::StartupPosture, event, detail)
+    }
+
+    /// Logs a failure from any crate the lease runs through, and ends the
+    /// lease as `class`.
+    fn fail(
+        &self,
+        failure: &impl Coded,
+        class: FailureClass,
+        event: &'static str,
+        detail: &'static str,
+    ) -> Ending {
+        let code = failure.code().as_str();
+        let lease_id = self.ids.lease.as_str();
+        tracing::warn!(error_code = code, lease_id, event, detail);
+        failed(class, detail)
+    }
 }
 
 /// An ending that never ran the turn to its end.
 const fn failed(class: FailureClass, detail: &'static str) -> Ending {
     Ending::Failed { class, detail }
-}
-
-/// Logs why a lease could not start, and ends it at startup.
-fn refuse(ids: &Ids, failure: &crate::Error, event: &'static str, detail: &'static str) -> Ending {
-    let code = failure.code().as_str();
-    let lease_id = ids.lease.as_str();
-    tracing::warn!(error_code = code, lease_id, event, detail);
-    failed(FailureClass::StartupPosture, detail)
 }
 
 #[cfg(test)]

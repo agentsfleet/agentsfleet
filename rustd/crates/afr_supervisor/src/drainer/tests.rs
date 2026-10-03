@@ -39,7 +39,7 @@ fn busy_then_ok(busy: usize, posts: Arc<AtomicUsize>) -> impl Fn(&Call) -> Answe
 }
 
 async fn until_empty(spool: &ReportSpool) {
-    while !spool.pending().unwrap().is_empty() {
+    while !spool.pending().await.unwrap().is_empty() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
@@ -54,6 +54,7 @@ async fn a_held_report_is_posted_again_until_taken_and_a_new_one_wakes_the_drain
             &Uuid7::parse(LEASE_ID).unwrap(),
             Bytes::from_static(EMPTY_REPORT),
         )
+        .await
         .unwrap();
     let posts = Arc::new(AtomicUsize::new(0));
     let (plane, _calls) = plane(busy_then_ok(3, Arc::clone(&posts)));
@@ -81,6 +82,7 @@ async fn a_held_report_is_posted_again_until_taken_and_a_new_one_wakes_the_drain
                 &Uuid7::parse(SECOND_LEASE).unwrap(),
                 Bytes::from_static(EMPTY_REPORT),
             )
+            .await
             .unwrap();
         held.notify_one();
         until_empty(&spool).await;
@@ -100,6 +102,7 @@ async fn a_refused_token_stops_the_runner_from_the_drain() {
             &Uuid7::parse(LEASE_ID).unwrap(),
             Bytes::from_static(EMPTY_REPORT),
         )
+        .await
         .unwrap();
     let (plane, _calls) = plane(|_call| Answer::Fail(error::refused(Verb::Report, 401, None)));
     let halt = Halt::new(CancellationToken::new());
@@ -116,7 +119,7 @@ async fn a_refused_token_stops_the_runner_from_the_drain() {
 
     assert!(halt.token_refused());
     assert_eq!(
-        spool.pending().unwrap().len(),
+        spool.pending().await.unwrap().len(),
         1,
         "kept for a runner with a good token"
     );
@@ -132,6 +135,7 @@ async fn a_spool_that_will_not_read_is_retried_rather_than_abandoned() {
             &Uuid7::parse(LEASE_ID).unwrap(),
             Bytes::from_static(EMPTY_REPORT),
         )
+        .await
         .unwrap();
     let stuck = home.spool().join(LEASE_ID).with_extension("json");
     fs::remove_file(&stuck).unwrap();
@@ -155,6 +159,7 @@ async fn a_spool_that_will_not_read_is_retried_rather_than_abandoned() {
                 &Uuid7::parse(LEASE_ID).unwrap(),
                 Bytes::from_static(EMPTY_REPORT),
             )
+            .await
             .unwrap();
         until_empty(&spool).await;
         shutdown.cancel();

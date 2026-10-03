@@ -196,12 +196,13 @@ fn rust_runner(
         (ENV_RUNNER_TOKEN, run.token.as_str()),
         (ENV_STORAGE_HOME, home.as_str()),
     ]);
-    let config = afr_supervisor::Config::from_env(&env).expect("the scenario's env is valid");
+    let (config, home) = afr_supervisor::boot(&env).expect("the scenario's env is valid");
     let engine = afr_sandbox::UnsandboxedEngine::new(sandboxes.to_owned())
         .expect("a debug build permits the unsandboxed engine");
     async move {
         afr_supervisor::run(
             &config,
+            home,
             Box::new(engine),
             Box::new(scripted()),
             capable(),

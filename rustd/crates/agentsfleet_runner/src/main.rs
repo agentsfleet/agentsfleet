@@ -13,7 +13,7 @@ use std::process::ExitCode;
 
 use afd_core::env::ProcessEnv;
 use afd_core::error_code;
-use afr_supervisor::{Config, StorageHome};
+
 use clap::{Parser, Subcommand};
 use tracing::level_filters::LevelFilter;
 
@@ -25,6 +25,9 @@ const NO_AGENT_ENGINE: &str = "this build carries no agent engine, so it takes n
 
 /// What `run` logs when it will not start.
 const EVENT_RUN_REFUSED: &str = "run_refused";
+/// The event a boot that could not read its configuration or open its storage
+/// home is logged under.
+const EVENT_RUN_FAILED: &str = "run_failed";
 
 /// Exit status for an entry this build refuses: distinct from a failure, so a
 /// service manager does not restart it in a loop.
@@ -101,37 +104,32 @@ fn probe() -> ExitCode {
 /// Boots as far as an agent engine is needed, then refuses.
 ///
 /// Every check a real start makes runs first — the environment and token, the
-/// storage home and its sweep, what this kernel can enforce — so a
-/// misconfigured host fails at boot. Only the agent engine is missing, and the
-/// workstream that builds one composes `afr_supervisor::run` here.
+/// storage home, what this kernel can enforce — so a misconfigured host fails
+/// at boot. Only the agent engine is missing, and the workstream that builds
+/// one composes `afr_supervisor::run` here, with the engine whose boot sweep
+/// clears what a crashed runner left.
 fn run() -> ExitCode {
     install_logs(&ProcessEnv);
-    let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-    let booted =
-        Config::from_env(&ProcessEnv).and_then(|config| StorageHome::open(config.storage_home()));
-    let home = match booted {
-        Ok(home) => home,
-        Err(error) => {
-            let (code, reason, event) = (error.code().as_str(), error.to_string(), "run_failed");
-            tracing::error!(error_code = code, reason, event);
-            return ExitCode::FAILURE;
-        }
-    };
-    let swept = home.sweep();
+    if let Err(error) = afr_supervisor::boot(&ProcessEnv) {
+        let error_code = error.code().as_str();
+        let reason = error.to_string();
+        let event = EVENT_RUN_FAILED;
+        tracing::error!(error_code, reason, event);
+        return ExitCode::FAILURE;
+    }
+    let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let event = EVENT_RUN_REFUSED;
     let host = afr_sandbox::probe(&afr_sandbox::ProbePaths::default());
     if let Some(missing) = host.missing() {
-        let event = EVENT_RUN_REFUSED;
         tracing::error!(
-            error_code = code,
+            error_code,
             missing,
-            swept,
             event,
             "this host cannot build a sandbox"
         );
         return ExitCode::FAILURE;
     }
-    let event = EVENT_RUN_REFUSED;
-    tracing::error!(error_code = code, reason = NO_AGENT_ENGINE, swept, event);
+    tracing::error!(error_code, reason = NO_AGENT_ENGINE, event);
     ExitCode::from(REFUSED)
 }
 

@@ -2,11 +2,12 @@
 //!
 //! The pool grows to the assigned worker count and never kills a worker: one
 //! numbered past a smaller count finishes its lease and then waits, so a
-//! shrinking assignment never interrupts a run. A worker that panics is logged
-//! and started again under its number. When leasing stops, polling stops;
+//! shrinking assignment never interrupts a run. A worker that panics catches
+//! its own panic, logs it and starts again under its number, so the pool only
+//! starts workers and waits for them. When leasing stops, polling stops;
 //! leases in flight run to their reports.
 
-use std::collections::HashMap;
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,8 +15,10 @@ use afd_core::error_code;
 use afd_core::timing::NO_WORK_RETRY_AFTER_MS;
 use afd_wire::lease::LeaseResponse;
 use backon::ExponentialBackoff;
+use futures_util::FutureExt as _;
 use tokio::sync::watch;
-use tokio::task::{Id, JoinError, JoinSet};
+use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
 
 use crate::client::endless;
 use crate::heartbeat::Assignment;
@@ -36,79 +39,31 @@ const EVENT_LEASE_ERROR: &str = "lease_write_failed";
 pub(crate) async fn serve(lessee: Arc<Lessee>, mut assignment: watch::Receiver<Assignment>) {
     let (turns, coordinator) = FleetTurns::start();
     let coordinator = tokio::spawn(coordinator);
-    let mut pool = Pool {
-        lessee: Arc::clone(&lessee),
-        turns,
-        assignment: assignment.clone(),
-        workers: JoinSet::new(),
-        numbers: HashMap::new(),
-    };
+    let mut workers = JoinSet::new();
     let mut spawned = 0;
     loop {
         let wanted = assignment.borrow_and_update().workers;
         for number in spawned..wanted {
-            pool.spawn(number);
+            workers.spawn(
+                Worker {
+                    number,
+                    lessee: Arc::clone(&lessee),
+                    turns: turns.clone(),
+                    assignment: assignment.clone(),
+                    failures: endless(),
+                }
+                .run(),
+            );
         }
         spawned = spawned.max(wanted);
         tokio::select! {
             () = lessee.halt.leasing().cancelled() => break,
             changed = assignment.changed() => if changed.is_err() { break },
-            Some(joined) = pool.workers.join_next_with_id() => pool.reap(joined),
         }
     }
-    while let Some(joined) = pool.workers.join_next_with_id().await {
-        pool.reap(joined);
-    }
-    drop(pool);
+    while workers.join_next().await.is_some() {}
+    drop(turns);
     drop(coordinator.await);
-}
-
-/// The workers, and which number each task runs under.
-struct Pool {
-    lessee: Arc<Lessee>,
-    turns: FleetTurns,
-    assignment: watch::Receiver<Assignment>,
-    workers: JoinSet<()>,
-    numbers: HashMap<Id, u32>,
-}
-
-impl Pool {
-    fn spawn(&mut self, number: u32) {
-        let worker = Worker {
-            number,
-            lessee: Arc::clone(&self.lessee),
-            turns: self.turns.clone(),
-            assignment: self.assignment.clone(),
-            failures: endless(),
-        };
-        let task = self.workers.spawn(worker.run());
-        self.numbers.insert(task.id(), number);
-    }
-
-    /// Accounts for a worker that ended, and restarts one that panicked while
-    /// leasing goes on.
-    fn reap(&mut self, joined: Result<(Id, ()), JoinError>) {
-        let ended = match &joined {
-            Ok((id, ())) => *id,
-            Err(failure) => failure.id(),
-        };
-        let number = self.numbers.remove(&ended);
-        if let (Err(failure), Some(number)) = (joined, number)
-            && failure.is_panic()
-        {
-            let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-            let event = EVENT_PANICKED;
-            tracing::error!(
-                error_code = code,
-                worker = number,
-                event,
-                "a worker panicked; it starts again"
-            );
-            if !self.lessee.halt.leasing().is_cancelled() {
-                self.spawn(number);
-            }
-        }
-    }
 }
 
 /// One worker: wait to be wanted, poll, run, repeat.
@@ -121,19 +76,44 @@ struct Worker {
 }
 
 impl Worker {
+    /// Polls and runs leases until leasing stops. A panic is caught here,
+    /// logged, and the worker starts again under its number while leasing
+    /// goes on; what the panic interrupted released its fleet as it unwound.
     async fn run(mut self) {
         let worker = self.number;
         let event = EVENT_STARTED;
         tracing::info!(worker, event);
         let leasing = self.lessee.halt.leasing().clone();
+        while AssertUnwindSafe(self.serve(&leasing))
+            .catch_unwind()
+            .await
+            .is_err()
+        {
+            let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+            let event = EVENT_PANICKED;
+            tracing::error!(
+                error_code = code,
+                worker,
+                event,
+                "a worker panicked; it starts again"
+            );
+            if leasing.is_cancelled() {
+                break;
+            }
+            self.failures = endless();
+        }
+        let event = EVENT_STOPPED;
+        tracing::info!(worker, event);
+    }
+
+    /// Polls, runs, and pauses between, until leasing stops.
+    async fn serve(&mut self, leasing: &CancellationToken) {
         while let Some(pause) = self.next().await {
             tokio::select! {
                 () = leasing.cancelled() => break,
                 () = tokio::time::sleep(pause) => {}
             }
         }
-        let event = EVENT_STOPPED;
-        tracing::info!(worker, event);
     }
 
     /// Waits to be wanted, then polls once and runs what it got. Returns how

@@ -56,9 +56,10 @@ impl FleetTurns {
 
     /// Waits until `fleet` is free, and holds it until the turn is dropped.
     ///
-    /// `None` only when the coordinator has already stopped. The one copy of
-    /// the identifier made here is the claimer's own: it rides to the
-    /// coordinator and comes back inside the turn.
+    /// `None` only when the coordinator has already stopped. The identifier
+    /// is copied here, for the request that rides to the coordinator and
+    /// comes back inside the turn, and once more there, as the key that holds
+    /// the fleet busy.
     pub(crate) async fn claim(&self, fleet: &Uuid7) -> Option<Turn> {
         let (granted, grant) = oneshot::channel();
         self.requests

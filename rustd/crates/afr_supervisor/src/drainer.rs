@@ -50,7 +50,7 @@ impl Drainer<'_> {
 
     /// Posts every held report once. Returns whether any is still held.
     async fn pass(&self) -> bool {
-        let pending = match self.spool.pending() {
+        let pending = match self.spool.pending().await {
             Ok(pending) => pending,
             Err(failure) => {
                 replay_failed(&failure);

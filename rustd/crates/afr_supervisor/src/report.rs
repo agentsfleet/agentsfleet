@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::time::Duration;
 
+use afd_core::clock::saturating_millis;
 use afd_wire::lease::LeasePayload;
 use afd_wire::report::{
     ExecutionResult, FailureClass, Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry,
@@ -61,8 +62,8 @@ pub(crate) fn report<'a>(
         cached_input_tokens: narrow(result.map_or(0, |result| result.cached_input_tokens)),
         output_tokens: narrow(result.map_or(0, |result| result.output_tokens)),
         telemetry: ReportTelemetry {
-            time_to_first_token_ms: narrow(first_chunk.map_or(0, millis)),
-            wall_ms: millis(wall),
+            time_to_first_token_ms: narrow(first_chunk.map_or(0, saturating_millis)),
+            wall_ms: saturating_millis(wall),
         },
         checkpoint: ReportCheckpoint {
             last_event_id: Cow::Borrowed(&lease.event.event_id),
@@ -94,11 +95,6 @@ fn verdict(ending: &Ending) -> (Outcome, Option<FailureClass>, Cow<'_, str>) {
 /// A count the wire carries in 32 bits, saturated rather than wrapped.
 fn narrow(count: u64) -> u32 {
     u32::try_from(count).unwrap_or(u32::MAX)
-}
-
-/// A duration in whole milliseconds, saturated.
-fn millis(duration: Duration) -> u64 {
-    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]

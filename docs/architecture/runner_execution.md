@@ -70,12 +70,13 @@ rustd/crates/
   afd_wire              the one wire, shared with agentsfleetd (exists)
   afd_core              error_shell!, timing constants (exists; no datastore dependency)
   afr_executor          executor protocol, in-sandbox server, supervisor-side client
-  afr_sandbox           engine interface; bubblewrap engine now, Firecracker engine next
+  afr_sandbox           engine interface; bubblewrap engine now, Firecracker engine next;
+                        each engine sweeps what a crashed runner's sandboxes left
   afr_agent             agent loop, tool router, events, run trace
   afr_providers         Anthropic Messages, OpenAI Responses, OpenAI-compatible chat
   afr_tools             the catalog: supervisor-side and sandbox-side handlers
   afr_supervisor        lease loop, renewal, report spool, activity, memory, minting,
-                        bundles, storage sweep, capability report, control-plane client
+                        bundles, storage home, capability report, control-plane client
   agentsfleet_runner    the one binary: composition root; `agentsfleet-runner sandbox`
                         is the sub-mode that runs inside each sandbox (a microVM's init, later)
 ```

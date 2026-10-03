@@ -40,7 +40,11 @@ tempfile.workspace = true
 thiserror.workspace = true
 # The daemon's address, parsed once at boot; every route joins under it.
 url.workspace = true
-tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
+# The runner token and minted credentials are wiped from memory when dropped.
+zeroize.workspace = true
+# `fs` for the report spool's one-step renames and removals; the executor
+# links it already.
+tokio = { workspace = true, features = ["fs", "rt", "sync", "time", "macros"] }
 # The token that stops a run when its lease is refused, and stops the pool at
 # shutdown.
 tokio-util.workspace = true

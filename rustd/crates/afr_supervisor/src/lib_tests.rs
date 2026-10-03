@@ -3,7 +3,6 @@
     reason = "test target: a fixture that cannot be built is a broken test"
 )]
 
-use std::fs;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -14,7 +13,7 @@ use afr_sandbox::{HostProbe, Kvm, Limits};
 use bytes::Bytes;
 use tokio_util::sync::CancellationToken;
 
-use super::{Config, Runner, run, serve};
+use super::{Runner, run, serve};
 use crate::client::{Call, ControlPlane, Verb};
 use crate::error;
 use crate::report_spool::ReportSpool;
@@ -66,19 +65,18 @@ fn one_lease_daemon(reports: Arc<AtomicUsize>) -> impl Fn(&Call) -> Answer + Sen
 }
 
 /// A report left behind by a process that died before posting it.
-fn leave_a_report(home: &StorageHome) {
+async fn leave_a_report(home: &StorageHome) {
     ReportSpool::new(home)
         .hold(&Uuid7::parse(LEASE_ID).unwrap(), Bytes::from_static(b"{}"))
+        .await
         .unwrap();
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_runner_sweeps_drains_beats_and_runs_until_shutdown() {
+async fn a_runner_drains_beats_and_runs_until_shutdown() {
     let root = tempfile::tempdir().unwrap();
     let home = StorageHome::open(root.path()).unwrap();
-    let orphan = home.sandboxes().join(FLEET_ID);
-    fs::create_dir_all(&orphan).unwrap();
-    leave_a_report(&home);
+    leave_a_report(&home).await;
     let reports = Arc::new(AtomicUsize::new(0));
     let (plane, mut calls) = plane(one_lease_daemon(Arc::clone(&reports)));
     let shutdown = CancellationToken::new();
@@ -100,15 +98,14 @@ async fn a_runner_sweeps_drains_beats_and_runs_until_shutdown() {
         "the left report and the new one"
     );
     assert!(verbs.contains(&Verb::Heartbeat));
-    assert!(ReportSpool::new(&home).pending().unwrap().is_empty());
-    assert!(!orphan.exists(), "the orphan sandbox was swept");
+    assert!(ReportSpool::new(&home).pending().await.unwrap().is_empty());
 }
 
 #[tokio::test(start_paused = true)]
 async fn a_stop_on_the_first_beat_serves_nothing_and_a_report_the_daemon_cannot_take_waits() {
     let root = tempfile::tempdir().unwrap();
     let home = StorageHome::open(root.path()).unwrap();
-    leave_a_report(&home);
+    leave_a_report(&home).await;
     let (plane, mut calls) = plane(daemon(|call| match call.verb {
         Verb::Heartbeat => Some(json(
             &serde_json::json!({"status": "stop", "assigned_policy": null,
@@ -128,7 +125,7 @@ async fn a_stop_on_the_first_beat_serves_nothing_and_a_report_the_daemon_cannot_
             .iter()
             .all(|call| call.verb != Verb::Lease)
     );
-    assert_eq!(ReportSpool::new(&home).pending().unwrap().len(), 1);
+    assert_eq!(ReportSpool::new(&home).pending().await.unwrap().len(), 1);
 }
 
 #[tokio::test(start_paused = true)]
@@ -154,7 +151,7 @@ async fn an_unreachable_daemon_is_retried_until_shutdown() {
         (crate::config::ENV_RUNNER_TOKEN, "agt_r_token"),
         (crate::config::ENV_STORAGE_HOME, home),
     ]);
-    let config = Config::from_env(&env).unwrap();
+    let (config, home) = crate::boot(&env).unwrap();
     let shutdown = CancellationToken::new();
     let stopping = async {
         tokio::time::sleep(Duration::from_millis(300)).await;
@@ -164,6 +161,7 @@ async fn an_unreachable_daemon_is_retried_until_shutdown() {
     let (served, ()) = tokio::join!(
         run(
             &config,
+            home,
             Box::new(FakeEngine::default()),
             Box::new(FakeAgent::new(Behaviour::Answer)),
             probe(),

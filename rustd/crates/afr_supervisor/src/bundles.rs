@@ -8,13 +8,13 @@
 //! zero byte. Bytes that do not hash to their name are refused and never
 //! cached, so a tampered or truncated download cannot be run, now or later.
 
-use std::fs;
 use std::io::{self, Read, Write as _};
-use std::path::PathBuf;
+use std::path::Path;
+use std::sync::Arc;
 
 use bytes::Bytes;
 
-use afd_core::bundle::BundleDigest;
+use afd_core::bundle::{self, BundleDigest};
 use tempfile::NamedTempFile;
 
 use crate::client::{ControlPlane, retrying};
@@ -25,8 +25,6 @@ use crate::storage_home::StorageHome;
 const SKILL_PATH: &str = "SKILL.md";
 /// The bundle's optional trigger document.
 const TRIGGER_PATH: &str = "TRIGGER.md";
-/// A SHA-256 digest's length in hexadecimal.
-const DIGEST_HEX_LEN: usize = 64;
 /// The extension a cached bundle carries.
 const EXTENSION: &str = "tar";
 const EVENT_CACHE_HIT: &str = "bundle_cache_hit";
@@ -36,14 +34,14 @@ const EVENT_SKILL_ONLY: &str = "bundle_skill_only";
 /// The verified-bundle cache under the storage home.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BundleCache {
-    dir: PathBuf,
+    dir: Arc<Path>,
 }
 
 impl BundleCache {
     /// The cache under `home`.
     pub(crate) fn new(home: &StorageHome) -> Self {
         Self {
-            dir: home.bundles(),
+            dir: home.bundles().into(),
         }
     }
 
@@ -63,11 +61,12 @@ impl BundleCache {
         plane: &ControlPlane,
         content_hash: &str,
     ) -> Result<Option<Bundle>> {
-        if !is_digest(content_hash) {
+        if !bundle::is_name(content_hash) {
             return Err(error::tampered(content_hash));
         }
         let path = self.dir.join(content_hash).with_extension(EXTENSION);
-        if let Some(cached) = fs::read(&path)
+        if let Some(cached) = tokio::fs::read(&path)
+            .await
             .ok()
             .and_then(|bytes| verified(&bytes, content_hash))
         {
@@ -85,21 +84,21 @@ impl BundleCache {
             Err(failure) => return Err(failure),
         };
         let bundle = verified(&bytes, content_hash).ok_or_else(|| error::tampered(content_hash))?;
-        let mut file = NamedTempFile::new_in(&self.dir)?;
-        file.write_all(&bytes)?;
-        file.persist(&path)?;
+        let dir = Arc::clone(&self.dir);
+        tokio::task::spawn_blocking(move || keep(&dir, &path, &bytes)).await??;
         let event = EVENT_MATERIALIZED;
         tracing::info!(content_hash, event);
         Ok(Some(bundle))
     }
 }
 
-/// Whether `name` is a lowercase SHA-256 hex digest.
-fn is_digest(name: &str) -> bool {
-    name.len() == DIGEST_HEX_LEN
-        && name
-            .bytes()
-            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+/// Writes a verified bundle into the cache through a temporary file, so a
+/// crash never leaves half an archive under a bundle's name.
+fn keep(dir: &Path, path: &Path, bytes: &[u8]) -> Result<()> {
+    let mut file = NamedTempFile::new_in(dir)?;
+    file.write_all(bytes)?;
+    file.persist(path)?;
+    Ok(())
 }
 
 /// A verified Fleet Bundle: its documents and the support files a lease's
@@ -118,32 +117,31 @@ impl Bundle {
         let mut parts = tar::Archive::new(tar)
             .entries()
             .ok()?
-            .map(read_entry)
+            .map(|entry| read_entry(entry, tar.len()))
             .collect::<Option<Vec<_>>>()?
-            .into_iter();
+            .into_iter()
+            .peekable();
         let (skill_path, skill) = parts.next()?;
         if skill_path != SKILL_PATH {
             return None;
         }
-        let mut files: Vec<_> = parts.collect();
-        let trigger = match files.first() {
-            Some((path, _)) if path == TRIGGER_PATH => files.remove(0).1,
-            _absent => Bytes::new(),
-        };
+        let trigger = parts
+            .next_if(|(path, _)| path == TRIGGER_PATH)
+            .map_or_else(Bytes::new, |(_, trigger)| trigger);
         Some(Self {
             skill,
             trigger,
-            files,
+            files: parts.collect(),
         })
     }
 
-    /// The name the importer gave this bundle.
-    fn digest(&self) -> String {
+    /// Whether this is the bundle the importer named `content_hash`.
+    fn is_named(&self, content_hash: &str) -> bool {
         let mut digest = BundleDigest::new(&self.skill, Some(&self.trigger));
         for (path, content) in &self.files {
             digest.support_file(path, content);
         }
-        digest.finish()
+        digest.matches(content_hash)
     }
 
     /// The support files, by their path inside the workspace.
@@ -153,17 +151,25 @@ impl Bundle {
 }
 
 /// One entry's path and content, or `None` when it does not read.
-fn read_entry<R: Read>(entry: io::Result<tar::Entry<'_, R>>) -> Option<(String, Bytes)> {
+///
+/// The content is read into a buffer sized by the entry's header, but never
+/// past `archive_len`: the archive is read before it is verified, and a header
+/// may claim more than the archive holds.
+fn read_entry<R: Read>(
+    entry: io::Result<tar::Entry<'_, R>>,
+    archive_len: usize,
+) -> Option<(String, Bytes)> {
     let mut entry = entry.ok()?;
     let path = entry.path().ok()?.to_str()?.to_owned();
-    let mut content = Vec::new();
+    let claimed = usize::try_from(entry.size()).unwrap_or(archive_len);
+    let mut content = Vec::with_capacity(claimed.min(archive_len));
     entry.read_to_end(&mut content).ok()?;
     Some((path, Bytes::from(content)))
 }
 
 /// The bundle `bytes` hold, when they read and carry `content_hash`'s name.
 fn verified(bytes: &[u8], content_hash: &str) -> Option<Bundle> {
-    Bundle::read(bytes).filter(|bundle| bundle.digest() == content_hash)
+    Bundle::read(bytes).filter(|bundle| bundle.is_named(content_hash))
 }
 
 #[cfg(test)]

@@ -989,6 +989,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "url",
+ "zeroize",
 ]
 
 [[package]]
