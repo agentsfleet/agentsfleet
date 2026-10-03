@@ -11,6 +11,7 @@ use std::sync::mpsc;
 
 use afd_wire::activity::ActivityFrame;
 use afd_wire::lease::LeasePayload;
+use afr_tools::stub::NoArguments;
 use afr_tools::{Entry, Schema, Tool, ToolContext, ToolOutput};
 
 pub(crate) use self::model::{Script, Unreachable, call, ended, say, spent};
@@ -77,12 +78,10 @@ pub(crate) fn budget(tool_window: u32, cap: u32) -> serde_json::Value {
         "stage_chunk_threshold": 0.75, "model": "m", "context_cap_tokens": cap})
 }
 
-/// The schema a fixture tool offers: its name, and any object.
+/// The schema a fixture tool offers: its name, and the arguments of a tool
+/// that takes none.
 fn schema(entry: &'static Entry) -> Schema {
-    Schema {
-        description: entry.name(),
-        parameters: serde_json::json!({"type": "object"}),
-    }
+    Schema::of::<NoArguments>(entry.name())
 }
 
 /// A tool answering every call with `output`, or never answering when

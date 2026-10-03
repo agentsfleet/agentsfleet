@@ -14,7 +14,7 @@ use crate::testing::call;
 #[test]
 fn a_typed_schema_is_one_flat_object_that_refuses_unknown_arguments() {
     let tool = Typed::boxed(MemoryRecall);
-    let parameters = &tool.schema().parameters;
+    let parameters = tool.schema().parameters();
 
     assert_eq!(parameters["type"], "object");
     assert_eq!(parameters["additionalProperties"], false);

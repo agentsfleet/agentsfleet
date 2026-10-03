@@ -146,7 +146,7 @@ Every `?limit` reads through `Limit` with its route's ceiling and sentences (`af
 
 `Schema`'s fields become private and `Schema::of::<T: JsonSchema>` its only constructor; providers and the catalog read through accessors. The stub and the loop fixture offer the schema of an empty argument type deriving `JsonSchema` with `deny_unknown_fields`.
 
-- **Dimension 6.1** — The stub's parameters are the schema derived for its empty argument type → Test `test_stub_schema_is_derived`
+- **Dimension 6.1** — The stub's parameters are the schema derived for its empty argument type → Test `test_stub_schema_is_derived` — DONE (`rustd/crates/afr_tools/src/stub/tests.rs`)
 
 ## Interfaces
 
