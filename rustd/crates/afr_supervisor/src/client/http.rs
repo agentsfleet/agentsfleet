@@ -4,8 +4,9 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use reqwest::StatusCode;
-use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderValue};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use url::Url;
+use zeroize::Zeroizing;
 
 use super::{Call, RunnerApi};
 use crate::config::Config;
@@ -28,24 +29,24 @@ const DETAIL_TOKEN_UNPRINTABLE: &str =
 pub(crate) struct HttpRunnerApi {
     client: reqwest::Client,
     base: Url,
-    authorization: HeaderValue,
 }
 
 impl HttpRunnerApi {
-    /// Builds a client for the configured daemon.
+    /// Builds a client for the configured daemon, its token set once on
+    /// every request it sends.
     pub(crate) fn new(config: &Config) -> Result<Self> {
-        let mut authorization =
-            HeaderValue::from_str(&format!("{BEARER}{}", config.token().expose()))
-                .map_err(|_unprintable| error::config(DETAIL_TOKEN_UNPRINTABLE))?;
+        let bearer = Zeroizing::new(format!("{BEARER}{}", config.token().expose()));
+        let mut authorization = HeaderValue::from_str(&bearer)
+            .map_err(|_unprintable| error::config(DETAIL_TOKEN_UNPRINTABLE))?;
         authorization.set_sensitive(true);
         let client = reqwest::Client::builder()
             .timeout(CALL_TIMEOUT)
+            .default_headers(HeaderMap::from_iter([(AUTHORIZATION, authorization)]))
             .build()
             .map_err(error::client)?;
         Ok(Self {
             client,
             base: config.api_url().clone(),
-            authorization,
         })
     }
 }
@@ -54,10 +55,7 @@ impl HttpRunnerApi {
 impl RunnerApi for HttpRunnerApi {
     async fn send(&self, call: Call) -> Result<Bytes> {
         // Relative, so a base carrying a path prefix keeps it.
-        let url = self
-            .base
-            .join(call.path.trim_start_matches('/'))
-            .map_err(error::address)?;
+        let url = self.base.join(call.path.trim_start_matches('/'))?;
         let request = match call.body {
             Some(body) => self
                 .client
@@ -67,11 +65,7 @@ impl RunnerApi for HttpRunnerApi {
             None if call.verb.reads() => self.client.get(url),
             None => self.client.post(url),
         };
-        let response = request
-            .header(AUTHORIZATION, &self.authorization)
-            .send()
-            .await
-            .map_err(error::transport(call.verb))?;
+        let response = request.send().await.map_err(error::transport(call.verb))?;
         let status = response.status();
         let body = response
             .bytes()

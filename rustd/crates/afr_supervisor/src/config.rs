@@ -4,7 +4,6 @@
 //! §"Registering a runner"): no policy rides the environment, and no datastore
 //! secret ever reaches a host.
 
-use std::fmt;
 use std::path::{Path, PathBuf};
 
 use afd_core::env::EnvSource;
@@ -12,6 +11,7 @@ use afd_wire::paths::RUNNER_TOKEN_PREFIX;
 use url::Url;
 
 use crate::error::{self, Result};
+use crate::secret::Secret;
 
 /// The daemon's base address.
 pub const ENV_API_URL: &str = "AGENTSFLEET_API_URL";
@@ -29,34 +29,14 @@ const DETAIL_TOKEN_MISSING: &str = "AGENTSFLEET_RUNNER_TOKEN is not set";
 const DETAIL_TOKEN_SHAPE: &str = "AGENTSFLEET_RUNNER_TOKEN is not an agt_r runner token";
 /// The schemes a daemon address may use.
 const SCHEMES: [&str; 2] = ["http", "https"];
-/// What a redacted secret prints as.
-const REDACTED: &str = "RunnerToken(redacted)";
 /// The separator a base path ends in, so a route joins under it.
 const SLASH: char = '/';
-
-/// The runner's token. Its `Debug` never prints it.
-#[derive(Clone, PartialEq, Eq)]
-pub struct RunnerToken(String);
-
-impl RunnerToken {
-    /// The token, for the one header that carries it.
-    #[must_use]
-    pub fn expose(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Debug for RunnerToken {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(REDACTED)
-    }
-}
 
 /// The runner's configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     api_url: Url,
-    token: RunnerToken,
+    token: Secret,
     storage_home: PathBuf,
 }
 
@@ -70,7 +50,7 @@ impl Config {
     /// malformed token.
     pub fn from_env(env: &impl EnvSource) -> Result<Self> {
         let raw = present(env, ENV_API_URL).ok_or_else(|| error::config(DETAIL_API_URL_MISSING))?;
-        let mut api_url = Url::parse(&raw).map_err(error::address)?;
+        let mut api_url = Url::parse(&raw)?;
         if !SCHEMES.contains(&api_url.scheme()) {
             return Err(error::config(DETAIL_API_URL_SCHEME));
         }
@@ -87,7 +67,7 @@ impl Config {
             .map_or_else(|| PathBuf::from(DEFAULT_STORAGE_HOME), PathBuf::from);
         Ok(Self {
             api_url,
-            token: RunnerToken(token),
+            token: Secret::new(token),
             storage_home,
         })
     }
@@ -101,7 +81,7 @@ impl Config {
 
     /// The runner's token.
     #[must_use]
-    pub const fn token(&self) -> &RunnerToken {
+    pub const fn token(&self) -> &Secret {
         &self.token
     }
 

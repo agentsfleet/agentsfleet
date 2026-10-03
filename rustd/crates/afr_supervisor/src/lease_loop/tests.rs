@@ -61,7 +61,13 @@ async fn test_memory_push_fenced_before_report() {
         "the run's chunk reached the live tail"
     );
     assert_eq!(rig.destroyed.load(Ordering::SeqCst), 1);
-    assert!(ReportSpool::new(&rig.home).pending().unwrap().is_empty());
+    assert!(
+        ReportSpool::new(&rig.home)
+            .pending()
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test(start_paused = true)]

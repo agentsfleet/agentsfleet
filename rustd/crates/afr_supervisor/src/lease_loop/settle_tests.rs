@@ -52,7 +52,10 @@ async fn a_report_the_daemon_cannot_take_yet_is_handed_to_the_drain() {
         .filter(|call| call.verb == Verb::Report)
         .count();
     assert_eq!(reports, 1, "the lease posts once; the drain does the rest");
-    assert_eq!(ReportSpool::new(&rig.home).pending().unwrap().len(), 1);
+    assert_eq!(
+        ReportSpool::new(&rig.home).pending().await.unwrap().len(),
+        1
+    );
     assert!(drain_rung(&rig).await);
 }
 
@@ -63,7 +66,10 @@ async fn a_report_refused_for_the_token_stops_the_runner_and_stays_spooled() {
     rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
 
     assert!(rig.lessee.halt.token_refused());
-    assert_eq!(ReportSpool::new(&rig.home).pending().unwrap().len(), 1);
+    assert_eq!(
+        ReportSpool::new(&rig.home).pending().await.unwrap().len(),
+        1
+    );
 }
 
 #[tokio::test(start_paused = true)]

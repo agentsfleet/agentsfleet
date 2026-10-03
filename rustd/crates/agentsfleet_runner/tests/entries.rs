@@ -66,8 +66,8 @@ fn run_fails_at_boot_without_its_environment() {
     );
 }
 
-/// With a valid environment, `run` boots — storage home opened and swept,
-/// host probed — and refuses before it contacts the daemon: exit 2 where the
+/// With a valid environment, `run` boots — storage home opened, host probed —
+/// and refuses before it contacts the daemon: exit 2 where the
 /// host could build a sandbox, 1 where it could not, `run_refused` either way.
 #[test]
 fn run_boots_then_refuses_without_an_agent_engine() {
@@ -89,8 +89,8 @@ fn run_boots_then_refuses_without_an_agent_engine() {
     let expected = if host_can_sandbox { REFUSED } else { 1 };
     assert_eq!(ran.status.code(), Some(expected), "{stderr}");
     assert!(
-        home.path().exists(),
-        "the storage home was opened, not removed"
+        home.path().join("sandboxes").is_dir(),
+        "the storage home was opened, its directories made"
     );
 }
 

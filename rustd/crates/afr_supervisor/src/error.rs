@@ -22,6 +22,7 @@
 //! through, so the log names exactly what the daemon said.
 
 use afd_core::error_code::{self, ErrorCode};
+use reqwest::StatusCode;
 
 use crate::client::Verb;
 
@@ -30,9 +31,14 @@ mod raise;
 #[cfg(test)]
 pub(crate) use self::raise::refused;
 pub(crate) use self::raise::{
-    address, client, config, encode, malformed, refused_with_body, tampered, token_refused,
-    transport, unavailable,
+    client, config, encode, malformed, refused_with_body, tampered, token_refused, transport,
+    unavailable,
 };
+
+/// The daemon refused the runner's token.
+pub(crate) const UNAUTHORIZED: u16 = StatusCode::UNAUTHORIZED.as_u16();
+/// The daemon has nothing under the name asked for.
+pub(crate) const NOT_FOUND: u16 = StatusCode::NOT_FOUND.as_u16();
 
 afd_core::error_shell!(
     /// A supervisor failure, with the backtrace of where it was raised.
@@ -46,7 +52,7 @@ pub(crate) enum ErrorKind {
     #[error("an input/output call failed")]
     Io {
         /// The operating system's reason.
-        #[from]
+        #[source]
         source: std::io::Error,
     },
 
@@ -54,7 +60,7 @@ pub(crate) enum ErrorKind {
     #[error("a finished file could not be moved into place")]
     Persist {
         /// The rename's failure; the temporary file is removed with it.
-        #[from]
+        #[source]
         source: tempfile::PersistError,
     },
 
@@ -140,11 +146,19 @@ pub(crate) enum ErrorKind {
         content_hash: String,
     },
 
+    /// A task the supervisor ran did not finish: it panicked or was cancelled.
+    #[error("a task did not finish")]
+    Task {
+        /// The runtime's reason.
+        #[source]
+        source: tokio::task::JoinError,
+    },
+
     /// An identifier the daemon sent is not in canonical form.
     #[error("the daemon sent an identifier this runner cannot read")]
     Identifier {
         /// The parser's reason.
-        #[from]
+        #[source]
         source: afd_core::error::Error,
     },
 }
@@ -186,14 +200,23 @@ impl Error {
     pub const fn is_unauthorized(&self) -> bool {
         matches!(
             self.kind(),
-            ErrorKind::Refused { status: 401, .. } | ErrorKind::TokenRefused
+            ErrorKind::Refused {
+                status: UNAUTHORIZED,
+                ..
+            } | ErrorKind::TokenRefused
         )
     }
 
     /// Whether the daemon has nothing under the name asked for.
     #[must_use]
     pub const fn is_not_found(&self) -> bool {
-        matches!(self.kind(), ErrorKind::Refused { status: 404, .. })
+        matches!(
+            self.kind(),
+            ErrorKind::Refused {
+                status: NOT_FOUND,
+                ..
+            }
+        )
     }
 
     /// The registry code this failure is logged under.
@@ -203,9 +226,11 @@ impl Error {
             ErrorKind::Refused {
                 code: Some(code), ..
             } => *code,
-            ErrorKind::Refused { status: 401, .. } | ErrorKind::TokenRefused => {
-                error_code::RUN_INVALID_RUNNER_TOKEN
+            ErrorKind::Refused {
+                status: UNAUTHORIZED,
+                ..
             }
+            | ErrorKind::TokenRefused => error_code::RUN_INVALID_RUNNER_TOKEN,
             ErrorKind::Refused {
                 verb: Verb::Renew, ..
             } => error_code::RUN_LEASE_LOST,
@@ -220,6 +245,7 @@ impl Error {
             | ErrorKind::Address { .. }
             | ErrorKind::Client { .. }
             | ErrorKind::Encode { .. }
+            | ErrorKind::Task { .. }
             | ErrorKind::Identifier { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }

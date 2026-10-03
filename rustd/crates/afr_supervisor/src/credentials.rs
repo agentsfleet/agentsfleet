@@ -6,21 +6,18 @@
 //! tool whose lease names a mintable integration asks for its token here.
 
 use std::borrow::Cow;
-use std::fmt;
 
 use afd_core::id::Uuid7;
 use afd_wire::credentials::{MintCredentialRequest, MintCredentialResponse};
 
 use crate::client::ControlPlane;
 use crate::error::Result;
-
-/// What a minted credential prints as.
-const REDACTED: &str = "Minted(redacted)";
+use crate::secret::Secret;
 
 /// A minted credential. Its `Debug` never prints the token.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Minted {
-    token: String,
+    token: Secret,
     expires_at_ms: i64,
 }
 
@@ -28,19 +25,13 @@ impl Minted {
     /// The token, for the one call that presents it.
     #[must_use]
     pub fn expose(&self) -> &str {
-        &self.token
+        self.token.expose()
     }
 
     /// When the daemon stops honouring it, in Unix milliseconds.
     #[must_use]
     pub const fn expires_at_ms(&self) -> i64 {
         self.expires_at_ms
-    }
-}
-
-impl fmt::Debug for Minted {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(REDACTED)
     }
 }
 
@@ -63,7 +54,7 @@ pub async fn mint(
     let body = plane.mint(&request).await?;
     let minted: MintCredentialResponse<'_> = body.decode()?;
     Ok(Minted {
-        token: minted.token.into_owned(),
+        token: Secret::new(minted.token.into_owned()),
         expires_at_ms: minted.expires_at_ms,
     })
 }

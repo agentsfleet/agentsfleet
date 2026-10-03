@@ -33,7 +33,14 @@ fn every_verb_logs_under_its_own_family() {
         .filter(|code| **code == error_code::INTERNAL_OPERATION_FAILED)
         .count();
     assert_eq!(internal, 6);
-    assert_eq!(Verb::Renew.to_string(), "Renew");
+    assert_eq!(Verb::Renew.to_string(), "renew");
+    for verb in VERBS {
+        assert_eq!(verb.to_string(), verb.as_str());
+        assert!(
+            verb.as_str().bytes().all(|byte| byte.is_ascii_lowercase()),
+            "{verb:?} logs in lower case"
+        );
+    }
     assert!(Verb::Bundle.reads() && Verb::Hydrate.reads() && !Verb::Report.reads());
 }
 
@@ -50,7 +57,7 @@ fn a_refusal_carries_the_daemons_code_and_status_through() {
     assert_eq!(refusal.code(), error_code::RUN_BUDGET_EXCEEDED);
     assert!(!refusal.is_retryable() && !refusal.is_not_found());
     assert!(
-        refusal.to_string().contains("refused the Renew call (402)"),
+        refusal.to_string().contains("refused the renew call (402)"),
         "{refusal}"
     );
 }
@@ -119,7 +126,7 @@ fn local_failures_log_as_internal() {
         raise::malformed(Verb::Lease)(decode),
         raise::encode(encode),
         raise::config("unset"),
-        raise::address(url::Url::parse("no scheme").unwrap_err()),
+        url::Url::parse("no scheme").unwrap_err().into(),
         raise::client(unbuildable),
         std::io::Error::other("disk").into(),
         persist.into(),

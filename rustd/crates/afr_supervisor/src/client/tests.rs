@@ -118,7 +118,7 @@ async fn a_reply_decodes_borrowing_or_refuses_as_malformed() {
     assert_eq!(good.decode::<RenewResponse>().unwrap().lease_expires_at, 9);
     let refused = bad.decode::<RenewResponse>().unwrap_err();
     assert!(
-        refused.to_string().contains("Hydrate reply did not decode"),
+        refused.to_string().contains("hydrate reply did not decode"),
         "{refused}"
     );
 }

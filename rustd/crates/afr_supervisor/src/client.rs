@@ -69,6 +69,21 @@ impl Verb {
         matches!(self, Self::Hydrate | Self::Bundle)
     }
 
+    /// The verb as a log line and an error name it.
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Heartbeat => "heartbeat",
+            Self::Lease => "lease",
+            Self::Renew => "renew",
+            Self::Activity => "activity",
+            Self::Report => "report",
+            Self::Hydrate => "hydrate",
+            Self::Capture => "capture",
+            Self::Bundle => "bundle",
+            Self::Mint => "mint",
+        }
+    }
+
     /// The registry code a failure of this verb is logged under.
     pub(crate) const fn code(self) -> ErrorCode {
         match self {
@@ -86,7 +101,7 @@ impl Verb {
 
 impl fmt::Display for Verb {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(self, f)
+        f.write_str(self.as_str())
     }
 }
 
@@ -120,9 +135,10 @@ pub(crate) struct Body {
 }
 
 impl Body {
-    /// Decodes the reply into `T`, borrowing every text field from it.
+    /// Decodes the reply into `T`, borrowing every text field from it, through
+    /// the gate that refuses a JSON array read into a struct's fields in order.
     pub(crate) fn decode<'a, T: Deserialize<'a>>(&'a self) -> Result<T> {
-        serde_json::from_slice(&self.bytes).map_err(error::malformed(self.verb))
+        afd_core::json::object_from_slice(&self.bytes).map_err(error::malformed(self.verb))
     }
 }
 
@@ -224,17 +240,17 @@ impl ControlPlane {
     /// The one place a verb leaves the runner, so every call is logged once.
     async fn send(&self, verb: Verb, path: Cow<'static, str>, body: Option<Bytes>) -> Result<Body> {
         let event = EVENT_STARTED;
-        tracing::debug!(verb = %verb, event);
+        tracing::debug!(verb = verb.as_str(), event);
         match self.api.send(Call { verb, path, body }).await {
             Ok(bytes) => {
                 let event = EVENT_COMPLETED;
-                tracing::debug!(verb = %verb, event);
+                tracing::debug!(verb = verb.as_str(), event);
                 Ok(Body { verb, bytes })
             }
             Err(failure) => {
                 let code = failure.code().as_str();
                 let event = EVENT_FAILED;
-                tracing::debug!(error_code = code, verb = %verb, event);
+                tracing::debug!(error_code = code, verb = verb.as_str(), event);
                 Err(failure)
             }
         }

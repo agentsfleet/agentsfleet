@@ -8,6 +8,7 @@
 
 use std::borrow::Cow;
 
+use afd_core::spelling::to_spelling;
 use afd_wire::runner::{
     CapabilityReport, NetworkPolicy, SandboxTier, SelftestCheck, SelftestReport,
 };
@@ -62,8 +63,8 @@ pub fn selftest<'a>(
     SelftestReport {
         all_ok: checks.iter().all(|check| check.ok),
         checks,
-        sandbox_tier: spelling(tier),
-        network_policy: spelling(network),
+        sandbox_tier: spelling(&tier),
+        network_policy: spelling(&network),
     }
 }
 
@@ -131,11 +132,8 @@ fn check<'a>(name: &'static str, (ok, detail): (bool, &'static str)) -> Selftest
 }
 
 /// A fieldless wire enum's own spelling, as its serde declaration writes it.
-fn spelling<'a, T: Serialize>(value: T) -> Cow<'a, str> {
-    serde_json::to_value(value)
-        .ok()
-        .and_then(|spelled| spelled.as_str().map(str::to_owned))
-        .map_or(Cow::Borrowed(""), Cow::Owned)
+fn spelling<'a, T: Serialize>(value: &T) -> Cow<'a, str> {
+    to_spelling(value).map_or(Cow::Borrowed(""), Cow::Owned)
 }
 
 #[cfg(test)]

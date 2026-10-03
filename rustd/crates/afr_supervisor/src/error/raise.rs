@@ -11,11 +11,14 @@ use crate::client::Verb;
 // Every lift is a `From`, so `?` does the conversion and no `map_err` appears
 // on a path that adds nothing (`docs/RUST_ERROR_STANDARD.md` rule 2). The
 // client's and the decoder's errors are absent on purpose: both need to know
-// WHICH verb failed, which only the call site can say.
+// WHICH verb failed, which only the call site can say. An address error has
+// one meaning wherever it arises, so it lifts.
 afd_core::error_lifts!(Error, ErrorKind:
     std::io::Error => Io,
     tempfile::PersistError => Persist,
     afd_core::error::Error => Identifier,
+    tokio::task::JoinError => Task,
+    url::ParseError => Address,
 );
 
 /// The one field of a problem body the runner reads.
@@ -28,11 +31,6 @@ struct Problem<'a> {
 /// Reports a setting the runner cannot start without.
 pub(crate) fn config(detail: &'static str) -> Error {
     ErrorKind::Config { detail }.into()
-}
-
-/// Reports an address that does not parse, or a path that does not join it.
-pub(crate) fn address(source: url::ParseError) -> Error {
-    ErrorKind::Address { source }.into()
 }
 
 /// Reports an HTTP client that could not be built.
@@ -60,7 +58,7 @@ pub(crate) fn refused(verb: Verb, status: u16, code: Option<ErrorCode>) -> Error
 /// A body that is not a problem document, or names a code this build does not
 /// declare, refuses with no code rather than guessing one.
 pub(crate) fn refused_with_body(verb: Verb, status: u16, body: &[u8]) -> Error {
-    let code = serde_json::from_slice::<Problem<'_>>(body)
+    let code = afd_core::json::object_from_slice::<Problem<'_>>(body)
         .ok()
         .and_then(|problem| problem.error_code)
         .and_then(|named| ErrorCode::lookup(&named));
