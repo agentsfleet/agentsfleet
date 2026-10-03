@@ -10,3 +10,14 @@
 mod prepare;
 mod release;
 mod support;
+
+#[test]
+fn test_probe_paths_use_the_configured_launcher_and_cgroup() {
+    let host = support::FakeHost::new(support::SLEEPER);
+    let expected = crate::probe::ProbePaths {
+        bwrap: host.config.tools.bwrap.clone(),
+        cgroup_root: host.config.cgroup_root.clone(),
+        ..crate::probe::ProbePaths::default()
+    };
+    assert_eq!(host.config.probe_paths(), expected);
+}

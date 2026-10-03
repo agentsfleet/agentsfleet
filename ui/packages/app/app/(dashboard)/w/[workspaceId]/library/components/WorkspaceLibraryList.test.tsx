@@ -10,7 +10,7 @@
  */
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import type { WorkspaceLibraryEntry } from "@/lib/api/library-types";
 
@@ -137,6 +137,26 @@ describe("the workspace library list", () => {
       expect(removeActionMock).toHaveBeenCalledWith("ws_1", "e1");
     });
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+  });
+
+  it("keeps confirmation open after the optimistic row disappears until removal answers", async () => {
+    const answer = Promise.withResolvers<{ ok: true }>();
+    removeActionMock.mockReturnValue(answer.promise);
+    renderList([entry("pending", "pending-reviewer")]);
+
+    fireEvent.click(screen.getByRole("button", { name: REMOVE_ROW_LABEL }));
+    const dialog = await screen.findByRole("alertdialog");
+    const confirm = within(dialog).getByRole("button", { name: /^Remove$/ });
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(renderedNames()).toEqual([]));
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    expect(confirm.hasAttribute("disabled")).toBe(true);
+    expect(refreshMock).not.toHaveBeenCalled();
+
+    await act(async () => { answer.resolve({ ok: true }); });
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(refreshMock).toHaveBeenCalledOnce();
   });
 
   it("leaves the row and surfaces the refusal when removal fails", async () => {
