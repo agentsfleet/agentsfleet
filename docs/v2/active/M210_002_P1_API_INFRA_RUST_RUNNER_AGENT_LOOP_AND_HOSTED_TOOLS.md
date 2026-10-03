@@ -163,7 +163,7 @@ The integration lane installs each fixture bundle through the seed (`rustd/crate
 
 `incident-repairer/TRIGGER.md` and `SKILL.md` say every wake parks behind a repository-write approval card. The daemon retired that card: the standing integration grant authorises the write (`rustd/crates/afd_fleet_runtime/src/config/raw/predicate.rs:97-99`). The prose changes to the grant; the corpus test pins that no fixture names the card.
 
-- **Dimension 7.1** — No fixture bundle names an approval card for a repository write → Test `test_fixture_corpus_names_no_retired_gate`
+- **Dimension 7.1** — No fixture bundle names an approval card for a repository write → Test `test_fixture_corpus_names_no_retired_gate` — DONE (`rustd/crates/afd_fleet_runtime/tests/frontmatter_corpus.rs`)
 
 ## Interfaces
 

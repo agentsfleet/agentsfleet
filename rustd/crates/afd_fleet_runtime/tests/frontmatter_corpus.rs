@@ -12,6 +12,7 @@
 //! |---|---|
 //! | every `skill/` and `trigger/` fixture verdict | [`test_fleet_frontmatter_corpus_parity`] |
 //! | the `platform-ops` / `steer-probe` template substitution | [`the_templated_bundles_parse_once_their_placeholders_are_filled`] |
+//! | no first-party bundle promises the retired repository-write card | [`test_fixture_corpus_names_no_retired_gate`] |
 //!
 //! The FIELD-VALUE half of the corpus lives in `frontmatter_fields.rs`; this
 //! file asserts only which documents open and which are refused.
@@ -33,6 +34,14 @@
 use afd_fleet_runtime::{Class, Error, config::Access, parse_skill, parse_trigger};
 
 use crate::support::{FIRST_PARTY, MODEL_VALUE, fixture, raw_fixture};
+
+/// The card the daemon retired: the standing integration grant authorises a
+/// repository write (`src/config/raw/predicate.rs`), so a bundle promising a
+/// per-event card tells its model about a gate that never opens.
+const RETIRED_GATE: &str = "approval card";
+
+/// The two documents every first-party bundle ships.
+const BUNDLE_DOCUMENTS: [&str; 2] = ["SKILL.md", "TRIGGER.md"];
 
 /// What the corpus expects one document to answer, in the ZIG's vocabulary.
 ///
@@ -320,5 +329,18 @@ fn repairer_bundle_is_write_bound_to_one_base() {
     assert_eq!(
         network.allow().first().map(AsRef::as_ref),
         Some("api.github.com")
+    );
+}
+
+#[test]
+fn test_fixture_corpus_names_no_retired_gate() {
+    let promising: Vec<String> = FIRST_PARTY
+        .iter()
+        .flat_map(|slug| BUNDLE_DOCUMENTS.map(|document| format!("{slug}/{document}")))
+        .filter(|relative| raw_fixture(relative).to_lowercase().contains(RETIRED_GATE))
+        .collect();
+    assert!(
+        promising.is_empty(),
+        "these bundles still promise the retired {RETIRED_GATE:?}: {promising:?}"
     );
 }
