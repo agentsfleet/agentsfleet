@@ -158,7 +158,11 @@ async fn prove_live_lease_satellites(http: &reqwest::Client, run: &Scenario, lea
 async fn assert_memory_hydrates(http: &reqwest::Client, run: &Scenario) {
     let hydrated = get(http, run, &format!("/v1/runners/me/memory/{}", run.fleet)).await;
     assert_eq!(hydrated.status().as_u16(), 200);
-    assert_eq!(json(hydrated).await, json!({"memory": []}));
+    // A fleet with no grant reads no shared entries and may not publish.
+    assert_eq!(
+        json(hydrated).await,
+        json!({"memory": [], "shared": [], "publish": false})
+    );
 }
 
 async fn assert_lease_renews(http: &reqwest::Client, run: &Scenario, lease_id: &str) {
