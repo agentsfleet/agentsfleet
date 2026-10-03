@@ -121,6 +121,7 @@ fn read(row: &PgRow) -> Result<EventDetailRow> {
         },
         request_json: row.try_get(4).map_err(row_malformed("request_json"))?,
         response_text: None,
+        tool_calls: None,
     })
 }
 

@@ -58,7 +58,8 @@ __pycache__/
 rustd/target/
 
 # Coverage report written by `make test-coverage-rustd`.
-rustd/lcov.info
+rustd/lcov*.info
+rustd/lcov-*.rev
 
 # Bench lane output. A result is what one run measured on one machine; the
 # committed reference point beside it is `bench/baselines/`, which IS tracked.

@@ -29,3 +29,4 @@ pub(crate) mod memory;
 pub(crate) mod renew;
 pub(crate) mod report;
 pub(crate) mod self_record;
+pub(crate) mod tool_call;

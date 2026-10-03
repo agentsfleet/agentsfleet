@@ -65,6 +65,7 @@ pub(crate) fn report<'a>(
             response_text,
             tokens: 0,
             wall_ms: SLICE_MS,
+            tool_calls: None,
         },
         last_event_id: RESUME_EVENT_ID,
         last_response: RESUME_RESPONSE,

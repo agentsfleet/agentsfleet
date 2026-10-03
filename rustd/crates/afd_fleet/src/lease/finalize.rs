@@ -72,7 +72,7 @@ struct Checkpoint<'a> {
 }
 
 impl Leases {
-    /// End the event with the runner's verdict.
+    /// End the event with the runner's verdict, and the tool trace beside it.
     ///
     /// Guarded on the row still being `received`, so a terminal row is never
     /// reopened and a redelivery whose acknowledgement was lost cannot
@@ -101,6 +101,7 @@ impl Leases {
             response_text,
             tokens,
             wall_ms,
+            tool_calls,
         } = outcome;
         let closed = sqlx::query(afd_events::sql::UPDATE_FLEET_EVENT_RESULT)
             .bind(fleet_id.as_str())
@@ -114,6 +115,7 @@ impl Leases {
             .bind(afd_core::event::status::RECEIVED)
             .bind(verdict.detail())
             .bind(afd_wire::approval::status::PENDING)
+            .bind(tool_calls)
             .fetch_optional(&mut *connection)
             .await
             .map_err(crate::error::query(CONTEXT_TERMINAL))?;

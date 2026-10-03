@@ -94,7 +94,7 @@ jobs:
       # pool, stream and migrator line as uncovered while the lane that runs
       # them said nothing, so the number described the instrument's position
       # rather than the code. `test-integration-rustd.yml` measures both tiers
-      # in the one run that executes both.
+      # in the runs that execute them, and grades the floor once over all of them.
 
   test-unit-cli:
     runs-on: ubuntu-latest

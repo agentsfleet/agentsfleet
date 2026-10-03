@@ -38,6 +38,8 @@ pub enum FleetRoute {
     EventsStream,
     /// One event.
     Event,
+    /// One tool call of an event, in full.
+    ToolCall,
     /// What the fleet remembers.
     Memories,
     /// One memory entry.
@@ -59,6 +61,7 @@ impl FleetRoute {
         Self::Events,
         Self::EventsStream,
         Self::Event,
+        Self::ToolCall,
         Self::Memories,
         Self::Memory,
         Self::Grants,
@@ -74,9 +77,12 @@ impl FleetRoute {
     #[must_use]
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
-            Self::Events | Self::EventsStream | Self::Event | Self::Memories | Self::Grants => {
-                &[Verb::Get]
-            }
+            Self::Events
+            | Self::EventsStream
+            | Self::Event
+            | Self::ToolCall
+            | Self::Memories
+            | Self::Grants => &[Verb::Get],
             Self::Memory | Self::Grant => &[Verb::Delete],
             Self::ScheduleSync => &[Verb::Post],
             Self::Messages | Self::Schedules => &[Verb::Get, Verb::Post],
@@ -142,6 +148,11 @@ impl FleetRoute {
             Self::Event => (
                 api,
                 fleet_path!("/events/{event_id}"),
+                Scopes::Always(FLEET_READ),
+            ),
+            Self::ToolCall => (
+                api,
+                fleet_path!("/events/{event_id}/tool-calls/{call_id}"),
                 Scopes::Always(FLEET_READ),
             ),
             Self::Memories => (api, fleet_path!("/memories"), Scopes::Always(FLEET_READ)),

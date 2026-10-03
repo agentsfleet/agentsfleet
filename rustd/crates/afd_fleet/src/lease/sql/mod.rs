@@ -11,6 +11,7 @@ pub mod lease;
 pub mod renew;
 pub mod report;
 pub mod session;
+pub mod tool_detail;
 
 pub use afd_state::sql::{
     ADMIN_STATE_ACTIVE, ADMIN_STATE_DRAINED, ADMIN_STATE_DRAINING, LAST_SEEN_NEVER,

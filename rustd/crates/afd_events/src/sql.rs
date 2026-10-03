@@ -241,13 +241,16 @@ WITH closed AS (
 /// `$1` fleet, `$2` event, `$3` new status, `$4` response text, `$5` tokens,
 /// `$6` wall milliseconds, `$7` now, `$8` failure label, `$9` the status this
 /// transition is guarded on, `$10` failure detail, `$11` the gate status that
-/// counts as pending.
+/// counts as pending, `$12` the run's tool trace as JSON text, or NULL.
+///
+/// The trace is written here and nowhere else, so a report the fence refuses
+/// writes neither the answer nor the trace.
 pub const UPDATE_FLEET_EVENT_RESULT: &str = concat!(
     "\
 WITH closed AS (
   UPDATE core.fleet_events
   SET status = $3, response_text = $4, tokens = $5, wall_ms = $6, updated_at = $7,
-      failure_label = $8, failure_detail = $10
+      failure_label = $8, failure_detail = $10, tool_calls = $12::jsonb
   WHERE fleet_id = $1::uuid AND event_id = $2 AND status = $9",
     returning_row!(),
     closed_columns!(),
