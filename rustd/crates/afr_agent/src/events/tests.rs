@@ -52,3 +52,14 @@ fn should_send_nothing_for_a_chunk_held_whole() {
 
     assert!(frames.taken().is_empty(), "no frame and no sequence spent");
 }
+
+#[test]
+#[should_panic(expected = "frames emitted and never read")]
+fn the_frame_guard_fails_a_test_that_leaves_a_frame_unread() {
+    let scrub = scrub();
+    let frames = Frames::default();
+    let sink = frames.sink();
+    let mut live = Live::new(&sink, &scrub, Instant::now());
+
+    live.text(StreamTextKind::Answer, "said and never asserted");
+}

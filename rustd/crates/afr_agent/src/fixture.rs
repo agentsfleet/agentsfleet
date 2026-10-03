@@ -324,3 +324,19 @@ impl Frames {
         self.received.try_iter().collect()
     }
 }
+
+/// A frame emitted and never read fails the test, the way Exonum's
+/// `GuardedQueue` fails on a message nobody asserted: a duplicated or stray
+/// end frame cannot pass unseen.
+impl Drop for Frames {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            return;
+        }
+        let unread = self.taken();
+        assert!(
+            unread.is_empty(),
+            "frames emitted and never read: {unread:?}"
+        );
+    }
+}
