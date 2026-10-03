@@ -14,7 +14,7 @@ use std::sync::mpsc;
 use afd_wire::activity::StreamTextKind;
 use afd_wire::lease::LeasePayload;
 use afd_wire::policy::ExecutionPolicy;
-use afr_providers::{Call, Chunk, Connect, Message, Provider, Request, Usage};
+use afr_providers::{Call, Chunk, Connect, End, Message, Provider, Request, Usage};
 use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
 
@@ -180,5 +180,13 @@ pub(crate) fn spent(input: u64, cached_input: u64, output: u64) -> Chunk {
         input,
         cached_input,
         output,
+    })
+}
+
+/// How a turn ended: `cut` when it stopped at its output limit.
+pub(crate) fn ended(cut: bool) -> Chunk {
+    Chunk::End(End {
+        cut,
+        ..End::default()
     })
 }

@@ -8,6 +8,12 @@
 //! one needing request signing, a token exchange, a non-streaming wire or a
 //! loopback host, is refused at admission rather than dialled wrong.
 //!
+//! An entry may name the rig dialect its vendor speaks, for the vendor's quirks:
+//! its chat path, the fields it rejects, how it hands reasoning back. The base
+//! URL stays the table's, so rig never chooses a host. A vendor whose rig
+//! dialect would quietly drop the tools offered (perplexity) stays a plain
+//! gateway.
+//!
 //! A `custom:<url>` provider is no entry: its URL comes with the lease. It is
 //! taken only as `https` with a host, and the transport follows no redirect,
 //! so a turn reaches that host and no other.
@@ -50,6 +56,10 @@ pub struct ProviderSpec {
     pub wire: Wire,
     /// Where its turns post under.
     pub base_url: String,
+    /// The rig dialect its vendor speaks; a plain `OpenAI`-compatible gateway
+    /// when absent. Chat only.
+    #[serde(default)]
+    pub dialect: Option<String>,
 }
 
 /// Where one lease's provider is dialled, and over which wire.
@@ -57,6 +67,7 @@ pub struct ProviderSpec {
 pub(crate) struct Route {
     pub(crate) wire: Wire,
     pub(crate) base: Url,
+    pub(crate) dialect: Option<Box<str>>,
 }
 
 /// Every named provider, by each name and alias.
@@ -86,6 +97,7 @@ impl Registry {
             let route = Route {
                 wire: spec.wire,
                 base,
+                dialect: spec.dialect.map(String::into_boxed_str),
             };
             for name in spec.aliases.into_iter().chain([spec.name]) {
                 routes.insert(name, route.clone());
@@ -110,6 +122,7 @@ impl Registry {
             .map(|base| Route {
                 wire: Wire::Chat,
                 base,
+                dialect: None,
             })
             .ok_or_else(|| raise::unhosted(provider))
     }

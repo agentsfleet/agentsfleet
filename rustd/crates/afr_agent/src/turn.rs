@@ -1,8 +1,8 @@
 //! One model turn: the provider's stream read to its end, its text sent live,
-//! its calls and usage collected.
+//! its calls, usage and end collected.
 
 use afd_wire::activity::StreamTextKind;
-use afr_providers::{Call, Chunk, Usage};
+use afr_providers::{Call, Chunk, Replay, Usage};
 use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
 
@@ -17,6 +17,10 @@ pub(crate) struct Turn {
     pub(crate) calls: Vec<Call>,
     /// What the turn spent.
     pub(crate) usage: Usage,
+    /// What the provider needs back on the next turn.
+    pub(crate) replay: Replay,
+    /// The turn stopped at its output limit, so its calls must not run.
+    pub(crate) cut: bool,
 }
 
 /// Reads `stream` to its end. An error ends the turn there; dropping the
@@ -36,6 +40,10 @@ pub(crate) async fn take(
             }
             Chunk::Call(call) => turn.calls.push(call),
             Chunk::Usage(usage) => turn.usage += usage,
+            Chunk::End(end) => {
+                turn.replay = end.replay;
+                turn.cut = end.cut;
+            }
         }
     }
     live.end_pass();

@@ -27,6 +27,8 @@ afd_core.workspace = true
 afr_supervisor.workspace = true
 # `sandbox` hardens and serves; `probe` reads the host.
 afr_sandbox.workspace = true
+# The log filter that holds the model library's own lines to its warnings.
+afr_providers.workspace = true
 clap.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

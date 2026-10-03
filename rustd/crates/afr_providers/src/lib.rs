@@ -1,28 +1,26 @@
 //! The model providers: one [`Provider`] trait, the turn it streams, and the
 //! wires behind it (`docs/architecture/runner_execution.md` §Crates).
 //!
-//! A [`Connect`] picks the wire a lease's policy names and builds its
-//! provider. Every wire shares one transport, generic over the wire's
-//! dialect: one HTTP client, bounded retry, and Server-Sent Events framing.
-//! The model key lives only here, in the supervisor: no provider runs inside
-//! a sandbox.
+//! A [`Connect`] picks the route a lease's policy names and builds its
+//! provider. rig speaks every wire; the runner owns which providers a lease
+//! may reach, the transport under rig (one HTTP client, no redirect, bounded
+//! retry) and the turn's chunks. The model key lives only here, in the
+//! supervisor: no provider runs inside a sandbox.
 
 pub mod error;
 
-mod anthropic;
 mod connect;
-mod dialect;
-mod http;
-mod openai_chat;
-mod openai_responses;
+mod logs;
 mod provider;
 mod registry;
+mod request;
 mod retry;
-mod sse;
-#[cfg(test)]
-mod test_support;
+mod transport;
+mod turn;
+mod wire;
 
 pub use self::connect::{Connect, Connector};
 pub use self::error::{Error, Result};
-pub use self::provider::{Call, Chunk, Message, Provider, Request, Usage};
+pub use self::logs::log_filter;
+pub use self::provider::{Call, Chunk, End, Message, Provider, Replay, Request, Usage};
 pub use self::registry::{ProviderSpec, Registry, Wire};

@@ -9,6 +9,7 @@ fn should_spell_each_error_code_as_the_thread_reads_it() {
             "hosted_tool_unavailable",
         ),
         (ToolErrorCode::SandboxUnavailable, "sandbox_unavailable"),
+        (ToolErrorCode::OutputLimitReached, "output_limit_reached"),
     ];
 
     for (code, spelling) in spelled {

@@ -406,12 +406,16 @@ moka = { version = "0.12.16", default-features = false, features = ["future"] }
 # carry our own encoder.
 reqwest = { version = "0.13.4", default-features = false, features = ["form", "rustls", "stream"] }
 
-# The model providers' Server-Sent Events framing: `data:` lines joined, `event:`
-# names, comments and retry fields, over reqwest's byte stream. Codex
-# (`codex-rs/core`) and IronClaw (`ironclaw_llm`) pin the same crate for the same
-# job, so the runner's provider wires read a stream the way those harnesses do
-# rather than through a line splitter of our own (RULE PSR).
-eventsource-stream = { version = "0.2.3", default-features = false, features = ["std"] }
+# The model providers' wire: Anthropic Messages, OpenAI Responses and every
+# OpenAI-compatible chat dialect, streamed, with tool calls assembled, usage
+# split and reasoning carried across turns. IronClaw builds its provider layer
+# on the same library; the runner owns what rig does not: which providers a
+# lease may reach, the transport (one client, no redirect, `backon` retry), the
+# key's one header and the secret scrub. Pinned exactly: rig's minors break
+# their API (0.43 lists 40 breaking entries), so an upgrade is a reviewed
+# change. No default features: the transport is ours, so no HTTP stack, async
+# runtime or TLS comes with it.
+rig-core = { version = "=0.43.0", default-features = false }
 
 # A provider's `Retry-After` in its HTTP-date form (RFC 9110, `Retry-After`). Already in
 # the lock through hyper, which parses the same header family with it.

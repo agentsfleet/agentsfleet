@@ -13,8 +13,12 @@
 //! `event` says which failure it was. A policy naming a provider this runner
 //! does not speak is the fleet's configuration, and takes that code.
 
+use std::fmt;
+
 use afd_core::error_code::{self, ErrorCode};
 use afd_wire::report::FailureClass;
+use rig_core::ProviderError;
+use rig_core::message::EmptyToolName;
 
 pub(crate) mod raise;
 
@@ -27,10 +31,13 @@ afd_core::error_shell!(
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
     /// The provider refused the turn with a status no retry changes.
-    #[error("the model provider refused the turn with status {status}")]
+    #[error("the model provider refused the turn with status {status}{}", Named(.code.as_deref()))]
     Refused {
         /// The HTTP status.
         status: u16,
+        /// The provider's own name for the refusal, such as
+        /// `context_length_exceeded`, never its message.
+        code: Option<String>,
     },
 
     /// The connection was lost before the turn ended.
@@ -56,11 +63,37 @@ pub(crate) enum ErrorKind {
         source: serde_json::Error,
     },
 
+    /// The wire library could not build the turn's request, or read its
+    /// reply as the wire defines it.
+    #[error("the model provider's turn could not be built or read")]
+    Wire {
+        /// The library's reason.
+        #[source]
+        source: ProviderError,
+    },
+
     /// The policy names a provider this runner does not speak.
     #[error("the policy names a model provider this runner does not speak: {provider}")]
     Unhosted {
         /// The provider, as the policy spells it.
         provider: String,
+    },
+
+    /// The conversation holds a result that answers no call before it.
+    #[error("the conversation cannot be sent: the result for call {call_id} answers no call")]
+    Unsendable {
+        /// The id the result names.
+        call_id: String,
+    },
+
+    /// The conversation holds a call with no tool name.
+    #[error("the conversation cannot be sent: call {call_id} names no tool")]
+    Unnamed {
+        /// The call's id.
+        call_id: String,
+        /// rig's reason.
+        #[source]
+        source: EmptyToolName,
     },
 
     /// The provider registry names an entry whose base URL does not parse.
@@ -90,7 +123,7 @@ impl Error {
     /// A refusal with `status`, which no retry changes.
     #[must_use]
     pub fn refused(status: u16) -> Self {
-        Self::from(ErrorKind::Refused { status })
+        Self::from(ErrorKind::Refused { status, code: None })
     }
 
     /// A connection lost mid-turn, for `source`.
@@ -118,6 +151,9 @@ impl Error {
             | ErrorKind::Ended { .. }
             | ErrorKind::Unreadable { .. }
             | ErrorKind::Registry { .. }
+            | ErrorKind::Unsendable { .. }
+            | ErrorKind::Unnamed { .. }
+            | ErrorKind::Wire { .. }
             | ErrorKind::Client { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
@@ -133,6 +169,9 @@ impl Error {
             | ErrorKind::Unreadable { .. }
             | ErrorKind::Unhosted { .. }
             | ErrorKind::Registry { .. }
+            | ErrorKind::Unsendable { .. }
+            | ErrorKind::Unnamed { .. }
+            | ErrorKind::Wire { .. }
             | ErrorKind::Client { .. } => None,
         }
     }
@@ -147,7 +186,23 @@ impl Error {
             | ErrorKind::Ended { .. }
             | ErrorKind::Unreadable { .. }
             | ErrorKind::Registry { .. }
+            | ErrorKind::Unsendable { .. }
+            | ErrorKind::Unnamed { .. }
+            | ErrorKind::Wire { .. }
             | ErrorKind::Client { .. } => None,
+        }
+    }
+}
+
+/// A refusal's code in parentheses after its status, when the provider named
+/// one: `status 400 (context_length_exceeded)`.
+struct Named<'a>(Option<&'a str>);
+
+impl fmt::Display for Named<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Some(code) => write!(f, " ({code})"),
+            None => Ok(()),
         }
     }
 }

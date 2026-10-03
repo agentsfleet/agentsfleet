@@ -2,12 +2,15 @@
 //!
 //! The types here are provider-neutral. Each wire maps them onto its own
 //! function-calling shape, so the loop never knows which provider it drives.
+//! The one provider-owned value the loop carries is a turn's [`Replay`], which
+//! it hands back untouched.
 
 use std::fmt;
 use std::ops::AddAssign;
 
 use afd_wire::activity::StreamTextKind;
 use afr_tools::{Entry, ToolSpec};
+use rig_core::message::AssistantContent;
 use futures_util::stream::BoxStream;
 
 use crate::error::Result;
@@ -23,23 +26,31 @@ pub struct Call {
     pub arguments: serde_json::Value,
 }
 
-impl Call {
-    /// A call whose arguments arrived as `raw` JSON text: parsed when they
-    /// parse, and kept as the text the model wrote when they do not, so the
-    /// tool refuses them with a reason the model can read. Empty text is no
-    /// arguments.
-    pub(crate) fn parsed(id: String, name: String, raw: &str) -> Self {
-        let arguments = if raw.trim().is_empty() {
-            serde_json::Value::Object(serde_json::Map::new())
-        } else {
-            serde_json::from_str(raw).unwrap_or_else(|_| serde_json::Value::String(raw.to_owned()))
-        };
-        Self {
-            id,
-            name,
-            arguments,
-        }
+/// What a provider needs back on the next turn to continue its own reasoning.
+///
+/// Thinking blocks with their signatures, `reasoning_content`, or a gateway's
+/// reasoning details. Opaque to the loop, which keeps it with the turn that
+/// produced it and hands it back unopened; a provider that reasons in the
+/// open, or not at all, leaves it empty.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Replay(pub(crate) Vec<AssistantContent>);
+
+impl Replay {
+    /// Whether there is nothing to hand back.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
+}
+
+/// How a turn ended, once every chunk of it was sent.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct End {
+    /// What the provider needs back on the next turn.
+    pub replay: Replay,
+    /// The turn stopped at its output limit: a call it made may have been
+    /// cut mid-argument and must not run.
+    pub cut: bool,
 }
 
 /// One message of the conversation a turn continues.
@@ -53,6 +64,8 @@ pub enum Message {
         text: String,
         /// The calls the turn asked for.
         calls: Vec<Call>,
+        /// What the provider needs back to continue its own reasoning.
+        replay: Replay,
     },
     /// One call's output, fed back to the model.
     ToolResult {
@@ -119,6 +132,8 @@ pub enum Chunk {
     Call(Call),
     /// What the turn spent.
     Usage(Usage),
+    /// How the turn ended; the last chunk of a turn that ended.
+    End(End),
 }
 
 impl Chunk {

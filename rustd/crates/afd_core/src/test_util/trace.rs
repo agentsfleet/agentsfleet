@@ -30,6 +30,7 @@ use std::sync::{Arc, Mutex, MutexGuard, Once, PoisonError};
 use tracing::field::{Field, Visit};
 use tracing::span::{Attributes, Id, Record};
 use tracing::{Event, Level, Subscriber, subscriber};
+use tracing_subscriber::filter::Targets;
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt as _};
 use tracing_subscriber::registry::{LookupSpan, Registry};
 
@@ -107,6 +108,18 @@ impl Capture {
     /// forever: install one per test.
     #[must_use]
     pub fn install() -> Self {
+        Self::start(None)
+    }
+
+    /// [`Self::install`], keeping only what `filter` lets through: the
+    /// process's own filter, so a suite reads what an operator's journal
+    /// would hold.
+    #[must_use]
+    pub fn install_filtered(filter: Targets) -> Self {
+        Self::start(Some(filter))
+    }
+
+    fn start(filter: Option<Targets>) -> Self {
         // A test that panicked while holding the lock proved nothing about
         // the next one, so a poisoned lock is taken as it stands.
         let serial = SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
@@ -117,7 +130,7 @@ impl Capture {
         });
         let seen = Arc::new(Mutex::new(Seen::default()));
         let layer = Recorder(Arc::clone(&seen));
-        let guard = subscriber::set_default(Registry::default().with(layer));
+        let guard = subscriber::set_default(Registry::default().with(layer.with_filter(filter)));
         Self {
             seen,
             _subscriber: guard,

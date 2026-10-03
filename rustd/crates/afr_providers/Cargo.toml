@@ -27,14 +27,17 @@ afr_tools.workspace = true
 backon.workspace = true
 # A turn's request body, shared by every retry without a copy.
 bytes.workspace = true
-# The Server-Sent Events framing each wire streams its turn in.
-eventsource-stream.workspace = true
 # A turn streams as a `futures` stream of chunks.
 futures-util.workspace = true
+# The request and response types rig's HTTP seam speaks.
+http.workspace = true
 # `Retry-After` in its HTTP-date form.
 httpdate.workspace = true
-# The one HTTP client every wire posts through, its key in a header.
+# The one HTTP client every wire posts through, behind rig's HTTP seam.
 reqwest.workspace = true
+# Each wire: the request rig builds, the stream it decodes, the calls it
+# assembles and the reasoning it carries back.
+rig-core.workspace = true
 # Each wire's request body and streamed events, narrowed at the parse.
 serde.workspace = true
 # A tool call's arguments.
@@ -42,8 +45,10 @@ serde_json.workspace = true
 thiserror.workspace = true
 # The provider table's base URLs, parsed once when the registry is built.
 url.workspace = true
-# The retry log line.
+# The retry log line, and the level rig's own lines are held to.
 tracing.workspace = true
+# The filter that holds rig's lines to its warnings.
+tracing-subscriber.workspace = true
 
 [dev-dependencies]
 # The log capture the retry and key suites read their lines through.

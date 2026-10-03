@@ -1,7 +1,7 @@
 //! The three provider wires against a fake provider on a real socket, driven
 //! by the real loop: a tool turn each, bounded retry, the key kept to its one
 //! header, `web_search` as a hosted spec, and a stream cut before its turn
-//! ended.
+//! ended, opened again within the same bound.
 
 #![expect(
     clippy::unwrap_used,
@@ -12,9 +12,13 @@
 
 mod support;
 
+#[path = "providers/ends.rs"]
+mod ends;
+
 use std::time::{Duration, Instant};
 
 use afd_core::test_util::trace::Capture;
+use tracing::level_filters::LevelFilter;
 use afd_wire::report::{FailureClass, ResultOutcome};
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_tools::catalog::{CALCULATOR, WEB_SEARCH};
@@ -31,6 +35,9 @@ const CALL_ID: &str = "call-1";
 const RETRY_AFTER: &str = "1";
 /// What a refused hosted call reads back, as the router spells it.
 const HOSTED_REFUSAL: &str = "[hosted_tool_unavailable]";
+/// Sends per turn, the first included: the transport's retry and a cut
+/// turn's reopening share the bound.
+const ATTEMPTS: usize = 3;
 
 #[tokio::test]
 async fn test_each_provider_drives_a_tool_turn() {
@@ -141,7 +148,8 @@ async fn a_fault_is_retried_three_sends_and_then_ends_naming_its_status() {
 #[tokio::test]
 async fn test_api_key_never_leaves_the_supervisor() {
     for wire in Wire::ALL {
-        let capture = Capture::install();
+        // What the journal holds at the loudest level an operator can name.
+        let capture = Capture::install_filtered(afr_providers::log_filter(LevelFilter::TRACE));
         let echoed = json!({"expression": KEY, "token": TOKEN});
         let mut fake = Fake::serve(vec![
             wire.call(CALL_ID, CALCULATOR.name(), &echoed),
@@ -233,13 +241,20 @@ async fn test_web_search_is_a_hosted_spec() {
 }
 
 #[tokio::test]
-async fn a_stream_cut_before_its_turn_ended_is_a_lost_connection() {
+async fn a_stream_cut_before_its_turn_ended_is_opened_again_then_a_lost_connection() {
     for wire in Wire::ALL {
         let Reply::Stream(mut events) = wire.answer(ANSWER) else {
             panic!("an answer streams");
         };
-        events.truncate(1);
-        let fake = Fake::serve(vec![Reply::Stream(events)]).await;
+        // Messages and Responses open on a frame that shows nothing; a chat
+        // stream's first chunk is already its text.
+        let silent = match wire {
+            Wire::Messages | Wire::Responses => 1,
+            Wire::Chat => 0,
+        };
+        events.truncate(silent);
+        let cut = Reply::Stream(events);
+        let mut fake = Fake::serve(vec![cut; ATTEMPTS]).await;
         let leased = lease(&wire.provider(), &[], "hello");
 
         let (output, _frames) = run(&engine(&fake), &leased).await;
@@ -248,7 +263,44 @@ async fn a_stream_cut_before_its_turn_ended_is_a_lost_connection() {
             panic!("{wire:?}: a cut turn is no answer");
         };
         assert_eq!(failure.class, Some(FailureClass::TransportLoss), "{wire:?}");
+        assert_eq!(fake.seen().len(), ATTEMPTS, "{wire:?}: nothing showed, so it reopened");
     }
+}
+
+// Its text already went out live; a second pass would show it twice.
+#[tokio::test]
+async fn a_stream_cut_after_its_text_showed_is_lost_without_opening_again() {
+    let wire = Wire::Chat;
+    let Reply::Stream(mut events) = wire.answer(ANSWER) else {
+        panic!("an answer streams");
+    };
+    events.truncate(1);
+    let mut fake = Fake::serve(vec![Reply::Stream(events), wire.answer(ANSWER)]).await;
+    let leased = lease(&wire.provider(), &[], "hello");
+
+    let (output, _frames) = run(&engine(&fake), &leased).await;
+
+    let ResultOutcome::Failed(failure) = output.result.outcome else {
+        panic!("a cut turn is no answer");
+    };
+    assert_eq!(failure.class, Some(FailureClass::TransportLoss));
+    assert_eq!(fake.seen().len(), 1);
+}
+
+#[tokio::test]
+async fn a_cut_turn_that_ends_whole_on_its_second_opening_answers() {
+    let wire = Wire::Messages;
+    let Reply::Stream(mut cut) = wire.answer(ANSWER) else {
+        panic!("an answer streams");
+    };
+    cut.truncate(1);
+    let mut fake = Fake::serve(vec![Reply::Stream(cut), wire.answer(ANSWER)]).await;
+    let leased = lease(&wire.provider(), &[], "hello");
+
+    let (output, _frames) = run(&engine(&fake), &leased).await;
+
+    assert_eq!(output.result.content, ANSWER);
+    assert_eq!(fake.seen().len(), 2);
 }
 
 #[tokio::test]
