@@ -215,7 +215,7 @@ GET /products?status=active&sort=-created_at&starting_after=01HZQ...&limit=50
   - **Time ranges:** `?created_after=<ts_ms>&created_before=<ts_ms>`. Bracket grammar (`?created_at[gte]=...`) is forbidden.
   - **No boolean explosions.** Don't add `?include_x=true&include_y=true` — use `?include=x,y` with a documented enum of legal values, OR don't expose a knob.
 - **Sorting:** `sort=field` ascending; `sort=-field` descending. Single sort key per request — no multi-key.
-- **Pagination — Stripe-style keyset only.** Request: `?starting_after=<resource_id>&limit=<int>`. Response: `next_cursor: <resource_id> | null` (the field is named `next_cursor` even though the request param is `starting_after`). Cursor encode/decode goes through `afd_core::paging::cursor`, and both the parameter name and the bounds are constants there: `QUERY_STARTING_AFTER`, `DEFAULT_LIMIT` (50) and `MAX_LIMIT` (100). Read the limit through that module rather than parsing the query string in a handler. To page forward, send the response's `next_cursor` value back as the next request's `starting_after`. **Forbidden:** page-based `?page=&page_size=`, and custom request-side `?cursor=` names. Both spellings predate this rule where they survive; do not copy either into a new endpoint.
+- **Pagination — Stripe-style keyset only.** Request: `?starting_after=<resource_id>&limit=<int>`. Response: `next_cursor: <resource_id> | null` (the field is named `next_cursor` even though the request param is `starting_after`). Cursor encode/decode goes through `afd_core::paging::cursor`, and both the parameter name and the bounds are constants there: `QUERY_STARTING_AFTER`, `DEFAULT_LIMIT` (50) and `MAX_LIMIT` (100). Read the limit through that module rather than parsing the query string in a handler: `Page::parse` takes the route's `Ceiling`, and a list that is not keyset-paged reads `?limit` through `afd_validate::Limit::parse(raw, CEILING)` with a `const CEILING: Ceiling` beside its handler. An empty `?limit=` means the route's default. To page forward, send the response's `next_cursor` value back as the next request's `starting_after`. **Forbidden:** page-based `?page=&page_size=`, and custom request-side `?cursor=` names. Both spellings predate this rule where they survive; do not copy either into a new endpoint.
 - **Sparse fieldsets / `?include=` / `?fields=`:** not supported in v1. If you need to slim a payload, design a smaller endpoint. Don't invent.
 
 ### Bulk operations
@@ -612,7 +612,14 @@ pub async fn my_endpoint<D: Services>(
   envelope is built for you.
 - **Bounds are declared on the request type**, with `garde`, not re-spelled per
   handler. The refusal sentence a field earns is mapped from the path `garde`
-  reports.
+  reports, through a `const` `afd_validate::Sentences` table beside the
+  handler (`PathTable<Variant>` when a crate answers with its own error
+  variant). A rule garde lacks — `finite`, `nul_free`, `ascii_digits`,
+  `charset` — comes from `afd_validate`, never a one-off check.
+- **A parser a bound protects takes `&garde::Valid<T>`.** garde runs every
+  rule on a field with no short-circuit, so a bound and a parser on one field
+  would still hand the parser oversized input; the bound goes on a struct and
+  the parser accepts only the proved value.
 - **Never authenticate inside a handler.** The guard on the route's row did it.
   Never call an ownership check by hand either; the template mounted it.
 - **Refusal sentences live beside the parser that produces them**, as
@@ -621,7 +628,9 @@ pub async fn my_endpoint<D: Services>(
 ### What NOT to do
 
 - ❌ Reading a query string directly for `limit` or `starting_after` — use
-  `afd_core::paging`.
+  `afd_core::paging`, or `afd_validate::Limit` with the route's `Ceiling`.
+- ❌ A hand-written function from a `garde::Report` to a sentence — declare a
+  `Sentences` table.
 - ❌ Building a `Problem` by hand — construct it from the declared error code so
   the status, title and documentation link come from the registry (§5).
 - ❌ A second unique spelling of a capability check inside the handler body.
