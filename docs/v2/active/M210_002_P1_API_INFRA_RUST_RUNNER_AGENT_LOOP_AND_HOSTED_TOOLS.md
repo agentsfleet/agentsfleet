@@ -65,7 +65,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afr_agent/tests/`, `rustd/crates/afr_providers/tests/`, `rustd/crates/afr_tools/tests/` | CREATE | Unit proofs per crate |
 | `tests/fixtures/fleetbundle/incident-repairer/TRIGGER.md`, `tests/fixtures/fleetbundle/incident-repairer/SKILL.md`, `rustd/crates/afd_fleet_runtime/tests/frontmatter_corpus.rs` | EDIT | The bundle stops promising the retired approval card; the corpus test pins it |
 | `docs/architecture/runner_execution.md`, `docs/architecture/capabilities.md` | EDIT | Landed at authoring: the tool catalog, the trusted repair context, the schedules reversal |
-| `docs/v2/pending/M211_001_P1_API_INFRA_RUST_RUNNER_SANDBOX_SIDE_TOOLS.md`, `docs/v2/pending/M213_001_P0_API_DOCS_INFRA_RUST_RUNNER_CUTOVER_ZIG_RETIRED.md` | EDIT | Landed in `4339afb59` (the toolbox triage), never pushed; rides this Pull Request by Indy's call |
+| `docs/v2/pending/M211_001_P1_API_INFRA_RUST_RUNNER_SANDBOX_SIDE_TOOLS.md`, `docs/v2/pending/M211_002_P1_API_INFRA_RUST_RUNNER_NESTED_LOOPS.md`, `docs/v2/pending/M213_001_P0_API_DOCS_INFRA_RUST_RUNNER_CUTOVER_ZIG_RETIRED.md` | EDIT | The toolbox triage (`4339afb59`, never pushed, rides this Pull Request by Indy's call); M211_001's browser becomes `chromium-headless-shell` (Indy, Oct 03); read-first links follow this spec to `active/` |
 
 ## Applicable Rules
 
