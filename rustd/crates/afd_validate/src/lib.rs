@@ -11,7 +11,8 @@
 //! - [`Limit`]: a `?limit` proved inside its route's [`Ceiling`], with the
 //!   ceiling passed as garde context, so ten routes stop parsing it ten ways.
 //! - [`Sentences`]: a route's table from the path a report names to the fixed
-//!   sentence it answers, so garde's own text never reaches a caller.
+//!   sentence it answers, so garde's own text never reaches a caller; a
+//!   [`PathTable`] answers a crate's own error variant the same way.
 //!
 //! No fallible signature here returns an error of ours: the rules answer
 //! [`garde::Result`], `Limit` answers a two-variant [`LimitBreak`] each route
@@ -24,4 +25,4 @@ mod sentences;
 
 pub use self::limit::{Ceiling, Limit, LimitBreak};
 pub use self::rules::{ascii_digits, charset, finite, nul_free};
-pub use self::sentences::Sentences;
+pub use self::sentences::{PathTable, Sentences};
