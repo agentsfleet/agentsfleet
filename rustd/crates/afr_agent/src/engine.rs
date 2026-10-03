@@ -34,6 +34,18 @@ where
     }
 }
 
+/// Writes a run's memory back while it runs, fenced like the push before the
+/// report.
+///
+/// Best effort, as that push is: the final push carries every entry again and
+/// is the one the report waits for, so a checkpoint that fails is logged by
+/// its implementation and the run goes on.
+#[async_trait::async_trait]
+pub trait Checkpoint: Send + Sync + fmt::Debug {
+    /// Writes `memory` back.
+    async fn push(&self, memory: Vec<MemoryDelta<'static>>);
+}
+
 /// Everything one run is given.
 pub struct AgentRun<'run> {
     /// The lease being run.
@@ -44,6 +56,8 @@ pub struct AgentRun<'run> {
     pub executor: Option<&'run dyn Executor>,
     /// Mints the credentials the lease's policy names, under the held lease.
     pub mint: &'run dyn Mint,
+    /// Writes the run's memory back every `memory_checkpoint_every` calls.
+    pub checkpoint: &'run dyn Checkpoint,
     /// Where activity frames go.
     pub events: &'run dyn EventSink,
     /// Cancelled when the lease ends early. The engine closes every open call

@@ -25,10 +25,12 @@ mod router;
 #[cfg(feature = "test-util")]
 pub mod scripted;
 mod spans;
+#[cfg(any(test, feature = "test-util"))]
+pub mod testing;
 mod trace;
 mod turn;
 
-pub use self::engine::{AgentEngine, AgentRun, EventSink, Needs, RunOutput};
+pub use self::engine::{AgentEngine, AgentRun, Checkpoint, EventSink, Needs, RunOutput};
 pub use self::error::{Error, Result, Unhosted};
 pub use self::harness::Loop;
 pub use self::router::Router;

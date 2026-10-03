@@ -7,6 +7,7 @@
 use std::time::Instant;
 
 use afd_core::clock::SystemClock;
+use afd_wire::memory::MemoryDelta;
 use afd_wire::policy::ExecutionPolicy;
 use afd_wire::report::{Completed, ExecutionResult, Failure, ResultOutcome};
 use afr_egress::Egress;
@@ -17,8 +18,8 @@ use afr_tools::{Catalog, Lease, Selection, ToolSpec};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
 
-use crate::context::{Budget, CAP_REACHED};
-use crate::engine::{AgentEngine, AgentRun, Needs, RunOutput};
+use crate::context::{Budget, CAP_REACHED, Checkpoints};
+use crate::engine::{AgentEngine, AgentRun, Checkpoint, Needs, RunOutput};
 use crate::error::Result;
 use crate::events::Live;
 use crate::ledger::Ledger;
@@ -89,6 +90,8 @@ struct Harness<'run> {
     lease_id: &'run str,
     model: &'run str,
     stop: &'run CancellationToken,
+    checkpoint: &'run dyn Checkpoint,
+    checkpoints: Checkpoints,
     selection: &'run Selection<'run>,
     router: Router<'run>,
     specs: Vec<ToolSpec<'run>>,
@@ -113,6 +116,8 @@ impl<'run> Harness<'run> {
             lease_id: &run.lease.lease_id,
             model: &policy.context.model,
             stop: run.stop,
+            checkpoint: run.checkpoint,
+            checkpoints: Checkpoints::new(&policy.context),
             selection,
             router: Router::new(selection, run.executor),
             specs: selection.specs().collect(),
@@ -151,6 +156,9 @@ impl<'run> Harness<'run> {
                     Some(result) => results.push(result),
                     None => break,
                 }
+                if self.checkpoints.due() {
+                    self.checkpoint().await;
+                }
             }
             let said = self.remembered(turn.text, turn.calls, turn.replay);
             self.messages.push(said);
@@ -165,6 +173,16 @@ impl<'run> Harness<'run> {
             }
         };
         self.finish(ending)
+    }
+
+    /// Writes the memory stored so far back, when any is.
+    async fn checkpoint(&self) {
+        let pending: Vec<MemoryDelta<'static>> = (self.lease.memory.pending().into_iter())
+            .map(MemoryDelta::into_owned)
+            .collect();
+        if !pending.is_empty() {
+            self.checkpoint.push(pending).await;
+        }
     }
 
     /// One model turn, its start and its end logged as a pair

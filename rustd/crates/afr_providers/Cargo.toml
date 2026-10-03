@@ -56,7 +56,7 @@ afd_core = { workspace = true, features = ["test-util"] }
 # The real loop drives each wire in `tests/`, so a turn is proven end to end:
 # frames, trace, records and report included. A dev-dependency on a crate that
 # depends on this one links the same library into the integration tests.
-afr_agent.workspace = true
+afr_agent = { workspace = true, features = ["test-util"] }
 # The stub plan tool the loop's catalog hosts.
 afr_tools = { workspace = true, features = ["test-util"] }
 # The mint a suite's run carries, which mints nothing.

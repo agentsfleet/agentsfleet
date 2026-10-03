@@ -71,6 +71,10 @@ pub trait MemoryBackend: Send + Sync + fmt::Debug {
     /// The entries the supervisor still has to push, fenced, before the
     /// report; none for a backend that wrote them as it went.
     fn into_pending(self: Box<Self>) -> Vec<MemoryDelta<'static>>;
+
+    /// The entries the final push would carry, as they stand: what a mid-run
+    /// checkpoint writes back while the run keeps its memory.
+    fn pending(&self) -> Vec<MemoryDelta<'_>>;
 }
 
 #[cfg(test)]

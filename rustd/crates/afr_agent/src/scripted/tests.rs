@@ -20,6 +20,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{ScriptedEngine, Step};
 use crate::engine::{AgentEngine, AgentRun};
+use crate::testing::Discard;
 
 /// A lease as the daemon spells one, trimmed to what a run reads.
 const LEASE: &str = include_str!("lease.json");
@@ -88,6 +89,7 @@ async fn drive(
             memory: &[],
             executor,
             mint: &CountingMint::never(),
+            checkpoint: &Discard,
             events: &sink,
             stop: &CancellationToken::new(),
         })
@@ -207,6 +209,7 @@ async fn a_run_debugs_without_the_leases_secrets() {
         memory: &[],
         executor: None,
         mint: &CountingMint::never(),
+        checkpoint: &Discard,
         events: &sink,
         stop: &CancellationToken::new(),
     };

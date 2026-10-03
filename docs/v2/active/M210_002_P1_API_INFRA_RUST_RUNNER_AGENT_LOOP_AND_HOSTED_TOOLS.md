@@ -110,8 +110,8 @@ A run is turns until the model answers without a tool call, the context cap is r
 - **Dimension 2.2** — Every call emits one start and one completion with the same call id, numbered from 1 → Test `test_loop_emits_one_start_one_end_per_call` — DONE (`rustd/crates/afr_agent/src/loop/tests.rs`)
 - **Dimension 2.3** — A kill, a timeout or a provider failure closes each open call `interrupted` exactly once, in the frames and the trace → Test `test_run_end_interrupts_open_calls_once` — DONE (`rustd/crates/afr_agent/src/loop/tests.rs`)
 - **Dimension 2.4** — The 201st call is counted as omitted, and past the byte cap a call keeps its row without edges → Test `test_trace_bounds_come_from_afd_wire` — DONE (`rustd/crates/afr_agent/src/trace/tests.rs`)
-- **Dimension 2.5** — Records post before the report in bounded batches; a failed post leaves the report untouched → Test `test_records_post_before_report`
-- **Dimension 2.6** — `tool_window` and `memory_checkpoint_every` are honoured; at `context_cap_tokens` the next request offers no tools → Test `test_loop_honours_context_budget`
+- **Dimension 2.5** — Records post before the report in bounded batches; a failed post leaves the report untouched → Test `test_records_post_before_report` — DONE (`rustd/crates/afr_supervisor/src/lease_loop/records_tests.rs`)
+- **Dimension 2.6** — `tool_window` and `memory_checkpoint_every` are honoured; at `context_cap_tokens` the next request offers no tools → Test `test_loop_honours_context_budget` — DONE (`rustd/crates/afr_agent/src/loop/budget_tests.rs`, the checkpoint in `rustd/crates/afr_agent/src/loop/memory_tests.rs`)
 - **Dimension 2.7** — Answer and reasoning stream as chunks with their kind and a contiguous sequence → Test `test_answer_streams_as_chunks` — DONE (`rustd/crates/afr_agent/src/loop/turn_tests.rs`)
 
 ### §3 — Three providers, one trait, the key stays in the supervisor

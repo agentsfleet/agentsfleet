@@ -13,6 +13,7 @@ use futures_util::FutureExt as _;
 use super::{DETAIL_RENEWAL, LeaseRun, failed};
 use crate::activity::ActivitySink;
 use crate::credentials::LeaseMint;
+use crate::memory::LeaseCheckpoint;
 use crate::report::Ending;
 
 const DETAIL_ENGINE: &str = "the agent engine stopped before the turn ended";
@@ -30,11 +31,13 @@ impl LeaseRun<'_> {
         sink: ActivitySink,
     ) -> Ending {
         let mint = LeaseMint::new(&self.lessee.plane, &self.ids.lease);
+        let checkpoint = LeaseCheckpoint::new(&self.lessee.plane, &self.ids.fleet, self.lease);
         let run = AssertUnwindSafe(self.lessee.agent.run(AgentRun {
             lease: self.lease,
             memory,
             executor,
             mint: &mint,
+            checkpoint: &checkpoint,
             events: &sink,
             stop: &self.interrupt,
         }))
