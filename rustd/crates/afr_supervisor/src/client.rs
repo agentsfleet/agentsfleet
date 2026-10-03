@@ -63,12 +63,14 @@ pub(crate) enum Verb {
     Mint,
     /// Finished calls' full records for a held lease.
     Records,
+    /// The runner's own row: which runner this is, as the daemon names it.
+    Me,
 }
 
 impl Verb {
     /// Whether this verb reads (`GET`) rather than reports (`POST`).
     pub(crate) const fn reads(self) -> bool {
-        matches!(self, Self::Hydrate | Self::Bundle)
+        matches!(self, Self::Hydrate | Self::Bundle | Self::Me)
     }
 
     /// The verb as a log line and an error name it.
@@ -84,6 +86,7 @@ impl Verb {
             Self::Bundle => "bundle",
             Self::Mint => "mint",
             Self::Records => "records",
+            Self::Me => "me",
         }
     }
 
@@ -98,7 +101,8 @@ impl Verb {
             | Self::Activity
             | Self::Report
             | Self::Mint
-            | Self::Records => error_code::INTERNAL_OPERATION_FAILED,
+            | Self::Records
+            | Self::Me => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 }
@@ -227,6 +231,12 @@ impl ControlPlane {
     pub(crate) async fn mint(&self, request: &MintCredentialRequest<'_>) -> Result<Body> {
         let path = Cow::Borrowed(paths::RUNNER_CREDENTIALS_MINT);
         self.post(Verb::Mint, path, request).await
+    }
+
+    /// Reads this runner's own row.
+    pub(crate) async fn me(&self) -> Result<Body> {
+        self.send(Verb::Me, Cow::Borrowed(paths::RUNNER_SELF), None)
+            .await
     }
 
     /// Downloads a bundle's canonical tar.

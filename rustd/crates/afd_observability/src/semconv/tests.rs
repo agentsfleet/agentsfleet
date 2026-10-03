@@ -18,7 +18,7 @@
 
 use std::collections::BTreeSet;
 
-use super::{CENSUS_LABEL_KEYS, DELIVERY_SPAN_KEYS};
+use super::{CENSUS_LABEL_KEYS, DELIVERY_SPAN_KEYS, RUNNER_SPAN_KEYS};
 use crate::metrics::registry::Registry;
 
 /// The namespaces a key this daemon emits may live under.
@@ -75,6 +75,7 @@ fn no_key_is_spelled_twice() {
     for (name, keys) in [
         ("the census label keys", CENSUS_LABEL_KEYS),
         ("the delivery span keys", DELIVERY_SPAN_KEYS),
+        ("the runner span keys", RUNNER_SPAN_KEYS),
     ] {
         let unique: BTreeSet<&&str> = keys.iter().collect();
         assert_eq!(
@@ -88,7 +89,7 @@ fn no_key_is_spelled_twice() {
 /// Every delivery-span key lives in a namespace this product owns.
 #[test]
 fn every_delivery_span_key_is_namespaced() {
-    for key in DELIVERY_SPAN_KEYS {
+    for key in DELIVERY_SPAN_KEYS.iter().chain(RUNNER_SPAN_KEYS) {
         assert!(
             OWNED_NAMESPACES
                 .iter()

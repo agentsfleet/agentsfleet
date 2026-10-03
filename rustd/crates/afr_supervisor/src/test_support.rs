@@ -45,6 +45,10 @@ pub(crate) const LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8057";
 pub(crate) const FLEET_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8058";
 /// The fencing token every fake lease carries.
 pub(crate) const FENCING: u64 = 504;
+/// The id the fake daemon names this runner by.
+pub(crate) const RUNNER_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8059";
+/// The host the fake daemon has this runner on.
+pub(crate) const RUNNER_HOST: &str = "host-7";
 /// When every fake lease is granted until, in Unix milliseconds: thirty
 /// seconds after the fixed clock's zero.
 pub(crate) const GRANTED_UNTIL: i64 = 30_000;

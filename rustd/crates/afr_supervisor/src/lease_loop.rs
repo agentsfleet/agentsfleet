@@ -29,12 +29,14 @@ use afr_sandbox::{Engine, Limits};
 use tokio::sync::Notify;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
+use tracing::Instrument as _;
 
 use crate::activity::{self, ActivitySink};
 use crate::bundles::BundleCache;
 use crate::client::ControlPlane;
 use crate::error::Result;
 use crate::halt::Halt;
+use crate::identity::{Whoami, lease_span};
 use crate::memory;
 use crate::renew::Renewal;
 use crate::report::Ending;
@@ -86,6 +88,8 @@ pub(crate) struct Lessee {
     pub(crate) halt: Halt,
     /// Rung when a report stays spooled, so the drain takes it over.
     pub(crate) held: Notify,
+    /// Which runner this is, for every lease's span.
+    pub(crate) whoami: Whoami,
 }
 
 /// One lease's identifiers, parsed once.
@@ -111,12 +115,19 @@ struct Live {
 }
 
 impl Lessee {
-    /// Runs `lease` to its report.
+    /// Runs `lease` to its report, inside the span naming this runner and
+    /// the lease.
     ///
     /// # Errors
     /// Identifiers that are not canonical; nothing has started then. Every
     /// failure after that ends in a report, spooled or posted.
     pub(crate) async fn run(&self, turns: &FleetTurns, lease: &LeasePayload<'_>) -> Result<()> {
+        let identity = self.whoami.get(&self.plane).await;
+        let span = lease_span(identity, lease);
+        self.run_lease(turns, lease).instrument(span).await
+    }
+
+    async fn run_lease(&self, turns: &FleetTurns, lease: &LeasePayload<'_>) -> Result<()> {
         let run = LeaseRun {
             lessee: self,
             lease,

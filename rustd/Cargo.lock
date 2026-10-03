@@ -903,6 +903,7 @@ name = "afr_agent"
 version = "0.51.1"
 dependencies = [
  "afd_core",
+ "afd_observability",
  "afd_wire",
  "afr_executor",
  "afr_providers",
@@ -999,6 +1000,7 @@ name = "afr_supervisor"
 version = "0.51.1"
 dependencies = [
  "afd_core",
+ "afd_observability",
  "afd_wire",
  "afr_agent",
  "afr_executor",

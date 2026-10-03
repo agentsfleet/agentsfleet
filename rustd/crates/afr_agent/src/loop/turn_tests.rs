@@ -13,10 +13,16 @@ use afr_tools::catalog::CALCULATOR;
 use tokio_util::sync::CancellationToken;
 
 use afd_core::test_util::trace::Capture;
+use afd_observability::semconv::{
+    ATTR_PROVIDER_NAME, ATTR_TOOL_CALL_ID, ATTR_TOOL_NAME, ATTR_USAGE_INPUT_TOKENS, OPERATION_CHAT,
+    OPERATION_EXECUTE_TOOL, OPERATION_INVOKE_AGENT, RUNNER_SCOPE_NAME,
+};
 
 use super::tests::{completions, drive, engine};
 use super::{EVENT_TURN_COMPLETED, EVENT_TURN_STARTED};
-use crate::fixture::{API_KEY, Canned, Exits, GITHUB_TOKEN, Script, call, lease, say, unbounded};
+use crate::fixture::{
+    API_KEY, Canned, Exits, GITHUB_TOKEN, Script, call, lease, say, spent, unbounded,
+};
 use crate::ledger::{EVENT_CALL_COMPLETED, EVENT_CALL_STARTED};
 
 #[tokio::test]
@@ -214,4 +220,46 @@ async fn every_turn_and_every_call_logs_its_start_and_its_end_once() {
     );
     assert_eq!(ended.field("call_id"), Some("1"));
     assert_eq!(ended.field("status"), Some("Succeeded"));
+}
+
+#[tokio::test]
+async fn a_run_is_traced_as_turns_and_calls_inside_one_invocation() {
+    let capture = Capture::install();
+    let script = Script::new([
+        vec![
+            call("a", CALCULATOR.name(), serde_json::json!({})),
+            spent(10, 0, 5),
+        ],
+        vec![say("4")],
+    ]);
+    let engine = engine(vec![Canned::boxed(&CALCULATOR, "4")], &script);
+
+    let (_output, _frames) = drive(
+        &engine,
+        &lease(&[CALCULATOR.name()], unbounded()),
+        &CancellationToken::new(),
+    )
+    .await;
+
+    let spans = capture.spans();
+    let named = |name: &'static str| spans.iter().filter(move |span| span.name == name);
+    assert!(
+        spans.iter().all(|span| span.target == RUNNER_SCOPE_NAME),
+        "{spans:?}"
+    );
+    let invoked: Vec<_> = named(OPERATION_INVOKE_AGENT).collect();
+    assert_eq!(invoked.len(), 1);
+    assert_eq!(invoked[0].field(ATTR_PROVIDER_NAME), Some("anthropic"));
+    let turns: Vec<_> = named(OPERATION_CHAT).collect();
+    assert_eq!(turns.len(), 2);
+    assert!(
+        turns
+            .iter()
+            .all(|turn| turn.parent == Some(OPERATION_INVOKE_AGENT))
+    );
+    assert_eq!(turns[0].field(ATTR_USAGE_INPUT_TOKENS), Some("10"));
+    let tool = named(OPERATION_EXECUTE_TOOL).next().unwrap();
+    assert_eq!(tool.parent, Some(OPERATION_INVOKE_AGENT));
+    assert_eq!(tool.field(ATTR_TOOL_NAME), Some(CALCULATOR.name()));
+    assert_eq!(tool.field(ATTR_TOOL_CALL_ID), Some("1"));
 }
