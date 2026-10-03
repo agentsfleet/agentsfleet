@@ -1,0 +1,186 @@
+//! What the executor and its client refuse, and what they report.
+//!
+//! One error type with `pub type Result<T, E = Error>` beside it, under the
+//! `afd_core::error_shell!` hull every `rustd` crate carries: the boxed kind
+//! keeps `Result` pointer-sized on the `Ok` path, and the captured backtrace,
+//! the `[CODE]` rendering and the self-skipping `source()` are generated.
+//!
+//! # Which codes, and why none are new
+//!
+//! A runner failure is read by an operator on the host's journal, never by a
+//! tenant or an API client, so it reuses the registry's existing codes the way
+//! `afd_bench` does (`docs/RUST_ERROR_STANDARD.md`); the `event` field on the
+//! log line says which failure it was. Minting a `UZ-RUN-*` code would publish
+//! it in `public/openapi.json` for a condition no client can observe.
+//!
+//! # What the other end of the socket is told
+//!
+//! [`Error::rpc_code`] sorts a failure into the caller's mistake (invalid
+//! params), a refusal the executor names (a path outside the workspace, a
+//! process it does not have, a full input queue) and its own fault (internal
+//! error), so a model reading the answer can tell which it can fix.
+
+use std::io;
+
+use afd_core::error_code::{self, ErrorCode};
+use jsonrpsee_types::error::{
+    CALL_EXECUTION_FAILED_CODE, INTERNAL_ERROR_CODE, INVALID_PARAMS_CODE,
+};
+
+use crate::protocol::{PATH_REFUSED_CODE, UNKNOWN_PROCESS_CODE};
+
+mod raise;
+
+#[cfg(test)]
+#[path = "error/tests.rs"]
+mod tests;
+
+pub(crate) use self::raise::{
+    connection_lost, input_backlog_full, input_closed, invalid_params, launch_incomplete,
+    not_a_file, path_refused, program_unavailable, refused, unknown_process, unresponsive,
+};
+
+afd_core::error_shell!(
+    /// An executor failure, with the backtrace of where it was raised.
+    pub struct Error(ErrorKind);
+);
+
+/// Every way this crate fails.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ErrorKind {
+    /// A filesystem, socket or process call failed.
+    #[error("an input/output call failed")]
+    Io {
+        /// The operating system's reason.
+        #[source]
+        source: io::Error,
+    },
+
+    /// The other end of the socket went away.
+    #[error("the executor connection closed")]
+    ConnectionLost,
+
+    /// The executor did not answer in time, so its connection is given up.
+    #[error("the executor did not answer {method} in time")]
+    Unresponsive {
+        /// The call that went unanswered.
+        method: &'static str,
+    },
+
+    /// The executor answered a call with an error.
+    #[error("the executor refused the call ({code}): {message}")]
+    Refused {
+        /// The JSON-RPC error code it answered with.
+        code: i32,
+        /// Its message.
+        message: String,
+    },
+
+    /// A message did not decode into the shape its method names.
+    #[error("a message did not decode")]
+    Malformed {
+        /// The decoder's reason.
+        #[source]
+        source: serde_json::Error,
+    },
+
+    /// A task the executor ran did not finish: it panicked or was cancelled.
+    #[error("a task did not finish")]
+    Task {
+        /// The runtime's reason.
+        #[source]
+        source: tokio::task::JoinError,
+    },
+
+    /// A path leaves the workspace.
+    #[error("the path is outside the workspace")]
+    PathRefused,
+
+    /// A file call named something that is not a regular file — a pipe, a
+    /// socket, a device — which could block the executor or reach past it.
+    #[error("the path is not a regular file")]
+    NotAFile,
+
+    /// No such process on this executor.
+    #[error("no process with that identifier")]
+    UnknownProcess,
+
+    /// A process's input queue is full because the process is not reading it.
+    #[error("the process is not reading its input fast enough")]
+    InputBacklogFull,
+
+    /// A process's input is closed: it closed it, or a write to it failed.
+    #[error("the process's input is closed")]
+    InputClosed,
+
+    /// The program could not be found or started.
+    #[error("the program could not be started")]
+    ProgramUnavailable {
+        /// Why, as the launcher put it.
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    /// A process started without a handle the executor needs to run it: a
+    /// pipe, or a process identifier it can signal.
+    #[error("the process started without a handle the executor needs")]
+    LaunchIncomplete,
+
+    /// A call's parameters were well-formed but unusable.
+    #[error("{detail}")]
+    InvalidParams {
+        /// Why, in the caller's terms.
+        detail: &'static str,
+    },
+}
+
+/// The one alias every signature in this crate spells.
+pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+impl Error {
+    /// The registry code this failure is logged under.
+    #[must_use]
+    pub fn code(&self) -> ErrorCode {
+        error_code::INTERNAL_OPERATION_FAILED
+    }
+
+    /// What the other end is told: the failure and, when it has one, its
+    /// cause — never the registry code or a backtrace, which are this host's.
+    pub(crate) fn wire_message(&self) -> String {
+        let kind = self.kind();
+        std::error::Error::source(kind)
+            .map_or_else(|| kind.to_string(), |cause| format!("{kind}: {cause}"))
+    }
+
+    /// The JSON-RPC code a refusal of this kind is answered with.
+    pub(crate) fn rpc_code(&self) -> i32 {
+        match self.kind() {
+            ErrorKind::PathRefused => PATH_REFUSED_CODE,
+            ErrorKind::UnknownProcess => UNKNOWN_PROCESS_CODE,
+            ErrorKind::InputBacklogFull | ErrorKind::InputClosed => CALL_EXECUTION_FAILED_CODE,
+            ErrorKind::InvalidParams { .. }
+            | ErrorKind::Malformed { .. }
+            | ErrorKind::NotAFile
+            | ErrorKind::ProgramUnavailable { .. } => INVALID_PARAMS_CODE,
+            ErrorKind::Io { source } if is_caller_mistake(source) => INVALID_PARAMS_CODE,
+            _internal => INTERNAL_ERROR_CODE,
+        }
+    }
+}
+
+/// Whether an operating-system refusal is about what the caller asked for —
+/// a name that is not there, or is the wrong kind of thing — rather than
+/// about the executor.
+fn is_caller_mistake(failure: &io::Error) -> bool {
+    matches!(
+        failure.kind(),
+        io::ErrorKind::NotFound
+            | io::ErrorKind::NotADirectory
+            | io::ErrorKind::IsADirectory
+            | io::ErrorKind::AlreadyExists
+            | io::ErrorKind::DirectoryNotEmpty
+            | io::ErrorKind::PermissionDenied
+            | io::ErrorKind::InvalidInput
+            | io::ErrorKind::InvalidFilename
+    )
+}

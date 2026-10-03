@@ -52,12 +52,27 @@ pub fn from_spelling<T: serde::de::DeserializeOwned>(raw: &str) -> Option<T> {
     T::deserialize(spelling).ok()
 }
 
+/// The word `value`'s serde declaration spells it as, or `None` when it does
+/// not serialize to a string.
+///
+/// The way back from [`from_spelling`], for a log field or a record that names
+/// a variant. It reads the same declaration, so it holds for an upstream
+/// `#[non_exhaustive]` enum, where a `match` would need a catch-all arm that
+/// silently spells a new variant as nothing.
+#[must_use]
+pub fn to_spelling<T: serde::Serialize>(value: &T) -> Option<String> {
+    match serde_json::to_value(value) {
+        Ok(serde_json::Value::String(word)) => Some(word),
+        _not_a_word => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::from_spelling;
-    use serde::Deserialize;
+    use super::{from_spelling, to_spelling};
+    use serde::{Deserialize, Serialize};
 
-    #[derive(Debug, Deserialize, PartialEq, Eq)]
+    #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(rename_all = "snake_case")]
     enum Renamed {
         AutoKilled,
@@ -81,5 +96,19 @@ mod tests {
         for unknown in ["AutoKilled", "autoKilled", "approved", "", "pending"] {
             assert_eq!(from_spelling::<Renamed>(unknown), None, "{unknown}");
         }
+    }
+
+    #[test]
+    fn a_variant_spells_as_its_declaration_and_round_trips() {
+        for variant in [Renamed::AutoKilled, Renamed::Approved] {
+            let word = to_spelling(&variant).unwrap_or_default();
+            assert_eq!(from_spelling(&word), Some(variant), "{word}");
+        }
+        assert_eq!(to_spelling(&Renamed::Approved).as_deref(), Some("approve"));
+    }
+
+    #[test]
+    fn a_value_that_is_not_a_word_has_no_spelling() {
+        assert_eq!(to_spelling(&7), None);
     }
 }

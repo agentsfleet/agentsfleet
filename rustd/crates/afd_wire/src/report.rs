@@ -144,7 +144,6 @@ pub struct ExecutionResult<'a> {
 /// the child — the run is over.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct RenewResponse {
     /// Epoch milliseconds of the new deadline.
     pub lease_expires_at: i64,
@@ -243,7 +242,6 @@ pub struct ReportRequest<'a> {
 /// `POST /v1/runners/me/reports` reply.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ReportResponse {
     /// Whether the write landed.
     pub ok: bool,

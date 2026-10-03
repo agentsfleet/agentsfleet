@@ -68,7 +68,6 @@ pub enum BindMode {
 /// sandbox depends on.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ExtraBind<'a> {
     /// Host path to bind.
     #[serde(borrow)]
@@ -86,7 +85,6 @@ pub struct ExtraBind<'a> {
 // its identity. The host never declares policy.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AssignedPolicy<'a> {
     /// Isolation strength to apply.
     pub sandbox_tier: SandboxTier,
@@ -292,7 +290,6 @@ pub struct HeartbeatRequest<'a> {
 /// policy columns: the runner then fails closed and refuses to lease.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct HeartbeatResponse<'a> {
     /// Whether to keep working, drain, or stop.
     pub status: HeartbeatStatus,
@@ -323,7 +320,6 @@ pub struct HeartbeatResponse<'a> {
 /// dead runner.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct SelfResponse<'a> {
     /// The runner's identifier.
     #[serde(borrow)]

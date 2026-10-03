@@ -70,17 +70,18 @@ rustd/crates/
   afd_wire              the one wire, shared with agentsfleetd (exists)
   afd_core              error_shell!, timing constants (exists; no datastore dependency)
   afr_executor          executor protocol, in-sandbox server, supervisor-side client
-  afr_sandbox           engine interface; bubblewrap engine now, Firecracker engine next
+  afr_sandbox           engine interface; bubblewrap engine now, Firecracker engine next;
+                        each engine sweeps what a crashed runner's sandboxes left
   afr_agent             agent loop, tool router, events, run trace
   afr_providers         Anthropic Messages, OpenAI Responses, OpenAI-compatible chat
   afr_tools             the catalog: supervisor-side and sandbox-side handlers
   afr_supervisor        lease loop, renewal, report spool, activity, memory, minting,
-                        bundles, storage sweep, capability report, control-plane client
+                        bundles, storage home, capability report, control-plane client
   agentsfleet_runner    the one binary: composition root; `agentsfleet-runner sandbox`
                         is the sub-mode that runs inside each sandbox (a microVM's init, later)
 ```
 
-Dependencies point one way: the binary → `afr_supervisor` → `afr_agent` → `afr_providers` and `afr_tools` → `afr_executor`, with `afr_supervisor` → `afr_sandbox` → `afr_executor`. Every runner crate may depend on `afd_wire` and `afd_core` and on nothing else from `agentsfleetd`, and none links a datastore crate. There is one binary. The executor is its `sandbox` sub-mode, re-executed inside the sandbox the way Codex re-executes itself as `codex-linux-sandbox`; that entry constructs only `afr_executor`'s server, never a control-plane client, and the binary is bound read-only into every sandbox and, under Firecracker, into every guest image.
+Dependencies point one way: the binary → `afr_supervisor` → `afr_agent` → `afr_providers` and `afr_tools` → `afr_executor`, with `afr_supervisor` → `afr_sandbox` → `afr_executor`. Every runner crate may depend on `afd_wire`, `afd_core` and `afd_observability` and on nothing else from `agentsfleetd`, and none links a datastore crate. There is one binary. The executor is its `sandbox` sub-mode, re-executed inside the sandbox the way Codex re-executes itself as `codex-linux-sandbox`; that entry constructs only `afr_executor`'s server, never a control-plane client, and the binary is bound read-only into every sandbox and, under Firecracker, into every guest image.
 
 ## Tool catalog
 

@@ -33,15 +33,7 @@ use tracing_subscriber::{Layer, Registry, reload};
 use crate::telemetry::Exports;
 use crate::tty::Rendering;
 
-/// The environment variable naming how much to log.
-///
-/// Its VALUE is a level — `error`, `warn`, `info`, `debug`, `trace`, `off` —
-/// so `AGENTSFLEET_LOG_LEVEL=debug agentsfleetd serve`. Not a file: records go
-/// to stderr, and where they go from there is the collector's business.
-///
-/// Spelled in full rather than as a bare `AGENTSFLEET_LOG`, so the name says
-/// which knob it is at the call site and in a deployment manifest.
-pub const LOG_LEVEL_VAR: &str = "AGENTSFLEET_LOG_LEVEL";
+pub use afd_core::env::LOG_LEVEL_VAR;
 
 /// Where a record goes when nobody chose.
 ///
@@ -122,10 +114,7 @@ pub fn signals() -> Option<&'static Signals> {
 /// ordinary in a test binary, a bug at boot, and in neither case a reason to
 /// refuse to serve. The slot it leaves behind is [`signals`].
 pub fn install(env: &dyn EnvSource) -> bool {
-    let level = env
-        .get(LOG_LEVEL_VAR)
-        .and_then(|raw| raw.trim().parse().ok())
-        .unwrap_or(DEFAULT_LEVEL);
+    let level = afd_core::env::log_level(env, DEFAULT_LEVEL);
     let (slot, handle) = reload::Layer::new(Attached::None);
     // The slot is layered FIRST, so what it holds is a layer over the bare
     // registry: a reloadable layer's type names the subscriber beneath it, and

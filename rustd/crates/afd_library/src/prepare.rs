@@ -1,5 +1,6 @@
 //! Pure preparation of validated bundle metadata.
 
+use afd_core::bundle::BundleDigest;
 use sha2::{Digest as _, Sha256};
 
 use crate::error::{InvalidBundle, Result};
@@ -92,21 +93,15 @@ fn requirements(body: &ImportBody, skill_name: &str) -> Result<Requirements> {
 }
 
 fn hashes(body: &ImportBody) -> (String, Vec<SupportManifest>) {
-    let mut bundle = Sha256::new();
-    bundle.update(&body.skill_markdown);
-    bundle.update([0]);
-    if let Some(trigger) = &body.trigger_markdown {
-        bundle.update(trigger);
-    }
-    bundle.update([0]);
+    let mut bundle = BundleDigest::new(
+        body.skill_markdown.as_ref(),
+        body.trigger_markdown.as_ref().map(AsRef::as_ref),
+    );
     let manifest = body
         .support_files
         .iter()
         .map(|file| {
-            bundle.update(file.path.as_bytes());
-            bundle.update([0]);
-            bundle.update(&file.content);
-            bundle.update([0]);
+            bundle.support_file(&file.path, &file.content);
             SupportManifest {
                 path: file.path.clone(),
                 size_bytes: file.content.len(),
@@ -114,7 +109,7 @@ fn hashes(body: &ImportBody) -> (String, Vec<SupportManifest>) {
             }
         })
         .collect();
-    (hex::encode(bundle.finalize()), manifest)
+    (bundle.finish(), manifest)
 }
 
 #[cfg(test)]

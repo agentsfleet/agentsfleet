@@ -1,0 +1,13 @@
+# The runner's toolbox, pinned. Same manifest + same architecture => the
+# same bytes, so the image's SHA-256 names exactly one root file system.
+#
+# One `key value...` per line; `#` starts a comment. `build.sh` reads it.
+#
+# suite      — the Debian release the root is built from
+# snapshot   — the snapshot.debian.org timestamp every package is fetched at
+# uuid       — the file-system UUID, fixed so it never varies between builds
+# packages   — installed on top of the minimal base; later toolboxes add more
+suite trixie
+snapshot 20260901T000000Z
+uuid 6d2b1f0e-6a1c-4b8e-9f3a-2c7d5e8a9b10
+packages ca-certificates coreutils git python3

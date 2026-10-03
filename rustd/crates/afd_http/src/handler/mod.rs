@@ -49,15 +49,38 @@ pub fn read_body<'de, T>(body: &'de [u8]) -> Result<T, serde_json::Error>
 where
     T: serde::Deserialize<'de>,
 {
-    afd_core::json::object_from_slice(body).inspect_err(|failure| {
-        if let Some(field) = afd_core::json::unknown_field_of(failure) {
-            tracing::warn!(
-                event = EVENT_UNKNOWN_FIELD,
-                field = field,
-                "a request named a field this build does not carry; it was refused"
-            );
-        }
-    })
+    afd_core::json::object_from_slice(body).inspect_err(log_unknown_field)
+}
+
+/// [`read_body`] for a request that embeds a runner-bound shape.
+///
+/// The types the runner reads accept fields they do not carry, so a newer
+/// daemon never strands an older runner. An operator's assigned policy and an
+/// enrolment embed one of those shapes, and a person typing them still has a
+/// misspelled key refused, at any depth, with its path in the log
+/// ([`afd_core::json::strict_object_from_slice`]).
+///
+/// # Errors
+/// As [`read_body`], plus `unknown field` for the first key the type ignored.
+pub fn read_strict_body<'de, T>(body: &'de [u8]) -> Result<T, serde_json::Error>
+where
+    T: serde::Deserialize<'de>,
+{
+    afd_core::json::strict_object_from_slice(body).inspect_err(log_unknown_field)
+}
+
+/// Logs the NAME of a refused unknown field, and nothing for any other failure.
+fn log_unknown_field(failure: &serde_json::Error) {
+    if let Some(field) = afd_core::json::unknown_field_of(failure) {
+        let event = EVENT_UNKNOWN_FIELD;
+        let error_code = afd_core::error_code::INVALID_REQUEST.as_str();
+        tracing::warn!(
+            event,
+            error_code,
+            field,
+            "a request named a field this build does not carry; it was refused"
+        );
+    }
 }
 
 /// Refuses a request this daemon cannot read at all.
@@ -184,9 +207,10 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use super::{ReadOutcome, library_outcome, read_body};
+    use super::{EVENT_UNKNOWN_FIELD, ReadOutcome, library_outcome, read_body};
     use crate::handler::refusal::Refusal;
     use afd_core::error_code;
+    use afd_core::test_util::trace::Capture;
 
     /// A status this map does not know is an internal error, never an `Ok`.
     ///
@@ -235,19 +259,34 @@ mod tests {
 
     /// An unknown key is refused, and the error the caller keeps is `serde`'s own.
     ///
-    /// The log line itself is the side effect this wrapper exists for and no
-    /// subscriber is installed here to capture it. What IS asserted is the half
-    /// that can go wrong silently: that the refusal still arrives at the call
-    /// site unchanged, so a handler's `else` arm keeps firing.
+    /// The refusal arrives at the call site unchanged, so a handler's `else`
+    /// arm keeps firing, and the log line this wrapper exists for names the
+    /// key and its code — never a value the body carried.
     #[test]
     fn an_unknown_field_is_still_refused_to_the_caller() {
+        let capture = Capture::install();
+
         let refused = read_body::<Closed>(br#"{"api_key":"sk-live-secret","wire_version":2}"#)
             .expect_err("a closed type refuses a key it does not carry");
+
         assert!(
             refused
                 .to_string()
                 .starts_with("unknown field `wire_version`"),
             "the caller receives serde's own error, not a rewritten one: {refused}"
+        );
+        let logged = capture.only(EVENT_UNKNOWN_FIELD);
+        assert_eq!(logged.field("field"), Some("wire_version"));
+        assert_eq!(
+            logged.field("error_code"),
+            Some(error_code::INVALID_REQUEST.as_str())
+        );
+        assert!(
+            logged
+                .fields
+                .values()
+                .all(|value| !value.contains("sk-live")),
+            "{logged:?}"
         );
     }
 

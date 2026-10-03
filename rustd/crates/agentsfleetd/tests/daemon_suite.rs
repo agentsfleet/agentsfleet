@@ -72,6 +72,8 @@ mod integration_runner_brackets;
 mod integration_runner_e2e;
 #[path = "integration_runner_shapes.rs"]
 mod integration_runner_shapes;
+#[path = "integration_rust_runner.rs"]
+mod integration_rust_runner;
 #[path = "integration_serve.rs"]
 mod integration_serve;
 #[path = "integration_telemetry.rs"]
