@@ -70,3 +70,24 @@ async fn should_answer_address_not_allowed_when_the_resolver_refuses_the_name() 
         })
     );
 }
+
+#[tokio::test]
+async fn should_answer_unreachable_when_the_name_does_not_resolve() {
+    let network = Network::new().unwrap();
+    let outbound = Outbound {
+        method: Method::GET,
+        url: Url::parse("https://no-such-host.invalid/").unwrap(),
+        headers: HeaderMap::new(),
+        body: None,
+    };
+
+    let refused = network.send(outbound).await.err();
+
+    assert_eq!(
+        refused,
+        Some(Refusal::UpstreamUnreachable {
+            host: "no-such-host.invalid".to_owned(),
+            reason: super::NOT_CONNECTED,
+        })
+    );
+}
