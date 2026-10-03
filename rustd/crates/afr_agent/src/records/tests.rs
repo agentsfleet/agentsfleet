@@ -3,12 +3,14 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use afd_wire::tool_detail::{DETAIL_FIELD_MAX_BYTES, DETAIL_POST_MAX_BYTES, RawToolCallRecord};
+use afd_wire::tool_detail::{
+    DETAIL_FIELD_MAX_BYTES, DETAIL_POST_MAX_BYTES, RawToolCallRecord, ToolCallRecordsRequest,
+};
 use serde_json::json;
 
-use super::{POST_ENVELOPE_BYTES, record};
+use super::{post_envelope_bytes, record};
 use crate::fixture::{clean, clean_json};
-use crate::trace::encoded_len;
+use afd_wire::tool_trace::encoded_len;
 
 /// Whether the daemon would keep `record`, judged by the wire's own narrow.
 fn accepted(record: &afd_wire::tool_detail::ToolCallRecord<'_>) -> bool {
@@ -62,7 +64,7 @@ fn should_cut_an_output_that_escapes_past_one_post() {
     let cut = record(1, clean_json(json!({})), &clean(&output));
 
     let encoded = serde_json::to_vec(&cut).unwrap().len();
-    assert!(cut.truncated && encoded + POST_ENVELOPE_BYTES <= DETAIL_POST_MAX_BYTES);
+    assert!(cut.truncated && encoded + post_envelope_bytes() <= DETAIL_POST_MAX_BYTES);
     assert_eq!(
         cut.output.len(),
         DETAIL_FIELD_MAX_BYTES / 2,
@@ -82,17 +84,25 @@ fn encoding_to(target: usize) -> String {
 
 #[test]
 fn should_keep_a_record_that_exactly_fits_one_post() {
-    let output = encoding_to(DETAIL_POST_MAX_BYTES - POST_ENVELOPE_BYTES);
+    let output = encoding_to(DETAIL_POST_MAX_BYTES - post_envelope_bytes());
 
     let kept = record(1, clean_json(json!({})), &clean(&output));
 
     assert!(!kept.truncated, "{} output bytes", output.len());
     assert_eq!(kept.output, output);
+    // The envelope is measured, not guessed: sealed alone at the largest
+    // fencing token, the kept record is a post of exactly the daemon's cap.
+    let text = serde_json::to_string(&kept).unwrap();
+    let post = ToolCallRecordsRequest {
+        fencing_token: u64::MAX,
+        calls: vec![serde_json::from_str::<RawToolCallRecord<'_>>(&text).unwrap()],
+    };
+    assert_eq!(encoded_len(&post), DETAIL_POST_MAX_BYTES);
 }
 
 #[test]
 fn should_cut_a_record_one_byte_past_one_post() {
-    let output = encoding_to(DETAIL_POST_MAX_BYTES - POST_ENVELOPE_BYTES + 1);
+    let output = encoding_to(DETAIL_POST_MAX_BYTES - post_envelope_bytes() + 1);
 
     let cut = record(1, clean_json(json!({})), &clean(&output));
 

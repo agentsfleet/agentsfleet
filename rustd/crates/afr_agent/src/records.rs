@@ -7,15 +7,24 @@
 
 use std::borrow::Cow;
 
-use afd_wire::tool_detail::{DETAIL_FIELD_MAX_BYTES, DETAIL_POST_MAX_BYTES, ToolCallRecord};
+use afd_wire::tool_detail::{
+    DETAIL_FIELD_MAX_BYTES, DETAIL_POST_MAX_BYTES, ToolCallRecord, ToolCallRecordsRequest,
+};
+use afd_wire::tool_trace::encoded_len;
 use serde_json::{Map, Value};
 
-use crate::trace::encoded_len;
 use afr_secrets::Clean;
 
-/// Room a post's envelope takes around its one record: the fencing token, the
-/// field names and the brackets, with margin.
-const POST_ENVELOPE_BYTES: usize = 64;
+/// Room a post's envelope takes around its one record, measured rather than
+/// guessed: the request the supervisor seals a lone record in, empty, at the
+/// largest fencing token, so a record that fits here fits whichever lease
+/// posts it.
+fn post_envelope_bytes() -> usize {
+    encoded_len(&ToolCallRecordsRequest {
+        fencing_token: u64::MAX,
+        calls: Vec::new(),
+    })
+}
 
 /// Call `number`'s record, from its scrubbed arguments and output.
 pub(crate) fn record(
@@ -36,11 +45,12 @@ pub(crate) fn record(
         output_line_count: output.lines().count() as u64,
         truncated: false,
     };
+    let room = DETAIL_POST_MAX_BYTES.saturating_sub(post_envelope_bytes());
     let mut keep = output.floor_char_boundary(DETAIL_FIELD_MAX_BYTES);
     loop {
         record.output = Cow::Owned(output[..keep].to_owned());
         record.truncated = keep < output.len();
-        if keep == 0 || encoded_len(&record) + POST_ENVELOPE_BYTES <= DETAIL_POST_MAX_BYTES {
+        if keep == 0 || encoded_len(&record) <= room {
             return record;
         }
         keep = output.floor_char_boundary(keep / 2);

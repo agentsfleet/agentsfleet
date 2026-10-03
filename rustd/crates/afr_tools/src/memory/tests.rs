@@ -5,7 +5,9 @@
 
 use std::borrow::Cow;
 
-use afd_wire::memory::{MAX_CONTENT_LEN, MAX_PUSH_BYTES, MemoryDelta, PINNED_CATEGORY, Visibility};
+use afd_wire::memory::{
+    MAX_CONTENT_LEN, MAX_PUSH_BYTES, MemoryDelta, PINNED_CATEGORY, RECALL_LIMIT_MAX, Visibility,
+};
 use afr_egress::Egress;
 use afr_memory::{Hydrated, Seed};
 use serde_json::json;
@@ -150,7 +152,7 @@ async fn a_store_the_daemon_would_skip_is_refused_with_its_code() {
 async fn recall_never_answers_more_than_its_ceiling() {
     let mut lease = Lease::default();
     let store = Typed::boxed(MemoryStore);
-    for at in 0..60 {
+    for at in 0..RECALL_LIMIT_MAX + 10 {
         call(
             store.as_ref(),
             &mut lease,
@@ -165,7 +167,7 @@ async fn recall_never_answers_more_than_its_ceiling() {
         json!({"query": "k", "limit": 500}),
     )
     .await;
-    assert_eq!(recalled.text.lines().count(), 50);
+    assert_eq!(recalled.text.lines().count(), RECALL_LIMIT_MAX);
     let defaulted = call(
         Typed::boxed(MemoryRecall).as_ref(),
         &mut lease,

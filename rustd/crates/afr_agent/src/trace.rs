@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use afd_wire::tool_trace::{
     ARGS_LEAF_MAX_BYTES, ARGS_MAX_BYTES, OUTPUT_EDGE_MAX_BYTES, OUTPUT_EDGE_MAX_LINES,
-    TRACE_MAX_BYTES, TRACE_MAX_CALLS, ToolCallStatus, ToolTrace, ToolTraceCall,
+    TRACE_MAX_BYTES, TRACE_MAX_CALLS, ToolCallStatus, ToolTrace, ToolTraceCall, encoded_len,
 };
 use serde_json::{Map, Value};
 
@@ -107,12 +107,6 @@ pub(crate) fn bounded_arguments(arguments: &Clean<Value>) -> Map<String, Value> 
 fn leaf(text: &str) -> Option<String> {
     let cut = text.floor_char_boundary(ARGS_LEAF_MAX_BYTES);
     (cut < text.len()).then(|| text[..cut].to_owned())
-}
-
-/// How many bytes `value` encodes to; a failure answers the largest size,
-/// which every bound refuses.
-pub(crate) fn encoded_len<T: serde::Serialize>(value: &T) -> usize {
-    serde_json::to_vec(value).map_or(usize::MAX, |bytes| bytes.len())
 }
 
 /// The run's trace as it grows.
