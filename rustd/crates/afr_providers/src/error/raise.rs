@@ -28,3 +28,11 @@ pub(crate) fn unhosted(provider: &str) -> Error {
 pub(crate) fn client(source: reqwest::Error) -> Error {
     Error::from(ErrorKind::Client { source })
 }
+
+/// The registry entry `name` has a base URL that does not parse, for `source`.
+pub(crate) fn registry(name: &str, source: url::ParseError) -> Error {
+    Error::from(ErrorKind::Registry {
+        name: name.to_owned(),
+        source,
+    })
+}

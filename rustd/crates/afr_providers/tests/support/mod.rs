@@ -21,12 +21,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use afd_wire::activity::ActivityFrame;
 use afd_wire::lease::LeasePayload;
 use afr_agent::{AgentEngine as _, AgentRun, Loop, RunOutput};
-use afr_providers::{Connector, Endpoints};
+use afr_providers::{Connector, ProviderSpec, Registry, Wire};
 use afr_tools::Catalog;
 use afr_tools::catalog::CALCULATOR;
 use afr_tools::stub::Stub;
 use axum::body::{Body, Bytes};
-use axum::http::header::{CONTENT_TYPE, RETRY_AFTER};
+use axum::http::header::{CONTENT_TYPE, LOCATION, RETRY_AFTER};
 use axum::http::{HeaderMap, Response, StatusCode, Uri};
 use futures_util::stream;
 use tokio::sync::mpsc;
@@ -51,6 +51,8 @@ pub(crate) enum Reply {
         status: u16,
         retry_after: Option<&'static str>,
     },
+    /// A redirect to `location`.
+    Redirect(String),
 }
 
 /// One request the fake saw.
@@ -136,6 +138,10 @@ fn answer(reply: Option<&Reply>) -> Response<Body> {
             };
             builder.body(Body::empty())
         }
+        Some(Reply::Redirect(location)) => builder
+            .status(StatusCode::TEMPORARY_REDIRECT)
+            .header(LOCATION, location.as_str())
+            .body(Body::empty()),
         None => builder
             .status(StatusCode::INTERNAL_SERVER_ERROR)
             .body(Body::empty()),
@@ -165,13 +171,25 @@ pub(crate) fn lease(provider: &str, tools: &[&str], message: &str) -> LeasePaylo
     serde_json::from_str(text).unwrap()
 }
 
-/// The loop hosting a stub calculator, every named provider served by `fake`.
+/// The name the fake's chat wire is registered under.
+pub(crate) const CHAT_PROVIDER: &str = "fake-chat";
+
+/// The loop hosting a stub calculator, with each wire's provider served by
+/// `fake`.
 pub(crate) fn engine(fake: &Fake) -> Loop {
-    let endpoints = Endpoints {
-        anthropic: fake.base.clone(),
-        openai: fake.base.clone(),
+    let entry = |name: &str, wire, base_url: String| ProviderSpec {
+        name: name.to_owned(),
+        aliases: Vec::new(),
+        wire,
+        base_url,
     };
-    let connector = Connector::new(endpoints).unwrap();
+    let registry = Registry::new([
+        entry("anthropic", Wire::Messages, fake.base.clone()),
+        entry("openai", Wire::Responses, fake.base.clone()),
+        entry(CHAT_PROVIDER, Wire::Chat, format!("{}/v1", fake.base)),
+    ])
+    .unwrap();
+    let connector = Connector::new(registry).unwrap();
     Loop::new(Catalog::new(vec![Stub::boxed(&CALCULATOR)]), connector)
 }
 

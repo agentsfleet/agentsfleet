@@ -167,5 +167,6 @@ async fn a_lease_naming_a_provider_no_wire_speaks_is_refused_before_anything_sta
     );
 }
 
-/// A provider the daemon accepts and no runner wire speaks.
-const UNSPOKEN_PROVIDER: &str = "groq";
+/// A provider the daemon accepts and no runner wire speaks: it signs its
+/// requests rather than taking a key.
+const UNSPOKEN_PROVIDER: &str = "bedrock";

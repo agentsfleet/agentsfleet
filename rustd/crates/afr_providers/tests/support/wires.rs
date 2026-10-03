@@ -5,7 +5,7 @@
 use axum::http::HeaderMap;
 use serde_json::{Value, json};
 
-use super::{Fake, Reply};
+use super::Reply;
 
 /// The usage every scripted turn reports.
 const PROMPT_TOKENS: u64 = 10;
@@ -23,12 +23,12 @@ impl Wire {
     /// Every wire, in the order the suites walk them.
     pub(crate) const ALL: [Self; 3] = [Self::Messages, Self::Responses, Self::Chat];
 
-    /// The provider name that selects this wire at `fake`.
-    pub(crate) fn provider(self, fake: &Fake) -> String {
+    /// The provider name that selects this wire at the fake.
+    pub(crate) fn provider(self) -> String {
         match self {
             Self::Messages => "anthropic".to_owned(),
             Self::Responses => "openai".to_owned(),
-            Self::Chat => format!("custom:{}/v1", fake.base),
+            Self::Chat => super::CHAT_PROVIDER.to_owned(),
         }
     }
 

@@ -63,6 +63,16 @@ pub(crate) enum ErrorKind {
         provider: String,
     },
 
+    /// The provider registry names an entry whose base URL does not parse.
+    #[error("the provider registry's entry {name} has a base URL that does not parse")]
+    Registry {
+        /// The entry's name.
+        name: String,
+        /// The parser's reason.
+        #[source]
+        source: url::ParseError,
+    },
+
     /// The HTTP client could not be built.
     #[error("the model providers' HTTP client could not be built")]
     Client {
@@ -107,6 +117,7 @@ impl Error {
             | ErrorKind::Lost { .. }
             | ErrorKind::Ended { .. }
             | ErrorKind::Unreadable { .. }
+            | ErrorKind::Registry { .. }
             | ErrorKind::Client { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
@@ -121,6 +132,7 @@ impl Error {
             ErrorKind::Refused { .. }
             | ErrorKind::Unreadable { .. }
             | ErrorKind::Unhosted { .. }
+            | ErrorKind::Registry { .. }
             | ErrorKind::Client { .. } => None,
         }
     }
@@ -134,6 +146,7 @@ impl Error {
             | ErrorKind::Lost { .. }
             | ErrorKind::Ended { .. }
             | ErrorKind::Unreadable { .. }
+            | ErrorKind::Registry { .. }
             | ErrorKind::Client { .. } => None,
         }
     }

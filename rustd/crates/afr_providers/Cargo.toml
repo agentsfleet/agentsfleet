@@ -40,6 +40,8 @@ serde.workspace = true
 # A tool call's arguments.
 serde_json.workspace = true
 thiserror.workspace = true
+# The provider table's base URLs, parsed once when the registry is built.
+url.workspace = true
 # The retry log line.
 tracing.workspace = true
 
