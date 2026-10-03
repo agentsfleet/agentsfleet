@@ -88,8 +88,14 @@ describe("Fleet library table presentation", () => {
     expect(within(sourceCell()).queryByRole("link")).toBeNull();
   });
 
-  it("labels an admin upload even when its stored source is empty", () => {
+  it("labels uploads identically even when their stored source is empty", () => {
     showPlatform(platform(""));
+    const adminSource = sourceCell().innerHTML;
+    expect(within(sourceCell()).getByText(NAME)).toBeTruthy();
+    expect(within(sourceCell()).queryByRole("link")).toBeNull();
+    cleanup();
+    showWorkspace(workspace(SOURCE_KIND_UPLOAD, ""));
+    expect(sourceCell().innerHTML).toBe(adminSource);
     expect(within(sourceCell()).getByText(NAME)).toBeTruthy();
     expect(within(sourceCell()).queryByRole("link")).toBeNull();
   });

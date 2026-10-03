@@ -60,7 +60,7 @@ function provenance(entry: WorkspaceLibraryEntry): string {
  *  under, not a commit anyone can resolve on github.com. Pinning the link needs
  *  the importer to record the commit it fetched first. */
 function sourceCell(entry: WorkspaceLibraryEntry) {
-  return <SourceMark kind={entry.source_kind} sourceRef={entry.source_ref} />;
+  return <SourceMark kind={entry.source_kind} sourceRef={entry.source_ref || entry.name} />;
 }
 
 /** The onboarding instant, rendered by the design system.
