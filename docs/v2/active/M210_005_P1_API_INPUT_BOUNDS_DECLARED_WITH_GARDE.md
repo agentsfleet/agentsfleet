@@ -179,7 +179,7 @@ cron/timezone/channel/name/segment parsers: fn parse(input: &garde::Valid<T>) ->
 1. A parser that a bound protects runs only on input garde proved — enforced by the compiler: those parsers take `&garde::Valid<T>`, which only `Unvalidated::validate` constructs.
 2. A model reads only schemars-derived schemas — enforced by the compiler: `Schema` has private fields and one constructor, `Schema::of::<T: JsonSchema>`.
 3. A refusal's sentence is one of its route's constants, never garde's text — enforced by `Sentences::pick`, which returns only table entries or the fallback; Dimension 1.3.
-4. No float input accepts NaN or an infinity — enforced by `finite` on the one float input, the budget; Dimension 5.5.
+4. No float input accepts NaN or an infinity — enforced by `finite` on both float inputs: the budget (Dimension 5.5) and `stage_chunk_threshold`, also held to `0.0..=1.0` (`test_stage_chunk_threshold_is_a_finite_fraction`).
 5. One bound, one constant — enforced by the rubric's single-definition grep on `PROVIDER_MAX_BYTES`, and by `Limit` taking each ceiling from its route's constant.
 
 ## Metrics & Observability
@@ -294,6 +294,6 @@ cron/timezone/channel/name/segment parsers: fn parse(input: &garde::Valid<T>) ->
 - **Agent default:** `PageLimit` is deleted and the three operator lists read `afd_core::paging::CEILING` (the same 50/100), because the Dead Code Sweep requires it and garde's `Valid<T>` does the guarding at the boundary; store page constants held as `i64` become a `Ceiling` through the const fn `paging::store_ceiling`.
 - **Agent default:** `?limit=+5` is refused as not-digits.
 - **Agent default:** the stub and the loop fixture share one argument type, `afr_tools::stub::NoArguments`, behind the `test-util` feature that already gates the stub; its doc line is one sentence for the model, because schemars hands a type's doc comment to the model as the schema's `description`.
-- **Open finding:** `stage_chunk_threshold` (`afd_fleet_runtime/src/config/raw/policy.rs:73`, `f32`) is a second float input with no bound, so Invariant 4's "the one float input" is wrong. TRIGGER.md cannot carry NaN today (serde_json refuses it; YAML `.nan` arrives as a string and fails as a type error), so nothing is exposed; bounding it needs a refusal reason `ContextBudget` does not have.
+- **Agent default:** `stage_chunk_threshold` (`afd_fleet_runtime/src/config/raw/policy.rs`, `f32`) is the second float input, and it was exposed: `1e39` arrives as +∞, which serializes into every lease as `null`. It declares `finite` (widened to `f64`) and `0.0..=1.0` on the raw context, so a break answers `OutOfBounds` like the network allow-lists beside it, and `ContextBudget` needs no new reason.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
