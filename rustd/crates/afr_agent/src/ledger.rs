@@ -1,10 +1,13 @@
 //! The ledger: what each tool call did, kept in one place.
 //!
-//! A call is numbered from 1 and opens with its `tool_call_started` frame. It
-//! ends exactly once: its `tool_call_completed` frame, its trace row and, when
-//! its handler returned, its full record. An [`Opened`] dropped before it
-//! closed — the lease stopped, the run future was dropped — ends its call
-//! `interrupted`, live and in the trace, so no run ending can leave a call open.
+//! [`Ledger::call`] is the one way a call runs, the shape Exonum's
+//! `TopLevelContext::call` gives a transaction: one wrapper guarantees one
+//! outcome. A call is numbered from 1 and opens with its `tool_call_started`
+//! frame. It ends exactly once: its `tool_call_completed` frame, its trace row
+//! and, when its handler returned, its full record. A call whose future is
+//! dropped before the handler returned (the lease stopped, the run future was
+//! dropped) ends `interrupted`, live and in the trace, so no run ending can
+//! leave a call open.
 
 use std::borrow::Cow;
 use std::time::Instant;
@@ -43,9 +46,20 @@ impl<'run> Ledger<'run> {
         }
     }
 
+    /// Runs `call` through `handler` and hands back the scrubbed text the
+    /// model reads.
+    pub(crate) async fn call(
+        &mut self,
+        call: &Call,
+        handler: impl Future<Output = ToolOutput>,
+    ) -> Clean<String> {
+        let open = self.open(call);
+        open.close(handler.await)
+    }
+
     /// Opens the next call: numbers it, scrubs and bounds its arguments, and
     /// sends its start frame.
-    pub(crate) fn open<'a>(&'a mut self, call: &'a Call) -> Opened<'a, 'run> {
+    fn open<'a>(&'a mut self, call: &'a Call) -> Opened<'a, 'run> {
         self.calls += 1;
         let number = self.calls;
         let id = number.to_string();
@@ -75,7 +89,7 @@ impl<'run> Ledger<'run> {
 }
 
 /// One call between its start frame and its end.
-pub(crate) struct Opened<'a, 'run> {
+struct Opened<'a, 'run> {
     ledger: &'a mut Ledger<'run>,
     number: u64,
     id: String,
@@ -89,7 +103,7 @@ pub(crate) struct Opened<'a, 'run> {
 impl Opened<'_, '_> {
     /// Ends the call with what its handler returned, and hands back the
     /// scrubbed text the model reads.
-    pub(crate) fn close(mut self, output: ToolOutput) -> Clean<String> {
+    fn close(mut self, output: ToolOutput) -> Clean<String> {
         let text = self.ledger.scrub.clean(output.text);
         let failed = output.error_code.is_some() || output.exit_code.is_some_and(|code| code != 0);
         let status = if failed {

@@ -180,13 +180,12 @@ impl<'run> Harness<'run> {
 
     /// Runs one call to its end; `None` when the lease stopped it.
     async fn call(&mut self, call: &Call) -> Option<Message> {
-        let open = self.ledger.open(call);
-        let output = tokio::select! {
+        let handler = self.router.dispatch(&call.name, &call.arguments);
+        let text = tokio::select! {
             biased;
             () = self.stop.cancelled() => return None,
-            output = self.router.dispatch(&call.name, &call.arguments) => output,
+            text = self.ledger.call(call, handler) => text,
         };
-        let text = open.close(output);
         Some(Message::ToolResult {
             call_id: call.id.clone(),
             output: text.into_inner(),
