@@ -165,7 +165,6 @@ pub struct ToolCallRecordsRequest<'a> {
 /// What a post kept.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ToolCallRecordsStored {
     /// Records written or replaced.
     pub stored_count: usize,

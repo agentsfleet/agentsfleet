@@ -19118,8 +19118,7 @@
             "minimum": 0,
             "x-stability": "beta"
           }
-        },
-        "additionalProperties": false
+        }
       },
       "ToolCallStarted": {
         "type": "object",
