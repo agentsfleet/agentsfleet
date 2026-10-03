@@ -12,8 +12,12 @@ use afr_tools::ToolErrorCode;
 use afr_tools::catalog::CALCULATOR;
 use tokio_util::sync::CancellationToken;
 
+use afd_core::test_util::trace::Capture;
+
 use super::tests::{completions, drive, engine};
+use super::{EVENT_TURN_COMPLETED, EVENT_TURN_STARTED};
 use crate::fixture::{API_KEY, Canned, Exits, GITHUB_TOKEN, Script, call, lease, say, unbounded};
+use crate::ledger::{EVENT_CALL_COMPLETED, EVENT_CALL_STARTED};
 
 #[tokio::test]
 async fn test_unlisted_tool_refused_run_continues() {
@@ -174,4 +178,40 @@ async fn no_secret_value_is_sent_to_the_model_whoever_wrote_it() {
     );
     assert!(!sent.contains(GITHUB_TOKEN), "nor a credential: {sent}");
     assert!(sent.contains("«secret:github.token»") && sent.contains("«secret:llm.api_key»"));
+}
+
+#[tokio::test]
+async fn every_turn_and_every_call_logs_its_start_and_its_end_once() {
+    let capture = Capture::install();
+    let script = Script::new([
+        vec![call("a", CALCULATOR.name(), serde_json::json!({}))],
+        vec![say("4")],
+    ]);
+    let engine = engine(vec![Canned::boxed(&CALCULATOR, "4")], &script);
+
+    let (_output, _frames) = drive(
+        &engine,
+        &lease(&[CALCULATOR.name()], unbounded()),
+        &CancellationToken::new(),
+    )
+    .await;
+
+    let events = capture.events();
+    let count = |name: &str| {
+        let named = events
+            .iter()
+            .filter(|event| event.field("event") == Some(name));
+        named.count()
+    };
+    assert_eq!(count(EVENT_TURN_STARTED), 2);
+    assert_eq!(count(EVENT_TURN_COMPLETED), 2);
+    assert_eq!(count(EVENT_CALL_STARTED), 1);
+    let ended = capture.only(EVENT_CALL_COMPLETED);
+    assert_eq!(
+        ended.level,
+        tracing::Level::DEBUG,
+        "a per-pass line is debug"
+    );
+    assert_eq!(ended.field("call_id"), Some("1"));
+    assert_eq!(ended.field("status"), Some("Succeeded"));
 }
