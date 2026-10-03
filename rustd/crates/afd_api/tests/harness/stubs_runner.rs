@@ -118,6 +118,22 @@ impl Leasing for NoWork {
         std::future::ready(Ok(afd_fleet::memory::Captured::default()))
     }
 
+    /// Keeps every record a post carries, which is what a plane with room
+    /// for all of them would do.
+    fn record_tool_calls(
+        &self,
+        _runner_id: &Uuid7,
+        _lease_id: &str,
+        request: &afd_wire::tool_detail::ToolCallRecordsRequest<'_>,
+        _now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<afd_wire::tool_detail::ToolCallRecordsStored>> + Send
+    {
+        std::future::ready(Ok(afd_wire::tool_detail::ToolCallRecordsStored {
+            stored_count: request.calls.len(),
+            skipped_count: 0,
+        }))
+    }
+
     /// Renews to the instant asked about, for the reason [`NoWork::report`]
     /// accepts.
     fn renew(

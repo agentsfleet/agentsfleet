@@ -1,4 +1,4 @@
-//! One event expanded: the listing row, and the two bodies beside it.
+//! One event expanded: the listing row, and the bodies beside it.
 //!
 //! # Why this is not seventeen fields
 //!
@@ -14,10 +14,10 @@
 //! order and JSON field order are independent; only the second is a contract a
 //! client reads, and it is `afd_wire::event::EventDetail` that declares it.
 //!
-//! # And why these two are read by NAME
+//! # And why the bodies are read by NAME
 //!
 //! `EventRow::read` reads by index because it decodes a whole statement it owns
-//! end to end. These two are spliced onto that statement, so an index here
+//! end to end. The bodies are spliced onto that statement, so an index here
 //! would be a hand-counted offset into somebody else's column list — the exact
 //! coupling this file exists to avoid. Postgres names the output column after
 //! the column being cast, so `request_json::text` arrives as `request_json`.
@@ -34,6 +34,9 @@ const COLUMN_REQUEST_JSON: &str = "request_json";
 /// The agent's answer's column, named once (RULE UFS).
 const COLUMN_RESPONSE_TEXT: &str = "response_text";
 
+/// The run's tool trace's column, named once (RULE UFS).
+const COLUMN_TOOL_CALLS: &str = "tool_calls";
+
 /// One event with everything recorded about it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -47,6 +50,12 @@ pub struct EventDetailRow {
     /// `None` while a run is in flight, and on a run that failed before
     /// producing one.
     pub response_text: Option<String>,
+    /// The run's tool trace as stored, serialized to text.
+    ///
+    /// `None` when nothing was recorded: a run before the column existed, a
+    /// runner that sent no trace, or a trace the daemon dropped. Never read as
+    /// "no tools ran".
+    pub tool_calls: Option<String>,
 }
 
 impl EventDetailRow {
@@ -64,6 +73,9 @@ impl EventDetailRow {
             response_text: row
                 .try_get(COLUMN_RESPONSE_TEXT)
                 .map_err(row_malformed(COLUMN_RESPONSE_TEXT))?,
+            tool_calls: row
+                .try_get(COLUMN_TOOL_CALLS)
+                .map_err(row_malformed(COLUMN_TOOL_CALLS))?,
         })
     }
 }
@@ -127,6 +139,16 @@ impl EventDetailRow {
             },
             request_json: FIXTURE_REQUEST_JSON.to_owned(),
             response_text: Some(response_text),
+            tool_calls: None,
+        }
+    }
+
+    /// The same row, carrying `tool_calls` as its stored trace.
+    #[must_use]
+    pub fn with_tool_calls(self, tool_calls: String) -> Self {
+        Self {
+            tool_calls: Some(tool_calls),
+            ..self
         }
     }
 }

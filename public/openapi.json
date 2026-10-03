@@ -4989,6 +4989,144 @@
         ]
       }
     },
+    "/v1/runners/me/leases/{lease_id}/tool-calls": {
+      "post": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Keep each tool call's full output",
+        "description": "Keeps the full arguments and output of each finished tool call, so an operator can open everything a call took and returned. Post before the report. A body is at most 262144 bytes, and each record's arguments and output at most 65536 bytes each. An event keeps at most 1 MiB of records. A record that breaks a bound or does not fit is counted in `skipped_count` and the rest are kept. Posting a call again replaces its record, so a retry is safe. A lease the fleet has moved past is refused and keeps nothing. ",
+        "operationId": "runner_record_tool_calls",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "`UUIDv7` of the lease.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolCallRecordsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolCallRecordsStored"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such resource, or none this caller may see",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/runners/me/memory/{fleet_id}": {
       "get": {
         "tags": [
@@ -9973,7 +10111,7 @@
           "Fleets"
         ],
         "summary": "Stream live fleet activity",
-        "description": "Opens a Server-Sent Events (SSE) stream for new fleet activity. Each activity message includes `id`, `event`, and `data`. `event` is the `kind` field that leads `data`. The first frame is `event: hello`, sent as soon as the subscription attaches and before any activity. Its `data` is `{\"kind\":\"hello\",\"fleet_ids\":[\"<fleet_id>\"],\"counters\":{}}` — the one fleet this connection carries. It uses identifier 0 and does not advance the activity sequence, so a client may report the stream live without waiting for a heartbeat. An instance holding no pub/sub connection sends no `hello`. `event_admitted` arrives when a person's message is accepted, before any runner has it. It carries `event_id`, `actor`, `event_type`, `message` and `created_at`, and its `event_id` is the one the send returned. The daemon brackets every run. `event_received` carries `event_id`, `actor`, `event_type` and `created_at` when a run's row is written. A person's message adds `message`, the text they typed. `event_complete` carries the terminal row as `GET …/events` lists it, without `fleet_id` and `workspace_id`. The completion adds `fleet_status` and `pending_approvals`. It also carries `final_reply`, the reply text, when that text is at most 64 KiB. Without it, read the event detail. `gate_opened` and `gate_resolved` carry `gate_id`, `event_id` and `pending_approvals`. `event_id` is null for a gate raised outside a run. A resolved gate adds `status` and `resolved_by`. The runner's frames ride the same stream: `chunk`, `tool_call_started`, `tool_call_progress` and `tool_call_completed`. Each tool frame carries `event_id` and `name`. Newer runners add `call_id`, which every frame of one call shares and no other call of the event reuses. If the server drops frames for this connection, it sends `event: catching_up`. Its `data` is `{\"kind\":\"catching_up\",\"dropped\":N}`. `dropped` counts frames dropped since the previous signal. It is 0 when the server missed frames it cannot count. After either, read missed events through `GET …/events`. `catching_up` uses identifier 0 and does not advance the activity sequence. Identifiers restart at 0 for each connection. The route ignores `Last-Event-ID`. At capacity, the route returns 503 `UZ-API-002` with `Retry-After`. Read missed events before reconnecting. After 15 seconds without activity, the stream sends `event: heartbeat` with `data: {\"kind\":\"heartbeat\"}`. Heartbeats have no `id` and do not advance the activity sequence. The stream re-checks the caller's access every 15 seconds. When access is gone, it sends `event: access_revoked` with `data: {\"kind\":\"access_revoked\",\"error_code\":\"UZ-AUTH-001\"}` and closes. Do not reconnect after it: the next request is refused with the same code. If access cannot be checked for about a minute, the stream closes without that frame. Reconnect as after any drop. ",
+        "description": "Opens a Server-Sent Events (SSE) stream for new fleet activity. Each activity message includes `id`, `event`, and `data`. `event` is the `kind` field that leads `data`. The first frame is `event: hello`, sent as soon as the subscription attaches and before any activity. Its `data` is `{\"kind\":\"hello\",\"fleet_ids\":[\"<fleet_id>\"],\"counters\":{}}` — the one fleet this connection carries. It uses identifier 0 and does not advance the activity sequence, so a client may report the stream live without waiting for a heartbeat. An instance holding no pub/sub connection sends no `hello`. `event_admitted` arrives when a person's message is accepted, before any runner has it. It carries `event_id`, `actor`, `event_type`, `message` and `created_at`, and its `event_id` is the one the send returned. The daemon brackets every run. `event_received` carries `event_id`, `actor`, `event_type` and `created_at` when a run's row is written. A person's message adds `message`, the text they typed. `event_complete` carries the terminal row as `GET …/events` lists it, without `fleet_id` and `workspace_id`. The completion adds `fleet_status` and `pending_approvals`. It also carries `final_reply`, the reply text, when that text is at most 64 KiB. Without it, read the event detail. `gate_opened` and `gate_resolved` carry `gate_id`, `event_id` and `pending_approvals`. `event_id` is null for a gate raised outside a run. A resolved gate adds `status` and `resolved_by`. The runner's frames ride the same stream: `chunk`, `tool_call_started`, `tool_call_progress` and `tool_call_completed`. Each tool frame carries `event_id` and `name`. Newer runners add `call_id`, which every frame of one call shares and no other call of the event reuses. Newer runners also end each `tool_call_completed` with its outcome: `status` is `succeeded`, `failed` or `interrupted`. `output_head` and `output_tail` hold the output's first and last five lines, and `output_line_count` counts all of them. `exit_code` is present for a call that ran a process. If the server drops frames for this connection, it sends `event: catching_up`. Its `data` is `{\"kind\":\"catching_up\",\"dropped\":N}`. `dropped` counts frames dropped since the previous signal. It is 0 when the server missed frames it cannot count. After either, read missed events through `GET …/events`. `catching_up` uses identifier 0 and does not advance the activity sequence. Identifiers restart at 0 for each connection. The route ignores `Last-Event-ID`. At capacity, the route returns 503 `UZ-API-002` with `Retry-After`. Read missed events before reconnecting. After 15 seconds without activity, the stream sends `event: heartbeat` with `data: {\"kind\":\"heartbeat\"}`. Heartbeats have no `id` and do not advance the activity sequence. The stream re-checks the caller's access every 15 seconds. When access is gone, it sends `event: access_revoked` with `data: {\"kind\":\"access_revoked\",\"error_code\":\"UZ-AUTH-001\"}` and closes. Do not reconnect after it: the next request is refused with the same code. If access cannot be checked for about a minute, the stream closes without that frame. Reconnect as after any drop. ",
         "operationId": "stream_fleet_events",
         "parameters": [
           {
@@ -10108,6 +10246,141 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EventDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such resource, or none this caller may see",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}/tool-calls/{call_id}": {
+      "get": {
+        "tags": [
+          "Fleets"
+        ],
+        "summary": "Read one tool call in full",
+        "description": "Returns everything one tool call took and returned, with secret values masked. The event's `tool_calls` shows each call's first and last lines; read this for the rest. Use the `call_id` the event gives, percent-encoded. Arguments and output are each at most 65536 bytes, and `truncated_arguments` and `truncated` say when the runner cut one to fit. A call whose full output was not kept answers 404, as an unknown call and a call in another workspace do. ",
+        "operationId": "get_fleet_event_tool_call",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "description": "`UUIDv7` of the event.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "call_id",
+            "in": "path",
+            "description": "The call, as the thread names it: `{fence}:{n}`. Opaque; send it as\nthe thread gave it, percent-encoded.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolCallDetail"
                 }
               }
             }
@@ -14359,6 +14632,19 @@
             "format": "int64",
             "description": "Tokens the run spent, absent until a runner reports."
           },
+          "tool_calls": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ToolTrace",
+                "description": "Every tool call the run made, with its arguments and how it ended.\n\n`null` when nothing was recorded. That is a run older than this field,\na runner that does not record calls, or a trace dropped for breaking a\nbound. `null` never means no tools ran."
+              }
+            ],
+            "description": "Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
+          },
           "updated_at": {
             "type": "integer",
             "format": "int64",
@@ -17416,6 +17702,17 @@
             "format": "int64",
             "description": "The run's total tokens, for reporting. Billing charges the three\ncumulative fields below, which settle against the usage ledger.",
             "minimum": 0
+          },
+          "tool_calls": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ToolTrace",
+                "description": "Every tool call the run made, kept with its answer. Absent from\nrunners that do not record one. A trace that is not one, or that\nbreaks a bound, is dropped and the report still settles."
+              }
+            ]
           }
         },
         "additionalProperties": false
@@ -18592,7 +18889,7 @@
       },
       "ToolCallCompleted": {
         "type": "object",
-        "description": "A tool call finished.",
+        "description": "A tool call finished.\n\nThe outcome fields are absent from runners that do not report one. A\nreader shows such a call as finished with no outcome, never as a success.",
         "required": [
           "name",
           "ms"
@@ -18605,6 +18902,14 @@
             ],
             "description": "Which call of the run this frame belongs to, 1 to 64 bytes: every frame\nof one call carries the same value. Absent from runners that do not name\ncalls."
           },
+          "exit_code": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The process's exit code, for a call that ran one."
+          },
           "ms": {
             "type": "integer",
             "format": "int64",
@@ -18613,6 +18918,87 @@
           "name": {
             "type": "string",
             "description": "Which tool."
+          },
+          "output_head": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The output's first lines, at most 5 lines and 1024 bytes."
+          },
+          "output_line_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How many lines the whole output had.",
+            "minimum": 0
+          },
+          "output_tail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The output's last lines, at most 5 lines and 1024 bytes."
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ToolCallStatus",
+                "description": "How the call ended."
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ToolCallDetail": {
+        "type": "object",
+        "description": "`GET …/events/{event_id}/tool-calls/{call_id}` reply: one call, in full.",
+        "required": [
+          "call_id",
+          "arguments",
+          "truncated_arguments",
+          "output",
+          "output_line_count",
+          "truncated"
+        ],
+        "properties": {
+          "arguments": {
+            "type": "object",
+            "description": "Every argument the call was made with, secret values masked. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
+          },
+          "call_id": {
+            "type": "string",
+            "description": "The call, as the thread names it: `{fence}:{n}`. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
+          },
+          "output": {
+            "type": "string",
+            "description": "Everything the call returned. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
+          },
+          "output_line_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many lines the whole output had, before any cut. Beta: this field may change shape before it is stable.",
+            "minimum": 0,
+            "x-stability": "beta"
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "Whether the output was cut to fit 65536 bytes. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
+          },
+          "truncated_arguments": {
+            "type": "boolean",
+            "description": "Whether the arguments were cut to fit 65536 bytes. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           }
         },
         "additionalProperties": false
@@ -18644,6 +19030,96 @@
         },
         "additionalProperties": false
       },
+      "ToolCallRecord": {
+        "type": "object",
+        "description": "One finished call as the runner records it.",
+        "required": [
+          "call_number",
+          "arguments",
+          "truncated_arguments",
+          "output",
+          "output_line_count",
+          "truncated"
+        ],
+        "properties": {
+          "arguments": {
+            "type": "object",
+            "description": "Every argument the call was made with, secret values masked. At most\n65536 bytes encoded, with no NUL character."
+          },
+          "call_number": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The call's number in its run, from 1: the `n` of the `{fence}:{n}`\ncall id the live frames and the trace carry.",
+            "maximum": 9223372036854775807,
+            "minimum": 1
+          },
+          "output": {
+            "type": "string",
+            "description": "Everything the call returned, at most 65536 bytes, with no NUL\ncharacter."
+          },
+          "output_line_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many lines the whole output had, before any cut.",
+            "minimum": 0
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "Whether the runner cut the output to fit."
+          },
+          "truncated_arguments": {
+            "type": "boolean",
+            "description": "Whether the runner cut the arguments to fit."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ToolCallRecordsRequest": {
+        "type": "object",
+        "description": "`POST /v1/runners/me/leases/{lease_id}/tool-calls` request.",
+        "required": [
+          "fencing_token",
+          "calls"
+        ],
+        "properties": {
+          "calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolCallRecord"
+            },
+            "description": "The finished calls to keep. A call posted again replaces its record."
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The lease's fencing token; a holder the fleet has superseded is refused.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "ToolCallRecordsStored": {
+        "type": "object",
+        "description": "What a post kept.",
+        "required": [
+          "stored_count",
+          "skipped_count"
+        ],
+        "properties": {
+          "skipped_count": {
+            "type": "integer",
+            "description": "Records refused for their shape, a bound, or the event's budget. Beta: this field may change shape before it is stable.",
+            "minimum": 0,
+            "x-stability": "beta"
+          },
+          "stored_count": {
+            "type": "integer",
+            "description": "Records written or replaced. Beta: this field may change shape before it is stable.",
+            "minimum": 0,
+            "x-stability": "beta"
+          }
+        }
+      },
       "ToolCallStarted": {
         "type": "object",
         "description": "A tool call began.\n\n`args_redacted` is opaque, pre-stringified JSON built runner-side AFTER\nsubstitution — never the resolved bytes.",
@@ -18666,6 +19142,106 @@
           "name": {
             "type": "string",
             "description": "Which tool."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ToolCallStatus": {
+        "type": "string",
+        "description": "How one tool call ended.\n\nEvery call ends exactly once. A call the run never finished, after a crash,\na kill or a timeout, ends `interrupted`. So no call is left running in a\nbrowser or missing from the record.",
+        "enum": [
+          "succeeded",
+          "failed",
+          "interrupted"
+        ]
+      },
+      "ToolTrace": {
+        "type": "object",
+        "description": "Every call one run made, oldest first.",
+        "required": [
+          "calls",
+          "omitted_call_count"
+        ],
+        "properties": {
+          "calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolTraceCall"
+            },
+            "description": "The calls, at most 200."
+          },
+          "omitted_call_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Calls the run made past the 200 listed.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "ToolTraceCall": {
+        "type": "object",
+        "description": "One call in a run's trace.",
+        "required": [
+          "call_id",
+          "name",
+          "arguments",
+          "status",
+          "duration_ms"
+        ],
+        "properties": {
+          "arguments": {
+            "type": "object",
+            "description": "The arguments the call was made with, secret values masked. At most\n2048 bytes encoded, no string or key inside longer than 256 bytes, and\nno NUL character anywhere."
+          },
+          "call_id": {
+            "type": "string",
+            "description": "Which call this is: the decimal `call_number` the call's full record is\nposted under, from 1. Anything else makes \"show all\" unable to find the\ncall, so the trace is dropped. The daemon stores and serves it as\n`{fence}:{call_number}`, the id the call's live frames carry."
+          },
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How long the call took, in milliseconds.",
+            "minimum": 0
+          },
+          "exit_code": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The process's exit code, for a call that ran one."
+          },
+          "name": {
+            "type": "string",
+            "description": "Which tool."
+          },
+          "output_head": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The output's first lines, at most 5 lines and 1024 bytes. Absent when\nthe call returned nothing or the trace ran out of room for it."
+          },
+          "output_line_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How many lines the whole output had.",
+            "minimum": 0
+          },
+          "output_tail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The output's last lines, at most 5 lines and 1024 bytes. Absent when\nthe head already holds the whole output."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ToolCallStatus",
+            "description": "How the call ended."
           }
         },
         "additionalProperties": false

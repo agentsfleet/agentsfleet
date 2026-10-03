@@ -31,6 +31,7 @@ mod filter;
 mod queued;
 mod row;
 pub(crate) mod statement;
+mod tool_call;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -44,6 +45,7 @@ pub use self::cursor::Cursor;
 pub use self::detail::EventDetailRow;
 pub use self::filter::{Filter, glob_to_like, parse_since, prefix_to_like};
 pub use self::row::EventRow;
+pub use self::tool_call::{CallAddress, ToolCallRow};
 
 /// What each read was doing, for the operator's log line.
 const CONTEXT_FLEET_PAGE: &str = "read a fleet's history";

@@ -60,6 +60,7 @@ fn test_error_registry_unique() {
         error_code::FLEET_BUNDLE_NOT_FOUND,
         error_code::FLEET_BUNDLE_STORAGE_UNAVAILABLE,
         error_code::API_BACKPRESSURE,
+        error_code::TOOL_CALL_NOT_FOUND,
     ] {
         assert!(
             REGISTRY.contains(&named),

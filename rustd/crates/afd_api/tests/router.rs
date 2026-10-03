@@ -208,6 +208,7 @@ const fn runner_is_mounted(route: RunnerRoute) -> bool {
             | RunnerRoute::Activity
             | RunnerRoute::MemoryHydrate
             | RunnerRoute::MemoryCapture
+            | RunnerRoute::ToolCalls
             | RunnerRoute::Bundle
             | RunnerRoute::CredentialsMint
     )

@@ -7,8 +7,10 @@
 
 #![expect(
     clippy::expect_used,
+    clippy::indexing_slicing,
     clippy::unwrap_used,
-    reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
+    reason = "a test asserts by panicking, and indexes the JSON it built; the manifest's \
+              restriction set is for the daemon"
 )]
 
 use afd_events::{Cursor, EventDetailRow, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT};
@@ -187,4 +189,60 @@ fn should_continue_from_the_budget_cut() {
         .expect("a page the budget cut has more to serve");
     let resume = Cursor::decode(&handed).expect("the page mints a cursor this walk reads");
     assert_eq!(resume, Cursor::after(FIRST_MS, &entry_id(0)));
+}
+
+/// A stored trace of `calls` calls, each with both output edges at their cap.
+fn heavy_trace(calls: usize) -> String {
+    let edge = "a".repeat(afd_wire::tool_trace::OUTPUT_EDGE_MAX_BYTES);
+    let calls: Vec<serde_json::Value> = (1..=calls)
+        .map(|n| {
+            serde_json::json!({"call_id": format!("7:{n}"), "name": "shell",
+                "arguments": {"cmd": "make"}, "status": "succeeded",
+                "output_head": edge, "output_tail": edge, "duration_ms": 1})
+        })
+        .collect();
+    serde_json::json!({"calls": calls, "omitted_call_count": 0}).to_string()
+}
+
+/// A row's trace is part of what the page spends: heavy traces cut a page
+/// that their answers alone would not, and the cut stays inside the budget.
+#[test]
+fn test_thread_page_budget_counts_tool_calls() {
+    let trace = heavy_trace(30);
+    let rows: Vec<EventDetailRow> = (0..10)
+        .map(|ordinal| row(ordinal, 2).with_tool_calls(trace.clone()))
+        .collect();
+    let answers_alone = included_under_budget(&cheap_thread(10), 10);
+    assert_eq!(answers_alone, 10, "without traces every row fits");
+
+    let served = page(&rows, 10);
+    assert!(served.items.len() < rows.len(), "the traces cut the page");
+    assert!(served.next_cursor.is_some(), "and the cut is resumable");
+    let encoded = serde_json::to_string(&served.items).expect("a page encodes");
+    assert!(
+        encoded.len() <= PAGE_BUDGET_BYTES,
+        "{} bytes over the {PAGE_BUDGET_BYTES} budget",
+        encoded.len()
+    );
+}
+
+/// The expanded row serves the stored trace as it was stored, and `null` for
+/// a row that recorded none.
+#[test]
+fn an_expanded_row_serves_its_stored_trace_or_null() {
+    let trace = heavy_trace(1);
+    let with = row(1, 2).with_tool_calls(trace.clone());
+    let served =
+        serde_json::to_value(crate::handler::event::expanded(&with)).expect("a row encodes");
+    let stored: serde_json::Value = serde_json::from_str(&trace).expect("the fixture is JSON");
+    assert_eq!(served["tool_calls"], stored);
+
+    let without = row(2, 2);
+    let served =
+        serde_json::to_value(crate::handler::event::expanded(&without)).expect("a row encodes");
+    assert_eq!(
+        served.get("tool_calls"),
+        Some(&serde_json::Value::Null),
+        "not recorded is an explicit null, never an absent key"
+    );
 }

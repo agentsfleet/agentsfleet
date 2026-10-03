@@ -38,6 +38,8 @@ mod fleet_messages_input;
 mod fleet_messages_steer;
 #[path = "fleet_streams.rs"]
 mod fleet_streams;
+#[path = "fleet_tool_calls.rs"]
+mod fleet_tool_calls;
 #[path = "integration_auth_sessions.rs"]
 mod integration_auth_sessions;
 #[path = "integration_fleet_admitted.rs"]

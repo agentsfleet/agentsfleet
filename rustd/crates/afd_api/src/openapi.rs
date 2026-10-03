@@ -17,6 +17,8 @@ use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityRequirement
 use utoipa::openapi::{Content, Ref, RefOr};
 use utoipa::{OpenApi as _, ToSchema as _};
 
+mod stability;
+
 use crate::Route;
 use crate::envelope::CONTENT_TYPE_PROBLEM_JSON;
 use crate::route::{Guard, Verb};
@@ -102,6 +104,9 @@ pub fn document() -> utoipa::openapi::OpenApi {
     );
     require_the_credential_each_route_guards(&mut document);
     describe_every_refusal_as_a_problem(&mut document);
+    // A field this misses stays `stable`; `every_beta_field_is_published_beta`
+    // fails on it rather than the document carrying a silent gap.
+    let _missing = stability::declare_beta(&mut document, stability::BETA_FIELDS);
     document
 }
 
@@ -250,3 +255,49 @@ const RANGE_SERVER_ERROR: &str = "5XX";
 
 /// The `OpenAPI` catch-all response key.
 const DEFAULT_RESPONSE: &str = "default";
+
+#[cfg(test)]
+mod tests {
+    use utoipa::openapi::path::{OperationBuilder, PathItem};
+    use utoipa::openapi::{HttpMethod, OpenApi, PathsBuilder, Ref, ResponsesBuilder};
+
+    use super::{
+        describe_every_refusal_as_a_problem, is_a_refusal, require_the_credential_each_route_guards,
+    };
+
+    /// A document missing every route is left as it is, not invented into.
+    #[test]
+    fn a_route_the_document_lacks_is_left_to_the_coverage_gate() {
+        let mut empty = OpenApi::default();
+        require_the_credential_each_route_guards(&mut empty);
+        assert!(empty.paths.paths.is_empty());
+    }
+
+    /// A refusal that names a shared response describes itself, and a
+    /// success is never given a problem body.
+    #[test]
+    fn a_shared_or_successful_response_is_left_as_it_is() {
+        let responses = ResponsesBuilder::new()
+            .response("404", Ref::new("#/components/responses/Shared"))
+            .response("200", utoipa::openapi::Response::new("ok"))
+            .build();
+        let operation = OperationBuilder::new().responses(responses).build();
+        let paths = PathsBuilder::new()
+            .path("/probe", PathItem::new(HttpMethod::Get, operation))
+            .build();
+        let mut document = OpenApi::new(utoipa::openapi::Info::new("t", "1"), paths);
+        let before = serde_json::to_value(&document).ok();
+        describe_every_refusal_as_a_problem(&mut document);
+        assert_eq!(serde_json::to_value(&document).ok(), before);
+    }
+
+    #[test]
+    fn every_refusal_spelling_is_a_refusal_and_nothing_else_is() {
+        for refusal in ["4XX", "5XX", "default", "404", "503"] {
+            assert!(is_a_refusal(refusal), "{refusal}");
+        }
+        for answer in ["200", "202", "301", "2XX", "not-a-status"] {
+            assert!(!is_a_refusal(answer), "{answer}");
+        }
+    }
+}

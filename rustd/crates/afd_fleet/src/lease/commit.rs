@@ -181,6 +181,9 @@ impl Leases {
             )
             .await?
             .map(Box::new);
+        // The settling fence's records describe the run whose answer stands;
+        // a reclaimed lease's are of a run that did not, so they go with it.
+        self.drop_other_fences(&mut transaction, lease).await?;
         self.checkpoint(
             &mut transaction,
             &lease.fleet_id,

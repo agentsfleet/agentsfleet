@@ -57,11 +57,16 @@ pub(super) async fn accept_loop<A: Acceptor>(
             // Cancellation is checked against a genuinely blocked accept, not
             // between iterations — the property Dimension 7.5 exists to prove.
             //
-            // The DRAIN's token, not the supervisor's: this one only stops the
-            // loop. Breaking drops `listener`, so the port stops answering and
-            // a new connection is refused by the kernel, while the connections
+            // The DRAIN's token stops the loop on the graceful path. Breaking
+            // drops `listener`, so the port stops answering and a new
+            // connection is refused by the kernel, while the connections
             // already accepted keep running (`drain`).
             () = drain.accepting().cancelled() => break,
+            // The supervisor's token stops it too. A shutdown drains first, so
+            // on that path this arm never wins; a cancel that skipped the drain
+            // otherwise left the loop accepting until the supervisor's join
+            // timeout gave up on it, ten seconds per daemon.
+            () = abort.cancelled() => break,
             accepted = listener.accept() => accepted,
         };
 
@@ -129,3 +134,6 @@ pub async fn serve_accepts<A: Acceptor>(
 ) {
     accept_loop(listener, router, drain, abort).await;
 }
+
+#[cfg(test)]
+mod tests;

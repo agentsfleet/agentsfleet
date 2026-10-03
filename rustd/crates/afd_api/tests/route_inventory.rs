@@ -69,6 +69,8 @@ const INVENTORY: &[&str] = &[
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}",
+    // One tool call of an event, in full — the read behind "show all".
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}/tool-calls/{call_id}",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories/{key}",

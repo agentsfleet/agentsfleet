@@ -157,6 +157,9 @@ pub struct Terminal<'a> {
     pub tokens: i64,
     /// Wall-clock milliseconds the run took.
     pub wall_ms: i64,
+    /// The run's tool trace as the row stores it, call ids fenced; `None`
+    /// when the runner sent none or it was dropped.
+    pub tool_calls: Option<&'a str>,
 }
 
 #[cfg(test)]

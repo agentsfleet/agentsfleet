@@ -44,6 +44,8 @@ pub mod sql;
 pub mod store;
 #[cfg(all(test, feature = "test-util"))]
 mod test_dead;
+mod tool_detail;
+mod tool_trace;
 pub mod verdict;
 
 pub use self::activity::Target;

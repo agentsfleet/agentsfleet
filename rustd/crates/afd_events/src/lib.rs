@@ -44,8 +44,9 @@ pub use self::counters::{
 };
 pub use self::error::{Error, Result};
 pub use self::history::{
-    Cursor, DEFAULT_LIMIT, EventDetailRow, EventRow, Filter, History, MAX_LIMIT,
-    THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT, glob_to_like, next_cursor, parse_since, prefix_to_like,
+    CallAddress, Cursor, DEFAULT_LIMIT, EventDetailRow, EventRow, Filter, History, MAX_LIMIT,
+    THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT, ToolCallRow, glob_to_like, next_cursor, parse_since,
+    prefix_to_like,
 };
 pub use self::steer::{ACTOR_MACHINE, ACTOR_PREFIX, Steer, Steered, is_steer_actor, steer_actor};
 

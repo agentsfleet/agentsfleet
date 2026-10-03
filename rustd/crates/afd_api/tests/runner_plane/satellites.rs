@@ -124,3 +124,38 @@ async fn runner_activity_is_acknowledged_with_a_body() {
         "a runner pointed at either daemon reads one acknowledgement shape"
     );
 }
+
+#[tokio::test]
+async fn runner_tool_call_records_validate_and_render() {
+    use afd_wire::tool_detail::DETAIL_POST_MAX_BYTES;
+    let router = Fleet::new()
+        .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
+        .router();
+    let path = format!("/v1/runners/me/leases/{LEASE_ID}/tool-calls");
+
+    let malformed = send(&router, Method::POST, &path, Some(RUNNER_TOKEN), "{}").await;
+    assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(code_of(malformed).await, "UZ-REQ-001");
+
+    let oversized = format!(
+        r#"{{"fencing_token":7,"calls":[],"pad":"{}"}}"#,
+        "a".repeat(DETAIL_POST_MAX_BYTES)
+    );
+    let refused = send(&router, Method::POST, &path, Some(RUNNER_TOKEN), &oversized).await;
+    assert_eq!(refused.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(code_of(refused).await, "UZ-REQ-002");
+
+    let kept = send(
+        &router,
+        Method::POST,
+        &path,
+        Some(RUNNER_TOKEN),
+        r#"{"fencing_token":7,"calls":[1,2]}"#,
+    )
+    .await;
+    assert_eq!(kept.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(kept).await,
+        serde_json::json!({"stored_count": 2, "skipped_count": 0})
+    );
+}
