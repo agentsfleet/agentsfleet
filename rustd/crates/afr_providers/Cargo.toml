@@ -59,6 +59,8 @@ afd_core = { workspace = true, features = ["test-util"] }
 afr_agent.workspace = true
 # The stub plan tool the loop's catalog hosts.
 afr_tools = { workspace = true, features = ["test-util"] }
+# The mint a suite's run carries, which mints nothing.
+afr_egress = { workspace = true, features = ["test-util"] }
 # The fake provider: a real listener, so a status, a header and a streamed
 # body are proven on the socket rather than assumed by a mock.
 axum.workspace = true

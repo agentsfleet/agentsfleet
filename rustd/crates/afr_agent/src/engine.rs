@@ -9,6 +9,7 @@ use afd_wire::policy::ExecutionPolicy;
 use afd_wire::report::ExecutionResult;
 use afd_wire::tool_detail::ToolCallRecord;
 use afd_wire::tool_trace::ToolTrace;
+use afr_egress::Mint;
 use afr_executor::Executor;
 use tokio_util::sync::CancellationToken;
 
@@ -41,6 +42,8 @@ pub struct AgentRun<'run> {
     pub memory: &'run [MemoryDelta<'run>],
     /// The sandbox's executor, when the lease's tools need one.
     pub executor: Option<&'run dyn Executor>,
+    /// Mints the credentials the lease's policy names, under the held lease.
+    pub mint: &'run dyn Mint,
     /// Where activity frames go.
     pub events: &'run dyn EventSink,
     /// Cancelled when the lease ends early. The engine closes every open call

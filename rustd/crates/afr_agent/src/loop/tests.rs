@@ -11,6 +11,7 @@ use afd_wire::activity::ActivityFrame;
 use afd_wire::lease::LeasePayload;
 use afd_wire::report::ResultOutcome;
 use afd_wire::tool_trace::ToolCallStatus;
+use afr_egress::testing::CountingMint;
 use afr_providers::Message;
 use afr_tools::catalog::{HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::{Catalog, Tool};
@@ -37,6 +38,7 @@ pub(super) async fn drive(
         lease,
         memory: &[],
         executor: None,
+        mint: &CountingMint::never(),
         events: &sink,
         stop,
     };
@@ -244,10 +246,12 @@ async fn a_dropped_run_still_closes_its_open_call_once() {
     let frames = Frames::default();
     let sink = frames.sink();
     let stop = CancellationToken::new();
+    let mint = CountingMint::never();
     let run = engine.run(AgentRun {
         lease: &lease,
         memory: &[],
         executor: None,
+        mint: &mint,
         events: &sink,
         stop: &stop,
     });

@@ -12,14 +12,18 @@ pub mod error;
 #[cfg(any(test, feature = "test-util"))]
 pub mod stub;
 
+mod egress;
 mod handler;
+mod http_request;
 mod lease;
 mod memory;
 mod plan;
+mod pushover;
 mod runtime;
 mod schema;
 #[cfg(test)]
 mod testing;
+mod web_fetch;
 
 pub use self::catalog::{Catalog, Entry, Selection};
 pub use self::error::{Error, Result};

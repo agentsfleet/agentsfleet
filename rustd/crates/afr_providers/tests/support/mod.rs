@@ -21,6 +21,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use afd_wire::activity::ActivityFrame;
 use afd_wire::lease::LeasePayload;
 use afr_agent::{AgentEngine as _, AgentRun, Loop, RunOutput};
+use afr_egress::testing::CountingMint;
 use afr_providers::{Connector, ProviderSpec, Registry, Wire};
 use afr_tools::Catalog;
 use afr_tools::catalog::UPDATE_PLAN;
@@ -206,6 +207,7 @@ pub(crate) async fn run(
         lease,
         memory: &[],
         executor: None,
+        mint: &CountingMint::never(),
         events: &sink,
         stop: &stop,
     };

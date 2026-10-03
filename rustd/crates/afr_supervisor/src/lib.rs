@@ -26,12 +26,12 @@
 
 pub mod capability;
 pub mod config;
-pub mod credentials;
 pub mod error;
 
 mod activity;
 mod bundles;
 mod client;
+mod credentials;
 mod drainer;
 mod halt;
 mod heartbeat;

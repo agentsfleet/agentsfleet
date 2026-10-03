@@ -12,6 +12,29 @@ fn should_spell_each_error_code_as_the_thread_reads_it() {
         (ToolErrorCode::OutputLimitReached, "output_limit_reached"),
         (ToolErrorCode::InvalidArguments, "invalid_arguments"),
         (ToolErrorCode::MemoryFull, "memory_full"),
+        (ToolErrorCode::HttpsRequired, "https_required"),
+        (ToolErrorCode::MethodNotAllowed, "method_not_allowed"),
+        (ToolErrorCode::HostNotAllowed, "host_not_allowed"),
+        (ToolErrorCode::AddressNotAllowed, "address_not_allowed"),
+        (
+            ToolErrorCode::CredentialPlacementNotAllowed,
+            "credential_placement_not_allowed",
+        ),
+        (
+            ToolErrorCode::CredentialHostNotAllowed,
+            "credential_host_not_allowed",
+        ),
+        (ToolErrorCode::SecretNotFound, "secret_not_found"),
+        (
+            ToolErrorCode::RequestPolicyNotAllowed,
+            "request_policy_not_allowed",
+        ),
+        (
+            ToolErrorCode::CredentialMintRefused,
+            "credential_mint_refused",
+        ),
+        (ToolErrorCode::UpstreamUnreachable, "upstream_unreachable"),
+        (ToolErrorCode::UpstreamStatus, "upstream_status"),
     ];
 
     for (code, spelling) in spelled {

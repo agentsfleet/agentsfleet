@@ -6,12 +6,19 @@
 //! it; a name with no handler here refuses the lease, never a quieter tool set,
 //! the disposition `src/runner/engine/tool_bridge.zig` carries today.
 
+use std::sync::Arc;
+
+use afr_egress::Transport;
+
 use crate::error::{self, Result};
 use crate::handler::Typed;
+use crate::http_request::HttpRequest;
 use crate::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStore};
 use crate::plan::UpdatePlan;
+use crate::pushover::Pushover;
 use crate::runtime::{Runtime, Tool};
 use crate::schema::ToolSpec;
+use crate::web_fetch::WebFetch;
 
 /// One published tool: its name and the runtime it executes in.
 ///
@@ -169,10 +176,14 @@ impl Catalog {
         Self { handlers }
     }
 
-    /// A catalog hosting every handler this runner carries.
+    /// A catalog hosting every handler this runner carries, its egress tools
+    /// sending through `transport`.
     #[must_use]
-    pub fn hosted() -> Self {
+    pub fn hosted(transport: Arc<dyn Transport>) -> Self {
         Self::new(vec![
+            Typed::boxed(HttpRequest::new(Arc::clone(&transport))),
+            Typed::boxed(WebFetch::new(Arc::clone(&transport))),
+            Typed::boxed(Pushover::new(transport)),
             Typed::boxed(MemoryStore),
             Typed::boxed(MemoryRecall),
             Typed::boxed(MemoryList),
