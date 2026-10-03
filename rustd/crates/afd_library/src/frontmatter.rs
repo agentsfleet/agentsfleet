@@ -6,8 +6,9 @@ use serde::Deserialize;
 
 use crate::error::{Error, ErrorKind, InvalidBundle, Result};
 
-/// Longest skill name, the bound a fleet name holds downstream.
-const MAX_SKILL_NAME_LEN: usize = 64;
+/// Longest skill name, the bound a fleet name holds downstream. The platform
+/// catalogue is keyed by this name, so it bounds a catalogue id too.
+pub const MAX_SKILL_NAME_LEN: usize = 64;
 /// The one punctuation a skill name may carry, never at either end.
 const NAME_HYPHEN: char = '-';
 /// What a name opening or closing on a hyphen reports.
