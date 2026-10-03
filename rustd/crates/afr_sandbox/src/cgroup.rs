@@ -14,7 +14,7 @@ use crate::engine::Limits;
 use crate::error::{Result, cgroup, cgroup_left};
 
 /// The file that enables controllers for a cgroup's children.
-pub(crate) const SUBTREE_CONTROL: &str = "cgroup.subtree_control";
+pub const SUBTREE_CONTROL: &str = "cgroup.subtree_control";
 /// Writing a process identifier moves that process in.
 pub(crate) const CGROUP_PROCS: &str = "cgroup.procs";
 /// Memory a cgroup may hold before the kernel reclaims or kills.
@@ -141,7 +141,7 @@ impl LeaseCgroup {
         self.kill()?;
         // `EBUSY` is the kernel saying a process has not finished dying; every
         // other refusal is final.
-        let busy = |error: &std::io::Error| error.raw_os_error() == Some(BUSY);
+        let busy = |error: &std::io::Error| error.kind() == std::io::ErrorKind::ResourceBusy;
         (|| fs::remove_dir(&self.dir))
             .retry(
                 ConstantBuilder::default()
@@ -158,13 +158,6 @@ impl LeaseCgroup {
         fs::write(self.dir.join(file), value).map_err(cgroup(file))
     }
 }
-
-/// The errno a cgroup with live processes answers `rmdir` with.
-#[cfg(target_os = "linux")]
-const BUSY: i32 = libc::EBUSY;
-/// The same number on every other Unix this crate builds on.
-#[cfg(not(target_os = "linux"))]
-const BUSY: i32 = 16;
 
 #[cfg(test)]
 mod tests;

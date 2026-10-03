@@ -110,12 +110,11 @@ fn test_the_boot_sweep_removes_what_a_previous_run_left() {
 /// What runs in the child between fork and exec, run here where it can be read.
 #[test]
 fn test_entering_a_cgroup_writes_this_process_into_it() {
-    use std::os::fd::AsRawFd as _;
     let dir = tempfile::tempdir().unwrap();
     let procs = dir.path().join("cgroup.procs");
     let file = fs::File::create(&procs).unwrap();
 
-    super::super::parts::enter(file.as_raw_fd()).unwrap();
+    super::super::parts::enter(&file).unwrap();
 
     assert_eq!(fs::read_to_string(&procs).unwrap(), "0");
 }

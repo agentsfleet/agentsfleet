@@ -5,6 +5,7 @@ use std::ffi::OsString;
 use std::fs::{self, DirBuilder};
 use std::os::unix::fs::DirBuilderExt as _;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use afr_executor::{Client, Executor};
@@ -13,7 +14,7 @@ use rustix::fs::{Gid, Uid};
 use crate::bubblewrap::{self, Layout, SOCKET_NAME};
 use crate::cgroup::{DEFAULT_IO_BYTES_PER_SECOND, LeaseCgroup};
 use crate::engine::{Engine, LeaseName, Limits, Sandbox, SandboxRequest};
-use crate::error::{ErrorKind, Result, refused, toolbox_unexpected};
+use crate::error::{Result, not_ready, refused, toolbox_unexpected};
 use crate::host::HostTools;
 use crate::probe::{HostProbe, ProbePaths};
 use crate::toolbox::Toolbox;
@@ -46,8 +47,9 @@ const EVENT_HOST_REFUSED: &str = "sandbox_host_refused";
 pub struct BubblewrapConfig {
     /// The host programs it runs.
     pub tools: HostTools,
-    /// The mounted, verified toolbox.
-    pub toolbox: Toolbox,
+    /// The mounted, verified toolbox, shared by every clone of the
+    /// configuration and unmounted by its one owner.
+    pub toolbox: Arc<Toolbox>,
     /// The toolbox digest this runner was released with; any other is refused.
     pub toolbox_digest: String,
     /// The delegated cgroup each lease's cgroup is made under.
@@ -167,9 +169,7 @@ impl BubblewrapEngine {
             self.owner,
         )
         .await?;
-        let disk = parts.adopt_disk(disk);
-        let workspace = disk.mount_point().to_owned();
-        let device = disk.device()?;
+        let device = parts.adopt_disk(disk).device()?;
         let cgroup = parts.adopt_cgroup(LeaseCgroup::create(
             &self.config.cgroup_root,
             name.as_str(),
@@ -180,7 +180,7 @@ impl BubblewrapEngine {
         let run_dir = self.run_dir(parts.dir())?;
         let argv = bubblewrap::arguments(&Layout {
             toolbox: self.config.toolbox.root(),
-            workspace: &workspace,
+            workspace: parts.workspace(),
             run_dir: &run_dir,
             entry: &self.config.entry,
             entry_args: &self.config.entry_args,
@@ -207,9 +207,7 @@ impl BubblewrapEngine {
     async fn ready(&self, parts: &mut Parts, socket: &Path) -> Result<Client> {
         let waited = self.config.ready_timeout;
         tokio::select! {
-            client = Client::connect_within(socket, waited) => {
-                client.map_err(|_unanswered| ErrorKind::NotReady { waited }.into())
-            }
+            client = Client::connect_within(socket, waited) => client.map_err(not_ready(waited)),
             exited = parts.exited() => Err(exited),
         }
     }

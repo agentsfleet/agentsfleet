@@ -63,8 +63,13 @@ fn test_an_image_named_without_a_digest_is_refused() {
     let path = dir.path().join("rootfs.img");
     fs::write(&path, BYTES).unwrap();
 
-    ToolboxImage::verify(&path).unwrap_err();
-    ToolboxImage::verify(&dir.path().join("absent.erofs")).unwrap_err();
+    let unnamed = ToolboxImage::verify(&path).unwrap_err();
+    // Never read: a file that is not there is refused for its name, not for
+    // the read that would have failed.
+    let absent = ToolboxImage::verify(&dir.path().join("absent.erofs")).unwrap_err();
+
+    assert!(unnamed.to_string().contains("is not named"), "{unnamed}");
+    assert!(absent.to_string().contains("is not named"), "{absent}");
 }
 
 #[tokio::test]
@@ -163,7 +168,7 @@ fn test_only_a_loop_device_is_named_and_by_its_kernel_name() {
     super::loop_node(sys.path(), 7, 5).unwrap_err();
     let disk = super::loop_node(sys.path(), 8, 0).unwrap_err();
     assert!(
-        disk.to_string().contains("input/output"),
+        disk.to_string().contains("not a named loop device"),
         "a disk is never hashed: {disk}"
     );
 }
@@ -188,7 +193,7 @@ fn test_a_device_is_verified_by_its_bytes_and_a_wrong_one_is_detached() {
     // Nothing is mounted there, so the detach is refused and said so.
     assert!(
         capture
-            .only("sandbox_toolbox_mount_failed")
+            .only("sandbox_toolbox_detach_failed")
             .field("error_code")
             .is_some()
     );

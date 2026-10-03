@@ -8,8 +8,7 @@
 
 use std::collections::VecDeque;
 use std::ffi::OsString;
-use std::fs;
-use std::os::fd::{AsRawFd as _, BorrowedFd, RawFd};
+use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -20,11 +19,14 @@ use tokio::task::JoinHandle;
 use tokio_util::codec::{FramedRead, LinesCodec, LinesCodecError};
 
 use crate::cgroup::{CGROUP_PROCS, LeaseCgroup};
-use crate::error::{Error, ErrorKind, Result, cgroup};
+use crate::error::{Error, Result, cgroup, program};
+use crate::host::tail;
 use crate::workspace_disk::WorkspaceDisk;
 
 /// What a process writes to `cgroup.procs` to move itself.
 const SELF: &[u8] = b"0";
+/// The name a sandbox that exited before it served is reported under.
+const BWRAP: &str = "bwrap";
 /// The longest error-stream line kept whole.
 const LINE_MAX_BYTES: usize = 4_096;
 /// How many of the sandbox's last error-stream lines a refusal quotes.
@@ -67,6 +69,13 @@ impl Parts {
         self.dir.as_deref().unwrap_or(Path::new(""))
     }
 
+    /// Where the lease's workspace disk is mounted, once it has one.
+    pub(super) fn workspace(&self) -> &Path {
+        self.disk
+            .as_ref()
+            .map_or(Path::new(""), WorkspaceDisk::mount_point)
+    }
+
     /// Takes ownership of the lease's workspace disk.
     pub(super) fn adopt_disk(&mut self, disk: WorkspaceDisk) -> &WorkspaceDisk {
         self.disk.insert(disk)
@@ -96,7 +105,6 @@ impl Parts {
             .truncate(false)
             .open(procs)
             .map_err(cgroup(CGROUP_PROCS))?;
-        let descriptor = join.as_raw_fd();
         let mut command = Command::new(bwrap);
         command
             .args(argv)
@@ -111,13 +119,13 @@ impl Parts {
         }
         // SAFETY: the hook runs in the child between fork and exec, where only
         // async-signal-safe calls are sound. It makes one `write` system call on
-        // a descriptor opened before the fork and allocates nothing, so every
-        // process bubblewrap starts is born inside the lease's cgroup. The
-        // kernel checks the write against the opener's credentials, so it holds
-        // after the user change above.
-        unsafe { command.pre_exec(move || enter(descriptor)) };
+        // a file opened before the fork, which the hook owns, and allocates
+        // nothing, so every process bubblewrap starts is born inside the
+        // lease's cgroup. The kernel checks the write against the opener's
+        // credentials, so it holds after the user change above. The file
+        // closes with the command, after the spawn.
+        unsafe { command.pre_exec(move || enter(&join)) };
         let mut child = command.spawn()?;
-        drop(join);
         self.stderr = child
             .stderr
             .take()
@@ -137,9 +145,7 @@ impl Parts {
             .await
             .and_then(std::result::Result::ok)
             .unwrap_or_default();
-        waited.map_or_else(Error::from, |status| {
-            ErrorKind::Exited { status, reason }.into()
-        })
+        waited.map_or_else(Error::from, |status| program(BWRAP, status, reason))
     }
 
     /// Whether bubblewrap is still running.
@@ -153,16 +159,17 @@ impl Parts {
     /// directory, off the async runtime: removing a cgroup waits for the
     /// kernel to reap.
     pub(super) async fn teardown(mut self) -> Result<()> {
-        let lease_id = self.lease_id.clone();
         let event = EVENT_TEARDOWN_STARTED;
-        tracing::debug!(lease_id, event);
+        tracing::debug!(lease_id = self.lease_id.as_str(), event);
         if let Some(drain) = self.stderr.take() {
             drain.abort();
         }
-        let released = tokio::task::spawn_blocking(move || self.release())
-            .await
-            .map_err(|stopped| Error::from(std::io::Error::other(stopped)))
-            .and_then(|released| released);
+        // The lease's name comes back with the outcome, so the release is
+        // logged here, where the caller's subscriber is.
+        let (released, lease_id) = tokio::task::spawn_blocking(move || {
+            (self.release(), std::mem::take(&mut self.lease_id))
+        })
+        .await?;
         log_release(&lease_id, released.as_ref().err());
         released
     }
@@ -253,17 +260,16 @@ fn log_release(lease_id: &str, failed: Option<&Error>) {
     }
 }
 
-/// Moves the calling process into the cgroup open on `descriptor`.
-pub(super) fn enter(descriptor: RawFd) -> std::io::Result<()> {
-    // SAFETY: the descriptor was opened by the parent before the fork and is
-    // still open in this child, which owns its copy until exec.
-    let procs = unsafe { BorrowedFd::borrow_raw(descriptor) };
+/// Moves the calling process into the cgroup whose `cgroup.procs` is open as
+/// `procs`.
+pub(super) fn enter(procs: &File) -> std::io::Result<()> {
     rustix::io::write(procs, SELF)?;
     Ok(())
 }
 
 /// Logs each line the sandbox writes to its error stream and keeps the last
-/// few, for the refusal that quotes them.
+/// few, for the refusal that quotes them — cut to the same tail a host
+/// program's refusal keeps.
 ///
 /// An over-long line is skipped, not fatal: the codec discards it to its
 /// newline, the stream pauses once with `None`, and reading resumes — so the
@@ -289,5 +295,5 @@ async fn drain(stream: ChildStderr) -> String {
             Some(Err(LinesCodecError::Io(_))) | None => break,
         }
     }
-    Vec::from(last).join("\n")
+    tail(Vec::from(last).join("\n").as_bytes())
 }

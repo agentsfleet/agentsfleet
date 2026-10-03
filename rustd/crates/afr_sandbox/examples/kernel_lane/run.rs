@@ -26,11 +26,8 @@ pub(crate) fn runtime() -> tokio::runtime::Runtime {
 }
 
 /// Runs `spawn` to its end and gathers its output.
-pub(crate) async fn run(executor: &dyn Executor, spawn: Spawn) -> Result<Outcome, String> {
-    let process = executor
-        .spawn(&spawn)
-        .await
-        .map_err(|error| error.to_string())?;
+pub(crate) async fn run(executor: &dyn Executor, spawn: Spawn) -> Result<Outcome, Failed> {
+    let process = executor.spawn(&spawn).await?;
     let mut output = Vec::new();
     let gathered = tokio::time::timeout(
         COMMAND_TIMEOUT,
@@ -60,13 +57,10 @@ pub(crate) fn in_sandbox(
 ) -> Result<Outcome, Failed> {
     runtime().block_on(async {
         let engine = lane.engine();
-        let sandbox = engine
-            .prepare(SandboxRequest { lease_id, limits })
-            .await
-            .map_err(|error| error.to_string())?;
+        let sandbox = engine.prepare(SandboxRequest { lease_id, limits }).await?;
         let outcome = run(sandbox.executor(), shell(script)).await;
-        sandbox.destroy().await.map_err(|error| error.to_string())?;
-        outcome.map_err(Failed::from)
+        sandbox.destroy().await?;
+        outcome
     })
 }
 

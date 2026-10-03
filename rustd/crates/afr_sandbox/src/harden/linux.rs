@@ -17,11 +17,12 @@ const LANDLOCK_ABI: ABI = ABI::V3;
 /// The root, readable and executable everywhere.
 const ROOT: &str = "/";
 
-/// System calls a sandboxed process gets `EPERM` for. Each opens a door the
-/// namespaces leave: a second kernel interface (`io_uring`), another process's
-/// memory, a namespace of its own, kernel programs, the kernel keyring, or
-/// performance counters.
-pub(crate) const REFUSED: [libc::c_long; 12] = [
+/// System calls a sandboxed process gets `EPERM` for.
+///
+/// Each opens a door the namespaces leave: a second kernel interface
+/// (`io_uring`), another process's memory, a namespace of its own, kernel
+/// programs, the kernel keyring, or performance counters.
+pub const REFUSED: [libc::c_long; 12] = [
     libc::SYS_io_uring_setup,
     libc::SYS_io_uring_enter,
     libc::SYS_io_uring_register,
@@ -36,13 +37,15 @@ pub(crate) const REFUSED: [libc::c_long; 12] = [
     libc::SYS_perf_event_open,
 ];
 
-/// The bit an x86-64 kernel reads as "this is an x32 call". The kernel's
-/// filter sees the number with the bit set and the same architecture, so a
+/// The bit an x86-64 kernel reads as "this is an x32 call".
+///
+/// The kernel's filter sees the number with the bit set and the same
+/// architecture, so a
 /// filter keyed on numbers alone — `seccompiler`'s, and Codex's, which builds
 /// on it — is walked around by `keyctl | X32_SYSCALL_BIT` wherever x32 is
 /// enabled. No architecture numbers a real call this high, so every call that
 /// carries the bit is refused, on every architecture.
-pub(crate) const X32_SYSCALL_BIT: u32 = 0x4000_0000;
+pub const X32_SYSCALL_BIT: u32 = 0x4000_0000;
 
 /// Reads everywhere; writes only beneath [`WRITABLE`] and to [`WRITABLE_DEVICES`].
 pub(super) fn restrict_file_system() -> Result<()> {
@@ -77,23 +80,18 @@ fn ruleset() -> Result<Ruleset> {
 /// kernel runs both and the refusal wins.
 pub(super) fn refuse_system_calls() -> Result<()> {
     seccompiler::apply_filter(&program()?)?;
-    seccompiler::apply_filter(&high_numbers())?;
+    seccompiler::apply_filter(&HIGH_NUMBERS)?;
     Ok(())
 }
 
 /// The program refusing every call numbered at or past [`X32_SYSCALL_BIT`].
 ///
 /// Four classic BPF instructions, because `seccompiler` can match a call only
-/// by its exact number and has no way to say "this number or higher".
-pub(crate) fn high_numbers() -> [sock_filter; 4] {
+/// by its exact number and has no way to say "this number or higher". Built
+/// at compile time, so an opcode that did not fit is a build failure.
+pub(crate) const HIGH_NUMBERS: [sock_filter; 4] = {
     // `seccomp_data.nr`, the first field of what the program reads.
     const NUMBER_OFFSET: u32 = 0;
-    let step = |code: u32, jt: u8, jf: u8, k: u32| sock_filter {
-        code: u16::try_from(code).unwrap_or_default(),
-        jt,
-        jf,
-        k,
-    };
     let refuse = libc::SECCOMP_RET_ERRNO | libc::EPERM.unsigned_abs();
     [
         step(
@@ -112,6 +110,22 @@ pub(crate) fn high_numbers() -> [sock_filter; 4] {
         step(libc::BPF_RET | libc::BPF_K, 0, 0, refuse),
         step(libc::BPF_RET | libc::BPF_K, 0, 0, libc::SECCOMP_RET_ALLOW),
     ]
+};
+
+/// One instruction. The kernel reads an opcode as sixteen bits; one wider is
+/// refused while the program is built rather than cut to another opcode.
+const fn step(code: u32, jt: u8, jf: u8, k: u32) -> sock_filter {
+    assert!(code <= u16::MAX as u32, "a BPF opcode is sixteen bits");
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the assertion above holds the opcode to sixteen bits"
+    )]
+    sock_filter {
+        code: code as u16,
+        jt,
+        jf,
+        k,
+    }
 }
 
 /// Compiles the seccomp program for this machine's architecture.

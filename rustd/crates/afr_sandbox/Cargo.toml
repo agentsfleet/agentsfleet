@@ -31,6 +31,10 @@ hex.workspace = true
 sha2.workspace = true
 # The process status a sandbox reads before it serves.
 procfs-core.workspace = true
+# The system calls the engine makes directly: whether the probe may execute
+# bubblewrap on every platform, and on Linux the mounts, ownership and
+# process calls a sandbox is built with. The executor links it already.
+rustix.workspace = true
 thiserror.workspace = true
 # `rt-multi-thread` for `block_in_place`: a sandbox dropped without a teardown
 # releases off the worker it dropped on.
@@ -48,7 +52,6 @@ uuid.workspace = true
 # own `linux-sandbox` uses.
 landlock.workspace = true
 libc.workspace = true
-rustix.workspace = true
 seccompiler.workspace = true
 
 [dev-dependencies]

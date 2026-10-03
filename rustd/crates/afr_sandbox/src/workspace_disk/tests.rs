@@ -3,65 +3,11 @@
     reason = "a test fails loudly on a fixture it cannot write"
 )]
 
-use std::ffi::OsString;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use super::{WorkspaceDisk, absent, format_arguments, mount_arguments};
+use super::{WorkspaceDisk, absent};
 use crate::host::HostTools;
-
-fn strings(arguments: Vec<OsString>) -> Vec<String> {
-    arguments
-        .into_iter()
-        .map(|part| part.into_string().unwrap())
-        .collect()
-}
-
-/// The owner a lease's workspace disk is formatted for.
-const USER: u32 = 1000;
-/// Its group.
-const GROUP: u32 = 100;
-
-#[test]
-fn test_format_arguments_make_a_journal_free_disk_its_owner_may_write() {
-    let arguments = strings(format_arguments(
-        Path::new("/s/workspace.img"),
-        (USER, GROUP),
-    ));
-
-    assert_eq!(
-        arguments,
-        [
-            "-q",
-            "-F",
-            "-t",
-            "ext4",
-            "-m",
-            "0",
-            "-O",
-            "^has_journal",
-            "-E",
-            // pin test: literal is the contract
-            "root_owner=1000:100",
-            "/s/workspace.img",
-        ]
-    );
-}
-
-#[test]
-fn test_mount_arguments_name_type_options_source_and_target() {
-    let arguments = strings(mount_arguments(
-        "ext4",
-        "loop,nosuid,nodev",
-        Path::new("/a"),
-        Path::new("/b"),
-    ));
-
-    assert_eq!(
-        arguments,
-        ["-t", "ext4", "-o", "loop,nosuid,nodev", "/a", "/b"]
-    );
-}
 
 /// Tools that cannot run, so every build stops at a known step.
 fn broken(mke2fs: &str) -> HostTools {

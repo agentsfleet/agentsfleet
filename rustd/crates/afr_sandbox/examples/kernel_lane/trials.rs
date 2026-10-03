@@ -7,7 +7,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use afr_executor::Ending;
-use afr_sandbox::{BubblewrapEngine, Engine, Limits, ProbePaths, SandboxRequest, WarmSlots, probe};
+use afr_sandbox::{
+    BubblewrapEngine, Engine, Limits, MECHANISM_LANDLOCK as LANDLOCK, ProbePaths, SandboxRequest,
+    WarmSlots, probe,
+};
 use libtest_mimic::{Arguments, Conclusion, Failed, Trial};
 
 use crate::confinement::{landlock_denies, no_capabilities, plants_nothing, seccomp_refuses};
@@ -22,10 +25,6 @@ const SMALL_MEMORY: u64 = 256 * 1024 * 1024;
 const FEW_PIDS: u32 = 64;
 /// Starts measured each way for the start-budget trial.
 const STARTS: usize = 5;
-/// The signal the out-of-memory killer sends.
-const SIGKILL: i32 = 9;
-/// The mechanism a refusal names when Landlock is missing.
-const LANDLOCK: &str = "landlock";
 /// The disk-limit trial's lease name.
 const DISK: &str = "disk";
 /// Where a refusal trial points the engine's state.
@@ -137,7 +136,7 @@ fn runaway(lane: &Lane) -> Result<(), Failed> {
         "exec python3 -c 'b = bytearray(2 * 1024 ** 3); print(len(b))'",
     )?;
     expect(
-        hog.ending == Ending::Signaled(SIGKILL),
+        hog.ending == Ending::Signaled(libc::SIGKILL),
         format!("the hog is killed, got {:?}", hog.ending),
     )?;
     // The supervisor's own process is this one, and it is still here to build
@@ -171,9 +170,9 @@ fn shared_memory_and_cgroup_view(lane: &Lane) -> Result<(), Failed> {
 }
 
 fn unbuildable(lane: &Lane) -> Result<(), Failed> {
-    let fake = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let fake = tempfile::tempdir()?;
     let lsm = fake.path().join("lsm");
-    fs::write(&lsm, "capability,yama").map_err(|error| error.to_string())?;
+    fs::write(&lsm, "capability,yama")?;
     let mut config = lane.config.clone();
     let host = probe(&ProbePaths {
         lsm,
@@ -194,16 +193,11 @@ fn unbuildable(lane: &Lane) -> Result<(), Failed> {
 }
 
 fn reproducible(lane: &Lane) -> Result<(), Failed> {
-    let out = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let out = tempfile::tempdir()?;
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../scripts/toolbox/build.sh");
-    let built = Command::new("bash")
-        .arg(script)
-        .arg(out.path())
-        .output()
-        .map_err(|error| error.to_string())?;
+    let built = Command::new("bash").arg(script).arg(out.path()).output()?;
     let path = String::from_utf8_lossy(&built.stdout).trim().to_owned();
-    let second =
-        afr_sandbox::ToolboxImage::verify(Path::new(&path)).map_err(|error| error.to_string())?;
+    let second = afr_sandbox::ToolboxImage::verify(Path::new(&path))?;
     expect(
         second.digest() == lane.image.digest(),
         format!("{} != {}", second.digest(), lane.image.digest()),
@@ -252,10 +246,9 @@ async fn starts(engine: &dyn Engine, kind: &str) -> Result<Duration, Failed> {
                 lease_id: &lease_id,
                 limits: Limits::default(),
             })
-            .await
-            .map_err(|error| error.to_string())?;
+            .await?;
         taken.push(started.elapsed());
-        sandbox.destroy().await.map_err(|error| error.to_string())?;
+        sandbox.destroy().await?;
     }
     taken.sort();
     taken
@@ -265,7 +258,7 @@ async fn starts(engine: &dyn Engine, kind: &str) -> Result<Duration, Failed> {
 }
 
 fn refuses_to_skip(_lane: &Lane) -> Result<(), Failed> {
-    let fake = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let fake = tempfile::tempdir()?;
     let paths = ProbePaths {
         lsm: fake.path().join("absent"),
         ..ProbePaths::default()

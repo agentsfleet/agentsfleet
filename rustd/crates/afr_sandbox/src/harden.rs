@@ -107,5 +107,8 @@ pub fn capabilities_dropped(status: &str) -> Result<()> {
 #[cfg(target_os = "linux")]
 mod linux;
 
+#[cfg(target_os = "linux")]
+pub use self::linux::{REFUSED as REFUSED_SYSCALLS, X32_SYSCALL_BIT};
+
 #[cfg(test)]
 mod tests;
