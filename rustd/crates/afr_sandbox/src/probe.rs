@@ -59,7 +59,8 @@ pub enum Kvm {
 )]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostProbe {
-    /// Landlock is enabled in the running kernel.
+    /// Landlock is enabled in the running kernel, at the interface every
+    /// sandbox's ruleset needs.
     pub landlock: bool,
     /// Seccomp filtering is available.
     pub seccomp: bool,
@@ -108,12 +109,19 @@ impl Default for ProbePaths {
 /// is a mechanism the host does not have.
 #[must_use]
 pub fn probe(paths: &ProbePaths) -> HostProbe {
+    read(paths, crate::harden::landlock_enforceable())
+}
+
+/// [`probe`], told whether the kernel builds the sandbox's Landlock ruleset
+/// rather than asking it, so a test states a host it is not running on.
+pub(crate) fn read(paths: &ProbePaths, landlock_enforceable: bool) -> HostProbe {
     let text = |path: &Path| fs::read_to_string(path).unwrap_or_default();
     HostProbe {
-        landlock: text(&paths.lsm)
-            .trim()
-            .split(',')
-            .any(|module| module == MECHANISM_LANDLOCK),
+        landlock: landlock_enforceable
+            && text(&paths.lsm)
+                .trim()
+                .split(',')
+                .any(|module| module == MECHANISM_LANDLOCK),
         seccomp: text(&paths.seccomp_actions)
             .split_whitespace()
             .any(|action| action == SECCOMP_ERRNO_ACTION),

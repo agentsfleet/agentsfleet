@@ -9,6 +9,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use afd_core::clock::saturating_millis;
 use afd_core::error_code::{self, ErrorCode};
 use backon::{ExponentialBuilder, Retryable as _, Sleeper};
 
@@ -21,11 +22,13 @@ use crate::error::Result;
 /// What every warm sandbox is named, before its lease is known.
 const SLOT_PREFIX: &str = "warm-";
 /// The event every lease start is logged under, warm or cold.
-const EVENT_START: &str = "sandbox_start_ms";
+const EVENT_START: &str = "sandbox_start_completed";
 /// The event a slot that failed to start is logged under.
 const EVENT_SLOT_FAILED: &str = "sandbox_warm_slot_failed";
 /// The event a slot that failed to tear down is logged under.
 const EVENT_SLOT_LEFT: &str = "sandbox_warm_slot_left";
+/// The event a keeper that stopped abnormally is logged under.
+const EVENT_KEEPER_FAILED: &str = "sandbox_warm_keeper_failed";
 /// How a start served from a slot is labelled.
 const WARM: &str = "warm";
 /// The event a slot whose sandbox died while waiting is logged under.
@@ -42,8 +45,16 @@ const COLD: &str = "cold";
 /// A failed start: the slot's name, and why.
 type Failed = (String, crate::Error);
 
-/// A lease's request for a ready sandbox; `None` when none is ready.
-type Claim = oneshot::Sender<Option<Box<dyn Sandbox>>>;
+/// A lease's request for a ready slot; `None` when none is ready.
+type Claim = oneshot::Sender<Option<Slot>>;
+
+/// A sandbox started ahead of its lease, and the name it was started under:
+/// its cgroup and its directory carry that name, so a lease served from it
+/// logs it.
+struct Slot {
+    name: String,
+    sandbox: Box<dyn Sandbox>,
+}
 
 /// An engine that keeps `slots` sandboxes started ahead of their leases.
 #[derive(Debug)]
@@ -74,7 +85,7 @@ impl WarmSlots {
         drop(self.claims);
         if let Err(stopped) = self.keeper.await {
             let reason = stopped.to_string();
-            let event = EVENT_SLOT_LEFT;
+            let event = EVENT_KEEPER_FAILED;
             tracing::warn!(
                 error_code = DIED_CODE.as_str(),
                 reason,
@@ -84,7 +95,7 @@ impl WarmSlots {
         }
     }
 
-    async fn claim(&self) -> Option<Box<dyn Sandbox>> {
+    async fn claim(&self) -> Option<Slot> {
         let (reply, answer) = oneshot::channel();
         self.claims.send(reply).await.ok()?;
         answer.await.ok().flatten()
@@ -100,14 +111,14 @@ impl Engine for WarmSlots {
         } else {
             None
         };
-        let (sandbox, start) = match warm {
-            Some(sandbox) => (sandbox, WARM),
-            None => (self.inner.prepare(request).await?, COLD),
+        let (sandbox, start, slot) = match warm {
+            Some(Slot { name, sandbox }) => (sandbox, WARM, Some(name)),
+            None => (self.inner.prepare(request).await?, COLD, None),
         };
         let lease_id = request.lease_id;
-        let ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let duration_ms = saturating_millis(started.elapsed());
         let event = EVENT_START;
-        tracing::info!(lease_id, start, ms, event);
+        tracing::info!(lease_id, slot, start, duration_ms, event);
         Ok(sandbox)
     }
 }
@@ -131,10 +142,7 @@ async fn keep(
     }
     while let Some(reply) = requests.recv().await {
         while work.try_join_next().is_some() {}
-        let slot = live_slot(&mut waiting, &mut work);
-        if slot.is_some() {
-            refill(&mut work);
-        }
+        let slot = live_slot(&mut waiting, &mut work, refill);
         if let Err(Some(unclaimed)) = reply.send(slot) {
             // The lease stopped waiting; this slot is still unused but no
             // longer counted, so it goes the way every slot goes.
@@ -150,20 +158,25 @@ async fn keep(
     while work.join_next().await.is_some() {}
 }
 
-/// The next ready slot whose sandbox is still up. One that died while it
-/// waited is retired and replaced, never handed to a lease.
+/// The next ready slot whose sandbox is still up. Every slot taken is
+/// replaced, the one handed out and each one that died while it waited, which
+/// is retired and never handed to a lease; so the pool keeps its size.
 fn live_slot(
-    waiting: &mut mpsc::Receiver<Box<dyn Sandbox>>,
+    waiting: &mut mpsc::Receiver<Slot>,
     work: &mut JoinSet<()>,
-) -> Option<Box<dyn Sandbox>> {
+    refill: impl Fn(&mut JoinSet<()>),
+) -> Option<Slot> {
     loop {
         let mut slot = waiting.try_recv().ok()?;
-        if slot.is_running() {
+        refill(work);
+        if slot.sandbox.is_running() {
             return Some(slot);
         }
         let event = EVENT_SLOT_DIED;
+        let name = slot.name.as_str();
         tracing::warn!(
             error_code = DIED_CODE.as_str(),
+            slot = name,
             event,
             "a warm slot's sandbox died while it waited"
         );
@@ -174,20 +187,23 @@ fn live_slot(
 /// Starts one slot and offers it to the keeper, retrying a failed start with
 /// backoff for as long as the keeper runs: a host that refused one start is
 /// not thereby a host with fewer slots for good. A closed keeper retires it.
-async fn fill(inner: Arc<dyn Engine>, ready: mpsc::Sender<Box<dyn Sandbox>>, limits: Limits) {
+async fn fill(inner: Arc<dyn Engine>, ready: mpsc::Sender<Slot>, limits: Limits) {
     let attempt = || {
         let inner = Arc::clone(&inner);
         async move {
             // Named like a lease, so a slot never meets a leftover of a
             // previous run under the same name.
-            let lease_id = format!("{SLOT_PREFIX}{}", uuid::Uuid::now_v7());
-            inner
+            let name = format!("{SLOT_PREFIX}{}", uuid::Uuid::now_v7());
+            match inner
                 .prepare(SandboxRequest {
-                    lease_id: &lease_id,
+                    lease_id: &name,
                     limits,
                 })
                 .await
-                .map_err(|error| (lease_id, error))
+            {
+                Ok(sandbox) => Ok(Slot { name, sandbox }),
+                Err(error) => Err((name, error)),
+            }
         }
     };
     let started = attempt
@@ -199,12 +215,12 @@ async fn fill(inner: Arc<dyn Engine>, ready: mpsc::Sender<Box<dyn Sandbox>>, lim
         )
         .sleep(UntilClosed(ready.clone()))
         .when(|_failed: &Failed| !ready.is_closed())
-        .notify(|(lease_id, error): &Failed, delay: Duration| {
+        .notify(|(slot, error): &Failed, delay: Duration| {
             let error_code = error.code().as_str();
             let reason = error.to_string();
-            let retry_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX);
+            let retry_ms = saturating_millis(delay);
             let event = EVENT_SLOT_FAILED;
-            tracing::warn!(lease_id, error_code, reason, retry_ms, event);
+            tracing::warn!(slot, error_code, reason, retry_ms, event);
         })
         .await;
     if let Ok(sandbox) = started
@@ -216,7 +232,7 @@ async fn fill(inner: Arc<dyn Engine>, ready: mpsc::Sender<Box<dyn Sandbox>>, lim
 
 /// A retry's wait, cut short when the keeper shuts down, so shutdown never
 /// waits out a backoff.
-struct UntilClosed(mpsc::Sender<Box<dyn Sandbox>>);
+struct UntilClosed(mpsc::Sender<Slot>);
 
 impl Sleeper for UntilClosed {
     type Sleep = Pin<Box<dyn Future<Output = ()> + Send>>;
@@ -233,13 +249,14 @@ impl Sleeper for UntilClosed {
 }
 
 /// Destroys a slot no lease will use.
-async fn retire(slot: Box<dyn Sandbox>) {
-    if let Err(error) = slot.destroy().await {
+async fn retire(Slot { name, sandbox }: Slot) {
+    if let Err(error) = sandbox.destroy().await {
         let error_code = error.code().as_str();
         let reason = error.to_string();
         let event = EVENT_SLOT_LEFT;
         tracing::warn!(
             error_code,
+            slot = name,
             reason,
             event,
             "an unused warm slot failed to tear down"

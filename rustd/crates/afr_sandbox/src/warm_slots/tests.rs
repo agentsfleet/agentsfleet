@@ -76,7 +76,7 @@ async fn test_a_request_with_other_limits_starts_cold() {
 
     assert!(name_of(cold.as_ref()).contains("lease-c"));
     assert_eq!(
-        capture.only("sandbox_start_ms").field("start"),
+        capture.only("sandbox_start_completed").field("start"),
         Some("cold")
     );
     cold.destroy().await.unwrap();
@@ -192,6 +192,11 @@ async fn test_a_slot_that_died_is_never_handed_to_a_lease() {
         inner.destroyed.load(Ordering::SeqCst) >= 1,
         "the dead slot was retired"
     );
+    assert_eq!(
+        inner.started.load(Ordering::SeqCst),
+        3,
+        "the dead slot, its replacement, and the cold start"
+    );
     cold.destroy().await.unwrap();
     slots.shutdown().await;
 }
@@ -257,7 +262,7 @@ async fn test_a_keeper_that_dies_is_reported_at_shutdown() {
 
     assert!(
         capture
-            .only("sandbox_warm_slot_left")
+            .only("sandbox_warm_keeper_failed")
             .field("reason")
             .is_some_and(|reason| reason.contains("panicked"))
     );

@@ -12,10 +12,10 @@ use rustix::fs::{Gid, Uid};
 
 use crate::bubblewrap::{self, Layout, SOCKET_NAME};
 use crate::cgroup::{DEFAULT_IO_BYTES_PER_SECOND, LeaseCgroup};
-use crate::engine::{Engine, Sandbox, SandboxRequest};
+use crate::engine::{Engine, LeaseName, Limits, Sandbox, SandboxRequest};
 use crate::error::{ErrorKind, Result, refused, toolbox_unexpected};
 use crate::host::HostTools;
-use crate::probe::{ProbePaths, probe};
+use crate::probe::{HostProbe, ProbePaths};
 use crate::toolbox::Toolbox;
 use crate::workspace_disk::WorkspaceDisk;
 
@@ -46,8 +46,6 @@ const EVENT_HOST_REFUSED: &str = "sandbox_host_refused";
 pub struct BubblewrapConfig {
     /// The host programs it runs.
     pub tools: HostTools,
-    /// Where the host's capabilities are read.
-    pub probe: ProbePaths,
     /// The mounted, verified toolbox.
     pub toolbox: Toolbox,
     /// The toolbox digest this runner was released with; any other is refused.
@@ -68,6 +66,19 @@ pub struct BubblewrapConfig {
     pub ready_timeout: Duration,
 }
 
+impl BubblewrapConfig {
+    /// Where to probe the host this configuration builds on: its own launcher
+    /// and its own cgroup, so the probe checks what the engine will use.
+    #[must_use]
+    pub fn probe_paths(&self) -> ProbePaths {
+        ProbePaths {
+            bwrap: self.tools.bwrap.clone(),
+            cgroup_root: self.cgroup_root.clone(),
+            ..ProbePaths::default()
+        }
+    }
+}
+
 /// Builds one bubblewrap sandbox per lease.
 #[derive(Debug)]
 pub struct BubblewrapEngine {
@@ -80,14 +91,15 @@ pub struct BubblewrapEngine {
 }
 
 impl BubblewrapEngine {
-    /// An engine for this host, or a refusal naming what it lacks. Sweeps
-    /// what a previous run left in its state directory first.
+    /// An engine for the host `host` describes — the caller's probe of
+    /// [`BubblewrapConfig::probe_paths`] — or a refusal naming what it lacks.
+    /// Sweeps what a previous run left in its state directory first.
     ///
     /// # Errors
     /// The host lacks Landlock, seccomp, bubblewrap, the toolbox's file system
     /// or a cgroup controller, or the toolbox is not the configured one.
-    pub fn new(config: BubblewrapConfig) -> Result<Self> {
-        let checked = match probe(&config.probe).missing() {
+    pub fn new(config: BubblewrapConfig, host: &HostProbe) -> Result<Self> {
+        let checked = match host.missing() {
             Some(missing) => Err(refused(missing)),
             None if config.toolbox.digest() != config.toolbox_digest => Err(toolbox_unexpected(
                 config.toolbox.digest(),
@@ -125,13 +137,14 @@ impl BubblewrapEngine {
     }
 
     async fn start(&self, request: SandboxRequest<'_>) -> Result<Bubblewrapped> {
-        let dir = request.lease_dir(&self.config.state_dir)?;
+        let name = request.name()?;
+        let dir = name.dir_in(&self.config.state_dir);
         fs::create_dir_all(&self.config.state_dir)?;
         // Fresh, never reused: a directory already there belongs to a lease
         // this one must not inherit, and the boot sweep is what removes it.
         DirBuilder::new().mode(LEASE_DIR_MODE).create(&dir)?;
-        let mut parts = Parts::new(request.lease_id, dir);
-        match self.build(&mut parts, request).await {
+        let mut parts = Parts::new(name.as_str(), dir);
+        match self.build(&mut parts, name, request.limits).await {
             Ok(client) => Ok(Bubblewrapped { client, parts }),
             Err(error) => {
                 // Released off the runtime; what it could not remove it logs.
@@ -141,11 +154,16 @@ impl BubblewrapEngine {
         }
     }
 
-    async fn build(&self, parts: &mut Parts, request: SandboxRequest<'_>) -> Result<Client> {
+    async fn build(
+        &self,
+        parts: &mut Parts,
+        name: LeaseName<'_>,
+        limits: Limits,
+    ) -> Result<Client> {
         let disk = WorkspaceDisk::create(
             &self.config.tools,
             parts.dir(),
-            request.limits.disk_bytes,
+            limits.disk_bytes,
             self.owner,
         )
         .await?;
@@ -154,8 +172,8 @@ impl BubblewrapEngine {
         let device = disk.device()?;
         let cgroup = parts.adopt_cgroup(LeaseCgroup::create(
             &self.config.cgroup_root,
-            request.lease_id,
-            &request.limits,
+            name.as_str(),
+            &limits,
         )?);
         cgroup.limit_io(device, DEFAULT_IO_BYTES_PER_SECOND)?;
         let procs = cgroup.procs();

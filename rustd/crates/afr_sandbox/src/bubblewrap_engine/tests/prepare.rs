@@ -154,10 +154,10 @@ async fn test_a_cgroup_that_cannot_be_made_refuses_the_lease() {
 
 #[test]
 fn test_a_host_without_landlock_refuses_every_lease() {
-    let host = FakeHost::new(SLEEPER);
-    fs::write(&host.config.probe.lsm, "capability,yama").unwrap();
+    let mut host = FakeHost::new(SLEEPER);
+    host.probe.landlock = false;
 
-    let refused = BubblewrapEngine::new(host.config.clone()).unwrap_err();
+    let refused = BubblewrapEngine::new(host.config.clone(), &host.probe).unwrap_err();
 
     assert_eq!(refused.missing_mechanism(), Some("landlock"));
 }
@@ -168,7 +168,7 @@ fn test_a_toolbox_other_than_the_configured_one_is_refused() {
     host.config.toolbox_digest = "another".to_owned();
     let capture = Capture::install();
 
-    let refused = BubblewrapEngine::new(host.config.clone()).unwrap_err();
+    let refused = BubblewrapEngine::new(host.config.clone(), &host.probe).unwrap_err();
 
     assert!(
         refused.to_string().contains("configured for another"),
@@ -222,7 +222,7 @@ async fn test_warm_slots_hand_out_a_bubblewrap_sandbox_started_ahead() {
     let started = capture
         .events()
         .into_iter()
-        .find(|event| event.field("event") == Some("sandbox_start_ms"));
+        .find(|event| event.field("event") == Some("sandbox_start_completed"));
     assert_eq!(
         started
             .and_then(|event| event.field("start").map(str::to_owned))

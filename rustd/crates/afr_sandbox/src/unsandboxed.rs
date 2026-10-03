@@ -53,7 +53,7 @@ pub(crate) fn permitted(debug_build: bool) -> Result<()> {
 #[async_trait::async_trait]
 impl Engine for UnsandboxedEngine {
     async fn prepare(&self, request: SandboxRequest<'_>) -> Result<Box<dyn Sandbox>> {
-        let dir = request.lease_dir(&self.base)?;
+        let dir = request.name()?.dir_in(&self.base);
         let workspace = dir.join(WORKSPACE_DIR);
         fs::create_dir_all(&workspace)?;
         let socket = dir.join(SOCKET_NAME);

@@ -56,7 +56,7 @@ pub(crate) struct Lane {
 impl Lane {
     /// The engine every trial uses.
     pub(crate) fn engine(&self) -> BubblewrapEngine {
-        BubblewrapEngine::new(self.config.clone())
+        BubblewrapEngine::new(self.config.clone(), &probe(&self.config.probe_paths()))
             .unwrap_or_else(|refused| unreachable!("{refused}"))
     }
 
@@ -133,9 +133,9 @@ pub(crate) fn main() -> ExitCode {
     conclusion.exit_code()
 }
 
-fn build(image: &Path, probe: ProbePaths) -> Result<Lane, String> {
+fn build(image: &Path, paths: ProbePaths) -> Result<Lane, String> {
     let image = ToolboxImage::verify(image).map_err(|error| error.to_string())?;
-    let cgroup_root = probe.cgroup_root.clone();
+    let cgroup_root = paths.cgroup_root;
     let state = tempfile::Builder::new()
         .prefix(STATE_PREFIX)
         .tempdir_in("/tmp")
@@ -152,7 +152,6 @@ fn build(image: &Path, probe: ProbePaths) -> Result<Lane, String> {
     let entry = install_entry(state.path()).map_err(|error| error.to_string())?;
     let config = BubblewrapConfig {
         tools,
-        probe,
         toolbox_digest: image.digest().to_owned(),
         toolbox,
         cgroup_root,

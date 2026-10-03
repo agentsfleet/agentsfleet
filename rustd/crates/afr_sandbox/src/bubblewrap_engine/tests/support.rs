@@ -18,16 +18,13 @@ use tokio::task::JoinHandle;
 use super::super::{BubblewrapConfig, BubblewrapEngine};
 use crate::engine::{Limits, SandboxRequest};
 use crate::host::HostTools;
-use crate::probe::ProbePaths;
+use crate::probe::{HostProbe, Kvm, REQUIRED_CONTROLLERS};
 use crate::toolbox::Toolbox;
 
 /// The fake launchers, by file name.
 const SLEEPER_NAME: &str = "sleeper";
 const FAILER_NAME: &str = "failer";
 const BRIEF_NAME: &str = "brief";
-/// The fake host's security-module and seccomp-action files.
-const LSM_FILE: &str = "lsm";
-const ACTIONS_FILE: &str = "actions";
 /// One processor core, in thousandths.
 const ONE_CORE: u32 = 1_000;
 /// The digest the fake host's toolbox is known by, and is configured for.
@@ -93,6 +90,8 @@ fn scripts() -> &'static Path {
 pub(super) struct FakeHost {
     pub(super) dir: TempDir,
     pub(super) config: BubblewrapConfig,
+    /// What the host can enforce: everything, unless a test takes it away.
+    pub(super) probe: HostProbe,
 }
 
 impl FakeHost {
@@ -110,16 +109,13 @@ impl FakeHost {
             "cpu io memory pids",
         )
         .unwrap();
-        fs::write(base.join(LSM_FILE), "capability,landlock").unwrap();
-        fs::write(base.join(ACTIONS_FILE), "errno allow").unwrap();
-        fs::write(base.join("filesystems"), "\terofs\n").unwrap();
-        let probe = ProbePaths {
-            kvm: base.join("kvm"),
-            filesystems: base.join("filesystems"),
-            lsm: base.join(LSM_FILE),
-            seccomp_actions: base.join(ACTIONS_FILE),
-            cgroup_root: cgroup_root.clone(),
-            bwrap: bwrap.clone(),
+        let probe = HostProbe {
+            landlock: true,
+            seccomp: true,
+            cgroup_controllers: REQUIRED_CONTROLLERS.map(str::to_owned).to_vec(),
+            bubblewrap: true,
+            kvm: Kvm::Absent,
+            toolbox_filesystem: true,
         };
         let config = BubblewrapConfig {
             tools: HostTools {
@@ -127,7 +123,6 @@ impl FakeHost {
                 mke2fs: PathBuf::from(TRUE),
                 mount: PathBuf::from(TRUE),
             },
-            probe,
             toolbox: Toolbox::at(base.join("toolbox"), DIGEST.to_owned()),
             toolbox_digest: DIGEST.to_owned(),
             cgroup_root,
@@ -138,11 +133,11 @@ impl FakeHost {
             log_level: Some(OsString::from("debug")),
             ready_timeout: READY,
         };
-        Self { dir, config }
+        Self { dir, config, probe }
     }
 
     pub(super) fn engine(&self) -> BubblewrapEngine {
-        BubblewrapEngine::new(self.config.clone()).unwrap()
+        BubblewrapEngine::new(self.config.clone(), &self.probe).unwrap()
     }
 
     pub(super) fn lease_dir(&self, lease_id: &str) -> PathBuf {

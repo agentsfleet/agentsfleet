@@ -43,19 +43,27 @@ pub const SANDBOX_SUBCOMMAND: &str = "sandbox";
 const PROC: &str = "/proc";
 /// Where a minimal device tree is mounted.
 const DEV: &str = "/dev";
+/// Where POSIX shared memory lives: a private `tmpfs` per sandbox, which
+/// Python's `multiprocessing` and Chromium need. Its pages are charged to the
+/// lease's cgroup, so the memory limit covers it.
+pub(crate) const DEV_SHM: &str = "/dev/shm";
+/// Shared memory's mode: every user writes, and only an owner removes.
+const SHARED_MEMORY_MODE: &str = "1777";
 /// Where a private scratch file system is mounted.
 pub(crate) const SANDBOX_TMP: &str = "/tmp";
 /// Where a private runtime directory is mounted, beneath which the executor's
 /// socket directory is bound.
 const RUN: &str = "/run";
 
-/// A fresh namespace of every kind a tool call could share with the host.
-const NAMESPACES: [&str; 5] = [
+/// A fresh namespace of every kind a tool call could share with the host. The
+/// cgroup one hides the host's cgroup tree, and with it the lease's path.
+const NAMESPACES: [&str; 6] = [
     "--unshare-user",
     "--unshare-pid",
     "--unshare-ipc",
     "--unshare-uts",
     "--unshare-net",
+    "--unshare-cgroup",
 ];
 /// What the process inside may not keep or do.
 const RESTRICTIONS: [&str; 6] = [
@@ -76,6 +84,8 @@ const PROC_FLAG: &str = "--proc";
 const DEV_FLAG: &str = "--dev";
 /// Mounts an empty `tmpfs`.
 const TMPFS_FLAG: &str = "--tmpfs";
+/// Sets the mode of what the next flag creates.
+const PERMS_FLAG: &str = "--perms";
 /// Sets one environment variable.
 const SETENV_FLAG: &str = "--setenv";
 /// Sets the user the process runs as inside its namespace.
@@ -117,6 +127,12 @@ pub fn arguments(layout: &Layout<'_>) -> Vec<OsString> {
     flag(&[RO_BIND.as_ref(), layout.toolbox.as_os_str(), "/".as_ref()]);
     flag(&[PROC_FLAG.as_ref(), PROC.as_ref()]);
     flag(&[DEV_FLAG.as_ref(), DEV.as_ref()]);
+    flag(&[
+        PERMS_FLAG.as_ref(),
+        SHARED_MEMORY_MODE.as_ref(),
+        TMPFS_FLAG.as_ref(),
+        DEV_SHM.as_ref(),
+    ]);
     flag(&[TMPFS_FLAG.as_ref(), SANDBOX_TMP.as_ref()]);
     // A private `/run`, so the socket directory's mount point exists whatever
     // the image's own `/run` holds; image builders empty it.
