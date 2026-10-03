@@ -10,6 +10,11 @@ use std::time::Duration;
 use afd_core::test_util::trace::Capture;
 
 use super::super::parts::Parts;
+
+/// How long a test waits for a release handed to the blocking pool.
+const PATIENCE: Duration = Duration::from_secs(10);
+/// How often it looks.
+const POLL: Duration = Duration::from_millis(10);
 use super::support::{FakeHost, IMAGE, SLEEPER, request};
 use crate::engine::Engine;
 
@@ -40,17 +45,24 @@ fn test_dropping_parts_releases_what_they_hold() {
     assert!(!lease.exists());
 }
 
-/// On a multi-thread runtime the worker hands its other tasks on first; the
-/// release is still done when the drop returns.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_dropping_parts_on_a_worker_releases_them_before_it_returns() {
+/// On a runtime, even a single-threaded one with no sibling worker to take
+/// over, the release goes to the blocking pool rather than holding the thread
+/// that dropped the parts.
+#[tokio::test]
+async fn test_dropping_parts_on_a_runtime_releases_them_off_its_workers() {
     let dir = tempfile::tempdir().unwrap();
     let lease = dir.path().join("lease-6");
     fs::create_dir(&lease).unwrap();
 
     drop(Parts::new("lease-6", lease.clone()));
 
-    assert!(!lease.exists());
+    tokio::time::timeout(PATIENCE, async {
+        while lease.exists() {
+            tokio::time::sleep(POLL).await;
+        }
+    })
+    .await
+    .unwrap();
 }
 
 /// A start abandoned mid-way — its caller stopped waiting — is released when
@@ -68,6 +80,18 @@ async fn test_a_cancelled_start_releases_its_sandbox() {
     .await;
 
     abandoned.unwrap_err();
+    // Released on the blocking pool, logging where this test listens.
+    tokio::time::timeout(PATIENCE, async {
+        while capture
+            .events()
+            .iter()
+            .all(|event| event.field("event") != Some("sandbox_teardown_failed"))
+        {
+            tokio::time::sleep(POLL).await;
+        }
+    })
+    .await
+    .unwrap();
     assert_eq!(
         capture.only("sandbox_teardown_failed").field("lease_id"),
         Some("lease-3")
