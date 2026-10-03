@@ -10,7 +10,6 @@ use std::time::Duration;
 
 use afd_wire::lease::LeasePayload;
 use afd_wire::policy::ExecutionPolicy;
-use reqwest::redirect;
 
 use crate::error::{Result, raise};
 use crate::provider::Provider;
@@ -68,10 +67,9 @@ impl Connector {
     /// # Errors
     /// The HTTP client could not be built.
     pub fn new(registry: Registry) -> Result<Self> {
-        let client = reqwest::Client::builder()
+        let client = afr_egress::guarded(reqwest::Client::builder())
             .connect_timeout(CONNECT_TIMEOUT)
             .read_timeout(READ_TIMEOUT)
-            .redirect(redirect::Policy::none())
             .build()
             .map_err(raise::client)?;
         Ok(Self { client, registry })
