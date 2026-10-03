@@ -186,8 +186,8 @@ fn continuation_bytes_meeting_a_nearly_spent_head_are_cut_without_underflow() {
         EDGE_BYTES,
         "not text, so cut where the cap falls"
     );
-    assert!(tail.is_empty(), "a stray continuation cannot open the tail");
-    assert_eq!(omitted, 1);
+    assert_eq!(tail, b"\x80", "nothing was dropped, so nothing is trimmed");
+    assert_eq!(omitted, 0);
 }
 
 #[test]

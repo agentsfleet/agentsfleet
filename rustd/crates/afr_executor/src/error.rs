@@ -36,8 +36,8 @@ mod raise;
 mod tests;
 
 pub(crate) use self::raise::{
-    connection_lost, input_backlog_full, invalid_params, not_a_file, path_refused,
-    program_unavailable, refused, unknown_process, unresponsive,
+    connection_lost, input_backlog_full, input_closed, invalid_params, launch_incomplete,
+    not_a_file, path_refused, program_unavailable, refused, unknown_process, unresponsive,
 };
 
 afd_core::error_shell!(
@@ -52,7 +52,7 @@ pub(crate) enum ErrorKind {
     #[error("an input/output call failed")]
     Io {
         /// The operating system's reason.
-        #[from]
+        #[source]
         source: io::Error,
     },
 
@@ -80,31 +80,15 @@ pub(crate) enum ErrorKind {
     #[error("a message did not decode")]
     Malformed {
         /// The decoder's reason.
-        #[from]
+        #[source]
         source: serde_json::Error,
     },
 
-    /// Bytes on the wire were not base64.
-    #[error("bytes on the wire were not base64")]
-    Encoding {
-        /// The decoder's reason.
-        #[from]
-        source: base64::DecodeError,
-    },
-
-    /// A line could not be read or written.
-    #[error("a message frame could not be read or written")]
-    Frame {
-        /// The codec's reason.
-        #[from]
-        source: tokio_util::codec::LinesCodecError,
-    },
-
-    /// A blocking task serving a call did not finish.
-    #[error("a blocking task did not finish")]
+    /// A task the executor ran did not finish: it panicked or was cancelled.
+    #[error("a task did not finish")]
     Task {
         /// The runtime's reason.
-        #[from]
+        #[source]
         source: tokio::task::JoinError,
     },
 
@@ -125,12 +109,22 @@ pub(crate) enum ErrorKind {
     #[error("the process is not reading its input fast enough")]
     InputBacklogFull,
 
+    /// A process's input is closed: it closed it, or a write to it failed.
+    #[error("the process's input is closed")]
+    InputClosed,
+
     /// The program could not be found or started.
-    #[error("the program could not be started: {reason}")]
+    #[error("the program could not be started")]
     ProgramUnavailable {
         /// Why, as the launcher put it.
-        reason: String,
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
     },
+
+    /// A process started without a handle the executor needs to run it: a
+    /// pipe, or a process identifier it can signal.
+    #[error("the process started without a handle the executor needs")]
+    LaunchIncomplete,
 
     /// A call's parameters were well-formed but unusable.
     #[error("{detail}")]
@@ -163,10 +157,9 @@ impl Error {
         match self.kind() {
             ErrorKind::PathRefused => PATH_REFUSED_CODE,
             ErrorKind::UnknownProcess => UNKNOWN_PROCESS_CODE,
-            ErrorKind::InputBacklogFull => CALL_EXECUTION_FAILED_CODE,
+            ErrorKind::InputBacklogFull | ErrorKind::InputClosed => CALL_EXECUTION_FAILED_CODE,
             ErrorKind::InvalidParams { .. }
             | ErrorKind::Malformed { .. }
-            | ErrorKind::Encoding { .. }
             | ErrorKind::NotAFile
             | ErrorKind::ProgramUnavailable { .. } => INVALID_PARAMS_CODE,
             ErrorKind::Io { source } if is_caller_mistake(source) => INVALID_PARAMS_CODE,

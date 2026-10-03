@@ -1,8 +1,9 @@
 //! The supervisor's end of the executor socket.
 //!
 //! One link task owns the socket, the calls awaiting an answer and the sender
-//! of every open process's events; a [`Client`] reaches it through a channel
-//! and waits on a one-shot reply. When the socket closes, every waiting call
+//! of every open process's events; a [`Client`] encodes its call as a line in
+//! its own task, hands it to the link through a channel and waits on a
+//! one-shot reply. When the socket closes, every waiting call
 //! fails and every open process ends `Interrupted` — once, because the link
 //! drops each sender as it ends it.
 //!
@@ -13,6 +14,7 @@
 use std::borrow::Cow;
 use std::io;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use afd_core::clock::saturating_millis;
@@ -27,14 +29,14 @@ use tokio_util::sync::CancellationToken;
 use crate::api::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
 use crate::error::{self, Result};
 use crate::protocol::{
-    KillParams, ListParams, METHOD_KILL, METHOD_LIST_DIR, METHOD_READ_FILE, METHOD_SPAWN,
-    METHOD_WRITE, METHOD_WRITE_FILE, ReadParams, ReadResult, SpawnParams, WriteFileParams,
-    WriteParams, decode, encode,
+    KillParams, ListParams, MAX_FRAME_BYTES, METHOD_KILL, METHOD_LIST_DIR, METHOD_READ_FILE,
+    METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, ReadParams, ReadResult, SpawnParams,
+    WriteFileParams, WriteParams, decoded, request,
 };
 
 mod link;
 
-use self::link::{Call, Link, Reply};
+use self::link::{Call, CallIds, Link, Reply};
 
 /// How many calls may wait for the link to send them.
 const CALL_BACKLOG: usize = 64;
@@ -44,6 +46,12 @@ const CALL_BACKLOG: usize = 64;
 pub(crate) const CALL_DEADLINE: Duration = Duration::from_secs(30);
 /// The pause between attempts to reach a socket that is not listening yet.
 const CONNECT_RETRY_DELAY: Duration = Duration::from_millis(10);
+/// The longest line a call may be: a frame the executor reads, and its
+/// delimiter.
+const MAX_LINE_BYTES: usize = MAX_FRAME_BYTES + 1;
+/// A call too long for the executor to read, refused before it is sent: the
+/// executor would answer it by closing the connection.
+const DETAIL_TOO_LONG: &str = "the call is longer than the executor reads";
 
 /// A connection to one sandbox's executor.
 ///
@@ -51,6 +59,7 @@ const CONNECT_RETRY_DELAY: Duration = Duration::from_millis(10);
 #[derive(Debug)]
 pub struct Client {
     calls: mpsc::Sender<Call>,
+    ids: Arc<CallIds>,
     lost: CancellationToken,
     deadline: Duration,
 }
@@ -80,10 +89,12 @@ impl Client {
     /// A client over a connected `stream` whose calls wait at most `deadline`.
     pub(crate) fn over(stream: UnixStream, deadline: Duration) -> Self {
         let (calls, queue) = mpsc::channel(CALL_BACKLOG);
+        let ids = Arc::new(CallIds::default());
         let lost = CancellationToken::new();
-        tokio::spawn(Link::new(stream, queue, lost.clone()).run());
+        tokio::spawn(Link::new(stream, queue, Arc::clone(&ids), lost.clone()).run());
         Self {
             calls,
+            ids,
             lost,
             deadline,
         }
@@ -98,11 +109,15 @@ impl Client {
         params: &P,
         wrap: impl FnOnce(oneshot::Sender<Result<T>>) -> Reply,
     ) -> Result<T> {
-        let params = serde_json::value::to_raw_value(params)?;
+        let id = self.ids.next();
+        let line = request(id, method, params)?;
+        if line.len() > MAX_LINE_BYTES {
+            return Err(error::invalid_params(DETAIL_TOO_LONG));
+        }
         let (reply, answer) = oneshot::channel();
         let call = Call {
-            method,
-            params,
+            id,
+            line,
             reply: wrap(reply),
         };
         let answered = tokio::time::timeout(self.deadline, async {
@@ -127,7 +142,12 @@ impl Client {
         params: &P,
     ) -> Result<T> {
         let raw: Box<RawValue> = self.ask(method, params, Reply::Value).await?;
-        Ok(afd_core::json::object_from_slice(raw.get().as_bytes())?)
+        Ok(decoded(&raw)?)
+    }
+
+    /// A call answered with nothing but that it was done.
+    async fn order<P: Serialize>(&self, method: &'static str, params: &P) -> Result<()> {
+        self.ask(method, params, Reply::Value).await.map(drop)
     }
 }
 
@@ -156,18 +176,16 @@ impl Executor for Client {
     async fn write(&self, process: ProcessId, data: Bytes) -> Result<()> {
         let params = WriteParams {
             process_id: process.get(),
-            data: encode(&data),
+            data,
         };
-        self.ask(METHOD_WRITE, &params, Reply::Value)
-            .await
-            .map(drop)
+        self.order(METHOD_WRITE, &params).await
     }
 
     async fn kill(&self, process: ProcessId) -> Result<()> {
         let params = KillParams {
             process_id: process.get(),
         };
-        self.ask(METHOD_KILL, &params, Reply::Value).await.map(drop)
+        self.order(METHOD_KILL, &params).await
     }
 
     async fn read_file(&self, path: &str, max_bytes: u64) -> Result<FileContent> {
@@ -177,7 +195,7 @@ impl Executor for Client {
         };
         let read: ReadResult = self.fetch(METHOD_READ_FILE, &params).await?;
         Ok(FileContent {
-            data: decode(&read.content)?,
+            data: read.content,
             truncated: read.truncated,
         })
     }
@@ -185,11 +203,9 @@ impl Executor for Client {
     async fn write_file(&self, path: &str, data: Bytes) -> Result<()> {
         let params = WriteFileParams {
             path: Cow::Borrowed(path),
-            content: encode(&data),
+            content: data,
         };
-        self.ask(METHOD_WRITE_FILE, &params, Reply::Value)
-            .await
-            .map(drop)
+        self.order(METHOD_WRITE_FILE, &params).await
     }
 
     async fn list_dir(&self, path: &str) -> Result<Listing> {

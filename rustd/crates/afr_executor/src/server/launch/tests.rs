@@ -3,14 +3,25 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the runner"
 )]
 
+use std::io::{Read as _, Write};
+use std::os::unix::process::{CommandExt as _, ExitStatusExt as _};
 use std::time::Duration;
 
 use bytes::Bytes;
+use jsonrpsee_types::error::INTERNAL_ERROR_CODE;
+use rustix::process::Pid;
 use tokio::sync::mpsc;
 
-use super::terminal::{TerminalInput, Write, read_terminal};
-use super::{Input as _, leader, pump};
+use super::terminal::{KillOnDrop, read_terminal, write_terminal};
+use super::{leader, pump};
 use crate::api::Stream;
+
+/// A program that waits far longer than any test, until it is killed.
+const SLEEPER: &str = "sleep";
+/// What the sleeper is asked to wait.
+const LONG: &str = "30";
+/// The signal a kill delivers.
+const KILLED: i32 = 9;
 
 #[tokio::test]
 async fn a_pipe_reader_stops_once_no_one_takes_its_output() {
@@ -49,35 +60,36 @@ fn a_terminal_reader_stops_once_no_one_takes_its_output() {
 
 #[test]
 fn a_process_with_no_usable_pid_leads_no_group() {
+    assert_eq!(leader(None).unwrap_err().rpc_code(), INTERNAL_ERROR_CODE);
     assert_eq!(
-        leader(None).unwrap_err().kind(),
-        std::io::ErrorKind::BrokenPipe
-    );
-    assert_eq!(
-        leader(Some(u32::MAX)).unwrap_err().kind(),
-        std::io::ErrorKind::BrokenPipe,
+        leader(Some(u32::MAX)).unwrap_err().rpc_code(),
+        INTERNAL_ERROR_CODE,
         "a pid past the platform's range"
     );
     assert_eq!(leader(Some(1)).unwrap().as_raw_nonzero().get(), 1);
 }
 
-#[tokio::test]
-async fn a_terminal_whose_writer_stopped_refuses_writes() {
-    let (writes, stopped) = std::sync::mpsc::channel();
-    drop(stopped);
-    let mut input = TerminalInput(writes);
+#[test]
+fn a_terminal_writer_writes_in_order_until_its_queue_closes() {
+    let (mut read, written) = std::io::pipe().unwrap();
+    let (writes, queued) = mpsc::channel(4);
+    writes.try_send(Bytes::from_static(b"ab")).unwrap();
+    writes.try_send(Bytes::from_static(b"c")).unwrap();
+    drop(writes);
 
-    let refused = input.write(Bytes::from_static(b"x")).await.unwrap_err();
+    write_terminal(Box::new(written), queued);
 
-    assert_eq!(refused.kind(), std::io::ErrorKind::BrokenPipe);
+    let mut seen = String::new();
+    read.read_to_string(&mut seen).unwrap();
+    assert_eq!(seen, "abc");
 }
 
-#[tokio::test]
-async fn a_terminal_writer_stops_after_a_failed_write() {
+#[test]
+fn a_terminal_writer_stops_at_its_first_failed_write_and_closes_its_queue() {
     /// A terminal that refuses every write, as one with nothing on its far
     /// end does.
     struct Refusing;
-    impl std::io::Write for Refusing {
+    impl Write for Refusing {
         fn write(&mut self, _bytes: &[u8]) -> std::io::Result<usize> {
             Err(std::io::ErrorKind::BrokenPipe.into())
         }
@@ -85,28 +97,33 @@ async fn a_terminal_writer_stops_after_a_failed_write() {
             Ok(())
         }
     }
-    let mut input = TerminalInput::start(Box::new(Refusing)).unwrap();
+    let (writes, queued) = mpsc::channel(4);
+    writes.try_send(Bytes::from_static(b"x")).unwrap();
 
-    let first = input.write(Bytes::from_static(b"x")).await.unwrap_err();
-    let after = input.write(Bytes::from_static(b"y")).await.unwrap_err();
+    write_terminal(Box::new(Refusing), queued);
 
-    assert_eq!(first.kind(), std::io::ErrorKind::BrokenPipe);
-    assert_eq!(
-        after.kind(),
-        std::io::ErrorKind::BrokenPipe,
-        "the writer is gone"
-    );
+    assert!(writes.is_closed(), "later writes find the input closed");
 }
 
-#[tokio::test]
-async fn a_terminal_writer_that_drops_a_write_unanswered_refuses_it() {
-    let (writes, queued) = std::sync::mpsc::channel::<Write>();
-    // The writer takes the write and goes away without saying how it went.
-    let gone = std::thread::spawn(move || drop(queued.recv()));
-    let mut input = TerminalInput(writes);
+#[test]
+fn an_abandoned_terminal_wait_kills_the_leaders_group_and_a_finished_one_does_not() {
+    let start = || {
+        std::process::Command::new(SLEEPER)
+            .arg(LONG)
+            .process_group(0)
+            .spawn()
+            .unwrap()
+    };
+    let group =
+        |child: &std::process::Child| Pid::from_raw(i32::try_from(child.id()).unwrap()).unwrap();
+    let mut abandoned = start();
+    let mut finished = start();
 
-    let refused = input.write(Bytes::from_static(b"x")).await.unwrap_err();
+    drop(KillOnDrop(Some(group(&abandoned))));
+    KillOnDrop(Some(group(&finished))).disarm();
 
-    gone.join().unwrap();
-    assert_eq!(refused.kind(), std::io::ErrorKind::BrokenPipe);
+    assert_eq!(abandoned.wait().unwrap().signal(), Some(KILLED));
+    assert!(finished.try_wait().unwrap().is_none(), "left running");
+    finished.kill().unwrap();
+    finished.wait().unwrap();
 }

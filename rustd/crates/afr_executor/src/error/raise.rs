@@ -8,8 +8,6 @@ use super::{Error, ErrorKind};
 afd_core::error_lifts!(Error, ErrorKind:
     std::io::Error => Io,
     serde_json::Error => Malformed,
-    base64::DecodeError => Encoding,
-    tokio_util::codec::LinesCodecError => Frame,
     tokio::task::JoinError => Task,
 );
 
@@ -52,9 +50,25 @@ pub(crate) fn input_backlog_full() -> Error {
     ErrorKind::InputBacklogFull.into()
 }
 
-/// The launcher could not find or start the program.
-pub(crate) fn program_unavailable(reason: String) -> Error {
-    ErrorKind::ProgramUnavailable { reason }.into()
+/// A process's input is closed.
+pub(crate) fn input_closed() -> Error {
+    ErrorKind::InputClosed.into()
+}
+
+/// The launcher could not find or start the program, for the reason `source`
+/// gives.
+pub(crate) fn program_unavailable(
+    source: impl Into<Box<dyn std::error::Error + Send + Sync>>,
+) -> Error {
+    ErrorKind::ProgramUnavailable {
+        source: source.into(),
+    }
+    .into()
+}
+
+/// A process started without a handle the executor needs.
+pub(crate) fn launch_incomplete() -> Error {
+    ErrorKind::LaunchIncomplete.into()
 }
 
 /// Parameters that decoded but cannot be used.

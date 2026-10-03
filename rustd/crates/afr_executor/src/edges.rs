@@ -74,16 +74,21 @@ impl OutputEdges {
     /// Hands the tail to `emit` and answers how many bytes fell between the
     /// head and the tail.
     pub(crate) fn finish(mut self, emit: &mut impl FnMut(Chunk)) -> u64 {
-        // The remains of a character the cap cut may span the tail's first
-        // chunks, so they are counted across them.
-        let remains = self
-            .tail
-            .iter()
-            .flat_map(|chunk| chunk.data.iter())
-            .take(MAX_CONTINUATION)
-            .take_while(|byte| continues_a_character(**byte))
-            .count();
-        self.drop_front(remains);
+        // Only dropping bytes off the tail's front can cut a character; the
+        // head is cut on a boundary. So a tail that never dropped a byte is
+        // kept whole, which keeps binary output that merely looks like a
+        // character's remains. The remains of a cut character may span the
+        // tail's first chunks, so they are counted across them.
+        if self.omitted > 0 {
+            let remains = self
+                .tail
+                .iter()
+                .flat_map(|chunk| chunk.data.iter())
+                .take(MAX_CONTINUATION)
+                .take_while(|byte| continues_a_character(**byte))
+                .count();
+            self.drop_front(remains);
+        }
         self.tail.into_iter().for_each(emit);
         self.omitted
     }
