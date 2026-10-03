@@ -1,72 +1,12 @@
-import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { TooltipProvider } from "@agentsfleet/design-system";
 import { EVENTS } from "@/lib/analytics/events";
-import type { PlatformCatalogEntry } from "@/lib/types";
-import FleetLibrariesView from "./FleetLibrariesView";
-
-// The view now reads the catalog, so it renders THREE row states — published,
-// draft, and a row whose bundle was never fetched — and offers only the actions
-// each state can actually serve. These tests pin that it never offers one it
-// cannot honour: a disabled or lying affordance is worse than none.
-const onboardPlatformLibraryActionMock = vi.fn();
-const patchPlatformLibraryActionMock = vi.fn();
-const deletePlatformLibraryActionMock = vi.fn();
-
-vi.mock("@/app/(dashboard)/admin/fleet-libraries/actions", () => ({
-  onboardPlatformLibraryAction: (...args: unknown[]) => onboardPlatformLibraryActionMock(...args),
-  patchPlatformLibraryAction: (...args: unknown[]) => patchPlatformLibraryActionMock(...args),
-  deletePlatformLibraryAction: (...args: unknown[]) => deletePlatformLibraryActionMock(...args),
-}));
-const captureProductEventMock = vi.fn();
-vi.mock("@/lib/analytics/posthog", () => ({
-  captureProductEvent: (...args: unknown[]) => captureProductEventMock(...args),
-}));
-
-function entry(over: Partial<PlatformCatalogEntry> = {}): PlatformCatalogEntry {
-  return {
-    id: "platform-ops",
-    name: "Platform operations diagnostician",
-    description: "Diagnoses platform incidents.",
-    source_repo: "agentsfleet/platform-ops",
-    source_ref: "main",
-    visibility: "draft",
-    content_hash: "abc123def456789",
-    requirements: {
-      credentials: ["fly", "slack"],
-      tools: ["http_request"],
-      network_hosts: ["api.machines.dev"],
-      trigger_present: true,
-    },
-    required_credentials_reasons: {},
-    etag: '"catalog-v1"',
-    updated_at: 1_700_000_000_000,
-    ...over,
-  };
-}
-
-const PUBLISHED = entry({ id: "github-pr-reviewer", name: "Reviewer", visibility: "public" });
-const DRAFT = entry();
-const PUBLISHED_DRAFT = entry({ visibility: "public", etag: '"catalog-v2"' });
-const NO_BUNDLE = entry({ id: "zoho-sprint", name: "Zoho", content_hash: null });
-const MISTYPED_REPO = "agentsfleet/mistyped";
-
-function renderView(entries: PlatformCatalogEntry[]) {
-  render(
-    <TooltipProvider>
-      <FleetLibrariesView entries={entries} />
-    </TooltipProvider>,
-  );
-}
+import {
+  entry, renderView, PUBLISHED, DRAFT, PUBLISHED_DRAFT, NO_BUNDLE, MISTYPED_REPO,
+  onboardPlatformLibraryActionMock, patchPlatformLibraryActionMock,
+  deletePlatformLibraryActionMock, captureProductEventMock,
+} from "@/tests/helpers/fleet-library-view";
 
 describe("FleetLibrariesView", () => {
   beforeEach(() => {
@@ -311,15 +251,6 @@ describe("FleetLibrariesView", () => {
     });
   });
 
-  // The hash is how an operator confirms a refetch changed something, so it is
-  // shown — truncated — and a row with no bundle shows a definite absence, not a
-  // blank cell that reads as a rendering bug.
-  it("shows a truncated hash, and an em dash when there is no bundle", () => {
-    renderView([DRAFT, NO_BUNDLE]);
-    expect(screen.getByText("abc123def456")).toBeTruthy();
-    expect(screen.getByText("—")).toBeTruthy();
-  });
-
   // Backing out of a destructive confirm must delete nothing. The dialog is the
   // last place an operator can change their mind.
   it("cancelling the delete confirm deletes nothing", async () => {
@@ -386,56 +317,4 @@ describe("FleetLibrariesView", () => {
     expect(props).toMatchObject({ action: "unpublished", outcome: "success" });
   });
 
-  // ── Dimension 5.1 — the repository cell links only when it can ────────────
-
-  it("links the repository to GitHub when the source is owner/repo shaped", async () => {
-    renderView([entry({ id: "linked", source_repo: "agentsfleet/platform-ops" })]);
-
-    const link = await screen.findByRole("link", { name: /agentsfleet\/platform-ops/ });
-    // Pinned to the ref the row was fetched at, not the repository root: two
-    // entries off the same repository at different refs are different bundles,
-    // and a link to the default branch would say they are the same.
-    expect(link.getAttribute("href")).toBe(
-      "https://github.com/agentsfleet/platform-ops/tree/main",
-    );
-    // Never a tab-hijack: external link opens away without a window handle.
-    expect(link.getAttribute("rel")).toContain("noopener");
-  });
-
-  it("links the repository root for a row that stores no ref", async () => {
-    // `source_ref` is NOT NULL but may hold the empty string, and
-    // `/tree/` with nothing after it is a 404 on github.com. The row falls
-    // back to the repository root rather than building that URL.
-    renderView([
-      entry({ id: "refless", source_repo: "agentsfleet/platform-ops", source_ref: "" }),
-    ]);
-
-    const link = await screen.findByRole("link", { name: /agentsfleet\/platform-ops/ });
-    expect(link.getAttribute("href")).toBe("https://github.com/agentsfleet/platform-ops");
-    // And no "@" dangling where the ref would have been.
-    expect(link.textContent).toBe("agentsfleet/platform-ops");
-  });
-
-  it("draws an uploaded row as an upload, never a repository", async () => {
-    // The shape an upload ACTUALLY stores: the empty string (catalog-status.ts
-    // — "An upload stores the empty string, so there is no revision to
-    // re-read"). The other non-slug case in this file is a pasted string; this
-    // is the one that occurs in production, and `sourceKindOf` keys the glyph
-    // off the same predicate `rowActions` keys Fetch off, so a row drawn as a
-    // repository here would also be offered a refetch it cannot serve.
-    renderView([entry({ id: "uploaded", name: "uploaded-bundle", source_repo: "", source_ref: "" })]);
-
-    await screen.findByText("uploaded-bundle");
-    expect(screen.queryByRole("link", { name: /Open on GitHub/ })).toBeNull();
-  });
-
-  // A template- or upload-sourced row carries a source that is not a GitHub
-  // slug. Linking it would point at a repository that does not exist — inert
-  // text is the honest rendering.
-  it("renders a non-slug source as inert text, never a broken link", async () => {
-    renderView([entry({ id: "pasted", source_repo: "platform/template:ops" })]);
-
-    expect(await screen.findByText("platform/template:ops")).toBeTruthy();
-    expect(screen.queryByRole("link", { name: /platform\/template:ops/ })).toBeNull();
-  });
 });

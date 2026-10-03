@@ -75,3 +75,25 @@ fn test_the_high_number_program_refuses_at_the_x32_bit_and_allows_below() {
     assert_eq!(refuse.k, 0x0005_0000 | 1, "EPERM");
     assert_eq!(allow.k, 0x7fff_0000);
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn test_a_filter_instruction_preserves_its_opcode_jumps_and_operand() {
+    let instruction = super::linux::step(
+        std::hint::black_box(u32::from(u16::MAX)),
+        7,
+        11,
+        0x4000_0000,
+    );
+    assert_eq!(instruction.code, u16::MAX);
+    assert_eq!(instruction.jt, 7);
+    assert_eq!(instruction.jf, 11);
+    assert_eq!(instruction.k, 0x4000_0000);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[should_panic(expected = "a BPF opcode is sixteen bits")]
+fn test_a_filter_instruction_refuses_an_opcode_wider_than_sixteen_bits() {
+    super::linux::step(std::hint::black_box(u32::from(u16::MAX) + 1), 0, 0, 0);
+}

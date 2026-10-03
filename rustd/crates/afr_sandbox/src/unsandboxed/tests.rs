@@ -108,3 +108,31 @@ async fn test_an_executor_that_never_answers_refuses_the_lease_and_cleans_up() {
         "the lease's directory is removed"
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn test_destroy_aborts_a_lingering_server_and_removes_its_directory() {
+    use crate::engine::Sandbox as _;
+    let base = tempfile::Builder::new()
+        .prefix("afr")
+        .tempdir_in("/tmp")
+        .unwrap();
+    let dir = base.path().join("lingering");
+    std::fs::create_dir(&dir).unwrap();
+    let socket = dir.join(crate::bubblewrap::SOCKET_NAME);
+    let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+    let client = super::connect(&socket).await.unwrap();
+    let (_peer, _) = listener.accept().await.unwrap();
+    let server = tokio::spawn(std::future::pending());
+    let abort = server.abort_handle();
+    let sandbox = Box::new(super::Unconfined {
+        dir: dir.clone(),
+        client,
+        server,
+    });
+    let started = tokio::time::Instant::now();
+    sandbox.destroy().await.unwrap();
+    tokio::task::yield_now().await;
+    assert_eq!(started.elapsed(), super::SERVER_GRACE);
+    assert!(abort.is_finished(), "the lingering task was aborted");
+    assert!(!dir.exists(), "the lease directory was removed");
+}
