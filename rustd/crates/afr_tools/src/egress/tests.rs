@@ -58,3 +58,51 @@ fn should_answer_2xx_as_succeeded_and_anything_else_as_upstream_status() {
         );
     }
 }
+
+#[test]
+fn should_map_every_policy_refusal_to_its_code() {
+    let host = || "h".to_owned();
+    let cases = [
+        (
+            Refusal::InvalidUrl {
+                reason: url::ParseError::EmptyHost,
+            },
+            ToolErrorCode::InvalidArguments,
+        ),
+        (
+            Refusal::MethodNotAllowed {
+                method: "TRACE".to_owned(),
+            },
+            ToolErrorCode::MethodNotAllowed,
+        ),
+        (
+            Refusal::PlacementNotAllowed {
+                what: "w".to_owned(),
+            },
+            ToolErrorCode::CredentialPlacementNotAllowed,
+        ),
+        (
+            Refusal::CredentialHostNotAllowed {
+                name: "n".to_owned(),
+                host: host(),
+            },
+            ToolErrorCode::CredentialHostNotAllowed,
+        ),
+        (
+            Refusal::secret_not_found("n", "f"),
+            ToolErrorCode::SecretNotFound,
+        ),
+        (
+            Refusal::RequestPolicyNotAllowed {
+                host: host(),
+                method: "POST".to_owned(),
+                path: "/".to_owned(),
+            },
+            ToolErrorCode::RequestPolicyNotAllowed,
+        ),
+    ];
+
+    for (refusal, code) in cases {
+        assert_eq!(ToolErrorCode::from(&refusal), code, "{refusal}");
+    }
+}

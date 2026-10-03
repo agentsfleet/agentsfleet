@@ -143,3 +143,16 @@ async fn should_print_no_secret_in_its_debug_after_a_mint() {
         assert!(!printed.contains(secret), "{secret} printed in {printed}");
     }
 }
+
+#[tokio::test]
+async fn should_refuse_a_header_value_http_cannot_carry() {
+    let mut draft = post(REFS, &format!(r#"{{"ref":"refs/heads/{BRANCH}"}}"#));
+    draft.headers = vec![("X-Note".to_owned(), "line\nbreak".to_owned())];
+
+    assert_eq!(
+        prepare(draft).await.err(),
+        Some(Refusal::InvalidHeader {
+            name: "X-Note".to_owned()
+        })
+    );
+}

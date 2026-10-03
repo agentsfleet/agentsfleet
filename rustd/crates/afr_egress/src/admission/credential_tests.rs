@@ -174,3 +174,32 @@ fn should_refuse_a_host_placeholder_that_smuggles_another_host() {
         );
     }
 }
+
+#[test]
+fn should_refuse_a_secret_host_that_names_more_than_a_host() {
+    let mut policy = crate::fixture::policy(false);
+    if let Some(grafana) = policy
+        .secrets_map
+        .as_mut()
+        .and_then(|secrets| secrets.get_mut("grafana"))
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        grafana.insert("host".to_owned(), "demo-grafana.internal/smuggled".into());
+    }
+
+    let refusal = super::Admission::new(&policy)
+        .admit(draft(
+            "GET",
+            "https://${secrets.grafana.host}/api",
+            &[],
+            None,
+        ))
+        .err();
+
+    assert_eq!(
+        refusal,
+        Some(misplaced(
+            "a placeholder in the URL, or credentials in its userinfo"
+        ))
+    );
+}

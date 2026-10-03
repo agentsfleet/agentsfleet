@@ -217,3 +217,63 @@ fn should_admit_under_read_only_reads_listed_query_posts_and_rule_admitted_posts
         })
     );
 }
+
+#[test]
+fn should_refuse_a_url_that_does_not_parse() {
+    let refusal = refused(false, draft("GET", "https://[::1", &[], None));
+
+    assert!(
+        matches!(refusal, Some(Refusal::InvalidUrl { .. })),
+        "{refusal:?}"
+    );
+}
+
+#[test]
+fn should_refuse_a_placeholder_in_a_header_name() {
+    assert_eq!(
+        refused(
+            false,
+            draft(
+                "GET",
+                "https://demo-grafana.internal/",
+                &[("X-${secrets.grafana.token}", "1")],
+                None
+            )
+        ),
+        Some(misplaced(
+            "the X-${secrets.grafana.token} header as written"
+        ))
+    );
+}
+
+#[test]
+fn should_admit_a_read_under_read_only() {
+    let github = "https://api.github.com/repos/acme/widgets/pulls";
+    let elastic = "https://demo.es.example/index";
+
+    assert_eq!(
+        admit(true, draft("GET", github, &[], None)),
+        Ok(github.to_owned())
+    );
+    assert_eq!(
+        admit(true, draft("HEAD", elastic, &[], None)),
+        Ok(elastic.to_owned())
+    );
+}
+
+#[test]
+fn should_refuse_an_allowlisted_v6_literal_in_a_private_range() {
+    let mut policy = policy(false);
+    policy.network_policy.allow.push("[::1]".into());
+
+    let refusal = Admission::new(&policy)
+        .admit(draft("GET", "https://[::1]/admin", &[], None))
+        .err();
+
+    assert_eq!(
+        refusal,
+        Some(Refusal::AddressNotAllowed {
+            host: "[::1]".to_owned()
+        })
+    );
+}

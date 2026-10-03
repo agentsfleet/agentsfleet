@@ -144,3 +144,16 @@ fn should_hand_back_the_held_buffer_unmasked_when_nothing_matched() {
     assert_eq!(ready, "plain text with no secret");
     assert!(carry.held.is_empty());
 }
+
+#[test]
+fn should_print_a_held_tail_as_its_length_only() {
+    let scrub = Scrub::of([("github.token".to_owned(), "ghs_live_secret")]).unwrap();
+    let mut carry = Carry::default();
+
+    let sent = carry.push(&scrub, "ghs_li");
+
+    assert_eq!(sent, "");
+    let printed = format!("{carry:?} {scrub:?}");
+    assert!(!printed.contains("ghs_li"), "{printed}");
+    assert!(!printed.contains("ghs_live_secret"), "{printed}");
+}

@@ -101,3 +101,20 @@ async fn should_mask_every_minted_token_and_nothing_before_a_mint() {
     );
     assert_eq!(vault.mask(&echoed), "upstream echoed «secret:github.token»");
 }
+
+#[tokio::test]
+async fn should_refuse_a_minted_credentials_field_other_than_its_token() {
+    let policy = policy(false);
+    let clock = FixedClock::at(START);
+    let mint = CountingMint::answering(MINTED, HOUR, clock.clone());
+    let mut vault = Vault::new(&mint, &clock);
+
+    let filled = vault
+        .fill(Admission::new(&policy), "${secrets.github.password}")
+        .await;
+
+    assert_eq!(
+        filled.err(),
+        Some(Refusal::secret_not_found("github", "password"))
+    );
+}
