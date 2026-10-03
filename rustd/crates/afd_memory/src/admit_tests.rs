@@ -53,6 +53,24 @@ fn a_malformed_delta_is_skipped_without_spending_budget_or_ending_the_batch() {
     assert_eq!(admitted.truncated, 0);
 }
 
+/// A delta holding NUL is skipped like any malformed one, so it never reaches
+/// a statement that Postgres would fail whole on its account.
+#[test]
+fn a_delta_holding_nul_is_skipped_and_the_rest_stores() {
+    let deltas = [
+        delta("first", "a"),
+        delta("nul\0key", "b"),
+        delta("nul-content", "c\0d"),
+        delta("last", "e"),
+    ];
+
+    let admitted = admit(&deltas, false);
+
+    let kept: Vec<_> = admitted.entries.iter().map(|d| d.key.as_ref()).collect();
+    assert_eq!(kept, ["first", "last"]);
+    assert_eq!(admitted.skipped, 2);
+}
+
 /// A share from a fleet without the publish grant is counted, and the rest of
 /// the push still stores.
 #[test]
