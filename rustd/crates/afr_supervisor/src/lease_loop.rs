@@ -24,7 +24,7 @@ use afd_core::spelling::to_spelling;
 use afd_wire::lease::LeasePayload;
 use afd_wire::memory::MemoryHydrateResponse;
 use afd_wire::report::FailureClass;
-use afr_agent::AgentEngine;
+use afr_agent::{AgentEngine, Unhosted};
 use afr_sandbox::{Engine, Limits};
 use tokio::sync::Notify;
 use tokio::time::Instant;
@@ -51,6 +51,8 @@ const DETAIL_TURN: &str = "the worker pool was shutting down when the lease arri
 const DETAIL_BUNDLE: &str = "the fleet bundle could not be fetched and verified";
 const DETAIL_MEMORY: &str = "the fleet's memory could not be read";
 const DETAIL_UNHOSTED: &str = "the fleet names a tool this runner cannot host";
+const DETAIL_UNHOSTED_PROVIDER: &str =
+    "the fleet names a model provider this runner does not speak";
 const DETAIL_RENEWAL: &str = "the daemon ended the lease while it ran";
 const DETAIL_STOPPED: &str = "this runner was told to stop while the run went on";
 const EVENT_ACQUIRED: &str = "lease_acquired";
@@ -58,6 +60,7 @@ const EVENT_COMPLETED: &str = "lease_completed";
 const EVENT_FAILED: &str = "lease_failed";
 /// The Zig tool bridge's spelling, kept so its dashboards still match.
 const EVENT_UNHOSTED: &str = "tool_refused_not_hosted";
+const EVENT_UNHOSTED_PROVIDER: &str = "provider_refused_not_hosted";
 const EVENT_BUNDLE_FAILED: &str = "bundle_download_failed";
 const EVENT_HYDRATE_FAILED: &str = "memory_hydrate_failed";
 const EVENT_DRAIN_ABANDONED: &str = "activity_drain_abandoned";
@@ -257,15 +260,22 @@ impl LeaseRun<'_> {
         }
     }
 
-    /// Logs a lease whose policy names a tool the engine cannot host, and
-    /// ends it before anything was prepared for it.
+    /// Logs a lease whose policy names a tool or a model provider the
+    /// engine cannot host, and ends it before anything was prepared for it.
     fn unhosted(&self, refusal: &afr_agent::Error) -> Ending {
+        let (event, detail, name) = match refusal.unhosted() {
+            Some(Unhosted::Provider(name)) => (
+                EVENT_UNHOSTED_PROVIDER,
+                DETAIL_UNHOSTED_PROVIDER,
+                Some(name),
+            ),
+            Some(Unhosted::Tool(name)) => (EVENT_UNHOSTED, DETAIL_UNHOSTED, Some(name)),
+            None => (EVENT_UNHOSTED, DETAIL_UNHOSTED, None),
+        };
         let code = refusal.code().as_str();
         let lease_id = self.ids.lease.as_str();
-        let name = refusal.unhosted_tool();
-        let event = EVENT_UNHOSTED;
         tracing::error!(error_code = code, lease_id, name, event);
-        failed(FailureClass::StartupPosture, DETAIL_UNHOSTED)
+        failed(FailureClass::StartupPosture, detail)
     }
 
     /// Logs why a lease could not start, and ends it at startup.

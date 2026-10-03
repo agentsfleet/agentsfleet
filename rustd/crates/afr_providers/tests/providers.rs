@@ -1,0 +1,271 @@
+//! The three provider wires against a fake provider on a real socket, driven
+//! by the real loop: a tool turn each, bounded retry, the key kept to its one
+//! header, `web_search` as a hosted spec, and a stream cut before its turn
+//! ended.
+
+#![expect(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    reason = "test target: a failed precondition should fail the test loudly"
+)]
+
+mod support;
+
+use std::time::{Duration, Instant};
+
+use afd_core::test_util::trace::Capture;
+use afd_wire::report::{FailureClass, ResultOutcome};
+use afd_wire::tool_trace::ToolCallStatus;
+use afr_tools::catalog::{CALCULATOR, WEB_SEARCH};
+use serde_json::json;
+
+use self::support::wires::Wire;
+use self::support::{Fake, KEY, LEASE_ID, Reply, TOKEN, engine, lease, run};
+
+/// The answer every scripted run ends on.
+const ANSWER: &str = "It is 4.";
+/// The call id every scripted call carries.
+const CALL_ID: &str = "call-1";
+/// The wait the fake's 429 asks for, as the header spells it.
+const RETRY_AFTER: &str = "1";
+/// What a refused hosted call reads back, as the router spells it.
+const HOSTED_REFUSAL: &str = "[hosted_tool_unavailable]";
+
+#[tokio::test]
+async fn test_each_provider_drives_a_tool_turn() {
+    for wire in Wire::ALL {
+        let arguments = json!({"expression": "2+2"});
+        let mut fake = Fake::serve(vec![
+            wire.call(CALL_ID, CALCULATOR.name(), &arguments),
+            wire.answer(ANSWER),
+        ])
+        .await;
+        let provider = wire.provider(&fake);
+        let leased = lease(&provider, &[CALCULATOR.name()], "what is 2+2?");
+
+        let (output, _frames) = run(&engine(&fake), &leased).await;
+
+        assert!(
+            matches!(output.result.outcome, ResultOutcome::Completed(_)),
+            "{wire:?}: {:?}",
+            output.result.outcome
+        );
+        assert_eq!(output.result.content, ANSWER, "{wire:?}");
+        let trace = output.trace.unwrap();
+        assert_eq!(trace.calls.len(), 1, "{wire:?}");
+        assert_eq!(trace.calls[0].status, ToolCallStatus::Succeeded, "{wire:?}");
+        let seen = fake.seen();
+        assert_eq!(seen.len(), 2, "{wire:?}: one request per turn");
+        assert!(
+            seen.iter().all(|request| request.path == wire.path()),
+            "{wire:?}"
+        );
+        assert_eq!(
+            wire.results(&seen[1].body),
+            [CALCULATOR.name()],
+            "{wire:?}: the call's result goes back in the wire's own shape"
+        );
+        assert_eq!(output.result.input_tokens, 20, "{wire:?}: two turns of 10");
+    }
+}
+
+#[tokio::test]
+async fn test_provider_retry_honours_retry_after() {
+    let capture = Capture::install();
+    let wire = Wire::Messages;
+    let mut fake = Fake::serve(vec![
+        Reply::Status {
+            status: 429,
+            retry_after: Some(RETRY_AFTER),
+        },
+        wire.answer(ANSWER),
+    ])
+    .await;
+    let leased = lease(&wire.provider(&fake), &[], "hello");
+    let started = Instant::now();
+
+    let (output, _frames) = run(&engine(&fake), &leased).await;
+
+    let asked = Duration::from_secs(RETRY_AFTER.parse().unwrap());
+    assert!(started.elapsed() >= asked, "the wait was honoured");
+    assert_eq!(output.result.content, ANSWER);
+    assert_eq!(fake.seen().len(), 2);
+    let retried = capture.only("provider_retry");
+    assert_eq!(retried.level, tracing::Level::WARN);
+    assert_eq!(retried.field("status"), Some("429"));
+    assert_eq!(retried.field("attempt"), Some("1"));
+    let asked_ms = asked.as_millis().to_string();
+    assert_eq!(retried.field("wait_ms"), Some(asked_ms.as_str()));
+    assert_eq!(retried.field("lease_id"), Some(LEASE_ID));
+    assert_eq!(retried.field("provider"), Some("anthropic"));
+}
+
+#[tokio::test]
+async fn a_refusal_ends_the_run_on_its_first_answer_naming_the_status() {
+    let mut fake = Fake::serve(vec![Reply::Status {
+        status: 401,
+        retry_after: None,
+    }])
+    .await;
+    let leased = lease(&Wire::Responses.provider(&fake), &[], "hello");
+
+    let (output, _frames) = run(&engine(&fake), &leased).await;
+
+    let ResultOutcome::Failed(failure) = output.result.outcome else {
+        panic!("a refused turn fails the run");
+    };
+    assert_eq!(failure.class, None, "the fleet's error carries no reason");
+    assert!(failure.detail.contains("401"), "{}", failure.detail);
+    assert_eq!(fake.seen().len(), 1, "a 4xx is never retried");
+}
+
+#[tokio::test]
+async fn a_fault_is_retried_three_sends_and_then_ends_naming_its_status() {
+    let fault = Reply::Status {
+        status: 503,
+        retry_after: Some("0"),
+    };
+    let mut fake = Fake::serve(vec![fault.clone(), fault.clone(), fault]).await;
+    let leased = lease(&Wire::Chat.provider(&fake), &[], "hello");
+
+    let (output, _frames) = run(&engine(&fake), &leased).await;
+
+    let ResultOutcome::Failed(failure) = output.result.outcome else {
+        panic!("an unanswered turn fails the run");
+    };
+    assert!(failure.detail.contains("503"), "{}", failure.detail);
+    assert_eq!(fake.seen().len(), 3, "the ceiling is three sends");
+}
+
+#[tokio::test]
+async fn test_api_key_never_leaves_the_supervisor() {
+    for wire in Wire::ALL {
+        let capture = Capture::install();
+        let echoed = json!({"expression": KEY, "token": TOKEN});
+        let mut fake = Fake::serve(vec![
+            wire.call(CALL_ID, CALCULATOR.name(), &echoed),
+            wire.answer(&format!("the key was {KEY}")),
+        ])
+        .await;
+        let leased = lease(
+            &wire.provider(&fake),
+            &[CALCULATOR.name()],
+            &format!("use {TOKEN}"),
+        );
+
+        let (output, frames) = run(&engine(&fake), &leased).await;
+
+        let seen = fake.seen();
+        assert!(
+            seen.iter()
+                .all(|request| wire.carries_key(&request.headers, KEY)),
+            "{wire:?}"
+        );
+        for request in &seen {
+            let mut elsewhere = request
+                .headers
+                .iter()
+                .filter(|(name, _)| !matches!(name.as_str(), "x-api-key" | "authorization"));
+            assert!(
+                elsewhere.all(|(_, value)| !value.to_str().unwrap().contains(KEY)),
+                "{wire:?}: the key rides one header"
+            );
+            let prompt = request.body.to_string();
+            assert!(
+                !prompt.contains(KEY) && !prompt.contains(TOKEN),
+                "{wire:?}: {prompt}"
+            );
+        }
+        let rendered = format!("{frames:?}{output:?}");
+        assert!(
+            !rendered.contains(KEY) && !rendered.contains(TOKEN),
+            "{wire:?}: {rendered}"
+        );
+        let logged = format!("{:?}", capture.events());
+        assert!(
+            !logged.contains(KEY) && !logged.contains(TOKEN),
+            "{wire:?}: {logged}"
+        );
+        assert!(
+            output.result.content.contains("«secret:llm.api_key»"),
+            "{wire:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_web_search_is_a_hosted_spec() {
+    for wire in [Wire::Messages, Wire::Responses] {
+        let mut fake = Fake::serve(vec![wire.answer(ANSWER)]).await;
+        let leased = lease(&wire.provider(&fake), &[WEB_SEARCH.name()], "search");
+
+        let (output, _frames) = run(&engine(&fake), &leased).await;
+
+        assert_eq!(output.result.content, ANSWER, "{wire:?}");
+        let offered = wire.offered(&fake.seen()[0].body);
+        let spec = offered
+            .iter()
+            .find(|tool| tool.starts_with(WEB_SEARCH.name()));
+        assert!(spec.is_some(), "{wire:?}: {offered:?}");
+    }
+    let wire = Wire::Chat;
+    let mut fake = Fake::serve(vec![
+        wire.call(CALL_ID, WEB_SEARCH.name(), &json!({"query": "x"})),
+        wire.answer(ANSWER),
+    ])
+    .await;
+    let leased = lease(&wire.provider(&fake), &[WEB_SEARCH.name()], "search");
+
+    let (output, _frames) = run(&engine(&fake), &leased).await;
+
+    let seen = fake.seen();
+    assert!(
+        wire.offered(&seen[0].body).is_empty(),
+        "chat has no hosted spec"
+    );
+    let refused = wire.results(&seen[1].body);
+    assert!(refused[0].starts_with(HOSTED_REFUSAL), "{refused:?}");
+    assert_eq!(
+        output.trace.unwrap().calls[0].status,
+        ToolCallStatus::Failed
+    );
+}
+
+#[tokio::test]
+async fn a_stream_cut_before_its_turn_ended_is_a_lost_connection() {
+    for wire in Wire::ALL {
+        let Reply::Stream(mut events) = wire.answer(ANSWER) else {
+            panic!("an answer streams");
+        };
+        events.truncate(1);
+        let fake = Fake::serve(vec![Reply::Stream(events)]).await;
+        let leased = lease(&wire.provider(&fake), &[], "hello");
+
+        let (output, _frames) = run(&engine(&fake), &leased).await;
+
+        let ResultOutcome::Failed(failure) = output.result.outcome else {
+            panic!("{wire:?}: a cut turn is no answer");
+        };
+        assert_eq!(failure.class, Some(FailureClass::TransportLoss), "{wire:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_provider_error_mid_stream_ends_the_turn_as_a_transport_loss() {
+    let error = "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"busy\"}}\n\n";
+    let fake = Fake::serve(vec![Reply::Stream(vec![error.to_owned()])]).await;
+    let leased = lease(&Wire::Messages.provider(&fake), &[], "hello");
+
+    let (output, _frames) = run(&engine(&fake), &leased).await;
+
+    let ResultOutcome::Failed(failure) = output.result.outcome else {
+        panic!("an ended turn is no answer");
+    };
+    assert_eq!(failure.class, Some(FailureClass::TransportLoss));
+    assert!(
+        failure.detail.ends_with("overloaded_error"),
+        "{}",
+        failure.detail
+    );
+}

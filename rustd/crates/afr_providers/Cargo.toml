@@ -22,8 +22,41 @@ afd_core.workspace = true
 afd_wire.workspace = true
 # The tool specs a turn offers, and the provider-hosted tools.
 afr_tools.workspace = true
+# The bounded retry of a turn's send, the crate the supervisor's daemon calls
+# retry through.
+backon.workspace = true
+# A turn's request body, shared by every retry without a copy.
+bytes.workspace = true
+# The Server-Sent Events framing each wire streams its turn in.
+eventsource-stream.workspace = true
 # A turn streams as a `futures` stream of chunks.
 futures-util.workspace = true
+# `Retry-After` in its HTTP-date form.
+httpdate.workspace = true
+# The one HTTP client every wire posts through, its key in a header.
+reqwest.workspace = true
+# Each wire's request body and streamed events, narrowed at the parse.
+serde.workspace = true
 # A tool call's arguments.
 serde_json.workspace = true
 thiserror.workspace = true
+# The retry log line.
+tracing.workspace = true
+
+[dev-dependencies]
+# The log capture the retry and key suites read their lines through.
+afd_core = { workspace = true, features = ["test-util"] }
+# The real loop drives each wire in `tests/`, so a turn is proven end to end:
+# frames, trace, records and report included. A dev-dependency on a crate that
+# depends on this one links the same library into the integration tests.
+afr_agent.workspace = true
+# The stub calculator the loop's catalog hosts.
+afr_tools = { workspace = true, features = ["test-util"] }
+# The fake provider: a real listener, so a status, a header and a streamed
+# body are proven on the socket rather than assumed by a mock.
+axum.workspace = true
+# The connect-refused send the retry suite classifies, and the fake provider
+# servers the wire suites stream from.
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "net", "time", "sync"] }
+# The stop every driven run is given.
+tokio-util.workspace = true

@@ -30,6 +30,6 @@ mod trace;
 mod turn;
 
 pub use self::engine::{AgentEngine, AgentRun, EventSink, Needs, RunOutput};
-pub use self::error::{Error, Result};
-pub use self::harness::{Connect, Loop};
+pub use self::error::{Error, Result, Unhosted};
+pub use self::harness::Loop;
 pub use self::router::Router;

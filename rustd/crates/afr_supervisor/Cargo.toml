@@ -54,6 +54,9 @@ tracing.workspace = true
 futures-util.workspace = true
 
 [dev-dependencies]
+# The production connector the fake agent admits through, so a lease naming a
+# provider no wire speaks is refused by the real check.
+afr_providers.workspace = true
 # Stub handlers, so the lease suites admit through a real catalog: a
 # sandbox-side tool starts a sandbox, a supervisor-side one does not.
 afr_tools = { workspace = true, features = ["test-util"] }

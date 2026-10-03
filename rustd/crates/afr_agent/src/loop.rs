@@ -4,12 +4,11 @@
 //! The [`Ledger`] keeps what each call did; this module runs the turns.
 //! `docs/architecture/runner_execution.md` §"Tool catalog" is the design.
 
-use std::fmt;
 use std::time::Instant;
 
 use afd_wire::policy::ExecutionPolicy;
 use afd_wire::report::{Completed, ExecutionResult, Failure, ResultOutcome};
-use afr_providers::{Call, Message, Provider, Request, Usage};
+use afr_providers::{Call, Connect, Message, Provider, Request, Usage};
 use afr_tools::{Catalog, Selection, ToolSpec};
 use tokio_util::sync::CancellationToken;
 
@@ -28,27 +27,18 @@ const DETAIL_STOPPED: &str = "the run was stopped before it finished";
 const EVENT_CAP_REACHED: &str = "context_cap_reached";
 const EVENT_PROVIDER_FAILED: &str = "provider_turn_failed";
 
-/// Builds the provider a lease's policy names.
-pub type Connect =
-    dyn Fn(&ExecutionPolicy<'_>) -> afr_providers::Result<Box<dyn Provider>> + Send + Sync;
-
 /// The agent engine that runs the model against the lease's tools.
+#[derive(Debug)]
 pub struct Loop {
     catalog: Catalog,
-    connect: Box<Connect>,
+    connect: Box<dyn Connect>,
 }
 
 impl Loop {
     /// A loop hosting `catalog`'s handlers and reaching models through
     /// `connect`.
     #[must_use]
-    pub fn new(
-        catalog: Catalog,
-        connect: impl Fn(&ExecutionPolicy<'_>) -> afr_providers::Result<Box<dyn Provider>>
-        + Send
-        + Sync
-        + 'static,
-    ) -> Self {
+    pub fn new(catalog: Catalog, connect: impl Connect + 'static) -> Self {
         Self {
             catalog,
             connect: Box::new(connect),
@@ -56,17 +46,10 @@ impl Loop {
     }
 }
 
-impl fmt::Debug for Loop {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Loop")
-            .field("catalog", &self.catalog)
-            .finish_non_exhaustive()
-    }
-}
-
 #[async_trait::async_trait]
 impl AgentEngine for Loop {
     fn admit(&self, policy: &ExecutionPolicy<'_>) -> Result<Needs> {
+        self.connect.admit(policy)?;
         let sandbox = self.catalog.select(&policy.tools)?.needs_sandbox();
         Ok(Needs { sandbox })
     }
@@ -74,7 +57,7 @@ impl AgentEngine for Loop {
     async fn run(&self, run: AgentRun<'_>) -> Result<RunOutput> {
         let policy = &run.lease.policy;
         let selection = self.catalog.select(&policy.tools)?;
-        let provider = (self.connect)(policy)?;
+        let provider = self.connect.connect(run.lease)?;
         let scrub = Scrub::new(policy)?;
         let harness = Harness::new(&run, &selection, &scrub);
         Ok(harness.drive(provider.as_ref()).await)
@@ -122,8 +105,8 @@ impl<'run> Harness<'run> {
             live: Live::new(run.events, scrub, started),
             ledger: Ledger::new(run.events, scrub),
             budget: Budget::new(&policy.context),
-            instructions: prompt.instructions,
-            messages: vec![Message::User(prompt.message)],
+            instructions: scrub.clean(prompt.instructions).into_inner(),
+            messages: vec![Message::User(scrub.clean(prompt.message).into_inner())],
             usage: Usage::default(),
             started,
         }
@@ -161,10 +144,8 @@ impl<'run> Harness<'run> {
                     None => break,
                 }
             }
-            self.messages.push(Message::Assistant {
-                text: turn.text,
-                calls: turn.calls,
-            });
+            let said = self.remembered(turn.text, turn.calls);
+            self.messages.push(said);
             self.messages.extend(results);
             if self.stop.is_cancelled() {
                 break Ending::Stopped;
@@ -176,6 +157,23 @@ impl<'run> Harness<'run> {
             }
         };
         self.finish(ending)
+    }
+
+    /// What the model said and called, as the conversation keeps it: scrubbed,
+    /// so no secret value is ever sent to the model, whoever wrote it. The
+    /// router ran each call with the arguments as the model wrote them.
+    fn remembered(&self, text: String, calls: Vec<Call>) -> Message {
+        let calls = calls
+            .into_iter()
+            .map(|call| Call {
+                arguments: self.scrub.clean_json(call.arguments).into_inner(),
+                ..call
+            })
+            .collect();
+        Message::Assistant {
+            text: self.scrub.clean(text).into_inner(),
+            calls,
+        }
     }
 
     /// Runs one call to its end; `None` when the lease stopped it.

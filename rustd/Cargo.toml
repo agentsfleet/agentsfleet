@@ -406,6 +406,17 @@ moka = { version = "0.12.16", default-features = false, features = ["future"] }
 # carry our own encoder.
 reqwest = { version = "0.13.4", default-features = false, features = ["form", "rustls", "stream"] }
 
+# The model providers' Server-Sent Events framing: `data:` lines joined, `event:`
+# names, comments and retry fields, over reqwest's byte stream. Codex
+# (`codex-rs/core`) and IronClaw (`ironclaw_llm`) pin the same crate for the same
+# job, so the runner's provider wires read a stream the way those harnesses do
+# rather than through a line splitter of our own (RULE PSR).
+eventsource-stream = { version = "0.2.3", default-features = false, features = ["std"] }
+
+# A provider's `Retry-After` in its HTTP-date form (RFC 9110, `Retry-After`). Already in
+# the lock through hyper, which parses the same header family with it.
+httpdate = { version = "1.0.3", default-features = false }
+
 # Postgres. sqlx is the DRIVER here and nothing more: `migrate` and `macros` are
 # both off, because this workspace runs the Zig daemon's own ledger
 # (`audit.schema_migrations`, versions equal to the schema slot numbers, one
