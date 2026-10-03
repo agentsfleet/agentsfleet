@@ -16,11 +16,13 @@ mod http;
 mod openai_chat;
 mod openai_responses;
 mod provider;
+mod registry;
 mod retry;
 mod sse;
 #[cfg(test)]
 mod test_support;
 
-pub use self::connect::{Connect, Connector, Endpoints};
+pub use self::connect::{Connect, Connector};
 pub use self::error::{Error, Result};
 pub use self::provider::{Call, Chunk, Message, Provider, Request, Usage};
+pub use self::registry::{ProviderSpec, Registry, Wire};

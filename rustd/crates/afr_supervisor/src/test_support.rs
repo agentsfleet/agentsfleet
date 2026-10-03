@@ -22,7 +22,7 @@ use afd_wire::tool_detail::ToolCallRecord;
 use afd_wire::tool_trace::{ToolCallStatus, ToolTrace, ToolTraceCall};
 use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_executor::{Executor, ProcessId, Spawn};
-use afr_providers::{Connect as _, Connector, Endpoints};
+use afr_providers::{Connect as _, Connector, Registry};
 use afr_tools::Catalog;
 use afr_tools::catalog::{CALCULATOR, FILE_READ, HTTP_REQUEST};
 use afr_tools::stub::Stub;
@@ -191,7 +191,7 @@ impl FakeAgent {
                 Stub::boxed(&CALCULATOR),
                 Stub::boxed(&HTTP_REQUEST),
             ]),
-            connect: Connector::new(Endpoints::default()).unwrap(),
+            connect: Connector::new(Registry::builtin().unwrap()).unwrap(),
         }
     }
 }

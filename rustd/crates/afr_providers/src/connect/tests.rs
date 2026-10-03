@@ -4,19 +4,12 @@
 )]
 
 use afd_wire::lease::LeasePayload;
-use afd_wire::policy::CUSTOM_PROVIDER_PREFIX;
-use reqwest::Url;
 
-use super::{ANTHROPIC, ANTHROPIC_BASE, Connect as _, Connector, Endpoints, OPENAI, Wire};
+use super::{Connect as _, Connector};
+use crate::registry::Registry;
 
-/// A self-hosted endpoint a `custom:` provider names.
-const CUSTOM_BASE: &str = "https://vllm.corp/v1";
 /// A key no rendering may show.
 const KEY: &str = "sk-never-printed";
-
-fn custom() -> String {
-    format!("{CUSTOM_PROVIDER_PREFIX}{CUSTOM_BASE}")
-}
 
 /// A lease naming `provider`, with [`KEY`].
 fn lease(provider: &str) -> LeasePayload<'static> {
@@ -36,54 +29,35 @@ fn lease(provider: &str) -> LeasePayload<'static> {
     serde_json::from_str(text).unwrap()
 }
 
-#[test]
-fn should_pick_each_wire_by_its_provider_name() {
-    assert_eq!(Wire::of(ANTHROPIC).unwrap(), Wire::Messages);
-    assert_eq!(Wire::of(OPENAI).unwrap(), Wire::Responses);
-    assert_eq!(
-        Wire::of(&custom()).unwrap(),
-        Wire::Chat(Url::parse(CUSTOM_BASE).unwrap())
-    );
-}
-
-#[test]
-fn should_refuse_a_name_no_wire_speaks_and_a_custom_url_that_does_not_parse() {
-    let named = Wire::of("groq").unwrap_err();
-    let unparsed = Wire::of(&format!("{CUSTOM_PROVIDER_PREFIX}not a url")).unwrap_err();
-
-    assert_eq!(named.unhosted_provider(), Some("groq"));
-    assert!(unparsed.unhosted_provider().is_some());
-    assert!(
-        Wire::of("Anthropic").is_err(),
-        "the daemon sends the lower-case name"
-    );
+fn connector() -> Connector {
+    Connector::new(Registry::builtin().unwrap()).unwrap()
 }
 
 #[test]
 fn should_admit_what_it_can_connect_and_nothing_else() {
-    let connector = Connector::new(Endpoints::default()).unwrap();
+    let connector = connector();
 
-    connector.admit(&lease(ANTHROPIC).policy).unwrap();
-    connector.admit(&lease(&custom()).policy).unwrap();
-    let refused = connector.admit(&lease("groq").policy).unwrap_err();
-    let unconnected = connector.connect(&lease("groq")).unwrap_err();
-    assert_eq!(refused.unhosted_provider(), Some("groq"));
-    assert_eq!(unconnected.unhosted_provider(), Some("groq"));
+    connector.admit(&lease("anthropic").policy).unwrap();
+    connector.admit(&lease("groq").policy).unwrap();
+    let refused = connector.admit(&lease("bedrock").policy).unwrap_err();
+    let unconnected = connector.connect(&lease("bedrock")).unwrap_err();
+    assert_eq!(refused.unhosted_provider(), Some("bedrock"));
+    assert_eq!(unconnected.unhosted_provider(), Some("bedrock"));
 }
 
 #[test]
 fn should_dial_each_wire_under_its_base_and_never_print_the_key() {
-    let connector = Connector::new(Endpoints::default()).unwrap();
+    let connector = connector();
 
-    let messages = format!("{:?}", connector.connect(&lease(ANTHROPIC)).unwrap());
-    let chat = format!("{:?}", connector.connect(&lease(&custom())).unwrap());
+    let messages = format!("{:?}", connector.connect(&lease("anthropic")).unwrap());
+    let chat = format!("{:?}", connector.connect(&lease("groq")).unwrap());
 
     assert!(
-        messages.contains(&format!("{ANTHROPIC_BASE}/v1/messages")),
+        messages.contains("https://api.anthropic.com/v1/messages"),
         "{messages}"
     );
     assert!(
-        chat.contains("https://vllm.corp/v1/chat/completions"),
+        chat.contains("https://api.groq.com/openai/v1/chat/completions"),
         "{chat}"
     );
     assert!(!messages.contains(KEY) && !chat.contains(KEY));
