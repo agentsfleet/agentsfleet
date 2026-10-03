@@ -30,7 +30,7 @@ mod render;
 pub use self::input::{
     DETAIL_INVALID_CURSOR, DETAIL_INVALID_LIMIT, DETAIL_INVALID_NAME, DETAIL_MALFORMED_QUERY,
 };
-use self::input::{decoded, parse_cursor, parse_limit, parse_name};
+use self::input::{decoded, parse_cursor, parse_name, requested_limit};
 use self::render::{created_response, page_response};
 
 /// The scoped events each verb's failures are logged under.
@@ -93,7 +93,7 @@ pub(crate) async fn list<D: Services>(
 ) -> Result<Response, Refusal> {
     let person = identity.person();
     let query = query.unwrap_or_default();
-    let limit = parse_limit(decoded(&query, QUERY_LIMIT)?)?;
+    let limit = requested_limit(decoded(&query, QUERY_LIMIT)?.as_deref())?;
     let after = parse_cursor(decoded(&query, QUERY_STARTING_AFTER)?)?;
     let filter = parse_name(decoded(&query, QUERY_NAME)?)?;
 

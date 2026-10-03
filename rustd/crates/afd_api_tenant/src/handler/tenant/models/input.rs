@@ -1,5 +1,6 @@
-//! Reading `GET /v1/models`'s query string: the bounds, the normalized
-//! filter, and the cursor with its two distinct refusals.
+//! Reading `GET /v1/models`'s query string: the normalized filter and the
+//! cursor with its two distinct refusals. The page size is the library
+//! family's, read through [`crate::handler::paging`].
 //!
 //! Split from the handler beside it because parsing a request and serving one
 //! are separate concerns that change for separate reasons — and because the
@@ -11,35 +12,23 @@ use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_tenant::models::Boundary;
 use afd_tenant::models::cursor;
+use afd_wire::admin::PROVIDER_MAX_BYTES;
+use garde::Validate as _;
 
 use super::{
-    CATALOGUE_LIMIT_DEFAULT, CATALOGUE_LIMIT_MAX, DETAIL_CATALOGUE_LIMIT, DETAIL_CURSOR_MALFORMED,
-    DETAIL_CURSOR_MISMATCH, DETAIL_PROVIDER_BOUNDS, DETAIL_QUERY_UNREADABLE, PROVIDER_MAX_BYTES,
+    DETAIL_CURSOR_MALFORMED, DETAIL_CURSOR_MISMATCH, DETAIL_PROVIDER_BOUNDS,
+    DETAIL_QUERY_UNREADABLE,
 };
 use crate::handler::Refusal;
 
-/// The page size the caller asked for — absent OR EMPTY means the default,
-/// and anything else outside `1..=100` earns the library bounds refusal.
-pub(super) fn parse_limit(raw: Option<Cow<'_, str>>) -> Result<u32, Refusal> {
-    let Some(raw) = raw else {
-        return Ok(CATALOGUE_LIMIT_DEFAULT);
-    };
-    if raw.is_empty() {
-        return Ok(CATALOGUE_LIMIT_DEFAULT);
-    }
-    let limit: u32 = raw.parse().map_err(|_not_numeric| {
-        Refusal::coded(
-            error_code::LIBRARY_INPUT_OUT_OF_BOUNDS,
-            DETAIL_CATALOGUE_LIMIT,
-        )
-    })?;
-    if limit == 0 || limit > CATALOGUE_LIMIT_MAX {
-        return Err(Refusal::coded(
-            error_code::LIBRARY_INPUT_OUT_OF_BOUNDS,
-            DETAIL_CATALOGUE_LIMIT,
-        ));
-    }
-    Ok(limit)
+/// A `provider` filter once normalized, bounded by the catalogue's own column.
+///
+/// The bound is on the NORMALIZED value, the one compared against stored rows:
+/// a run of spaces the normalization collapses is not the caller's length.
+#[derive(Debug, garde::Validate)]
+struct ProviderFilter {
+    #[garde(length(bytes, max = PROVIDER_MAX_BYTES))]
+    normalized: String,
 }
 
 /// The normalized provider filter: trimmed, interior whitespace collapsed,
@@ -67,13 +56,14 @@ pub(super) fn normalize_provider(raw: Option<Cow<'_, str>>) -> Result<Option<Str
         }
         normalized.push(character.to_ascii_lowercase());
     }
-    if normalized.len() > PROVIDER_MAX_BYTES {
-        return Err(Refusal::coded(
+    let filter = ProviderFilter { normalized };
+    filter.validate().map_err(|_report| {
+        Refusal::coded(
             error_code::LIBRARY_INPUT_OUT_OF_BOUNDS,
             DETAIL_PROVIDER_BOUNDS,
-        ));
-    }
-    Ok(Some(normalized))
+        )
+    })?;
+    Ok(Some(filter.normalized))
 }
 
 /// The decoded boundary, or one of the two DISTINCT cursor refusals.

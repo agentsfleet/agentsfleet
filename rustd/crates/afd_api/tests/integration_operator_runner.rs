@@ -10,10 +10,10 @@ use crate::harness;
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
+use afd_core::paging::DEFAULT_LIMIT;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
-use afd_runner::view::DEFAULT_PAGE_LIMIT;
 use http::{Method, StatusCode};
 use serde_json::Value;
 
@@ -54,7 +54,7 @@ async fn assert_runner_reads(router: &axum::Router, fixture: &Fixture, runner_pa
     // contain a specific id is a race, and it lost.
     //
     // Dropping `limit` does not settle that race, it only raises its threshold.
-    // The unqualified list answers at most `DEFAULT_PAGE_LIMIT` rows ordered
+    // The unqualified list answers at most `DEFAULT_LIMIT` rows ordered
     // `created_at DESC, id DESC` (`afd_runner/src/sql/runner_view.rs:18`), and
     // the harness clock is frozen — a full lane leaves 89 rows across 10
     // distinct `created_at` values, so the sort collapses onto `id DESC` and
@@ -99,7 +99,7 @@ async fn assert_runner_reads(router: &axum::Router, fixture: &Fixture, runner_pa
         "the platform list carries rows while this fixture's runner exists"
     );
     assert!(
-        u32::try_from(items.len()).is_ok_and(|len| len <= DEFAULT_PAGE_LIMIT),
+        u32::try_from(items.len()).is_ok_and(|len| len <= DEFAULT_LIMIT),
         "an unqualified page is bounded by the default limit"
     );
     assert!(

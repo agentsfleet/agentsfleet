@@ -60,7 +60,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/Cargo.toml`, `rustd/Cargo.lock`, `rustd/crates/afd_validate/` | CREATE | Shared rules, `Limit`, `Sentences`; depends on garde and serde only |
 | `rustd/crates/afd_core/` (`Cargo.toml`, `src/paging.rs`, `src/paging/tests.rs`) | EDIT | `Paging::parse` reads its limit through `Limit` with the caller's ceiling |
 | `rustd/crates/afd_wire/src/` (`runner.rs`, `activity.rs`, `tool_trace.rs`, `tool_detail.rs`, `admin_catalogue.rs`, `admin_library.rs`, `secret.rs`, `tenant.rs`, `workspace.rs`, `team.rs`, `auth.rs`, `fleet.rs`) and their tests | EDIT | Request and wire types derive `Validate`; one `PROVIDER_MAX_BYTES` |
-| `rustd/crates/afd_runner/` (`Cargo.toml`; `src/` `validate.rs`, `bounds.rs`, `view.rs`, `heartbeat.rs`, `store.rs`) | EDIT | Registration, policy, binds and capability bounds move to the wire types; enrolment (`store.rs`) proves the whole request through `registration` |
+| `rustd/crates/afd_runner/` (`Cargo.toml`; `src/` `validate.rs`, `bounds.rs`, `view.rs`, `view/`, `heartbeat.rs`, `store.rs`, `lib.rs`) | EDIT | Registration, policy, binds and capability bounds move to the wire types; enrolment (`store.rs`) proves the whole request through `registration`; `PageLimit` is deleted from `view/` and its re-export from `lib.rs` |
+| `rustd/crates/afd_fleet/tests/` (`integration_runner_views.rs`, `integration_runner_views_malformed.rs`) | EDIT | The runner-view pins read the shared paging ceiling once `PageLimit` is gone |
 | `rustd/crates/afd_api_tenant/src/handler/` (`paging.rs`, `tenant/`, `fleet/`, `event/`, `approval/`, `schedule*`, `secret.rs`, `connector/callback.rs`) | EDIT | Query, path and body bounds through `Limit`, path types and `Sentences` |
 | `rustd/crates/afd_api_operator/src/handler/` (`admin/platform_keys.rs`, `admin/models.rs`, `admin/libraries_request.rs`, `operator/query.rs`) | EDIT | Same |
 | `rustd/crates/{afd_tenant,afd_vault,afd_cron,afd_billing,afd_events,afd_connector}/` (`Cargo.toml` and the inventoried files) | EDIT | garde joins the six crates that hand-write every bound today |
@@ -125,11 +126,11 @@ garde runs custom rules before built-in ones, with no short-circuit, so a field 
 
 Every `?limit` reads through `Limit` with its route's ceiling and sentences (`afd_api_tenant/src/handler/paging.rs:33`, `fleet/message.rs:68`, `event/query.rs:235`, `approval/query.rs:154`, `tenant/models/input.rs:36`, `tenant/billing.rs:204`, `tenant/workspace/input.rs:43`, `afd_core/src/paging.rs:172`, `afd_runner/src/view.rs:33`, `afd_api_operator/src/handler/operator/query.rs:84`). Filters and path segments become garde structs: `?provider` after normalising (`models/input.rs:70`), `?fleet` (`operator/query.rs:98`), `?event_type` (`:164`), `?name` (`workspace/input.rs:93`), the memory key after decoding (`fleet/memory_request.rs:258`), `event_id` (`event/mod.rs:231`, `event/tool_call.rs:105`), `{provider}` (`platform_keys.rs:168`). `actor`, `actor_prefix` and `gate_kind` gain bounds. The admin library reasons (`libraries_request.rs:82, :89`) become a custom rule. One `PROVIDER_MAX_BYTES` remains, the catalogue's 64, because no stored provider is longer. An over-long `event_id` stops answering "event_id is required".
 
-- **Dimension 4.1** — Every list route refuses 0 and its ceiling + 1, and accepts its ceiling → Test `test_every_list_route_refuses_its_limit_out_of_range`
-- **Dimension 4.2** — Each bounded path segment refuses one byte past its bound with its sentence → Test `test_path_segments_are_bounded_on_their_path_type`
-- **Dimension 4.3** — `actor`, `actor_prefix` and `gate_kind` past their bound are refused → Test `test_unbounded_filters_now_refuse_oversize`
-- **Dimension 4.4** — A reasons object with 33 entries, or a 501-byte reason, is refused → Test `test_library_reasons_are_bounded`
-- **Dimension 4.5** — A 65-byte `?provider` is refused with a sentence naming 64 → Test `test_provider_filter_shares_the_catalogue_bound`
+- **Dimension 4.1** — Every list route refuses 0 and its ceiling + 1, and accepts its ceiling → Test `test_every_list_route_refuses_its_limit_out_of_range` — DONE (`rustd/crates/afd_api/tests/list_limits.rs`, 14 routes on both planes; the ceiling is asserted as neither 400 nor 403, because the router suite has no datastore and answers 503 past the bound)
+- **Dimension 4.2** — Each bounded path segment refuses one byte past its bound with its sentence → Test `test_path_segments_are_bounded_on_their_path_type` — DONE (`rustd/crates/afd_api/tests/input_bounds.rs`)
+- **Dimension 4.3** — `actor`, `actor_prefix` and `gate_kind` past their bound are refused → Test `test_unbounded_filters_now_refuse_oversize` — DONE (`rustd/crates/afd_api/tests/input_bounds.rs`)
+- **Dimension 4.4** — A reasons object with 33 entries, or a 501-byte reason, is refused → Test `test_library_reasons_are_bounded` — DONE (`rustd/crates/afd_wire/src/admin_library/tests.rs`)
+- **Dimension 4.5** — A 65-byte `?provider` is refused with a sentence naming 64 → Test `test_provider_filter_shares_the_catalogue_bound` — DONE (`rustd/crates/afd_api/tests/input_bounds.rs`)
 
 ### §5 — Account, secret and document inputs
 
@@ -286,6 +287,11 @@ cron/timezone/channel/name/segment parsers: fn parse(input: &garde::Valid<T>) ->
 - **Agent default:** the trace `call_id` rule drops its 64-byte length check, because a call number of 1 to `i64::MAX` is at most 19 digits and that bound can never be the one that fails.
 - **Agent default:** a trace's drop reason is found by the message each rule reports and the call count by its path, because `arguments` can break two bounds at one path; when one trace breaks several bounds a fixed precedence picks the logged reason, where before the earliest failing call did.
 - **Agent default:** `ToolTrace::validate()` keeps its name and its `TraceRejection` result, because `afr_agent/src/trace/tests.rs` calls it.
+- **Agent default:** `actor` and `actor_prefix` are capped at 256 decoded bytes, because an actor is tens of bytes and the filter becomes a `LIKE` pattern; `gate_kind` at 64 bytes, because gate families are short names.
+- **Agent default:** a bad `event_id` answers "event_id must be 1-256 bytes", because §4 says it must stop answering "is required".
+- **Agent default:** the library reason-copy limits are one sentence naming all three caps, because the custom rule reports one path and `Sentences` keys on paths; the object-of-strings shape check stays in the handler, and the caps are now refused alongside `name`, ahead of the repository and ref checks.
+- **Agent default:** `PageLimit` is deleted and the three operator lists read `afd_core::paging::CEILING` (the same 50/100), because the Dead Code Sweep requires it and garde's `Valid<T>` does the guarding at the boundary; store page constants held as `i64` become a `Ceiling` through the const fn `paging::store_ceiling`.
+- **Agent default:** `?limit=+5` is refused as not-digits.
 - **Open finding:** `stage_chunk_threshold` (`afd_fleet_runtime/src/config/raw/policy.rs:73`, `f32`) is a second float input with no bound, so Invariant 4's "the one float input" is wrong. TRIGGER.md cannot carry NaN today (serde_json refuses it; YAML `.nan` arrives as a string and fails as a type error), so nothing is exposed; bounding it needs a refusal reason `ContextBudget` does not have.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.

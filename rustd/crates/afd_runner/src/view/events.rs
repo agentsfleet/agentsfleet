@@ -6,7 +6,7 @@ use afd_wire::admin::{RunnerEventItem, RunnerEventType};
 use crate::error::Result;
 use crate::sql;
 
-use super::{KeysetCursor, PageLimit};
+use super::KeysetCursor;
 
 /// Validated filters over one runner's append-only history.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -57,7 +57,7 @@ pub(super) fn statement<'a>(
     filter: &RunnerEventFilter,
     event_types: Option<Vec<String>>,
     cursor: Option<&KeysetCursor>,
-    limit: PageLimit,
+    limit: u32,
 ) -> sqlx::query::Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments> {
     cursor.map_or(
         sqlx::query(sql::runner_view::LIST_EVENTS_FIRST)
@@ -65,7 +65,7 @@ pub(super) fn statement<'a>(
             .bind(event_types.clone())
             .bind(filter.since())
             .bind(filter.until())
-            .bind(limit.as_i64()),
+            .bind(i64::from(limit)),
         |boundary| {
             sqlx::query(sql::runner_view::LIST_EVENTS_AFTER)
                 .bind(runner.as_str())
@@ -74,16 +74,16 @@ pub(super) fn statement<'a>(
                 .bind(filter.until())
                 .bind(boundary.created_at())
                 .bind(boundary.id().as_str())
-                .bind(limit.as_i64())
+                .bind(i64::from(limit))
         },
     )
 }
 
 pub(super) fn cursor(
     items: &[RunnerEventItem<'static>],
-    limit: PageLimit,
+    limit: u32,
 ) -> Result<Option<KeysetCursor>> {
-    if items.len() != limit.get() as usize {
+    if items.len() != limit as usize {
         return Ok(None);
     }
     items

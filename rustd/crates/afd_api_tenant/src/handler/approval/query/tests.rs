@@ -41,7 +41,7 @@ fn parsed(query: &str) -> Listing {
 #[test]
 fn an_empty_query_is_every_state_at_the_default_size() {
     let listing = parsed("");
-    assert_eq!(listing.limit, DEFAULT_LIMIT);
+    assert_eq!(listing.limit, i64::from(DEFAULT_LIMIT));
     assert!(listing.status.is_none(), "absent narrows nothing");
     assert!(listing.fleet_id.is_none());
     assert!(listing.gate_kind.is_none());
@@ -105,6 +105,17 @@ fn a_fleet_id_that_is_not_an_identifier_is_refused_here() {
 }
 
 #[test]
+fn a_gate_kind_is_bounded_on_its_decoded_bytes() {
+    let at_bound = format!("gate_kind={}", "k".repeat(MAX_GATE_KIND_BYTES));
+    assert_eq!(
+        parsed(&at_bound).gate_kind.map(|kind| kind.len()),
+        Some(MAX_GATE_KIND_BYTES)
+    );
+    let past = format!("gate_kind={}", "k".repeat(MAX_GATE_KIND_BYTES + 1));
+    assert_eq!(refusal_status(&past), BAD_REQUEST);
+}
+
+#[test]
 fn a_broken_escape_refuses_the_request() {
     assert_eq!(refusal_status("gate_kind=%zz"), BAD_REQUEST);
 }
@@ -136,8 +147,10 @@ fn a_status_no_row_can_be_in_is_refused_rather_than_ignored() {
 #[test]
 fn the_page_size_band_is_the_zig_daemons() {
     assert_eq!(parsed("limit=1").limit, 1);
-    assert_eq!(parsed("limit=200").limit, MAX_LIMIT);
-    for outside in ["limit=0", "limit=201", "limit=-1", "limit=ten", "limit="] {
+    assert_eq!(parsed("limit=200").limit, i64::from(MAX_LIMIT));
+    // A form field left blank is the default page, as on every list route.
+    assert_eq!(parsed("limit=").limit, i64::from(DEFAULT_LIMIT));
+    for outside in ["limit=0", "limit=201", "limit=-1", "limit=ten"] {
         assert_eq!(refusal_status(outside), BAD_REQUEST, "{outside}");
     }
 }
