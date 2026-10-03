@@ -42,7 +42,7 @@ ON CONFLICT (key, fleet_id) DO UPDATE
 /// `ORDER BY (category = $3) DESC` sorts the protected category first, so
 /// `OFFSET $2` drops the coldest non-core rows and reaches a `core` row only
 /// when no other remains. `$3` is
-/// [`PINNED_CATEGORY`](crate::memory::window::PINNED_CATEGORY) — the same
+/// [`PINNED_CATEGORY`](afd_wire::memory::PINNED_CATEGORY) — the same
 /// declaration hydration pins on, which is what stops eviction deleting what
 /// hydration promises.
 ///

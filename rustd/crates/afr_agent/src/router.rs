@@ -6,7 +6,7 @@
 //! turn still runs (`docs/architecture/runner_execution.md` §"Tool catalog").
 
 use afr_executor::Executor;
-use afr_tools::{Runtime, Selection, ToolContext, ToolErrorCode, ToolOutput};
+use afr_tools::{Lease, Runtime, Selection, ToolContext, ToolErrorCode, ToolOutput};
 
 /// What a call to a tool this run was not offered reads back.
 const NOT_OFFERED: &str = "is not one of this run's tools";
@@ -39,8 +39,13 @@ impl<'run> Router<'run> {
         }
     }
 
-    /// Runs one call to `name` with `arguments`.
-    pub async fn dispatch(&self, name: &str, arguments: &serde_json::Value) -> ToolOutput {
+    /// Runs one call to `name` with `arguments`, lending it the lease's state.
+    pub async fn dispatch(
+        &self,
+        name: &str,
+        arguments: &serde_json::Value,
+        lease: &mut Lease<'_>,
+    ) -> ToolOutput {
         let Some(tool) = self.selection.tool(name) else {
             return refused(self.selection.hosts(name), name);
         };
@@ -54,7 +59,7 @@ impl<'run> Router<'run> {
                 return failed(ToolErrorCode::HostedToolUnavailable, name, HOSTED_ELSEWHERE);
             }
         };
-        tool.call(arguments, ToolContext { executor }).await
+        tool.call(arguments, ToolContext { executor, lease }).await
     }
 }
 

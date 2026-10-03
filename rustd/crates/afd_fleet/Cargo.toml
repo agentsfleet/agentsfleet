@@ -96,6 +96,8 @@ afd_crypto.workspace = true
 # The wire shapes this plane answers with. Frozen by M175; consumed, never
 # authored here.
 afd_wire.workspace = true
+# A pushed memory entry is checked against the bounds `afd_wire` declares on it.
+garde.workspace = true
 sqlx.workspace = true
 # The error derive every crate under `rustd/` shapes its `Error` with.
 thiserror.workspace = true
