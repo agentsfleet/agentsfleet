@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 
+use afd_validate::nul_free;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
@@ -82,21 +83,23 @@ impl Visibility {
 //
 // Carries no scope: the fleet is a path segment, validated server-side against
 // the runner's live lease. The bounds are declared here, so the daemon's push
-// and the runner's store refuse the same entries.
+// and the runner's store refuse the same entries. NUL is refused on every text
+// field because Postgres cannot store it in `text`: one such delta would fail
+// the whole push's statement instead of being skipped as malformed.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 pub struct MemoryDelta<'a> {
     /// Stable key. A repeated key overwrites rather than accumulating.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = MAX_KEY_LEN))]
+    #[garde(length(bytes, min = 1, max = MAX_KEY_LEN), custom(nul_free))]
     pub key: Cow<'a, str>,
     /// The remembered content.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = MAX_CONTENT_LEN))]
+    #[garde(length(bytes, min = 1, max = MAX_CONTENT_LEN), custom(nul_free))]
     pub content: Cow<'a, str>,
     /// Retention category, which decides eviction order.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = MAX_CATEGORY_LEN))]
+    #[garde(length(bytes, min = 1, max = MAX_CATEGORY_LEN), custom(nul_free))]
     pub category: Cow<'a, str>,
     /// Who reads it; absent means the writing fleet alone. Left off the wire
     /// at that default, so a delta that shares nothing reads as it always did.

@@ -8,7 +8,11 @@
 
 use std::borrow::Cow;
 
-use afd_wire::memory::{MemoryCaptureResponse, MemoryHydrateResponse, SharedMemory};
+use afd_wire::memory::{
+    MemoryCaptureResponse, MemoryDelta, MemoryHydrateResponse, PINNED_CATEGORY, SharedMemory,
+    Visibility,
+};
+use garde::Validate as _;
 
 /// A capture reply carries the two tallies a runner acts on, and only those.
 ///
@@ -91,4 +95,47 @@ fn test_a_hydrate_reply_carries_grants_only_when_given() {
     let bare: MemoryHydrateResponse<'_> = serde_json::from_str(r#"{"memory": []}"#).unwrap();
     assert!(!bare.publish);
     assert!(bare.shared.is_empty());
+}
+
+/// A delta holding NUL in any text field is malformed, and the report names
+/// that field: Postgres cannot store NUL in `text`, so one such delta would
+/// fail the whole push's statement instead of being skipped as malformed.
+#[test]
+fn test_a_delta_holding_nul_is_malformed_on_every_text_field() {
+    let clean = MemoryDelta {
+        key: Cow::Borrowed("deploy_target"),
+        content: Cow::Borrowed("fly in iad"),
+        category: Cow::Borrowed(PINNED_CATEGORY),
+        visibility: Visibility::Fleet,
+    };
+    clean.validate().unwrap();
+
+    let nul = Cow::Borrowed("before\0after");
+    for (field, delta) in [
+        (
+            "key",
+            MemoryDelta {
+                key: nul.clone(),
+                ..clean.clone()
+            },
+        ),
+        (
+            "content",
+            MemoryDelta {
+                content: nul.clone(),
+                ..clean.clone()
+            },
+        ),
+        (
+            "category",
+            MemoryDelta {
+                category: nul.clone(),
+                ..clean.clone()
+            },
+        ),
+    ] {
+        let report = delta.validate().unwrap_err();
+        let paths: Vec<String> = report.iter().map(|(path, _)| path.to_string()).collect();
+        assert_eq!(paths, [field], "{field}");
+    }
 }
