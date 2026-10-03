@@ -66,10 +66,9 @@ async fn runner_memory_routes_validate_and_render() {
     let memory_path = format!("/v1/runners/me/memory/{FLEET_ID}");
     let hydrated = send(&router, Method::GET, &memory_path, Some(RUNNER_TOKEN), "").await;
     assert_eq!(hydrated.status(), StatusCode::OK);
-    assert_eq!(
-        json_body(hydrated).await,
-        serde_json::json!({"memory": [], "shared": [], "publish": false})
-    );
+    // A fleet without grants hydrates in the shape every runner parses:
+    // `shared` and `publish` stay off the wire.
+    assert_eq!(json_body(hydrated).await, serde_json::json!({"memory": []}));
 
     let recall_path = format!("{memory_path}/recall");
     let unbounded = send(
