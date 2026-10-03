@@ -108,9 +108,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 garde runs custom rules before built-in ones, with no short-circuit, so a field never carries both a bound and a parsing rule. The bound is garde on a struct; the parser takes `&Valid<ThatStruct>`. Applies to the cron expression, timezone and message (`afd_cron/src/validate.rs:83, :124, :145`), the Slack channel id (`afd_fleet_runtime/src/config/trigger.rs:121`), fleet and credential names (`afd_fleet_runtime/src/name.rs:171-173`), GitHub owner/repo/ref segments (`afd_library/src/github.rs:207`), the SKILL.md name (`afd_library/src/frontmatter.rs:17`), declared requirements (`afd_library/src/prepare.rs:75-82`) and the trigger count (`afd_fleet_runtime/src/config/trigger.rs:250`). The schedule message over 8192 bytes stops answering "must not be empty" and names its cap. The schedule write doc's REQ-002 becomes the REQ-001 the code answers (`afd_api_tenant/src/handler/schedule/write.rs:36`).
 
-- **Dimension 2.1** — A 129-byte cron expression is refused by validation, so the parser is never called, and the route answers today's sentence → Test `test_oversized_cron_is_refused_by_its_bound`
-- **Dimension 2.2** — A 65-byte timezone is refused before the tz-database lookup → Test `test_oversized_timezone_never_reaches_the_lookup`
-- **Dimension 2.3** — A schedule message over the cap answers a sentence naming the cap → Test `test_schedule_message_over_cap_names_the_cap`
+- **Dimension 2.1** — A 129-byte cron expression is refused by validation, so the parser is never called, and the route answers today's sentence → Test `test_oversized_cron_is_refused_by_its_bound` — DONE (`rustd/crates/afd_cron/tests/validate.rs`)
+- **Dimension 2.2** — A 65-byte timezone is refused before the tz-database lookup → Test `test_oversized_timezone_never_reaches_the_lookup` — DONE (`rustd/crates/afd_cron/tests/validate.rs`)
+- **Dimension 2.3** — A schedule message over the cap answers a sentence naming the cap → Test `test_schedule_message_over_cap_names_the_cap` — DONE (`rustd/crates/afd_api/tests/fleet_schedules_input.rs`)
 
 ### §3 — Runner and wire inputs
 
@@ -276,5 +276,7 @@ cron/timezone/channel/name/segment parsers: fn parse(input: &garde::Valid<T>) ->
 - **Agent defaults** — "everything" is the inventory's 56 input checks outside garde; pre-parse byte caps and budgets stay hand-written (Out of Scope says why); the provider bound settles at 64; the sentence corrections are the three named in §2–§4.
 - **Agent default:** `?limit=` (empty) means the route's default on every list route, the rule §1 states, because §1 is more specific than Product Clarity #2; it flips the pins that refused an empty limit (thread, events, approvals).
 - **Agent default:** the `model_id` entry route picks one of two `Sentences` tables by whether `model_id` is blank, because one garde bound at one path answers two repairs.
+- **Agent default:** a schedule's three fields are bounded on one `afd_cron::validate::Fields` that create and patch both build, because one `Valid<Fields>` guards all three readers; the message bound is its cap only, so blank and oversized stay two repairs (`Invalid::MessageTooLong`).
+- **Agent default:** the trigger set's emptiness stays a presence check before garde bounds its count, because one garde length at one path cannot answer the two reasons the set has today.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.

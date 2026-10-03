@@ -57,6 +57,11 @@ serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+# A schedule's fields are bounded on `validate::Fields` before the parser and
+# the timezone lookup read them; the report maps back to `Invalid` through a
+# path table.
+afd_validate.workspace = true
+garde.workspace = true
 # The cron grammar. Zero dependencies, std-only. This crate PARSES; `validate`
 # adds only the three refusals recorded in the spec's Prior-Art table for
 # expressions it accepts and the external scheduler will not honour as written.

@@ -1,6 +1,7 @@
 //! Pure preparation of validated bundle metadata.
 
 use afd_core::bundle::BundleDigest;
+use garde::{Unvalidated, Valid};
 use sha2::{Digest as _, Sha256};
 
 use crate::error::{InvalidBundle, Result};
@@ -8,11 +9,6 @@ use crate::frontmatter;
 use crate::model::{ImportBody, PreparedBundle, Requirements, SupportManifest};
 
 const SNAPSHOT_PREFIX: &str = "fleet-bundles/sha256/";
-const MAX_CREDENTIALS: usize = 32;
-const MAX_TOOLS: usize = 64;
-const MAX_HOSTS: usize = 64;
-const MAX_NAME_LEN: usize = 200;
-const MAX_HOST_LEN: usize = 253;
 
 /// Validates untrusted bytes and derives metadata without performing I/O.
 ///
@@ -72,24 +68,16 @@ fn requirements(body: &ImportBody, skill_name: &str) -> Result<Requirements> {
                 .collect()
         })
         .unwrap_or_default();
-    let too_many = credentials.len() > MAX_CREDENTIALS
-        || tools.len() > MAX_TOOLS
-        || network_hosts.len() > MAX_HOSTS;
-    let too_long = credentials
-        .iter()
-        .chain(&tools)
-        .any(|value| value.len() > MAX_NAME_LEN)
-        || network_hosts.iter().any(|value| value.len() > MAX_HOST_LEN);
-    if too_many || too_long {
-        return Err(InvalidBundle::RequirementsTooLarge.into());
-    }
-    Ok(Requirements {
+    Unvalidated::new(Requirements {
         credentials,
         tools,
         network_hosts,
         support_files,
         trigger_present: true,
     })
+    .validate()
+    .map(Valid::into_inner)
+    .map_err(|_report| InvalidBundle::RequirementsTooLarge.into())
 }
 
 fn hashes(body: &ImportBody) -> (String, Vec<SupportManifest>) {
