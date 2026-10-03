@@ -8,7 +8,8 @@
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_runner::{PageLimit, RunnerEventFilter};
+use afd_core::paging::DEFAULT_LIMIT;
+use afd_runner::RunnerEventFilter;
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
 use crate::requests::{ENROLLED_AT, enrolment};
@@ -43,7 +44,7 @@ async fn runner_views_report_missing_and_malformed_rows_without_partial_success(
             &enrolled.runner_id,
             &RunnerEventFilter::default(),
             None,
-            PageLimit::default(),
+            DEFAULT_LIMIT,
         )
         .await
         .expect_err("an unknown stored event type fails the whole page");
@@ -98,12 +99,7 @@ async fn assert_missing_runner_is_not_found(fixtures: &Fixtures) {
         .expect_err("a missing runner has no detail");
     let event_error = fixtures
         .runners()
-        .runner_events(
-            &missing,
-            &RunnerEventFilter::default(),
-            None,
-            PageLimit::default(),
-        )
+        .runner_events(&missing, &RunnerEventFilter::default(), None, DEFAULT_LIMIT)
         .await
         .expect_err("a missing runner has no history");
     for error in [detail_error, event_error] {

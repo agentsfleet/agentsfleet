@@ -166,12 +166,11 @@ pub(crate) async fn deactivate<D: Services>(
     identity: PersonIdentity,
     Path(provider): Path<String>,
 ) -> Response {
-    if provider.is_empty() || provider.len() > KEY_PROVIDER_MAX_BYTES {
-        // A PATH segment, not a body field: there is no deserialised struct
-        // here for a derive to hang off, so the same bound is spelled against
-        // the same constant the wire type declares.
-        return reject(error_code::INVALID_REQUEST, DETAIL_PROVIDER_LEN);
+    let segment = ProviderSegment { provider };
+    if let Err(report) = segment.validate() {
+        return reject(error_code::INVALID_REQUEST, BOUNDS.pick(&report));
     }
+    let provider = segment.provider;
     match services
         .platform_keys()
         .deactivate(&provider, services.now())
@@ -208,8 +207,19 @@ const BOUNDS: Sentences = Sentences::new(
     DETAIL_MALFORMED_JSON,
 );
 
-/// The path `garde` reports a provider-length break under.
+/// The path `garde` reports a provider-length break under, on the body and on
+/// the `DELETE` path alike.
 const FIELD_PROVIDER: &str = "provider";
+
+/// The provider a `DELETE` path names, bounded like the body's field.
+///
+/// The bound is the wire type's own constant: the provider is a vault row
+/// name either way, so the path cannot address a row the body could not set.
+#[derive(Debug, garde::Validate)]
+struct ProviderSegment {
+    #[garde(length(bytes, min = 1, max = KEY_PROVIDER_MAX_BYTES))]
+    provider: String,
+}
 /// The path `garde` reports a model-length break under.
 const FIELD_MODEL: &str = "model";
 
@@ -260,85 +270,4 @@ fn request_id() -> Cow<'static, str> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const WORKSPACE: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d02";
-
-    #[test]
-    fn request_validation_pins_pairing_and_bounds() {
-        let named = format!(
-            r#"{{"provider":"anthropic","source_workspace_id":"{WORKSPACE}","model":"claude-opus-5","base_url":null}}"#
-        );
-        assert_eq!(request(named.as_bytes()).map(|_request| ()), Ok(()));
-
-        let compatible = format!(
-            r#"{{"provider":"openai-compatible","source_workspace_id":"{WORKSPACE}","model":"custom","base_url":"https://models.example/v1"}}"#
-        );
-        assert_eq!(request(compatible.as_bytes()).map(|_request| ()), Ok(()));
-        assert_eq!(
-            request(b""),
-            Err((error_code::INVALID_REQUEST, DETAIL_BODY_REQUIRED))
-        );
-        assert_eq!(
-            request(b"[]"),
-            Err((error_code::INVALID_REQUEST, DETAIL_MALFORMED_JSON))
-        );
-
-        let unsafe_url = format!(
-            r#"{{"provider":"openai-compatible","source_workspace_id":"{WORKSPACE}","model":"custom","base_url":"https://127.0.0.1/v1"}}"#
-        );
-        assert_eq!(
-            request(unsafe_url.as_bytes()),
-            Err((error_code::PROVIDER_BASE_URL_INVALID, DETAIL_BASE_URL))
-        );
-
-        let credential_url = format!(
-            r#"{{"provider":"openai-compatible","source_workspace_id":"{WORKSPACE}","model":"custom","base_url":"https://user:password@models.example/v1"}}"#
-        );
-        assert_eq!(
-            request(credential_url.as_bytes()),
-            Err((error_code::PROVIDER_BASE_URL_INVALID, DETAIL_BASE_URL))
-        );
-    }
-
-    /// The sentence names the field whose bound broke, keyed by the path
-    /// `garde` reports — the wording is a public contract the dashboard
-    /// renders, so each of the two bounds must earn its own sentence.
-    #[test]
-    fn a_broken_bound_is_told_as_the_field_that_broke_it() {
-        // The caps are read from the wire type that DECLARES them, never
-        // copied: a local number would let the bound move while these cases
-        // asserted the old one and still passed.
-        let provider_past_cap = format!(
-            r#"{{"provider":"{}","source_workspace_id":"{WORKSPACE}","model":"claude-opus-5","base_url":null}}"#,
-            "p".repeat(KEY_PROVIDER_MAX_BYTES + 1)
-        );
-        assert_eq!(
-            request(provider_past_cap.as_bytes()),
-            Err((error_code::INVALID_REQUEST, DETAIL_PROVIDER_LEN))
-        );
-
-        let provider_empty = format!(
-            r#"{{"provider":"","source_workspace_id":"{WORKSPACE}","model":"claude-opus-5","base_url":null}}"#
-        );
-        assert_eq!(
-            request(provider_empty.as_bytes()),
-            Err((error_code::INVALID_REQUEST, DETAIL_PROVIDER_LEN))
-        );
-
-        let model_past_cap = format!(
-            r#"{{"provider":"anthropic","source_workspace_id":"{WORKSPACE}","model":"{}","base_url":null}}"#,
-            "m".repeat(afd_wire::admin::MODEL_ID_MAX_BYTES + 1)
-        );
-        assert_eq!(
-            request(model_past_cap.as_bytes()),
-            Err((error_code::INVALID_REQUEST, DETAIL_MODEL_LEN))
-        );
-
-        // A report with nothing in it cannot name a field. `validate` never
-        // produces one, so the default is driven directly: the fallback must
-        // stay a refusal rather than a sentence blaming a field that passed.
-        assert_eq!(BOUNDS.pick(&garde::Report::new()), DETAIL_MALFORMED_JSON);
-    }
-}
+mod tests;

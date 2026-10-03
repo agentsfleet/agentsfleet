@@ -1,4 +1,8 @@
 //! Operator-plane runner list, detail, and history reads.
+//!
+//! A page size reaching these reads is a plain row count: the operator plane
+//! proves every runner `?limit` inside `afd_core::paging::CEILING` through
+//! `afd_validate::Limit` before it calls one.
 
 mod decode;
 mod events;
@@ -16,43 +20,6 @@ use crate::store::Runners;
 
 use self::decode::{runner_detail, runner_event, runner_item};
 pub use self::events::RunnerEventFilter;
-
-/// The runner page size used when a caller omits `limit`.
-pub const DEFAULT_PAGE_LIMIT: u32 = 50;
-/// The largest runner page the public API accepts.
-pub const MAX_PAGE_LIMIT: u32 = 100;
-
-/// A page size already proven to be inside the public API bounds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PageLimit(u32);
-
-impl PageLimit {
-    /// Builds a limit in the inclusive range 1 through 100.
-    #[must_use]
-    pub const fn new(value: u32) -> Option<Self> {
-        if value == 0 || value > MAX_PAGE_LIMIT {
-            None
-        } else {
-            Some(Self(value))
-        }
-    }
-
-    /// The checked value for response sizing.
-    #[must_use]
-    pub const fn get(self) -> u32 {
-        self.0
-    }
-
-    fn as_i64(self) -> i64 {
-        i64::from(self.0)
-    }
-}
-
-impl Default for PageLimit {
-    fn default() -> Self {
-        Self(DEFAULT_PAGE_LIMIT)
-    }
-}
 
 /// The final composite key from a page, used to seek the next one.
 #[derive(Debug, Clone, PartialEq, Eq)]

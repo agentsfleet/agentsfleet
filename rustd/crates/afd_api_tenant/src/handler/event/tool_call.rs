@@ -18,7 +18,7 @@ use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use serde::Deserialize;
 
-use super::{DETAIL_EVENT_ID, EVENT_ID_MAX_LEN, parse_fleet};
+use super::{EVENT_ID_MAX_LEN, bounded_path, parse_fleet};
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
 use crate::services::{Services, WorkspaceEvents as _};
@@ -30,16 +30,21 @@ const EVENT_TOOL_CALL: &str = "fleet_tool_call_detail_failed";
 const DETAIL_TOOL_CALL_NOT_FOUND: &str = "Tool call not found";
 
 /// The segments the read's template carries, each renamed from its segment.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, garde::Validate)]
 pub(crate) struct ToolCallPath {
     /// The fleet named in the path, still text.
     #[serde(rename = "fleet_id")]
+    // Parsed rather than bounded: an identifier has one length.
+    #[garde(skip)]
     pub fleet: String,
     /// The event named in the path.
     #[serde(rename = "event_id")]
+    #[garde(length(bytes, min = 1, max = EVENT_ID_MAX_LEN))]
     pub event: String,
     /// The call, as the thread names it.
     #[serde(rename = "call_id")]
+    // Parsed rather than bounded: `{fence}:{n}` is a grammar.
+    #[garde(skip)]
     pub call: String,
 }
 
@@ -95,21 +100,15 @@ fn detail(call: CallAddress, row: &ToolCallRow) -> ToolCallDetail<'_> {
 pub(crate) async fn read<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
-    Path(ToolCallPath {
-        fleet: fleet_id,
-        event: event_id,
-        call: call_id,
-    }): Path<ToolCallPath>,
+    Path(path): Path<ToolCallPath>,
 ) -> Result<Response, Refusal> {
-    let fleet = parse_fleet(&fleet_id)?;
-    if event_id.is_empty() || event_id.len() > EVENT_ID_MAX_LEN {
-        return Err(Refusal::malformed(DETAIL_EVENT_ID));
-    }
+    let fleet = parse_fleet(&path.fleet)?;
+    let path = bounded_path(path)?;
     let not_found = || Refusal::coded(error_code::TOOL_CALL_NOT_FOUND, DETAIL_TOOL_CALL_NOT_FOUND);
-    let call = parse_call_id(&call_id).ok_or_else(not_found)?;
+    let call = parse_call_id(&path.call).ok_or_else(not_found)?;
     let found = services
         .events()
-        .tool_call(&owned.workspace, &fleet, &event_id, call)
+        .tool_call(&owned.workspace, &fleet, &path.event, call)
         .await
         .map_err(Refusal::at(EVENT_TOOL_CALL))?;
     let row = found.ok_or_else(not_found)?;

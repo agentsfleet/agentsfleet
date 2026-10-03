@@ -30,6 +30,7 @@ use std::borrow::Cow;
 use afd_core::paging::{Cursor, QUERY_LIMIT, QUERY_STARTING_AFTER};
 use afd_fleet::memory::page::View;
 use afd_wire::memory::MAX_KEY_LEN;
+use garde::Validate as _;
 
 use crate::handler::Refusal;
 
@@ -250,15 +251,25 @@ fn boundary(raw: Option<&str>) -> Result<Option<Boundary>, Refusal> {
 /// them spends a statement discovering it.
 pub(super) fn memory_key(path: &str) -> Result<String, Refusal> {
     let raw = path.rsplit('/').next().unwrap_or_default();
-    let decoded = decode_bytes(raw).map_err(|_invalid| Refusal::malformed(DETAIL_KEY_ENCODING))?;
-    // The bound is on the DECODED bytes, which is what a stored key is measured
-    // in. `decodePathSegment` reaches the same answer by writing into a
-    // `[MAX_KEY_LEN]u8` and refusing the overflow; the buffer is the workaround,
-    // the bound is the rule.
-    if !(1..=MAX_KEY_LEN).contains(&decoded.len()) {
-        return Err(Refusal::malformed(DETAIL_KEY_BOUNDS));
-    }
-    String::from_utf8(decoded).map_err(|_not_text| Refusal::malformed(DETAIL_KEY_ENCODING))
+    let key = DecodedKey {
+        bytes: decode_bytes(raw).map_err(|_invalid| Refusal::malformed(DETAIL_KEY_ENCODING))?,
+    };
+    key.validate()
+        .map_err(|_report| Refusal::malformed(DETAIL_KEY_BOUNDS))?;
+    String::from_utf8(key.bytes).map_err(|_not_text| Refusal::malformed(DETAIL_KEY_ENCODING))
+}
+
+/// A memory key as its path segment names it, percent-decoded.
+///
+/// The bound is on the DECODED bytes, which is what a stored key is measured
+/// in — the same bound `afd_wire::memory::MemoryDelta` declares on the key a
+/// runner writes. `decodePathSegment` reaches the same answer by writing into a
+/// `[MAX_KEY_LEN]u8` and refusing the overflow; the buffer is the workaround,
+/// the bound is the rule.
+#[derive(Debug, garde::Validate)]
+struct DecodedKey {
+    #[garde(length(min = 1, max = MAX_KEY_LEN))]
+    bytes: Vec<u8>,
 }
 
 /// Query policy is shared; parameter selection remains specific to memory reads.
