@@ -179,15 +179,18 @@ impl fmt::Debug for Carry {
 }
 
 impl Carry {
-    /// Appends `chunk` and returns what is safe to send now, masked. The held
-    /// buffer itself becomes the answer when nothing in it needed masking.
+    /// Appends `chunk` and returns what is safe to send now, masked.
+    ///
+    /// What to hold back is read from the raw text, before anything is
+    /// masked: a tail that completes one secret may still be the head of a
+    /// longer one, and masking it first would send the longer secret's rest
+    /// in the clear with the next chunk.
     pub fn push(&mut self, scrub: &Scrub, chunk: &str) -> String {
         self.held.push_str(chunk);
-        let held = std::mem::take(&mut self.held);
-        let mut ready = scrub.masked(&held).unwrap_or(held);
-        let keep = scrub.pending(&ready);
-        self.held = ready.split_off(ready.len() - keep);
-        ready
+        let keep = scrub.pending(&self.held);
+        let tail = self.held.split_off(self.held.len() - keep);
+        let ready = std::mem::replace(&mut self.held, tail);
+        scrub.masked(&ready).unwrap_or(ready)
     }
 }
 

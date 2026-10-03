@@ -157,3 +157,27 @@ fn should_print_a_held_tail_as_its_length_only() {
     assert!(!printed.contains("ghs_li"), "{printed}");
     assert!(!printed.contains("ghs_live_secret"), "{printed}");
 }
+
+#[test]
+fn should_hold_a_completed_secret_that_may_still_start_a_longer_one() {
+    let scrub = Scrub::of([("short".to_owned(), "abc"), ("long".to_owned(), "abcdef")]).unwrap();
+    let mut carry = Carry::default();
+
+    let first = carry.push(&scrub, "token abc");
+    let second = carry.push(&scrub, "def done");
+    let sent = format!("{first}{second}");
+
+    assert_eq!(sent, "token «secret:long» done");
+    assert!(!sent.contains("def"), "{sent}");
+}
+
+#[test]
+fn should_release_a_completed_short_secret_once_the_stream_moves_past_it() {
+    let scrub = Scrub::of([("short".to_owned(), "abc"), ("long".to_owned(), "abcdef")]).unwrap();
+    let mut carry = Carry::default();
+
+    let first = carry.push(&scrub, "token abc");
+    let second = carry.push(&scrub, " then more");
+
+    assert_eq!(format!("{first}{second}"), "token «secret:short» then more");
+}
