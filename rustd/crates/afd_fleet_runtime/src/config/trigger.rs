@@ -13,6 +13,9 @@
 
 use std::str::FromStr;
 
+use afd_validate::charset;
+use garde::{Unvalidated, Valid};
+
 use crate::config::raw;
 use crate::error::{Error, ErrorKind, Result};
 use crate::provider::ProviderRegistry;
@@ -61,6 +64,28 @@ const CHANNEL_PUBLIC: u8 = b'C';
 const CHANNEL_PRIVATE: u8 = b'G';
 /// The fewest characters after the leading kind byte.
 const CHANNEL_MIN_BODY: usize = 8;
+/// The fewest characters a channel identifier carries: its kind byte and body.
+const CHANNEL_MIN_LEN: usize = 1 + CHANNEL_MIN_BODY;
+
+/// A channel identifier as authored, bounded before its kind byte is read.
+#[derive(Debug, garde::Validate)]
+struct Candidate<'a> {
+    #[garde(length(bytes, min = CHANNEL_MIN_LEN), custom(charset(is_channel_char)))]
+    id: &'a str,
+}
+
+/// Whether `character` may appear in a channel identifier: upper-case ASCII
+/// letters and digits, the kind byte included.
+const fn is_channel_char(character: char) -> bool {
+    character.is_ascii_uppercase() || character.is_ascii_digit()
+}
+
+/// The authored trigger set, bounded in count before any entry is read.
+#[derive(Debug, garde::Validate)]
+struct Set {
+    #[garde(length(max = MAX_TRIGGERS))]
+    authored: Vec<raw::Trigger>,
+}
 
 /// A fleet woken by a signed delivery.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -116,23 +141,28 @@ impl FromStr for ChannelId {
     /// [`Error::InvalidTriggerSet`] for any other shape, a direct message's
     /// `D…` identifier included.
     fn from_str(candidate: &str) -> Result<Self> {
-        let well_formed = match candidate.as_bytes().split_first() {
-            Some((&(CHANNEL_PUBLIC | CHANNEL_PRIVATE), body)) => {
-                body.len() >= CHANNEL_MIN_BODY
-                    && body
-                        .iter()
-                        .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
-            }
-            _ => false,
-        };
-        if well_formed {
-            Ok(Self(candidate.into()))
-        } else {
-            Err(ErrorKind::InvalidTriggerSet {
-                reason: REASON_NOT_CHANNEL_ID,
-            }
-            .into())
-        }
+        Unvalidated::new(Candidate { id: candidate })
+            .validate()
+            .ok()
+            .and_then(|proved| Self::read(&proved))
+            .ok_or_else(|| {
+                ErrorKind::InvalidTriggerSet {
+                    reason: REASON_NOT_CHANNEL_ID,
+                }
+                .into()
+            })
+    }
+}
+
+impl ChannelId {
+    /// The identifier, when a proved candidate opens with a channel's kind
+    /// byte; a direct message's `D` does not.
+    fn read(candidate: &Valid<Candidate<'_>>) -> Option<Self> {
+        matches!(
+            candidate.id.as_bytes().first(),
+            Some(&(CHANNEL_PUBLIC | CHANNEL_PRIVATE))
+        )
+        .then(|| Self(candidate.id.into()))
     }
 }
 
@@ -245,13 +275,21 @@ pub(crate) fn parse_set(
 ) -> Result<Box<[Trigger]>> {
     let refuse = |reason| Error::from(ErrorKind::InvalidTriggerSet { reason });
 
-    match authored.len() {
-        0 => return Err(refuse(REASON_SET_EMPTY)),
-        len if len > MAX_TRIGGERS => return Err(refuse(REASON_SET_TOO_LARGE)),
-        _ => {}
+    if authored.is_empty() {
+        return Err(refuse(REASON_SET_EMPTY));
     }
+    let set = Unvalidated::new(Set { authored })
+        .validate()
+        .map_err(|_too_many| refuse(REASON_SET_TOO_LARGE))?;
+    read_set(set, providers)
+}
 
-    let triggers = authored
+/// Reads each entry of a set whose count is proved, then proves the whole is
+/// coherent.
+fn read_set(set: Valid<Set>, providers: &dyn ProviderRegistry) -> Result<Box<[Trigger]>> {
+    let triggers = set
+        .into_inner()
+        .authored
         .into_iter()
         .map(|entry| Trigger::parse(entry, providers))
         .collect::<Result<Box<[Trigger]>>>()?;

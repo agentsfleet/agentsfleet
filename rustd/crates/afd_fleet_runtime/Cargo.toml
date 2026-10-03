@@ -31,6 +31,9 @@ afd_webhook.workspace = true
 # Every field deserializes as `Option`, which is what keeps "you forgot a key"
 # and "you got the shape wrong" two different answers — see `error`.
 garde.workspace = true
+# The shared garde rules a document bound needs and garde lacks: a channel
+# identifier's charset, a budget's finiteness.
+afd_validate.workspace = true
 serde.workspace = true
 # `preserve_order` is load-bearing here rather than incidental: an unknown key
 # is reported in DOCUMENT order, so the same document always names the same key

@@ -7,7 +7,7 @@
 //! spellings of the same decision.
 
 use afd_core::error_code;
-use afd_cron::{Reconciled, Schedule, validate};
+use afd_cron::{Invalid, Reconciled, Schedule, validate};
 use afd_wire::schedule::View;
 use axum::Json;
 use axum::response::{IntoResponse as _, Response};
@@ -16,7 +16,10 @@ use serde::Deserialize;
 
 use crate::handler::Refusal;
 
-use super::{DETAIL_HELD, DETAIL_NOT_FOUND};
+use super::{
+    DETAIL_HELD, DETAIL_INVALID_CRON, DETAIL_INVALID_MESSAGE, DETAIL_INVALID_TIMEZONE,
+    DETAIL_MESSAGE_TOO_LONG, DETAIL_NOT_FOUND,
+};
 
 /// What a caller sends to create a schedule.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -72,12 +75,22 @@ pub(super) fn view_of(schedule: &Schedule) -> View<'_> {
     }
 }
 
-/// One validation verdict, as a refusal.
-pub(super) fn checked(
-    verdict: Result<(), validate::Invalid>,
-    detail: &'static str,
-) -> Result<(), Refusal> {
-    verdict.map_err(|_invalid| Refusal::coded(error_code::INVALID_REQUEST, detail))
+/// A schedule's fields, bounded and read, or the refusal the first broken one
+/// earns.
+pub(super) fn checked(fields: validate::Fields<'_>) -> Result<(), Refusal> {
+    fields
+        .check()
+        .map_err(|invalid| Refusal::coded(error_code::INVALID_REQUEST, sentence(invalid)))
+}
+
+/// The sentence each refusal is told as: one per repair.
+const fn sentence(invalid: Invalid) -> &'static str {
+    match invalid {
+        Invalid::Cron => DETAIL_INVALID_CRON,
+        Invalid::Timezone => DETAIL_INVALID_TIMEZONE,
+        Invalid::Message => DETAIL_INVALID_MESSAGE,
+        Invalid::MessageTooLong => DETAIL_MESSAGE_TOO_LONG,
+    }
 }
 
 /// A reconcile that may have found no row, rendered.
