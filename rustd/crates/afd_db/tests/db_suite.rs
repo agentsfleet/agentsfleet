@@ -29,6 +29,8 @@ mod config_tls;
 mod config_tls_cert_files;
 #[path = "error_surface.rs"]
 mod error_surface;
+#[path = "integration_fleet_events_tool_calls.rs"]
+mod integration_fleet_events_tool_calls;
 #[path = "integration_ledger_identity.rs"]
 mod integration_ledger_identity;
 #[path = "integration_ledger_key.rs"]

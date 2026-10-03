@@ -233,6 +233,16 @@ pub const EVENT_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-015");
 /// Zig predecessor: the retired daemon had no operation id.
 pub const AGENTSFLEET_OPERATION_CONFLICT: ErrorCode = ErrorCode::declare("UZ-AGT-016");
 
+/// No kept record for that tool call, on that event, in that fleet and
+/// workspace.
+///
+/// The sibling of [`EVENT_NOT_FOUND`], and one code for the same reasons: an
+/// unknown call, a call id that is not one, a call whose full output was never
+/// posted, and a call of another workspace's fleet all answer alike, because
+/// the statement carries the scope as a predicate. Telling them apart would
+/// disclose across a tenant boundary.
+pub const TOOL_CALL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-017");
+
 /// The fleet a memory request names is not one this workspace holds.
 ///
 /// `ERR_MEM_AGENTSFLEET_NOT_FOUND` (`error_registry.zig:154`).

@@ -31,6 +31,7 @@
 //! apart if it wanted to — see `afd_core::error_code::EVENT_NOT_FOUND`.
 
 mod query;
+pub(crate) mod tool_call;
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -261,8 +262,9 @@ fn page_response(page: &[EventRow], limit: i64) -> EventsResponse<'_> {
 /// One stored row, as the expanded read shows it.
 ///
 /// The bodies sit between `status` and `tokens` because that is the order the
-/// daemon this ports already emits — see `afd_wire::event::EventDetail` on why
-/// the two wire types are not one type plus two fields.
+/// daemon this ports already emits, and the tool trace joins them there. See
+/// `afd_wire::event::EventDetail` on why the two wire types are not one type
+/// plus its body fields.
 pub(crate) fn expanded(event: &EventDetailRow) -> EventDetail<'_> {
     let row = &event.row;
     EventDetail {
@@ -274,6 +276,12 @@ pub(crate) fn expanded(event: &EventDetailRow) -> EventDetail<'_> {
         status: Cow::Borrowed(&row.status),
         request_json: Cow::Borrowed(&event.request_json),
         response_text: event.response_text.as_deref().map(Cow::Borrowed),
+        // The column is JSONB, so its text is always JSON; `ok()` is the
+        // parser's signature, not a reachable drop.
+        tool_calls: event
+            .tool_calls
+            .as_deref()
+            .and_then(|stored| serde_json::from_str(stored).ok()),
         tokens: row.tokens,
         wall_ms: row.wall_ms,
         failure_label: row.failure_label.as_deref().map(Cow::Borrowed),

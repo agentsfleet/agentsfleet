@@ -1,0 +1,22 @@
+-- The run's tool trace, kept on the event row beside the answer it produced.
+--
+-- A thread reloaded after a run has finished reads each turn's detail row, and
+-- until this slot nothing on that row said which tools the run called or how
+-- each call ended: the live frames carried it once and the reload lost it.
+-- `tool_calls` holds the trace the runner reports, bounded and narrowed by the
+-- daemon before the write (at most 200 calls and 64 KiB, `afd_wire::tool_trace`)
+-- with every call id fenced as the live frames carry it.
+--
+-- Written only by the statement that settles the event
+-- (`afd_events::sql::UPDATE_FLEET_EVENT_RESULT`), so a report the fence refuses
+-- writes neither the answer nor the trace.
+--
+-- Nullable and with no default: NULL reads as "not recorded" — a row from
+-- before this slot, a runner that records no trace, or a trace the daemon
+-- dropped — never as "no tools ran". No backfill: nothing recorded the calls of
+-- an earlier run, so there is nothing to fill in.
+--
+-- Additive: a nullable column takes no rewrite. RULE SGR does not apply: no
+-- object is created, and the table grant in schema/800_fleet_events.sql covers
+-- the column.
+ALTER TABLE core.fleet_events ADD COLUMN IF NOT EXISTS tool_calls JSONB;

@@ -122,6 +122,11 @@ async fn run_tool(
         name: Cow::Borrowed(tool),
         ms: elapsed,
         call_id: Some(Cow::Owned(call.to_owned())),
+        status: None,
+        output_head: None,
+        output_tail: None,
+        output_line_count: None,
+        exit_code: None,
     }));
     Ok((ending != Ending::Exited(0)).then(|| format!("{tool} ended {ending:?}")))
 }

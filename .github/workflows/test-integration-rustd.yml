@@ -32,16 +32,39 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  test-integration-rustd:
+  # The shard list lives in make/test-integration-rustd.mk once; the matrix
+  # reads it, so a shard added there is measured here without a second edit.
+  plan:
     runs-on: ubuntu-latest
+    outputs:
+      shards: ${{ steps.shards.outputs.shards }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: shards
+        run: echo "shards=$(make -s --no-print-directory rustd-coverage-shards | jq -Rc 'split(" ")')" >> "$GITHUB_OUTPUT"
+
+  # One shard per runner, each with its own compose Postgres and Dragonfly, so
+  # no shard's tests share a database or a ready stream with another's. A shard
+  # grades nothing: its tests cover only part of the lines, and the floor is a
+  # claim about all of them (the merge job below).
+  shard:
+    needs: plan
+    name: coverage (${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    strategy:
+      # Every shard reports even when one fails, so a red run says which.
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
     # CI never performs an edit-build-edit loop, so incremental objects buy it
     # no latency and made the restored/uploaded target cache several gigabytes
     # larger. Keep developers' dev-profile default intact; bound this lane only.
     env:
       CARGO_INCREMENTAL: '0'
-    # The suite shares one migrated database; only migrator fault tests create
-    # scratch databases because schema state is what they exercise. This still
-    # covers a cold instrumented workspace build on an uncached runner.
+    # The suite shares one migrated database per shard; only migrator fault
+    # tests create scratch databases because schema state is what they
+    # exercise. This still covers a cold instrumented workspace build on an
+    # uncached runner.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -58,17 +81,13 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
           # Instrumented binaries cannot be restored across source revisions:
-          # `--no-clean` intentionally combines the migration and test passes,
-          # and cargo-llvm-cov would then discover both revisions in one report.
+          # the accumulate mode combines the migration and test passes, and
+          # cargo-llvm-cov would then discover both revisions in one report.
           # Registry sources are immutable by checksum and retain the useful
           # network saving without uploading multi-gigabyte target trees.
           key: cargo-integration-v3-${{ runner.os }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
           restore-keys: |
             cargo-integration-v3-${{ runner.os }}-
-      # `make test-integration-rustd` depends on `_reset-test-db`, which brings
-      # compose up, waits for healthchecks, drops schemas and flushes Redis.
-      # KEEP_TEST_STATE is never set here: a green run under it would prove
-      # nothing about a clean checkout, which is the whole point of this tier.
       # Versioned pin plus a `tool:` input, not the `@cargo-llvm-cov` tag alias.
       # Both install the same binary, but the alias is a moving ref: it resolves
       # to whatever that tag points at when the job starts, so a third party can
@@ -76,16 +95,57 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov
-      # One invocation, both tiers, instrumented. `test-integration-rustd` is
-      # what a developer runs (no cargo-llvm-cov needed); this is the same
-      # suite plus the unit tier under measurement, which is where the
-      # coverage number has to come from — the integration tests are
-      # `#[ignore]`d, so a unit-only run reports every datastore-touching line
-      # as uncovered.
-      - name: Run both Rust test tiers under coverage against live datastores
-        run: make test-coverage-rustd
+      # `_reset-test-db` brings compose up, waits for healthchecks, drops
+      # schemas and flushes Dragonfly. KEEP_TEST_STATE is never set here: a
+      # green run under it would prove nothing about a clean checkout.
+      - name: Measure shard ${{ matrix.shard }} against live datastores
+        run: make test-coverage-rustd RUSTD_SHARD=${{ matrix.shard }}
+      - name: Keep the shard's report for the merge
+        uses: actions/upload-artifact@v7
+        with:
+          name: rustd-lcov-${{ matrix.shard }}
+          path: |
+            rustd/lcov-${{ matrix.shard }}.info
+            rustd/lcov-${{ matrix.shard }}.rev
+          if-no-files-found: error
+          retention-days: 3
+      - name: Show datastore logs when the shard fails
+        if: failure()
+        # `dragonfly`, not `redis`. The service was renamed with the store and
+        # this line was not, so the one step whose whole job is explaining a
+        # failed suite exited 1 with `no such service: redis` and printed no
+        # logs at all -- a diagnostic that fails exactly when it is needed.
+        run: docker compose logs --tail 200 postgres dragonfly
+
+  # The lane's verdict, under the name it has always reported: every shard's
+  # report merged line by line, the floor graded once over the union, one
+  # Codecov upload. It runs when a shard failed too, and fails in turn, so a
+  # red shard is a red lane rather than a skipped check.
+  test-integration-rustd:
+    needs: [plan, shard]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every shard measured
+        if: needs.shard.result != 'success'
+        run: |
+          echo "✗ [rustd] a coverage shard did not finish (result: ${{ needs.shard.result }}); the floor is not graded over part of the lane"
+          exit 1
+      # Depth 2: a pull request checks out GitHub's merge commit, whose first
+      # parent is the base the patch floor measures from.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - name: Collect the shards' reports
+        uses: actions/download-artifact@v8
+        with:
+          pattern: rustd-lcov-*
+          path: rustd
+          merge-multiple: true
+      - name: Grade the line and patch floors over every shard
+        run: make test-coverage-rustd-merge RUSTD_PATCH_BASE="${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}"
       - name: Upload Rust coverage to Codecov
-        if: success()
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -93,10 +153,3 @@ jobs:
           flags: rust-afd
           disable_search: true
           fail_ci_if_error: true
-      - name: Show datastore logs when the suite fails
-        if: failure()
-        # `dragonfly`, not `redis`. The service was renamed with the store and
-        # this line was not, so the one step whose whole job is explaining a
-        # failed suite exited 1 with `no such service: redis` and printed no
-        # logs at all -- a diagnostic that fails exactly when it is needed.
-        run: docker compose logs --tail 200 postgres dragonfly

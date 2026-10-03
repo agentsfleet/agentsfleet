@@ -20,7 +20,7 @@
 
 use std::sync::Arc;
 
-use afd_wire::activity::{ActivityAccepted, ActivityFrame, ActivityRequest};
+use afd_wire::activity::{ActivityAccepted, ActivityRequest};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -74,10 +74,12 @@ pub(crate) async fn handle<D: Services>(
     // into the published payload unchanged, so owning them would copy a run's
     // entire output stream one chunk at a time.
     let parsed = afd_http::handler::read_body::<ActivityRequest<'_>>(&body);
-    let Some(request) = parsed
-        .ok()
-        .filter(|request| request.frames.iter().all(ActivityFrame::call_id_usable))
-    else {
+    let Some(request) = parsed.ok().filter(|request| {
+        request
+            .frames
+            .iter()
+            .all(|frame| frame.call_id_usable() && frame.outcome_usable())
+    }) else {
         return crate::envelope::ProblemResponse::new(
             afd_core::error_code::INVALID_REQUEST,
             DETAIL_MALFORMED,
