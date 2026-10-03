@@ -52,6 +52,7 @@ async fn test_runner_body_with_unknown_field_refused() {
     );
 
     supervisor.shutdown().await;
+    run.cleanup().await;
 }
 
 /// How long the runner is given to take, run and settle the seeded event.
@@ -116,6 +117,10 @@ async fn test_rust_runner_lease_roundtrip() {
     assert_eq!(left, 0, "no sandbox outlives its lease");
     drop(tail);
     supervisor.shutdown().await;
+    // Retired like every other scenario's fleet: left `active` with its lease,
+    // the next daemon's reclaim sweeper re-marks it and the scenarios after
+    // this one spend their poll budget on it (`e2e_retire`).
+    run.cleanup().await;
 }
 
 /// The lease is reported, and the event carries the scripted turn's outcome
