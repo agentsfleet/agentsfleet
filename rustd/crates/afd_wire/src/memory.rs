@@ -212,9 +212,9 @@ pub struct MemoryHydrateResponse<'a> {
     /// The window's items.
     #[serde(borrow)]
     pub memory: Vec<MemoryDelta<'a>>,
-    /// What other fleets in the workspace published, newest first; empty for
-    /// a fleet without the read grant, and then left off the wire, so a
-    /// fleet with no grant reads the reply every runner already parses.
+    /// What other fleets in the workspace published, newest first. Empty, and
+    /// left off the wire, for a fleet without the read grant, so its reply is
+    /// the shape every runner parses.
     #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
     pub shared: Vec<SharedMemory<'a>>,
     /// Whether this fleet may store an entry the workspace reads; left off
@@ -251,6 +251,7 @@ pub struct MemoryRecallRequest<'a> {
     #[garde(length(bytes, max = MAX_CONTENT_LEN))]
     pub query: Cow<'a, str>,
     /// The most entries of each kind to answer with.
+    #[cfg_attr(feature = "openapi", schema(minimum = 1, maximum = 50))]
     #[garde(range(min = 1, max = RECALL_LIMIT_MAX))]
     pub limit: usize,
 }

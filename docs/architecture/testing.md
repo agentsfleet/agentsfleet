@@ -39,10 +39,11 @@ Redeploying that frozen revision is a manual `workflow_dispatch` on
 
 `make test-unit-all` is the repository's unit claim. It runs
 `test-unit-rustd` and then `test-coverage-all`, which runs each TypeScript
-package's own coverage gate. `test-unit-rustd` is three targets on the coverage
-lane's partition, `test-unit-rustd-runner`, `test-unit-rustd-daemon` and
-`test-unit-rustd-substrate`, in that order: together the whole workspace, with
-`afd_bench`'s tests kept in `substrate`. Continuous Integration (CI) runs each
+package's own coverage gate. `test-unit-rustd` is three targets, one per crate
+family by name prefix, `test-unit-rustd-runner` (`afr_*`, `agentsfleet_runner`),
+`test-unit-rustd-daemon` (`agentsfleetd`) and `test-unit-rustd-daemon-libs`
+(`afd_*`), in that order: together the whole workspace, with `afd_bench`'s tests
+kept in `daemon-libs`. Continuous Integration (CI) runs each
 on its own runner, with `lint-rustd` beside them, in
 `.github/workflows/test-unit-rustd.yml`; its last job carries the required check
 name `test-unit-rustd` and is green only when every other job was. A package-scoped runner —
