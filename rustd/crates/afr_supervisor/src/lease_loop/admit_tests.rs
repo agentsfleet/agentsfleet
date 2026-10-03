@@ -26,8 +26,11 @@ const FAILURE_DETAIL: &str = "failure_detail";
 const FIELD_NAME: &str = "name";
 /// The log field carrying the registry code.
 const FIELD_ERROR_CODE: &str = "error_code";
-/// Why a refused lease's run count is zero.
-const NO_MODEL_CALL: &str = "no model call was made";
+
+/// A refused lease reached no model.
+fn assert_no_model_call(rig: &Rig) {
+    assert_eq!(rig.runs.load(Ordering::SeqCst), 0, "no model call was made");
+}
 
 fn rig() -> Rig {
     behaving(Behaviour::Answer, |_| None)
@@ -61,7 +64,7 @@ async fn test_unhosted_tool_refuses_lease() {
     let report = reported(&calls);
     assert_eq!(report[FAILURE_REASON], STARTUP_POSTURE);
     assert_eq!(report[FAILURE_DETAIL], DETAIL_UNHOSTED);
-    assert_eq!(rig.runs.load(Ordering::SeqCst), 0, NO_MODEL_CALL);
+    assert_no_model_call(&rig);
     assert_eq!(
         rig.prepared.load(Ordering::SeqCst),
         0,
@@ -153,7 +156,7 @@ async fn a_lease_naming_a_provider_no_wire_speaks_is_refused_before_anything_sta
     let report = reported(&calls);
     assert_eq!(report[FAILURE_REASON], STARTUP_POSTURE);
     assert_eq!(report[FAILURE_DETAIL], DETAIL_UNHOSTED_PROVIDER);
-    assert_eq!(rig.runs.load(Ordering::SeqCst), 0, NO_MODEL_CALL);
+    assert_no_model_call(&rig);
     assert_eq!(position(&calls, Verb::Hydrate), None);
     let refused = capture.only(EVENT_UNHOSTED_PROVIDER);
     assert_eq!(refused.level, tracing::Level::ERROR);
