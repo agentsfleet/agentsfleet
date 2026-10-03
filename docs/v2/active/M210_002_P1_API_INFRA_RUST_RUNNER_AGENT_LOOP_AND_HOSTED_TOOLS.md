@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M210
 **Workstream:** 002
 **Date:** Oct 02, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the workstream after which the fleets of record (the Continuous Integration (CI) responder and repairer, the Pull Request reviewer, the incident repairer) run on the Rust runner, and the one every tool workstream plugs into
 **Categories:** API, INFRA
 **Batch:** B2 — after M210_001 is on `main`; the milestone's follow-up Pull Request. The sandbox-side tools, the runner verbs for schedules and messages, the nested loops and the cutover are later milestones
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** feat/m210-agent-loop-hosted-tools
+**Baseline revision:** 4339afb59fe83a20fb643004e432b9755e1b14a7
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M210_001 (supervisor duties, the `AgentEngine` trait, the executor) · M209_001 (`afd_wire::tool_trace`, the outcome fields on `tool_call_completed`) · M209_003 (`afd_wire::tool_detail`, the tool-calls verb)
 **Provenance:** LLM-drafted (Claude Fable 5.1, Oct 02, 2026) from a source trace on `main`, the four bundles under `tests/fixtures/fleetbundle/`, and Indy's in-session decisions; Codex at `~/Projects/oss/rs/codex` `2e5fea64e`, IronClaw at `~/Projects/oss/rs/ironclaw` `b0b999d96`, ZeroClaw at `~/Projects/oss/zeroclaw` `74362c2d6`
@@ -65,6 +65,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afr_agent/tests/`, `rustd/crates/afr_providers/tests/`, `rustd/crates/afr_tools/tests/` | CREATE | Unit proofs per crate |
 | `tests/fixtures/fleetbundle/incident-repairer/TRIGGER.md`, `tests/fixtures/fleetbundle/incident-repairer/SKILL.md`, `rustd/crates/afd_fleet_runtime/tests/frontmatter_corpus.rs` | EDIT | The bundle stops promising the retired approval card; the corpus test pins it |
 | `docs/architecture/runner_execution.md`, `docs/architecture/capabilities.md` | EDIT | Landed at authoring: the tool catalog, the trusted repair context, the schedules reversal |
+| `docs/v2/pending/M211_001_P1_API_INFRA_RUST_RUNNER_SANDBOX_SIDE_TOOLS.md`, `docs/v2/pending/M213_001_P0_API_DOCS_INFRA_RUST_RUNNER_CUTOVER_ZIG_RETIRED.md` | EDIT | Landed in `4339afb59` (the toolbox triage), never pushed; rides this Pull Request by Indy's call |
 
 ## Applicable Rules
 
