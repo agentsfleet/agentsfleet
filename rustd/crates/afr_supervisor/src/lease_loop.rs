@@ -1,18 +1,20 @@
 //! One lease, end to end.
 //!
 //! ```text
-//!   turn ─► bundle ─► hydrate ─► prepare sandbox ─► run ─► destroy
+//!   admit ─► turn ─► bundle ─► hydrate ─► [prepare sandbox ─► land] ─► run ─► [destroy]
 //!   ─► memory push (fenced) ─► report spooled ─► report posted ─► activity drained
 //!   └──────────── renewal alongside, until the report is answered ─────────┘
 //! ```
 //!
-//! Nothing runs without a sandbox: one that cannot be built ends the lease with
-//! a failed report. A sandbox that was built is destroyed exactly once — the
-//! type consumes it — and an engine that panics is caught so the teardown still
-//! runs. The report settles before the live tail is waited on, and that wait is
-//! bounded: the tail is best-effort, the report is the record.
+//! The engine admits the lease first: a policy naming a tool it cannot host is
+//! refused before anything is prepared. A lease whose tools all run in the
+//! supervisor starts no sandbox; any other runs in one, and one that cannot be
+//! built ends the lease with a failed report. A sandbox that was built is
+//! destroyed exactly once — the type consumes it — and an engine that panics is
+//! caught so the teardown still runs. The report settles before the live tail
+//! is waited on, and that wait is bounded: the tail is best-effort, the report
+//! is the record.
 
-use std::panic::AssertUnwindSafe;
 use std::time::Duration;
 
 use afd_core::clock::Clock;
@@ -20,11 +22,10 @@ use afd_core::error_code::{self, Coded};
 use afd_core::id::Uuid7;
 use afd_core::spelling::to_spelling;
 use afd_wire::lease::LeasePayload;
-use afd_wire::memory::{MemoryDelta, MemoryHydrateResponse};
+use afd_wire::memory::MemoryHydrateResponse;
 use afd_wire::report::FailureClass;
-use afr_agent::{AgentEngine, AgentRun};
-use afr_sandbox::{Engine, Limits, Sandbox, SandboxRequest};
-use futures_util::FutureExt as _;
+use afr_agent::AgentEngine;
+use afr_sandbox::{Engine, Limits};
 use tokio::sync::Notify;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -40,6 +41,7 @@ use crate::report::Ending;
 use crate::report_spool::ReportSpool;
 use crate::turns::FleetTurns;
 
+mod drive;
 mod settle;
 mod workspace;
 
@@ -48,20 +50,16 @@ pub(crate) const ACTIVITY_DRAIN_WAIT: Duration = Duration::from_secs(5);
 const DETAIL_TURN: &str = "the worker pool was shutting down when the lease arrived";
 const DETAIL_BUNDLE: &str = "the fleet bundle could not be fetched and verified";
 const DETAIL_MEMORY: &str = "the fleet's memory could not be read";
-const DETAIL_SANDBOX: &str = "this host could not build a sandbox for the run";
-const DETAIL_ENGINE: &str = "the agent engine stopped before the turn ended";
-const DETAIL_PANIC: &str = "the agent engine panicked";
+const DETAIL_UNHOSTED: &str = "the fleet names a tool this runner cannot host";
 const DETAIL_RENEWAL: &str = "the daemon ended the lease while it ran";
 const DETAIL_STOPPED: &str = "this runner was told to stop while the run went on";
 const EVENT_ACQUIRED: &str = "lease_acquired";
 const EVENT_COMPLETED: &str = "lease_completed";
 const EVENT_FAILED: &str = "lease_failed";
-const EVENT_SANDBOX_REFUSED: &str = "sandbox_refused";
-const EVENT_DESTROY_FAILED: &str = "sandbox_destroy_failed";
+/// The Zig tool bridge's spelling, kept so its dashboards still match.
+const EVENT_UNHOSTED: &str = "tool_refused_not_hosted";
 const EVENT_BUNDLE_FAILED: &str = "bundle_download_failed";
 const EVENT_HYDRATE_FAILED: &str = "memory_hydrate_failed";
-const EVENT_ENGINE_FAILED: &str = "engine_run_failed";
-const EVENT_ENGINE_PANICKED: &str = "engine_panicked";
 const EVENT_DRAIN_ABANDONED: &str = "activity_drain_abandoned";
 
 /// Everything a lease needs, shared by every worker.
@@ -216,10 +214,14 @@ impl LeaseRun<'_> {
 
     /// Everything that holds the fleet's turn: setup, the run, teardown.
     ///
-    /// The interrupt ends the run early; the sandbox is still destroyed, and
+    /// The interrupt ends the run early; a sandbox is still destroyed, and
     /// the caller's ending replaces whatever this returns.
     async fn work(&self, turns: &FleetTurns, sink: ActivitySink) -> Ending {
         let lessee = self.lessee;
+        let needs = match lessee.agent.admit(&self.lease.policy) {
+            Ok(needs) => needs,
+            Err(refusal) => return self.unhosted(&refusal),
+        };
         let claimed = tokio::select! {
             turn = turns.claim(&self.ids.fleet) => turn,
             () = self.interrupt.cancelled() => {
@@ -248,77 +250,22 @@ impl LeaseRun<'_> {
             Ok(memory) => memory,
             Err(failure) => return self.refuse(&failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY),
         };
-        let request = SandboxRequest {
-            lease_id: self.ids.lease.as_str(),
-            limits: lessee.limits,
-        };
-        let sandbox = match lessee.engine.prepare(request).await {
-            Ok(sandbox) => sandbox,
-            Err(failure) => return self.refuse(&failure, EVENT_SANDBOX_REFUSED, DETAIL_SANDBOX),
-        };
-        let ending = self
-            .in_sandbox(&memory.memory, bundle.as_ref(), sandbox.as_ref(), sink)
-            .await;
-        if let Err(failure) = sandbox.destroy().await {
-            let code = failure.code().as_str();
-            let lease_id = self.ids.lease.as_str();
-            let event = EVENT_DESTROY_FAILED;
-            tracing::warn!(
-                error_code = code,
-                lease_id,
-                event,
-                "a sandbox did not tear down cleanly"
-            );
+        if needs.sandbox {
+            self.sandboxed(&memory.memory, bundle.as_ref(), sink).await
+        } else {
+            self.drive(&memory.memory, None, sink).await
         }
-        ending
     }
 
-    /// The turn itself. A panicking engine is caught here, inside the
-    /// sandbox's lifetime, so the caller still destroys it.
-    async fn drive(
-        &self,
-        memory: &[MemoryDelta<'_>],
-        sandbox: &dyn Sandbox,
-        sink: ActivitySink,
-    ) -> Ending {
-        let run = AssertUnwindSafe(self.lessee.agent.run(AgentRun {
-            lease: self.lease,
-            memory,
-            executor: Some(sandbox.executor()),
-            events: &sink,
-        }))
-        .catch_unwind();
-        let output = tokio::select! {
-            output = run => Some(output),
-            () = self.interrupt.cancelled() => None,
-        };
-        let first_chunk = sink.first_chunk();
-        drop(sink);
-        match output {
-            Some(Ok(Ok(output))) => Ending::Ran {
-                output,
-                first_chunk,
-            },
-            Some(Ok(Err(failure))) => self.fail(
-                &failure,
-                FailureClass::RunnerCrash,
-                EVENT_ENGINE_FAILED,
-                DETAIL_ENGINE,
-            ),
-            Some(Err(_panic)) => {
-                let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-                let lease_id = self.ids.lease.as_str();
-                let event = EVENT_ENGINE_PANICKED;
-                tracing::error!(
-                    error_code = code,
-                    lease_id,
-                    event,
-                    "the agent engine panicked; its sandbox is still torn down"
-                );
-                failed(FailureClass::RunnerCrash, DETAIL_PANIC)
-            }
-            None => failed(FailureClass::RenewalTerminate, DETAIL_RENEWAL),
-        }
+    /// Logs a lease whose policy names a tool the engine cannot host, and
+    /// ends it before anything was prepared for it.
+    fn unhosted(&self, refusal: &afr_agent::Error) -> Ending {
+        let code = refusal.code().as_str();
+        let lease_id = self.ids.lease.as_str();
+        let name = refusal.unhosted_tool();
+        let event = EVENT_UNHOSTED;
+        tracing::error!(error_code = code, lease_id, name, event);
+        failed(FailureClass::StartupPosture, DETAIL_UNHOSTED)
     }
 
     /// Logs why a lease could not start, and ends it at startup.
@@ -350,3 +297,7 @@ const fn failed(class: FailureClass, detail: &'static str) -> Ending {
 #[cfg(test)]
 #[path = "lease_loop/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "lease_loop/admit_tests.rs"]
+mod admit_tests;

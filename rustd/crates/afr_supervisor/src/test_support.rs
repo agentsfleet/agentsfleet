@@ -16,9 +16,13 @@ use std::time::Duration;
 use afd_wire::activity::{ActivityFrame, FleetResponseChunk};
 use afd_wire::lease::{BundleManifest, LeasePayload};
 use afd_wire::memory::MemoryDelta;
+use afd_wire::policy::ExecutionPolicy;
 use afd_wire::report::{Completed, ExecutionResult, ResultOutcome};
-use afr_agent::{AgentEngine, AgentRun, RunOutput};
+use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_executor::{Executor, ProcessId, Spawn};
+use afr_tools::Catalog;
+use afr_tools::catalog::{CALCULATOR, FILE_READ, HTTP_REQUEST};
+use afr_tools::stub::Stub;
 use bytes::Bytes;
 use serde::Serialize;
 use tokio::sync::mpsc;
@@ -156,13 +160,16 @@ pub(crate) enum Behaviour {
     Panic,
 }
 
-/// An agent engine that counts its runs and how many overlap.
+/// An agent engine that counts its runs and how many overlap, admitting
+/// through a catalog of stubs: `file_read` runs in the sandbox, `calculator`
+/// and `http_request` in the supervisor, and nothing else is hosted.
 #[derive(Debug)]
 pub(crate) struct FakeAgent {
     pub(crate) behaviour: Behaviour,
     pub(crate) runs: Arc<AtomicUsize>,
     pub(crate) peak: Arc<AtomicUsize>,
     running: AtomicUsize,
+    catalog: Catalog,
 }
 
 impl FakeAgent {
@@ -172,12 +179,22 @@ impl FakeAgent {
             runs: Arc::default(),
             peak: Arc::default(),
             running: AtomicUsize::new(0),
+            catalog: Catalog::new(vec![
+                Stub::boxed(&FILE_READ),
+                Stub::boxed(&CALCULATOR),
+                Stub::boxed(&HTTP_REQUEST),
+            ]),
         }
     }
 }
 
 #[async_trait::async_trait]
 impl AgentEngine for FakeAgent {
+    fn admit(&self, policy: &ExecutionPolicy<'_>) -> afr_agent::Result<Needs> {
+        let sandbox = self.catalog.select(&policy.tools)?.needs_sandbox();
+        Ok(Needs { sandbox })
+    }
+
     async fn run(&self, run: AgentRun<'_>) -> afr_agent::Result<RunOutput> {
         self.runs.fetch_add(1, Ordering::SeqCst);
         let overlapping = self.running.fetch_add(1, Ordering::SeqCst) + 1;
@@ -191,7 +208,9 @@ impl AgentEngine for FakeAgent {
                 stream_contiguous: false,
                 stream_seq: 0,
             }));
-        exercise(run.executor.unwrap()).await;
+        if let Some(executor) = run.executor {
+            exercise(executor).await;
+        }
         tokio::time::sleep(Duration::from_millis(50)).await;
         self.running.fetch_sub(1, Ordering::SeqCst);
         match self.behaviour {

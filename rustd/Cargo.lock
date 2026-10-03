@@ -905,6 +905,7 @@ dependencies = [
  "afd_core",
  "afd_wire",
  "afr_executor",
+ "afr_tools",
  "async-trait",
  "bytes",
  "serde_json",
@@ -972,6 +973,7 @@ dependencies = [
  "afr_agent",
  "afr_executor",
  "afr_sandbox",
+ "afr_tools",
  "async-trait",
  "axum",
  "backon",
@@ -990,6 +992,19 @@ dependencies = [
  "tracing",
  "url",
  "zeroize",
+]
+
+[[package]]
+name = "afr_tools"
+version = "0.51.1"
+dependencies = [
+ "afd_core",
+ "afr_executor",
+ "async-trait",
+ "bytes",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
 ]
 
 [[package]]

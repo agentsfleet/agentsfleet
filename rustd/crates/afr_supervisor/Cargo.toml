@@ -54,6 +54,9 @@ tracing.workspace = true
 futures-util.workspace = true
 
 [dev-dependencies]
+# Stub handlers, so the lease suites admit through a real catalog: a
+# sandbox-side tool starts a sandbox, a supervisor-side one does not.
+afr_tools = { workspace = true, features = ["test-util"] }
 # The bundle tests' independent oracle for the digest.
 hex.workspace = true
 sha2.workspace = true

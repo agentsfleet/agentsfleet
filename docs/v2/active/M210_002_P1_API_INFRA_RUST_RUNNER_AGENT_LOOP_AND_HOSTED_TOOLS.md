@@ -94,13 +94,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — The catalog and the router are the harness
 
-The catalog names every tool in `docs/architecture/runner_execution.md` §"Tool catalog" with its JSON schema and its runtime. A lease is offered exactly the names in `ExecutionPolicy.tools`; a policy naming a tool the catalog has no handler for refuses the lease with a logged code, never a quieter tool set. A model call to a name outside the policy is a tool error and the run continues. The router runs a `Supervisor` handler in-process and a `Sandbox` handler through the executor connection; in this workstream the sandbox-side handlers are a stub that proves the route, and a lease whose tools are all supervisor-side starts no sandbox.
+The catalog names every tool in `docs/architecture/runner_execution.md` §"Tool catalog" with its runtime; each handler carries its JSON schema, so a tool with no handler yet has none to drift. A lease is offered exactly the names in `ExecutionPolicy.tools`; a policy naming a tool the catalog has no handler for refuses the lease with a logged code, never a quieter tool set. A model call to a name outside the policy is a tool error and the run continues. The router runs a `Supervisor` handler in-process and a `Sandbox` handler through the executor connection; in this workstream the sandbox-side handlers are a stub that proves the route, and a lease whose tools are all supervisor-side starts no sandbox.
 
 - **Dimension 1.1** — The model is offered exactly the policy's tools, each with its schema → Test `test_catalog_offers_policy_tools`
 - **Dimension 1.2** — A policy naming a tool without a handler refuses the lease before any model call → Test `test_unhosted_tool_refuses_lease`
 - **Dimension 1.3** — A model call to a name outside the policy is a tool error; the next turn runs → Test `test_unlisted_tool_refused_run_continues`
 - **Dimension 1.4** — A supervisor-side call never touches the executor; a sandbox-side call crosses it → Test `test_router_sends_each_tool_to_its_runtime`
-- **Dimension 1.5** — A lease with only supervisor-side tools starts no sandbox; one with `file_read` does → Test `test_lease_without_sandbox_tools_starts_no_sandbox`
+- **Dimension 1.5** — A lease with only supervisor-side tools starts no sandbox; one with `file_read` does → Test `test_lease_without_sandbox_tools_starts_no_sandbox` — DONE (`rustd/crates/afr_supervisor/src/lease_loop/admit_tests.rs`)
 
 ### §2 — The loop runs turns, and every call ends once
 
@@ -166,9 +166,9 @@ The integration lane installs each fixture bundle through the seed (`rustd/crate
 ## Interfaces
 
 ```
-Catalog entry: { name, schema: JSON Schema, runtime: Supervisor | Sandbox }
+Catalog entry: { name, runtime: Supervisor | Sandbox | Provider }
 Tool (trait):  name() · schema() · runtime() · call(arguments, ctx) → ToolOutput { text, exit_code?, error_code? }
-AgentEngine (M210_001 trait) ← afr_agent::Loop { provider, catalog ∩ policy.tools, budget }
+AgentEngine (M210_001 trait) + admit(policy) → Needs { sandbox } ← afr_agent::Loop { provider, catalog ∩ policy.tools, budget }
 Provider (trait): stream(request) → chunks { text(kind) | tool_call(id, name, arguments) | usage }
                   hosted_specs(policy.tools) → the provider's own tool specs (web_search)
 
@@ -209,7 +209,7 @@ Mint:   POST /v1/runners/me/credentials/mint { lease_id, integration, scope? } �
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `lease_refused_unhosted_tool` (runner log, error) | ops | A policy names a tool without a handler | lease id, tool name, `error_code` | No policy content beyond the name | `test_unhosted_tool_refuses_lease` |
+| `tool_refused_not_hosted` (runner log, error; the Zig bridge's spelling, `docs/LOGGING_STANDARD.md` §8A) | ops | A policy names a tool without a handler | lease id, tool `name`, `error_code` | No policy content beyond the name | `test_unhosted_tool_refuses_lease` |
 | `provider_retry` (runner log, warn) | ops | A provider call is retried | lease id, provider, status, attempt | No request or response body | `test_provider_retry_honours_retry_after` |
 | `tool_refused` (runner log, info) | ops | A call fails the policy | lease id, call id, tool, `error_code` | No arguments, no host beyond its name | `test_http_request_refuses_unlisted_host` |
 | `credential_minted` (runner log, info) | ops | A mintable is minted | lease id, integration, `expires_at_ms` | Never the token | `test_mintable_credential_minted_once` |
@@ -271,7 +271,7 @@ Mint:   POST /v1/runners/me/credentials/mint { lease_id, integration, scope? } �
 | S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | |
 | S5 | Version in sync | `make check-version` | exit 0 | P0 | |
 | S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| S7 | No oversize source file (`dispatch/write_any.md` §LENGTH GATE's extensions) | `git diff --name-only origin/main...HEAD \| grep -E '\.(zig\|jsx?\|tsx?\|py\|rs\|go\|sh\|sql\|ya?ml)$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
 
 **Command source rule:** copy every declared `conform` and `verify.*` invocation from `.oracle/orly.json` into a Verify cell, verbatim, with an Expected value. Include conditional suites; the final gate decides applicability from the actual branch diff. Additional spec-specific commands, secret scans, and named manual checks are allowed. See `dispatch/lifecycle.md` for command timing; baseline metadata is pending at opening and measured before the Pull Request.
 

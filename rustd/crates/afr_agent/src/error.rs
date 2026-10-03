@@ -32,6 +32,14 @@ pub(crate) enum ErrorKind {
         #[from]
         source: afr_executor::Error,
     },
+
+    /// The catalog refused the lease's tools.
+    #[error("the lease's tools were refused")]
+    Tools {
+        /// The catalog's refusal, naming the tool.
+        #[from]
+        source: afr_tools::Error,
+    },
 }
 
 /// The one alias every signature in this crate spells.
@@ -43,6 +51,20 @@ impl Error {
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::Executor { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::Tools { source } => source.code(),
+        }
+    }
+
+    /// The tool a refused lease named, for its log line.
+    #[must_use]
+    pub fn unhosted_tool(&self) -> Option<&str> {
+        match self.kind() {
+            ErrorKind::Executor { .. } => None,
+            ErrorKind::Tools { source } => source.unhosted_tool(),
         }
     }
 }
+
+#[cfg(test)]
+#[path = "error/tests.rs"]
+mod tests;
