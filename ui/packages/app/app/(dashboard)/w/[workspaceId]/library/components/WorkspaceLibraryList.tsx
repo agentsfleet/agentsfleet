@@ -3,6 +3,7 @@
 import { useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Badge,
   Button,
   ConfirmDialog,
   DataTable,
@@ -12,16 +13,13 @@ import {
   type DataTableColumn,
 } from "@agentsfleet/design-system";
 import { LibraryIcon, Trash2Icon } from "lucide-react";
+import { COLUMN_NAME, COLUMN_SOURCE, COLUMN_STATUS, COLUMN_TIME, COLUMN_ACTIONS } from "@/components/domain/fleet-library/table-copy";
 import { SourceMark } from "@/components/domain/fleet-library/SourceMark";
 import { listLibraryEntriesAction, removeLibraryEntryAction } from "../actions";
 import type { WorkspaceLibraryEntry } from "@/lib/api/library-types";
 import { isDefiniteRefusal } from "@/lib/api/errors";
 import { presentErrorString } from "@/lib/errors";
 import {
-  COLUMN_ACTIONS,
-  COLUMN_NAME,
-  COLUMN_SOURCE,
-  COLUMN_TIME,
   LIBRARY_EMPTY_BODY,
   LIBRARY_EMPTY_TITLE,
   LIBRARY_SECTION_LABEL,
@@ -32,6 +30,8 @@ import {
   REMOVE_DIALOG_BODY,
   REMOVE_DIALOG_TITLE,
   REMOVE_ROW_LABEL,
+  STATUS_LABEL_READY,
+  STATUS_HELP_READY,
 } from "../copy";
 
 type Props = {
@@ -94,6 +94,12 @@ function buildColumns({
       hideOnMobile: true,
       sortValue: provenance,
       cell: sourceCell,
+    },
+    {
+      key: "status",
+      header: COLUMN_STATUS,
+      // Onboarding stores a validated bundle before this row can appear.
+      cell: () => <Badge variant="green" title={STATUS_HELP_READY}>{STATUS_LABEL_READY}</Badge>,
     },
     {
       key: "created_at",

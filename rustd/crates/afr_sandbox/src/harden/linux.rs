@@ -114,7 +114,7 @@ pub(crate) const HIGH_NUMBERS: [sock_filter; 4] = {
 
 /// One instruction. The kernel reads an opcode as sixteen bits; one wider is
 /// refused while the program is built rather than cut to another opcode.
-const fn step(code: u32, jt: u8, jf: u8, k: u32) -> sock_filter {
+pub(super) const fn step(code: u32, jt: u8, jf: u8, k: u32) -> sock_filter {
     assert!(code <= u16::MAX as u32, "a BPF opcode is sixteen bits");
     #[expect(
         clippy::cast_possible_truncation,

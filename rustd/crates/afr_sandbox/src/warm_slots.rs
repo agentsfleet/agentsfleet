@@ -86,8 +86,9 @@ impl WarmSlots {
         if let Err(stopped) = self.keeper.await {
             let reason = stopped.to_string();
             let event = EVENT_KEEPER_FAILED;
+            let error_code = DIED_CODE.as_str();
             tracing::warn!(
-                error_code = DIED_CODE.as_str(),
+                error_code,
                 reason,
                 event,
                 "the warm-slot keeper stopped abnormally"
@@ -173,9 +174,10 @@ fn live_slot(
             return Some(slot);
         }
         let event = EVENT_SLOT_DIED;
+        let error_code = DIED_CODE.as_str();
         let name = slot.name.as_str();
         tracing::warn!(
-            error_code = DIED_CODE.as_str(),
+            error_code,
             slot = name,
             event,
             "a warm slot's sandbox died while it waited"
