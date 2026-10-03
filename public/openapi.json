@@ -13246,8 +13246,7 @@
             "type": "boolean",
             "description": "Always `true`: a batch this daemon could not accept is refused with a\nproblem document, never acknowledged with `false`."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "ActivityFrame": {
         "oneOf": [
@@ -13982,8 +13981,7 @@
             "description": "Concurrent workers the runner may start. Clamped on both sides.",
             "minimum": 0
           }
-        },
-        "additionalProperties": false
+        }
       },
       "BillingResponse": {
         "type": "object",
@@ -14042,8 +14040,7 @@
             "type": "string",
             "description": "Content hash addressing the immutable canonical archive."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "CapabilityReport": {
         "type": "object",
@@ -14393,8 +14390,7 @@
             "description": "Tool results retained in the working window.",
             "minimum": 0
           }
-        },
-        "additionalProperties": false
+        }
       },
       "CreateInviteRequest": {
         "type": "object",
@@ -14711,8 +14707,7 @@
             "type": "string",
             "description": "The workspace the fleet belongs to."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "EventSummary": {
         "type": "object",
@@ -14941,8 +14936,7 @@
             },
             "description": "Tools the run may call."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "ExtraBind": {
         "type": "object",
@@ -14965,8 +14959,7 @@
             "type": "string",
             "description": "Host path to bind."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "FailureClass": {
         "type": "string",
@@ -15531,8 +15524,7 @@
             "$ref": "#/components/schemas/HeartbeatStatus",
             "description": "Whether to keep working, drain, or stop."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "HeartbeatStatus": {
         "type": "string",
@@ -15568,8 +15560,7 @@
             ],
             "description": "Expected string value, when the rule locks a string."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "HttpMethod": {
         "type": "string",
@@ -15607,8 +15598,7 @@
             },
             "description": "Requests admitted at this host."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "HttpPathMatch": {
         "type": "string",
@@ -15647,8 +15637,7 @@
             "$ref": "#/components/schemas/HttpPathMatch",
             "description": "Whether `path` is matched exactly or as a prefix."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "IdentityAnswer": {
         "oneOf": [
@@ -15882,8 +15871,7 @@
             "$ref": "#/components/schemas/SecretDelivery",
             "description": "How secrets reached this run."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "LeaseResponse": {
         "type": "object",
@@ -15909,8 +15897,7 @@
             "description": "How long to wait before asking again, when there is none.",
             "minimum": 0
           }
-        },
-        "additionalProperties": false
+        }
       },
       "Liveness": {
         "type": "object",
@@ -16024,8 +16011,7 @@
             "description": "Deltas written, after upsert.",
             "minimum": 0
           }
-        },
-        "additionalProperties": false
+        }
       },
       "MemoryDelta": {
         "type": "object",
@@ -16048,8 +16034,7 @@
             "type": "string",
             "description": "Stable key. A repeated key overwrites rather than accumulating."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "MemoryEntry": {
         "type": "object",
@@ -16095,8 +16080,7 @@
             },
             "description": "The window's items."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "MemoryPushRequest": {
         "type": "object",
@@ -16205,8 +16189,7 @@
             "type": "string",
             "description": "The short-lived, workspace-scoped credential. Secret — never logged,\nnever echoed into a frame."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "Mintable": {
         "type": "object",
@@ -16224,8 +16207,7 @@
             "type": "string",
             "description": "The placeholder name the fleet references."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "MintedApiKeyResponse": {
         "type": "object",
@@ -16483,8 +16465,7 @@
             },
             "description": "Exact prefixes where a read-only tool may use POST for a query."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "OnboardingResponse": {
         "type": "object",
@@ -17600,8 +17581,7 @@
             "format": "int64",
             "description": "Epoch milliseconds of the new deadline."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "ReplaceSecretRequest": {
         "type": "object",
@@ -17748,8 +17728,7 @@
             "type": "boolean",
             "description": "Whether the write landed."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "ReportTelemetry": {
         "type": "object",
@@ -17806,8 +17785,7 @@
             },
             "description": "Repositories the run may reach."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "ResolveApprovalRequest": {
         "type": "object",
@@ -18635,8 +18613,7 @@
             "type": "string",
             "description": "Operator-facing state."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "SelftestCheck": {
         "type": "object",

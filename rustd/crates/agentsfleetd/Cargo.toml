@@ -176,6 +176,16 @@ sqlx.workspace = true
 # `afd_wire` rides in as the SHAPE those bodies are written against.
 serde_json.workspace = true
 afd_wire.workspace = true
+# The Rust runner, driven end to end against this daemon: its supervisor, the
+# test-only unsandboxed engine, the scripted agent engine and the executor's
+# process request. Dev-only, and only in this direction — the runner itself
+# links nothing from the daemon but the wire and the value layer.
+afr_agent = { workspace = true, features = ["test-util"] }
+afr_executor.workspace = true
+afr_sandbox.workspace = true
+afr_supervisor.workspace = true
+# A storage home and a sandbox base the run leaves behind for the test to read.
+tempfile.workspace = true
 
 [lints]
 workspace = true

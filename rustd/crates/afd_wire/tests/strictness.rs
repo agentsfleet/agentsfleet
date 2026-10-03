@@ -5,9 +5,15 @@
     reason = "test target: failing loudly on a malformed payload is the correct outcome"
 )]
 
+use afd_wire::activity::{ActivityAccepted, ActivityRequest};
+use afd_wire::credentials::{MintCredentialRequest, MintCredentialResponse};
 use afd_wire::lease::LeaseResponse;
-use afd_wire::report::{RenewRequest, ReportRequest, ReportTelemetry};
-use afd_wire::runner::AssignedPolicy;
+use afd_wire::memory::{MemoryCaptureResponse, MemoryHydrateResponse, MemoryPushRequest};
+use afd_wire::report::{
+    RenewRequest, RenewResponse, ReportRequest, ReportResponse, ReportTelemetry,
+};
+use afd_wire::runner::{AssignedPolicy, HeartbeatRequest, HeartbeatResponse, SelfResponse};
+use serde_json::Value;
 
 /// A complete, well-formed `LeaseResponse` — the truncation cases below cut it
 /// at several offsets and every cut must fail as a typed error.
@@ -117,4 +123,159 @@ fn should_reject_a_payload_missing_a_required_field() {
     let err = serde_json::from_str::<ReportRequest<'_>>(r#"{"lease_id":"a"}"#).unwrap_err();
     assert!(err.is_data(), "{err}");
     assert!(err.to_string().contains("missing field"), "{err}");
+}
+
+/// Whether a body decodes into one runner-bound reply type.
+type Decodes = fn(&[u8]) -> bool;
+
+/// A runner-written body type's refusal of a body, rendered; `None` if it decoded.
+type Refusal = fn(&[u8]) -> Option<String>;
+
+/// The key a newer daemon might add; no type in this crate carries it.
+const FUTURE: &str = "future";
+
+/// Adds [`FUTURE`] to the object at `pointer` inside `document`.
+fn grow(document: &mut Value, pointer: &str) {
+    let object = document.pointer_mut(pointer).and_then(Value::as_object_mut);
+    assert!(object.is_some(), "{pointer} names an object in the fixture");
+    object.unwrap().insert(FUTURE.to_owned(), Value::from(1));
+}
+
+/// A lease grown at every level still decodes, so a daemon that adds a field to
+/// any part of a lease never strands a runner built before it.
+#[test]
+fn test_daemon_payload_with_unknown_field_decodes() {
+    let mut document: Value = serde_json::from_str(WELL_FORMED_LEASE_RESPONSE).unwrap();
+    for pointer in [
+        "",
+        "/lease",
+        "/lease/event",
+        "/lease/bundle",
+        "/lease/policy",
+        "/lease/policy/network_policy",
+        "/lease/policy/mintable/0",
+        "/lease/policy/repository_binding",
+        "/lease/policy/http_origin_policies/0",
+        "/lease/policy/http_origin_policies/0/requests/0",
+        "/lease/policy/http_origin_policies/0/requests/0/json_fields/0",
+        "/lease/policy/context",
+    ] {
+        grow(&mut document, pointer);
+    }
+    let grown = serde_json::to_vec(&document).unwrap();
+
+    let decoded = serde_json::from_slice::<LeaseResponse<'_>>(&grown).unwrap();
+
+    assert_eq!(decoded.lease.unwrap().fencing_token, 504);
+}
+
+/// The assigned policy, as every reply that carries it spells it, with a bind
+/// and a key no build knows at both levels.
+const GROWN_POLICY: &str = r#"{"sandbox_tier":"landlock_full","network_policy":"allow_all",
+    "registry_allowlist":[],"worker_count":1,"future":1,
+    "extra_binds":[{"path":"/opt/cache","mode":"read_only","note":"cache","future":1}]}"#;
+
+/// Every other reply the runner reads accepts a key it does not carry.
+///
+/// Each row is a non-capturing closure, so the table is one array of function
+/// pointers rather than a test per type that drifts as the list grows.
+#[test]
+fn test_every_runner_bound_reply_accepts_an_unknown_field() {
+    let heartbeat = format!(
+        r#"{{"status":"ok","assigned_policy":{GROWN_POLICY},"degraded":false,"degraded_reason":null,"selftest_requested":false,"heartbeat_interval_ms":10000,"future":1}}"#
+    );
+    let own = format!(
+        r#"{{"id":"r","status":"active","host_id":"h","sandbox_tier":"landlock_full","last_seen_at":1,"assigned_policy":{GROWN_POLICY},"achievable":null,"degraded":false,"degraded_reason":null,"future":1}}"#
+    );
+    let cases: [(&str, String, Decodes); 8] = [
+        ("heartbeat", heartbeat, |b| {
+            serde_json::from_slice::<HeartbeatResponse<'_>>(b).is_ok()
+        }),
+        ("self", own, |b| {
+            serde_json::from_slice::<SelfResponse<'_>>(b).is_ok()
+        }),
+        (
+            "hydrate",
+            r#"{"memory":[{"key":"k","content":"c","category":"core","future":1}],"future":1}"#
+                .to_owned(),
+            |b| serde_json::from_slice::<MemoryHydrateResponse<'_>>(b).is_ok(),
+        ),
+        (
+            "capture",
+            r#"{"stored":1,"skipped":0,"evicted":7}"#.to_owned(),
+            |b| serde_json::from_slice::<MemoryCaptureResponse>(b).is_ok(),
+        ),
+        (
+            "mint",
+            r#"{"token":"t","expires_at_ms":1,"future":1}"#.to_owned(),
+            |b| serde_json::from_slice::<MintCredentialResponse<'_>>(b).is_ok(),
+        ),
+        ("activity", r#"{"ok":true,"future":1}"#.to_owned(), |b| {
+            serde_json::from_slice::<ActivityAccepted>(b).is_ok()
+        }),
+        (
+            "renew",
+            r#"{"lease_expires_at":9,"future":1}"#.to_owned(),
+            |b| serde_json::from_slice::<RenewResponse>(b).is_ok(),
+        ),
+        ("report", r#"{"ok":true,"future":1}"#.to_owned(), |b| {
+            serde_json::from_slice::<ReportResponse>(b).is_ok()
+        }),
+    ];
+
+    for (name, body, decodes) in &cases {
+        assert!(
+            decodes(body.as_bytes()),
+            "the {name} reply refused a key it does not carry"
+        );
+    }
+}
+
+/// What the runner WRITES stays closed: an unknown key is refused on sight,
+/// before serde even notices the fields that are missing.
+#[test]
+fn test_runner_written_bodies_still_refuse_an_unknown_field() {
+    let body = br#"{"future":1}"#;
+    let refusals: [(&str, Refusal); 6] = [
+        ("report", |b| {
+            serde_json::from_slice::<ReportRequest<'_>>(b)
+                .err()
+                .map(|e| e.to_string())
+        }),
+        ("renew", |b| {
+            serde_json::from_slice::<RenewRequest>(b)
+                .err()
+                .map(|e| e.to_string())
+        }),
+        ("heartbeat", |b| {
+            serde_json::from_slice::<HeartbeatRequest<'_>>(b)
+                .err()
+                .map(|e| e.to_string())
+        }),
+        ("activity", |b| {
+            serde_json::from_slice::<ActivityRequest<'_>>(b)
+                .err()
+                .map(|e| e.to_string())
+        }),
+        ("memory push", |b| {
+            serde_json::from_slice::<MemoryPushRequest<'_>>(b)
+                .err()
+                .map(|e| e.to_string())
+        }),
+        ("mint", |b| {
+            serde_json::from_slice::<MintCredentialRequest<'_>>(b)
+                .err()
+                .map(|e| e.to_string())
+        }),
+    ];
+
+    for (name, refusal) in &refusals {
+        let reason = refusal(body);
+        assert!(
+            reason
+                .as_deref()
+                .is_some_and(|text| text.starts_with("unknown field `future`")),
+            "{name}: {reason:?}"
+        );
+    }
 }

@@ -11,9 +11,13 @@
 // own test target — and fires there for a dev-dependency only the suites in
 // `tests/` import, since those are separate crates it cannot see. Naming them
 // here is the lint's own documented remedy, and keeps the deny in force for
-// everything else. All three belong to §7's end-to-end suite.
+// everything else. The first three belong to the end-to-end suite; the runner
+// crates and `tempfile` drive the Rust runner through a lease against it.
 #[cfg(test)]
-use {afd_wire as _, serde_json as _, sqlx as _};
+use {
+    afd_wire as _, afr_agent as _, afr_executor as _, afr_sandbox as _, afr_supervisor as _,
+    serde_json as _, sqlx as _, tempfile as _,
+};
 
 pub mod banner;
 mod bundles;

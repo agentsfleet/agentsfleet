@@ -27,7 +27,6 @@ pub enum SecretDelivery {
 /// download means the bundle is skill-only and the runner proceeds with none.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct BundleManifest<'a> {
     /// Content hash addressing the immutable canonical archive.
     #[serde(borrow)]
@@ -41,7 +40,6 @@ pub struct BundleManifest<'a> {
 /// under lease reclaim, beyond plain idempotency by event id.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct LeasePayload<'a> {
     /// Identifier for this lease.
     #[serde(borrow)]
@@ -74,7 +72,6 @@ pub struct LeasePayload<'a> {
 /// a backoff hint rather than a `204`.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct LeaseResponse<'a> {
     /// The work, when there is any.
     #[serde(borrow)]

@@ -1,0 +1,45 @@
+[package]
+name = "agentsfleet_runner"
+autotests = false
+description = "The one runner binary: `run` supervises leases, `probe` reports what the host can enforce, `sandbox` serves the executor inside each sandbox."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "agentsfleet-runner"
+path = "src/main.rs"
+
+[dependencies]
+# The log-level knob both binaries read, declared once.
+afd_core.workspace = true
+# `probe` answers with the supervisor's own mapping of the host onto the wire,
+# so what the command prints is what a heartbeat would carry.
+afr_supervisor.workspace = true
+# `sandbox` hardens and serves; `probe` reads the host.
+afr_sandbox.workspace = true
+clap.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+# The run entry's storage home.
+tempfile.workspace = true
+# `MapEnv`, so the log-level fallback is tested without the process environment.
+afd_core = { workspace = true, features = ["test-util"] }
+# The resolved graph the dependency test walks.
+cargo_metadata.workspace = true
+
+[[test]]
+name = "runner_suite"
+path = "tests/runner_suite.rs"

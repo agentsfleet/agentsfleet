@@ -2,7 +2,7 @@
 # TEST-UNIT — agentsfleetd, agentsfleet, website, app + multi-package coverage gate
 # =============================================================================
 
-.PHONY: test-unit-rustd test-unit-runner test-unit-cli test-unit-website test-unit-app test-unit-design-system test-coverage-all
+.PHONY: test-unit-rustd test-unit-runner test-unit-cli test-unit-website test-unit-app test-unit-design-system test-coverage-all test-runner-kernel
 
 test-unit-rustd:  ## Run the Rust workspace unit tests (cargo)
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
@@ -60,3 +60,22 @@ test-coverage-all:  ## Run coverage gates across app, website, agentsfleet, and 
 	@echo "→ [design-system] Running Vitest with --coverage..."
 	@cd ui/packages/design-system && bun run test:coverage
 	@echo "✓ All package coverage gates passed"
+
+# The Rust runner's sandbox, proven on a real kernel: capabilities, seccomp,
+# Landlock, the workspace disk, cgroup limits, no network, the toolbox, warm
+# starts. It needs Linux, root, bubblewrap, Landlock, EROFS and cgroup v2, and
+# it FAILS naming what is missing rather than skipping — a lane that skips
+# passes without proving anything. Cargo builds as the invoking user; only the
+# lane binary runs as root, through cargo's runner. KERNEL_LANE_RUNNER is that
+# elevation (empty when already root, as in a container).
+# The runner is set through cargo's per-host variable rather than `--config`,
+# so `KERNEL_LANE_CARGO="cargo llvm-cov run ..."` measures the same run in CI.
+KERNEL_LANE_RUNNER ?= sudo -E
+KERNEL_LANE_CARGO ?= cargo run
+KERNEL_LANE_HOST = $(shell cd $(RUSTD_DIR) && rustc -vV | sed -n 's/^host: //p' | tr 'a-z-' 'A-Z_')
+
+test-runner-kernel:  ## Prove the Rust runner's sandbox on a real Linux kernel (root, bubblewrap, Landlock, cgroup v2); fails, never skips
+	@image="$$($(KERNEL_LANE_RUNNER) bash scripts/toolbox/build.sh "$(TOOLBOX_DIR)")" && \
+	  cd $(RUSTD_DIR) && AFR_TOOLBOX_IMAGE="$$image" \
+	  CARGO_TARGET_$(KERNEL_LANE_HOST)_RUNNER="$(KERNEL_LANE_RUNNER)" \
+	  $(KERNEL_LANE_CARGO) -p afr_sandbox --example kernel_lane
