@@ -16,6 +16,8 @@ workspace = true
 
 [dependencies]
 afd_core.workspace = true
+# The span vocabulary the loop's turns and calls are traced in.
+afd_observability.workspace = true
 afd_wire.workspace = true
 afr_executor.workspace = true
 # The model a run drives, behind one trait.

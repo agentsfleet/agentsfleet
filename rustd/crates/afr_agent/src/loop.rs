@@ -11,6 +11,7 @@ use afd_wire::report::{Completed, ExecutionResult, Failure, ResultOutcome};
 use afr_providers::{Call, Connect, Message, Provider, Request, Usage};
 use afr_tools::{Catalog, Selection, ToolSpec};
 use tokio_util::sync::CancellationToken;
+use tracing::Instrument as _;
 
 use crate::context::{Budget, CAP_REACHED};
 use crate::engine::{AgentEngine, AgentRun, Needs, RunOutput};
@@ -20,6 +21,7 @@ use crate::ledger::Ledger;
 use crate::prompt::Prompt;
 use crate::router::Router;
 use crate::scrub::Scrub;
+use crate::spans;
 use crate::turn::{Turn, take};
 
 /// What a run stopped by its lease reports as its detail.
@@ -63,8 +65,9 @@ impl AgentEngine for Loop {
         let selection = self.catalog.select(&policy.tools)?;
         let provider = self.connect.connect(run.lease)?;
         let scrub = Scrub::new(policy)?;
+        let span = spans::invoke_agent(policy);
         let harness = Harness::new(&run, &selection, &scrub);
-        Ok(harness.drive(provider.as_ref()).await)
+        Ok(harness.drive(provider.as_ref()).instrument(span).await)
     }
 }
 
@@ -172,15 +175,18 @@ impl<'run> Harness<'run> {
             tools: if capped { &[] } else { &self.specs },
             hosted: if capped { &[] } else { self.selection.hosted() },
         };
+        let span = spans::chat(self.model);
+        let streamed = take(provider.stream(request), &mut self.live).instrument(span.clone());
         let taken = tokio::select! {
             biased;
             () = self.stop.cancelled() => None,
-            taken = take(provider.stream(request), &mut self.live) => Some(taken),
+            taken = streamed => Some(taken),
         };
         match &taken {
             Some(Ok(done)) => {
                 let input_tokens = done.usage.input;
                 let output_tokens = done.usage.output;
+                spans::spent(&span, input_tokens, output_tokens);
                 let calls = done.calls.len();
                 let event = EVENT_TURN_COMPLETED;
                 tracing::debug!(lease_id, turn, input_tokens, output_tokens, calls, event);

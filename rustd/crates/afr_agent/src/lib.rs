@@ -26,6 +26,7 @@ mod router;
 #[cfg(feature = "test-util")]
 pub mod scripted;
 mod scrub;
+mod spans;
 mod trace;
 mod turn;
 

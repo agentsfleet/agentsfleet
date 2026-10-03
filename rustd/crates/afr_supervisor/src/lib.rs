@@ -35,6 +35,7 @@ mod client;
 mod drainer;
 mod halt;
 mod heartbeat;
+mod identity;
 mod lease_loop;
 mod memory;
 mod records;
@@ -69,6 +70,7 @@ use self::client::HttpRunnerApi;
 use self::drainer::Drainer;
 use self::halt::Halt;
 use self::heartbeat::{Assignment, Heartbeat};
+use self::identity::Whoami;
 use self::lease_loop::Lessee;
 use self::report_spool::ReportSpool;
 
@@ -152,6 +154,7 @@ pub(crate) async fn serve(runner: Runner, shutdown: CancellationToken) -> Result
         clock,
         halt: Halt::new(shutdown),
         held: Notify::new(),
+        whoami: Whoami::default(),
     });
     let (assignment, watching) = watch::channel(Assignment::initial());
     let heartbeat = Heartbeat::new(&lessee.plane, &probe).keep_beating(&assignment, &lessee.halt);

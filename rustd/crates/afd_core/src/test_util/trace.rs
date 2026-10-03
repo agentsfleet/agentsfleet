@@ -28,9 +28,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, Once, PoisonError};
 
 use tracing::field::{Field, Visit};
+use tracing::span::{Attributes, Id, Record};
 use tracing::{Event, Level, Subscriber, subscriber};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt as _};
-use tracing_subscriber::registry::Registry;
+use tracing_subscriber::registry::{LookupSpan, Registry};
 
 /// The field every structured event names itself by (`docs/LOGGING_STANDARD.md` §3).
 const EVENT_FIELD: &str = "event";
@@ -58,13 +59,42 @@ impl CapturedEvent {
     }
 }
 
-/// Records every event raised on this thread while it lives.
+/// One span a [`Capture`] saw open, with every field recorded on it.
+#[derive(Debug, Clone)]
+pub struct CapturedSpan {
+    /// The span's name.
+    pub name: &'static str,
+    /// The target it was opened under.
+    pub target: &'static str,
+    /// The name of the span it opened inside, if any.
+    pub parent: Option<&'static str>,
+    /// Each field by name, as [`CapturedEvent::fields`] keeps them.
+    pub fields: HashMap<String, String>,
+}
+
+impl CapturedSpan {
+    /// One field's value as captured, when the span carries it.
+    #[must_use]
+    pub fn field(&self, name: &str) -> Option<&str> {
+        self.fields.get(name).map(String::as_str)
+    }
+}
+
+/// What a capture has seen: events in order, and spans by their id.
+#[derive(Debug, Default)]
+struct Seen {
+    events: Vec<CapturedEvent>,
+    spans: Vec<(u64, CapturedSpan)>,
+}
+
+/// Records every event raised, and every span opened, on this thread while it
+/// lives.
 ///
 /// Dropping it removes the subscriber first and then lets the next capture in:
 /// fields drop in declaration order.
 #[derive(Debug)]
 pub struct Capture {
-    events: Arc<Mutex<Vec<CapturedEvent>>>,
+    seen: Arc<Mutex<Seen>>,
     _subscriber: subscriber::DefaultGuard,
     _serial: MutexGuard<'static, ()>,
 }
@@ -85,11 +115,11 @@ impl Capture {
             // callsite on itself; either way none is left cached "never".
             let _already_set = subscriber::set_global_default(Registry::default());
         });
-        let events = Arc::new(Mutex::new(Vec::new()));
-        let layer = Recorder(Arc::clone(&events));
+        let seen = Arc::new(Mutex::new(Seen::default()));
+        let layer = Recorder(Arc::clone(&seen));
         let guard = subscriber::set_default(Registry::default().with(layer));
         Self {
-            events,
+            seen,
             _subscriber: guard,
             _serial: serial,
         }
@@ -98,10 +128,18 @@ impl Capture {
     /// Every event captured so far, in the order raised.
     #[must_use]
     pub fn events(&self) -> Vec<CapturedEvent> {
-        self.events
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+        self.seen().events.clone()
+    }
+
+    /// Every span opened so far, in the order opened.
+    #[must_use]
+    pub fn spans(&self) -> Vec<CapturedSpan> {
+        let seen = self.seen();
+        seen.spans.iter().map(|(_, span)| span.clone()).collect()
+    }
+
+    fn seen(&self) -> MutexGuard<'_, Seen> {
+        self.seen.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// The one captured event whose `event` field is `name`.
@@ -127,19 +165,48 @@ impl Capture {
     }
 }
 
-struct Recorder(Arc<Mutex<Vec<CapturedEvent>>>);
+struct Recorder(Arc<Mutex<Seen>>);
 
-impl<S: Subscriber> Layer<S> for Recorder {
+impl Recorder {
+    fn seen(&self) -> MutexGuard<'_, Seen> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+impl<S> Layer<S> for Recorder
+where
+    S: Subscriber + for<'lookup> LookupSpan<'lookup>,
+{
     fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
         let mut fields = HashMap::new();
         event.record(&mut Text(&mut fields));
-        self.0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(CapturedEvent {
-                level: *event.metadata().level(),
-                fields,
-            });
+        let level = *event.metadata().level();
+        self.seen().events.push(CapturedEvent { level, fields });
+    }
+
+    fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
+        let mut fields = HashMap::new();
+        attrs.record(&mut Text(&mut fields));
+        let metadata = attrs.metadata();
+        let parent = ctx
+            .span(id)
+            .and_then(|span| span.parent())
+            .map(|parent| parent.name());
+        let span = CapturedSpan {
+            name: metadata.name(),
+            target: metadata.target(),
+            parent,
+            fields,
+        };
+        self.seen().spans.push((id.into_u64(), span));
+    }
+
+    fn on_record(&self, id: &Id, values: &Record<'_>, _ctx: Context<'_, S>) {
+        let key = id.into_u64();
+        let mut seen = self.seen();
+        if let Some((_, span)) = seen.spans.iter_mut().rev().find(|(open, _)| *open == key) {
+            values.record(&mut Text(&mut span.fields));
+        }
     }
 }
 

@@ -19,10 +19,12 @@ use afd_wire::tool_trace::{ToolCallStatus, ToolTrace};
 use afr_providers::Call;
 use afr_tools::ToolOutput;
 use serde_json::{Map, Value};
+use tracing::Instrument as _;
 
 use crate::engine::EventSink;
 use crate::records::record;
 use crate::scrub::{Clean, Scrub};
+use crate::spans;
 use crate::trace::{Outcome, Trace, bounded_arguments};
 
 pub(crate) const EVENT_CALL_STARTED: &str = "tool_call_started";
@@ -60,7 +62,8 @@ impl<'run> Ledger<'run> {
         handler: impl Future<Output = ToolOutput>,
     ) -> Clean<String> {
         let open = self.open(call);
-        open.close(handler.await)
+        let span = spans::execute_tool(&call.name, &open.id);
+        open.close(handler.instrument(span).await)
     }
 
     /// Opens the next call: numbers it, scrubs and bounds its arguments, and
