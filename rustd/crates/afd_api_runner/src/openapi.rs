@@ -31,6 +31,7 @@ use utoipa::OpenApi as _;
     crate::handler::runner::heartbeat::handle,
     crate::handler::runner::lease::handle,
     crate::handler::runner::memory::capture,
+    crate::handler::runner::tool_call::handle,
     crate::handler::runner::memory::hydrate,
     crate::handler::runner::renew::handle,
     crate::handler::runner::report::handle,

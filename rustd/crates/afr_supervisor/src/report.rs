@@ -69,6 +69,7 @@ pub(crate) fn report<'a>(
             last_event_id: Cow::Borrowed(&lease.event.event_id),
             last_response: response_text,
         },
+        tool_calls: None,
     }
 }
 

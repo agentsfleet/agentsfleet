@@ -14,7 +14,8 @@
 
 use afd_core::id::Uuid7;
 use afd_events::{
-    Cursor, EventDetailRow, EventRow, Filter, History, Result as EventResult, Steer, Steered,
+    CallAddress, Cursor, EventDetailRow, EventRow, Filter, History, Result as EventResult, Steer,
+    Steered, ToolCallRow,
 };
 use afd_wire::tail::TailFrame;
 
@@ -83,9 +84,22 @@ pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
         fleet: &Uuid7,
         event_id: &str,
     ) -> impl Future<Output = EventResult<Option<EventDetailRow>>> + Send;
+
+    /// One tool call's kept record, inside this workspace, fleet and event.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer. A record of another
+    /// workspace's fleet is `Ok(None)`, as an unknown call is.
+    fn tool_call(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        event_id: &str,
+        call: CallAddress,
+    ) -> impl Future<Output = EventResult<Option<ToolCallRow>>> + Send;
 }
 
-/// The production reader answers all three directly.
+/// The production reader answers each directly.
 impl WorkspaceEvents for History {
     fn page_for_workspace(
         &self,
@@ -126,6 +140,16 @@ impl WorkspaceEvents for History {
         event_id: &str,
     ) -> impl Future<Output = EventResult<Option<EventDetailRow>>> + Send {
         Self::detail(self, workspace, fleet, event_id)
+    }
+
+    fn tool_call(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        event_id: &str,
+        call: CallAddress,
+    ) -> impl Future<Output = EventResult<Option<ToolCallRow>>> + Send {
+        Self::tool_call(self, workspace, fleet, event_id, call)
     }
 }
 

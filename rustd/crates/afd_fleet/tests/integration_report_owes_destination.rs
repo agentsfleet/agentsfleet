@@ -301,6 +301,7 @@ async fn the_plane_appends_and_receipts_what_it_owed() {
             last_event_id: Cow::Borrowed(RESUME_EVENT_ID),
             last_response: Cow::Borrowed(RESUME_RESPONSE),
         },
+        tool_calls: None,
     };
     stage
         .fixtures

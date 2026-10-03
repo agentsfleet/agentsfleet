@@ -58,19 +58,20 @@ macro_rules! shared_columns {
 }
 pub(crate) use shared_columns;
 
-/// The two body columns, which only the detail read pays for.
+/// The body columns, which only the detail read pays for: the trigger payload,
+/// the answer, and the run's tool trace.
 ///
-/// `request_json` is JSONB in the table and is cast so sqlx hands back a
-/// `String`; the alias is what makes the OUTPUT column's name a fact of this
+/// `request_json` and `tool_calls` are JSONB in the table and are cast so sqlx
+/// hands back a `String`; the alias is what makes the OUTPUT column's name a fact of this
 /// text rather than of how PostgreSQL names a cast expression. `EventDetailRow`
-/// reads these two by name — it is the only decoder in the workspace that does
+/// reads these by name — it is the only decoder in the workspace that does
 /// — so an unaliased cast would make the read depend on `FigureColname`
 /// recursing through the `TypeCast` node, and it would fail only against a live
 /// Postgres, which the unit lane never runs.
 macro_rules! body_columns {
     () => {
         ",
-       request_json::text AS request_json, response_text"
+       request_json::text AS request_json, response_text, tool_calls::text AS tool_calls"
     };
 }
 

@@ -13,6 +13,7 @@ use afd_wire::report::{
     RenewRequest, RenewResponse, ReportRequest, ReportResponse, ReportTelemetry,
 };
 use afd_wire::runner::{AssignedPolicy, HeartbeatRequest, HeartbeatResponse, SelfResponse};
+use afd_wire::tool_detail::{ToolCallRecordsRequest, ToolCallRecordsStored};
 use serde_json::Value;
 
 /// A complete, well-formed `LeaseResponse` — the truncation cases below cut it
@@ -187,7 +188,7 @@ fn test_every_runner_bound_reply_accepts_an_unknown_field() {
     let own = format!(
         r#"{{"id":"r","status":"active","host_id":"h","sandbox_tier":"landlock_full","last_seen_at":1,"assigned_policy":{GROWN_POLICY},"achievable":null,"degraded":false,"degraded_reason":null,"future":1}}"#
     );
-    let cases: [(&str, String, Decodes); 8] = [
+    let cases: [(&str, String, Decodes); 9] = [
         ("heartbeat", heartbeat, |b| {
             serde_json::from_slice::<HeartbeatResponse<'_>>(b).is_ok()
         }),
@@ -221,6 +222,11 @@ fn test_every_runner_bound_reply_accepts_an_unknown_field() {
         ("report", r#"{"ok":true,"future":1}"#.to_owned(), |b| {
             serde_json::from_slice::<ReportResponse>(b).is_ok()
         }),
+        (
+            "tool-calls",
+            r#"{"stored_count":1,"skipped_count":0,"future":1}"#.to_owned(),
+            |b| serde_json::from_slice::<ToolCallRecordsStored>(b).is_ok(),
+        ),
     ];
 
     for (name, body, decodes) in &cases {
@@ -236,7 +242,7 @@ fn test_every_runner_bound_reply_accepts_an_unknown_field() {
 #[test]
 fn test_runner_written_bodies_still_refuse_an_unknown_field() {
     let body = br#"{"future":1}"#;
-    let refusals: [(&str, Refusal); 6] = [
+    let refusals: [(&str, Refusal); 7] = [
         ("report", |b| {
             serde_json::from_slice::<ReportRequest<'_>>(b)
                 .err()
@@ -264,6 +270,11 @@ fn test_runner_written_bodies_still_refuse_an_unknown_field() {
         }),
         ("mint", |b| {
             serde_json::from_slice::<MintCredentialRequest<'_>>(b)
+                .err()
+                .map(|e| e.to_string())
+        }),
+        ("tool-calls", |b| {
+            serde_json::from_slice::<ToolCallRecordsRequest<'_>>(b)
                 .err()
                 .map(|e| e.to_string())
         }),

@@ -4,6 +4,10 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
+use crate::tool_trace::RawToolTrace;
+#[cfg(feature = "openapi")]
+use crate::tool_trace::ToolTrace;
+
 /// The terminal verdict a runner reports.
 ///
 /// Mirrors the event statuses a RUNNER can produce; the daemon-side statuses are
@@ -227,6 +231,12 @@ pub struct ReportRequest<'a> {
     /// Where to resume this session.
     #[serde(borrow)]
     pub checkpoint: ReportCheckpoint<'a>,
+    /// Every tool call the run made, kept with its answer. Absent from
+    /// runners that do not record one. A trace that is not one, or that
+    /// breaks a bound, is dropped and the report still settles.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<ToolTrace>))]
+    pub tool_calls: Option<RawToolTrace<'a>>,
 }
 
 /// `POST /v1/runners/me/reports` reply.

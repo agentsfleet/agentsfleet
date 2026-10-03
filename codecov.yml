@@ -5,7 +5,7 @@ coverage:
         # 100, not `auto`. Everything Codecov measures is held to 100 by its
         # own runner: app, website and the agentsfleet CLI by their vitest and
         # enforce-coverage configs, and the Rust workspace by `cargo llvm-cov`
-        # in the one live-datastore coverage lane.
+        # in the live-datastore coverage lane, graded once over its shards.
         # `auto` compares against the parent commit, which would have quietly
         # accepted a slide the moment one lane dropped a point.
         #
@@ -44,7 +44,7 @@ coverage:
         # 96, and it tracks `RUSTD_COVERAGE_FLOOR` in
         # `make/test-integration-rustd.mk` rather than standing beside it. That
         # variable is the number the lane actually enforces, through
-        # `cargo llvm-cov --fail-under-lines`, and this status grades the report
+        # `scripts/rustd_coverage.py`, and this status grades the report
         # that lane uploads. Two gates over one measurement must not disagree:
         # while this said 100 and the lane said 96, the paragraph above claiming
         # "the Rust workspace enforces this line target before upload" was
@@ -86,6 +86,10 @@ coverage:
         # to hoist them to a `let`, and a diff that forgets one loses a line it
         # cannot win back with a test. One point of slack is that hoist, not
         # absorbed failure.
+        #
+        # `RUSTD_PATCH_FLOOR` in `make/test-integration-rustd.mk` is this number,
+        # graded by the lane itself over the same merged report; the two move
+        # together.
         target: 99%
         threshold: 0%
         informational: false

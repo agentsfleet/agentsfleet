@@ -30,6 +30,7 @@ fn row(event_id: &str, created_at: i64, state: &str) -> EventDetailRow {
         },
         request_json: String::new(),
         response_text: None,
+        tool_calls: None,
     }
 }
 

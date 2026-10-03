@@ -115,6 +115,7 @@ pub fn fleet_handler_for<D: Services>(verb: FleetRoute) -> Option<MethodRouter<A
         ),
         FleetRoute::Events => Some(get(handler::event::fleet_list::<D>)),
         FleetRoute::Event => Some(get(handler::event::detail::<D>)),
+        FleetRoute::ToolCall => Some(get(handler::event::tool_call::read::<D>)),
         FleetRoute::Grants => Some(get(handler::grant::list::<D>)),
         FleetRoute::Grant => Some(delete(handler::grant::revoke::<D>)),
         FleetRoute::Memories => Some(get(handler::fleet::memory::list::<D>)),

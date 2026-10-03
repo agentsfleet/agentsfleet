@@ -40,6 +40,8 @@ pub enum RunnerRoute {
     MemoryCapture,
     /// Fetching a fleet bundle by content hash.
     Bundle,
+    /// Keeping each finished tool call's full arguments and output.
+    ToolCalls,
 }
 
 impl RunnerRoute {
@@ -55,6 +57,7 @@ impl RunnerRoute {
         Self::MemoryHydrate,
         Self::MemoryCapture,
         Self::Bundle,
+        Self::ToolCalls,
     ];
 
     /// The verbs this route identity serves.
@@ -73,7 +76,8 @@ impl RunnerRoute {
             | Self::CredentialsMint
             | Self::Activity
             | Self::Renew
-            | Self::MemoryCapture => &[Verb::Post],
+            | Self::MemoryCapture
+            | Self::ToolCalls => &[Verb::Post],
         }
     }
 
@@ -93,6 +97,7 @@ impl RunnerRoute {
             Self::Renew => runner_path!("/me/leases/{lease_id}/renew"),
             Self::MemoryHydrate | Self::MemoryCapture => runner_path!("/me/memory/{fleet_id}"),
             Self::Bundle => runner_path!("/me/bundles/{content_hash}"),
+            Self::ToolCalls => runner_path!("/me/leases/{lease_id}/tool-calls"),
         };
         RouteMeta::new(
             Guard::RunnerBearer,

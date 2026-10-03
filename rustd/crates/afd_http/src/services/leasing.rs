@@ -10,6 +10,7 @@ use afd_wire::activity::ActivityFrame;
 use afd_wire::credentials::MintCredentialRequest;
 use afd_wire::memory::{MemoryDelta, MemoryPushRequest};
 use afd_wire::report::{RenewRequest, ReportRequest};
+use afd_wire::tool_detail::{ToolCallRecordsRequest, ToolCallRecordsStored};
 
 /// Answering one runner's poll.
 ///
@@ -133,6 +134,21 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         lease_id: &str,
         frames: &[ActivityFrame<'_>],
     ) -> impl Future<Output = afd_fleet::Result<()>> + Send;
+
+    /// Keep each finished call's full arguments and output under the lease's
+    /// fence.
+    ///
+    /// # Errors
+    /// Refuses a lease that is not this runner's or not live, and a holder the
+    /// fleet has superseded. A record refused for its shape, a bound or the
+    /// event's budget is counted in the answer, not an error.
+    fn record_tool_calls(
+        &self,
+        runner_id: &Uuid7,
+        lease_id: &str,
+        request: &ToolCallRecordsRequest<'_>,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<ToolCallRecordsStored>> + Send;
 }
 
 /// The production plane answers it directly.
@@ -199,6 +215,16 @@ impl Leasing for Plane {
         now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<Captured>> + Send {
         Self::capture(self, runner_id, fleet_id, request, now)
+    }
+
+    fn record_tool_calls(
+        &self,
+        runner_id: &Uuid7,
+        lease_id: &str,
+        request: &ToolCallRecordsRequest<'_>,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<ToolCallRecordsStored>> + Send {
+        Self::record_tool_calls(self, runner_id, lease_id, request, now)
     }
 
     async fn renew(

@@ -203,21 +203,29 @@ One target, one bar: **100%**, project-wide and per flag.
 
 | Flag | Paths | Target |
 |---|---|---|
-| `rust-afd` | `rustd/crates/` | 100% |
+| `rust-afd` | `rustd/crates/` | 100% project · 99% patch |
 | `typescript` | `app`, `website`, `cli` | 100% |
 
 Every threshold is 0%: the target IS the bar, with no give. A patch status grades
 only the lines a diff touched, so on a small diff one unhit line reds the build —
 intentionally. The answer is a test, never absorbed slack.
 
-The Rust target measures the unit tier and the ignored live-datastore tier in
-one `cargo llvm-cov` invocation. Postgres, Dragonfly, HTTP and runtime code are part
-of the denominator, so `make test-coverage-rustd` resets the lane, applies the
-schema through the instrumented daemon, then runs both tiers once with
-`--include-ignored`. The target writes `rustd/lcov.info` and enforces the same
-100% line floor locally before Codecov upload. A floor below the published
-contract would leave local verification and the remote status grading different
-claims.
+The Rust target measures the unit tier and the ignored live-datastore tier
+together, as three shards: `runner`, `daemon` and `substrate`, listed once in
+`make/test-integration-rustd.mk`. Continuous Integration runs them in parallel,
+each on its own runner with its own Postgres and Dragonfly. Postgres, Dragonfly,
+HTTP and runtime code are part of the denominator, so each shard resets its lane,
+applies the schema through the instrumented daemon, runs its tests with
+`--include-ignored`, and writes `rustd/lcov-<shard>.info`. A shard grades nothing.
+`make test-coverage-rustd-merge` merges the reports line by line and grades the
+line floor once over the union. A missing shard, or one measured at another
+commit, fails the lane rather than shrinking it. Locally, `make
+test-coverage-rustd` without `RUSTD_SHARD` runs every shard in sequence and
+grades with the same script, `scripts/rustd_coverage.py`, before Codecov sees
+the same merged `rustd/lcov.info`. The floor is `RUSTD_COVERAGE_FLOOR`, a ratchet
+that only moves up toward the 100% target. The same script grades the patch, the
+Rust lines a branch adds, against `RUSTD_PATCH_FLOOR`: 99%, Codecov's `rust-afd`
+patch target, which it moves with.
 
 Coverage builds are intentionally distinct from normal development builds.
 Continuous Integration disables Cargo incremental compilation for this job:

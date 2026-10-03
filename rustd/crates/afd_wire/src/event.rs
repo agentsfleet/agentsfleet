@@ -4,6 +4,10 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
+use crate::tool_trace::RawToolTrace;
+#[cfg(feature = "openapi")]
+use crate::tool_trace::ToolTrace;
+
 /// How an event entered the system.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -230,6 +234,14 @@ pub struct EventDetail<'a> {
     /// producing one.
     #[serde(borrow)]
     pub response_text: Option<Cow<'a, str>>,
+    /// Every tool call the run made, with its arguments and how it ended.
+    ///
+    /// `null` when nothing was recorded. That is a run older than this field,
+    /// a runner that does not record calls, or a trace dropped for breaking a
+    /// bound. `null` never means no tools ran.
+    #[serde(borrow)]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<ToolTrace>))]
+    pub tool_calls: Option<RawToolTrace<'a>>,
     /// Tokens the run spent, absent until a runner reports.
     pub tokens: Option<i64>,
     /// Wall milliseconds the run took, absent until a runner reports.
