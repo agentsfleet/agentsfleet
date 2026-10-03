@@ -277,3 +277,19 @@ fn should_refuse_an_allowlisted_v6_literal_in_a_private_range() {
         })
     );
 }
+
+#[test]
+fn should_refuse_userinfo_carrying_only_a_name_or_only_a_password() {
+    for userinfo in [
+        "https://user@demo-grafana.internal/",
+        "https://:secret@demo-grafana.internal/",
+    ] {
+        assert_eq!(
+            refused(false, draft("GET", userinfo, &[], None)),
+            Some(misplaced(
+                "a placeholder in the URL, or credentials in its userinfo"
+            )),
+            "{userinfo}"
+        );
+    }
+}
