@@ -7,8 +7,10 @@
     reason = "test fixture: a fixture that cannot be built is a broken test"
 )]
 
-use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use std::cell::RefCell;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc;
 
 use afd_wire::activity::{ActivityFrame, StreamTextKind};
 use afd_wire::lease::LeasePayload;
@@ -17,8 +19,10 @@ use afr_tools::{Entry, Schema, Tool, ToolContext, ToolOutput};
 use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
 
-/// Why every fixture lock is sound: no test panics while holding one.
-const UNPOISONED: &str = "no test panics holding it";
+use crate::scrub::{Clean, Scrub};
+
+/// Why a fixture send cannot fail: the test holds the receiver until it reads.
+const RECEIVER_HELD: &str = "the test holds the receiver for as long as the run";
 /// Where a fixture lease's context knobs sit.
 const CONTEXT_POINTER: &str = "/policy/context";
 
@@ -49,6 +53,21 @@ pub(crate) fn lease(tools: &[&str], budget: serde_json::Value) -> LeasePayload<'
     serde_json::from_str(text).unwrap()
 }
 
+/// The scrub of a lease carrying the fixture secrets.
+pub(crate) fn scrub() -> Scrub {
+    Scrub::new(&lease(&[], unbounded()).policy).unwrap()
+}
+
+/// `text` as the scrub hands it on.
+pub(crate) fn clean(text: &str) -> Clean<String> {
+    scrub().clean(text)
+}
+
+/// `value` as the scrub hands it on.
+pub(crate) fn clean_json(value: serde_json::Value) -> Clean<serde_json::Value> {
+    scrub().clean_json(value)
+}
+
 /// Context knobs that never bound a test: no window, no cap.
 pub(crate) fn unbounded() -> serde_json::Value {
     budget(0, 0)
@@ -69,48 +88,91 @@ pub(crate) struct Sent {
     pub(crate) messages: Vec<Message>,
 }
 
-/// A provider answering each turn from a script, keeping every request.
-#[derive(Debug, Default)]
+/// One scripted turn: the chunks it streams, then the failure it ends on.
+#[derive(Debug)]
+struct Turn {
+    chunks: Vec<Chunk>,
+    failure: Option<fn() -> afr_providers::Error>,
+}
+
+impl Turn {
+    fn replay(&self) -> Vec<afr_providers::Result<Chunk>> {
+        let chunks = self.chunks.iter().cloned().map(Ok);
+        chunks
+            .chain(self.failure.map(|failure| Err(failure())))
+            .collect()
+    }
+}
+
+/// The turns a script plays, in order, read lock-free through a cursor.
+#[derive(Debug)]
+struct Turns {
+    turns: Vec<Turn>,
+    next: AtomicUsize,
+}
+
+/// A scripted model the test drives and reads back. The loop gets a
+/// [`Replay`]; the requests it sends come back over a channel.
+#[derive(Debug)]
 pub(crate) struct Script {
-    turns: Mutex<VecDeque<Vec<afr_providers::Result<Chunk>>>>,
-    pub(crate) sent: Mutex<Vec<Sent>>,
+    replay: Replay,
+    received: mpsc::Receiver<Sent>,
+    seen: RefCell<Vec<Sent>>,
 }
 
 impl Script {
-    /// A provider whose turns are `turns`, in order.
-    pub(crate) fn new(turns: impl IntoIterator<Item = Vec<Chunk>>) -> Arc<Self> {
-        let turns = turns
-            .into_iter()
-            .map(|turn| turn.into_iter().map(Ok).collect())
-            .collect();
-        Arc::new(Self {
-            turns: Mutex::new(turns),
-            sent: Mutex::default(),
-        })
+    /// A model whose turns are `turns`, in order.
+    pub(crate) fn new(turns: impl IntoIterator<Item = Vec<Chunk>>) -> Self {
+        let turns = turns.into_iter().map(|chunks| Turn {
+            chunks,
+            failure: None,
+        });
+        Self::playing(turns.collect())
     }
 
-    /// A provider whose one turn streams `chunks`, then fails with `failure`.
-    pub(crate) fn failing(chunks: Vec<Chunk>, failure: afr_providers::Error) -> Arc<Self> {
-        let turn = chunks.into_iter().map(Ok).chain([Err(failure)]).collect();
-        Arc::new(Self {
-            turns: Mutex::new(VecDeque::from([turn])),
-            sent: Mutex::default(),
-        })
+    /// A model whose one turn streams `chunks`, then fails with `failure()`.
+    pub(crate) fn failing(chunks: Vec<Chunk>, failure: fn() -> afr_providers::Error) -> Self {
+        Self::playing(vec![Turn {
+            chunks,
+            failure: Some(failure),
+        }])
+    }
+
+    fn playing(turns: Vec<Turn>) -> Self {
+        let (sent, received) = mpsc::channel();
+        let turns = Arc::new(Turns {
+            turns,
+            next: AtomicUsize::new(0),
+        });
+        Self {
+            replay: Replay { turns, sent },
+            received,
+            seen: RefCell::default(),
+        }
+    }
+
+    /// The provider the loop drives; every one plays the same turns.
+    pub(crate) fn replay(&self) -> Replay {
+        self.replay.clone()
     }
 
     /// Every request sent so far.
     pub(crate) fn sent(&self) -> Vec<Sent> {
-        self.sent.lock().expect(UNPOISONED).clone()
+        self.seen.borrow_mut().extend(self.received.try_iter());
+        self.seen.borrow().clone()
     }
 }
 
-/// The script, shared between the loop and the test that reads it after.
-#[derive(Debug)]
-pub(crate) struct Shared(pub(crate) Arc<Script>);
+/// The provider side of a [`Script`].
+#[derive(Debug, Clone)]
+pub(crate) struct Replay {
+    turns: Arc<Turns>,
+    sent: mpsc::Sender<Sent>,
+}
 
-impl Provider for Shared {
+impl Provider for Replay {
     fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, afr_providers::Result<Chunk>> {
-        self.0.sent.lock().expect(UNPOISONED).push(Sent {
+        let sent = Sent {
             tools: request
                 .tools
                 .iter()
@@ -119,8 +181,10 @@ impl Provider for Shared {
             hosted: request.hosted.iter().map(|entry| entry.name()).collect(),
             instructions: request.instructions.to_owned(),
             messages: request.messages.to_vec(),
-        });
-        let turn = self.0.turns.lock().expect(UNPOISONED).pop_front();
+        };
+        self.sent.send(sent).expect(RECEIVER_HELD);
+        let index = self.turns.next.fetch_add(1, Ordering::Relaxed);
+        let turn = self.turns.turns.get(index).map(Turn::replay);
         futures_util::stream::iter(turn.unwrap_or_default()).boxed()
     }
 }
@@ -233,16 +297,30 @@ impl Tool for Exits {
     }
 }
 
-/// Every frame a run emits, in order.
-#[derive(Debug, Default)]
-pub(crate) struct Frames(pub(crate) Mutex<Vec<ActivityFrame<'static>>>);
+/// Every frame a run emits, in order, over the channel the supervisor's own
+/// sink is.
+#[derive(Debug)]
+pub(crate) struct Frames {
+    sent: mpsc::Sender<ActivityFrame<'static>>,
+    received: mpsc::Receiver<ActivityFrame<'static>>,
+}
+
+impl Default for Frames {
+    fn default() -> Self {
+        let (sent, received) = mpsc::channel();
+        Self { sent, received }
+    }
+}
 
 impl Frames {
-    pub(crate) fn emit(&self, frame: ActivityFrame<'static>) {
-        self.0.lock().expect(UNPOISONED).push(frame);
+    /// The sink a run emits into.
+    pub(crate) fn sink(&self) -> impl Fn(ActivityFrame<'static>) + Send + Sync + use<> {
+        let sent = self.sent.clone();
+        move |frame| sent.send(frame).expect(RECEIVER_HELD)
     }
 
+    /// Every frame emitted since the last read.
     pub(crate) fn taken(&self) -> Vec<ActivityFrame<'static>> {
-        std::mem::take(&mut *self.0.lock().expect(UNPOISONED))
+        self.received.try_iter().collect()
     }
 }

@@ -3,8 +3,7 @@ use std::time::Instant;
 use afd_wire::activity::{ActivityFrame, StreamTextKind};
 
 use super::Live;
-use crate::fixture::{Frames, GITHUB_TOKEN, lease, unbounded};
-use crate::scrub::Scrub;
+use crate::fixture::{Frames, GITHUB_TOKEN, scrub};
 
 /// Each chunk's text and sequence, in order.
 fn chunks(frames: &[ActivityFrame<'_>]) -> Vec<(String, u64)> {
@@ -21,9 +20,9 @@ fn chunks(frames: &[ActivityFrame<'_>]) -> Vec<(String, u64)> {
 
 #[test]
 fn should_hold_a_secret_split_across_chunks_and_drop_its_head_at_the_end() {
-    let scrub = Scrub::new(&lease(&[], unbounded()).policy);
+    let scrub = scrub();
     let frames = Frames::default();
-    let sink = |frame| frames.emit(frame);
+    let sink = frames.sink();
     let mut live = Live::new(&sink, &scrub, Instant::now());
     let (head, tail) = GITHUB_TOKEN.split_at(4);
 
@@ -44,9 +43,9 @@ fn should_hold_a_secret_split_across_chunks_and_drop_its_head_at_the_end() {
 
 #[test]
 fn should_send_nothing_for_a_chunk_held_whole() {
-    let scrub = Scrub::new(&lease(&[], unbounded()).policy);
+    let scrub = scrub();
     let frames = Frames::default();
-    let sink = |frame| frames.emit(frame);
+    let sink = frames.sink();
     let mut live = Live::new(&sink, &scrub, Instant::now());
 
     live.text(StreamTextKind::Reasoning, &GITHUB_TOKEN[..3]);

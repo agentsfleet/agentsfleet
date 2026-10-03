@@ -18,6 +18,7 @@ mod events;
 mod fixture;
 #[path = "loop.rs"]
 mod harness;
+mod json;
 mod prompt;
 mod records;
 mod router;

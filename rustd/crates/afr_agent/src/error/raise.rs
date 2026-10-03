@@ -8,4 +8,5 @@ afd_core::error_lifts!(Error, ErrorKind:
     afr_executor::Error => Executor,
     afr_providers::Error => Provider,
     afr_tools::Error => Tools,
+    aho_corasick::BuildError => Scrub,
 );
