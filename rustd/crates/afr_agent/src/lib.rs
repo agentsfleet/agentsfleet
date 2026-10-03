@@ -18,14 +18,12 @@ mod events;
 mod fixture;
 #[path = "loop.rs"]
 mod harness;
-mod json;
 mod ledger;
 mod prompt;
 mod records;
 mod router;
 #[cfg(feature = "test-util")]
 pub mod scripted;
-mod scrub;
 mod spans;
 mod trace;
 mod turn;

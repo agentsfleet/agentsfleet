@@ -24,10 +24,10 @@ afr_executor.workspace = true
 afr_memory.workspace = true
 # The model a run drives, behind one trait.
 afr_providers.workspace = true
+# Every secret value masked in one pass over a frame, an output or a reply.
+afr_secrets.workspace = true
 # The catalog a run is offered from, and the handlers the router calls.
 afr_tools.workspace = true
-# Every secret value masked in one pass over a frame, an output or a reply.
-aho-corasick.workspace = true
 async-trait.workspace = true
 # A turn reads the provider's stream of chunks.
 futures-util.workspace = true

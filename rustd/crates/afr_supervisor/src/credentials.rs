@@ -9,10 +9,10 @@ use std::borrow::Cow;
 
 use afd_core::id::Uuid7;
 use afd_wire::credentials::{MintCredentialRequest, MintCredentialResponse};
+use afr_secrets::Secret;
 
 use crate::client::ControlPlane;
 use crate::error::Result;
-use crate::secret::Secret;
 
 /// A minted credential. Its `Debug` never prints the token.
 #[derive(Debug, Clone, PartialEq, Eq)]

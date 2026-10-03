@@ -13,7 +13,7 @@ use afd_core::clock::saturating_millis;
 use afd_wire::activity::{ActivityFrame, FleetResponseChunk, StreamTextKind};
 
 use crate::engine::EventSink;
-use crate::scrub::{Carry, Scrub};
+use afr_secrets::{Carry, Scrub};
 
 /// Where one run's frames go, and the stream's position.
 pub(crate) struct Live<'run> {

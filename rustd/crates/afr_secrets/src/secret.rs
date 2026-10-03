@@ -16,7 +16,8 @@ pub struct Secret(Zeroizing<String>);
 
 impl Secret {
     /// Holds `value` as a secret.
-    pub(crate) fn new(value: String) -> Self {
+    #[must_use]
+    pub fn new(value: String) -> Self {
         Self(Zeroizing::new(value))
     }
 

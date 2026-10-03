@@ -42,7 +42,6 @@ mod records;
 mod renew;
 mod report;
 mod report_spool;
-mod secret;
 mod storage_home;
 mod turns;
 mod worker_pool;
@@ -62,7 +61,6 @@ use tokio_util::sync::CancellationToken;
 pub use self::client::ControlPlane;
 pub use self::config::Config;
 pub use self::error::{Error, Result};
-pub use self::secret::Secret;
 pub use self::storage_home::StorageHome;
 
 use self::bundles::BundleCache;
