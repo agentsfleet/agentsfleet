@@ -38,6 +38,9 @@ pub(crate) struct Vault<'run> {
     mint: &'run dyn Mint,
     clock: &'run dyn Clock,
     minted: HashMap<String, Minted>,
+    /// Tokens a re-mint replaced. The upstream may honour one until it
+    /// expires, so the masker keeps every token this lease was handed.
+    retired: Vec<(String, Minted)>,
     /// Masks every minted token; `None` until the first mint.
     masker: Option<Scrub>,
 }
@@ -49,6 +52,7 @@ impl<'run> Vault<'run> {
             mint,
             clock,
             minted: HashMap::new(),
+            retired: Vec::new(),
             masker: None,
         }
     }
@@ -75,10 +79,7 @@ impl<'run> Vault<'run> {
             None => statics.field(secret.name, secret.field),
         };
         if let Some(missing) = wanted.iter().find(|secret| value(**secret).is_none()) {
-            return Err(Refusal::SecretNotFound {
-                name: missing.name.to_owned(),
-                field: missing.field.to_owned(),
-            });
+            return Err(Refusal::secret_not_found(missing.name, missing.field));
         }
         Ok(Secret::new(
             placeholder::substitute(template, value).into_owned(),
@@ -111,11 +112,12 @@ impl<'run> Vault<'run> {
             }
         })?;
         // The masker is built before the token is held: a token nothing can
-        // mask is never kept, so no later call sends it.
+        // mask is never kept, so no later call sends it. It covers the token
+        // this one replaces and every one replaced before it.
         let masker = Scrub::of(
             self.minted
                 .iter()
-                .filter(|(held, _minted)| held.as_str() != name)
+                .chain(self.retired.iter().map(|(held, minted)| (held, minted)))
                 .map(|(held, minted)| (held.as_str(), minted.expose()))
                 .chain([(name, minted.expose())])
                 .map(|(held, token)| (format!("{held}.{FIELD_TOKEN}"), token)),
@@ -126,7 +128,9 @@ impl<'run> Vault<'run> {
         let expires_at_ms = minted.expires_at().as_millis();
         let event = EVENT_CREDENTIAL_MINTED;
         tracing::info!(integration, expires_at_ms, event);
-        self.minted.insert(name.to_owned(), minted);
+        if let Some(replaced) = self.minted.insert(name.to_owned(), minted) {
+            self.retired.push((name.to_owned(), replaced));
+        }
         self.masker = Some(masker);
         Ok(())
     }

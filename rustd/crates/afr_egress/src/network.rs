@@ -93,7 +93,6 @@ impl Network {
 impl Transport for Network {
     async fn send(&self, outbound: Outbound) -> Result<Inbound, Refusal> {
         let host = outbound.host().to_owned();
-        let origin = outbound.url.clone();
         let mut request = self
             .client
             .request(outbound.method, outbound.url)
@@ -106,7 +105,8 @@ impl Transport for Network {
             .await
             .map_err(|failed| unreached(&host, &failed))?;
         let status = response.status().as_u16();
-        let location = header(&response, &LOCATION).and_then(|target| origin_of(&origin, &target));
+        let location =
+            header(&response, &LOCATION).and_then(|target| origin_of(response.url(), &target));
         let content_type = header(&response, &CONTENT_TYPE);
         let read = Capped::read(response, RESPONSE_MAX_BYTES)
             .await
@@ -118,7 +118,8 @@ impl Transport for Network {
             status,
             location,
             content_type,
-            body: String::from_utf8_lossy(&read.bytes).into_owned(),
+            body: String::from_utf8(read.bytes)
+                .unwrap_or_else(|invalid| String::from_utf8_lossy(invalid.as_bytes()).into_owned()),
             truncated: read.truncated,
         })
     }

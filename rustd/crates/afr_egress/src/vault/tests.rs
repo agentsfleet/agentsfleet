@@ -51,8 +51,16 @@ async fn should_mint_once_and_reuse_until_shortly_before_expiry() {
     clock.advance_millis(HOUR - REFRESH_MARGIN_MILLIS);
     let refilled = vault.fill(admission, "token ${secrets.github.token}").await;
 
-    assert!(refilled.is_ok_and(|secret| secret.expose().ends_with(MINTED)));
+    assert_eq!(
+        refilled.map(|secret| secret.expose().to_owned()),
+        Ok(format!("token {MINTED}-2"))
+    );
     assert_eq!(mint.asked(), 2);
+    assert_eq!(
+        vault.mask(&format!("old {MINTED} new {MINTED}-2")),
+        "old «secret:github.token» new «secret:github.token»",
+        "the replaced token stays masked: the upstream may honour it until it expires"
+    );
 }
 
 #[tokio::test]

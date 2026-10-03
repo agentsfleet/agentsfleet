@@ -60,10 +60,18 @@ pub(crate) async fn send(
         .send(outbound)
         .await
         .map_err(|refusal| refused(entry, &refusal))?;
-    if let Cow::Owned(masked) = lease.egress.mask(&inbound.body) {
-        inbound.body = masked;
-    }
+    inbound.body = masked(lease, inbound.body);
     Ok(inbound)
+}
+
+/// `text` with every token the lease minted masked; `text` itself when none
+/// is in it.
+pub(crate) fn masked(lease: &Lease<'_>, text: String) -> String {
+    let changed = match lease.egress.mask(&text) {
+        Cow::Owned(masked) => Some(masked),
+        Cow::Borrowed(_) => None,
+    };
+    changed.unwrap_or(text)
 }
 
 /// `text` as the call's output: succeeded on a 2xx, failed with

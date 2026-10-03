@@ -10,6 +10,7 @@
 //! chunk settles it, the shape `src/runner/engine/stream_redactor.zig` carries.
 
 use std::borrow::Cow;
+use std::fmt;
 use std::ops::Deref;
 
 use afd_wire::policy::ExecutionPolicy;
@@ -50,7 +51,8 @@ impl<T> Deref for Clean<T> {
 }
 
 /// The secret values of one run, and what each becomes.
-#[derive(Debug)]
+///
+/// Its `Debug` prints how many values it masks, never a value.
 pub struct Scrub {
     matcher: AhoCorasick,
     /// The secret values alone, without the NUL, for the held-tail check.
@@ -152,9 +154,28 @@ fn partial_head(text: &str, secret: &str) -> usize {
 
 /// One stream's held tail, so a secret split across chunks is never sent in
 /// pieces.
-#[derive(Debug, Default)]
+///
+/// Its `Debug` prints how much is held, never the text: the tail may be the
+/// start of a secret.
+#[derive(Default)]
 pub struct Carry {
     held: String,
+}
+
+impl fmt::Debug for Scrub {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Scrub")
+            .field("secrets", &self.secrets.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl fmt::Debug for Carry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Carry")
+            .field("held_bytes", &self.held.len())
+            .finish()
+    }
 }
 
 impl Carry {

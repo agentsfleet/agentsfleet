@@ -28,9 +28,6 @@ use crate::router::{self, Router};
 use crate::spans;
 use crate::turn::{Turn, take};
 
-/// The clock a lease's minted tokens expire against.
-static SYSTEM_CLOCK: SystemClock = SystemClock;
-
 /// What a run stopped by its lease reports as its detail.
 const DETAIL_STOPPED: &str = "the run was stopped before it finished";
 const EVENT_CAP_REACHED: &str = "context_cap_reached";
@@ -124,7 +121,7 @@ impl<'run> Harness<'run> {
             scrub,
             lease: Lease::new(
                 Box::new(Hydrated::new(run.memory)),
-                Egress::new(policy, run.mint, &SYSTEM_CLOCK),
+                Egress::new(policy, run.mint, &SystemClock),
             ),
             live: Live::new(run.events, scrub, started),
             ledger: Ledger::new(&run.lease.lease_id, run.events, scrub),
@@ -175,13 +172,18 @@ impl<'run> Harness<'run> {
         self.finish(ending)
     }
 
-    /// Writes the memory stored so far back, when any is.
+    /// Writes the memory stored so far back, when any is; a stopped lease
+    /// does not wait for it.
     async fn checkpoint(&self) {
         let pending: Vec<MemoryDelta<'static>> = (self.lease.memory.pending().into_iter())
             .map(MemoryDelta::into_owned)
             .collect();
         if !pending.is_empty() {
-            self.checkpoint.push(pending).await;
+            tokio::select! {
+                biased;
+                () = self.stop.cancelled() => {}
+                () = self.checkpoint.push(pending) => {}
+            }
         }
     }
 

@@ -103,3 +103,14 @@ pub enum Refusal {
         reason: &'static str,
     },
 }
+
+impl Refusal {
+    /// The fleet has no secret `name.field`.
+    #[must_use]
+    pub fn secret_not_found(name: &str, field: &str) -> Self {
+        Self::SecretNotFound {
+            name: name.to_owned(),
+            field: field.to_owned(),
+        }
+    }
+}

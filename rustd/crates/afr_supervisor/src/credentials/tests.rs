@@ -82,3 +82,30 @@ async fn a_lease_mint_answers_the_minted_token() {
         ("ghs_secret", 99)
     );
 }
+
+/// Builds the failure the fake daemon answers a mint with.
+type Failure = fn() -> crate::Error;
+
+#[tokio::test]
+async fn a_lease_mint_names_the_status_or_the_unreached_daemon() {
+    let lease_id = Uuid7::parse(LEASE_ID).unwrap();
+    let cases: [(Failure, &str); 2] = [
+        (
+            || error::refused(Verb::Mint, 403, None),
+            "the daemon refused the mint (403)",
+        ),
+        (
+            || error::unavailable(Verb::Mint, 503),
+            "the daemon could not be reached to mint the credential",
+        ),
+    ];
+
+    for (failure, detail) in cases {
+        let (plane, _calls) = plane(move |_call| Answer::Fail(failure()));
+        let refused = LeaseMint::new(&plane, &lease_id)
+            .mint("github")
+            .await
+            .unwrap_err();
+        assert_eq!(refused.detail(), detail);
+    }
+}

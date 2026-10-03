@@ -70,3 +70,25 @@ fn test_v6_blocklist_covers_every_range_and_the_mapped_forms() {
         assert!(!blocks(allowed), "{allowed} must be allowed");
     }
 }
+
+#[test]
+fn should_refuse_every_v6_spelling_of_a_private_v4_address() {
+    for spelled in [
+        "64:ff9b::a00:5",
+        "64:ff9b::a9fe:a9fe",
+        "64:ff9b:1::a00:5",
+        "2002:a00:5::1",
+        "2002:a9fe:a9fe::",
+        "::a00:5",
+        "::7f00:1",
+    ] {
+        assert!(blocks(spelled), "{spelled} reaches a private address");
+    }
+}
+
+#[test]
+fn should_pass_a_v6_spelling_of_a_public_v4_address() {
+    for spelled in ["64:ff9b::808:808", "2002:808:808::1", "2606:4700::1111"] {
+        assert!(!blocks(spelled), "{spelled} is public");
+    }
+}

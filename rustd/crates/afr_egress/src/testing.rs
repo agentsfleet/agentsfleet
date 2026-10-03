@@ -31,7 +31,12 @@ pub struct CountingMint {
 
 #[derive(Debug)]
 enum Answer {
-    Token { token: String, lifetime_millis: i64 },
+    /// The first mint answers `token` itself, each later one `token-N`, so a
+    /// suite tells a re-minted token from the one it replaced.
+    Token {
+        token: Secret,
+        lifetime_millis: i64,
+    },
     Refused(String),
 }
 
@@ -41,7 +46,7 @@ impl CountingMint {
     pub fn answering(token: &str, lifetime_millis: i64, clock: FixedClock) -> Self {
         Self::with(
             Answer::Token {
-                token: token.to_owned(),
+                token: Secret::new(token.to_owned()),
                 lifetime_millis,
             },
             clock,
@@ -79,15 +84,22 @@ impl CountingMint {
 #[async_trait::async_trait]
 impl Mint for CountingMint {
     async fn mint(&self, _integration: &str) -> Result<Minted, MintRefused> {
-        self.asked.fetch_add(1, Ordering::SeqCst);
+        let asked = self.asked.fetch_add(1, Ordering::SeqCst) + 1;
         match &self.answer {
             Answer::Token {
                 token,
                 lifetime_millis,
-            } => Ok(Minted::new(
-                Secret::new(token.clone()),
-                self.clock.now().saturating_add_millis(*lifetime_millis),
-            )),
+            } => {
+                let value = if asked == 1 {
+                    token.expose().to_owned()
+                } else {
+                    format!("{}-{asked}", token.expose())
+                };
+                Ok(Minted::new(
+                    Secret::new(value),
+                    self.clock.now().saturating_add_millis(*lifetime_millis),
+                ))
+            }
             Answer::Refused(detail) => Err(MintRefused::new(detail.clone())),
         }
     }
