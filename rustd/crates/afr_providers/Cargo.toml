@@ -57,6 +57,8 @@ afd_core = { workspace = true, features = ["test-util"] }
 # frames, trace, records and report included. A dev-dependency on a crate that
 # depends on this one links the same library into the integration tests.
 afr_agent.workspace = true
+# The empty memory seed every driven run starts from.
+afr_memory.workspace = true
 # The stub plan tool the loop's catalog hosts.
 afr_tools = { workspace = true, features = ["test-util"] }
 # The fake provider: a real listener, so a status, a header and a streamed

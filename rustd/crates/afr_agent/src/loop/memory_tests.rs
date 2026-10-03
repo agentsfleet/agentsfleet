@@ -34,6 +34,7 @@ async fn test_memory_tools_round_trip_through_push() {
         key: Cow::Borrowed("incident:41"),
         content: Cow::Borrowed("escalated to the on-call"),
         category: Cow::Borrowed(PINNED_CATEGORY),
+        visibility: afd_wire::memory::Visibility::Fleet,
     }];
     let script = Script::new([
         vec![call(
@@ -55,7 +56,7 @@ async fn test_memory_tools_round_trip_through_push() {
     let output = engine
         .run(AgentRun {
             lease: &lease,
-            memory: &hydrated,
+            memory: afr_memory::Seed::window(&hydrated),
             executor: None,
             events: &sink,
             stop: &CancellationToken::new(),
@@ -80,6 +81,7 @@ async fn test_memory_tools_round_trip_through_push() {
             key: Cow::Borrowed("incident:42"),
             content: Cow::Borrowed("deploy 812 broke iad"),
             category: Cow::Borrowed("daily"),
+            visibility: afd_wire::memory::Visibility::Fleet,
         }],
         "the push carries what the run stored, and nothing it only read"
     );

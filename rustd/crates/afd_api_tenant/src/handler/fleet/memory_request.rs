@@ -28,8 +28,8 @@ use afd_http::handler::encoding::{decode_bytes, decode_form};
 use std::borrow::Cow;
 
 use afd_core::paging::{Cursor, QUERY_LIMIT, QUERY_STARTING_AFTER};
+use afd_memory::page::View;
 use afd_wire::memory::MAX_KEY_LEN;
-use afd_fleet::memory::page::View;
 
 use crate::handler::Refusal;
 

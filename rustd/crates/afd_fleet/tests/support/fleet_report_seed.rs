@@ -28,7 +28,7 @@ use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
 use afd_fleet::lease::Plane;
 use afd_fleet::lease::{Billed, Delivery, Fence, Issued, Leases, Settled};
-use afd_fleet::memory::Memories;
+use afd_memory::Memories;
 
 use crate::requests::ENROLLED_AT;
 use crate::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};

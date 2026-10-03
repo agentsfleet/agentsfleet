@@ -53,14 +53,6 @@ pub use self::detail::{
     DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED, DETAIL_MINT_FAILED,
     DETAIL_MINT_UNCONFIGURED,
 };
-/// The memory operator surface's sentences, listed apart for the reason the
-/// mint family's are: they arrive together, they are read together, and every
-/// one is pinned to `memory/handler.zig` or its `helpers.zig`.
-pub use self::detail::{
-    DETAIL_MEMORY_AGENTSFLEET_NOT_FOUND, DETAIL_MEMORY_ENTRY_NOT_FOUND,
-    DETAIL_MEMORY_FORGET_FAILED, DETAIL_MEMORY_LIST_FAILED, DETAIL_MEMORY_ROLE_SWITCH,
-    DETAIL_MEMORY_SEARCH_FAILED,
-};
 /// The command-line credential surface's refusals, re-exported as one group for
 /// the reason the api-key family's are: they arrive together and are read
 /// together, and each is pinned to `cli_credentials.zig`.
@@ -69,16 +61,11 @@ pub(crate) use self::refuse::{
     github_reconnect_required, grant_required, integration_not_connected, lease_lost,
     lease_max_runtime, lease_not_found, mint_unconfigured, renewal_no_credits, stale_fence,
 };
-/// The memory operator surface's two refusals, listed apart for the reason the
-/// mint family's sentences are: they arrive together and are read together,
-/// and both are pinned to `memory/handler.zig`.
-pub(crate) use self::refuse::{memory_entry_not_found, memory_fleet_not_found};
 /// Everything that REPORTS a failure rather than answering one, re-exported so
 /// no call site names the file the cap moved them into.
 pub(crate) use self::report::{
     bundle_missing, bundle_oversized, bundle_storage, bundle_unconfigured, envelope_field,
-    envelope_malformed, memory_unavailable, query, rejected, row_malformed, sequence_corrupt,
-    vault_data_invalid,
+    envelope_malformed, query, rejected, row_malformed, sequence_corrupt, vault_data_invalid,
 };
 
 /// The result every fallible function in this crate returns.
@@ -263,18 +250,11 @@ pub(crate) enum ErrorKind {
     #[error("the fleet holds no approved grant for that integration")]
     GrantRequired,
 
-    #[error("the fleet a memory request names is not this workspace's")]
-    MemoryFleetNotFound,
-
-    #[error("the durable memory store would not answer: {detail}")]
-    MemoryUnavailable {
-        detail: &'static str,
+    #[error("the fleet's memory could not be read or written")]
+    Memory {
         #[source]
-        source: sqlx::Error,
+        source: afd_memory::Error,
     },
-
-    #[error("the fleet is holding no memory entry under that key")]
-    MemoryEntryNotFound,
 }
 
 /// The refusals a suite outside this crate needs to CONSTRUCT.

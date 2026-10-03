@@ -19,7 +19,7 @@ use sqlx::Acquire as _;
 
 use self::harness::{Fleet, items, json_body, send};
 
-const SUBJECT: &str = "user_live_memory_operator";
+pub(crate) const SUBJECT: &str = "user_live_memory_operator";
 const FIRST_KEY: &str = "deployment-style";
 const SECOND_KEY: &str = "review-style";
 
@@ -138,19 +138,19 @@ fn text<'value>(document: &'value Value, field: &str) -> &'value str {
         .expect("the response field is a string")
 }
 
-struct Fixture {
+pub(crate) struct Fixture {
     lane: TestDatabase,
-    database: Db,
+    pub(crate) database: Db,
     tenant: String,
-    workspace: afd_core::id::Uuid7,
-    fleet: String,
+    pub(crate) workspace: afd_core::id::Uuid7,
+    pub(crate) fleet: String,
     key: String,
-    token: String,
+    pub(crate) token: String,
     entries: [String; 2],
 }
 
 impl Fixture {
-    async fn create() -> Self {
+    pub(crate) async fn create() -> Self {
         let lane = TestDatabase::shared();
         let token_bits = format!("{}{}", mint_id(), mint_id()).replace('-', "");
         Self {
@@ -174,7 +174,7 @@ impl Fixture {
         )
     }
 
-    async fn seed(&self) {
+    pub(crate) async fn seed(&self) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
@@ -226,14 +226,15 @@ impl Fixture {
             let instant = 10_i64 + i64::try_from(index).unwrap_or_default();
             sqlx::query(
                 "INSERT INTO memory.memory_entries \
-                   (id, key, content, category, fleet_id, created_at, updated_at) \
-                 VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, $6)",
+                   (id, key, content, category, fleet_id, workspace_id, created_at, updated_at) \
+                 VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6::uuid, $7, $7)",
             )
             .bind(id)
             .bind(key)
             .bind(content)
             .bind(category)
             .bind(&self.fleet)
+            .bind(self.workspace.as_str())
             .bind(instant)
             .execute(&mut *transaction)
             .await
@@ -242,7 +243,7 @@ impl Fixture {
         transaction.commit().await.expect("memory seed commits");
     }
 
-    async fn cleanup(self) {
+    pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)

@@ -105,12 +105,13 @@ async fn test_memory_capture_fencing() {
         .await
         .expect("the holder may read its fleet's memory");
     assert_eq!(
-        window.len(),
+        window.memory.len(),
         1,
         "the refused write added nothing — the fence is checked BEFORE the \
          upsert, not after it"
     );
     let only = window
+        .memory
         .first()
         .expect("the window carries the holder's entry");
     assert_eq!(
@@ -203,7 +204,7 @@ async fn test_memory_capture_refuses_a_lease_the_runner_does_not_hold() {
         .await
         .expect("the real holder may read");
     assert!(
-        window.is_empty(),
+        window.memory.is_empty(),
         "and nothing was written on the way to refusing it"
     );
 
@@ -224,6 +225,7 @@ fn push<'a>(lease_id: &'a str, fencing_token: u64, content: &'a str) -> MemoryPu
             key: Cow::Borrowed(KEY),
             content: Cow::Borrowed(content),
             category: Cow::Borrowed(CATEGORY),
+            visibility: afd_wire::memory::Visibility::Fleet,
         }],
     }
 }

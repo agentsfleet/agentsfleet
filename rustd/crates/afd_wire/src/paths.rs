@@ -25,6 +25,11 @@ pub const RUNNER_REPORTS: &str = "/v1/runners/me/reports";
 /// Collection prefix; the caller appends the `{fleet_id}` segment.
 pub const RUNNER_MEMORY: &str = "/v1/runners/me/memory";
 
+/// Trailing segment of `POST /v1/runners/me/memory/{fleet_id}/recall` — a
+/// search past the hydration window. Bare for the reason
+/// [`LEASE_ACTIVITY_SUFFIX`] gives.
+pub const RUNNER_MEMORY_RECALL_SUFFIX: &str = "recall";
+
 /// `GET /v1/runners/me` — read-only self status, which does not bump liveness.
 pub const RUNNER_SELF: &str = "/v1/runners/me";
 

@@ -15,7 +15,7 @@ use afd_core::error_code::{self, ErrorCode};
 use afd_core::id::Uuid7;
 use afd_wire::activity::ActivityRequest;
 use afd_wire::credentials::MintCredentialRequest;
-use afd_wire::memory::MemoryPushRequest;
+use afd_wire::memory::{MemoryPushRequest, MemoryRecallRequest};
 use afd_wire::paths;
 use afd_wire::report::{RenewRequest, RenewResponse};
 use afd_wire::runner::HeartbeatRequest;
@@ -57,6 +57,8 @@ pub(crate) enum Verb {
     Hydrate,
     /// A fleet's memory written back.
     Capture,
+    /// A search of a fleet's memory past the window.
+    Recall,
     /// A fleet bundle by content hash.
     Bundle,
     /// A scoped credential for a held lease.
@@ -83,6 +85,7 @@ impl Verb {
             Self::Report => "report",
             Self::Hydrate => "hydrate",
             Self::Capture => "capture",
+            Self::Recall => "recall",
             Self::Bundle => "bundle",
             Self::Mint => "mint",
             Self::Records => "records",
@@ -94,7 +97,7 @@ impl Verb {
     pub(crate) const fn code(self) -> ErrorCode {
         match self {
             Self::Bundle => error_code::FLEET_BUNDLE_FETCH_FAILED,
-            Self::Hydrate | Self::Capture => error_code::MEM_UNAVAILABLE,
+            Self::Hydrate | Self::Capture | Self::Recall => error_code::MEM_UNAVAILABLE,
             Self::Heartbeat
             | Self::Lease
             | Self::Renew
@@ -225,6 +228,20 @@ impl ControlPlane {
         self.post(Verb::Capture, memory_path(fleet_id), request)
             .await
             .map(drop)
+    }
+
+    /// Searches a fleet's memory past the window, fenced by the lease's token.
+    pub(crate) async fn recall(
+        &self,
+        fleet_id: &Uuid7,
+        request: &MemoryRecallRequest<'_>,
+    ) -> Result<Body> {
+        let path = Cow::Owned(format!(
+            "{}/{}",
+            memory_path(fleet_id),
+            paths::RUNNER_MEMORY_RECALL_SUFFIX
+        ));
+        self.post(Verb::Recall, path, request).await
     }
 
     /// Mints a scoped credential for a held lease.

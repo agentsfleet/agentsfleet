@@ -204,7 +204,7 @@ pub(crate) async fn run(
     let stop = CancellationToken::new();
     let run = AgentRun {
         lease,
-        memory: &[],
+        memory: afr_memory::Seed::default(),
         executor: None,
         events: &sink,
         stop: &stop,

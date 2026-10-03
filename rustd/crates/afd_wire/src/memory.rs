@@ -41,6 +41,43 @@ pub const MAX_ENTRIES_PER_FLEET: usize = 1000;
 /// durable set has grown; dropped entries stay durable, just unhydrated.
 pub const HYDRATE_WINDOW_BYTES: usize = 256 * 1024;
 
+/// Byte budget for the workspace's shared entries one hydrate carries.
+///
+/// A quarter of the fleet's own window, spent after it: what other fleets
+/// published informs a run and never crowds out what the fleet itself learned.
+pub const HYDRATE_SHARED_BYTES: usize = HYDRATE_WINDOW_BYTES / 4;
+
+/// The most entries of each kind one recall answers with.
+pub const RECALL_LIMIT_MAX: usize = 50;
+
+/// Who reads a stored entry: its own fleet, or every fleet in the workspace
+/// granted to read shared memory.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Visibility {
+    /// Only the fleet that wrote it.
+    #[default]
+    Fleet,
+    /// Every fleet in the workspace holding the read grant.
+    Workspace,
+}
+
+impl Visibility {
+    /// Whether only the writing fleet reads the entry. Takes `&self` because
+    /// serde's `skip_serializing_if` hands it a reference.
+    #[must_use]
+    pub const fn is_fleet(&self) -> bool {
+        matches!(self, Self::Fleet)
+    }
+
+    /// Whether every granted fleet in the workspace reads the entry.
+    #[must_use]
+    pub const fn is_workspace(self) -> bool {
+        matches!(self, Self::Workspace)
+    }
+}
+
 /// One durable memory item — the unit of both reading and writing.
 //
 // Carries no scope: the fleet is a path segment, validated server-side against
@@ -61,6 +98,11 @@ pub struct MemoryDelta<'a> {
     #[serde(borrow)]
     #[garde(length(bytes, min = 1, max = MAX_CATEGORY_LEN))]
     pub category: Cow<'a, str>,
+    /// Who reads it; absent means the writing fleet alone. Left off the wire
+    /// at that default, so a delta that shares nothing reads as it always did.
+    #[serde(default, skip_serializing_if = "Visibility::is_fleet")]
+    #[garde(skip)]
+    pub visibility: Visibility,
 }
 
 impl MemoryDelta<'_> {
@@ -78,6 +120,7 @@ impl MemoryDelta<'_> {
             key: Cow::Borrowed(&self.key),
             content: Cow::Borrowed(&self.content),
             category: Cow::Borrowed(&self.category),
+            visibility: self.visibility,
         }
     }
 
@@ -89,6 +132,7 @@ impl MemoryDelta<'_> {
             key: Cow::Owned(self.key.into_owned()),
             content: Cow::Owned(self.content.into_owned()),
             category: Cow::Owned(self.category.into_owned()),
+            visibility: self.visibility,
         }
     }
 }
@@ -113,6 +157,51 @@ pub struct MemoryPushRequest<'a> {
     pub memory: Vec<MemoryDelta<'a>>,
 }
 
+/// An entry another fleet in the workspace published, and who wrote it.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SharedMemory<'a> {
+    /// The key its writer stored it under.
+    #[serde(borrow)]
+    pub key: Cow<'a, str>,
+    /// What its writer remembered.
+    #[serde(borrow)]
+    pub content: Cow<'a, str>,
+    /// The writer's retention category.
+    #[serde(borrow)]
+    pub category: Cow<'a, str>,
+    /// The fleet that wrote it, and the only fleet that may change it.
+    #[serde(borrow)]
+    pub writer_fleet_id: Cow<'a, str>,
+    /// That fleet's name in the workspace.
+    #[serde(borrow)]
+    pub writer_fleet_name: Cow<'a, str>,
+    /// Epoch milliseconds of its last write.
+    pub updated_at: i64,
+}
+
+impl SharedMemory<'_> {
+    /// The bytes this entry charges against the shared hydration budget.
+    #[must_use]
+    pub fn bytes(&self) -> usize {
+        self.key.len() + self.content.len() + self.category.len() + self.writer_fleet_name.len()
+    }
+
+    /// This entry detached from what it borrowed: owned text moves, and only
+    /// borrowed text is copied.
+    #[must_use]
+    pub fn into_owned(self) -> SharedMemory<'static> {
+        SharedMemory {
+            key: Cow::Owned(self.key.into_owned()),
+            content: Cow::Owned(self.content.into_owned()),
+            category: Cow::Owned(self.category.into_owned()),
+            writer_fleet_id: Cow::Owned(self.writer_fleet_id.into_owned()),
+            writer_fleet_name: Cow::Owned(self.writer_fleet_name.into_owned()),
+            updated_at: self.updated_at,
+        }
+    }
+}
+
 /// What a fleet remembers, compacted to fit one window.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,6 +209,49 @@ pub struct MemoryHydrateResponse<'a> {
     /// The window's items.
     #[serde(borrow)]
     pub memory: Vec<MemoryDelta<'a>>,
+    /// What other fleets in the workspace published, newest first; empty for
+    /// a fleet without the read grant.
+    #[serde(borrow, default)]
+    pub shared: Vec<SharedMemory<'a>>,
+    /// Whether this fleet may store an entry the workspace reads.
+    #[serde(default)]
+    pub publish: bool,
+}
+
+/// `POST /v1/runners/me/memory/{fleet_id}/recall` request.
+//
+// Fenced like a push: a holder a reclaim superseded reads nothing.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryRecallRequest<'a> {
+    /// The lease authorizing this read.
+    #[serde(borrow)]
+    #[garde(length(bytes, min = 1, max = MAX_KEY_LEN))]
+    pub lease_id: Cow<'a, str>,
+    /// Monotonic guard; a reclaimed holder is rejected.
+    #[garde(skip)]
+    pub fencing_token: u64,
+    /// Text to find in a key or content, ignoring case; empty matches all.
+    #[serde(borrow)]
+    #[garde(length(bytes, max = MAX_CONTENT_LEN))]
+    pub query: Cow<'a, str>,
+    /// The most entries of each kind to answer with.
+    #[garde(range(min = 1, max = RECALL_LIMIT_MAX))]
+    pub limit: usize,
+}
+
+/// `POST /v1/runners/me/memory/{fleet_id}/recall` reply: the fleet's own
+/// matches and, for a granted reader, the workspace's shared ones.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryRecallResponse<'a> {
+    /// The fleet's own entries, key matches first.
+    #[serde(borrow)]
+    pub memory: Vec<MemoryDelta<'a>>,
+    /// Other fleets' shared entries, key matches first.
+    #[serde(borrow, default)]
+    pub shared: Vec<SharedMemory<'a>>,
 }
 
 /// `POST /v1/runners/me/memory/{fleet_id}` reply — what the write did.
@@ -168,6 +300,13 @@ pub struct MemoryEntry<'a> {
     pub category: Cow<'a, str>,
     /// Epoch milliseconds, as a JSON NUMBER — never a decimal string.
     pub updated_at: i64,
+    /// Who reads it: `fleet` for its writer alone, `workspace` when shared.
+    #[serde(default)]
+    pub visibility: Visibility,
+    /// The fleet that wrote it. Another fleet's identifier marks a shared
+    /// entry this fleet reads and cannot change or forget.
+    #[serde(borrow)]
+    pub writer_fleet_id: Cow<'a, str>,
 }
 
 /// `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories` — one page.

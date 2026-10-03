@@ -35,7 +35,7 @@ pub(super) async fn drive(
     let sink = frames.sink();
     let run = AgentRun {
         lease,
-        memory: &[],
+        memory: afr_memory::Seed::default(),
         executor: None,
         events: &sink,
         stop,
@@ -249,7 +249,7 @@ async fn a_dropped_run_still_closes_its_open_call_once() {
     let stop = CancellationToken::new();
     let run = engine.run(AgentRun {
         lease: &lease,
-        memory: &[],
+        memory: afr_memory::Seed::default(),
         executor: None,
         events: &sink,
         stop: &stop,
