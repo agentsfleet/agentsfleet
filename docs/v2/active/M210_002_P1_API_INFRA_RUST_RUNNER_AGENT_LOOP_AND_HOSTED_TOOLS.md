@@ -20,7 +20,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Priority:** P1 — the workstream after which the fleets of record (the Continuous Integration (CI) responder and repairer, the Pull Request reviewer, the incident repairer) run on the Rust runner, and the one every tool workstream plugs into
 **Categories:** API, INFRA
 **Batch:** B2 — after M210_001 is on `main`; the milestone's follow-up Pull Request. The sandbox-side tools, the runner verbs for schedules and messages, the nested loops and the cutover are later milestones
-**Branch:** feat/m210-agent-loop-hosted-tools
+**Branch:** `feat/m210-agent-loop-hosted-tools`
 **Baseline revision:** 4339afb59fe83a20fb643004e432b9755e1b14a7
 **Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
@@ -264,7 +264,7 @@ Mint:   POST /v1/runners/me/credentials/mint { lease_id, integration, scope? } �
 | R2 | The catalog, loop, providers and tools hold their invariants (§1–§5) | `cargo test --manifest-path rustd/Cargo.toml -p afr_agent -p afr_providers -p afr_tools` | exit 0 | P0 | |
 | R3 | The key never leaves the supervisor (§3) | `cargo test --manifest-path rustd/Cargo.toml -p afr_providers test_api_key_never_leaves_the_supervisor` | exit 0 | P0 | |
 | R4 | No fixture promises the retired card (§7) | `grep -rc "approval card" tests/fixtures/fleetbundle \| grep -v ':0$'` | no output | P0 | |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from this Files Changed table or M210_003's | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Lint green | `make lint-all` | exit 0 | P0 | |
@@ -317,4 +317,4 @@ N/A — no files deleted. The scripted engine stays as M210_001's lane driver; t
 - **Agent defaults** — a retry ceiling of three attempts; the 1 MiB response cap from the published tools page; the context-cap behaviour (final answer, no tools) in place of a failure; the trusted repair context's three lines; `pushover` reading its two fields from `secrets_map` rather than through the placeholder grammar, because its API takes them in the body.
 - **Metrics review** — No analytics or funnel playbook update required: no user surface; five operator log events added.
 - **Skill-chain outcomes** — pending.
-- **Deferrals** — none.
+- **Deferrals** — none. Folded workstream: M210_003 (the Rust unit lane in parallel shards, Indy's Oct 03 request), on this branch and in this Pull Request; its own Discovery says why it is not §8 here.
