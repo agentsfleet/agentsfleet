@@ -31,7 +31,7 @@ use crate::handler::tenant::provider::{DETAIL_MALFORMED_BODY, DETAIL_NO_PRIMARY_
 use crate::handler::tenant::{DETAIL_TENANT_REQUIRED, tenant_of};
 use crate::services::{Services, TenantModelEntries as _};
 
-use super::input::{entry_detail, parse_entry_id};
+use super::input::{bound_refusal, parse_entry_id};
 use super::render::stored;
 use super::{
     DETAIL_DELETE_ACTIVE, DETAIL_DUPLICATE_ENTRY, DETAIL_ENTRY_NOT_FOUND,
@@ -74,7 +74,7 @@ pub(crate) async fn create<D: Services>(
         .map_err(|_shape| Refusal::malformed(DETAIL_MALFORMED_BODY))?;
     request
         .validate()
-        .map_err(|report| entry_detail(&report, &request.model_id))?;
+        .map_err(|report| bound_refusal(&report, &request.model_id))?;
     let model = request.model_id.as_str();
 
     let tenant = tenant_of(
@@ -147,7 +147,7 @@ pub(crate) async fn update<D: Services>(
         .map_err(|_shape| Refusal::malformed(DETAIL_MALFORMED_BODY))?;
     request
         .validate()
-        .map_err(|report| entry_detail(&report, &request.model_id))?;
+        .map_err(|report| bound_refusal(&report, &request.model_id))?;
     let model = request.model_id.as_str();
 
     let tenant = tenant_of(

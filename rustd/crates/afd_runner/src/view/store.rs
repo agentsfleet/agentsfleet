@@ -15,7 +15,7 @@ impl Runners {
     pub async fn list_runners(
         &self,
         cursor: Option<&KeysetCursor>,
-        limit: PageLimit,
+        limit: u32,
         now: UnixMillis,
     ) -> Result<RunnerPage> {
         let mut connection = self.pool().acquire().await?;
@@ -29,14 +29,14 @@ impl Runners {
             sqlx::query(sql::runner_view::LIST_RUNNERS_FIRST)
                 .bind(sql::LEASE_STATUS_ACTIVE)
                 .bind(now.as_millis())
-                .bind(limit.as_i64()),
+                .bind(i64::from(limit)),
             |boundary| {
                 sqlx::query(sql::runner_view::LIST_RUNNERS_AFTER)
                     .bind(sql::LEASE_STATUS_ACTIVE)
                     .bind(now.as_millis())
                     .bind(boundary.created_at())
                     .bind(boundary.id().as_str())
-                    .bind(limit.as_i64())
+                    .bind(i64::from(limit))
             },
         );
         let rows = statement
@@ -80,7 +80,7 @@ impl Runners {
         runner: &Uuid7,
         filter: &RunnerEventFilter,
         cursor: Option<&KeysetCursor>,
-        limit: PageLimit,
+        limit: u32,
     ) -> Result<RunnerEventPage> {
         let mut connection = self.pool().acquire().await?;
         let exists = sqlx::query(sql::runner_view::RUNNER_EXISTS)
@@ -115,8 +115,8 @@ impl Runners {
     }
 }
 
-fn page_cursor(items: &[RunnerItem], limit: PageLimit) -> Option<KeysetCursor> {
-    (items.len() == limit.get() as usize)
+fn page_cursor(items: &[RunnerItem], limit: u32) -> Option<KeysetCursor> {
+    (items.len() == limit as usize)
         .then(|| items.last())
         .flatten()
         .map(|item| KeysetCursor::new(item.created_at, item.id.clone()))

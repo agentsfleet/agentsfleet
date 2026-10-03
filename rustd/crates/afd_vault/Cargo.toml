@@ -32,6 +32,9 @@ serde_json.workspace = true
 sqlx = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tracing.workspace = true
+# A secret name's bound and the canonical body's size bound, declared on the
+# values they bound rather than written as checks.
+garde.workspace = true
 
 [features]
 # M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a router

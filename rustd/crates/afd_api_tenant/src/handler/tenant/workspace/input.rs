@@ -4,8 +4,10 @@
 use std::borrow::Cow;
 
 use afd_core::id::Uuid7;
-use afd_core::paging::{BoundaryKind, Cursor, DEFAULT_LIMIT, MAX_LIMIT};
+use afd_core::paging::{BoundaryKind, CEILING, Cursor};
 use afd_tenant::workspace::directory::After;
+use afd_validate::{Limit, nul_free};
+use garde::Validate as _;
 
 use crate::handler::Refusal;
 
@@ -28,22 +30,27 @@ pub const DETAIL_INVALID_NAME: &str = "Name must be between 1 and 128 Unicode co
 /// restated here because the refusal sentence above names it (RULE UFS).
 const NAME_FILTER_MAX_CODEPOINTS: usize = 128;
 
+/// An exact-name filter as the caller sent it, decoded.
+///
+/// Bounds only — 1 to 128 code points, no NUL — because a FILTER that would
+/// match nothing is the caller's business; the strict character rules belong
+/// to the create, where a value is stored rather than compared.
+#[derive(Debug, garde::Validate)]
+struct NameFilter<'q> {
+    #[garde(
+        length(chars, min = 1, max = NAME_FILTER_MAX_CODEPOINTS),
+        custom(nul_free)
+    )]
+    name: Cow<'q, str>,
+}
+
 /// The page size the caller asked for, or the one refusal any wrong spelling
 /// earns — `tenant_workspaces.zig` does not say which way a limit was wrong.
 ///
-/// The bounds are the shared keyset ones, [`DEFAULT_LIMIT`] and [`MAX_LIMIT`];
-/// the charges walk allows two hundred, its own Zig handler's number.
-pub(super) fn parse_limit(raw: Option<Cow<'_, str>>) -> Result<u32, Refusal> {
-    let Some(raw) = raw else {
-        return Ok(DEFAULT_LIMIT);
-    };
-    let limit: u32 = raw
-        .parse()
-        .map_err(|_not_numeric| Refusal::malformed(DETAIL_INVALID_LIMIT))?;
-    if limit == 0 || limit > MAX_LIMIT {
-        return Err(Refusal::malformed(DETAIL_INVALID_LIMIT));
-    }
-    Ok(limit)
+/// The bound is the shared keyset one, [`CEILING`]; the charges walk allows
+/// two hundred, its own Zig handler's number.
+pub(super) fn requested_limit(raw: Option<&str>) -> Result<u32, Refusal> {
+    Limit::parse(raw, CEILING).map_err(|_break| Refusal::malformed(DETAIL_INVALID_LIMIT))
 }
 
 /// The decoded boundary, or the refusal a foreign token earns.
@@ -75,25 +82,15 @@ pub(super) fn parse_cursor(raw: Option<Cow<'_, str>>) -> Result<Option<After>, R
 }
 
 /// The exact-name filter, or the refusal an unusable one earns.
-///
-/// Bounds only — 1 to 128 code points, no NUL — because a FILTER that would
-/// match nothing is the caller's business; the strict character rules belong
-/// to the create, where a value is stored rather than compared.
 pub(super) fn parse_name(raw: Option<Cow<'_, str>>) -> Result<Option<String>, Refusal> {
-    let Some(raw) = raw else {
-        return Ok(None);
-    };
-    let mut codepoints = 0usize;
-    for codepoint in raw.chars() {
-        if codepoint == '\u{0000}' {
-            return Err(Refusal::malformed(DETAIL_INVALID_NAME));
-        }
-        codepoints += 1;
-    }
-    if codepoints == 0 || codepoints > NAME_FILTER_MAX_CODEPOINTS {
-        return Err(Refusal::malformed(DETAIL_INVALID_NAME));
-    }
-    Ok(Some(raw.into_owned()))
+    raw.map(|name| {
+        let filter = NameFilter { name };
+        filter
+            .validate()
+            .map_err(|_report| Refusal::malformed(DETAIL_INVALID_NAME))?;
+        Ok(filter.name.into_owned())
+    })
+    .transpose()
 }
 
 /// One query parameter, percent-decoded — the shared scan, with this route's

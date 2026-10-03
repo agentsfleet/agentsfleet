@@ -29,11 +29,16 @@ const FIELD_SEPARATOR: char = ':';
 const EVENT_ID_MAX_LEN: usize = 128;
 
 /// The boundary a page resumes strictly after, newest-first.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// The identifier's bound is declared here and proved by [`Cursor::decode`],
+/// so a cursor a client sent back has always passed it.
+#[derive(Debug, Clone, PartialEq, Eq, garde::Validate)]
 pub struct Cursor {
     /// The `created_at` of the last row on the previous page.
+    #[garde(skip)]
     pub created_at: i64,
     /// The `event_id` of that row, breaking ties within one millisecond.
+    #[garde(length(bytes, min = 1, max = EVENT_ID_MAX_LEN))]
     pub event_id: String,
 }
 
@@ -75,13 +80,10 @@ impl Cursor {
             .split_once(FIELD_SEPARATOR)
             .ok_or(cursor_malformed())?;
         let created_at: i64 = head.parse().map_err(|_digits| cursor_malformed())?;
-        if id.is_empty() || id.len() > EVENT_ID_MAX_LEN {
-            return Err(cursor_malformed());
-        }
-        Ok(Self {
-            created_at,
-            event_id: id.to_owned(),
-        })
+        garde::Unvalidated::new(Self::after(created_at, id))
+            .validate()
+            .map(garde::Valid::into_inner)
+            .map_err(|_out_of_bounds| cursor_malformed())
     }
 }
 
@@ -150,6 +152,23 @@ mod tests {
                 "{raw:?} was refused as something other than a bad cursor"
             );
         }
+    }
+
+    #[test]
+    fn test_cursor_id_bound_stays_one_refusal() {
+        // The id bound is garde's now; its refusal must still be the one a
+        // cursor that is not base64 at all earns, code and sentence alike.
+        let refusal = |raw: &str| {
+            Cursor::decode(raw)
+                .err()
+                .map(|error| (error.code(), error.detail()))
+        };
+        let malformed = refusal("not-base64!!");
+        let past_cap = BASE64.encode(format!("1:{}", "x".repeat(EVENT_ID_MAX_LEN + 1)));
+        assert!(malformed.is_some());
+        assert_eq!(refusal(&past_cap), malformed);
+        let at_cap = Cursor::after(1, &"x".repeat(EVENT_ID_MAX_LEN));
+        assert_eq!(decoded(&at_cap.encode()), at_cap);
     }
 
     #[test]

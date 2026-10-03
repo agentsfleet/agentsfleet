@@ -6,7 +6,10 @@
 //! unbounded — a mebibyte of JSONB the runner page then re-reads on every load.
 //! Ported from `src/lib/contract/protocol_selftest.zig` and
 //! `protocol_policy.zig`'s `capabilityReportBounded`, which draw these caps
-//! from the probe's fixed vocabulary rather than from a guess.
+//! from the probe's fixed vocabulary rather than from a guess. Both reports
+//! declare their bounds on the wire type with garde; the capability report has
+//! nothing more to judge, so the heartbeat validates it directly, and this
+//! module keeps the verdict's one cross-field rule.
 //!
 //! # Both refusals are lenient, and that is deliberate
 //!
@@ -30,7 +33,7 @@
 //! problems — a bound is a runner sending too much, a disagreement is a runner
 //! claiming health its own checks contradict.
 
-use afd_wire::runner::{CapabilityReport, SelftestReport};
+use afd_wire::runner::SelftestReport;
 use garde::Validate as _;
 
 // The four caps below are the wire type's own, under the names this crate and
@@ -96,37 +99,6 @@ pub fn accept(report: &SelftestReport<'_>) -> Result<(), Rejection> {
     } else {
         Err(Rejection::AllOkDisagrees)
     }
-}
-
-/// Whether a required string is present and within `ceiling` bytes.
-fn bounded(value: &str, ceiling: usize) -> bool {
-    !value.is_empty() && value.len() <= ceiling
-}
-
-/// Most cgroup controllers one capability report may name.
-///
-/// `protocol_policy.zig`'s `MAX_REPORT_CONTROLLERS`.
-pub const MAX_REPORT_CONTROLLERS: usize = 16;
-
-/// Longest a controller name may be.
-///
-/// `protocol_policy.zig`'s `MAX_CONTROLLER_NAME_LEN`.
-pub const MAX_CONTROLLER_NAME_LEN: usize = 64;
-
-/// Whether a reported capability set may be stored.
-///
-/// A `bool` rather than a `Result`, unlike [`accept`]: there is exactly one way
-/// to be out of bounds here and nothing downstream distinguishes them, so a
-/// variant would be a name for a distinction nobody makes
-/// (`M-SIMPLE-ABSTRACTIONS`). The self-test verdict earns its enum because its
-/// two refusals are different operator problems.
-#[must_use]
-pub fn capability_within_bounds(report: &CapabilityReport<'_>) -> bool {
-    report.cgroup_controllers.len() <= MAX_REPORT_CONTROLLERS
-        && report
-            .cgroup_controllers
-            .iter()
-            .all(|controller| bounded(controller, MAX_CONTROLLER_NAME_LEN))
 }
 
 #[cfg(test)]
@@ -218,42 +190,6 @@ mod tests {
         ] {
             assert_eq!(accept(&refused), Err(Rejection::Unbounded));
         }
-    }
-
-    /// A controller set within its caps is stored.
-    #[test]
-    fn test_capability_report_within_bounds_is_accepted() {
-        let report = CapabilityReport {
-            landlock: true,
-            seccomp: true,
-            cgroup_controllers: vec![Cow::Borrowed("cpu"), Cow::Borrowed("memory")],
-            bubblewrap: true,
-            egress_enforcement: true,
-        };
-
-        assert!(capability_within_bounds(&report));
-    }
-
-    /// Too many controllers, an unnamed one, or an overlong name all refuse.
-    #[test]
-    fn test_capability_report_bounds_reject_an_amplifying_report() {
-        let with = |controllers: Vec<Cow<'static, str>>| CapabilityReport {
-            landlock: false,
-            seccomp: false,
-            cgroup_controllers: controllers,
-            bubblewrap: false,
-            egress_enforcement: false,
-        };
-
-        assert!(!capability_within_bounds(&with(vec![
-            Cow::Borrowed("cpu");
-            MAX_REPORT_CONTROLLERS
-                + 1
-        ])));
-        assert!(!capability_within_bounds(&with(vec![Cow::Borrowed("")])));
-        assert!(!capability_within_bounds(&with(vec![Cow::Owned(
-            "c".repeat(MAX_CONTROLLER_NAME_LEN + 1)
-        )])));
     }
 
     /// The summary must agree with the checks it arrived with, both ways.

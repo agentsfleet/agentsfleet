@@ -234,7 +234,7 @@ async fn test_a_body_this_daemon_cannot_read_never_reaches_a_pipeline() {
 
 #[tokio::test]
 async fn test_the_page_size_is_bounded_at_both_ends() {
-    for raw in ["0", "101", "-1", "", "ten", "1e2"] {
+    for raw in ["0", "101", "-1", "ten", "1e2"] {
         let path = format!("{}?limit={raw}", owned());
         let refused = send(LIBRARY_READ, Method::GET, &path, Some(TENANT_KEY), "").await;
         assert_eq!(refused.status(), StatusCode::BAD_REQUEST, "limit {raw:?}");

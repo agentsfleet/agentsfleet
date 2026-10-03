@@ -12,7 +12,8 @@ use std::borrow::Cow;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_runner::{KeysetCursor, PageLimit, RunnerEventFilter};
+use afd_core::paging::DEFAULT_LIMIT;
+use afd_runner::{KeysetCursor, RunnerEventFilter};
 use afd_wire::admin::{RunnerAdminAction, RunnerEventType};
 use afd_wire::runner::{NetworkPolicy, RunnerLiveness, SandboxTier};
 
@@ -107,7 +108,7 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) {
 /// Grade the seeded rows and their order; a stable global total is not promised
 /// across pages, and would make this test depend on its neighbours' scheduling.
 async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
-    let limit = PageLimit::new(2).expect("two is a valid page limit");
+    let limit = 2;
     let now = UnixMillis::from_millis(ENROLLED_AT + 4);
 
     let mut cursor: Option<KeysetCursor> = None;
@@ -201,7 +202,7 @@ async fn assert_runner_detail(fixtures: &Fixtures, runner: &Uuid7) {
 }
 
 async fn assert_event_pages(fixtures: &Fixtures, runner: &Uuid7) {
-    let limit = PageLimit::new(2).expect("two is a valid page limit");
+    let limit = 2;
     let unfiltered = RunnerEventFilter::default();
     let first = fixtures
         .runners()
@@ -248,7 +249,7 @@ async fn assert_event_pages(fixtures: &Fixtures, runner: &Uuid7) {
     .expect("the inclusive window is ordered");
     let page = fixtures
         .runners()
-        .runner_events(runner, &filtered, None, PageLimit::default())
+        .runner_events(runner, &filtered, None, DEFAULT_LIMIT)
         .await
         .expect("the filtered page loads");
     assert_eq!(page.total(), 2);

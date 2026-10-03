@@ -1,0 +1,20 @@
+[package]
+name = "afd_validate"
+description = "Bounds on untrusted input every crate shares: garde custom rules, a route-ceilinged `?limit`, and a report-to-sentence table."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# The rules are garde `custom` functions, `Limit` is a garde struct proved
+# against its route's ceiling as context, and `Sentences` reads a garde report.
+garde.workspace = true

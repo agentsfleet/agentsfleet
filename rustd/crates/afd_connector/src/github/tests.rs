@@ -67,7 +67,8 @@ fn a_decimal_string_id_reads_as_the_same_installation() {
 #[test]
 fn an_installation_id_is_bounded_decimal_digits() {
     assert!(is_installation_id("12345678"));
-    for bad in ["", "12a45", "-1", &"1".repeat(33)] {
+    assert!(is_installation_id(&"1".repeat(32)), "the cap itself passes");
+    for bad in ["", "12a45", "-1", "+1", "١", &"1".repeat(33)] {
         assert!(
             !is_installation_id(bad),
             "`{bad}` is not an installation id"

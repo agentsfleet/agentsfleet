@@ -176,6 +176,7 @@ dependencies = [
  "afd_http",
  "afd_library",
  "afd_runner",
+ "afd_validate",
  "afd_wire",
  "axum",
  "garde",
@@ -226,6 +227,7 @@ dependencies = [
  "afd_observability",
  "afd_sse",
  "afd_tenant",
+ "afd_validate",
  "afd_vault",
  "afd_webhook",
  "afd_wire",
@@ -316,6 +318,7 @@ dependencies = [
  "afd_db",
  "afd_fleet_runtime",
  "base64 0.23.1",
+ "garde",
  "jiff",
  "sqlx",
  "thiserror 2.0.20",
@@ -331,9 +334,11 @@ dependencies = [
  "afd_crypto",
  "afd_db",
  "afd_dragonfly",
+ "afd_validate",
  "afd_vault",
  "axum",
  "base64 0.23.1",
+ "garde",
  "reqwest",
  "serde",
  "serde_json",
@@ -349,6 +354,7 @@ dependencies = [
 name = "afd_core"
 version = "0.51.1"
 dependencies = [
+ "afd_validate",
  "base64 0.23.1",
  "hex",
  "serde",
@@ -399,8 +405,10 @@ dependencies = [
  "afd_crypto",
  "afd_db",
  "afd_dragonfly",
+ "afd_validate",
  "afd_wire",
  "base64 0.23.1",
+ "garde",
  "jiff",
  "jsonwebtoken",
  "philiprehberger-cron-parser",
@@ -481,6 +489,7 @@ dependencies = [
  "afd_wire",
  "base64 0.23.1",
  "futures-util",
+ "garde",
  "jiff",
  "redis",
  "serde_json",
@@ -544,6 +553,7 @@ dependencies = [
  "afd_vault",
  "afd_wire",
  "backon",
+ "garde",
  "moka",
  "redis",
  "serde_json",
@@ -570,6 +580,7 @@ name = "afd_fleet_runtime"
 version = "0.51.1"
 dependencies = [
  "afd_core",
+ "afd_validate",
  "afd_webhook",
  "garde",
  "semver",
@@ -698,6 +709,7 @@ dependencies = [
  "afd_db",
  "afd_fleet",
  "afd_fleet_runtime",
+ "afd_validate",
  "async-trait",
  "bytes",
  "flate2",
@@ -795,6 +807,7 @@ dependencies = [
  "afd_dragonfly",
  "afd_observability",
  "afd_state",
+ "afd_validate",
  "afd_wire",
  "garde",
  "redis",
@@ -850,8 +863,10 @@ dependencies = [
  "afd_dragonfly",
  "afd_mail",
  "afd_observability",
+ "afd_validate",
  "base64 0.23.1",
  "futures-util",
+ "garde",
  "hex",
  "petname",
  "serde",
@@ -866,12 +881,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_validate"
+version = "0.51.1"
+dependencies = [
+ "garde",
+]
+
+[[package]]
 name = "afd_vault"
 version = "0.51.1"
 dependencies = [
  "afd_core",
  "afd_crypto",
  "afd_db",
+ "garde",
  "serde_json",
  "sqlx",
  "thiserror 2.0.20",
@@ -893,6 +916,7 @@ dependencies = [
 name = "afd_wire"
 version = "0.51.1"
 dependencies = [
+ "afd_validate",
  "garde",
  "serde",
  "serde_json",

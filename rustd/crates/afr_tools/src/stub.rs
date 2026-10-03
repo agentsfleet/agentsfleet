@@ -14,14 +14,17 @@ use crate::schema::Schema;
 /// The file a sandbox-side stub reads.
 pub const STUB_PATH: &str = "stub.txt";
 
-/// The arguments of a tool that takes none: an object naming nothing, and
-/// refusing any name it is handed.
-#[expect(
-    clippy::empty_structs_with_brackets,
-    reason = "arguments parse from a JSON object, which only a braced struct takes"
-)]
+// The arguments a stub, or any test tool that reads none, takes: its schema is
+// the empty object that refuses every key, derived like a real tool's rather
+// than written as JSON beside it. The doc line below is what schemars hands
+// the model as the schema's description, so it is written for the model.
+/// Takes no arguments.
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[expect(
+    clippy::empty_structs_with_brackets,
+    reason = "schemars renders a unit struct as `null`; the braces make it the empty object every provider's function wire expects"
+)]
 pub struct NoArguments {}
 
 /// A handler that proves where it ran.

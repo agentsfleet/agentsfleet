@@ -6,6 +6,7 @@
 
 use std::borrow::Cow;
 
+use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 use crate::tool_trace::{ToolCallStatus, edge_fits};
@@ -24,19 +25,22 @@ pub const CALL_ID_MAX_BYTES: usize = 64;
 /// `args_redacted` is opaque, pre-stringified JSON built runner-side AFTER
 /// substitution — never the resolved bytes.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ToolCallStarted<'a> {
     /// Which tool.
     #[serde(borrow)]
+    #[garde(skip)]
     pub name: Cow<'a, str>,
     /// The redacted arguments.
     #[serde(borrow)]
+    #[garde(skip)]
     pub args_redacted: Cow<'a, str>,
     /// Which call of the run this frame belongs to, 1 to 64 bytes: every frame
     /// of one call carries the same value. Absent from runners that do not name
     /// calls.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    #[garde(inner(length(bytes, min = 1, max = CALL_ID_MAX_BYTES)))]
     pub call_id: Option<Cow<'a, str>>,
 }
 
@@ -82,50 +86,63 @@ pub struct FleetResponseChunk<'a> {
 /// The outcome fields are absent from runners that do not report one. A
 /// reader shows such a call as finished with no outcome, never as a success.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ToolCallCompleted<'a> {
     /// Which tool.
     #[serde(borrow)]
+    #[garde(skip)]
     pub name: Cow<'a, str>,
     /// How long it took, in milliseconds.
+    #[garde(skip)]
     pub ms: i64,
     /// Which call of the run this frame belongs to, 1 to 64 bytes: every frame
     /// of one call carries the same value. Absent from runners that do not name
     /// calls.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    #[garde(inner(length(bytes, min = 1, max = CALL_ID_MAX_BYTES)))]
     pub call_id: Option<Cow<'a, str>>,
     /// How the call ended.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
     pub status: Option<ToolCallStatus>,
     /// The output's first lines, at most 5 lines and 1024 bytes.
+    // Judged by `ActivityFrame::outcome_usable`, through the `edge_fits` the
+    // stored trace and the runner share, rather than declared twice.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
     pub output_head: Option<Cow<'a, str>>,
     /// The output's last lines, at most 5 lines and 1024 bytes.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
     pub output_tail: Option<Cow<'a, str>>,
     /// How many lines the whole output had.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
     pub output_line_count: Option<u64>,
     /// The process's exit code, for a call that ran one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
     pub exit_code: Option<i32>,
 }
 
 /// A long-running tool is still working, so a reader's spinner survives it.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ToolCallProgress<'a> {
     /// Which tool.
     #[serde(borrow)]
+    #[garde(skip)]
     pub name: Cow<'a, str>,
     /// How long it has been running, in milliseconds.
+    #[garde(skip)]
     pub elapsed_ms: i64,
     /// Which call of the run this frame belongs to, 1 to 64 bytes: every frame
     /// of one call carries the same value. Absent from runners that do not name
     /// calls.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    #[garde(inner(length(bytes, min = 1, max = CALL_ID_MAX_BYTES)))]
     pub call_id: Option<Cow<'a, str>>,
 }
 
@@ -137,21 +154,21 @@ pub struct ToolCallProgress<'a> {
 // field for field — the encoding is identical either way, and the named form
 // is what lets each payload carry its own fixture.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "snake_case")]
 pub enum ActivityFrame<'a> {
     /// A tool call began.
     #[serde(borrow)]
-    ToolCallStarted(ToolCallStarted<'a>),
+    ToolCallStarted(#[garde(dive)] ToolCallStarted<'a>),
     /// The fleet produced output.
     #[serde(borrow)]
-    FleetResponseChunk(FleetResponseChunk<'a>),
+    FleetResponseChunk(#[garde(skip)] FleetResponseChunk<'a>),
     /// A tool call finished.
     #[serde(borrow)]
-    ToolCallCompleted(ToolCallCompleted<'a>),
+    ToolCallCompleted(#[garde(dive)] ToolCallCompleted<'a>),
     /// A long-running tool is still working.
     #[serde(borrow)]
-    ToolCallProgress(ToolCallProgress<'a>),
+    ToolCallProgress(#[garde(dive)] ToolCallProgress<'a>),
 }
 
 impl ActivityFrame<'_> {
@@ -167,11 +184,10 @@ impl ActivityFrame<'_> {
     }
 
     /// Whether the call this frame names, if any, is 1 to
-    /// [`CALL_ID_MAX_BYTES`] bytes.
+    /// [`CALL_ID_MAX_BYTES`] bytes: the one bound the frame types declare.
     #[must_use]
     pub fn call_id_usable(&self) -> bool {
-        self.call_id()
-            .is_none_or(|id| (1..=CALL_ID_MAX_BYTES).contains(&id.len()))
+        self.validate().is_ok()
     }
 
     /// Whether a completion's output edges, if any, fit the bounds a stored

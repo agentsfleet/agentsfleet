@@ -6,6 +6,7 @@ use std::sync::Arc;
 use afd_admin::{CreateModel, DeleteModel, Model, ModelInput};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
+use afd_validate::Sentences;
 use afd_wire::admin::{
     AdminModelCreate, AdminModelCreated, AdminModelItem, AdminModelUpdated, AdminModelsResponse,
     ModelRates,
@@ -30,6 +31,8 @@ const FIELD_PROVIDER: &str = "provider";
 const FIELD_MODEL_ID: &str = "model_id";
 /// The path a context-ceiling break is reported under.
 const FIELD_CONTEXT_CAP: &str = "context_cap_tokens";
+/// The same break from the create, where the rates nest under `rates`.
+const FIELD_RATES_CONTEXT_CAP: &str = "rates.context_cap_tokens";
 
 const DETAIL_PROVIDER_LEN: &str = "provider must be 1–64 chars";
 const DETAIL_MODEL_ID_LEN: &str = "model_id must be 1–256 chars";
@@ -243,7 +246,7 @@ fn create_request(body: &[u8]) -> Result<AdminModelCreate<'_>, &'static str> {
     }
     let request = afd_http::handler::read_body::<AdminModelCreate<'_>>(body)
         .map_err(|_error| DETAIL_MALFORMED_JSON)?;
-    request.validate().map_err(|report| detail_for(&report))?;
+    request.validate().map_err(|report| BOUNDS.pick(&report))?;
     Ok(request)
 }
 
@@ -253,35 +256,27 @@ fn rates_request(body: &[u8]) -> Result<afd_admin::ModelRates, &'static str> {
     }
     let rates =
         afd_http::handler::read_body::<ModelRates>(body).map_err(|_error| DETAIL_MALFORMED_JSON)?;
-    rates.validate().map_err(|report| detail_for(&report))?;
+    rates.validate().map_err(|report| BOUNDS.pick(&report))?;
     Ok(store_rates(rates))
 }
 
-/// The sentence a caller is told, for the bound their body broke.
+/// The sentence a caller is told, keyed by the path of the bound their body
+/// broke.
 ///
-/// `garde` reports a PATH and a message; this route answers a fixed sentence
-/// per field, and that is a public contract — the dashboard renders it. So the
-/// bound moves onto the type and the wording stays here, mapped by the path
-/// that broke, rather than both living in an `if` that has to be kept in step
-/// with the schema.
-fn detail_for(report: &garde::Report) -> &'static str {
-    report
-        .iter()
-        .next()
-        .map_or(DETAIL_MALFORMED_JSON, |(path, _message)| {
-            // The rates ride FLATTENED on the wire but nested in the type, so
-            // `dive` spells them `rates.context_cap_tokens` from the create and
-            // `context_cap_tokens` from the rates-only verb. Matching the whole
-            // path would answer the create's cap break with the rates sentence.
-            let spelled = path.to_string();
-            match spelled.rsplit('.').next().unwrap_or(&spelled) {
-                FIELD_PROVIDER => DETAIL_PROVIDER_LEN,
-                FIELD_MODEL_ID => DETAIL_MODEL_ID_LEN,
-                FIELD_CONTEXT_CAP => DETAIL_CAP_POSITIVE,
-                _rate => DETAIL_RATES_NONNEGATIVE,
-            }
-        })
-}
+/// The wording is a public commitment the dashboard renders, so the bound
+/// lives on the type and only the sentence stays here. The rates ride
+/// FLATTENED on the wire but nested in the create type, so `dive` reports the
+/// ceiling as `rates.context_cap_tokens` there and `context_cap_tokens` from
+/// the rates-only verb; both spellings are listed. Every other path is a rate.
+const BOUNDS: Sentences = Sentences::new(
+    &[
+        (FIELD_PROVIDER, DETAIL_PROVIDER_LEN),
+        (FIELD_MODEL_ID, DETAIL_MODEL_ID_LEN),
+        (FIELD_CONTEXT_CAP, DETAIL_CAP_POSITIVE),
+        (FIELD_RATES_CONTEXT_CAP, DETAIL_CAP_POSITIVE),
+    ],
+    DETAIL_RATES_NONNEGATIVE,
+);
 
 fn store_rates(rates: ModelRates) -> afd_admin::ModelRates {
     afd_admin::ModelRates::new(

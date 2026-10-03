@@ -73,25 +73,17 @@ impl Chosen {
     /// refused for the character on both daemons.
     pub fn parse(raw: &str) -> Result<Option<Self>> {
         let trimmed = raw.trim_matches(TRIMMED);
-        if trimmed.is_empty() {
+        if trimmed.chars().any(is_forbidden) {
+            return Err(error::workspace_name_invalid());
+        }
+        // Empty, or whitespace however spelled: the caller chose nothing.
+        if trimmed.chars().all(is_unicode_whitespace) {
             return Ok(None);
         }
-        let mut codepoints = 0usize;
-        let mut has_content = false;
-        for codepoint in trimmed.chars() {
-            if is_forbidden(codepoint) {
-                return Err(error::workspace_name_invalid());
-            }
-            has_content = has_content || !is_unicode_whitespace(codepoint);
-            codepoints += 1;
-        }
-        if !has_content {
-            return Ok(None);
-        }
-        if codepoints > MAX_NAME_CODEPOINTS {
-            return Err(error::workspace_name_too_long());
-        }
-        Ok(Some(Self(trimmed.to_owned())))
+        garde::Unvalidated::new(Trimmed { name: trimmed })
+            .validate()
+            .map(|proved| Some(Self(proved.name.to_owned())))
+            .map_err(|_report| error::workspace_name_too_long())
     }
 
     /// The name as it is stored and echoed.
@@ -99,6 +91,16 @@ impl Chosen {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+/// A chosen name once its ends are trimmed, with the bound it must meet.
+///
+/// Built from the TRIMMED value, so the cap counts what is stored rather than
+/// the spaces a caller pasted around it.
+#[derive(Debug, garde::Validate)]
+struct Trimmed<'a> {
+    #[garde(length(chars, max = MAX_NAME_CODEPOINTS))]
+    name: &'a str,
 }
 
 /// A code point no stored name may carry.
@@ -216,134 +218,5 @@ fn pick<'a>(list: &'a [&'a str], draw: u32) -> &'a str {
 }
 
 #[cfg(test)]
-mod tests {
-    #![expect(
-        clippy::expect_used,
-        reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
-    )]
-    use afd_crypto::entropy::Entropy;
-
-    use super::{Chosen, MAX_NAME_CODEPOINTS, SEPARATOR, SUFFIX_ALPHABET, SUFFIX_LEN, generate};
-
-    #[test]
-    fn a_chosen_name_is_trimmed_and_kept() {
-        let chosen = Chosen::parse("  deploy bots\t").expect("a plain name passes");
-        assert_eq!(
-            chosen.expect("a non-blank name is a choice").as_str(),
-            "deploy bots"
-        );
-    }
-
-    #[test]
-    fn choosing_nothing_in_any_spelling_means_generate() {
-        // Empty, ASCII whitespace, and whitespace only Unicode can spell —
-        // each is "no choice", never a refusal. The divergence from the Zig
-        // 400 is deliberate and Discovery-logged.
-        for blank in ["", "   ", "\t\r\n", "\u{00a0}\u{3000}"] {
-            let outcome = Chosen::parse(blank).expect("blankness is not an error");
-            assert!(outcome.is_none(), "{blank:?} is not a name anyone chose");
-        }
-    }
-
-    #[test]
-    fn the_cap_counts_code_points_at_the_boundary() {
-        let at_cap = "é".repeat(MAX_NAME_CODEPOINTS);
-        assert!(
-            Chosen::parse(&at_cap)
-                .expect("the cap itself passes")
-                .is_some(),
-            "128 code points is within the rule"
-        );
-        let past_cap = "é".repeat(MAX_NAME_CODEPOINTS + 1);
-        assert!(
-            Chosen::parse(&past_cap).is_err(),
-            "129 code points is past it, whatever the byte count"
-        );
-    }
-
-    #[test]
-    fn a_character_that_lets_a_name_lie_is_refused() {
-        // One representative per forbidden class: C0, C1, the Arabic letter
-        // mark, a directional mark, a line separator, an override, an isolate.
-        for lying in [
-            "tab\u{0007}",
-            "c1\u{0085}",
-            "alm\u{061c}",
-            "mark\u{200e}",
-            "sep\u{2028}",
-            "bidi\u{202e}",
-            "iso\u{2066}",
-        ] {
-            assert!(
-                Chosen::parse(lying).is_err(),
-                "{lying:?} carries a character no stored name may"
-            );
-        }
-    }
-
-    #[test]
-    fn a_generated_name_has_the_documented_shape() {
-        let name = generate(&Entropy::new()).expect("a host can draw random bytes");
-        let parts: Vec<&str> = name.split(SEPARATOR).collect();
-
-        assert_eq!(
-            parts.len(),
-            3,
-            "the shape is adjective-noun-suffix, got {name}"
-        );
-        assert!(
-            parts.iter().all(|part| !part.is_empty()),
-            "no part may be empty, got {name}"
-        );
-        let suffix = parts.last().expect("a three-part name has a last part");
-        assert_eq!(
-            suffix.len(),
-            SUFFIX_LEN,
-            "the suffix is a fixed width so names line up in a list, got {name}"
-        );
-    }
-
-    #[test]
-    fn a_name_survives_a_url_and_a_terminal_unquoted() {
-        // The whole reason for a generated name is that a person reads it back
-        // and types it somewhere. Every character has to be one that survives
-        // that trip without escaping.
-        for _draw in 0..64 {
-            let name = generate(&Entropy::new()).expect("a host can draw random bytes");
-            assert!(
-                name.bytes().all(|byte| byte.is_ascii_lowercase()
-                    || byte.is_ascii_digit()
-                    || byte == SEPARATOR as u8),
-                "{name} carries a character that would need quoting"
-            );
-        }
-    }
-
-    #[test]
-    fn the_suffix_avoids_the_characters_people_misread() {
-        // `l`/`1` and `o`/`0` are the pairs somebody transcribing a name off a
-        // support ticket gets wrong. This asserts the alphabet, not a sample,
-        // because a sample would pass by luck.
-        for ambiguous in *b"loi01" {
-            assert!(
-                !SUFFIX_ALPHABET.contains(&ambiguous),
-                "{} is a character people mistype",
-                char::from(ambiguous)
-            );
-        }
-    }
-
-    #[test]
-    fn two_names_in_a_row_differ() {
-        // Not a distribution proof — that belongs to the entropy source, which
-        // has its own. This catches the specific regression of a generator that
-        // draws once and reuses, which would make the unique index the only
-        // thing standing between a tenant and one workspace.
-        let first = generate(&Entropy::new()).expect("a host can draw random bytes");
-        let second = generate(&Entropy::new()).expect("a host can draw random bytes");
-        assert_ne!(
-            first, second,
-            "a generator that repeats turns every create after the first into a retry"
-        );
-    }
-}
+#[path = "name/tests.rs"]
+mod tests;

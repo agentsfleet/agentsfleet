@@ -10,6 +10,7 @@
 use crate::harness;
 
 use afd_auth::scope::ScopeSet;
+use afd_core::error_code;
 use http::{Method, StatusCode};
 
 use self::harness::Fleet;
@@ -122,6 +123,60 @@ async fn a_dashboard_session_reaches_each_mutation_service() {
     ] {
         let response = dashboard_router(method, path, Some(DASHBOARD_TOKEN), body).await;
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE, "{path}");
+    }
+}
+
+/// The registry code a refusal carries.
+async fn code_of(response: axum::response::Response) -> Option<String> {
+    harness::json_body(response)
+        .await
+        .get("error_code")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+}
+
+#[tokio::test]
+async fn test_session_fields_keep_their_auth_codes() {
+    // The bounds moved onto garde structs; each field still answers its own
+    // registry code one byte past its bound, which is what a client branches on.
+    let open = |public_key: &str, token_name: &str| {
+        format!(r#"{{"public_key":"{public_key}","token_name":"{token_name}"}}"#)
+    };
+    let approve = |ciphertext: &str, nonce: &str, code: &str| {
+        format!(
+            r#"{{"dashboard_public_key":"k","ciphertext":"{ciphertext}","nonce":"{nonce}","verification_code":"{code}"}}"#
+        )
+    };
+    let opened = [
+        (
+            open(&"k".repeat(201), "laptop"),
+            error_code::INVALID_PUBLIC_KEY,
+        ),
+        (open("k", &"t".repeat(65)), error_code::INVALID_TOKEN_NAME),
+    ];
+    for (body, expected) in opened {
+        let response = open_router(Method::POST, SESSIONS, None, &body).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{expected:?}");
+        assert_eq!(code_of(response).await.as_deref(), Some(expected.as_str()));
+    }
+    let approved = [
+        (
+            approve(&"c".repeat(4097), "n", "012345"),
+            error_code::INVALID_CIPHERTEXT,
+        ),
+        (
+            approve("c", &"n".repeat(33), "012345"),
+            error_code::INVALID_NONCE,
+        ),
+        (
+            approve("c", "n", "0123456"),
+            error_code::INVALID_VERIFICATION_CODE,
+        ),
+    ];
+    for (body, expected) in approved {
+        let response = dashboard_router(Method::PATCH, APPROVE, Some(DASHBOARD_TOKEN), &body).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{expected:?}");
+        assert_eq!(code_of(response).await.as_deref(), Some(expected.as_str()));
     }
 }
 

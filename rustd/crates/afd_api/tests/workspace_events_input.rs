@@ -136,9 +136,9 @@ async fn assert_accepted(suffix: &str) {
 /// Every page size inside the served band is honoured.
 #[tokio::test]
 async fn a_page_size_inside_the_served_band_reaches_the_store() {
-    // Absent is the default page, and the two ends are the band itself: an
+    // Absent and blank are the default page, and the two ends are the band: an
     // off-by-one at either would refuse a size the Zig daemon serves today.
-    for suffix in ["", "?limit=1", "?limit=200", "?limit=50"] {
+    for suffix in ["", "?limit=", "?limit=1", "?limit=200", "?limit=50"] {
         assert_accepted(suffix).await;
     }
 }
@@ -154,8 +154,6 @@ async fn a_page_size_outside_the_served_band_is_refused() {
         "?limit=201",
         "?limit=-1",
         "?limit=abc",
-        // Written by a form field the user left blank.
-        "?limit=",
         // Past the width the parameter is read at, which is a different
         // failure from being past the band and must not answer differently.
         "?limit=9223372036854775808",

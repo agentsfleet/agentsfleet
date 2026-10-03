@@ -5,11 +5,29 @@
 //! the host within one beat and nobody visits the host. The capability report
 //! and the self-test verdict flow UP, and are unauthenticated self-assertion —
 //! a compromised host can lie, so placement trust stays operator-assigned.
+//!
+//! Every bound an enrolment, an assignment or a capability report must meet
+//! is declared on its type with garde; the caps and the two grammar rules live
+//! in [`rules`](self::rules), and a reader proves them by validating.
 
 use std::borrow::Cow;
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
+
+mod rules;
+mod selftest;
+
+pub use self::rules::{
+    BIND_NOTE_MAX_BYTES, BIND_PATH_MAX_BYTES, BIND_PATH_MIN_BYTES, CONTROLLER_NAME_MAX_BYTES,
+    EXTRA_BINDS_MAX, HOST_ID_MAX_BYTES, LABEL_MAX_BYTES, LABELS_MAX, REGISTRY_ENTRIES_MAX,
+    REGISTRY_ENTRY_MAX_BYTES, REGISTRY_PORT_MAX_DIGITS, REPORT_CONTROLLERS_MAX,
+};
+use self::rules::{bind_path, registry_entry};
+pub use self::selftest::{
+    CHECK_DETAIL_MAX_BYTES, CHECK_NAME_MAX_BYTES, SELFTEST_CHECKS_MAX, SELFTEST_POLICY_MAX_BYTES,
+    SelftestCheck, SelftestReport,
+};
 
 /// The isolation strength assigned to a runner.
 //
@@ -67,15 +85,21 @@ pub enum BindMode {
 /// An operator may ADD a path a host needs; never remove or re-mode one the
 /// sandbox depends on.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 pub struct ExtraBind<'a> {
     /// Host path to bind.
     #[serde(borrow)]
+    #[garde(
+        length(bytes, min = BIND_PATH_MIN_BYTES, max = BIND_PATH_MAX_BYTES),
+        custom(bind_path)
+    )]
     pub path: Cow<'a, str>,
     /// Whether the bind is writable.
+    #[garde(skip)]
     pub mode: BindMode,
     /// Operator note explaining why the bind exists.
     #[serde(borrow)]
+    #[garde(length(bytes, max = BIND_NOTE_MAX_BYTES))]
     pub note: Cow<'a, str>,
 }
 
@@ -84,20 +108,32 @@ pub struct ExtraBind<'a> {
 // Everything a host was once told through its environment, now delivered with
 // its identity. The host never declares policy.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 pub struct AssignedPolicy<'a> {
     /// Isolation strength to apply.
+    #[garde(skip)]
     pub sandbox_tier: SandboxTier,
     /// Egress posture to apply.
+    #[garde(skip)]
     pub network_policy: NetworkPolicy,
     /// Operator registry baseline merged into each lease's egress allowlist.
     /// Empty means the runner substitutes its own default registry set.
     #[serde(borrow)]
+    #[garde(
+        length(max = REGISTRY_ENTRIES_MAX),
+        inner(
+            length(bytes, min = 1, max = REGISTRY_ENTRY_MAX_BYTES),
+            custom(registry_entry)
+        )
+    )]
     pub registry_allowlist: Vec<Cow<'a, str>>,
     /// Concurrent workers the runner may start. Clamped on both sides.
+    // Clamped, never refused, so it carries no bound: `WorkerCount::clamping`.
+    #[garde(skip)]
     pub worker_count: u32,
     /// Extra host paths bound into every lease's sandbox.
     #[serde(borrow)]
+    #[garde(length(max = EXTRA_BINDS_MAX), dive)]
     pub extra_binds: Vec<ExtraBind<'a>>,
 }
 
@@ -114,90 +150,30 @@ pub struct AssignedPolicy<'a> {
     clippy::struct_excessive_bools,
     reason = "wire shape fixed by the peer; each flag is a separately reported mechanism"
 )]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CapabilityReport<'a> {
     /// Filesystem isolation is available.
+    #[garde(skip)]
     pub landlock: bool,
     /// System-call filtering is available.
+    #[garde(skip)]
     pub seccomp: bool,
     /// Controllers present in the delegated cgroup's subtree control.
+    // Stored and re-read by the runner page, so bounded: past either cap the
+    // whole report reads as "nothing reported this beat".
     #[serde(borrow)]
+    #[garde(
+        length(max = REPORT_CONTROLLERS_MAX),
+        inner(length(bytes, min = 1, max = CONTROLLER_NAME_MAX_BYTES))
+    )]
     pub cgroup_controllers: Vec<Cow<'a, str>>,
     /// The sandbox launcher is available.
+    #[garde(skip)]
     pub bubblewrap: bool,
     /// Kernel-enforced egress allowlisting is available.
+    #[garde(skip)]
     pub egress_enforcement: bool,
-}
-
-/// One self-test check's verdict.
-///
-/// `detail` is prose even when `ok`: every passing check carries a line, and a
-/// whitespace-free cause reads to an operator as a leaked internal identifier.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct SelftestCheck<'a> {
-    /// What was checked.
-    #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = CHECK_NAME_MAX_BYTES))]
-    pub name: Cow<'a, str>,
-    /// Whether it passed.
-    #[garde(skip)]
-    pub ok: bool,
-    /// Why, in prose.
-    // Never empty: an empty cause reads to the dashboard as a leaked internal
-    // identifier and is hidden, so the check would arrive explanation-less.
-    #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = CHECK_DETAIL_MAX_BYTES))]
-    pub detail: Cow<'a, str>,
-}
-
-/// The longest name one self-test check may carry.
-pub const CHECK_NAME_MAX_BYTES: usize = 128;
-
-/// The longest prose cause one check may carry.
-pub const CHECK_DETAIL_MAX_BYTES: usize = 256;
-
-/// How many checks one probe run may report.
-pub const SELFTEST_CHECKS_MAX: usize = 32;
-
-/// The longest tier or policy spelling a report may carry.
-pub const SELFTEST_POLICY_MAX_BYTES: usize = 64;
-
-// The tier and policy travel WITH the verdict rather than being read from the
-// runner row at render time: a result outlives the assignment that produced
-// it, so a reader labels a mismatch stale instead of presenting a verdict on a
-// policy nothing tested.
-/// One probe run and the verdict it reached.
-///
-/// The tier and policy travel with the verdict. Compare them against the
-/// runner's current values to tell a stale result from a live one.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct SelftestReport<'a> {
-    /// Every check the probe ran.
-    // `dive` runs each check's own bounds and reports the INDEX that broke
-    // them, where one flat predicate over the whole vector could only say that
-    // some check was out of bounds.
-    #[serde(borrow)]
-    #[garde(length(max = SELFTEST_CHECKS_MAX), dive)]
-    pub checks: Vec<SelftestCheck<'a>>,
-    /// Whether every check passed.
-    // Reported by the host rather than derived on arrival, and cross-checked
-    // against `checks` by the acceptor — an agreement between two fields, which
-    // no per-field bound can express.
-    #[garde(skip)]
-    pub all_ok: bool,
-    /// The tier in force when the probe ran.
-    #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = SELFTEST_POLICY_MAX_BYTES))]
-    pub sandbox_tier: Cow<'a, str>,
-    /// The egress posture in force when the probe ran.
-    #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = SELFTEST_POLICY_MAX_BYTES))]
-    pub network_policy: Cow<'a, str>,
 }
 
 /// Derived runtime liveness, computed by the fleet read and NEVER stored —
@@ -233,17 +209,20 @@ pub enum HeartbeatStatus {
 /// not an enrollment token. The operator ASSIGNS the policy; the host never
 /// declares one.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct RegisterRequest<'a> {
     /// Stable identifier for the host being enrolled.
     #[serde(borrow)]
+    #[garde(length(bytes, min = 1, max = HOST_ID_MAX_BYTES))]
     pub host_id: Cow<'a, str>,
     /// The policy the operator assigns to it.
     #[serde(borrow)]
+    #[garde(dive)]
     pub assigned_policy: AssignedPolicy<'a>,
     /// Operator labels for placement and filtering.
     #[serde(borrow)]
+    #[garde(length(max = LABELS_MAX), inner(length(bytes, max = LABEL_MAX_BYTES)))]
     pub labels: Vec<Cow<'a, str>>,
 }
 
