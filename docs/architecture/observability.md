@@ -1,9 +1,13 @@
-# Observability — `agentsfleetd` is the plane, the runner is bare
+# Observability — `agentsfleetd` is the plane; runners get a collector of their own
 
-> One decision drives this file: **`agentsfleetd` owns backend-bound telemetry;
-> `agentsfleet-runner` is deliberately bare.** A runner emits local logs and
-> reports bounded liveness and result facts over `/v1/runners`. It holds no
-> analytics or observability-backend credential.
+> Two decisions drive this file. **`agentsfleetd` owns backend-bound
+> telemetry**: product analytics, cost, and every fact a runner reports over
+> `/v1/runners`; its collectors, `otelcol-{dev,prod}`, serve the daemon only.
+> **Runners get a new OpenTelemetry collector on the bare-metal host**
+> (decided 2026-10-04; built later): the runner sends it spans and its own
+> metric families over OTLP, the collector reads the runner's logs from the
+> host's log store, and it exports all three to the backends itself. The runner
+> holds no analytics or observability credential.
 
 Siblings: [`runner_fleet.md`](./runner_fleet.md) (plane structure),
 [`data_flow.md`](./data_flow.md) (an event traced through the runtime). This
@@ -17,7 +21,7 @@ Every row is extracted from the sections below; the owner column names the secti
 |---|---|---|---|
 | Signal paths | 3 | OTLP push (no collector hop) · <img src="https://cdn.simpleicons.org/posthog" width="14" alt="" /> PostHog · 🐘 Postgres (money) | §The three signal paths |
 | Metric namespace | `agentsfleet_` runtime families; dotted semconv cost families | the metric-family registry declares every exported name; the namespace guard reads it | §The three signal paths |
-| Runner telemetry | deliberately bare | `record_metric` is a no-op stub; local logfmt to the host, liveness over `/v1/runners` | §`agentsfleet-runner` — deliberately bare |
+| Runner telemetry | built: none exported · decided: logs, traces and metrics through a runner collector on the bare-metal host | today local logfmt plus liveness over `/v1/runners`; decided: spans and runner families over OTLP to the runner collector, logs read from the host's log store, exported by that collector, never through `otelcol-{env}` | §`agentsfleet-runner` — a collector of its own |
 | Library read series | 102 total, build-asserted | closed enums; a new member fails the build, never grows the export | §Library read stages are metrics, not spans |
 | Trace budget | 10 generic spans per monotonic second | 4 runner rejections + 4 server errors + 2 sampled successes; successful runner verbs never enqueue | §Traces |
 | OTLP queues | logs 2047 · traces 1023 · metrics 1023 (derived series ceiling: 256 cost + runtime worst case) | fire-and-forget; a full ring drops, never blocks; no retry, deliberately | §The OTLP exporter substrate, §Capacity and loss audit |
@@ -238,30 +242,58 @@ resource reading anywhere in the system is
 Closing that is collector configuration rather than a census change, which
 makes it much smaller than the three missing families above.
 
-## `agentsfleet-runner` — deliberately bare
+## `agentsfleet-runner` — a collector of its own
 
-The runner (`src/runner/`) carries no metrics, OTel, or PostHog. Its lone
-`record_metric` hook is a no-op stub. It emits logfmt locally for the host
-operator and reports liveness and results over `/v1/runners` (heartbeat,
-`/renew`, result-report). `agentsfleetd` owns the runner's observable state in
-`afd_observability`'s per-runner table and derives fleet liveness itself. Runners are cattle
-(`runner_fleet.md`); an exporter on the runner would re-couple it to the
-backends the split removed.
+**Built today: no runner exports anything.** The Zig runner (`src/runner/`)
+carries no metrics, OTel, or PostHog; its lone `record_metric` hook is a no-op
+stub. The Rust runner opens `runner.lease`, `invoke_agent`, `chat` and
+`execute_tool` spans (`rustd/crates/afr_agent/src/spans.rs`,
+`rustd/crates/afr_supervisor/src/identity.rs`) and exports none of them. Both
+write logfmt to stderr and report liveness and results over `/v1/runners`
+(heartbeat, `/renew`, result-report). `agentsfleetd` owns the runner's
+observable state in `afd_observability`'s per-runner table and derives fleet
+liveness itself.
+
+**Decided 2026-10-04; the collector is built later.** Indy: "we will run an
+otel collector and collect the observability log, trace, metrics"; "we will
+have a new collector for the runner later on in the baremetal host"; and the
+current collectors "are for the agentsfleetd daemon only".
+
+- A new OpenTelemetry collector on the bare-metal host serves runners. It is
+  separate from `otelcol-{dev,prod}` (§The export path), which stay the
+  daemon's alone, and it exports to the backends itself. How it is deployed,
+  and the credential it holds for its backends, are settled when it is built.
+- The runner's `run` entry exports its spans and its own metric families over
+  OTLP to that collector. `sandbox` and `probe` export nothing, so hardening
+  still sees a single thread. The runner sends no header and no credential.
+- The runner keeps logging to stderr alone. The runner collector reads those
+  lines from the host's log store (journald on a systemd host), which also
+  catches a crash, a refusal before boot and a sandbox's stderr, and no line is
+  emitted twice.
+- The runner's families carry only what no verb does: provider turn latency
+  and retries, sandbox start time, dropped activity frames, failed memory
+  pushes and tool-call duration. Every fact that rides a verb stays
+  `agentsfleetd`'s.
+
+Runners stay cattle (`runner_fleet.md`). A runner knows one collector endpoint
+and no backend, so moving a vendor stays collector configuration. The runner
+side is the runner-telemetry workstream (`M214_001`); the collector is its own
+later work.
 
 ## Signal routing
 
 ```text
-agentsfleet-runner
-  ├─ structured stderr ──► journald / host supervisor
-  │                         └─ optional host collector ──► Loki
-  │                            (direct; never through agentsfleetd)
-  └─ lease / heartbeat / renew / activity / report ──► agentsfleetd
-                                                        ├─ runtime metric families (OTLP push)
-                                                        ├─ selected run span
-                                                        └─ selected PostHog event
+BARE-METAL HOST (the runner collector is decided, built later; the verbs are built)
+  agentsfleet-runner
+    ├─ structured stderr ──► journald ─────────► runner collector ──► backends
+    ├─ spans + runner families ── OTLP ──────────►┘  (its own; never otelcol-{env})
+    └─ lease / heartbeat / renew / activity / report ──► agentsfleetd
 
-agentsfleetd structured logs ──► stderr + bounded OTLP exporter ──► Loki
-agentsfleetd selected spans  ──► bounded OTLP exporter ──────────► Tempo
+agentsfleetd (built)
+  ├─ runtime metric families ─┐
+  ├─ selected run span ───────┼─ bounded OTLP exporters ──► otelcol-{env} ──► Loki · Tempo · Mimir
+  ├─ structured logs ─────────┘  (and stderr)              (daemon only; holds the vendor credential)
+  └─ selected PostHog event ──► PostHog
 ```
 
 **Why raw runner logs bypass `agentsfleetd`.** A log line is an unbounded byte
@@ -270,22 +302,24 @@ through the control plane would tie request and database capacity to log
 volume, and would make the control plane the failure point for the diagnostics
 you need when that plane is unhealthy.
 
-**Collector rules (fail-closed on privacy).** A host collector may forward
-only single-line logfmt records after an allowlist: `ts_ms`, `level`, `scope`,
-`event`, registered `error_code`, reviewed bounded metadata. It drops prompts,
-response bodies, tokens, credentials, environment values, arbitrary `msg`
-text, and anything it cannot parse. Sampling is level- or rate-based after
-redaction; it never reads payload content or tenant identity. No collector is
-deployed by this repository today, so its network rate is zero bytes per
-second. Enabling one requires numeric memory, disk, retention, rate, sampling,
-and retry limits plus the allowlist proof.
+**Runner collector rules (fail-closed on privacy).** The runner collector
+forwards only single-line logfmt records after an allowlist: `ts_ms`, `level`,
+`scope`, `event`, registered `error_code`, reviewed bounded metadata. It drops
+prompts, response bodies, tokens, credentials, environment values, arbitrary
+`msg` text, and anything it cannot parse. Sampling is level- or rate-based
+after redaction; it never reads payload content or tenant identity. None is
+deployed yet (`deploy/baremetal/` carries only `agentsfleet-runner.service`),
+so a runner host's telemetry network rate is zero bytes per second today. It
+ships with numeric memory, disk, retention, rate, sampling and retry limits and
+the allowlist proof.
 
 | Signal | Producer / owner | Path | Bound and loss |
 |---|---|---|---|
-| runner logs | runner logfmt; host owns retention | none by default; optional collector direct to Loki | host policy caps disk; loss never blocks a run |
+| runner logs | runner logfmt on stderr; host owns retention | today none off the host; decided: host log store → runner collector → backends | host policy caps disk; the allowlist above; loss never blocks a run |
 | runner semantic metrics | `agentsfleetd`, from accepted fleet verbs | OTLP push (streamed per-runner families) | 4096 runner slots; overflow → `_other` |
+| runner own metrics | decided: the runner, for facts no verb carries | OTLP → runner collector → backends | closed label sets in a runner census of their own; no tenant, fleet, lease or event identifier |
 | runner host metrics | node exporter, if operators want it | direct to metrics backend | outside the runner API |
-| runner traces | none | none | correlate logs via `event_id` + `lease_id` |
+| runner traces | today none exported; decided: the runner's four span kinds | OTLP → runner collector → backends | fixed per-lease and per-second span budget; joins `fleet.delivery` by `lease_id` and `event_id` attributes |
 | control-plane logs | structured logger | stderr + OTLP to Loki | 2047 queued records; enqueue never blocks |
 | control-plane metrics | runtime + cost families | one OTLP push; no pull endpoint | fixed labels or explicit caps |
 | control-plane traces | HTTP ingress + settled delivery | OTLP to Tempo | route policy keeps output under the budget |
@@ -301,7 +335,8 @@ and retry limits plus the allowlist proof.
 | OTLP traces | installed, called when configured | the same module builds the span exporter inside `afd_observability`'s counting wrapper; `serve.rs` spawns `otlp_export`, whose only job is the shutdown flush |
 | OTLP run metrics | installed, called when configured | every census family is claimed from the registry at boot and produced at the call site that owns its mechanism (`rustd/crates/afd_observability/src/producers/`); families this build cannot feed are named in `metrics/produced.rs` and logged once at boot |
 | PostHog events | installed, called when configured | `rustd/crates/afd_observability/src/product.rs`; boot opens the client, the supervised `analytics_flush` task drains it before exit |
-| runner exporter | absent | one local stderr sink, nothing else |
+| runner exporter | absent; decided, not built | one local stderr sink; the Rust runner's spans (`rustd/crates/afr_agent/src/spans.rs`) reach no exporter |
+| runner collector | absent; decided, built later | `deploy/baremetal/` carries `agentsfleet-runner.service` and no collector; `deploy/fly/otelcol-{dev,prod}` serve the daemon only |
 
 ## Metrics stay semantic
 
@@ -312,18 +347,23 @@ credit delta, three non-zero token directions, one duration.
 Do not turn scheduler arms, activity frames, log lines, lease or event
 identifiers, model text, error text, or raw runner identifiers into metric
 labels. A scheduler metric is justified only as a fixed aggregate (queue depth,
-fired total, stale-target total). The runner needs no remote series today:
-terminal `timeout_kill` outcomes and local deadline events cover the visible
-failure.
+fired total, stale-target total). The runner's own series (decided, not yet
+built) are the facts no verb carries: provider turn latency and retries,
+sandbox start time, dropped activity frames, failed memory pushes and
+tool-call duration. Each has closed label sets and is declared in a runner
+census of its own, beside `docs/metrics.census.tsv` rather than in it.
 
 ## Traces
 
 `agentsfleetd` accepts W3C `traceparent` at ingress and emits `http.request`
 spans, plus one `fleet.delivery` span after an accepted terminal report. A
 missing or malformed `traceparent` starts a new local root; invalid input never
-rejects a request. The runner has no span producer; its verbs carry no trace
-field. `event_id` and `lease_id` correlate logs instead. A future runner span
-producer must first define a bounded span budget and durable context ownership.
+rejects a request. The Rust runner produces spans but exports none yet, and its
+verbs carry no trace field; `event_id` and `lease_id` correlate logs. Decided,
+not yet built: the runner exports its spans to the runner collector under a
+fixed per-lease and per-second budget. Each lease is its own root trace carrying
+`agentsfleet.lease.id` and `agentsfleet.event.id`, so it joins `fleet.delivery`
+by attribute, and no W3C context crosses the runner protocol.
 
 **Route policy.** Successful heartbeat, lease, renew,
 activity, and report requests never enqueue spans. Responses ≥ 500 enter the
@@ -425,7 +465,8 @@ One logging discipline serves both binaries, in three parts:
 A call site that goes through the scoped API is conformant by construction. The
 control plane's records leave through a stderr subscriber installed at boot
 (`rustd/crates/agentsfleetd/src/logs.rs`, level from `AGENTSFLEET_LOG_LEVEL`);
-the runner's go to the host supervisor. Field rules:
+the runner's go to stderr, where the host supervisor keeps them and, once it is
+built, the runner collector reads them from the host's log store. Field rules:
 `docs/LOGGING_STANDARD.md`, committed in this repository.
 
 ## The export path — one endpoint, and the collector owns the fan-out
@@ -602,7 +643,7 @@ variables; the architecture bounds what the application owns.
 
 | Signal | Scenario | Producer volume | Bound and outcome |
 |---|---|---:|---|
-| runner logs | any | `L` records/s, ≤ 4096 B each | local stderr only; repository network bytes are zero |
+| runner logs | any | `L` records/s, ≤ 4096 B each | local stderr; zero network bytes until the runner collector ships, then bounded by its rate and memory limits |
 | control-plane logs | steady/burst | `D` records/s | 2047 slots absorb; overflow drops as `ring_full` |
 | control-plane logs | backend outage | unchanged `D` | ring fills, later entries drop, product work continues |
 | metrics | steady | idle heartbeats enqueue zero; each billed lease 1 sample, each report ≤ 5 | 4096 runner slots; 1023 sample slots |

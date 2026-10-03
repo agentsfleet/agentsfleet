@@ -708,7 +708,7 @@ Three network policies:
 
 The split inverts the binding constraint. The pre-cutover runtime needed N Redis connections for N fleets and the pool ceiling was the wall. After the split, runners hold zero datastore connections; the bottleneck becomes `agentsfleetd` API replicas + Postgres writes, both of which scale horizontally. Runners scale out with no coordination — the operator enrolls a host with a pre-minted `agt_r`, and it pulls. The one piece needing care at multi-replica scale is placement (assignment / scheduler), which is the M84_002 (reassignment, shipped) / M85_001 (label placement, shipped) concern; the hot path (lease / report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.
 
-## Observability — bounded facts to `agentsfleetd`, raw logs to the host
+## Observability — bounded facts to `agentsfleetd`; logs, traces and metrics to a runner collector
 
 The fleet is observed **without any inbound reach into runners.** A runner may sit behind Network Address Translation (NAT), on an untrusted host, or on a customer host. A scraper cannot reliably reach those machines.
 
@@ -716,30 +716,30 @@ Bounded per-runner facts therefore ride outbound on verbs the runner already cal
 
 The fleet delivery histogram records `event_to_lease`, `lease_to_first_chunk`, `event_to_first_chunk`, and `zombie_to_first_chunk` stages. A first chunk can carry reasoning or tool protocol; these are transport timings through daemon receipt, not browser paint. The chat UI records local `agentsfleet.chat.submit_to_first_visible` Performance Timeline measures after the first answer, reasoning, or tool activity paints. That browser measure is currently available for local diagnostics and is not exported to OTLP or the Grafana panel.
 
-Raw runner logs do not ride those verbs. The runner writes structured stderr to the host supervisor. An operator may attach a standard journald collector that sends logs directly to Loki, but the path bypasses `agentsfleetd`. Activity frames remain user-visible run output and are never reused as a log stream.
+Raw runner logs do not ride those verbs. The runner writes structured stderr to the host supervisor. **Decided 2026-10-04; the collector is built later:** a new OpenTelemetry collector on the bare-metal host serves runners. It reads the runner's lines from the host's log store (journald on a systemd host), receives the runner's spans and its own metric families over OTLP, and exports all three to the backends itself. It is separate from the daemon's collectors, `otelcol-{dev,prod}`, which serve `agentsfleetd` only, and the path never passes through `agentsfleetd`. The runner sends no header and holds no observability credential. Activity frames remain user-visible run output and are never reused as a log stream. [`observability.md`](./observability.md) §"`agentsfleet-runner` — a collector of its own" carries the rules and the budgets.
 
 Three routes serve three different volume shapes:
 
 ```
- RUNNER FACTS                              RUNNER RAW LOGS
- ────────────                              ───────────────
- heartbeat/report/lease ──► agentsfleetd   stderr ──► journald
-                              │                         └─ optional collector ──► Loki
-                              ▼                            (never via agentsfleetd)
+ RUNNER FACTS                              RUNNER LOGS, SPANS, OWN METRICS (decided; collector built later)
+ ────────────                              ───────────────────────────────
+ heartbeat/report/lease ──► agentsfleetd   stderr ──► journald ──────────► runner collector ──► backends
+                              │            spans + runner families ─OTLP─►  (bare-metal host; never via
+                              ▼                                              agentsfleetd or otelcol-{env})
                      bounded OTLP push
                               │
-                              └──► collector ──► whichever backend it fans out to
+                              └──► otelcol-{env} (daemon only) ──► backends
 
  CONTROL-PLANE LOGS / TRACES
  ───────────────────────────
- agentsfleetd ──bounded OpenTelemetry Protocol (OTLP) exporters──► the same collector
+ agentsfleetd ──bounded OpenTelemetry Protocol (OTLP) exporters──► otelcol-{env}
 ```
 
-The Zig runner creates no spans: its NullClaw observer returns no trace identifier. The Rust runner creates `runner.lease`, `invoke_agent`, `chat` and `execute_tool` spans but exports none of them until the runner-telemetry milestone (`M214_001`), so no runner span is there to join, and adding a trace field to the runner protocol would still move bytes for nothing. The current trace is control-plane-owned: one selected `fleet.delivery` span after accepted settlement.
+The Zig runner creates no spans: its NullClaw observer returns no trace identifier. The Rust runner creates `runner.lease`, `invoke_agent`, `chat` and `execute_tool` spans and exports none of them yet. Decided, the runner-telemetry workstream (`M214_001`) exports them to the runner collector under a fixed per-lease and per-second budget. Each lease is its own root trace carrying `agentsfleet.lease.id` and `agentsfleet.event.id`, so it joins the daemon's span by attribute and no trace field crosses the runner protocol. The control plane's own trace is one selected `fleet.delivery` span after accepted settlement.
 
-That span stays a **custom control-plane observation**, not a claimed runner trace — there is no runner span or trace context to join. Its attributes use the standard Generative Artificial Intelligence (GenAI) keys where the source fact matches (`gen_ai.operation.name=invoke_agent`, `gen_ai.agent.id`, `gen_ai.provider.name`, `gen_ai.request.model`, and typed `gen_ai.usage.*` counts) and product-namespaced `agentsfleet.*` keys for the correlation identifiers (`agentsfleet.event.id`, `agentsfleet.workspace.id`, `agentsfleet.tenant.id`). Correlation identity is allowed on a **span** precisely because it is not allowed on a **metric**: a span is a bounded per-event record, whereas a metric label creates a series that outlives the process. Prompt and response content never becomes a span attribute.
+That span stays a **custom control-plane observation**, not a claimed runner trace — a runner span joins it by attribute, never as its parent or child. Its attributes use the standard Generative Artificial Intelligence (GenAI) keys where the source fact matches (`gen_ai.operation.name=invoke_agent`, `gen_ai.agent.id`, `gen_ai.provider.name`, `gen_ai.request.model`, and typed `gen_ai.usage.*` counts) and product-namespaced `agentsfleet.*` keys for the correlation identifiers (`agentsfleet.event.id`, `agentsfleet.workspace.id`, `agentsfleet.tenant.id`). Correlation identity is allowed on a **span** precisely because it is not allowed on a **metric**: a span is a bounded per-event record, whereas a metric label creates a series that outlives the process. Prompt and response content never becomes a span attribute.
 
-Successful heartbeat, lease, renew, activity, and report requests are high-rate control traffic, not useful default trace spans. The lease rule covers both an empty poll and a granted lease; useful run work retains the settled `fleet.delivery` span. The shipped route policy removes those successes from the default `http.request` span stream. Trace lifetime begins after route match and before API admission. Status precedence sends every 5xx response only to the fixed four-span-per-monotonic-second server-error budget; matched runner 4xx responses, including an admission-shed 429, enter only the separate four-span rejection budget. Excess errors increment a fixed aggregate suppression counter rather than filling the trace ring. Sampled successes reserve two spans, capping generic request spans at 10 per second. Sampling uses the server-generated span identifier, never caller-controlled trace input. A future runner span producer must define sampling and a fixed span budget before World Wide Web Consortium (W3C) trace context crosses the protocol.
+Successful heartbeat, lease, renew, activity, and report requests are high-rate control traffic, not useful default trace spans. The lease rule covers both an empty poll and a granted lease; useful run work retains the settled `fleet.delivery` span. The shipped route policy removes those successes from the default `http.request` span stream. Trace lifetime begins after route match and before API admission. Status precedence sends every 5xx response only to the fixed four-span-per-monotonic-second server-error budget; matched runner 4xx responses, including an admission-shed 429, enter only the separate four-span rejection budget. Excess errors increment a fixed aggregate suppression counter rather than filling the trace ring. Sampled successes reserve two spans, capping generic request spans at 10 per second. Sampling uses the server-generated span identifier, never caller-controlled trace input. The runner's span producer keeps its own fixed budget, and World Wide Web Consortium (W3C) trace context still does not cross the runner protocol.
 
 PostHog remains `agentsfleetd` product analytics. It receives selected business events only. It never receives runner logs, heartbeats, renewals, activity frames, or scheduler mechanics. `FleetCompleted` is production-wired and fires after durable report settlement — the fenced claim that authorizes settlement authorizes the capture, so a replayed or superseded report captures nothing.
 
