@@ -277,7 +277,7 @@ current collectors "are for the agentsfleetd daemon only".
 
 Runners stay cattle (`runner_fleet.md`). A runner knows one collector endpoint
 and no backend, so moving a vendor stays collector configuration. The runner
-side is the runner-telemetry workstream (`M214_001`); the collector is its own
+side is the runner-telemetry workstream; the collector is its own
 later work.
 
 ## Signal routing
