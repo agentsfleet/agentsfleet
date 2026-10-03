@@ -210,12 +210,23 @@ pub struct MemoryHydrateResponse<'a> {
     #[serde(borrow)]
     pub memory: Vec<MemoryDelta<'a>>,
     /// What other fleets in the workspace published, newest first; empty for
-    /// a fleet without the read grant.
-    #[serde(borrow, default)]
+    /// a fleet without the read grant, and then left off the wire, so a
+    /// fleet with no grant reads the reply every runner already parses.
+    #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
     pub shared: Vec<SharedMemory<'a>>,
-    /// Whether this fleet may store an entry the workspace reads.
-    #[serde(default)]
+    /// Whether this fleet may store an entry the workspace reads; left off
+    /// the wire when it may not.
+    #[serde(default, skip_serializing_if = "is_false")]
     pub publish: bool,
+}
+
+/// Whether a grant is withheld, so the reply leaves it off the wire.
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde hands skip_serializing_if a reference"
+)]
+const fn is_false(granted: &bool) -> bool {
+    !*granted
 }
 
 /// `POST /v1/runners/me/memory/{fleet_id}/recall` request.
