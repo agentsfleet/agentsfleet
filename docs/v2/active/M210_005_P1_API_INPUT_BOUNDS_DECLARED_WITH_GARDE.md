@@ -60,7 +60,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/Cargo.toml`, `rustd/Cargo.lock`, `rustd/crates/afd_validate/` | CREATE | Shared rules, `Limit`, `Sentences`; depends on garde and serde only |
 | `rustd/crates/afd_core/` (`Cargo.toml`, `src/paging.rs`, `src/paging/tests.rs`) | EDIT | `Paging::parse` reads its limit through `Limit` with the caller's ceiling |
 | `rustd/crates/afd_wire/src/` (`runner.rs`, `activity.rs`, `tool_trace.rs`, `tool_detail.rs`, `admin_catalogue.rs`, `admin_library.rs`, `secret.rs`, `tenant.rs`, `workspace.rs`, `team.rs`, `auth.rs`, `fleet.rs`) and their tests | EDIT | Request and wire types derive `Validate`; one `PROVIDER_MAX_BYTES` |
-| `rustd/crates/afd_runner/src/` (`validate.rs`, `bounds.rs`, `view.rs`, `heartbeat.rs`) | EDIT | Registration, policy, binds and capability bounds move to the wire types |
+| `rustd/crates/afd_runner/` (`Cargo.toml`; `src/` `validate.rs`, `bounds.rs`, `view.rs`, `heartbeat.rs`, `store.rs`) | EDIT | Registration, policy, binds and capability bounds move to the wire types; enrolment (`store.rs`) proves the whole request through `registration` |
 | `rustd/crates/afd_api_tenant/src/handler/` (`paging.rs`, `tenant/`, `fleet/`, `event/`, `approval/`, `schedule*`, `secret.rs`, `connector/callback.rs`) | EDIT | Query, path and body bounds through `Limit`, path types and `Sentences` |
 | `rustd/crates/afd_api_operator/src/handler/` (`admin/platform_keys.rs`, `admin/models.rs`, `admin/libraries_request.rs`, `operator/query.rs`) | EDIT | Same |
 | `rustd/crates/{afd_tenant,afd_vault,afd_cron,afd_billing,afd_events,afd_connector}/` (`Cargo.toml` and the inventoried files) | EDIT | garde joins the six crates that hand-write every bound today |
@@ -116,10 +116,10 @@ garde runs custom rules before built-in ones, with no short-circuit, so a field 
 
 `RegisterRequest`, `AssignedPolicy`, `ExtraBind` and `CapabilityReport` derive `Validate` in `afd_wire`, replacing `afd_runner/src/validate.rs:81, :100, :121, :145, :165, :167, :177` and `afd_runner/src/bounds.rs:125`. `labels` gains a count and length bound. The binds sentence names the count, note and path bounds instead of one sentence for all three. The activity frame `call_id` (`afd_wire/src/activity.rs:174`), trace calls (`tool_trace.rs:158, :162, :178, :253, :265, :273, :283`) and tool-call records (`tool_detail.rs:77, :84-85`) derive `Validate`; each report maps back to the `TraceRejection`/`DetailRejection` and `reason` logged today. The raw 64 KiB trace cap stays before the parse.
 
-- **Dimension 3.1** — Each registration bound refuses at its edge with its sentence; `labels` over its bound is refused → Test `test_register_request_bounds_refuse_with_their_sentences`
-- **Dimension 3.2** — A capability report outside its bounds is ignored, as today → Test `test_capability_report_out_of_bounds_is_ignored`
-- **Dimension 3.3** — Trace and record rejections keep their log reasons (`too_many_calls`, `too_large`, `malformed`) → Test `test_trace_and_detail_rejections_keep_their_reasons`
-- **Dimension 3.4** — A frame `call_id` of 0 or 65 bytes is malformed → Test `test_activity_frame_call_id_is_bounded`
+- **Dimension 3.1** — Each registration bound refuses at its edge with its sentence; `labels` over its bound is refused → Test `test_register_request_bounds_refuse_with_their_sentences` — DONE (`rustd/crates/afd_runner/src/validate/tests.rs`; enrolment calls `registration` at `afd_runner/src/store.rs`)
+- **Dimension 3.2** — A capability report outside its bounds is ignored, as today → Test `test_capability_report_out_of_bounds_is_ignored` — DONE (`rustd/crates/afd_runner/src/heartbeat/tests.rs`)
+- **Dimension 3.3** — Trace and record rejections keep their log reasons (`too_many_calls`, `too_large`, `malformed`) → Test `test_trace_and_detail_rejections_keep_their_reasons` — DONE (`rustd/crates/afd_wire/src/tool_detail/tests.rs`)
+- **Dimension 3.4** — A frame `call_id` of 0 or 65 bytes is malformed → Test `test_activity_frame_call_id_is_bounded` — DONE (`rustd/crates/afd_wire/src/activity/tests.rs`)
 
 ### §4 — Tenant and operator routes
 
@@ -281,6 +281,11 @@ cron/timezone/channel/name/segment parsers: fn parse(input: &garde::Valid<T>) ->
 - **Agent default:** §5's bounds sit on garde structs in the domain crates (`afd_tenant`, `afd_vault`, `afd_connector`), not on the `afd_wire` request types, because those crates own the constants and the trimmed or canonical value, and `afd_tenant` does not depend on `afd_wire`; the secret and callback handlers reach them through `SecretName::parse` and `is_installation_id`.
 - **Agent default:** the budget's refusal reason is picked by the first report message (`NOT_FINITE`, positive, else the cap), because all three rules report at one path and `PathTable` cannot tell them apart; `InvalidBudget` keeps its reason sentences.
 - **Agent default:** the invite email's domain check and the workspace name's forbidden-character scan run after garde proves the length, not as garde rules, because garde runs custom rules before length; the email check takes `&garde::Valid<Folded>`.
+- **Agent default:** `labels` holds at most 32 entries of at most 64 bytes, with no minimum: 32 is the registry allowlist's cap, 64 the controller-name cap, and an empty label was accepted before.
+- **Agent default:** enrolment calls `registration(request)` in `afd_runner/src/store.rs`, which the Files Changed row did not name; without it the `labels` bound never runs in production, and the `HostId` shim it replaced is deleted.
+- **Agent default:** the trace `call_id` rule drops its 64-byte length check, because a call number of 1 to `i64::MAX` is at most 19 digits and that bound can never be the one that fails.
+- **Agent default:** a trace's drop reason is found by the message each rule reports and the call count by its path, because `arguments` can break two bounds at one path; when one trace breaks several bounds a fixed precedence picks the logged reason, where before the earliest failing call did.
+- **Agent default:** `ToolTrace::validate()` keeps its name and its `TraceRejection` result, because `afr_agent/src/trace/tests.rs` calls it.
 - **Open finding:** `stage_chunk_threshold` (`afd_fleet_runtime/src/config/raw/policy.rs:73`, `f32`) is a second float input with no bound, so Invariant 4's "the one float input" is wrong. TRIGGER.md cannot carry NaN today (serde_json refuses it; YAML `.nan` arrives as a string and fails as a type error), so nothing is exposed; bounding it needs a refusal reason `ContextBudget` does not have.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.

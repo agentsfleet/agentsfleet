@@ -23,6 +23,7 @@ use afd_core::id::Uuid7;
 use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
 use afd_observability::producers;
 use afd_wire::runner::{CapabilityReport, HeartbeatRequest, SelftestReport};
+use garde::Validate as _;
 use sqlx::{Executor as _, PgConnection, Row as _};
 
 use crate::bounds;
@@ -94,12 +95,7 @@ impl Runners {
         let mut connection = self.pool().acquire().await?;
         let row = self.policy_row(&mut connection, runner).await?;
 
-        // A report past its bounds is not a report. Same lenient answer as an
-        // unreadable body: the stored one keeps reconciling.
-        let incoming = beat
-            .capability_report
-            .as_ref()
-            .filter(|report| bounds::capability_within_bounds(report));
+        let incoming = bounded_report(beat);
         let stored = capability(row.capability_report_json.as_deref());
         let assigned = row.assignment.decode();
         let verdict = reconcile(assigned.as_ref(), incoming.or(stored.as_ref()));
@@ -299,6 +295,17 @@ async fn best_effort(
     }
 }
 
+/// The capability report a beat carries, when it is within the bounds its
+/// wire type declares.
+///
+/// A report past them is not a report: the same lenient answer as an
+/// unreadable body, so the stored one keeps reconciling and the beat lands.
+fn bounded_report<'b, 'a>(beat: &'b HeartbeatRequest<'a>) -> Option<&'b CapabilityReport<'a>> {
+    beat.capability_report
+        .as_ref()
+        .filter(|report| report.validate().is_ok())
+}
+
 /// Reports a best-effort step that could not even be attempted.
 fn report(event: &'static str, runner: &Uuid7, error: &Error) {
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
@@ -330,3 +337,7 @@ fn announce(runner: &Uuid7, stored: &StoredVerdict, verdict: Verdict) {
         _steady => {}
     }
 }
+
+#[cfg(test)]
+#[path = "heartbeat/tests.rs"]
+mod tests;
