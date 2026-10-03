@@ -171,3 +171,22 @@ fn should_keep_a_vendor_whose_dialect_drops_tools_a_plain_gateway() {
     assert!(!rigs.quirks.supports_tools, "the reason it stays a gateway");
     assert_eq!(perplexity.dialect, None);
 }
+
+#[test]
+fn should_refuse_a_custom_endpoint_at_a_private_address_literal() {
+    let registry = Registry::builtin().unwrap();
+    let custom = |base: &str| format!("{CUSTOM_PROVIDER_PREFIX}{base}");
+
+    for private in [
+        "https://127.0.0.1/v1",
+        "https://10.0.0.5/v1",
+        "https://169.254.169.254/v1",
+        "https://[::1]/v1",
+        "https://[64:ff9b::a00:5]/v1",
+    ] {
+        assert!(registry.route(&custom(private)).is_err(), "{private}");
+    }
+    for public in ["https://8.8.8.8/v1", "https://llm.example.com/v1"] {
+        assert!(registry.route(&custom(public)).is_ok(), "{public}");
+    }
+}

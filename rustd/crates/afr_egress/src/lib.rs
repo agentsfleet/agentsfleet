@@ -31,6 +31,6 @@ pub use self::admission::{Draft, Placement};
 pub use self::egress::Egress;
 pub use self::error::{Error, Result};
 pub use self::mint::{Mint, MintRefused, Minted};
-pub use self::network::{Network, RESPONSE_MAX_BYTES};
+pub use self::network::{Network, RESPONSE_MAX_BYTES, guarded};
 pub use self::refusal::Refusal;
 pub use self::transport::{Inbound, Outbound, Transport};

@@ -21,6 +21,9 @@ afd_core.workspace = true
 # report names.
 afd_wire.workspace = true
 # The tool specs a turn offers, and the provider-hosted tools.
+# The guard every outbound client carries: the resolver that refuses a
+# private address, no proxy, no redirect. A tenant's custom: endpoint meets it.
+afr_egress.workspace = true
 afr_tools.workspace = true
 # The bounded retry of a turn's send, the crate the supervisor's daemon calls
 # retry through.

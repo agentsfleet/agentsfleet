@@ -24,10 +24,12 @@
 //! dialled as written.
 
 use std::collections::HashMap;
+use std::net::IpAddr;
 
 use afd_wire::policy::CUSTOM_PROVIDER_PREFIX;
 use reqwest::Url;
 use serde::Deserialize;
+use url::Host;
 
 use crate::error::{Result, raise};
 
@@ -128,6 +130,7 @@ impl Registry {
             .strip_prefix(CUSTOM_PROVIDER_PREFIX)
             .and_then(|base| Url::parse(base).ok())
             .filter(|base| base.scheme() == HTTPS && base.host_str().is_some())
+            .filter(|base| !private_literal(base))
             .map(|base| Route {
                 wire: Wire::Chat,
                 base: chat_base(base),
@@ -135,6 +138,18 @@ impl Registry {
             })
             .ok_or_else(|| raise::unhosted(provider))
     }
+}
+
+/// Whether `base` names a private, loopback or reserved address literal. A
+/// name is checked by the client's resolver when it is dialled; a literal
+/// never reaches a resolver, so it is refused here.
+fn private_literal(base: &Url) -> bool {
+    let address: Option<IpAddr> = match base.host() {
+        Some(Host::Ipv4(address)) => Some(address.into()),
+        Some(Host::Ipv6(address)) => Some(address.into()),
+        Some(Host::Domain(_)) | None => None,
+    };
+    address.is_some_and(afd_core::net::is_blocked)
 }
 
 /// The base a `custom:` endpoint's chat turns resolve against.

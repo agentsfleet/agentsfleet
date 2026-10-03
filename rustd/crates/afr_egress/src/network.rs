@@ -76,10 +76,7 @@ impl Network {
     }
 
     fn build(builder: ClientBuilder) -> Result<Self> {
-        let client = builder
-            .dns_resolver(Arc::new(Guarded))
-            .no_proxy()
-            .redirect(Policy::none())
+        let client = guarded(builder)
             .https_only(true)
             .timeout(TIMEOUT)
             .connect_timeout(CONNECT_TIMEOUT)
@@ -163,6 +160,20 @@ fn unreached(host: &str, failed: &reqwest::Error) -> Refusal {
 fn blocked(failed: &(dyn StdError + 'static)) -> bool {
     std::iter::successors(Some(failed), |&error| error.source())
         .any(<dyn StdError>::is::<BlockedAddress>)
+}
+
+/// `builder` with the guard every outbound client of this runner carries.
+///
+/// A resolver that refuses any name with a private, loopback or reserved
+/// address, no proxy read from the environment, and no redirect followed.
+/// The model providers' client and the egress tools' transport both build
+/// through it, so a tenant's `custom:` endpoint and a tool's URL meet the
+/// same refusal.
+pub fn guarded(builder: ClientBuilder) -> ClientBuilder {
+    builder
+        .dns_resolver(Arc::new(Guarded))
+        .no_proxy()
+        .redirect(Policy::none())
 }
 
 /// A resolver that refuses a name any of whose addresses is blocked.
