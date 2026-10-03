@@ -23,6 +23,10 @@ afd_wire.workspace = true
 afr_memory.workspace = true
 # A sandbox-side handler reaches `/workspace` through the lease's executor.
 afr_executor.workspace = true
+# The egress tools send through the lease's guard and the shared transport.
+afr_egress.workspace = true
+# `web_fetch` reads a page's text, never its markup.
+html2text.workspace = true
 # `Tool` is `dyn`: the catalog holds production handlers, tests hold stubs.
 async-trait.workspace = true
 # A tool's parameters are the JSON Schema of the type its arguments parse into.
@@ -31,6 +35,8 @@ serde.workspace = true
 # A call's arguments are JSON.
 serde_json.workspace = true
 thiserror.workspace = true
+# A refused call logs `tool_refused` with its code.
+tracing.workspace = true
 
 [features]
 # M-TEST-UTIL. Stub handlers for any published tool, so the agent's and the
@@ -39,5 +45,8 @@ thiserror.workspace = true
 test-util = []
 
 [dev-dependencies]
+# The counting mint and the recording transport the egress suites send through.
+afr_egress = { workspace = true, features = ["test-util"] }
+afd_core = { workspace = true, features = ["test-util"] }
 bytes.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }

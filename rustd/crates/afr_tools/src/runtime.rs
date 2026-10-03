@@ -54,6 +54,28 @@ pub enum ToolErrorCode {
     InvalidArguments,
     /// The memory this run stored would no longer fit one push.
     MemoryFull,
+    /// The URL is not HTTPS.
+    HttpsRequired,
+    /// The method is outside what this tool or this policy sends.
+    MethodNotAllowed,
+    /// The host is not in the fleet's network allowlist.
+    HostNotAllowed,
+    /// The host is, or resolves to, a private, loopback or reserved address.
+    AddressNotAllowed,
+    /// A placeholder, or a header, stands where none may.
+    CredentialPlacementNotAllowed,
+    /// The credential a placeholder names is not sent to this host.
+    CredentialHostNotAllowed,
+    /// A placeholder names a secret the fleet does not have.
+    SecretNotFound,
+    /// The host's origin rules admit no request of this shape.
+    RequestPolicyNotAllowed,
+    /// The daemon would not mint the credential a placeholder names.
+    CredentialMintRefused,
+    /// The request left and no answer came back.
+    UpstreamUnreachable,
+    /// The upstream answered with a status outside 2xx.
+    UpstreamStatus,
 }
 
 impl ToolErrorCode {
@@ -67,6 +89,17 @@ impl ToolErrorCode {
             Self::OutputLimitReached => "output_limit_reached",
             Self::InvalidArguments => "invalid_arguments",
             Self::MemoryFull => "memory_full",
+            Self::HttpsRequired => "https_required",
+            Self::MethodNotAllowed => "method_not_allowed",
+            Self::HostNotAllowed => "host_not_allowed",
+            Self::AddressNotAllowed => "address_not_allowed",
+            Self::CredentialPlacementNotAllowed => "credential_placement_not_allowed",
+            Self::CredentialHostNotAllowed => "credential_host_not_allowed",
+            Self::SecretNotFound => "secret_not_found",
+            Self::RequestPolicyNotAllowed => "request_policy_not_allowed",
+            Self::CredentialMintRefused => "credential_mint_refused",
+            Self::UpstreamUnreachable => "upstream_unreachable",
+            Self::UpstreamStatus => "upstream_status",
         }
     }
 }

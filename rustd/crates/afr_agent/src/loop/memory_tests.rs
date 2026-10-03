@@ -5,8 +5,10 @@
 )]
 
 use std::borrow::Cow;
+use std::sync::Arc;
 
 use afd_wire::memory::{MemoryDelta, PINNED_CATEGORY};
+use afr_egress::testing::{CountingMint, RecordingTransport};
 use afr_providers::Message;
 use afr_tools::Catalog;
 use afr_tools::catalog::{MEMORY_FORGET, MEMORY_LIST, MEMORY_RECALL, MEMORY_STORE};
@@ -54,7 +56,8 @@ async fn test_memory_tools_round_trip_through_push() {
         vec![call("m4", MEMORY_LIST.name(), json!({}))],
         vec![say("incident 42 is new")],
     ]);
-    let engine = Loop::new(Catalog::hosted(), script.replay());
+    let (transport, _sent) = RecordingTransport::replying(200, "");
+    let engine = Loop::new(Catalog::hosted(Arc::new(transport)), script.replay());
     let names = [MEMORY_STORE, MEMORY_RECALL, MEMORY_FORGET, MEMORY_LIST].map(|entry| entry.name());
     let lease = lease(&names, unbounded());
     let frames = Frames::default();
@@ -65,6 +68,7 @@ async fn test_memory_tools_round_trip_through_push() {
             lease: &lease,
             memory: &hydrated,
             executor: None,
+            mint: &CountingMint::never(),
             events: &sink,
             stop: &CancellationToken::new(),
         })

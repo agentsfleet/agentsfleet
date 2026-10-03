@@ -11,6 +11,7 @@ use afd_wire::activity::ActivityFrame;
 use afd_wire::lease::LeasePayload;
 use afd_wire::memory::MemoryDelta;
 use afd_wire::report::ResultOutcome;
+use afr_egress::testing::CountingMint;
 use afr_executor::{
     Ending, Executor, FileContent, Listing, Process, ProcessEvent, ProcessId, Spawn, Stream,
 };
@@ -86,6 +87,7 @@ async fn drive(
             lease: &lease,
             memory: &[],
             executor,
+            mint: &CountingMint::never(),
             events: &sink,
             stop: &CancellationToken::new(),
         })
@@ -204,6 +206,7 @@ async fn a_run_debugs_without_the_leases_secrets() {
         lease: &lease,
         memory: &[],
         executor: None,
+        mint: &CountingMint::never(),
         events: &sink,
         stop: &CancellationToken::new(),
     };

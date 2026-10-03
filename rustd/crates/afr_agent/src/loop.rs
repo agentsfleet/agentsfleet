@@ -6,10 +6,13 @@
 
 use std::time::Instant;
 
+use afd_core::clock::SystemClock;
 use afd_wire::policy::ExecutionPolicy;
 use afd_wire::report::{Completed, ExecutionResult, Failure, ResultOutcome};
+use afr_egress::Egress;
 use afr_memory::Hydrated;
 use afr_providers::{Call, Connect, Message, Provider, Replay, Request, Usage};
+use afr_secrets::Scrub;
 use afr_tools::{Catalog, Lease, Selection, ToolSpec};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
@@ -23,7 +26,9 @@ use crate::prompt::Prompt;
 use crate::router::{self, Router};
 use crate::spans;
 use crate::turn::{Turn, take};
-use afr_secrets::Scrub;
+
+/// The clock a lease's minted tokens expire against.
+static SYSTEM_CLOCK: SystemClock = SystemClock;
 
 /// What a run stopped by its lease reports as its detail.
 const DETAIL_STOPPED: &str = "the run was stopped before it finished";
@@ -112,7 +117,10 @@ impl<'run> Harness<'run> {
             router: Router::new(selection, run.executor),
             specs: selection.specs().collect(),
             scrub,
-            lease: Lease::new(Box::new(Hydrated::new(run.memory))),
+            lease: Lease::new(
+                Box::new(Hydrated::new(run.memory)),
+                Egress::new(policy, run.mint, &SYSTEM_CLOCK),
+            ),
             live: Live::new(run.events, scrub, started),
             ledger: Ledger::new(&run.lease.lease_id, run.events, scrub),
             budget: Budget::new(&policy.context),

@@ -8,6 +8,7 @@
 use afd_core::test_util::trace::Capture;
 use afd_wire::activity::ActivityFrame;
 use afd_wire::report::{FailureClass, ResultOutcome};
+use afr_egress::testing::CountingMint;
 use afr_providers::{Error, Message};
 use afr_tools::catalog::{FILE_READ, HTTP_REQUEST, UPDATE_PLAN, WEB_SEARCH};
 use afr_tools::stub::Stub;
@@ -253,6 +254,7 @@ async fn a_provider_that_cannot_be_reached_is_an_engine_error() {
             lease: &lease,
             memory: &[],
             executor: None,
+            mint: &CountingMint::never(),
             events: &sink,
             stop: &CancellationToken::new(),
         })
