@@ -12,7 +12,6 @@ pub mod error;
 #[cfg(any(test, feature = "test-util"))]
 pub mod stub;
 
-mod calculator;
 mod handler;
 mod lease;
 mod memory;

@@ -252,23 +252,31 @@ struct Admitted<'a, 'b> {
 /// Truncating rather than refusing the whole push is deliberate. A runner that
 /// learned more than the cap allows should keep what fits, not lose all of it.
 fn admit<'a, 'b>(deltas: &'a [MemoryDelta<'b>]) -> Admitted<'a, 'b> {
-    let well_formed = |delta: &&MemoryDelta<'_>| delta.validate().is_ok();
-    let skipped = deltas.iter().filter(|d| !well_formed(d)).count();
+    // Each delta is checked once, against the bounds `afd_wire` declares.
+    let mut entries: Vec<_> = deltas
+        .iter()
+        .filter(|delta| delta.validate().is_ok())
+        .collect();
+    let skipped = deltas.len() - entries.len();
 
     // The cap is a running total over the well-formed deltas, so a malformed
     // one neither consumes budget nor ends the batch.
-    let mut used = 0_usize;
-    let entries: Vec<_> = deltas
+    let fits = entries
         .iter()
-        .filter(well_formed)
-        .take_while(|delta| {
-            used += delta.bytes();
-            used <= afd_wire::memory::MAX_PUSH_BYTES
+        .scan(0_usize, |used, delta| {
+            *used += delta.bytes();
+            Some(*used)
         })
-        .collect();
+        .take_while(|used| *used <= afd_wire::memory::MAX_PUSH_BYTES)
+        .count();
+    entries.truncate(fits);
     Admitted {
         truncated: deltas.len() - skipped - entries.len(),
         entries,
         skipped,
     }
 }
+
+#[cfg(test)]
+#[path = "admit_tests.rs"]
+mod admit_tests;

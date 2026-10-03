@@ -535,7 +535,9 @@ agentsfleetd (control plane)                     runner (data plane)
 
 **What C requires.** A vendor qualifies for hosted runners only if it issues keys scoped to one namespace with an expiry; `agentsfleetd` keeps the vendor's admin key in the vault to mint them and to erase a deleted fleet's namespace. Unverified: whether turbopuffer and mem0 issue such keys.
 
-**Still open.** When the runner-side trait lands; whether `direction.md`'s no-search rule is reversed for a search-capable vendor; whether the binding is set per workspace or per fleet; which vendor goes first.
+**Built.** The runner-side trait is `afr_memory::MemoryBackend`, and `afr_memory::Hydrated` is the Postgres default behind it: the four memory tools reach memory only through the trait, so a vendor backend is one more implementation and a binding, not a change to the tools.
+
+**Still open.** Whether `direction.md`'s no-search rule is reversed for a search-capable vendor; whether the binding is set per workspace or per fleet; which vendor goes first.
 
 ## Live activity (the SSE tail)
 

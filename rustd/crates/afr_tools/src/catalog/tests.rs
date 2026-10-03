@@ -15,7 +15,7 @@ fn catalog() -> Catalog {
     Catalog::new(vec![
         Stub::boxed(&HTTP_REQUEST),
         Stub::boxed(&MEMORY_RECALL),
-        Stub::boxed(&CALCULATOR),
+        Stub::boxed(&UPDATE_PLAN),
         Stub::boxed(&FILE_READ),
     ])
 }
@@ -39,7 +39,7 @@ fn test_catalog_offers_policy_tools() {
         assert_eq!(spec.parameters["type"], "object");
     }
     assert!(
-        selection.tool("calculator").is_none(),
+        selection.tool("update_plan").is_none(),
         "nothing outside the policy"
     );
 }
@@ -83,7 +83,7 @@ fn should_refuse_a_name_that_is_not_exactly_a_published_one() {
 #[test]
 fn should_name_the_first_unhosted_tool_when_several_are() {
     let failure = catalog()
-        .select(&["calculator", "browser", "shell"])
+        .select(&["update_plan", "browser", "shell"])
         .unwrap_err();
 
     assert_eq!(failure.unhosted_tool(), Some("browser"));
@@ -93,13 +93,13 @@ fn should_name_the_first_unhosted_tool_when_several_are() {
 fn a_provider_hosted_tool_needs_no_handler_and_is_no_function() {
     let catalog = catalog();
 
-    let selection = catalog.select(&["web_search", "calculator"]).unwrap();
+    let selection = catalog.select(&["web_search", "update_plan"]).unwrap();
 
     assert!(selection.hosts("web_search"));
     assert_eq!(selection.hosted(), [&WEB_SEARCH]);
     assert_eq!(
         names(&selection),
-        ["calculator"],
+        ["update_plan"],
         "the provider sends its own spec"
     );
 }
@@ -109,10 +109,10 @@ fn a_name_the_policy_repeats_is_offered_once() {
     let catalog = catalog();
 
     let selection = catalog
-        .select(&["calculator", "calculator", "web_search", "web_search"])
+        .select(&["update_plan", "update_plan", "web_search", "web_search"])
         .unwrap();
 
-    assert_eq!(names(&selection), ["calculator"]);
+    assert_eq!(names(&selection), ["update_plan"]);
     assert_eq!(selection.hosted().len(), 1);
 }
 
@@ -122,7 +122,7 @@ fn only_a_sandbox_side_tool_needs_a_sandbox() {
 
     assert!(
         !catalog
-            .select(&["http_request", "calculator"])
+            .select(&["http_request", "update_plan"])
             .unwrap()
             .needs_sandbox()
     );
@@ -130,7 +130,7 @@ fn only_a_sandbox_side_tool_needs_a_sandbox() {
     assert!(!catalog.select::<&str>(&[]).unwrap().needs_sandbox());
     assert!(
         catalog
-            .select(&["calculator", "file_read"])
+            .select(&["update_plan", "file_read"])
             .unwrap()
             .needs_sandbox()
     );
@@ -138,11 +138,11 @@ fn only_a_sandbox_side_tool_needs_a_sandbox() {
 
 #[test]
 fn the_first_handler_for_a_tool_is_the_one_used() {
-    let catalog = Catalog::new(vec![Stub::boxed(&CALCULATOR), Stub::boxed(&CALCULATOR)]);
+    let catalog = Catalog::new(vec![Stub::boxed(&UPDATE_PLAN), Stub::boxed(&UPDATE_PLAN)]);
 
-    let selection = catalog.select(&["calculator"]).unwrap();
+    let selection = catalog.select(&["update_plan"]).unwrap();
 
-    assert_eq!(names(&selection), ["calculator"]);
+    assert_eq!(names(&selection), ["update_plan"]);
 }
 
 #[test]

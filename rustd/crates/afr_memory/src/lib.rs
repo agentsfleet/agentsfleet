@@ -1,150 +1,74 @@
-//! One run's memory: what the fleet remembered when its lease began, and what
-//! the run stores, recalls and forgets before the supervisor pushes it.
+//! One run's memory, behind the backend `agentsfleetd` binds the fleet to.
 //!
-//! Hydrated entries are borrowed from the hydrate reply, never copied. An entry
-//! the model stores is moved in from its call, and the entries the push carries
-//! are moved out when the run ends ([`Memory::into_stored`]).
-//!
-//! The daemon only upserts a pushed entry, so a forget holds for this run: the
-//! entry leaves the store and the push, and the fleet's durable copy stays
-//! until a later store under its key overwrites it.
+//! [`MemoryBackend`] is what the four memory tools read and write
+//! (`docs/architecture/runner_fleet.md` §"Memory backends"). [`Hydrated`] is
+//! the default, Postgres through `agentsfleetd`: the window hydrated at lease
+//! start, with the run's stores held here and pushed, fenced, before the
+//! report. A vendor backend talks to its own service with a key `agentsfleetd`
+//! minted for this fleet's namespace, and writes as it goes.
 
 pub mod error;
 
-use std::borrow::Cow;
+mod hydrated;
 
-use afd_wire::memory::{MAX_PUSH_BYTES, MemoryDelta};
-use garde::Validate as _;
+use std::fmt;
+
+use afd_wire::memory::MemoryDelta;
 
 pub use self::error::{Error, Result};
+pub use self::hydrated::Hydrated;
 
-/// One remembered entry, and whether this run stored it.
-#[derive(Debug)]
-struct Entry<'run> {
-    delta: MemoryDelta<'run>,
-    stored: bool,
+/// What a forget did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Forgotten {
+    /// Nothing was remembered under the key.
+    Unknown,
+    /// The entry is gone for the rest of this run; its durable copy stays
+    /// until a store under the same key replaces it.
+    ForThisRun,
 }
 
-/// A lease's memory, oldest entry first.
-#[derive(Debug, Default)]
-pub struct Memory<'run> {
-    entries: Vec<Entry<'run>>,
-}
-
-impl<'run> Memory<'run> {
-    /// The memory a run begins with, borrowing the hydrated `window`, which the
-    /// daemon sends newest first.
-    #[must_use]
-    pub fn hydrated(window: &'run [MemoryDelta<'run>]) -> Self {
-        let entries = window
-            .iter()
-            .rev()
-            .map(|delta| Entry {
-                delta: borrowed(delta),
-                stored: false,
-            })
-            .collect();
-        Self { entries }
-    }
-
-    /// Stores `delta`, replacing any entry under its key, for this run and the
-    /// push.
+/// Where a run's memory lives.
+///
+/// Bound to one fleet's namespace before the run starts, so every call answers
+/// for that fleet alone. A backend that crosses a network boundary logs a
+/// `_started` and a `_completed` or `_failed` pair for each call, at `debug`
+/// because a run makes many (`docs/LOGGING_STANDARD.md` §4 rules 1 and 3).
+#[async_trait::async_trait]
+pub trait MemoryBackend: Send + Sync + fmt::Debug {
+    /// Stores `entry`, replacing what its key held.
     ///
     /// # Errors
-    /// The entry breaks a bound the daemon declares, or the entries this run
-    /// stored would no longer fit one push.
-    pub fn store(&mut self, delta: MemoryDelta<'run>) -> Result<()> {
-        delta.validate().map_err(error::malformed)?;
-        let needed = self
-            .stored()
-            .filter(|kept| kept.key != delta.key)
-            .map(MemoryDelta::bytes)
-            .sum::<usize>()
-            + delta.bytes();
-        if needed > MAX_PUSH_BYTES {
-            return Err(error::full(needed));
-        }
-        self.forget(&delta.key);
-        self.entries.push(Entry {
-            delta,
-            stored: true,
-        });
-        Ok(())
-    }
+    /// The entry breaks a bound `afd_wire` declares on a stored entry, or the
+    /// backend cannot take it.
+    async fn store(&mut self, entry: MemoryDelta<'static>) -> Result<()>;
 
-    /// Forgets `key` for the rest of the run; whether it was remembered.
-    pub fn forget(&mut self, key: &str) -> bool {
-        let before = self.entries.len();
-        self.entries.retain(|entry| entry.delta.key != key);
-        self.entries.len() != before
-    }
-
-    /// The entries whose key holds `query`, ignoring case, newest first, at
-    /// most `limit`; an empty query holds in every key.
+    /// The entries whose key holds `query`, ignoring ASCII case, newest first,
+    /// at most `limit`; an empty query holds in every key.
     ///
     /// The model reads what comes back and decides what is relevant: a
     /// substring of the key is the ceiling on search
-    /// (`docs/architecture/direction.md`), the same filter the daemon's
-    /// `ILIKE` applies to the stored rows.
-    pub fn recall<'m>(
-        &'m self,
-        query: &str,
-        limit: usize,
-    ) -> impl Iterator<Item = &'m MemoryDelta<'run>> + 'm {
-        let query = query.to_lowercase();
-        self.newest_first()
-            .filter(move |delta| delta.key.to_lowercase().contains(&query))
-            .take(limit)
-    }
+    /// (`docs/architecture/direction.md`).
+    ///
+    /// # Errors
+    /// The backend cannot answer.
+    async fn recall<'m>(&'m self, query: &str, limit: usize) -> Result<Vec<MemoryDelta<'m>>>;
 
     /// Every entry, or every entry in `category`, newest first.
-    pub fn list<'m>(
-        &'m self,
-        category: Option<&'m str>,
-    ) -> impl Iterator<Item = &'m MemoryDelta<'run>> + 'm {
-        self.newest_first()
-            .filter(move |delta| category.is_none_or(|wanted| delta.category == wanted))
-    }
+    ///
+    /// # Errors
+    /// The backend cannot answer.
+    async fn list<'m>(&'m self, category: Option<&str>) -> Result<Vec<MemoryDelta<'m>>>;
 
-    /// The entries this run stored, moved out for the push, oldest first.
-    #[must_use]
-    pub fn into_stored(self) -> Vec<MemoryDelta<'static>> {
-        self.entries
-            .into_iter()
-            .filter(|entry| entry.stored)
-            .map(|entry| owned(entry.delta))
-            .collect()
-    }
+    /// Forgets `key`.
+    ///
+    /// # Errors
+    /// The backend cannot answer.
+    async fn forget(&mut self, key: &str) -> Result<Forgotten>;
 
-    fn stored(&self) -> impl Iterator<Item = &MemoryDelta<'run>> {
-        self.entries
-            .iter()
-            .filter(|entry| entry.stored)
-            .map(|entry| &entry.delta)
-    }
-
-    fn newest_first(&self) -> impl Iterator<Item = &MemoryDelta<'run>> {
-        self.entries.iter().rev().map(|entry| &entry.delta)
-    }
-}
-
-/// `delta` as a view over the reply that holds it.
-fn borrowed<'run>(delta: &'run MemoryDelta<'run>) -> MemoryDelta<'run> {
-    MemoryDelta {
-        key: Cow::Borrowed(&delta.key),
-        content: Cow::Borrowed(&delta.content),
-        category: Cow::Borrowed(&delta.category),
-    }
-}
-
-/// `delta` detached from the run. A stored entry already owns its text, so
-/// this moves it.
-fn owned(delta: MemoryDelta<'_>) -> MemoryDelta<'static> {
-    MemoryDelta {
-        key: Cow::Owned(delta.key.into_owned()),
-        content: Cow::Owned(delta.content.into_owned()),
-        category: Cow::Owned(delta.category.into_owned()),
-    }
+    /// The entries the supervisor still has to push, fenced, before the
+    /// report; none for a backend that wrote them as it went.
+    fn into_pending(self: Box<Self>) -> Vec<MemoryDelta<'static>>;
 }
 
 #[cfg(test)]

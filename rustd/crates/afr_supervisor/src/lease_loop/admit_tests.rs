@@ -9,7 +9,7 @@ use std::sync::atomic::Ordering;
 use afd_core::error_code;
 use afd_core::test_util::trace::Capture;
 use afd_wire::lease::LeasePayload;
-use afr_tools::catalog::{BROWSER, CALCULATOR, FILE_READ, HTTP_REQUEST};
+use afr_tools::catalog::{BROWSER, UPDATE_PLAN, FILE_READ, HTTP_REQUEST};
 
 use super::{DETAIL_UNHOSTED, DETAIL_UNHOSTED_PROVIDER, EVENT_UNHOSTED, EVENT_UNHOSTED_PROVIDER};
 use crate::client::{Call, Verb};
@@ -93,7 +93,7 @@ async fn test_lease_without_sandbox_tools_starts_no_sandbox() {
     assert_eq!(rig.runs.load(Ordering::SeqCst), 1, "the turn still ran");
 
     let mut rig = self::rig();
-    rig.run(&offering(&[CALCULATOR.name(), FILE_READ.name()]))
+    rig.run(&offering(&[UPDATE_PLAN.name(), FILE_READ.name()]))
         .await
         .unwrap();
     assert_eq!(rig.prepared.load(Ordering::SeqCst), 1);
@@ -120,7 +120,7 @@ async fn should_end_a_supervisor_only_run_when_its_renewal_is_lost() {
     };
     let mut rig = behaving(Behaviour::Hang, renewal_lost);
 
-    rig.run(&offering(&[CALCULATOR.name()])).await.unwrap();
+    rig.run(&offering(&[UPDATE_PLAN.name()])).await.unwrap();
 
     assert_eq!(reported(&rig.calls())[FAILURE_REASON], RENEWAL_TERMINATE);
     assert_eq!(rig.prepared.load(Ordering::SeqCst), 0);
@@ -131,7 +131,7 @@ async fn should_catch_a_panicking_engine_on_a_supervisor_only_lease() {
     let capture = Capture::install();
     let mut rig = behaving(Behaviour::Panic, |_| None);
 
-    rig.run(&offering(&[CALCULATOR.name()])).await.unwrap();
+    rig.run(&offering(&[UPDATE_PLAN.name()])).await.unwrap();
 
     assert_eq!(reported(&rig.calls())[FAILURE_REASON], RUNNER_CRASH);
     assert_eq!(rig.prepared.load(Ordering::SeqCst), 0);
@@ -147,7 +147,7 @@ async fn should_catch_a_panicking_engine_on_a_supervisor_only_lease() {
 async fn a_lease_naming_a_provider_no_wire_speaks_is_refused_before_anything_starts() {
     let capture = Capture::install();
     let mut rig = rig();
-    let mut refused_lease = offering(&[CALCULATOR.name()]);
+    let mut refused_lease = offering(&[UPDATE_PLAN.name()]);
     refused_lease.policy.provider = UNSPOKEN_PROVIDER.into();
 
     rig.run(&refused_lease).await.unwrap();

@@ -120,7 +120,7 @@ Every Rust comment and test name that mirrors, ports or compares to Zig or NullC
 
 ### §4 — The published docs and the changelog say what shipped
 
-On `chore/m213-rust-runner-changelog` in `~/Projects/docs`: the tools page carries the full catalog with the names the harness added (`exec_command`, `write_stdin`, `apply_patch`, `update_plan`, `wait_agent`, `send_input`, `list_agents`, `interrupt_agent`) and drops none the runner still carries; the runner install page describes the binary, the signed toolbox and the offline bundle, the toolbox's admission and the `/dev/kvm` probe; `snippets/rates.mdx` stops naming a Zig file; a changelog `<Update>` states the cutover in the changelog's voice.
+On `chore/m213-rust-runner-changelog` in `~/Projects/docs`: the tools page carries the full catalog with the names the harness added (`exec_command`, `write_stdin`, `apply_patch`, `update_plan`, `wait_agent`, `send_input`, `list_agents`, `interrupt_agent`), drops `calculator`, which the Rust runner does not host (Indy, Oct 03: "Cut it now"), and drops none the runner still carries; the runner install page describes the binary, the signed toolbox and the offline bundle, the toolbox's admission and the `/dev/kvm` probe; `snippets/rates.mdx` stops naming a Zig file; a changelog `<Update>` states the cutover in the changelog's voice.
 
 - **Dimension 4.1** — The docs branch carries the four page changes and the entry, and their checks pass → Test `test_docs_branch_carries_cutover_pages`
 

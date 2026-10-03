@@ -138,7 +138,7 @@ fn should_keep_arguments_that_encode_to_exactly_their_bound() {
 fn row(number: u64, outcome: &Outcome, edges: bool) -> ToolTraceCall<'static> {
     ToolTraceCall {
         call_id: number.to_string().into(),
-        name: "calculator".into(),
+        name: "update_plan".into(),
         arguments: Map::new(),
         status: outcome.status,
         output_head: outcome.head.clone().filter(|_| edges).map(Into::into),
@@ -159,8 +159,8 @@ fn should_take_rows_that_exactly_fill_the_room() {
         ..Trace::default()
     };
 
-    trace.push(1, "calculator", Map::new(), outcome.clone());
-    trace.push(2, "calculator", Map::new(), outcome.clone());
+    trace.push(1, "update_plan", Map::new(), outcome.clone());
+    trace.push(2, "update_plan", Map::new(), outcome.clone());
 
     assert_eq!(trace.room, 0);
     assert_eq!(trace.calls.len(), 2);
@@ -177,8 +177,8 @@ fn should_keep_a_later_row_without_edges_that_exactly_fills_the_room() {
         ..Trace::default()
     };
 
-    trace.push(1, "calculator", Map::new(), outcome.clone());
-    trace.push(2, "calculator", Map::new(), outcome.clone());
+    trace.push(1, "update_plan", Map::new(), outcome.clone());
+    trace.push(2, "update_plan", Map::new(), outcome.clone());
 
     assert_eq!((trace.room, trace.calls.len()), (0, 2));
     assert!(trace.calls[0].output_head.is_some());
@@ -192,7 +192,7 @@ fn should_keep_a_later_row_without_edges_that_exactly_fills_the_room() {
 fn should_account_every_byte_the_rows_take() {
     let mut trace = Trace::default();
     for (number, output) in [(1, ""), (2, "one\n"), (3, "a\nb\nc\n"), (4, "x")] {
-        trace.push(number, "calculator", Map::new(), ended(output));
+        trace.push(number, "update_plan", Map::new(), ended(output));
     }
 
     let listed = ToolTrace {
@@ -207,7 +207,7 @@ fn should_account_every_byte_the_rows_take() {
 fn test_trace_bounds_come_from_afd_wire() {
     let mut counted = Trace::default();
     for number in 1..=(TRACE_MAX_CALLS as u64 + 1) {
-        counted.push(number, "calculator", Map::new(), ended("4"));
+        counted.push(number, "update_plan", Map::new(), ended("4"));
     }
     let counted = counted.finish().unwrap();
     assert_eq!(counted.calls.len(), TRACE_MAX_CALLS);

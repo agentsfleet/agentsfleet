@@ -1,11 +1,14 @@
-//! The four memory tools, over the run's [`Memory`](afr_memory::Memory).
+//! The four memory tools, over the lease's
+//! [`MemoryBackend`](afr_memory::MemoryBackend).
 //!
-//! A store reaches the push the supervisor sends before the report; a forget
-//! holds for this run, because the daemon only upserts what is pushed.
+//! Each reads or writes the backend the fleet is bound to and words its
+//! answer from what the backend did, so a tool never assumes which backend
+//! holds the fleet's memory.
 
 use std::borrow::Cow;
 
 use afd_wire::memory::{MemoryDelta, PINNED_CATEGORY};
+use afr_memory::Forgotten;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -90,12 +93,9 @@ impl Handler for MemoryStore {
             content: Cow::Owned(content),
             category: category.map_or(Cow::Borrowed(PINNED_CATEGORY), Cow::Owned),
         };
-        match context.lease.memory.store(delta) {
+        match context.lease.memory.store(delta).await {
             Ok(()) => ToolOutput::succeeded(stored),
-            Err(refused) if refused.is_full() => {
-                ToolOutput::failed(ToolErrorCode::MemoryFull, &refused.detail())
-            }
-            Err(refused) => ToolOutput::failed(ToolErrorCode::InvalidArguments, &refused.detail()),
+            Err(failure) => refused(&failure),
         }
     }
 }
@@ -113,13 +113,15 @@ impl Handler for MemoryRecall {
 
     async fn run(&self, arguments: Recall, context: ToolContext<'_, '_>) -> ToolOutput {
         let limit = arguments.limit.unwrap_or(RECALL_DEFAULT).min(RECALL_MAX);
-        let recalled = context.lease.memory.recall(&arguments.query, limit);
-        let text = lines(recalled, |delta| {
-            format!("{} ({}): {}", delta.key, delta.category, delta.content)
-        });
-        ToolOutput::succeeded(
-            text.unwrap_or_else(|| format!("{RECALLED_NOTHING} {}", arguments.query)),
-        )
+        match context.lease.memory.recall(&arguments.query, limit).await {
+            Ok(recalled) => ToolOutput::succeeded(
+                lines(&recalled, |delta| {
+                    format!("{} ({}): {}", delta.key, delta.category, delta.content)
+                })
+                .unwrap_or_else(|| format!("{RECALLED_NOTHING} {}", arguments.query)),
+            ),
+            Err(failure) => refused(&failure),
+        }
     }
 }
 
@@ -134,9 +136,13 @@ impl Handler for MemoryList {
     type Arguments = List;
 
     async fn run(&self, arguments: List, context: ToolContext<'_, '_>) -> ToolOutput {
-        let listed = context.lease.memory.list(arguments.category.as_deref());
-        let text = lines(listed, |delta| format!("{} ({})", delta.key, delta.category));
-        ToolOutput::succeeded(text.unwrap_or_else(|| LISTED_NOTHING.to_owned()))
+        match context.lease.memory.list(arguments.category.as_deref()).await {
+            Ok(listed) => ToolOutput::succeeded(
+                lines(&listed, |delta| format!("{} ({})", delta.key, delta.category))
+                    .unwrap_or_else(|| LISTED_NOTHING.to_owned()),
+            ),
+            Err(failure) => refused(&failure),
+        }
     }
 }
 
@@ -152,22 +158,29 @@ impl Handler for MemoryForget {
 
     async fn run(&self, arguments: Forget, context: ToolContext<'_, '_>) -> ToolOutput {
         let key = arguments.key;
-        let text = if context.lease.memory.forget(&key) {
-            format!("{key} {FORGOT}")
-        } else {
-            format!("{FORGOT_NOTHING} {key}")
-        };
-        ToolOutput::succeeded(text)
+        match context.lease.memory.forget(&key).await {
+            Ok(Forgotten::ForThisRun) => ToolOutput::succeeded(format!("{key} {FORGOT}")),
+            Ok(Forgotten::Unknown) => ToolOutput::succeeded(format!("{FORGOT_NOTHING} {key}")),
+            Err(failure) => refused(&failure),
+        }
     }
 }
 
 /// Each entry on its own line as `render` writes it; `None` when there is none.
-fn lines<'d, 'run: 'd>(
-    entries: impl IntoIterator<Item = &'d MemoryDelta<'run>>,
-    render: impl Fn(&MemoryDelta<'run>) -> String,
-) -> Option<String> {
-    let rendered: Vec<String> = entries.into_iter().map(render).collect();
+fn lines(entries: &[MemoryDelta<'_>], render: impl Fn(&MemoryDelta<'_>) -> String) -> Option<String> {
+    let rendered: Vec<String> = entries.iter().map(render).collect();
     (!rendered.is_empty()).then(|| rendered.join("\n"))
+}
+
+/// A call the backend refused, with the code the model reads: a store past
+/// the push is `memory_full`; anything else the model can correct.
+fn refused(failure: &afr_memory::Error) -> ToolOutput {
+    let code = if failure.is_full() {
+        ToolErrorCode::MemoryFull
+    } else {
+        ToolErrorCode::InvalidArguments
+    };
+    ToolOutput::failed(code, &failure.detail())
 }
 
 #[cfg(test)]

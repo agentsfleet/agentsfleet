@@ -951,8 +951,11 @@ version = "0.51.1"
 dependencies = [
  "afd_core",
  "afd_wire",
+ "aho-corasick",
+ "async-trait",
  "garde",
  "thiserror 2.0.20",
+ "tokio",
 ]
 
 [[package]]

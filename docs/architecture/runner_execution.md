@@ -76,8 +76,8 @@ rustd/crates/
   afr_providers         Anthropic Messages, OpenAI Responses, OpenAI-compatible chat
   afr_tools             the catalog: supervisor-side and sandbox-side handlers, each
                         a typed `Handler` whose arguments' type is its JSON Schema
-  afr_memory            one run's memory: the hydrated window, the run's stores and
-                        forgets, the entries the push carries
+  afr_memory            one run's memory behind `MemoryBackend`, the backend agentsfleetd
+                        binds; `Hydrated` is the Postgres default (runner_fleet.md)
   afr_supervisor        lease loop, renewal, report spool, activity, memory, minting,
                         bundles, storage home, capability report, control-plane client
   agentsfleet_runner    the one binary: composition root; `agentsfleet-runner sandbox`
@@ -97,7 +97,7 @@ The runner is the harness, in Codex's shape: the catalog holds every tool the pu
 | `http_request`, `web_fetch`, `pushover` | supervisor | the network policy, the origin rules, placeholders in `Authorization` only |
 | `web_search` | the provider, as a hosted tool spec | a provider that offers one; a tool error with a code otherwise |
 | `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | supervisor | the hydrated store and the fenced push |
-| `calculator`, `update_plan` | supervisor | nothing |
+| `update_plan` | supervisor | nothing |
 | `message` | supervisor, through a runner verb, to the event's thread | the messages verb |
 | `schedule`, `cron_add`, `cron_list`, `cron_remove`, `cron_update`, `cron_run`, `cron_runs` | supervisor, through a runner verb onto the daemon's plane that QStash fires | the verb; QStash keeps the clock and the runner owns no timer |
 | `delegate`, `spawn` | supervisor: a nested loop sharing the lease's sandbox and budget | Codex's `spawn_agent`, `wait_agent` and `send_input` shape |

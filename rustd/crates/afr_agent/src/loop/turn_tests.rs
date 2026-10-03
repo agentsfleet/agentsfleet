@@ -9,7 +9,7 @@ use afd_wire::activity::{ActivityFrame, StreamTextKind};
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_providers::{Chunk, Message};
 use afr_tools::ToolErrorCode;
-use afr_tools::catalog::CALCULATOR;
+use afr_tools::catalog::UPDATE_PLAN;
 use tokio_util::sync::CancellationToken;
 
 use afd_core::test_util::trace::Capture;
@@ -35,11 +35,11 @@ async fn test_unlisted_tool_refused_run_continues() {
         )],
         vec![say("I cannot run shell here")],
     ]);
-    let engine = engine(vec![Canned::boxed(&CALCULATOR, "4")], &script);
+    let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "4")], &script);
 
     let (output, frames) = drive(
         &engine,
-        &lease(&[CALCULATOR.name()], unbounded()),
+        &lease(&[UPDATE_PLAN.name()], unbounded()),
         &CancellationToken::new(),
     )
     .await;
@@ -117,14 +117,14 @@ async fn test_answer_streams_as_chunks() {
 #[tokio::test]
 async fn a_call_whose_process_exits_non_zero_ends_failed() {
     let script = Script::new([
-        vec![call("a", CALCULATOR.name(), serde_json::json!({}))],
+        vec![call("a", UPDATE_PLAN.name(), serde_json::json!({}))],
         vec![say("done")],
     ]);
-    let engine = engine(vec![Exits::boxed(&CALCULATOR, 2)], &script);
+    let engine = engine(vec![Exits::boxed(&UPDATE_PLAN, 2)], &script);
 
     let (output, frames) = drive(
         &engine,
-        &lease(&[CALCULATOR.name()], unbounded()),
+        &lease(&[UPDATE_PLAN.name()], unbounded()),
         &CancellationToken::new(),
     )
     .await;
@@ -139,14 +139,14 @@ async fn a_call_whose_process_exits_non_zero_ends_failed() {
 #[tokio::test]
 async fn a_call_whose_process_exits_zero_ends_succeeded() {
     let script = Script::new([
-        vec![call("a", CALCULATOR.name(), serde_json::json!({}))],
+        vec![call("a", UPDATE_PLAN.name(), serde_json::json!({}))],
         vec![say("done")],
     ]);
-    let engine = engine(vec![Exits::boxed(&CALCULATOR, 0)], &script);
+    let engine = engine(vec![Exits::boxed(&UPDATE_PLAN, 0)], &script);
 
     let (_output, frames) = drive(
         &engine,
-        &lease(&[CALCULATOR.name()], unbounded()),
+        &lease(&[UPDATE_PLAN.name()], unbounded()),
         &CancellationToken::new(),
     )
     .await;
@@ -164,14 +164,14 @@ async fn no_secret_value_is_sent_to_the_model_whoever_wrote_it() {
             say(API_KEY),
             call(
                 "c",
-                CALCULATOR.name(),
+                UPDATE_PLAN.name(),
                 serde_json::json!({"token": GITHUB_TOKEN}),
             ),
         ],
         vec![say("done")],
     ]);
-    let engine = engine(vec![Canned::boxed(&CALCULATOR, GITHUB_TOKEN)], &script);
-    let mut leased = lease(&[CALCULATOR.name()], unbounded());
+    let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, GITHUB_TOKEN)], &script);
+    let mut leased = lease(&[UPDATE_PLAN.name()], unbounded());
     leased.event.request_json = format!("{{\"message\":\"use {GITHUB_TOKEN}\"}}").into();
     leased.instructions = format!("the key is {API_KEY}").into();
 
@@ -190,14 +190,14 @@ async fn no_secret_value_is_sent_to_the_model_whoever_wrote_it() {
 async fn every_turn_and_every_call_logs_its_start_and_its_end_once() {
     let capture = Capture::install();
     let script = Script::new([
-        vec![call("a", CALCULATOR.name(), serde_json::json!({}))],
+        vec![call("a", UPDATE_PLAN.name(), serde_json::json!({}))],
         vec![say("4")],
     ]);
-    let engine = engine(vec![Canned::boxed(&CALCULATOR, "4")], &script);
+    let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "4")], &script);
 
     let (_output, _frames) = drive(
         &engine,
-        &lease(&[CALCULATOR.name()], unbounded()),
+        &lease(&[UPDATE_PLAN.name()], unbounded()),
         &CancellationToken::new(),
     )
     .await;
@@ -227,16 +227,16 @@ async fn a_run_is_traced_as_turns_and_calls_inside_one_invocation() {
     let capture = Capture::install();
     let script = Script::new([
         vec![
-            call("a", CALCULATOR.name(), serde_json::json!({})),
+            call("a", UPDATE_PLAN.name(), serde_json::json!({})),
             spent(10, 0, 5),
         ],
         vec![say("4")],
     ]);
-    let engine = engine(vec![Canned::boxed(&CALCULATOR, "4")], &script);
+    let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "4")], &script);
 
     let (_output, _frames) = drive(
         &engine,
-        &lease(&[CALCULATOR.name()], unbounded()),
+        &lease(&[UPDATE_PLAN.name()], unbounded()),
         &CancellationToken::new(),
     )
     .await;
@@ -260,6 +260,6 @@ async fn a_run_is_traced_as_turns_and_calls_inside_one_invocation() {
     assert_eq!(turns[0].field(ATTR_USAGE_INPUT_TOKENS), Some("10"));
     let tool = named(OPERATION_EXECUTE_TOOL).next().unwrap();
     assert_eq!(tool.parent, Some(OPERATION_INVOKE_AGENT));
-    assert_eq!(tool.field(ATTR_TOOL_NAME), Some(CALCULATOR.name()));
+    assert_eq!(tool.field(ATTR_TOOL_NAME), Some(UPDATE_PLAN.name()));
     assert_eq!(tool.field(ATTR_TOOL_CALL_ID), Some("1"));
 }
