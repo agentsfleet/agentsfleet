@@ -8,6 +8,9 @@ What a fleet *learned* from prior events, so it behaves like a teammate who's be
 
 ## 1. Scope — keyed by `fleet_id`, never workspace
 
+> [!NOTE]
+> **Decided 2026-10-03, not yet built.** Memory also takes a workspace scope: every entry belongs to a workspace, a fleet-scoped entry also to its fleet, and workspace-scoped memory is reached only by fleets granted that access ([`runner_fleet.md`](./runner_fleet.md) §"Memory backends and scope"). Until that lands, this page describes the built store, which is keyed by `fleet_id` alone.
+
 Every memory row belongs to **one fleet**, keyed by the column **`fleet_id`** (UUID). There is **no `workspace_id` column** in the memory store, and a fresh `fleet_id` starts with an empty namespace.
 
 | Fact | Where it's enforced |
@@ -28,7 +31,7 @@ Memory lives in its own `memory` schema behind the **`memory_runtime`** Postgres
 
 Two layers, deliberately split:
 
-- **Durable** — the `fleet_id`-keyed rows in `memory.memory_entries` (Postgres), the default backend. This is what persists. A fleet can later be bound to another backend instead ([`runner_fleet.md`](./runner_fleet.md) §"Memory backends").
+- **Durable** — the `fleet_id`-keyed rows in `memory.memory_entries` (Postgres), the default backend. This is what persists. A workspace can later be flipped to another store, which migrates its memory ([`runner_fleet.md`](./runner_fleet.md) §"Memory backends and scope").
 - **Ephemeral** — the *compute*. Each run forks a fresh sandboxed child whose in-run store is **SQLite `:memory:`** (no disk file); it vanishes on child exit.
 
 Continuity is the hydrate/capture loop bridging the two: `GET /v1/runners/me/memory/{fleet_id}` seeds the child at run start; `POST` captures deltas back at run end (fencing-verified, like `/reports`). Transport detail: [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity".

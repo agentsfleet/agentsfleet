@@ -1,4 +1,4 @@
-//! The default backend: Postgres through `agentsfleetd`.
+//! Memory held behind `agentsfleetd`, reached through its runner API.
 //!
 //! The window `agentsfleetd` hydrated at lease start is borrowed, never
 //! copied. A store is held here until the supervisor pushes it, fenced, before

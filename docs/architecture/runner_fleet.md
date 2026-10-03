@@ -449,7 +449,7 @@ Durable state across runs is the checkpoint in `agentsfleetd`, never runner-loca
 
 ## Memory continuity — durable fleet memory rides the trusted plane
 
-Memory is the second kind of cross-run state, under the same law as the checkpoint: **durable fleet memory lives only behind a backend `agentsfleetd` binds — never in the runner, never in the fleet.** Postgres through `agentsfleetd` is the default and the only backend today; a runner holds at most a short-lived credential scoped to one fleet's namespace (§"Memory backends"). The checkpoint carries run-continuity (where a chunked incident left off). Memory carries the fleet's learned knowledge: the `memory_store` / `memory_recall` durable scratchpad. Both are hydrated into a run and captured out of it; neither is ever runner-local-durable.
+Memory is the second kind of cross-run state, under the same law as the checkpoint: **durable fleet memory lives only behind `agentsfleetd` — never in the runner, never in the fleet.** The runner reaches it through `agentsfleetd`'s runner API alone and holds no credential for any store; Postgres is the default store and the only one built (§"Memory backends and scope"). The checkpoint carries run-continuity (where a chunked incident left off). Memory carries the fleet's learned knowledge: the `memory_store` / `memory_recall` durable scratchpad. Both are hydrated into a run and captured out of it; neither is ever runner-local-durable.
 
 The sandboxed child holds **no** `agt_r` token, **no** control-plane URL, and **no** Data Source Name (DSN) — so a prompt-injected fleet cannot be talked into "reach your memory endpoint": none exists inside it. The fleet's in-run working store is **SQLite in `:memory:` mode** (no on-disk file). Durability is the parent's job, over the same `agt_r` `/v1/runners` plane that already carries leases and reports — two endpoints, both fencing-verified like `/reports`:
 
@@ -504,40 +504,40 @@ RUN 2  (next run, same fleet A)                          ◄── THE CARRY-OVE
 
 **Data model.** Scope, isolation, and durability are canonical in [`memory.md`](./memory.md) §1–§2 and are not restated here. The one fact this transport owns: the `fleet_id` a push is scoped to is **derived server-side from the lease `agentsfleetd` issued**, so a client-supplied scope is ignored. The upsert is idempotent, which is why a retried push is safe.
 
-**Multi-lease isolation invariant.** Concurrent-lease safety (M88_002's worker pool) rests on the per-fleet **affinity slot admitting a single live holder** — `uq_runner_affinity_fleet_id UNIQUE(fleet_id)` + the `leased_until < now` time-gate — plus **capture-time `fencing_token`** rejecting a stale holder. (It is *not* a unique constraint on `fleet.runner_leases`. Multiple lease rows per fleet are normal, and a slow old holder can transiently coexist with a reclaimer. That is why fencing exists: only one writer durably persists into a fleet's namespace.) So a runner's N concurrent leases are always N *distinct* fleets, which means N distinct namespaces. Isolation does **not** rest on `fleet_id` scoping alone: a future retry / speculative / failover / takeover-lease feature that broke the single-live-holder property would have to scope memory by `lease_id` first. Keep this invariant load-bearing.
+**Multi-lease isolation invariant.** Concurrent-lease safety (M88_002's worker pool) rests on the per-fleet **affinity slot admitting a single live holder** — `uq_runner_affinity_fleet_id UNIQUE(fleet_id)` + the `leased_until < now` time-gate — plus **capture-time `fencing_token`** rejecting a stale holder. (It is *not* a unique constraint on `fleet.runner_leases`. Multiple lease rows per fleet are normal, and a slow old holder can transiently coexist with a reclaimer. That is why fencing exists: only one writer durably persists into a fleet's namespace.) So a runner's N concurrent leases are always N *distinct* fleets, which means N distinct namespaces. Isolation does **not** rest on `fleet_id` scoping alone: a future retry / speculative / failover / takeover-lease feature that broke the single-live-holder property would have to scope memory by `lease_id` first. Keep this invariant load-bearing. The decided workspace scope (§"Memory backends and scope") gives one workspace key many live writers by design, so its fencing token will prove a live lease, not a sole writer; the memory work defines how concurrent writes to one key resolve.
 
 **Cadence.** The parent pushes at **run end** (mandatory) and **mid-run** on the existing `memory_checkpoint_every` cadence, so a long run's learned memory is durable before the run finishes — a crash loses at most the work since the last checkpoint push. Because the run-end push lands before `report`, a continuation run (above) hydrates the snapshot the previous run just stored.
 
 **Selection policy.** Hydration is a deterministic, category-pinned byte window — a pure function of (rows, budget). The `core` tier is pinned: every `core` entry, newest-first, within the byte budget. The newest non-core entries fill the remainder. Unknown and custom categories are windowed, never silently pinned. Cap eviction orders the same way — the coldest non-core rows are evicted first, and a `core` row is evicted only when no non-core row remains — so a fact stored once as `core` survives both the window and the cap. No search infrastructure, no scoring: the fleet's own discipline (stable keys, `core` for load-bearing facts, `memory_forget` for stale entries — see [*capabilities.md*](./capabilities.md) §4 memory hygiene) is the primary bound. A dedicated, scalable memory store remains the post-launch direction; the `GET` endpoint is the seam it swaps in behind, with no change to the fleet.
 
-### Memory backends (decided 2026-10-03: C, the hybrid)
+### Memory backends and scope (decided 2026-10-03; not yet built)
 
-Memory sits behind a swappable backend, the way a model provider does: Postgres through `agentsfleetd` is the default, and vendors such as turbopuffer or mem0 can follow. Indy chose option C below on 2026-10-03, which amended the rule above from "only in `agentsfleetd`'s Postgres" to "only behind a backend `agentsfleetd` binds". Only the Postgres path exists today. [`direction.md`](./direction.md) "Fleet-memory recall has no search infrastructure" still stands until a decision on a search-capable vendor reverses it.
+Two decisions by Indy on 2026-10-03, after the options below were weighed.
 
-**The seam.** One runner-side trait, `MemoryBackend`, over the operations the four memory tools need (store, recall, list, forget) plus the checkpoint the loop calls every `memory_checkpoint_every`. The tools reach it through the lease's state, never a backend directly. The backend, and how it is reached, is the choice:
+1. **The runner reaches memory only through `agentsfleetd`'s runner API, whatever store holds it** ("Always via agentsfleetd"). Stores sit behind one trait inside `agentsfleetd`: Postgres by default; turbopuffer, mem0 or another later. A workspace's store is flipped in `agentsfleetd`, and a flip migrates the workspace's memory to the new store before it takes effect. The runner holds no credential for any store. This replaced option C, which Indy chose earlier the same day ("C: hybrid"), before the flip-with-migration requirement arrived.
+2. **Memory carries both keys.** Every entry belongs to a workspace; a fleet-scoped entry also belongs to its fleet. A fleet reads and writes its own fleet-scoped memory as today. Workspace-scoped memory is shared by the workspace's fleets and reached only by a fleet granted that access. Indy: "we must have flexibility to have the memory have a key of the fleet_id, workspace_id as well. The workspace_id are restricted based on scope (access control)", refining an earlier "Workspace-wide only". A per-channel resident fleet keeps its channel's memory private by staying fleet-scoped.
 
-| Option | Who talks to the vendor | Credential the runner holds | `agentsfleetd` calls per run |
+| Option weighed | Who talks to the store | Credential the runner holds | `agentsfleetd` calls per run |
 |---|---|---|---|
-| A · `agentsfleetd` proxies | `agentsfleetd` | none | hydrate and push, plus one per memory call, which the model waits on |
-| B · runner direct | the runner | a long-lived vendor key on every lease | none for a vendor |
-| C · hybrid (chosen) | the runner | a short-lived key scoped to the fleet's namespace | one mint per lease for a vendor; hydrate and push for Postgres |
+| A · through `agentsfleetd` (chosen) | `agentsfleetd` | none | hydrate and push, plus a capped number for recalls the hydrated window misses |
+| B · runner direct | the runner | a long-lived store key on every lease | none for a vendor |
+| C · hybrid (chosen first, replaced) | the runner | a short-lived key scoped to one namespace | one mint per lease for a vendor |
 
 ```
-agentsfleetd (control plane)                     runner (data plane)
-  binds fleet → backend + namespace      ──►     the lease names the backend
-  mints a scoped, expiring key           ──►     MemoryBackend
-  erases the namespace when the fleet is           ├─ Postgres (default): hydrate window, writes held
-  deleted, as the Postgres cascade does today      │    in the run, fenced push at checkpoint and end
-                                                   └─ vendor: store, recall, forget sent as they happen
+runner ── GET/POST /v1/runners/me/memory ──► agentsfleetd ── store trait ──┬─ Postgres (default)
+  the memory tools read the hydrated           flip + migration per          ├─ turbopuffer
+  window; a miss asks agentsfleetd,            workspace; fleet and          └─ mem0, …
+  a capped number of times per run             workspace scopes; access
+                                               control on the workspace scope
 ```
 
-**Why C was chosen.** `agentsfleetd`'s cost stays fixed per lease however often the model recalls: one mint, cached until it expires, through the verb GitHub tokens already use (`POST /v1/runners/me/credentials/mint`). Postgres keeps today's profile of one hydrate and one push per run. Under A, every recall waits on `agentsfleetd`, so a daemon restart becomes a memory outage mid-run and daemon capacity scales with what models do. Under B, a key reading every tenant's namespace sits on every lease.
+**Why through `agentsfleetd`.** A flip that migrates memory means `agentsfleetd` reads and writes every store anyway. With one owner, the two scopes, the access control on the workspace scope and the record of which fleet wrote an entry hold the same on every store, whatever a vendor's keys can scope, and the runner keeps holding no store credential. A run still costs one hydrate and one push; a recall the window misses adds a capped number of calls.
 
-**What C requires.** A vendor qualifies for hosted runners only if it issues keys scoped to one namespace with an expiry; `agentsfleetd` keeps the vendor's admin key in the vault to mint them and to erase a deleted fleet's namespace. Unverified: whether turbopuffer and mem0 issue such keys.
+**Accepted risks.** Shared memory lets a private channel's facts reach other fleets, and lets a fleet reading untrusted input plant a "fact" that a fleet holding a write token trusts. Both now pass only through workspace-scoped memory, which only granted fleets reach, and the recorded writer keeps every shared entry traceable.
 
-**Built.** The runner-side trait is `afr_memory::MemoryBackend`, and `afr_memory::Hydrated` is the Postgres default behind it: the four memory tools reach memory only through the trait, so a vendor backend is one more implementation and a binding, not a change to the tools.
+**Built.** The runner side only: the four memory tools reach memory through `afr_memory::MemoryBackend`, and `afr_memory::Hydrated` reads the window `agentsfleetd` hydrates and holds the run's writes for the fenced push. Not built: the store trait in `agentsfleetd`, the flip and its migration, the workspace scope and its access control, and recall misses served by `agentsfleetd`.
 
-**Still open.** Whether `direction.md`'s no-search rule is reversed for a search-capable vendor; whether the binding is set per workspace or per fleet; which vendor goes first.
+**Still open for the memory work.** How workspace access is granted (a `TRIGGER.md` declaration, a workspace setting, or both) and whether read and write are granted apart; how concurrent writers to one workspace key resolve; whether `direction.md`'s no-search rule is reversed for a search-capable store; which vendor goes first.
 
 ## Live activity (the SSE tail)
 

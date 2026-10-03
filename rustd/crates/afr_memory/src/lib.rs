@@ -1,11 +1,12 @@
-//! One run's memory, behind the backend `agentsfleetd` binds the fleet to.
+//! One run's memory, read and written through `agentsfleetd`.
 //!
 //! [`MemoryBackend`] is what the four memory tools read and write
-//! (`docs/architecture/runner_fleet.md` §"Memory backends"). [`Hydrated`] is
-//! the default, Postgres through `agentsfleetd`: the window hydrated at lease
-//! start, with the run's stores held here and pushed, fenced, before the
-//! report. A vendor backend talks to its own service with a key `agentsfleetd`
-//! minted for this fleet's namespace, and writes as it goes.
+//! (`docs/architecture/runner_fleet.md` §"Memory backends and scope").
+//! [`Hydrated`] is how a run reaches it: the window `agentsfleetd` hydrated at
+//! lease start, with the run's stores held here and pushed, fenced, before the
+//! report. Which store holds the memory behind `agentsfleetd`, Postgres or one
+//! a workspace is flipped to, is `agentsfleetd`'s choice; the runner holds no
+//! credential for any of them.
 
 pub mod error;
 
