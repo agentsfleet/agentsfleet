@@ -8,20 +8,21 @@ use std::borrow::Cow;
 
 use afd_core::error_code;
 use afd_wire::memory::{
-    MAX_CONTENT_LEN, MAX_KEY_LEN, MAX_PUSH_BYTES, MemoryDelta, PINNED_CATEGORY,
+    MAX_CONTENT_LEN, MAX_KEY_LEN, MAX_PUSH_BYTES, MemoryDelta, PINNED_CATEGORY, Visibility,
 };
 
-use super::{Forgotten, Hydrated, MemoryBackend};
+use super::{Forgotten, Hydrated, MemoryBackend, Recalled, Seed};
 
 fn entry(key: &str, content: &str, category: &str) -> MemoryDelta<'static> {
     MemoryDelta {
         key: Cow::Owned(key.to_owned()),
         content: Cow::Owned(content.to_owned()),
         category: Cow::Owned(category.to_owned()),
+        visibility: Visibility::Fleet,
     }
 }
 
-fn keys(entries: &[MemoryDelta<'_>]) -> Vec<String> {
+fn keys(entries: &[Recalled<'_>]) -> Vec<String> {
     entries.iter().map(|delta| delta.key.to_string()).collect()
 }
 
@@ -42,7 +43,7 @@ fn boxed<'run>(memory: Hydrated<'run>) -> Box<dyn MemoryBackend + 'run> {
 #[tokio::test]
 async fn hydrated_entries_are_views_listed_newest_first_and_never_pushed() {
     let window = window();
-    let memory = boxed(Hydrated::new(&window));
+    let memory = boxed(Hydrated::new(Seed::window(&window)));
 
     let listed = memory.list(None).await.unwrap();
     assert_eq!(keys(&listed), ["deploy_target", "owner", "incident:42"]);
@@ -61,7 +62,7 @@ async fn hydrated_entries_are_views_listed_newest_first_and_never_pushed() {
 #[tokio::test]
 async fn a_store_replaces_its_key_and_only_stores_reach_the_push() {
     let window = window();
-    let mut memory = boxed(Hydrated::new(&window));
+    let mut memory = boxed(Hydrated::new(Seed::window(&window)));
 
     memory
         .store(entry("owner", "tarzy now", PINNED_CATEGORY))
@@ -80,7 +81,8 @@ async fn a_store_replaces_its_key_and_only_stores_reach_the_push() {
     assert_eq!(owners.len(), 1, "a repeated key overwrites");
     assert_eq!(owners[0].content, "tarzy now");
     let pushed = memory.into_pending();
-    assert_eq!(keys(&pushed), ["owner", "runbook"]);
+    let pushed_keys: Vec<_> = pushed.iter().map(|delta| delta.key.as_ref()).collect();
+    assert_eq!(pushed_keys, ["owner", "runbook"]);
     assert_eq!(pushed[1].content, "drain then restart");
 }
 
@@ -146,7 +148,7 @@ async fn a_store_past_the_push_cap_is_refused_and_a_replacement_is_not_counted_t
 #[tokio::test]
 async fn a_forget_holds_for_the_run_and_leaves_the_push() {
     let window = window();
-    let mut memory = boxed(Hydrated::new(&window));
+    let mut memory = boxed(Hydrated::new(Seed::window(&window)));
     memory
         .store(entry("scratch", "a note", "daily"))
         .await
@@ -173,7 +175,7 @@ async fn a_forget_holds_for_the_run_and_leaves_the_push() {
 #[tokio::test]
 async fn recall_matches_key_then_content_ignoring_case_newest_first() {
     let window = window();
-    let mut memory = boxed(Hydrated::new(&window));
+    let mut memory = boxed(Hydrated::new(Seed::window(&window)));
     memory
         .store(entry("incident:43", "fly is green", "daily"))
         .await
@@ -211,7 +213,7 @@ async fn recall_matches_key_then_content_ignoring_case_newest_first() {
 #[tokio::test]
 async fn list_keeps_one_category() {
     let window = window();
-    let memory = boxed(Hydrated::new(&window));
+    let memory = boxed(Hydrated::new(Seed::window(&window)));
 
     assert_eq!(
         keys(&memory.list(Some("daily")).await.unwrap()),

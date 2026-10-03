@@ -34,11 +34,11 @@ use afd_crypto::secret::SecretBytes;
 use afd_events::History;
 use afd_fleet::bundle::Bundles;
 use afd_fleet::lease::{Leases, Plane};
-use afd_fleet::memory::Memories;
 use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_gate::gate::Gates;
 use afd_library::{Libraries, LibraryImports};
+use afd_memory::Memories;
 use afd_runner::Runners;
 use afd_tenant::preference::Preferences;
 // Aliased: `crate::identity::Sessions` is the token VERIFIER, and this is the

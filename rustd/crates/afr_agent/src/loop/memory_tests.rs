@@ -38,6 +38,7 @@ async fn test_memory_tools_round_trip_through_push() {
         key: Cow::Borrowed("incident:41"),
         content: Cow::Borrowed("escalated to the on-call"),
         category: Cow::Borrowed(PINNED_CATEGORY),
+        visibility: afd_wire::memory::Visibility::Fleet,
     }];
     let script = Script::new([
         vec![call(
@@ -68,7 +69,7 @@ async fn test_memory_tools_round_trip_through_push() {
     let output = engine
         .run(AgentRun {
             lease: &lease,
-            memory: &hydrated,
+            memory: afr_memory::Seed::window(&hydrated),
             executor: None,
             mint: &CountingMint::never(),
             checkpoint: &Discard,
@@ -102,6 +103,7 @@ async fn test_memory_tools_round_trip_through_push() {
             key: Cow::Borrowed("incident:42"),
             content: Cow::Borrowed("deploy 812 broke iad"),
             category: Cow::Borrowed("daily"),
+            visibility: afd_wire::memory::Visibility::Fleet,
         }],
         "the push carries what the run stored, and nothing it only read"
     );
@@ -137,7 +139,7 @@ async fn the_memory_is_checkpointed_every_n_calls() {
     engine
         .run(AgentRun {
             lease: &lease,
-            memory: &[],
+            memory: afr_memory::Seed::default(),
             executor: None,
             mint: &CountingMint::never(),
             checkpoint: &checkpoint,
@@ -197,7 +199,7 @@ async fn a_checkpoint_that_never_answers_does_not_outlive_the_lease() {
         Duration::from_secs(60),
         engine.run(AgentRun {
             lease: &lease,
-            memory: &[],
+            memory: afr_memory::Seed::default(),
             executor: None,
             mint: &CountingMint::never(),
             checkpoint: &Hanging,
@@ -225,7 +227,7 @@ async fn a_cadence_with_nothing_stored_pushes_nothing() {
     engine
         .run(AgentRun {
             lease: &lease,
-            memory: &[],
+            memory: afr_memory::Seed::default(),
             executor: None,
             mint: &CountingMint::never(),
             checkpoint: &checkpoint,

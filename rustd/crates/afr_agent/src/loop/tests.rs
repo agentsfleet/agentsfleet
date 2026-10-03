@@ -37,7 +37,7 @@ pub(super) async fn drive(
     let sink = frames.sink();
     let run = AgentRun {
         lease,
-        memory: &[],
+        memory: afr_memory::Seed::default(),
         executor: None,
         mint: &CountingMint::never(),
         checkpoint: &Discard,
@@ -251,7 +251,7 @@ async fn a_dropped_run_still_closes_its_open_call_once() {
     let mint = CountingMint::never();
     let run = engine.run(AgentRun {
         lease: &lease,
-        memory: &[],
+        memory: afr_memory::Seed::default(),
         executor: None,
         mint: &mint,
         checkpoint: &Discard,

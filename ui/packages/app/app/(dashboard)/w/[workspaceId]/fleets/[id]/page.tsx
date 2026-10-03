@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { claims, requireCredential } from "@/lib/auth/credential";
+import { hasScope } from "@/lib/auth/platform";
+import { SCOPE } from "@/lib/auth/scopes";
 import { notFound, redirect } from "next/navigation";
 import { cn } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
@@ -237,12 +239,14 @@ async function loadMemoryView(
   { workspaceId, fleet }: PageContext,
   data: MemoryViewData,
 ) {
-  const memories = await data.memories;
+  const [memories, canGrant] = await Promise.all([data.memories, hasScope(SCOPE.FLEET_WRITE)]);
   return (
     <MemoryPanel
       workspaceId={workspaceId}
       fleetId={fleet.id}
       entries={memories?.items ?? null}
+      access={fleet.memory_access ?? null}
+      canGrant={canGrant}
     />
   );
 }

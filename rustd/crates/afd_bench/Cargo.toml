@@ -16,6 +16,8 @@ categories.workspace = true
 # drive `Leases::select`, the real assignment pass, not a copy of it. A
 # reimplementation would not compile against these signatures (Invariant 2).
 afd_fleet.workspace = true
+# The memory store the lease plane it drives is built with.
+afd_memory.workspace = true
 # Enrolling the runners a lease is issued to.
 afd_runner.workspace = true
 # The steer ingress path the steer lane drives.

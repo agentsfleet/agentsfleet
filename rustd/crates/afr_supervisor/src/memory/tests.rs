@@ -28,6 +28,8 @@ async fn hydrate_rides_out_a_blip() {
         } else {
             json(&MemoryHydrateResponse {
                 memory: answer().memory,
+                shared: Vec::new(),
+                publish: false,
             })
         }
     });

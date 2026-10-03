@@ -37,6 +37,20 @@ pub(crate) enum ErrorKind {
         /// The bytes the stored entries would take with this one.
         needed: usize,
     },
+
+    /// A store asked the workspace to read it, from a fleet without the
+    /// publish grant.
+    #[error(
+        "this fleet may not publish to shared memory; a workspace admin grants it on the fleet's memory panel"
+    )]
+    NotGranted,
+
+    /// `agentsfleetd` did not answer a recall past the window.
+    #[error("agentsfleetd did not answer the recall ({code})")]
+    Unanswered {
+        /// The registry code the supervisor's failure carried.
+        code: ErrorCode,
+    },
 }
 
 /// The one alias every signature in this crate spells.
@@ -47,8 +61,11 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
-            ErrorKind::Malformed { .. } | ErrorKind::Query { .. } => error_code::INVALID_REQUEST,
+            ErrorKind::Malformed { .. } | ErrorKind::Query { .. } | ErrorKind::NotGranted => {
+                error_code::INVALID_REQUEST
+            }
             ErrorKind::Full { .. } => error_code::PAYLOAD_TOO_LARGE,
+            ErrorKind::Unanswered { code } => *code,
         }
     }
 
@@ -56,6 +73,18 @@ impl Error {
     #[must_use]
     pub const fn is_full(&self) -> bool {
         matches!(self.kind(), ErrorKind::Full { .. })
+    }
+
+    /// Whether the store asked to share from a fleet that may not publish.
+    #[must_use]
+    pub const fn is_not_granted(&self) -> bool {
+        matches!(self.kind(), ErrorKind::NotGranted)
+    }
+
+    /// `agentsfleetd` answered a recall with a failure carrying `code`.
+    #[must_use]
+    pub fn unanswered(code: ErrorCode) -> Self {
+        ErrorKind::Unanswered { code }.into()
     }
 
     /// What the model reads: each broken bound as `field: reason`, or how far
@@ -68,7 +97,10 @@ impl Error {
                 .map(|(path, broken)| format!("{path}: {broken}"))
                 .collect::<Vec<_>>()
                 .join("; "),
-            other @ (ErrorKind::Query { .. } | ErrorKind::Full { .. }) => other.to_string(),
+            other @ (ErrorKind::Query { .. }
+            | ErrorKind::Full { .. }
+            | ErrorKind::NotGranted
+            | ErrorKind::Unanswered { .. }) => other.to_string(),
         }
     }
 }
@@ -86,4 +118,9 @@ pub(crate) fn query(source: aho_corasick::BuildError) -> Error {
 /// A store that would take the run's memory to `needed` bytes.
 pub(crate) fn full(needed: usize) -> Error {
     ErrorKind::Full { needed }.into()
+}
+
+/// A share from a fleet that may not publish.
+pub(crate) fn not_granted() -> Error {
+    ErrorKind::NotGranted.into()
 }

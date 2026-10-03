@@ -16,18 +16,20 @@
 //!
 //! # The ownership check is the store's, not this file's
 //!
-//! `memory.memory_entries` has no workspace column, so scoping it is a read of
-//! `core.fleets` under a different role — which is why it lives in
-//! [`afd_fleet::memory::operator`] beside the statements rather than as an
-//! opening call every handler has to remember, the shape `helpers.zig` has.
-//! [`WorkspaceContext`] here is this handler saying WHICH workspace it acts in,
-//! never deciding whether it may.
+//! Whether the fleet is the workspace's, and whether it may read the
+//! workspace's shared entries, is a read of `core.fleets` the memory store
+//! makes itself (`afd_memory::Memories`) rather than an opening call every
+//! handler has to remember, the shape `helpers.zig` has. [`WorkspaceContext`]
+//! here is this handler saying WHICH workspace it acts in, never deciding
+//! whether it may. A page holds the workspace's shared entries too when the
+//! fleet may read them, each naming its writer.
 
 use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_core::paging::Cursor;
-use afd_fleet::memory::page::{After, Entry};
+use afd_memory::Record;
+use afd_memory::page::After;
 use afd_wire::memory::{MemoriesResponse, MemoryEntry};
 use axum::Json;
 use axum::extract::{Path, RawQuery, State};
@@ -202,7 +204,7 @@ pub(crate) async fn forget<D: Services>(
 /// with — so a caller who asks for exactly as many entries as remain spends one
 /// more request to learn there are none. That is `handler.zig`'s behaviour and
 /// a client walking either daemon sees the same page sequence.
-fn next_cursor(entries: &[Entry], limit: i64) -> Option<String> {
+fn next_cursor(entries: &[Record], limit: i64) -> Option<String> {
     let full = usize::try_from(limit).is_ok_and(|asked| entries.len() == asked);
     full.then(|| entries.last()).flatten().map(|last| {
         Cursor::Timestamp {
@@ -218,11 +220,13 @@ fn next_cursor(entries: &[Entry], limit: i64) -> Option<String> {
 /// `created_at` is deliberately absent: it orders the walk and feeds the
 /// cursor, and putting it on the wire would invite a client to page on it
 /// itself rather than on the opaque token this daemon issues.
-fn item(entry: &Entry) -> MemoryEntry<'_> {
+fn item(entry: &Record) -> MemoryEntry<'_> {
     MemoryEntry {
         key: Cow::Borrowed(&entry.key),
         content: Cow::Borrowed(&entry.content),
         category: Cow::Borrowed(&entry.category),
         updated_at: entry.updated_at_ms,
+        visibility: entry.visibility,
+        writer_fleet_id: Cow::Borrowed(entry.fleet.as_str()),
     }
 }

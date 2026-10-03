@@ -26,6 +26,8 @@ afd_wire.workspace = true
 # An entry is checked against the bounds `afd_wire` declares on it.
 garde.workspace = true
 thiserror.workspace = true
+# The one line a recall past the window leaves when the daemon does not answer.
+tracing.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }

@@ -16,11 +16,12 @@
 use std::sync::Arc;
 
 use afd_core::id::Uuid7;
-use afd_wire::memory::{MemoryCaptureResponse, MemoryHydrateResponse, MemoryPushRequest};
+use afd_wire::memory::{MemoryCaptureResponse, MemoryPushRequest, MemoryRecallRequest};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
+use garde::Validate as _;
 
 use crate::auth::RunnerIdentity;
 use crate::handler::{malformed, refuse};
@@ -38,6 +39,12 @@ const DETAIL_FLEET_ID: &str = "fleet_id must be a valid UUIDv7";
 /// The refusal a body this daemon cannot read earns.
 const DETAIL_MALFORMED: &str = "Malformed memory body";
 
+/// The scoped event a failed recall is logged under.
+const EVENT_RECALL: &str = "runner_memory_recall_failed";
+
+/// The refusal a recall body this daemon cannot read, or will not search, earns.
+const DETAIL_RECALL_MALFORMED: &str = "Malformed memory recall body";
+
 /// Seeds a run with its fleet's memory window.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
@@ -54,7 +61,7 @@ const DETAIL_MALFORMED: &str = "Malformed memory body";
         afd_http::openapi::path::FleetOnly,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = MemoryHydrateResponse),
+        (status = 200, description = afd_http::openapi::OK, body = afd_wire::memory::MemoryHydrateResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -76,8 +83,62 @@ pub(crate) async fn hydrate<D: Services>(
         .hydrate(runner.id(), &fleet, services.now())
         .await
     {
-        Ok(memory) => Json(MemoryHydrateResponse { memory }).into_response(),
+        Ok(hydrated) => Json(hydrated).into_response(),
         Err(error) => refuse(&error, EVENT_HYDRATE),
+    }
+}
+
+/// Searches a fleet's memory past the window a run was seeded with.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/runners/me/memory/{fleet_id}/recall",
+    tag = afd_http::openapi::tag::MEMORY,
+    operation_id = "runner_recall_memory",
+    summary = "Search what a fleet remembers",
+    description = concat!(
+        "Finds the fleet's entries whose key or content holds the query, ",
+        "ignoring case, key matches first. A fleet granted to read shared ",
+        "memory also gets the workspace's shared entries, each naming the ",
+        "fleet that wrote it. Fenced like a capture: a superseded holder is ",
+        "refused. ",
+    ),
+    request_body = MemoryRecallRequest,
+    params(
+        afd_http::openapi::path::FleetOnly,
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = afd_wire::memory::MemoryRecallResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
+pub(crate) async fn recall<D: Services>(
+    State(services): State<Arc<D>>,
+    RunnerIdentity(runner): RunnerIdentity,
+    Path(fleet_id): Path<String>,
+    body: Bytes,
+) -> Response {
+    let Ok(fleet) = Uuid7::parse(&fleet_id) else {
+        return malformed(DETAIL_FLEET_ID);
+    };
+    let Ok(request) = afd_http::handler::read_strict_body::<MemoryRecallRequest<'_>>(&body) else {
+        return malformed(DETAIL_RECALL_MALFORMED);
+    };
+    if request.validate().is_err() {
+        return malformed(DETAIL_RECALL_MALFORMED);
+    }
+    match services
+        .leases()
+        .recall(runner.id(), &fleet, &request, services.now())
+        .await
+    {
+        Ok(recalled) => Json(recalled).into_response(),
+        Err(error) => refuse(&error, EVENT_RECALL),
     }
 }
 

@@ -38,6 +38,8 @@ pub enum RunnerRoute {
     MemoryHydrate,
     /// Writing a fleet's memory back.
     MemoryCapture,
+    /// Searching a fleet's memory past the window a run was seeded with.
+    MemoryRecall,
     /// Fetching a fleet bundle by content hash.
     Bundle,
     /// Keeping each finished tool call's full arguments and output.
@@ -56,6 +58,7 @@ impl RunnerRoute {
         Self::Renew,
         Self::MemoryHydrate,
         Self::MemoryCapture,
+        Self::MemoryRecall,
         Self::Bundle,
         Self::ToolCalls,
     ];
@@ -77,6 +80,7 @@ impl RunnerRoute {
             | Self::Activity
             | Self::Renew
             | Self::MemoryCapture
+            | Self::MemoryRecall
             | Self::ToolCalls => &[Verb::Post],
         }
     }
@@ -96,6 +100,7 @@ impl RunnerRoute {
             Self::Activity => runner_path!("/me/leases/{lease_id}/activity"),
             Self::Renew => runner_path!("/me/leases/{lease_id}/renew"),
             Self::MemoryHydrate | Self::MemoryCapture => runner_path!("/me/memory/{fleet_id}"),
+            Self::MemoryRecall => runner_path!("/me/memory/{fleet_id}/recall"),
             Self::Bundle => runner_path!("/me/bundles/{content_hash}"),
             Self::ToolCalls => runner_path!("/me/leases/{lease_id}/tool-calls"),
         };

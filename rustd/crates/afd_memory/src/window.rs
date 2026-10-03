@@ -34,6 +34,12 @@ use afd_wire::memory::{MemoryDelta, PINNED_CATEGORY};
 /// accidentally become perishable.
 pub const DAILY_CATEGORY: &str = "daily";
 
+/// How long a `daily` entry survives before a capture sweeps it.
+///
+/// Seventy-two hours. Scratch notes only — every other category is exempt
+/// because the sweep binds its category as a parameter.
+pub const DAILY_RETENTION_MS: i64 = 72 * 60 * 60 * 1_000;
+
 /// Cumulative [`MemoryDelta::bytes`] over a slice.
 #[must_use]
 pub fn total_bytes(entries: &[MemoryDelta<'_>]) -> usize {
@@ -73,6 +79,16 @@ fn fits(sizes: impl Iterator<Item = usize>, budget: usize, head: bool) -> usize 
     } else {
         fitting
     }
+}
+
+/// How many leading entries of a newest-first run fit `budget`.
+///
+/// The shared tier's rule: the same prefix [`fits`] takes, with no head
+/// privilege — a workspace's shared memory hydrating nothing is an ordinary
+/// answer, never one a run could mistake for its own fleet learning nothing.
+#[must_use]
+pub fn prefix_within(sizes: impl Iterator<Item = usize>, budget: usize) -> usize {
+    fits(sizes, budget, false)
 }
 
 /// A hydration window: what the run is seeded with, and what stays behind.
@@ -191,6 +207,7 @@ mod tests {
             key: key.into(),
             content: "x".repeat(content).into(),
             category: category.into(),
+            visibility: afd_wire::memory::Visibility::Fleet,
         }
     }
 

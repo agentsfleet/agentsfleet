@@ -33,8 +33,8 @@ use afd_credential::vault::Vault;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
 use afd_fleet::lease::{Leases, Plane};
-use afd_fleet::memory::Memories;
 use afd_gate::gate::Gates;
+use afd_memory::Memories;
 use afd_wire::event::EventType;
 
 use super::platform;

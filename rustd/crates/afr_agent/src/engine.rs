@@ -11,6 +11,7 @@ use afd_wire::tool_detail::ToolCallRecord;
 use afd_wire::tool_trace::ToolTrace;
 use afr_egress::Mint;
 use afr_executor::Executor;
+use afr_memory::Seed;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::Result;
@@ -50,8 +51,9 @@ pub trait Checkpoint: Send + Sync + fmt::Debug {
 pub struct AgentRun<'run> {
     /// The lease being run.
     pub lease: &'run LeasePayload<'run>,
-    /// The fleet's memory, hydrated before the run started.
-    pub memory: &'run [MemoryDelta<'run>],
+    /// The fleet's memory, hydrated before the run started, and where a
+    /// recall past it asks.
+    pub memory: Seed<'run>,
     /// The sandbox's executor, when the lease's tools need one.
     pub executor: Option<&'run dyn Executor>,
     /// Mints the credentials the lease's policy names, under the held lease.

@@ -267,6 +267,7 @@ pub(crate) fn answer() -> RunOutput {
             key: "k".into(),
             content: "v".into(),
             category: "core".into(),
+            visibility: afd_wire::memory::Visibility::Fleet,
         }],
         trace: None,
         records: Vec::new(),
