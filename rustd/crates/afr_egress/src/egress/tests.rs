@@ -3,7 +3,7 @@ use reqwest::header::AUTHORIZATION;
 
 use super::Egress;
 use crate::admission::{Draft, Placement};
-use crate::fixture::{BASE, BRANCH, GITHUB, policy};
+use crate::fixture::{BASE, BRANCH, GITHUB, GRAFANA_TOKEN, PUSHOVER_TOKEN, PUSHOVER_USER, policy};
 use crate::refusal::Refusal;
 use crate::testing::CountingMint;
 
@@ -119,4 +119,27 @@ async fn should_admit_nothing_through_a_closed_guard() {
             host: GITHUB.to_owned()
         })
     );
+}
+
+#[tokio::test]
+async fn should_print_no_secret_in_its_debug_after_a_mint() {
+    let policy = policy(false);
+    let clock = FixedClock::at(START);
+    let mint = CountingMint::answering(MINTED, 3_600_000, clock.clone());
+    let mut egress = Egress::new(&policy, &mint, &clock);
+    let named = format!(r#"{{"ref":"refs/heads/{BRANCH}","sha":"abc"}}"#);
+    let prepared = egress.prepare(post(REFS, &named)).await;
+
+    let printed = format!("{egress:?} {prepared:?}");
+
+    assert_eq!(mint.asked(), 1);
+    for secret in [
+        MINTED,
+        GRAFANA_TOKEN,
+        PUSHOVER_TOKEN,
+        PUSHOVER_USER,
+        "es_live_key",
+    ] {
+        assert!(!printed.contains(secret), "{secret} printed in {printed}");
+    }
 }

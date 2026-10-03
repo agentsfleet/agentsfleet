@@ -7,15 +7,34 @@
 //! and binds each credential to its host. Both read through this view, so the
 //! shape is known in one place.
 
+use std::fmt;
+
 use serde_json::{Map, Value};
 
 /// The credential field naming a credential's host, which is no secret.
 pub const FIELD_HOST: &str = "host";
 
 /// The static credentials one lease carries.
-#[derive(Debug, Clone, Copy, Default)]
+///
+/// Its `Debug` names the credentials and prints none of their fields, so a
+/// lease or a tool context logged whole holds no secret.
+#[derive(Clone, Copy, Default)]
 pub struct StaticSecrets<'p> {
     credentials: Option<&'p Map<String, Value>>,
+}
+
+impl fmt::Debug for StaticSecrets<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let names: Vec<&str> = self
+            .credentials
+            .into_iter()
+            .flat_map(Map::keys)
+            .map(String::as_str)
+            .collect();
+        f.debug_struct("StaticSecrets")
+            .field("credentials", &names)
+            .finish()
+    }
 }
 
 impl<'p> StaticSecrets<'p> {

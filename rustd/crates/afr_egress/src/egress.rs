@@ -40,9 +40,6 @@ static CLOSED: LazyLock<ExecutionPolicy<'static>> = LazyLock::new(|| ExecutionPo
     },
 });
 
-/// The clock a closed guard reads; it mints nothing, so it never asks.
-static SYSTEM_CLOCK: SystemClock = SystemClock;
-
 /// What a closed guard answers a mint with.
 const CLOSED_MINT: &str = "this run mints no credential";
 
@@ -71,7 +68,7 @@ impl<'run> Egress<'run> {
     /// A guard that admits nothing.
     #[must_use]
     pub fn closed() -> Egress<'static> {
-        Egress::new(&CLOSED, &Closed, &SYSTEM_CLOCK)
+        Egress::new(&CLOSED, &Closed, &SystemClock)
     }
 
     /// `draft`, admitted and with its credentials in place, ready for a

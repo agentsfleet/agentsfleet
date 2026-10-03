@@ -95,10 +95,7 @@ impl Handler for Pushover {
         let credential = |field: &str| {
             statics
                 .field(CREDENTIAL, field)
-                .ok_or_else(|| Refusal::SecretNotFound {
-                    name: CREDENTIAL.to_owned(),
-                    field: field.to_owned(),
-                })
+                .ok_or_else(|| Refusal::secret_not_found(CREDENTIAL, field))
         };
         let (token, user) = match (credential(FIELD_TOKEN), credential(FIELD_USER)) {
             (Ok(token), Ok(user)) => (token, user),
@@ -112,11 +109,17 @@ impl Handler for Pushover {
             priority: arguments.priority,
             sound: arguments.sound.as_deref(),
         };
+        let written = match serde_json::to_string(&body) {
+            Ok(written) => written,
+            Err(unwritten) => {
+                return ToolOutput::failed(ToolErrorCode::InvalidArguments, &unwritten.to_string());
+            }
+        };
         let draft = Draft {
             method: METHOD.to_owned(),
             url: MESSAGES_URL.to_owned(),
             headers: vec![(JSON.0.to_owned(), JSON.1.to_owned())],
-            body: serde_json::to_string(&body).ok(),
+            body: Some(written),
             placement: Placement::Nowhere,
         };
         match egress::send(Self::ENTRY, self.transport.as_ref(), context.lease, draft).await {

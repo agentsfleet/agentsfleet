@@ -328,10 +328,7 @@ fn misplaced(what: &str) -> Refusal {
 }
 
 fn not_found(name: &str, field: &str) -> Refusal {
-    Refusal::SecretNotFound {
-        name: name.to_owned(),
-        field: field.to_owned(),
-    }
+    Refusal::secret_not_found(name, field)
 }
 
 #[cfg(test)]

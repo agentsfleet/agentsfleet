@@ -35,12 +35,20 @@ pub(crate) async fn capture(
     lease: &LeasePayload<'_>,
     memory: Vec<MemoryDelta<'static>>,
 ) -> Result<()> {
-    let request = MemoryPushRequest {
+    let request = push_request(lease, memory);
+    retrying(|| plane.capture(fleet_id, &request)).await
+}
+
+/// `memory`, fenced by `lease`'s token.
+fn push_request<'a>(
+    lease: &'a LeasePayload<'_>,
+    memory: Vec<MemoryDelta<'static>>,
+) -> MemoryPushRequest<'a> {
+    MemoryPushRequest {
         lease_id: Cow::Borrowed(&lease.lease_id),
         fencing_token: lease.fencing_token,
         memory,
-    };
-    retrying(|| plane.capture(fleet_id, &request)).await
+    }
 }
 
 /// Writes one lease's memory back mid-run, through the same fenced push.
@@ -68,8 +76,11 @@ impl<'a> LeaseCheckpoint<'a> {
 
 #[async_trait::async_trait]
 impl Checkpoint for LeaseCheckpoint<'_> {
+    /// One attempt, no retry: the push before the report retries, and carries
+    /// every entry again.
     async fn push(&self, memory: Vec<MemoryDelta<'static>>) {
-        if let Err(failure) = capture(self.plane, self.fleet_id, self.lease, memory).await {
+        let request = push_request(self.lease, memory);
+        if let Err(failure) = self.plane.capture(self.fleet_id, &request).await {
             let error_code = failure.code().as_str();
             let lease_id = self.lease.lease_id.as_ref();
             let event = EVENT_CHECKPOINT_FAILED;

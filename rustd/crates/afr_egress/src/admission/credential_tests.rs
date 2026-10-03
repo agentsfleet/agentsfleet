@@ -156,3 +156,21 @@ fn should_refuse_every_placeholder_when_the_tool_carries_no_credential() {
         Some(misplaced("the Authorization header as written"))
     );
 }
+
+#[test]
+fn should_refuse_a_host_placeholder_that_smuggles_another_host() {
+    for smuggled in [
+        "https://${secrets.grafana.host}:@evil.example/x",
+        "https://${secrets.grafana.host}@evil.example/x",
+    ] {
+        let refusal = refused(false, draft("GET", smuggled, &[], None));
+
+        assert!(
+            matches!(
+                refusal,
+                Some(Refusal::PlacementNotAllowed { .. } | Refusal::HostNotAllowed { .. })
+            ),
+            "{smuggled}: {refusal:?}"
+        );
+    }
+}

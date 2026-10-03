@@ -67,8 +67,10 @@ impl Handler for WebFetch {
                     .content_type
                     .as_deref()
                     .is_some_and(|media| media.contains(HTML));
+                // Masked again once decoded: an entity-encoded echo of a minted
+                // token only reads as the token after the page becomes text.
                 let text = if page {
-                    text_of(&inbound.body)
+                    egress::masked(context.lease, text_of(&inbound.body))
                 } else {
                     inbound.body
                 };
