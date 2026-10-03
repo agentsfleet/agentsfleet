@@ -4,12 +4,25 @@
 //! name and never touches the executor; a sandbox-side one reads
 //! [`STUB_PATH`] through it, so a suite can count that the call crossed.
 
+use schemars::JsonSchema;
+use serde::Deserialize;
+
 use crate::catalog::Entry;
 use crate::runtime::{Runtime, Tool, ToolContext, ToolErrorCode, ToolOutput};
 use crate::schema::Schema;
 
 /// The file a sandbox-side stub reads.
 pub const STUB_PATH: &str = "stub.txt";
+
+/// The arguments of a tool that takes none: an object naming nothing, and
+/// refusing any name it is handed.
+#[expect(
+    clippy::empty_structs_with_brackets,
+    reason = "arguments parse from a JSON object, which only a braced struct takes"
+)]
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct NoArguments {}
 
 /// A handler that proves where it ran.
 #[derive(Debug)]
@@ -24,10 +37,7 @@ impl Stub {
     pub fn new(entry: &'static Entry) -> Self {
         Self {
             entry,
-            schema: Schema {
-                description: entry.name(),
-                parameters: serde_json::json!({"type": "object", "properties": {}}),
-            },
+            schema: Schema::of::<NoArguments>(entry.name()),
         }
     }
 
@@ -67,3 +77,7 @@ impl Tool for Stub {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "stub/tests.rs"]
+mod tests;

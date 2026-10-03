@@ -259,8 +259,8 @@ impl<'c> Selection<'c> {
             let schema = tool.schema();
             ToolSpec {
                 name: tool.name(),
-                description: schema.description,
-                parameters: &schema.parameters,
+                description: schema.description(),
+                parameters: schema.parameters(),
             }
         })
     }

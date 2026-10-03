@@ -9,12 +9,12 @@ const TITLE: &str = "title";
 /// A tool's description and its parameters' JSON Schema.
 ///
 /// Provider-neutral: each provider wraps it in its own function-calling wire.
+/// Built only by [`Schema::of`], so every schema the model reads is derived
+/// from the type its arguments parse into and none is written by hand.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Schema {
-    /// What the tool does, as the model reads it.
-    pub description: &'static str,
-    /// The arguments' JSON Schema, an object schema.
-    pub parameters: serde_json::Value,
+    description: &'static str,
+    parameters: serde_json::Value,
 }
 
 impl Schema {
@@ -35,6 +35,18 @@ impl Schema {
             description,
             parameters: parameters.to_value(),
         }
+    }
+
+    /// What the tool does, as the model reads it.
+    #[must_use]
+    pub const fn description(&self) -> &'static str {
+        self.description
+    }
+
+    /// The arguments' JSON Schema, an object schema.
+    #[must_use]
+    pub const fn parameters(&self) -> &serde_json::Value {
+        &self.parameters
     }
 }
 
