@@ -3,7 +3,7 @@
 
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_tools::ToolErrorCode;
-use afr_tools::catalog::CALCULATOR;
+use afr_tools::catalog::UPDATE_PLAN;
 use serde_json::{Value, json};
 
 use super::support::wires::{self, Wire};
@@ -27,11 +27,11 @@ async fn a_turns_signed_thinking_goes_back_ahead_of_its_call() {
     let wire = Wire::Messages;
     let arguments = json!({"expression": "2+2"});
     let mut fake = Fake::serve(vec![
-        wires::thinking_call(THOUGHT, SIGNATURE, CALL_ID, CALCULATOR.name(), &arguments),
+        wires::thinking_call(THOUGHT, SIGNATURE, CALL_ID, UPDATE_PLAN.name(), &arguments),
         wire.answer(ANSWER),
     ])
     .await;
-    let leased = lease(&wire.provider(), &[CALCULATOR.name()], "what is 2+2?");
+    let leased = lease(&wire.provider(), &[UPDATE_PLAN.name()], "what is 2+2?");
 
     let (output, _frames) = run(&engine(&fake), &leased).await;
 
@@ -46,11 +46,11 @@ async fn a_turns_signed_thinking_goes_back_ahead_of_its_call() {
 async fn a_call_cut_at_the_output_limit_is_answered_and_never_run() {
     let wire = Wire::Messages;
     let mut fake = Fake::serve(vec![
-        wires::cut_call(CALL_ID, CALCULATOR.name(), &json!({"expression": "2+"})),
+        wires::cut_call(CALL_ID, UPDATE_PLAN.name(), &json!({"expression": "2+"})),
         wire.answer(ANSWER),
     ])
     .await;
-    let leased = lease(&wire.provider(), &[CALCULATOR.name()], "what is 2+2?");
+    let leased = lease(&wire.provider(), &[UPDATE_PLAN.name()], "what is 2+2?");
 
     let (output, _frames) = run(&engine(&fake), &leased).await;
 

@@ -21,7 +21,7 @@ use afd_core::test_util::trace::Capture;
 use tracing::level_filters::LevelFilter;
 use afd_wire::report::{FailureClass, ResultOutcome};
 use afd_wire::tool_trace::ToolCallStatus;
-use afr_tools::catalog::{CALCULATOR, WEB_SEARCH};
+use afr_tools::catalog::{UPDATE_PLAN, WEB_SEARCH};
 use serde_json::json;
 
 use self::support::wires::Wire;
@@ -44,12 +44,12 @@ async fn test_each_provider_drives_a_tool_turn() {
     for wire in Wire::ALL {
         let arguments = json!({"expression": "2+2"});
         let mut fake = Fake::serve(vec![
-            wire.call(CALL_ID, CALCULATOR.name(), &arguments),
+            wire.call(CALL_ID, UPDATE_PLAN.name(), &arguments),
             wire.answer(ANSWER),
         ])
         .await;
         let provider = wire.provider();
-        let leased = lease(&provider, &[CALCULATOR.name()], "what is 2+2?");
+        let leased = lease(&provider, &[UPDATE_PLAN.name()], "what is 2+2?");
 
         let (output, _frames) = run(&engine(&fake), &leased).await;
 
@@ -70,7 +70,7 @@ async fn test_each_provider_drives_a_tool_turn() {
         );
         assert_eq!(
             wire.results(&seen[1].body),
-            [CALCULATOR.name()],
+            [UPDATE_PLAN.name()],
             "{wire:?}: the call's result goes back in the wire's own shape"
         );
         assert_eq!(output.result.input_tokens, 20, "{wire:?}: two turns of 10");
@@ -152,13 +152,13 @@ async fn test_api_key_never_leaves_the_supervisor() {
         let capture = Capture::install_filtered(afr_providers::log_filter(LevelFilter::TRACE));
         let echoed = json!({"expression": KEY, "token": TOKEN});
         let mut fake = Fake::serve(vec![
-            wire.call(CALL_ID, CALCULATOR.name(), &echoed),
+            wire.call(CALL_ID, UPDATE_PLAN.name(), &echoed),
             wire.answer(&format!("the key was {KEY}")),
         ])
         .await;
         let leased = lease(
             &wire.provider(),
-            &[CALCULATOR.name()],
+            &[UPDATE_PLAN.name()],
             &format!("use {TOKEN}"),
         );
 

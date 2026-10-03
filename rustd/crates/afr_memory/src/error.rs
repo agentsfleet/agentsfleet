@@ -1,4 +1,4 @@
-//! Why a store was refused.
+//! Why a memory call was refused.
 //!
 //! A refused entry carries the bound it broke, so the error takes the
 //! `afd_core::error_shell!` hull. Both codes are the registry's request codes:
@@ -23,6 +23,14 @@ pub(crate) enum ErrorKind {
         source: garde::Report,
     },
 
+    /// The recall query could not be built into a matcher.
+    #[error("the query cannot be searched for")]
+    Query {
+        /// The matcher's reason.
+        #[source]
+        source: aho_corasick::BuildError,
+    },
+
     /// The run's stored entries would no longer fit one push.
     #[error("the run's stored memory would take {needed} bytes, past the push's {MAX_PUSH_BYTES}")]
     Full {
@@ -39,7 +47,7 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
-            ErrorKind::Malformed { .. } => error_code::INVALID_REQUEST,
+            ErrorKind::Malformed { .. } | ErrorKind::Query { .. } => error_code::INVALID_REQUEST,
             ErrorKind::Full { .. } => error_code::PAYLOAD_TOO_LARGE,
         }
     }
@@ -60,7 +68,7 @@ impl Error {
                 .map(|(path, broken)| format!("{path}: {broken}"))
                 .collect::<Vec<_>>()
                 .join("; "),
-            full @ ErrorKind::Full { .. } => full.to_string(),
+            other @ (ErrorKind::Query { .. } | ErrorKind::Full { .. }) => other.to_string(),
         }
     }
 }
@@ -68,6 +76,11 @@ impl Error {
 /// An entry breaking the bounds `report` names.
 pub(crate) fn malformed(source: garde::Report) -> Error {
     ErrorKind::Malformed { source }.into()
+}
+
+/// A recall query the matcher refused.
+pub(crate) fn query(source: aho_corasick::BuildError) -> Error {
+    ErrorKind::Query { source }.into()
 }
 
 /// A store that would take the run's memory to `needed` bytes.

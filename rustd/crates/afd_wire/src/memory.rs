@@ -70,6 +70,27 @@ impl MemoryDelta<'_> {
     pub fn bytes(&self) -> usize {
         self.key.len() + self.content.len() + self.category.len()
     }
+
+    /// This entry as a view that borrows its text from `self`.
+    #[must_use]
+    pub fn view(&self) -> MemoryDelta<'_> {
+        MemoryDelta {
+            key: Cow::Borrowed(&self.key),
+            content: Cow::Borrowed(&self.content),
+            category: Cow::Borrowed(&self.category),
+        }
+    }
+
+    /// This entry detached from what it borrowed: owned text moves, and only
+    /// borrowed text is copied.
+    #[must_use]
+    pub fn into_owned(self) -> MemoryDelta<'static> {
+        MemoryDelta {
+            key: Cow::Owned(self.key.into_owned()),
+            content: Cow::Owned(self.content.into_owned()),
+            category: Cow::Owned(self.category.into_owned()),
+        }
+    }
 }
 
 /// `POST /v1/runners/me/memory/{fleet_id}` request.

@@ -6,7 +6,6 @@
 //! it; a name with no handler here refuses the lease, never a quieter tool set,
 //! the disposition `src/runner/engine/tool_bridge.zig` carries today.
 
-use crate::calculator::Calculator;
 use crate::error::{self, Result};
 use crate::handler::Typed;
 use crate::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStore};
@@ -57,8 +56,6 @@ pub const MEMORY_RECALL: Entry = Entry::new("memory_recall", Runtime::Supervisor
 pub const MEMORY_LIST: Entry = Entry::new("memory_list", Runtime::Supervisor);
 /// Forgets one memory item.
 pub const MEMORY_FORGET: Entry = Entry::new("memory_forget", Runtime::Supervisor);
-/// Pure arithmetic and statistics.
-pub const CALCULATOR: Entry = Entry::new("calculator", Runtime::Supervisor);
 /// The model's plan steps, as the thread renders them.
 pub const UPDATE_PLAN: Entry = Entry::new("update_plan", Runtime::Supervisor);
 /// A message to the event's thread, through a runner verb.
@@ -115,7 +112,7 @@ pub const BROWSER_OPEN: Entry = Entry::new("browser_open", Runtime::Sandbox);
 pub const SCREENSHOT: Entry = Entry::new("screenshot", Runtime::Sandbox);
 
 /// Every published tool.
-pub const PUBLISHED: [&Entry; 36] = [
+pub const PUBLISHED: [&Entry; 35] = [
     &HTTP_REQUEST,
     &WEB_FETCH,
     &PUSHOVER,
@@ -124,7 +121,6 @@ pub const PUBLISHED: [&Entry; 36] = [
     &MEMORY_RECALL,
     &MEMORY_LIST,
     &MEMORY_FORGET,
-    &CALCULATOR,
     &UPDATE_PLAN,
     &MESSAGE,
     &SCHEDULE,
@@ -181,7 +177,6 @@ impl Catalog {
             Typed::boxed(MemoryRecall),
             Typed::boxed(MemoryList),
             Typed::boxed(MemoryForget),
-            Typed::boxed(Calculator),
             Typed::boxed(UpdatePlan),
         ])
     }

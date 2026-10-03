@@ -5,19 +5,26 @@
 //!
 //! [`ToolContext`]: crate::ToolContext
 
-use afr_memory::Memory;
+use afr_memory::{Hydrated, MemoryBackend};
 
 /// One lease's state, as its calls see it.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Lease<'run> {
-    /// The fleet's memory for this run.
-    pub memory: Memory<'run>,
+    /// The fleet's memory, behind the backend the fleet is bound to.
+    pub memory: Box<dyn MemoryBackend + 'run>,
 }
 
 impl<'run> Lease<'run> {
-    /// A lease whose calls start from `memory`.
+    /// A lease whose calls read and write `memory`.
     #[must_use]
-    pub const fn new(memory: Memory<'run>) -> Self {
+    pub fn new(memory: Box<dyn MemoryBackend + 'run>) -> Self {
         Self { memory }
+    }
+}
+
+impl Default for Lease<'_> {
+    /// A lease with empty memory under the default backend.
+    fn default() -> Self {
+        Self::new(Box::new(Hydrated::default()))
     }
 }

@@ -57,7 +57,7 @@ afd_core = { workspace = true, features = ["test-util"] }
 # frames, trace, records and report included. A dev-dependency on a crate that
 # depends on this one links the same library into the integration tests.
 afr_agent.workspace = true
-# The stub calculator the loop's catalog hosts.
+# The stub plan tool the loop's catalog hosts.
 afr_tools = { workspace = true, features = ["test-util"] }
 # The fake provider: a real listener, so a status, a header and a streamed
 # body are proven on the socket rather than assumed by a mock.

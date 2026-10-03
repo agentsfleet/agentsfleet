@@ -24,7 +24,7 @@ use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_executor::{Executor, ProcessId, Spawn};
 use afr_providers::{Connect as _, Connector, Registry};
 use afr_tools::Catalog;
-use afr_tools::catalog::{CALCULATOR, FILE_READ, HTTP_REQUEST};
+use afr_tools::catalog::{UPDATE_PLAN, FILE_READ, HTTP_REQUEST};
 use afr_tools::stub::Stub;
 use bytes::Bytes;
 use serde::Serialize;
@@ -171,7 +171,7 @@ pub(crate) enum Behaviour {
 }
 
 /// An agent engine that counts its runs and how many overlap, admitting
-/// through a catalog of stubs: `file_read` runs in the sandbox, `calculator`
+/// through a catalog of stubs: `file_read` runs in the sandbox, `update_plan`
 /// and `http_request` in the supervisor, and nothing else is hosted.
 #[derive(Debug)]
 pub(crate) struct FakeAgent {
@@ -192,7 +192,7 @@ impl FakeAgent {
             running: AtomicUsize::new(0),
             catalog: Catalog::new(vec![
                 Stub::boxed(&FILE_READ),
-                Stub::boxed(&CALCULATOR),
+                Stub::boxed(&UPDATE_PLAN),
                 Stub::boxed(&HTTP_REQUEST),
             ]),
             connect: Connector::new(Registry::builtin().unwrap()).unwrap(),
@@ -293,7 +293,7 @@ pub(crate) fn with_calls(calls: u64) -> RunOutput {
         calls: (1..=calls)
             .map(|number| ToolTraceCall {
                 call_id: number.to_string().into(),
-                name: "calculator".into(),
+                name: "update_plan".into(),
                 arguments: serde_json::Map::new(),
                 status: ToolCallStatus::Succeeded,
                 output_head: Some(CALL_OUTPUT.into()),

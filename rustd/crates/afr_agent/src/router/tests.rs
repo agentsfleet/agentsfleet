@@ -6,7 +6,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use afr_executor::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
-use afr_tools::catalog::{CALCULATOR, FILE_READ, WEB_SEARCH};
+use afr_tools::catalog::{UPDATE_PLAN, FILE_READ, WEB_SEARCH};
 use afr_tools::stub::{STUB_PATH, Stub};
 use afr_tools::{Catalog, Lease, ToolErrorCode};
 use bytes::Bytes;
@@ -58,7 +58,7 @@ impl Executor for Counting {
 }
 
 fn catalog() -> Catalog {
-    Catalog::new(vec![Stub::boxed(&CALCULATOR), Stub::boxed(&FILE_READ)])
+    Catalog::new(vec![Stub::boxed(&UPDATE_PLAN), Stub::boxed(&FILE_READ)])
 }
 
 fn arguments() -> serde_json::Value {
@@ -68,11 +68,11 @@ fn arguments() -> serde_json::Value {
 #[tokio::test]
 async fn test_router_sends_each_tool_to_its_runtime() {
     let catalog = catalog();
-    let selection = catalog.select(&["calculator", "file_read"]).unwrap();
+    let selection = catalog.select(&["update_plan", "file_read"]).unwrap();
     let executor = Counting::default();
     let router = Router::new(&selection, Some(&executor));
 
-    let supervised = router.dispatch("calculator", &arguments(), &mut Lease::default()).await;
+    let supervised = router.dispatch("update_plan", &arguments(), &mut Lease::default()).await;
     assert_eq!(supervised.error_code, None);
     assert_eq!(
         executor.calls.load(Ordering::SeqCst),
@@ -89,7 +89,7 @@ async fn test_router_sends_each_tool_to_its_runtime() {
 #[tokio::test]
 async fn a_name_the_lease_was_not_offered_is_a_tool_error() {
     let catalog = catalog();
-    let selection = catalog.select(&["calculator"]).unwrap();
+    let selection = catalog.select(&["update_plan"]).unwrap();
     let executor = Counting::default();
     let router = Router::new(&selection, Some(&executor));
 

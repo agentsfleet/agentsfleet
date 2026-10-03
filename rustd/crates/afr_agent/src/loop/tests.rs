@@ -12,7 +12,7 @@ use afd_wire::lease::LeasePayload;
 use afd_wire::report::ResultOutcome;
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_providers::Message;
-use afr_tools::catalog::{CALCULATOR, HTTP_REQUEST};
+use afr_tools::catalog::{UPDATE_PLAN, HTTP_REQUEST};
 use afr_tools::{Catalog, Tool};
 use tokio_util::sync::CancellationToken;
 
@@ -74,8 +74,8 @@ fn starts(frames: &[ActivityFrame<'_>]) -> Vec<String> {
 /// The argument a fetching call names its target by.
 const URL_ARG: &str = "url";
 
-fn calculator() -> Box<dyn Tool> {
-    Canned::boxed(&CALCULATOR, "4")
+fn plan_tool() -> Box<dyn Tool> {
+    Canned::boxed(&UPDATE_PLAN, "4")
 }
 
 #[tokio::test]
@@ -84,19 +84,19 @@ async fn test_loop_runs_tool_calls_until_answer() {
         vec![
             call(
                 "p1",
-                CALCULATOR.name(),
+                UPDATE_PLAN.name(),
                 serde_json::json!({"operation": "add"}),
             ),
             call(
                 "p2",
-                CALCULATOR.name(),
+                UPDATE_PLAN.name(),
                 serde_json::json!({"operation": "pow"}),
             ),
         ],
         vec![say("the sum is 4")],
     ]);
-    let engine = engine(vec![calculator()], &script);
-    let lease = lease(&[CALCULATOR.name()], unbounded());
+    let engine = engine(vec![plan_tool()], &script);
+    let lease = lease(&[UPDATE_PLAN.name()], unbounded());
 
     let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
 
@@ -109,7 +109,7 @@ async fn test_loop_runs_tool_calls_until_answer() {
     assert_eq!(sent.len(), 2);
     assert_eq!(
         sent[0].tools,
-        [CALCULATOR.name()],
+        [UPDATE_PLAN.name()],
         "offered exactly the policy's tools"
     );
     assert_eq!(
@@ -142,17 +142,17 @@ async fn test_loop_runs_tool_calls_until_answer() {
 async fn test_loop_emits_one_start_one_end_per_call() {
     let script = Script::new([
         vec![
-            call("a", CALCULATOR.name(), serde_json::json!({})),
-            call("b", CALCULATOR.name(), serde_json::json!({})),
+            call("a", UPDATE_PLAN.name(), serde_json::json!({})),
+            call("b", UPDATE_PLAN.name(), serde_json::json!({})),
         ],
-        vec![call("c", CALCULATOR.name(), serde_json::json!({}))],
+        vec![call("c", UPDATE_PLAN.name(), serde_json::json!({}))],
         vec![say("done")],
     ]);
-    let engine = engine(vec![calculator()], &script);
+    let engine = engine(vec![plan_tool()], &script);
 
     let (output, frames) = drive(
         &engine,
-        &lease(&[CALCULATOR.name()], unbounded()),
+        &lease(&[UPDATE_PLAN.name()], unbounded()),
         &CancellationToken::new(),
     )
     .await;
@@ -186,7 +186,7 @@ async fn test_loop_emits_one_start_one_end_per_call() {
 #[tokio::test(start_paused = true)]
 async fn test_run_end_interrupts_open_calls_once() {
     let script = Script::new([vec![
-        call("a", CALCULATOR.name(), serde_json::json!({})),
+        call("a", UPDATE_PLAN.name(), serde_json::json!({})),
         call(
             "b",
             "http_request",
@@ -194,10 +194,10 @@ async fn test_run_end_interrupts_open_calls_once() {
         ),
     ]]);
     let engine = engine(
-        vec![calculator(), Canned::boxed(&HTTP_REQUEST, "")],
+        vec![plan_tool(), Canned::boxed(&HTTP_REQUEST, "")],
         &script,
     );
-    let lease = lease(&[CALCULATOR.name(), "http_request"], unbounded());
+    let lease = lease(&[UPDATE_PLAN.name(), "http_request"], unbounded());
     let stop = CancellationToken::new();
     let stopper = async {
         tokio::time::sleep(Duration::from_secs(1)).await;

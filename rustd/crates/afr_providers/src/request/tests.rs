@@ -26,7 +26,7 @@ const PREAMBLE: &str = "Checking the log.";
 /// The call the conversation's assistant turn made.
 const CALL_ID: &str = "call-1";
 /// The tool it called.
-const TOOL: &str = "calculator";
+const TOOL: &str = "update_plan";
 /// What that call returned.
 const OUTPUT: &str = "4";
 /// What the loop said after the result.
@@ -43,8 +43,8 @@ fn said(text: &str, calls: Vec<Call>, replay: Replay) -> Message {
     }
 }
 
-/// The calculator, called under [`CALL_ID`].
-fn calculator_call() -> Call {
+/// The plan tool, called under [`CALL_ID`].
+fn plan_call() -> Call {
     Call {
         id: CALL_ID.to_owned(),
         name: TOOL.to_owned(),
@@ -58,7 +58,7 @@ fn calculator_call() -> Call {
 fn conversation() -> Vec<Message> {
     vec![
         Message::User(QUESTION.to_owned()),
-        said(PREAMBLE, vec![calculator_call()], Replay::default()),
+        said(PREAMBLE, vec![plan_call()], Replay::default()),
         Message::ToolResult {
             call_id: CALL_ID.to_owned(),
             output: OUTPUT.to_owned(),

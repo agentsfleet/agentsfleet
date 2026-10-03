@@ -9,7 +9,7 @@ use afd_core::test_util::trace::Capture;
 use afd_wire::activity::ActivityFrame;
 use afd_wire::report::{FailureClass, ResultOutcome};
 use afr_providers::{Error, Message};
-use afr_tools::catalog::{CALCULATOR, FILE_READ, HTTP_REQUEST, WEB_SEARCH};
+use afr_tools::catalog::{UPDATE_PLAN, FILE_READ, HTTP_REQUEST, WEB_SEARCH};
 use afr_tools::stub::Stub;
 use tokio_util::sync::CancellationToken;
 
@@ -25,10 +25,10 @@ use crate::fixture::{
 /// A cap no test here reaches.
 const WIDE_CAP: u32 = 1000;
 
-/// A turn that calls the calculator once and reports `input` prompt tokens.
+/// A turn that calls the plan tool once and reports `input` prompt tokens.
 fn one_call(id: &str, input: u64) -> Vec<afr_providers::Chunk> {
     vec![
-        call(id, CALCULATOR.name(), serde_json::json!({})),
+        call(id, UPDATE_PLAN.name(), serde_json::json!({})),
         spent(input, 0, 1),
     ]
 }
@@ -53,35 +53,35 @@ async fn test_loop_honours_context_budget() {
         one_call("d", 10),
         vec![say("done")],
     ]);
-    let engine = engine(vec![Canned::boxed(&CALCULATOR, "4")], &script);
+    let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "4")], &script);
 
     drive(
         &engine,
-        &lease(&[CALCULATOR.name()], budget(2, WIDE_CAP)),
+        &lease(&[UPDATE_PLAN.name()], budget(2, WIDE_CAP)),
         &CancellationToken::new(),
     )
     .await;
 
     let last = script.sent().pop().unwrap();
     assert_eq!(results(&last.messages), [EVICTED, EVICTED, "4", "4"]);
-    assert_eq!(last.tools, [CALCULATOR.name()], "the cap was never reached");
+    assert_eq!(last.tools, [UPDATE_PLAN.name()], "the cap was never reached");
 }
 
 #[tokio::test]
 async fn reaching_the_context_cap_offers_no_tools_and_asks_for_the_answer() {
     let capture = Capture::install();
     let script = Script::new([one_call("a", 60), vec![say("partial answer")]]);
-    let engine = engine(vec![Canned::boxed(&CALCULATOR, "4")], &script);
+    let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "4")], &script);
 
     let (output, _frames) = drive(
         &engine,
-        &lease(&[CALCULATOR.name(), "web_search"], budget(0, 50)),
+        &lease(&[UPDATE_PLAN.name(), "web_search"], budget(0, 50)),
         &CancellationToken::new(),
     )
     .await;
 
     let sent = script.sent();
-    assert_eq!(sent[0].tools, [CALCULATOR.name()]);
+    assert_eq!(sent[0].tools, [UPDATE_PLAN.name()]);
     assert_eq!(sent[0].hosted, [WEB_SEARCH.name()]);
     assert!(sent[1].tools.is_empty() && sent[1].hosted.is_empty());
     assert_eq!(
@@ -102,14 +102,14 @@ async fn a_call_made_after_the_cap_ends_the_run_with_its_text() {
         one_call("a", 60),
         vec![
             say("enough"),
-            call("b", CALCULATOR.name(), serde_json::json!({})),
+            call("b", UPDATE_PLAN.name(), serde_json::json!({})),
         ],
     ]);
-    let engine = engine(vec![Canned::boxed(&CALCULATOR, "4")], &script);
+    let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "4")], &script);
 
     let (output, _frames) = drive(
         &engine,
-        &lease(&[CALCULATOR.name()], budget(0, 50)),
+        &lease(&[UPDATE_PLAN.name()], budget(0, 50)),
         &CancellationToken::new(),
     )
     .await;
@@ -122,20 +122,20 @@ async fn a_call_made_after_the_cap_ends_the_run_with_its_text() {
 async fn test_report_sums_token_usage() {
     let script = Script::new([
         vec![
-            call("a", CALCULATOR.name(), serde_json::json!({})),
+            call("a", UPDATE_PLAN.name(), serde_json::json!({})),
             spent(10, 2, 5),
         ],
         vec![
-            call("b", CALCULATOR.name(), serde_json::json!({})),
+            call("b", UPDATE_PLAN.name(), serde_json::json!({})),
             spent(20, 4, 6),
         ],
         vec![say("done"), spent(5, 0, 1)],
     ]);
-    let engine = engine(vec![Canned::boxed(&CALCULATOR, "4")], &script);
+    let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "4")], &script);
 
     let (output, _frames) = drive(
         &engine,
-        &lease(&[CALCULATOR.name()], unbounded()),
+        &lease(&[UPDATE_PLAN.name()], unbounded()),
         &CancellationToken::new(),
     )
     .await;
@@ -265,13 +265,13 @@ async fn a_provider_that_cannot_be_reached_is_an_engine_error() {
 #[test]
 fn the_loop_admits_through_its_catalog() {
     let engine = engine(
-        vec![Stub::boxed(&CALCULATOR), Stub::boxed(&FILE_READ)],
+        vec![Stub::boxed(&UPDATE_PLAN), Stub::boxed(&FILE_READ)],
         &Script::new([]),
     );
 
     assert!(
         !engine
-            .admit(&lease(&[CALCULATOR.name(), "web_search"], unbounded()).policy)
+            .admit(&lease(&[UPDATE_PLAN.name(), "web_search"], unbounded()).policy)
             .unwrap()
             .sandbox
     );

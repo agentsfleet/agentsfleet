@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use afd_wire::policy::ExecutionPolicy;
 use afd_wire::report::{Completed, ExecutionResult, Failure, ResultOutcome};
-use afr_memory::Memory;
+use afr_memory::Hydrated;
 use afr_providers::{Call, Connect, Message, Provider, Replay, Request, Usage};
 use afr_tools::{Catalog, Lease, Selection, ToolSpec};
 use tokio_util::sync::CancellationToken;
@@ -112,7 +112,7 @@ impl<'run> Harness<'run> {
             router: Router::new(selection, run.executor),
             specs: selection.specs().collect(),
             scrub,
-            lease: Lease::new(Memory::hydrated(run.memory)),
+            lease: Lease::new(Box::new(Hydrated::new(run.memory))),
             live: Live::new(run.events, scrub, started),
             ledger: Ledger::new(&run.lease.lease_id, run.events, scrub),
             budget: Budget::new(&policy.context),
@@ -283,7 +283,7 @@ impl<'run> Harness<'run> {
                 cached_input_tokens: self.usage.cached_input,
                 output_tokens: self.usage.output,
             },
-            memory: self.lease.memory.into_stored(),
+            memory: self.lease.memory.into_pending(),
             trace,
             records,
         }

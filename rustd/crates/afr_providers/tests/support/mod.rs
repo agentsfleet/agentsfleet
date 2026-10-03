@@ -23,7 +23,7 @@ use afd_wire::lease::LeasePayload;
 use afr_agent::{AgentEngine as _, AgentRun, Loop, RunOutput};
 use afr_providers::{Connector, ProviderSpec, Registry, Wire};
 use afr_tools::Catalog;
-use afr_tools::catalog::CALCULATOR;
+use afr_tools::catalog::UPDATE_PLAN;
 use afr_tools::stub::Stub;
 use axum::body::{Body, Bytes};
 use axum::http::header::{CONTENT_TYPE, LOCATION, RETRY_AFTER};
@@ -174,7 +174,7 @@ pub(crate) fn lease(provider: &str, tools: &[&str], message: &str) -> LeasePaylo
 /// The name the fake's chat wire is registered under.
 pub(crate) const CHAT_PROVIDER: &str = "fake-chat";
 
-/// The loop hosting a stub calculator, with each wire's provider served by
+/// The loop hosting a stub plan tool, with each wire's provider served by
 /// `fake`.
 pub(crate) fn engine(fake: &Fake) -> Loop {
     let entry = |name: &str, wire, base_url: String| ProviderSpec {
@@ -191,7 +191,7 @@ pub(crate) fn engine(fake: &Fake) -> Loop {
     ])
     .unwrap();
     let connector = Connector::new(registry).unwrap();
-    Loop::new(Catalog::new(vec![Stub::boxed(&CALCULATOR)]), connector)
+    Loop::new(Catalog::new(vec![Stub::boxed(&UPDATE_PLAN)]), connector)
 }
 
 /// Runs `lease` on `engine` to its end, with every frame it sent.
