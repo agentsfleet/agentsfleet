@@ -74,6 +74,8 @@ const INVENTORY: &[&str] = &[
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories/{key}",
+    // Who reads and publishes the workspace's shared memory.
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memory-access",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants/{grant_id}",
     // §6 — approvals.

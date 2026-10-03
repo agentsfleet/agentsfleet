@@ -54,6 +54,8 @@ pub enum ToolErrorCode {
     InvalidArguments,
     /// The memory this run stored would no longer fit one push.
     MemoryFull,
+    /// A store asked the workspace to read it, and this fleet may not publish.
+    WorkspaceMemoryNotGranted,
 }
 
 impl ToolErrorCode {
@@ -67,6 +69,7 @@ impl ToolErrorCode {
             Self::OutputLimitReached => "output_limit_reached",
             Self::InvalidArguments => "invalid_arguments",
             Self::MemoryFull => "memory_full",
+            Self::WorkspaceMemoryNotGranted => "workspace_memory_not_granted",
         }
     }
 }

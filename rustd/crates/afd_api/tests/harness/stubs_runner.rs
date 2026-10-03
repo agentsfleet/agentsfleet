@@ -102,9 +102,13 @@ impl Leasing for NoWork {
         _runner_id: &Uuid7,
         _fleet_id: &Uuid7,
         _now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<Vec<afd_wire::memory::MemoryDelta<'static>>>> + Send
+    ) -> impl Future<Output = afd_fleet::Result<afd_wire::memory::MemoryHydrateResponse<'static>>> + Send
     {
-        std::future::ready(Ok(Vec::new()))
+        std::future::ready(Ok(afd_wire::memory::MemoryHydrateResponse {
+            memory: Vec::new(),
+            shared: Vec::new(),
+            publish: false,
+        }))
     }
 
     /// Stores nothing and says so, for the reason [`NoWork::report`] accepts.
@@ -114,8 +118,23 @@ impl Leasing for NoWork {
         _fleet_id: &Uuid7,
         _request: &afd_wire::memory::MemoryPushRequest<'_>,
         _now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::memory::Captured>> + Send {
-        std::future::ready(Ok(afd_fleet::memory::Captured::default()))
+    ) -> impl Future<Output = afd_fleet::Result<afd_memory::Captured>> + Send {
+        std::future::ready(Ok(afd_memory::Captured::default()))
+    }
+
+    /// Finds nothing, which is what a fleet that has never run remembers.
+    fn recall(
+        &self,
+        _runner_id: &Uuid7,
+        _fleet_id: &Uuid7,
+        _request: &afd_wire::memory::MemoryRecallRequest<'_>,
+        _now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<afd_wire::memory::MemoryRecallResponse<'static>>> + Send
+    {
+        std::future::ready(Ok(afd_wire::memory::MemoryRecallResponse {
+            memory: Vec::new(),
+            shared: Vec::new(),
+        }))
     }
 
     /// Keeps every record a post carries, which is what a plane with room

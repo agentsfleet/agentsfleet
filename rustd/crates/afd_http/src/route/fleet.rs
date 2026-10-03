@@ -44,6 +44,8 @@ pub enum FleetRoute {
     Memories,
     /// One memory entry.
     Memory,
+    /// The fleet's two shared-memory grants.
+    MemoryAccess,
     /// The fleet's integration grants.
     Grants,
     /// Revoking one grant.
@@ -64,6 +66,7 @@ impl FleetRoute {
         Self::ToolCall,
         Self::Memories,
         Self::Memory,
+        Self::MemoryAccess,
         Self::Grants,
         Self::Grant,
     ];
@@ -85,6 +88,7 @@ impl FleetRoute {
             | Self::Grants => &[Verb::Get],
             Self::Memory | Self::Grant => &[Verb::Delete],
             Self::ScheduleSync => &[Verb::Post],
+            Self::MemoryAccess => &[Verb::Patch],
             Self::Messages | Self::Schedules => &[Verb::Get, Verb::Post],
             Self::Detail | Self::Schedule => &[Verb::Get, Verb::Patch, Verb::Delete],
         }
@@ -159,6 +163,13 @@ impl FleetRoute {
             Self::Memory => (
                 api,
                 fleet_path!("/memories/{key}"),
+                Scopes::Always(FLEET_WRITE),
+            ),
+            // Who may read and publish shared memory is an edit to the fleet,
+            // not a lifecycle transition, so it takes the write scope.
+            Self::MemoryAccess => (
+                api,
+                fleet_path!("/memory-access"),
                 Scopes::Always(FLEET_WRITE),
             ),
             Self::Grants => (

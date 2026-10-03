@@ -50,6 +50,8 @@ mod integration_fleet_install_credentials;
 mod integration_fleet_lifecycle;
 #[path = "integration_fleet_memories.rs"]
 mod integration_fleet_memories;
+#[path = "integration_fleet_memory_access.rs"]
+mod integration_fleet_memory_access;
 #[path = "integration_fleet_streams.rs"]
 mod integration_fleet_streams;
 #[path = "integration_invite_email.rs"]

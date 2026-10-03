@@ -25,6 +25,7 @@ use afd_wire::lease::LeasePayload;
 use afd_wire::memory::MemoryHydrateResponse;
 use afd_wire::report::FailureClass;
 use afr_agent::{AgentEngine, Unhosted};
+use afr_memory::Seed;
 use afr_sandbox::{Engine, Limits};
 use tokio::sync::Notify;
 use tokio::time::Instant;
@@ -264,10 +265,17 @@ impl LeaseRun<'_> {
             Ok(memory) => memory,
             Err(failure) => return self.refuse(&failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY),
         };
+        let recaller = memory::Recaller::new(&lessee.plane, &self.ids.fleet, self.lease);
+        let seed = Seed {
+            window: &memory.memory,
+            shared: &memory.shared,
+            publish: memory.publish,
+            recall: Some(&recaller),
+        };
         if needs.sandbox {
-            self.sandboxed(&memory.memory, bundle.as_ref(), sink).await
+            self.sandboxed(seed, bundle.as_ref(), sink).await
         } else {
-            self.drive(&memory.memory, None, sink).await
+            self.drive(seed, None, sink).await
         }
     }
 

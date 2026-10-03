@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use afd_wire::lease::{LeasePayload, LeaseResponse};
-use afd_wire::memory::MemoryHydrateResponse;
+use afd_wire::memory::{MemoryHydrateResponse, MemoryRecallResponse};
 use afd_wire::report::ReportResponse;
 use afd_wire::runner::SelfResponse;
 use afr_sandbox::Limits;
@@ -103,8 +103,16 @@ pub(crate) fn daemon(
 ) -> impl Fn(&Call) -> Answer + Send + Sync + 'static {
     move |call| {
         special(call).unwrap_or_else(|| match call.verb {
-            Verb::Hydrate => json(&MemoryHydrateResponse { memory: Vec::new() }),
+            Verb::Hydrate => json(&MemoryHydrateResponse {
+                memory: Vec::new(),
+                shared: Vec::new(),
+                publish: false,
+            }),
             Verb::Capture => json(&serde_json::json!({"stored": 1, "skipped": 0})),
+            Verb::Recall => json(&MemoryRecallResponse {
+                memory: Vec::new(),
+                shared: Vec::new(),
+            }),
             Verb::Renew => json(&serde_json::json!({"lease_expires_at": GRANTED_UNTIL})),
             Verb::Lease => json(&LeaseResponse {
                 lease: None,

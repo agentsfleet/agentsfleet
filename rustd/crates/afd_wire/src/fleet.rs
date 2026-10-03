@@ -279,3 +279,30 @@ pub enum PatchedFleetResponse<'a> {
 /// moved, so both are ported as they stand. Do not reconcile them without a
 /// decision about that client.
 pub const FLEET_MARKDOWN_MAX_BYTES: usize = 200 * 1024;
+
+/// `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}/memory-access`.
+///
+/// Presence-based like [`PatchFleetRequest`]: an absent grant keeps what the
+/// fleet holds, so a toggle sends only the grant it flips.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryAccessRequest {
+    /// Whether the fleet reads what other fleets in the workspace published.
+    #[serde(default)]
+    pub read: Option<bool>,
+    /// Whether the fleet may publish an entry the workspace reads.
+    #[serde(default)]
+    pub publish: Option<bool>,
+}
+
+/// The two shared-memory grants a fleet holds, as the access route answers.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryAccess {
+    /// Whether the fleet reads what other fleets in the workspace published.
+    pub read: bool,
+    /// Whether the fleet may publish an entry the workspace reads.
+    pub publish: bool,
+}

@@ -5,8 +5,8 @@
 
 use std::borrow::Cow;
 
-use afd_wire::memory::{MAX_CONTENT_LEN, MAX_PUSH_BYTES, MemoryDelta, PINNED_CATEGORY};
-use afr_memory::Hydrated;
+use afd_wire::memory::{MAX_CONTENT_LEN, MAX_PUSH_BYTES, MemoryDelta, PINNED_CATEGORY, Visibility};
+use afr_memory::{Hydrated, Seed};
 use serde_json::json;
 
 use crate::handler::Typed;
@@ -20,13 +20,14 @@ fn hydrated() -> Vec<MemoryDelta<'static>> {
         key: Cow::Borrowed("operator_context:codename"),
         content: Cow::Borrowed("bluebird"),
         category: Cow::Borrowed(PINNED_CATEGORY),
+        visibility: Visibility::Fleet,
     }]
 }
 
 #[tokio::test]
 async fn the_four_tools_share_one_lease_memory() {
     let window = hydrated();
-    let mut lease = Lease::new(Box::new(Hydrated::new(&window)));
+    let mut lease = Lease::new(Box::new(Hydrated::new(Seed::window(&window))));
     let (store, recall, list, forget) = (
         Typed::boxed(MemoryStore),
         Typed::boxed(MemoryRecall),

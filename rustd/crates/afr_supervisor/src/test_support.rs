@@ -24,7 +24,7 @@ use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_executor::{Executor, ProcessId, Spawn};
 use afr_providers::{Connect as _, Connector, Registry};
 use afr_tools::Catalog;
-use afr_tools::catalog::{UPDATE_PLAN, FILE_READ, HTTP_REQUEST};
+use afr_tools::catalog::{FILE_READ, HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::stub::Stub;
 use bytes::Bytes;
 use serde::Serialize;
@@ -267,6 +267,7 @@ pub(crate) fn answer() -> RunOutput {
             key: "k".into(),
             content: "v".into(),
             category: "core".into(),
+            visibility: afd_wire::memory::Visibility::Fleet,
         }],
         trace: None,
         records: Vec::new(),

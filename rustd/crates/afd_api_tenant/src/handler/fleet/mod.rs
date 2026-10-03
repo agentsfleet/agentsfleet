@@ -17,6 +17,7 @@ pub mod detail;
 mod detail_request;
 mod install_request;
 pub mod memory;
+pub mod memory_access;
 mod memory_request;
 pub mod message;
 pub mod message_steer;

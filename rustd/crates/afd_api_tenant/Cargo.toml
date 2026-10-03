@@ -48,6 +48,8 @@ afd_fleet.workspace = true
 afd_fleet_lifecycle.workspace = true
 afd_fleet_runtime.workspace = true
 afd_http.workspace = true
+# The memory page's view, boundary and row, read by the memory routes.
+afd_memory.workspace = true
 afd_library.workspace = true
 # The invite email's types: what a send is given and what it comes to.
 afd_mail.workspace = true

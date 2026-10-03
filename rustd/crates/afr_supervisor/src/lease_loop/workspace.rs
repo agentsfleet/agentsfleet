@@ -2,9 +2,9 @@
 //! support files land where the fleet's instructions find them, the turn runs,
 //! and the sandbox is destroyed exactly once.
 
-use afd_wire::memory::MemoryDelta;
 use afd_wire::report::FailureClass;
 use afr_executor::Executor;
+use afr_memory::Seed;
 use afr_sandbox::{Sandbox, SandboxRequest};
 
 use super::{DETAIL_RENEWAL, LeaseRun, failed};
@@ -25,7 +25,7 @@ impl LeaseRun<'_> {
     /// sandbox that cannot be built ends the lease at startup.
     pub(super) async fn sandboxed(
         &self,
-        memory: &[MemoryDelta<'_>],
+        memory: Seed<'_>,
         bundle: Option<&Bundle>,
         sink: ActivitySink,
     ) -> Ending {
@@ -61,7 +61,7 @@ impl LeaseRun<'_> {
     /// the landing there, so its worker and sandbox are freed at once.
     async fn in_sandbox(
         &self,
-        memory: &[MemoryDelta<'_>],
+        memory: Seed<'_>,
         bundle: Option<&Bundle>,
         sandbox: &dyn Sandbox,
         sink: ActivitySink,

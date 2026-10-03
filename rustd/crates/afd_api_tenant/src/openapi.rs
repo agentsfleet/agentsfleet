@@ -50,6 +50,7 @@ use utoipa::OpenApi as _;
     crate::handler::fleet::list,
     crate::handler::fleet::memory::forget,
     crate::handler::fleet::memory::list,
+    crate::handler::fleet::memory_access::set,
     crate::handler::fleet::message_steer::steer,
     crate::handler::fleet::message::thread,
     crate::handler::fleet_bundles::list,

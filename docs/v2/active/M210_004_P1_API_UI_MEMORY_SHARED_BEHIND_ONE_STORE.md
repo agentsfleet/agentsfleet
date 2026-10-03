@@ -47,7 +47,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 1. `docs/architecture/runner_fleet.md` — §"Memory backends and scope" (both decisions), §"Memory continuity" (hydrate, push, fencing) and the multi-lease isolation invariant the writer-in-identity rule keeps true.
 2. `docs/architecture/memory.md` — §1 scope, §2 the `memory_runtime` role that holds no grant on `core.*`, §5 categories.
-3. `rustd/crates/afd_fleet/src/memory/mod.rs` — the module that becomes the Postgres store; `window.rs` is the hydration window it keeps.
+3. `rustd/crates/afd_memory/src/postgres/mod.rs` — the Postgres store `afd_fleet`'s memory module became; `window.rs` beside it is the hydration window it keeps.
 4. `rustd/crates/afd_api_tenant/src/handler/fleet/memory.rs` — the tenant memory routes the access route sits beside.
 5. `rustd/crates/afr_memory/src/hydrated.rs` — the runner's side, which gains shared entries and the recall miss.
 6. `dispatch/write_sql.md` — §SCHEMA GUARD: at `VERSION` 0.51.1 a schema change is a forward migration over live data.
@@ -65,6 +65,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/MemoryPanel.tsx`, `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/actions.ts`, `ui/packages/app/lib/types.ts`, `ui/packages/app/tests/` | EDIT / CREATE | Two access toggles and a "shared by" mark |
 | `public/openapi.json` | EDIT | Regenerated from the build |
 | `docs/architecture/runner_fleet.md`, `docs/architecture/memory.md`, `docs/architecture/capabilities.md` | EDIT | From "decided" to "built" |
+| Ripple, added at EXECUTE: `rustd/crates/afd_fleet/src/` (`error/`, `lease/{pull,fence,test_dead}.rs`), `afd_fleet/tests/`, `afd_http/` (`Cargo.toml`, `src/services/{memory,leasing}.rs`, `src/handler/refusable.rs`, `src/route/{fleet,runner}.rs`), `afd_api_{tenant,runner}/` (`Cargo.toml`, `src/lib.rs`, `src/openapi.rs`), `afd_api/` (`Cargo.toml`, `src/lib.rs`), `agentsfleetd/` (`Cargo.toml`, `src/plane.rs`, `src/plane/services.rs`, two `tests/`), `afd_bench/` (`Cargo.toml`, one stage), `afd_fleet_lifecycle/tests/integration_purge_ledger_identity.rs`, `afr_supervisor/src/` (`client.rs`, `memory/`, `lease_loop/`, `test_support*`), `afr_agent/src/engine.rs` and four tests, `afr_providers/` (`Cargo.toml`, one test), `afr_tools/src/runtime.rs` | EDIT | Import, wiring and fixture lines the move, the error lift, the two routes, slot 926's new column and `AgentRun`'s seed force; no other change |
 
 ## Applicable Rules
 
@@ -86,7 +87,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Prior-Art / Reference Implementations
 
-- **Reference:** `rustd/crates/afd_fleet/src/memory/` — moved behind the trait, not rewritten; its window and eviction rules stay byte-for-byte.
+- **Reference:** `afd_fleet`'s memory module, now `rustd/crates/afd_memory/src/postgres/` — moved behind the trait, not rewritten; its window and eviction rules stay byte-for-byte.
 - **Reference:** `rustd/crates/afr_providers/src/registry.rs` and `connect.rs` — one trait, a registry choosing the implementation, a refusal for a name with no implementation.
 - **Reference:** mem0 (memories scoped by user, agent and run, filtered at read), Letta (per-agent memory plus blocks shared on purpose), ChatGPT's project-only memory — sharing is a grant, never the default.
 
@@ -96,39 +97,39 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 Every memory read and write in `agentsfleetd`, from the lease paths and both route families, goes through `afd_memory::MemoryStore`; the Postgres store is today's module moved, so a fleet with no grant sees no change. **Implementation default:** `async_trait` with `dyn MemoryStore` held once by `agentsfleetd`, because the store is chosen per workspace at run time.
 
-- **Dimension 1.1** — The Postgres store, reached only through the trait, keeps today's window, upsert, sweep and eviction → Test `test_postgres_store_keeps_fleet_memory_behaviour`
+- **Dimension 1.1** — The Postgres store, reached only through the trait, keeps today's window, upsert, sweep and eviction → Test `test_postgres_store_keeps_fleet_memory_behaviour` — DONE (`rustd/crates/afd_memory/tests/integration_store.rs`)
 
 ### §2 — A flip copies every entry, then switches
 
 `flip(workspace, from, to)` copies every entry of the workspace's fleets, writer and visibility kept, into `to`, then makes `to` the workspace's store. While it copies, a push lands in both stores, and a copied row never replaces a newer one, so no write is lost and none lands only in the old store. A failure before the switch leaves `from` the store, untouched. No endpoint calls `flip`; it is proved against the in-memory store.
 
-- **Dimension 2.1** — A flip copies every entry with its writer and visibility, then switches → Test `test_flip_copies_every_entry_then_switches`
-- **Dimension 2.2** — A copy that fails midway leaves the old store in place and unchanged → Test `test_failed_flip_keeps_the_old_store`
-- **Dimension 2.3** — A push during the copy reaches both stores and survives the copy → Test `test_push_during_flip_reaches_both_stores`
+- **Dimension 2.1** — A flip copies every entry with its writer and visibility, then switches → Test `test_flip_copies_every_entry_then_switches` — DONE (`rustd/crates/afd_memory/src/flip_tests.rs`)
+- **Dimension 2.2** — A copy that fails midway leaves the old store in place and unchanged → Test `test_failed_flip_keeps_the_old_store` — DONE (`rustd/crates/afd_memory/src/flip_tests.rs`)
+- **Dimension 2.3** — A push during the copy reaches both stores and survives the copy → Test `test_push_during_flip_reaches_both_stores` — DONE (`rustd/crates/afd_memory/src/flip_tests.rs`)
 
 ### §3 — Every entry keeps its writer; visibility says who reads it
 
 `926` adds `workspace_id` (backfilled from `core.fleets`, then `NOT NULL`, cascading with the workspace) and `workspace_visible BOOLEAN NOT NULL DEFAULT false`; the unique `(key, fleet_id)` already is the `(workspace_id, fleet_id, key)` identity, since a fleet has one workspace. `memory_store` takes `visibility`, `fleet` by default. A fleet without the publish grant is refused at the tool before the push, and `agentsfleetd` skips such a delta and counts it, so the grant holds even against a runner that skips the tool's check.
 
-- **Dimension 3.1** — The migration gives every existing row its workspace and leaves it fleet-visible; a rerun changes nothing → Test `test_memory_migration_backfills_workspace`
-- **Dimension 3.2** — `visibility: workspace` from a fleet without publish is refused before the push → Test `test_workspace_store_needs_publish`
-- **Dimension 3.3** — `agentsfleetd` skips a workspace-visible delta from a fleet without publish → Test `test_push_skips_an_unpublished_share`
+- **Dimension 3.1** — The migration gives every existing row its workspace and leaves it fleet-visible; a rerun changes nothing → Test `test_memory_migration_backfills_workspace` — DONE (`rustd/crates/afd_memory/tests/integration_migration.rs`)
+- **Dimension 3.2** — `visibility: workspace` from a fleet without publish is refused before the push → Test `test_workspace_store_needs_publish` — DONE (`rustd/crates/afr_tools/src/memory/shared_tests.rs`)
+- **Dimension 3.3** — `agentsfleetd` skips a workspace-visible delta from a fleet without publish → Test `test_push_skips_an_unpublished_share` — DONE (`rustd/crates/afd_memory/tests/integration_store.rs`)
 
 ### §4 — A workspace admin grants read and publish; readers see the writer
 
 `927` adds `memory_reads_workspace` and `memory_publishes_workspace` (`BOOLEAN NOT NULL DEFAULT false`) to `core.fleets`. `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}/memory-access` sets them under `fleet:write`. A granted reader's hydrate adds the workspace-visible entries of its workspace's other fleets, newest first within `HYDRATE_SHARED_BYTES` and after its own window, each naming the writer fleet and when it wrote; recall shows the writer. A run cannot forget or overwrite another fleet's entry.
 
-- **Dimension 4.1** — A granted reader hydrates other fleets' shared entries with their writer; an ungranted one hydrates none → Test `test_shared_memory_reaches_only_granted_fleets`
-- **Dimension 4.2** — The access route sets both grants under `fleet:write` and refuses a token without it → Test `test_memory_access_route_needs_fleet_write`
-- **Dimension 4.3** — Recall names the writer of a shared entry → Test `test_recall_names_the_writer_of_a_shared_entry`
-- **Dimension 4.4** — Forgetting another fleet's entry answers that nothing of this fleet's is under that key → Test `test_forget_leaves_another_fleets_entry`
+- **Dimension 4.1** — A granted reader hydrates other fleets' shared entries with their writer; an ungranted one hydrates none → Test `test_shared_memory_reaches_only_granted_fleets` — DONE (`rustd/crates/afd_memory/tests/integration_shared.rs`)
+- **Dimension 4.2** — The access route sets both grants under `fleet:write` and refuses a token without it → Test `test_memory_access_route_needs_fleet_write` — DONE (`rustd/crates/afd_api/tests/integration_fleet_memory_access.rs`)
+- **Dimension 4.3** — Recall names the writer of a shared entry → Test `test_recall_names_the_writer_of_a_shared_entry` — DONE (`rustd/crates/afr_tools/src/memory/shared_tests.rs`)
+- **Dimension 4.4** — Forgetting another fleet's entry answers that nothing of this fleet's is under that key → Test `test_forget_leaves_another_fleets_entry` — DONE (`rustd/crates/afr_tools/src/memory/shared_tests.rs`)
 
 ### §5 — Recall beyond the window
 
 `POST /v1/runners/me/memory/{fleet_id}/recall` searches the fleet's own entries and, for a granted reader, the workspace's shared ones, key matches first, fenced like the push. The runner asks only when the window answers fewer than the limit, at most `RECALL_MISS_CAP` times per run, and merges without duplicates; past the cap, or when the call fails, recall answers from the window.
 
-- **Dimension 5.1** — A recall the window cannot fill asks once and merges the answer without duplicates → Test `test_recall_miss_asks_agentsfleetd_once`
-- **Dimension 5.2** — A miss past the cap answers from the window with no call → Test `test_recall_miss_cap_answers_from_the_window`
+- **Dimension 5.1** — A recall the window cannot fill asks once and merges the answer without duplicates → Test `test_recall_miss_asks_agentsfleetd_once` — DONE (`rustd/crates/afr_memory/src/shared_tests.rs`)
+- **Dimension 5.2** — A miss past the cap answers from the window with no call → Test `test_recall_miss_cap_answers_from_the_window` — DONE (`rustd/crates/afr_memory/src/shared_tests.rs`)
 
 ### §6 — The fleet page's memory panel
 
@@ -256,5 +257,13 @@ PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}/memory-access { read, publ
 
 - **Consults** — Indy, Oct 03, 2026: "Well you can just flip the memory on a workspace level, its on agentsfleetd-rs level, either we use the default postgres or flip to turbopuffer or anyother (when ever we flip, the old memory must be migrate to the newer memory store we select)"; "The runner will call the api to hydrate the memory as well."; chose "Always via agentsfleetd"; "we must have flexibility to have the memory have a key of the fleet_id, workspace_id as well. The workspace_id are restricted based on scope (access control)"; chose "Workspace setting" for access and "Writer in identity (Recommended)" after asking "i thought the workspace_id and the fleet_id will be unique? so why will the conflict happen?"; chose "Fold into this PR".
 - **Agent defaults** — `HYDRATE_SHARED_BYTES` and `RECALL_MISS_CAP` are named constants set at EXECUTE from the hydrate window budget; the dual write during a flip is the mechanism the no-lost-write invariant rests on.
+- Agent default: `HYDRATE_SHARED_BYTES` is a quarter of the fleet's window (64 KiB) and `RECALL_MISS_CAP` is 3, because shared memory must not crowd a fleet's own and each miss is a round trip the model waits on.
+- Agent default: `flip` is `Memories::flip(workspace, to)` with the current store as `from`, and the publish grant is applied once in `Memories` before any store's `upsert`, because one route table owns "the workspace's store" and no store should restate a grant.
+- Agent default: the route table is an `arc-swap` map, and a write that saw a route a flip replaced writes the store it missed, because that keeps the dual write lock-free.
+- Agent default: a forget during a flip answers `UZ-MEM-003`, because the copy could otherwise put a forgotten entry back.
+- Agent default: the access route is presence-based — an absent grant keeps its value — because a toggle sends only what it flips.
+- Agent default: `MemoryEntry` gains `visibility` and `writer_fleet_id`, and a granted reader's page carries the workspace's shared entries, because §6 marks shared entries on the reader's panel.
+- Agent default: `AgentRun.memory` becomes `afr_memory::Seed` (window, shared, publish, recall seam), because the supervisor is where the hydrate reply and the daemon client live.
+- Agent default: the Files Changed ripple row was added at EXECUTE, because the module move and the two routes cannot compile without those lines.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.

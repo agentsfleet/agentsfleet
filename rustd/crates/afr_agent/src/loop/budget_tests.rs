@@ -247,7 +247,7 @@ async fn a_provider_that_cannot_be_reached_is_an_engine_error() {
     let failure = engine
         .run(AgentRun {
             lease: &lease,
-            memory: &[],
+            memory: afr_memory::Seed::default(),
             executor: None,
             events: &sink,
             stop: &CancellationToken::new(),
