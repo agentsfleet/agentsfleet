@@ -449,7 +449,7 @@ Durable state across runs is the checkpoint in `agentsfleetd`, never runner-loca
 
 ## Memory continuity — durable fleet memory rides the trusted plane
 
-Memory is the second kind of cross-run state, under the same law as the checkpoint: **durable fleet memory lives only in `agentsfleetd`'s Postgres — never in the runner, never in the fleet.** The checkpoint carries run-continuity (where a chunked incident left off). Memory carries the fleet's learned knowledge: the `memory_store` / `memory_recall` durable scratchpad. Both are hydrated into a run and captured out of it; neither is ever runner-local-durable.
+Memory is the second kind of cross-run state, under the same law as the checkpoint: **durable fleet memory lives only behind a backend `agentsfleetd` binds — never in the runner, never in the fleet.** Postgres through `agentsfleetd` is the default and the only backend today; a runner holds at most a short-lived credential scoped to one fleet's namespace (§"Memory backends"). The checkpoint carries run-continuity (where a chunked incident left off). Memory carries the fleet's learned knowledge: the `memory_store` / `memory_recall` durable scratchpad. Both are hydrated into a run and captured out of it; neither is ever runner-local-durable.
 
 The sandboxed child holds **no** `agt_r` token, **no** control-plane URL, and **no** Data Source Name (DSN) — so a prompt-injected fleet cannot be talked into "reach your memory endpoint": none exists inside it. The fleet's in-run working store is **SQLite in `:memory:` mode** (no on-disk file). Durability is the parent's job, over the same `agt_r` `/v1/runners` plane that already carries leases and reports — two endpoints, both fencing-verified like `/reports`:
 
@@ -509,6 +509,33 @@ RUN 2  (next run, same fleet A)                          ◄── THE CARRY-OVE
 **Cadence.** The parent pushes at **run end** (mandatory) and **mid-run** on the existing `memory_checkpoint_every` cadence, so a long run's learned memory is durable before the run finishes — a crash loses at most the work since the last checkpoint push. Because the run-end push lands before `report`, a continuation run (above) hydrates the snapshot the previous run just stored.
 
 **Selection policy.** Hydration is a deterministic, category-pinned byte window — a pure function of (rows, budget). The `core` tier is pinned: every `core` entry, newest-first, within the byte budget. The newest non-core entries fill the remainder. Unknown and custom categories are windowed, never silently pinned. Cap eviction orders the same way — the coldest non-core rows are evicted first, and a `core` row is evicted only when no non-core row remains — so a fact stored once as `core` survives both the window and the cap. No search infrastructure, no scoring: the fleet's own discipline (stable keys, `core` for load-bearing facts, `memory_forget` for stale entries — see [*capabilities.md*](./capabilities.md) §4 memory hygiene) is the primary bound. A dedicated, scalable memory store remains the post-launch direction; the `GET` endpoint is the seam it swaps in behind, with no change to the fleet.
+
+### Memory backends (decided 2026-10-03: C, the hybrid)
+
+Memory sits behind a swappable backend, the way a model provider does: Postgres through `agentsfleetd` is the default, and vendors such as turbopuffer or mem0 can follow. Indy chose option C below on 2026-10-03, which amended the rule above from "only in `agentsfleetd`'s Postgres" to "only behind a backend `agentsfleetd` binds". Only the Postgres path exists today. [`direction.md`](./direction.md) "Fleet-memory recall has no search infrastructure" still stands until a decision on a search-capable vendor reverses it.
+
+**The seam.** One runner-side trait, `MemoryBackend`, over the operations the four memory tools need (store, recall, list, forget) plus the checkpoint the loop calls every `memory_checkpoint_every`. The tools reach it through the lease's state, never a backend directly. The backend, and how it is reached, is the choice:
+
+| Option | Who talks to the vendor | Credential the runner holds | `agentsfleetd` calls per run |
+|---|---|---|---|
+| A · `agentsfleetd` proxies | `agentsfleetd` | none | hydrate and push, plus one per memory call, which the model waits on |
+| B · runner direct | the runner | a long-lived vendor key on every lease | none for a vendor |
+| C · hybrid (chosen) | the runner | a short-lived key scoped to the fleet's namespace | one mint per lease for a vendor; hydrate and push for Postgres |
+
+```
+agentsfleetd (control plane)                     runner (data plane)
+  binds fleet → backend + namespace      ──►     the lease names the backend
+  mints a scoped, expiring key           ──►     MemoryBackend
+  erases the namespace when the fleet is           ├─ Postgres (default): hydrate window, writes held
+  deleted, as the Postgres cascade does today      │    in the run, fenced push at checkpoint and end
+                                                   └─ vendor: store, recall, forget sent as they happen
+```
+
+**Why C was chosen.** `agentsfleetd`'s cost stays fixed per lease however often the model recalls: one mint, cached until it expires, through the verb GitHub tokens already use (`POST /v1/runners/me/credentials/mint`). Postgres keeps today's profile of one hydrate and one push per run. Under A, every recall waits on `agentsfleetd`, so a daemon restart becomes a memory outage mid-run and daemon capacity scales with what models do. Under B, a key reading every tenant's namespace sits on every lease.
+
+**What C requires.** A vendor qualifies for hosted runners only if it issues keys scoped to one namespace with an expiry; `agentsfleetd` keeps the vendor's admin key in the vault to mint them and to erase a deleted fleet's namespace. Unverified: whether turbopuffer and mem0 issue such keys.
+
+**Still open.** When the runner-side trait lands; whether `direction.md`'s no-search rule is reversed for a search-capable vendor; whether the binding is set per workspace or per fleet; which vendor goes first.
 
 ## Live activity (the SSE tail)
 
