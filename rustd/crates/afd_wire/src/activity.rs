@@ -178,7 +178,6 @@ pub struct ActivityRequest<'a> {
 // a bare status; the document gate is what noticed.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ActivityAccepted {
     /// Always `true`: a batch this daemon could not accept is refused with a
     /// problem document, never acknowledged with `false`.

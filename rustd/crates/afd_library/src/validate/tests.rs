@@ -74,6 +74,9 @@ fn support_files_enforce_count_path_individual_and_aggregate_bounds() {
         "a//b".to_owned(),
         "a\\b".to_owned(),
         "../outside".to_owned(),
+        "a/./b".to_owned(),
+        "a/.".to_owned(),
+        "./a".to_owned(),
         "p".repeat(MAX_SUPPORT_PATH_LEN + 1),
     ] {
         value = upload();

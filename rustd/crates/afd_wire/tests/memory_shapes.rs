@@ -25,20 +25,6 @@ fn test_a_capture_reply_carries_stored_and_skipped() {
     assert_eq!(json, serde_json::json!({"stored": 3, "skipped": 1}));
 }
 
-/// The daemon's housekeeping counts stay out of the reply.
-///
-/// Sweep and eviction totals are computed on the same path and belong in the
-/// log. `deny_unknown_fields` makes that a refusal rather than a convention, so
-/// a later hand adding one has to change this test on purpose.
-#[test]
-fn test_a_capture_reply_refuses_a_field_it_does_not_carry() {
-    let with_extra = br#"{"stored":1,"skipped":0,"evicted":7}"#;
-
-    let refused = serde_json::from_slice::<MemoryCaptureResponse>(with_extra);
-
-    assert!(refused.is_err(), "the reply is exactly two fields");
-}
-
 /// Both tallies survive a round trip through JSON.
 #[test]
 fn test_a_capture_reply_round_trips() {

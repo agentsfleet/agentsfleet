@@ -7,6 +7,29 @@
 //! role and knob resolution in [`crate::config`] gets exercised at all without
 //! one test's `DATABASE_URL_API` leaking into another's.
 
+/// The environment variable naming how much to log, read by the daemon and
+/// the runner alike.
+///
+/// Its VALUE is a level — `error`, `warn`, `info`, `debug`, `trace`, `off` —
+/// so `AGENTSFLEET_LOG_LEVEL=debug agentsfleetd serve`. Not a file: records go
+/// to stderr, and where they go from there is the collector's business.
+///
+/// Spelled in full rather than as a bare `AGENTSFLEET_LOG`, so the name says
+/// which knob it is at the call site and in a deployment manifest.
+pub const LOG_LEVEL_VAR: &str = "AGENTSFLEET_LOG_LEVEL";
+
+/// The level [`LOG_LEVEL_VAR`] names, or `fallback` when it is unset or
+/// unreadable.
+///
+/// Falls back rather than refusing: a typo in a debugging aid must not stop a
+/// process starting. Generic over the level type so this value layer links no
+/// logging crate; each binary passes its subscriber's own.
+pub fn log_level<L: core::str::FromStr>(env: &(impl EnvSource + ?Sized), fallback: L) -> L {
+    env.get(LOG_LEVEL_VAR)
+        .and_then(|raw| raw.trim().parse().ok())
+        .unwrap_or(fallback)
+}
+
 /// A source of configuration values, keyed by environment-variable name.
 pub trait EnvSource {
     /// The value for `key`, or `None` when it is unset.
@@ -54,5 +77,34 @@ impl MapEnv {
 impl EnvSource for MapEnv {
     fn get(&self, key: &str) -> Option<String> {
         self.0.get(key).cloned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EnvSource, LOG_LEVEL_VAR, log_level};
+
+    /// An environment holding at most the log-level knob.
+    struct Level(Option<&'static str>);
+
+    impl EnvSource for Level {
+        fn get(&self, key: &str) -> Option<String> {
+            (key == LOG_LEVEL_VAR).then_some(self.0?.to_owned())
+        }
+    }
+
+    #[test]
+    fn the_log_level_is_read_or_falls_back() {
+        assert_eq!(
+            log_level(&Level(Some(" 7 ")), 3_u8),
+            7,
+            "a readable level is used, trimmed"
+        );
+        assert_eq!(
+            log_level(&Level(Some("loud")), 3_u8),
+            3,
+            "an unreadable one falls back"
+        );
+        assert_eq!(log_level(&Level(None), 3_u8), 3, "an unset one falls back");
     }
 }

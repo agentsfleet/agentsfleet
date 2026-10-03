@@ -5,7 +5,11 @@
 //! past the year 50000 — and both survive every test that only compares a
 //! reading against another reading from the same function. So the first test
 //! pins the reading against real calendar bounds.
-use afd_core::clock::{Clock, SystemClock, UnixMillis, now};
+use std::time::Duration;
+
+use afd_core::clock::{
+    Clock, SystemClock, UnixMillis, now, saturating_millis, saturating_millis_signed,
+};
 
 /// 2020-01-01T00:00:00Z. Any reading below this is not milliseconds.
 const YEAR_2020_MS: i64 = 1_577_836_800_000;
@@ -210,4 +214,14 @@ fn test_a_pre_epoch_clock_reads_negative_rather_than_zero() {
         -1,
         "and the seconds view truncates toward zero, as the Zig daemon does"
     );
+}
+
+#[test]
+fn test_a_span_reads_in_whole_milliseconds_and_saturates() {
+    let span = Duration::from_micros(2_999);
+
+    assert_eq!(saturating_millis(span), 2);
+    assert_eq!(saturating_millis_signed(span), 2);
+    assert_eq!(saturating_millis(Duration::MAX), u64::MAX);
+    assert_eq!(saturating_millis_signed(Duration::MAX), i64::MAX);
 }

@@ -1,0 +1,52 @@
+[package]
+name = "afr_executor"
+autotests = false
+description = "The runner's executor: processes and files inside one sandbox, served over a Unix socket, and the supervisor's client for it."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# The object-only gate every message from the other end of the socket decodes
+# through: both ends treat the other as untrusted.
+afd_core.workspace = true
+# The executor seam is `dyn`: the agent loop holds whichever engine's executor
+# the lease got, so the trait needs object-safe async methods.
+async-trait.workspace = true
+# Output and file bytes ride the JSON-RPC lines as base64.
+base64.workspace = true
+# Output chunks are reference-counted slices: a chunk read once is handed on,
+# and the head and tail it lands in are cut, without a copy.
+# The bounded retry a supervisor connects through while the executor starts.
+backon.workspace = true
+bytes.workspace = true
+cap-std.workspace = true
+futures-util = { workspace = true, features = ["sink"] }
+jsonrpsee-types.workspace = true
+portable-pty.workspace = true
+rustix.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["fs", "io-util", "net", "process", "rt", "sync", "time", "macros"] }
+tokio-util = { workspace = true, features = ["codec", "io", "rt"] }
+tracing.workspace = true
+
+[dev-dependencies]
+# The log capture a test reads a process's end back through.
+afd_core = { workspace = true, features = ["test-util"] }
+tempfile.workspace = true
+tokio = { workspace = true, features = ["fs", "io-util", "net", "process", "rt", "rt-multi-thread", "sync", "time", "macros"] }
+
+[[test]]
+name = "executor_suite"
+path = "tests/executor_suite.rs"
