@@ -273,8 +273,11 @@ pub fn edge_fits(edge: &str) -> bool {
 /// How many bytes `value` encodes to as compact JSON.
 ///
 /// Encoding maps with string keys, strings and integers cannot fail; a failure
-/// would answer the largest size, which every bound refuses.
-pub(crate) fn encoded_len<T: Serialize>(value: &T) -> usize {
+/// would answer the largest size, which every bound refuses. Public so the
+/// runner that fits a trace or a record to these bounds measures it the way
+/// they are checked.
+#[must_use]
+pub fn encoded_len<T: Serialize>(value: &T) -> usize {
     serde_json::to_vec(value).map_or(usize::MAX, |bytes| bytes.len())
 }
 
