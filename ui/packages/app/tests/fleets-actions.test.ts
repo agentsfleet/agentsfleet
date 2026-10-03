@@ -15,6 +15,7 @@ const {
   getFleetMock,
   saveFleetSourceMock,
   forgetMemoryMock,
+  setMemoryAccessMock,
   installFleetMock,
   onboardWorkspaceFleetLibraryMock,
   getFleetEventMock,
@@ -28,6 +29,7 @@ const {
     getFleetMock: vi.fn(),
     saveFleetSourceMock: vi.fn(),
     forgetMemoryMock: vi.fn(),
+    setMemoryAccessMock: vi.fn(),
     installFleetMock: vi.fn(),
     onboardWorkspaceFleetLibraryMock: vi.fn(),
   }));
@@ -43,6 +45,7 @@ vi.mock("@/lib/api/fleets", () => ({
 }));
 vi.mock("@/lib/api/memory", () => ({
   forgetMemory: forgetMemoryMock,
+  setMemoryAccess: setMemoryAccessMock,
 }));
 vi.mock("@/lib/api/fleet-library", () => ({
   onboardWorkspaceFleetLibrary: onboardWorkspaceFleetLibraryMock,
@@ -58,6 +61,7 @@ import {
   getFleetDetailAction,
   saveFleetSourceAction,
   forgetMemoryAction,
+  setMemoryAccessAction,
   installFleetAction,
   onboardLibraryEntryAction,
   getFleetEventAction,
@@ -140,6 +144,13 @@ describe("fleet server actions — thin token-forwarders", () => {
     const r = await forgetMemoryAction("ws1", "z1", "style");
     expect(r).toEqual({ ok: true, data: undefined });
     expect(forgetMemoryMock).toHaveBeenCalledWith("ws1", "z1", "style", "tok");
+  });
+
+  it("setMemoryAccessAction forwards the grant change with token last and returns both grants", async () => {
+    setMemoryAccessMock.mockResolvedValueOnce({ read: true, publish: false });
+    const r = await setMemoryAccessAction("ws1", "z1", { read: true });
+    expect(r).toEqual({ ok: true, data: { read: true, publish: false } });
+    expect(setMemoryAccessMock).toHaveBeenCalledWith("ws1", "z1", { read: true }, "tok");
   });
 
   it("installFleetAction forwards ws + platform-template body with token last", async () => {

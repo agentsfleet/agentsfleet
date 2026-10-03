@@ -94,3 +94,35 @@ describe("forgetMemory", () => {
     expect(err.code).toBe("UZ-MEM-004");
   });
 });
+
+describe("setMemoryAccess", () => {
+  it("PATCH …/memory-access sends only the changed grant and returns both as they stand", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: headers(),
+      json: async () => ({ read: false, publish: true }),
+    });
+    const { setMemoryAccess } = await import("./memory");
+    const res = await setMemoryAccess("ws_1", "z_1", { publish: true }, "tok");
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/workspaces/ws_1/fleets/z_1/memory-access"),
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ publish: true }) }),
+    );
+    expect(res).toEqual({ read: false, publish: true });
+  });
+
+  it("a token without fleet:write throws ApiError 403", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 403,
+      headers: headers(),
+      json: async () => ({ error_code: "UZ-AUTH-022", detail: "fleet:write required" }),
+    });
+    const { setMemoryAccess } = await import("./memory");
+    const err = (await setMemoryAccess("ws_1", "z_1", { read: true }, "tok").catch((e) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.status).toBe(403);
+    expect(err.code).toBe("UZ-AUTH-022");
+  });
+});
