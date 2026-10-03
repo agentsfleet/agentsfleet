@@ -36,9 +36,7 @@ procfs-core.workspace = true
 # process calls a sandbox is built with. The executor links it already.
 rustix.workspace = true
 thiserror.workspace = true
-# `rt-multi-thread` for `block_in_place`: a sandbox dropped without a teardown
-# releases off the worker it dropped on.
-tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "time"] }
+tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "sync", "time"] }
 tokio-util = { workspace = true, features = ["codec"] }
 tracing.workspace = true
 # The in-sandbox process logs to the error stream the supervisor drains.

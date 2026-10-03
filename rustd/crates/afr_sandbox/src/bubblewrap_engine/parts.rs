@@ -174,6 +174,18 @@ impl Parts {
         released
     }
 
+    /// Moves everything still held into parts of its own, leaving these empty.
+    fn take(&mut self) -> Self {
+        Self {
+            lease_id: std::mem::take(&mut self.lease_id),
+            dir: self.dir.take(),
+            disk: self.disk.take(),
+            cgroup: self.cgroup.take(),
+            child: self.child.take(),
+            stderr: self.stderr.take(),
+        }
+    }
+
     /// Releases everything still held, in the one order that works: processes
     /// die before their cgroup goes, and the disk is unmounted before its
     /// directory is removed. A disk that will not unmount keeps its directory,
@@ -220,20 +232,27 @@ impl Drop for Parts {
             || self.disk.is_some()
             || self.cgroup.is_some()
             || self.child.is_some();
-        if held {
-            // A cgroup can take seconds to empty. On a multi-thread runtime the
-            // worker first hands its other tasks to a sibling, so they are not
-            // held up; a current-thread runtime, or none, has no sibling to
-            // hand them to, and releases in place.
-            let flavor =
-                tokio::runtime::Handle::try_current().map(|runtime| runtime.runtime_flavor());
-            let released = match flavor {
-                Ok(tokio::runtime::RuntimeFlavor::MultiThread) => {
-                    tokio::task::block_in_place(|| self.release())
-                }
-                _single_or_none => self.release(),
-            };
-            log_release(&self.lease_id, released.as_ref().err());
+        if !held {
+            return;
+        }
+        let mut owned = self.take();
+        let mut release = move || {
+            let released = owned.release();
+            log_release(&owned.lease_id, released.as_ref().err());
+        };
+        // A cgroup can take seconds to empty. On a runtime of either flavor
+        // the release goes to its blocking pool, logging where this thread
+        // logs, so a drop never holds a worker; with no runtime there is no
+        // worker to hold. A release a stopping runtime never runs is left to
+        // the boot sweep.
+        match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => {
+                let logs = tracing::dispatcher::get_default(Clone::clone);
+                drop(runtime.spawn_blocking(move || {
+                    tracing::dispatcher::with_default(&logs, release);
+                }));
+            }
+            Err(_no_runtime) => release(),
         }
     }
 }
