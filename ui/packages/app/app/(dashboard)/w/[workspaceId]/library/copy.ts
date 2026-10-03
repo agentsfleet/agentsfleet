@@ -24,13 +24,8 @@ export const REMOVE_CONFIRM_LABEL = "Remove";
 // tooltip body and the accessible name — one string, so the two cannot drift.
 export const REMOVE_ROW_LABEL = "Remove from this workspace";
 
-export const COLUMN_NAME = "Name";
-export const COLUMN_SOURCE = "Source";
-// "Time", not "Onboarded": the cell is a relative instant and the header names
-// what it holds rather than restating the sentence the page description already
-// makes (Indy, 2026-09-22).
-export const COLUMN_TIME = "Time";
-export const COLUMN_ACTIONS = "Actions";
+export const STATUS_LABEL_READY = "Ready";
+export const STATUS_HELP_READY = "Bundle stored. Available in this workspace gallery.";
 
 // Load more, and what a failed one says. The label matches the runner wall's,
 // because two pages that page differently teach an operator two habits.
