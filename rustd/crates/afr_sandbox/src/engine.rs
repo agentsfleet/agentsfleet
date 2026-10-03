@@ -1,7 +1,7 @@
 //! The interface every engine meets.
 
 use std::fmt;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use afr_executor::Executor;
 
@@ -49,18 +49,59 @@ pub struct SandboxRequest<'a> {
     pub limits: Limits,
 }
 
-impl SandboxRequest<'_> {
-    /// The lease's own directory under `base`.
+impl<'a> SandboxRequest<'a> {
+    /// The lease's identifier, checked as a name its directory and its cgroup
+    /// can both carry.
     ///
     /// # Errors
-    /// The lease identifier is not exactly one plain path component, so it
-    /// could name a directory outside `base` or one shared with another lease.
-    pub fn lease_dir(&self, base: &Path) -> Result<PathBuf> {
-        let mut parts = Path::new(self.lease_id).components();
-        match (parts.next(), parts.next()) {
-            (Some(Component::Normal(name)), None) => Ok(base.join(name)),
-            _escapes => Err(crate::error::lease_id_unsafe(self.lease_id)),
+    /// The identifier is not exactly one plain path segment, so it could name
+    /// a directory outside its base or one shared with another lease.
+    pub(crate) fn name(&self) -> Result<LeaseName<'a>> {
+        LeaseName::parse(self.lease_id)
+    }
+}
+
+/// A lease identifier that is one plain path segment: no separator, not empty,
+/// not `.` or `..`. Checked once, so the directory and the cgroup named by it
+/// are the same lease's.
+///
+/// A segment is checked as text rather than through `Path::components`, which
+/// reads `x/` and `x/.` as the single segment `x`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LeaseName<'a>(&'a str);
+
+impl<'a> LeaseName<'a> {
+    /// The segments that name a directory without being one of their own.
+    const RELATIVE: [&'static str; 2] = [".", ".."];
+
+    /// `lease_id` as a name, or a refusal.
+    fn parse(lease_id: &'a str) -> Result<Self> {
+        let plain = !lease_id.is_empty()
+            && !lease_id.contains(std::path::MAIN_SEPARATOR)
+            && !lease_id.contains('\0')
+            && !Self::RELATIVE.contains(&lease_id);
+        if plain {
+            Ok(Self(lease_id))
+        } else {
+            Err(crate::error::lease_id_unsafe(lease_id))
         }
+    }
+
+    /// The name as given.
+    #[cfg_attr(
+        not(target_os = "linux"),
+        expect(
+            dead_code,
+            reason = "the bubblewrap engine, Linux only, names its cgroup by it"
+        )
+    )]
+    pub(crate) const fn as_str(self) -> &'a str {
+        self.0
+    }
+
+    /// The lease's own directory under `base`.
+    pub(crate) fn dir_in(self, base: &Path) -> PathBuf {
+        base.join(self.0)
     }
 }
 

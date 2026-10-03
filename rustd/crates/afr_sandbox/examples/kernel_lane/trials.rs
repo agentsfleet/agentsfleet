@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use afr_executor::Ending;
-use afr_sandbox::{BubblewrapEngine, Engine, Limits, ProbePaths, SandboxRequest, WarmSlots};
+use afr_sandbox::{BubblewrapEngine, Engine, Limits, ProbePaths, SandboxRequest, WarmSlots, probe};
 use libtest_mimic::{Arguments, Conclusion, Failed, Trial};
 
 use crate::confinement::{landlock_denies, no_capabilities, plants_nothing, seccomp_refuses};
@@ -47,7 +47,7 @@ type Body = fn(&Lane) -> Result<(), Failed>;
 
 /// Runs every trial against `lane`, one at a time.
 pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
-    let rows: [(&str, Body); 12] = [
+    let rows: [(&str, Body); 13] = [
         ("test_sandbox_process_has_no_capabilities", no_capabilities),
         (
             "test_sandbox_cannot_plant_files_on_the_host",
@@ -64,6 +64,10 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
         ),
         ("test_cgroup_limits_contain_runaway", runaway),
         ("test_sandbox_has_no_network", no_network),
+        (
+            "test_sandbox_has_private_shared_memory_and_cgroup_view",
+            shared_memory_and_cgroup_view,
+        ),
         ("test_unbuildable_sandbox_refuses_lease", unbuildable),
         ("test_toolbox_build_is_reproducible", reproducible),
         ("test_lease_sees_toolbox_read_only", toolbox_read_only),
@@ -151,17 +155,32 @@ fn no_network(lane: &Lane) -> Result<(), Failed> {
     )
 }
 
+fn shared_memory_and_cgroup_view(lane: &Lane) -> Result<(), Failed> {
+    // A multiprocessing lock is a POSIX semaphore, made in `/dev/shm`.
+    let script = "python3 -c 'import multiprocessing; multiprocessing.Lock(); print(\"locked\")' \
+                  && cat /proc/self/cgroup";
+    let said = in_sandbox(lane, "shm", Limits::default(), script)?.output;
+    expect(
+        said.contains("locked"),
+        format!("shared memory is writable, got {said:?}"),
+    )?;
+    expect(
+        said.lines().any(|line| line == "0::/"),
+        format!("the lease sees its cgroup as the root, got {said:?}"),
+    )
+}
+
 fn unbuildable(lane: &Lane) -> Result<(), Failed> {
     let fake = tempfile::tempdir().map_err(|error| error.to_string())?;
     let lsm = fake.path().join("lsm");
     fs::write(&lsm, "capability,yama").map_err(|error| error.to_string())?;
     let mut config = lane.config.clone();
-    config.probe = ProbePaths {
+    let host = probe(&ProbePaths {
         lsm,
-        ..ProbePaths::default()
-    };
+        ..config.probe_paths()
+    });
     config.state_dir = fake.path().join(LEASES);
-    let refused = BubblewrapEngine::new(config)
+    let refused = BubblewrapEngine::new(config, &host)
         .err()
         .and_then(|error| error.missing_mechanism());
     expect(

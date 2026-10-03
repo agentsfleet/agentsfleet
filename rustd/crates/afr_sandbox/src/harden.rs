@@ -11,7 +11,7 @@ use std::fs;
 use procfs_core::FromRead as _;
 use procfs_core::process::Status;
 
-use crate::bubblewrap::{SANDBOX_TMP, SANDBOX_WORKSPACE};
+use crate::bubblewrap::{DEV_SHM, SANDBOX_TMP, SANDBOX_WORKSPACE};
 use crate::error::{Result, unconfined};
 
 /// The process status file the checks read.
@@ -24,7 +24,7 @@ const DEV_PTS: &str = "/dev/pts";
 ///
 /// The executor's socket directory is not among them: the socket is bound
 /// before confinement, and the directory is a host path no tenant may fill.
-pub const WRITABLE: [&str; 3] = [SANDBOX_WORKSPACE, SANDBOX_TMP, DEV_PTS];
+pub const WRITABLE: [&str; 4] = [SANDBOX_WORKSPACE, SANDBOX_TMP, DEV_PTS, DEV_SHM];
 /// Single devices it may also write: what shells and pseudo-terminals open.
 pub const WRITABLE_DEVICES: [&str; 5] = [
     "/dev/null",
@@ -55,6 +55,18 @@ pub fn harden() -> Result<()> {
 #[cfg(not(target_os = "linux"))]
 pub fn harden() -> Result<()> {
     Err(crate::error::refused(crate::probe::MECHANISM_LANDLOCK))
+}
+
+/// Whether this kernel enforces the Landlock ruleset [`harden`] installs.
+#[cfg(target_os = "linux")]
+pub(crate) fn landlock_enforceable() -> bool {
+    linux::ruleset_supported()
+}
+
+/// Only Linux has Landlock.
+#[cfg(not(target_os = "linux"))]
+pub(crate) const fn landlock_enforceable() -> bool {
+    false
 }
 
 /// `/proc/<pid>/status` text, parsed, or a refusal: a status that does not

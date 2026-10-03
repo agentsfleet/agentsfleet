@@ -46,22 +46,30 @@ pub(crate) const X32_SYSCALL_BIT: u32 = 0x4000_0000;
 
 /// Reads everywhere; writes only beneath [`WRITABLE`] and to [`WRITABLE_DEVICES`].
 pub(super) fn restrict_file_system() -> Result<()> {
-    // A hard requirement: a kernel that can enforce only part of the ruleset
-    // is an error here, never a partially confined sandbox.
-    let (read, write) = (
-        AccessFs::from_read(LANDLOCK_ABI),
-        AccessFs::from_all(LANDLOCK_ABI),
-    );
+    let read = AccessFs::from_read(LANDLOCK_ABI);
+    let write = AccessFs::from_all(LANDLOCK_ABI);
     let rules = path_beneath_rules([ROOT], read)
         .chain(path_beneath_rules(WRITABLE, write))
         .chain(path_beneath_rules(WRITABLE_DEVICES, write));
-    Ruleset::default()
-        .set_compatibility(CompatLevel::HardRequirement)
-        .handle_access(write)?
-        .create()?
-        .add_rules(rules)?
-        .restrict_self()?;
+    ruleset()?.create()?.add_rules(rules)?.restrict_self()?;
     Ok(())
+}
+
+/// Whether this kernel builds the ruleset every sandbox is confined by. It
+/// asks the kernel and changes nothing; listing Landlock as a security module
+/// is not enough, since a kernel older than [`LANDLOCK_ABI`] lists it and then
+/// refuses the ruleset.
+pub(super) fn ruleset_supported() -> bool {
+    ruleset().is_ok()
+}
+
+/// The ruleset every sandbox is confined by, before its rules are added. A
+/// hard requirement: a kernel that can enforce only part of it is refused
+/// here, never left as a partially confined sandbox.
+fn ruleset() -> Result<Ruleset> {
+    Ok(Ruleset::default()
+        .set_compatibility(CompatLevel::HardRequirement)
+        .handle_access(AccessFs::from_all(LANDLOCK_ABI))?)
 }
 
 /// Installs the programs that answer [`REFUSED`], and every call numbered at

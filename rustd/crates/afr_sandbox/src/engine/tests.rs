@@ -11,7 +11,9 @@ fn request(lease_id: &str) -> SandboxRequest<'_> {
 
 #[test]
 fn test_a_lease_directory_is_one_component_under_its_base() {
-    let dir = request("0198f0c2-7a3e-7c1d-9b2e-4f6a8c0d1e2f").lease_dir(Path::new("/srv/leases"));
+    let dir = request("0198f0c2-7a3e-7c1d-9b2e-4f6a8c0d1e2f")
+        .name()
+        .map(|name| name.dir_in(Path::new("/srv/leases")));
 
     assert_eq!(
         dir.ok().as_deref(),
@@ -23,8 +25,10 @@ fn test_a_lease_directory_is_one_component_under_its_base() {
 
 #[test]
 fn test_a_lease_identifier_that_could_leave_its_base_is_refused() {
-    for unsafe_id in ["", ".", "..", "../etc", "a/b", "/abs", "a/.."] {
-        let refused = request(unsafe_id).lease_dir(Path::new("/srv/leases"));
+    for unsafe_id in [
+        "", ".", "..", "../etc", "a/b", "/abs", "a/..", "x/", "x/.", "a\0b",
+    ] {
+        let refused = request(unsafe_id).name();
 
         assert!(
             refused.is_err_and(|error| error.to_string().contains("single path component")),

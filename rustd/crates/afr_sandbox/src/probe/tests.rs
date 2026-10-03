@@ -7,7 +7,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 
-use super::{HostProbe, Kvm, ProbePaths, probe};
+use super::{HostProbe, Kvm, ProbePaths, read};
 
 /// A host stated as files: every fact present unless a test removes it.
 fn host(dir: &Path) -> ProbePaths {
@@ -42,7 +42,7 @@ fn host(dir: &Path) -> ProbePaths {
 fn test_capability_probe_states_every_mechanism_it_finds() {
     let dir = tempfile::tempdir().unwrap();
 
-    let found = probe(&host(dir.path()));
+    let found = read(&host(dir.path()), true);
 
     assert_eq!(
         found,
@@ -65,9 +65,9 @@ fn test_capability_probe_states_kvm_absent_and_denied() {
     let paths = host(dir.path());
 
     fs::set_permissions(&paths.kvm, fs::Permissions::from_mode(0o000)).unwrap();
-    let denied = probe(&paths).kvm;
+    let denied = read(&paths, true).kvm;
     fs::remove_file(&paths.kvm).unwrap();
-    let absent = probe(&paths).kvm;
+    let absent = read(&paths, true).kvm;
 
     assert_eq!((denied, absent), (Kvm::Denied, Kvm::Absent));
 }
@@ -78,7 +78,7 @@ fn test_a_host_missing_a_mechanism_names_the_first_one() {
     let paths = host(dir.path());
     let missing = |edit: &dyn Fn()| {
         edit();
-        probe(&paths).missing()
+        read(&paths, true).missing()
     };
 
     assert_eq!(
@@ -96,14 +96,14 @@ fn test_a_host_missing_a_mechanism_names_the_first_one() {
     );
     fs::write(&paths.filesystems, "\terofs\n").unwrap();
     // Throughput limits are required too: a host without `io` builds nothing.
-    assert_eq!(probe(&paths).missing(), Some("io"));
-    assert!(!probe(&paths).has_required_controllers());
+    assert_eq!(read(&paths, true).missing(), Some("io"));
+    assert!(!read(&paths, true).has_required_controllers());
     fs::write(
         paths.cgroup_root.join("cgroup.subtree_control"),
         "cpu io memory",
     )
     .unwrap();
-    assert_eq!(probe(&paths).missing(), Some("pids"));
+    assert_eq!(read(&paths, true).missing(), Some("pids"));
     assert_eq!(
         missing(&|| fs::set_permissions(&paths.bwrap, fs::Permissions::from_mode(0o644)).unwrap()),
         Some("bubblewrap")
@@ -131,7 +131,7 @@ fn test_unreadable_facts_read_as_absent_mechanisms() {
         bwrap: nowhere,
     };
 
-    let found = probe(&paths);
+    let found = read(&paths, true);
 
     assert_eq!(found.missing(), Some("landlock"));
     assert!(found.cgroup_controllers.is_empty());
@@ -145,4 +145,17 @@ fn test_default_paths_are_the_kernels_own() {
     assert_eq!(paths.lsm, Path::new(super::LSM_PATH));
     assert_eq!(paths.kvm, Path::new(super::KVM_PATH));
     assert_eq!(paths.bwrap, Path::new(super::BWRAP_PATH));
+}
+
+/// A kernel that lists Landlock but is older than the interface the sandbox's
+/// ruleset needs builds no sandbox: the ruleset would be refused at every
+/// lease.
+#[test]
+fn test_a_kernel_too_old_for_the_ruleset_reads_as_without_landlock() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let found = read(&host(dir.path()), false);
+
+    assert!(!found.landlock);
+    assert_eq!(found.missing(), Some("landlock"));
 }

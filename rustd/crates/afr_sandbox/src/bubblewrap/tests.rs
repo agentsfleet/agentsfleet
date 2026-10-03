@@ -46,6 +46,7 @@ fn test_every_namespace_is_new_and_nothing_is_kept() {
         "--unshare-ipc",
         "--unshare-uts",
         "--unshare-net",
+        "--unshare-cgroup",
         "--disable-userns",
         "--clearenv",
         "--die-with-parent",
@@ -56,6 +57,20 @@ fn test_every_namespace_is_new_and_nothing_is_kept() {
     assert_eq!(
         after(&argv, "--cap-drop", "ALL")[..2],
         ["--cap-drop", "ALL"]
+    );
+}
+
+#[test]
+fn test_shared_memory_is_a_private_tmpfs_every_user_writes() {
+    let argv = argv();
+
+    assert_eq!(
+        after(&argv, "--perms", "1777"),
+        ["--perms", "1777", "--tmpfs"]
+    );
+    assert!(
+        argv.windows(2)
+            .any(|pair| pair[0] == "--tmpfs" && pair[1] == "/dev/shm")
     );
 }
 
