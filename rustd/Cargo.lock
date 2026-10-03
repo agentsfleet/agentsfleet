@@ -176,6 +176,7 @@ dependencies = [
  "afd_http",
  "afd_library",
  "afd_runner",
+ "afd_validate",
  "afd_wire",
  "axum",
  "garde",
@@ -226,6 +227,7 @@ dependencies = [
  "afd_observability",
  "afd_sse",
  "afd_tenant",
+ "afd_validate",
  "afd_vault",
  "afd_webhook",
  "afd_wire",
@@ -349,6 +351,7 @@ dependencies = [
 name = "afd_core"
 version = "0.51.1"
 dependencies = [
+ "afd_validate",
  "base64 0.23.1",
  "hex",
  "serde",
@@ -863,6 +866,13 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+]
+
+[[package]]
+name = "afd_validate"
+version = "0.51.1"
+dependencies = [
+ "garde",
 ]
 
 [[package]]

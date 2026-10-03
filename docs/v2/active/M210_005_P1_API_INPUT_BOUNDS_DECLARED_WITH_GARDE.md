@@ -100,9 +100,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 `afd_validate` exports `finite` (refuses NaN and both infinities), `nul_free`, `ascii_digits` and a charset rule, each a garde `custom` function. It also exports `Limit`, which parses `?limit`, refuses non-digits and then proves `1..=ceiling` with the ceiling passed as garde context; an empty value means the route's default. `Sentences` is a route's `&'static` table from report path to sentence plus a fallback, so a caller never reads garde's own text. `Paging::parse` takes the caller's ceiling. The four `detail_for`/`entry_detail` mappers become `Sentences` tables.
 
-- **Dimension 1.1** — `finite` refuses NaN, +∞ and −∞ and admits every finite value → Test `test_finite_refuses_nan_and_infinity`
-- **Dimension 1.2** — `Limit` refuses 0, ceiling + 1 and non-digits with the route's sentences and maps empty to the default → Test `test_limit_takes_each_routes_ceiling`
-- **Dimension 1.3** — `Sentences` answers the first entry whose path the report names, else its fallback → Test `test_sentences_pick_the_reported_path`
+- **Dimension 1.1** — `finite` refuses NaN, +∞ and −∞ and admits every finite value → Test `test_finite_refuses_nan_and_infinity` — DONE (`rustd/crates/afd_validate/src/rules/tests.rs`)
+- **Dimension 1.2** — `Limit` refuses 0, ceiling + 1 and non-digits with the route's sentences and maps empty to the default → Test `test_limit_takes_each_routes_ceiling` — DONE (`rustd/crates/afd_validate/src/limit/tests.rs`)
+- **Dimension 1.3** — `Sentences` answers the first entry whose path the report names, else its fallback → Test `test_sentences_pick_the_reported_path` — DONE (`rustd/crates/afd_validate/src/sentences/tests.rs`)
 
 ### §2 — A bound runs before the parser it protects
 
@@ -274,5 +274,7 @@ cron/timezone/channel/name/segment parsers: fn parse(input: &garde::Valid<T>) ->
 
 - **Consults** — Indy, Oct 03, 2026: "The schemars/garge must be fixed in this mielstone/PR"; chose "Convert everything" for the hand-written input checks, with public sentences free to change where garde cannot match them (superseding "Keep messages identical" for those cases); the standards list, restated Oct 03: "Ensure there are no duplicates, no handrolled code, use of popular standard crates for known pattern of code as opposed to hand rolling, repetitive code is abstracted, and use of afd_core/?" and "and smaller crates".
 - **Agent defaults** — "everything" is the inventory's 56 input checks outside garde; pre-parse byte caps and budgets stay hand-written (Out of Scope says why); the provider bound settles at 64; the sentence corrections are the three named in §2–§4.
+- **Agent default:** `?limit=` (empty) means the route's default on every list route, the rule §1 states, because §1 is more specific than Product Clarity #2; it flips the pins that refused an empty limit (thread, events, approvals).
+- **Agent default:** the `model_id` entry route picks one of two `Sentences` tables by whether `model_id` is blank, because one garde bound at one path answers two repairs.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.

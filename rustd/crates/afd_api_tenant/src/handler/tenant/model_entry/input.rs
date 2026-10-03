@@ -15,6 +15,7 @@ use afd_core::id::Uuid7;
 use afd_core::paging::QUERY_STARTING_AFTER;
 use afd_core::paging::struct_cursor;
 use afd_credential::provider::Boundary;
+use afd_validate::Sentences;
 
 use crate::handler::tenant::models::DETAIL_CURSOR_MALFORMED;
 use crate::handler::{Refusal, parameter};
@@ -69,30 +70,41 @@ pub(super) fn parse_entry_id(raw: &str) -> Result<Uuid7, Refusal> {
     Uuid7::parse(raw).map_err(|_not_an_identifier| Refusal::malformed(DETAIL_ENTRY_ID))
 }
 
-/// The sentence a caller is told, for the bound their body broke.
+/// The refusal for the bound a request body broke.
 ///
 /// The BOUNDS live on the request types in [`afd_wire::tenant_model_entry`];
-/// what stays here is the wording, which the dashboard renders and is therefore
-/// a public contract. `garde` reports a PATH and a message: the path picks the
-/// field, and for `model_id` the VALUE picks which of its two sentences, since
-/// blank and oversized are different repairs and garde's own message is not the
-/// copy this surface promises. A `model_id` break wins over a `secret_ref` one,
-/// which is the order the two `if`s here read in before the bounds moved.
-pub(super) fn entry_detail(report: &garde::Report, model_id: &str) -> Refusal {
-    let detail = report
-        .iter()
-        .next()
-        .map_or(DETAIL_MODEL_ID_REQUIRED, |(path, _message)| {
-            if path.to_string() == FIELD_SECRET_REF {
-                DETAIL_SECRET_REF_REQUIRED
-            } else if model_id.is_empty() {
-                DETAIL_MODEL_ID_REQUIRED
-            } else {
-                DETAIL_MODEL_ID_TOO_LONG
-            }
-        });
-    Refusal::malformed(detail)
+/// the wording stays here because the dashboard renders it. A blank and an
+/// oversized `model_id` break one bound at one path yet are different repairs,
+/// so the value picks the table and the table picks the sentence. A `model_id`
+/// break wins over a `secret_ref` one: it is listed first.
+pub(super) fn bound_refusal(report: &garde::Report, model_id: &str) -> Refusal {
+    let table = if model_id.is_empty() {
+        &BOUNDS_BLANK_MODEL_ID
+    } else {
+        &BOUNDS
+    };
+    Refusal::malformed(table.pick(report))
 }
 
+/// The sentences for a body whose `model_id` is present.
+const BOUNDS: Sentences = Sentences::new(
+    &[
+        (FIELD_MODEL_ID, DETAIL_MODEL_ID_TOO_LONG),
+        (FIELD_SECRET_REF, DETAIL_SECRET_REF_REQUIRED),
+    ],
+    DETAIL_MODEL_ID_REQUIRED,
+);
+
+/// The sentences for a body whose `model_id` is blank.
+const BOUNDS_BLANK_MODEL_ID: Sentences = Sentences::new(
+    &[
+        (FIELD_MODEL_ID, DETAIL_MODEL_ID_REQUIRED),
+        (FIELD_SECRET_REF, DETAIL_SECRET_REF_REQUIRED),
+    ],
+    DETAIL_MODEL_ID_REQUIRED,
+);
+
+/// The path `garde` reports a model-identity break under.
+const FIELD_MODEL_ID: &str = "model_id";
 /// The path `garde` reports a credential-reference break under.
 const FIELD_SECRET_REF: &str = "secret_ref";
