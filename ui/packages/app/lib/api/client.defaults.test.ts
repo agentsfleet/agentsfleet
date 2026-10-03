@@ -22,9 +22,13 @@ const OK_BODY = { ok: 1 };
 const TRANSIENT_STATUS = 503;
 // Shorter than the default per-attempt timeout, so the deadline is what binds.
 const SHORT_DEADLINE_MS = 1_000;
-// The policy's two default backoffs (250ms, 500ms, each ±20%) both fit inside
-// one cap-sized advance per gap; two gaps sit inside three attempts.
+// The policy draws each backoff with full jitter in [0, delay] (delay 250ms,
+// then 500ms), so one cap-sized advance per gap covers any draw; two gaps sit
+// inside three attempts.
 const PAST_ALL_BACKOFFS_MS = RETRY_DEFAULTS.capDelayMs * 2;
+// Full jitter can draw a sleep under 1ms. This draw puts the first backoff at
+// 125ms, so a test that steps the clock 1ms still finds the loop asleep.
+const MID_JITTER_DRAW = 0.5;
 
 function jsonResponse(status: number, body: unknown) {
   return {
@@ -69,6 +73,7 @@ beforeEach(() => {
   vi.useFakeTimers();
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllEnvs();
   resetWorkspaceFetchAudit();
@@ -230,6 +235,7 @@ describe("request — default timeout", () => {
   });
 
   it("a cancel during a backoff surfaces as a cancel, not the stale status", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(MID_JITTER_DRAW);
     fetchMock.mockResolvedValueOnce(jsonResponse(TRANSIENT_STATUS, { detail: "svc" }));
     const controller = new AbortController();
 
