@@ -43,7 +43,10 @@ async fn test_activity_sender_drops_past_four_batches() {
     let (plane, _calls) = plane(|_call| Answer::Stall);
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let (sink, mut pump) = channel(&plane, &lease);
-    // Each frame fills more than half a batch, so each rides alone.
+    // Each frame fills more than half a batch, so each rides alone. The burst
+    // lands before the poster takes one in flight, so three queue; the fourth
+    // fills while it waits and is dropped when the fifth arrives; the fifth,
+    // the run's last, waits for room.
     for _ in 0..5 {
         sink.emit(chunk("x".repeat(MAX_BATCH_BYTES / 2 + 1)));
     }
@@ -55,7 +58,43 @@ async fn test_activity_sender_drops_past_four_batches() {
         stalled.is_err(),
         "the daemon never answers, so the pump never drains"
     );
-    assert_eq!(pump.dropped, 1, "four held, the fifth dropped");
+    assert_eq!(
+        pump.dropped, 1,
+        "only the full batch that waited is dropped"
+    );
+}
+
+/// A stream of small frames behind four held batches joins one waiting batch
+/// instead of losing a frame a tick.
+#[tokio::test(start_paused = true)]
+async fn test_activity_sender_keeps_filling_a_batch_that_waits() {
+    let (plane, _calls) = plane(|_call| Answer::Stall);
+    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let (sink, mut pump) = channel(&plane, &lease);
+    let tick = super::FLUSH_EVERY * 2;
+
+    let (stalled, ()) = tokio::join!(
+        tokio::time::timeout(Duration::from_secs(60), pump.run()),
+        async {
+            // Each big frame is sent on its own tick and holds a slot.
+            for _ in 0..4 {
+                sink.emit(chunk("x".repeat(MAX_BATCH_BYTES / 2 + 1)));
+                tokio::time::sleep(tick).await;
+            }
+            // Every slot is held now; these see tick after tick go by.
+            for _ in 0..8 {
+                sink.emit(tool(TOOL));
+                tokio::time::sleep(tick).await;
+            }
+            drop(sink);
+        }
+    );
+
+    assert!(stalled.is_err(), "the daemon never answers");
+    assert_eq!(
+        pump.dropped, 0,
+        "the small frames wait together, none dropped"
+    );
 }
 
 #[tokio::test(start_paused = true)]
