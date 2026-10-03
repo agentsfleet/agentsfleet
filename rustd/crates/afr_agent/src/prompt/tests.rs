@@ -1,7 +1,53 @@
 use std::borrow::Cow;
 
+use afd_wire::lease::LeasePayload;
+use afd_wire::policy::repository::{self, FIELD_REF, REFS_HEADS, REFS_PATH};
+use afd_wire::policy::{
+    HttpJsonFieldRule, HttpMethod, HttpOriginPolicy, HttpPathMatch, HttpRequestRule,
+    RepositoryAccess, RepositoryBinding,
+};
+
 use super::Prompt;
 use crate::fixture::{lease, unbounded};
+
+/// The bound repository, as the `ci-repairer` fixture names it.
+const REPOSITORY: &str = "agentsfleet/linkwarden";
+/// The branch the daemon named for this lease.
+const BRANCH: &str = "agentsfleet-repair/run-41";
+/// The binding's base.
+const BASE: &str = "dev";
+/// The heading a write-bound lease's system prompt carries.
+const REPAIR_HEADING: &str = "## Trusted repair context";
+
+/// A lease bound to [`REPOSITORY`] with `access`, carrying `rules`.
+fn bound(access: RepositoryAccess, rules: Vec<HttpRequestRule<'static>>) -> LeasePayload<'static> {
+    let mut lease = lease(&[], unbounded());
+    lease.policy.repository_binding = Some(RepositoryBinding {
+        repositories: vec![REPOSITORY.into()],
+        access,
+        base_branch: BASE.into(),
+    });
+    lease.policy.http_origin_policies = vec![HttpOriginPolicy {
+        host: "api.github.com".into(),
+        credential_names: vec!["github".into()],
+        requests: rules,
+    }];
+    lease
+}
+
+/// The locked rule the daemon compiles for a write binding's one ref.
+fn locked_ref(repository_name: &str) -> HttpRequestRule<'static> {
+    HttpRequestRule {
+        method: HttpMethod::Post,
+        path: repository::path(repository_name, REFS_PATH).into(),
+        path_match: HttpPathMatch::Exact,
+        json_fields: vec![HttpJsonFieldRule {
+            name: FIELD_REF.into(),
+            string_value: Some(format!("{REFS_HEADS}{BRANCH}").into()),
+            boolean_value: None,
+        }],
+    }
+}
 
 #[test]
 fn should_ask_the_events_message_under_the_installed_instructions() {
@@ -35,4 +81,35 @@ fn should_send_no_system_prompt_without_instructions() {
     lease.instructions = Cow::Borrowed("");
 
     assert_eq!(Prompt::new(&lease).instructions, "");
+}
+
+#[test]
+fn test_prompt_carries_trusted_repair_context() {
+    let written = Prompt::new(&bound(RepositoryAccess::Write, vec![locked_ref(REPOSITORY)]));
+    assert_eq!(
+        written.instructions,
+        "## Installed instructions\n\nRead the run.\n\n## Trusted repair context\n\
+         repository: agentsfleet/linkwarden\nrepair branch: agentsfleet-repair/run-41\n\
+         trusted base: dev"
+    );
+
+    let read = Prompt::new(&bound(RepositoryAccess::Read, vec![locked_ref(REPOSITORY)]));
+    assert_eq!(read.instructions, "## Installed instructions\n\nRead the run.");
+}
+
+#[test]
+fn should_render_no_repair_context_without_a_ref_rule_for_the_bound_repository() {
+    for rules in [Vec::new(), vec![locked_ref("agentsfleet/elsewhere")]] {
+        let prompt = Prompt::new(&bound(RepositoryAccess::Write, rules));
+
+        assert!(!prompt.instructions.contains(REPAIR_HEADING));
+    }
+}
+
+#[test]
+fn should_render_the_repair_context_alone_without_instructions() {
+    let mut lease = bound(RepositoryAccess::Write, vec![locked_ref(REPOSITORY)]);
+    lease.instructions = Cow::Borrowed("");
+
+    assert!(Prompt::new(&lease).instructions.starts_with(REPAIR_HEADING));
 }

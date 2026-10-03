@@ -6,7 +6,10 @@
 //! shares its name — a private fork, most obviously. With the slash the prefix
 //! can only descend INTO the repository it names.
 
-use afd_wire::policy::{HttpMethod, HttpPathMatch, HttpRequestRule};
+use afd_wire::policy::{HttpMethod, HttpPathMatch, HttpRequestRule, repository};
+
+/// The repository's own subtree: the slash the module note defends.
+const SUBTREE: &str = "/";
 
 /// The two methods that read without changing anything.
 const READ_METHODS: [HttpMethod; 2] = [HttpMethod::Get, HttpMethod::Head];
@@ -17,7 +20,7 @@ const READ_METHODS: [HttpMethod; 2] = [HttpMethod::Get, HttpMethod::Head];
 /// it would go stale against GitHub rather than against us. The prefix is what
 /// keeps that breadth bounded, so see the module note before touching it.
 pub(super) fn rules<'a>(repository: &str) -> [HttpRequestRule<'a>; 2] {
-    let prefix = format!("/repos/{repository}/");
+    let prefix = repository::path(repository, SUBTREE);
     READ_METHODS.map(|method| HttpRequestRule {
         method,
         path: prefix.clone().into(),
