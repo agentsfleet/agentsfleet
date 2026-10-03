@@ -195,9 +195,9 @@ pub struct AdminLibraryPatch<'a> {
     pub source_ref: Option<Cow<'a, str>>,
     /// Operator-authored reason copy.
     // Free-form JSON whose keys are credential NAMES an operator chose, so
-    // there are no fields for a derive to hang bounds off. Walked by
-    // `validate_reasons` against the two caps below.
-    #[garde(skip)]
+    // there are no fields for `length` to hang off: the caps below are one
+    // custom rule over the whole object.
+    #[garde(custom(reasons_bounded))]
     pub required_credentials_reasons: Option<serde_json::Value>,
     /// Publish or withdraw.
     #[garde(skip)]
@@ -215,3 +215,42 @@ pub const REASON_CREDENTIAL_MAX_BYTES: usize = 200;
 
 /// The longest reason copy an operator may author.
 pub const REASON_MAX_BYTES: usize = 500;
+
+/// What [`reasons_bounded`] reports. The route answers its own sentence.
+const REASONS_OUT_OF_BOUNDS: &str = "reason copy exceeds the install gate's caps";
+
+/// Holds an operator's reason copy to the install gate's caps.
+///
+/// At most [`REASONS_MAX`] entries, each credential name at most
+/// [`REASON_CREDENTIAL_MAX_BYTES`] and each reason at most
+/// [`REASON_MAX_BYTES`]. A value that is not an object of strings is not
+/// judged here: that is its SHAPE, which the route reads with a sentence of
+/// its own, and a bound has nothing to say about a value it cannot measure.
+///
+/// # Errors
+/// [`REASONS_OUT_OF_BOUNDS`] when the object breaks any of the three caps.
+#[expect(
+    clippy::ref_option,
+    reason = "garde fixes the custom-rule signature at `fn(&T, &C)`, and the field is an `Option`"
+)]
+fn reasons_bounded<C>(value: &Option<serde_json::Value>, _context: &C) -> garde::Result {
+    let Some(reasons) = value.as_ref().and_then(serde_json::Value::as_object) else {
+        return Ok(());
+    };
+    let within = reasons.len() <= REASONS_MAX
+        && reasons.iter().all(|(credential, reason)| {
+            credential.len() <= REASON_CREDENTIAL_MAX_BYTES
+                && reason
+                    .as_str()
+                    .is_none_or(|copy| copy.len() <= REASON_MAX_BYTES)
+        });
+    if within {
+        Ok(())
+    } else {
+        Err(garde::Error::new(REASONS_OUT_OF_BOUNDS))
+    }
+}
+
+#[cfg(test)]
+#[path = "admin_library/tests.rs"]
+mod tests;

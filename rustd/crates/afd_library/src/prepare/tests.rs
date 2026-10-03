@@ -170,3 +170,29 @@ fn manifest_contains_hashes_not_support_bytes() {
     assert!(encoded.contains("sha256"));
     assert!(!encoded.contains("review notes"));
 }
+
+/// The skill name's bound is garde's, read before the version is parsed; a
+/// name one byte past it, or opening on a hyphen, is an invalid skill.
+#[test]
+fn a_skill_name_past_its_bound_or_hyphen_edged_is_invalid() {
+    let skill_named = |name: &str| {
+        let mut input = body();
+        input.skill_markdown = format!(
+            "---\nname: {name}\ndescription: Reviews pull requests\nversion: 0.1.0\n---\nBody.\n"
+        )
+        .into_bytes();
+        input
+    };
+    prepare(&skill_named(&"a".repeat(64))).expect("a name at the bound is a name");
+    for refused in [
+        "a".repeat(65),
+        "-reviewer".to_owned(),
+        "Reviewer".to_owned(),
+    ] {
+        assert_eq!(
+            invalid(&skill_named(&refused)),
+            InvalidBundle::InvalidSkill,
+            "name {refused:?}"
+        );
+    }
+}

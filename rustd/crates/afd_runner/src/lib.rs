@@ -49,6 +49,5 @@ pub use self::reconcile::{Verdict, reconcile};
 pub use self::record::SelfRow;
 pub use self::store::{Enrolled, Runners};
 pub use self::view::{
-    KeysetCursor, PageLimit, RunnerDetail, RunnerEventFilter, RunnerEventPage, RunnerItem,
-    RunnerPage,
+    KeysetCursor, RunnerDetail, RunnerEventFilter, RunnerEventPage, RunnerItem, RunnerPage,
 };

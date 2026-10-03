@@ -5,6 +5,9 @@
 //! that leaves this module is already checked and nothing downstream re-checks
 //! it.
 
+use afd_validate::finite;
+use afd_validate::rules::NOT_FINITE;
+
 use crate::config::raw;
 use crate::error::{Error, ErrorKind, Result, missing};
 
@@ -35,25 +38,18 @@ const REASON_ABOVE_CAP: &str = "it is above the cap";
 pub struct Dollars(f64);
 
 impl Dollars {
-    /// Checks `amount` against `cap`.
+    /// Proves `amount` against `cap`.
     ///
     /// # Errors
     /// [`Error::InvalidBudget`] naming `field` and the rule it broke.
     fn parse(field: &'static str, amount: f64, cap: f64) -> Result<Self> {
-        let refuse = |reason| ErrorKind::InvalidBudget { field, reason }.into();
-
-        // `is_finite` first, and it is not redundant: NaN answers FALSE to both
-        // `<= 0.0` and `> cap`, so a range check alone admits it. The Zig
-        // bounds this ceiling with exactly those two comparisons. JSON cannot
-        // spell NaN today, which makes this cheap insurance rather than a live
-        // fix — and the next caller to build a config from something that is
-        // not a JSON document does not have to rediscover the hole.
-        match amount {
-            _ if !amount.is_finite() => Err(refuse(REASON_NOT_FINITE)),
-            _ if amount <= 0.0 => Err(refuse(REASON_NOT_POSITIVE)),
-            _ if amount > cap => Err(refuse(REASON_ABOVE_CAP)),
-            _ => Ok(Self(amount)),
-        }
+        garde::Unvalidated::new(Amount { dollars: amount })
+            .validate_with(&cap)
+            .map(|proved| Self(proved.dollars))
+            .map_err(|report| {
+                let reason = reason(&report);
+                ErrorKind::InvalidBudget { field, reason }.into()
+            })
     }
 
     /// The ceiling, in dollars.
@@ -61,6 +57,56 @@ impl Dollars {
     pub const fn dollars(self) -> f64 {
         self.0
     }
+}
+
+/// An authored ceiling with the rules it must meet; its cap is the context.
+///
+/// `finite` comes first, and it is not redundant: NaN answers FALSE to both
+/// `<= 0.0` and `> cap`, so garde's range alone admits it, and the Zig bounds
+/// this ceiling with exactly those two comparisons. garde runs the custom
+/// rules in the order written and then the range, so the first break in the
+/// report is the reason, in the order the rules read: finite, positive, cap.
+#[derive(Debug, garde::Validate)]
+#[garde(context(f64 as cap))]
+struct Amount {
+    #[garde(custom(finite), custom(positive), range(max = *cap))]
+    dollars: f64,
+}
+
+/// Refuses zero and below: a ceiling of nothing stops a fleet before it runs.
+///
+/// # Errors
+/// [`REASON_NOT_POSITIVE`] for an amount that is not greater than zero.
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "garde fixes the custom-rule signature at `fn(&T, &C) -> garde::Result`; a float taken by value is not callable from the attribute that runs it"
+)]
+fn positive<C: ?Sized>(amount: &f64, _context: &C) -> garde::Result {
+    if *amount > 0.0 {
+        Ok(())
+    } else {
+        Err(garde::Error::new(REASON_NOT_POSITIVE))
+    }
+}
+
+/// The reason each custom rule's report earns. A break neither names is the
+/// range's, which is the cap.
+const REASONS: [(&str, &str); 2] = [
+    (NOT_FINITE, REASON_NOT_FINITE),
+    (REASON_NOT_POSITIVE, REASON_NOT_POSITIVE),
+];
+
+/// The reason the first broken rule earns, in the order garde ran them.
+fn reason(report: &garde::Report) -> &'static str {
+    report
+        .iter()
+        .next()
+        .and_then(|(_path, broken)| {
+            REASONS
+                .iter()
+                .find(|(message, _reason)| *message == broken.message())
+        })
+        .map_or(REASON_ABOVE_CAP, |&(_message, reason)| reason)
 }
 
 /// What a fleet may spend.
@@ -199,3 +245,7 @@ impl TryFrom<raw::Context> for ContextBudget {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "policy/tests.rs"]
+mod tests;

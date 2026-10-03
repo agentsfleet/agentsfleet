@@ -33,9 +33,11 @@ pub(crate) struct Network {
 
 /// The `budget` block.
 ///
-/// Range is NOT declared here. A ceiling's bound is `Dollars`', whose
-/// constructor also refuses a non-finite amount — a rule a range annotation
-/// cannot express, and the one a bare range check silently admits.
+/// Range is NOT declared here. A ceiling's bound is declared on `Dollars`'
+/// garde struct, beside `afd_validate::finite` — the rule a bare range
+/// silently admits NaN past — because the cap differs per field and the
+/// refusal names the field and the rule it broke, which a report on this
+/// document would answer as a generic out-of-bounds instead.
 #[derive(Debug, Deserialize, Validate)]
 pub(crate) struct Budget {
     /// The daily ceiling, in dollars.

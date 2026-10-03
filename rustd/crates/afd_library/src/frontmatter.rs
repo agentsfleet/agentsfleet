@@ -1,32 +1,63 @@
 //! YAML frontmatter parsing through Serde rather than a bespoke scanner.
 
+use afd_validate::charset;
+use garde::{Unvalidated, Valid};
 use serde::Deserialize;
 
 use crate::error::{Error, ErrorKind, InvalidBundle, Result};
 
-#[derive(Debug, Deserialize)]
+/// Longest skill name, the bound a fleet name holds downstream.
+const MAX_SKILL_NAME_LEN: usize = 64;
+/// The one punctuation a skill name may carry, never at either end.
+const NAME_HYPHEN: char = '-';
+/// What a name opening or closing on a hyphen reports.
+const REASON_EDGE_HYPHEN: &str = "must not start or end with a hyphen";
+
+/// A SKILL.md's frontmatter, with the bounds each field must hold before the
+/// version is parsed.
+#[derive(Debug, Deserialize, garde::Validate)]
 pub(crate) struct Skill {
+    #[garde(
+        length(bytes, min = 1, max = MAX_SKILL_NAME_LEN),
+        custom(charset(is_name_char)),
+        custom(hyphen_free_edges)
+    )]
     pub name: String,
+    #[garde(length(min = 1))]
     pub description: String,
+    /// Read by [`afd_fleet_runtime::Version::parse`], which takes only a
+    /// skill whose bounds held.
+    #[garde(skip)]
     pub version: String,
 }
 
 pub(crate) fn skill(markdown: &[u8]) -> Result<Skill> {
     let parsed: Skill = parse(markdown, "SKILL.md", InvalidBundle::InvalidSkill)?;
-    let valid_name = !parsed.name.is_empty()
-        && parsed.name.len() <= 64
-        && parsed
-            .name
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-        && !parsed.name.starts_with('-')
-        && !parsed.name.ends_with('-');
-    let valid = valid_name
-        && !parsed.description.is_empty()
-        && afd_fleet_runtime::Version::parse(&parsed.version).is_ok();
-    valid
-        .then_some(parsed)
+    Unvalidated::new(parsed)
+        .validate()
+        .ok()
+        .filter(version_parses)
+        .map(Valid::into_inner)
         .ok_or_else(|| InvalidBundle::InvalidSkill.into())
+}
+
+/// Whether a skill whose bounds held names a version this daemon reads.
+fn version_parses(skill: &Valid<Skill>) -> bool {
+    afd_fleet_runtime::Version::parse(&skill.version).is_ok()
+}
+
+/// Whether `character` may appear in a skill name: a kebab slug.
+const fn is_name_char(character: char) -> bool {
+    character.is_ascii_lowercase() || character.is_ascii_digit() || character == NAME_HYPHEN
+}
+
+/// Refuses a name that opens or closes on a hyphen.
+fn hyphen_free_edges<C: ?Sized>(value: &str, _context: &C) -> garde::Result {
+    if value.starts_with(NAME_HYPHEN) || value.ends_with(NAME_HYPHEN) {
+        Err(garde::Error::new(REASON_EDGE_HYPHEN))
+    } else {
+        Ok(())
+    }
 }
 
 pub(crate) fn trigger(markdown: &[u8]) -> Result<afd_fleet_runtime::FleetConfig> {

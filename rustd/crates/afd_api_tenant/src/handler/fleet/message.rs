@@ -19,7 +19,9 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_core::paging::Ceiling;
 use afd_events::{Cursor, EventDetailRow, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT};
+use afd_validate::Limit;
 use afd_wire::event::ThreadResponse;
 use axum::Json;
 use axum::extract::{Path, RawQuery, State};
@@ -27,6 +29,7 @@ use axum::response::{IntoResponse as _, Response};
 
 use crate::auth::WorkspaceContext;
 use crate::handler::event::expanded;
+use crate::handler::paging::store_ceiling;
 use crate::handler::{Refusal, parameter};
 use crate::services::{Services, WorkspaceEvents as _};
 
@@ -52,23 +55,19 @@ const DETAIL_CURSOR: &str = "invalid starting_after cursor";
 /// `THREAD_PAGE_BODY_BUDGET_BYTES`, mirrored.
 const PAGE_BUDGET_BYTES: usize = 512 * 1024;
 
-/// The page size, or the refusal a caller outside the band earns.
+/// The thread's bound on `?limit`: the event store's thread constants.
 ///
 /// One to twenty-five, an order of magnitude below the event listings' band:
 /// every row here carries two bodies. Zero is refused rather than clamped —
 /// a caller asking for no turns has made a mistake, and an empty page would
 /// read as an empty thread.
-fn parse_limit(raw: Option<&str>) -> Result<i64, Refusal> {
-    let Some(raw) = raw else {
-        return Ok(THREAD_DEFAULT_LIMIT);
-    };
-    let requested: i64 = raw
-        .parse()
-        .map_err(|_digits| Refusal::malformed(DETAIL_LIMIT))?;
-    if !(1..=THREAD_MAX_LIMIT).contains(&requested) {
-        return Err(Refusal::malformed(DETAIL_LIMIT));
-    }
-    Ok(requested)
+const CEILING: Ceiling = store_ceiling(THREAD_MAX_LIMIT, THREAD_DEFAULT_LIMIT);
+
+/// The page size, or the refusal a caller outside the band earns.
+fn requested_limit(raw: Option<&str>) -> Result<i64, Refusal> {
+    Limit::parse(raw, CEILING)
+        .map(i64::from)
+        .map_err(|_break| Refusal::malformed(DETAIL_LIMIT))
 }
 
 /// The continuation this walk issued, or the refusal one it did not earns.
@@ -118,7 +117,7 @@ pub(crate) async fn thread<D: Services>(
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
     let query = query.unwrap_or_default();
-    let limit = parse_limit(parameter(&query, QUERY_LIMIT))?;
+    let limit = requested_limit(parameter(&query, QUERY_LIMIT))?;
     let after = parse_cursor(parameter(&query, QUERY_STARTING_AFTER))?;
 
     // One row MORE than will be served, so has-more is a fact and not a guess.

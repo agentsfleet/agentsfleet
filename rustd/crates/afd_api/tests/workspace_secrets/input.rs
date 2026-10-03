@@ -54,11 +54,23 @@ async fn whitespace_the_caller_sent_does_not_count_against_the_bound() {
 }
 
 #[tokio::test]
-async fn a_name_outside_its_bounds_never_reaches_the_store() {
+async fn test_secret_name_is_bounded_on_body_and_path() {
     // The create takes its name from the BODY and the replace from the PATH,
-    // and both answer through `SecretName::parse` — so the two cannot come to
-    // disagree about what a storable name is.
+    // and both answer through `SecretName::parse`, whose bound is garde's on
+    // the one struct it builds — so the two cannot come to disagree about what
+    // a storable name is.
     let too_long = "n".repeat(65);
+    let at_cap = "n".repeat(64);
+    assert_reached_the_verb(
+        authorised(
+            Method::POST,
+            &collection(),
+            &format!(r#"{{"name":"{at_cap}","data":{{"k":"v"}}}}"#),
+        )
+        .await,
+        "a 64-byte name is within the bound",
+    )
+    .await;
 
     for name in ["", too_long.as_str()] {
         let create = authorised(

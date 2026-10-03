@@ -32,7 +32,9 @@ use std::borrow::Cow;
 
 use afd_approval::GateStatus;
 use afd_core::id::Uuid7;
-use afd_core::paging::{Cursor as CoreCursor, InvalidCursor};
+use afd_core::paging::{Ceiling, Cursor as CoreCursor, InvalidCursor};
+use afd_validate::Limit;
+use garde::Validate as _;
 
 use crate::handler::{Refusal, decoded_parameter, parameter};
 
@@ -44,10 +46,22 @@ const QUERY_LIMIT: &str = "limit";
 const QUERY_CURSOR: &str = "cursor";
 
 /// The page size when the caller names none (`approvals/list.zig:20`).
-const DEFAULT_LIMIT: i64 = 50;
+const DEFAULT_LIMIT: u32 = 50;
 
 /// The largest page any caller may ask for (`approvals/list.zig:21`).
-const MAX_LIMIT: i64 = 200;
+const MAX_LIMIT: u32 = 200;
+
+/// The inbox's bound on `?limit`.
+const CEILING: Ceiling = Ceiling::new(MAX_LIMIT, DEFAULT_LIMIT);
+
+/// The longest `gate_kind` filter, decoded.
+///
+/// A gate kind is a short family name a gate is filed under (`spend`,
+/// `tool_call`); a filter longer than any family is not a filter.
+const MAX_GATE_KIND_BYTES: usize = 64;
+
+/// The refusal an over-long `gate_kind` filter earns.
+const DETAIL_GATE_KIND: &str = "gate_kind must be at most 64 bytes";
 
 /// The refusal a page size outside the served band earns.
 ///
@@ -130,11 +144,11 @@ impl Listing {
     /// A [`Refusal`] naming the parameter that refused.
     pub(super) fn parse(query: &str) -> Result<Self, Refusal> {
         Ok(Self {
-            limit: parse_limit(parameter(query, QUERY_LIMIT))?,
+            limit: requested_limit(parameter(query, QUERY_LIMIT))?,
             cursor: parse_cursor(decoded(query, QUERY_CURSOR)?.as_deref())?,
             status: parse_status(parameter(query, QUERY_STATUS))?,
             fleet_id: parse_fleet_id(parameter(query, QUERY_FLEET_ID))?,
-            gate_kind: decoded(query, QUERY_GATE_KIND)?.map(Cow::into_owned),
+            gate_kind: parse_gate_kind(decoded(query, QUERY_GATE_KIND)?)?,
         })
     }
 }
@@ -144,17 +158,29 @@ impl Listing {
 /// Zero is refused rather than clamped, for the reason the event listing gives:
 /// a caller asking for no rows has made a mistake, and an empty page would read
 /// as an empty inbox.
-fn parse_limit(raw: Option<&str>) -> Result<i64, Refusal> {
-    let Some(raw) = raw else {
-        return Ok(DEFAULT_LIMIT);
-    };
-    let asked: i64 = raw
-        .parse()
-        .map_err(|_digits| Refusal::malformed(DETAIL_LIMIT))?;
-    if !(1..=MAX_LIMIT).contains(&asked) {
-        return Err(Refusal::malformed(DETAIL_LIMIT));
-    }
-    Ok(asked)
+fn requested_limit(raw: Option<&str>) -> Result<i64, Refusal> {
+    Limit::parse(raw, CEILING)
+        .map(i64::from)
+        .map_err(|_break| Refusal::malformed(DETAIL_LIMIT))
+}
+
+/// A `gate_kind` filter as the caller sent it, decoded.
+#[derive(Debug, garde::Validate)]
+struct GateKindFilter<'q> {
+    #[garde(length(bytes, max = MAX_GATE_KIND_BYTES))]
+    gate_kind: Cow<'q, str>,
+}
+
+/// The gate family the page is narrowed to, inside its bound.
+fn parse_gate_kind(raw: Option<Cow<'_, str>>) -> Result<Option<String>, Refusal> {
+    raw.map(|gate_kind| {
+        let filter = GateKindFilter { gate_kind };
+        filter
+            .validate()
+            .map_err(|_report| Refusal::malformed(DETAIL_GATE_KIND))?;
+        Ok(filter.gate_kind.into_owned())
+    })
+    .transpose()
 }
 
 /// The boundary a page resumes strictly after.

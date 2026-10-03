@@ -1,128 +1,75 @@
 //! What an enrolment request must satisfy before a row is written.
 //!
-//! Parse, don't validate: each function answers a `Result`, so a caller that
-//! reached the write has a value the write can trust and needs no defensive
-//! re-check (`dispatch/write_rust.md` §Functional design). The bounds and the
-//! refusal sentences are `protocol_policy.zig`'s and `register.zig`'s, pinned
-//! byte-for-byte — a client reads them.
+//! Every bound is declared on the wire type with garde
+//! (`afd_wire::runner::{RegisterRequest, AssignedPolicy, ExtraBind}`); what
+//! stays here is the sentence each broken bound earns, keyed by the path garde
+//! reports, and the worker clamp. The host-id and allowlist sentences are
+//! `protocol_policy.zig`'s and `register.zig`'s, pinned byte-for-byte — a
+//! client reads them.
 
 use afd_core::limits::WorkerCount;
-use afd_wire::runner::{AssignedPolicy, ExtraBind};
+use afd_validate::Sentences;
+use afd_wire::runner::{AssignedPolicy, RegisterRequest};
+use garde::Validate as _;
 
 use crate::error::{DETAIL_HOST_ID_BOUNDS, DETAIL_REGISTRY_ALLOWLIST, Result, rejected};
 
-/// `protocol_bind.zig`'s refusal for an unsafe operator-added mount.
-pub const DETAIL_EXTRA_BINDS: &str = "extra_binds entries must be absolute host paths outside the daemon-owned baseline and the sensitive set, with no traversal";
+/// The refusal for a bind path that is relative, non-canonical, out of
+/// bounds, or overlapping a daemon-owned or sensitive subtree.
+pub const DETAIL_EXTRA_BINDS: &str = "extra_binds paths must be absolute host paths of 2-4096 bytes outside the daemon-owned baseline and the sensitive set, with no traversal";
 
-/// `register.zig`'s `MAX_HOST_ID_LEN`.
-const MAX_HOST_ID_LEN: usize = 256;
+/// The refusal for an assignment adding too many binds.
+pub const DETAIL_EXTRA_BINDS_COUNT: &str = "extra_binds holds at most 16 entries";
 
-/// `protocol_policy.zig`'s `MAX_REGISTRY_ENTRIES`.
-const MAX_REGISTRY_ENTRIES: usize = 32;
+/// The refusal for a bind note past its bound.
+pub const DETAIL_EXTRA_BIND_NOTE: &str = "extra_binds notes must be at most 200 bytes";
 
-/// `protocol_policy.zig`'s `MAX_REGISTRY_HOST_LEN` — a 253-character host, a
-/// colon, and a five-digit port.
-const MAX_REGISTRY_HOST_LEN: usize = 259;
+/// The refusal for too many labels, or one past its bound.
+pub const DETAIL_LABELS: &str = "labels holds at most 32 entries of at most 64 bytes each";
 
-/// Longest decimal port a registry entry may carry.
-const MAX_PORT_DIGITS: usize = 5;
+const PATH_HOST_ID: &str = "host_id";
+const PATH_LABELS: &str = "labels";
+const PATH_LABEL: &str = "labels[]";
+const PATH_ALLOWLIST: &str = "registry_allowlist";
+const PATH_ALLOWLIST_ENTRY: &str = "registry_allowlist[]";
+const PATH_BINDS: &str = "extra_binds";
+const PATH_BIND_NOTE: &str = "extra_binds[].note";
+const PATH_BIND_PATH: &str = "extra_binds[].path";
+const PATH_POLICY_ALLOWLIST: &str = "assigned_policy.registry_allowlist";
+const PATH_POLICY_ALLOWLIST_ENTRY: &str = "assigned_policy.registry_allowlist[]";
+const PATH_POLICY_BINDS: &str = "assigned_policy.extra_binds";
+const PATH_POLICY_BIND_NOTE: &str = "assigned_policy.extra_binds[].note";
+const PATH_POLICY_BIND_PATH: &str = "assigned_policy.extra_binds[].path";
 
-const MAX_EXTRA_BINDS: usize = 16;
-const MAX_BIND_PATH_LEN: usize = 4096;
-const MAX_BIND_NOTE_LEN: usize = 200;
+/// The sentences an assignment earns, validated on its own by the operator's
+/// assign-policy verb. Table order is the order the checks read in before
+/// they moved onto the type: the allowlist, then the binds.
+const POLICY: Sentences = Sentences::new(
+    &[
+        (PATH_ALLOWLIST, DETAIL_REGISTRY_ALLOWLIST),
+        (PATH_ALLOWLIST_ENTRY, DETAIL_REGISTRY_ALLOWLIST),
+        (PATH_BINDS, DETAIL_EXTRA_BINDS_COUNT),
+        (PATH_BIND_NOTE, DETAIL_EXTRA_BIND_NOTE),
+        (PATH_BIND_PATH, DETAIL_EXTRA_BINDS),
+    ],
+    DETAIL_EXTRA_BINDS,
+);
 
-/// Every daemon-owned or sensitive subtree an operator bind must not overlap.
-///
-/// This is the union of `BASELINE_RO_PATHS` and `SENSITIVE_PATHS` in
-/// `protocol_bind_paths.zig`. Keeping the union removes harmless duplicates
-/// while preserving the same segment-aware boundary.
-const PROTECTED_BIND_PATHS: [&str; 14] = [
-    "/etc/ssl/certs",
-    "/run/systemd/resolve",
-    "/etc/hosts",
-    "/etc/nsswitch.conf",
-    "/usr",
-    "/lib",
-    "/lib64",
-    "/bin",
-    "/sbin",
-    "/proc",
-    "/dev",
-    "/tmp",
-    "/root",
-    "/home",
-];
-
-const SENSITIVE_BIND_PATHS: [&str; 7] = [
-    "/boot",
-    "/sys",
-    "/run",
-    "/var/run",
-    "/var/lib/agentsfleet",
-    "/opt/agentsfleet",
-    "/etc",
-];
-
-/// The host identifier an enrolment names, once it is known to be usable.
-///
-/// A newtype whose constructor is the only way in, so the length rule is
-/// checked once at the boundary and every later use is a value that already
-/// satisfies it (`M-STRONG-TYPES-GUARD`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HostId<'a>(&'a str);
-
-impl<'a> HostId<'a> {
-    /// Accepts a host identifier of a usable length.
-    ///
-    /// # Errors
-    /// Refuses an empty identifier, or one past [`MAX_HOST_ID_LEN`], quoting
-    /// `register.zig`'s sentence.
-    pub fn new(raw: &'a str) -> Result<Self> {
-        if raw.is_empty() || raw.len() > MAX_HOST_ID_LEN {
-            return Err(rejected(DETAIL_HOST_ID_BOUNDS));
-        }
-        Ok(Self(raw))
-    }
-
-    /// The identifier, for the bind and the enrolment event's metadata.
-    #[must_use]
-    pub const fn as_str(self) -> &'a str {
-        self.0
-    }
-}
-
-/// Whether one allowlist entry is a bare `host` or `host:port` name.
-///
-/// Deliberately NOT a URL: a scheme, a path or a space is refused, because the
-/// value becomes an egress allowlist entry and a permissive parse there is a
-/// hole in the cage.
-fn registry_host_valid(entry: &str) -> bool {
-    if entry.is_empty() || entry.len() > MAX_REGISTRY_HOST_LEN {
-        return false;
-    }
-    let (host, port) = match entry.split_once(':') {
-        Some((host, port)) => (host, Some(port)),
-        None => (entry, None),
-    };
-    if host.is_empty()
-        || !host
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'.' | b'-'))
-    {
-        return false;
-    }
-    // `split_once` splits on the FIRST colon, so a second one lands in `port`
-    // and fails the digit test below — which is the Zig behaviour, where
-    // `indexOfScalar` finds the first and the remainder must be all digits.
-    match port {
-        None => true,
-        Some(port) => {
-            !port.is_empty()
-                && port.len() <= MAX_PORT_DIGITS
-                && port.bytes().all(|c| c.is_ascii_digit())
-        }
-    }
-}
+/// The sentences a whole enrolment earns, where `dive` reports the assignment
+/// under `assigned_policy`. The host id answers first, as it always did.
+const REGISTRATION: Sentences = Sentences::new(
+    &[
+        (PATH_HOST_ID, DETAIL_HOST_ID_BOUNDS),
+        (PATH_POLICY_ALLOWLIST, DETAIL_REGISTRY_ALLOWLIST),
+        (PATH_POLICY_ALLOWLIST_ENTRY, DETAIL_REGISTRY_ALLOWLIST),
+        (PATH_POLICY_BINDS, DETAIL_EXTRA_BINDS_COUNT),
+        (PATH_POLICY_BIND_NOTE, DETAIL_EXTRA_BIND_NOTE),
+        (PATH_POLICY_BIND_PATH, DETAIL_EXTRA_BINDS),
+        (PATH_LABELS, DETAIL_LABELS),
+        (PATH_LABEL, DETAIL_LABELS),
+    ],
+    DETAIL_EXTRA_BINDS,
+);
 
 /// The assignment as it will be STORED, with the worker count clamped.
 ///
@@ -136,186 +83,41 @@ pub struct StoredAssignment {
     pub worker_count: WorkerCount,
 }
 
-/// Checks an assignment and resolves what will actually be stored.
+impl StoredAssignment {
+    /// What a proved assignment stores. Clamped, never refused:
+    /// `register.zig` clamps into the shared bounds so what is echoed is what
+    /// runs, and `WorkerCount::clamping` is that rule as a type.
+    fn of(policy: &AssignedPolicy<'_>) -> Self {
+        Self {
+            worker_count: WorkerCount::clamping(policy.worker_count),
+        }
+    }
+}
+
+/// Proves an assignment's bounds and resolves what will actually be stored.
 ///
 /// # Errors
-/// Refuses an allowlist that is too long or carries an entry that is not a
-/// `host[:port]` name, quoting `register.zig`'s sentence.
+/// Refuses the first broken bound with its sentence: the allowlist's count or
+/// grammar, the bind count, a bind note, or a bind path.
 pub fn assignment(policy: &AssignedPolicy<'_>) -> Result<StoredAssignment> {
-    if policy.registry_allowlist.len() > MAX_REGISTRY_ENTRIES
-        || !policy
-            .registry_allowlist
-            .iter()
-            .all(|entry| registry_host_valid(entry))
-    {
-        return Err(rejected(DETAIL_REGISTRY_ALLOWLIST));
-    }
-    if !extra_binds_valid(&policy.extra_binds) {
-        return Err(rejected(DETAIL_EXTRA_BINDS));
-    }
-    // Clamped, never refused: `register.zig` clamps into the shared bounds so
-    // what is echoed is what runs, and `WorkerCount::clamping` is the same
-    // rule already expressed as a type.
-    Ok(StoredAssignment {
-        worker_count: WorkerCount::clamping(policy.worker_count),
-    })
+    policy
+        .validate()
+        .map_err(|report| rejected(POLICY.pick(&report)))?;
+    Ok(StoredAssignment::of(policy))
 }
 
-fn extra_binds_valid(binds: &[ExtraBind<'_>]) -> bool {
-    binds.len() <= MAX_EXTRA_BINDS
-        && binds.iter().all(|bind| {
-            bind.note.len() <= MAX_BIND_NOTE_LEN
-                && bind_path_valid(&bind.path)
-                && PROTECTED_BIND_PATHS
-                    .iter()
-                    .chain(SENSITIVE_BIND_PATHS.iter())
-                    .all(|protected| !paths_overlap(&bind.path, protected))
-        })
-}
-
-fn bind_path_valid(path: &str) -> bool {
-    (2..=MAX_BIND_PATH_LEN).contains(&path.len())
-        && path.starts_with('/')
-        && !path.ends_with('/')
-        && !path.contains('\0')
-        && path[1..]
-            .split('/')
-            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
-}
-
-fn paths_overlap(left: &str, right: &str) -> bool {
-    left == right || contains_path(left, right) || contains_path(right, left)
-}
-
-fn contains_path(parent: &str, child: &str) -> bool {
-    child
-        .strip_prefix(parent)
-        .is_some_and(|suffix| suffix.starts_with('/'))
+/// Proves a whole enrolment — host id, assignment and labels — and resolves
+/// the assignment that will be stored.
+///
+/// # Errors
+/// Refuses the first broken bound with its sentence, the host id first.
+pub fn registration(request: &RegisterRequest<'_>) -> Result<StoredAssignment> {
+    request
+        .validate()
+        .map_err(|report| rejected(REGISTRATION.pick(&report)))?;
+    Ok(StoredAssignment::of(&request.assigned_policy))
 }
 
 #[cfg(test)]
-mod extra_bind_tests {
-    #![expect(
-        clippy::expect_used,
-        reason = "validated boundary values are test fixture preconditions"
-    )]
-
-    use std::borrow::Cow;
-
-    use afd_core::limits::MAX_WORKERS;
-    use afd_wire::runner::{BindMode, NetworkPolicy, SandboxTier};
-
-    use super::*;
-
-    fn bind(path: &str) -> ExtraBind<'_> {
-        ExtraBind {
-            path: Cow::Borrowed(path),
-            mode: BindMode::ReadOnly,
-            note: Cow::Borrowed("operator reason"),
-        }
-    }
-
-    fn policy(registry_allowlist: Vec<Cow<'_, str>>, worker_count: u32) -> AssignedPolicy<'_> {
-        AssignedPolicy {
-            sandbox_tier: SandboxTier::LandlockFull,
-            network_policy: NetworkPolicy::AllowListEgress,
-            registry_allowlist,
-            worker_count,
-            extra_binds: Vec::new(),
-        }
-    }
-
-    #[test]
-    fn host_identifiers_and_worker_counts_are_parsed_at_the_boundary() {
-        let host = HostId::new("runner.example").expect("the host id is valid");
-        assert_eq!(host.as_str(), "runner.example");
-        let _empty = HostId::new("").expect_err("an empty host id is refused");
-        let too_long = "h".repeat(MAX_HOST_ID_LEN + 1);
-        let _too_long = HostId::new(&too_long).expect_err("an overlong host id is refused");
-
-        assert_eq!(
-            assignment(&policy(Vec::new(), 0))
-                .expect("zero workers is clamped")
-                .worker_count
-                .get(),
-            1
-        );
-        assert_eq!(
-            assignment(&policy(Vec::new(), u32::MAX))
-                .expect("an excessive worker count is clamped")
-                .worker_count
-                .get(),
-            MAX_WORKERS
-        );
-    }
-
-    #[test]
-    fn registry_entries_accept_only_bare_hosts_and_optional_decimal_ports() {
-        for admitted in ["registry.example", "registry_1.example:443"] {
-            let _stored = assignment(&policy(vec![Cow::Borrowed(admitted)], 1))
-                .expect("a bare registry host is accepted");
-        }
-        for refused in [
-            "",
-            ":443",
-            "registry.example:",
-            "registry.example:123456",
-            "registry.example:44x",
-            "registry.example:443:extra",
-            "https://registry.example",
-            "bad host",
-        ] {
-            let error = assignment(&policy(vec![Cow::Borrowed(refused)], 1))
-                .expect_err("the registry entry is not a host[:port]");
-            assert_eq!(error.detail(), DETAIL_REGISTRY_ALLOWLIST, "{refused}");
-        }
-
-        let over = (0..=MAX_REGISTRY_ENTRIES)
-            .map(|index| Cow::Owned(format!("registry-{index}.example")))
-            .collect();
-        let _over = assignment(&policy(over, 1)).expect_err("the registry count is bounded");
-    }
-
-    #[test]
-    fn test_extra_bind_validation_accepts_only_canonical_unprotected_paths() {
-        assert!(extra_binds_valid(&[bind("/srv/models")]));
-        for refused in [
-            "relative/path",
-            "/srv/../root",
-            "/srv/data/",
-            "/",
-            "/etc/ssl",
-            "/run",
-            "/var",
-            "/etc/./ssl",
-            "//etc",
-        ] {
-            assert!(!extra_binds_valid(&[bind(refused)]), "accepted {refused}");
-        }
-        assert!(extra_binds_valid(&[bind("/etcetera")]));
-    }
-
-    #[test]
-    fn test_extra_bind_validation_enforces_list_path_and_note_bounds() {
-        let at_cap = (0..MAX_EXTRA_BINDS)
-            .map(|index| ExtraBind {
-                path: Cow::Owned(format!("/srv/models-{index}")),
-                mode: BindMode::ReadOnly,
-                note: Cow::Borrowed(""),
-            })
-            .collect::<Vec<_>>();
-        assert!(extra_binds_valid(&at_cap));
-
-        let mut over = at_cap;
-        over.push(bind("/srv/one-too-many"));
-        assert!(!extra_binds_valid(&over));
-        assert!(!extra_binds_valid(&[ExtraBind {
-            note: Cow::Owned("n".repeat(MAX_BIND_NOTE_LEN + 1)),
-            ..bind("/srv/models")
-        }]));
-        assert!(!extra_binds_valid(&[bind(&format!(
-            "/{}",
-            "a".repeat(MAX_BIND_PATH_LEN)
-        ))]));
-    }
-}
+#[path = "validate/tests.rs"]
+mod tests;

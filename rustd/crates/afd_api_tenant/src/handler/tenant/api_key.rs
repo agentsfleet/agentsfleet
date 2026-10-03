@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_core::id::Uuid7;
-use afd_core::paging::{Boundary as _, Page};
+use afd_core::paging::{Boundary as _, CEILING, Page};
 use afd_tenant::apikey::{
     ApiKeySort, Deactivation, Description, KeyName, KeyRow, Listing, MintRequest, Revealed, Revoked,
 };
@@ -139,7 +139,7 @@ pub(crate) async fn list<D: Services>(
 ) -> Result<Response, Refusal> {
     let person = identity.person();
     let query = query.unwrap_or_default();
-    let page = Page::<ApiKeySort>::parse(|name| parameter(&query, name))
+    let page = Page::<ApiKeySort>::parse(|name| parameter(&query, name), CEILING)
         .map_err(|refusal| Refusal::malformed(refusal.detail()))?;
 
     let tenant = tenant_of(&services, person, DETAIL_NO_TENANT, EVENT_TENANT).await?;

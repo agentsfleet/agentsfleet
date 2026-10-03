@@ -49,6 +49,13 @@ const DETAIL_INVALID_TIMEZONE: &str = "The timezone is not a name this daemon wi
 /// The refusal a message that would wake a fleet with nothing earns.
 const DETAIL_INVALID_MESSAGE: &str = "The message must not be empty.";
 
+/// The refusal a message past `afd_cron::validate::MAX_MESSAGE_LEN` earns.
+///
+/// Its own sentence: an oversized message is not an empty one, and telling a
+/// caller who sent eight kilobytes that they sent nothing sends them to fix
+/// the wrong thing.
+const DETAIL_MESSAGE_TOO_LONG: &str = "The message must be at most 8192 bytes.";
+
 /// The refusal a fleet at its schedule ceiling earns.
 const DETAIL_TOO_MANY: &str = "This fleet already holds as many schedules as it may.";
 

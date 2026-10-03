@@ -8,6 +8,7 @@
 
 use afd_fleet_runtime::config::{Mention, Trigger, attach_mention};
 use afd_fleet_runtime::{FleetName, ParsedTrigger, SkillMetadata};
+use garde::Validate;
 
 use crate::error::{self, ErrorKind, Result};
 
@@ -137,17 +138,25 @@ pub fn default_trigger(name: &FleetName) -> String {
     )
 }
 
-/// Whether the authored placement tags are ones a lease can match on.
+/// The authored placement tags, with the bounds a lease can match within.
 ///
 /// Bounds only — a tag that matches no runner is the author's business, and the
 /// runner's label set is not knowable from here. What is refused is a set no
 /// lease could evaluate cheaply: `required_tags ⊆ runner.labels` is checked per
 /// candidate, so an unbounded set is an unbounded cost on every lease.
+#[derive(Debug, Validate)]
+#[garde(transparent)]
+struct Placement<'a>(
+    #[garde(
+        length(max = MAX_TAGS),
+        inner(length(bytes, min = 1, max = MAX_TAG_LEN))
+    )]
+    &'a [Box<str>],
+);
+
+/// Whether the authored placement tags are ones a lease can match on.
 fn tags_fit(tags: &[Box<str>]) -> bool {
-    tags.len() <= MAX_TAGS
-        && tags
-            .iter()
-            .all(|tag| !tag.is_empty() && tag.len() <= MAX_TAG_LEN)
+    Placement(tags).validate().is_ok()
 }
 
 #[cfg(test)]

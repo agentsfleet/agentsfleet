@@ -64,6 +64,12 @@ facts.
   `Error`, its backtrace, its `[CODE]` `Display` and its self-skipping
   `source()`, and `error_lifts!` generates the `From` impls. Only the `Result`
   alias is written by hand, so a reader can see it without expanding a macro.
+- **Bounds on untrusted input are declared with `garde`** on the type they
+  guard, per [the REST guide §8](docs/REST_API_DESIGN_GUIDELINES.md); never a
+  hand-written length, range or charset check. Rules garde lacks, the route
+  `?limit` (`Limit` + `Ceiling`) and the report-to-sentence table
+  (`Sentences`) live in `afd_validate`. A parser a bound protects takes
+  `&garde::Valid<T>`, so it cannot run on unproved input.
 - Public endpoint, command, flag, or behavior changes require a matching branch
   in `~/Projects/docs`; never edit that repository through this worktree.
 

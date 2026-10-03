@@ -9,15 +9,30 @@ const TITLE: &str = "title";
 /// A tool's description and its parameters' JSON Schema.
 ///
 /// Provider-neutral: each provider wraps it in its own function-calling wire.
-/// Built only by [`Schema::of`], so every schema the model reads is derived
-/// from the type its arguments parse into and none is written by hand.
+/// Built only by [`Schema::of`], so what a model is told a tool takes is always
+/// derived from the type the tool's arguments parse into, never hand-written
+/// beside it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Schema {
+    /// What the tool does, as the model reads it.
     description: &'static str,
+    /// The arguments' JSON Schema, an object schema.
     parameters: serde_json::Value,
 }
 
 impl Schema {
+    /// What the tool does, as the model reads it.
+    #[must_use]
+    pub const fn description(&self) -> &'static str {
+        self.description
+    }
+
+    /// The arguments' JSON Schema: one flat object schema.
+    #[must_use]
+    pub const fn parameters(&self) -> &serde_json::Value {
+        &self.parameters
+    }
+
     /// The schema of `T`, the type a call's arguments parse into: one flat
     /// object, with no meta-schema line and no definitions to resolve, which
     /// every provider's function-calling wire reads.
@@ -35,18 +50,6 @@ impl Schema {
             description,
             parameters: parameters.to_value(),
         }
-    }
-
-    /// What the tool does, as the model reads it.
-    #[must_use]
-    pub const fn description(&self) -> &'static str {
-        self.description
-    }
-
-    /// The arguments' JSON Schema, an object schema.
-    #[must_use]
-    pub const fn parameters(&self) -> &serde_json::Value {
-        &self.parameters
     }
 }
 

@@ -15,7 +15,7 @@
 
 use afd_events::{Cursor, EventDetailRow, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT};
 
-use super::{PAGE_BUDGET_BYTES, included_under_budget, page, parse_cursor, parse_limit};
+use super::{PAGE_BUDGET_BYTES, included_under_budget, page, parse_cursor, requested_limit};
 
 /// The millisecond the fixture thread's oldest row was stamped.
 const FIRST_MS: i64 = 1_700_000_000_000;
@@ -42,15 +42,17 @@ fn cheap_thread(count: i64) -> Vec<EventDetailRow> {
 /// A caller who names no page size gets the served default.
 #[test]
 fn should_page_at_the_default_when_no_size_is_named() {
-    assert_eq!(parse_limit(None).unwrap(), THREAD_DEFAULT_LIMIT);
+    assert_eq!(requested_limit(None).unwrap(), THREAD_DEFAULT_LIMIT);
+    // A form field left blank is the same request as no field at all.
+    assert_eq!(requested_limit(Some("")).unwrap(), THREAD_DEFAULT_LIMIT);
 }
 
 /// Both ends of the served band are accepted.
 #[test]
 fn should_accept_both_ends_of_the_served_band() {
-    assert_eq!(parse_limit(Some("1")).unwrap(), 1);
+    assert_eq!(requested_limit(Some("1")).unwrap(), 1);
     assert_eq!(
-        parse_limit(Some(&THREAD_MAX_LIMIT.to_string())).unwrap(),
+        requested_limit(Some(&THREAD_MAX_LIMIT.to_string())).unwrap(),
         THREAD_MAX_LIMIT,
     );
 }
@@ -65,9 +67,9 @@ fn should_refuse_a_size_outside_the_band_rather_than_clamp_it() {
     // These are the bytes a caller sends, not a value this daemon holds, so
     // naming them would name nothing.
     // pin test: literal is the contract
-    for asked in ["0", "26", "-1", "1000", "", " 5", "5.0", "five", "0x10"] {
+    for asked in ["0", "26", "-1", "1000", " 5", "5.0", "five", "0x10"] {
         assert!(
-            parse_limit(Some(asked)).is_err(),
+            requested_limit(Some(asked)).is_err(),
             "{asked} is not a page size this surface serves"
         );
     }

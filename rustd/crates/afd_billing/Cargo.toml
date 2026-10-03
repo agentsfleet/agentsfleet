@@ -32,6 +32,8 @@ jiff.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+# The charges cursor's identifier bound, declared on the decoded boundary.
+garde.workspace = true
 
 [features]
 # M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a caller's
