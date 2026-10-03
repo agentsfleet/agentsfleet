@@ -7,7 +7,10 @@ use afd_wire::lease::LeasePayload;
 use afd_wire::memory::MemoryDelta;
 use afd_wire::policy::ExecutionPolicy;
 use afd_wire::report::ExecutionResult;
+use afd_wire::tool_detail::ToolCallRecord;
+use afd_wire::tool_trace::ToolTrace;
 use afr_executor::Executor;
+use tokio_util::sync::CancellationToken;
 
 use crate::error::Result;
 
@@ -40,6 +43,9 @@ pub struct AgentRun<'run> {
     pub executor: Option<&'run dyn Executor>,
     /// Where activity frames go.
     pub events: &'run dyn EventSink,
+    /// Cancelled when the lease ends early. The engine closes every open call
+    /// `interrupted` and returns what it has.
+    pub stop: &'run CancellationToken,
 }
 
 impl fmt::Debug for AgentRun<'_> {
@@ -59,6 +65,11 @@ pub struct RunOutput {
     pub result: ExecutionResult<'static>,
     /// The memory to push, fenced, before the report.
     pub memory: Vec<MemoryDelta<'static>>,
+    /// Every call the run made and how it ended, for the report; none for a
+    /// run that called no tool.
+    pub trace: Option<ToolTrace<'static>>,
+    /// Each finished call's full record, posted before the report.
+    pub records: Vec<ToolCallRecord<'static>>,
 }
 
 /// What a lease needs prepared before its turn runs.

@@ -59,7 +59,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/Cargo.toml`, `rustd/Cargo.lock`, `rustd/crates/afr_tools/` (`Cargo.toml`, `src/catalog.rs`, `schema.rs`, `runtime.rs`, `http_request.rs`, `network.rs`, `origin_rules.rs`, `placeholders.rs`, `mint.rs`, `web_fetch.rs`, `pushover.rs`, `memory.rs`, `calculator.rs`, `plan.rs`, `error.rs`) | CREATE | The catalog with every published tool, its schema and runtime; the supervisor-side handlers; `network.rs` is the guarded transport the tools share |
 | `rustd/crates/afr_agent/` (`Cargo.toml`, `src/lib.rs`, `engine.rs`, `loop.rs`, `turn.rs`, `router.rs`, `prompt.rs`, `context.rs`, `events.rs`, `trace.rs`, `records.rs`, `scrub.rs`, `error.rs`) | CREATE / EDIT | The loop, routing, prompt, context budget, frames, trace, full records, the secret scrub; `AgentRun` gains the runner verbs the loop calls |
 | `rustd/crates/afr_providers/` (`Cargo.toml`, `src/provider.rs`, `anthropic.rs`, `openai_responses.rs`, `openai_chat.rs`, `hosted.rs`, `retry.rs`, `usage.rs`, `error.rs`) | CREATE | One trait, three wires, hosted specs, bounded retry, usage split |
-| `rustd/crates/afr_supervisor/` (`Cargo.toml`, `src/lease_loop.rs`, `src/lease_loop/`, `src/engine_select.rs`, `src/error.rs`), `rustd/crates/afr_agent/tests/support/scripted.rs` | EDIT / CREATE | Run the real loop; refuse a lease naming an unhosted tool; start no sandbox for a supervisor-only lease; `lease_loop.rs` (352 lines) splits; the scripted engine stays for M210_001's lane |
+| `rustd/crates/afr_supervisor/` (`Cargo.toml`, `src/lease_loop.rs`, `src/lease_loop/`, `src/client.rs`, `src/records.rs`, `src/report.rs`, `src/test_support/`), `rustd/crates/afd_wire/src/paths.rs`, `rustd/crates/afr_agent/tests/support/scripted.rs` | EDIT / CREATE | Run the real loop; refuse a lease naming an unhosted tool; start no sandbox for a supervisor-only lease; `lease_loop.rs` (352 lines) splits; records post before the report on the `tool-calls` path, and the report carries the trace; the scripted engine stays for M210_001's lane |
 | `rustd/crates/agentsfleetd/tests/support/fake_github.rs`, `fake_grafana.rs`, `fake_elastic.rs`, `fake_model.rs`, `bundle_install.rs` | CREATE | Fakes speaking the upstream shapes the bundles read; installing a fixture bundle through the seed |
 | `rustd/crates/agentsfleetd/tests/integration_rust_runner_bundles.rs` | CREATE | The four bundles end to end (`#[ignore]`d, run by `make test-integration-rustd`) |
 | `rustd/crates/afr_agent/tests/`, `rustd/crates/afr_providers/tests/`, `rustd/crates/afr_tools/tests/` | CREATE | Unit proofs per crate |
@@ -96,23 +96,23 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The catalog names every tool in `docs/architecture/runner_execution.md` §"Tool catalog" with its runtime; each handler carries its JSON schema, so a tool with no handler yet has none to drift. A lease is offered exactly the names in `ExecutionPolicy.tools`; a policy naming a tool the catalog has no handler for refuses the lease with a logged code, never a quieter tool set. A model call to a name outside the policy is a tool error and the run continues. The router runs a `Supervisor` handler in-process and a `Sandbox` handler through the executor connection; in this workstream the sandbox-side handlers are a stub that proves the route, and a lease whose tools are all supervisor-side starts no sandbox.
 
-- **Dimension 1.1** — The model is offered exactly the policy's tools, each with its schema → Test `test_catalog_offers_policy_tools`
-- **Dimension 1.2** — A policy naming a tool without a handler refuses the lease before any model call → Test `test_unhosted_tool_refuses_lease`
-- **Dimension 1.3** — A model call to a name outside the policy is a tool error; the next turn runs → Test `test_unlisted_tool_refused_run_continues`
-- **Dimension 1.4** — A supervisor-side call never touches the executor; a sandbox-side call crosses it → Test `test_router_sends_each_tool_to_its_runtime`
+- **Dimension 1.1** — The model is offered exactly the policy's tools, each with its schema → Test `test_catalog_offers_policy_tools` — DONE (`rustd/crates/afr_tools/src/catalog/tests.rs`)
+- **Dimension 1.2** — A policy naming a tool without a handler refuses the lease before any model call → Test `test_unhosted_tool_refuses_lease` — DONE (`rustd/crates/afr_supervisor/src/lease_loop/admit_tests.rs`)
+- **Dimension 1.3** — A model call to a name outside the policy is a tool error; the next turn runs → Test `test_unlisted_tool_refused_run_continues` — DONE (`rustd/crates/afr_agent/src/loop/turn_tests.rs`)
+- **Dimension 1.4** — A supervisor-side call never touches the executor; a sandbox-side call crosses it → Test `test_router_sends_each_tool_to_its_runtime` — DONE (`rustd/crates/afr_agent/src/router/tests.rs`)
 - **Dimension 1.5** — A lease with only supervisor-side tools starts no sandbox; one with `file_read` does → Test `test_lease_without_sandbox_tools_starts_no_sandbox` — DONE (`rustd/crates/afr_supervisor/src/lease_loop/admit_tests.rs`)
 
 ### §2 — The loop runs turns, and every call ends once
 
 A run is turns until the model answers without a tool call, the context cap is reached, the lease ends, or the provider fails. Each call gets a call id from a counter starting at 1, one `tool_call_started` (`args_redacted` valid JSON, scrubbed, at most `ARGS_MAX_BYTES`) and one `tool_call_completed` (`status`, `output_head`, `output_tail`, `output_line_count`, `exit_code` only when a process ran). When the run ends for any reason, every open call is closed `interrupted`, live and in the trace. The trace honours `TRACE_MAX_CALLS` and `TRACE_MAX_BYTES`; full records post in batches of at most `DETAIL_POST_MAX_BYTES` to the tool-calls verb before the report. `tool_window` bounds the tool results kept in the window, `memory_checkpoint_every` triggers the mid-run memory push M210_001 §2 provides, and at `context_cap_tokens` the loop asks for a final answer with no tools offered. Answer and reasoning text stream as `fleet_response_chunk` with `text_kind`, `stream_start` and a contiguous `stream_seq`.
 
-- **Dimension 2.1** — A turn with two tool calls runs both, feeds the results back and ends on the answer → Test `test_loop_runs_tool_calls_until_answer`
-- **Dimension 2.2** — Every call emits one start and one completion with the same call id, numbered from 1 → Test `test_loop_emits_one_start_one_end_per_call`
-- **Dimension 2.3** — A kill, a timeout or a provider failure closes each open call `interrupted` exactly once, in the frames and the trace → Test `test_run_end_interrupts_open_calls_once`
-- **Dimension 2.4** — The 201st call is counted as omitted, and past the byte cap a call keeps its row without edges → Test `test_trace_bounds_come_from_afd_wire`
+- **Dimension 2.1** — A turn with two tool calls runs both, feeds the results back and ends on the answer → Test `test_loop_runs_tool_calls_until_answer` — DONE (`rustd/crates/afr_agent/src/loop/tests.rs`)
+- **Dimension 2.2** — Every call emits one start and one completion with the same call id, numbered from 1 → Test `test_loop_emits_one_start_one_end_per_call` — DONE (`rustd/crates/afr_agent/src/loop/tests.rs`)
+- **Dimension 2.3** — A kill, a timeout or a provider failure closes each open call `interrupted` exactly once, in the frames and the trace → Test `test_run_end_interrupts_open_calls_once` — DONE (`rustd/crates/afr_agent/src/loop/tests.rs`)
+- **Dimension 2.4** — The 201st call is counted as omitted, and past the byte cap a call keeps its row without edges → Test `test_trace_bounds_come_from_afd_wire` — DONE (`rustd/crates/afr_agent/src/trace/tests.rs`)
 - **Dimension 2.5** — Records post before the report in bounded batches; a failed post leaves the report untouched → Test `test_records_post_before_report`
 - **Dimension 2.6** — `tool_window` and `memory_checkpoint_every` are honoured; at `context_cap_tokens` the next request offers no tools → Test `test_loop_honours_context_budget`
-- **Dimension 2.7** — Answer and reasoning stream as chunks with their kind and a contiguous sequence → Test `test_answer_streams_as_chunks`
+- **Dimension 2.7** — Answer and reasoning stream as chunks with their kind and a contiguous sequence → Test `test_answer_streams_as_chunks` — DONE (`rustd/crates/afr_agent/src/loop/turn_tests.rs`)
 
 ### §3 — Three providers, one trait, the key stays in the supervisor
 
@@ -121,7 +121,7 @@ A run is turns until the model answers without a tool call, the context cap is r
 - **Dimension 3.1** — Each provider completes a tool-calling turn against a fake server speaking its wire → Test `test_each_provider_drives_a_tool_turn`
 - **Dimension 3.2** — A 429 with `Retry-After: 1` is retried once and succeeds; a 401 ends the run with the status in `failure_detail` → Test `test_provider_retry_honours_retry_after`
 - **Dimension 3.3** — The key appears in no log line, frame, trace, record or prompt of a run → Test `test_api_key_never_leaves_the_supervisor`
-- **Dimension 3.4** — Three turns' usage sums into the report's three counts → Test `test_report_sums_token_usage`
+- **Dimension 3.4** — Three turns' usage sums into the report's three counts → Test `test_report_sums_token_usage` — DONE (`rustd/crates/afr_agent/src/loop/budget_tests.rs`)
 - **Dimension 3.5** — `web_search` reaches Responses and Messages as a hosted spec and is a coded tool error on compatible chat → Test `test_web_search_is_a_hosted_spec`
 
 ### §4 — Supervisor-side tools under the lease's policy
@@ -133,7 +133,7 @@ A run is turns until the model answers without a tool call, the context cap is r
 - **Dimension 4.3** — A request outside the origin's rules is refused; one inside, with its locked fields, passes → Test `test_http_request_enforces_origin_rules`
 - **Dimension 4.4** — A placeholder lands in `Authorization`, or as `.host` in the URL; any other in a URL or body refuses the call → Test `test_placeholder_substituted_only_in_authorization`
 - **Dimension 4.5** — A mintable credential is minted once per lease and reused until expiry → Test `test_mintable_credential_minted_once`
-- **Dimension 4.6** — A secret value in a response body is masked in the frame, the trace and the record → Test `test_secret_values_masked_in_outputs`
+- **Dimension 4.6** — A secret value in a response body is masked in the frame, the trace and the record → Test `test_secret_values_masked_in_outputs` — DONE (`rustd/crates/afr_agent/src/loop/budget_tests.rs`)
 - **Dimension 4.7** — `web_fetch` is `GET` only, refuses a placeholder, and caps the body → Test `test_web_fetch_is_get_only_and_credential_free`
 - **Dimension 4.8** — `pushover` sends the secret's two fields from `secrets_map` and refuses a model-supplied token → Test `test_pushover_takes_credentials_from_secrets_map`
 - **Dimension 4.9** — The four memory tools round-trip through the hydrated store; stores reach the push, a forget holds for the run → Test `test_memory_tools_round_trip_through_push`

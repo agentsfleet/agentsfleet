@@ -301,3 +301,7 @@ mod tests;
 #[cfg(test)]
 #[path = "lease_loop/admit_tests.rs"]
 mod admit_tests;
+
+#[cfg(test)]
+#[path = "lease_loop/records_tests.rs"]
+mod records_tests;

@@ -179,6 +179,8 @@ fn finish(turn: Turn, started: Instant) -> RunOutput {
             output_tokens: 0,
         },
         memory: turn.memory,
+        trace: None,
+        records: Vec::new(),
     }
 }
 

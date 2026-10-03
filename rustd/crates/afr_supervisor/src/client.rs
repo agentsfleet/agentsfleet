@@ -61,6 +61,8 @@ pub(crate) enum Verb {
     Bundle,
     /// A scoped credential for a held lease.
     Mint,
+    /// Finished calls' full records for a held lease.
+    Records,
 }
 
 impl Verb {
@@ -81,6 +83,7 @@ impl Verb {
             Self::Capture => "capture",
             Self::Bundle => "bundle",
             Self::Mint => "mint",
+            Self::Records => "records",
         }
     }
 
@@ -94,7 +97,8 @@ impl Verb {
             | Self::Renew
             | Self::Activity
             | Self::Report
-            | Self::Mint => error_code::INTERNAL_OPERATION_FAILED,
+            | Self::Mint
+            | Self::Records => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 }
@@ -195,6 +199,12 @@ impl ControlPlane {
     pub(crate) async fn report(&self, report: Bytes) -> Result<()> {
         let path = Cow::Borrowed(paths::RUNNER_REPORTS);
         self.send(Verb::Report, path, Some(report)).await.map(drop)
+    }
+
+    /// Posts one body of finished calls' full records, already encoded.
+    pub(crate) async fn tool_calls(&self, lease_id: &Uuid7, body: Bytes) -> Result<()> {
+        let path = lease_path(lease_id, paths::LEASE_TOOL_CALLS_SUFFIX);
+        self.send(Verb::Records, path, Some(body)).await.map(drop)
     }
 
     /// Reads a fleet's memory.

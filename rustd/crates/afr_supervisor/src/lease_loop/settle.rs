@@ -4,28 +4,38 @@ use std::mem;
 
 use afd_core::error_code;
 use afd_wire::memory::MemoryDelta;
+use afd_wire::tool_detail::ToolCallRecord;
 use bytes::Bytes;
 use tokio::time::Instant;
 
 use super::LeaseRun;
 use crate::client::retrying;
 use crate::memory;
+use crate::records;
 use crate::report::{Ending, report};
 use crate::report_spool::{Delivery, Spooled};
 
 const EVENT_CAPTURE_FAILED: &str = "memory_capture_post_failed";
+const EVENT_RECORDS_FAILED: &str = "tool_records_post_failed";
 const EVENT_SPOOL_KEPT: &str = "report_spool_kept";
 const EVENT_SPOOL_UNAVAILABLE: &str = "report_spool_unavailable";
 const EVENT_ENCODE_FAILED: &str = "report_encode_failed";
 const EVENT_UNSPOOLED_LOST: &str = "report_failed";
 
 impl LeaseRun<'_> {
-    /// Pushes the run's memory, then spools and posts its report.
+    /// Posts the run's full tool records, pushes its memory, then spools and
+    /// posts its report.
     pub(super) async fn settle(&self, ending: &mut Ending, started: Instant) {
+        let mut trace = None;
         if let Ending::Ran { output, .. } = ending {
+            self.post_records(&mem::take(&mut output.records)).await;
             self.capture(mem::take(&mut output.memory)).await;
+            trace = output
+                .trace
+                .take()
+                .and_then(|trace| serde_json::to_string(&trace).ok());
         }
-        let report = report(self.lease, ending, started.elapsed());
+        let report = report(self.lease, ending, started.elapsed(), trace.as_deref());
         let bytes = match serde_json::to_vec(&report) {
             Ok(bytes) => Bytes::from(bytes),
             Err(failure) => {
@@ -46,6 +56,40 @@ impl LeaseRun<'_> {
         match self.lessee.spool.hold(&self.ids.lease, bytes.clone()).await {
             Ok(spooled) => self.deliver(&spooled).await,
             Err(failure) => self.post_unspooled(bytes, &failure).await,
+        }
+    }
+
+    /// Posts each finished call's full record before the report, so "show
+    /// all" has them once the run settles. A post that fails stops the rest;
+    /// the report settles regardless, since the answer outweighs the detail.
+    async fn post_records(&self, records: &[ToolCallRecord<'static>]) {
+        if records.is_empty() {
+            return;
+        }
+        let plane = &self.lessee.plane;
+        let posted = match records::bodies(self.lease.fencing_token, records) {
+            Ok(bodies) => {
+                let mut posted = Ok(());
+                for body in bodies {
+                    posted = retrying(|| plane.tool_calls(&self.ids.lease, body.clone())).await;
+                    if posted.is_err() {
+                        break;
+                    }
+                }
+                posted
+            }
+            Err(failure) => Err(failure),
+        };
+        if let Err(failure) = posted {
+            let code = failure.code().as_str();
+            let lease_id = self.ids.lease.as_str();
+            let event = EVENT_RECORDS_FAILED;
+            tracing::warn!(
+                error_code = code,
+                lease_id,
+                event,
+                "the run's full tool records were not stored; the report still settles"
+            );
         }
     }
 

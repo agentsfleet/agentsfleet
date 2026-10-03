@@ -106,6 +106,7 @@ pub(crate) fn daemon(
                     "registry_allowlist": [], "worker_count": 1, "extra_binds": []},
                 "degraded": false, "degraded_reason": null, "selftest_requested": false,
                 "heartbeat_interval_ms": INTERVAL_MS})),
+            Verb::Records => json(&serde_json::json!({"stored_count": 1, "skipped_count": 0})),
             Verb::Activity | Verb::Report | Verb::Bundle | Verb::Mint => {
                 json(&ReportResponse { ok: true })
             }

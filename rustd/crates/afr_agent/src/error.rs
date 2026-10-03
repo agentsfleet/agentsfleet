@@ -33,6 +33,14 @@ pub(crate) enum ErrorKind {
         source: afr_executor::Error,
     },
 
+    /// The model provider the policy names could not be reached.
+    #[error("the model provider could not be reached")]
+    Provider {
+        /// The provider's failure.
+        #[from]
+        source: afr_providers::Error,
+    },
+
     /// The catalog refused the lease's tools.
     #[error("the lease's tools were refused")]
     Tools {
@@ -51,6 +59,7 @@ impl Error {
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::Executor { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::Provider { source } => source.code(),
             ErrorKind::Tools { source } => source.code(),
         }
     }
@@ -59,7 +68,7 @@ impl Error {
     #[must_use]
     pub fn unhosted_tool(&self) -> Option<&str> {
         match self.kind() {
-            ErrorKind::Executor { .. } => None,
+            ErrorKind::Executor { .. } | ErrorKind::Provider { .. } => None,
             ErrorKind::Tools { source } => source.unhosted_tool(),
         }
     }

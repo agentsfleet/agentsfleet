@@ -37,6 +37,7 @@ mod halt;
 mod heartbeat;
 mod lease_loop;
 mod memory;
+mod records;
 mod renew;
 mod report;
 mod report_spool;

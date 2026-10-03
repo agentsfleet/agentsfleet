@@ -33,6 +33,7 @@ impl LeaseRun<'_> {
             memory,
             executor,
             events: &sink,
+            stop: &self.interrupt,
         }))
         .catch_unwind();
         let output = tokio::select! {

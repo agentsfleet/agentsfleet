@@ -1,0 +1,110 @@
+//! The provider seam: one model turn, streamed as chunks.
+//!
+//! The types here are provider-neutral. Each wire maps them onto its own
+//! function-calling shape, so the loop never knows which provider it drives.
+
+use std::fmt;
+use std::ops::AddAssign;
+
+use afd_wire::activity::StreamTextKind;
+use afr_tools::{Entry, ToolSpec};
+use futures_util::stream::BoxStream;
+
+use crate::error::Result;
+
+/// One tool call the model asked for.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Call {
+    /// The provider's id for the call, echoed with its result.
+    pub id: String,
+    /// The tool's name.
+    pub name: String,
+    /// The arguments, as the model wrote them.
+    pub arguments: serde_json::Value,
+}
+
+/// One message of the conversation a turn continues.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Message {
+    /// What the fleet was asked.
+    User(String),
+    /// What the model answered and which tools it called.
+    Assistant {
+        /// The answer text of the turn, possibly empty.
+        text: String,
+        /// The calls the turn asked for.
+        calls: Vec<Call>,
+    },
+    /// One call's output, fed back to the model.
+    ToolResult {
+        /// The provider's id for the call.
+        call_id: String,
+        /// What the call returned.
+        output: String,
+    },
+}
+
+/// What one turn asks the model.
+#[derive(Debug, Clone, Copy)]
+pub struct Request<'a> {
+    /// The model to run.
+    pub model: &'a str,
+    /// The system prompt.
+    pub instructions: &'a str,
+    /// The conversation so far.
+    pub messages: &'a [Message],
+    /// The functions the model may call; empty once the context cap is reached.
+    pub tools: &'a [ToolSpec<'a>],
+    /// The provider-hosted tools offered, sent as the provider's own specs.
+    pub hosted: &'a [&'static Entry],
+}
+
+/// Tokens one turn spent, or a run summed over its turns.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Usage {
+    /// Prompt tokens, cached ones included.
+    pub input: u64,
+    /// Prompt tokens read from the provider's cache.
+    pub cached_input: u64,
+    /// Completion tokens.
+    pub output: u64,
+}
+
+impl Usage {
+    /// Prompt and completion tokens together.
+    #[must_use]
+    pub const fn total(self) -> u64 {
+        self.input.saturating_add(self.output)
+    }
+}
+
+impl AddAssign for Usage {
+    fn add_assign(&mut self, rhs: Self) {
+        self.input = self.input.saturating_add(rhs.input);
+        self.cached_input = self.cached_input.saturating_add(rhs.cached_input);
+        self.output = self.output.saturating_add(rhs.output);
+    }
+}
+
+/// One piece of a streamed turn.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Chunk {
+    /// Text, as the answer or the model's reasoning.
+    Text {
+        /// Which of the two it is.
+        kind: StreamTextKind,
+        /// The text.
+        text: String,
+    },
+    /// A complete tool call.
+    Call(Call),
+    /// What the turn spent.
+    Usage(Usage),
+}
+
+/// A model provider.
+pub trait Provider: Send + Sync + fmt::Debug {
+    /// Streams one turn. The stream ends when the turn does; an error ends it
+    /// early, and the run with it.
+    fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, Result<Chunk>>;
+}

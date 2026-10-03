@@ -15,6 +15,7 @@ use afr_executor::{
     Ending, Executor, FileContent, Listing, Process, ProcessEvent, ProcessId, Spawn, Stream,
 };
 use bytes::Bytes;
+use tokio_util::sync::CancellationToken;
 
 use super::{ScriptedEngine, Step};
 use crate::engine::{AgentEngine, AgentRun};
@@ -86,6 +87,7 @@ async fn drive(
             memory: &[],
             executor,
             events: &sink,
+            stop: &CancellationToken::new(),
         })
         .await;
     drop(sink);
@@ -203,6 +205,7 @@ async fn a_run_debugs_without_the_leases_secrets() {
         memory: &[],
         executor: None,
         events: &sink,
+        stop: &CancellationToken::new(),
     };
 
     let rendered = format!("{run:?}");

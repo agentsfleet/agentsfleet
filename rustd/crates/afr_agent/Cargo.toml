@@ -18,12 +18,24 @@ workspace = true
 afd_core.workspace = true
 afd_wire.workspace = true
 afr_executor.workspace = true
+# The model a run drives, behind one trait.
+afr_providers.workspace = true
 # The catalog a run is offered from, and the handlers the router calls.
 afr_tools.workspace = true
+# Every secret value masked in one pass over a frame, an output or a reply.
+aho-corasick.workspace = true
 async-trait.workspace = true
+# A turn reads the provider's stream of chunks.
+futures-util.workspace = true
+serde.workspace = true
 # A tool call's arguments.
 serde_json.workspace = true
 thiserror.workspace = true
+# `select!` races each turn and each call against the lease's stop.
+tokio = { workspace = true, features = ["macros"] }
+# The token that stops a run when its lease ends early.
+tokio-util.workspace = true
+tracing.workspace = true
 
 [features]
 # M-TEST-UTIL. The scripted engine the supervisor's lanes drive a lease with:
@@ -32,6 +44,8 @@ thiserror.workspace = true
 test-util = []
 
 [dev-dependencies]
+# The `tracing` capture the suites read a failure arm's log line through.
+afd_core = { workspace = true, features = ["test-util"] }
 afr_tools = { workspace = true, features = ["test-util"] }
 bytes.workspace = true
-tokio = { workspace = true, features = ["macros", "rt", "sync"] }
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time", "test-util"] }

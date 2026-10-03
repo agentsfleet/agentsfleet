@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_mail", "crates/afd_observability", "crates/afd_outbound", "crates/afd_dragonfly", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/afr_agent", "crates/afr_executor", "crates/afr_sandbox", "crates/afr_supervisor", "crates/afr_tools", "crates/agentsfleet_runner", "crates/agentsfleetd"]
+members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_mail", "crates/afd_observability", "crates/afd_outbound", "crates/afd_dragonfly", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/afr_agent", "crates/afr_executor", "crates/afr_providers", "crates/afr_sandbox", "crates/afr_supervisor", "crates/afr_tools", "crates/agentsfleet_runner", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.51.1"
@@ -37,6 +37,10 @@ categories = ["network-programming"]
 
 [workspace.dependencies]
 percent-encoding = "2.3.2"
+# Every known secret value replaced in one pass over a tool's output, a frame
+# or a reply: leftmost-longest multi-pattern matching, rather than one scan per
+# secret. Already in the graph through `regex`.
+aho-corasick = { version = "1.1.5", default-features = false, features = ["std", "perf-literal"] }
 # Intra-workspace members resolve through the workspace, never by direct sibling
 # path (M-CRATES-IN-WORKSPACE).
 afd_admin = { path = "crates/afd_admin" }
@@ -140,6 +144,7 @@ afd_wire = { path = "crates/afd_wire" }
 # daemon (`docs/architecture/runner_execution.md` §Crates).
 afr_agent = { path = "crates/afr_agent" }
 afr_executor = { path = "crates/afr_executor" }
+afr_providers = { path = "crates/afr_providers" }
 afr_sandbox = { path = "crates/afr_sandbox" }
 afr_supervisor = { path = "crates/afr_supervisor" }
 afr_tools = { path = "crates/afr_tools" }
