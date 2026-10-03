@@ -5,6 +5,9 @@
 //! runner builds one that cannot: past `TRACE_MAX_CALLS` a call is counted as
 //! omitted, and past `TRACE_MAX_BYTES` a call keeps its row without edges, or
 //! is counted as omitted when even that row does not fit.
+//!
+//! Everything here takes [`Clean`] text, so the scrub has already masked every
+//! secret and NUL before a bound is applied.
 
 use std::borrow::Cow;
 use std::time::Duration;
@@ -15,8 +18,8 @@ use afd_wire::tool_trace::{
 };
 use serde_json::{Map, Value};
 
-/// What a NUL character becomes: no stored trace or record may hold one.
-const NUL_STAND_IN: &str = "\u{fffd}";
+use crate::json;
+use crate::scrub::Clean;
 
 /// How one call ended, as its completion frame and its trace row carry it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,13 +36,12 @@ impl Outcome {
     /// A call that returned `output`.
     pub(crate) fn ended(
         status: ToolCallStatus,
-        output: &str,
+        output: &Clean<String>,
         exit_code: Option<i32>,
         elapsed: Duration,
     ) -> Self {
-        let output = without_nul(output);
-        let head = edge_head(&output);
-        let tail = (head.len() < output.len()).then(|| edge_tail(&output));
+        let head = edge_head(output);
+        let tail = (head.len() < output.len()).then(|| edge_tail(output));
         Self {
             status,
             head: (!head.is_empty()).then(|| head.to_owned()),
@@ -86,51 +88,26 @@ fn edge_tail(output: &str) -> &str {
     &tail[tail.ceil_char_boundary(cut)..]
 }
 
-/// `text` with every NUL replaced.
-pub(crate) fn without_nul(text: &str) -> Cow<'_, str> {
-    if text.contains('\0') {
-        Cow::Owned(text.replace('\0', NUL_STAND_IN))
-    } else {
-        Cow::Borrowed(text)
-    }
-}
-
 /// `arguments` as a trace row and a start frame may carry them: every key and
 /// string cut to its leaf bound, and the whole emptied when it still encodes
 /// past `ARGS_MAX_BYTES`. Arguments that are not an object carry nothing.
-pub(crate) fn bounded_arguments(arguments: &Value) -> Map<String, Value> {
-    let Value::Object(fields) = arguments else {
+pub(crate) fn bounded_arguments(arguments: &Clean<Value>) -> Map<String, Value> {
+    let Value::Object(fields) = &**arguments else {
         return Map::new();
     };
-    let bounded: Map<String, Value> = fields
-        .iter()
-        .map(|(key, value)| (leaf(key), bounded_value(value)))
-        .collect();
-    if encoded_len(&bounded) > ARGS_MAX_BYTES {
-        Map::new()
-    } else {
-        bounded
+    let mut bounded = Value::Object(fields.clone());
+    json::rewrite(&mut bounded, &leaf);
+    match bounded {
+        Value::Object(bounded) if encoded_len(&bounded) <= ARGS_MAX_BYTES => bounded,
+        _ => Map::new(),
     }
 }
 
-fn bounded_value(value: &Value) -> Value {
-    match value {
-        Value::String(text) => Value::String(leaf(text)),
-        Value::Array(items) => Value::Array(items.iter().map(bounded_value).collect()),
-        Value::Object(fields) => Value::Object(
-            fields
-                .iter()
-                .map(|(key, field)| (leaf(key), bounded_value(field)))
-                .collect(),
-        ),
-        Value::Null | Value::Bool(_) | Value::Number(_) => value.clone(),
-    }
-}
-
-/// `text` cut to `ARGS_LEAF_MAX_BYTES` on a character boundary, NUL replaced.
-fn leaf(text: &str) -> String {
-    let text = without_nul(text);
-    text[..text.floor_char_boundary(ARGS_LEAF_MAX_BYTES)].to_owned()
+/// `text` cut to `ARGS_LEAF_MAX_BYTES` on a character boundary, when it is
+/// longer.
+fn leaf(text: &str) -> Option<String> {
+    let cut = text.floor_char_boundary(ARGS_LEAF_MAX_BYTES);
+    (cut < text.len()).then(|| text[..cut].to_owned())
 }
 
 /// How many bytes `value` encodes to; a failure answers the largest size,
@@ -168,7 +145,7 @@ impl Trace {
         number: u64,
         name: &str,
         arguments: Map<String, Value>,
-        outcome: &Outcome,
+        outcome: Outcome,
     ) {
         if self.calls.len() >= TRACE_MAX_CALLS {
             self.omitted += 1;
@@ -179,8 +156,8 @@ impl Trace {
             name: Cow::Owned(name.to_owned()),
             arguments,
             status: outcome.status,
-            output_head: outcome.head.clone().map(Cow::Owned),
-            output_tail: outcome.tail.clone().map(Cow::Owned),
+            output_head: outcome.head.map(Cow::Owned),
+            output_tail: outcome.tail.map(Cow::Owned),
             output_line_count: outcome.line_count,
             exit_code: outcome.exit_code,
             duration_ms: afd_core::clock::saturating_millis(outcome.elapsed),

@@ -5,7 +5,6 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use afd_wire::activity::ActivityFrame;
@@ -19,13 +18,13 @@ use tokio_util::sync::CancellationToken;
 
 use super::{DETAIL_STOPPED, Loop};
 use crate::engine::{AgentEngine, AgentRun, RunOutput};
-use crate::fixture::{Canned, Frames, Script, Shared, call, lease, say, unbounded};
+use crate::fixture::{Canned, Frames, Script, call, lease, say, unbounded};
 
 /// A loop hosting `tools`, every lease driven by `script`.
-pub(super) fn engine(tools: Vec<Box<dyn Tool>>, script: &Arc<Script>) -> Loop {
-    let script = Arc::clone(script);
+pub(super) fn engine(tools: Vec<Box<dyn Tool>>, script: &Script) -> Loop {
+    let replay = script.replay();
     Loop::new(Catalog::new(tools), move |_policy| {
-        Ok(Box::new(Shared(Arc::clone(&script))))
+        Ok(Box::new(replay.clone()))
     })
 }
 
@@ -36,7 +35,7 @@ pub(super) async fn drive(
     stop: &CancellationToken,
 ) -> (RunOutput, Vec<ActivityFrame<'static>>) {
     let frames = Frames::default();
-    let sink = |frame| frames.emit(frame);
+    let sink = frames.sink();
     let run = AgentRun {
         lease,
         memory: &[],
@@ -249,7 +248,7 @@ async fn a_dropped_run_still_closes_its_open_call_once() {
     let engine = engine(vec![Canned::boxed(&HTTP_REQUEST, "")], &script);
     let lease = lease(&["http_request"], unbounded());
     let frames = Frames::default();
-    let sink = |frame| frames.emit(frame);
+    let sink = frames.sink();
     let stop = CancellationToken::new();
     let run = engine.run(AgentRun {
         lease: &lease,

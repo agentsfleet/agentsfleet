@@ -82,7 +82,7 @@ impl AgentEngine for Loop {
         let policy = &run.lease.policy;
         let selection = self.catalog.select(&policy.tools)?;
         let provider = (self.connect)(policy)?;
-        let scrub = Scrub::new(policy);
+        let scrub = Scrub::new(policy)?;
         let harness = Harness::new(&run, &selection, &scrub);
         Ok(harness.drive(provider.as_ref()).await)
     }
@@ -194,8 +194,7 @@ impl<'run> Harness<'run> {
         self.calls += 1;
         let number = self.calls;
         let id = number.to_string();
-        let mut shown = call.arguments.clone();
-        self.scrub.json(&mut shown);
+        let shown = self.scrub.clean_json(call.arguments.clone());
         let bounded = bounded_arguments(&shown);
         let args_redacted = serde_json::to_string(&bounded).unwrap_or_default();
         self.live.started(&id, &call.name, args_redacted);
@@ -213,7 +212,7 @@ impl<'run> Harness<'run> {
             () = self.stop.cancelled() => return None,
             output = self.router.dispatch(&call.name, &call.arguments) => output,
         };
-        let text = self.scrub.text(&output.text).into_owned();
+        let text = self.scrub.clean(&output.text);
         let failed = output.error_code.is_some() || output.exit_code.is_some_and(|code| code != 0);
         let status = if failed {
             ToolCallStatus::Failed
@@ -221,11 +220,11 @@ impl<'run> Harness<'run> {
             ToolCallStatus::Succeeded
         };
         let outcome = Outcome::ended(status, &text, output.exit_code, open.started.elapsed());
-        open.close(&outcome);
-        self.records.push(record(number, &shown, &text));
+        open.close(outcome);
+        self.records.push(record(number, shown, &text));
         Some(Message::ToolResult {
             call_id: call.id.clone(),
-            output: text,
+            output: text.into_inner(),
         })
     }
 
@@ -292,13 +291,13 @@ struct OpenCall<'a, 'run> {
 }
 
 impl OpenCall<'_, '_> {
-    fn close(mut self, outcome: &Outcome) {
+    fn close(mut self, outcome: Outcome) {
         self.end(outcome);
     }
 
-    fn end(&mut self, outcome: &Outcome) {
+    fn end(&mut self, outcome: Outcome) {
         if let Some(arguments) = self.arguments.take() {
-            self.live.completed(self.id, self.name, outcome);
+            self.live.completed(self.id, self.name, &outcome);
             self.trace.push(self.number, self.name, arguments, outcome);
         }
     }
@@ -306,8 +305,7 @@ impl OpenCall<'_, '_> {
 
 impl Drop for OpenCall<'_, '_> {
     fn drop(&mut self) {
-        let outcome = Outcome::interrupted(self.started.elapsed());
-        self.end(&outcome);
+        self.end(Outcome::interrupted(self.started.elapsed()));
     }
 }
 

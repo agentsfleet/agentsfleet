@@ -153,7 +153,7 @@ async fn test_report_sums_token_usage() {
 
 #[tokio::test]
 async fn a_provider_refusal_ends_the_run_as_the_fleets_error() {
-    let script = Script::failing(Vec::new(), Error::refused(401));
+    let script = Script::failing(Vec::new(), || Error::refused(401));
     let engine = engine(Vec::new(), &script);
 
     let (output, _frames) =
@@ -175,7 +175,7 @@ async fn a_provider_refusal_ends_the_run_as_the_fleets_error() {
 
 #[tokio::test]
 async fn a_lost_provider_connection_ends_the_run_as_transport_loss() {
-    let lost = Error::lost(std::io::Error::other("connection reset"));
+    let lost = || Error::lost(std::io::Error::other("connection reset"));
     let script = Script::failing(vec![say("partial ")], lost);
     let engine = engine(Vec::new(), &script);
 
@@ -243,7 +243,7 @@ async fn a_provider_that_cannot_be_reached_is_an_engine_error() {
     });
     let lease = lease(&[], unbounded());
     let frames = Frames::default();
-    let sink = |frame| frames.emit(frame);
+    let sink = frames.sink();
 
     let failure = engine
         .run(AgentRun {

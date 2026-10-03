@@ -13,11 +13,12 @@ use afd_wire::tool_trace::{
 use serde_json::{Map, json};
 
 use super::{Outcome, Trace, bounded_arguments, encoded_len};
+use crate::fixture::{clean, clean_json};
 
 fn ended(output: &str) -> Outcome {
     Outcome::ended(
         ToolCallStatus::Succeeded,
-        output,
+        &clean(output),
         None,
         Duration::from_millis(3),
     )
@@ -72,15 +73,13 @@ fn should_carry_no_edges_for_an_empty_output() {
 }
 
 #[test]
-fn should_replace_a_nul_the_store_cannot_hold() {
-    let outcome = ended("bin\0ary");
-
-    assert_eq!(outcome.head.as_deref(), Some("bin\u{fffd}ary"));
-}
-
-#[test]
 fn should_carry_an_exit_code_only_when_one_was_given() {
-    let ran = Outcome::ended(ToolCallStatus::Failed, "boom", Some(2), Duration::ZERO);
+    let ran = Outcome::ended(
+        ToolCallStatus::Failed,
+        &clean("boom"),
+        Some(2),
+        Duration::ZERO,
+    );
 
     assert_eq!(ran.exit_code, Some(2));
     assert_eq!(ended("ok").exit_code, None);
@@ -91,7 +90,9 @@ fn should_carry_an_exit_code_only_when_one_was_given() {
 fn should_cut_each_argument_to_its_leaf_bound() {
     let long = format!("{}é", "a".repeat(ARGS_LEAF_MAX_BYTES - 1));
 
-    let bounded = bounded_arguments(&json!({"query": long, "nested": [{"deep": "x\0y"}]}));
+    let bounded = bounded_arguments(&clean_json(
+        json!({"query": long, "nested": [{long.clone(): "y"}]}),
+    ));
 
     let query = bounded["query"].as_str().unwrap();
     assert_eq!(
@@ -99,7 +100,11 @@ fn should_cut_each_argument_to_its_leaf_bound() {
         ARGS_LEAF_MAX_BYTES - 1,
         "the split character is dropped whole"
     );
-    assert_eq!(bounded["nested"][0]["deep"], "x\u{fffd}y");
+    let nested = bounded["nested"][0].as_object().unwrap();
+    assert!(
+        nested.keys().all(|key| key.len() < ARGS_LEAF_MAX_BYTES),
+        "a key is cut like a string"
+    );
 }
 
 #[test]
@@ -108,8 +113,8 @@ fn should_empty_arguments_that_stay_too_large_or_are_not_an_object() {
         .map(|key| (format!("k{key}"), json!("v".repeat(200))))
         .collect();
 
-    assert!(bounded_arguments(&serde_json::Value::Object(wide)).is_empty());
-    assert!(bounded_arguments(&json!(["not", "an", "object"])).is_empty());
+    assert!(bounded_arguments(&clean_json(serde_json::Value::Object(wide))).is_empty());
+    assert!(bounded_arguments(&clean_json(json!(["not", "an", "object"]))).is_empty());
 }
 
 #[test]
@@ -121,9 +126,9 @@ fn should_keep_arguments_that_encode_to_exactly_their_bound() {
     fields.insert("z".to_owned(), json!("x".repeat(room)));
     assert_eq!(encoded_len(&fields), ARGS_MAX_BYTES);
 
-    let kept = bounded_arguments(&serde_json::Value::Object(fields.clone()));
+    let kept = bounded_arguments(&clean_json(serde_json::Value::Object(fields.clone())));
     fields.insert("z".to_owned(), json!("x".repeat(room + 1)));
-    let emptied = bounded_arguments(&serde_json::Value::Object(fields));
+    let emptied = bounded_arguments(&clean_json(serde_json::Value::Object(fields)));
 
     assert_eq!(kept.len(), 10);
     assert!(emptied.is_empty());
@@ -154,8 +159,8 @@ fn should_take_rows_that_exactly_fill_the_room() {
         ..Trace::default()
     };
 
-    trace.push(1, "calculator", Map::new(), &outcome);
-    trace.push(2, "calculator", Map::new(), &outcome);
+    trace.push(1, "calculator", Map::new(), outcome.clone());
+    trace.push(2, "calculator", Map::new(), outcome.clone());
 
     assert_eq!(trace.room, 0);
     assert_eq!(trace.calls.len(), 2);
@@ -172,8 +177,8 @@ fn should_keep_a_later_row_without_edges_that_exactly_fills_the_room() {
         ..Trace::default()
     };
 
-    trace.push(1, "calculator", Map::new(), &outcome);
-    trace.push(2, "calculator", Map::new(), &outcome);
+    trace.push(1, "calculator", Map::new(), outcome.clone());
+    trace.push(2, "calculator", Map::new(), outcome.clone());
 
     assert_eq!((trace.room, trace.calls.len()), (0, 2));
     assert!(trace.calls[0].output_head.is_some());
@@ -187,7 +192,7 @@ fn should_keep_a_later_row_without_edges_that_exactly_fills_the_room() {
 fn should_account_every_byte_the_rows_take() {
     let mut trace = Trace::default();
     for (number, output) in [(1, ""), (2, "one\n"), (3, "a\nb\nc\n"), (4, "x")] {
-        trace.push(number, "calculator", Map::new(), &ended(output));
+        trace.push(number, "calculator", Map::new(), ended(output));
     }
 
     let listed = ToolTrace {
@@ -202,7 +207,7 @@ fn should_account_every_byte_the_rows_take() {
 fn test_trace_bounds_come_from_afd_wire() {
     let mut counted = Trace::default();
     for number in 1..=(TRACE_MAX_CALLS as u64 + 1) {
-        counted.push(number, "calculator", Map::new(), &ended("4"));
+        counted.push(number, "calculator", Map::new(), ended("4"));
     }
     let counted = counted.finish().unwrap();
     assert_eq!(counted.calls.len(), TRACE_MAX_CALLS);
@@ -213,7 +218,7 @@ fn test_trace_bounds_come_from_afd_wire() {
     let edge = format!("{}\n", "x".repeat(199)).repeat(5);
     let mut sized = Trace::default();
     for number in 1..=70 {
-        sized.push(number, "http_request", Map::new(), &ended(&edge));
+        sized.push(number, "http_request", Map::new(), ended(&edge));
     }
     let sized = sized.finish().unwrap();
     assert_eq!(sized.validate(), Ok(()));

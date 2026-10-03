@@ -41,6 +41,14 @@ pub(crate) enum ErrorKind {
         source: afr_providers::Error,
     },
 
+    /// The secret scrub could not be built over the run's secret values.
+    #[error("the secret scrub could not be built")]
+    Scrub {
+        /// The matcher's refusal.
+        #[from]
+        source: aho_corasick::BuildError,
+    },
+
     /// The catalog refused the lease's tools.
     #[error("the lease's tools were refused")]
     Tools {
@@ -58,7 +66,9 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
-            ErrorKind::Executor { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::Executor { .. } | ErrorKind::Scrub { .. } => {
+                error_code::INTERNAL_OPERATION_FAILED
+            }
             ErrorKind::Provider { source } => source.code(),
             ErrorKind::Tools { source } => source.code(),
         }
@@ -68,7 +78,9 @@ impl Error {
     #[must_use]
     pub fn unhosted_tool(&self) -> Option<&str> {
         match self.kind() {
-            ErrorKind::Executor { .. } | ErrorKind::Provider { .. } => None,
+            ErrorKind::Executor { .. } | ErrorKind::Provider { .. } | ErrorKind::Scrub { .. } => {
+                None
+            }
             ErrorKind::Tools { source } => source.unhosted_tool(),
         }
     }
