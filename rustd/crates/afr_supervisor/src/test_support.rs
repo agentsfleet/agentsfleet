@@ -208,7 +208,7 @@ impl AgentEngine for FakeAgent {
 /// Calls every executor method, as a turn's tools would.
 async fn exercise(executor: &dyn Executor) {
     let id = ProcessId::new(1);
-    assert!(executor.spawn(Spawn::program("true")).await.is_err());
+    assert!(executor.spawn(&Spawn::program("true")).await.is_err());
     assert!(executor.write(id, Bytes::new()).await.is_ok());
     assert!(executor.kill(id).await.is_ok());
     assert!(executor.read_file("a", 1).await.is_ok());

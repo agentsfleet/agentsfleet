@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use afr_executor::{Ending, Executor, ProcessEvent, Spawn};
+use afr_executor::{Ending, Executor, Spawn};
 use afr_sandbox::{Engine, Limits, SandboxRequest};
 use libtest_mimic::Failed;
 
@@ -27,20 +27,15 @@ pub(crate) fn runtime() -> tokio::runtime::Runtime {
 
 /// Runs `spawn` to its end and gathers its output.
 pub(crate) async fn run(executor: &dyn Executor, spawn: Spawn) -> Result<Outcome, String> {
-    let mut process = executor
-        .spawn(spawn)
+    let process = executor
+        .spawn(&spawn)
         .await
         .map_err(|error| error.to_string())?;
     let mut output = Vec::new();
-    let gathered = tokio::time::timeout(COMMAND_TIMEOUT, async {
-        while let Some(event) = process.events.recv().await {
-            match event {
-                ProcessEvent::Output { data, .. } => output.extend_from_slice(&data),
-                ProcessEvent::Ended { ending, .. } => return Some(ending),
-            }
-        }
-        None
-    })
+    let gathered = tokio::time::timeout(
+        COMMAND_TIMEOUT,
+        process.ended(|_stream, data| output.extend_from_slice(&data)),
+    )
     .await;
     let ending = gathered
         .map_err(|_elapsed| "the command hung".to_owned())?

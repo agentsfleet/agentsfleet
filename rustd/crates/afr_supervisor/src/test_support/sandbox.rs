@@ -91,7 +91,7 @@ struct FakeExecutor {
 
 #[async_trait::async_trait]
 impl Executor for FakeExecutor {
-    async fn spawn(&self, _spawn: Spawn) -> afr_executor::Result<Process> {
+    async fn spawn(&self, _spawn: &Spawn) -> afr_executor::Result<Process> {
         Err(std::io::Error::other("no processes here").into())
     }
 

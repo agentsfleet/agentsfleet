@@ -44,7 +44,7 @@
 //! source once: a JWKS cache deciding whether its entry is stale, a sweeper
 //! deciding which leases have expired.
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Milliseconds in one second, as the divisor a seconds-valued claim needs.
 const MILLIS_PER_SECOND: i64 = 1_000;
@@ -144,7 +144,7 @@ pub fn now() -> UnixMillis {
 #[must_use]
 pub fn millis_at(instant: SystemTime) -> UnixMillis {
     let millis = match instant.duration_since(UNIX_EPOCH) {
-        Ok(elapsed) => i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX),
+        Ok(elapsed) => saturating_millis_signed(elapsed),
         // Pre-epoch: `SystemTimeError` carries how far BEFORE the epoch it is,
         // as a positive magnitude, so the sign is put back here.
         Err(before) => {
@@ -152,6 +152,19 @@ pub fn millis_at(instant: SystemTime) -> UnixMillis {
         }
     };
     UnixMillis::from_millis(millis)
+}
+
+/// A span in whole milliseconds, saturated rather than wrapped.
+#[must_use]
+pub fn saturating_millis(span: Duration) -> u64 {
+    u64::try_from(span.as_millis()).unwrap_or(u64::MAX)
+}
+
+/// A span in whole milliseconds for a field carried signed, as epoch
+/// arithmetic is; saturated rather than wrapped.
+#[must_use]
+pub fn saturating_millis_signed(span: Duration) -> i64 {
+    i64::try_from(span.as_millis()).unwrap_or(i64::MAX)
 }
 
 /// A source of the current wall-clock instant.

@@ -20,7 +20,7 @@ fn unused<T>() -> afr_executor::Result<T> {
 
 #[async_trait::async_trait]
 impl Executor for Idle {
-    async fn spawn(&self, _spawn: Spawn) -> afr_executor::Result<Process> {
+    async fn spawn(&self, _spawn: &Spawn) -> afr_executor::Result<Process> {
         unused()
     }
     async fn write(&self, _process: ProcessId, _data: Bytes) -> afr_executor::Result<()> {

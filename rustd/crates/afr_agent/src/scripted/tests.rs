@@ -32,7 +32,7 @@ struct Canned {
 
 #[async_trait::async_trait]
 impl Executor for Canned {
-    async fn spawn(&self, _spawn: Spawn) -> afr_executor::Result<Process> {
+    async fn spawn(&self, _spawn: &Spawn) -> afr_executor::Result<Process> {
         if self.refuse {
             return Err(std::io::Error::other("the socket is gone").into());
         }
