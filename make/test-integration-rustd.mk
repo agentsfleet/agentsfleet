@@ -42,7 +42,7 @@
 #      always done it this way; this lane learned it the expensive way, on a
 #      red CI run.
 
-.PHONY: test-integration-rustd test-coverage-rustd _migrate-test-db
+.PHONY: test-integration-rustd test-coverage-rustd test-coverage-rustd-merge rustd-coverage-shards _migrate-test-db
 
 # The schema, applied ONCE for the whole lane.
 #
@@ -249,56 +249,69 @@ RUSTD_COVERAGE_FLOOR ?= 97.5
 # the same path, so the two gates read one denominator.
 RUSTD_COVERAGE_IGNORE ?= (/src/test_util\.rs$$|/crates/afd_bench/)
 
-# The floor's verdict, carrying the number that decided it.
+# The floor's verdict, carrying the number that decided it, decided ONCE.
 #
-# This lane used to grade itself with `cargo llvm-cov --lcov --output-path
-# lcov.info --fail-under-lines N`, and that combination reports a failure the
-# reader cannot act on: cargo-llvm-cov 0.9.0 writes the lcov file, flips its
-# internal error flag, and exits 1 WITHOUT printing a percentage — the lcov
-# exporter has no summary to print one in. The Continuous Integration log for a
-# red run therefore ended:
+# The lane runs as shards (below), and a shard's report covers only the tests it
+# ran, so the floor cannot be read off any one of them. `scripts/rustd_coverage.py`
+# merges the shards' lcov files line by line and grades the union. The same
+# script grades a local unsharded run, so Continuous Integration and a developer
+# read one judge.
 #
-#     Finished report saved to lcov.info
-#     ✗ [rustd] coverage run failed (exit 1)
+# It replaces `cargo llvm-cov report --summary-only --fail-under-lines`, which can
+# only grade a profile it holds; the merge job holds lcov files, not profiles.
+# The two read the same numbers: LCOV's `LF:`/`LH:` records are llvm-cov's line
+# denominator and numerator (verified equal on a probe crate, 2/5 = 40.00% both
+# ways), and the script compares in exact decimals, so 97.5 is enforced rather
+# than rounded. A red run prints the missed lines by crate, the answer to
+# "where" that used to cost a second instrumented run.
 #
-# which names neither the measurement nor the floor it missed, and leaves
-# "coverage fell" indistinguishable from "the exporter broke". Answering "by how
-# much, and where" then costs a second full instrumented run.
+# The judge grades the PATCH as well: the Rust lines this branch adds, against
+# `RUSTD_PATCH_FLOOR`, which is codecov.yml's `rust-afd` patch target and moves
+# with it. Codecov grades the same merged report; grading it here too means the
+# lane's verdict names the unhit lines itself instead of waiting on a status
+# nobody requires. The base is where this branch left `origin/main`;
+# Continuous Integration passes the pull request's base explicitly. An empty
+# base skips the patch grade (a checkout with no `origin/main` to measure from).
+RUSTD_PATCH_FLOOR ?= 99
+RUSTD_PATCH_BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null)
+_RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage.py --floor $(RUSTD_COVERAGE_FLOOR) \
+  $(if $(RUSTD_PATCH_BASE),--patch-floor $(RUSTD_PATCH_FLOOR) --patch-base $(RUSTD_PATCH_BASE))
+
+# Shards: three, each on its own runner with its own Postgres and Dragonfly,
+# measured in parallel and graded together by `test-coverage-rustd-merge`.
 #
-# So the grading moves to a `--summary-only` report over the SAME profile: that
-# form does print the per-file table and the TOTAL row, and it still carries the
-# `--fail-under-lines` verdict in its exit status, so the tool remains the judge.
-# The percentage in the ✗/✓ line is summed from `lcov.info` rather than from a
-# third `report` invocation — LCOV's `LF:`/`LH:` records ARE llvm-cov's line
-# denominator and numerator (verified equal on a probe crate: 2/5 = 40.00% by
-# both routes), so the file already on disk answers it for free.
+#   runner     the Rust runner's crates, plus the daemon suite's
+#              `integration_rust_runner::` modules: the runner against a live
+#              daemon. A runner leases any fleet whose required tags it carries,
+#              so on the shared lane it was offered every fleet the other
+#              scenarios had left behind; on its own datastores it is offered its own.
+#   daemon     `agentsfleetd`, every target, minus the runner's modules.
+#   substrate  every other crate: the workspace minus the two above.
 #
-# The per-crate rollup fires only on a red run. A floor miss is spread across
-# crates, and the first question after "by how much" is always "where" — that is
-# the list, sorted by the lines each crate is missing.
-define _rustd_coverage_verdict
-mkdir -p "$(CURDIR)/.tmp"; \
-summary="$(CURDIR)/.tmp/rustd-coverage-summary.txt"; \
-lcov="$(CURDIR)/$(RUSTD_DIR)/lcov.info"; \
-cd "$(RUSTD_DIR)" && cargo llvm-cov report --workspace \
-  --ignore-filename-regex '$(RUSTD_COVERAGE_IGNORE)' \
-  --summary-only --fail-under-lines $(RUSTD_COVERAGE_FLOOR) > "$$summary" 2>&1; \
-verdict=$$?; \
-cat "$$summary"; \
-set -- $$(awk -F: '/^LF:/ { f += $$2 } /^LH:/ { h += $$2 } END { if (f == 0) print "0 0 0.0000"; else printf "%d %d %.4f\n", h, f, h * 100 / f }' "$$lcov" 2>/dev/null); \
-covered=$${1:-0}; total=$${2:-0}; pct=$${3:-0.0000}; missed=$$((total - covered)); \
-if [ "$$verdict" -ne 0 ]; then \
-  echo "✗ [rustd] line coverage $$pct% < $(RUSTD_COVERAGE_FLOOR)% floor — $$covered of $$total lines covered, $$missed missed"; \
-  echo "  the floor is a ratchet: write the tests. Lowering RUSTD_COVERAGE_FLOOR is the thing it exists to prevent."; \
-  echo "  missed lines by crate:"; \
-  awk -F: '/^SF:/ { file = $$2 } /^LF:/ { f = $$2 } /^LH:/ { m = f - $$2; if (m > 0) { crate = file; sub(/.*\/crates\//, "", crate); sub(/\/.*/, "", crate); if (crate == file) crate = "(workspace root)"; miss[crate] += m } } END { for (c in miss) printf "%d\t%s\n", miss[c], c }' "$$lcov" 2>/dev/null \
-    | sort -rn | head -12 | awk -F'\t' '{ printf "    %6d  %s\n", $$1, $$2 }'; \
-else \
-  echo "✓ [rustd] line coverage $$pct% >= $(RUSTD_COVERAGE_FLOOR)% floor — $$covered of $$total lines covered, $$missed missed"; \
-fi; \
-echo "  report at $$lcov"; \
-exit $$verdict
-endef
+# The partition is total by construction. `substrate` is defined by exclusion,
+# so a crate added later lands there without an edit, and `daemon` skips exactly
+# the filter `runner` selects. No test can fall between shards, and a filter
+# that matches nothing fails its invocation through `_rust_lane`'s zero-tests
+# guard rather than passing empty.
+#
+# `RUSTD_SHARD` names one shard, which writes `lcov-<shard>.info` and its `.rev`
+# sidecar and grades nothing. Unset, it is every shard, run in sequence into one
+# profile and graded: the local full measurement, through the invocations
+# Continuous Integration makes. Any other subset is refused, because grading a
+# partial union is the failure this layout exists to rule out.
+RUSTD_RUNNER_PACKAGES := afr_agent afr_executor afr_sandbox afr_supervisor agentsfleet_runner
+RUSTD_DAEMON_PACKAGES := agentsfleetd
+RUSTD_RUNNER_IN_DAEMON := integration_rust_runner::
+RUSTD_SHARDS := runner daemon substrate
+RUSTD_SHARD ?= $(RUSTD_SHARDS)
+
+_RUSTD_COVER := cargo llvm-cov --no-report --all-features
+_rustd_packages = $(foreach package,$(1),-p $(package))
+_RUSTD_SUBSTRATE := --workspace $(foreach package,afd_bench $(RUSTD_RUNNER_PACKAGES) $(RUSTD_DAEMON_PACKAGES),--exclude $(package))
+_RUSTD_SHARD_UNKNOWN := $(filter-out $(RUSTD_SHARDS),$(RUSTD_SHARD))
+_RUSTD_SHARD_ALL := $(if $(filter-out $(RUSTD_SHARD),$(RUSTD_SHARDS)),,yes)
+_RUSTD_SHARD_ONE := $(if $(filter 1,$(words $(RUSTD_SHARD))),yes,)
+_RUSTD_SHARD_LCOV := $(RUSTD_DIR)/lcov-$(RUSTD_SHARD).info
 
 # `cargo llvm-cov` reports only what actually ran. The integration tests are
 # `#[ignore]`d, so a unit-only measurement sees every pool, stream and migrator
@@ -307,26 +320,31 @@ endef
 # where the datastores are. That is the milestone's stated route: reach the
 # number, do not move the bar.
 #
-# It runs the suite ONCE. Instrumenting the run the lane was already making is
-# what keeps a full verification from executing every live-service test twice
-# on two runners — the mistake the retired Zig graph made and then fixed.
-# The coverage lane still migrates after the reset, but it does so through
-# `cargo llvm-cov run --no-report`. The old `_migrate-test-db` prerequisite
-# built the full daemon normally and the coverage invocation then built the
-# same graph again with instrumentation.
+# Every test still runs ONCE: each lands in exactly one shard. Instrumenting the
+# run the lane was already making is what keeps a full verification from
+# executing every live-service test twice on two runners — the mistake the
+# retired Zig graph made and then fixed. The lane migrates after the reset
+# through `cargo llvm-cov run --no-report`, so the migrator's lines are measured
+# and the daemon is built once, instrumented.
 #
-# `--no-report` on BOTH passes is what carries the migrator's profile into the
-# test run: it is cargo-llvm-cov's accumulate mode, which skips the implicit
+# `--no-report` on every pass is what carries the migrator's profile into the
+# test runs: it is cargo-llvm-cov's accumulate mode, which skips the implicit
 # clean and leaves the profraw for a later `report` to merge. The explicit
 # `cargo llvm-cov clean --workspace` above is therefore the only clean, and it
-# runs once, before either pass. `--no-clean` is NOT the way to spell this —
+# runs once, before any pass. `--no-clean` is NOT the way to spell this —
 # cargo-llvm-cov refuses the pair outright ("error: --no-report may not be used
 # together with --no-clean"), because --no-report already implies it. Verified
 # on a probe crate: a `run --no-report` covering one function then a
 # `--no-report` test pass covering another reported both (40% -> 60%), so
 # nothing is lost by dropping it.
-test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under coverage against live datastores
+#
+# The exclusive hub suite gets the cluster to itself here too. The single
+# `--include-ignored` invocation this replaces ran it beside every other suite,
+# the one thing `EXCLUSIVE_FILTER` says it must never do.
+test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under coverage against live datastores (RUSTD_SHARD=<one> for a Continuous Integration shard)
 	@command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "✗ cargo-llvm-cov not found. Install via: cargo install cargo-llvm-cov"; exit 1; }
+	@$(if $(_RUSTD_SHARD_UNKNOWN),echo "✗ [rustd] unknown RUSTD_SHARD: $(_RUSTD_SHARD_UNKNOWN) (known: $(RUSTD_SHARDS))"; exit 1,true)
+	@$(if $(or $(_RUSTD_SHARD_ALL),$(_RUSTD_SHARD_ONE)),true,echo "✗ [rustd] RUSTD_SHARD is one shard or unset; '$(RUSTD_SHARD)' would grade part of the lane"; exit 1)
 	@echo "→ [rustd] Removing stale instrumented workspace artifacts..."; \
 	cd $(RUSTD_DIR) && cargo llvm-cov clean --workspace
 	@echo "→ [infra] Applying migrations through the instrumented daemon..."; \
@@ -334,10 +352,42 @@ test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under covera
 	  cargo llvm-cov run --all-features --no-report --bin agentsfleetd -- migrate \
 	  || { echo "✗ [infra] instrumented migrate failed"; exit 1; }
 	@echo "✓ [infra] Instrumented schema applied"
-	@echo "→ [rustd] Measuring both test tiers against $(TEST_DATABASE_URL)..."; \
-	$(call _rust_lane,rustd-coverage.log,[rustd] coverage run,cargo llvm-cov --workspace --exclude afd_bench --all-features --no-report -- --include-ignored)
-	@echo "→ [rustd] Rendering lcov.info from the run's profile..."; \
+ifneq ($(filter runner,$(RUSTD_SHARD)),)
+	@echo "→ [rustd] Shard runner: the runner crates, then the runner against the daemon..."; \
+	$(call _rust_lane,rustd-coverage-runner.log,[rustd] coverage: runner crates,$(_RUSTD_COVER) $(call _rustd_packages,$(RUSTD_RUNNER_PACKAGES)) -- --include-ignored); \
+	$(call _rust_lane,rustd-coverage-runner-daemon.log,[rustd] coverage: runner against the daemon,$(_RUSTD_COVER) -p agentsfleetd --test daemon_suite -- --include-ignored $(RUSTD_RUNNER_IN_DAEMON))
+endif
+ifneq ($(filter daemon,$(RUSTD_SHARD)),)
+	@echo "→ [rustd] Shard daemon: agentsfleetd without the runner's modules..."; \
+	$(call _rust_lane,rustd-coverage-daemon.log,[rustd] coverage: daemon,$(_RUSTD_COVER) $(call _rustd_packages,$(RUSTD_DAEMON_PACKAGES)) -- --include-ignored --skip $(RUSTD_RUNNER_IN_DAEMON))
+endif
+ifneq ($(filter substrate,$(RUSTD_SHARD)),)
+	@echo "→ [rustd] Shard substrate: every other crate, then the suites that need the cluster alone..."; \
+	$(call _rust_lane,rustd-coverage-substrate.log,[rustd] coverage: substrate,$(_RUSTD_COVER) $(_RUSTD_SUBSTRATE) -- --include-ignored --skip $(EXCLUSIVE_FILTER)); \
+	$(call _rust_lane,rustd-coverage-substrate-exclusive.log,[rustd] coverage: substrate (exclusive),$(_RUSTD_COVER) $(_RUSTD_SUBSTRATE) -- --include-ignored --test-threads=1 $(EXCLUSIVE_FILTER))
+endif
+ifeq ($(_RUSTD_SHARD_ALL),yes)
+	@echo "→ [rustd] Rendering the run's profile, then grading the floor..."; \
 	cd $(RUSTD_DIR) && cargo llvm-cov report --workspace \
-	  --ignore-filename-regex '$(RUSTD_COVERAGE_IGNORE)' --lcov --output-path lcov.info \
+	  --ignore-filename-regex '$(RUSTD_COVERAGE_IGNORE)' --lcov --output-path lcov-all.info \
 	  || { echo "✗ [rustd] lcov report failed"; exit 1; }
-	@$(_rustd_coverage_verdict)
+	@$(_RUSTD_COVERAGE_JUDGE) --out $(RUSTD_DIR)/lcov.info $(RUSTD_DIR)/lcov-all.info
+else
+	@echo "→ [rustd] Rendering shard $(RUSTD_SHARD)'s profile; test-coverage-rustd-merge grades the floor..."; \
+	cd $(RUSTD_DIR) && cargo llvm-cov report --workspace \
+	  --ignore-filename-regex '$(RUSTD_COVERAGE_IGNORE)' --lcov --output-path lcov-$(RUSTD_SHARD).info \
+	  || { echo "✗ [rustd] lcov report failed"; exit 1; }
+	@git rev-parse HEAD > $(RUSTD_DIR)/lcov-$(RUSTD_SHARD).rev
+	@echo "✓ [rustd] shard $(RUSTD_SHARD) measured: $(_RUSTD_SHARD_LCOV)"
+endif
+
+# The floor, graded once over every shard's report. Continuous Integration's
+# merge job is the caller; a shard missing, or measured at another commit than
+# this checkout, is refused rather than graded as a smaller lane.
+test-coverage-rustd-merge:  ## Grade the Rust line floor once over every shard's lcov report
+	@$(_RUSTD_COVERAGE_JUDGE) --revision "$$(git rev-parse HEAD)" --out $(RUSTD_DIR)/lcov.info \
+	  $(foreach shard,$(RUSTD_SHARDS),$(RUSTD_DIR)/lcov-$(shard).info)
+
+# The shard names, for the workflow's matrix: the list lives here once.
+rustd-coverage-shards:  ## Print the Rust coverage lane's shard names
+	@echo '$(RUSTD_SHARDS)'
