@@ -8,7 +8,11 @@
 
 use std::borrow::Cow;
 
-use afd_wire::memory::{MemoryCaptureResponse, MemoryHydrateResponse, SharedMemory};
+use afd_wire::memory::{
+    MemoryCaptureResponse, MemoryDelta, MemoryHydrateResponse, PINNED_CATEGORY, RECALL_LIMIT_MAX,
+    SharedMemory, Visibility,
+};
+use garde::Validate as _;
 
 /// A capture reply carries the two tallies a runner acts on, and only those.
 ///
@@ -91,4 +95,67 @@ fn test_a_hydrate_reply_carries_grants_only_when_given() {
     let bare: MemoryHydrateResponse<'_> = serde_json::from_str(r#"{"memory": []}"#).unwrap();
     assert!(!bare.publish);
     assert!(bare.shared.is_empty());
+}
+
+/// The published recall `limit` is the range the request type proves, so a
+/// client generated from the spec never sends a limit the daemon refuses.
+#[test]
+fn test_the_published_recall_limit_is_the_proved_range() {
+    let openapi = include_str!("../../../../public/openapi.json");
+    let document: serde_json::Value = serde_json::from_str(openapi).unwrap();
+    let limit = |bound: &str| {
+        document
+            .pointer(&format!(
+                "/components/schemas/MemoryRecallRequest/properties/limit/{bound}"
+            ))
+            .and_then(serde_json::Value::as_u64)
+    };
+    assert_eq!(limit("minimum"), Some(1));
+    assert_eq!(
+        limit("maximum").and_then(|max| usize::try_from(max).ok()),
+        Some(RECALL_LIMIT_MAX)
+    );
+}
+
+/// A delta holding NUL in any text field is malformed, and the report names
+/// that field: Postgres cannot store NUL in `text`, so one such delta would
+/// fail the whole push's statement instead of being skipped as malformed.
+#[test]
+fn test_a_delta_holding_nul_is_malformed_on_every_text_field() {
+    let clean = MemoryDelta {
+        key: Cow::Borrowed("deploy_target"),
+        content: Cow::Borrowed("fly in iad"),
+        category: Cow::Borrowed(PINNED_CATEGORY),
+        visibility: Visibility::Fleet,
+    };
+    clean.validate().unwrap();
+
+    let nul = Cow::Borrowed("before\0after");
+    for (field, delta) in [
+        (
+            "key",
+            MemoryDelta {
+                key: nul.clone(),
+                ..clean.clone()
+            },
+        ),
+        (
+            "content",
+            MemoryDelta {
+                content: nul.clone(),
+                ..clean.clone()
+            },
+        ),
+        (
+            "category",
+            MemoryDelta {
+                category: nul.clone(),
+                ..clean.clone()
+            },
+        ),
+    ] {
+        let report = delta.validate().unwrap_err();
+        let paths: Vec<String> = report.iter().map(|(path, _)| path.to_string()).collect();
+        assert_eq!(paths, [field], "{field}");
+    }
 }

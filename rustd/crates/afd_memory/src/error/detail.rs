@@ -32,9 +32,6 @@ pub const FORGET_FAILED: &str = "memory forget failed";
 /// `handler.zig`'s `S_MEMORY_ENTRY_NOT_FOUND`.
 pub const ENTRY_NOT_FOUND: &str = "No memory entry with that key";
 
-/// A grant read or write that the database refused.
-pub const ACCESS_FAILED: &str = "memory access could not be read or changed";
-
 /// A call that reached the workspace while its memory was being copied to
 /// another store; retrying after the copy finishes succeeds.
 pub const MOVING: &str = "memory is moving to another store; try again shortly";

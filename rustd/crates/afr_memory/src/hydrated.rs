@@ -6,6 +6,7 @@
 //! push per run — plus, when a recall finds fewer entries than it asked for,
 //! at most [`RECALL_MISS_CAP`] searches past the window.
 
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use afd_wire::memory::{MAX_PUSH_BYTES, MemoryDelta};
@@ -36,6 +37,9 @@ pub struct Hydrated<'run> {
     /// What the pending entries charge against one push, kept as they come
     /// and go so a store never re-sums them.
     pending_bytes: usize,
+    /// Keys this run stored or forgot. `agentsfleetd`'s copy under each is
+    /// stale or forgotten, so an ask past the window never brings one back.
+    superseded: HashSet<String>,
     /// Asks past the window so far. An atomic, because a recall takes
     /// `&self` and counting is the one thing it changes.
     misses: AtomicUsize,
@@ -59,6 +63,7 @@ impl<'run> Hydrated<'run> {
             entries,
             seed,
             pending_bytes: 0,
+            superseded: HashSet::new(),
             misses: AtomicUsize::new(0),
         }
     }
@@ -113,7 +118,13 @@ impl<'run> Hydrated<'run> {
         }
         match recall.recall(query, limit).await {
             Ok(found) => {
-                let own = found.memory.into_iter().map(Recalled::own);
+                // Only the fleet's own entries: another fleet's shared entry
+                // under the same key is one this run never stored or forgot.
+                let own = found
+                    .memory
+                    .into_iter()
+                    .filter(|delta| !self.superseded.contains(delta.key.as_ref()))
+                    .map(Recalled::own);
                 Some(
                     own.chain(found.shared.into_iter().map(Recalled::shared_owned))
                         .collect(),
@@ -149,6 +160,7 @@ impl MemoryBackend for Hydrated<'_> {
             return Err(error::full(needed));
         }
         self.remove(&entry.key);
+        self.superseded.insert(entry.key.to_string());
         self.pending_bytes = needed;
         self.entries.push(Entry {
             delta: entry,
@@ -183,6 +195,9 @@ impl MemoryBackend for Hydrated<'_> {
     }
 
     async fn forget(&mut self, key: &str) -> Result<Forgotten> {
+        // Recorded even when the window held nothing under the key: the
+        // durable copy can sit past the window, and the run asked it gone.
+        self.superseded.insert(key.to_owned());
         Ok(self
             .remove(key)
             .map_or(Forgotten::Unknown, |_| Forgotten::ForThisRun))

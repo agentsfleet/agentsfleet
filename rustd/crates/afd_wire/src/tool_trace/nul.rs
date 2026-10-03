@@ -9,11 +9,12 @@ use serde_json::{Map, Value};
 
 /// Whether `text` holds no NUL character.
 ///
-/// Postgres refuses NUL in `text` and `\u0000` in `jsonb`, so a string that
-/// carries one cannot be stored, and a statement binding it fails whole.
+/// `afd_validate::nul_free`'s answer as a yes or no, because a trace's rules
+/// fold every string one call carries into one report rather than one per
+/// field.
 #[must_use]
 pub fn free_of_nul(text: &str) -> bool {
-    !text.contains(NUL)
+    afd_validate::nul_free(text, &()).is_ok()
 }
 
 /// Whether every key and string inside `fields` is free of NUL.
@@ -33,6 +34,3 @@ fn value_free_of_nul(value: &Value) -> bool {
         Value::Null | Value::Bool(_) | Value::Number(_) => true,
     }
 }
-
-/// The character no stored string may hold.
-const NUL: char = '\0';

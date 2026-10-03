@@ -6,6 +6,8 @@
 
 use serde_json::{Map, Value};
 
+use crate::activity::CALL_ID_MAX_BYTES;
+
 use super::{
     ARGS_LEAF_MAX_BYTES, ARGS_MAX_BYTES, TRACE_MAX_BYTES, ToolTrace, ToolTraceCall, TraceRejection,
     edge_fits, encoded_len, fields_free_of_nul, free_of_nul,
@@ -42,14 +44,15 @@ pub(super) fn call_free_of_nul<C: ?Sized>(call: &ToolTraceCall<'_>, _context: &C
 }
 
 /// A call id is a call number the record verb keys by: decimal digits naming
-/// 1 to `i64::MAX`.
+/// 1 to `i64::MAX`, within the frame's [`CALL_ID_MAX_BYTES`].
 ///
 /// The trace's id is what "show all" resolves, as `{fence}:{call_id}`, so an
 /// id the read cannot parse would be a call whose full output can never be
-/// opened. Nineteen digits hold `i64::MAX`, so the frame's 64-byte identity
-/// bound is implied.
+/// opened. The byte bound is not implied by the number's: leading zeros parse,
+/// so `0…01` names call 1 at any length.
 pub(super) fn call_number<C: ?Sized>(call_id: &str, context: &C) -> garde::Result {
-    let numbered = afd_validate::ascii_digits(call_id, context).is_ok()
+    let numbered = call_id.len() <= CALL_ID_MAX_BYTES
+        && afd_validate::ascii_digits(call_id, context).is_ok()
         && call_id
             .parse::<i64>()
             .is_ok_and(|number| number >= FIRST_CALL);
@@ -99,5 +102,23 @@ fn leaves_fit(value: &Value) -> bool {
         Value::Array(items) => items.iter().all(leaves_fit),
         Value::Object(fields) => fields_fit(fields),
         Value::Null | Value::Bool(_) | Value::Number(_) => true,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CALL_ID_MAX_BYTES, call_number};
+
+    /// Call 1, zero-padded to `bytes`.
+    fn padded(bytes: usize) -> String {
+        format!("{}1", "0".repeat(bytes - 1))
+    }
+
+    /// Leading zeros parse, so the byte bound is a check of its own: call 1
+    /// spelled at the bound is a call id, and one byte past it is not.
+    #[test]
+    fn a_call_id_is_held_to_the_frame_bound_however_it_is_padded() {
+        assert_eq!(call_number(&padded(CALL_ID_MAX_BYTES), &()), Ok(()));
+        assert!(call_number(&padded(CALL_ID_MAX_BYTES + 1), &()).is_err());
     }
 }

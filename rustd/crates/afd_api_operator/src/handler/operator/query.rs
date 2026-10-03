@@ -26,6 +26,8 @@ const QUERY_SINCE: &str = "since";
 const QUERY_UNTIL: &str = "until";
 const MAX_FLEET_FILTER_LEN: usize = 200;
 const MAX_EVENT_TYPE_TOKENS: usize = 11;
+/// Between the tokens of an `?event_type` set.
+const EVENT_TYPE_SEPARATOR: char = ',';
 
 pub(super) const DETAIL_BAD_PAGE: &str = "limit must be an integer between 1 and 100; starting_after must be a cursor from a previous page";
 pub(super) const DETAIL_RETIRED_PAGE: &str =
@@ -169,11 +171,22 @@ fn requested_limit(
 /// The event types a set names: split, bounded, then each token read.
 fn event_types(raw: &str) -> Result<Vec<RunnerEventType>, &'static str> {
     let tokens = garde::Unvalidated::new(EventTypeTokens {
-        tokens: raw.split(',').collect(),
+        tokens: split_tokens(raw),
     })
     .validate()
     .map_err(|_report| DETAIL_BAD_EVENTS)?;
     parse_event_types(&tokens)
+}
+
+/// A set's tokens, at most one past [`MAX_EVENT_TYPE_TOKENS`].
+///
+/// The count is checked while collecting, not after: one token past the bound
+/// is enough for garde to refuse the set, and a query string of a million
+/// commas would otherwise allocate a million slices to be told so.
+fn split_tokens(raw: &str) -> Vec<&str> {
+    raw.split(EVENT_TYPE_SEPARATOR)
+        .take(MAX_EVENT_TYPE_TOKENS + 1)
+        .collect()
 }
 
 /// Each token of a set already inside its bounds, as a runner event type.

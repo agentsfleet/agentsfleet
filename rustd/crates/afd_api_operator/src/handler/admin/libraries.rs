@@ -4,12 +4,13 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_core::error_code;
-use afd_library::{DeleteLibrary, LibraryItem, PatchLibrary};
+use afd_library::{DeleteLibrary, LibraryItem, MAX_SKILL_NAME_LEN, PatchLibrary};
 use afd_wire::admin::{AdminLibrariesResponse, AdminLibraryItem, AdminLibraryRequirements};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
+use garde::Validate as _;
 use http::{HeaderMap, StatusCode, header};
 
 use crate::auth::PersonIdentity;
@@ -20,7 +21,7 @@ use crate::services::Services;
 
 use super::libraries_request::patch_request;
 
-const DETAIL_ID_REQUIRED: &str = "A catalog id is required";
+const DETAIL_ID_BOUNDS: &str = "catalog id must be 1-64 bytes";
 const DETAIL_NOT_FOUND: &str = "No fleet library entry has that catalog id";
 const DETAIL_NO_BUNDLE: &str =
     "This entry has no bundle. Fetch it from its repository first, then publish.";
@@ -111,8 +112,8 @@ pub(crate) async fn patch<D: Services>(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    if id.is_empty() {
-        return reject(error_code::INVALID_REQUEST, DETAIL_ID_REQUIRED);
+    if let Some(refusal) = refused_id(&id) {
+        return refusal;
     }
     let patch = match patch_request(&body) {
         Ok(patch) => patch,
@@ -185,8 +186,8 @@ pub(crate) async fn delete<D: Services>(
     identity: PersonIdentity,
     Path(id): Path<String>,
 ) -> Response {
-    if id.is_empty() {
-        return reject(error_code::INVALID_REQUEST, DETAIL_ID_REQUIRED);
+    if let Some(refusal) = refused_id(&id) {
+        return refusal;
     }
     match services.libraries().delete(&id).await {
         Ok(DeleteLibrary::Deleted) => {
@@ -207,6 +208,25 @@ pub(crate) async fn delete<D: Services>(
         .into_response(),
         Err(error) => refuse(&error, "admin_library_delete_failed"),
     }
+}
+
+/// The catalogue id a `PATCH` or `DELETE` path names.
+///
+/// Bounded by the skill-name bound the platform catalogue is keyed by: an id
+/// longer than any bundle name can address no row, so the store is never
+/// asked for one.
+#[derive(Debug, garde::Validate)]
+struct CatalogId<'a> {
+    #[garde(length(bytes, min = 1, max = MAX_SKILL_NAME_LEN))]
+    id: &'a str,
+}
+
+/// The refusal a path's catalogue id earns, or `None` when it can name a row.
+fn refused_id(id: &str) -> Option<Response> {
+    CatalogId { id }
+        .validate()
+        .err()
+        .map(|_report| reject(error_code::INVALID_REQUEST, DETAIL_ID_BOUNDS))
 }
 
 fn item(entry: &LibraryItem) -> AdminLibraryItem<'static> {
@@ -243,5 +263,22 @@ fn item(entry: &LibraryItem) -> AdminLibraryItem<'static> {
         required_credentials_reasons: entry.required_credentials_reasons().clone(),
         updated_at: entry.updated_at().as_millis(),
         etag: Cow::Owned(entry.etag().to_owned()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use afd_library::MAX_SKILL_NAME_LEN;
+
+    use super::{DETAIL_ID_BOUNDS, refused_id};
+
+    /// A catalogue id is refused one byte past the name bound and taken at
+    /// it, and the sentence names the bound it enforces.
+    #[test]
+    fn a_catalog_id_is_bounded_by_the_name_it_is_keyed_by() {
+        assert!(refused_id("").is_some());
+        assert!(refused_id(&"n".repeat(MAX_SKILL_NAME_LEN)).is_none());
+        assert!(refused_id(&"n".repeat(MAX_SKILL_NAME_LEN + 1)).is_some());
+        assert!(DETAIL_ID_BOUNDS.contains(&MAX_SKILL_NAME_LEN.to_string()));
     }
 }

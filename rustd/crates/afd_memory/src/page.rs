@@ -3,6 +3,8 @@
 //! Store-agnostic values. How a store turns a view into a statement is the
 //! store's business — see the Postgres store's `page` module.
 
+use afd_core::id::Uuid7;
+
 use crate::error::detail::{LIST_FAILED, SEARCH_FAILED};
 
 /// Which rows one page reads.
@@ -40,16 +42,23 @@ impl View<'_> {
     }
 }
 
-/// Where a page resumes: the boundary row's `(created_at, key)`.
+/// Where a page resumes: the boundary row's `(created_at, key, fleet)`.
 ///
 /// `created_at` and not `updated_at`: an upsert moves a row's `updated_at`
 /// mid-walk, and a cursor over a column that moves under it skips or repeats.
+/// The writer is part of the boundary because a page holding other fleets'
+/// shared entries can hold two writers' rows under one key in one
+/// millisecond; `(key, fleet)` is the table's unique pair, so the triple
+/// names exactly one row and the seek skips neither.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct After<'a> {
     /// The boundary row's creation instant.
     pub created_at_ms: i64,
     /// Its key, which breaks a tie inside one millisecond.
     pub key: &'a str,
+    /// Its writer, which breaks a tie between two fleets' entries under one
+    /// key.
+    pub fleet: &'a Uuid7,
 }
 
 #[cfg(test)]
