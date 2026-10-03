@@ -22,6 +22,7 @@ use crate::fixture::{
     API_KEY, Canned, Frames, GITHUB_TOKEN, Script, Unreachable, budget, call, lease, say, spent,
     unbounded,
 };
+use crate::testing::Discard;
 
 /// A cap no test here reaches.
 const WIDE_CAP: u32 = 1000;
@@ -255,6 +256,7 @@ async fn a_provider_that_cannot_be_reached_is_an_engine_error() {
             memory: &[],
             executor: None,
             mint: &CountingMint::never(),
+            checkpoint: &Discard,
             events: &sink,
             stop: &CancellationToken::new(),
         })

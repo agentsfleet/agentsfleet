@@ -20,6 +20,7 @@ use tokio_util::sync::CancellationToken;
 use super::{DETAIL_STOPPED, Loop};
 use crate::engine::{AgentEngine, AgentRun, RunOutput};
 use crate::fixture::{Canned, Frames, Script, call, lease, say, unbounded};
+use crate::testing::Discard;
 
 /// A loop hosting `tools`, every lease driven by `script`.
 pub(super) fn engine(tools: Vec<Box<dyn Tool>>, script: &Script) -> Loop {
@@ -39,6 +40,7 @@ pub(super) async fn drive(
         memory: &[],
         executor: None,
         mint: &CountingMint::never(),
+        checkpoint: &Discard,
         events: &sink,
         stop,
     };
@@ -252,6 +254,7 @@ async fn a_dropped_run_still_closes_its_open_call_once() {
         memory: &[],
         executor: None,
         mint: &mint,
+        checkpoint: &Discard,
         events: &sink,
         stop: &stop,
     });

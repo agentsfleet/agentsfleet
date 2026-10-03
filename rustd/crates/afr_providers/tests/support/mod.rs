@@ -20,6 +20,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use afd_wire::activity::ActivityFrame;
 use afd_wire::lease::LeasePayload;
+use afr_agent::testing::Discard;
 use afr_agent::{AgentEngine as _, AgentRun, Loop, RunOutput};
 use afr_egress::testing::CountingMint;
 use afr_providers::{Connector, ProviderSpec, Registry, Wire};
@@ -208,6 +209,7 @@ pub(crate) async fn run(
         memory: &[],
         executor: None,
         mint: &CountingMint::never(),
+        checkpoint: &Discard,
         events: &sink,
         stop: &stop,
     };

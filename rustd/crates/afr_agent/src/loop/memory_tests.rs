@@ -18,6 +18,7 @@ use tokio_util::sync::CancellationToken;
 use super::Loop;
 use crate::engine::{AgentEngine, AgentRun};
 use crate::fixture::{Frames, Script, call, lease, say, unbounded};
+use crate::testing::{Discard, Recording};
 
 /// What each call of the run read back, in call order.
 fn read_back(messages: &[Message]) -> Vec<&str> {
@@ -69,6 +70,7 @@ async fn test_memory_tools_round_trip_through_push() {
             memory: &hydrated,
             executor: None,
             mint: &CountingMint::never(),
+            checkpoint: &Discard,
             events: &sink,
             stop: &CancellationToken::new(),
         })
@@ -101,5 +103,54 @@ async fn test_memory_tools_round_trip_through_push() {
             category: Cow::Borrowed("daily"),
         }],
         "the push carries what the run stored, and nothing it only read"
+    );
+}
+
+/// The keys each checkpoint carried, in push order.
+fn keys<'p>(pushes: &'p [Vec<MemoryDelta<'static>>]) -> Vec<Vec<&'p str>> {
+    pushes
+        .iter()
+        .map(|push| push.iter().map(|delta| delta.key.as_ref()).collect())
+        .collect()
+}
+
+#[tokio::test]
+async fn the_memory_is_checkpointed_every_n_calls() {
+    let stores = ["k1", "k2", "k3", "k4", "k5"].map(|key| {
+        vec![call(
+            key,
+            MEMORY_STORE.name(),
+            json!({"key": key, "content": "x"}),
+        )]
+    });
+    let script = Script::new(stores.into_iter().chain([vec![say("stored")]]));
+    let (transport, _sent) = RecordingTransport::replying(200, "");
+    let engine = Loop::new(Catalog::hosted(Arc::new(transport)), script.replay());
+    let every_two = json!({"tool_window": 0, "memory_checkpoint_every": 2,
+        "stage_chunk_threshold": 0.75, "model": "m", "context_cap_tokens": 0});
+    let lease = lease(&[MEMORY_STORE.name()], every_two);
+    let (checkpoint, pushed) = Recording::new();
+    let frames = Frames::default();
+    let sink = frames.sink();
+
+    engine
+        .run(AgentRun {
+            lease: &lease,
+            memory: &[],
+            executor: None,
+            mint: &CountingMint::never(),
+            checkpoint: &checkpoint,
+            events: &sink,
+            stop: &CancellationToken::new(),
+        })
+        .await
+        .unwrap();
+
+    frames.taken();
+    let written: Vec<_> = pushed.try_iter().collect();
+    assert_eq!(
+        keys(&written),
+        [vec!["k1", "k2"], vec!["k1", "k2", "k3", "k4"]],
+        "every second call writes back all the run has stored; the fifth waits for the final push"
     );
 }

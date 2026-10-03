@@ -125,4 +125,12 @@ impl MemoryBackend for Hydrated<'_> {
             .map(|entry| entry.delta.into_owned())
             .collect()
     }
+
+    fn pending(&self) -> Vec<MemoryDelta<'_>> {
+        self.entries
+            .iter()
+            .filter(|entry| entry.pending)
+            .map(|entry| entry.delta.view())
+            .collect()
+    }
 }
