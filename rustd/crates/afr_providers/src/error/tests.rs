@@ -50,15 +50,24 @@ fn answered(status: u16, body: &str) -> ProviderError {
 
 #[test]
 fn should_refuse_an_answered_status_under_the_providers_own_code() {
-    let named = raise::provider(answered(400, r#"{"error":{"code":"context_length_exceeded"}}"#));
+    let named = raise::provider(answered(
+        400,
+        r#"{"error":{"code":"context_length_exceeded"}}"#,
+    ));
     let unnamed = raise::provider(answered(503, ""));
 
     assert!(
-        named.detail().ends_with("status 400 (context_length_exceeded)"),
+        named
+            .detail()
+            .ends_with("status 400 (context_length_exceeded)"),
         "{}",
         named.detail()
     );
-    assert!(unnamed.detail().ends_with("status 503"), "{}", unnamed.detail());
+    assert!(
+        unnamed.detail().ends_with("status 503"),
+        "{}",
+        unnamed.detail()
+    );
     assert_eq!(named.failure_class(), None);
     assert_eq!(named.code(), error_code::INTERNAL_OPERATION_FAILED);
 }
@@ -72,7 +81,11 @@ fn should_carry_no_code_that_reads_as_a_message() {
 
     for body in [quoted, long.as_str()] {
         let refused = raise::provider(answered(400, body));
-        assert!(refused.detail().ends_with("status 400"), "{}", refused.detail());
+        assert!(
+            refused.detail().ends_with("status 400"),
+            "{}",
+            refused.detail()
+        );
     }
 }
 
@@ -82,13 +95,23 @@ fn should_class_a_cut_reply_and_a_provider_error_mid_turn_as_transport_loss() {
     let overloaded = raise::provider(ProviderError::from_provider_body(
         r#"{"error":{"type":"overloaded_error"}}"#,
     ));
-    let unnamed = raise::provider(ProviderError::Provider("the prompt said sk-live-secret".into()));
+    let unnamed = raise::provider(ProviderError::Provider(
+        "the prompt said sk-live-secret".into(),
+    ));
 
     for lost in [&cut, &overloaded, &unnamed] {
         assert_eq!(lost.failure_class(), Some(FailureClass::TransportLoss));
     }
-    assert!(overloaded.detail().ends_with("overloaded_error"), "{}", overloaded.detail());
-    assert!(unnamed.detail().ends_with("provider_error"), "{}", unnamed.detail());
+    assert!(
+        overloaded.detail().ends_with("overloaded_error"),
+        "{}",
+        overloaded.detail()
+    );
+    assert!(
+        unnamed.detail().ends_with("provider_error"),
+        "{}",
+        unnamed.detail()
+    );
 }
 
 #[test]
@@ -96,5 +119,8 @@ fn should_name_a_reply_the_wire_could_not_read_the_fleets_error_with_its_cause()
     let unread = raise::provider(ProviderError::Response("no choices".into()));
 
     assert_eq!(unread.failure_class(), None);
-    assert!(std::error::Error::source(&unread).is_some(), "rig's reason, kept");
+    assert!(
+        std::error::Error::source(&unread).is_some(),
+        "rig's reason, kept"
+    );
 }

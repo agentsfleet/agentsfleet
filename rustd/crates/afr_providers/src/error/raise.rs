@@ -68,14 +68,22 @@ pub(crate) fn unnamed(call_id: &str, source: EmptyToolName) -> Error {
 /// reply began ended the turn, and anything else is the wire's.
 pub(crate) fn provider(failure: ProviderError) -> Error {
     let named = code(&failure);
-    if let Some(status) = failure.provider_response_status().filter(|status| !status.is_success()) {
+    if let Some(status) = failure
+        .provider_response_status()
+        .filter(|status| !status.is_success())
+    {
         let status = status.as_u16();
-        return Error::from(ErrorKind::Refused { status, code: named });
+        return Error::from(ErrorKind::Refused {
+            status,
+            code: named,
+        });
     }
     match failure {
         ProviderError::Http(_) | ProviderError::Truncated => Error::lost(failure),
         ProviderError::Provider(_) => ended(UNNAMED_END),
-        _ if failure.provider_response().is_some() => ended(named.as_deref().unwrap_or(UNNAMED_END)),
+        _ if failure.provider_response().is_some() => {
+            ended(named.as_deref().unwrap_or(UNNAMED_END))
+        }
         source => Error::from(ErrorKind::Wire { source }),
     }
 }

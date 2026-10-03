@@ -4,10 +4,17 @@ use crate::lease::Lease;
 use crate::runtime::{Tool, ToolContext, ToolOutput};
 
 /// Calls `tool` with `arguments` from the supervisor, with `lease`'s state.
-pub(crate) async fn call(tool: &dyn Tool, lease: &mut Lease<'_>, arguments: serde_json::Value) -> ToolOutput {
-    tool.call(&arguments, ToolContext {
-        executor: None,
-        lease,
-    })
+pub(crate) async fn call(
+    tool: &dyn Tool,
+    lease: &mut Lease<'_>,
+    arguments: serde_json::Value,
+) -> ToolOutput {
+    tool.call(
+        &arguments,
+        ToolContext {
+            executor: None,
+            lease,
+        },
+    )
     .await
 }

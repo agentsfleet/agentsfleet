@@ -59,10 +59,16 @@ impl<H: Handler> Tool for Typed<H> {
         &self.schema
     }
 
-    async fn call(&self, arguments: &serde_json::Value, context: ToolContext<'_, '_>) -> ToolOutput {
+    async fn call(
+        &self,
+        arguments: &serde_json::Value,
+        context: ToolContext<'_, '_>,
+    ) -> ToolOutput {
         match H::Arguments::deserialize(arguments) {
             Ok(parsed) => self.handler.run(parsed, context).await,
-            Err(refused) => ToolOutput::failed(ToolErrorCode::InvalidArguments, &refused.to_string()),
+            Err(refused) => {
+                ToolOutput::failed(ToolErrorCode::InvalidArguments, &refused.to_string())
+            }
         }
     }
 }

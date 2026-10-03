@@ -100,16 +100,30 @@ fn should_lead_with_the_instructions_and_answer_each_call_under_its_tool() {
 
     assert_eq!(sent.model.as_deref(), Some(MODEL));
     assert_eq!(sent.system_instructions(), Some(INSTRUCTIONS));
-    let [_, RigMessage::User { content: asked }, RigMessage::Assistant { content: turn, .. }, RigMessage::User { content: answered }] =
-        sent.chat_history.as_slice()
+    let [
+        _,
+        RigMessage::User { content: asked },
+        RigMessage::Assistant { content: turn, .. },
+        RigMessage::User { content: answered },
+    ] = sent.chat_history.as_slice()
     else {
         panic!("system, question, turn, answer: {:?}", sent.chat_history);
     };
-    assert_eq!(asked.iter().filter_map(user_text).collect::<Vec<_>>(), [QUESTION]);
-    let [AssistantContent::Text(text), AssistantContent::ToolCall(call)] = turn.as_slice() else {
+    assert_eq!(
+        asked.iter().filter_map(user_text).collect::<Vec<_>>(),
+        [QUESTION]
+    );
+    let [
+        AssistantContent::Text(text),
+        AssistantContent::ToolCall(call),
+    ] = turn.as_slice()
+    else {
         panic!("its text, then its call: {turn:?}");
     };
-    assert_eq!((text.text.as_str(), call.id.wire().as_ref()), (PREAMBLE, CALL_ID));
+    assert_eq!(
+        (text.text.as_str(), call.id.wire().as_ref()),
+        (PREAMBLE, CALL_ID)
+    );
     let [UserContent::ToolResult(result), UserContent::Text(after)] = answered.as_slice() else {
         panic!("the result and the message after it, as one user turn: {answered:?}");
     };
@@ -121,7 +135,10 @@ fn should_lead_with_the_instructions_and_answer_each_call_under_its_tool() {
 #[test]
 fn should_hand_the_replay_back_ahead_of_the_turns_text() {
     let replay = Replay(vec![AssistantContent::reasoning("anthropic", THOUGHT)]);
-    let messages = [Message::User(QUESTION.to_owned()), said(PREAMBLE, Vec::new(), replay)];
+    let messages = [
+        Message::User(QUESTION.to_owned()),
+        said(PREAMBLE, Vec::new(), replay),
+    ];
 
     let sent = built(Wire::Messages, &messages, &[], &[]);
 
@@ -129,7 +146,10 @@ fn should_hand_the_replay_back_ahead_of_the_turns_text() {
         panic!("the turn ends the history: {:?}", sent.chat_history);
     };
     assert!(
-        matches!(content.as_slice(), [AssistantContent::Reasoning(_), AssistantContent::Text(_)]),
+        matches!(
+            content.as_slice(),
+            [AssistantContent::Reasoning(_), AssistantContent::Text(_)]
+        ),
         "{content:?}"
     );
 }
@@ -145,7 +165,10 @@ fn should_drop_an_assistant_turn_with_nothing_in_it() {
     let sent = built(Wire::Chat, &messages, &[], &[]);
 
     assert!(
-        !sent.chat_history.iter().any(|message| matches!(message, RigMessage::Assistant { .. })),
+        !sent
+            .chat_history
+            .iter()
+            .any(|message| matches!(message, RigMessage::Assistant { .. })),
         "{:?}",
         sent.chat_history
     );
@@ -170,7 +193,11 @@ fn should_refuse_a_result_that_answers_no_call() {
 
     let refused = request(Wire::Chat, &turn).unwrap_err();
 
-    assert!(refused.detail().contains("call-nobody-made"), "{}", refused.detail());
+    assert!(
+        refused.detail().contains("call-nobody-made"),
+        "{}",
+        refused.detail()
+    );
     assert_eq!(refused.failure_class(), None);
 }
 
@@ -188,7 +215,10 @@ fn should_offer_each_function_as_its_spec_describes_it() {
     let [offered] = sent.tools.as_slice() else {
         panic!("one function: {:?}", sent.tools);
     };
-    assert_eq!((offered.name.as_str(), &offered.parameters), (TOOL, &parameters));
+    assert_eq!(
+        (offered.name.as_str(), &offered.parameters),
+        (TOOL, &parameters)
+    );
 }
 
 #[test]
@@ -201,7 +231,10 @@ fn should_offer_web_search_as_each_wire_spells_it_and_chat_not_at_all() {
     let messages = hosted(Wire::Messages).unwrap();
     let responses = hosted(Wire::Responses).unwrap();
 
-    assert_eq!(messages, json!([{"type": "web_search_20250305", "name": WEB_SEARCH.name()}]));
+    assert_eq!(
+        messages,
+        json!([{"type": "web_search_20250305", "name": WEB_SEARCH.name()}])
+    );
     assert_eq!(responses, json!([{"type": WEB_SEARCH.name()}]));
     assert_eq!(hosted(Wire::Chat), None::<Value>);
 }

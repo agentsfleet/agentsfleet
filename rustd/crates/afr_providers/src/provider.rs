@@ -10,8 +10,8 @@ use std::ops::AddAssign;
 
 use afd_wire::activity::StreamTextKind;
 use afr_tools::{Entry, ToolSpec};
-use rig_core::message::AssistantContent;
 use futures_util::stream::BoxStream;
+use rig_core::message::AssistantContent;
 
 use crate::error::Result;
 

@@ -12,7 +12,7 @@ use afd_wire::lease::LeasePayload;
 use afd_wire::report::ResultOutcome;
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_providers::Message;
-use afr_tools::catalog::{UPDATE_PLAN, HTTP_REQUEST};
+use afr_tools::catalog::{HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::{Catalog, Tool};
 use tokio_util::sync::CancellationToken;
 
@@ -193,10 +193,7 @@ async fn test_run_end_interrupts_open_calls_once() {
             serde_json::json!({URL_ARG: "https://example.com"}),
         ),
     ]]);
-    let engine = engine(
-        vec![plan_tool(), Canned::boxed(&HTTP_REQUEST, "")],
-        &script,
-    );
+    let engine = engine(vec![plan_tool(), Canned::boxed(&HTTP_REQUEST, "")], &script);
     let lease = lease(&[UPDATE_PLAN.name(), "http_request"], unbounded());
     let stop = CancellationToken::new();
     let stopper = async {

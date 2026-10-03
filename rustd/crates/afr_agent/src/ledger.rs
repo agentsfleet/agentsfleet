@@ -23,9 +23,9 @@ use tracing::Instrument as _;
 
 use crate::engine::EventSink;
 use crate::records::record;
-use afr_secrets::{Clean, Scrub};
 use crate::spans;
 use crate::trace::{Outcome, Trace, bounded_arguments};
+use afr_secrets::{Clean, Scrub};
 
 pub(crate) const EVENT_CALL_STARTED: &str = "tool_call_started";
 pub(crate) const EVENT_CALL_COMPLETED: &str = "tool_call_completed";

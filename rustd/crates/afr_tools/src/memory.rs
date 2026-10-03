@@ -78,7 +78,8 @@ pub(crate) struct MemoryStore;
 #[async_trait::async_trait]
 impl Handler for MemoryStore {
     const ENTRY: &'static Entry = &MEMORY_STORE;
-    const DESCRIPTION: &'static str = "Remember a fact for later runs of this fleet under a stable key.";
+    const DESCRIPTION: &'static str =
+        "Remember a fact for later runs of this fleet under a stable key.";
     type Arguments = Store;
 
     async fn run(&self, arguments: Store, context: ToolContext<'_, '_>) -> ToolOutput {
@@ -132,14 +133,22 @@ pub(crate) struct MemoryList;
 #[async_trait::async_trait]
 impl Handler for MemoryList {
     const ENTRY: &'static Entry = &MEMORY_LIST;
-    const DESCRIPTION: &'static str = "List the keys and categories of every remembered fact, newest first.";
+    const DESCRIPTION: &'static str =
+        "List the keys and categories of every remembered fact, newest first.";
     type Arguments = List;
 
     async fn run(&self, arguments: List, context: ToolContext<'_, '_>) -> ToolOutput {
-        match context.lease.memory.list(arguments.category.as_deref()).await {
+        match context
+            .lease
+            .memory
+            .list(arguments.category.as_deref())
+            .await
+        {
             Ok(listed) => ToolOutput::succeeded(
-                lines(&listed, |delta| format!("{} ({})", delta.key, delta.category))
-                    .unwrap_or_else(|| LISTED_NOTHING.to_owned()),
+                lines(&listed, |delta| {
+                    format!("{} ({})", delta.key, delta.category)
+                })
+                .unwrap_or_else(|| LISTED_NOTHING.to_owned()),
             ),
             Err(failure) => refused(&failure),
         }
@@ -167,7 +176,10 @@ impl Handler for MemoryForget {
 }
 
 /// Each entry on its own line as `render` writes it; `None` when there is none.
-fn lines(entries: &[MemoryDelta<'_>], render: impl Fn(&MemoryDelta<'_>) -> String) -> Option<String> {
+fn lines(
+    entries: &[MemoryDelta<'_>],
+    render: impl Fn(&MemoryDelta<'_>) -> String,
+) -> Option<String> {
     let rendered: Vec<String> = entries.iter().map(render).collect();
     (!rendered.is_empty()).then(|| rendered.join("\n"))
 }

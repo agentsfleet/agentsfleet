@@ -32,7 +32,11 @@ fn answered(script: &Script) -> String {
 async fn test_a_cut_turns_calls_are_answered_and_never_run() {
     let script = Script::new([
         vec![
-            call("c1", UPDATE_PLAN.name(), serde_json::json!({"expression": "2+"})),
+            call(
+                "c1",
+                UPDATE_PLAN.name(),
+                serde_json::json!({"expression": "2+"}),
+            ),
             ended(true),
         ],
         vec![say(RETRIED)],
@@ -47,10 +51,16 @@ async fn test_a_cut_turns_calls_are_answered_and_never_run() {
     .await;
 
     assert_eq!(output.result.content, RETRIED, "the run went on");
-    assert_eq!(completions(&frames), [("1".to_owned(), ToolCallStatus::Failed)]);
+    assert_eq!(
+        completions(&frames),
+        [("1".to_owned(), ToolCallStatus::Failed)]
+    );
     let refusal = answered(&script);
     assert!(
-        refusal.starts_with(&format!("[{}] update_plan ", ToolErrorCode::OutputLimitReached)),
+        refusal.starts_with(&format!(
+            "[{}] update_plan ",
+            ToolErrorCode::OutputLimitReached
+        )),
         "{refusal}"
     );
     assert_ne!(refusal, RAN, "the handler never ran");
@@ -60,7 +70,11 @@ async fn test_a_cut_turns_calls_are_answered_and_never_run() {
 async fn test_a_whole_turns_calls_run() {
     let script = Script::new([
         vec![
-            call("c1", UPDATE_PLAN.name(), serde_json::json!({"expression": "2+2"})),
+            call(
+                "c1",
+                UPDATE_PLAN.name(),
+                serde_json::json!({"expression": "2+2"}),
+            ),
             ended(false),
         ],
         vec![say(RETRIED)],
@@ -74,6 +88,9 @@ async fn test_a_whole_turns_calls_run() {
     )
     .await;
 
-    assert_eq!(completions(&frames), [("1".to_owned(), ToolCallStatus::Succeeded)]);
+    assert_eq!(
+        completions(&frames),
+        [("1".to_owned(), ToolCallStatus::Succeeded)]
+    );
     assert_eq!(answered(&script), RAN);
 }

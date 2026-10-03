@@ -85,7 +85,10 @@ fn should_send_no_system_prompt_without_instructions() {
 
 #[test]
 fn test_prompt_carries_trusted_repair_context() {
-    let written = Prompt::new(&bound(RepositoryAccess::Write, vec![locked_ref(REPOSITORY)]));
+    let written = Prompt::new(&bound(
+        RepositoryAccess::Write,
+        vec![locked_ref(REPOSITORY)],
+    ));
     assert_eq!(
         written.instructions,
         "## Installed instructions\n\nRead the run.\n\n## Trusted repair context\n\
@@ -94,7 +97,10 @@ fn test_prompt_carries_trusted_repair_context() {
     );
 
     let read = Prompt::new(&bound(RepositoryAccess::Read, vec![locked_ref(REPOSITORY)]));
-    assert_eq!(read.instructions, "## Installed instructions\n\nRead the run.");
+    assert_eq!(
+        read.instructions,
+        "## Installed instructions\n\nRead the run."
+    );
 }
 
 #[test]

@@ -85,7 +85,9 @@ fn should_stop_once_the_attempts_are_spent_or_the_wait_passes_the_ceiling() {
 // its status, and with it the provider's own code in the body.
 #[test]
 fn should_hand_back_an_unanswered_turns_last_answer_as_it_arrived() {
-    let refused = status(StatusCode::TOO_MANY_REQUESTS, None).into_answer().unwrap();
+    let refused = status(StatusCode::TOO_MANY_REQUESTS, None)
+        .into_answer()
+        .unwrap();
 
     assert_eq!(refused.status(), StatusCode::TOO_MANY_REQUESTS);
 }

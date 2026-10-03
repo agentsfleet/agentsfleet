@@ -25,11 +25,18 @@ static GATEWAY: Dialect = Dialect::gateway("gateway", "", "");
 
 /// The model `route` speaks for `model`, keyed with `key`, sent through
 /// `transport`.
-pub(crate) fn model(route: &Route, key: &str, model: &str, transport: Transport) -> DynModel<Completion> {
+pub(crate) fn model(
+    route: &Route,
+    key: &str,
+    model: &str,
+    transport: Transport,
+) -> DynModel<Completion> {
     let base = route.base.as_str();
     match route.wire {
         Wire::Messages => {
-            let client = AnthropicConfig::new(key).with_base_url(base).connect(transport);
+            let client = AnthropicConfig::new(key)
+                .with_base_url(base)
+                .connect(transport);
             let mut messages = client.completion(model);
             messages.wire = messages
                 .wire
@@ -43,7 +50,11 @@ pub(crate) fn model(route: &Route, key: &str, model: &str, transport: Transport)
             .responses(model)
             .erase(),
         Wire::Chat => {
-            let dialect = route.dialect.as_deref().and_then(by_name).unwrap_or(&GATEWAY);
+            let dialect = route
+                .dialect
+                .as_deref()
+                .and_then(by_name)
+                .unwrap_or(&GATEWAY);
             OpenAIConfig::with_key(dialect, key)
                 .with_base_url(base)
                 .connect(transport)

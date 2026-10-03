@@ -209,7 +209,11 @@ fn chunk(turns: &Turns, event: StreamEvent) -> Option<Chunk> {
             ..
         } => {
             let name = String::from(call.function.name);
-            Some(Chunk::Call(turns.call(&call.id, name, call.function.arguments)))
+            Some(Chunk::Call(turns.call(
+                &call.id,
+                name,
+                call.function.arguments,
+            )))
         }
         StreamEvent::Start { .. } | StreamEvent::Arguments { .. } | StreamEvent::End { .. } => None,
     }
