@@ -69,6 +69,12 @@ fn newest(left: &Record, right: &Record) -> std::cmp::Ordering {
     right.updated_at_ms.cmp(&left.updated_at_ms)
 }
 
+/// Where `record` sits in an operator page: the Postgres store's keyset,
+/// `(created_at, key, fleet_id)`, compared the same way.
+fn position(record: &Record) -> (i64, &str, &Uuid7) {
+    (record.created_at_ms, &record.key, &record.fleet)
+}
+
 /// Whether `row` is another fleet's shared entry in `owner`'s workspace.
 fn shared_with(owner: Owner<'_>, row: &Row) -> bool {
     &row.workspace == owner.workspace
@@ -169,7 +175,7 @@ impl MemoryStore for InMemory {
         };
         let past = |record: &Record| {
             after.is_none_or(|boundary| {
-                (record.created_at_ms, record.key.as_str()) < (boundary.created_at_ms, boundary.key)
+                position(record) < (boundary.created_at_ms, boundary.key, boundary.fleet)
             })
         };
         let mut rows = self.select(
@@ -178,7 +184,7 @@ impl MemoryStore for InMemory {
                     && in_view(&row.record)
                     && past(&row.record)
             },
-            |left, right| (right.created_at_ms, &right.key).cmp(&(left.created_at_ms, &left.key)),
+            |left, right| position(right).cmp(&position(left)),
         );
         rows.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
         Ok(rows)
@@ -217,3 +223,7 @@ impl MemoryStore for InMemory {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "in_memory_tests.rs"]
+mod tests;

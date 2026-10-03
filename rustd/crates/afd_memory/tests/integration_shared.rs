@@ -7,7 +7,8 @@
 )]
 
 use afd_core::clock::UnixMillis;
-use afd_memory::page::View;
+use afd_memory::Record;
+use afd_memory::page::{After, View};
 use afd_wire::memory::{PINNED_CATEGORY, Visibility};
 
 use crate::workspace::{Grants, Workspace, delta};
@@ -113,5 +114,61 @@ async fn test_shared_memory_reaches_only_granted_fleets() {
         .expect("the reader's page");
     assert_eq!(page.len(), 1);
     assert!(page[0].written_by(&writer) && page[0].visibility.is_workspace());
+    space.cleanup().await;
+}
+
+/// Two publishers share one key in one millisecond; a reader paging one row
+/// at a time reaches both, because the writer is part of the keyset.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_a_page_walk_past_two_writers_tied_on_instant_and_key_skips_neither() {
+    let space = Workspace::create().await;
+    let publish = Grants {
+        publish: true,
+        ..Grants::default()
+    };
+    let first = space.fleet("publisher-a", publish).await;
+    let second = space.fleet("publisher-b", publish).await;
+    let reader = space
+        .fleet(
+            "reader",
+            Grants {
+                read: true,
+                ..Grants::default()
+            },
+        )
+        .await;
+    let shared = [delta(SHARED_KEY, PINNED_CATEGORY, Visibility::Workspace)];
+    let tied = UnixMillis::from_millis(1_760_000_000_000);
+    for writer in [&first, &second] {
+        space
+            .memories
+            .capture(writer, &shared, tied)
+            .await
+            .expect("a publish");
+    }
+
+    let mut walked: Vec<Record> = Vec::new();
+    // One page per writer, and one more that must come back empty.
+    for _page in 0..3 {
+        let boundary = walked.last().map(|row| After {
+            created_at_ms: row.created_at_ms,
+            key: &row.key,
+            fleet: &row.fleet,
+        });
+        let page = space
+            .memories
+            .page(&space.id, &reader, View::Recent, boundary, 1)
+            .await
+            .expect("a page");
+        walked.extend(page);
+    }
+
+    let mut writers: Vec<_> = walked.iter().map(|row| row.fleet.clone()).collect();
+    assert_eq!(writers.len(), 2, "both writers' entries, neither repeated");
+    writers.sort_unstable();
+    let mut expected = vec![first, second];
+    expected.sort_unstable();
+    assert_eq!(writers, expected);
     space.cleanup().await;
 }

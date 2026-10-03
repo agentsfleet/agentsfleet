@@ -41,7 +41,7 @@ use crate::handler::Refusal;
 use crate::services::{FleetMemories as _, Services};
 
 use super::detail::{FleetPath, parse_fleet_id};
-use super::memory_request::{Read, memory_key};
+use super::memory_request::{Read, memory_key, row_id};
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_LIST: &str = "memory_list_failed";
@@ -101,6 +101,7 @@ pub(crate) async fn list<D: Services>(
     let after = read.after.as_ref().map(|boundary| After {
         created_at_ms: boundary.created_at_ms,
         key: &boundary.key,
+        fleet: &boundary.fleet,
     });
 
     let entries = services
@@ -199,7 +200,7 @@ pub(crate) async fn forget<D: Services>(
 /// Where the next page resumes, or `None` on the last one.
 ///
 /// A FULL page means the walk may continue, and the boundary is the last row's
-/// `(created_at, key)`. This surface cannot over-fetch the way the fleets list
+/// `(created_at, key, fleet)`. This surface cannot over-fetch the way the fleets list
 /// does — `LIMIT` is the caller's own number and there is no spare row to peek
 /// with — so a caller who asks for exactly as many entries as remain spends one
 /// more request to learn there are none. That is `handler.zig`'s behaviour and
@@ -209,7 +210,7 @@ fn next_cursor(entries: &[Record], limit: i64) -> Option<String> {
     full.then(|| entries.last()).flatten().map(|last| {
         Cursor::Timestamp {
             at_ms: last.created_at_ms,
-            id: last.key.clone(),
+            id: row_id(&last.fleet, &last.key),
         }
         .to_string()
     })
