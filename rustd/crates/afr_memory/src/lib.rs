@@ -43,11 +43,12 @@ pub trait MemoryBackend: Send + Sync + fmt::Debug {
     /// backend cannot take it.
     async fn store(&mut self, entry: MemoryDelta<'static>) -> Result<()>;
 
-    /// The entries whose key holds `query`, ignoring ASCII case, newest first,
-    /// at most `limit`; an empty query holds in every key.
+    /// The entries whose key or content holds `query`, ignoring ASCII case:
+    /// key matches first, then content matches, each newest first, at most
+    /// `limit`; an empty query holds in every entry.
     ///
     /// The model reads what comes back and decides what is relevant: a
-    /// substring of the key is the ceiling on search
+    /// substring match is the ceiling on search
     /// (`docs/architecture/direction.md`).
     ///
     /// # Errors
