@@ -104,7 +104,8 @@ SELECT f.id::text, f.name, f.status, f.source_markdown, f.trigger_markdown, \
        COALESCE(c.events_processed, 0), COALESCE(c.budget_used_nanos, 0), \
        f.created_at, f.updated_at, \
        (SELECT COUNT(*) FROM core.fleet_approval_gates g \
-         WHERE g.fleet_id = f.id AND g.status = $3) \
+         WHERE g.fleet_id = f.id AND g.status = $3), \
+       f.memory_reads_workspace, f.memory_publishes_workspace \
 FROM core.fleets f \
 LEFT JOIN core.fleet_activity_counters c ON c.fleet_id = f.id \
 WHERE f.id = $1::uuid AND f.workspace_id = $2::uuid";

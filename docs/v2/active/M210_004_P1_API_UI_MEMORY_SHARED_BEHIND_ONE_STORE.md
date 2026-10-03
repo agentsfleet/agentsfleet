@@ -65,7 +65,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/MemoryPanel.tsx`, `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/actions.ts`, `ui/packages/app/lib/types.ts`, `ui/packages/app/tests/` | EDIT / CREATE | Two access toggles and a "shared by" mark |
 | `public/openapi.json` | EDIT | Regenerated from the build |
 | `docs/architecture/runner_fleet.md`, `docs/architecture/memory.md`, `docs/architecture/capabilities.md` | EDIT | From "decided" to "built" |
-| Ripple, added at EXECUTE: `rustd/crates/afd_fleet/src/` (`error/`, `lease/{pull,fence,test_dead}.rs`), `afd_fleet/tests/`, `afd_http/` (`Cargo.toml`, `src/services/{memory,leasing}.rs`, `src/handler/refusable.rs`, `src/route/{fleet,runner}.rs`), `afd_api_{tenant,runner}/` (`Cargo.toml`, `src/lib.rs`, `src/openapi.rs`), `afd_api/` (`Cargo.toml`, `src/lib.rs`), `agentsfleetd/` (`Cargo.toml`, `src/plane.rs`, `src/plane/services.rs`, two `tests/`), `afd_bench/` (`Cargo.toml`, one stage), `afd_fleet_lifecycle/tests/integration_purge_ledger_identity.rs`, `afr_supervisor/src/` (`client.rs`, `memory/`, `lease_loop/`, `test_support*`), `afr_agent/src/engine.rs` and four tests, `afr_providers/` (`Cargo.toml`, one test), `afr_tools/src/runtime.rs` | EDIT | Import, wiring and fixture lines the move, the error lift, the two routes, slot 926's new column and `AgentRun`'s seed force; no other change |
+| Ripple, added at EXECUTE: `rustd/crates/afd_fleet/src/` (`error/`, `lease/{pull,fence,test_dead}.rs`), `afd_fleet/tests/`, `afd_http/` (`Cargo.toml`, `src/services/{memory,leasing}.rs`, `src/handler/refusable.rs`, `src/route/{fleet,runner}.rs`), `afd_api_{tenant,runner}/` (`Cargo.toml`, `src/lib.rs`, `src/openapi.rs`), `afd_api/` (`Cargo.toml`, `src/lib.rs`), `agentsfleetd/` (`Cargo.toml`, `src/plane.rs`, `src/plane/services.rs`, two `tests/`), `afd_bench/` (`Cargo.toml`, one stage), `afd_fleet_lifecycle/tests/integration_purge_ledger_identity.rs`, `afr_supervisor/src/` (`client.rs`, `memory/`, `lease_loop/`, `test_support*`), `afr_agent/src/engine.rs` and four tests, `afr_providers/` (`Cargo.toml`, one test), `afr_tools/src/runtime.rs`, `afd_fleet_lifecycle/src/{read,sql}.rs` and `afd_api_tenant/src/handler/fleet/detail.rs` (the grants on the fleet detail), `ui/packages/app/` (`fleets/[id]/page.tsx`, `MemoryPanel.test.tsx`, `lib/api/memory.ts`, `lib/auth/scopes.ts`) | EDIT | Import, wiring and fixture lines the move, the error lift, the two routes, slot 926's new column, `AgentRun`'s seed and the panel's initial grants force; no other change |
 
 ## Applicable Rules
 
@@ -135,7 +135,7 @@ Every memory read and write in `agentsfleetd`, from the lease paths and both rou
 
 The panel gains two toggles, "Read shared memory" and "Publish to shared memory", shown to a member who holds `fleet:write`, and marks each workspace-visible entry with "shared". No new page.
 
-- **Dimension 6.1** — The toggles call the access route and reflect its answer → Test `test_memory_panel_toggles_access`
+- **Dimension 6.1** — The toggles call the access route and reflect its answer → Test `test_memory_panel_toggles_access` — DONE (`ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/MemoryPanel.test.tsx`)
 - **Dimension 6.2** — An admin grants publish and read, and the reader's panel lists the published entry → Test `test_e2e_admin_shares_memory_across_fleets`
 
 ## Interfaces
@@ -265,5 +265,7 @@ PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}/memory-access { read, publ
 - Agent default: `MemoryEntry` gains `visibility` and `writer_fleet_id`, and a granted reader's page carries the workspace's shared entries, because §6 marks shared entries on the reader's panel.
 - Agent default: `AgentRun.memory` becomes `afr_memory::Seed` (window, shared, publish, recall seam), because the supervisor is where the hydrate reply and the daemon client live.
 - Agent default: the Files Changed ripple row was added at EXECUTE, because the module move and the two routes cannot compile without those lines.
+- Agent default: the fleet detail carries `memory_access`, because the panel needs the grants it opens on and §Files Changed puts "the grants on a fleet" in `afd_wire/src/fleet.rs`.
+- Agent default: each toggle is a `ghost` `Button` with `aria-pressed` and an On/Off `Badge`, because the design system has no Switch and the button-variant rule permits `ghost`.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.

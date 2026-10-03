@@ -19,7 +19,7 @@ const RETIRED_PARAM_CONST = "QUERY_CURSOR_RETIRED";
 const MIGRATED_SOURCES = [
   "rustd/crates/afd_api_tenant/src/handler/fleet/mod.rs",
   "rustd/crates/afd_api_tenant/src/handler/fleet/memory.rs",
-  "rustd/crates/afd_fleet/src/memory/sql.rs",
+  "rustd/crates/afd_memory/src/postgres/page.rs",
   "ui/packages/app/lib/api/fleets.ts",
   "ui/packages/app/lib/api/api_keys.ts",
   "ui/packages/app/lib/api/runners.ts",
