@@ -16,7 +16,12 @@
 //!
 //! A `custom:<url>` provider is no entry: its URL comes with the lease. It is
 //! taken only as `https` with a host, and the transport follows no redirect,
-//! so a turn reaches that host and no other.
+//! so a turn reaches that host and no other. rig appends `/chat/completions`
+//! to the base it is given, so a URL already ending there is trimmed back to
+//! its base, as the Zig runner did, and a bare host gets `/v1`, where vLLM,
+//! llama.cpp and LM Studio serve, as `IronClaw` does
+//! (`ironclaw_llm/src/lib.rs`, `normalize_openai_base_url`). Any other path is
+//! dialled as written.
 
 use std::collections::HashMap;
 
@@ -30,6 +35,10 @@ use crate::error::{Result, raise};
 const BUILTIN: &str = include_str!("../assets/providers.json");
 /// The only scheme a provider is dialled over.
 const HTTPS: &str = "https";
+/// The path rig appends to a chat wire's base.
+const CHAT_COMPLETIONS: &str = "/chat/completions";
+/// The base path a bare `custom:` host is given.
+const BARE_HOST_BASE: &str = "/v1";
 
 /// The wire a provider speaks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -121,11 +130,24 @@ impl Registry {
             .filter(|base| base.scheme() == HTTPS && base.host_str().is_some())
             .map(|base| Route {
                 wire: Wire::Chat,
-                base,
+                base: chat_base(base),
                 dialect: None,
             })
             .ok_or_else(|| raise::unhosted(provider))
     }
+}
+
+/// The base a `custom:` endpoint's chat turns resolve against.
+fn chat_base(mut url: Url) -> Url {
+    let path = url.path().trim_end_matches('/');
+    let based = match path.strip_suffix(CHAT_COMPLETIONS) {
+        Some(base) => Some(base.to_owned()),
+        None => path.is_empty().then(|| BARE_HOST_BASE.to_owned()),
+    };
+    if let Some(base) = based {
+        url.set_path(&base);
+    }
+    url
 }
 
 #[cfg(test)]

@@ -95,6 +95,27 @@ fn should_take_a_custom_url_only_over_https_with_a_host() {
 }
 
 #[test]
+fn should_dial_a_custom_endpoint_where_rig_appends_the_chat_path() {
+    let registry = Registry::new([]).unwrap();
+    let base = |url: &str| {
+        let route = registry.route(&format!("{CUSTOM_PROVIDER_PREFIX}{url}")).unwrap();
+        route.base.as_str().trim_end_matches('/').to_owned()
+    };
+
+    for (written, dialled) in [
+        ("https://vllm.corp/v1", "https://vllm.corp/v1"),
+        ("https://vllm.corp/v1/", "https://vllm.corp/v1"),
+        ("https://llm.acme.com", "https://llm.acme.com/v1"),
+        ("https://llm.acme.com/", "https://llm.acme.com/v1"),
+        ("https://vllm.corp/v1/chat/completions", "https://vllm.corp/v1"),
+        ("https://gateway.corp/chat/completions", "https://gateway.corp"),
+        ("https://ark.volces.com/api/coding/v3", "https://ark.volces.com/api/coding/v3"),
+    ] {
+        assert_eq!(base(written), dialled, "{written}");
+    }
+}
+
+#[test]
 fn should_name_an_entry_whose_base_does_not_parse() {
     let broken = ProviderSpec {
         name: "broken".to_owned(),
