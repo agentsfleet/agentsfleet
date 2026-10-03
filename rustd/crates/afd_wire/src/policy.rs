@@ -8,6 +8,8 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
+pub mod repository;
+
 /// Provider-name prefix routing a custom OpenAI-compatible endpoint through the
 /// compatible-provider path with a configured base URL.
 ///
