@@ -35,12 +35,14 @@ mod bubblewrap_engine;
 
 #[cfg(target_os = "linux")]
 pub use self::bubblewrap_engine::{BubblewrapConfig, BubblewrapEngine};
-pub use self::cgroup::{DEFAULT_IO_BYTES_PER_SECOND, LeaseCgroup};
+pub use self::cgroup::{DEFAULT_IO_BYTES_PER_SECOND, LeaseCgroup, SUBTREE_CONTROL};
 pub use self::engine::{
     DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES, DEFAULT_MEMORY_BYTES, DEFAULT_PIDS, Engine, Limits,
     Sandbox, SandboxRequest,
 };
 pub use self::error::{Error, Result};
+#[cfg(target_os = "linux")]
+pub use self::harden::{REFUSED_SYSCALLS, X32_SYSCALL_BIT};
 pub use self::harden::{WRITABLE, WRITABLE_DEVICES, capabilities_dropped, harden, single_threaded};
 pub use self::host::{HostTools, MKE2FS_PATH, MOUNT_PATH};
 pub use self::probe::{

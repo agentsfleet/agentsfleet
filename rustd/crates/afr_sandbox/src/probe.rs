@@ -5,7 +5,6 @@
 
 use std::fs;
 use std::io::ErrorKind;
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
 use crate::cgroup::SUBTREE_CONTROL;
@@ -129,8 +128,10 @@ pub(crate) fn read(paths: &ProbePaths, landlock_enforceable: bool) -> HostProbe 
             .split_whitespace()
             .map(str::to_owned)
             .collect(),
-        bubblewrap: fs::metadata(&paths.bwrap)
-            .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0),
+        // A file this process may execute: the permission bits alone say
+        // nothing about who may.
+        bubblewrap: fs::metadata(&paths.bwrap).is_ok_and(|meta| meta.is_file())
+            && rustix::fs::access(&paths.bwrap, rustix::fs::Access::EXEC_OK).is_ok(),
         kvm: kvm(&paths.kvm),
         toolbox_filesystem: text(&paths.filesystems)
             .lines()

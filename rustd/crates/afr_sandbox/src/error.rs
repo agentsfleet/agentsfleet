@@ -22,9 +22,12 @@ use afd_core::error_code::{self, ErrorCode};
 
 mod raise;
 
+pub(crate) use self::raise::{
+    cgroup, cgroup_left, lease_id_unsafe, program, refused, toolbox_unnamed, toolbox_unverified,
+    unconfined,
+};
 #[cfg(target_os = "linux")]
-pub(crate) use self::raise::toolbox_unexpected;
-pub(crate) use self::raise::{cgroup, cgroup_left, lease_id_unsafe, program, refused, unconfined};
+pub(crate) use self::raise::{not_ready, toolbox_device, toolbox_unexpected};
 
 afd_core::error_shell!(
     /// A sandbox failure, with the backtrace of where it was raised.
@@ -38,7 +41,7 @@ pub(crate) enum ErrorKind {
     #[error("an input/output call failed")]
     Io {
         /// The operating system's reason.
-        #[from]
+        #[source]
         source: std::io::Error,
     },
 
@@ -47,6 +50,24 @@ pub(crate) enum ErrorKind {
     Refused {
         /// The missing mechanism, as the capability report names it.
         missing: &'static str,
+    },
+
+    /// A toolbox image's file name states no digest.
+    #[error("the toolbox image {path} is not named toolbox-<digest>.erofs")]
+    ToolboxUnnamed {
+        /// The image that failed.
+        path: PathBuf,
+    },
+
+    /// A toolbox root is not mounted from a loop device the kernel names, so
+    /// it is not an image and is never hashed: it could be a whole disk.
+    #[cfg(target_os = "linux")]
+    #[error("the toolbox root's device {major}:{minor} is not a named loop device")]
+    ToolboxDevice {
+        /// The device's major number.
+        major: u32,
+        /// The device's minor number.
+        minor: u32,
     },
 
     /// A toolbox image's bytes do not hash to the digest it is named by.
@@ -99,29 +120,31 @@ pub(crate) enum ErrorKind {
         expected: String,
     },
 
-    /// The sandbox exited before its executor answered.
-    #[cfg(target_os = "linux")]
-    #[error("the sandbox exited with {status} before its executor answered: {reason}")]
-    Exited {
-        /// How it ended.
-        status: ExitStatus,
-        /// The last of what it wrote to standard error.
-        reason: String,
-    },
-
-    /// The executor did not answer within the ready timeout.
+    /// The executor could not be reached within the ready timeout.
     #[cfg(target_os = "linux")]
     #[error("the sandbox's executor did not answer within {waited:?}")]
     NotReady {
         /// How long the engine waited.
         waited: Duration,
+        /// Why the last attempt failed: a socket not there yet, or a refusal
+        /// waiting could not fix.
+        #[source]
+        source: afr_executor::Error,
+    },
+
+    /// A task the engine ran did not finish: it panicked or was cancelled.
+    #[error("a task did not finish")]
+    Task {
+        /// The runtime's reason.
+        #[source]
+        source: tokio::task::JoinError,
     },
 
     /// The executor inside the sandbox failed.
     #[error("the sandbox's executor failed")]
     Executor {
         /// The executor's failure.
-        #[from]
+        #[source]
         source: afr_executor::Error,
     },
 
@@ -148,7 +171,7 @@ pub(crate) enum ErrorKind {
     #[error("a system call was refused")]
     System {
         /// The kernel's reason.
-        #[from]
+        #[source]
         source: rustix::io::Errno,
     },
 
@@ -157,7 +180,7 @@ pub(crate) enum ErrorKind {
     #[error("Landlock refused the file-system ruleset")]
     Landlock {
         /// Landlock's reason.
-        #[from]
+        #[source]
         source: landlock::RulesetError,
     },
 
@@ -166,7 +189,7 @@ pub(crate) enum ErrorKind {
     #[error("the seccomp program would not compile")]
     SeccompProgram {
         /// The compiler's reason.
-        #[from]
+        #[source]
         source: seccompiler::BackendError,
     },
 
@@ -175,7 +198,7 @@ pub(crate) enum ErrorKind {
     #[error("the kernel refused the seccomp program")]
     Seccomp {
         /// The kernel's reason.
-        #[from]
+        #[source]
         source: seccompiler::Error,
     },
 }

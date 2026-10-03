@@ -11,16 +11,15 @@
 //! device's own bytes are hashed too: what is verified is what is mounted.
 
 use std::fs;
-use std::io;
+use std::io::{self, BufReader};
 use std::path::{Path, PathBuf};
 
 use digest_io::IoWrapper;
 use sha2::{Digest as _, Sha256};
 
-use crate::error::{ErrorKind, Result};
-use crate::host::{self, HostTools, MOUNT};
+use crate::error::{Result, toolbox_unnamed, toolbox_unverified};
+use crate::host::HostTools;
 use crate::probe::MECHANISM_TOOLBOX_FILESYSTEM as EROFS;
-use crate::workspace_disk::mount_arguments;
 
 /// Every image's file name starts with this.
 pub const TOOLBOX_PREFIX: &str = "toolbox-";
@@ -37,15 +36,18 @@ const SYS_DEV_BLOCK: &str = "/sys/dev/block";
 /// The file naming a device's node.
 #[cfg(target_os = "linux")]
 const UEVENT: &str = "uevent";
-/// Why a root mounted from anything but a loop device is refused.
-#[cfg(target_os = "linux")]
-const NOT_A_LOOP_DEVICE: &str = "the toolbox root is not mounted from a loop device";
+/// How much of an image one read takes while it is hashed: images run to
+/// gigabytes, and the copy reads through this buffer rather than its own.
+const HASH_BUFFER_BYTES: usize = 1024 * 1024;
 /// The event a toolbox mount's start is logged under.
 const EVENT_MOUNT_STARTED: &str = "sandbox_toolbox_mount_started";
 /// The event a verified toolbox mount is logged under.
 const EVENT_MOUNT_COMPLETED: &str = "sandbox_toolbox_mount_completed";
 /// The event a toolbox that could not be mounted or verified is logged under.
 const EVENT_MOUNT_FAILED: &str = "sandbox_toolbox_mount_failed";
+/// The event a wrong toolbox that would not detach is logged under.
+#[cfg(target_os = "linux")]
+const EVENT_DETACH_FAILED: &str = "sandbox_toolbox_detach_failed";
 
 /// An image whose bytes hash to the digest in its name.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,22 +58,21 @@ pub struct ToolboxImage {
 
 impl ToolboxImage {
     /// Hashes the image and accepts it only when its bytes match its name.
+    /// The name is read first, so a file not named for a digest is refused
+    /// without reading it.
     ///
     /// # Errors
     /// The file cannot be read, or its name states no digest or the wrong one.
     pub fn verify(path: &Path) -> Result<Self> {
-        let actual = sha256_of(path)?;
         let named = path
             .file_name()
             .and_then(|name| name.to_str())
             .and_then(|name| name.strip_prefix(TOOLBOX_PREFIX))
-            .and_then(|name| name.strip_suffix(TOOLBOX_SUFFIX));
-        if named != Some(actual.as_str()) {
-            return Err(ErrorKind::ToolboxUnverified {
-                path: path.to_owned(),
-                actual,
-            }
-            .into());
+            .and_then(|name| name.strip_suffix(TOOLBOX_SUFFIX))
+            .ok_or_else(|| toolbox_unnamed(path))?;
+        let actual = sha256_of(path)?;
+        if actual != named {
+            return Err(toolbox_unverified(path, actual));
         }
         Ok(Self {
             path: path.to_owned(),
@@ -92,8 +93,9 @@ impl ToolboxImage {
     }
 }
 
-/// A verified toolbox, mounted read-only on the host.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A verified toolbox, mounted read-only on the host. One owner unmounts it;
+/// an engine configuration shares it behind an `Arc`.
+#[derive(Debug, PartialEq, Eq)]
 pub struct Toolbox {
     root: PathBuf,
     digest: String,
@@ -130,24 +132,30 @@ impl Toolbox {
     }
 
     async fn attach(image: &ToolboxImage, tools: &HostTools, state: &Path) -> Result<Self> {
-        let toolbox = Self {
+        let named = || Self {
             root: state.join(image.digest()),
             digest: image.digest().to_owned(),
         };
         // A mount already there is adopted only if it is this image; one that
         // is a loop device of another image is detached as it is verified,
         // and anything else is mounted over.
-        if crate::mounts::is_mount_root(&toolbox.root) && toolbox.verify_mounted().is_ok() {
-            return Ok(toolbox);
+        if crate::mounts::is_mount_root(&named().root)
+            && let Ok(adopted) = named().verified().await
+        {
+            return Ok(adopted);
         }
+        let toolbox = named();
         fs::create_dir_all(&toolbox.root)?;
-        host::run(
-            MOUNT,
-            &tools.mount,
-            mount_arguments(EROFS, TOOLBOX_OPTIONS, image.path(), &toolbox.root),
-        )
-        .await?;
-        toolbox.verify_mounted().map(|()| toolbox)
+        tools
+            .mount(EROFS, TOOLBOX_OPTIONS, image.path(), &toolbox.root)
+            .await?;
+        toolbox.verified().await
+    }
+
+    /// [`Self::verify_mounted`] on the blocking pool: it reads the whole
+    /// image, which would hold a runtime worker for seconds.
+    async fn verified(self) -> Result<Self> {
+        tokio::task::spawn_blocking(move || self.verify_mounted().map(|()| self)).await?
     }
 
     /// Hashes the block device mounted at the root and refuses unless it is
@@ -169,11 +177,7 @@ impl Toolbox {
         if actual == self.digest {
             Ok(())
         } else {
-            Err(ErrorKind::ToolboxUnverified {
-                path: node.to_owned(),
-                actual,
-            }
-            .into())
+            Err(toolbox_unverified(node, actual))
         }
     }
 
@@ -184,7 +188,7 @@ impl Toolbox {
         crate::mounts::unmount(&self.root, true).unwrap_or_else(|error| {
             let error_code = error.code().as_str();
             let reason = error.to_string();
-            let event = EVENT_MOUNT_FAILED;
+            let event = EVENT_DETACH_FAILED;
             tracing::error!(error_code, reason, event, "a wrong toolbox stayed mounted");
         });
     }
@@ -225,8 +229,8 @@ impl Toolbox {
     /// The kernel refuses the unmount, or the mount point cannot be removed.
     #[cfg(target_os = "linux")]
     pub fn unmount(self) -> Result<()> {
-        crate::mounts::unmount(&self.root, false)
-            .and_then(|()| fs::remove_dir(&self.root).map_err(Into::into))
+        crate::mounts::unmount(&self.root, false)?;
+        Ok(fs::remove_dir(&self.root)?)
     }
 }
 
@@ -238,20 +242,21 @@ fn loop_node(sys_dev_block: &Path, major: u32, minor: u32) -> Result<PathBuf> {
     /// The line of a device's `uevent` that names its node under `/dev`.
     const DEVNAME: &str = "DEVNAME=";
     if major != LOOP_MAJOR {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, NOT_A_LOOP_DEVICE).into());
+        return Err(crate::error::toolbox_device(major, minor));
     }
     let uevent = fs::read_to_string(sys_dev_block.join(format!("{major}:{minor}")).join(UEVENT))?;
     uevent
         .lines()
         .find_map(|line| line.strip_prefix(DEVNAME))
         .map(|name| Path::new("/dev").join(name))
-        .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound).into())
+        .ok_or_else(|| crate::error::toolbox_device(major, minor))
 }
 
 /// The SHA-256 of everything readable at `path`, streamed through the hasher.
 fn sha256_of(path: &Path) -> Result<String> {
     let mut hasher = IoWrapper(Sha256::new());
-    io::copy(&mut fs::File::open(path)?, &mut hasher)?;
+    let mut image = BufReader::with_capacity(HASH_BUFFER_BYTES, fs::File::open(path)?);
+    io::copy(&mut image, &mut hasher)?;
     Ok(hex::encode(hasher.0.finalize()))
 }
 

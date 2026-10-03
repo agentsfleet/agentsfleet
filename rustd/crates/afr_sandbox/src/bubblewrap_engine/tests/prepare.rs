@@ -86,6 +86,10 @@ async fn test_a_sandbox_that_never_answers_refuses_the_lease() {
     let refused = host.engine().prepare(request("lease-3")).await.unwrap_err();
 
     assert!(refused.to_string().contains("did not answer"), "{refused}");
+    assert!(
+        std::error::Error::source(&refused).is_some(),
+        "why the last attempt failed is kept"
+    );
 }
 
 #[tokio::test]

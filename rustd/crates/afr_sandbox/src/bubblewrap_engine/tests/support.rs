@@ -9,7 +9,7 @@ use std::ffi::OsString;
 use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use tempfile::TempDir;
@@ -123,7 +123,7 @@ impl FakeHost {
                 mke2fs: PathBuf::from(TRUE),
                 mount: PathBuf::from(TRUE),
             },
-            toolbox: Toolbox::at(base.join("toolbox"), DIGEST.to_owned()),
+            toolbox: Arc::new(Toolbox::at(base.join("toolbox"), DIGEST.to_owned())),
             toolbox_digest: DIGEST.to_owned(),
             cgroup_root,
             state_dir: base.join("leases"),

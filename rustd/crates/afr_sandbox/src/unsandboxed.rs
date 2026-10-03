@@ -109,14 +109,17 @@ impl Sandbox for Unconfined {
         // ends every process it started; a session that outlives the grace
         // period is cut off.
         drop(client);
-        if tokio::time::timeout(SERVER_GRACE, &mut server)
+        let served = tokio::time::timeout(SERVER_GRACE, &mut server)
             .await
-            .is_err()
-        {
-            server.abort();
-        }
+            .map_or_else(
+                |_late| {
+                    server.abort();
+                    Ok(())
+                },
+                |joined| Ok(joined??),
+            );
         fs::remove_dir_all(dir)?;
-        Ok(())
+        served
     }
 }
 

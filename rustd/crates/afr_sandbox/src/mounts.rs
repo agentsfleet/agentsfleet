@@ -36,7 +36,7 @@ pub(crate) fn unmount(path: &Path, detach: bool) -> crate::Result<()> {
     } else {
         rustix::mount::UnmountFlags::empty()
     };
-    rustix::mount::unmount(path, flags).map_err(Into::into)
+    Ok(rustix::mount::unmount(path, flags)?)
 }
 
 #[cfg(all(test, target_os = "linux"))]

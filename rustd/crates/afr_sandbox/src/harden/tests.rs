@@ -68,7 +68,7 @@ fn test_the_seccomp_program_compiles_for_this_machine() {
 #[cfg(target_os = "linux")]
 #[test]
 fn test_the_high_number_program_refuses_at_the_x32_bit_and_allows_below() {
-    let [load, compare, refuse, allow] = super::linux::high_numbers();
+    let [load, compare, refuse, allow] = super::linux::HIGH_NUMBERS;
 
     assert_eq!((load.code, load.k), (0x20, 0), "loads the call number");
     assert_eq!((compare.jt, compare.jf, compare.k), (0, 1, 0x4000_0000));

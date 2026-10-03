@@ -10,6 +10,7 @@ use super::{Error, ErrorKind};
 afd_core::error_lifts!(Error, ErrorKind:
     std::io::Error => Io,
     afr_executor::Error => Executor,
+    tokio::task::JoinError => Task,
 );
 
 #[cfg(target_os = "linux")]
@@ -49,6 +50,36 @@ pub(crate) fn cgroup_left(path: &std::path::Path) -> impl Fn(std::io::Error) -> 
         }
         .into()
     }
+}
+
+/// Refuses a toolbox image whose name states no digest.
+pub(crate) fn toolbox_unnamed(path: &std::path::Path) -> Error {
+    ErrorKind::ToolboxUnnamed {
+        path: path.to_owned(),
+    }
+    .into()
+}
+
+/// Refuses a toolbox image, or the device it is mounted from, whose bytes
+/// hash to `actual` rather than the digest it is named by.
+pub(crate) fn toolbox_unverified(path: &std::path::Path, actual: String) -> Error {
+    ErrorKind::ToolboxUnverified {
+        path: path.to_owned(),
+        actual,
+    }
+    .into()
+}
+
+/// Refuses a toolbox root not mounted from a named loop device.
+#[cfg(target_os = "linux")]
+pub(crate) fn toolbox_device(major: u32, minor: u32) -> Error {
+    ErrorKind::ToolboxDevice { major, minor }.into()
+}
+
+/// Reports an executor not reached within `waited`, with why.
+#[cfg(target_os = "linux")]
+pub(crate) fn not_ready(waited: std::time::Duration) -> impl Fn(afr_executor::Error) -> Error {
+    move |source| ErrorKind::NotReady { waited, source }.into()
 }
 
 /// Refuses a toolbox other than the one this runner was configured for.

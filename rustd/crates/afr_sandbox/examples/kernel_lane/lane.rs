@@ -11,21 +11,17 @@ use std::time::Duration;
 use afd_core::env::LOG_LEVEL_VAR;
 use afr_sandbox::bubblewrap::SANDBOX_SUBCOMMAND;
 use afr_sandbox::{
-    BubblewrapConfig, BubblewrapEngine, HostTools, ProbePaths, Toolbox, ToolboxImage, probe,
+    BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, HostTools, ProbePaths, REQUIRED_CONTROLLERS,
+    SUBTREE_CONTROL, Toolbox, ToolboxImage, probe,
 };
+use libtest_mimic::Failed;
 
 /// The environment variable naming the toolbox image to run against.
 pub(crate) const TOOLBOX_VARIABLE: &str = "AFR_TOOLBOX_IMAGE";
 /// The delegated cgroup every lease's cgroup is made under.
 const LANE_CGROUP: &str = "/sys/fs/cgroup/afr-kernel-lane";
-/// The controllers the lane delegates to each lease.
-const CONTROLLERS: &str = "+cpu +io +memory +pids";
-/// The cgroup v2 root, which must hand the controllers down first.
-const CGROUP_V2_ROOT: &str = "/sys/fs/cgroup";
 /// The unprivileged host user and group bubblewrap runs as: `nobody`.
 pub(crate) const SANDBOX_IDS: (u32, u32) = (65_534, 65_534);
-/// The file a cgroup enables its children's controllers in.
-const SUBTREE_CONTROL: &str = "cgroup.subtree_control";
 /// The cap on user namespaces; zero means bubblewrap cannot start.
 const MAX_USER_NAMESPACES: &str = "/proc/sys/user/max_user_namespaces";
 /// Ubuntu's `AppArmor` switch that forbids unprivileged user namespaces.
@@ -116,6 +112,7 @@ pub(crate) fn main() -> ExitCode {
     let lane = match build(toolbox.as_deref().map_or(Path::new(""), Path::new), paths) {
         Ok(lane) => lane,
         Err(reason) => {
+            let reason = reason.message().unwrap_or_default();
             eprintln!("the kernel lane could not set up: {reason}");
             return ExitCode::FAILURE;
         }
@@ -125,35 +122,39 @@ pub(crate) fn main() -> ExitCode {
     let lane = Arc::new(lane);
     let conclusion = crate::trials::run(&arguments, &lane);
     // The toolbox is mounted inside the lane's state, which cannot be removed
-    // while it is; a run that leaves nothing behind can run again.
-    if let Err(left) = lane.config.toolbox.clone().unmount() {
-        eprintln!("the lane's toolbox stayed mounted: {left}");
+    // while it is; a run that leaves nothing behind can run again. Every
+    // trial has ended, so the lane and its toolbox have one owner again.
+    let Some(Lane { config, state, .. }) = Arc::into_inner(lane) else {
+        eprintln!("a trial still holds the lane; its toolbox stays mounted");
+        return ExitCode::FAILURE;
+    };
+    let unmounted = Arc::into_inner(config.toolbox).map(afr_sandbox::Toolbox::unmount);
+    drop(state);
+    if !matches!(unmounted, Some(Ok(()))) {
+        eprintln!("the lane's toolbox stayed mounted: {unmounted:?}");
         return ExitCode::FAILURE;
     }
     conclusion.exit_code()
 }
 
-fn build(image: &Path, paths: ProbePaths) -> Result<Lane, String> {
-    let image = ToolboxImage::verify(image).map_err(|error| error.to_string())?;
+fn build(image: &Path, paths: ProbePaths) -> Result<Lane, Failed> {
+    let image = ToolboxImage::verify(image)?;
     let cgroup_root = paths.cgroup_root;
     let state = tempfile::Builder::new()
         .prefix(STATE_PREFIX)
-        .tempdir_in("/tmp")
-        .map_err(|error| error.to_string())?;
+        .tempdir_in("/tmp")?;
     let runtime = crate::run::runtime();
     let tools = HostTools::default();
-    let toolbox = runtime
-        .block_on(Toolbox::mount(
-            &image,
-            &tools,
-            &state.path().join(TOOLBOX_DIR),
-        ))
-        .map_err(|error| error.to_string())?;
-    let entry = install_entry(state.path()).map_err(|error| error.to_string())?;
+    let toolbox = runtime.block_on(Toolbox::mount(
+        &image,
+        &tools,
+        &state.path().join(TOOLBOX_DIR),
+    ))?;
+    let entry = install_entry(state.path())?;
     let config = BubblewrapConfig {
         tools,
         toolbox_digest: image.digest().to_owned(),
-        toolbox,
+        toolbox: Arc::new(toolbox),
         cgroup_root,
         state_dir: state.path().join(LEASES_DIR),
         entry,
@@ -185,14 +186,18 @@ fn install_entry(state: &Path) -> std::io::Result<PathBuf> {
     Ok(entry)
 }
 
-/// Makes the lane's own cgroup and delegates the lease controllers to it.
+/// Makes the lane's own cgroup and delegates the lease controllers to it,
+/// from the cgroup v2 root down.
 fn delegate() -> std::io::Result<PathBuf> {
-    fs::write(Path::new(CGROUP_V2_ROOT).join(SUBTREE_CONTROL), CONTROLLERS)?;
+    let enable = REQUIRED_CONTROLLERS
+        .map(|controller| format!("+{controller}"))
+        .join(" ");
+    fs::write(Path::new(CGROUP_ROOT).join(SUBTREE_CONTROL), &enable)?;
     let root = PathBuf::from(LANE_CGROUP);
     if !root.exists() {
         fs::create_dir(&root)?;
     }
-    fs::write(root.join(SUBTREE_CONTROL), CONTROLLERS)?;
+    fs::write(root.join(SUBTREE_CONTROL), &enable)?;
     Ok(root)
 }
 
