@@ -49,6 +49,10 @@ sqlx.workspace = true
 # of a subject tag against the starter's (RULE CTM).
 subtle.workspace = true
 thiserror.workspace = true
+# An installation id's shape, declared on the value it bounds.
+garde.workspace = true
+# The digits rule garde lacks.
+afd_validate.workspace = true
 # One deadline across every page of a Slack thread read, rather than one per
 # request that a many-page thread could multiply.
 tokio.workspace = true

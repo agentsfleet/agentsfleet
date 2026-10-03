@@ -64,7 +64,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_api_tenant/src/handler/` (`paging.rs`, `tenant/`, `fleet/`, `event/`, `approval/`, `schedule*`, `secret.rs`, `connector/callback.rs`) | EDIT | Query, path and body bounds through `Limit`, path types and `Sentences` |
 | `rustd/crates/afd_api_operator/src/handler/` (`admin/platform_keys.rs`, `admin/models.rs`, `admin/libraries_request.rs`, `operator/query.rs`) | EDIT | Same |
 | `rustd/crates/{afd_tenant,afd_vault,afd_cron,afd_billing,afd_events,afd_connector}/` (`Cargo.toml` and the inventoried files) | EDIT | garde joins the six crates that hand-write every bound today |
-| `rustd/crates/afd_library/src/` (`prepare.rs`, `github.rs`, `frontmatter.rs`, `model.rs`), `rustd/crates/afd_fleet_runtime/src/` (`config/trigger.rs`, `name.rs`, `config/policy.rs`, `config/raw/policy.rs`), `rustd/crates/afd_fleet_lifecycle/src/install/authored.rs` | EDIT | Document bounds as garde; parsers take `Valid<T>`; the finite budget |
+| `rustd/crates/afd_library/src/` (`prepare.rs`, `github.rs`, `frontmatter.rs`, `model.rs`), `rustd/crates/afd_fleet_runtime/src/` (`config/trigger.rs`, `name.rs`, `config/policy.rs`, `config/raw/policy.rs`), `rustd/crates/afd_fleet_lifecycle/` (`Cargo.toml`, `src/install/authored.rs`) | EDIT | Document bounds as garde; parsers take `Valid<T>`; the finite budget |
 | `rustd/crates/afd_fleet/src/lease/` (`tool_trace.rs`, `tool_detail.rs`) | EDIT | A report maps back to the drop reason it logs today |
 | `rustd/crates/afd_api/tests/` | EDIT / CREATE | Route suites for the limits, paths and filters |
 | `rustd/crates/afr_tools/src/` (`schema.rs`, `stub.rs`, `catalog.rs`), `rustd/crates/afr_agent/src/fixture.rs`, `rustd/crates/afr_providers/src/request.rs` | EDIT | `Schema` built only by `Schema::of`; read through accessors |
@@ -135,12 +135,12 @@ Every `?limit` reads through `Limit` with its route's ceiling and sentences (`af
 
 `afd_tenant`, `afd_vault`, `afd_billing`, `afd_events` and `afd_connector` gain garde. Machine name (`afd_tenant/src/cli_credential/machine.rs:71`) and workspace name (`workspace/name.rs:91`) are bounded after trimming; a blank workspace name still generates one. Session fields (`session/input.rs:80, :176`), API key name and description (`apikey/name.rs:41, :75`), invite email (`team/email.rs:52`), secret name on body and path alike (`afd_vault/src/secret.rs:71`), canonical secret data (`:126`), `installation_id` (`afd_connector/src/github.rs:104`) and the id half of a decoded cursor (`afd_billing/src/tenant/cursor.rs:68`, `afd_events/src/history/cursor.rs:78`) become garde rules with today's codes. Authored tags (`afd_fleet_lifecycle/src/install/authored.rs:147, :150`) keep REQ-001. The budget (`afd_fleet_runtime/src/config/policy.rs:54`) is `finite` and ranged.
 
-- **Dimension 5.1** — A 64-character machine name padded with spaces is accepted; 65 characters are refused → Test `test_machine_name_is_bounded_after_trimming`
-- **Dimension 5.2** — A blank workspace name still generates one; 129 code points are refused → Test `test_blank_workspace_name_still_generates_one`
-- **Dimension 5.3** — Each session field over its bound answers its AUTH code → Test `test_session_fields_keep_their_auth_codes`
-- **Dimension 5.4** — A 65-byte secret name is refused on create and on the replace path alike → Test `test_secret_name_is_bounded_on_body_and_path`
-- **Dimension 5.5** — A budget of `.nan` or `.inf` is refused as a bound break → Test `test_budget_refuses_nan_and_infinity`
-- **Dimension 5.6** — A cursor whose id half is 129 bytes is the one undifferentiated cursor refusal → Test `test_cursor_id_bound_stays_one_refusal`
+- **Dimension 5.1** — A 64-character machine name padded with spaces is accepted; 65 characters are refused → Test `test_machine_name_is_bounded_after_trimming` — DONE (`rustd/crates/afd_tenant/src/cli_credential/machine.rs`)
+- **Dimension 5.2** — A blank workspace name still generates one; 129 code points are refused → Test `test_blank_workspace_name_still_generates_one` — DONE (`rustd/crates/afd_tenant/src/workspace/name/tests.rs`)
+- **Dimension 5.3** — Each session field over its bound answers its AUTH code → Test `test_session_fields_keep_their_auth_codes` — DONE (`rustd/crates/afd_api/tests/auth_sessions.rs`)
+- **Dimension 5.4** — A 65-byte secret name is refused on create and on the replace path alike → Test `test_secret_name_is_bounded_on_body_and_path` — DONE (`rustd/crates/afd_api/tests/workspace_secrets/input.rs`)
+- **Dimension 5.5** — A budget of `.nan` or `.inf` is refused as a bound break → Test `test_budget_refuses_nan_and_infinity` — DONE (`rustd/crates/afd_fleet_runtime/src/config/policy/tests.rs`)
+- **Dimension 5.6** — A cursor whose id half is 129 bytes is the one undifferentiated cursor refusal → Test `test_cursor_id_bound_stays_one_refusal` — DONE (`rustd/crates/afd_billing/src/tenant/cursor.rs`, `rustd/crates/afd_events/src/history/cursor.rs`)
 
 ### §6 — Every model-read schema is derived
 
@@ -278,5 +278,9 @@ cron/timezone/channel/name/segment parsers: fn parse(input: &garde::Valid<T>) ->
 - **Agent default:** the `model_id` entry route picks one of two `Sentences` tables by whether `model_id` is blank, because one garde bound at one path answers two repairs.
 - **Agent default:** a schedule's three fields are bounded on one `afd_cron::validate::Fields` that create and patch both build, because one `Valid<Fields>` guards all three readers; the message bound is its cap only, so blank and oversized stay two repairs (`Invalid::MessageTooLong`).
 - **Agent default:** the trigger set's emptiness stays a presence check before garde bounds its count, because one garde length at one path cannot answer the two reasons the set has today.
+- **Agent default:** §5's bounds sit on garde structs in the domain crates (`afd_tenant`, `afd_vault`, `afd_connector`), not on the `afd_wire` request types, because those crates own the constants and the trimmed or canonical value, and `afd_tenant` does not depend on `afd_wire`; the secret and callback handlers reach them through `SecretName::parse` and `is_installation_id`.
+- **Agent default:** the budget's refusal reason is picked by the first report message (`NOT_FINITE`, positive, else the cap), because all three rules report at one path and `PathTable` cannot tell them apart; `InvalidBudget` keeps its reason sentences.
+- **Agent default:** the invite email's domain check and the workspace name's forbidden-character scan run after garde proves the length, not as garde rules, because garde runs custom rules before length; the email check takes `&garde::Valid<Folded>`.
+- **Open finding:** `stage_chunk_threshold` (`afd_fleet_runtime/src/config/raw/policy.rs:73`, `f32`) is a second float input with no bound, so Invariant 4's "the one float input" is wrong. TRIGGER.md cannot carry NaN today (serde_json refuses it; YAML `.nan` arrives as a string and fails as a type error), so nothing is exposed; bounding it needs a refusal reason `ContextBudget` does not have.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.

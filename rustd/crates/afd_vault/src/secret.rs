@@ -21,6 +21,7 @@
 //! no other shape expressible.
 
 use afd_crypto::secret::{SecretBytes, SecretObject};
+use garde::{Unvalidated, Validate};
 use serde_json::value::RawValue;
 
 use crate::error::{ErrorKind, Result};
@@ -65,13 +66,10 @@ impl SecretName {
     /// # Errors
     /// Refuses a name of zero bytes and one over [`MAX_NAME_BYTES`].
     pub fn parse(raw: &str) -> Result<Self> {
-        // BYTES, not characters. The column is `TEXT` and the Zig bound is
-        // `name.len`, which is a byte count; counting characters would accept a
-        // name the other daemon refuses.
-        if raw.is_empty() || raw.len() > MAX_NAME_BYTES {
-            return Err(ErrorKind::NameInvalid.into());
-        }
-        Ok(Self(raw.into()))
+        Unvalidated::new(Named { name: raw })
+            .validate()
+            .map(|proved| Self(proved.name.into()))
+            .map_err(|_report| ErrorKind::NameInvalid.into())
     }
 
     /// The name as stored, and as the associated data binds it.
@@ -79,6 +77,30 @@ impl SecretName {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+/// A name as the caller or a crate spelled it, with the bound it must meet.
+///
+/// Every route reads a name through [`SecretName::parse`] — the create body,
+/// the replace and delete paths, and the internal grant keys — so this one
+/// declaration bounds all of them.
+#[derive(Debug, Validate)]
+struct Named<'a> {
+    /// BYTES, not characters. The column is `TEXT` and the Zig bound is
+    /// `name.len`, which is a byte count; counting characters would accept a
+    /// name the other daemon refuses.
+    #[garde(length(bytes, min = 1, max = MAX_NAME_BYTES))]
+    name: &'a str,
+}
+
+/// A body's canonical bytes, with the size bound they must meet.
+///
+/// Measured on the canonical form, never the request bytes, so whitespace a
+/// caller spaced their JSON with does not count against them.
+#[derive(Debug, Validate)]
+struct Canonical<'a> {
+    #[garde(length(bytes, max = MAX_DATA_BYTES))]
+    bytes: &'a [u8],
 }
 
 /// A secret body ready to be sealed, with the projection of those same bytes.
@@ -123,9 +145,11 @@ impl SecretBody {
         let canonical = object
             .canonical()
             .map_err(|_unwritable| ErrorKind::DataInvalid)?;
-        if canonical.len() > MAX_DATA_BYTES {
-            return Err(ErrorKind::DataTooLarge.into());
+        Canonical {
+            bytes: canonical.expose(),
         }
+        .validate()
+        .map_err(|_report| ErrorKind::DataTooLarge)?;
 
         Ok(Self {
             projection: Projection::of(object.fields()),

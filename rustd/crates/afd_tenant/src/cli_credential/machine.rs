@@ -44,9 +44,12 @@ const MACHINE_NAME_MAX: usize = 64;
 ///
 /// A newtype rather than a checked `&str`, because the value reaches a UNIQUE
 /// index and a caller that skipped the trim would write a second row for the
-/// same machine. There is no constructor but [`MachineName::parse`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MachineName<'a>(&'a str);
+/// same machine. There is no constructor but [`MachineName::parse`], and the
+/// bound is declared on the field it bounds, so garde proves it over the
+/// TRIMMED value — the one that is stored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, garde::Validate)]
+#[garde(transparent)]
+pub struct MachineName<'a>(#[garde(length(chars, min = 1, max = MACHINE_NAME_MAX))] &'a str);
 
 impl<'a> MachineName<'a> {
     /// The label, trimmed, exactly as it will be stored.
@@ -67,11 +70,10 @@ impl<'a> MachineName<'a> {
     /// Those are the only two, and both are about the row rather than about the
     /// caller's spelling.
     pub fn parse(raw: &'a str) -> Result<Self> {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() || trimmed.chars().count() > MACHINE_NAME_MAX {
-            return Err(error::cli_credential_machine_name());
-        }
-        Ok(Self(trimmed))
+        garde::Unvalidated::new(Self(raw.trim()))
+            .validate()
+            .map(garde::Valid::into_inner)
+            .map_err(|_report| error::cli_credential_machine_name())
     }
 }
 
@@ -113,6 +115,27 @@ mod tests {
             name.as_str(),
             "indy-macbook.local",
             "the same machine typed with a stray space must not become a second row"
+        );
+    }
+
+    #[test]
+    fn test_machine_name_is_bounded_after_trimming() {
+        // The bound reads the value that is stored: outer space a person
+        // pasted costs nothing, so 64 characters padded to 67 still fit.
+        let padded = format!(" {} \t", "m".repeat(MACHINE_NAME_MAX));
+        assert_eq!(
+            MachineName::parse(&padded).map(MachineName::as_str).ok(),
+            Some("m".repeat(MACHINE_NAME_MAX).as_str())
+        );
+        let past_cap = "m".repeat(MACHINE_NAME_MAX + 1);
+        let refusal = MachineName::parse(&past_cap)
+            .err()
+            .map(|error| (error.code(), error.to_string()));
+        let expected = crate::error::cli_credential_machine_name();
+        assert_eq!(
+            refusal,
+            Some((expected.code(), expected.to_string())),
+            "65 characters answer CliCredentialMachineNameInvalid"
         );
     }
 

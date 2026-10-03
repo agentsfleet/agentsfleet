@@ -27,6 +27,7 @@
 //! — a real `api.github.com` call from a test — would prove nothing and would
 //! send a freshly minted user token off the machine.
 
+use garde::Validate;
 use serde_json::{Map, Value};
 
 use crate::grant::parse::HANDLE_INTEGRATION;
@@ -96,13 +97,23 @@ impl Found {
     }
 }
 
+/// An installation id as a query or a listing spells it, with its shape
+/// declared on the value: decimal digits, non-empty, within the cap.
+#[derive(Debug, Validate)]
+#[garde(transparent)]
+struct InstallationId<'a>(
+    #[garde(
+        length(bytes, min = 1, max = MAX_INSTALLATION_ID_LEN),
+        custom(afd_validate::ascii_digits)
+    )]
+    &'a str,
+);
+
 /// Whether `id` has the shape of an installation id on the query: decimal
 /// digits, non-empty, within the cap.
 #[must_use]
 pub fn is_installation_id(id: &str) -> bool {
-    !id.is_empty()
-        && id.len() <= MAX_INSTALLATION_ID_LEN
-        && id.bytes().all(|byte| byte.is_ascii_digit())
+    InstallationId(id).validate().is_ok()
 }
 
 /// The user token out of the exchange's answer, or nothing readable.

@@ -45,11 +45,14 @@ impl Email {
     /// address for a domain, bracketed or not, and any address `deliverable`
     /// refuses.
     pub fn parse(raw: &str, deliverable: impl FnOnce(&str) -> bool) -> Result<Self> {
-        let address = fold(raw);
-        let internet = address
-            .rsplit_once(AT)
-            .is_some_and(|(_, domain)| is_internet_domain(domain));
-        (address.len() <= MAX_LEN && internet && deliverable(&address))
+        let folded = garde::Unvalidated::new(Folded { address: fold(raw) })
+            .validate()
+            .map_err(|_report| error::email_invalid())?;
+        // The host parser and the mail parser run only on an address the bound
+        // already proved: nothing longer than SMTP carries reaches either.
+        let internet = names_internet_domain(&folded);
+        let address = folded.into_inner().address;
+        (internet && deliverable(&address))
             .then_some(Self(address))
             .ok_or_else(error::email_invalid)
     }
@@ -59,6 +62,26 @@ impl Email {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+/// An address once folded, with the bound SMTP sets declared on it.
+///
+/// Built from the FOLDED spelling, so the bound measures what is stored and
+/// matched rather than the spaces a caller pasted around it. The domain rule
+/// is not a garde `custom` here: garde runs custom rules before the length,
+/// so the host parser would see an address the bound had not yet refused.
+#[derive(Debug, garde::Validate)]
+struct Folded {
+    #[garde(length(bytes, max = MAX_LEN))]
+    address: String,
+}
+
+/// Whether a proved address names an internet domain after its last `@`.
+fn names_internet_domain(folded: &garde::Valid<Folded>) -> bool {
+    folded
+        .address
+        .rsplit_once(AT)
+        .is_some_and(|(_, domain)| is_internet_domain(domain))
 }
 
 /// A domain an invite can go to: a dotted name as the URL host parser reads
