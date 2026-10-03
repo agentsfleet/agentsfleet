@@ -1,15 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import MemoryPanel from "./MemoryPanel";
+import MemoryPanel, { MEMORY_ACCESS_PUBLISH_LABEL, MEMORY_ACCESS_READ_LABEL, MEMORY_SHARED_LABEL } from "./MemoryPanel";
 import type { MemoryEntry } from "@/lib/types";
 import { MEMORY_EMPTY_TITLE, MEMORY_FETCH_UNAVAILABLE, MEMORY_FORGET_MISSING, OUTCOME } from "./console-copy";
 import { EVENTS } from "@/lib/analytics/events";
 
 const forgetMemoryAction = vi.fn();
+const setMemoryAccessAction = vi.fn();
 const captureProductEvent = vi.fn();
 
-vi.mock("../../actions", () => ({ forgetMemoryAction: (...a: unknown[]) => forgetMemoryAction(...a) }));
+vi.mock("../../actions", () => ({
+  forgetMemoryAction: (...a: unknown[]) => forgetMemoryAction(...a),
+  setMemoryAccessAction: (...a: unknown[]) => setMemoryAccessAction(...a),
+}));
 vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent: (...a: unknown[]) => captureProductEvent(...a) }));
 
 const ENTRY: MemoryEntry = {
@@ -21,6 +25,7 @@ const ENTRY: MemoryEntry = {
 
 beforeEach(() => {
   forgetMemoryAction.mockReset();
+  setMemoryAccessAction.mockReset();
   captureProductEvent.mockReset();
 });
 afterEach(() => cleanup());
@@ -147,5 +152,51 @@ describe("MemoryPanel", () => {
       fleet_id: "agt_1",
       outcome: OUTCOME.failure,
     });
+  });
+});
+
+describe("MemoryPanel shared memory", () => {
+  const CLOSED = { read: false, publish: false };
+
+  it("test_memory_panel_toggles_access", async () => {
+    setMemoryAccessAction.mockResolvedValue({ ok: true, data: { read: false, publish: true } });
+    const user = userEvent.setup({ delay: null });
+    render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[]} access={CLOSED} canGrant />);
+
+    const publish = screen.getByRole("button", { name: MEMORY_ACCESS_PUBLISH_LABEL });
+    expect(publish.getAttribute("aria-pressed")).toBe("false");
+    await user.click(publish);
+
+    expect(setMemoryAccessAction).toHaveBeenCalledWith("ws_1", "agt_1", { publish: true });
+    await waitFor(() => expect(publish.getAttribute("aria-pressed")).toBe("true"));
+    const read = screen.getByRole("button", { name: MEMORY_ACCESS_READ_LABEL });
+    expect(read.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("keeps the grants as they were when the route refuses", async () => {
+    setMemoryAccessAction.mockResolvedValue({ ok: false, status: 403, error: "scope", errorCode: "UZ-AUTH-022" });
+    const user = userEvent.setup({ delay: null });
+    render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[]} access={CLOSED} canGrant />);
+
+    const read = screen.getByRole("button", { name: MEMORY_ACCESS_READ_LABEL });
+    await user.click(read);
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(read.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("shows no toggles to a viewer without fleet:write", () => {
+    render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[]} access={CLOSED} canGrant={false} />);
+    expect(screen.queryByRole("button", { name: MEMORY_ACCESS_READ_LABEL })).toBeNull();
+  });
+
+  it("marks a shared entry, and offers no forget on another fleet's", () => {
+    const own = { ...ENTRY, visibility: "workspace" as const, writer_fleet_id: "agt_1" };
+    const others = { ...ENTRY, key: "deploy_target", content: "deploy 812 broke iad", visibility: "workspace" as const, writer_fleet_id: "agt_2" };
+    render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[own, others]} />);
+
+    expect(screen.getAllByText(MEMORY_SHARED_LABEL)).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Forget convention" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Forget deploy_target" })).toBeNull();
   });
 });

@@ -13,8 +13,8 @@ import {
   Time,
 } from "@agentsfleet/design-system";
 import { BrainIcon } from "lucide-react";
-import type { MemoryEntry } from "@/lib/types";
-import { forgetMemoryAction } from "../../actions";
+import type { MemoryAccess, MemoryEntry } from "@/lib/types";
+import { forgetMemoryAction, setMemoryAccessAction } from "../../actions";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { EVENTS } from "@/lib/analytics/events";
 import { presentErrorString } from "@/lib/errors";
@@ -35,13 +35,32 @@ import {
 // leaves its list unchanged rather than treating it as a hard failure (§5).
 const NOT_FOUND = 404;
 
+export const MEMORY_ACCESS_READ_LABEL = "Read shared memory";
+export const MEMORY_ACCESS_PUBLISH_LABEL = "Publish to shared memory";
+export const MEMORY_SHARED_LABEL = "shared";
+export const MEMORY_SHARED_BY_OTHER = "from another fleet";
+const MEMORY_ACCESS_ACTION = "change shared memory access";
+const MEMORY_ACCESS_ON = "On";
+const MEMORY_ACCESS_OFF = "Off";
+const VISIBILITY_WORKSPACE = "workspace";
+
+// Whether `fleetId` wrote `entry`. An older daemon names no writer, and every
+// entry it sends is the fleet's own.
+function writtenBy(entry: MemoryEntry, fleetId: string): boolean {
+  return entry.writer_fleet_id === undefined || entry.writer_fleet_id === fleetId;
+}
+
 type Props = {
   workspaceId: string;
   fleetId: string;
   entries: MemoryEntry[] | null;
+  /** The fleet's grants; `null` when the daemon sent none. */
+  access?: MemoryAccess | null;
+  /** Whether the viewer holds `fleet:write`, which the access route takes. */
+  canGrant?: boolean;
 };
 
-export default function MemoryPanel({ workspaceId, fleetId, entries: initial }: Props) {
+export default function MemoryPanel({ workspaceId, fleetId, entries: initial, access = null, canGrant = false }: Props) {
   const hiddenVersions = useRef(new Map<string, number>());
   const [entries, setEntries] = useState<MemoryEntry[]>(initial ?? []);
   const [pendingEntry, setPendingEntry] = useState<MemoryEntry | null>(null);
@@ -50,11 +69,11 @@ export default function MemoryPanel({ workspaceId, fleetId, entries: initial }: 
   useEffect(() => {
     if (initial === null) return;
     for (const [key, hiddenAt] of hiddenVersions.current) {
-      const current = initial.find((entry) => entry.key === key);
+      const current = initial.find((entry) => entry.key === key && writtenBy(entry, fleetId));
       if (!current || current.updated_at > hiddenAt) hiddenVersions.current.delete(key);
     }
-    setEntries(initial.filter((entry) => !hiddenVersions.current.has(entry.key)));
-  }, [initial]);
+    setEntries(initial.filter((entry) => !(writtenBy(entry, fleetId) && hiddenVersions.current.has(entry.key))));
+  }, [initial, fleetId]);
 
   async function forget(entry: MemoryEntry) {
     const key = entry.key;
@@ -63,7 +82,7 @@ export default function MemoryPanel({ workspaceId, fleetId, entries: initial }: 
     setPendingEntry(null);
     if (result.ok) {
       hiddenVersions.current.set(key, entry.updated_at);
-      setEntries((prev) => prev.filter((e) => e.key !== key));
+      setEntries((prev) => prev.filter((e) => e.key !== key || !writtenBy(e, fleetId)));
       captureProductEvent(EVENTS.fleet_memory_forgotten, { fleet_id: fleetId, outcome: OUTCOME.success });
       return;
     }
@@ -80,6 +99,9 @@ export default function MemoryPanel({ workspaceId, fleetId, entries: initial }: 
   return (
     <Card className="flex flex-col gap-md bg-card p-4" aria-label={MEMORY_PANEL_TITLE}>
       <span className="font-sans text-sm font-medium text-foreground">{MEMORY_PANEL_TITLE}</span>
+      {access !== null && canGrant ? (
+        <AccessToggles workspaceId={workspaceId} fleetId={fleetId} initial={access} />
+      ) : null}
       {initial === null ? <Alert variant="warning">{MEMORY_FETCH_UNAVAILABLE}</Alert> : null}
       {notice ? <Alert variant="warning">{notice}</Alert> : null}
       {initial === null ? null : entries.length === 0 ? (
@@ -87,8 +109,8 @@ export default function MemoryPanel({ workspaceId, fleetId, entries: initial }: 
       ) : (
         <List variant="ordered" className="flex list-none flex-col gap-2 space-y-0 pl-0">
           {entries.map((entry) => (
-            <ListItem key={entry.key}>
-              <MemoryRow entry={entry} onForget={() => setPendingEntry(entry)} />
+            <ListItem key={`${entry.writer_fleet_id ?? fleetId}:${entry.key}`}>
+              <MemoryRow entry={entry} fleetId={fleetId} onForget={() => setPendingEntry(entry)} />
             </ListItem>
           ))}
         </List>
@@ -106,13 +128,65 @@ export default function MemoryPanel({ workspaceId, fleetId, entries: initial }: 
   );
 }
 
-function MemoryRow({ entry, onForget }: { entry: MemoryEntry; onForget: () => void }) {
+// The two grants as toggle buttons. Each press sends only the grant it flips,
+// and the panel shows the route's answer rather than its own guess.
+function AccessToggles({ workspaceId, fleetId, initial }: { workspaceId: string; fleetId: string; initial: MemoryAccess }) {
+  const [access, setAccess] = useState<MemoryAccess>(initial);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function flip(grant: keyof MemoryAccess) {
+    setSaving(true);
+    setNotice(null);
+    const result = await setMemoryAccessAction(workspaceId, fleetId, { [grant]: !access[grant] });
+    setSaving(false);
+    if (result.ok) {
+      setAccess(result.data);
+      return;
+    }
+    setNotice(presentErrorString({ errorCode: result.errorCode, message: result.error, action: MEMORY_ACCESS_ACTION }));
+  }
+
+  const toggles: { grant: keyof MemoryAccess; label: string }[] = [
+    { grant: "read", label: MEMORY_ACCESS_READ_LABEL },
+    { grant: "publish", label: MEMORY_ACCESS_PUBLISH_LABEL },
+  ];
+  return (
+    <div className="flex flex-col gap-xs">
+      <div className="flex flex-wrap items-center gap-md">
+        {toggles.map(({ grant, label }) => (
+          <Button
+            key={grant}
+            type="button"
+            size="sm"
+            variant="ghost"
+            aria-label={label}
+            aria-pressed={access[grant]}
+            disabled={saving}
+            onClick={() => void flip(grant)}
+          >
+            {label}
+            <Badge variant={access[grant] ? "cyan" : "default"}>{access[grant] ? MEMORY_ACCESS_ON : MEMORY_ACCESS_OFF}</Badge>
+          </Button>
+        ))}
+      </div>
+      {notice ? <Alert variant="warning">{notice}</Alert> : null}
+    </div>
+  );
+}
+
+function MemoryRow({ entry, fleetId, onForget }: { entry: MemoryEntry; fleetId: string; onForget: () => void }) {
+  const shared = entry.visibility === VISIBILITY_WORKSPACE;
+  // Another fleet's entry is read here and forgotten only by its writer.
+  const othersEntry = !writtenBy(entry, fleetId);
   return (
     <Card className="flex items-start justify-between gap-md p-3">
       <div className="flex min-w-0 flex-col gap-xs">
         <p className="break-words text-sm text-foreground">{entry.content}</p>
         <div className="flex flex-wrap items-center gap-md">
           <Badge variant="default">{entry.category}</Badge>
+          {shared ? <Badge variant="cyan">{MEMORY_SHARED_LABEL}</Badge> : null}
+          {othersEntry ? <span className="text-sm text-muted-foreground">{MEMORY_SHARED_BY_OTHER}</span> : null}
           <Time
             value={new Date(entry.updated_at)}
             format="relative"
@@ -121,9 +195,11 @@ function MemoryRow({ entry, onForget }: { entry: MemoryEntry; onForget: () => vo
           />
         </div>
       </div>
-      <Button type="button" variant="ghost" size="sm" onClick={onForget} aria-label={`${MEMORY_FORGET_LABEL} ${entry.key}`}>
-        {MEMORY_FORGET_LABEL}
-      </Button>
+      {othersEntry ? null : (
+        <Button type="button" variant="ghost" size="sm" onClick={onForget} aria-label={`${MEMORY_FORGET_LABEL} ${entry.key}`}>
+          {MEMORY_FORGET_LABEL}
+        </Button>
+      )}
     </Card>
   );
 }

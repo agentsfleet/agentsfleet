@@ -114,6 +114,8 @@ pub struct FleetDetail {
     /// On the detail and not the page row: a wall of fifty fleets does not
     /// render the count, and the console that does opens on one fleet.
     pub pending_approvals: i64,
+    /// Whether the fleet reads and publishes the workspace's shared memory.
+    pub memory_access: afd_wire::fleet::MemoryAccess,
 }
 
 impl FleetDetail {
@@ -257,6 +259,10 @@ impl Fleets {
             trigger_markdown: row.try_get(4).map_err(&unreadable)?,
             bundle_content_hash: row.try_get(5).map_err(&unreadable)?,
             pending_approvals: row.try_get(11).map_err(&unreadable)?,
+            memory_access: afd_wire::fleet::MemoryAccess {
+                read: row.try_get(12).map_err(&unreadable)?,
+                publish: row.try_get(13).map_err(&unreadable)?,
+            },
         })
     }
 }

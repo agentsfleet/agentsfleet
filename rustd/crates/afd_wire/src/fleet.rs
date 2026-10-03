@@ -185,6 +185,8 @@ pub struct FleetDetailResponse<'a> {
     pub created_at: i64,
     /// When it last changed.
     pub updated_at: i64,
+    /// Whether it reads and publishes the workspace's shared memory.
+    pub memory_access: MemoryAccess,
 }
 
 /// `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` — a partial update.

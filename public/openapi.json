@@ -15352,7 +15352,8 @@
           "budget_used_nanos",
           "pending_approvals",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "memory_access"
         ],
         "properties": {
           "budget_used_nanos": {
@@ -15380,6 +15381,10 @@
           "id": {
             "type": "string",
             "description": "The fleet's identifier."
+          },
+          "memory_access": {
+            "$ref": "#/components/schemas/MemoryAccess",
+            "description": "Whether it reads and publishes the workspace's shared memory."
           },
           "name": {
             "type": "string",

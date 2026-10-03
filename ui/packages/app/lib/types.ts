@@ -66,7 +66,20 @@ export type FleetDetail = {
   pending_approvals: number;
   created_at: number;
   updated_at: number;
+  /** Whether the fleet reads and publishes the workspace's shared memory. An
+   * older daemon sends none, which the memory panel renders without toggles. */
+  memory_access?: MemoryAccess;
 };
+
+// A fleet's two shared-memory grants (`PATCH …/fleets/{id}/memory-access`).
+export type MemoryAccess = {
+  read: boolean;
+  publish: boolean;
+};
+
+// Who reads a stored memory entry: its writer alone, or every fleet in the
+// workspace granted to read shared memory.
+export type MemoryVisibility = "fleet" | "workspace";
 
 // One durable memory entry as the tenant read returns it (`GET …/memories`).
 // The field is **`content`**, not `text` — the memory store's column name.
@@ -76,6 +89,11 @@ export type MemoryEntry = {
   category: string;
   /** epoch milliseconds */
   updated_at: number;
+  /** Absent from an older daemon, which shares nothing. */
+  visibility?: MemoryVisibility;
+  /** The fleet that wrote it; another fleet's id marks an entry this fleet
+   * reads and cannot forget. */
+  writer_fleet_id?: string;
 };
 
 // Install a fleet from exactly one onboarded library tier: a platform entry
