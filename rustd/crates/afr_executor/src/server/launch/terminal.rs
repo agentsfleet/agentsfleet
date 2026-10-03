@@ -4,15 +4,14 @@ use std::io::{self, Read as _, Write as _};
 
 use bytes::Bytes;
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
-use tokio::sync::{mpsc, oneshot};
+use rustix::process::{Pid, Signal, kill_process_group};
+use tokio::sync::mpsc;
 
-use super::{Input, Launcher, OUTPUT_BACKLOG, Plan, Spawned, ending_of, leader, missing_pipe};
+use super::{Launcher, OUTPUT_BACKLOG, Plan, READ_CHUNK_BYTES, Spawned, ending_of, leader};
 use crate::api::Stream;
 use crate::edges::Chunk;
 use crate::error::{self, Error, Result};
 
-/// The most a terminal read takes at once.
-const READ_CHUNK_BYTES: usize = 64 * 1024;
 /// The name a terminal's reader thread carries in a stack dump.
 const READER_THREAD: &str = "executor-terminal-reader";
 /// The name a terminal's writer thread carries in a stack dump.
@@ -29,7 +28,7 @@ const TERMINAL_SIZE: PtySize = PtySize {
 pub(super) struct Terminal;
 
 impl Launcher for Terminal {
-    fn launch(&self, plan: &Plan) -> Result<Spawned> {
+    fn launch(&self, plan: &Plan, input: mpsc::Receiver<Bytes>) -> Result<Spawned> {
         let pair = native_pty_system()
             .openpty(TERMINAL_SIZE)
             .map_err(io::Error::other)?;
@@ -40,10 +39,9 @@ impl Launcher for Terminal {
             // launcher's own lookup refusing the program — missing, not
             // executable, a directory — which is the caller's to fix.
             .map_err(|failure| {
-                failure.downcast::<io::Error>().map_or_else(
-                    |other| error::program_unavailable(other.to_string()),
-                    Error::from,
-                )
+                failure
+                    .downcast::<io::Error>()
+                    .map_or_else(error::program_unavailable, Error::from)
             })?;
         // The child holds its own copy of the terminal's far end; this one
         // must go, or reading the near end never sees the child finish.
@@ -51,7 +49,7 @@ impl Launcher for Terminal {
         let child: Box<dyn portable_pty::Child> = child;
         let mut child = child
             .downcast::<std::process::Child>()
-            .map_err(|_other| missing_pipe())?;
+            .map_err(|_other| error::launch_incomplete())?;
         let pid = leader(Some(child.id()))?;
         let reader = pair.master.try_clone_reader().map_err(io::Error::other)?;
         let writer = pair.master.take_writer().map_err(io::Error::other)?;
@@ -63,16 +61,23 @@ impl Launcher for Terminal {
         std::thread::Builder::new()
             .name(READER_THREAD.to_owned())
             .spawn(move || read_terminal(reader, &sender))?;
+        std::thread::Builder::new()
+            .name(WRITER_THREAD.to_owned())
+            .spawn(move || write_terminal(writer, input))?;
         let exit = Box::pin(async move {
+            // Dropped before the wait ends — its task aborted, its runtime
+            // stopping — the leader's group goes with it, as a pipe leader's
+            // does through `kill_on_drop`.
+            let unwaited = KillOnDrop(Some(pid));
             let waited = tokio::task::spawn_blocking(move || child.wait()).await;
+            unwaited.disarm();
             ending_of(waited.unwrap_or_else(|stopped| Err(io::Error::other(stopped))))
         });
         Ok(Spawned {
             pid,
-            input: Box::new(TerminalInput::start(writer)?),
             exit,
             output,
-            readers: Vec::new(),
+            tasks: Vec::new(),
         })
     }
 }
@@ -88,6 +93,26 @@ fn terminal_command(plan: &Plan) -> CommandBuilder {
         .for_each(|(key, value)| command.env(key, value));
     command.cwd(&plan.cwd);
     command
+}
+
+/// Kills a group when dropped while armed: the leader of a terminal whose wait
+/// was abandoned.
+pub(super) struct KillOnDrop(pub(super) Option<Pid>);
+
+impl KillOnDrop {
+    /// The wait finished; the leader is reaped and its number may be reused.
+    pub(super) fn disarm(mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for KillOnDrop {
+    fn drop(&mut self) {
+        if let Some(pid) = self.0 {
+            // A group already gone has nothing left to kill.
+            let _gone = kill_process_group(pid, Signal::KILL);
+        }
+    }
 }
 
 /// Reads the terminal until it closes or no one takes its output.
@@ -107,41 +132,20 @@ pub(super) fn read_terminal(mut reader: Box<dyn io::Read + Send>, sender: &mpsc:
     }
 }
 
-/// One write for the terminal's writer thread, and where to say how it went.
-pub(super) type Write = (Bytes, oneshot::Sender<io::Result<()>>);
-
-/// A terminal process's input, written by a thread of its own: the writer
-/// blocks while the terminal is full.
-pub(super) struct TerminalInput(pub(super) std::sync::mpsc::Sender<Write>);
-
-impl TerminalInput {
-    /// Starts the thread that writes to `writer`, in order, until a write
-    /// fails or the input is dropped.
-    pub(super) fn start(mut writer: Box<dyn io::Write + Send>) -> io::Result<Self> {
-        let (sender, queued) = std::sync::mpsc::channel::<Write>();
-        std::thread::Builder::new()
-            .name(WRITER_THREAD.to_owned())
-            .spawn(move || {
-                for (data, done) in queued {
-                    let written = writer.write_all(&data).and_then(|()| writer.flush());
-                    let failed = written.is_err();
-                    let _caller_gone = done.send(written);
-                    if failed {
-                        break;
-                    }
-                }
-            })?;
-        Ok(Self(sender))
-    }
-}
-
-#[async_trait::async_trait]
-impl Input for TerminalInput {
-    async fn write(&mut self, data: Bytes) -> io::Result<()> {
-        let (done, written) = oneshot::channel();
-        self.0
-            .send((data, done))
-            .map_err(|_stopped| missing_pipe())?;
-        written.await.map_err(|_stopped| missing_pipe())?
+/// Writes queued input to the terminal, in order, on a thread of its own —
+/// the write blocks while the terminal is full — until the queue closes or a
+/// write fails; then the queue closes, and later writes are refused.
+pub(super) fn write_terminal(
+    mut writer: Box<dyn io::Write + Send>,
+    mut queued: mpsc::Receiver<Bytes>,
+) {
+    while let Some(data) = queued.blocking_recv() {
+        if writer
+            .write_all(&data)
+            .and_then(|()| writer.flush())
+            .is_err()
+        {
+            break;
+        }
     }
 }

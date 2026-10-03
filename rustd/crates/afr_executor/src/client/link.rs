@@ -1,21 +1,29 @@
 //! The task that owns one executor socket.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use futures_util::{SinkExt as _, StreamExt as _};
-use jsonrpsee_types::{Id, Notification, Request, Response, ResponsePayload};
+use afd_core::error_code;
+use bytes::Bytes;
+use futures_util::StreamExt as _;
+use jsonrpsee_types::{ErrorObject, Id};
+use serde::Deserialize;
+use serde::de::Error as _;
 use serde_json::value::RawValue;
+use tokio::io::AsyncWriteExt as _;
 use tokio::net::UnixStream;
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::{mpsc, oneshot};
-use tokio_util::codec::{FramedRead, FramedWrite, LinesCodec};
+use tokio_util::codec::{AnyDelimiterCodec, FramedRead};
 use tokio_util::sync::CancellationToken;
 
 use crate::api::{Ending, Process, ProcessEvent, ProcessId};
 use crate::error::{self, Error, Result};
 use crate::protocol::{
-    ExitedParams, KillParams, MAX_FRAME_BYTES, METHOD_KILL, NOTIFY_EXITED, NOTIFY_OUTPUT,
-    OutputParams, SpawnResult, decode, line,
+    DELIMITER, ExitedParams, KillParams, MAX_FRAME_BYTES, METHOD_KILL, NOTIFY_EXITED,
+    NOTIFY_OUTPUT, OutputParams, SpawnResult, decoded, request,
 };
 
 /// The link took its socket.
@@ -26,16 +34,27 @@ const EVENT_LINK_COMPLETED: &str = "executor_link_completed";
 const EVENT_LINK_FAILED: &str = "executor_link_failed";
 /// A message from the executor did not decode.
 const EVENT_MESSAGE_UNREADABLE: &str = "executor_message_unreadable";
-/// A call too long for the executor to read, refused before it is sent: the
-/// executor would answer it by closing the connection.
-const DETAIL_TOO_LONG: &str = "the call is longer than the executor reads";
+/// What a message that is neither a notification nor an answer lacks.
+const FIELD_METHOD_OR_ID: &str = "method or id";
 
-/// One call on its way to the executor.
+/// The number each call carries, so its answer finds its way back. Shared by
+/// every caller and by the link, which sends a kill of its own.
+#[derive(Debug, Default)]
+pub(super) struct CallIds(AtomicU64);
+
+impl CallIds {
+    /// The next unused number.
+    pub(super) fn next(&self) -> u64 {
+        self.0.fetch_add(1, Ordering::Relaxed)
+    }
+}
+
+/// One call on its way to the executor, already a line.
 pub(super) struct Call {
-    /// Its method.
-    pub(super) method: &'static str,
-    /// Its parameters, already serialized.
-    pub(super) params: Box<RawValue>,
+    /// The number its answer carries.
+    pub(super) id: u64,
+    /// The request, delimited and ready to write.
+    pub(super) line: Bytes,
     /// Where its answer goes.
     pub(super) reply: Reply,
 }
@@ -58,15 +77,34 @@ impl Reply {
     }
 }
 
+/// Either message the executor sends, read in one pass: a notification names
+/// a method, an answer names the call it answers and carries a result or an
+/// error. Codex reads its peer the same way
+/// (`codex-rs/exec-server-protocol/src/rpc.rs`), where trying one envelope
+/// and then the other would scan every answer twice.
+#[derive(Deserialize)]
+struct Incoming<'a> {
+    #[serde(borrow, default)]
+    method: Option<Cow<'a, str>>,
+    #[serde(borrow, default)]
+    params: Option<&'a RawValue>,
+    #[serde(borrow, default)]
+    id: Option<Id<'a>>,
+    #[serde(borrow, default)]
+    result: Option<&'a RawValue>,
+    #[serde(borrow, default)]
+    error: Option<ErrorObject<'a>>,
+}
+
 /// The socket and everything waiting on it.
 pub(super) struct Link {
-    lines: FramedRead<OwnedReadHalf, LinesCodec>,
-    sink: FramedWrite<OwnedWriteHalf, LinesCodec>,
+    lines: FramedRead<OwnedReadHalf, AnyDelimiterCodec>,
+    write: OwnedWriteHalf,
     calls: mpsc::Receiver<Call>,
+    ids: Arc<CallIds>,
     lost: CancellationToken,
     pending: HashMap<u64, Reply>,
     processes: HashMap<ProcessId, mpsc::UnboundedSender<ProcessEvent>>,
-    next_call: u64,
 }
 
 impl Link {
@@ -75,17 +113,23 @@ impl Link {
     pub(super) fn new(
         stream: UnixStream,
         calls: mpsc::Receiver<Call>,
+        ids: Arc<CallIds>,
         lost: CancellationToken,
     ) -> Self {
         let (read, write) = stream.into_split();
+        let codec = AnyDelimiterCodec::new_with_max_length(
+            vec![DELIMITER],
+            vec![DELIMITER],
+            MAX_FRAME_BYTES,
+        );
         Self {
-            lines: FramedRead::new(read, LinesCodec::new_with_max_length(MAX_FRAME_BYTES)),
-            sink: FramedWrite::new(write, LinesCodec::new()),
+            lines: FramedRead::new(read, codec),
+            write,
             calls,
+            ids,
             lost,
             pending: HashMap::new(),
             processes: HashMap::new(),
-            next_call: 0,
         }
     }
 
@@ -102,8 +146,8 @@ impl Link {
                     None => false,
                 },
                 frame = self.lines.next() => match frame {
-                    Some(Ok(text)) => match self.receive(&text) {
-                        Some(orphan) => self.send_unless_lost(abandon(orphan), &lost).await,
+                    Some(Ok(frame)) => match self.receive(&frame).and_then(|orphan| self.abandon(orphan)) {
+                        Some(kill) => self.send_unless_lost(kill, &lost).await,
                         None => true,
                     },
                     Some(Err(_)) | None => false,
@@ -120,72 +164,41 @@ impl Link {
     /// Sends one call, unless the link is given up first: a stopped executor
     /// stops reading, and a send into a full socket would wait forever.
     async fn send_unless_lost(&mut self, call: Call, lost: &CancellationToken) -> bool {
+        self.pending.insert(call.id, call.reply);
         tokio::select! {
-            sent = self.send(call) => sent.is_ok(),
+            sent = self.write.write_all(&call.line) => sent.is_ok(),
             () = lost.cancelled() => false,
         }
     }
 
-    /// Writes one call, remembering where its answer goes.
-    async fn send(&mut self, call: Call) -> Result<()> {
-        let id = self.next_call;
-        self.next_call += 1;
-        let text = line(&Request::owned(
-            call.method.to_owned(),
-            Some(call.params),
-            Id::Number(id),
-        ));
-        if text.len() > MAX_FRAME_BYTES {
-            call.reply.fail(error::invalid_params(DETAIL_TOO_LONG));
-            return Ok(());
-        }
-        self.pending.insert(id, call.reply);
-        Ok(self.sink.send(text).await?)
-    }
-
-    /// Routes one line: a notification or an answer. Answers with a process
-    /// whose caller left before it started, which the executor must end.
-    fn receive(&mut self, text: &str) -> Option<ProcessId> {
-        let bytes = text.as_bytes();
+    /// Routes one message: a notification or an answer. Answers with a
+    /// process whose caller left before it started, which the executor must
+    /// end.
+    fn receive(&mut self, frame: &[u8]) -> Option<ProcessId> {
         let routed =
-            match afd_core::json::object_from_slice::<Notification<'_, Box<RawValue>>>(bytes) {
-                Ok(notification) => self
-                    .notified(&notification.method, &notification.params)
-                    .map(|()| None),
-                Err(_not_a_notification) => {
-                    afd_core::json::object_from_slice::<Response<'_, Box<RawValue>>>(bytes)
-                        .map(|response| self.answered(response))
-                        .map_err(Error::from)
+            afd_core::json::object_from_slice::<Incoming<'_>>(frame).and_then(|incoming| {
+                match (incoming.method, incoming.id) {
+                    (Some(method), _) => self.notified(&method, incoming.params).map(|()| None),
+                    (None, Some(id)) => {
+                        let outcome = match incoming.error {
+                            Some(refusal) => Err(error::refused(refusal.code(), refusal.message())),
+                            None => Ok(incoming.result.unwrap_or(RawValue::NULL).to_owned()),
+                        };
+                        Ok(self.answered(&id, outcome))
+                    }
+                    (None, None) => Err(serde_json::Error::missing_field(FIELD_METHOD_OR_ID)),
                 }
-            };
+            });
         routed.unwrap_or_else(|failure| {
-            let event = EVENT_MESSAGE_UNREADABLE;
-            let error_code = failure.code().as_str();
-            let reason = failure.wire_message();
-            tracing::warn!(
-                event,
-                error_code,
-                reason,
-                "a message from the executor did not decode"
-            );
+            unreadable(&failure);
             None
         })
     }
 
     /// Hands an answer to the call that waits for it; a started process no
     /// one is waiting for comes back to be ended.
-    fn answered(&mut self, response: Response<'_, Box<RawValue>>) -> Option<ProcessId> {
-        let outcome = match response.payload {
-            ResponsePayload::Success(value) => Ok(value.into_owned()),
-            ResponsePayload::Error(refusal) => {
-                Err(error::refused(refusal.code(), refusal.message()))
-            }
-        };
-        let waiting = response
-            .id
-            .as_number()
-            .and_then(|id| self.pending.remove(id));
-        match waiting {
+    fn answered(&mut self, id: &Id<'_>, outcome: Result<Box<RawValue>>) -> Option<ProcessId> {
+        match id.as_number().and_then(|id| self.pending.remove(id)) {
             Some(Reply::Value(sender)) => {
                 let _caller_gone = sender.send(outcome);
                 None
@@ -207,7 +220,7 @@ impl Link {
 
     /// Opens the event channel of a process the executor just started.
     fn register(&mut self, raw: &RawValue) -> Result<Process> {
-        let started: SpawnResult = afd_core::json::object_from_slice(raw.get().as_bytes())?;
+        let started: SpawnResult = decoded(raw)?;
         let id = ProcessId::new(started.process_id);
         let (sender, events) = mpsc::unbounded_channel();
         self.processes.insert(id, sender);
@@ -215,21 +228,21 @@ impl Link {
     }
 
     /// Delivers a process's output or its end.
-    fn notified(&mut self, method: &str, params: &RawValue) -> Result<()> {
-        let bytes = params.get().as_bytes();
+    fn notified(&mut self, method: &str, params: Option<&RawValue>) -> serde_json::Result<()> {
+        let params = params.unwrap_or(RawValue::NULL);
         match method {
             NOTIFY_OUTPUT => {
-                let output: OutputParams = afd_core::json::object_from_slice(bytes)?;
+                let output: OutputParams = decoded(params)?;
                 let event = ProcessEvent::Output {
                     stream: output.stream,
-                    data: decode(&output.data)?,
+                    data: output.data,
                 };
                 if let Some(sender) = self.processes.get(&ProcessId::new(output.process_id)) {
                     let _caller_gone = sender.send(event);
                 }
             }
             NOTIFY_EXITED => {
-                let exited: ExitedParams = afd_core::json::object_from_slice(bytes)?;
+                let exited: ExitedParams = decoded(params)?;
                 let event = ProcessEvent::Ended {
                     ending: exited.ending,
                     omitted_bytes: exited.omitted_bytes,
@@ -241,6 +254,22 @@ impl Link {
             _unknown => {}
         }
         Ok(())
+    }
+
+    /// The kill that ends a process no caller is waiting for; its answer is
+    /// heard by no one.
+    fn abandon(&self, process: ProcessId) -> Option<Call> {
+        let id = self.ids.next();
+        let params = KillParams {
+            process_id: process.get(),
+        };
+        let (reply, _unheard) = oneshot::channel();
+        // A struct of one integer always encodes.
+        request(id, METHOD_KILL, &params).ok().map(|line| Call {
+            id,
+            line,
+            reply: Reply::Value(reply),
+        })
     }
 
     /// Fails every waiting call and ends every open process, once each.
@@ -261,7 +290,7 @@ impl Link {
             tracing::debug!(event, "the executor connection closed");
         } else {
             let event = EVENT_LINK_FAILED;
-            let error_code = error::connection_lost().code().as_str();
+            let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
             tracing::warn!(
                 event,
                 error_code,
@@ -273,17 +302,18 @@ impl Link {
     }
 }
 
-/// The kill that ends a process no caller is waiting for; its answer is
-/// heard by no one.
-fn abandon(process: ProcessId) -> Call {
-    let params = KillParams {
-        process_id: process.get(),
-    };
-    let (reply, _unheard) = oneshot::channel();
-    Call {
-        method: METHOD_KILL,
-        // A struct of one integer always serializes.
-        params: serde_json::value::to_raw_value(&params).unwrap_or_default(),
-        reply: Reply::Value(reply),
-    }
+/// Logs a message that did not decode: where it failed, never the decoder's
+/// sentence, which can quote the value it refused — and the executor shares
+/// its sandbox with tenant code.
+fn unreadable(failure: &serde_json::Error) {
+    let event = EVENT_MESSAGE_UNREADABLE;
+    let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let (line, column) = (failure.line(), failure.column());
+    tracing::warn!(
+        event,
+        error_code,
+        line,
+        column,
+        "a message from the executor did not decode"
+    );
 }

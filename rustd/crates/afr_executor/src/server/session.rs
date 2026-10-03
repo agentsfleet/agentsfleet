@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use bytes::Bytes;
 use futures_util::StreamExt as _;
 use jsonrpsee_types::error::{
     INVALID_REQUEST_CODE, METHOD_NOT_FOUND_CODE, OVERSIZED_REQUEST_CODE, PARSE_ERROR_CODE,
@@ -12,21 +13,21 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::net::unix::OwnedReadHalf;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::task::JoinSet;
-use tokio_util::codec::{FramedRead, LinesCodec, LinesCodecError};
+use tokio_util::codec::{AnyDelimiterCodec, AnyDelimiterCodecError, FramedRead};
+use tokio_util::sync::{CancellationToken, DropGuard};
 
 use super::files::Workspace;
 use super::launch::Plan;
-use super::process::{Control, ProcessRun, Steer};
-use crate::error::{self, Error, Result};
+use super::process::ProcessRun;
+use crate::error::{self, Result};
 use crate::protocol::{
-    KillParams, ListParams, MAX_FRAME_BYTES, METHOD_KILL, METHOD_LIST_DIR, METHOD_READ_FILE,
-    METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, ReadParams, SpawnParams, SpawnResult,
-    WriteFileParams, WriteParams, decode, line,
+    DELIMITER, KillParams, ListParams, MAX_FRAME_BYTES, METHOD_KILL, METHOD_LIST_DIR,
+    METHOD_READ_FILE, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, ReadParams, SpawnParams,
+    SpawnResult, WriteFileParams, WriteParams, decoded, line,
 };
 
-/// How many control messages may wait for one process.
-const CONTROL_BACKLOG: usize = 16;
 /// A line that is not JSON-RPC at all.
 const DETAIL_UNREADABLE: &str = "the message is not a JSON-RPC request";
 /// A line past the frame cap.
@@ -37,12 +38,33 @@ const DETAIL_NO_METHOD: &str = "no such method";
 const DETAIL_NO_PARAMS: &str = "the method takes parameters";
 /// The executor refused a call; the code says why.
 const EVENT_CALL_REFUSED: &str = "executor_call_refused";
+/// A process's input closed; later writes are refused.
+const EVENT_INPUT_CLOSED: &str = "executor_input_closed";
+
+/// The session's hold on one running process: where its input goes, and the
+/// token that stops it. Dropping the hold cancels the token, so a session that
+/// ends stops every process it started.
+struct Running {
+    input: mpsc::Sender<Bytes>,
+    stop: CancellationToken,
+    _stops_when_dropped: DropGuard,
+}
+
+impl Running {
+    fn new(input: mpsc::Sender<Bytes>, stop: CancellationToken) -> Self {
+        Self {
+            input,
+            _stops_when_dropped: stop.clone().drop_guard(),
+            stop,
+        }
+    }
+}
 
 /// The state one connection owns.
 pub(super) struct Session {
     workspace: Arc<Workspace>,
-    outbound: mpsc::UnboundedSender<String>,
-    controls: HashMap<u64, mpsc::Sender<Control>>,
+    outbound: mpsc::UnboundedSender<Bytes>,
+    processes: HashMap<u64, Running>,
     running: JoinSet<u64>,
     calls: JoinSet<()>,
     next_process: u64,
@@ -50,11 +72,11 @@ pub(super) struct Session {
 
 impl Session {
     /// A session answering through `outbound`.
-    pub(super) fn new(workspace: Arc<Workspace>, outbound: mpsc::UnboundedSender<String>) -> Self {
+    pub(super) fn new(workspace: Arc<Workspace>, outbound: mpsc::UnboundedSender<Bytes>) -> Self {
         Self {
             workspace,
             outbound,
-            controls: HashMap::new(),
+            processes: HashMap::new(),
             running: JoinSet::new(),
             calls: JoinSet::new(),
             next_process: 0,
@@ -67,33 +89,38 @@ impl Session {
     /// codec stops at the error, and a peer that sent one is not speaking the
     /// protocol.
     pub(super) async fn run(mut self, read: OwnedReadHalf) {
-        let mut lines = FramedRead::new(read, LinesCodec::new_with_max_length(MAX_FRAME_BYTES));
+        let codec = AnyDelimiterCodec::new_with_max_length(
+            vec![DELIMITER],
+            vec![DELIMITER],
+            MAX_FRAME_BYTES,
+        );
+        let mut lines = FramedRead::new(read, codec);
         loop {
             tokio::select! {
                 frame = lines.next() => match frame {
-                    Some(Ok(text)) => self.dispatch(&text),
-                    Some(Err(LinesCodecError::MaxLineLengthExceeded)) => {
+                    Some(Ok(frame)) => self.dispatch(&frame),
+                    Some(Err(AnyDelimiterCodecError::MaxChunkLengthExceeded)) => {
                         self.refuse(Id::Null, OVERSIZED_REQUEST_CODE, DETAIL_OVERSIZED);
                     }
-                    Some(Err(LinesCodecError::Io(_))) | None => break,
+                    Some(Err(AnyDelimiterCodecError::Io(_))) | None => break,
                 },
                 Some(ended) = self.running.join_next(), if !self.running.is_empty() => {
                     if let Ok(process) = ended {
-                        self.controls.remove(&process);
+                        self.processes.remove(&process);
                     }
                 }
                 Some(_served) = self.calls.join_next(), if !self.calls.is_empty() => {}
             }
         }
-        // Dropping every control channel is what tells each process to stop.
-        self.controls.clear();
+        // Dropping every hold is what tells each process to stop.
+        self.processes.clear();
         while self.running.join_next().await.is_some() {}
         self.calls.shutdown().await;
     }
 
     /// Decodes one line and routes it.
-    fn dispatch(&mut self, text: &str) {
-        match afd_core::json::object_from_slice::<Request<'_>>(text.as_bytes()) {
+    fn dispatch(&mut self, frame: &[u8]) {
+        match afd_core::json::object_from_slice::<Request<'_>>(frame) {
             Ok(request) => self.route(&request),
             Err(failure) => {
                 let code = if failure.is_syntax() || failure.is_eof() {
@@ -111,15 +138,16 @@ impl Session {
         let id = request.id.clone().into_owned();
         match request.method.as_ref() {
             METHOD_SPAWN => self.spawn(id, params::<SpawnParams<'static>>(request)),
-            METHOD_WRITE => self.steer(
-                id,
-                params::<WriteParams>(request)
-                    .and_then(|write| Ok((write.process_id, Steer::Write(decode(&write.data)?)))),
-            ),
-            METHOD_KILL => self.steer(
-                id,
-                params::<KillParams>(request).map(|kill| (kill.process_id, Steer::Kill)),
-            ),
+            METHOD_WRITE => {
+                let written = params::<WriteParams>(request)
+                    .and_then(|write| self.write(write.process_id, write.data));
+                self.answer(id, written);
+            }
+            METHOD_KILL => {
+                let killed =
+                    params::<KillParams>(request).and_then(|kill| self.kill(kill.process_id));
+                self.answer(id, killed);
+            }
             METHOD_READ_FILE => self.on_files(
                 id,
                 params(request),
@@ -129,7 +157,7 @@ impl Session {
                 id,
                 params(request),
                 |workspace, write: WriteFileParams<'static>| {
-                    workspace.write(&write.path, &decode(&write.content)?)
+                    workspace.write(&write.path, &write.content)
                 },
             ),
             METHOD_LIST_DIR => self.on_files(
@@ -147,7 +175,7 @@ impl Session {
             .and_then(|spawn| Plan::new(spawn, &self.workspace))
             .and_then(|plan| ProcessRun::start(&plan));
         match started {
-            Ok(run) => {
+            Ok((run, input)) => {
                 let process = self.next_process;
                 self.next_process += 1;
                 self.answer(
@@ -156,36 +184,46 @@ impl Session {
                         process_id: process,
                     }),
                 );
-                let (control, controls) = mpsc::channel(CONTROL_BACKLOG);
-                self.controls.insert(process, control);
+                let stop = CancellationToken::new();
+                self.processes
+                    .insert(process, Running::new(input, stop.clone()));
                 self.running
-                    .spawn(run.drive(process, controls, self.outbound.clone()));
+                    .spawn(run.drive(process, stop, self.outbound.clone()));
             }
             Err(failure) => self.answer::<SpawnResult>(id, Err(failure)),
         }
     }
 
-    /// Hands a write or a kill to the process it names.
-    fn steer(&mut self, id: Id<'static>, target: Result<(u64, Steer)>) {
-        let routed = target.and_then(|(process, steer)| {
-            self.controls
-                .get(&process)
-                .cloned()
-                .map(|control| (control, steer))
-                .ok_or_else(error::unknown_process)
-        });
-        match routed {
-            Ok((control, steer)) => {
-                let outbound = self.outbound.clone();
-                self.calls.spawn(async move {
-                    post(&outbound, reply(id, steer.deliver(&control).await));
-                });
-            }
-            Err(failure) => self.answer::<()>(id, Err(failure)),
-        }
+    /// Queues bytes for a process's input without waiting on it: answered
+    /// once queued, refused when the queue is full or the input closed.
+    fn write(&self, process: u64, data: Bytes) -> Result<()> {
+        self.live(process)?
+            .input
+            .try_send(data)
+            .map_err(|refused| match refused {
+                TrySendError::Full(_) => error::input_backlog_full(),
+                TrySendError::Closed(_) => {
+                    let event = EVENT_INPUT_CLOSED;
+                    tracing::debug!(event, process_id = process, "a process's input is closed");
+                    error::input_closed()
+                }
+            })
     }
 
-    /// Runs a file call off the session task: the workspace handle blocks.
+    /// Starts stopping a process; acknowledged as soon as stopping begins.
+    fn kill(&self, process: u64) -> Result<()> {
+        self.live(process).map(|running| running.stop.cancel())
+    }
+
+    /// A process still taking calls: neither stopping nor ended.
+    fn live(&self, process: u64) -> Result<&Running> {
+        self.processes
+            .get(&process)
+            .filter(|running| !running.stop.is_cancelled())
+            .ok_or_else(error::unknown_process)
+    }
+
+    /// Runs a file call on the blocking pool: the workspace handle blocks.
     fn on_files<P, T>(
         &mut self,
         id: Id<'static>,
@@ -195,18 +233,15 @@ impl Session {
         P: Send + 'static,
         T: Serialize + Clone + Send + 'static,
     {
-        let workspace = Arc::clone(&self.workspace);
-        let outbound = self.outbound.clone();
-        self.calls.spawn(async move {
-            let answered = match params {
-                Ok(params) => tokio::task::spawn_blocking(move || call(&workspace, params))
-                    .await
-                    .map_err(Error::from)
-                    .and_then(|outcome| outcome),
-                Err(failure) => Err(failure),
-            };
-            post(&outbound, reply(id, answered));
-        });
+        match params {
+            Ok(params) => {
+                let workspace = Arc::clone(&self.workspace);
+                let outbound = self.outbound.clone();
+                self.calls
+                    .spawn_blocking(move || post(&outbound, reply(id, call(&workspace, params))));
+            }
+            Err(failure) => self.answer::<T>(id, Err(failure)),
+        }
     }
 
     /// Queues a result or a refusal for `id`.
@@ -218,11 +253,7 @@ impl Session {
     fn refuse(&self, id: Id<'static>, code: i32, detail: &'static str) {
         let event = EVENT_CALL_REFUSED;
         tracing::debug!(event, code, detail, "the executor refused a message");
-        let refusal = ErrorObject::owned(code, detail, None::<()>);
-        post(
-            &self.outbound,
-            line(&Response::<()>::new(ResponsePayload::error(refusal), id)),
-        );
+        post(&self.outbound, refusal(id, code, detail));
     }
 }
 
@@ -233,28 +264,36 @@ fn params<T: DeserializeOwned>(request: &Request<'_>) -> Result<T> {
         .params
         .as_deref()
         .ok_or_else(|| error::invalid_params(DETAIL_NO_PARAMS))?;
-    Ok(afd_core::json::object_from_slice(raw.get().as_bytes())?)
+    Ok(decoded(raw)?)
 }
 
 /// The line answering `id` with `outcome`.
-fn reply<T: Serialize + Clone>(id: Id<'static>, outcome: Result<T>) -> String {
+///
+/// A refusal is logged by its code alone: its sentence can quote what the
+/// call carried — an environment value, a path — and the sandbox's error
+/// stream reaches the host's journal.
+fn reply<T: Serialize + Clone>(id: Id<'static>, outcome: Result<T>) -> Bytes {
     match outcome {
         Ok(value) => line(&Response::new(ResponsePayload::success(value), id)),
         Err(failure) => {
             let event = EVENT_CALL_REFUSED;
             let code = failure.rpc_code();
-            let reason = failure.wire_message();
-            tracing::debug!(event, code, reason, "the executor refused a call");
-            let refusal = ErrorObject::owned(code, reason, None::<()>);
-            line(&Response::<()>::new(ResponsePayload::error(refusal), id))
+            tracing::debug!(event, code, "the executor refused a call");
+            refusal(id, code, failure.wire_message())
         }
     }
+}
+
+/// The line refusing `id` with `code` and `message`.
+fn refusal(id: Id<'static>, code: i32, message: impl Into<String>) -> Bytes {
+    let refusal = ErrorObject::owned(code, message, None::<()>);
+    line(&Response::<()>::new(ResponsePayload::error(refusal), id))
 }
 
 /// Queues a line for the writer.
 ///
 /// A send fails only once the writer has ended, which means the supervisor
 /// is gone and there is no one left to tell.
-pub(super) fn post(outbound: &mpsc::UnboundedSender<String>, text: String) {
-    let _writer_gone = outbound.send(text);
+pub(super) fn post(outbound: &mpsc::UnboundedSender<Bytes>, line: Bytes) {
+    let _writer_gone = outbound.send(line);
 }

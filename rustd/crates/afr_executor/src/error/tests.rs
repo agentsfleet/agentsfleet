@@ -6,8 +6,8 @@ use jsonrpsee_types::error::{
 };
 
 use super::{
-    Error, connection_lost, input_backlog_full, invalid_params, not_a_file, path_refused,
-    program_unavailable, refused, unknown_process, unresponsive,
+    Error, connection_lost, input_backlog_full, input_closed, invalid_params, launch_incomplete,
+    not_a_file, path_refused, program_unavailable, refused, unknown_process, unresponsive,
 };
 use crate::protocol::{PATH_REFUSED_CODE, UNKNOWN_PROCESS_CODE};
 
@@ -21,10 +21,8 @@ fn every_failure_without_a_cause_renders_and_reports_none() {
         (not_a_file(), "NotAFile"),
         (unknown_process(), "UnknownProcess"),
         (input_backlog_full(), "InputBacklogFull"),
-        (
-            program_unavailable("not on the PATH".to_owned()),
-            "ProgramUnavailable",
-        ),
+        (input_closed(), "InputClosed"),
+        (launch_incomplete(), "LaunchIncomplete"),
         (invalid_params("argv must name a program"), "InvalidParams"),
     ] {
         let rendered = failure.to_string();
@@ -47,8 +45,13 @@ fn each_refusal_answers_with_the_code_that_says_whose_it_is() {
         (path_refused(), PATH_REFUSED_CODE),
         (unknown_process(), UNKNOWN_PROCESS_CODE),
         (input_backlog_full(), CALL_EXECUTION_FAILED_CODE),
+        (input_closed(), CALL_EXECUTION_FAILED_CODE),
+        (launch_incomplete(), INTERNAL_ERROR_CODE),
         (not_a_file(), INVALID_PARAMS_CODE),
-        (program_unavailable(String::new()), INVALID_PARAMS_CODE),
+        (
+            program_unavailable("not on the search path"),
+            INVALID_PARAMS_CODE,
+        ),
         (invalid_params("bad"), INVALID_PARAMS_CODE),
         (connection_lost(), INTERNAL_ERROR_CODE),
     ] {
@@ -88,4 +91,18 @@ fn an_operating_system_refusal_is_the_callers_only_when_it_is_about_the_name() {
             "{kind:?}"
         );
     }
+}
+
+#[test]
+fn a_program_that_will_not_start_keeps_the_launchers_reason_as_its_cause() {
+    let failure = program_unavailable("not on the search path");
+
+    assert_eq!(
+        failure.source().map(ToString::to_string).as_deref(),
+        Some("not on the search path")
+    );
+    assert_eq!(
+        failure.wire_message(),
+        "the program could not be started: not on the search path"
+    );
 }

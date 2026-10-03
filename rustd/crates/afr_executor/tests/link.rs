@@ -6,6 +6,7 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the runner"
 )]
 
+use afd_core::test_util::trace::Capture;
 use afr_executor::{Client, Ending, Executor as _, Spawn};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
@@ -72,6 +73,7 @@ async fn answers_and_notifications_reach_their_callers_past_noise() {
 
     for noise in [
         "not json",
+        r#"{"jsonrpc":"2.0"}"#,
         r#"{"jsonrpc":"2.0","method":"process/output","params":{"process_id":9,"stream":"stdout","data":"aGk="}}"#,
         r#"{"jsonrpc":"2.0","method":"process/progress","params":{}}"#,
         r#"{"jsonrpc":"2.0","result":null,"id":99}"#,
@@ -89,6 +91,34 @@ async fn answers_and_notifications_reach_their_callers_past_noise() {
     assert_eq!(finished.stdout, b"hi");
     assert_eq!(finished.stderr, b"!");
     assert_eq!(finished.endings, [(Ending::Exited(2), 5)]);
+}
+
+/// The decoder's sentence can quote the value it refused, and the executor
+/// shares its sandbox with tenant code, so only where a message failed is
+/// logged.
+#[tokio::test]
+async fn a_message_that_does_not_decode_is_logged_without_what_it_carried() {
+    let capture = Capture::install();
+    let (_scratch, client, mut fake) = connect().await;
+    let spawning =
+        tokio::spawn(async move { (client.spawn(&Spawn::program("anything")).await, client) });
+    started(&mut fake, 7).await;
+    let (process, _client) = spawning.await.unwrap();
+    let process = process.unwrap();
+
+    fake.say(r#"{"jsonrpc":"2.0","method":"process/output","params":{"process_id":"sk-live-secret","stream":"stdout","data":""}}"#).await;
+    fake.say(r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"ending":{"kind":"exited","code":0},"omitted_bytes":0}}"#).await;
+    finish(process).await;
+
+    let unreadable = capture.only("executor_message_unreadable");
+    assert!(
+        unreadable
+            .fields
+            .values()
+            .all(|value| !value.contains("sk-live-secret")),
+        "{unreadable:?}"
+    );
+    assert!(unreadable.field("column").is_some(), "{unreadable:?}");
 }
 
 #[tokio::test]

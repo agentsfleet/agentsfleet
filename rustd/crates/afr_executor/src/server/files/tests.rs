@@ -5,7 +5,6 @@
 
 use std::os::unix::fs::{OpenOptionsExt as _, symlink};
 
-use base64::prelude::{BASE64_STANDARD, Engine as _};
 use jsonrpsee_types::error::INVALID_PARAMS_CODE;
 
 use super::{MAX_LIST_ENTRIES, Workspace};
@@ -85,7 +84,7 @@ fn an_absolute_path_under_the_root_is_the_same_file() {
 
     let read = workspace.read(absolute.to_str().unwrap(), 64).unwrap();
 
-    assert_eq!(BASE64_STANDARD.decode(read.content).unwrap(), b"kept");
+    assert_eq!(read.content, b"kept".as_slice());
     assert!(!read.truncated);
 }
 
@@ -96,7 +95,7 @@ fn a_read_past_its_limit_is_truncated_and_says_so() {
 
     let read = workspace.read("long", 4).unwrap();
 
-    assert_eq!(BASE64_STANDARD.decode(read.content).unwrap(), b"0123");
+    assert_eq!(read.content, b"0123".as_slice());
     assert!(read.truncated);
 }
 

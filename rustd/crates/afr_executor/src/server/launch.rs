@@ -1,9 +1,10 @@
 //! Starting a process: on pipes, or on a pseudo-terminal.
 //!
 //! The two differ only in how a process is started, written to and read; once
-//! started, both are a [`Spawned`] — a group leader's pid, an input, an exit,
-//! an output channel and the readers feeding it — and the same task drives
-//! either.
+//! started, both are a [`Spawned`] — a group leader's pid, an exit, an output
+//! channel and the tasks feeding it — and the same task drives either. Each
+//! launcher takes the queue of writes for its process and drains it into the
+//! process's input itself, in order.
 
 use std::collections::BTreeMap;
 use std::io;
@@ -31,6 +32,11 @@ use crate::protocol::SpawnParams;
 /// Chunks of output that may wait for the task forwarding them; past this the
 /// reader stops reading and the process blocks on its own writes.
 const OUTPUT_BACKLOG: usize = 64;
+/// The most one read of output takes, on pipes and on a terminal alike, so a
+/// noisy process costs the same number of messages either way. With the
+/// backlog above, a process that outruns its forwarder holds at most a
+/// mebibyte.
+const READ_CHUNK_BYTES: usize = 16 * 1024;
 /// The variable a program is looked up through.
 const PATH_VARIABLE: &str = "PATH";
 /// The search path a process gets when its environment names none.
@@ -72,8 +78,9 @@ impl Plan {
             .next()
             .ok_or_else(|| error::invalid_params(DETAIL_NO_PROGRAM))?;
         let mut env = params.env.into_owned();
-        env.entry(PATH_VARIABLE.to_owned())
-            .or_insert_with(|| DEFAULT_PATH.to_owned());
+        if !env.contains_key(PATH_VARIABLE) {
+            env.insert(PATH_VARIABLE.to_owned(), DEFAULT_PATH.to_owned());
+        }
         Ok(Self {
             program,
             arguments: argv.collect(),
@@ -99,28 +106,21 @@ impl Plan {
 pub(super) struct Spawned {
     /// The group leader, which is also the group.
     pub(super) pid: Pid,
-    /// Where writes go.
-    pub(super) input: Box<dyn Input>,
     /// Resolves when the leader ends.
     pub(super) exit: Exit,
     /// Output as it is read, closed once every reader reaches its end.
     pub(super) output: mpsc::Receiver<Chunk>,
-    /// The tasks reading output, stopped when this is dropped: a descendant
-    /// that left the group may hold a pipe open long after the leader ends.
-    pub(super) readers: Vec<AbortOnDropHandle<()>>,
+    /// The tasks reading output and writing input, stopped when this is
+    /// dropped: a descendant that left the group may hold a pipe open long
+    /// after the leader ends.
+    pub(super) tasks: Vec<AbortOnDropHandle<()>>,
 }
 
 /// Starts processes one way.
 pub(super) trait Launcher: Send + Sync {
-    /// Starts `plan` as the leader of a new process group.
-    fn launch(&self, plan: &Plan) -> Result<Spawned>;
-}
-
-/// A process's input.
-#[async_trait::async_trait]
-pub(super) trait Input: Send {
-    /// Writes and flushes `data`.
-    async fn write(&mut self, data: Bytes) -> io::Result<()>;
+    /// Starts `plan` as the leader of a new process group, writing what
+    /// arrives on `input` to it until the queue closes or a write fails.
+    fn launch(&self, plan: &Plan, input: mpsc::Receiver<Bytes>) -> Result<Spawned>;
 }
 
 mod terminal;
@@ -136,7 +136,7 @@ pub(super) fn launcher(terminal: bool) -> &'static dyn Launcher {
 struct Pipes;
 
 impl Launcher for Pipes {
-    fn launch(&self, plan: &Plan) -> Result<Spawned> {
+    fn launch(&self, plan: &Plan, input: mpsc::Receiver<Bytes>) -> Result<Spawned> {
         let mut child = tokio::process::Command::new(&plan.program)
             .args(&plan.arguments)
             .env_clear()
@@ -158,25 +158,25 @@ impl Launcher for Pipes {
             .zip(stdout)
             .zip(stderr)
             .map(|((i, o), e)| (i, o, e))
-            .ok_or_else(missing_pipe)?;
-        let readers = vec![
+            .ok_or_else(error::launch_incomplete)?;
+        let tasks = vec![
             AbortOnDropHandle::new(tokio::spawn(pump(stdout, Stream::Stdout, sender.clone()))),
             AbortOnDropHandle::new(tokio::spawn(pump(stderr, Stream::Stderr, sender))),
+            AbortOnDropHandle::new(tokio::spawn(feed(stdin, input))),
         ];
         let exit = Box::pin(async move { ending_of(child.wait().await) });
         Ok(Spawned {
             pid,
-            input: Box::new(PipeInput(stdin)),
             exit,
             output,
-            readers,
+            tasks,
         })
     }
 }
 
 /// Forwards one pipe's output until it closes or its reader is gone.
 async fn pump(reader: impl AsyncRead + Unpin, stream: Stream, sender: mpsc::Sender<Chunk>) {
-    let mut chunks = ReaderStream::new(reader);
+    let mut chunks = ReaderStream::with_capacity(reader, READ_CHUNK_BYTES);
     while let Some(Ok(data)) = chunks.next().await {
         if sender.send(Chunk { stream, data }).await.is_err() {
             break;
@@ -184,27 +184,22 @@ async fn pump(reader: impl AsyncRead + Unpin, stream: Stream, sender: mpsc::Send
     }
 }
 
-/// A pipe process's standard input.
-struct PipeInput(ChildStdin);
-
-#[async_trait::async_trait]
-impl Input for PipeInput {
-    async fn write(&mut self, data: Bytes) -> io::Result<()> {
-        self.0.write_all(&data).await?;
-        self.0.flush().await
+/// Writes queued input to a process's standard input, in order, until the
+/// queue closes or a write fails; then the queue closes, and later writes are
+/// refused.
+async fn feed(mut stdin: ChildStdin, mut queued: mpsc::Receiver<Bytes>) {
+    while let Some(data) = queued.recv().await {
+        if stdin.write_all(&data).await.is_err() || stdin.flush().await.is_err() {
+            break;
+        }
     }
 }
 
 /// The group a just-started leader leads.
-fn leader(id: Option<u32>) -> io::Result<Pid> {
+fn leader(id: Option<u32>) -> Result<Pid> {
     id.and_then(|raw| i32::try_from(raw).ok())
         .and_then(Pid::from_raw)
-        .ok_or_else(missing_pipe)
-}
-
-/// A handle a started process should have and does not.
-fn missing_pipe() -> io::Error {
-    io::Error::from(io::ErrorKind::BrokenPipe)
+        .ok_or_else(error::launch_incomplete)
 }
 
 #[cfg(test)]

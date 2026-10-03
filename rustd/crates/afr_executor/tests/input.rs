@@ -39,6 +39,39 @@ async fn a_large_write_to_a_process_that_never_reads_does_not_hold_its_timeout()
 }
 
 #[tokio::test]
+async fn a_write_after_the_process_closed_its_input_is_refused_as_closed() {
+    let harness = start().await;
+    let process = harness
+        .client
+        .spawn(&Spawn::program("sh").args(["-c", "exec 0<&-; sleep 30"]))
+        .await
+        .unwrap();
+
+    // The first writes may land before the shell closes its input; one after
+    // is refused once the writer has met the closed pipe.
+    let mut refused = None;
+    for _write in 0..50 {
+        match harness
+            .client
+            .write(process.id, Bytes::from_static(b"x\n"))
+            .await
+        {
+            Ok(()) => tokio::time::sleep(Duration::from_millis(20)).await,
+            Err(failure) => {
+                refused = Some(failure);
+                break;
+            }
+        }
+    }
+    harness.client.kill(process.id).await.unwrap();
+    finish(process).await;
+
+    let refused = refused.unwrap();
+    assert!(refused_with(&refused, BACKLOG_FULL), "{refused}");
+    assert!(refused.to_string().contains("input is closed"), "{refused}");
+}
+
+#[tokio::test]
 async fn writes_past_the_queue_are_refused_and_a_kill_still_lands() {
     let harness = start().await;
     let process = harness

@@ -60,6 +60,29 @@ pub enum Ending {
     Interrupted,
 }
 
+impl Ending {
+    /// How it ended, spelled as the wire's `kind`, for a log line to carry as
+    /// a field; a test holds the two spellings together.
+    #[must_use]
+    pub const fn kind(self) -> &'static str {
+        match self {
+            Self::Exited(_) => "exited",
+            Self::Signaled(_) => "signaled",
+            Self::TimedOut => "timed_out",
+            Self::Interrupted => "interrupted",
+        }
+    }
+
+    /// The exit status or the signal number, when the ending carries one.
+    #[must_use]
+    pub const fn code(self) -> Option<i32> {
+        match self {
+            Self::Exited(code) | Self::Signaled(code) => Some(code),
+            Self::TimedOut | Self::Interrupted => None,
+        }
+    }
+}
+
 /// What the executor says about one process after it starts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProcessEvent {

@@ -4,8 +4,8 @@
 //! processes and the tasks serving calls; the socket's write half belongs to a
 //! writer task fed by one channel, so a response and a process's output reach
 //! the supervisor in the order they were queued. Nothing here is shared behind
-//! a lock: a process is reached through its control channel, and the
-//! workspace handle is read-only.
+//! a lock: a process is reached through its input queue and its stop token,
+//! and the workspace handle is read-only.
 //!
 //! Binding is split from serving. [`bind`] needs no runtime and no workspace,
 //! so the sandbox claims its socket first and then drops the right to create
@@ -19,11 +19,11 @@ mod session;
 use std::path::Path;
 use std::sync::Arc;
 
-use futures_util::SinkExt as _;
+use bytes::Bytes;
+use tokio::io::AsyncWriteExt as _;
 use tokio::net::UnixListener;
 use tokio::net::unix::OwnedWriteHalf;
 use tokio::sync::mpsc;
-use tokio_util::codec::{FramedWrite, LinesCodec};
 
 use self::files::Workspace;
 use self::session::Session;
@@ -102,22 +102,17 @@ async fn accept(socket: std::os::unix::net::UnixListener, root: &Path) -> Result
     let (stream, _peer) = listener.accept().await?;
     let (read, write) = stream.into_split();
     let (outbound, queued) = mpsc::unbounded_channel();
-    let writer = tokio::spawn(write_lines(
-        FramedWrite::new(write, LinesCodec::new()),
-        queued,
-    ));
+    let writer = tokio::spawn(write_lines(write, queued));
     Session::new(workspace, outbound).run(read).await;
     // The session dropped the last sender, so the writer drains and ends.
     Ok(writer.await?)
 }
 
-/// Writes every queued line until the queue closes or the socket does.
-async fn write_lines(
-    mut sink: FramedWrite<OwnedWriteHalf, LinesCodec>,
-    mut queued: mpsc::UnboundedReceiver<String>,
-) {
+/// Writes every queued line until the queue closes or the socket does. Each
+/// line is already delimited, so it goes to the socket as it is.
+async fn write_lines(mut write: OwnedWriteHalf, mut queued: mpsc::UnboundedReceiver<Bytes>) {
     while let Some(line) = queued.recv().await {
-        if sink.send(line).await.is_err() {
+        if write.write_all(&line).await.is_err() {
             break;
         }
     }
