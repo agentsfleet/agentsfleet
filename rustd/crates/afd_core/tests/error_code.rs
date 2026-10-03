@@ -6,7 +6,8 @@
 
 use std::collections::BTreeSet;
 
-use afd_core::error_code::{self, ErrorCode, REGISTRY};
+use afd_core::error_code::{self, Coded, ErrorCode, REGISTRY};
+use afd_core::limits::WorkerCount;
 
 /// Catches a code declared twice under two names, or a typo'd spelling that
 /// would reach a client as an unmatched code.
@@ -144,3 +145,32 @@ rejects!(
     should_reject_a_family_separator_in_the_family,
     "UZ-RE_Q-001"
 );
+
+/// Every declared code is found by its own spelling, and nothing else is.
+#[test]
+fn test_lookup_finds_declared_codes_only() {
+    for code in REGISTRY {
+        assert_eq!(ErrorCode::lookup(code.as_str()), Some(*code));
+    }
+
+    assert_eq!(
+        ErrorCode::lookup("UZ-RUN-011"),
+        Some(error_code::RUN_LEASE_LOST)
+    );
+    for unknown in ["UZ-NOPE-999", "uz-run-011", "UZ-RUN-11", ""] {
+        assert_eq!(ErrorCode::lookup(unknown), None, "{unknown:?}");
+    }
+}
+
+/// Code that logs a failure from any crate reads the same code the crate's
+/// own accessor answers, through the trait every error shell implements.
+#[test]
+fn test_every_shelled_error_names_its_code_through_the_trait() {
+    fn named(failure: &impl Coded) -> ErrorCode {
+        failure.code()
+    }
+    let failure = WorkerCount::new(0).unwrap_err();
+
+    assert_eq!(named(&failure), failure.code());
+    assert_eq!(named(&failure).as_str(), "UZ-REQ-001");
+}

@@ -74,7 +74,8 @@ utoipa = { workspace = true, optional = true }
 afd_admission = { workspace = true, features = ["test-util"] }
 afd_db = { workspace = true, features = ["test-util"] }
 afd_dragonfly = { workspace = true, features = ["test-util"] }
-afd_core.workspace = true
+# The `tracing` capture the unknown-field log line is asserted through.
+afd_core = { workspace = true, features = ["test-util"] }
 afd_connector = { workspace = true, features = ["test-util"] }
 afd_cron = { workspace = true, features = ["test-util"] }
 afd_ingress = { workspace = true, features = ["test-util"] }

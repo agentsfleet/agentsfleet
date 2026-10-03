@@ -83,7 +83,6 @@ pub use self::steer::{
 /// the event, and the read endpoints return it unchanged.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct EventEnvelope<'a> {
     /// The canonical event identifier, the same on every surface that shows
     /// the event.

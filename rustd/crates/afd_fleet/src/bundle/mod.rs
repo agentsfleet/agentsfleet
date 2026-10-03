@@ -41,9 +41,6 @@ use crate::error::{
     Error, Result, bundle_missing, bundle_oversized, bundle_storage, bundle_unconfigured, rejected,
 };
 
-/// A content hash is the lowercase hex of a SHA-256 digest: 32 bytes, 64 chars.
-const SHA256_HEX_LEN: usize = 64;
-
 /// The key layout `fleet_library/importer.zig` writes a snapshot under.
 ///
 /// Restated here rather than derived, because the two implementations write and
@@ -96,13 +93,7 @@ impl<'a> ContentHash<'a> {
     /// Refuses anything that is not that, including — and this is the case the
     /// check exists for — a segment carrying path characters.
     pub fn parse(raw: &'a str) -> Result<Self> {
-        // `is_ascii_hexdigit` is the obvious call and is the wrong one: it
-        // accepts `A-F`, which is the single spelling this refuses.
-        let is_digest = raw.len() == SHA256_HEX_LEN
-            && raw
-                .bytes()
-                .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'));
-        if is_digest {
+        if afd_core::bundle::is_name(raw) {
             Ok(Self(raw))
         } else {
             Err(rejected(DETAIL_NOT_A_CONTENT_HASH))

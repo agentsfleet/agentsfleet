@@ -28,6 +28,10 @@ pub(crate) const MAX_SOURCE_REF_LEN: usize = 512;
 pub(crate) const MAX_MARKDOWN_LEN: usize = 200 * 1024;
 pub(crate) const MAX_SUPPORT_FILES: usize = 32;
 const MAX_SUPPORT_PATH_LEN: usize = 160;
+/// A path segment naming its own directory. `Path::components` normalizes it
+/// away, but the archive writer does too, so the importer's digest and the
+/// runner's would disagree on `a/./b`.
+const CURRENT_DIR: &str = ".";
 pub(crate) const MAX_SUPPORT_FILE_LEN: usize = 64 * 1024;
 const MAX_SUPPORT_TOTAL_LEN: usize = 256 * 1024;
 
@@ -138,12 +142,14 @@ pub(crate) fn trigger_non_empty(value: &Option<Vec<u8>>, _: &()) -> garde::Resul
 ///
 /// # Errors
 /// [`CODE_UNSAFE_PATH`] for an empty, over-long, absolute, traversing,
-/// backslash-bearing, or root-colliding path.
+/// backslash-bearing, `.`-bearing, or root-colliding path.
 pub(crate) fn safe_path(raw: &str, _: &()) -> garde::Result {
     let invalid_text = raw.is_empty()
         || raw.len() > MAX_SUPPORT_PATH_LEN
         || raw.contains('\\')
-        || raw.split('/').any(str::is_empty)
+        || raw
+            .split('/')
+            .any(|segment| segment.is_empty() || segment == CURRENT_DIR)
         || ROOT_DOCUMENTS.contains(&raw);
     let invalid_component = Path::new(raw)
         .components()

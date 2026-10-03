@@ -83,7 +83,10 @@ pub(crate) async fn handle<D: Services>(
         Ok(runner) => runner,
         Err(detail) => return malformed(detail),
     };
-    let Ok(request) = afd_http::handler::read_body::<RunnerAdminPatchRequest<'_>>(&body) else {
+    // Strict: the assigned policy is a shape the runner reads leniently, and an
+    // operator's misspelled key inside it must still be refused.
+    let Ok(request) = afd_http::handler::read_strict_body::<RunnerAdminPatchRequest<'_>>(&body)
+    else {
         return malformed(DETAIL_PATCH_BODY);
     };
     let Some(mutation) = mutation(&request) else {
@@ -238,5 +241,19 @@ mod tests {
             }),
         };
         assert!(mutation(&both).is_none());
+    }
+
+    /// The assigned policy is a shape the runner reads leniently; an operator's
+    /// misspelled key inside it is still refused, so no policy lands half-read.
+    #[test]
+    fn a_misspelled_key_inside_the_assigned_policy_is_refused() {
+        let body = br#"{"action":null,"assigned_policy":{"sandbox_tier":"dev_none","network_policy":"allow_all","registry_allowlist":[],"worker_count":1,"extra_binds":[],"wroker_count":4}}"#;
+
+        let refused = afd_http::handler::read_strict_body::<RunnerAdminPatchRequest<'_>>(body)
+            .err()
+            .and_then(|error| afd_core::json::unknown_field_of(&error));
+
+        // `?` is how `serde_ignored` spells the `Option` the policy rides in.
+        assert_eq!(refused.as_deref(), Some("assigned_policy.?.wroker_count"));
     }
 }

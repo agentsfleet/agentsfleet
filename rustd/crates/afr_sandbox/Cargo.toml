@@ -1,0 +1,67 @@
+[package]
+name = "afr_sandbox"
+description = "The runner's sandbox engines: the interface every engine meets, and the hardened bubblewrap engine."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+afd_core.workspace = true
+# Every sandbox serves the same executor, which is what makes a second engine
+# an addition rather than a rewrite.
+afr_executor.workspace = true
+async-trait.workspace = true
+# The executor's socket answers a few milliseconds after the sandbox starts;
+# a constant-delay retry waits for it without a hand-written loop.
+backon.workspace = true
+# The bubblewrap launcher's error stream, read a line at a time with a cap.
+futures-util.workspace = true
+# The toolbox image is named by its SHA-256, streamed through the hasher.
+digest-io.workspace = true
+hex.workspace = true
+sha2.workspace = true
+# The process status a sandbox reads before it serves.
+procfs-core.workspace = true
+# The system calls the engine makes directly: whether the probe may execute
+# bubblewrap on every platform, and on Linux the mounts, ownership and
+# process calls a sandbox is built with. The executor links it already.
+rustix.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "sync", "time"] }
+tokio-util = { workspace = true, features = ["codec"] }
+tracing.workspace = true
+# The in-sandbox process logs to the error stream the supervisor drains.
+tracing-subscriber.workspace = true
+# A warm slot is named like a lease: unique, so a restart never meets its own
+# leftovers under the same name.
+uuid.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# The kernel interfaces a sandbox confines itself with, each the crate Codex's
+# own `linux-sandbox` uses.
+landlock.workspace = true
+libc.workspace = true
+seccompiler.workspace = true
+
+[dev-dependencies]
+afd_core = { workspace = true, features = ["test-util"] }
+bytes.workspace = true
+libtest-mimic.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "test-util", "time"] }
+
+# Confines a child process and reads back what it said; it has its own `main`
+# because confinement cannot be undone inside a harness with tests left to run.
+[[test]]
+name = "confine"
+path = "tests/confine.rs"
+harness = false

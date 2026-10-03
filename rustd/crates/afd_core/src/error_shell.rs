@@ -24,7 +24,7 @@
 //! nothing at build time and expands in the crate that calls it.
 
 /// Generates the hull of a crate-level error: the boxed struct, the backtrace
-/// capture, `Display`, `source()`, and the `Result` alias.
+/// capture, `Display`, `source()`, and [`crate::error_code::Coded`].
 ///
 /// The calling crate declares `ErrorKind` (a `thiserror::Error` enum), its own
 /// `pub type Result<T, E = Error>` alias, and `code()` on `Error` — `Display`
@@ -84,6 +84,12 @@ macro_rules! error_shell {
             /// expansion hid it.
             pub fn backtrace(&self) -> &std::backtrace::Backtrace {
                 &self.inner.backtrace
+            }
+        }
+
+        impl $crate::error_code::Coded for $error {
+            fn code(&self) -> $crate::error_code::ErrorCode {
+                $error::code(self)
             }
         }
 
