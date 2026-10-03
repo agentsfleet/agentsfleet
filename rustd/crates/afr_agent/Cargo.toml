@@ -20,6 +20,8 @@ afd_core.workspace = true
 afd_observability.workspace = true
 afd_wire.workspace = true
 afr_executor.workspace = true
+# The fleet's memory a run's calls share, and the deltas it pushes.
+afr_memory.workspace = true
 # The model a run drives, behind one trait.
 afr_providers.workspace = true
 # The catalog a run is offered from, and the handlers the router calls.

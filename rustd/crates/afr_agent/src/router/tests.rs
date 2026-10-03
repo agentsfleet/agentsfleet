@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use afr_executor::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
 use afr_tools::catalog::{CALCULATOR, FILE_READ, WEB_SEARCH};
 use afr_tools::stub::{STUB_PATH, Stub};
-use afr_tools::{Catalog, ToolErrorCode};
+use afr_tools::{Catalog, Lease, ToolErrorCode};
 use bytes::Bytes;
 
 use super::Router;
@@ -72,7 +72,7 @@ async fn test_router_sends_each_tool_to_its_runtime() {
     let executor = Counting::default();
     let router = Router::new(&selection, Some(&executor));
 
-    let supervised = router.dispatch("calculator", &arguments()).await;
+    let supervised = router.dispatch("calculator", &arguments(), &mut Lease::default()).await;
     assert_eq!(supervised.error_code, None);
     assert_eq!(
         executor.calls.load(Ordering::SeqCst),
@@ -80,7 +80,7 @@ async fn test_router_sends_each_tool_to_its_runtime() {
         "the supervisor ran it"
     );
 
-    let sandboxed = router.dispatch("file_read", &arguments()).await;
+    let sandboxed = router.dispatch("file_read", &arguments(), &mut Lease::default()).await;
     assert_eq!(sandboxed.error_code, None);
     assert_eq!(sandboxed.text, "file_read");
     assert_eq!(executor.calls.load(Ordering::SeqCst), 1, "one call crossed");
@@ -94,7 +94,7 @@ async fn a_name_the_lease_was_not_offered_is_a_tool_error() {
     let router = Router::new(&selection, Some(&executor));
 
     for name in ["shell", "file_read", "teleport"] {
-        let output = router.dispatch(name, &arguments()).await;
+        let output = router.dispatch(name, &arguments(), &mut Lease::default()).await;
 
         assert_eq!(output.error_code, Some(ToolErrorCode::NotOffered));
         assert!(
@@ -113,7 +113,7 @@ async fn a_provider_hosted_tool_reaching_the_router_names_its_code() {
     let selection = catalog.select(&[WEB_SEARCH.name()]).unwrap();
     let router = Router::new(&selection, None);
 
-    let output = router.dispatch("web_search", &arguments()).await;
+    let output = router.dispatch("web_search", &arguments(), &mut Lease::default()).await;
 
     assert_eq!(
         output.error_code,
@@ -132,7 +132,7 @@ async fn a_sandbox_side_call_without_a_sandbox_is_a_tool_error() {
     let selection = catalog.select(&["file_read"]).unwrap();
     let router = Router::new(&selection, None);
 
-    let output = router.dispatch("file_read", &arguments()).await;
+    let output = router.dispatch("file_read", &arguments(), &mut Lease::default()).await;
 
     assert_eq!(output.error_code, Some(ToolErrorCode::SandboxUnavailable));
     assert!(output.text.contains("file_read"));

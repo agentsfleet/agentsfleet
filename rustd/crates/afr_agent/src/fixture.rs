@@ -114,7 +114,7 @@ impl Tool for Canned {
         &self.schema
     }
 
-    async fn call(&self, _arguments: &serde_json::Value, _context: ToolContext<'_>) -> ToolOutput {
+    async fn call(&self, _arguments: &serde_json::Value, _context: ToolContext<'_, '_>) -> ToolOutput {
         if self.output.is_empty() {
             return std::future::pending().await;
         }
@@ -150,7 +150,7 @@ impl Tool for Exits {
         &self.schema
     }
 
-    async fn call(&self, _arguments: &serde_json::Value, _context: ToolContext<'_>) -> ToolOutput {
+    async fn call(&self, _arguments: &serde_json::Value, _context: ToolContext<'_, '_>) -> ToolOutput {
         ToolOutput {
             text: format!("exited {}", self.code),
             exit_code: Some(self.code),

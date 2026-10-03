@@ -27,7 +27,8 @@ use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_observability::producers::memory;
-use afd_wire::memory::{MAX_ENTRIES_PER_FLEET, MemoryDelta};
+use afd_wire::memory::{MAX_ENTRIES_PER_FLEET, MemoryDelta, PINNED_CATEGORY};
+use garde::Validate as _;
 use sqlx::{Acquire as _, Row as _};
 
 use crate::error::{Result, query};
@@ -222,7 +223,7 @@ impl Memories {
         counted.evicted = sqlx::query(sql::EVICT_PAST_CAP)
             .bind(fleet_id.as_str())
             .bind(i64::try_from(MAX_ENTRIES_PER_FLEET).unwrap_or(i64::MAX))
-            .bind(window::PINNED_CATEGORY)
+            .bind(PINNED_CATEGORY)
             .execute(&mut *transaction)
             .await
             .map_err(query(CONTEXT_EVICT))?
@@ -251,11 +252,7 @@ struct Admitted<'a, 'b> {
 /// Truncating rather than refusing the whole push is deliberate. A runner that
 /// learned more than the cap allows should keep what fits, not lose all of it.
 fn admit<'a, 'b>(deltas: &'a [MemoryDelta<'b>]) -> Admitted<'a, 'b> {
-    let well_formed = |delta: &&MemoryDelta<'_>| {
-        (1..=MAX_KEY_LEN).contains(&delta.key.len())
-            && (1..=MAX_CONTENT_LEN).contains(&delta.content.len())
-            && (1..=MAX_CATEGORY_LEN).contains(&delta.category.len())
-    };
+    let well_formed = |delta: &&MemoryDelta<'_>| delta.validate().is_ok();
     let skipped = deltas.iter().filter(|d| !well_formed(d)).count();
 
     // The cap is a running total over the well-formed deltas, so a malformed
@@ -265,7 +262,7 @@ fn admit<'a, 'b>(deltas: &'a [MemoryDelta<'b>]) -> Admitted<'a, 'b> {
         .iter()
         .filter(well_formed)
         .take_while(|delta| {
-            used += window::entry_bytes(delta);
+            used += delta.bytes();
             used <= afd_wire::memory::MAX_PUSH_BYTES
         })
         .collect();
@@ -275,20 +272,3 @@ fn admit<'a, 'b>(deltas: &'a [MemoryDelta<'b>]) -> Admitted<'a, 'b> {
         skipped,
     }
 }
-
-/// Longest stored key. `helpers.zig`'s `MAX_KEY_LEN`.
-///
-/// Public because the operator surface bounds a path segment by it before it
-/// decodes one: a key too long to have been STORED cannot name a row, so the
-/// HTTP edge refuses it rather than spending a statement discovering that. One
-/// declaration, so the write cap and the read cap cannot drift apart.
-pub const MAX_KEY_LEN: usize = 255;
-
-/// Longest stored content. `helpers.zig`'s `MAX_CONTENT_LEN`.
-const MAX_CONTENT_LEN: usize = 16 * 1024;
-
-/// Longest stored category.
-///
-/// The column carries no CHECK — value constraints live in app constants — so
-/// this is the only bound stopping an oversized label landing a junk category.
-const MAX_CATEGORY_LEN: usize = 64;

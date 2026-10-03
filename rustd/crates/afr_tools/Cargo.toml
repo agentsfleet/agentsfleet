@@ -17,11 +17,18 @@ workspace = true
 [dependencies]
 # `error_shell!`, `error_lifts!` and the registry code a refusal is logged under.
 afd_core.workspace = true
+# A memory entry's shape and its default category.
+afd_wire.workspace = true
+# The run's memory, which the memory tools read and write.
+afr_memory.workspace = true
 # A sandbox-side handler reaches `/workspace` through the lease's executor.
 afr_executor.workspace = true
 # `Tool` is `dyn`: the catalog holds production handlers, tests hold stubs.
 async-trait.workspace = true
-# A tool's parameters are a JSON Schema, and a call's arguments are JSON.
+# A tool's parameters are the JSON Schema of the type its arguments parse into.
+schemars.workspace = true
+serde.workspace = true
+# A call's arguments are JSON.
 serde_json.workspace = true
 thiserror.workspace = true
 

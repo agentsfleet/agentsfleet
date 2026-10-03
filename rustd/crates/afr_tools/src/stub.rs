@@ -48,7 +48,7 @@ impl Tool for Stub {
         &self.schema
     }
 
-    async fn call(&self, _arguments: &serde_json::Value, context: ToolContext<'_>) -> ToolOutput {
+    async fn call(&self, _arguments: &serde_json::Value, context: ToolContext<'_, '_>) -> ToolOutput {
         match (self.runtime(), context.executor) {
             (Runtime::Sandbox, Some(executor)) => match executor.read_file(STUB_PATH, 1).await {
                 Ok(_) => ToolOutput::succeeded(self.name()),

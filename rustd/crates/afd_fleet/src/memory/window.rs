@@ -25,16 +25,7 @@
 //! the flags are gone, the second pass is gone, and the rule appears once, in
 //! [`fits`]. What is left is two counts and a countdown.
 
-use afd_wire::memory::MemoryDelta;
-
-/// The one category that hydrates before recency is considered.
-///
-/// Shared with [`crate::sql::EVICT_PAST_CAP`], which protects exactly
-/// this category when choosing eviction victims. One declaration keeps the two
-/// in lockstep — hydration must never pin what eviction deletes first, which is
-/// what `fleet_memory.zig` needs a `comptime` assertion over a static map to
-/// enforce.
-pub const PINNED_CATEGORY: &str = "core";
+use afd_wire::memory::{MemoryDelta, PINNED_CATEGORY};
 
 /// Scratch notes, which expire on a retention sweep.
 ///
@@ -43,19 +34,10 @@ pub const PINNED_CATEGORY: &str = "core";
 /// accidentally become perishable.
 pub const DAILY_CATEGORY: &str = "daily";
 
-/// The bytes one entry charges against any memory budget.
-///
-/// The single formula the hydration window, the push cap and the dropped-bytes
-/// accounting all share, so the three cannot silently diverge.
-#[must_use]
-pub fn entry_bytes(entry: &MemoryDelta<'_>) -> usize {
-    entry.key.len() + entry.content.len() + entry.category.len()
-}
-
-/// Cumulative [`entry_bytes`] over a slice.
+/// Cumulative [`MemoryDelta::bytes`] over a slice.
 #[must_use]
 pub fn total_bytes(entries: &[MemoryDelta<'_>]) -> usize {
-    entries.iter().map(entry_bytes).sum()
+    entries.iter().map(MemoryDelta::bytes).sum()
 }
 
 /// Whether an entry hydrates ahead of recency.
@@ -145,7 +127,7 @@ fn select_counted(entries: Vec<MemoryDelta<'_>>, budget: usize) -> Window<'_> {
         entries
             .iter()
             .filter(move |entry| is_pinned(entry) == pinned)
-            .map(entry_bytes)
+            .map(MemoryDelta::bytes)
     };
 
     let pinned_count = fits(sizes(true), budget, true);
@@ -179,8 +161,8 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use super::{PINNED_CATEGORY, entry_bytes, select};
-    use afd_wire::memory::MemoryDelta;
+    use super::select;
+    use afd_wire::memory::{MemoryDelta, PINNED_CATEGORY};
 
     /// The budget these tests reason against.
     ///
@@ -191,7 +173,7 @@ mod tests {
 
     /// An entry that CHARGES `bytes` against a budget.
     ///
-    /// Sized by what [`entry_bytes`] will actually count, not by its content
+    /// Sized by what [`MemoryDelta::bytes`] will actually count, not by its content
     /// alone: the charge is key + content + category, so a fixture that sized
     /// only the content would charge more than the test asked for — and every
     /// case here is a statement about how a budget divides. Sizing the content
@@ -280,7 +262,7 @@ mod tests {
     fn test_one_oversized_entry_still_hydrates() {
         let huge = entry("enormous", BUDGET * 4, "conversation");
         assert!(
-            entry_bytes(&huge) > BUDGET,
+            huge.bytes() > BUDGET,
             "the fixture must exceed the budget for this test to mean anything"
         );
         let single = vec![huge];

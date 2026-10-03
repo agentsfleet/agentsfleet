@@ -6,7 +6,11 @@
 //! it; a name with no handler here refuses the lease, never a quieter tool set,
 //! the disposition `src/runner/engine/tool_bridge.zig` carries today.
 
+use crate::calculator::Calculator;
 use crate::error::{self, Result};
+use crate::handler::Typed;
+use crate::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStore};
+use crate::plan::UpdatePlan;
 use crate::runtime::{Runtime, Tool};
 use crate::schema::ToolSpec;
 
@@ -167,6 +171,19 @@ impl Catalog {
     #[must_use]
     pub fn new(handlers: Vec<Box<dyn Tool>>) -> Self {
         Self { handlers }
+    }
+
+    /// A catalog hosting every handler this runner carries.
+    #[must_use]
+    pub fn hosted() -> Self {
+        Self::new(vec![
+            Typed::boxed(MemoryStore),
+            Typed::boxed(MemoryRecall),
+            Typed::boxed(MemoryList),
+            Typed::boxed(MemoryForget),
+            Typed::boxed(Calculator),
+            Typed::boxed(UpdatePlan),
+        ])
     }
 
     /// The tools a lease naming `names` is offered.

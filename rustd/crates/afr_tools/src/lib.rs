@@ -12,10 +12,18 @@ pub mod error;
 #[cfg(any(test, feature = "test-util"))]
 pub mod stub;
 
+mod calculator;
+mod handler;
+mod lease;
+mod memory;
+mod plan;
 mod runtime;
 mod schema;
+#[cfg(test)]
+mod testing;
 
 pub use self::catalog::{Catalog, Entry, Selection};
 pub use self::error::{Error, Result};
+pub use self::lease::Lease;
 pub use self::runtime::{Runtime, Tool, ToolContext, ToolErrorCode, ToolOutput};
 pub use self::schema::{Schema, ToolSpec};

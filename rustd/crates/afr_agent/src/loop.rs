@@ -8,8 +8,9 @@ use std::time::Instant;
 
 use afd_wire::policy::ExecutionPolicy;
 use afd_wire::report::{Completed, ExecutionResult, Failure, ResultOutcome};
+use afr_memory::Memory;
 use afr_providers::{Call, Connect, Message, Provider, Replay, Request, Usage};
-use afr_tools::{Catalog, Selection, ToolSpec};
+use afr_tools::{Catalog, Lease, Selection, ToolSpec};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
 
@@ -87,6 +88,8 @@ struct Harness<'run> {
     router: Router<'run>,
     specs: Vec<ToolSpec<'run>>,
     scrub: &'run Scrub,
+    /// What every call of the lease shares, lent to one call at a time.
+    lease: Lease<'run>,
     live: Live<'run>,
     ledger: Ledger<'run>,
     budget: Budget,
@@ -109,6 +112,7 @@ impl<'run> Harness<'run> {
             router: Router::new(selection, run.executor),
             specs: selection.specs().collect(),
             scrub,
+            lease: Lease::new(Memory::hydrated(run.memory)),
             live: Live::new(run.events, scrub, started),
             ledger: Ledger::new(&run.lease.lease_id, run.events, scrub),
             budget: Budget::new(&policy.context),
@@ -229,11 +233,12 @@ impl<'run> Harness<'run> {
     /// at the output limit; `None` when the lease stopped it.
     async fn call(&mut self, call: &Call, cut: bool) -> Option<Message> {
         let router = &self.router;
+        let lease = &mut self.lease;
         let handler = async move {
             if cut {
                 return router::cut(&call.name);
             }
-            router.dispatch(&call.name, &call.arguments).await
+            router.dispatch(&call.name, &call.arguments, lease).await
         };
         let text = tokio::select! {
             biased;
@@ -278,7 +283,7 @@ impl<'run> Harness<'run> {
                 cached_input_tokens: self.usage.cached_input,
                 output_tokens: self.usage.output,
             },
-            memory: Vec::new(),
+            memory: self.lease.memory.into_stored(),
             trace,
             records,
         }
@@ -307,3 +312,7 @@ mod turn_tests;
 #[cfg(test)]
 #[path = "loop/end_tests.rs"]
 mod end_tests;
+
+#[cfg(test)]
+#[path = "loop/memory_tests.rs"]
+mod memory_tests;

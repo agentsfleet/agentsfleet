@@ -2,7 +2,26 @@
 
 use std::borrow::Cow;
 
+use garde::Validate;
 use serde::{Deserialize, Serialize};
+
+/// Longest stored key, in bytes.
+///
+/// The operator surface bounds a path segment by it before decoding one: a key
+/// too long to have been stored cannot name a row.
+pub const MAX_KEY_LEN: usize = 255;
+
+/// Longest stored content, in bytes.
+pub const MAX_CONTENT_LEN: usize = 16 * 1024;
+
+/// Longest stored category, in bytes. The column carries no CHECK, so this is
+/// the only bound on a category label.
+pub const MAX_CATEGORY_LEN: usize = 64;
+
+/// The one category that hydrates before recency is considered, and that
+/// eviction protects. It is also the category a runner stores under when the
+/// model names none.
+pub const PINNED_CATEGORY: &str = "core";
 
 /// Total memory bytes one push may carry, summed over every delta.
 ///
@@ -25,19 +44,32 @@ pub const HYDRATE_WINDOW_BYTES: usize = 256 * 1024;
 /// One durable memory item — the unit of both reading and writing.
 //
 // Carries no scope: the fleet is a path segment, validated server-side against
-// the runner's live lease.
+// the runner's live lease. The bounds are declared here, so the daemon's push
+// and the runner's store refuse the same entries.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 pub struct MemoryDelta<'a> {
     /// Stable key. A repeated key overwrites rather than accumulating.
     #[serde(borrow)]
+    #[garde(length(bytes, min = 1, max = MAX_KEY_LEN))]
     pub key: Cow<'a, str>,
     /// The remembered content.
     #[serde(borrow)]
+    #[garde(length(bytes, min = 1, max = MAX_CONTENT_LEN))]
     pub content: Cow<'a, str>,
     /// Retention category, which decides eviction order.
     #[serde(borrow)]
+    #[garde(length(bytes, min = 1, max = MAX_CATEGORY_LEN))]
     pub category: Cow<'a, str>,
+}
+
+impl MemoryDelta<'_> {
+    /// The bytes this entry charges against a memory budget: the hydration
+    /// window, the push cap and the dropped-bytes count all charge the same.
+    #[must_use]
+    pub fn bytes(&self) -> usize {
+        self.key.len() + self.content.len() + self.category.len()
+    }
 }
 
 /// `POST /v1/runners/me/memory/{fleet_id}` request.

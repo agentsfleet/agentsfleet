@@ -515,6 +515,7 @@ dependencies = [
  "afd_wire",
  "bytes",
  "futures-util",
+ "garde",
  "object_store",
  "redis",
  "reqwest",
@@ -906,6 +907,7 @@ dependencies = [
  "afd_observability",
  "afd_wire",
  "afr_executor",
+ "afr_memory",
  "afr_providers",
  "afr_tools",
  "aho-corasick",
@@ -941,6 +943,16 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+]
+
+[[package]]
+name = "afr_memory"
+version = "0.51.1"
+dependencies = [
+ "afd_core",
+ "afd_wire",
+ "garde",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -1034,9 +1046,13 @@ name = "afr_tools"
 version = "0.51.1"
 dependencies = [
  "afd_core",
+ "afd_wire",
  "afr_executor",
+ "afr_memory",
  "async-trait",
  "bytes",
+ "schemars",
+ "serde",
  "serde_json",
  "thiserror 2.0.20",
  "tokio",
@@ -5240,9 +5256,9 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tokio"
-version = "1.53.1"
+version = "1.53.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "202caea871b69668250d242070849eb495be178ed697a3e98aebce5bc81a0bed"
+checksum = "e95f91fcc7a621e8b030f6aa23c71fe9838ae2fb4d8118b75602a328f5144044"
 dependencies = [
  "bytes",
  "libc",

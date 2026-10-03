@@ -5,6 +5,7 @@ use std::fmt;
 use afr_executor::Executor;
 
 use crate::catalog::Entry;
+use crate::lease::Lease;
 use crate::schema::Schema;
 
 /// Where a tool's handler runs.
@@ -22,10 +23,14 @@ pub enum Runtime {
 ///
 /// The router builds it per call and hands the executor only to a sandbox-side
 /// handler, so a supervisor-side one cannot reach the sandbox by construction.
-#[derive(Debug, Clone, Copy)]
-pub struct ToolContext<'run> {
+/// The lease's state is lent to one call at a time: calls run one after
+/// another, so the borrow checker keeps two from racing, not a lock.
+#[derive(Debug)]
+pub struct ToolContext<'call, 'run> {
     /// The lease's executor; `None` for a supervisor-side call.
-    pub executor: Option<&'run dyn Executor>,
+    pub executor: Option<&'call dyn Executor>,
+    /// What every call of the lease shares.
+    pub lease: &'call mut Lease<'run>,
 }
 
 /// Why a call failed, in the stable spelling the model and the thread read.
@@ -44,6 +49,11 @@ pub enum ToolErrorCode {
     /// The model's turn stopped at its output limit, so the call may have
     /// been cut mid-argument and was not run.
     OutputLimitReached,
+    /// The call's arguments do not parse as the tool's schema, or break a
+    /// bound it declares.
+    InvalidArguments,
+    /// The memory this run stored would no longer fit one push.
+    MemoryFull,
 }
 
 impl ToolErrorCode {
@@ -55,6 +65,8 @@ impl ToolErrorCode {
             Self::HostedToolUnavailable => "hosted_tool_unavailable",
             Self::SandboxUnavailable => "sandbox_unavailable",
             Self::OutputLimitReached => "output_limit_reached",
+            Self::InvalidArguments => "invalid_arguments",
+            Self::MemoryFull => "memory_full",
         }
     }
 }
@@ -113,7 +125,7 @@ pub trait Tool: Send + Sync + fmt::Debug {
 
     /// Runs one call. A failure the model caused, or one upstream, is an
     /// output with an error code: the run continues and the model reads why.
-    async fn call(&self, arguments: &serde_json::Value, context: ToolContext<'_>) -> ToolOutput;
+    async fn call(&self, arguments: &serde_json::Value, context: ToolContext<'_, '_>) -> ToolOutput;
 
     /// The tool's name.
     fn name(&self) -> &'static str {
