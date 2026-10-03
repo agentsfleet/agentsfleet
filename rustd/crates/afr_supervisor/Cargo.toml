@@ -25,6 +25,8 @@ afd_wire.workspace = true
 afr_agent.workspace = true
 afr_executor.workspace = true
 afr_sandbox.workspace = true
+# The runner token and every minted credential are held as one `Secret`.
+afr_secrets.workspace = true
 # `RunnerApi` is `dyn`: production holds the HTTP client, tests a fake.
 async-trait.workspace = true
 # Bounded exponential retry for the calls that may be retried, with a predicate

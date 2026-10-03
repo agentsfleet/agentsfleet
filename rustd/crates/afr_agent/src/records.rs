@@ -10,7 +10,7 @@ use std::borrow::Cow;
 use afd_wire::tool_detail::{DETAIL_FIELD_MAX_BYTES, DETAIL_POST_MAX_BYTES, ToolCallRecord};
 use serde_json::{Map, Value};
 
-use crate::scrub::Clean;
+use afr_secrets::Clean;
 use crate::trace::encoded_len;
 
 /// Room a post's envelope takes around its one record: the fencing token, the

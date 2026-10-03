@@ -21,7 +21,7 @@ use crate::events::Live;
 use crate::ledger::Ledger;
 use crate::prompt::Prompt;
 use crate::router::{self, Router};
-use crate::scrub::Scrub;
+use afr_secrets::Scrub;
 use crate::spans;
 use crate::turn::{Turn, take};
 

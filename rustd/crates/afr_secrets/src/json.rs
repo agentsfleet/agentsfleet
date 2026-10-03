@@ -9,7 +9,7 @@ use serde_json::Value;
 /// Rewrites every key and every string inside `value`, in place, through
 /// `rule`: `Some` replaces the text, `None` keeps it. Numbers, booleans and
 /// nulls are left alone.
-pub(crate) fn rewrite(value: &mut Value, rule: &impl Fn(&str) -> Option<String>) {
+pub fn rewrite(value: &mut Value, rule: &impl Fn(&str) -> Option<String>) {
     match value {
         Value::String(text) => {
             if let Some(rewritten) = rule(text) {

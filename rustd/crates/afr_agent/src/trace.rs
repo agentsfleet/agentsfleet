@@ -18,8 +18,7 @@ use afd_wire::tool_trace::{
 };
 use serde_json::{Map, Value};
 
-use crate::json;
-use crate::scrub::Clean;
+use afr_secrets::{Clean, json};
 
 /// How one call ended, as its completion frame and its trace row carry it.
 #[derive(Debug, Clone, PartialEq, Eq)]

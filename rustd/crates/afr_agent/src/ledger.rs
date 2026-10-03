@@ -23,7 +23,7 @@ use tracing::Instrument as _;
 
 use crate::engine::EventSink;
 use crate::records::record;
-use crate::scrub::{Clean, Scrub};
+use afr_secrets::{Clean, Scrub};
 use crate::spans;
 use crate::trace::{Outcome, Trace, bounded_arguments};
 

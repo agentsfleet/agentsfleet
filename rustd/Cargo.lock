@@ -909,8 +909,8 @@ dependencies = [
  "afr_executor",
  "afr_memory",
  "afr_providers",
+ "afr_secrets",
  "afr_tools",
- "aho-corasick",
  "async-trait",
  "bytes",
  "futures-util",
@@ -1013,6 +1013,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "afr_secrets"
+version = "0.51.1"
+dependencies = [
+ "afd_core",
+ "afd_wire",
+ "aho-corasick",
+ "serde_json",
+ "thiserror 2.0.20",
+ "zeroize",
+]
+
+[[package]]
 name = "afr_supervisor"
 version = "0.51.1"
 dependencies = [
@@ -1023,6 +1035,7 @@ dependencies = [
  "afr_executor",
  "afr_providers",
  "afr_sandbox",
+ "afr_secrets",
  "afr_tools",
  "async-trait",
  "axum",

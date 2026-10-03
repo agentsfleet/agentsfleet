@@ -44,9 +44,9 @@ pub(crate) enum ErrorKind {
     /// The secret scrub could not be built over the run's secret values.
     #[error("the secret scrub could not be built")]
     Scrub {
-        /// The matcher's refusal.
+        /// The scrub's refusal.
         #[from]
-        source: aho_corasick::BuildError,
+        source: afr_secrets::Error,
     },
 
     /// The catalog refused the lease's tools.
