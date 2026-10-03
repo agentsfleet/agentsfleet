@@ -125,7 +125,8 @@ pub trait Tool: Send + Sync + fmt::Debug {
 
     /// Runs one call. A failure the model caused, or one upstream, is an
     /// output with an error code: the run continues and the model reads why.
-    async fn call(&self, arguments: &serde_json::Value, context: ToolContext<'_, '_>) -> ToolOutput;
+    async fn call(&self, arguments: &serde_json::Value, context: ToolContext<'_, '_>)
+    -> ToolOutput;
 
     /// The tool's name.
     fn name(&self) -> &'static str {

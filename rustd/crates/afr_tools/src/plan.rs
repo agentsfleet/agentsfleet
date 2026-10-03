@@ -62,7 +62,8 @@ pub(crate) struct UpdatePlan;
 #[async_trait::async_trait]
 impl Handler for UpdatePlan {
     const ENTRY: &'static Entry = &UPDATE_PLAN;
-    const DESCRIPTION: &'static str = "Record your plan as steps with their status, and update it as you work.";
+    const DESCRIPTION: &'static str =
+        "Record your plan as steps with their status, and update it as you work.";
     type Arguments = Plan;
 
     async fn run(&self, arguments: Plan, _context: ToolContext<'_, '_>) -> ToolOutput {

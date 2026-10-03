@@ -36,7 +36,10 @@ mod tests {
 
     #[test]
     fn a_suffix_lands_under_the_repository() {
-        assert_eq!(path("acme/widgets", REFS_PATH), "/repos/acme/widgets/git/refs");
+        assert_eq!(
+            path("acme/widgets", REFS_PATH),
+            "/repos/acme/widgets/git/refs"
+        );
         assert_eq!(path("acme/widgets", "/"), "/repos/acme/widgets/");
     }
 }

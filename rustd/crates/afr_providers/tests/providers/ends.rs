@@ -18,8 +18,13 @@ const SIGNATURE: &str = "sig-a1b2";
 /// The content of the last assistant message a Messages request carries.
 fn last_turn(body: &Value) -> Vec<Value> {
     let messages = body["messages"].as_array().unwrap();
-    let turn = messages.iter().rev().find(|message| message["role"] == "assistant");
-    turn.and_then(|message| message["content"].as_array()).cloned().unwrap()
+    let turn = messages
+        .iter()
+        .rev()
+        .find(|message| message["role"] == "assistant");
+    turn.and_then(|message| message["content"].as_array())
+        .cloned()
+        .unwrap()
 }
 
 #[tokio::test]
@@ -38,7 +43,10 @@ async fn a_turns_signed_thinking_goes_back_ahead_of_its_call() {
     assert_eq!(output.result.content, ANSWER);
     let turn = last_turn(&fake.seen()[1].body);
     assert_eq!(turn[0]["type"], "thinking", "{turn:?}");
-    assert_eq!((turn[0]["thinking"].as_str(), turn[0]["signature"].as_str()), (Some(THOUGHT), Some(SIGNATURE)));
+    assert_eq!(
+        (turn[0]["thinking"].as_str(), turn[0]["signature"].as_str()),
+        (Some(THOUGHT), Some(SIGNATURE))
+    );
     assert_eq!(turn[1]["type"], "tool_use", "{turn:?}");
 }
 
@@ -55,7 +63,10 @@ async fn a_call_cut_at_the_output_limit_is_answered_and_never_run() {
     let (output, _frames) = run(&engine(&fake), &leased).await;
 
     assert_eq!(output.result.content, ANSWER, "the run went on");
-    assert_eq!(output.trace.unwrap().calls[0].status, ToolCallStatus::Failed);
+    assert_eq!(
+        output.trace.unwrap().calls[0].status,
+        ToolCallStatus::Failed
+    );
     let answered = wire.results(&fake.seen()[1].body);
     let refused = format!("[{}] ", ToolErrorCode::OutputLimitReached);
     assert!(answered[0].starts_with(&refused), "{answered:?}");

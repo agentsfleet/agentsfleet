@@ -177,7 +177,10 @@ pub(crate) fn thinking_call(
         json!({"type": "content_block_stop", "index": 0}),
     ];
     let call = tool_use(1, id, name, &arguments.to_string());
-    Reply::Stream(messages(thinking.into_iter().chain(call).collect(), "tool_use"))
+    Reply::Stream(messages(
+        thinking.into_iter().chain(call).collect(),
+        "tool_use",
+    ))
 }
 
 /// A Messages turn that calls `name` with `arguments` under call id `id`,
@@ -245,7 +248,10 @@ fn chat(delta: &Value, finish_reason: &str) -> Vec<String> {
             "model": "model-1", "choices": choices, "usage": usage})
     };
     let chunks = [
-        chunk(json!([{"index": 0, "delta": delta, "finish_reason": null}]), Value::Null),
+        chunk(
+            json!([{"index": 0, "delta": delta, "finish_reason": null}]),
+            Value::Null,
+        ),
         chunk(
             json!([{"index": 0, "delta": {}, "finish_reason": finish_reason}]),
             Value::Null,

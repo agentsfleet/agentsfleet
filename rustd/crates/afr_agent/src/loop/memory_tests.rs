@@ -41,8 +41,16 @@ async fn test_memory_tools_round_trip_through_push() {
             MEMORY_STORE.name(),
             json!({"key": "incident:42", "content": "deploy 812 broke iad", "category": "daily"}),
         )],
-        vec![call("m2", MEMORY_RECALL.name(), json!({"query": "incident"}))],
-        vec![call("m3", MEMORY_FORGET.name(), json!({"key": "incident:41"}))],
+        vec![call(
+            "m2",
+            MEMORY_RECALL.name(),
+            json!({"query": "incident"}),
+        )],
+        vec![call(
+            "m3",
+            MEMORY_FORGET.name(),
+            json!({"key": "incident:41"}),
+        )],
         vec![call("m4", MEMORY_LIST.name(), json!({}))],
         vec![say("incident 42 is new")],
     ]);
@@ -72,8 +80,15 @@ async fn test_memory_tools_round_trip_through_push() {
         "incident:42 (daily): deploy 812 broke iad\nincident:41 (core): escalated to the on-call",
         "a store is recalled in the same run, ahead of what was hydrated"
     );
-    assert!(read[2].starts_with("incident:41 is forgotten"), "{}", read[2]);
-    assert_eq!(read[3], "incident:42 (daily)", "a forget holds for the rest of the run");
+    assert!(
+        read[2].starts_with("incident:41 is forgotten"),
+        "{}",
+        read[2]
+    );
+    assert_eq!(
+        read[3], "incident:42 (daily)",
+        "a forget holds for the rest of the run"
+    );
     assert_eq!(
         output.memory,
         [MemoryDelta {

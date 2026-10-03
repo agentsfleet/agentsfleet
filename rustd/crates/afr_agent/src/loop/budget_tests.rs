@@ -9,7 +9,7 @@ use afd_core::test_util::trace::Capture;
 use afd_wire::activity::ActivityFrame;
 use afd_wire::report::{FailureClass, ResultOutcome};
 use afr_providers::{Error, Message};
-use afr_tools::catalog::{UPDATE_PLAN, FILE_READ, HTTP_REQUEST, WEB_SEARCH};
+use afr_tools::catalog::{FILE_READ, HTTP_REQUEST, UPDATE_PLAN, WEB_SEARCH};
 use afr_tools::stub::Stub;
 use tokio_util::sync::CancellationToken;
 
@@ -64,7 +64,11 @@ async fn test_loop_honours_context_budget() {
 
     let last = script.sent().pop().unwrap();
     assert_eq!(results(&last.messages), [EVICTED, EVICTED, "4", "4"]);
-    assert_eq!(last.tools, [UPDATE_PLAN.name()], "the cap was never reached");
+    assert_eq!(
+        last.tools,
+        [UPDATE_PLAN.name()],
+        "the cap was never reached"
+    );
 }
 
 #[tokio::test]

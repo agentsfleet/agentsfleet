@@ -36,8 +36,16 @@ async fn arguments_that_do_not_parse_are_refused_before_the_handler_runs() {
         json!({"limit": 5}),
     ] {
         let output = call(tool.as_ref(), &mut lease, refused.clone()).await;
-        assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments), "{refused}");
-        assert!(output.text.starts_with("[invalid_arguments] "), "{}", output.text);
+        assert_eq!(
+            output.error_code,
+            Some(ToolErrorCode::InvalidArguments),
+            "{refused}"
+        );
+        assert!(
+            output.text.starts_with("[invalid_arguments] "),
+            "{}",
+            output.text
+        );
     }
     let parsed = call(tool.as_ref(), &mut lease, json!({"query": "k"})).await;
     assert_eq!(parsed.text, "nothing remembered matches k");

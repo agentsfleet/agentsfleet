@@ -38,7 +38,11 @@ pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionReq
         description: spec.description.to_owned(),
         parameters: spec.parameters.clone(),
     });
-    let hosted = request.hosted.iter().copied().filter_map(|entry| hosted(wire, entry));
+    let hosted = request
+        .hosted
+        .iter()
+        .copied()
+        .filter_map(|entry| hosted(wire, entry));
     let mut built = CompletionRequest::new(RigMessage::user(String::new()));
     built.chat_history = history;
     Ok(built
@@ -130,7 +134,11 @@ impl<'a> Conversation<'a> {
             .cloned()
             .ok_or_else(|| raise::unsendable(call_id))?;
         let content = vec![ToolResultContent::text(output.to_owned())];
-        Ok(UserContent::tool_result(CallId::from_wire(call_id.to_owned()), name, content))
+        Ok(UserContent::tool_result(
+            CallId::from_wire(call_id.to_owned()),
+            name,
+            content,
+        ))
     }
 }
 

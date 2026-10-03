@@ -5,8 +5,8 @@
 //! the report, so a run's memory calls cost `agentsfleetd` nothing: one hydrate
 //! and one push per run, however often the model recalls.
 
-use aho_corasick::AhoCorasick;
 use afd_wire::memory::{MAX_PUSH_BYTES, MemoryDelta};
+use aho_corasick::AhoCorasick;
 use garde::Validate as _;
 
 use crate::error::{self, Result};
@@ -49,7 +49,10 @@ impl<'run> Hydrated<'run> {
 
     /// Removes the entry under `key`, and its charge when it was pending.
     fn remove(&mut self, key: &str) -> Option<Entry<'run>> {
-        let at = self.entries.iter().position(|entry| entry.delta.key == key)?;
+        let at = self
+            .entries
+            .iter()
+            .position(|entry| entry.delta.key == key)?;
         let removed = self.entries.remove(at);
         if removed.pending {
             self.pending_bytes = self.pending_bytes.saturating_sub(removed.delta.bytes());

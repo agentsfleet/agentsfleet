@@ -9,7 +9,7 @@ use std::sync::atomic::Ordering;
 use afd_core::error_code;
 use afd_core::test_util::trace::Capture;
 use afd_wire::lease::LeasePayload;
-use afr_tools::catalog::{BROWSER, UPDATE_PLAN, FILE_READ, HTTP_REQUEST};
+use afr_tools::catalog::{BROWSER, FILE_READ, HTTP_REQUEST, UPDATE_PLAN};
 
 use super::{DETAIL_UNHOSTED, DETAIL_UNHOSTED_PROVIDER, EVENT_UNHOSTED, EVENT_UNHOSTED_PROVIDER};
 use crate::client::{Call, Verb};

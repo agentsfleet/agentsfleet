@@ -18,11 +18,11 @@ mod ends;
 use std::time::{Duration, Instant};
 
 use afd_core::test_util::trace::Capture;
-use tracing::level_filters::LevelFilter;
 use afd_wire::report::{FailureClass, ResultOutcome};
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_tools::catalog::{UPDATE_PLAN, WEB_SEARCH};
 use serde_json::json;
+use tracing::level_filters::LevelFilter;
 
 use self::support::wires::Wire;
 use self::support::{Fake, KEY, LEASE_ID, Reply, TOKEN, engine, lease, run};
@@ -263,7 +263,11 @@ async fn a_stream_cut_before_its_turn_ended_is_opened_again_then_a_lost_connecti
             panic!("{wire:?}: a cut turn is no answer");
         };
         assert_eq!(failure.class, Some(FailureClass::TransportLoss), "{wire:?}");
-        assert_eq!(fake.seen().len(), ATTEMPTS, "{wire:?}: nothing showed, so it reopened");
+        assert_eq!(
+            fake.seen().len(),
+            ATTEMPTS,
+            "{wire:?}: nothing showed, so it reopened"
+        );
     }
 }
 

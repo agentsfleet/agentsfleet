@@ -9,7 +9,11 @@ fn test_static_secrets_read_fields_and_host() {
 
     assert_eq!(secrets.field("github", "token"), Some("ghp_1"));
     assert_eq!(secrets.host("github"), Some("api.github.com"));
-    assert_eq!(secrets.field("github", "n"), None, "a number is no string field");
+    assert_eq!(
+        secrets.field("github", "n"),
+        None,
+        "a number is no string field"
+    );
     assert_eq!(secrets.field("slack", "token"), None);
     assert!(secrets.contains("github"));
     assert!(!secrets.contains("slack"));
