@@ -76,9 +76,9 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 # remains that costs nothing.
 #
 # A target of its own rather than a rider on `lint-rustd`, which is where it
-# first landed. `.github/workflows/test.yml` runs `make lint-rustd` inside the
-# `test-unit-rustd` job, and that job is a plain `ubuntu-latest` with rustup and
-# nothing else — so the `command -v zig` guard below failed the Rust UNIT lane on
+# first landed. `make lint-rustd` runs in the `lint-rustd` job of
+# `.github/workflows/test-unit-rustd.yml`, a plain `ubuntu-latest` with rustup
+# and nothing else — so the `command -v zig` guard below failed the Rust lane on
 # a missing Zig toolchain, and the failure read as a test regression. The two
 # toolchains want two runners: Rust rides the ubuntu image it already pins, and
 # this rides `ci-zig-alpine`, the same pre-baked image `release.yml` and

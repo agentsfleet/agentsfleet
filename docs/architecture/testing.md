@@ -38,8 +38,14 @@ Redeploying that frozen revision is a manual `workflow_dispatch` on
 ## Public lanes
 
 `make test-unit-all` is the repository's unit claim. It runs
-`test-unit-rustd` (`cargo test --workspace`) and then `test-coverage-all`, which
-runs each TypeScript package's own coverage gate. A package-scoped runner —
+`test-unit-rustd` and then `test-coverage-all`, which runs each TypeScript
+package's own coverage gate. `test-unit-rustd` is three targets on the coverage
+lane's partition, `test-unit-rustd-runner`, `test-unit-rustd-daemon` and
+`test-unit-rustd-substrate`, in that order: together the whole workspace, with
+`afd_bench`'s tests kept in `substrate`. Continuous Integration (CI) runs each
+on its own runner, with `lint-rustd` beside them, in
+`.github/workflows/test-unit-rustd.yml`; its last job carries the required check
+name `test-unit-rustd` and is green only when every other job was. A package-scoped runner —
 `cargo test -p afd_wire`, `bun run test` inside a package — proves that package
 and nothing more; it never satisfies the repository claim.
 
@@ -47,8 +53,8 @@ and nothing more; it never satisfies the repository claim.
 Docker compose brings up Postgres and Dragonfly and the schemas reset per run.
 Nothing else a developer runs needs either: `make test-unit-all` stays
 datastore-free, because every Rust test that needs one is `#[ignore]`d and runs
-only here. `KEEP_TEST_STATE=1` skips the reset for the inner loop; Continuous
-Integration (CI) never sets it.
+only here. `KEEP_TEST_STATE=1` skips the reset for the inner loop; CI never
+sets it.
 
 `make lint-all` is the lint claim: `lint-rustd` (`cargo fmt --check` plus
 `cargo clippy --workspace --all-targets -- -D warnings`), `lint-scripts` (every
