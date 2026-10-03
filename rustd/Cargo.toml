@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_mail", "crates/afd_observability", "crates/afd_outbound", "crates/afd_dragonfly", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/afr_agent", "crates/afr_executor", "crates/afr_memory", "crates/afr_providers", "crates/afr_sandbox", "crates/afr_secrets", "crates/afr_supervisor", "crates/afr_tools", "crates/agentsfleet_runner", "crates/agentsfleetd"]
+members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_mail", "crates/afd_observability", "crates/afd_outbound", "crates/afd_dragonfly", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_validate", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/afr_agent", "crates/afr_executor", "crates/afr_memory", "crates/afr_providers", "crates/afr_sandbox", "crates/afr_secrets", "crates/afr_supervisor", "crates/afr_tools", "crates/agentsfleet_runner", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.51.1"
@@ -125,6 +125,12 @@ afd_runner = { path = "crates/afd_runner" }
 afd_sse = { path = "crates/afd_sse" }
 afd_state = { path = "crates/afd_state" }
 afd_tenant = { path = "crates/afd_tenant" }
+# The bounds every crate declares on untrusted input and cannot get from garde
+# alone: the custom rules (finite, NUL-free, digits, a charset), a `?limit`
+# proved against its route's ceiling, and the table from a reported path to a
+# route's fixed sentence. A leaf beside `afd_core` rather than a module in it
+# (M-SMALLER-CRATES): it depends on garde and nothing of ours.
+afd_validate = { path = "crates/afd_validate" }
 # The workspace secret surface. Deliberately NOT folded into `afd_fleet`, whose
 # `vault` module is the RUNNER plane's reader — it opens a declared credential
 # for a lease, refuses to degrade a row, and never lists — nor into `afd_state`,

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use afd_admin::{PlatformKey, PlatformKeyInput, SetPlatformKey};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
+use afd_validate::Sentences;
 use afd_wire::admin::{
     KEY_PROVIDER_MAX_BYTES, PlatformKeyDeactivateResponse, PlatformKeyItem, PlatformKeyPut,
     PlatformKeySetResponse, PlatformKeysResponse,
@@ -193,27 +194,24 @@ pub(crate) async fn deactivate<D: Services>(
     }
 }
 
-/// The sentence a caller is told, for the bound their body broke.
+/// The sentence a caller is told, keyed by the path of the bound their body
+/// broke.
 ///
-/// The wording is a public contract the dashboard renders, so the bound moves
-/// onto the wire type and the sentence stays here, keyed by the path that
-/// broke — rather than both living in an `if` that has to be kept in step with
-/// the schema.
-fn detail_for(report: &garde::Report) -> &'static str {
-    report
-        .iter()
-        .next()
-        .map_or(DETAIL_MALFORMED_JSON, |(path, _message)| {
-            if path.to_string() == FIELD_PROVIDER {
-                DETAIL_PROVIDER_LEN
-            } else {
-                DETAIL_MODEL_LEN
-            }
-        })
-}
+/// The wording is a public commitment the dashboard renders, so the bound
+/// lives on the wire type and only the sentence stays here. A report naming
+/// neither field cannot blame one, so it answers as malformed.
+const BOUNDS: Sentences = Sentences::new(
+    &[
+        (FIELD_PROVIDER, DETAIL_PROVIDER_LEN),
+        (FIELD_MODEL, DETAIL_MODEL_LEN),
+    ],
+    DETAIL_MALFORMED_JSON,
+);
 
 /// The path `garde` reports a provider-length break under.
 const FIELD_PROVIDER: &str = "provider";
+/// The path `garde` reports a model-length break under.
+const FIELD_MODEL: &str = "model";
 
 #[derive(Debug, PartialEq, Eq)]
 struct Validated<'a> {
@@ -231,7 +229,7 @@ fn request(body: &[u8]) -> Result<Validated<'_>, (error_code::ErrorCode, &'stati
         .map_err(|_error| (error_code::INVALID_REQUEST, DETAIL_MALFORMED_JSON))?;
     request
         .validate()
-        .map_err(|report| (error_code::INVALID_REQUEST, detail_for(&report)))?;
+        .map_err(|report| (error_code::INVALID_REQUEST, BOUNDS.pick(&report)))?;
     let source_workspace_id = Uuid7::parse(&request.source_workspace_id)
         .map_err(|_error| (error_code::INVALID_REQUEST, DETAIL_WORKSPACE_ID))?;
     afd_credential::provider::validate_endpoint_pair(
@@ -341,6 +339,6 @@ mod tests {
         // A report with nothing in it cannot name a field. `validate` never
         // produces one, so the default is driven directly: the fallback must
         // stay a refusal rather than a sentence blaming a field that passed.
-        assert_eq!(detail_for(&garde::Report::new()), DETAIL_MALFORMED_JSON);
+        assert_eq!(BOUNDS.pick(&garde::Report::new()), DETAIL_MALFORMED_JSON);
     }
 }
