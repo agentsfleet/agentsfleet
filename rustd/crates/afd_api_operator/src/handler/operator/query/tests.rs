@@ -134,6 +134,22 @@ fn the_fleet_filter_and_the_event_type_set_are_bounded() {
     assert_eq!(set(MAX_EVENT_TYPE_TOKENS + 1), Some(DETAIL_BAD_EVENTS));
 }
 
+/// A set far past its bound is cut while it is split: one token past the
+/// bound is all the refusal needs, so no more are ever collected.
+#[test]
+fn an_event_type_set_is_counted_while_it_is_split() {
+    /// Commas far past any set's bound, as one query string can carry them.
+    const FLOOD_COMMAS: usize = 100_000;
+    let flood = ",".repeat(FLOOD_COMMAS);
+    assert_eq!(split_tokens(&flood).len(), MAX_EVENT_TYPE_TOKENS + 1);
+    assert_eq!(
+        events(&HashMap::from([(QUERY_EVENT_TYPE.to_owned(), flood)])).err(),
+        Some(DETAIL_BAD_EVENTS)
+    );
+    let at_bound = ["runner_online"; MAX_EVENT_TYPE_TOKENS].join(",");
+    assert_eq!(split_tokens(&at_bound).len(), MAX_EVENT_TYPE_TOKENS);
+}
+
 /// A blank `?limit=` is the default page on all three lists.
 #[test]
 fn a_blank_limit_is_the_default_page() {

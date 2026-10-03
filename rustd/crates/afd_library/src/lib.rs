@@ -27,6 +27,7 @@ pub use catalogue::{
     PublicLibraryItem, SummaryEntry, Tier,
 };
 pub use error::{Error, InvalidBundle, Result};
+pub use frontmatter::MAX_SKILL_NAME_LEN;
 pub use github::{GithubSource, Repository, valid_revision};
 pub use model::{
     ImportBody, PreparedBundle, Requirements, SourceKind, SupportFile, SupportManifest,

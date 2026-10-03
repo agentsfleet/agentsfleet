@@ -31,6 +31,7 @@ const EVERY_SCOPE: ScopeSet = ScopeSet::from_scopes(&[
     Scope::FleetWrite,
     Scope::ApprovalRead,
     Scope::PlatformKeyAdmin,
+    Scope::PlatformLibraryWrite,
 ]);
 
 /// The malformed-request code.
@@ -44,6 +45,9 @@ const EVENT_ID_MAX_LEN: usize = 256;
 
 /// The longest provider a platform-key path may name.
 const KEY_PROVIDER_MAX_BYTES: usize = 32;
+
+/// The longest platform catalogue id: the bundle name it is keyed by.
+const CATALOG_ID_MAX_BYTES: usize = 64;
 
 /// The longest actor glob or prefix.
 const MAX_ACTOR_FILTER_BYTES: usize = 256;
@@ -119,6 +123,25 @@ async fn test_path_segments_are_bounded_on_their_path_type() {
         &format!("/v1/admin/platform-keys/{provider}"),
         INVALID_REQUEST,
         "provider must be 1–32 chars",
+    )
+    .await;
+
+    // A platform catalogue id is held to the bundle-name bound it is keyed by,
+    // on both verbs that name one.
+    let catalog = "n".repeat(CATALOG_ID_MAX_BYTES + 1);
+    for method in [Method::PATCH, Method::DELETE] {
+        assert_refused(
+            method,
+            &format!("/v1/admin/fleet-libraries/{catalog}"),
+            INVALID_REQUEST,
+            "catalog id must be 1-64 bytes",
+        )
+        .await;
+    }
+    let at_bound = "n".repeat(CATALOG_ID_MAX_BYTES);
+    assert_accepted(
+        Method::DELETE,
+        &format!("/v1/admin/fleet-libraries/{at_bound}"),
     )
     .await;
 }
