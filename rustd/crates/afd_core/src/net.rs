@@ -6,23 +6,27 @@
 //! both on one predicate is what stops the control-plane verdict and the
 //! data-plane enforcement from disagreeing.
 //!
-//! # The four ranges std does not answer, and why they are hand-written
+//! # The five ranges std does not answer, and why they are hand-written
 //!
 //! - `0.0.0.0/8` — `Ipv4Addr::is_unspecified` is `0.0.0.0` EXACTLY, and the
 //!   whole `/8` is blocked. One octet comparison.
 //! - `240.0.0.0/4` — reserved, not multicast, so `is_multicast` misses it.
 //!   Folded into one comparison with multicast and broadcast.
+//! - `100.64.0.0/10` — `Ipv4Addr::is_shared` is unstable. Tailscale numbers
+//!   its peers from this range and the dev runners sit on a tailnet, so a
+//!   tenant URL here would reach the operator's own machines. Alibaba Cloud's
+//!   metadata service is `100.100.100.200`.
 //! - `fc00::/7` — `Ipv6Addr::is_unique_local` is unstable.
 //! - `fe80::/10` — `Ipv6Addr::is_unicast_link_local` is unstable.
 //!
-//! Both IPv6 predicates are one masked comparison against the first segment.
+//! The shared range and both IPv6 predicates are one masked comparison each.
 //! When they stabilise these lines go away.
 //!
 //! # What is deliberately absent
 //!
-//! Documentation, shared-address and benchmarking ranges are globally
-//! unroutable but they are not a Server-Side Request Forgery target, and a
-//! tenant may legitimately front a real gateway inside one.
+//! Documentation and benchmarking ranges are globally unroutable but they are
+//! not a Server-Side Request Forgery target, and a tenant may legitimately
+//! front a real gateway inside one.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -32,6 +36,14 @@ const V4_UNSPECIFIED_BLOCK: u8 = 0;
 /// First octet at which IPv4 stops being unicast: multicast `224/4` through
 /// reserved `240/4` to the broadcast address.
 const V4_NON_UNICAST_FLOOR: u8 = 224;
+
+/// `100.64.0.0/10` shared address space: first octet, then the second octet
+/// masked and compared.
+const V4_SHARED_FIRST: u8 = 100;
+/// See [`V4_SHARED_FIRST`].
+const V4_SHARED_MASK: u8 = 0xc0;
+/// See [`V4_SHARED_FIRST`].
+const V4_SHARED_SECOND: u8 = 64;
 
 /// `fc00::/7` unique-local: first segment, masked and compared.
 const V6_UNIQUE_LOCAL_MASK: u16 = 0xfe00;
@@ -62,12 +74,14 @@ pub fn is_blocked(address: IpAddr) -> bool {
     }
 }
 
-/// Loopback, RFC1918, link-local, `0/8`, and everything from multicast up.
+/// Loopback, RFC1918, shared address space, link-local, `0/8`, and everything
+/// from multicast up.
 fn is_blocked_v4(address: Ipv4Addr) -> bool {
-    let first = address.octets()[0];
+    let [first, second, ..] = address.octets();
     address.is_loopback()
         || address.is_private()
         || address.is_link_local()
+        || (first == V4_SHARED_FIRST && second & V4_SHARED_MASK == V4_SHARED_SECOND)
         || first == V4_UNSPECIFIED_BLOCK
         || first >= V4_NON_UNICAST_FLOOR
 }
