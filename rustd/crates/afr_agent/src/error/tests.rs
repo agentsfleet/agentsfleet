@@ -27,8 +27,8 @@ fn should_carry_the_catalogs_code_and_tool_when_a_lease_is_refused() {
 }
 
 #[test]
-fn should_name_no_tool_when_the_executor_failed() {
-    let failure = Error::from(afr_executor::Error::from(std::io::Error::other("gone")));
+fn should_name_no_tool_when_a_checkpoint_failed() {
+    let failure = Error::checkpoint(afr_providers::Error::refused(503));
 
     assert_eq!(failure.code(), error_code::INTERNAL_OPERATION_FAILED);
     assert_eq!(failure.unhosted(), None);

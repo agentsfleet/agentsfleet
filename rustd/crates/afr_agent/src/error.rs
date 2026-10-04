@@ -35,11 +35,14 @@ pub(crate) enum ErrorKind {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    /// The sandbox's executor failed under a call the run made.
+    /// The sandbox's executor failed under a call the scripted engine made;
+    /// the loop routes no executor failure here, so only the lanes' engine
+    /// builds it.
+    #[cfg(feature = "test-util")]
     #[error("the executor failed")]
     Executor {
         /// The executor's failure.
-        #[from]
+        #[source]
         source: afr_executor::Error,
     },
 
@@ -86,9 +89,9 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
-            ErrorKind::Executor { .. } | ErrorKind::Scrub { .. } => {
-                error_code::INTERNAL_OPERATION_FAILED
-            }
+            ErrorKind::Scrub { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            #[cfg(feature = "test-util")]
+            ErrorKind::Executor { .. } => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::Checkpoint { code, .. } => *code,
             ErrorKind::Provider { source } => source.code(),
             ErrorKind::Tools { source } => source.code(),
@@ -102,9 +105,9 @@ impl Error {
         match self.kind() {
             ErrorKind::Tools { source } => source.unhosted_tool().map(Unhosted::Tool),
             ErrorKind::Provider { source } => source.unhosted_provider().map(Unhosted::Provider),
-            ErrorKind::Checkpoint { .. } | ErrorKind::Executor { .. } | ErrorKind::Scrub { .. } => {
-                None
-            }
+            ErrorKind::Checkpoint { .. } | ErrorKind::Scrub { .. } => None,
+            #[cfg(feature = "test-util")]
+            ErrorKind::Executor { .. } => None,
         }
     }
 }
