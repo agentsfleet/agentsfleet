@@ -22,6 +22,8 @@ mod wire;
 pub use self::connect::{Connect, Connector};
 pub use self::error::{Error, Result};
 pub use self::logs::log_filter;
-pub use self::provider::{Call, Chunk, End, Message, Provider, Replay, Request, Usage};
+pub use self::provider::{
+    Call, Chunk, End, Hosted, Message, Provider, Replay, Request, ToolSpec, Usage,
+};
 pub use self::registry::{ProviderSpec, Registry, Wire};
 pub use self::transport::REPLY_MAX_BYTES;

@@ -17,7 +17,6 @@ use crate::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStore};
 use crate::plan::UpdatePlan;
 use crate::pushover::Pushover;
 use crate::runtime::{Runtime, Tool};
-use crate::schema::ToolSpec;
 use crate::web_fetch::WebFetch;
 
 /// One published tool: its name and the runtime it executes in.
@@ -253,16 +252,9 @@ impl<'c> Selection<'c> {
         self.hosted.iter().any(|entry| entry.name == name)
     }
 
-    /// The function specs the model is offered, one per handler.
-    pub fn specs(&self) -> impl Iterator<Item = ToolSpec<'c>> + '_ {
-        self.tools.iter().copied().map(|tool| {
-            let schema = tool.schema();
-            ToolSpec {
-                name: tool.name(),
-                description: schema.description(),
-                parameters: schema.parameters(),
-            }
-        })
+    /// The handlers the lease was offered.
+    pub fn tools(&self) -> impl Iterator<Item = &'c dyn Tool> + '_ {
+        self.tools.iter().copied()
     }
 
     /// The provider-hosted tools offered.

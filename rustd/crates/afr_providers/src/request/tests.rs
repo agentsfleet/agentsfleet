@@ -5,14 +5,12 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use afr_tools::catalog::WEB_SEARCH;
-use afr_tools::{Entry, ToolSpec};
 use rig_core::completion::CompletionRequest;
 use rig_core::message::{AssistantContent, Message as RigMessage, UserContent};
 use serde_json::{Value, json};
 
 use super::request;
-use crate::provider::{Call, Message, Replay, Request};
+use crate::provider::{Call, Hosted, Message, Replay, Request, ToolSpec};
 use crate::registry::Wire;
 
 /// The model every turn here names.
@@ -72,7 +70,7 @@ fn built(
     wire: Wire,
     messages: &[Message],
     tools: &[ToolSpec<'_>],
-    hosted: &[&'static Entry],
+    hosted: &[Hosted],
 ) -> CompletionRequest {
     let turn = Request {
         model: MODEL,
@@ -224,7 +222,7 @@ fn should_offer_each_function_as_its_spec_describes_it() {
 #[test]
 fn should_offer_web_search_as_each_wire_spells_it_and_chat_not_at_all() {
     let hosted = |wire| {
-        let sent = built(wire, &conversation(), &[], &[&WEB_SEARCH]);
+        let sent = built(wire, &conversation(), &[], &[Hosted::WebSearch]);
         sent.additional_params.map(|params| params["tools"].clone())
     };
 
@@ -233,8 +231,8 @@ fn should_offer_web_search_as_each_wire_spells_it_and_chat_not_at_all() {
 
     assert_eq!(
         messages,
-        json!([{"type": "web_search_20250305", "name": WEB_SEARCH.name()}])
+        json!([{"type": "web_search_20250305", "name": Hosted::WebSearch.name()}])
     );
-    assert_eq!(responses, json!([{"type": WEB_SEARCH.name()}]));
+    assert_eq!(responses, json!([{"type": Hosted::WebSearch.name()}]));
     assert_eq!(hosted(Wire::Chat), None::<Value>);
 }

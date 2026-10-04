@@ -11,9 +11,9 @@ use afd_wire::memory::MemoryDelta;
 use afd_wire::policy::ExecutionPolicy;
 use afr_egress::Egress;
 use afr_memory::Hydrated;
-use afr_providers::{Call, Connect, Message, Provider, Replay, Request};
+use afr_providers::{Call, Connect, Hosted, Message, Provider, Replay, Request, ToolSpec};
 use afr_secrets::Scrub;
-use afr_tools::{Catalog, Lease, Selection, ToolSpec};
+use afr_tools::{Catalog, Lease, Selection};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
 
@@ -22,6 +22,7 @@ use crate::engine::{AgentEngine, AgentRun, Checkpoint, Meter, Needs, RunOutput};
 use crate::error::Result;
 use crate::events::Live;
 use crate::ledger::Ledger;
+use crate::offer;
 use crate::prompt::Prompt;
 use crate::router::{self, Router};
 use crate::spans;
@@ -87,9 +88,9 @@ struct Harness<'run> {
     stop: &'run CancellationToken,
     checkpoint: &'run dyn Checkpoint,
     checkpoints: Checkpoints,
-    selection: &'run Selection<'run>,
     router: Router<'run>,
     specs: Vec<ToolSpec<'run>>,
+    hosted: Vec<Hosted>,
     scrub: &'run Scrub,
     /// What every call of the lease shares, lent to one call at a time.
     lease: Lease<'run>,
@@ -113,9 +114,9 @@ impl<'run> Harness<'run> {
             stop: run.stop,
             checkpoint: run.checkpoint,
             checkpoints: Checkpoints::new(&policy.context),
-            selection,
             router: Router::new(selection, run.executor),
-            specs: selection.specs().collect(),
+            specs: offer::specs(selection),
+            hosted: offer::hosted(selection),
             scrub,
             lease: Lease::new(
                 Box::new(Hydrated::new(run.memory)),
@@ -211,7 +212,7 @@ impl<'run> Harness<'run> {
             instructions: &self.instructions,
             messages: &self.messages,
             tools: if capped { &[] } else { &self.specs },
-            hosted: if capped { &[] } else { self.selection.hosted() },
+            hosted: if capped { &[] } else { &self.hosted },
         };
         let span = spans::chat(self.model);
         let streamed = take(provider.stream(request), &mut self.live).instrument(span.clone());

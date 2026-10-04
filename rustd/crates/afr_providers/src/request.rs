@@ -9,8 +9,6 @@
 
 use std::collections::HashMap;
 
-use afr_tools::Entry;
-use afr_tools::catalog::WEB_SEARCH;
 use rig_core::completion::{CompletionRequest, ProviderToolDefinition, ToolDefinition};
 use rig_core::message::{
     AssistantContent, CallId, Message as RigMessage, ToolCall, ToolFunction, ToolName,
@@ -18,7 +16,7 @@ use rig_core::message::{
 };
 
 use crate::error::{Result, raise};
-use crate::provider::{Call, Message, Request};
+use crate::provider::{Call, Hosted, Message, Request};
 use crate::registry::Wire;
 
 /// Anthropic's server-side web search, as its tool spec names it.
@@ -42,7 +40,7 @@ pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionReq
         .hosted
         .iter()
         .copied()
-        .filter_map(|entry| hosted(wire, entry));
+        .filter_map(|tool| hosted(wire, tool));
     let mut built = CompletionRequest::new(RigMessage::user(String::new()));
     built.chat_history = history;
     Ok(built
@@ -54,17 +52,14 @@ pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionReq
 
 /// The wire's own spec for a hosted tool, when the wire offers one. Chat
 /// offers none: a stray call reaches the router, which refuses it with a code.
-fn hosted(wire: Wire, entry: &'static Entry) -> Option<ProviderToolDefinition> {
-    if entry != &WEB_SEARCH {
-        return None;
-    }
-    match wire {
-        Wire::Messages => Some(
+fn hosted(wire: Wire, tool: Hosted) -> Option<ProviderToolDefinition> {
+    match (tool, wire) {
+        (Hosted::WebSearch, Wire::Messages) => Some(
             ProviderToolDefinition::new(WEB_SEARCH_MESSAGES)
-                .with_config(FIELD_NAME, serde_json::Value::from(WEB_SEARCH.name())),
+                .with_config(FIELD_NAME, serde_json::Value::from(tool.name())),
         ),
-        Wire::Responses => Some(ProviderToolDefinition::new(WEB_SEARCH.name())),
-        Wire::Chat => None,
+        (Hosted::WebSearch, Wire::Responses) => Some(ProviderToolDefinition::new(tool.name())),
+        (Hosted::WebSearch, Wire::Chat) => None,
     }
 }
 

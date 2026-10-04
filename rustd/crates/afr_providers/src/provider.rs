@@ -9,11 +9,13 @@ use std::fmt;
 use std::ops::AddAssign;
 
 use afd_wire::activity::StreamTextKind;
-use afr_tools::{Entry, ToolSpec};
 use futures_util::stream::BoxStream;
 use rig_core::message::AssistantContent;
 
 use crate::error::Result;
+
+/// The name the provider's own web search is called by.
+const WEB_SEARCH: &str = "web_search";
 
 /// One tool call the model asked for.
 #[derive(Debug, Clone, PartialEq)]
@@ -76,6 +78,34 @@ pub enum Message {
     },
 }
 
+/// One tool as the model is offered it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ToolSpec<'a> {
+    /// The name the model calls it by.
+    pub name: &'a str,
+    /// What the tool does.
+    pub description: &'a str,
+    /// The arguments' JSON Schema.
+    pub parameters: &'a serde_json::Value,
+}
+
+/// A tool the provider runs itself, offered as the wire's own spec.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Hosted {
+    /// The provider's web search.
+    WebSearch,
+}
+
+impl Hosted {
+    /// The name the model calls it by.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::WebSearch => WEB_SEARCH,
+        }
+    }
+}
+
 /// What one turn asks the model.
 #[derive(Debug, Clone, Copy)]
 pub struct Request<'a> {
@@ -88,7 +118,7 @@ pub struct Request<'a> {
     /// The functions the model may call; empty once the context cap is reached.
     pub tools: &'a [ToolSpec<'a>],
     /// The provider-hosted tools offered, sent as the provider's own specs.
-    pub hosted: &'a [&'static Entry],
+    pub hosted: &'a [Hosted],
 }
 
 /// Tokens one turn spent, or a run summed over its turns.
