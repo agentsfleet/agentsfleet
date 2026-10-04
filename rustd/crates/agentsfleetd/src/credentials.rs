@@ -70,6 +70,17 @@ fn broker(platform: Platform) -> Arc<Broker> {
     ))
 }
 
+/// A broker minting through `exchanger`, for a test boot: the grant, the write
+/// gate and the vault still run, and only the vendor's token endpoint is
+/// replaced.
+#[cfg(feature = "test-util")]
+#[must_use]
+pub fn with_exchanger(
+    exchanger: Arc<dyn afd_credential::credential::Exchanger>,
+) -> Arc<Broker> {
+    Arc::new(Broker::new(Arc::new(Registry::default()), exchanger))
+}
+
 /// The client every refresh exchange is posted through.
 ///
 /// One client per outbound SURFACE, because that is what a connection pool is:

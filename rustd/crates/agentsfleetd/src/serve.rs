@@ -125,6 +125,24 @@ pub async fn boot<E: EnvSource + ?Sized>(
     }
 }
 
+/// [`boot`], with every credential minted through `exchanger` in place of the
+/// vendors' token endpoints: the lane's way to run a mint end to end without
+/// a GitHub App.
+///
+/// # Errors
+/// As [`boot`], without the failure report a production boot sends.
+#[cfg(feature = "test-util")]
+pub async fn boot_with_exchanger<E: EnvSource + ?Sized>(
+    env: &E,
+    port: u16,
+    supervisor: &mut Supervisor,
+    exchanger: std::sync::Arc<dyn afd_credential::credential::Exchanger>,
+) -> Result<Booted, BootFailure> {
+    let config = preflight(env)?.with_exchanger(exchanger);
+    let analytics = open_analytics(config.posthog()).await;
+    open(config, analytics, port, supervisor).await
+}
+
 /// The subcommand a boot failure names.
 const COMMAND_SERVE: &str = "serve";
 

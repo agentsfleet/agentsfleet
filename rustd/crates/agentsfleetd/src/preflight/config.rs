@@ -54,6 +54,9 @@ pub struct BootConfig {
     pub(super) sse_max_streams: usize,
     pub(super) posthog: Option<PostHogConfig>,
     pub(super) otlp: Option<super::OtlpConfig>,
+    /// A test boot's stand-in for the vendors' token endpoints.
+    #[cfg(feature = "test-util")]
+    pub(super) exchanger: Option<std::sync::Arc<dyn afd_credential::credential::Exchanger>>,
 }
 
 /// Where product events go, when this deployment sends any.
@@ -192,6 +195,25 @@ impl BootConfig {
     #[must_use]
     pub const fn platform_admin_workspace(&self) -> Option<&Uuid7> {
         self.platform_admin_workspace.as_ref()
+    }
+
+    /// The test boot's stand-in for the vendors' token endpoints, when it set
+    /// one.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn exchanger(&self) -> Option<std::sync::Arc<dyn afd_credential::credential::Exchanger>> {
+        self.exchanger.clone()
+    }
+
+    /// This config, minting through `exchanger` in place of the vendors.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn with_exchanger(
+        mut self,
+        exchanger: std::sync::Arc<dyn afd_credential::credential::Exchanger>,
+    ) -> Self {
+        self.exchanger = Some(exchanger);
+        self
     }
 
     /// This deployment's bearer for the external scheduler, when it has one.
