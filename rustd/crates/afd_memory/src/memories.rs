@@ -242,7 +242,10 @@ impl Memories {
     /// own store housekept.
     ///
     /// The store being left is written first, so a row a write puts in the
-    /// store being filled is already in the one being left.
+    /// store being filled is already in the one being left. A write that then
+    /// fails on a store it still had to reach marks the route it went
+    /// through, so the flip filling that store does not switch to it, and the
+    /// caller is told the write failed.
     ///
     /// No lock: a write that saw the route before a flip began finds the new
     /// route when it looks again, and writes the store it missed. Each write
@@ -257,22 +260,22 @@ impl Memories {
         let mut written: Vec<Arc<dyn MemoryStore>> = Vec::with_capacity(2);
         let answer = route.store.upsert(owner, entries, now).await?;
         written.push(Arc::clone(&route.store));
-        if let Some(mirror) = &route.mirror {
-            mirror.upsert(owner, entries, now).await?;
-            written.push(Arc::clone(mirror));
-        }
         loop {
+            for store in route.writers() {
+                if written.iter().any(|done| Arc::ptr_eq(done, store)) {
+                    continue;
+                }
+                store
+                    .upsert(owner, entries, now)
+                    .await
+                    .inspect_err(|_| route.miss())?;
+                written.push(Arc::clone(store));
+            }
             let current = self.routes().of(owner.workspace);
             if Arc::ptr_eq(&current, &route) {
                 return Ok(answer);
             }
             route = current;
-            for store in route.writers() {
-                if !written.iter().any(|done| Arc::ptr_eq(done, store)) {
-                    store.upsert(owner, entries, now).await?;
-                    written.push(Arc::clone(store));
-                }
-            }
         }
     }
 }

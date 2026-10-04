@@ -165,6 +165,10 @@ impl MemoryStore for PgStore {
         write::forget(self, owner, key).await
     }
 
+    async fn forget_stale(&self, owner: Owner<'_>, key: &str, seen_ms: i64) -> Result<bool> {
+        write::forget_stale(self, owner, key, seen_ms).await
+    }
+
     async fn export(&self, workspace: &Uuid7) -> Result<Vec<Record>> {
         read::export(self, workspace).await
     }

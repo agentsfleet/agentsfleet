@@ -142,3 +142,14 @@ pub(crate) const DELETE_ENTRY_BY_KEY: &str = "\
 DELETE FROM memory.memory_entries
 WHERE fleet_id = $1::uuid AND key = $2
 RETURNING key";
+
+/// Forget one key while its row is no newer than the version a flip's prune
+/// read: a write that replaced it since carries a later `updated_at` and
+/// stays.
+///
+/// `$1` fleet, `$2` key, `$3` the `updated_at` the prune read — unix
+/// milliseconds in a `BIGINT`, the unit [`IMPORT_ENTRY`] compares.
+pub(crate) const DELETE_STALE_ENTRY: &str = "\
+DELETE FROM memory.memory_entries
+WHERE fleet_id = $1::uuid AND key = $2 AND updated_at <= $3
+RETURNING key";

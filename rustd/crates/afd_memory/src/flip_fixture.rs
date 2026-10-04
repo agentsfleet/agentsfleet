@@ -1,6 +1,8 @@
-//! The store the flip suites rig: in memory, refusing one import, or holding
-//! one verb until the suite releases it.
+//! The store the flip suites rig: in memory, over rows another rigged store
+//! may share, refusing one kind of call, or holding one verb until the suite
+//! releases it.
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use afd_core::clock::UnixMillis;
@@ -11,7 +13,7 @@ use tokio::sync::Notify;
 use crate::error::Result;
 use crate::page::{After, View};
 use crate::record::{Housekept, Owner, Record};
-use crate::{InMemory, MemoryStore};
+use crate::{Error, InMemory, MemoryStore};
 
 /// The verb a [`Rigged`] store holds the first time it is called, until
 /// released, having said so on `reached`: an export once it has its snapshot,
@@ -21,16 +23,26 @@ pub(super) enum Hold {
     Nothing,
     Export,
     Upsert,
-    Forget,
+    /// A flip's prune deleting the version it read.
+    ForgetStale,
     Import,
 }
 
-/// An in-memory store rigged to fail one import, or to hold one verb.
+/// The call a [`Rigged`] store refuses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Refuse {
+    Nothing,
+    /// The import counted this far, from one.
+    Import(usize),
+    /// Every upsert.
+    Upsert,
+}
+
+/// An in-memory store rigged to refuse a call, or to hold one verb.
 #[derive(Debug)]
 pub(super) struct Rigged {
-    pub(super) inner: InMemory,
-    /// The import to refuse, counted from one.
-    fails_on: Option<usize>,
+    pub(super) inner: Arc<InMemory>,
+    refuses: Refuse,
     imported: AtomicUsize,
     holds: Hold,
     /// Whether the held verb has been held: it is held once.
@@ -40,10 +52,16 @@ pub(super) struct Rigged {
 }
 
 impl Rigged {
-    pub(super) fn new(name: &'static str, fails_on: Option<usize>, holds: Hold) -> Self {
+    pub(super) fn new(name: &'static str, refuses: Refuse, holds: Hold) -> Self {
+        Self::sharing(&Arc::new(InMemory::new(name)), refuses, holds)
+    }
+
+    /// Another store object over `inner`'s rows: the same rows, a different
+    /// identity.
+    pub(super) fn sharing(inner: &Arc<InMemory>, refuses: Refuse, holds: Hold) -> Self {
         Self {
-            inner: InMemory::new(name),
-            fails_on,
+            inner: Arc::clone(inner),
+            refuses,
             imported: AtomicUsize::new(0),
             holds,
             spent: AtomicBool::new(false),
@@ -57,6 +75,10 @@ impl Rigged {
             self.reached.notify_one();
             self.release.notified().await;
         }
+    }
+
+    fn refusal(&self) -> Error {
+        Error::refused(self.inner.name())
     }
 }
 
@@ -77,6 +99,9 @@ impl MemoryStore for Rigged {
         now: UnixMillis,
     ) -> Result<Housekept> {
         self.hold(Hold::Upsert).await;
+        if self.refuses == Refuse::Upsert {
+            return Err(self.refusal());
+        }
         self.inner.upsert(owner, entries, now).await
     }
 
@@ -102,8 +127,12 @@ impl MemoryStore for Rigged {
     }
 
     async fn forget(&self, owner: Owner<'_>, key: &str) -> Result<bool> {
-        self.hold(Hold::Forget).await;
         self.inner.forget(owner, key).await
+    }
+
+    async fn forget_stale(&self, owner: Owner<'_>, key: &str, seen_ms: i64) -> Result<bool> {
+        self.hold(Hold::ForgetStale).await;
+        self.inner.forget_stale(owner, key, seen_ms).await
     }
 
     async fn export(&self, workspace: &Uuid7) -> Result<Vec<Record>> {
@@ -114,8 +143,8 @@ impl MemoryStore for Rigged {
 
     async fn import(&self, workspace: &Uuid7, record: &Record) -> Result<()> {
         let nth = self.imported.fetch_add(1, Ordering::SeqCst) + 1;
-        if self.fails_on == Some(nth) {
-            return Err(crate::Error::refused(self.inner.name()));
+        if self.refuses == Refuse::Import(nth) {
+            return Err(self.refusal());
         }
         self.hold(Hold::Import).await;
         self.inner.import(workspace, record).await

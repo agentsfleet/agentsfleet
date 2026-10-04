@@ -1,6 +1,7 @@
 //! Dimensions 2.1–2.3: a flip copies every entry, a flip onto the store it is
-//! on keeps them all, a failed copy keeps the old store, and a push racing the
-//! copy reaches both stores.
+//! on keeps them all, a failed copy keeps the old store, a push racing the
+//! copy reaches both stores, and a push the new store refuses keeps the flip
+//! from switching to it.
 //!
 //! Against the in-memory store, so the interleaving is the test's to force: a
 //! store that holds one verb pins the flip at the exact point a push has to
@@ -20,8 +21,9 @@ use afd_core::test_util::trace::Capture;
 use afd_db::test_util::unreachable_db;
 use afd_wire::memory::{MemoryDelta, Visibility};
 
-use self::fixture::{Hold, Rigged};
+use self::fixture::{Hold, Refuse, Rigged};
 use super::EVENT_FAILED;
+use crate::error::detail::{MISSED_WRITE, STORE_REFUSED};
 use crate::record::{Owner, Record};
 use crate::{Flipped, InMemory, Memories, MemoryStore};
 
@@ -44,6 +46,8 @@ const TARGET: &str = "target";
 const SEEDED_AT: i64 = 1_760_000_000_000;
 /// A later instant, for the push that races the copy.
 const PUSHED_AT: i64 = SEEDED_AT + 60_000;
+/// The seeded key that push writes again.
+const RACED: &str = "k00";
 /// The import the failing target refuses, counted from one.
 const FAILS_ON: usize = 5;
 /// The field a failure's log line carries its registry code in.
@@ -166,7 +170,7 @@ async fn test_failed_flip_keeps_the_old_store() {
     let source = Arc::new(InMemory::new(SOURCE));
     seeded(&source).await;
     let before = rows(source.as_ref()).await;
-    let target = Arc::new(Rigged::new(TARGET, Some(FAILS_ON), Hold::Nothing));
+    let target = Arc::new(Rigged::new(TARGET, Refuse::Import(FAILS_ON), Hold::Nothing));
     let memories = Memories::over(
         unreachable_db(),
         Arc::<_>::clone(&source) as Arc<dyn MemoryStore>,
@@ -202,13 +206,13 @@ async fn test_push_during_flip_reaches_both_stores() {
     let source = Arc::new(InMemory::new(SOURCE));
     seeded(&source).await;
     // Held at its first import, by when the copy has its snapshot.
-    let target = Arc::new(Rigged::new(TARGET, None, Hold::Import));
+    let target = Arc::new(Rigged::new(TARGET, Refuse::Nothing, Hold::Import));
     let memories = Memories::over(
         unreachable_db(),
         Arc::<_>::clone(&source) as Arc<dyn MemoryStore>,
     );
     let (workspace, fleet) = (id(WORKSPACE), id(FLEETS[0]));
-    let raced = delta("k00", Visibility::Workspace);
+    let raced = delta(RACED, Visibility::Workspace);
 
     let push = async {
         // The copy holds `k00` as seeded in its snapshot when this write lands.
@@ -231,11 +235,11 @@ async fn test_push_during_flip_reaches_both_stores() {
     flipped.expect("the flip completes around the push");
 
     // The target read through its inner store, past its hold.
-    for store in [source.as_ref() as &dyn MemoryStore, &target.inner] {
+    for store in [source.as_ref() as &dyn MemoryStore, target.inner.as_ref()] {
         let landed = rows(store)
             .await
             .into_iter()
-            .find(|row| row.written_by(&fleet) && row.key == "k00")
+            .find(|row| row.written_by(&fleet) && row.key == RACED)
             .expect("the pushed key is in both stores");
         assert_eq!(
             landed.updated_at_ms,
@@ -244,4 +248,50 @@ async fn test_push_during_flip_reaches_both_stores() {
             store.name()
         );
     }
+}
+
+#[tokio::test]
+async fn test_a_flip_does_not_switch_to_a_store_a_write_missed() {
+    let source = Arc::new(InMemory::new(SOURCE));
+    seeded(&source).await;
+    // Held at its first import, and refusing every write.
+    let target = Arc::new(Rigged::new(TARGET, Refuse::Upsert, Hold::Import));
+    let memories = Memories::over(
+        unreachable_db(),
+        Arc::<_>::clone(&source) as Arc<dyn MemoryStore>,
+    );
+    let (workspace, fleet) = (id(WORKSPACE), id(FLEETS[0]));
+    let raced = delta(RACED, Visibility::Workspace);
+    let push = async {
+        // The copy has its snapshot; this write reaches the source, then not
+        // the target.
+        target.reached.notified().await;
+        let owner = Owner {
+            workspace: &workspace,
+            fleet: &fleet,
+        };
+        let at = UnixMillis::from_millis(PUSHED_AT);
+        let pushed = memories.upsert_through(owner, &[&raced], at).await;
+        target.release.notify_one();
+        pushed
+    };
+
+    let to = Arc::<_>::clone(&target) as Arc<dyn MemoryStore>;
+    let (flipped, pushed) = tokio::join!(memories.flip(&workspace, to), push);
+
+    let missed = pushed.expect_err("a write the new store refuses fails");
+    let told = (missed.code(), missed.detail());
+    assert_eq!(told, (MEM_UNAVAILABLE, STORE_REFUSED), "and says so");
+    let refused = flipped.expect_err("the flip does not switch to a store it missed");
+    let answer = (refused.code(), refused.detail());
+    assert_eq!(answer, (MEM_UNAVAILABLE, MISSED_WRITE));
+    let route = memories.routes().of(&workspace);
+    let stayed = (route.store.name(), route.mirror.is_none());
+    assert_eq!(stayed, (SOURCE, true), "the workspace stays on the source");
+    let held = rows(source.as_ref())
+        .await
+        .into_iter()
+        .find(|row| row.written_by(&fleet) && row.key == RACED)
+        .map(|row| row.updated_at_ms);
+    assert_eq!(held, Some(PUSHED_AT), "which holds the write");
 }

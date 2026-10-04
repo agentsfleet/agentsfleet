@@ -13,6 +13,8 @@ mod workspace;
 mod integration_flip;
 #[path = "integration_migration.rs"]
 mod integration_migration;
+#[path = "integration_prune.rs"]
+mod integration_prune;
 #[path = "integration_refusal.rs"]
 mod integration_refusal;
 #[path = "integration_shared.rs"]

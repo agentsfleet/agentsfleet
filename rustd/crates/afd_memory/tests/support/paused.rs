@@ -1,5 +1,6 @@
-//! An in-memory store that holds one verb until the suite releases it, so a
-//! flip can land at the exact point a capture, a forget or a copy is waiting.
+//! A store that holds one verb until the suite releases it, so a flip can land
+//! at the exact point a capture, a forget, a copy or a prune is waiting. It
+//! wraps the in-memory store, or any other: the live suite wraps Postgres.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -16,13 +17,15 @@ pub(crate) enum Verb {
     Export,
     Upsert,
     Forget,
+    /// A flip's prune deleting the version it read.
+    ForgetStale,
 }
 
-/// An in-memory store whose `holds` verb waits on `release` the first time it
-/// is called, having said so on `reached`.
+/// A store whose `holds` verb waits on `release` the first time it is called,
+/// having said so on `reached`.
 #[derive(Debug)]
-pub(crate) struct Paused {
-    pub(crate) inner: InMemory,
+pub(crate) struct Paused<S = InMemory> {
+    pub(crate) inner: S,
     holds: Verb,
     /// Whether the held verb has been held: a flip exports twice, to prune
     /// and to copy, and only the first waits.
@@ -33,8 +36,14 @@ pub(crate) struct Paused {
 
 impl Paused {
     pub(crate) fn new(name: &'static str, holds: Verb) -> Self {
+        Self::over(InMemory::new(name), holds)
+    }
+}
+
+impl<S> Paused<S> {
+    pub(crate) fn over(inner: S, holds: Verb) -> Self {
         Self {
-            inner: InMemory::new(name),
+            inner,
             holds,
             spent: AtomicBool::new(false),
             reached: Notify::new(),
@@ -51,7 +60,7 @@ impl Paused {
 }
 
 #[async_trait::async_trait]
-impl MemoryStore for Paused {
+impl<S: MemoryStore> MemoryStore for Paused<S> {
     fn name(&self) -> &'static str {
         self.inner.name()
     }
@@ -94,6 +103,11 @@ impl MemoryStore for Paused {
     async fn forget(&self, owner: Owner<'_>, key: &str) -> Result<bool> {
         self.hold(Verb::Forget).await;
         self.inner.forget(owner, key).await
+    }
+
+    async fn forget_stale(&self, owner: Owner<'_>, key: &str, seen_ms: i64) -> Result<bool> {
+        self.hold(Verb::ForgetStale).await;
+        self.inner.forget_stale(owner, key, seen_ms).await
     }
 
     async fn export(&self, workspace: &Uuid7) -> Result<Vec<Record>> {

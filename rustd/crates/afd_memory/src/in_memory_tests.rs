@@ -278,3 +278,28 @@ async fn a_forget_removes_only_the_owners_entry_and_answers_whether_it_held_one(
         "the other fleet's entry under the key stays"
     );
 }
+
+#[tokio::test]
+async fn a_stale_forget_spares_a_newer_row_and_takes_one_at_or_under_its_bound() {
+    let store = InMemory::new("stale");
+    let filed = [
+        note(ALPHA, REGION, PINNED_CATEGORY, Visibility::Fleet),
+        note(BETA, REGION, PINNED_CATEGORY, Visibility::Fleet),
+    ];
+    write(&store, OWN, &filed, 0).await;
+    write(&store, OTHER, &filed, 0).await;
+    let (workspace, own) = (id(WORKSPACE), id(OWN));
+    let owner = own_owner(&workspace, &own);
+
+    let removed = [
+        store.forget_stale(owner, ALPHA, AT - 1).await,
+        store.forget_stale(owner, ALPHA, AT).await,
+        store.forget_stale(owner, BETA, AT + 1).await,
+    ]
+    .map(|answer| answer.expect("a stale forget"));
+
+    assert_eq!(removed, [false, true, true], "newer stays; at and under go");
+    let left = store.export(&workspace).await.expect("an export");
+    let writers: Vec<_> = left.iter().map(|row| row.fleet.as_str()).collect();
+    assert_eq!(writers, [OTHER, OTHER], "the other fleet's rows stay");
+}

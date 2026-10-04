@@ -1,5 +1,6 @@
 //! The Postgres store's writes: a push's upsert with its sweep and cap, a
-//! flip's newer-row-wins import, and the operator's forget.
+//! flip's newer-row-wins import and its version-bounded prune, and the
+//! operator's forget.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -17,6 +18,7 @@ const CONTEXT_UPSERT: &str = "memory upsert";
 const CONTEXT_EVICT: &str = "memory cap evict";
 const CONTEXT_SWEEP: &str = "memory daily sweep";
 const CONTEXT_IMPORT: &str = "memory import";
+const CONTEXT_PRUNE: &str = "memory prune";
 
 /// Upserts `entries`, then sweeps and caps, in one transaction.
 ///
@@ -109,6 +111,29 @@ pub(super) async fn forget(store: &PgStore, owner: Owner<'_>, key: &str) -> Resu
                 .await
                 .map_err(|source| failure.raise(source))?;
             Ok(forgotten.is_some())
+        })
+        .await
+}
+
+/// Removes the fleet's entry under `key` while it is no newer than `seen_ms`;
+/// whether there was one. Commits before answering, as [`forget`] does.
+pub(super) async fn forget_stale(
+    store: &PgStore,
+    owner: Owner<'_>,
+    key: &str,
+    seen_ms: i64,
+) -> Result<bool> {
+    let failure = Failure::Runner(CONTEXT_PRUNE);
+    store
+        .as_memory_role(failure, async |connection| {
+            let removed = sqlx::query(sql::DELETE_STALE_ENTRY)
+                .bind(owner.fleet.as_str())
+                .bind(key)
+                .bind(seen_ms)
+                .fetch_optional(&mut *connection)
+                .await
+                .map_err(|source| failure.raise(source))?;
+            Ok(removed.is_some())
         })
         .await
 }

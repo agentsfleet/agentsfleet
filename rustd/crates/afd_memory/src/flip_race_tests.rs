@@ -23,7 +23,9 @@ use afd_db::test_util::unreachable_db;
 use afd_wire::memory::Visibility;
 use tracing::Level;
 
-use super::{FLEETS, Hold, PUSHED_AT, Rigged, SOURCE, TARGET, WORKSPACE, delta, id, rows, seeded};
+use super::{
+    FLEETS, Hold, PUSHED_AT, Refuse, Rigged, SOURCE, TARGET, WORKSPACE, delta, id, rows, seeded,
+};
 use crate::error::detail::MOVING;
 use crate::flip::{EVENT_COMPLETED, EVENT_FAILED};
 use crate::record::Owner;
@@ -46,7 +48,7 @@ type Verdict = Result<usize, &'static str>;
 
 /// A table over a source store that holds its first export until released.
 fn held() -> (Arc<Rigged>, Memories) {
-    let source = Arc::new(Rigged::new(SOURCE, None, Hold::Export));
+    let source = Arc::new(Rigged::new(SOURCE, Refuse::Nothing, Hold::Export));
     let store = Arc::<Rigged>::clone(&source) as Arc<dyn MemoryStore>;
     (source, Memories::over(unreachable_db(), store))
 }
@@ -153,14 +155,12 @@ async fn a_flip_dropped_before_it_switches_puts_the_workspace_back_and_takes_the
 #[tokio::test]
 async fn a_flipping_write_reaches_the_store_being_left_before_the_store_being_filled() {
     let source = Arc::new(InMemory::new(SOURCE));
-    let target = Arc::new(Rigged::new(TARGET, None, Hold::Upsert));
+    let target = Arc::new(Rigged::new(TARGET, Refuse::Nothing, Hold::Upsert));
     let left = Arc::<InMemory>::clone(&source) as Arc<dyn MemoryStore>;
     let memories = Memories::over(unreachable_db(), Arc::clone(&left));
     let (workspace, fleet) = (id(WORKSPACE), id(FLEETS[0]));
-    let copying = Arc::new(Route {
-        store: left,
-        mirror: Some(Arc::<Rigged>::clone(&target) as Arc<dyn MemoryStore>),
-    });
+    let filled = Arc::<Rigged>::clone(&target) as Arc<dyn MemoryStore>;
+    let copying = Arc::new(Route::copying(left, filled));
     let settled = memories.routes().of(&workspace);
     assert!(memories.routes().swap(&workspace, &settled, &copying));
     let order: Vec<_> = copying.writers().map(|store| store.name()).collect();
@@ -188,7 +188,7 @@ async fn a_flipping_write_reaches_the_store_being_left_before_the_store_being_fi
     written.expect("the write is taken");
     assert_eq!(held_first, 1, "the store being left held it first");
     assert_eq!(
-        rows(&target.inner).await.len(),
+        rows(target.inner.as_ref()).await.len(),
         1,
         "then the one being filled"
     );
