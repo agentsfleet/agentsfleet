@@ -99,7 +99,9 @@ impl Handler for Pushover {
         };
         let (token, user) = match (credential(FIELD_TOKEN), credential(FIELD_USER)) {
             (Ok(token), Ok(user)) => (token, user),
-            (Err(missing), _) | (_, Err(missing)) => return egress::refused(Self::ENTRY, &missing),
+            (Err(missing), _) | (_, Err(missing)) => {
+                return egress::refused(Self::ENTRY, context.lease.egress.lease_id(), &missing);
+            }
         };
         let body = Body {
             token,

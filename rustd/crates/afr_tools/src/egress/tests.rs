@@ -14,7 +14,7 @@ fn should_hand_every_refusal_back_as_an_error_under_its_own_code() {
             .refusal()
             .map_or(ToolErrorCode::UpstreamUnreachable, ToolErrorCode::from);
 
-        let output = refused(&HTTP_REQUEST, &failure);
+        let output = refused(&HTTP_REQUEST, "lease-1", &failure);
 
         assert_eq!(output.error_code, Some(code), "{name}");
         assert_eq!(

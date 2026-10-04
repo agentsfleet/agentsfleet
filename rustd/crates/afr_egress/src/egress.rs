@@ -46,29 +46,32 @@ const CLOSED_MINT: &str = "this run mints no credential";
 /// What every call of one lease sends through.
 #[derive(Debug)]
 pub struct Egress<'run> {
+    lease_id: &'run str,
     admission: Admission<'run>,
     vault: Vault<'run>,
 }
 
 impl<'run> Egress<'run> {
-    /// The guard for a lease under `policy`, minting through `mint`, its
-    /// minted tokens expiring against `clock`.
+    /// The guard for lease `lease_id` under `policy`, minting through
+    /// `mint`, its minted tokens expiring against `clock`.
     #[must_use]
     pub fn new(
+        lease_id: &'run str,
         policy: &'run ExecutionPolicy<'run>,
         mint: &'run dyn Mint,
         clock: &'run dyn Clock,
     ) -> Self {
         Self {
+            lease_id,
             admission: Admission::new(policy),
-            vault: Vault::new(mint, clock),
+            vault: Vault::new(lease_id, mint, clock),
         }
     }
 
     /// A guard that admits nothing.
     #[must_use]
     pub fn closed() -> Egress<'static> {
-        Egress::new(&CLOSED, &Closed, &SystemClock)
+        Egress::new("", &CLOSED, &Closed, &SystemClock)
     }
 
     /// `draft`, admitted and with its credentials in place, ready for a
@@ -86,6 +89,12 @@ impl<'run> Egress<'run> {
             headers,
             body: admitted.body,
         })
+    }
+
+    /// The lease this guard belongs to, for the lines its tools log.
+    #[must_use]
+    pub const fn lease_id(&self) -> &'run str {
+        self.lease_id
     }
 
     /// `text` with every token this lease minted masked.

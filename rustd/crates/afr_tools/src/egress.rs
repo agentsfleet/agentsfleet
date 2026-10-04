@@ -55,11 +55,11 @@ pub(crate) async fn send(
         .egress
         .prepare(draft)
         .await
-        .map_err(|failure| refused(entry, &failure))?;
+        .map_err(|failure| refused(entry, lease.egress.lease_id(), &failure))?;
     let mut inbound = transport
         .send(outbound)
         .await
-        .map_err(|failure| refused(entry, &failure))?;
+        .map_err(|failure| refused(entry, lease.egress.lease_id(), &failure))?;
     inbound.body = masked(lease, inbound.body);
     Ok(inbound)
 }
@@ -85,16 +85,16 @@ pub(crate) fn answered(status: u16, text: String) -> ToolOutput {
 }
 
 /// A refusal as the model reads it, its code first and its sentence after,
-/// logged as `tool_refused`. A client that was never built sends nothing, so
-/// it reads as a request that got no answer.
-pub(crate) fn refused(entry: &Entry, failure: &Error) -> ToolOutput {
+/// logged as `tool_refused` under lease `lease_id`. A client that was never
+/// built sends nothing, so it reads as a request that got no answer.
+pub(crate) fn refused(entry: &Entry, lease_id: &str, failure: &Error) -> ToolOutput {
     let code = failure
         .refusal()
         .map_or(ToolErrorCode::UpstreamUnreachable, ToolErrorCode::from);
     let tool = entry.name();
     let error_code = code.as_str();
     let event = EVENT_TOOL_REFUSED;
-    tracing::info!(tool, error_code, event);
+    tracing::info!(lease_id, tool, error_code, event);
     ToolOutput::failed(code, &failure.detail())
 }
 
