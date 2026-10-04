@@ -61,7 +61,7 @@ use crate::e2e_seed_keys::seed_provider_key;
 use crate::support::{IDENTITY, SESSION_PEPPER, install_subscriber};
 
 /// Where the lane publishes the Postgres it brought up.
-const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
+pub(crate) const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
 /// Where the lane publishes the TLS Dragonfly it brought up.
 const DRAGONFLY_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
@@ -74,7 +74,7 @@ const DRAGONFLY_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 /// Bind-and-hold: `boot` binds the listener itself and reports the address it
 /// got, so no test allocates a number, closes it, and races another test to
 /// re-bind it.
-const EPHEMERAL: u16 = 0;
+pub(crate) const EPHEMERAL: u16 = 0;
 
 /// Sixty-four hex characters. Boot validates the key; nothing here decrypts.
 pub(crate) const GOOD_KEK: &str =
@@ -94,7 +94,7 @@ pub(crate) const GOOD_KEK: &str =
 /// Minted identifiers cannot fix this. They keep the ROWS apart in Postgres;
 /// the queue is one key and the group is one group. The lock is held by the
 /// `Scenario` itself, so exclusivity is not something a test has to remember.
-static READY_STREAM: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+pub(crate) static READY_STREAM: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 static SEQUENCE: AtomicU32 = AtomicU32::new(0);
 
@@ -124,7 +124,7 @@ pub(crate) const EVENT_TYPE: EventType = EventType::Chat;
 pub(crate) const REQUEST_JSON: &str = r#"{"prompt":"fixture"}"#;
 
 /// Reads a lane knob, failing with the command that sets it.
-fn lane(knob: &str) -> String {
+pub(crate) fn lane(knob: &str) -> String {
     std::env::var(knob).unwrap_or_else(|_unset| {
         panic!("{knob} is unset — run these through `make test-integration-rustd`")
     })
@@ -137,7 +137,7 @@ fn lane(knob: &str) -> String {
 /// the daemon against a database it created, so the two cannot be the same
 /// value and passing the knob would silently restore the shared-state bug the
 /// module documentation describes.
-fn daemon_environment(database: &str, provider_base: Option<&str>) -> MapEnv {
+pub(crate) fn daemon_environment(database: &str, provider_base: Option<&str>) -> MapEnv {
     MapEnv::from_pairs(
         [
             ("DATABASE_URL_API", database),
@@ -182,7 +182,7 @@ pub(crate) fn dragonfly_config() -> afd_dragonfly::DragonflyConfig {
 /// Process id and a counter, in a version-7 spelling because every one of these
 /// columns CHECKs the version nibble — a random UUID is refused by the schema
 /// rather than by the code under test.
-fn unique_ids() -> (String, String, String) {
+pub(crate) fn unique_ids() -> (String, String, String) {
     let run = SEQUENCE.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
     let id = |slot: u32| format!("0195b4ba-8d3a-7{run:03x}-8abc-{pid:08x}{slot:04x}");
@@ -217,13 +217,13 @@ pub(crate) struct Scenario {
     pub(crate) seeded_at: UnixMillis,
     /// This scenario's hold on the platform default, released after the daemon
     /// above has stopped and before the stream guard below.
-    _default: afd_db::test_util::PlatformDefault,
+    pub(crate) _default: afd_db::test_util::PlatformDefault,
     /// Exclusive use of the ready stream, for as long as this scenario lives.
     ///
     /// Last field, so it is released only after the daemon above has been
     /// dropped and stopped polling — a guard freed while a daemon still reads
     /// the group would hand the next scenario a competitor.
-    _exclusive: tokio::sync::MutexGuard<'static, ()>,
+    pub(crate) _exclusive: tokio::sync::MutexGuard<'static, ()>,
 }
 
 /// Boots the daemon and seeds one funded fleet with one event and one runner.

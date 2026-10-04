@@ -75,9 +75,7 @@ fn broker(platform: Platform) -> Arc<Broker> {
 /// replaced.
 #[cfg(feature = "test-util")]
 #[must_use]
-pub fn with_exchanger(
-    exchanger: Arc<dyn afd_credential::credential::Exchanger>,
-) -> Arc<Broker> {
+pub fn with_exchanger(exchanger: Arc<dyn afd_credential::credential::Exchanger>) -> Arc<Broker> {
     Arc::new(Broker::new(Arc::new(Registry::default()), exchanger))
 }
 
