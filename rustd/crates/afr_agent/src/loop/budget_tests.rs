@@ -192,7 +192,10 @@ async fn test_meter_holds_what_the_report_sums() {
     let usage = meter.read();
     assert_eq!((usage.input, usage.cached_input, usage.output), (15, 2, 6));
     assert_eq!(output.result.token_count, usage.total());
-    assert!(!frames.taken().is_empty(), "the run streamed its call and answer");
+    assert!(
+        !frames.taken().is_empty(),
+        "the run streamed its call and answer"
+    );
 }
 
 #[tokio::test]

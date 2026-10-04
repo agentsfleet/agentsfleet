@@ -7,8 +7,10 @@ use afd_core::error_code;
 use afd_wire::report::FailureClass;
 use http::StatusCode;
 use rig_core::ProviderError;
+use rig_core::http_client as rig_http;
 
 use super::{Error, raise};
+use crate::transport::Oversize;
 
 #[test]
 fn should_name_a_refusals_status_in_its_detail_with_no_class() {
@@ -122,5 +124,24 @@ fn should_name_a_reply_the_wire_could_not_read_the_fleets_error_with_its_cause()
     assert!(
         std::error::Error::source(&unread).is_some(),
         "rig's reason, kept"
+    );
+}
+
+#[test]
+fn should_name_a_reply_past_the_cap_the_fleets_error_and_never_reopen_it() {
+    let failure = || ProviderError::from_transport_error(rig_http::Error::instance(Oversize));
+    let reset = ProviderError::from_transport_error(rig_http::Error::instance(
+        std::io::Error::other("reset"),
+    ));
+
+    let oversized = raise::provider(failure());
+
+    assert!(raise::oversize(&failure()));
+    assert!(!raise::oversize(&reset), "a reset is lost, not oversized");
+    assert_eq!(oversized.failure_class(), None);
+    assert_eq!(oversized.detail(), Oversize.to_string());
+    assert_eq!(
+        raise::provider(reset).failure_class(),
+        Some(FailureClass::TransportLoss)
     );
 }

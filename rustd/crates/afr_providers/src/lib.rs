@@ -24,3 +24,4 @@ pub use self::error::{Error, Result};
 pub use self::logs::log_filter;
 pub use self::provider::{Call, Chunk, End, Message, Provider, Replay, Request, Usage};
 pub use self::registry::{ProviderSpec, Registry, Wire};
+pub use self::transport::REPLY_MAX_BYTES;

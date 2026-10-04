@@ -5,14 +5,16 @@
 //! and the bounded retry around every send, so rig never sees a failure a
 //! second send could fix and the key never reaches a host the lease was not
 //! admitted for. A refusal is handed back as it arrived, so rig keeps its
-//! status, its headers and the provider's own error code.
+//! status, its headers and the provider's own error code. Every reply is read
+//! under [`REPLY_MAX_BYTES`]: past it the read ends on [`Oversize`], so one
+//! endpoint cannot grow a shared runner's memory with one turn.
 
 use std::fmt;
 use std::sync::Arc;
 
 use afd_core::clock::saturating_millis;
-use bytes::Bytes;
-use futures_util::TryStreamExt as _;
+use bytes::{Bytes, BytesMut};
+use futures_util::{Stream, StreamExt as _, TryStreamExt as _};
 use rig_core::http_client::{
     self as rig_http, BoxedStream, HttpClientExt, LazyBody, MultipartForm, Request, Response,
     StreamingResponse,
@@ -25,6 +27,23 @@ use crate::retry::{self, Retrying};
 const EVENT_RETRY: &str = "provider_retry";
 /// Why a multipart send is refused: no wire this runner speaks uploads files.
 const NO_MULTIPART: &str = "the model providers' transport sends no multipart body";
+
+/// The most bytes one reply may carry: one turn, framed as its wire frames it.
+///
+/// A Responses or Chat turn names no output limit and frames a token or two
+/// in a few hundred bytes of event, so this holds a reply of about a hundred
+/// thousand tokens.
+pub const REPLY_MAX_BYTES: usize = 32 * 1024 * 1024;
+
+/// The read's refusal of a reply past [`REPLY_MAX_BYTES`], which the turn
+/// reads back out of rig's error so the reply is never asked for again.
+#[derive(Debug, thiserror::Error)]
+#[error("the model provider's reply passed {} bytes", REPLY_MAX_BYTES)]
+pub(crate) struct Oversize;
+
+/// Why a reply could not be read: the transport's error, or [`Oversize`].
+/// Boxed, as rig boxes it, and lifted into rig's error at the seam.
+type Unread = Box<dyn std::error::Error + Send + Sync>;
 
 /// One lease's transport: the shared client, and whose sends it is making.
 #[derive(Clone)]
@@ -98,6 +117,34 @@ fn head(response: &reqwest::Response) -> http::response::Builder {
     builder
 }
 
+/// `response`'s body as it arrives, ended on [`Oversize`] once it has
+/// carried more than `cap` bytes.
+fn capped(
+    response: reqwest::Response,
+    cap: usize,
+) -> impl Stream<Item = Result<Bytes, Unread>> + Send + 'static {
+    let mut read = 0_usize;
+    response.bytes_stream().map(move |chunk| {
+        let chunk = chunk?;
+        read = read.saturating_add(chunk.len());
+        if read > cap {
+            return Err(Oversize.into());
+        }
+        Ok(chunk)
+    })
+}
+
+/// `response`'s whole body, refused on [`Oversize`] past `cap` bytes.
+async fn whole(response: reqwest::Response, cap: usize) -> Result<Bytes, Unread> {
+    capped(response, cap)
+        .try_fold(BytesMut::new(), |mut body, chunk| {
+            body.extend_from_slice(&chunk);
+            std::future::ready(Ok(body))
+        })
+        .await
+        .map(BytesMut::freeze)
+}
+
 impl HttpClientExt for Transport {
     fn send<T, U>(
         &self,
@@ -115,7 +162,8 @@ impl HttpClientExt for Transport {
             let response = sent.map_err(rig_http::Error::instance)?;
             let builder = head(&response);
             let read: LazyBody<U> = Box::pin(async move {
-                let bytes = response.bytes().await.map_err(rig_http::Error::instance)?;
+                let bytes =
+                    (whole(response, REPLY_MAX_BYTES).await).map_err(rig_http::Error::Instance)?;
                 Ok(U::from(bytes))
             });
             builder.body(read).map_err(rig_http::Error::Protocol)
@@ -147,9 +195,13 @@ impl HttpClientExt for Transport {
             let sent = transport.send_retrying(&parts, &body).await;
             let response = sent.map_err(rig_http::Error::instance)?;
             let builder = head(&response);
-            let chunks = response.bytes_stream().map_err(rig_http::Error::instance);
+            let chunks = capped(response, REPLY_MAX_BYTES).map_err(rig_http::Error::Instance);
             let stream: BoxedStream = Box::pin(chunks);
             builder.body(stream).map_err(rig_http::Error::Protocol)
         }
     }
 }
+
+#[cfg(test)]
+#[path = "transport/tests.rs"]
+mod tests;

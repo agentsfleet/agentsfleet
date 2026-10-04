@@ -1,19 +1,31 @@
 //! How a turn ended, on the socket: the reasoning a provider signed goes back
-//! with the turn that made it, and a call cut at the output limit never runs.
+//! with the turn that made it, a call cut at the output limit never runs, and
+//! a reply past the transport's cap ends the run without being asked again.
 
+use afd_wire::report::ResultOutcome;
 use afd_wire::tool_trace::ToolCallStatus;
+use afr_providers::REPLY_MAX_BYTES;
 use afr_tools::ToolErrorCode;
 use afr_tools::catalog::UPDATE_PLAN;
 use serde_json::{Value, json};
 
 use super::support::wires::{self, Wire};
-use super::support::{Fake, engine, lease, run};
+use super::support::{Fake, Reply, engine, lease, run};
 use super::{ANSWER, CALL_ID};
 
 /// What the model thought before its call.
 const THOUGHT: &str = "two and two make four";
 /// The signature Messages seals that thought with.
 const SIGNATURE: &str = "sig-a1b2";
+/// The bytes one padding event spends: a Server-Sent Events comment, which
+/// every wire reads past and shows nothing for.
+const PAD_BYTES: usize = 64 * 1024;
+
+/// A reply of comments alone that passes [`REPLY_MAX_BYTES`] by one event.
+fn padding_past_the_cap() -> Reply {
+    let comment = format!(": {}\n\n", "x".repeat(PAD_BYTES - 4));
+    Reply::Stream(vec![comment; REPLY_MAX_BYTES / PAD_BYTES + 1])
+}
 
 /// The content of the last assistant message a Messages request carries.
 fn last_turn(body: &Value) -> Vec<Value> {
@@ -70,4 +82,26 @@ async fn a_call_cut_at_the_output_limit_is_answered_and_never_run() {
     let answered = wire.results(&fake.seen()[1].body);
     let refused = format!("[{}] ", ToolErrorCode::OutputLimitReached);
     assert!(answered[0].starts_with(&refused), "{answered:?}");
+}
+
+// Nothing showed, so a cut would open the turn again; a reply at the cap is
+// not a cut, since the next would be as long.
+#[tokio::test]
+async fn a_reply_past_the_cap_ends_the_run_as_the_fleets_error_and_is_sent_once() {
+    let wire = Wire::Chat;
+    let mut fake = Fake::serve(vec![padding_past_the_cap(), wire.answer(ANSWER)]).await;
+    let leased = lease(&wire.provider(), &[], "hello");
+
+    let (output, _frames) = run(&engine(&fake), &leased).await;
+
+    let ResultOutcome::Failed(failure) = output.result.outcome else {
+        panic!("a reply past the cap is no answer");
+    };
+    assert_eq!(failure.class, None, "the fleet's error");
+    assert!(
+        failure.detail.contains(&REPLY_MAX_BYTES.to_string()),
+        "{}",
+        failure.detail
+    );
+    assert_eq!(fake.seen().len(), 1, "never asked again");
 }
