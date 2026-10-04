@@ -43,6 +43,7 @@ use afd_wire::event::{EventDetail, EventsResponse};
 use axum::Json;
 use axum::extract::{Path, RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
+use const_format::concatcp;
 use serde::Deserialize;
 
 use crate::auth::WorkspaceContext;
@@ -63,7 +64,7 @@ const DETAIL_FLEET_ID: &str = "fleet_id must be a UUIDv7";
 ///
 /// Names the bound rather than presence: an over-long identifier was sent,
 /// and telling its sender it is missing sends them looking for the wrong fix.
-const DETAIL_EVENT_ID: &str = "event_id must be 1-256 bytes";
+const DETAIL_EVENT_ID: &str = concatcp!("event_id must be 1-", EVENT_ID_MAX_LEN, " bytes");
 
 /// The refusal an event this workspace and fleet do not hold earns.
 ///

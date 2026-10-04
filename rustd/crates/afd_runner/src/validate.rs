@@ -9,23 +9,41 @@
 
 use afd_core::limits::WorkerCount;
 use afd_validate::Sentences;
-use afd_wire::runner::{AssignedPolicy, RegisterRequest};
+use afd_wire::runner::{
+    AssignedPolicy, BIND_NOTE_MAX_BYTES, BIND_PATH_MAX_BYTES, BIND_PATH_MIN_BYTES,
+    EXTRA_BINDS_MAX, LABEL_MAX_BYTES, LABELS_MAX, RegisterRequest,
+};
+use const_format::concatcp;
 use garde::Validate as _;
 
 use crate::error::{DETAIL_HOST_ID_BOUNDS, DETAIL_REGISTRY_ALLOWLIST, Result, rejected};
 
 /// The refusal for a bind path that is relative, non-canonical, out of
 /// bounds, or overlapping a daemon-owned or sensitive subtree.
-pub const DETAIL_EXTRA_BINDS: &str = "extra_binds paths must be absolute host paths of 2-4096 bytes outside the daemon-owned baseline and the sensitive set, with no traversal";
+pub const DETAIL_EXTRA_BINDS: &str = concatcp!(
+    "extra_binds paths must be absolute host paths of ",
+    BIND_PATH_MIN_BYTES,
+    "-",
+    BIND_PATH_MAX_BYTES,
+    " bytes outside the daemon-owned baseline and the sensitive set, with no traversal"
+);
 
 /// The refusal for an assignment adding too many binds.
-pub const DETAIL_EXTRA_BINDS_COUNT: &str = "extra_binds holds at most 16 entries";
+pub const DETAIL_EXTRA_BINDS_COUNT: &str =
+    concatcp!("extra_binds holds at most ", EXTRA_BINDS_MAX, " entries");
 
 /// The refusal for a bind note past its bound.
-pub const DETAIL_EXTRA_BIND_NOTE: &str = "extra_binds notes must be at most 200 bytes";
+pub const DETAIL_EXTRA_BIND_NOTE: &str =
+    concatcp!("extra_binds notes must be at most ", BIND_NOTE_MAX_BYTES, " bytes");
 
 /// The refusal for too many labels, or one past its bound.
-pub const DETAIL_LABELS: &str = "labels holds at most 32 entries of at most 64 bytes each";
+pub const DETAIL_LABELS: &str = concatcp!(
+    "labels holds at most ",
+    LABELS_MAX,
+    " entries of at most ",
+    LABEL_MAX_BYTES,
+    " bytes each"
+);
 
 const PATH_HOST_ID: &str = "host_id";
 const PATH_LABELS: &str = "labels";

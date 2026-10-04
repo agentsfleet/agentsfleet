@@ -32,6 +32,7 @@ use afd_events::{
     Cursor, DEFAULT_LIMIT, Filter, MAX_LIMIT, glob_to_like, parse_since, prefix_to_like,
 };
 use afd_validate::{Limit, Sentences};
+use const_format::concatcp;
 use garde::Validate as _;
 
 use super::DETAIL_FLEET_ID;
@@ -50,10 +51,13 @@ const CEILING: Ceiling = store_ceiling(MAX_LIMIT, DEFAULT_LIMIT);
 const MAX_ACTOR_FILTER_BYTES: usize = 256;
 
 /// The refusal an over-long `actor` glob earns.
-const DETAIL_ACTOR_BOUNDS: &str = "actor must be at most 256 bytes";
+const DETAIL_ACTOR_BOUNDS: &str = concatcp!("actor", ACTOR_FILTER_BOUND);
 
 /// The refusal an over-long `actor_prefix` earns.
-const DETAIL_ACTOR_PREFIX_BOUNDS: &str = "actor_prefix must be at most 256 bytes";
+const DETAIL_ACTOR_PREFIX_BOUNDS: &str = concatcp!("actor_prefix", ACTOR_FILTER_BOUND);
+
+/// The bound both actor filters share, as the tail of their two sentences.
+const ACTOR_FILTER_BOUND: &str = concatcp!(" must be at most ", MAX_ACTOR_FILTER_BYTES, " bytes");
 
 /// Which filter's bound a report names, keyed by the field, which is spelled
 /// as its parameter. Both cannot be present together, so one entry decides.

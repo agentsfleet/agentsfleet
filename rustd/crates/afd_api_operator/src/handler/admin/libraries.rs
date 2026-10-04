@@ -10,6 +10,7 @@ use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
+use const_format::concatcp;
 use garde::Validate as _;
 use http::{HeaderMap, StatusCode, header};
 
@@ -21,7 +22,7 @@ use crate::services::Services;
 
 use super::libraries_request::patch_request;
 
-const DETAIL_ID_BOUNDS: &str = "catalog id must be 1-64 bytes";
+const DETAIL_ID_BOUNDS: &str = concatcp!("catalog id must be 1-", MAX_SKILL_NAME_LEN, " bytes");
 const DETAIL_NOT_FOUND: &str = "No fleet library entry has that catalog id";
 const DETAIL_NO_BUNDLE: &str =
     "This entry has no bundle. Fetch it from its repository first, then publish.";

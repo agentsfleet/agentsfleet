@@ -45,6 +45,7 @@ afd_core.workspace = true
 # A garde report answered with the route's own sentence (`Sentences`), and the
 # shared `?limit` bound.
 afd_validate.workspace = true
+const_format.workspace = true
 garde.workspace = true
 afd_events.workspace = true
 afd_fleet.workspace = true

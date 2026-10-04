@@ -197,6 +197,10 @@ async-trait = { version = "0.1.92", default-features = false }
 # each pull their own dependency and none of them is a shape this product
 # authors. Its `garde_derive` rides the syn 2.0.119 already in the lock.
 garde = { version = "0.23.0", default-features = false, features = ["derive"] }
+# A refusal sentence built from the bound it names, at compile time.
+# `Sentences` tables are `const` and std cannot format a number in a `const`,
+# so without it every sentence would spell the bound a second time.
+const_format = { version = "0.2.36", default-features = false }
 
 # The YAML frontmatter of an authored `TRIGGER.md`.
 #

@@ -34,6 +34,7 @@ use afd_approval::GateStatus;
 use afd_core::id::Uuid7;
 use afd_core::paging::{Ceiling, Cursor as CoreCursor, InvalidCursor};
 use afd_validate::Limit;
+use const_format::concatcp;
 use garde::Validate as _;
 
 use crate::handler::{Refusal, decoded_parameter, parameter};
@@ -61,7 +62,8 @@ const CEILING: Ceiling = Ceiling::new(MAX_LIMIT, DEFAULT_LIMIT);
 const MAX_GATE_KIND_BYTES: usize = 64;
 
 /// The refusal an over-long `gate_kind` filter earns.
-const DETAIL_GATE_KIND: &str = "gate_kind must be at most 64 bytes";
+const DETAIL_GATE_KIND: &str =
+    concatcp!("gate_kind must be at most ", MAX_GATE_KIND_BYTES, " bytes");
 
 /// The refusal a page size outside the served band earns.
 ///

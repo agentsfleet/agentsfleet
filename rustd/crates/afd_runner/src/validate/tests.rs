@@ -9,9 +9,7 @@ use std::borrow::Cow;
 
 use afd_core::limits::MAX_WORKERS;
 use afd_wire::runner::{
-    BIND_NOTE_MAX_BYTES, BIND_PATH_MAX_BYTES, BindMode, EXTRA_BINDS_MAX, ExtraBind,
-    HOST_ID_MAX_BYTES, LABEL_MAX_BYTES, LABELS_MAX, NetworkPolicy, REGISTRY_ENTRIES_MAX,
-    SandboxTier,
+    BindMode, ExtraBind, HOST_ID_MAX_BYTES, NetworkPolicy, REGISTRY_ENTRIES_MAX, SandboxTier,
 };
 
 use super::*;
