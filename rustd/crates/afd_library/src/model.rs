@@ -66,10 +66,7 @@ pub struct SupportFile {
     #[garde(custom(crate::validate::safe_path))]
     pub path: String,
     /// Untrusted file bytes.
-    #[garde(
-        length(max = MAX_SUPPORT_FILE_LEN),
-        custom(crate::validate::no_credential_bytes)
-    )]
+    #[garde(length(max = MAX_SUPPORT_FILE_LEN))]
     pub content: Vec<u8>,
 }
 
@@ -83,7 +80,7 @@ pub struct SupportFile {
 /// could not answer either. `crate::validate` maps each rule back to the
 /// [`crate::InvalidBundle`] variant that classification rides on.
 #[derive(Debug, Clone, PartialEq, Eq, Validate)]
-#[garde(custom(crate::validate::aggregate))]
+#[garde(custom(crate::validate::support_total))]
 pub struct ImportBody {
     /// Source category persisted as metadata.
     #[garde(skip)]

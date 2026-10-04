@@ -3,8 +3,16 @@
 //! The bounds are DECLARED on the types they guard, with `garde` — the
 //! workspace's validation crate, already driving
 //! `afd_fleet_runtime::config::raw`. What stays here is the part a derive
-//! cannot express: the three rules that are predicates rather than bounds, and
-//! the translation from garde's report back to [`InvalidBundle`].
+//! cannot express: the rules that are predicates rather than bounds, the
+//! translation from garde's report back to [`InvalidBundle`], and the
+//! credential scan.
+//!
+//! The scan parses every document, so it is not a garde rule. garde runs a
+//! struct's custom rules before its fields' rules, and a field's custom rules
+//! before its `length`, with no short-circuit (`garde_derive` 0.23
+//! `emit.rs`). A scan declared as a rule would parse a document before its
+//! bound was checked. It reads [`Valid`] instead, which only a passed
+//! validation constructs.
 //!
 //! That translation is not ceremony. [`crate::Error::code`] answers
 //! `UZ-REQ-002` for six variants and `UZ-BUNDLE-001` for the rest, and the two
@@ -19,7 +27,10 @@
     reason = "garde fixes the custom-validator signature at `fn(&T, &C) -> Result`. The `()` context and the `Option` field arrive by reference because the derive passes them that way; a validator spelled the way clippy prefers is not callable from the attribute that runs it."
 )]
 
+use std::iter;
 use std::path::{Component, Path};
+
+use garde::{Unvalidated, Valid};
 
 use crate::error::InvalidBundle;
 use crate::model::ImportBody;
@@ -57,7 +68,6 @@ const CODE_MISSING_SKILL: &str = "bundle.skill.missing";
 const CODE_TRIGGER_EMPTY: &str = "bundle.trigger.empty";
 const CODE_UNSAFE_PATH: &str = "bundle.support.path.unsafe";
 const CODE_SUPPORT_TOTAL: &str = "bundle.support.bytes.total";
-const CODE_EMBEDDED_CREDENTIAL: &str = "bundle.credential.embedded";
 
 const PATH_SOURCE_REF: &str = "source_ref";
 const PATH_SKILL: &str = "skill_markdown";
@@ -67,21 +77,37 @@ const SEGMENT_CONTENT: &str = "content";
 
 const ROOT_DOCUMENTS: [&str; 2] = ["SKILL.md", "TRIGGER.md"];
 
-/// Proves every declared bound and predicate over one untrusted body.
+/// Proves every declared bound over one untrusted body, then scans what held.
 ///
 /// # Errors
-/// The [`InvalidBundle`] rule the body broke first, in field-declaration order.
+/// The [`InvalidBundle`] rule the body broke first: the support-byte total,
+/// then each field's rules in declaration order, then
+/// [`InvalidBundle::EmbeddedCredential`].
 pub(crate) fn body(value: &ImportBody) -> Result<(), InvalidBundle> {
-    use garde::Validate as _;
-
-    value.validate().map_err(|report| {
+    let bounded = Unvalidated::new(value).validate().map_err(|report| {
         report
             .iter()
             .next()
             .map_or(InvalidBundle::MissingSkill, |(path, error)| {
                 classify(&path.to_string(), &error.to_string())
             })
-    })
+    })?;
+    refuse_credentials(&bounded)
+}
+
+/// Refuses credential material in any document of a body whose bounds held.
+///
+/// # Errors
+/// [`InvalidBundle::EmbeddedCredential`] when a root document or a support
+/// file carries one.
+fn refuse_credentials(body: &Valid<&ImportBody>) -> Result<(), InvalidBundle> {
+    let mut documents = iter::once(body.skill_markdown.as_slice())
+        .chain(body.trigger_markdown.as_deref())
+        .chain(body.support_files.iter().map(|file| file.content.as_slice()));
+    if documents.any(contains_credential) {
+        return Err(InvalidBundle::EmbeddedCredential);
+    }
+    Ok(())
 }
 
 /// Maps one reported violation back to the variant its classification rides on.
@@ -94,7 +120,6 @@ fn classify(path: &str, message: &str) -> InvalidBundle {
         CODE_TRIGGER_EMPTY => return InvalidBundle::InvalidTrigger,
         CODE_UNSAFE_PATH => return InvalidBundle::UnsafeSupportPath,
         CODE_SUPPORT_TOTAL => return InvalidBundle::SupportFilesTooLarge,
-        CODE_EMBEDDED_CREDENTIAL => return InvalidBundle::EmbeddedCredential,
         _ => {}
     }
     if path == PATH_SOURCE_REF {
@@ -160,32 +185,14 @@ pub(crate) fn safe_path(raw: &str, _: &()) -> garde::Result {
     Ok(())
 }
 
-/// Refuses credential VALUES in a support file's bytes.
+/// The one bound that reads the whole body: the support files' total bytes.
+///
+/// A sum of lengths, so it reads no content and is safe to run before the
+/// field bounds garde checks after it.
 ///
 /// # Errors
-/// [`CODE_EMBEDDED_CREDENTIAL`] when the content carries one.
-pub(crate) fn no_credential_bytes(value: &[u8], _: &()) -> garde::Result {
-    if contains_credential(value) {
-        return Err(garde::Error::new(CODE_EMBEDDED_CREDENTIAL));
-    }
-    Ok(())
-}
-
-/// The two rules that read the whole body rather than one field: the aggregate
-/// support-byte cap, and the credential scan over the root documents.
-///
-/// # Errors
-/// [`CODE_EMBEDDED_CREDENTIAL`] or [`CODE_SUPPORT_TOTAL`], whichever the body
-/// broke.
-pub(crate) fn aggregate(value: &ImportBody, _: &()) -> garde::Result {
-    if contains_credential(&value.skill_markdown)
-        || value
-            .trigger_markdown
-            .as_deref()
-            .is_some_and(contains_credential)
-    {
-        return Err(garde::Error::new(CODE_EMBEDDED_CREDENTIAL));
-    }
+/// [`CODE_SUPPORT_TOTAL`] when the support files together exceed the cap.
+pub(crate) fn support_total(value: &ImportBody, _: &()) -> garde::Result {
     let total: usize = value
         .support_files
         .iter()
