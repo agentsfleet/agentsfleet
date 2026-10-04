@@ -90,3 +90,34 @@ async fn should_answer_unreachable_when_the_name_does_not_resolve() {
         )))
     );
 }
+
+// A host that accepts and never answers: the handshake waits on a reply that
+// never comes, so only the timer ends the request, and the paused clock runs
+// it out at once.
+#[tokio::test(start_paused = true)]
+async fn should_answer_timed_out_when_the_host_never_answers() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let _held = listener.accept().await;
+        std::future::pending::<()>().await;
+    });
+    let outbound = Outbound {
+        method: Method::GET,
+        url: Url::parse(&format!("https://{address}/")).unwrap(),
+        headers: HeaderMap::new(),
+        body: None,
+    };
+
+    let refused = Network::new()
+        .unwrap()
+        .send(outbound)
+        .await
+        .err()
+        .as_ref()
+        .map(shown);
+
+    let host = address.ip().to_string();
+    let timed_out = raise::upstream_unreachable(&host, super::TIMED_OUT);
+    assert_eq!(refused, Some(shown(&timed_out)));
+}

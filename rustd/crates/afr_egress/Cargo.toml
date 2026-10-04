@@ -48,4 +48,5 @@ test-util = ["afd_core/test-util", "tokio/sync"]
 
 [dev-dependencies]
 afd_core = { workspace = true, features = ["test-util"] }
-tokio = { workspace = true, features = ["macros", "net", "rt", "sync"] }
+# `start_paused`, so a request that never hears back runs out its timeout at once.
+tokio = { workspace = true, features = ["macros", "net", "rt", "sync", "test-util", "time"] }

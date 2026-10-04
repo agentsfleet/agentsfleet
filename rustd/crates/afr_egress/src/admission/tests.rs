@@ -247,18 +247,28 @@ fn should_admit_a_read_under_read_only() {
     );
 }
 
+// `::1`, and the metadata address spelt IPv4-mapped; the allowlist names
+// each as the URL parser normalises it.
 #[test]
 fn should_refuse_an_allowlisted_v6_literal_in_a_private_range() {
-    let mut policy = policy(false);
-    policy.network_policy.allow.push("[::1]".into());
+    let literals = [
+        ("[::1]", "[::1]"),
+        ("[::ffff:169.254.169.254]", "[::ffff:a9fe:a9fe]"),
+    ];
+    for (written, host) in literals {
+        let mut policy = policy(false);
+        policy.network_policy.allow.push(host.into());
 
-    let refusal = Admission::new(&policy)
-        .admit(draft("GET", "https://[::1]/admin", &[], None))
-        .err()
-        .as_ref()
-        .map(shown);
+        let url = format!("https://{written}/admin");
+        let refusal = Admission::new(&policy)
+            .admit(draft("GET", &url, &[], None))
+            .err()
+            .as_ref()
+            .map(shown);
 
-    assert_eq!(refusal, Some(shown(&raise::address_not_allowed("[::1]"))));
+        let refused = shown(&raise::address_not_allowed(host));
+        assert_eq!(refusal, Some(refused), "{written}");
+    }
 }
 
 #[test]
