@@ -10,8 +10,8 @@
 use afd_core::limits::WorkerCount;
 use afd_validate::Sentences;
 use afd_wire::runner::{
-    AssignedPolicy, BIND_NOTE_MAX_BYTES, BIND_PATH_MAX_BYTES, BIND_PATH_MIN_BYTES,
-    EXTRA_BINDS_MAX, LABEL_MAX_BYTES, LABELS_MAX, RegisterRequest,
+    AssignedPolicy, BIND_NOTE_MAX_BYTES, BIND_PATH_MAX_BYTES, BIND_PATH_MIN_BYTES, EXTRA_BINDS_MAX,
+    LABEL_MAX_BYTES, LABELS_MAX, RegisterRequest,
 };
 use const_format::concatcp;
 use garde::Validate as _;
@@ -33,8 +33,11 @@ pub const DETAIL_EXTRA_BINDS_COUNT: &str =
     concatcp!("extra_binds holds at most ", EXTRA_BINDS_MAX, " entries");
 
 /// The refusal for a bind note past its bound.
-pub const DETAIL_EXTRA_BIND_NOTE: &str =
-    concatcp!("extra_binds notes must be at most ", BIND_NOTE_MAX_BYTES, " bytes");
+pub const DETAIL_EXTRA_BIND_NOTE: &str = concatcp!(
+    "extra_binds notes must be at most ",
+    BIND_NOTE_MAX_BYTES,
+    " bytes"
+);
 
 /// The refusal for too many labels, or one past its bound.
 pub const DETAIL_LABELS: &str = concatcp!(

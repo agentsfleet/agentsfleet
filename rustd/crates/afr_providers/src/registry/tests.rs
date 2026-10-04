@@ -180,7 +180,14 @@ fn should_refuse_a_custom_endpoint_at_a_private_address_literal() {
         "https://[::1]/v1",
         "https://[64:ff9b::a00:5]/v1",
     ] {
-        assert!(registry.route(&custom(private)).is_err(), "{private}");
+        let refused = registry.route(&custom(private)).err();
+        assert_eq!(
+            refused
+                .as_ref()
+                .and_then(|refused| refused.blocked_endpoint()),
+            Some(custom(private).as_str()),
+            "{private}: named as a blocked endpoint, never as an unhosted provider"
+        );
     }
     for public in ["https://8.8.8.8/v1", "https://llm.example.com/v1"] {
         assert!(registry.route(&custom(public)).is_ok(), "{public}");

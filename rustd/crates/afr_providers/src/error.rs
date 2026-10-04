@@ -86,6 +86,14 @@ pub(crate) enum ErrorKind {
         provider: String,
     },
 
+    /// The policy names a `custom:` model endpoint at a private, loopback or
+    /// reserved address, which this runner never dials.
+    #[error("the policy names a model endpoint at a private or reserved address: {provider}")]
+    BlockedEndpoint {
+        /// The provider, as the policy spells it.
+        provider: String,
+    },
+
     /// The conversation holds a result that answers no call before it.
     #[error("the conversation cannot be sent: the result for call {call_id} answers no call")]
     Unsendable {
@@ -152,7 +160,9 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
-            ErrorKind::Unhosted { .. } => error_code::AGENTSFLEET_INVALID_CONFIG,
+            ErrorKind::Unhosted { .. } | ErrorKind::BlockedEndpoint { .. } => {
+                error_code::AGENTSFLEET_INVALID_CONFIG
+            }
             ErrorKind::Refused { .. }
             | ErrorKind::Lost { .. }
             | ErrorKind::Ended { .. }
@@ -177,6 +187,7 @@ impl Error {
             | ErrorKind::Oversize(_)
             | ErrorKind::Unreadable { .. }
             | ErrorKind::Unhosted { .. }
+            | ErrorKind::BlockedEndpoint { .. }
             | ErrorKind::Registry { .. }
             | ErrorKind::Unsendable { .. }
             | ErrorKind::Unnamed { .. }
@@ -190,7 +201,28 @@ impl Error {
     pub fn unhosted_provider(&self) -> Option<&str> {
         match self.kind() {
             ErrorKind::Unhosted { provider } => Some(provider),
-            ErrorKind::Refused { .. }
+            ErrorKind::BlockedEndpoint { .. }
+            | ErrorKind::Refused { .. }
+            | ErrorKind::Lost { .. }
+            | ErrorKind::Ended { .. }
+            | ErrorKind::Oversize(_)
+            | ErrorKind::Unreadable { .. }
+            | ErrorKind::Registry { .. }
+            | ErrorKind::Unsendable { .. }
+            | ErrorKind::Unnamed { .. }
+            | ErrorKind::Wire { .. }
+            | ErrorKind::Client { .. } => None,
+        }
+    }
+
+    /// The `custom:` endpoint a refused lease named at an address this runner
+    /// never dials, for its log line.
+    #[must_use]
+    pub fn blocked_endpoint(&self) -> Option<&str> {
+        match self.kind() {
+            ErrorKind::BlockedEndpoint { provider } => Some(provider),
+            ErrorKind::Unhosted { .. }
+            | ErrorKind::Refused { .. }
             | ErrorKind::Lost { .. }
             | ErrorKind::Ended { .. }
             | ErrorKind::Oversize(_)

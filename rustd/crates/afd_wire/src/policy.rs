@@ -157,7 +157,9 @@ pub struct ContextBudget<'a> {
     pub tool_window: u32,
     /// How often a run checkpoints its memory.
     pub memory_checkpoint_every: u32,
-    /// Fill fraction at which a stage chunks rather than growing.
+    /// Fill fraction at which a stage chunks rather than growing: 0 to 1 of
+    /// the context window.
+    #[cfg_attr(feature = "openapi", schema(minimum = 0.0, maximum = 1.0))]
     pub stage_chunk_threshold: f32,
     /// The active model, carried through without interpretation.
     #[serde(borrow)]

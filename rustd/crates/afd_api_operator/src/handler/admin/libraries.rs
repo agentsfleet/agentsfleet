@@ -30,6 +30,27 @@ const DETAIL_STALE: &str = "This catalog entry changed since you loaded it. Refr
 const DETAIL_DELETE_PUBLISHED: &str =
     "This fleet is published. Unpublish it first, then delete it.";
 
+/// A catalogue entry addressed by its catalog id, as the published document
+/// describes the path: the bundle's name, within the bound the handler holds
+/// it to, and never a UUID.
+#[cfg(feature = "openapi")]
+#[derive(Debug, utoipa::IntoParams)]
+#[into_params(parameter_in = Path)]
+struct CatalogIdPath {
+    /// The entry's catalog id: the bundle's name, 1 to 64 bytes.
+    #[param(min_length = 1, max_length = 64)]
+    #[expect(
+        dead_code,
+        reason = "read by the OpenAPI derive alone, as every path parameter is"
+    )]
+    id: String,
+}
+
+// The published bound and the enforced one are the same number, pinned here
+// because utoipa takes a literal where the handler takes the constant.
+#[cfg(feature = "openapi")]
+const _: () = assert!(MAX_SKILL_NAME_LEN == 64);
+
 /// Lists every platform row, including drafts and entries with no bundle.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
@@ -89,7 +110,7 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
     ),
     request_body = afd_wire::admin::AdminLibraryPatch,
     params(
-        afd_http::openapi::path::Id,
+        CatalogIdPath,
         ("If-Match" = Option<String>, Header, description = "Optional catalog row version from the list response. Stale values return 412 with the current `etag`."),
     ),
     responses(
@@ -169,7 +190,7 @@ fn updated(identity: &PersonIdentity, id: &str, entry: &LibraryItem) -> Response
         "keeps running. Requires the `platform-library:write` scope. ",
     ),
     params(
-        afd_http::openapi::path::Id,
+        CatalogIdPath,
     ),
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),
@@ -218,7 +239,7 @@ pub(crate) async fn delete<D: Services>(
 /// asked for one.
 #[derive(Debug, garde::Validate)]
 struct CatalogId<'a> {
-    #[garde(length(bytes, min = 1, max = MAX_SKILL_NAME_LEN))]
+    #[garde(length(bytes, min = 1, max = MAX_SKILL_NAME_LEN), custom(afd_validate::nul_free))]
     id: &'a str,
 }
 

@@ -121,22 +121,25 @@ impl Registry {
     /// `custom:<url>` with a host.
     ///
     /// # Errors
-    /// The provider is neither.
+    /// The provider is neither, or its endpoint is an address this runner
+    /// never dials.
     pub(crate) fn route(&self, provider: &str) -> Result<Route> {
         if let Some(route) = self.routes.get(provider) {
             return Ok(route.clone());
         }
-        provider
+        let base = provider
             .strip_prefix(CUSTOM_PROVIDER_PREFIX)
             .and_then(|base| Url::parse(base).ok())
             .filter(|base| base.scheme() == HTTPS && base.host_str().is_some())
-            .filter(|base| !private_literal(base))
-            .map(|base| Route {
-                wire: Wire::Chat,
-                base: chat_base(base),
-                dialect: None,
-            })
-            .ok_or_else(|| raise::unhosted(provider))
+            .ok_or_else(|| raise::unhosted(provider))?;
+        if private_literal(&base) {
+            return Err(raise::blocked_endpoint(provider));
+        }
+        Ok(Route {
+            wire: Wire::Chat,
+            base: chat_base(base),
+            dialect: None,
+        })
     }
 }
 
