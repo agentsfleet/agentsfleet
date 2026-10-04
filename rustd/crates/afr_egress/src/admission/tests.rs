@@ -1,5 +1,6 @@
-use super::{Admission, Draft, Placement, misplaced};
-use crate::fixture::{ELASTIC_QUERY, GITHUB, policy};
+use super::{Admission, Draft, Placement};
+use crate::error::raise;
+use crate::fixture::{ELASTIC_QUERY, GITHUB, Shown, policy, shown};
 use crate::refusal::Refusal;
 
 pub(super) fn draft(
@@ -21,14 +22,15 @@ pub(super) fn draft(
 }
 
 /// The URL `draft` is admitted to under a policy with `read_only`, or why not.
-pub(super) fn admit(read_only: bool, draft: Draft) -> Result<String, Refusal> {
+pub(super) fn admit(read_only: bool, draft: Draft) -> Result<String, Shown> {
     let policy = policy(read_only);
     Admission::new(&policy)
         .admit(draft)
         .map(|admitted| admitted.url.to_string())
+        .map_err(|error| shown(&error))
 }
 
-pub(super) fn refused(read_only: bool, draft: Draft) -> Option<Refusal> {
+pub(super) fn refused(read_only: bool, draft: Draft) -> Option<Shown> {
     admit(read_only, draft).err()
 }
 
@@ -42,9 +44,7 @@ fn should_send_only_the_listed_methods_in_any_case() {
     );
     assert_eq!(
         refused(false, draft("TRACE", url, &[], None)),
-        Some(Refusal::MethodNotAllowed {
-            method: "TRACE".to_owned()
-        })
+        Some(shown(&raise::method_not_allowed("TRACE")))
     );
 }
 
@@ -52,9 +52,7 @@ fn should_send_only_the_listed_methods_in_any_case() {
 fn should_refuse_an_unlisted_host_and_any_scheme_but_https() {
     assert_eq!(
         refused(false, draft("GET", "https://evil.example/x", &[], None)),
-        Some(Refusal::HostNotAllowed {
-            host: "evil.example".to_owned()
-        })
+        Some(shown(&raise::host_not_allowed("evil.example")))
     );
     assert_eq!(
         refused(
@@ -66,7 +64,7 @@ fn should_refuse_an_unlisted_host_and_any_scheme_but_https() {
                 None
             )
         ),
-        Some(Refusal::HttpsRequired)
+        Some(shown(&raise::https_required()))
     );
 }
 
@@ -74,9 +72,7 @@ fn should_refuse_an_unlisted_host_and_any_scheme_but_https() {
 fn should_refuse_an_allowlisted_address_literal_in_a_private_range() {
     assert_eq!(
         refused(false, draft("GET", "https://127.0.0.1/admin", &[], None)),
-        Some(Refusal::AddressNotAllowed {
-            host: "127.0.0.1".to_owned()
-        })
+        Some(shown(&raise::address_not_allowed("127.0.0.1")))
     );
 }
 
@@ -156,11 +152,11 @@ fn should_refuse_a_request_no_origin_rule_admits() {
                 None
             )
         ),
-        Some(Refusal::RequestPolicyNotAllowed {
-            host: GITHUB.to_owned(),
-            method: "GET".to_owned(),
-            path: "/repos/acme/other/pulls".to_owned(),
-        })
+        Some(shown(&raise::request_policy_not_allowed(
+            GITHUB,
+            "GET",
+            "/repos/acme/other/pulls"
+        )))
     );
 }
 
@@ -195,9 +191,7 @@ fn should_admit_under_read_only_reads_listed_query_posts_and_rule_admitted_posts
     ] {
         assert_eq!(
             refused(true, draft("POST", refused_post, &[], Some("{}"))),
-            Some(Refusal::MethodNotAllowed {
-                method: "POST".to_owned()
-            }),
+            Some(shown(&raise::method_not_allowed("POST"))),
             "{refused_post}"
         );
     }
@@ -206,9 +200,7 @@ fn should_admit_under_read_only_reads_listed_query_posts_and_rule_admitted_posts
             true,
             draft("DELETE", "https://demo.es.example/index", &[], None)
         ),
-        Some(Refusal::MethodNotAllowed {
-            method: "DELETE".to_owned()
-        })
+        Some(shown(&raise::method_not_allowed("DELETE")))
     );
 }
 
@@ -217,7 +209,7 @@ fn should_refuse_a_url_that_does_not_parse() {
     let refusal = refused(false, draft("GET", "https://[::1", &[], None));
 
     assert!(
-        matches!(refusal, Some(Refusal::InvalidUrl { .. })),
+        matches!(refusal, Some((Some(Refusal::InvalidUrl), _))),
         "{refusal:?}"
     );
 }
@@ -262,14 +254,11 @@ fn should_refuse_an_allowlisted_v6_literal_in_a_private_range() {
 
     let refusal = Admission::new(&policy)
         .admit(draft("GET", "https://[::1]/admin", &[], None))
-        .err();
+        .err()
+        .as_ref()
+        .map(shown);
 
-    assert_eq!(
-        refusal,
-        Some(Refusal::AddressNotAllowed {
-            host: "[::1]".to_owned()
-        })
-    );
+    assert_eq!(refusal, Some(shown(&raise::address_not_allowed("[::1]"))));
 }
 
 #[test]
@@ -286,4 +275,9 @@ fn should_refuse_userinfo_carrying_only_a_name_or_only_a_password() {
             "{userinfo}"
         );
     }
+}
+
+/// What `what`, set where no placeholder may stand, is refused with.
+pub(super) fn misplaced(what: &str) -> Shown {
+    shown(&raise::placement_not_allowed(what))
 }

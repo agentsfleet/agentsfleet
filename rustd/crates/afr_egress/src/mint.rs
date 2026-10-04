@@ -39,26 +39,6 @@ impl Minted {
     }
 }
 
-/// Why the daemon would not mint, in words the model reads unchanged.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MintRefused {
-    detail: String,
-}
-
-impl MintRefused {
-    /// A refusal the model reads as `detail`; it must carry no secret.
-    #[must_use]
-    pub const fn new(detail: String) -> Self {
-        Self { detail }
-    }
-
-    /// The refusal, as the model reads it.
-    #[must_use]
-    pub fn detail(&self) -> &str {
-        &self.detail
-    }
-}
-
 /// Mints a credential for one integration under the held lease.
 #[async_trait::async_trait]
 pub trait Mint: Send + Sync + fmt::Debug {
@@ -67,5 +47,5 @@ pub trait Mint: Send + Sync + fmt::Debug {
     /// # Errors
     /// The daemon refused, or could not be reached; the request that asked is
     /// refused with this detail and the mint is not retried.
-    async fn mint(&self, integration: &str) -> Result<Minted, MintRefused>;
+    async fn mint(&self, integration: &str) -> Result<Minted>;
 }

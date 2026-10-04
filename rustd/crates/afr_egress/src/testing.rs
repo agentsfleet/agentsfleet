@@ -10,15 +10,18 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use afd_core::clock::{Clock, FixedClock, UnixMillis};
+use afd_core::error_code::{self, ErrorCode};
 use afr_secrets::Secret;
 
-use crate::error::Result;
-use crate::mint::{Mint, MintRefused, Minted};
-use crate::refusal::Refusal;
+use crate::error::{Error, Result};
+use crate::mint::{Mint, Minted};
 use crate::transport::{Inbound, Outbound, Transport};
 
 /// What [`CountingMint::never`] refuses with.
 const NEVER: &str = "this suite mints no credential";
+/// The code a refusing mint answers under: the daemon's, as a GitHub mint
+/// refused would carry it.
+const MINT_REFUSED: ErrorCode = error_code::GH_MINT_FAILED;
 
 /// A mint answering one token that lives `lifetime_millis` from `clock`'s
 /// reading, or refusing every time.
@@ -83,7 +86,7 @@ impl CountingMint {
 
 #[async_trait::async_trait]
 impl Mint for CountingMint {
-    async fn mint(&self, _integration: &str) -> Result<Minted, MintRefused> {
+    async fn mint(&self, _integration: &str) -> Result<Minted> {
         let asked = self.asked.fetch_add(1, Ordering::SeqCst) + 1;
         match &self.answer {
             Answer::Token {
@@ -100,7 +103,7 @@ impl Mint for CountingMint {
                     self.clock.now().saturating_add_millis(*lifetime_millis),
                 ))
             }
-            Answer::Refused(detail) => Err(MintRefused::new(detail.clone())),
+            Answer::Refused(detail) => Err(Error::mint_refused(MINT_REFUSED, detail.clone())),
         }
     }
 }
@@ -130,7 +133,7 @@ impl Sent {
 }
 
 /// What a recording transport answers each request with.
-type Reply = Box<dyn Fn(&Outbound) -> Result<Inbound, Refusal> + Send + Sync>;
+type Reply = Box<dyn Fn(&Outbound) -> Result<Inbound> + Send + Sync>;
 
 /// A transport that records each request and answers what `reply` says.
 pub struct RecordingTransport {
@@ -143,7 +146,7 @@ impl RecordingTransport {
     /// it was handed arrives on.
     #[must_use]
     pub fn answering(
-        reply: impl Fn(&Outbound) -> Result<Inbound, Refusal> + Send + Sync + 'static,
+        reply: impl Fn(&Outbound) -> Result<Inbound> + Send + Sync + 'static,
     ) -> (Self, Receiver<Sent>) {
         let (sent, received) = mpsc::channel();
         (
@@ -171,7 +174,7 @@ impl fmt::Debug for RecordingTransport {
 
 #[async_trait::async_trait]
 impl Transport for RecordingTransport {
-    async fn send(&self, outbound: Outbound) -> Result<Inbound, Refusal> {
+    async fn send(&self, outbound: Outbound) -> Result<Inbound> {
         let headers = outbound
             .headers()
             .iter()

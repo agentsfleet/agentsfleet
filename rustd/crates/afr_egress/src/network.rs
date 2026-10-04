@@ -24,8 +24,7 @@ use reqwest::header::{CONTENT_TYPE, HeaderName, LOCATION};
 use reqwest::redirect::Policy;
 use reqwest::{Client, ClientBuilder, Response, Url};
 
-use crate::error::Result;
-use crate::refusal::Refusal;
+use crate::error::{Error, Result, raise};
 use crate::transport::{Inbound, Outbound, Transport};
 
 /// The most of one response a tool reads: the published tools page's 1 MiB.
@@ -88,7 +87,7 @@ impl Network {
 
 #[async_trait::async_trait]
 impl Transport for Network {
-    async fn send(&self, outbound: Outbound) -> Result<Inbound, Refusal> {
+    async fn send(&self, outbound: Outbound) -> Result<Inbound> {
         let host = outbound.host().to_owned();
         let mut request = self
             .client
@@ -107,10 +106,7 @@ impl Transport for Network {
         let content_type = header(&response, &CONTENT_TYPE);
         let read = Capped::read(response, RESPONSE_MAX_BYTES)
             .await
-            .map_err(|_unread| Refusal::UpstreamUnreachable {
-                host,
-                reason: NOT_READ,
-            })?;
+            .map_err(|_unread| raise::upstream_unreachable(&host, NOT_READ))?;
         Ok(Inbound {
             status,
             location,
@@ -139,20 +135,13 @@ fn origin_of(request: &Url, target: &str) -> Option<String> {
 }
 
 /// The refusal a failed send answers with.
-fn unreached(host: &str, failed: &reqwest::Error) -> Refusal {
-    let host = host.to_owned();
+fn unreached(host: &str, failed: &reqwest::Error) -> Error {
     if blocked(failed) {
-        Refusal::AddressNotAllowed { host }
+        raise::address_not_allowed(host)
     } else if failed.is_timeout() {
-        Refusal::UpstreamUnreachable {
-            host,
-            reason: TIMED_OUT,
-        }
+        raise::upstream_unreachable(host, TIMED_OUT)
     } else {
-        Refusal::UpstreamUnreachable {
-            host,
-            reason: NOT_CONNECTED,
-        }
+        raise::upstream_unreachable(host, NOT_CONNECTED)
     }
 }
 

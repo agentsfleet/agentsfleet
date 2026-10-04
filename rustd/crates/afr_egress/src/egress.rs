@@ -4,14 +4,14 @@ use std::borrow::Cow;
 use std::sync::LazyLock;
 
 use afd_core::clock::{Clock, SystemClock};
+use afd_core::error_code;
 use afd_wire::policy::{ContextBudget, ExecutionPolicy, NetworkPolicy};
 use afr_secrets::StaticSecrets;
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
 
 use crate::admission::{Admission, Draft};
-use crate::error::Result;
-use crate::mint::{Mint, MintRefused, Minted};
-use crate::refusal::Refusal;
+use crate::error::{Error, Result, raise};
+use crate::mint::{Mint, Minted};
 use crate::transport::Outbound;
 use crate::vault::Vault;
 
@@ -77,7 +77,7 @@ impl<'run> Egress<'run> {
     /// # Errors
     /// The policy refuses the request, a placeholder names a secret the fleet
     /// lacks, or the daemon would not mint the credential it names.
-    pub async fn prepare(&mut self, draft: Draft) -> Result<Outbound, Refusal> {
+    pub async fn prepare(&mut self, draft: Draft) -> Result<Outbound> {
         let admitted = self.admission.admit(draft)?;
         let headers = self.headers(admitted.headers).await?;
         Ok(Outbound {
@@ -102,11 +102,11 @@ impl<'run> Egress<'run> {
 
     /// The written headers as HTTP carries them, `Authorization` filled in
     /// and marked sensitive so no `Debug` of the map prints it.
-    async fn headers(&mut self, written: Vec<(String, String)>) -> Result<HeaderMap, Refusal> {
+    async fn headers(&mut self, written: Vec<(String, String)>) -> Result<HeaderMap> {
         let mut headers = HeaderMap::with_capacity(written.len());
         for (name, value) in written {
             let header = HeaderName::from_bytes(name.as_bytes())
-                .map_err(|_invalid| Refusal::InvalidHeader { name: name.clone() })?;
+                .map_err(|_invalid| raise::invalid_header(&name))?;
             let sensitive = header == AUTHORIZATION;
             let mut sent = if sensitive {
                 let filled = self.vault.fill(self.admission, &value).await?;
@@ -114,7 +114,7 @@ impl<'run> Egress<'run> {
             } else {
                 HeaderValue::from_str(&value)
             }
-            .map_err(|_invalid| Refusal::InvalidHeader { name: name.clone() })?;
+            .map_err(|_invalid| raise::invalid_header(&name))?;
             sent.set_sensitive(sensitive);
             headers.append(header, sent);
         }
@@ -128,8 +128,11 @@ struct Closed;
 
 #[async_trait::async_trait]
 impl Mint for Closed {
-    async fn mint(&self, _integration: &str) -> Result<Minted, MintRefused> {
-        Err(MintRefused::new(CLOSED_MINT.to_owned()))
+    async fn mint(&self, _integration: &str) -> Result<Minted> {
+        Err(Error::mint_refused(
+            error_code::INVALID_REQUEST,
+            CLOSED_MINT,
+        ))
     }
 }
 
