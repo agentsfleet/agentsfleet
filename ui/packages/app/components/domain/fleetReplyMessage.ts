@@ -1,4 +1,5 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
+import { z } from "zod";
 
 import { isSteerBy } from "@/lib/events/event-summary";
 import {
@@ -6,6 +7,7 @@ import {
   type FleetEvent,
   type FleetToolCall,
 } from "@/lib/streaming/fleet-stream-row";
+import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 
 // A reply row as assistant-ui models it: an assistant message whose status is
 // the run's, and whose content is the reasoning, tool-call and text parts the
@@ -18,6 +20,29 @@ export const REASONING_SPAN = {
   ENDED: "reasoningEndedAtMs",
 } as const;
 
+/** Custom-bag keys for what the turn cost and the calls it did not record. On
+ * the reply, never the trigger: the trigger's conversion is compared to detect
+ * a changed row, and a turn's figures change while its trigger does not. */
+export const REPLY_FIGURE = {
+  TOKENS: "replyTokens",
+  WALL_MS: "replyWallMs",
+  COST_NANOS: "replyCostNanos",
+  OMITTED_CALLS: "omittedCallCount",
+} as const;
+
+// A done call's `result`: what tells the library the call finished, and what
+// its cell shows. Each field narrows on its own, as the frames that fill it do.
+const TOOL_RESULT = z.object({
+  status: z.enum([TOOL_CALL_STATUS.SUCCEEDED, TOOL_CALL_STATUS.FAILED, TOOL_CALL_STATUS.INTERRUPTED]).optional().catch(undefined),
+  outputHead: z.string().optional().catch(undefined),
+  outputTail: z.string().optional().catch(undefined),
+  outputLineCount: z.number().optional().catch(undefined),
+  exitCode: z.number().optional().catch(undefined),
+  callId: z.string().optional().catch(undefined),
+});
+
+export type ToolResult = z.infer<typeof TOOL_RESULT>;
+
 const RUNNING = { type: "running" } as const;
 // A finished turn stopped normally; the message status needs the reason, a
 // part's status does not.
@@ -29,10 +54,7 @@ const IN_FLIGHT: ReadonlySet<string> = new Set([
   AGENTSFLEET_EVENT_STATUS.RECEIVED,
 ]);
 const TOOL_CALL_ID_INFIX = ":tool:";
-const NO_ARGS = {} as const;
-// The wire carries no tool output. A defined result is what tells the library
-// the call finished, so a done call carries this.
-const NO_OUTPUT = null;
+const ERROR_STATUSES: ReadonlySet<string> = new Set([TOOL_CALL_STATUS.FAILED, TOOL_CALL_STATUS.INTERRUPTED]);
 
 type ReplyPart = Exclude<ThreadMessageLike["content"], string>[number];
 
@@ -73,6 +95,10 @@ export function toReplyMessage(base: ThreadMessageLike, event: FleetEvent): Thre
         ...base.metadata?.custom,
         [REASONING_SPAN.STARTED]: event.reasoningStartedAtMs,
         [REASONING_SPAN.ENDED]: event.reasoningEndedAtMs,
+        [REPLY_FIGURE.TOKENS]: event.tokens,
+        [REPLY_FIGURE.WALL_MS]: event.wallMs,
+        [REPLY_FIGURE.COST_NANOS]: event.costNanos,
+        [REPLY_FIGURE.OMITTED_CALLS]: event.omittedCallCount,
       },
     },
   };
@@ -93,6 +119,11 @@ export function replyParts(event: FleetEvent): ReplyPart[] {
   return parts;
 }
 
+/** A tool-call part's result, or undefined while the call runs. */
+export function readToolResult(result: unknown): ToolResult | undefined {
+  return result === undefined ? undefined : TOOL_RESULT.catch({}).parse(result);
+}
+
 function toolCallPart(eventId: string, tool: FleetToolCall, index: number): ReplyPart {
   const completedAt = tool.done && tool.ms !== null ? tool.startedAtMs + tool.ms : undefined;
   return {
@@ -100,8 +131,14 @@ function toolCallPart(eventId: string, tool: FleetToolCall, index: number): Repl
     // Append-only per event, so the index is a stable identity.
     toolCallId: `${eventId}${TOOL_CALL_ID_INFIX}${index}`,
     toolName: tool.name,
-    args: NO_ARGS,
-    ...(tool.done ? { result: NO_OUTPUT } : {}),
+    // Absent arguments read as `{}` in the library, which is what a call
+    // that named none was made with.
+    ...(tool.args === undefined ? {} : { args: tool.args }),
+    ...(tool.done ? { result: toolResult(tool), isError: tool.status !== undefined && ERROR_STATUSES.has(tool.status) } : {}),
     timing: completedAt === undefined ? { startedAt: tool.startedAtMs } : { startedAt: tool.startedAtMs, completedAt },
   };
+}
+
+function toolResult({ status, outputHead, outputTail, outputLineCount, exitCode, callId }: FleetToolCall): ToolResult {
+  return { status, outputHead, outputTail, outputLineCount, exitCode, callId };
 }

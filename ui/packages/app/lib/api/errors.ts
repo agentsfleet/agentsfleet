@@ -11,6 +11,9 @@ export const HTTP_STATUS_REQUEST_TIMEOUT = 408;
 /** An expired or missing session: the caller signs in again, it does not retry. */
 export const HTTP_STATUS_UNAUTHORIZED = 401;
 
+/** The thing read is not there: for a saved row, it never was or is gone. */
+export const HTTP_STATUS_NOT_FOUND = 404;
+
 /**
  * The `ApiError.code` a client-side request timeout carries — the retry
  * layer's own class, distinct from any `UZ-` wire code. The transport, the

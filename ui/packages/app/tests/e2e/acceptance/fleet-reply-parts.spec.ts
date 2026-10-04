@@ -19,6 +19,11 @@ const ANSWER_EVERY_MS = 40;
 const LAST_ANSWER_LINE = `Step ${ANSWER_CHUNKS} settled`;
 const TOOL_NAME = "read_file";
 const TOOL_WALL_MS = 700;
+const REQUEST_TOOL = "http_request";
+const REQUEST_URL = "https://status.example.test/health";
+const REQUEST_CALL_ID = "f1:0";
+const REQUEST_OUTPUT = "200 OK\n{\"ok\":true}\n";
+const SHIMMER = "tool-shimmer";
 const LIVE_REASONING = "Checking whether delivery 1 is signed before trusting it.";
 // Each stretch of reasoning outlasts the Thought's 400 ms open delay.
 const INTERLEAVED_CHUNKS = 6;
@@ -68,6 +73,34 @@ test("test_stream_reply_parts_live_then_folded", async ({ page }) => {
     await expect(chat.getByText(LIVE_REASONING)).toHaveCount(0);
     await folded.click();
     await expect(chat.getByText(LIVE_REASONING)).toBeVisible();
+  });
+});
+
+// A call as Codex draws it, live: the bullet breathes while the request runs,
+// then settles green with the verb in the past tense and the output under it.
+// The animation is read from the browser's computed style, which no unit lane
+// can see.
+test("test_live_tool_cell_settles_green", async ({ page }) => {
+  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream }) => {
+    await stream.send([
+      opening(Date.now()),
+      callFrame(REQUEST_TOOL, FRAME_KIND.TOOL_CALL_STARTED, { call_id: REQUEST_CALL_ID, args_redacted: { method: "GET", url: REQUEST_URL } }),
+    ]);
+    const cell = chat.getByRole("list", { name: "Tool calls" }).locator(`[data-tool="${REQUEST_TOOL}"]`);
+    const bullet = cell.locator("[data-tool-shimmer]");
+    await expect(cell).toContainText(`Requesting GET ${REQUEST_URL}`);
+    await expect(bullet).toHaveAttribute("data-tool-shimmer", "true");
+    await expect.poll(() => bullet.evaluate((el) => getComputedStyle(el).animationName)).toBe(SHIMMER);
+
+    await stream.send([callFrame(REQUEST_TOOL, FRAME_KIND.TOOL_CALL_COMPLETED, {
+      call_id: REQUEST_CALL_ID, ms: TOOL_WALL_MS, status: "succeeded", output_head: REQUEST_OUTPUT, output_line_count: 2,
+    })]);
+    await expect(cell).toContainText(`Requested GET ${REQUEST_URL}`);
+    await expect(bullet).toHaveAttribute("data-tool-shimmer", "false");
+    await expect(bullet).toHaveClass(/\btext-success\b/);
+    await expect.poll(() => bullet.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
+    await expect(cell).toContainText("200 OK");
+    await expect(cell).toContainText("0.7s");
   });
 });
 
@@ -205,7 +238,11 @@ function chunk(seq: number, kind: "reasoning" | "answer", text: string): TimedFr
 }
 
 function toolFrame(kind: string, extra: Record<string, unknown>): TimedFrame {
-  return { afterMs: 0, body: frame(kind, { event_id: EVENT_ID, name: TOOL_NAME, ...extra }) };
+  return callFrame(TOOL_NAME, kind, extra);
+}
+
+function callFrame(name: string, kind: string, extra: Record<string, unknown>): TimedFrame {
+  return { afterMs: 0, body: frame(kind, { event_id: EVENT_ID, name, ...extra }) };
 }
 
 // Long tasks from the browser's own observer; frame gaps from consecutive

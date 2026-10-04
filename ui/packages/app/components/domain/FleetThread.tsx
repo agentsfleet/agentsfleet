@@ -27,6 +27,7 @@ import { useMessageDelivery } from "./useFleetMessageDelivery";
 import { useFleetSteerQueue } from "./useFleetSteerQueue";
 import { reportsOwnRun } from "./fleetReplyMessage";
 import { FleetThreadViewport } from "./FleetThreadViewport";
+import { FleetScopeProvider } from "./FleetToolOutputDialog";
 
 export type FleetThreadProps = {
   workspaceId: string;
@@ -125,49 +126,51 @@ export function FleetThread({
   runtimeRef.current = runtime;
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <SenderLabelProvider senderLabel={senderLabel}>
-        <SenderNamesProvider names={names}>
-          <DashboardPanel
-            id="fleet-chat-transcript"
-            aria-label="Fleet chat"
-            padding="none"
-            className="flex min-h-0 flex-1 flex-col overflow-clip rounded-none border-0 bg-background"
-          >
-            {/*
-              * The header speaks only when the stream is not fine.
-              *
-              * It carried the word "Chat" directly under a tab already reading
-              * "Chat", and a steady "Live" that said nothing on the overwhelming
-              * majority of loads. A transcript is the page's content; labelling
-              * it costs a row and tells the operator what they can see.
-              *
-              * What is worth saying is the exception, so connecting, reconnecting
-              * and offline still render here — and OFFLINE additionally gets the
-              * notice above the composer, with its retry. `PANEL_TITLE` stays as
-              * the scroll region's accessible name, where it is the only name
-              * that region has.
-              */}
-            {settledLive ? null : (
-              <DashboardPanelHeader
-                data-testid="fleet-chat-header"
-                className="shrink-0 border-b border-border px-lg py-md sm:px-xl"
-              >
-                <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
-              </DashboardPanelHeader>
-            )}
-            <FleetThreadViewport
-              eventsCount={stream.events.length}
-              connectionStatus={stream.connectionStatus}
-              onRetry={stream.retryConnection}
-              pending={ledger.pending}
-              onResend={delivery.resend}
-              onDismiss={ledger.writers.dismiss}
-              onRestored={delivery.noteRestored}
-              onDraft={delivery.noteDraft}
-            />
-          </DashboardPanel>
-        </SenderNamesProvider>
-      </SenderLabelProvider>
+      <FleetScopeProvider workspaceId={workspaceId} fleetId={fleetId}>
+        <SenderLabelProvider senderLabel={senderLabel}>
+          <SenderNamesProvider names={names}>
+            <DashboardPanel
+              id="fleet-chat-transcript"
+              aria-label="Fleet chat"
+              padding="none"
+              className="flex min-h-0 flex-1 flex-col overflow-clip rounded-none border-0 bg-background"
+            >
+              {/*
+                * The header speaks only when the stream is not fine.
+                *
+                * It carried the word "Chat" directly under a tab already reading
+                * "Chat", and a steady "Live" that said nothing on the overwhelming
+                * majority of loads. A transcript is the page's content; labelling
+                * it costs a row and tells the operator what they can see.
+                *
+                * What is worth saying is the exception, so connecting, reconnecting
+                * and offline still render here — and OFFLINE additionally gets the
+                * notice above the composer, with its retry. `PANEL_TITLE` stays as
+                * the scroll region's accessible name, where it is the only name
+                * that region has.
+                */}
+              {settledLive ? null : (
+                <DashboardPanelHeader
+                  data-testid="fleet-chat-header"
+                  className="shrink-0 border-b border-border px-lg py-md sm:px-xl"
+                >
+                  <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
+                </DashboardPanelHeader>
+              )}
+              <FleetThreadViewport
+                eventsCount={stream.events.length}
+                connectionStatus={stream.connectionStatus}
+                onRetry={stream.retryConnection}
+                pending={ledger.pending}
+                onResend={delivery.resend}
+                onDismiss={ledger.writers.dismiss}
+                onRestored={delivery.noteRestored}
+                onDraft={delivery.noteDraft}
+              />
+            </DashboardPanel>
+          </SenderNamesProvider>
+        </SenderLabelProvider>
+      </FleetScopeProvider>
     </AssistantRuntimeProvider>
   );
 }

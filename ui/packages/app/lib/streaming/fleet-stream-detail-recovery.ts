@@ -5,6 +5,7 @@
 
 import type { ActionResult } from "@/lib/actions/with-token";
 import type { EventDetail } from "@/lib/api/events";
+import { HTTP_STATUS_NOT_FOUND } from "@/lib/api/errors";
 import type { MessageRole } from "@/lib/events/event-summary";
 import type { FleetFacts } from "@/lib/events/run-summary";
 import type { Entry } from "./fleet-stream-entry";
@@ -26,7 +27,6 @@ const PERMANENT_DETAIL_RETRY_MS = 60_000;
 // ends on either; the stall watch asks `isGone`, since its event may still be
 // queued. The other permanent statuses can heal — a fresh session, a repaired
 // row — so recovery backs off on them.
-const HTTP_STATUS_NOT_FOUND = 404;
 const HTTP_STATUS_GONE = 410;
 const EVENT_GONE_STATUSES: ReadonlySet<number> = new Set([HTTP_STATUS_NOT_FOUND, HTTP_STATUS_GONE]);
 const OPERATOR_ROLE: MessageRole = "user";
