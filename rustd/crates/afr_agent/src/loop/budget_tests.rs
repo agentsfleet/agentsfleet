@@ -1,15 +1,13 @@
 #![expect(
     clippy::unwrap_used,
     clippy::indexing_slicing,
-    clippy::panic,
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
 use afd_core::test_util::trace::Capture;
 use afd_wire::activity::ActivityFrame;
-use afd_wire::report::{FailureClass, ResultOutcome};
 use afr_egress::testing::CountingMint;
-use afr_providers::{Error, Message};
+use afr_providers::Message;
 use afr_tools::catalog::{FILE_READ, HTTP_REQUEST, UPDATE_PLAN, WEB_SEARCH};
 use afr_tools::stub::Stub;
 use tokio_util::sync::CancellationToken;
@@ -19,8 +17,7 @@ use super::tests::{drive, engine};
 use crate::context::{CAP_REACHED, EVICTED};
 use crate::engine::{AgentEngine, AgentRun, Meter};
 use crate::fixture::{
-    API_KEY, Canned, Frames, GITHUB_TOKEN, Script, Unreachable, budget, call, lease, say, spent,
-    unbounded,
+    API_KEY, Canned, Frames, GITHUB_TOKEN, Script, budget, call, lease, say, spent, unbounded,
 };
 use crate::testing::Discard;
 
@@ -104,6 +101,38 @@ async fn reaching_the_context_cap_offers_no_tools_and_asks_for_the_answer() {
     assert_eq!(reached.field("turns"), Some("1"));
     assert_eq!(reached.field("tokens"), Some(FILLED.to_string().as_str()));
     assert_eq!(reached.field("lease_id"), Some("lease-1"));
+}
+
+/// A prompt that fills the window as a fresh half and a cached half reaches
+/// the cap all the same: cache reads sit in the window too, so they are never
+/// free room, and the cap's log line counts them.
+#[tokio::test]
+async fn cache_reads_count_toward_the_cap_and_its_log_line() {
+    let capture = Capture::install();
+    let half = FILLED / 2;
+    let script = Script::new([
+        vec![
+            call("a", UPDATE_PLAN.name(), serde_json::json!({})),
+            spent(half, half, 1),
+        ],
+        vec![say("partial answer")],
+    ]);
+    let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "4")], &script);
+
+    drive(
+        &engine,
+        &lease(&[UPDATE_PLAN.name()], budget(0, CAP)),
+        &CancellationToken::new(),
+    )
+    .await;
+
+    let sent = script.sent();
+    assert!(
+        sent[1].tools.is_empty(),
+        "the cap was reached on the whole prompt, cached half included"
+    );
+    let reached = capture.only(EVENT_CAP_REACHED);
+    assert_eq!(reached.field("tokens"), Some(FILLED.to_string().as_str()));
 }
 
 #[tokio::test]
@@ -206,44 +235,6 @@ async fn test_meter_holds_what_the_report_sums() {
 }
 
 #[tokio::test]
-async fn a_provider_refusal_ends_the_run_as_the_fleets_error() {
-    let script = Script::failing(Vec::new(), || Error::refused(401));
-    let engine = engine(Vec::new(), &script);
-
-    let (output, _frames) =
-        drive(&engine, &lease(&[], unbounded()), &CancellationToken::new()).await;
-
-    let ResultOutcome::Failed(failure) = output.result.outcome else {
-        panic!("a refused turn fails the run");
-    };
-    assert_eq!(
-        failure.class, None,
-        "the fleet's error carries no failure reason"
-    );
-    assert!(failure.detail.contains("401"), "{}", failure.detail);
-    assert!(
-        !failure.detail.contains("UZ-"),
-        "the detail is a sentence, not a code"
-    );
-}
-
-#[tokio::test]
-async fn a_lost_provider_connection_ends_the_run_as_transport_loss() {
-    let lost = || Error::lost(std::io::Error::other("connection reset"));
-    let script = Script::failing(vec![say("partial ")], lost);
-    let engine = engine(Vec::new(), &script);
-
-    let (output, _frames) =
-        drive(&engine, &lease(&[], unbounded()), &CancellationToken::new()).await;
-
-    let ResultOutcome::Failed(failure) = output.result.outcome else {
-        panic!("a lost turn fails the run");
-    };
-    assert_eq!(failure.class, Some(FailureClass::TransportLoss));
-    assert_eq!(output.result.content, "", "a failed run reports no answer");
-}
-
-#[tokio::test]
 async fn test_secret_values_masked_in_outputs() {
     let echo = format!("token={GITHUB_TOKEN}\nkey={API_KEY}");
     let script = Script::new([
@@ -288,34 +279,6 @@ async fn test_secret_values_masked_in_outputs() {
     );
     let rendered = format!("{frames:?}{trace:?}{:?}", output.records);
     assert!(!rendered.contains(GITHUB_TOKEN) && !rendered.contains(API_KEY));
-}
-
-#[tokio::test]
-async fn a_provider_that_cannot_be_reached_is_an_engine_error() {
-    let engine = super::Loop::new(afr_tools::Catalog::new(Vec::new()), Unreachable);
-    let lease = lease(&[], unbounded());
-    let frames = Frames::default();
-    let sink = frames.sink();
-
-    let failure = engine
-        .run(AgentRun {
-            lease: &lease,
-            memory: afr_memory::Seed::default(),
-            executor: None,
-            mint: &CountingMint::never(),
-            checkpoint: &Discard,
-            events: &sink,
-            meter: &Meter::default(),
-            stop: &CancellationToken::new(),
-        })
-        .await
-        .unwrap_err();
-
-    assert_eq!(
-        failure.code(),
-        afd_core::error_code::INTERNAL_OPERATION_FAILED
-    );
-    assert!(frames.taken().is_empty());
 }
 
 #[test]

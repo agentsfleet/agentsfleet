@@ -118,6 +118,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_reasons_sentence_names_each_bound_it_enforces() {
+        for bound in [REASONS_MAX, REASON_CREDENTIAL_MAX_BYTES, REASON_MAX_BYTES] {
+            assert!(
+                DETAIL_REASONS_BOUNDS.contains(&bound.to_string()),
+                "{bound} is missing from: {DETAIL_REASONS_BOUNDS}"
+            );
+        }
+    }
+
+    #[test]
     fn patch_validation_covers_identity_and_reason_bounds() {
         assert_eq!(
             patch_request(br#"{"description":"new"}"#).map(|_patch| ()),

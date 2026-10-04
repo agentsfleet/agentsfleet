@@ -5,11 +5,16 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
+use std::sync::Arc;
+
+use afd_core::clock::{FixedClock, UnixMillis};
 use afd_wire::activity::{ActivityFrame, StreamTextKind};
 use afd_wire::tool_trace::ToolCallStatus;
+use afr_egress::fixture::policy;
+use afr_egress::testing::{CountingMint, RecordingTransport};
 use afr_providers::{Chunk, Message};
-use afr_tools::ToolErrorCode;
-use afr_tools::catalog::UPDATE_PLAN;
+use afr_tools::catalog::{HTTP_REQUEST, UPDATE_PLAN};
+use afr_tools::{Catalog, ToolErrorCode};
 use tokio_util::sync::CancellationToken;
 
 use afd_core::test_util::trace::Capture;
@@ -18,12 +23,21 @@ use afd_observability::semconv::{
     OPERATION_EXECUTE_TOOL, OPERATION_INVOKE_AGENT, RUNNER_SCOPE_NAME,
 };
 
+use super::Loop;
 use super::tests::{completions, drive, engine};
 use super::{EVENT_TURN_COMPLETED, EVENT_TURN_STARTED};
+use crate::engine::{AgentEngine, AgentRun, Meter};
 use crate::fixture::{
-    API_KEY, Canned, Exits, GITHUB_TOKEN, Script, call, lease, say, spent, unbounded,
+    API_KEY, Canned, Exits, Frames, GITHUB_TOKEN, Script, call, lease, say, spent, unbounded,
 };
 use crate::ledger::{EVENT_CALL_COMPLETED, EVENT_CALL_STARTED};
+use crate::testing::Discard;
+
+/// The event the egress vault logs each mint under, in the vault's spelling.
+const EVENT_CREDENTIAL_MINTED: &str = "credential_minted";
+/// The token the test mint answers, and how long it lives: an hour.
+const MINTED: &str = "ghs_minted_token";
+const HOUR_MILLIS: i64 = 3_600_000;
 
 #[tokio::test]
 async fn test_unlisted_tool_refused_run_continues() {
@@ -220,6 +234,58 @@ async fn every_turn_and_every_call_logs_its_start_and_its_end_once() {
     );
     assert_eq!(ended.field("call_id"), Some("1"));
     assert_eq!(ended.field("status"), Some("Succeeded"));
+}
+
+/// A credential minted for a call is logged under the lease the loop was
+/// handed, so the operator reading the line finds the run that minted it.
+#[tokio::test]
+async fn a_credential_minted_during_a_run_is_logged_under_the_runs_lease() {
+    let capture = Capture::install();
+    let script = Script::new([
+        vec![call(
+            "a",
+            HTTP_REQUEST.name(),
+            serde_json::json!({"url": "https://api.github.com/repos/acme/widgets/pulls",
+                "headers": {"Authorization": "Bearer ${secrets.github.token}"}}),
+        )],
+        vec![say("done")],
+    ]);
+    let (transport, _sent) = RecordingTransport::replying(200, "[]");
+    let engine = Loop::new(Catalog::hosted(Arc::new(transport)), script.replay());
+    let mut leased = lease(&[], unbounded());
+    leased.lease_id = "lease-77".into();
+    leased.policy = policy(false);
+    leased.policy.tools = vec![HTTP_REQUEST.name().into()];
+    let mint = CountingMint::answering(MINTED, HOUR_MILLIS, FixedClock::at(UnixMillis::EPOCH));
+    let frames = Frames::default();
+    let sink = frames.sink();
+
+    let output = engine
+        .run(AgentRun {
+            lease: &leased,
+            memory: afr_memory::Seed::default(),
+            executor: None,
+            mint: &mint,
+            checkpoint: &Discard,
+            events: &sink,
+            meter: &Meter::default(),
+            stop: &CancellationToken::new(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(output.result.content, "done");
+    assert_eq!(
+        completions(&frames.taken()),
+        [("1".to_owned(), ToolCallStatus::Succeeded)],
+        "the call was admitted and sent"
+    );
+    let minted = capture.only(EVENT_CREDENTIAL_MINTED);
+    assert_eq!(minted.field("lease_id"), Some(leased.lease_id.as_ref()));
+    assert!(
+        (capture.events().iter()).all(|event| event.fields.values().all(|v| !v.contains(MINTED))),
+        "no log line carries the minted token"
+    );
 }
 
 #[tokio::test]

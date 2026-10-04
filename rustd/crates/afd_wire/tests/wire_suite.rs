@@ -15,6 +15,8 @@
 mod admin_shapes;
 #[path = "memory_shapes.rs"]
 mod memory_shapes;
+#[path = "policy_shapes.rs"]
+mod policy_shapes;
 // Ungated for the same reason: it reads the sources, not the schemas.
 #[path = "names.rs"]
 mod names;

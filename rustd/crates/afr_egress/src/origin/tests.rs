@@ -147,7 +147,12 @@ fn should_admit_a_body_only_when_every_locked_field_holds_its_value() {
         Some(r#"{"base":"dev","draft":false,"draft":true}"#),
         Some(r#"{"base":"dev","draft":true,"draft":false}"#),
         // The same key twice, once under a JSON escape: decoded, it repeats.
-        Some(r#"{"base":"dev","draft":false,"draft":true}"#),
+        Some(r#"{"base":"dev","dr\u0061ft":false,"draft":true}"#),
+        // JSON that is not an object has no fields to lock.
+        Some("[]"),
+        Some(r#""base""#),
+        Some("1"),
+        Some("null"),
         Some(r#"{"base":"main","base":"dev","draft":true}"#),
         Some("not json"),
         None,

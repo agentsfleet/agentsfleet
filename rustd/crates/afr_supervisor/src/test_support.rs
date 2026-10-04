@@ -169,6 +169,8 @@ pub(crate) enum Behaviour {
     /// Spends tokens, then hands back [`Behaviour::Answer`]'s output once
     /// told to stop, as the real loop does.
     Stops,
+    /// Spends tokens, then never finishes, so only the meter can bill the run.
+    Spends,
     /// Panics mid-run.
     Panic,
 }
@@ -241,6 +243,10 @@ impl AgentEngine for FakeAgent {
                 run.stop.cancelled().await;
                 Ok(answer())
             }
+            Behaviour::Spends => {
+                run.meter.add(SPENT);
+                std::future::pending().await
+            }
             Behaviour::Panic => panic!("the fake engine panics on purpose"),
         }
     }
@@ -257,14 +263,15 @@ async fn exercise(executor: &dyn Executor) {
     assert!(executor.list_dir("/").await.unwrap().entries.is_empty());
 }
 
-/// The result a successful fake run answers with.
-/// What [`Behaviour::Stops`] spends before it is stopped: [`answer`]'s counts.
+/// What [`Behaviour::Stops`] and [`Behaviour::Spends`] spend before the lease
+/// ends them: [`answer`]'s counts.
 pub(crate) const SPENT: Usage = Usage {
     input: 3,
     cached_input: 1,
     output: 4,
 };
 
+/// The result a successful fake run answers with.
 pub(crate) fn answer() -> RunOutput {
     RunOutput {
         result: ExecutionResult {

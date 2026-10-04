@@ -187,3 +187,33 @@ async fn test_provider_filter_shares_the_catalogue_bound() {
     let at_bound = "p".repeat(CATALOGUE_PROVIDER_BYTES);
     assert_accepted(Method::GET, &format!("/v1/models?provider={at_bound}")).await;
 }
+
+/// The published document bounds the admin catalogue id the way the handler
+/// does: a 1 to 64 byte slug on both routes that take one, never a UUID.
+#[test]
+fn test_the_published_catalog_id_bound_is_the_enforced_one() {
+    let openapi = include_str!("../../../../public/openapi.json");
+    let document: Value = serde_json::from_str(openapi).expect("the published document is JSON");
+    for verb in ["patch", "delete"] {
+        let id = document
+            .pointer(&format!(
+                "/paths/~1v1~1admin~1fleet-libraries~1{{id}}/{verb}/parameters"
+            ))
+            .and_then(Value::as_array)
+            .and_then(|parameters| {
+                parameters
+                    .iter()
+                    .find(|parameter| parameter.get("name").and_then(Value::as_str) == Some("id"))
+            })
+            .and_then(|parameter| parameter.get("schema"))
+            .unwrap_or_else(|| panic!("{verb} publishes an id parameter with a schema"));
+        assert_eq!(
+            (
+                id.get("minLength").and_then(Value::as_u64),
+                id.get("maxLength").and_then(Value::as_u64),
+            ),
+            (Some(1), Some(CATALOG_ID_MAX_BYTES as u64)),
+            "{verb}: {id}"
+        );
+    }
+}

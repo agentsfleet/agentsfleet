@@ -4,7 +4,9 @@
 //! The fake answers each request with the next scripted reply, read through
 //! an atomic cursor, and streams a reply's events one per body chunk, so the
 //! transport is exercised and not only the parser (RULE STR). Every request it
-//! saw comes back over a channel.
+//! saw comes back over a channel, and every connection it accepted is counted,
+//! so a suite can tell a request that never left from one the fake could not
+//! read.
 
 #![expect(
     clippy::unwrap_used,
@@ -15,6 +17,8 @@
 pub(crate) mod wires;
 
 use std::convert::Infallible;
+use std::io;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -30,7 +34,9 @@ use afr_tools::stub::Stub;
 use axum::body::{Body, Bytes};
 use axum::http::header::{CONTENT_TYPE, LOCATION, RETRY_AFTER};
 use axum::http::{HeaderMap, Response, StatusCode, Uri};
+use axum::serve::Listener;
 use futures_util::stream;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -77,6 +83,31 @@ struct Script {
 pub(crate) struct Fake {
     pub(crate) base: String,
     seen: mpsc::UnboundedReceiver<Seen>,
+    accepted: Arc<AtomicUsize>,
+}
+
+/// The fake's listener, counting every connection it accepts: a request the
+/// fake could not read, such as a TLS handshake against its plain HTTP, still
+/// opened one, where a request the client refused to send opened none.
+#[derive(Debug)]
+struct Counting {
+    listener: TcpListener,
+    accepted: Arc<AtomicUsize>,
+}
+
+impl Listener for Counting {
+    type Io = TcpStream;
+    type Addr = SocketAddr;
+
+    async fn accept(&mut self) -> (Self::Io, Self::Addr) {
+        let accepted = Listener::accept(&mut self.listener).await;
+        self.accepted.fetch_add(1, Ordering::Relaxed);
+        accepted
+    }
+
+    fn local_addr(&self) -> io::Result<Self::Addr> {
+        Listener::local_addr(&self.listener)
+    }
 }
 
 impl Fake {
@@ -104,18 +135,28 @@ impl Fake {
                 answer(script.replies.get(index))
             }
         });
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let listener = Counting {
+            listener: TcpListener::bind("127.0.0.1:0").await.unwrap(),
+            accepted: Arc::new(AtomicUsize::new(0)),
+        };
         let address = listener.local_addr().unwrap();
+        let accepted = Arc::clone(&listener.accepted);
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         Self {
             base: format!("http://{address}"),
             seen,
+            accepted,
         }
     }
 
     /// Every request seen since the last read.
     pub(crate) fn seen(&mut self) -> Vec<Seen> {
         std::iter::from_fn(|| self.seen.try_recv().ok()).collect()
+    }
+
+    /// How many connections were opened to the fake, readable or not.
+    pub(crate) fn connections(&self) -> usize {
+        self.accepted.load(Ordering::Relaxed)
     }
 }
 

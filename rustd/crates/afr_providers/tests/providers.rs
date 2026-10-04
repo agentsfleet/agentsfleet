@@ -1,7 +1,8 @@
 //! The three provider wires against a fake provider on a real socket, driven
 //! by the real loop: a tool turn each, bounded retry, the key kept to its one
 //! header, `web_search` as a hosted spec, and a stream cut before its turn
-//! ended, opened again within the same bound.
+//! ended, opened again within the same bound. How a turn ends is `ends`; which
+//! host it reaches is `hosts`.
 
 #![expect(
     clippy::unwrap_used,
@@ -14,6 +15,8 @@ mod support;
 
 #[path = "providers/ends.rs"]
 mod ends;
+#[path = "providers/hosts.rs"]
+mod hosts;
 
 use std::time::{Duration, Instant};
 
@@ -331,20 +334,4 @@ async fn a_provider_error_mid_stream_ends_the_turn_as_a_transport_loss() {
         "{}",
         failure.detail
     );
-}
-
-#[tokio::test]
-async fn a_redirect_is_never_followed_so_the_key_reaches_one_host() {
-    let mut fake = Fake::serve(vec![Reply::Redirect("/elsewhere".to_owned())]).await;
-    let leased = lease(&Wire::Messages.provider(), &[], "hello");
-
-    let (output, _frames) = run(&engine(&fake), &leased).await;
-
-    let ResultOutcome::Failed(failure) = output.result.outcome else {
-        panic!("a redirected turn is no answer");
-    };
-    assert!(failure.detail.contains("307"), "{}", failure.detail);
-    let seen = fake.seen();
-    assert_eq!(seen.len(), 1, "the redirect's target was never asked");
-    assert_eq!(seen[0].path, Wire::Messages.path());
 }

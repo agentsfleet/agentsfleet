@@ -196,6 +196,29 @@ async fn a_run_cut_by_its_renewal_still_reports_its_tokens_and_pushes_its_memory
     assert_eq!(rig.destroyed.load(Ordering::SeqCst), 1);
 }
 
+/// A run the daemon cut before it answered has only the meter to bill: the
+/// renewal that ended it carried its spend, and so does the failed report.
+#[tokio::test(start_paused = true)]
+async fn a_run_cut_before_it_answered_bills_the_meter_at_renewal_and_in_its_report() {
+    let mut rig = rig(renewal_lost, FakeEngine::default(), Behaviour::Spends);
+
+    rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
+
+    let calls = rig.calls();
+    let renewal = position(&calls, Verb::Renew).unwrap();
+    let renewed: serde_json::Value =
+        serde_json::from_slice(calls[renewal].body.as_ref().unwrap()).unwrap();
+    assert_eq!(renewed["input_tokens"], 3, "the renewal carried the meter");
+    assert_eq!(renewed["cached_input_tokens"], 1);
+    assert_eq!(renewed["output_tokens"], 4);
+    let report = reported(&calls);
+    assert_eq!(report[FAILURE_REASON], RENEWAL_TERMINATE);
+    assert_eq!(report["tokens"], 8, "the failed report bills the meter");
+    assert_eq!(report["input_tokens"], 3);
+    assert_eq!(report["cached_input_tokens"], 1);
+    assert_eq!(report["output_tokens"], 4);
+}
+
 #[tokio::test(start_paused = true)]
 async fn a_stop_ends_a_lease_in_flight_and_still_tears_down() {
     let mut rig = rig(healthy, FakeEngine::default(), Behaviour::Hang);
