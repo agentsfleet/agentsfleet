@@ -69,8 +69,10 @@ afr_providers.workspace = true
 # Stub handlers, so the lease suites admit through a real catalog: a
 # sandbox-side tool starts a sandbox, a supervisor-side one does not.
 afr_tools = { workspace = true, features = ["test-util"] }
-# The scripted engine the lease suites drive a run with, named here so the
-# crate's tests build when it is the only package selected.
+# The fake engine's `Behaviour::Break` answers an executor failure, and the
+# lift from `afr_executor::Error` into `afr_agent::Error` exists only under
+# this feature; named here so the tests build when this crate is selected
+# alone.
 afr_agent = { workspace = true, features = ["test-util"] }
 # The bundle tests' independent oracle for the digest.
 hex.workspace = true
