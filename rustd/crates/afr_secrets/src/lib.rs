@@ -17,4 +17,4 @@ mod statics;
 pub use self::error::{Error, Result};
 pub use self::scrub::{Carry, Clean, Scrub};
 pub use self::secret::Secret;
-pub use self::statics::{FIELD_HOST, StaticSecrets};
+pub use self::statics::{FIELD_HOST, FIELD_TOKEN, StaticSecrets};

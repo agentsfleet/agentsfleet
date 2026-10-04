@@ -14,9 +14,9 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 
 use afd_core::clock::Clock;
-use afr_secrets::{Scrub, Secret};
+use afr_secrets::{FIELD_TOKEN, Scrub, Secret};
 
-use crate::admission::{Admission, FIELD_TOKEN};
+use crate::admission::Admission;
 use crate::error::{Error, Result, raise};
 use crate::mint::{Mint, Minted};
 use crate::placeholder::{self, SecretRef};

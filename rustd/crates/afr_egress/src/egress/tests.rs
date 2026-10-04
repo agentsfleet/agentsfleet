@@ -114,7 +114,7 @@ async fn should_refuse_a_header_http_cannot_carry() {
 
 #[tokio::test]
 async fn should_admit_nothing_through_a_closed_guard() {
-    let mut closed = Egress::closed();
+    let mut closed = crate::testing::closed();
 
     let refused = closed
         .prepare(post(PULLS, "{}"))

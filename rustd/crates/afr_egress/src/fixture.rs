@@ -15,7 +15,7 @@ use afd_wire::policy::{
     ContextBudget, ExecutionPolicy, HttpJsonFieldRule, HttpMethod, HttpOriginPolicy, HttpPathMatch,
     HttpRequestRule, Mintable, NetworkPolicy, RepositoryAccess, RepositoryBinding,
 };
-use afr_secrets::FIELD_HOST;
+use afr_secrets::{FIELD_HOST, FIELD_TOKEN};
 use serde_json::{Map, Value};
 
 use crate::error::Error;
@@ -48,8 +48,6 @@ pub const PUSHOVER_USER: &str = "po_user_key";
 
 /// The minted credential, and the integration it is minted for.
 const GITHUB_CREDENTIAL: &str = "github";
-/// The field a credential's token is held under.
-const TOKEN: &str = "token";
 /// An address literal the allowlist lists, which admission still refuses.
 const LOOPBACK: &str = "127.0.0.1";
 
@@ -154,16 +152,16 @@ fn secrets() -> Value {
     let credentials = [
         (
             "grafana",
-            credential(&[(TOKEN, GRAFANA_TOKEN), (FIELD_HOST, GRAFANA)]),
+            credential(&[(FIELD_TOKEN, GRAFANA_TOKEN), (FIELD_HOST, GRAFANA)]),
         ),
         (
             "elastic",
             credential(&[("api_key", "es_live_key"), (FIELD_HOST, ELASTIC)]),
         ),
-        ("unbound", credential(&[(TOKEN, "no_host_token")])),
+        ("unbound", credential(&[(FIELD_TOKEN, "no_host_token")])),
         (
             "pushover",
-            credential(&[(TOKEN, PUSHOVER_TOKEN), ("user", PUSHOVER_USER)]),
+            credential(&[(FIELD_TOKEN, PUSHOVER_TOKEN), ("user", PUSHOVER_USER)]),
         ),
     ];
     Value::Object(

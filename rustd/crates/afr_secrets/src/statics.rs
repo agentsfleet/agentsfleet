@@ -14,6 +14,10 @@ use serde_json::{Map, Value};
 /// The credential field naming a credential's host, which is no secret.
 pub const FIELD_HOST: &str = "host";
 
+/// The credential field holding a credential's token: a minted credential's
+/// only field, and the one a static credential's handler reads.
+pub const FIELD_TOKEN: &str = "token";
+
 /// The static credentials one lease carries.
 ///
 /// Its `Debug` names the credentials and prints none of their fields, so a

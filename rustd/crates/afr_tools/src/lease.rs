@@ -6,7 +6,7 @@
 //! [`ToolContext`]: crate::ToolContext
 
 use afr_egress::Egress;
-use afr_memory::{Hydrated, MemoryBackend};
+use afr_memory::MemoryBackend;
 
 /// One lease's state, as its calls see it.
 #[derive(Debug)]
@@ -26,9 +26,13 @@ impl<'run> Lease<'run> {
     }
 }
 
+#[cfg(any(test, feature = "test-util"))]
 impl Default for Lease<'_> {
     /// A lease with empty memory under the default backend, sending nothing.
     fn default() -> Self {
-        Self::new(Box::new(Hydrated::default()), Egress::closed())
+        Self::new(
+            Box::new(afr_memory::Hydrated::default()),
+            afr_egress::testing::closed(),
+        )
     }
 }

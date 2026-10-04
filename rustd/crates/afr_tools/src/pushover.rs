@@ -10,6 +10,7 @@
 use std::ops::RangeInclusive;
 
 use afr_egress::{Draft, Error, Placement};
+use afr_secrets::FIELD_TOKEN;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -26,8 +27,6 @@ const METHOD: &str = "POST";
 const JSON: (&str, &str) = ("Content-Type", "application/json");
 /// The secret the handler reads its credentials from.
 const CREDENTIAL: &str = "pushover";
-/// The application token's field.
-const FIELD_TOKEN: &str = "token";
 /// The recipient's field.
 const FIELD_USER: &str = "user";
 /// The priorities Pushover accepts.

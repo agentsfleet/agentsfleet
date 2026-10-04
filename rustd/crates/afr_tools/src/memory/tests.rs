@@ -8,7 +8,6 @@ use std::borrow::Cow;
 use afd_wire::memory::{
     MAX_CONTENT_LEN, MAX_PUSH_BYTES, MemoryDelta, PINNED_CATEGORY, RECALL_LIMIT_MAX, Visibility,
 };
-use afr_egress::Egress;
 use afr_memory::{Hydrated, Seed};
 use serde_json::json;
 
@@ -32,7 +31,7 @@ async fn the_four_tools_share_one_lease_memory() {
     let window = hydrated();
     let mut lease = Lease::new(
         Box::new(Hydrated::new(Seed::window(&window))),
-        Egress::closed(),
+        afr_egress::testing::closed(),
     );
     let (store, recall, list, forget) = (
         Typed::boxed(MemoryStore),

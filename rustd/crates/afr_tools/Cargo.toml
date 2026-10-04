@@ -25,6 +25,8 @@ afr_memory.workspace = true
 afr_executor.workspace = true
 # The egress tools send through the lease's guard and the shared transport.
 afr_egress.workspace = true
+# The field a credential's token sits in, which `pushover` reads.
+afr_secrets.workspace = true
 # `web_fetch` reads a page's text, never its markup.
 html2text.workspace = true
 # `Tool` is `dyn`: the catalog holds production handlers, tests hold stubs.
@@ -41,8 +43,8 @@ tracing.workspace = true
 [features]
 # M-TEST-UTIL. Stub handlers for any published tool, so the agent's and the
 # supervisor's suites prove routing and admission before every real handler
-# exists.
-test-util = []
+# exists, and a lease whose guard admits nothing.
+test-util = ["afr_egress/test-util"]
 
 [dev-dependencies]
 # The counting mint and the recording transport the egress suites send through.

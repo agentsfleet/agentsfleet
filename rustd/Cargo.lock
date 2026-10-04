@@ -1140,6 +1140,7 @@ dependencies = [
  "afr_egress",
  "afr_executor",
  "afr_memory",
+ "afr_secrets",
  "async-trait",
  "bytes",
  "html2text",
