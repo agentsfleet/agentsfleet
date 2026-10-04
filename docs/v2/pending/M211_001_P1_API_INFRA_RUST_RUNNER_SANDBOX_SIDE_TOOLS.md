@@ -47,7 +47,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 1. `docs/architecture/runner_execution.md` — §"Tool catalog" (each tool's runtime and needs), §Toolbox, §Repository writes; the Decisions table is binding.
 2. `docs/v2/done/M210_001_P1_API_INFRA_RUST_RUNNER_SUPERVISOR_SANDBOX_FOUNDATION.md` §4 and §5 — the executor's methods and the toolbox build these handlers stand on; Discovery "Sandbox crate choices" for why loop mounts avoided `bindgen`.
 3. `rustd/crates/afr_sandbox/src/toolbox.rs` — the path-based `mount -o loop` and the post-mount re-hash that §8 replaces.
-4. `docs/v2/active/M210_002_P1_API_INFRA_RUST_RUNNER_AGENT_LOOP_AND_HOSTED_TOOLS.md` §1 — the catalog and router these handlers plug into.
+4. `docs/v2/done/M210_002_P1_API_INFRA_RUST_RUNNER_AGENT_LOOP_AND_HOSTED_TOOLS.md` §1 — the catalog and router these handlers plug into.
 5. `docs/architecture/runner_fleet.md` — §"The sandbox filesystem contract": what a fleet may see and write.
 6. https://github.com/openai/codex/tree/2e5fea64eefcaa19f48458b2386011b619f69c70/codex-rs — `core/src/tools/handlers/unified_exec/` (`exec_command`, `write_stdin`, sessions, `yield_time_ms`, `max_output_tokens`), `core/src/tools/handlers/view_image.rs`, `apply-patch/` (the patch grammar and parser, copied at this commit with its NOTICE).
 

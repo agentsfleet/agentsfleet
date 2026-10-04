@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M210
 **Workstream:** 004
 **Date:** Oct 03, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — Indy's memory decisions of Oct 03: the twenty-first fleet should start from what twenty others learned, and a workspace must be able to move stores without losing a memory
 **Categories:** API, UI
 **Batch:** B2 — folded into M210_002 and shipped in its Pull Request, by Indy's call ("Fold into this PR")
@@ -66,6 +66,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `public/openapi.json` | EDIT | Regenerated from the build |
 | `rustd/crates/afd_fleet_lifecycle/` (`src/lib.rs`, `src/purge.rs`, `src/sql/purge.rs`, `tests/integration_purge_privileges.rs`) | EDIT | Review R2: a fleet's memory goes by the fleet row's cascade, so the purge names no memory table |
 | `docs/architecture/runner_fleet.md`, `docs/architecture/memory.md`, `docs/architecture/capabilities.md` | EDIT | From "decided" to "built" |
+| `cli/src/commands/memory.ts`, `cli/test/memory-render.unit.test.ts` | EDIT | The CLI's memory listing marks an entry another fleet wrote, naming the writer, as the panel does (§6) |
 | Ripple, added at EXECUTE: `src/runner/daemon/control_plane_client.zig` and `rustd/crates/agentsfleetd/tests/integration_runner_e2e.rs` (the hydrate reply's new fields, read by both runners), `rustd/crates/afd_fleet/src/` (`error/`, `lease/{pull,fence,test_dead}.rs`), `afd_fleet/tests/`, `afd_http/` (`Cargo.toml`, `src/services/{memory,leasing}.rs`, `src/handler/refusable.rs`, `src/route/{fleet,runner}.rs`), `afd_api_{tenant,runner}/` (`Cargo.toml`, `src/lib.rs`, `src/openapi.rs`), `afd_api/` (`Cargo.toml`, `src/lib.rs`), `agentsfleetd/` (`Cargo.toml`, `src/plane.rs`, `src/plane/services.rs`, two `tests/`), `afd_bench/` (`Cargo.toml`, one stage), `afd_fleet_lifecycle/tests/integration_purge_ledger_identity.rs`, `afr_supervisor/src/` (`client.rs`, `memory/`, `lease_loop/`, `test_support*`), `afr_agent/src/engine.rs` and four tests, `afr_providers/` (`Cargo.toml`, one test), `afr_tools/src/runtime.rs`, `afd_fleet_lifecycle/src/{read,sql}.rs` and `afd_api_tenant/src/handler/fleet/detail.rs` (the grants on the fleet detail), `ui/packages/app/` (`fleets/[id]/page.tsx`, `MemoryPanel.test.tsx`, `lib/api/memory.ts`, `lib/auth/scopes.ts`) | EDIT | Import, wiring and fixture lines the move, the error lift, the two routes, slot 926's new column, `AgentRun`'s seed and the panel's initial grants force; no other change |
 
 ## Applicable Rules
@@ -203,16 +204,16 @@ PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}/memory-access { read, publ
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Shared memory reaches only granted fleets, through one store (§1, §3, §4) | `make test-integration-rustd` | exit 0 | P0 | |
+| R1 | Shared memory reaches only granted fleets, through one store (§1, §3, §4) | `make test-integration-rustd` | exit 0 | P0 | → CI on the Pull Request (Indy's call, M210_002 Discovery) |
 | R2 | All memory SQL lives in `afd_memory` (§1) | `grep -rlnE "(FROM\|INTO\|UPDATE\|JOIN\|TABLE)[[:space:]]+memory\.memory_entries" rustd/crates --include='*.rs' \| grep -v '^rustd/crates/afd_memory/' \| grep -vE '/tests/\|tests?\.rs$'` | no output | P0 | ✅ no output; narrowed to statements in runtime sources, since two doc comments and six test suites name the table, and it still finds `afd_memory/src/sql.rs` |
 | R3 | The published document carries the new shapes (§3–§5) | `cd rustd && cargo test -p afd_api --features test-util,openapi --test http_substrate test_openapi_build_is_the_source` | exit 0 | P0 | ✅ `test result: ok. 1 passed; 0 failed` |
-| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from this table or a folded spec's | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | |
-| S5 | Version in sync | `make check-version` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from this table or a folded spec's | P0 | ✅ 0 of 467 changed paths outside the three Files Changed tables (Oct 04 audit) |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | → Session Notes, `orly gate pr` |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | → Session Notes, `orly gate pr` |
+| S3 | Lint green | `make lint-all` | exit 0 | P0 | → Session Notes, `orly gate pr` |
+| S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | → Session Notes, `orly gate pr` |
+| S5 | Version in sync | `make check-version` | exit 0 | P0 | → Session Notes, `orly gate pr` |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | → Session Notes, `orly gate pr` |
 
 **Command source rule:** copy every declared `conform` and `verify.*` invocation from `.oracle/orly.json` into a Verify cell, verbatim, with an Expected value. Repository-command rows point to the final `orly gate pr` results in Pull Request Session Notes.
 
@@ -269,5 +270,5 @@ PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}/memory-access { read, publ
 - Agent default: the fleet detail carries `memory_access`, because the panel needs the grants it opens on and §Files Changed puts "the grants on a fleet" in `afd_wire/src/fleet.rs`.
 - Agent default: each toggle is a `ghost` `Button` with `aria-pressed` and an On/Off `Badge`, because the design system has no Switch and the button-variant rule permits `ghost`.
 - **Review decisions** — > Indy (2026-10-04 06:46): "Move it (Recommended)" — context: review R2, the fleet purge deleted memory rows outside `afd_memory`; built as the fleet row's cascade (`79715b8ed`). > Indy (2026-10-04 06:39): "Keep them" — context: files the review agents wrote outside the specs' file lists; each is a Files Changed row.
-- **Skill-chain outcomes** — pending.
+- **Skill-chain outcomes** — `/review`: gstack, three passes on Oct 04, recorded in M210_002's Discovery and the Pull Request's Review section; `/orly-write-unit-test`: the ledger over `72db051b8..HEAD` (this spec's rows included) is in Pull Request Session Notes; `orly-babysit-prs`: after the push.
 - **Deferrals** — Dimension 6.2's browser walk (an admin grants publish and read, and the reader's panel lists the published entry). > Indy (2026-10-04 06:44): "Defer (Recommended)" — context: the grant path is proven by the integration suites behind R1; the walk is a signed-in browser check. Review P1-2, `schema/926_memory_entries_workspace_scope.sql` breaks memory pushes during a rolling deploy. > Indy (2026-10-04 07:03): "Defer (Recommended)" — context: nothing ships to production before 0.30.0; due before production carries traffic. Review P2-10, `afd_memory/src/admit.rs:38`: turning publish off leaves already-published rows readable. > Indy (2026-10-04 06:59): "Defer" — context: review fix was to clear `workspace_visible` on revoke. Review P2-11, `afd_memory/src/route.rs:53`: the store flip holds only within one process and `flip.rs:74` ignores a failed swap. > Indy (2026-10-04 06:59): "Defer (Recommended)" — context: latent, since nothing calls `flip` yet.
