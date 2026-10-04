@@ -65,6 +65,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetStatusLine.tsx`, `ui/packages/app/components/domain/FleetMessageRow.tsx`, `ui/packages/app/components/domain/fleetMessageReaders.ts` | EDIT | Shared formatters; turn timestamps; figure readers |
 | `ui/packages/design-system/src/tokens.css` | EDIT | `tool-shimmer` keyframe with a `prefers-reduced-motion` static fallback |
 | `ui/packages/app/tests/fleet-tool-calls.test.tsx`, `ui/packages/app/components/domain/fleetReplyMessage.test.ts`, `ui/packages/app/components/domain/FleetReplyBody.test.tsx`, `ui/packages/app/lib/streaming/fleet-stream-frames.tools.test.ts`, `ui/packages/app/tests/fleet-thread/role-reply-parts.test.ts`, `ui/packages/app/tests/e2e/acceptance/fleet-reply-parts.spec.ts` | EDIT | Existing pins move to the new cell (the `{}`/`null` and repeat-start pins change on purpose) |
+| `ui/packages/app/package.json`, `bun.lock` | EDIT | `@assistant-ui/react` ^0.15.23 (latest), `diff` ^9 for edit diffs |
+| `ui/packages/app/components/domain/fleetMessageRenderers.tsx` | EDIT | The operator row passes its `createdAt` to `FleetMessageRow` |
 | `ui/packages/app/components/domain/tool-call-copy.test.ts`, `ui/packages/app/components/domain/tool-call-diff.test.ts`, `ui/packages/app/components/domain/FleetExplored.test.tsx`, `ui/packages/app/components/domain/FleetToolOutputDialog.test.tsx`, `ui/packages/app/lib/streaming/fleet-stream-tool-trace.test.ts`, `ui/packages/app/components/domain/FleetReplyFigures.test.tsx`, `ui/packages/app/lib/events/run-figures-format.test.ts` | CREATE | Unit proofs |
 
 ## Applicable Rules
@@ -78,7 +80,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
 | UI GATE | yes | `List`/`ListItem`, `Accordion`, `Dialog`, `Time` from `@agentsfleet/design-system` |
-| DESIGN TOKEN GATE | yes | `text-success`, `text-destructive`, `text-accent`, `text-muted-foreground`, `bg-success/10`, `bg-destructive/10`; one new keyframe, no arbitrary values |
+| DESIGN TOKEN GATE | yes | `text-success`, `text-destructive`, `text-info`, `text-muted-foreground`, `bg-success/10`, `bg-destructive/10`; one new keyframe, no arbitrary values |
 | UFS GATE | yes | Copy map, glyphs, `OUTPUT_PREVIEW_ROWS`, group keys are constants |
 | LENGTH GATE (≤350/≤50/≤70) | yes | Cell, group, dialog and diff each in their own module |
 | MILESTONE-ID GATE | yes | No milestone identifiers in source or test names |
@@ -95,25 +97,25 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 `readToolStep` reads `args_redacted` when it is a JSON object, and `status`, `output_head`, `output_tail`, `output_line_count` and `exit_code` when well-typed; anything else reads as absent. A repeat start under an open call id merges the arguments and keeps the first start's clock.
 
-- **Dimension 1.1** — A start with object arguments stores them on its call → Test `test_started_frame_keeps_arguments`
-- **Dimension 1.2** — A repeat start under the same id merges arguments and keeps the start clock → Test `test_repeat_start_merges_arguments_keeps_clock`
-- **Dimension 1.3** — A completion's status and output edges land on the call → Test `test_completed_frame_keeps_outcome`
-- **Dimension 1.4** — Array arguments, an unknown status, non-string edges or a negative count read as absent → Test `test_malformed_tool_fields_read_absent`
+- **Dimension 1.1** — A start with object arguments stores them on its call → Test `test_started_frame_keeps_arguments` — DONE (`ui/packages/app/lib/streaming/fleet-stream-frames.tools.test.ts`)
+- **Dimension 1.2** — A repeat start under the same id merges arguments and keeps the start clock → Test `test_repeat_start_merges_arguments_keeps_clock` — DONE (`ui/packages/app/lib/streaming/fleet-stream-frames.tools.test.ts`)
+- **Dimension 1.3** — A completion's status and output edges land on the call → Test `test_completed_frame_keeps_outcome` — DONE (`ui/packages/app/lib/streaming/fleet-stream-frames.tools.test.ts`)
+- **Dimension 1.4** — Array arguments, an unknown status, non-string edges or a negative count read as absent → Test `test_malformed_tool_fields_read_absent` — DONE (`ui/packages/app/lib/streaming/fleet-stream-frames.tools.test.ts`)
 
 ### §2 — Saved calls replace live ones; no call is left running
 
 `rowToEvent` maps `tool_calls` through one narrowing function. **Implementation default:** a saved call's start is the event's `createdAt`, because only the difference to `duration_ms` renders. At settle, a saved trace replaces the live list; with `null`, live rows stay and any still open become `interrupted`, as Codex closes an unfinished cell at turn end.
 
-- **Dimension 2.1** — A saved trace becomes calls with arguments, outcome and duration → Test `test_saved_trace_becomes_tool_calls`
-- **Dimension 2.2** — A malformed saved trace reads as no calls without throwing → Test `test_malformed_saved_trace_reads_absent`
-- **Dimension 2.3** — Settle prefers a saved trace and keeps live rows when it is `null` → Test `test_settle_prefers_saved_trace`
-- **Dimension 2.4** — A live call still open at settle renders interrupted → Test `test_settle_interrupts_open_live_calls`
+- **Dimension 2.1** — A saved trace becomes calls with arguments, outcome and duration → Test `test_saved_trace_becomes_tool_calls` — DONE (`ui/packages/app/lib/streaming/fleet-stream-tool-trace.test.ts`)
+- **Dimension 2.2** — A malformed saved trace reads as no calls without throwing → Test `test_malformed_saved_trace_reads_absent` — DONE (`ui/packages/app/lib/streaming/fleet-stream-tool-trace.test.ts`)
+- **Dimension 2.3** — Settle prefers a saved trace and keeps live rows when it is `null` → Test `test_settle_prefers_saved_trace` — DONE (`ui/packages/app/lib/streaming/fleet-stream-frames.tools.test.ts`)
+- **Dimension 2.4** — A live call still open at settle renders interrupted → Test `test_settle_interrupts_open_live_calls` — DONE (`ui/packages/app/lib/streaming/fleet-stream-frames.tools.test.ts`)
 - **Dimension 2.5** — `omitted_call_count` above zero renders "N more calls not recorded" → Test `test_omitted_calls_render_count`
 - **Dimension 2.6** — Reloading a settled turn shows the same rows → Test `test_reload_shows_saved_tool_rows`
 
 ### §3 — Each call renders as a Codex cell
 
-Bullet `•`: shimmer while running (static dim under reduced motion), `text-success` on `succeeded`, `text-destructive` on `failed` and `interrupted`, dim with no outcome. Header: the bold verb (`-ing` while running, past tense when done; `Interrupted` replaces it), the target in mono, then dim ` · 1.2s`. Copy: `file_write` Wrote ·path· (+N), `file_append` Appended, `file_delete` Deleted, `http_request` Requesting/Requested ·method· ·url·, `memory_store` Remembered ·key·, `memory_forget` Forgot ·key·, `calculator` Calculated ·operation·, unknown tools Called ·name·(·compact arguments·). Output: dim mono under `└`, three rows, then dim "+N lines" and a "show all" control. Empty output on success reads `(no output)`; a call with no recorded outcome reads `(output unavailable)`. The full arguments sit behind a collapsed Accordion. `exec_command` renders Codex's command cell: `Running`, then `Ran`, with the command on the header line, at most two dim `│` rail lines of a longer command and then `… +N lines`, and a red ` (exit N)` on a non-zero exit.
+Bullet `•`: shimmer while running (static dim under reduced motion), `text-success` on `succeeded`, `text-destructive` on `failed` and `interrupted`, dim with no outcome. Header: the bold verb (`-ing` while running, past tense when done; `Interrupted` replaces it), the target in mono, then dim ` · 1.2s`. Copy: `file_write` Wrote ·path· (+N), `file_append` Appended, `file_delete` Deleted, `http_request` Requesting/Requested ·method· ·url·, `memory_store` Remembered ·key·, `memory_forget` Forgot ·key·, unknown tools Called ·name·(·compact arguments·). Output: dim mono under `└`, three rows, then dim "+N lines" and a "show all" control. Empty output on success reads `(no output)`; a call with no recorded outcome reads `(output unavailable)`. A failed call ends its header in red "(failed)", so status never rests on colour alone (`docs/DESIGN_SYSTEM.md` §Color). The full arguments sit behind a collapsed Accordion. `exec_command` and `shell` render Codex's command cell: `Running`, then `Ran`, with the command on the header line, at most two dim `│` rail lines of a longer command and then `… +N lines`, and a red ` (exit N)` on a non-zero exit.
 
 - **Dimension 3.1** — Each hosted tool renders its verb and target, running and done → Test `test_tool_cell_names_verb_and_target`
 - **Dimension 3.2** — An unknown tool renders `Called name(arguments)` → Test `test_unknown_tool_cell_calls_by_name`
@@ -126,7 +128,7 @@ Bullet `•`: shimmer while running (static dim under reduced motion), `text-suc
 
 ### §4 — Reads fold under Explored
 
-The group map sends `tool-call:file_read`, `tool-call:file_read_hashed`, `tool-call:memory_recall` and `tool-call:memory_list` to an explore group, and every other `tool-call` to the tool group. A bold "Exploring" with a shimmer reads "Explored" with a dim bullet once all are done. Under `└`, consecutive successful reads merge into one de-duplicated "Read a, b" line; `memory_recall` reads "Search ·query· in memory"; `memory_list` reads "List memory ·category·". Verbs use `text-accent`, and a failed line ends in red "(failed)".
+The group map sends `tool-call:file_read`, `tool-call:file_read_hashed`, `tool-call:memory_recall` and `tool-call:memory_list` to an explore group, and every other `tool-call` to the tool group. A bold "Exploring" with a shimmer reads "Explored" with a dim bullet once all are done. Under `└`, consecutive successful reads merge into one de-duplicated "Read a, b" line; `memory_recall` reads "Search ·query· in memory"; `memory_list` reads "List memory ·category·". Verbs use `text-info`, the light blue Codex draws them in, and a failed line ends in red "(failed)".
 
 - **Dimension 4.1** — Read, read, recall render one Explored group with "Read a, b" and "Search q in memory" → Test `test_consecutive_reads_fold_under_explored`
 - **Dimension 4.2** — A write between reads yields two Explored groups around it → Test `test_non_read_call_splits_explored`
@@ -135,7 +137,7 @@ The group map sends `tool-call:file_read`, `tool-call:file_read_hashed`, `tool-c
 
 ### §5 — Edits render as diffs, and "show all" opens the rest
 
-`file_edit` and `file_edit_hashed` render `Edited ·path· (+N −M)`, with +N in `text-success` and −M in `text-destructive`. A line diff built from `old_text` and `new_text` uses `bg-destructive/10` and `bg-success/10` rows, indented four. "Show all" opens a `Dialog` that reads the full call through the proxy, with numbered lines, full arguments and the full diff. A 404 shows the saved head and tail with "Full output wasn't kept for this call."
+`file_edit` and `file_edit_hashed` render `Edited ·path· (+N −M)`, with +N in `text-success` and −M in `text-destructive`. A line diff that jsdiff (`diff`) builds from `old_text` and `new_text` uses `bg-destructive/10` and `bg-success/10` rows, indented four. "Show all" opens a `Dialog` that reads the full call through the proxy, with numbered lines, full arguments and the full diff. A 404 shows the saved head and tail with "Full output wasn't kept for this call."
 
 - **Dimension 5.1** — An edit renders its header counts and coloured diff rows → Test `test_edit_cell_renders_diff`
 - **Dimension 5.2** — The diff of `a\nb` → `a\nc\nd` counts +2 −1 → Test `test_edit_diff_counts_lines`
@@ -145,7 +147,7 @@ The group map sends `tool-call:file_read`, `tool-call:file_read_hashed`, `tool-c
 
 ### §6 — Every turn says when it ran, how long and what it cost
 
-`toReplyMessage` carries the turn's tokens, wall time and cost in the reply's custom bag, never the trigger's, because `convertEvent`'s output is compared to detect trigger changes. A settled reply ends with dim "Worked for 41s · 12.4k tokens · $0.03", using formatters moved from `FleetStatusLine.tsx` into `lib/events/run-figures-format.ts`. A running reply's indicator reads "Working (1m 05s)". Turn rows show their time through `FleetMessageRow`'s `Timestamp`.
+`toReplyMessage` carries the turn's tokens, wall time and cost in the reply's custom bag, never the trigger's, because `convertEvent`'s output is compared to detect trigger changes. A settled reply ends with dim "Worked for 41s · 12.4k tokens · $0.03", using formatters moved from `FleetStatusLine.tsx` into `lib/events/run-figures-format.ts`. A running reply's indicator adds its elapsed time ("Pondering… (1m 05s)") and its status stays named "Working". Turn rows show their time through `FleetMessageRow`'s `Timestamp`.
 
 - **Dimension 6.1** — A settled reply shows its figures line → Test `test_settled_reply_shows_figures`
 - **Dimension 6.2** — An unreported figure is left out, never shown as zero → Test `test_unknown_figure_left_out`
@@ -221,7 +223,7 @@ Proxy          : /live/v1/workspaces/{ws}/fleets/{fleet}/events/{event}/tool-cal
 | 5.5 | unit | `test_tool_call_proxy_forwards_encoded_id` | id `7:3` → upstream path ends `/tool-calls/7%3A3`; 404 passes through |
 | 6.1 | unit | `test_settled_reply_shows_figures` | tokens 12400, wall 41000 → "Worked for 41s · 12.4k tokens · $…" |
 | 6.2 | unit | `test_unknown_figure_left_out` | cost `null` → no cost segment, no "$0" |
-| 6.3 | unit | `test_running_reply_shows_elapsed` | running 65 s → "Working (1m 05s)", no figures line |
+| 6.3 | unit | `test_running_reply_shows_elapsed` | running 65 s → the "Working" status shows "(1m 05s)", no figures line |
 | 6.4 | unit | `test_status_line_formats_unchanged` | fixed figures → same strings as before the move |
 | 6.5 | unit | `test_turn_rows_show_timestamp` | operator and reply rows → `time` element with `dateTime` |
 
@@ -291,4 +293,5 @@ Proxy          : /live/v1/workspaces/{ws}/fleets/{fleet}/events/{event}/tool-cal
 - **Metrics review** — No analytics or funnel playbook update required: no new tracked user action.
 - **Skill-chain outcomes** — pending.
 - **Re-scope (Oct 02, 2026)** — Indy chose a fresh Rust runner ("The port is a fresh port, since we always have the last binary with us and running."). This spec's rendering is unchanged; its frames come from that runner, and Codex engine events map onto the same frames (`docs/architecture/runner_execution.md` §Coding engines).
+- **PLAN amendments (Oct 04, 2026)** — Indy (in-session): "ensure we use the altest assistant-ui pacakge. Do we need to write our own assistant-ui? or use the pacakge?" → the package, bumped to 0.15.23; "avoid handrolled code, use it only if need be" → edit diffs from jsdiff 9. Agent defaults stated at PLAN with no correction: `text-info` replaces `text-accent` because `--accent` is `--surface-3` (`ui/packages/design-system/src/theme.css:36`), a surface; a red "(failed)" marks failed calls (`docs/DESIGN_SYSTEM.md` §Color; Codex `history_cell/dynamic.rs:146` swaps the verb to `Failed`); `calculator` leaves the copy map because the Rust runner's catalog has no such tool (`rustd/crates/afr_tools/src/catalog.rs`), and `shell` joins the command cell; the running indicator keeps its existing verb and adds the elapsed; diff rows carry no file line numbers because edit arguments carry no offsets.
 - **Deferrals** — none.
