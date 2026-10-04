@@ -22,7 +22,7 @@ use afd_wire::tool_detail::ToolCallRecord;
 use afd_wire::tool_trace::{ToolCallStatus, ToolTrace, ToolTraceCall};
 use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_executor::{Executor, ProcessId, Spawn};
-use afr_providers::{Connect as _, Connector, Registry};
+use afr_providers::{Connect as _, Connector, Registry, Usage};
 use afr_tools::Catalog;
 use afr_tools::catalog::{FILE_READ, HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::stub::Stub;
@@ -166,6 +166,9 @@ pub(crate) enum Behaviour {
     Break,
     /// Never finishes on its own.
     Hang,
+    /// Spends tokens, then hands back [`Behaviour::Answer`]'s output once
+    /// told to stop, as the real loop does.
+    Stops,
     /// Panics mid-run.
     Panic,
 }
@@ -233,6 +236,11 @@ impl AgentEngine for FakeAgent {
                 Err(afr_executor::Error::from(std::io::Error::other("engine broke")).into())
             }
             Behaviour::Hang => std::future::pending().await,
+            Behaviour::Stops => {
+                run.meter.add(SPENT);
+                run.stop.cancelled().await;
+                Ok(answer())
+            }
             Behaviour::Panic => panic!("the fake engine panics on purpose"),
         }
     }
@@ -250,6 +258,13 @@ async fn exercise(executor: &dyn Executor) {
 }
 
 /// The result a successful fake run answers with.
+/// What [`Behaviour::Stops`] spends before it is stopped: [`answer`]'s counts.
+pub(crate) const SPENT: Usage = Usage {
+    input: 3,
+    cached_input: 1,
+    output: 4,
+};
+
 pub(crate) fn answer() -> RunOutput {
     RunOutput {
         result: ExecutionResult {

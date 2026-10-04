@@ -17,7 +17,7 @@ use tokio_util::sync::CancellationToken;
 use super::EVENT_CAP_REACHED;
 use super::tests::{drive, engine};
 use crate::context::{CAP_REACHED, EVICTED};
-use crate::engine::{AgentEngine, AgentRun};
+use crate::engine::{AgentEngine, AgentRun, Meter};
 use crate::fixture::{
     API_KEY, Canned, Frames, GITHUB_TOKEN, Script, Unreachable, budget, call, lease, say, spent,
     unbounded,
@@ -158,6 +158,43 @@ async fn test_report_sums_token_usage() {
     assert_eq!(result.token_count, 47);
 }
 
+/// The supervisor reads the meter into every renewal while the run goes on,
+/// so it holds, turn by turn, what the report later sums.
+#[tokio::test]
+async fn test_meter_holds_what_the_report_sums() {
+    let script = Script::new([
+        vec![
+            call("a", UPDATE_PLAN.name(), serde_json::json!({})),
+            spent(10, 2, 5),
+        ],
+        vec![say("done"), spent(5, 0, 1)],
+    ]);
+    let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "4")], &script);
+    let lease = lease(&[UPDATE_PLAN.name()], unbounded());
+    let frames = Frames::default();
+    let sink = frames.sink();
+    let meter = Meter::default();
+
+    let output = engine
+        .run(AgentRun {
+            lease: &lease,
+            memory: afr_memory::Seed::default(),
+            executor: None,
+            mint: &CountingMint::never(),
+            checkpoint: &Discard,
+            events: &sink,
+            meter: &meter,
+            stop: &CancellationToken::new(),
+        })
+        .await
+        .unwrap();
+
+    let usage = meter.read();
+    assert_eq!((usage.input, usage.cached_input, usage.output), (15, 2, 6));
+    assert_eq!(output.result.token_count, usage.total());
+    assert!(!frames.taken().is_empty(), "the run streamed its call and answer");
+}
+
 #[tokio::test]
 async fn a_provider_refusal_ends_the_run_as_the_fleets_error() {
     let script = Script::failing(Vec::new(), || Error::refused(401));
@@ -258,6 +295,7 @@ async fn a_provider_that_cannot_be_reached_is_an_engine_error() {
             mint: &CountingMint::never(),
             checkpoint: &Discard,
             events: &sink,
+            meter: &Meter::default(),
             stop: &CancellationToken::new(),
         })
         .await

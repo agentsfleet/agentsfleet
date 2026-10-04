@@ -19,7 +19,7 @@ use bytes::Bytes;
 use tokio_util::sync::CancellationToken;
 
 use super::{ScriptedEngine, Step};
-use crate::engine::{AgentEngine, AgentRun};
+use crate::engine::{AgentEngine, AgentRun, Meter};
 use crate::testing::Discard;
 
 /// A lease as the daemon spells one, trimmed to what a run reads.
@@ -91,6 +91,7 @@ async fn drive(
             mint: &CountingMint::never(),
             checkpoint: &Discard,
             events: &sink,
+            meter: &Meter::default(),
             stop: &CancellationToken::new(),
         })
         .await;
@@ -212,6 +213,7 @@ async fn a_run_debugs_without_the_leases_secrets() {
         mint: &CountingMint::never(),
         checkpoint: &Discard,
         events: &sink,
+        meter: &Meter::default(),
         stop: &CancellationToken::new(),
     };
 

@@ -2,6 +2,7 @@
 //! has one.
 
 use std::panic::AssertUnwindSafe;
+use std::time::Duration;
 
 use afd_core::error_code;
 use afd_wire::report::FailureClass;
@@ -17,6 +18,10 @@ use crate::memory::LeaseCheckpoint;
 use crate::report::Ending;
 
 const DETAIL_ENGINE: &str = "the agent engine stopped before the turn ended";
+/// How long a stopped engine has to close its open calls and hand back what
+/// it has. The run's tokens and memory ride that output, so dropping the
+/// engine the moment the lease ends would bill and keep nothing.
+const ENGINE_STOP_GRACE: Duration = Duration::from_secs(5);
 const DETAIL_PANIC: &str = "the agent engine panicked";
 const EVENT_ENGINE_FAILED: &str = "engine_run_failed";
 const EVENT_ENGINE_PANICKED: &str = "engine_panicked";
@@ -39,12 +44,18 @@ impl LeaseRun<'_> {
             mint: &mint,
             checkpoint: &checkpoint,
             events: &sink,
+            meter: &self.meter,
             stop: &self.interrupt,
         }))
         .catch_unwind();
+        let abandoned = async {
+            self.interrupt.cancelled().await;
+            tokio::time::sleep(ENGINE_STOP_GRACE).await;
+        };
         let output = tokio::select! {
+            biased;
             output = run => Some(output),
-            () = self.interrupt.cancelled() => None,
+            () = abandoned => None,
         };
         let first_chunk = sink.first_chunk();
         drop(sink);

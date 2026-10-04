@@ -180,14 +180,11 @@ impl ControlPlane {
         self.send(Verb::Lease, path, None).await
     }
 
-    /// Renews a held lease and returns its new expiry, in Unix milliseconds.
-    /// The token counts ride later work; this meters the run fee, which the
-    /// daemon owes either way.
-    pub(crate) async fn renew(&self, lease_id: &Uuid7) -> Result<i64> {
+    /// Renews a held lease with the run's cumulative tokens, and returns its
+    /// new expiry, in Unix milliseconds.
+    pub(crate) async fn renew(&self, lease_id: &Uuid7, spent: &RenewRequest) -> Result<i64> {
         let path = lease_path(lease_id, paths::LEASE_RENEW_SUFFIX);
-        let body = self
-            .post(Verb::Renew, path, &RenewRequest::default())
-            .await?;
+        let body = self.post(Verb::Renew, path, spent).await?;
         body.decode::<RenewResponse>()
             .map(|renewed| renewed.lease_expires_at)
     }

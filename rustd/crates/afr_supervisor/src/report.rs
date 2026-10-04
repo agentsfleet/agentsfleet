@@ -6,8 +6,8 @@ use std::time::Duration;
 use afd_core::clock::saturating_millis;
 use afd_wire::lease::LeasePayload;
 use afd_wire::report::{
-    ExecutionResult, FailureClass, Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry,
-    ResultOutcome,
+    ExecutionResult, Failure, FailureClass, Outcome, ReportCheckpoint, ReportRequest,
+    ReportTelemetry, ResultOutcome,
 };
 use afr_agent::RunOutput;
 
@@ -30,6 +30,30 @@ pub(crate) enum Ending {
         /// Why, in a sentence an operator reads.
         detail: &'static str,
     },
+}
+
+impl Ending {
+    /// This ending, for a lease the daemon or the runner ended before the run
+    /// did: a run that handed back output keeps it, with `class` and `detail`
+    /// as its failure, so its tokens are billed and its memory pushed.
+    pub(crate) fn cut(self, class: FailureClass, detail: &'static str) -> Self {
+        match self {
+            Self::Ran {
+                mut output,
+                first_chunk,
+            } => {
+                output.result.outcome = ResultOutcome::Failed(Failure {
+                    class: Some(class),
+                    detail: detail.into(),
+                });
+                Self::Ran {
+                    output,
+                    first_chunk,
+                }
+            }
+            Self::Failed { .. } => Self::Failed { class, detail },
+        }
+    }
 }
 
 /// The report for `lease`, which ran for `wall`, carrying `trace`: the run's
@@ -96,7 +120,7 @@ fn verdict(ending: &Ending) -> (Outcome, Option<FailureClass>, Cow<'_, str>) {
 }
 
 /// A count the wire carries in 32 bits, saturated rather than wrapped.
-fn narrow(count: u64) -> u32 {
+pub(crate) fn narrow(count: u64) -> u32 {
     u32::try_from(count).unwrap_or(u32::MAX)
 }
 

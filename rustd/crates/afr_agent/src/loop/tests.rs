@@ -17,8 +17,9 @@ use afr_tools::catalog::{HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::{Catalog, Tool};
 use tokio_util::sync::CancellationToken;
 
-use super::{DETAIL_STOPPED, Loop};
-use crate::engine::{AgentEngine, AgentRun, RunOutput};
+use super::Loop;
+use super::finish::DETAIL_STOPPED;
+use crate::engine::{AgentEngine, AgentRun, Meter, RunOutput};
 use crate::fixture::{Canned, Frames, Script, call, lease, say, unbounded};
 use crate::testing::Discard;
 
@@ -42,6 +43,7 @@ pub(super) async fn drive(
         mint: &CountingMint::never(),
         checkpoint: &Discard,
         events: &sink,
+        meter: &Meter::default(),
         stop,
     };
     let output = engine.run(run).await.unwrap();
@@ -251,6 +253,7 @@ async fn a_dropped_run_still_closes_its_open_call_once() {
     let sink = frames.sink();
     let stop = CancellationToken::new();
     let mint = CountingMint::never();
+    let meter = Meter::default();
     let run = engine.run(AgentRun {
         lease: &lease,
         memory: afr_memory::Seed::default(),
@@ -258,6 +261,7 @@ async fn a_dropped_run_still_closes_its_open_call_once() {
         mint: &mint,
         checkpoint: &Discard,
         events: &sink,
+        meter: &meter,
         stop: &stop,
     });
 

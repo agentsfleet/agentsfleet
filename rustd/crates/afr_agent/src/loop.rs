@@ -9,17 +9,16 @@ use std::time::Instant;
 use afd_core::clock::SystemClock;
 use afd_wire::memory::MemoryDelta;
 use afd_wire::policy::ExecutionPolicy;
-use afd_wire::report::{Completed, ExecutionResult, Failure, ResultOutcome};
 use afr_egress::Egress;
 use afr_memory::Hydrated;
-use afr_providers::{Call, Connect, Message, Provider, Replay, Request, Usage};
+use afr_providers::{Call, Connect, Message, Provider, Replay, Request};
 use afr_secrets::Scrub;
 use afr_tools::{Catalog, Lease, Selection, ToolSpec};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
 
 use crate::context::{Budget, CAP_REACHED, Checkpoints};
-use crate::engine::{AgentEngine, AgentRun, Checkpoint, Needs, RunOutput};
+use crate::engine::{AgentEngine, AgentRun, Checkpoint, Meter, Needs, RunOutput};
 use crate::error::Result;
 use crate::events::Live;
 use crate::ledger::Ledger;
@@ -28,8 +27,6 @@ use crate::router::{self, Router};
 use crate::spans;
 use crate::turn::{Turn, take};
 
-/// What a run stopped by its lease reports as its detail.
-const DETAIL_STOPPED: &str = "the run was stopped before it finished";
 const EVENT_CAP_REACHED: &str = "context_cap_reached";
 const EVENT_TURN_STARTED: &str = "provider_turn_started";
 const EVENT_TURN_COMPLETED: &str = "provider_turn_completed";
@@ -100,7 +97,7 @@ struct Harness<'run> {
     budget: Budget,
     instructions: String,
     messages: Vec<Message>,
-    usage: Usage,
+    meter: &'run Meter,
     started: Instant,
 }
 
@@ -128,7 +125,7 @@ impl<'run> Harness<'run> {
             budget: Budget::new(&policy.context),
             instructions: scrub.clean(prompt.instructions).into_inner(),
             messages: vec![Message::User(scrub.clean(prompt.message).into_inner())],
-            usage: Usage::default(),
+            meter: run.meter,
             started,
         }
     }
@@ -143,7 +140,7 @@ impl<'run> Harness<'run> {
                 Some(Err(failure)) => break Ending::Failed(failure),
                 None => break Ending::Stopped,
             };
-            self.usage += turn.usage;
+            self.meter.add(turn.usage);
             if capped || turn.calls.is_empty() {
                 break Ending::Answered(turn.text);
             }
@@ -285,47 +282,10 @@ impl<'run> Harness<'run> {
         tracing::info!(lease_id, turns, tokens, event);
         self.messages.push(Message::User(CAP_REACHED.to_owned()));
     }
-
-    fn finish(self, ending: Ending) -> RunOutput {
-        let (outcome, content) = match ending {
-            Ending::Answered(text) => (
-                ResultOutcome::Completed(Completed {}),
-                self.scrub.text(&text).into_owned(),
-            ),
-            Ending::Failed(failure) => {
-                let failed = Failure {
-                    class: failure.failure_class(),
-                    detail: failure.detail().into(),
-                };
-                (ResultOutcome::Failed(failed), String::new())
-            }
-            Ending::Stopped => {
-                let stopped = Failure {
-                    class: None,
-                    detail: DETAIL_STOPPED.into(),
-                };
-                (ResultOutcome::Failed(stopped), String::new())
-            }
-        };
-        let (trace, records) = self.ledger.finish();
-        RunOutput {
-            result: ExecutionResult {
-                outcome,
-                content: content.into(),
-                token_count: self.usage.total(),
-                wall_seconds: self.started.elapsed().as_secs(),
-                memory_peak_bytes: 0,
-                cpu_throttled_ms: 0,
-                input_tokens: self.usage.input,
-                cached_input_tokens: self.usage.cached_input,
-                output_tokens: self.usage.output,
-            },
-            memory: self.lease.memory.into_pending(),
-            trace,
-            records,
-        }
-    }
 }
+
+#[path = "loop/finish.rs"]
+mod finish;
 
 #[cfg(test)]
 #[path = "loop/tests.rs"]
