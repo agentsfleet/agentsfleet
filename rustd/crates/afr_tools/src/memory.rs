@@ -187,7 +187,9 @@ pub(crate) struct MemoryForget;
 #[async_trait::async_trait]
 impl Handler for MemoryForget {
     const ENTRY: &'static Entry = &MEMORY_FORGET;
-    const DESCRIPTION: &'static str = "Forget a remembered fact for the rest of this run.";
+    const DESCRIPTION: &'static str = "Forget a remembered fact for the rest of this run. The stored \
+                                       copy stays, including one this run already saved; store the \
+                                       key again to replace it.";
     type Arguments = Forget;
 
     async fn run(&self, arguments: Forget, context: ToolContext<'_, '_>) -> ToolOutput {
