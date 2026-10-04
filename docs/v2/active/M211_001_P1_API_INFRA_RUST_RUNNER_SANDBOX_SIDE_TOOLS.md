@@ -10,7 +10,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
   sequencing signal. A section that contradicts these rules loses — delete it.
 -->
 
-# M211_001: The sandbox-side tools — shell and exec sessions, git on a supervisor-made clone, the seven file tools and apply_patch, image, browser and screenshot — run inside the lease's sandbox through the executor, on a toolbox that carries Chromium and that the host admits by descriptor
+# M211_001: The sandbox-side tools — shell and exec sessions, git on a supervisor-made clone, the seven file tools and apply_patch, and image — run inside the lease's sandbox through the executor, on a toolbox the host admits by descriptor; the browser tools refuse until the Firecracker engine
 
 **Prototype:** v2.0.0
 **Milestone:** M211
@@ -32,14 +32,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** `test_shell_runs_inside_the_sandbox_with_exit_code` — on the kernel lane, a lease whose policy lists `shell` runs `sh -c 'echo hi; exit 3'` through the executor inside its bubblewrap sandbox; the call completes `failed` with `exit_code: 3`, `output_head` `hi`, the process held no capability and could not reach the network; and the same lease's `git`, `file_edit_hashed`, `apply_patch`, `image`, `browser_open` and `screenshot` calls each complete with the outcome their Dimension names.
+**Goal (testable):** `test_shell_runs_inside_the_sandbox_with_exit_code` — on the kernel lane, a lease whose policy lists `shell` runs `sh -c 'echo hi; exit 3'` through the executor inside its bubblewrap sandbox; the call completes `failed` with `exit_code: 3`, `output_head` `hi`, the process held no capability and could not reach the network; and the same lease's `git`, `file_edit_hashed`, `apply_patch`, `image` and `browser_open` calls each complete with the outcome their Dimension names.
 **Problem:** M210_002 puts every sandbox-side name in the catalog with a stub handler, so a policy listing `shell`, `git`, a `file_*` tool, `apply_patch`, `image` or a browser tool refuses the lease. Those are the tools the published page promises (`~/Projects/docs/fleets/tools.mdx`) and the ones the Zig runner wires (`src/runner/engine/tool_bridge_registry.zig`). A fleet that must run a test suite, read a repository at a verified head, or look at a dashboard cannot move to Rust without them.
-**Solution summary:** `afr_tools::sandbox` implements each sandbox-side handler over the executor connection M210_001 §4 provides: `shell` as one process, `exec_command` and `write_stdin` as Codex's unified-exec sessions on a pseudo-terminal, `git` on a clone the supervisor makes on the host side with the read token before the lease starts, the seven `file_*` tools and `apply_patch` over `fs/*` under `/workspace`, `image` as a file the supervisor attaches to the next model turn, and the three browser tools as headless Chromium from the toolbox driven over the Chrome DevTools Protocol (CDP) through the process's extra pipes. The toolbox manifest gains Chromium, Node, uv, ripgrep, jq and the GitHub command-line tool, and its build gains Debian's updates and security snapshots. The host admits the toolbox by descriptor: a signed manifest, an image staged and published atomically, opened once, and attached read-only through that descriptor, which replaces hashing the loop device after the mount. Every handler inherits the sandbox: no capability, no network beyond loopback, no write outside `/workspace`.
+**Solution summary:** `afr_tools::sandbox` implements each sandbox-side handler over the executor connection M210_001 §4 provides: `shell` as one process, `exec_command` and `write_stdin` as Codex's unified-exec sessions on a pseudo-terminal, `git` on a clone the supervisor makes on the host side with the read token before the lease starts, the seven `file_*` tools and `apply_patch` over `fs/*` under `/workspace`, `image` as a file the supervisor attaches to the next model turn; the three browser tools answer a code, because Chromium cannot start inside this sandbox (spike S1) and waits for the Firecracker engine. The toolbox manifest gains Node, uv, ripgrep, jq and the GitHub command-line tool, and its build gains Debian's updates and security snapshots. The host admits the toolbox by descriptor: a signed manifest, an image staged and published atomically, opened once, and attached read-only through that descriptor, which replaces hashing the loop device after the mount. Every handler inherits the sandbox: no capability, no network beyond loopback, no write outside `/workspace`.
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** feat(runner): sandbox-side tools — shell, exec sessions, git, files, apply_patch, image, browser
-- **Intent (one sentence):** A fleet can run commands, work a repository, edit files, look at an image and drive a page, all inside its own sandbox, with the same visibility in the thread as every other call.
+- **PR title (eventual):** feat(runner): sandbox-side tools — shell, exec sessions, git, files, apply_patch, image
+- **Intent (one sentence):** A fleet can run commands, work a repository, edit files and look at an image, all inside its own sandbox, with the same visibility in the thread as every other call.
 - **Handshake** — pending until the implementing agent performs PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
 
 ## Implementing agent — read these first
@@ -55,13 +55,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/crates/afr_tools/src/sandbox/` (`shell.rs`, `exec_session.rs`, `git.rs`, `files.rs`, `hashed.rs`, `apply_patch.rs`, `image.rs`, `browser.rs`, `cdp.rs`, `screenshot.rs`, `error.rs`) | CREATE | One handler per tool over the executor connection |
+| `rustd/crates/afr_tools/src/sandbox/` (`shell.rs`, `exec_session.rs`, `git.rs`, `files.rs`, `hashed.rs`, `apply_patch.rs`, `image.rs`, `browser.rs`, `error.rs`) | CREATE | One handler per tool over the executor connection; `browser.rs` answers the three browser tools' refusal |
 | `rustd/crates/afr_tools/vendor/apply_patch/` + `NOTICE` | CREATE | Codex's patch parser at the pinned commit, with its licence notice |
 | `rustd/crates/afr_tools/src/catalog.rs` | EDIT | The sandbox-side entries point at real handlers |
-| `rustd/crates/afr_executor/src/protocol.rs`, `rustd/crates/afr_executor/src/process.rs`, `rustd/crates/afr_executor/src/fs.rs` | EDIT | `process/spawn` gains `extra_pipes`; `fs/*` gains `append`, `delete`, `stat` with a content hash |
+| `rustd/crates/afr_executor/src/` (`api.rs`, `protocol.rs`, `client.rs`, `server/files.rs`) | EDIT | `fs/*` gains `append`, `delete`, `stat` with a content hash |
 | `rustd/crates/afr_supervisor/src/workspace_clone.rs` | CREATE | The host-side clone with the read token, into the workspace disk, before the lease starts |
 | `rustd/crates/afr_providers/src/image_input.rs` | CREATE | Image content on the next turn for Messages and Responses |
-| `scripts/toolbox/manifest.txt`, `scripts/toolbox/build.sh` | EDIT | Chromium as Debian's `chromium-headless-shell` with fonts, Node, uv, ripgrep, jq, the GitHub command-line tool; Debian's updates and security snapshots; pinned EROFS features; the release manifest beside the image |
+| `scripts/toolbox/manifest.txt`, `scripts/toolbox/build.sh` | EDIT | Node, uv, ripgrep, jq, the GitHub command-line tool; Debian's updates and security snapshots; pinned EROFS features; the release manifest beside the image |
+| `docs/v2/reviews/m211-toolbox-spikes.md`, `docs/architecture/runner_execution.md` | CREATE / EDIT | The six spikes' evidence and §5's deferred design; the browser tools need the Firecracker engine (S1) |
 | `rustd/crates/afr_sandbox/src/toolbox.rs` + `toolbox/` (`manifest.rs`, `stage.rs`, `loop_device.rs`, `adopt.rs`, `holds.rs`), `bubblewrap_engine.rs`, `warm_slots.rs`, `rustd/crates/afr_sandbox/Cargo.toml`, `rustd/Cargo.lock` | EDIT / CREATE | Admission by descriptor, adoption by identity, holds and retention; the path mount and the post-mount re-hash go |
 | `rustd/crates/afr_sandbox/tests/kernel_lane.rs`, `rustd/crates/afr_tools/tests/` | EDIT / CREATE | Real-sandbox proofs for every handler; unit proofs for parsers and routing |
 | `rustd/crates/agentsfleetd/tests/integration_rust_runner_bundles.rs` | EDIT | One bundle that runs a test suite with `shell` and edits with `apply_patch`, on the unsandboxed engine |
@@ -69,8 +70,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Applicable Rules
 
-- **`docs/greptile-learnings/RULES.md`** — UFS (subcommand allowlists, caps, pipe numbers and CDP method names are constants), OWN (one owner per process, session, Chromium instance and clone), FLS (drain every process stream and CDP pipe on every exit path), TIM (session yields, command timeouts and the kill grace are explicit), NTP (patch text and CDP replies narrowed at their parse boundary), OBS, ERR-RS, TST-NAM, TCF, NDC.
-- `dispatch/write_rust.md` + `docs/RUST_ERROR_STANDARD.md` — one `ErrorKind` per crate; a refused subcommand or path carries its code to the model.
+- **`docs/greptile-learnings/RULES.md`** — UFS (subcommand allowlists and caps are constants), OWN (one owner per process, session and clone), FLS (drain every process stream on every exit path), TIM (session yields, command timeouts and the kill grace are explicit), NTP (patch text narrowed at its parse boundary), OBS, ERR-RS, TST-NAM, TCF, NDC.
+- `dispatch/write_rust.md` + `docs/RUST_ERROR_STANDARD.md` — one `ErrorKind` per crate through `afd_core::error_shell!`; a refused subcommand or path carries its code to the model. Indy's bar (Oct 04, 2026): traits and trait objects over free functions, borrows over clones, no mutex where ownership serves, closures (`Fn`, `FnMut`, `FnOnce`) where behaviour is passed, established crates over hand-rolled code, repetition abstracted, `afd_core` and `afd_observability` reused.
 - `dispatch/write_shell.md` — the toolbox build script: quoted expansions, temp-file cleanup.
 - `docs/LOGGING_STANDARD.md` — never log a command's output, a file's content or a page's text; log ids, codes and counts.
 
@@ -91,7 +92,6 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Reference:** Codex `view_image` — a path becomes image content on the next turn. Ported.
 - **Reference:** `rustd/crates/afd_credential/src/credential/github/request.rs` — the read-only, one-hour, repository-scoped token the supervisor clones with.
 - **Reference:** loop(4), https://man7.org/linux/man-pages/man4/loop.4.html — `LOOP_CONFIGURE` (Linux 5.8) attaches a backing descriptor read-only in one call, and `LOOP_GET_STATUS64` reports the backing device and inode; both are declared by hand over `libc::ioctl`, so no `bindgen`.
-- **Reference:** Chromium's `--remote-debugging-pipe` — CDP over file descriptors 3 and 4, which is what lets the supervisor drive a browser that has no network and no socket of its own.
 
 ## Sections (implementation slices)
 
@@ -130,21 +130,17 @@ Before a lease with `git` or `shell` in its policy starts, the supervisor clones
 - **Dimension 4.1** — An image under the cap reaches the next turn as image content → Test `test_image_attaches_to_next_turn`
 - **Dimension 4.2** — An oversize file, a non-image and a text-only provider each refuse with their code → Test `test_image_refusals_carry_codes`
 
-### §5 — Browser: Chromium from the toolbox, driven over its pipes
+### §5 — Browser: refused until the Firecracker engine
 
-`browser_open { url }` starts Chromium headless from the toolbox through `process/spawn` with `--remote-debugging-pipe` and `extra_pipes: [3, 4]`, then speaks CDP over those pipes to navigate. `browser { action, selector?, text? }` performs `click`, `type`, `text`, `wait` on the open page. `screenshot` captures the page as PNG and attaches it to the next model turn as image content, as §4 does. Chromium runs inside the sandbox under its limits; with the sandbox's network at loopback only, a page beyond loopback fails until the sandbox allowlist lands, and the kernel lane serves its pages on loopback. Chromium exits with the lease. Chromium keeps its own sandbox: `--no-sandbox` is never passed. Spike S1 settles whether it runs inside ours; if it cannot, Indy decides before §5 starts.
+Spike S1 showed Chromium cannot start inside this sandbox: its own sandbox needs a user namespace or a setuid helper, ours refuses both, and `--no-sandbox` is never passed. `browser_open`, `browser` and `screenshot` answer a code naming the engine they wait for, and the rest of the run continues. Chromium driven over its pipes waits for the Firecracker engine, as Indy chose (Discovery); its five Dimensions are recorded in `docs/v2/reviews/m211-toolbox-spikes.md`.
 
-- **Dimension 5.1** — `browser_open` loads a loopback page and `text` returns its content → Test `test_browser_opens_and_reads_a_page`
-- **Dimension 5.2** — `click` and `type` drive a form and the page reflects it → Test `test_browser_drives_a_form`
-- **Dimension 5.3** — `screenshot` returns a PNG that reaches the next turn → Test `test_screenshot_reaches_next_turn`
-- **Dimension 5.4** — Chromium holds no capability and a navigation beyond loopback fails → Test `test_browser_inherits_the_sandbox`
-- **Dimension 5.5** — Chromium is gone after the lease → Test `test_browser_exits_with_the_lease`
+- **Dimension 5.1** — Each browser tool answers the engine code, and the lease's other tools still run → Test `test_browser_tools_refuse_until_firecracker`
 
 ### §6 — The toolbox carries the tools
 
-The manifest gains Chromium, as Debian's `chromium-headless-shell` rather than the full `chromium` package, with fonts, Node, Python 3 with uv, ripgrep, jq, curl and the GitHub command-line tool, pinned; a binary Debian does not ship is pinned by URL and SHA-256. The build fetches main, updates and security at one snapshot timestamp, pins its EROFS features, and writes the release manifest `runner_execution.md` §Toolbox lists beside the image; it stays reproducible and content-addressed (M210_001 §5). VERIFY records in Discovery the image's size and, separately, host staging, sandbox readiness, the first useful command and the first screenshot, on cold and warm cache, at p95 and p99, with four leases running at once.
+The manifest gains Node, Python 3 with uv, ripgrep, jq, curl and the GitHub command-line tool, pinned; a binary Debian does not ship is pinned by URL and SHA-256. The build fetches main, updates and security at one snapshot timestamp, pins its EROFS features, and writes the release manifest `runner_execution.md` §Toolbox lists beside the image; it stays reproducible and content-addressed (M210_001 §5). VERIFY records in Discovery the image's size and, separately, host staging, sandbox readiness and the first useful command, on cold and warm cache, at p95 and p99, with four leases running at once.
 
-- **Dimension 6.1** — Under the production policy, uv installs a locked project, `node --test` passes, git commits and Chromium screenshots a page, and two builds hash the same → Test `test_toolbox_carries_the_tools`
+- **Dimension 6.1** — Under the production policy, uv installs a locked project, `node --test` passes and git commits, and two builds hash the same → Test `test_toolbox_carries_the_tools`
 
 ### §7 — A bundle runs code
 
@@ -172,9 +168,9 @@ file_read / file_read_hashed { path }  file_write { path, content }  file_append
 file_delete { path }  file_edit { path, old_text, new_text }  file_edit_hashed { path, hash, old_text, new_text }
 apply_patch   { patch }                                          → { added, removed, files }
 image         { path }                                           → image content on the next turn
-browser_open  { url }  browser { action: click|type|text|wait, selector?, text? }  screenshot {}
+browser_open / browser / screenshot                              → refused with the engine code
 
-Executor additions: process/spawn { …, extra_pipes: [fd] } · fs/append · fs/delete · fs/stat → { size, sha256 }
+Executor additions: fs/append · fs/delete · fs/stat → { size, sha256 }
 Constants: SESSIONS_PER_LEASE_MAX · SHELL_TIMEOUT_MS_DEFAULT · IMAGE_MAX_BYTES · GIT_REFUSED_SUBCOMMANDS · TOOLBOX_KEEP_RELEASES (2) · TOOLBOX_RELEASE_PUBLIC_KEY
 Toolbox manifest: { arch, length, sha256, erofs_features, runner_versions, packages, vendored } + signature
 Admission: verify manifest → stage → fsync → rename → open(O_NOFOLLOW) → fstat → SHA-256(fd) → LOOP_CONFIGURE(fd, read-only) → mount ro,nosuid,nodev → ready
@@ -190,20 +186,19 @@ Admission: verify manifest → stage → fsync → rename → open(O_NOFOLLOW) �
 | Path escape | `..` or a symlink | Refused with a code; nothing read or written (Dimension 3.4) |
 | Network git subcommand | Fleet asks to push | Refused with a code naming `propose_change` (Dimension 2.3) |
 | Clone fails | Mint refused, repository gone | Lease refused before any tool runs; capability report untouched |
-| Chromium cannot start | Missing from toolbox, limits | Browser tools refuse with a code; the rest of the run continues |
 | Image too large or not an image | Fleet picks a wrong file | Refused with a code (Dimension 4.2) |
 | Run ends with sessions open | Kill, timeout, lease end | Sessions closed, calls `interrupted` (Dimension 1.5) |
 | Image path swapped mid-admission | A buggy installer or host-side tampering | The hashed descriptor is what gets attached; the swapped file is never parsed (Dimension 8.1) |
 | Toolbox refused at admission | Bad signature, wrong architecture, short download | Not admitted; the capability report says no toolbox; leases refused (Dimension 8.2) |
 | Foreign mount at the digest's directory | A crashed runner or an operator | Detached and remounted from the admitted descriptor (Dimension 8.3) |
-| Chromium needs a user namespace or a setuid helper | Our sandbox disables both | Browser tools refuse with a code; `--no-sandbox` is never added; Indy decides from spike S1 |
+| A browser tool is called | Chromium needs a user namespace or a setuid helper, and this sandbox refuses both (S1) | The call answers the engine code and the rest of the run continues; `--no-sandbox` is never added (Dimension 5.1) |
 
 ## Invariants
 
-1. Every sandbox-side handler runs through the executor inside the lease's sandbox; none spawns a process on the host (Dimensions 1.4, 5.4).
+1. Every sandbox-side handler runs through the executor inside the lease's sandbox; none spawns a process on the host (Dimension 1.4).
 2. The read token and every credential stay on the host side; the clone carries none (Dimension 2.4).
 3. No handler reads or writes outside `/workspace` (Dimension 3.4).
-4. A process, session or Chromium started for a lease is gone when the lease ends (Dimensions 1.5, 5.5).
+4. A process or session started for a lease is gone when the lease ends (Dimension 1.5).
 5. No toolbox image is reopened by path after its descriptor is hashed, and every toolbox mount sits on a loop device backed by an admitted file (Dimensions 8.1, 8.3).
 
 ## Metrics & Observability
@@ -212,7 +207,6 @@ Admission: verify manifest → stage → fsync → rename → open(O_NOFOLLOW) �
 |----------------|-------|------------|--------------------|---------------|------------|
 | `process_timed_out` (runner log, warn) | ops | A command passes its timeout | lease id, call id, timeout, pid count killed | No command text or output | `test_shell_timeout_kills_the_group` |
 | `git_subcommand_refused` (runner log, info) | ops | A network subcommand is asked for | lease id, call id, subcommand | No arguments beyond the subcommand | `test_git_tool_refuses_network_subcommands` |
-| `browser_started` / `browser_exited` (runner log, info) | ops | Chromium starts or ends | lease id, milliseconds alive, exit status | No URL, no page text | `test_browser_exits_with_the_lease` |
 
 ## Test Specification (tiered)
 
@@ -233,12 +227,8 @@ Admission: verify manifest → stage → fsync → rename → open(O_NOFOLLOW) �
 | 3.4 | unit | `test_file_tools_refuse_path_escape` | `../etc/x`, symlink → refused, nothing touched |
 | 4.1 | unit | `test_image_attaches_to_next_turn` | 40 KiB PNG → next request carries image content |
 | 4.2 | unit | `test_image_refusals_carry_codes` | 20 MiB file, `.txt`, chat provider → three distinct codes |
-| 5.1 | kernel | `test_browser_opens_and_reads_a_page` | loopback page "hello" → `text` returns `hello` |
-| 5.2 | kernel | `test_browser_drives_a_form` | `type` into `#q`, `click` `#go` → page shows the query |
-| 5.3 | kernel | `test_screenshot_reaches_next_turn` | screenshot → PNG header, image content on next request |
-| 5.4 | kernel | `test_browser_inherits_the_sandbox` | Chromium CapEff 0; navigate `http://1.1.1.1` → error |
-| 5.5 | kernel | `test_browser_exits_with_the_lease` | lease ends → no chromium process in the cgroup |
-| 6.1 | kernel | `test_toolbox_carries_the_tools` | `uv sync` from a loopback index, `node --test`, `git commit`, a loopback screenshot → exit 0 each, policy unchanged; two builds → same SHA-256 |
+| 5.1 | unit | `test_browser_tools_refuse_until_firecracker` | `browser_open`, `browser`, `screenshot` → the engine code each, no process spawned; a `file_read` dispatched next → succeeds |
+| 6.1 | kernel | `test_toolbox_carries_the_tools` | `uv sync` from a loopback index, `node --test`, `git commit` → exit 0 each, policy unchanged; two builds → same SHA-256 |
 | 7.1 | integration | `test_code_running_bundle_roundtrip` | fixture bundle → suite ran, patch applied, commit made, trace rows for each |
 | 8.1 | kernel | `test_toolbox_admission_survives_path_swap` | 1,000 runs, a racer renames a decoy over the path at each step → backing inode always the admitted one; 0 decoy mounts |
 | 8.2 | unit | `test_toolbox_admission_refusals` | wrong key, length off by one, `aarch64` manifest on amd64, half-written stage → four distinct codes, 0 mounts |
@@ -249,9 +239,9 @@ Admission: verify manifest → stage → fsync → rename → open(O_NOFOLLOW) �
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Every sandbox-side tool runs inside the real sandbox, on an admitted toolbox (§1–§6, §8) | `make test-runner-kernel` | exit 0 | P0 | |
+| R1 | Every sandbox-side tool but the browser runs inside the real sandbox, on an admitted toolbox (§1–§4, §6, §8) | `make test-runner-kernel` | exit 0 | P0 | |
 | R2 | A code-running bundle round-trips against the real daemon (§7) | `make test-integration-rustd && grep -c "fn test_code_running_bundle_roundtrip(" rustd/crates/agentsfleetd/tests/integration_rust_runner_bundles.rs` | 1 | P0 | |
-| R3 | Parsers and refusals hold (§2–§4) | `cargo test --manifest-path rustd/Cargo.toml -p afr_tools sandbox` | exit 0 | P0 | |
+| R3 | Parsers and refusals hold (§2–§5) | `cargo test --manifest-path rustd/Cargo.toml -p afr_tools sandbox` | exit 0 | P0 | |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | R5 | Toolbox admission refuses what it must (§8) | `cargo test --manifest-path rustd/Cargo.toml -p afr_sandbox toolbox` | exit 0 | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
@@ -274,8 +264,9 @@ Admission: verify manifest → stage → fsync → rename → open(O_NOFOLLOW) �
 
 - `delegate` and `spawn` as nested loops — M211_002.
 - The push: `propose_change`, the supervisor's write under the daemon's rules, and the Codex and Claude Code engines — the outage toolkit spec.
-- Network inside the sandbox: the allowlist, a page beyond loopback for the browser, `git fetch` from inside — the sandbox allowlist spec. Until then `http_request` in the supervisor is a fleet's reach.
-- Keeping screenshots and other binaries for the thread — the artifacts spec; here an image reaches the model, and the thread's cell says what was captured.
+- Network inside the sandbox: the allowlist and `git fetch` from inside — the sandbox allowlist spec. Until then `http_request` in the supervisor is a fleet's reach.
+- The browser: Chromium in the toolbox, driven over the Chrome DevTools Protocol through `extra_pipes`, with `browser`'s actions and `screenshot` — the Firecracker engine (Discovery, Deferrals; the design and its five Dimensions in `docs/v2/reviews/m211-toolbox-spikes.md`).
+- Keeping images and other binaries for the thread — the artifacts spec; here an image reaches the model, and the thread's cell says what was captured.
 - Workspaces carried between leases in R2 — a later spec; this clone is per lease.
 - Signing the release, the SBOM, the scan and the offline bundle — M213_001. Revoking a compromised toolbox — deferred (Discovery). dm-verity and the Firecracker boot wait on spikes S2 and S3; tool packs wait on a fleet that needs one.
 
@@ -285,36 +276,38 @@ Admission: verify manifest → stage → fsync → rename → open(O_NOFOLLOW) �
 
 1. **Successful user moment** — A fleet told "the build is red on `dev`" runs the suite in its sandbox, the thread shows `Ran bun test` with the failing line, `Edited retry.ts (+2 −1)` with the diff, and a commit, and the person reads it like a Codex transcript.
 2. **Preserved user behaviour** — Tool names and arguments stay as the published page states them; a fleet that never lists a sandbox-side tool still starts no sandbox.
-3. **Optimal-way check** — Every handler is a thin client of the executor M210_001 already proves; the one new mechanism is Chromium over pipes, chosen because it needs no socket and no network inside the sandbox.
+3. **Optimal-way check** — Every handler is a thin client of the executor M210_001 already proves; Chromium over pipes, chosen because it needs no socket and no network inside the sandbox, waits for the Firecracker engine (S1).
 4. **Rebuild-vs-iterate** — Rebuild, by Indy's decision: "The port is a fresh port".
-5. **What we build** — Eleven handlers, three executor methods and one spawn field, the host-side clone, image input for two providers, a larger toolbox admitted by descriptor, one code-running bundle.
-6. **What we do NOT build** — Nested loops, the push, network in the sandbox, artifacts, carried workspaces (see Out of Scope).
+5. **What we build** — Eight handlers and one refusal for the three browser tools, three executor methods, the host-side clone, image input for two providers, a larger toolbox admitted by descriptor, one code-running bundle.
+6. **What we do NOT build** — Nested loops, the push, network in the sandbox, the browser, artifacts, carried workspaces (see Out of Scope).
 7. **Fit with existing features** — Plugs into M210_002's catalog and router; the thread's `exec_command` and edit cells (M209_002 §3, §5) render these outcomes unchanged.
 8. **Surface order** — API first; the thread already renders command and edit cells.
 9. **Dashboard restraint** — N/A — no user surface; an unavailable browser is a red cell with its code.
-10. **Confused-user next step** — N/A — no user surface; a refused `git push` names `propose_change`, and a page beyond loopback names the allowlist.
+10. **Confused-user next step** — N/A — no user surface; a refused `git push` names `propose_change`, and a refused browser call names the engine it waits for.
 
 ## Decomposition & alternatives (patch vs refactor)
 
 - **Chosen shape:** all sandbox-side handlers in one workstream because they share one mechanism (the executor connection) and one proof lane (the kernel lane), and because a fleet that runs code needs shell, files and git together.
-- **Alternatives considered:** running the browser in the supervisor (rejected: tenant-driven navigation belongs inside the boundary); a CDP WebSocket into the sandbox (rejected: a socket the sandbox listens on is a surface, pipes are not); applying patches with a process (rejected: the parser is pure and `fs/*` keeps every write auditable); cloning from inside the sandbox (rejected: the token would enter it); keeping `mount -o loop` behind a second hash (rejected: the kernel parses the file before that hash runs).
+- **Alternatives considered:** re-opening nested user namespaces so Chromium builds its own sandbox inside ours, for every lease or only browser leases (not taken: after S1 Indy chose to refuse and wait, Deferrals; either way re-opens the namespace surface, the second exactly for the leases that render tenant-controlled pages); running the browser in the supervisor (rejected: tenant-driven navigation belongs inside the boundary); a CDP WebSocket into the sandbox (rejected: a socket the sandbox listens on is a surface, pipes are not); applying patches with a process (rejected: the parser is pure and `fs/*` keeps every write auditable); cloning from inside the sandbox (rejected: the token would enter it); keeping `mount -o loop` behind a second hash (rejected: the kernel parses the file before that hash runs).
 - **Patch-vs-refactor verdict:** this is a **patch** because the catalog, router, executor and sandbox exist; each handler is an addition.
 
 ## Discovery (consult log)
 
 - **Consults** — Indy (in-session, Oct 02, 2026): "i need all the tools … must be build on the sandbox, the sandbox isnt just a sandbox but a harness that decide to operate like codex so that is critical to realize the fleets i plan to use"; chose "Supervisor loop, sandbox tools". Earlier: "Yes bubblewrap first, and firecracker next."
 - **Toolbox review** — Tarzy reviewed the toolbox design on Oct 03, 2026; Indy chose "Approve as classified (Recommended)" for the triage that `runner_execution.md` §Toolbox and its Decisions rows record. Here: the pinned build (§6), the split measurements, admission (§8). M213_001: signing, the SBOM, the scan, the offline bundle.
-- **Spikes** — one day each, run and recorded here before EXECUTE; a failed criterion returns to Indy before the Section it gates.
-  - **S1 Full toolset under the production policy** — in one lease with today's bubblewrap flags, Landlock and seccomp: uv installs a locked project from a loopback index, `node --test` passes, git commits, `chromium-headless-shell` takes CDP over `--remote-debugging-pipe` and screenshots a loopback page, `codex --version` and `claude --version` run. Pass: all succeed with no `--no-sandbox`, no user namespace, no setuid helper. Gates §5 and §6.
+- **Spikes** — run and recorded here before EXECUTE, with raw evidence in `docs/v2/reviews/m211-toolbox-spikes.md`; a failed criterion returns to Indy before the Section it gates.
+  - **S1 Full toolset under the production policy** — in one lease with today's bubblewrap flags, Landlock and seccomp: uv installs a locked project from a loopback index, `node --test` passes, git commits, `chromium-headless-shell` takes CDP over `--remote-debugging-pipe` and screenshots a loopback page, `codex --version` and `claude --version` run. Pass: all succeed with no `--no-sandbox`, no user namespace, no setuid helper. Gates §5 and §6. **Oct 04: browser FAIL** — uv, `node --test`, git, Codex and Claude Code pass; Chromium 151 stops at "No usable sandbox!" under every flag short of `--no-sandbox` (Deferrals).
   - **S2 dm-verity beneath EROFS** — on a disposable image with a fixed salt and recorded geometry, corrupt one unread data block and one metadata block. Pass: each read fails with `EIO`, nothing panics, and a healthy image runs S1's workload within 10% of its p99 without dm-verity.
-  - **S3 Firecracker boots the exact image** — on a `/dev/kvm` host with a pinned guest kernel: boot, connect over vsock, run a command, write `/workspace`, fail to write `/`, shut down cleanly; record boot latency and memory. Pass: all six, before M213_001 fixes the artifact layout.
+  - **S3 Firecracker boots the exact image** — on a `/dev/kvm` host with a pinned guest kernel: boot, connect over vsock, run a command, write `/workspace`, fail to write `/`, shut down cleanly; record boot latency and memory. Pass: all six, before M213_001 fixes the artifact layout. **Oct 04: not run** — the kernel-lane machine has no `/dev/kvm`; S3 needs bare metal or nested virtualization.
   - **S4 Unprivileged build** — `mmdebstrap --mode=unshare` on two clean builders. Pass: both digests equal each other and the root-mode build's.
   - **S5 Sandbox boundary** — inside a lease: count inherited descriptors; call `clone` and `clone3` with namespace flags, `setns` on `/proc/1/ns/*`, and an i386 call on amd64. Pass: only the executor's own descriptors are open and every call is refused.
   - **S6 Writable-state exhaustion** — four leases fill their workspace disks and `/tmp` at once. Pass: each gets `ENOSPC`, the host keeps its free-space reserve, and loop-device I/O shows in each lease's cgroup `io.stat`.
-- **Browser** — Indy (in-session, Oct 03, 2026): "Yes stick to chromium then", choosing Debian's `chromium-headless-shell` over the full package and over Lightpanda. Lightpanda renders no pixels (its PNG is a text-layout dump), speaks CDP over WebSocket only, is beta and AGPL-3.0, which the offline bundle would distribute. Headless shell is the same engine without the GTK3 stack: 222.4 MB installed against 319.8 MB for `chromium` on amd64 (packages.debian.org, trixie, 154.0.8037.92); S1 proves its pipe and screenshot, and §6 records the image-size delta.
-- **Agent defaults** — `sh -c` for `shell`; a session cap per lease; the five refused git subcommands; SHA-256 for the hashed file tools; PNG for screenshots; Chromium over `--remote-debugging-pipe`; the loop ioctls declared by hand over `libc`; cosign key-pair signatures checked with the `p256` crate as Elliptic Curve Digital Signature Algorithm (ECDSA) P-256 over SHA-256, confirmed against `cosign verify-blob` at PLAN.
+- **Browser** — Indy (in-session, Oct 03, 2026): "Yes stick to chromium then", choosing Debian's `chromium-headless-shell` over the full package and over Lightpanda. Lightpanda renders no pixels (its PNG is a text-layout dump), speaks CDP over WebSocket only, is beta and AGPL-3.0, which the offline bundle would distribute. Headless shell is the same engine without the GTK3 stack: 222.4 MB installed against 319.8 MB for `chromium` on amd64 (packages.debian.org, trixie, 154.0.8037.92); S1 then found it cannot start inside this sandbox (Deferrals).
+- **Agent defaults** — `sh -c` for `shell`; a session cap per lease; the five refused git subcommands; SHA-256 for the hashed file tools; the loop ioctls declared by hand over `libc`; cosign key-pair signatures checked with the `p256` crate as Elliptic Curve Digital Signature Algorithm (ECDSA) P-256 over SHA-256, confirmed against `cosign verify-blob` at PLAN. After S1, Chromium and its fonts leave the manifest and `extra_pipes` leaves `process/spawn`: nothing else uses either (RULE NDC).
+- **Credential gate** — nothing missing (Oct 04, 2026): the GitHub read token from the mint verb (tests: the `test-util` fake exchanger); model keys from the lease (tests: the fake model); `TOOLBOX_RELEASE_PUBLIC_KEY`, a fixture key with no vault item (the release key is M213_001's); snapshot.debian.org and GitHub release downloads, both anonymous.
 - **Metrics review** — No analytics or funnel playbook update required: no user surface; three operator log events added.
 - **Skill-chain outcomes** — pending.
 - **Stale migrate lane removed** — Indy (2026-10-04): "In the above prompt include text to remove the target check-migrate-unpriviledged." The lane ran the retired Zig migrator (`build.zig` has no run step), died silently under `set -e`, and no workflow ran it; the script, its target, M213_001's row and the schema comment's claim go, and no lane now proves a non-superuser migrator. `afd_db` records versions, not checksums, so the comment edit cannot fail a deploy.
 - **Deferrals** —
   > Indy (2026-10-03 13:51): "I dont want to focus on revocation of a compromised toolbox, first is to get the toolbox working" — context: revoking a compromised toolbox digest, from Tarzy's review; left out of this spec and M213_001.
+  > Indy (2026-10-04 22:24): "Refuse browser tools, defer §5 (Recommended)" — context: spike S1, Chromium cannot start inside this sandbox without a nested user namespace; the three browser tools answer a code, and §5's five Dimensions wait for the Firecracker engine, where each lease has its own kernel.
