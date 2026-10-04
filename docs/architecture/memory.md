@@ -49,7 +49,7 @@ The four tools (`memory_store` / `memory_recall` / `memory_list` / `memory_forge
 | Concern | Path |
 |---|---|
 | Schema (table, `(key, fleet_id)` index, role grants, `fleet_id` foreign key + cascade) | `schema/820_memory_entries.sql` |
-| The only write/read adapter (`WHERE fleet_id = $1`, `ON CONFLICT (key, fleet_id)`) | `rustd/crates/afd_memory/src/postgres/` |
+| The only write/read adapter (`WHERE fleet_id = $1`, `ON CONFLICT (key, fleet_id)`) | `rustd/crates/afd_memory/src/postgres/`, its statements in `src/sql.rs` |
 | Runner hydrate/capture endpoints (lease-derived `fleet_id`, fencing) | `rustd/crates/afd_api_runner/src/handler/runner/memory.rs` |
 | Tenant read and forget (ownership-gated) | `rustd/crates/afd_api_tenant/src/handler/fleet/memory.rs` |
 | In-run store seeding (`:memory:` SQLite) | `src/runner/engine/inrun_memory.zig` |

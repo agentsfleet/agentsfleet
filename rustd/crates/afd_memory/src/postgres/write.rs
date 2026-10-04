@@ -5,10 +5,11 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_wire::memory::{MAX_ENTRIES_PER_FLEET, MemoryDelta, PINNED_CATEGORY};
 
-use super::{Failure, PgStore, sql};
+use super::{Failure, PgStore};
 use crate::error::Result;
 use crate::error::detail::FORGET_FAILED;
 use crate::record::{Housekept, Owner, Record};
+use crate::sql;
 use crate::window::{DAILY_CATEGORY, DAILY_RETENTION_MS};
 
 /// Statement names, for the context a query failure carries.

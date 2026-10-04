@@ -12,7 +12,7 @@
 //! leads with `workspace_id` and is served by the partial shared index.
 
 /// Take the role that may write memory, for this transaction only.
-pub(super) const ASSUME_MEMORY_ROLE: &str = "SET LOCAL ROLE memory_runtime";
+pub(crate) const ASSUME_MEMORY_ROLE: &str = "SET LOCAL ROLE memory_runtime";
 
 /// Upsert one entry.
 ///
@@ -22,7 +22,7 @@ pub(super) const ASSUME_MEMORY_ROLE: &str = "SET LOCAL ROLE memory_runtime";
 ///
 /// `$1` row id, `$2` key, `$3` content, `$4` category, `$5` fleet,
 /// `$6` workspace, `$7` workspace-visible, `$8` now.
-pub(super) const UPSERT_ENTRY: &str = "\
+pub(crate) const UPSERT_ENTRY: &str = "\
 INSERT INTO memory.memory_entries
   (id, key, content, category, fleet_id, workspace_id, workspace_visible, created_at, updated_at)
 VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6::uuid, $7, $8, $8)
@@ -39,7 +39,7 @@ ON CONFLICT (key, fleet_id) DO UPDATE
 ///
 /// `$1` row id, `$2` key, `$3` content, `$4` category, `$5` writer fleet,
 /// `$6` workspace, `$7` workspace-visible, `$8` created, `$9` updated.
-pub(super) const IMPORT_ENTRY: &str = "\
+pub(crate) const IMPORT_ENTRY: &str = "\
 INSERT INTO memory.memory_entries
   (id, key, content, category, fleet_id, workspace_id, workspace_visible, created_at, updated_at)
 VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6::uuid, $7, $8, $9)
@@ -59,7 +59,7 @@ ON CONFLICT (key, fleet_id) DO UPDATE
 /// what stops eviction deleting what hydration promises.
 ///
 /// `$1` fleet, `$2` the cap, `$3` the protected category.
-pub(super) const EVICT_PAST_CAP: &str = "\
+pub(crate) const EVICT_PAST_CAP: &str = "\
 DELETE FROM memory.memory_entries
 WHERE fleet_id = $1::uuid
   AND id IN (
@@ -72,7 +72,7 @@ WHERE fleet_id = $1::uuid
 /// Retention sweep for one category — scratch notes older than a cutoff.
 ///
 /// `$1` fleet, `$2` category, `$3` cutoff.
-pub(super) const DELETE_AGED_IN_CATEGORY: &str = "\
+pub(crate) const DELETE_AGED_IN_CATEGORY: &str = "\
 DELETE FROM memory.memory_entries
 WHERE fleet_id = $1::uuid
   AND category = $2
@@ -82,7 +82,7 @@ WHERE fleet_id = $1::uuid
 /// because the window spends the budget, not the statement.
 ///
 /// `$1` fleet.
-pub(super) const SELECT_ALL_FOR_FLEET: &str = "\
+pub(crate) const SELECT_ALL_FOR_FLEET: &str = "\
 SELECT fleet_id::text, key, content, category, workspace_visible, created_at, updated_at
 FROM memory.memory_entries
 WHERE fleet_id = $1::uuid
@@ -91,7 +91,7 @@ ORDER BY updated_at DESC, id DESC";
 /// Other fleets' shared entries in a workspace, newest first.
 ///
 /// `$1` workspace, `$2` the reading fleet, `$3` the most rows to read.
-pub(super) const SELECT_SHARED_IN_WORKSPACE: &str = "\
+pub(crate) const SELECT_SHARED_IN_WORKSPACE: &str = "\
 SELECT fleet_id::text, key, content, category, workspace_visible, created_at, updated_at
 FROM memory.memory_entries
 WHERE workspace_id = $1::uuid AND workspace_visible AND fleet_id <> $2::uuid
@@ -104,7 +104,7 @@ LIMIT $3";
 /// literal wildcard matches that character rather than every row.
 ///
 /// `$1` fleet, `$2` the escaped pattern, `$3` limit.
-pub(super) const SEARCH_OWN: &str = "\
+pub(crate) const SEARCH_OWN: &str = "\
 SELECT fleet_id::text, key, content, category, workspace_visible, created_at, updated_at
 FROM memory.memory_entries
 WHERE fleet_id = $1::uuid
@@ -115,7 +115,7 @@ LIMIT $3";
 /// Other fleets' shared entries matching a pattern, key matches first.
 ///
 /// `$1` workspace, `$2` the reading fleet, `$3` the escaped pattern, `$4` limit.
-pub(super) const SEARCH_SHARED: &str = "\
+pub(crate) const SEARCH_SHARED: &str = "\
 SELECT fleet_id::text, key, content, category, workspace_visible, created_at, updated_at
 FROM memory.memory_entries
 WHERE workspace_id = $1::uuid AND workspace_visible AND fleet_id <> $2::uuid
@@ -126,7 +126,7 @@ LIMIT $4";
 /// Every entry in a workspace, for a flip's copy.
 ///
 /// `$1` workspace.
-pub(super) const SELECT_WORKSPACE_ENTRIES: &str = "\
+pub(crate) const SELECT_WORKSPACE_ENTRIES: &str = "\
 SELECT fleet_id::text, key, content, category, workspace_visible, created_at, updated_at
 FROM memory.memory_entries
 WHERE workspace_id = $1::uuid
@@ -138,7 +138,7 @@ ORDER BY fleet_id, key";
 /// answer 404 for a key the fleet was never holding.
 ///
 /// `$1` fleet, `$2` key.
-pub(super) const DELETE_ENTRY_BY_KEY: &str = "\
+pub(crate) const DELETE_ENTRY_BY_KEY: &str = "\
 DELETE FROM memory.memory_entries
 WHERE fleet_id = $1::uuid AND key = $2
 RETURNING key";

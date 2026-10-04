@@ -7,10 +7,11 @@ use sqlx::PgConnection;
 use sqlx::postgres::PgArguments;
 use sqlx::query::Query;
 
-use super::{Failure, PgStore, page, record, sql};
+use super::{Failure, PgStore, page, record};
 use crate::error::Result;
 use crate::page::{After, View};
 use crate::record::{Owner, Record};
+use crate::sql;
 
 /// Statement names, for the context a query failure carries.
 const CONTEXT_LIST: &str = "memory list";
