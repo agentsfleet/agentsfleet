@@ -46,7 +46,7 @@ const EVENT_BODY_INVALID: &str = "renew_body_parse_failed";
         "A run buying more time before its lease expires. The body is ",
         "optional and carries the run's cumulative token counts. A body ",
         "that will not parse is read as asserting no tokens and logged as ",
-        "`renew_body_parse_failed`; the lease is still extended, so a ",
+        "`renew_body_parse_failed`. The lease is still extended, so a ",
         "counting mistake never ends a run. ",
     ),
     request_body = Option<RenewRequest>,
