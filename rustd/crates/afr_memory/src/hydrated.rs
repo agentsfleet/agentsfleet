@@ -9,7 +9,7 @@
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use afd_wire::memory::{MAX_PUSH_BYTES, MemoryDelta};
+use afd_wire::memory::{MAX_KEY_LEN, MAX_PUSH_BYTES, MemoryDelta};
 use aho_corasick::AhoCorasick;
 use garde::Validate as _;
 
@@ -195,6 +195,11 @@ impl MemoryBackend for Hydrated<'_> {
     }
 
     async fn forget(&mut self, key: &str) -> Result<Forgotten> {
+        // A key past the wire bound was never stored, because the daemon
+        // refuses one, so there is no durable copy to hide and nothing to hold.
+        if key.len() > MAX_KEY_LEN {
+            return Ok(Forgotten::Unknown);
+        }
         // Recorded even when the window held nothing under the key: the
         // durable copy can sit past the window, and the run asked it gone.
         self.superseded.insert(key.to_owned());

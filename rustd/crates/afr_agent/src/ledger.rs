@@ -31,6 +31,9 @@ use afr_secrets::{Clean, Scrub};
 
 pub(crate) const EVENT_CALL_STARTED: &str = "tool_call_started";
 pub(crate) const EVENT_CALL_COMPLETED: &str = "tool_call_completed";
+/// A full record past the event's budget, kept out of the post. The trace
+/// still lists the call, so an operator's "show all" finds no record for it.
+const EVENT_RECORD_DROPPED: &str = "tool_record_dropped";
 
 /// Every call one run made.
 pub(crate) struct Ledger<'run> {
@@ -109,6 +112,12 @@ impl<'run> Ledger<'run> {
         if after <= DETAIL_EVENT_MAX_BYTES {
             self.spent = after;
             self.records.push(record);
+        } else {
+            let lease_id = self.lease_id;
+            let call_number = record.call_number;
+            let bytes = record.byte_count();
+            let event = EVENT_RECORD_DROPPED;
+            tracing::warn!(lease_id, call_number, bytes, event);
         }
     }
 

@@ -163,6 +163,11 @@ async fn a_forget_holds_for_the_run_and_leaves_the_push() {
         memory.forget("never-stored").await.unwrap(),
         Forgotten::Unknown
     );
+    assert_eq!(
+        memory.forget(&"k".repeat(MAX_KEY_LEN + 1)).await.unwrap(),
+        Forgotten::Unknown,
+        "a key past the wire bound was never stored, so none is held for it"
+    );
 
     assert!(memory.recall("owner", 5).await.unwrap().is_empty());
     assert_eq!(

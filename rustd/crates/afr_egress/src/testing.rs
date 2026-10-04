@@ -23,7 +23,8 @@ use crate::error::{Error, Result};
 use crate::mint::{Mint, Minted};
 use crate::transport::{Inbound, Outbound, Transport};
 
-/// What [`CountingMint::never`] refuses with.
+/// What a refusing test mint answers with: [`CountingMint::never`] and the
+/// closed guard behind [`closed`].
 const NEVER: &str = "this suite mints no credential";
 /// The code a refusing mint answers under: the daemon's, as a GitHub mint
 /// refused would carry it.

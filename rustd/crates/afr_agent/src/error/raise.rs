@@ -10,10 +10,13 @@ afd_core::error_lifts!(Error, ErrorKind:
     afr_secrets::Error => Scrub,
 );
 
-// The scripted engine's one lift, compiled only with it.
+// The scripted engine's one lift, compiled only with it. In a module of its
+// own because a `cfg` on the macro call itself leaves the lift out of a build
+// that turns the feature on through a dependant, and the lift is the same
+// generated `From` every other one is.
 #[cfg(feature = "test-util")]
-impl From<afr_executor::Error> for Error {
-    fn from(source: afr_executor::Error) -> Self {
-        Self::from(ErrorKind::Executor { source })
-    }
+mod executor {
+    use super::{Error, ErrorKind};
+
+    afd_core::error_lifts!(Error, ErrorKind: afr_executor::Error => Executor,);
 }
