@@ -2,8 +2,10 @@ use afd_core::clock::{FixedClock, UnixMillis};
 
 use super::{REFRESH_MARGIN_MILLIS, Vault};
 use crate::admission::Admission;
-use crate::fixture::{GRAFANA_TOKEN, policy};
-use crate::refusal::Refusal;
+use afd_core::error_code::GH_MINT_FAILED;
+
+use crate::error::Error;
+use crate::fixture::{GRAFANA_TOKEN, policy, shown};
 use crate::testing::CountingMint;
 
 /// When every suite's clock starts.
@@ -25,7 +27,9 @@ async fn should_fill_a_static_placeholder_from_secrets_map() {
         .await;
 
     assert_eq!(
-        filled.map(|secret| secret.expose().to_owned()),
+        filled
+            .map(|secret| secret.expose().to_owned())
+            .map_err(|error| shown(&error)),
         Ok(format!("Bearer {GRAFANA_TOKEN}"))
     );
     assert_eq!(mint.asked(), 0);
@@ -42,7 +46,9 @@ async fn should_mint_once_and_reuse_until_shortly_before_expiry() {
     for _call in 0..3 {
         let filled = vault.fill(admission, "token ${secrets.github.token}").await;
         assert_eq!(
-            filled.map(|secret| secret.expose().to_owned()),
+            filled
+                .map(|secret| secret.expose().to_owned())
+                .map_err(|error| shown(&error)),
             Ok(format!("token {MINTED}"))
         );
     }
@@ -52,7 +58,9 @@ async fn should_mint_once_and_reuse_until_shortly_before_expiry() {
     let refilled = vault.fill(admission, "token ${secrets.github.token}").await;
 
     assert_eq!(
-        refilled.map(|secret| secret.expose().to_owned()),
+        refilled
+            .map(|secret| secret.expose().to_owned())
+            .map_err(|error| shown(&error)),
         Ok(format!("token {MINTED}-2"))
     );
     assert_eq!(mint.asked(), 2);
@@ -75,10 +83,11 @@ async fn should_refuse_with_the_daemons_words_when_the_mint_is_refused() {
         .await;
 
     assert_eq!(
-        filled.err(),
-        Some(Refusal::CredentialMintRefused {
-            detail: "UZ-REPAIR-004: grant revoked".to_owned()
-        })
+        filled.err().as_ref().map(shown),
+        Some(shown(&Error::mint_refused(
+            GH_MINT_FAILED,
+            "UZ-REPAIR-004: grant revoked"
+        )))
     );
 }
 
@@ -96,7 +105,9 @@ async fn should_mask_every_minted_token_and_nothing_before_a_mint() {
         .await;
 
     assert_eq!(
-        filled.map(|secret| secret.expose().to_owned()),
+        filled
+            .map(|secret| secret.expose().to_owned())
+            .map_err(|error| shown(&error)),
         Ok(MINTED.to_owned())
     );
     assert_eq!(vault.mask(&echoed), "upstream echoed «secret:github.token»");
@@ -114,7 +125,7 @@ async fn should_refuse_a_minted_credentials_field_other_than_its_token() {
         .await;
 
     assert_eq!(
-        filled.err(),
-        Some(Refusal::secret_not_found("github", "password"))
+        filled.err().as_ref().map(shown),
+        Some(shown(&Error::secret_not_found("github", "password")))
     );
 }

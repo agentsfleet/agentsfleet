@@ -7,7 +7,8 @@ use reqwest::header::HeaderMap;
 use reqwest::{Method, Url};
 
 use super::{BlockedAddress, Capped, Network, guarded_lookup, origin_of};
-use crate::refusal::Refusal;
+use crate::error::raise;
+use crate::fixture::shown;
 use crate::transport::{Outbound, Transport};
 
 #[test]
@@ -61,13 +62,11 @@ async fn should_answer_address_not_allowed_when_the_resolver_refuses_the_name() 
         body: None,
     };
 
-    let refused = network.send(outbound).await.err();
+    let refused = network.send(outbound).await.err().as_ref().map(shown);
 
     assert_eq!(
         refused,
-        Some(Refusal::AddressNotAllowed {
-            host: "localhost".to_owned()
-        })
+        Some(shown(&raise::address_not_allowed("localhost")))
     );
 }
 
@@ -81,13 +80,13 @@ async fn should_answer_unreachable_when_the_name_does_not_resolve() {
         body: None,
     };
 
-    let refused = network.send(outbound).await.err();
+    let refused = network.send(outbound).await.err().as_ref().map(shown);
 
     assert_eq!(
         refused,
-        Some(Refusal::UpstreamUnreachable {
-            host: "no-such-host.invalid".to_owned(),
-            reason: super::NOT_CONNECTED,
-        })
+        Some(shown(&raise::upstream_unreachable(
+            "no-such-host.invalid",
+            super::NOT_CONNECTED
+        )))
     );
 }

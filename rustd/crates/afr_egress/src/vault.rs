@@ -17,10 +17,9 @@ use afd_core::clock::Clock;
 use afr_secrets::{Scrub, Secret};
 
 use crate::admission::{Admission, FIELD_TOKEN};
-use crate::error::Result;
+use crate::error::{Error, Result, raise};
 use crate::mint::{Mint, Minted};
 use crate::placeholder::{self, SecretRef};
-use crate::refusal::Refusal;
 
 /// How long before its expiry a minted token is minted again, so a request
 /// never leaves carrying a token the daemon is about to stop honouring.
@@ -28,9 +27,6 @@ const REFRESH_MARGIN_MILLIS: i64 = 30_000;
 
 /// The event a mint logs under.
 const EVENT_CREDENTIAL_MINTED: &str = "credential_minted";
-
-/// What a minted token that could not join the masker is refused with.
-const UNMASKABLE: &str = "the minted token could not be masked, so it was not used";
 
 /// One lease's credentials.
 #[derive(Debug)]
@@ -63,7 +59,7 @@ impl<'run> Vault<'run> {
         &mut self,
         admission: Admission<'_>,
         template: &str,
-    ) -> Result<Secret, Refusal> {
+    ) -> Result<Secret> {
         let wanted = placeholder::parse(template).unwrap_or_default();
         for secret in &wanted {
             if let Some(mintable) = admission.mints(secret.name) {
@@ -79,7 +75,7 @@ impl<'run> Vault<'run> {
             None => statics.field(secret.name, secret.field),
         };
         if let Some(missing) = wanted.iter().find(|secret| value(**secret).is_none()) {
-            return Err(Refusal::secret_not_found(missing.name, missing.field));
+            return Err(Error::secret_not_found(missing.name, missing.field));
         }
         Ok(Secret::new(
             placeholder::substitute(template, value).into_owned(),
@@ -94,7 +90,7 @@ impl<'run> Vault<'run> {
     }
 
     /// Makes sure a fresh token for `name` is held, minting one if not.
-    async fn hold(&mut self, name: &str, integration: &str) -> Result<(), Refusal> {
+    async fn hold(&mut self, name: &str, integration: &str) -> Result<()> {
         let now = self
             .clock
             .now()
@@ -106,11 +102,7 @@ impl<'run> Vault<'run> {
         {
             return Ok(());
         }
-        let minted = self.mint.mint(integration).await.map_err(|refused| {
-            Refusal::CredentialMintRefused {
-                detail: refused.detail().to_owned(),
-            }
-        })?;
+        let minted = self.mint.mint(integration).await?;
         // The masker is built before the token is held: a token nothing can
         // mask is never kept, so no later call sends it. It covers the token
         // this one replaces and every one replaced before it.
@@ -122,9 +114,7 @@ impl<'run> Vault<'run> {
                 .chain([(name, minted.expose())])
                 .map(|(held, token)| (format!("{held}.{FIELD_TOKEN}"), token)),
         )
-        .map_err(|_unbuilt| Refusal::CredentialMintRefused {
-            detail: UNMASKABLE.to_owned(),
-        })?;
+        .map_err(raise::unmaskable)?;
         let expires_at_ms = minted.expires_at().as_millis();
         let event = EVENT_CREDENTIAL_MINTED;
         tracing::info!(integration, expires_at_ms, event);

@@ -20,10 +20,9 @@ use reqwest::header::{AUTHORIZATION, HOST};
 use reqwest::{Method, Url};
 use url::Host;
 
-use crate::error::Result;
+use crate::error::{Error, Result, raise};
 use crate::origin;
 use crate::placeholder::{self, SecretRef};
-use crate::refusal::Refusal;
 
 /// Every method a tool may send.
 const METHODS: [Method; 7] = [
@@ -123,7 +122,7 @@ impl<'p> Admission<'p> {
     }
 
     /// `draft`, admitted, or the first rule it breaks.
-    pub(crate) fn admit(self, draft: Draft) -> Result<Admitted, Refusal> {
+    pub(crate) fn admit(self, draft: Draft) -> Result<Admitted> {
         let method = sendable(&draft.method)?;
         let url = self.locate(&draft.url, draft.placement)?;
         let host = url.host_str().unwrap_or_default();
@@ -144,7 +143,7 @@ impl<'p> Admission<'p> {
     }
 
     /// The URL `text` names, its host placeholder put in place.
-    fn locate(self, text: &str, placement: Placement) -> Result<Url, Refusal> {
+    fn locate(self, text: &str, placement: Placement) -> Result<Url> {
         let named = match placement {
             Placement::Authorization => placeholder::host_url(text),
             Placement::Nowhere => None,
@@ -153,7 +152,7 @@ impl<'p> Admission<'p> {
             .map(|(name, _rest)| {
                 self.statics
                     .host(name)
-                    .ok_or_else(|| Refusal::secret_not_found(name, FIELD_HOST))
+                    .ok_or_else(|| Error::secret_not_found(name, FIELD_HOST))
             })
             .transpose()?;
         let resolved = match (named, host) {
@@ -161,39 +160,37 @@ impl<'p> Admission<'p> {
             _ => Cow::Borrowed(text),
         };
         if placeholder::mentions(&resolved) {
-            return Err(misplaced(IN_URL));
+            return Err(raise::placement_not_allowed(IN_URL));
         }
-        let url = Url::parse(&resolved).map_err(|reason| Refusal::InvalidUrl { reason })?;
+        let url = Url::parse(&resolved).map_err(raise::invalid_url)?;
         let host_kept = host.is_none_or(|host| {
             url.host_str()
                 .is_some_and(|parsed| parsed.eq_ignore_ascii_case(host))
         });
         if url.scheme() != HTTPS {
-            Err(Refusal::HttpsRequired)
+            Err(raise::https_required())
         } else if !url.username().is_empty() || url.password().is_some() || !host_kept {
-            Err(misplaced(IN_URL))
+            Err(raise::placement_not_allowed(IN_URL))
         } else {
             Ok(url)
         }
     }
 
-    fn listed(self, host: &str) -> Result<(), Refusal> {
+    fn listed(self, host: &str) -> Result<()> {
         self.network
             .allow
             .iter()
             .any(|allowed| allowed.eq_ignore_ascii_case(host))
             .then_some(())
-            .ok_or_else(|| Refusal::HostNotAllowed {
-                host: host.to_owned(),
-            })
+            .ok_or_else(|| raise::host_not_allowed(host))
     }
 
     /// Whether `secret` may be sent to `host`: a minted one where the host's
     /// origin policy names it, a static one only to its own `host` field.
-    fn bound(self, secret: SecretRef<'_>, host: &str) -> Result<(), Refusal> {
+    fn bound(self, secret: SecretRef<'_>, host: &str) -> Result<()> {
         let sent_here = match self.mints(secret.name) {
             Some(_minted) if secret.field != FIELD_TOKEN => {
-                return Err(Refusal::secret_not_found(secret.name, secret.field));
+                return Err(Error::secret_not_found(secret.name, secret.field));
             }
             Some(_minted) => self.origin(host).is_some_and(|origin| {
                 origin
@@ -204,7 +201,7 @@ impl<'p> Admission<'p> {
             None => {
                 self.statics
                     .field(secret.name, secret.field)
-                    .ok_or_else(|| Refusal::secret_not_found(secret.name, secret.field))?;
+                    .ok_or_else(|| Error::secret_not_found(secret.name, secret.field))?;
                 self.statics
                     .host(secret.name)
                     .is_some_and(|bound| bound.eq_ignore_ascii_case(host))
@@ -212,10 +209,7 @@ impl<'p> Admission<'p> {
         };
         sent_here
             .then_some(())
-            .ok_or_else(|| Refusal::CredentialHostNotAllowed {
-                name: secret.name.to_owned(),
-                host: host.to_owned(),
-            })
+            .ok_or_else(|| raise::credential_host_not_allowed(secret.name, host))
     }
 
     fn origin(self, host: &str) -> Option<&'p HttpOriginPolicy<'p>> {
@@ -226,35 +220,28 @@ impl<'p> Admission<'p> {
 
     /// Whether a rule admitted the request: `false` for a host with no rules,
     /// a refusal for a host whose rules admit nothing of this shape.
-    fn origin_admits(
-        self,
-        method: &Method,
-        url: &Url,
-        body: Option<&str>,
-    ) -> Result<bool, Refusal> {
+    fn origin_admits(self, method: &Method, url: &Url, body: Option<&str>) -> Result<bool> {
         let host = url.host_str().unwrap_or_default();
         match self.origin(host) {
             None => Ok(false),
             Some(origin) if origin::admits(origin, method, url, body) => Ok(true),
-            Some(_refusing) => Err(Refusal::RequestPolicyNotAllowed {
-                host: host.to_owned(),
-                method: method.to_string(),
-                path: url.path().to_owned(),
-            }),
+            Some(_refusing) => Err(raise::request_policy_not_allowed(
+                host,
+                method.as_str(),
+                url.path(),
+            )),
         }
     }
 
     /// Under `read_only`: reads anywhere, and a `POST` only where a rule
     /// admitted it or under a listed `read_post_paths` prefix.
-    fn read_only_admits(self, method: &Method, url: &Url, matched: bool) -> Result<(), Refusal> {
+    fn read_only_admits(self, method: &Method, url: &Url, matched: bool) -> Result<()> {
         let admitted = !self.network.read_only
             || READS.contains(method)
             || (*method == Method::POST && (matched || self.read_post(url)));
         admitted
             .then_some(())
-            .ok_or_else(|| Refusal::MethodNotAllowed {
-                method: method.to_string(),
-            })
+            .ok_or_else(|| raise::method_not_allowed(method.as_str()))
     }
 
     /// Whether `url` is a listed query path, ending there or at its query.
@@ -268,25 +255,23 @@ impl<'p> Admission<'p> {
 }
 
 /// The method `text` names, when a tool may send it.
-fn sendable(text: &str) -> Result<Method, Refusal> {
+fn sendable(text: &str) -> Result<Method> {
     Method::from_bytes(text.to_ascii_uppercase().as_bytes())
         .ok()
         .filter(|method| METHODS.contains(method))
-        .ok_or_else(|| Refusal::MethodNotAllowed {
-            method: text.to_owned(),
-        })
+        .ok_or_else(|| raise::method_not_allowed(text))
 }
 
 /// The placeholders `draft`'s headers carry, each where it may stand.
-fn placed(draft: &Draft) -> Result<Vec<SecretRef<'_>>, Refusal> {
+fn placed(draft: &Draft) -> Result<Vec<SecretRef<'_>>> {
     if draft.body.as_deref().is_some_and(placeholder::mentions) {
-        return Err(misplaced(IN_BODY));
+        return Err(raise::placement_not_allowed(IN_BODY));
     }
     let carried = draft
         .headers
         .iter()
         .map(|(name, value)| header_secrets(name, value, draft.placement))
-        .collect::<Result<Vec<_>, Refusal>>()?;
+        .collect::<Result<Vec<_>>>()?;
     Ok(carried.into_iter().flatten().collect())
 }
 
@@ -294,36 +279,30 @@ fn header_secrets<'d>(
     name: &str,
     value: &'d str,
     placement: Placement,
-) -> Result<Vec<SecretRef<'d>>, Refusal> {
+) -> Result<Vec<SecretRef<'d>>> {
     let carries =
         name.eq_ignore_ascii_case(AUTHORIZATION.as_str()) && placement == Placement::Authorization;
     let reserved = name.eq_ignore_ascii_case(HOST.as_str()) || placeholder::mentions(name);
     match placeholder::parse(value) {
         Some(found) if !reserved && (found.is_empty() || carries) => Ok(found),
-        _misplaced => Err(misplaced(&format!("the {name} header as written"))),
+        _misplaced => Err(raise::placement_not_allowed(&format!(
+            "the {name} header as written"
+        ))),
     }
 }
 
 /// Whether an address literal stays outside the private ranges; a name is
 /// checked by the resolver, after it resolves.
-fn reachable(url: &Url, host: &str) -> Result<(), Refusal> {
+fn reachable(url: &Url, host: &str) -> Result<()> {
     let address: Option<IpAddr> = match url.host() {
         Some(Host::Ipv4(address)) => Some(address.into()),
         Some(Host::Ipv6(address)) => Some(address.into()),
         Some(Host::Domain(_)) | None => None,
     };
     if address.is_some_and(is_blocked) {
-        Err(Refusal::AddressNotAllowed {
-            host: host.to_owned(),
-        })
+        Err(raise::address_not_allowed(host))
     } else {
         Ok(())
-    }
-}
-
-fn misplaced(what: &str) -> Refusal {
-    Refusal::PlacementNotAllowed {
-        what: what.to_owned(),
     }
 }
 

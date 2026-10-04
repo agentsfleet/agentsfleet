@@ -10,7 +10,7 @@ use std::borrow::Cow;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_wire::credentials::{MintCredentialRequest, MintCredentialResponse};
-use afr_egress::{Mint, MintRefused, Minted};
+use afr_egress::{Mint, Minted};
 use afr_secrets::Secret;
 
 use crate::client::ControlPlane;
@@ -35,10 +35,10 @@ impl<'a> LeaseMint<'a> {
 
 #[async_trait::async_trait]
 impl Mint for LeaseMint<'_> {
-    async fn mint(&self, integration: &str) -> Result<Minted, MintRefused> {
+    async fn mint(&self, integration: &str) -> afr_egress::Result<Minted> {
         mint(self.plane, self.lease_id, integration, None)
             .await
-            .map_err(|refused| MintRefused::new(detail(&refused)))
+            .map_err(|refused| afr_egress::Error::mint_refused(refused.code(), detail(&refused)))
     }
 }
 

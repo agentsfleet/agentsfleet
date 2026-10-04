@@ -62,8 +62,9 @@ async fn a_lease_mint_hands_the_model_the_daemons_code_first() {
 
     assert_eq!(
         refused.detail(),
-        "UZ-REPAIR-011: the daemon refused the mint (403)"
+        "the credential could not be minted: UZ-REPAIR-011: the daemon refused the mint (403)"
     );
+    assert_eq!(refused.code(), drift, "the daemon's code, kept");
 }
 
 #[tokio::test]
@@ -92,11 +93,12 @@ async fn a_lease_mint_names_the_status_or_the_unreached_daemon() {
     let cases: [(Failure, &str); 2] = [
         (
             || error::refused(Verb::Mint, 403, None),
-            "the daemon refused the mint (403)",
+            "the credential could not be minted: the daemon refused the mint (403)",
         ),
         (
             || error::unavailable(Verb::Mint, 503),
-            "the daemon could not be reached to mint the credential",
+            "the credential could not be minted: the daemon could not be reached to mint the \
+             credential",
         ),
     ];
 

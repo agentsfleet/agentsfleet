@@ -11,7 +11,6 @@ use reqwest::header::HeaderMap;
 use reqwest::{Method, Url};
 
 use crate::error::Result;
-use crate::refusal::Refusal;
 
 /// A request admitted and ready to leave, its credentials in place.
 ///
@@ -89,5 +88,5 @@ pub trait Transport: Send + Sync + fmt::Debug {
     /// # Errors
     /// The host resolved to an address the runner never reaches, or no
     /// answer came back.
-    async fn send(&self, outbound: Outbound) -> Result<Inbound, Refusal>;
+    async fn send(&self, outbound: Outbound) -> Result<Inbound>;
 }

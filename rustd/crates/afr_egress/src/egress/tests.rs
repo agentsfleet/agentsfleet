@@ -3,8 +3,10 @@ use reqwest::header::AUTHORIZATION;
 
 use super::Egress;
 use crate::admission::{Draft, Placement};
-use crate::fixture::{BASE, BRANCH, GITHUB, GRAFANA_TOKEN, PUSHOVER_TOKEN, PUSHOVER_USER, policy};
-use crate::refusal::Refusal;
+use crate::error::raise;
+use crate::fixture::{
+    BASE, BRANCH, GITHUB, GRAFANA_TOKEN, PUSHOVER_TOKEN, PUSHOVER_USER, Shown, policy, shown,
+};
 use crate::testing::CountingMint;
 
 const START: UnixMillis = UnixMillis::from_millis(1_700_000_000_000);
@@ -28,27 +30,31 @@ fn post(url: &str, body: &str) -> Draft {
 
 /// What `draft` is refused with under the `ci-repairer`-shaped policy, or the
 /// `Authorization` it would carry.
-async fn prepare(draft: Draft) -> Result<String, Refusal> {
+async fn prepare(draft: Draft) -> Result<String, Shown> {
     let policy = policy(false);
     let clock = FixedClock::at(START);
     let mint = CountingMint::answering(MINTED, 3_600_000, clock.clone());
     let mut egress = Egress::new(&policy, &mint, &clock);
-    egress.prepare(draft).await.map(|outbound| {
-        let authorization = outbound.headers().get(AUTHORIZATION);
-        assert!(authorization.is_some_and(reqwest::header::HeaderValue::is_sensitive));
-        authorization
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or_default()
-            .to_owned()
-    })
+    egress
+        .prepare(draft)
+        .await
+        .map(|outbound| {
+            let authorization = outbound.headers().get(AUTHORIZATION);
+            assert!(authorization.is_some_and(reqwest::header::HeaderValue::is_sensitive));
+            authorization
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or_default()
+                .to_owned()
+        })
+        .map_err(|error| shown(&error))
 }
 
-fn refused_post(url: &str) -> Refusal {
-    Refusal::RequestPolicyNotAllowed {
-        host: GITHUB.to_owned(),
-        method: POST.to_owned(),
-        path: url.trim_start_matches("https://api.github.com").to_owned(),
-    }
+fn refused_post(url: &str) -> Shown {
+    shown(&raise::request_policy_not_allowed(
+        GITHUB,
+        POST,
+        url.trim_start_matches("https://api.github.com"),
+    ))
 }
 
 #[tokio::test]
@@ -101,9 +107,7 @@ async fn should_refuse_a_header_http_cannot_carry() {
 
     assert_eq!(
         prepare(draft).await.err(),
-        Some(Refusal::InvalidHeader {
-            name: "Bad Header".to_owned()
-        })
+        Some(shown(&raise::invalid_header("Bad Header")))
     );
 }
 
@@ -111,14 +115,14 @@ async fn should_refuse_a_header_http_cannot_carry() {
 async fn should_admit_nothing_through_a_closed_guard() {
     let mut closed = Egress::closed();
 
-    let refused = closed.prepare(post(PULLS, "{}")).await.err();
+    let refused = closed
+        .prepare(post(PULLS, "{}"))
+        .await
+        .err()
+        .as_ref()
+        .map(shown);
 
-    assert_eq!(
-        refused,
-        Some(Refusal::HostNotAllowed {
-            host: GITHUB.to_owned()
-        })
-    );
+    assert_eq!(refused, Some(shown(&raise::host_not_allowed(GITHUB))));
 }
 
 #[tokio::test]
@@ -151,8 +155,6 @@ async fn should_refuse_a_header_value_http_cannot_carry() {
 
     assert_eq!(
         prepare(draft).await.err(),
-        Some(Refusal::InvalidHeader {
-            name: "X-Note".to_owned()
-        })
+        Some(shown(&raise::invalid_header("X-Note")))
     );
 }

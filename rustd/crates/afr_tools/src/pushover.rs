@@ -9,7 +9,7 @@
 
 use std::ops::RangeInclusive;
 
-use afr_egress::{Draft, Placement, Refusal};
+use afr_egress::{Draft, Error, Placement};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -95,7 +95,7 @@ impl Handler for Pushover {
         let credential = |field: &str| {
             statics
                 .field(CREDENTIAL, field)
-                .ok_or_else(|| Refusal::secret_not_found(CREDENTIAL, field))
+                .ok_or_else(|| Error::secret_not_found(CREDENTIAL, field))
         };
         let (token, user) = match (credential(FIELD_TOKEN), credential(FIELD_USER)) {
             (Ok(token), Ok(user)) => (token, user),

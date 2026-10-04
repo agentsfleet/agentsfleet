@@ -18,6 +18,9 @@ use afd_wire::policy::{
 use afr_secrets::FIELD_HOST;
 use serde_json::{Map, Value};
 
+use crate::error::Error;
+use crate::refusal::Refusal;
+
 /// The bound repository.
 pub const REPOSITORY: &str = "acme/widgets";
 /// The branch the daemon named.
@@ -176,4 +179,14 @@ fn credential(fields: &[(&str, &str)]) -> Value {
             .map(|(field, value)| ((*field).to_owned(), Value::from(*value)))
             .collect::<Map<String, Value>>(),
     )
+}
+
+/// A refusal as a suite compares it: which one it is, and the sentence the
+/// model reads.
+pub type Shown = (Option<Refusal>, String);
+
+/// How `error` shows to the model.
+#[must_use]
+pub fn shown(error: &Error) -> Shown {
+    (error.refusal(), error.detail())
 }

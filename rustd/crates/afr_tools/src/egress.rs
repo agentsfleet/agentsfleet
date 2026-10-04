@@ -9,7 +9,7 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afr_egress::{Draft, Inbound, Refusal, Transport};
+use afr_egress::{Draft, Error, Inbound, Refusal, Transport};
 
 use crate::catalog::Entry;
 use crate::lease::Lease;
@@ -24,20 +24,20 @@ const SUCCESS: std::ops::Range<u16> = 200..300;
 /// The transport every egress tool sends through, shared across leases.
 pub(crate) type SharedTransport = Arc<dyn Transport>;
 
-impl From<&Refusal> for ToolErrorCode {
-    fn from(refusal: &Refusal) -> Self {
+impl From<Refusal> for ToolErrorCode {
+    fn from(refusal: Refusal) -> Self {
         match refusal {
-            Refusal::InvalidUrl { .. } | Refusal::InvalidHeader { .. } => Self::InvalidArguments,
+            Refusal::InvalidUrl | Refusal::InvalidHeader => Self::InvalidArguments,
             Refusal::HttpsRequired => Self::HttpsRequired,
-            Refusal::MethodNotAllowed { .. } => Self::MethodNotAllowed,
-            Refusal::HostNotAllowed { .. } => Self::HostNotAllowed,
-            Refusal::AddressNotAllowed { .. } => Self::AddressNotAllowed,
-            Refusal::PlacementNotAllowed { .. } => Self::CredentialPlacementNotAllowed,
-            Refusal::CredentialHostNotAllowed { .. } => Self::CredentialHostNotAllowed,
-            Refusal::SecretNotFound { .. } => Self::SecretNotFound,
-            Refusal::RequestPolicyNotAllowed { .. } => Self::RequestPolicyNotAllowed,
-            Refusal::CredentialMintRefused { .. } => Self::CredentialMintRefused,
-            Refusal::UpstreamUnreachable { .. } => Self::UpstreamUnreachable,
+            Refusal::MethodNotAllowed => Self::MethodNotAllowed,
+            Refusal::HostNotAllowed => Self::HostNotAllowed,
+            Refusal::AddressNotAllowed => Self::AddressNotAllowed,
+            Refusal::PlacementNotAllowed => Self::CredentialPlacementNotAllowed,
+            Refusal::CredentialHostNotAllowed => Self::CredentialHostNotAllowed,
+            Refusal::SecretNotFound => Self::SecretNotFound,
+            Refusal::RequestPolicyNotAllowed => Self::RequestPolicyNotAllowed,
+            Refusal::CredentialMintRefused => Self::CredentialMintRefused,
+            Refusal::UpstreamUnreachable => Self::UpstreamUnreachable,
         }
     }
 }
@@ -55,11 +55,11 @@ pub(crate) async fn send(
         .egress
         .prepare(draft)
         .await
-        .map_err(|refusal| refused(entry, &refusal))?;
+        .map_err(|failure| refused(entry, &failure))?;
     let mut inbound = transport
         .send(outbound)
         .await
-        .map_err(|refusal| refused(entry, &refusal))?;
+        .map_err(|failure| refused(entry, &failure))?;
     inbound.body = masked(lease, inbound.body);
     Ok(inbound)
 }
@@ -84,14 +84,18 @@ pub(crate) fn answered(status: u16, text: String) -> ToolOutput {
     }
 }
 
-/// A refusal as the model reads it, logged as `tool_refused`.
-pub(crate) fn refused(entry: &Entry, refusal: &Refusal) -> ToolOutput {
-    let code = ToolErrorCode::from(refusal);
+/// A refusal as the model reads it, its code first and its sentence after,
+/// logged as `tool_refused`. A client that was never built sends nothing, so
+/// it reads as a request that got no answer.
+pub(crate) fn refused(entry: &Entry, failure: &Error) -> ToolOutput {
+    let code = failure
+        .refusal()
+        .map_or(ToolErrorCode::UpstreamUnreachable, ToolErrorCode::from);
     let tool = entry.name();
     let error_code = code.as_str();
     let event = EVENT_TOOL_REFUSED;
     tracing::info!(tool, error_code, event);
-    ToolOutput::failed(code, &refusal.to_string())
+    ToolOutput::failed(code, &failure.detail())
 }
 
 #[cfg(test)]
