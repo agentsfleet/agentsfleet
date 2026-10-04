@@ -27,9 +27,11 @@
 use afd_http::handler::encoding::{decode_bytes, decode_form};
 use std::borrow::Cow;
 
+use afd_core::id::Uuid7;
 use afd_core::paging::{Cursor, QUERY_LIMIT, QUERY_STARTING_AFTER};
-use afd_fleet::memory::MAX_KEY_LEN;
-use afd_fleet::memory::page::View;
+use afd_memory::page::View;
+use afd_wire::memory::MAX_KEY_LEN;
+use garde::Validate as _;
 
 use crate::handler::Refusal;
 
@@ -119,8 +121,24 @@ impl Lens {
 pub(super) struct Boundary {
     /// The boundary row's creation instant.
     pub(super) created_at_ms: i64,
+    /// Its writer, which breaks a tie between two fleets' entries under one
+    /// key.
+    pub(super) fleet: Uuid7,
     /// Its key, which breaks a tie inside one millisecond.
     pub(super) key: String,
+}
+
+/// Ends the writer in a cursor's row half, `{fleet}:{key}`.
+///
+/// A fleet identifier is a canonical UUID, which never holds `:`, so the first
+/// `:` always ends it whatever the key carries.
+const ROW_SEPARATOR: char = ':';
+
+/// The row half of the cursor a walk resumes after `fleet`'s entry `key`:
+/// the writer as well as the key, because a page holding shared entries can
+/// hold two writers' rows under one key in one millisecond.
+pub(super) fn row_id(fleet: &Uuid7, key: &str) -> String {
+    format!("{fleet}{ROW_SEPARATOR}{key}")
 }
 
 /// One list request, parsed into values that can only be valid.
@@ -224,17 +242,27 @@ fn limit(raw: Option<&str>, lens: &Lens) -> Result<i64, Refusal> {
 fn boundary(raw: Option<&str>) -> Result<Option<Boundary>, Refusal> {
     raw.map(|raw| {
         // Some other list's token reaches the same refusal as an unparseable
-        // one: this walk keys on `(created_at, key)`, and a text-boundary
-        // cursor names a sort it does not have.
-        match Cursor::parse(raw) {
-            Ok(Cursor::Timestamp { at_ms, id }) => Ok(Boundary {
+        // one: this walk keys on `(created_at, key, fleet)`, and a
+        // text-boundary cursor names a sort it does not have.
+        let resumed = match Cursor::parse(raw) {
+            Ok(Cursor::Timestamp { at_ms, id }) => row(&id).map(|(fleet, key)| Boundary {
                 created_at_ms: at_ms,
-                key: id,
+                fleet,
+                key: key.to_owned(),
             }),
-            Ok(Cursor::Text { .. }) | Err(..) => Err(Refusal::malformed(DETAIL_INVALID_CURSOR)),
-        }
+            Ok(Cursor::Text { .. }) | Err(..) => None,
+        };
+        resumed.ok_or_else(|| Refusal::malformed(DETAIL_INVALID_CURSOR))
     })
     .transpose()
+}
+
+/// The writer and key a cursor's row half names, or `None` when it names no
+/// row: [`row_id`] read back.
+fn row(id: &str) -> Option<(Uuid7, &str)> {
+    let (fleet, key) = id.split_once(ROW_SEPARATOR)?;
+    let fleet = Uuid7::parse(fleet).ok()?;
+    (!key.is_empty()).then_some((fleet, key))
 }
 
 /// The memory key named by the LAST segment of `path`, decoded.
@@ -250,15 +278,25 @@ fn boundary(raw: Option<&str>) -> Result<Option<Boundary>, Refusal> {
 /// them spends a statement discovering it.
 pub(super) fn memory_key(path: &str) -> Result<String, Refusal> {
     let raw = path.rsplit('/').next().unwrap_or_default();
-    let decoded = decode_bytes(raw).map_err(|_invalid| Refusal::malformed(DETAIL_KEY_ENCODING))?;
-    // The bound is on the DECODED bytes, which is what a stored key is measured
-    // in. `decodePathSegment` reaches the same answer by writing into a
-    // `[MAX_KEY_LEN]u8` and refusing the overflow; the buffer is the workaround,
-    // the bound is the rule.
-    if !(1..=MAX_KEY_LEN).contains(&decoded.len()) {
-        return Err(Refusal::malformed(DETAIL_KEY_BOUNDS));
-    }
-    String::from_utf8(decoded).map_err(|_not_text| Refusal::malformed(DETAIL_KEY_ENCODING))
+    let key = DecodedKey {
+        bytes: decode_bytes(raw).map_err(|_invalid| Refusal::malformed(DETAIL_KEY_ENCODING))?,
+    };
+    key.validate()
+        .map_err(|_report| Refusal::malformed(DETAIL_KEY_BOUNDS))?;
+    String::from_utf8(key.bytes).map_err(|_not_text| Refusal::malformed(DETAIL_KEY_ENCODING))
+}
+
+/// A memory key as its path segment names it, percent-decoded.
+///
+/// The bound is on the DECODED bytes, which is what a stored key is measured
+/// in — the same bound `afd_wire::memory::MemoryDelta` declares on the key a
+/// runner writes. `decodePathSegment` reaches the same answer by writing into a
+/// `[MAX_KEY_LEN]u8` and refusing the overflow; the buffer is the workaround,
+/// the bound is the rule.
+#[derive(Debug, garde::Validate)]
+struct DecodedKey {
+    #[garde(length(min = 1, max = MAX_KEY_LEN))]
+    bytes: Vec<u8>,
 }
 
 /// Query policy is shared; parameter selection remains specific to memory reads.

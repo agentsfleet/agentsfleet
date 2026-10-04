@@ -4,12 +4,14 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_core::error_code;
-use afd_library::{DeleteLibrary, LibraryItem, PatchLibrary};
+use afd_library::{DeleteLibrary, LibraryItem, MAX_SKILL_NAME_LEN, PatchLibrary};
 use afd_wire::admin::{AdminLibrariesResponse, AdminLibraryItem, AdminLibraryRequirements};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
+use const_format::concatcp;
+use garde::Validate as _;
 use http::{HeaderMap, StatusCode, header};
 
 use crate::auth::PersonIdentity;
@@ -20,13 +22,34 @@ use crate::services::Services;
 
 use super::libraries_request::patch_request;
 
-const DETAIL_ID_REQUIRED: &str = "A catalog id is required";
+const DETAIL_ID_BOUNDS: &str = concatcp!("catalog id must be 1-", MAX_SKILL_NAME_LEN, " bytes");
 const DETAIL_NOT_FOUND: &str = "No fleet library entry has that catalog id";
 const DETAIL_NO_BUNDLE: &str =
     "This entry has no bundle. Fetch it from its repository first, then publish.";
 const DETAIL_STALE: &str = "This catalog entry changed since you loaded it. Refresh to see the latest, then re-apply your edit.";
 const DETAIL_DELETE_PUBLISHED: &str =
     "This fleet is published. Unpublish it first, then delete it.";
+
+/// A catalogue entry addressed by its catalog id, as the published document
+/// describes the path: the bundle's name, within the bound the handler holds
+/// it to, and never a UUID.
+#[cfg(feature = "openapi")]
+#[derive(Debug, utoipa::IntoParams)]
+#[into_params(parameter_in = Path)]
+struct CatalogIdPath {
+    /// The entry's catalog id: the bundle's name, 1 to 64 bytes.
+    #[param(min_length = 1, max_length = 64)]
+    #[expect(
+        dead_code,
+        reason = "read by the OpenAPI derive alone, as every path parameter is"
+    )]
+    id: String,
+}
+
+// The published bound and the enforced one are the same number, pinned here
+// because utoipa takes a literal where the handler takes the constant.
+#[cfg(feature = "openapi")]
+const _: () = assert!(MAX_SKILL_NAME_LEN == 64);
 
 /// Lists every platform row, including drafts and entries with no bundle.
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -87,7 +110,7 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
     ),
     request_body = afd_wire::admin::AdminLibraryPatch,
     params(
-        afd_http::openapi::path::Id,
+        CatalogIdPath,
         ("If-Match" = Option<String>, Header, description = "Optional catalog row version from the list response. Stale values return 412 with the current `etag`."),
     ),
     responses(
@@ -111,8 +134,8 @@ pub(crate) async fn patch<D: Services>(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    if id.is_empty() {
-        return reject(error_code::INVALID_REQUEST, DETAIL_ID_REQUIRED);
+    if let Some(refusal) = refused_id(&id) {
+        return refusal;
     }
     let patch = match patch_request(&body) {
         Ok(patch) => patch,
@@ -167,7 +190,7 @@ fn updated(identity: &PersonIdentity, id: &str, entry: &LibraryItem) -> Response
         "keeps running. Requires the `platform-library:write` scope. ",
     ),
     params(
-        afd_http::openapi::path::Id,
+        CatalogIdPath,
     ),
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),
@@ -185,8 +208,8 @@ pub(crate) async fn delete<D: Services>(
     identity: PersonIdentity,
     Path(id): Path<String>,
 ) -> Response {
-    if id.is_empty() {
-        return reject(error_code::INVALID_REQUEST, DETAIL_ID_REQUIRED);
+    if let Some(refusal) = refused_id(&id) {
+        return refusal;
     }
     match services.libraries().delete(&id).await {
         Ok(DeleteLibrary::Deleted) => {
@@ -207,6 +230,25 @@ pub(crate) async fn delete<D: Services>(
         .into_response(),
         Err(error) => refuse(&error, "admin_library_delete_failed"),
     }
+}
+
+/// The catalogue id a `PATCH` or `DELETE` path names.
+///
+/// Bounded by the skill-name bound the platform catalogue is keyed by: an id
+/// longer than any bundle name can address no row, so the store is never
+/// asked for one.
+#[derive(Debug, garde::Validate)]
+struct CatalogId<'a> {
+    #[garde(length(bytes, min = 1, max = MAX_SKILL_NAME_LEN), custom(afd_validate::nul_free))]
+    id: &'a str,
+}
+
+/// The refusal a path's catalogue id earns, or `None` when it can name a row.
+fn refused_id(id: &str) -> Option<Response> {
+    CatalogId { id }
+        .validate()
+        .err()
+        .map(|_report| reject(error_code::INVALID_REQUEST, DETAIL_ID_BOUNDS))
 }
 
 fn item(entry: &LibraryItem) -> AdminLibraryItem<'static> {
@@ -243,5 +285,26 @@ fn item(entry: &LibraryItem) -> AdminLibraryItem<'static> {
         required_credentials_reasons: entry.required_credentials_reasons().clone(),
         updated_at: entry.updated_at().as_millis(),
         etag: Cow::Owned(entry.etag().to_owned()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use afd_library::MAX_SKILL_NAME_LEN;
+
+    use super::{DETAIL_ID_BOUNDS, refused_id};
+
+    /// A catalogue id is refused one byte past the name bound and taken at
+    /// it, and the sentence names the bound it enforces.
+    #[test]
+    fn a_catalog_id_is_bounded_by_the_name_it_is_keyed_by() {
+        assert!(refused_id("").is_some());
+        assert!(refused_id(&"n".repeat(MAX_SKILL_NAME_LEN)).is_none());
+        assert!(refused_id(&"n".repeat(MAX_SKILL_NAME_LEN + 1)).is_some());
+        assert!(
+            refused_id("a\u{0}b").is_some(),
+            "a NUL is refused at the edge, as every other bound here refuses it"
+        );
+        assert!(DETAIL_ID_BOUNDS.contains(&MAX_SKILL_NAME_LEN.to_string()));
     }
 }

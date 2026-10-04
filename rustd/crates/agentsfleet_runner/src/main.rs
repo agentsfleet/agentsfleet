@@ -16,6 +16,9 @@ use afd_core::error_code;
 
 use clap::{Parser, Subcommand};
 use tracing::level_filters::LevelFilter;
+use tracing_subscriber::filter::Targets;
+use tracing_subscriber::layer::SubscriberExt as _;
+use tracing_subscriber::util::SubscriberInitExt as _;
 
 /// Where a record goes when nobody chose.
 const DEFAULT_LEVEL: LevelFilter = LevelFilter::INFO;
@@ -133,13 +136,19 @@ fn run() -> ExitCode {
     ExitCode::from(REFUSED)
 }
 
-/// Sends structured records to stderr at the level the environment names.
+/// Sends structured records to stderr through [`log_filter`].
 fn install_logs(env: &impl afd_core::env::EnvSource) {
-    let level = afd_core::env::log_level(env, DEFAULT_LEVEL);
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .with_max_level(level)
+    let records = tracing_subscriber::fmt::layer().with_writer(std::io::stderr);
+    tracing_subscriber::registry()
+        .with(log_filter(env))
+        .with(records)
         .init();
+}
+
+/// The level the environment names, with the model library's own lines held
+/// to its warnings, so no level puts a model's raw reply in the journal.
+fn log_filter(env: &impl afd_core::env::EnvSource) -> Targets {
+    afr_providers::log_filter(afd_core::env::log_level(env, DEFAULT_LEVEL))
 }
 
 #[cfg(test)]

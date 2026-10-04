@@ -13,10 +13,11 @@ use afd_wire::activity::{
     ActivityFrame, FleetResponseChunk, StreamTextKind, ToolCallCompleted, ToolCallStarted,
 };
 use afd_wire::memory::MemoryDelta;
+use afd_wire::policy::ExecutionPolicy;
 use afd_wire::report::{Completed, ExecutionResult, Failure, ResultOutcome};
 use afr_executor::{Ending, Executor, Spawn};
 
-use crate::engine::{AgentEngine, AgentRun, EventSink, RunOutput};
+use crate::engine::{AgentEngine, AgentRun, EventSink, Needs, RunOutput};
 use crate::error::Result;
 
 /// The redacted arguments a scripted tool call reports; a script carries no
@@ -69,6 +70,16 @@ struct Turn {
 
 #[async_trait::async_trait]
 impl AgentEngine for ScriptedEngine {
+    /// Admits any policy: a script names its own tools. It needs a sandbox
+    /// when one of its steps runs a process.
+    fn admit(&self, _policy: &ExecutionPolicy<'_>) -> Result<Needs> {
+        let sandbox = self
+            .steps
+            .iter()
+            .any(|step| matches!(step, Step::Run { .. }));
+        Ok(Needs { sandbox })
+    }
+
     async fn run(&self, run: AgentRun<'_>) -> Result<RunOutput> {
         let started = Instant::now();
         let mut turn = Turn::default();
@@ -168,6 +179,8 @@ fn finish(turn: Turn, started: Instant) -> RunOutput {
             output_tokens: 0,
         },
         memory: turn.memory,
+        trace: None,
+        records: Vec::new(),
     }
 }
 

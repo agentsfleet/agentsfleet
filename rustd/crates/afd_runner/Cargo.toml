@@ -28,6 +28,9 @@ afd_observability.workspace = true
 # Identifiers, the clock a liveness instant is stamped with, the registry codes.
 afd_core.workspace = true
 garde.workspace = true
+# The sentence each enrolment bound earns, keyed by the path garde reports.
+afd_validate.workspace = true
+const_format.workspace = true
 # The entropy a runner credential is minted from, and the token digest.
 afd_crypto.workspace = true
 # The minted-credential shape an enrolment answers with, and the kind column's

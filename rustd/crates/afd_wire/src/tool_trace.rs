@@ -2,20 +2,25 @@
 //! the run's answer so a thread reloaded later still shows what the fleet did.
 //!
 //! The runner builds the trace and the daemon is the authority on what is
-//! stored. Both read the bounds below, so a trace the runner checks with
-//! [`ToolTrace::validate`] is one the daemon accepts. The daemon checks again
-//! because it cannot trust the runner to have checked.
+//! stored. Both read the bounds below, declared on the types with garde, so a
+//! trace the runner checks with [`ToolTrace::validate`] is one the daemon
+//! accepts. The daemon checks again because it cannot trust the runner to
+//! have checked.
 //!
 //! Arguments and output edges are scrubbed runner-side before they reach this
 //! type, so resolved secret bytes never cross this boundary.
 
 use std::borrow::Cow;
 
+use afd_validate::PathTable;
+use garde::Validate;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use serde_json::{Map, Value};
 
-use crate::activity::CALL_ID_MAX_BYTES;
+use self::rules::{
+    argument_leaves_fit, arguments_fit, call_free_of_nul, call_number, edge, trace_fits,
+};
 
 /// The largest arguments object one call may carry, encoded.
 pub const ARGS_MAX_BYTES: usize = 2048;
@@ -55,52 +60,67 @@ pub enum ToolCallStatus {
 
 /// One call in a run's trace.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
+// Every string the call carries, so NUL is one rule over the whole call
+// rather than a second rule beside each field's own.
+#[garde(custom(call_free_of_nul))]
 pub struct ToolTraceCall<'a> {
     /// Which call this is: the decimal `call_number` the call's full record is
     /// posted under, from 1. Anything else makes "show all" unable to find the
     /// call, so the trace is dropped. The daemon stores and serves it as
     /// `{fence}:{call_number}`, the id the call's live frames carry.
     #[serde(borrow)]
+    #[garde(custom(call_number))]
     pub call_id: Cow<'a, str>,
     /// Which tool.
     #[serde(borrow)]
+    #[garde(skip)]
     pub name: Cow<'a, str>,
     /// The arguments the call was made with, secret values masked. At most
     /// 2048 bytes encoded, no string or key inside longer than 256 bytes, and
     /// no NUL character anywhere.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    #[garde(custom(arguments_fit), custom(argument_leaves_fit))]
     pub arguments: Map<String, Value>,
     /// How the call ended.
+    #[garde(skip)]
     pub status: ToolCallStatus,
     /// The output's first lines, at most 5 lines and 1024 bytes. Absent when
     /// the call returned nothing or the trace ran out of room for it.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    #[garde(inner(custom(edge)))]
     pub output_head: Option<Cow<'a, str>>,
     /// The output's last lines, at most 5 lines and 1024 bytes. Absent when
     /// the head already holds the whole output.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    #[garde(inner(custom(edge)))]
     pub output_tail: Option<Cow<'a, str>>,
     /// How many lines the whole output had.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
     pub output_line_count: Option<u64>,
     /// The process's exit code, for a call that ran one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
     pub exit_code: Option<i32>,
     /// How long the call took, in milliseconds.
+    #[garde(skip)]
     pub duration_ms: u64,
 }
 
 /// Every call one run made, oldest first.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
+#[garde(custom(trace_fits))]
 pub struct ToolTrace<'a> {
     /// The calls, at most 200.
     #[serde(borrow)]
+    #[garde(length(max = TRACE_MAX_CALLS), dive)]
     pub calls: Vec<ToolTraceCall<'a>>,
     /// Calls the run made past the 200 listed.
+    #[garde(skip)]
     pub omitted_call_count: u64,
 }
 
@@ -147,55 +167,52 @@ impl TraceRejection {
             Self::HoldsNul => "holds_nul",
         }
     }
+
+    /// The rejections a rule of this module reports, in the order one wins
+    /// when a trace breaks several: the call count is garde's own `length`
+    /// and is named by its path in [`BY_PATH`] instead.
+    const BY_PRECEDENCE: [Self; 6] = [
+        Self::HoldsNul,
+        Self::CallIdUnusable,
+        Self::ArgumentsTooLarge,
+        Self::ArgumentTooLong,
+        Self::EdgeTooLarge,
+        Self::TooLarge,
+    ];
+
+    /// The rejection a garde report names.
+    ///
+    /// A rule this module wrote reports its own spelling, so it is matched by
+    /// message; the call count is matched by the path garde reports it under.
+    fn of(report: &garde::Report) -> Self {
+        BY_PATH.pick(report).unwrap_or_else(|| {
+            Self::BY_PRECEDENCE
+                .into_iter()
+                .find(|rejection| {
+                    report
+                        .iter()
+                        .any(|(_path, error)| error.message() == rejection.as_str())
+                })
+                .unwrap_or(Self::Malformed)
+        })
+    }
 }
 
+/// The path garde reports the call count's `length` break under.
+const PATH_CALLS: &str = "calls";
+
+/// The one rejection a garde built-in reports: by path, ahead of every other.
+const BY_PATH: PathTable<Option<TraceRejection>> =
+    PathTable::new(&[(PATH_CALLS, Some(TraceRejection::TooManyCalls))], None);
+
 impl ToolTrace<'_> {
-    /// Check every bound, the first broken one answering.
+    /// Check every bound the type declares, the highest-precedence break
+    /// answering.
     ///
     /// # Errors
     /// The [`TraceRejection`] naming the bound the trace breaks.
     pub fn validate(&self) -> Result<(), TraceRejection> {
-        if self.calls.len() > TRACE_MAX_CALLS {
-            return Err(TraceRejection::TooManyCalls);
-        }
-        self.calls.iter().try_for_each(ToolTraceCall::validate)?;
-        if encoded_len(self) > TRACE_MAX_BYTES {
-            return Err(TraceRejection::TooLarge);
-        }
-        Ok(())
-    }
-}
-
-impl ToolTraceCall<'_> {
-    /// Check one call's own bounds.
-    fn validate(&self) -> Result<(), TraceRejection> {
-        if !self.strings_free_of_nul() {
-            return Err(TraceRejection::HoldsNul);
-        }
-        if !call_number_usable(&self.call_id) {
-            return Err(TraceRejection::CallIdUnusable);
-        }
-        if encoded_len(&self.arguments) > ARGS_MAX_BYTES {
-            return Err(TraceRejection::ArgumentsTooLarge);
-        }
-        if !fields_fit(&self.arguments) {
-            return Err(TraceRejection::ArgumentTooLong);
-        }
-        let edges = [self.output_head.as_deref(), self.output_tail.as_deref()];
-        if !edges.into_iter().flatten().all(edge_fits) {
-            return Err(TraceRejection::EdgeTooLarge);
-        }
-        Ok(())
-    }
-
-    /// Whether every string the call carries, arguments included, is free of
-    /// NUL.
-    fn strings_free_of_nul(&self) -> bool {
-        let edges = [self.output_head.as_deref(), self.output_tail.as_deref()];
-        free_of_nul(&self.call_id)
-            && free_of_nul(&self.name)
-            && edges.into_iter().flatten().all(free_of_nul)
-            && fields_free_of_nul(&self.arguments)
+        Validate::validate(self).map_err(|report| TraceRejection::of(&report))
     }
 }
 
@@ -243,18 +260,6 @@ impl<'a> RawToolTrace<'a> {
     }
 }
 
-/// Whether `call_id` is a call number the record verb keys by: decimal
-/// digits naming 1 to `i64::MAX`, within [`CALL_ID_MAX_BYTES`].
-///
-/// The trace's id is what "show all" resolves, as `{fence}:{call_id}`, so an
-/// id the read cannot parse would be a call whose full output can never be
-/// opened.
-fn call_number_usable(call_id: &str) -> bool {
-    call_id.len() <= CALL_ID_MAX_BYTES
-        && call_id.bytes().all(|byte| byte.is_ascii_digit())
-        && call_id.parse::<i64>().is_ok_and(|number| number >= 1)
-}
-
 /// Whether one output edge is within [`OUTPUT_EDGE_MAX_BYTES`] and
 /// [`OUTPUT_EDGE_MAX_LINES`].
 ///
@@ -265,33 +270,14 @@ pub fn edge_fits(edge: &str) -> bool {
     edge.len() <= OUTPUT_EDGE_MAX_BYTES && edge.lines().count() <= OUTPUT_EDGE_MAX_LINES
 }
 
-/// Whether every key and string inside `fields` is within
-/// [`ARGS_LEAF_MAX_BYTES`].
-fn fields_fit(fields: &Map<String, Value>) -> bool {
-    fields
-        .iter()
-        .all(|(key, value)| key.len() <= ARGS_LEAF_MAX_BYTES && leaves_fit(value))
-}
-
-/// Whether every key and string inside `value` is within
-/// [`ARGS_LEAF_MAX_BYTES`].
-///
-/// Recursion is bounded by the parser, which refuses documents nested past its
-/// own depth limit before a value reaches here.
-fn leaves_fit(value: &Value) -> bool {
-    match value {
-        Value::String(text) => text.len() <= ARGS_LEAF_MAX_BYTES,
-        Value::Array(items) => items.iter().all(leaves_fit),
-        Value::Object(fields) => fields_fit(fields),
-        Value::Null | Value::Bool(_) | Value::Number(_) => true,
-    }
-}
-
 /// How many bytes `value` encodes to as compact JSON.
 ///
 /// Encoding maps with string keys, strings and integers cannot fail; a failure
-/// would answer the largest size, which every bound refuses.
-pub(crate) fn encoded_len<T: Serialize>(value: &T) -> usize {
+/// would answer the largest size, which every bound refuses. Public so the
+/// runner that fits a trace or a record to these bounds measures it the way
+/// they are checked.
+#[must_use]
+pub fn encoded_len<T: Serialize>(value: &T) -> usize {
     serde_json::to_vec(value).map_or(usize::MAX, |bytes| bytes.len())
 }
 
@@ -299,6 +285,8 @@ pub(crate) fn encoded_len<T: Serialize>(value: &T) -> usize {
 mod call_id;
 #[path = "tool_trace/nul.rs"]
 mod nul;
+#[path = "tool_trace/rules.rs"]
+mod rules;
 
 pub use self::call_id::{CALL_ID_SEPARATOR, fenced_call_id, parse_fenced_call_id};
 pub use self::nul::{fields_free_of_nul, free_of_nul};

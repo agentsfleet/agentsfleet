@@ -253,6 +253,7 @@ fn detail_response(detail: &FleetDetail) -> FleetDetailResponse<'_> {
         pending_approvals: detail.pending_approvals,
         created_at: detail.row.created_at_ms,
         updated_at: detail.row.updated_at_ms,
+        memory_access: detail.memory_access,
     }
 }
 

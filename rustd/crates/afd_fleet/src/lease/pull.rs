@@ -89,7 +89,7 @@ pub struct Plane {
     /// A store of its own rather than a verb on [`Leases`]: the tables are a
     /// different schema written under a different role, and a lease store that
     /// could write memory would be a lease store that needs that role.
-    pub memories: crate::memory::Memories,
+    pub memories: afd_memory::Memories,
     /// Which provider key this run bills against.
     pub providers: Providers,
     /// Where declared credentials are opened.

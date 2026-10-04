@@ -21,6 +21,8 @@ export const SCOPE = {
   MODEL_READ: "model:read",
   /** Mutate the model catalogue / platform defaults — non-GET admin models. */
   MODEL_ADMIN: "model:admin",
+  /** Edit a fleet — among others, its shared-memory grants (`PATCH …/memory-access`). */
+  FLEET_WRITE: "fleet:write",
   /**
    * Onboard an entry into the platform fleet-library catalogue —
    * `POST /v1/admin/fleet-libraries`. Independent of the workspace-tier

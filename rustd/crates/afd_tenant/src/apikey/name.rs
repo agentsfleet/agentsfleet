@@ -1,5 +1,8 @@
 //! What a tenant may call an api-key.
 
+use afd_validate::charset;
+use garde::{Unvalidated, Valid, Validate};
+
 use crate::Result;
 use crate::error::{self, ApiKeyField};
 
@@ -14,9 +17,13 @@ const DESCRIPTION_MAX: usize = 256;
 /// A newtype rather than a checked `&str`, for the reason
 /// [`crate::session::input`]'s are: the value goes into a UNIQUE index and a
 /// log line, and a caller that skipped the check would put whatever it liked in
-/// both. There is no constructor but [`KeyName::parse`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct KeyName<'a>(&'a str);
+/// both. There is no constructor but [`KeyName::parse`], and its bound and
+/// character set are declared on the field garde proves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Validate)]
+#[garde(transparent)]
+pub struct KeyName<'a>(
+    #[garde(length(bytes, min = 1, max = NAME_MAX), custom(charset(is_name_char)))] &'a str,
+);
 
 impl<'a> KeyName<'a> {
     /// The name, for the statement and the log line.
@@ -37,17 +44,21 @@ impl<'a> KeyName<'a> {
     /// character — as one refusal, because a caller corrects all three the same
     /// way.
     pub fn parse(raw: &'a str) -> Result<Self> {
-        let shaped = !raw.is_empty()
-            && raw.len() <= NAME_MAX
-            && raw
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_');
-        if shaped {
-            Ok(Self(raw))
-        } else {
-            Err(error::apikey_field(ApiKeyField::Name))
-        }
+        proved(Self(raw), ApiKeyField::Name)
     }
+}
+
+/// A character a key name may carry: `[A-Za-z0-9_-]`.
+const fn is_name_char(character: char) -> bool {
+    character.is_ascii_alphanumeric() || character == '-' || character == '_'
+}
+
+/// Proves a field's bound, refusing with that field's own sentence.
+fn proved<T: Validate<Context = ()>>(field: T, named: ApiKeyField) -> Result<T> {
+    Unvalidated::new(field)
+        .validate()
+        .map(Valid::into_inner)
+        .map_err(|_report| error::apikey_field(named))
 }
 
 /// A description that passed its bound.
@@ -56,8 +67,9 @@ impl<'a> KeyName<'a> {
 /// statement binds `''` for a key with no description, which is what the Zig
 /// `body.description orelse ""` does. So this holds a `&str` rather than an
 /// `Option`, and the absence is resolved at the edge.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Description<'a>(&'a str);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Validate)]
+#[garde(transparent)]
+pub struct Description<'a>(#[garde(length(bytes, max = DESCRIPTION_MAX))] &'a str);
 
 impl<'a> Description<'a> {
     /// The description, for the statement.
@@ -71,12 +83,7 @@ impl<'a> Description<'a> {
     /// # Errors
     /// Refuses one past 256 characters.
     pub fn parse(raw: Option<&'a str>) -> Result<Self> {
-        let value = raw.unwrap_or_default();
-        if value.len() <= DESCRIPTION_MAX {
-            Ok(Self(value))
-        } else {
-            Err(error::apikey_field(ApiKeyField::Description))
-        }
+        proved(Self(raw.unwrap_or_default()), ApiKeyField::Description)
     }
 }
 

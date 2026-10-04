@@ -2,6 +2,8 @@
 
 mod harness;
 
+#[path = "fleet_schedules_input.rs"]
+mod fleet_schedules_input;
 #[path = "integration_fleet_schedules.rs"]
 mod integration_fleet_schedules;
 
@@ -40,6 +42,8 @@ mod fleet_messages_steer;
 mod fleet_streams;
 #[path = "fleet_tool_calls.rs"]
 mod fleet_tool_calls;
+#[path = "input_bounds.rs"]
+mod input_bounds;
 #[path = "integration_auth_sessions.rs"]
 mod integration_auth_sessions;
 #[path = "integration_fleet_admitted.rs"]
@@ -50,6 +54,8 @@ mod integration_fleet_install_credentials;
 mod integration_fleet_lifecycle;
 #[path = "integration_fleet_memories.rs"]
 mod integration_fleet_memories;
+#[path = "integration_fleet_memory_access.rs"]
+mod integration_fleet_memory_access;
 #[path = "integration_fleet_streams.rs"]
 mod integration_fleet_streams;
 #[path = "integration_invite_email.rs"]
@@ -86,6 +92,8 @@ mod integration_workspace_library_entries;
 mod integration_workspace_members;
 #[path = "integration_workspace_preferences.rs"]
 mod integration_workspace_preferences;
+#[path = "list_limits.rs"]
+mod list_limits;
 #[path = "tenant_api_keys.rs"]
 mod tenant_api_keys;
 #[path = "tenant_billing.rs"]

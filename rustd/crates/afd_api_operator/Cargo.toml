@@ -21,6 +21,10 @@ openapi = ["dep:utoipa", "afd_http/openapi", "afd_wire/openapi"]
 [dependencies]
 afd_admin.workspace = true
 afd_core.workspace = true
+# A garde report answered with the route's own sentence (`Sentences`), and the
+# shared `?limit` bound.
+afd_validate.workspace = true
+const_format.workspace = true
 garde.workspace = true
 afd_credential.workspace = true
 afd_http.workspace = true

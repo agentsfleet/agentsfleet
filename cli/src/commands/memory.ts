@@ -62,6 +62,7 @@ const FIELD_KEY = "key" as const;
 const FIELD_CATEGORY = "category" as const;
 const FIELD_UPDATED_AT = "updated_at" as const;
 const FIELD_PREVIEW = "preview" as const;
+const FIELD_SHARED_BY = "shared_by" as const;
 
 
 interface MemoryRow {
@@ -69,6 +70,7 @@ interface MemoryRow {
   readonly content?: string | null;
   readonly category?: string | null;
   readonly updated_at?: number | null;
+  readonly writer_fleet_id?: string | null;
 }
 
 interface MemoryListResponse {
@@ -109,6 +111,14 @@ export const previewText = (text: string | null | undefined): string => {
   const points = Array.from(oneline);
   if (points.length <= PREVIEW_MAX) return oneline;
   return `${points.slice(0, PREVIEW_MAX - 1).join("")}…`;
+};
+
+// The fleet that wrote `row` when it is not `fleetId`, else an empty cell:
+// the dashboard's "from another fleet" mark, naming the writer so it can be
+// looked up. A daemon that names no writer sends only the fleet's own entries.
+export const sharedBy = (row: MemoryRow, fleetId: string): string => {
+  const writer = row.writer_fleet_id;
+  return isString(writer) && writer.length > 0 && writer !== fleetId ? cleanCell(writer) : "";
 };
 
 const requireFleetId = (
@@ -214,6 +224,7 @@ const memoryReadEffect = (
         name: { key: FIELD_KEY, label: "KEY" },
         domain: [
           { key: FIELD_CATEGORY, label: "CATEGORY" },
+          { key: FIELD_SHARED_BY, label: "SHARED BY" },
           { key: FIELD_PREVIEW, label: "PREVIEW" },
         ],
         // A memory's age is when it last changed, not when it was first written.
@@ -222,6 +233,7 @@ const memoryReadEffect = (
       items.map((m) => ({
         [FIELD_KEY]: cleanCell(m.key),
         [FIELD_CATEGORY]: cleanCell(m.category),
+        [FIELD_SHARED_BY]: sharedBy(m, fleetId),
         [FIELD_PREVIEW]: previewText(m.content),
         [FIELD_UPDATED_AT]: m.updated_at,
       })),

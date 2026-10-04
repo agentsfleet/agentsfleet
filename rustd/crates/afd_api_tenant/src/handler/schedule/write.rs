@@ -21,8 +21,7 @@ use crate::services::{FleetSchedules as _, Services};
 
 use super::support::{Create, Patch, checked, held_or, rendered};
 use super::{
-    DETAIL_DUPLICATE, DETAIL_INVALID_BODY, DETAIL_INVALID_CRON, DETAIL_INVALID_MESSAGE,
-    DETAIL_INVALID_TIMEZONE, DETAIL_NOT_FOUND, DETAIL_TOO_MANY, EVENT_WRITE,
+    DETAIL_DUPLICATE, DETAIL_INVALID_BODY, DETAIL_NOT_FOUND, DETAIL_TOO_MANY, EVENT_WRITE,
 };
 
 /// What a create and an update both answer: the row as the scheduler now holds it.
@@ -33,7 +32,7 @@ const RECONCILED: &str = "The schedule as reconciled with the scheduler";
 /// `POST …/schedules`.
 ///
 /// # Errors
-/// `UZ-REQ-002` for a body or a field this daemon will not register, and the
+/// `UZ-REQ-001` for a body or a field this daemon will not register, and the
 /// ceiling and duplicate refusals the store answers.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
@@ -76,9 +75,11 @@ pub(crate) async fn create<D: Services>(
     // Validated BEFORE anything is written, so a refused schedule leaves no row
     // and no upstream call — an expression the scheduler would reject must not
     // reach it, because a failed registration is a state somebody has to clear.
-    checked(validate::cron(&input.cron), DETAIL_INVALID_CRON)?;
-    checked(validate::timezone(&timezone), DETAIL_INVALID_TIMEZONE)?;
-    checked(validate::message(&input.message), DETAIL_INVALID_MESSAGE)?;
+    checked(validate::Fields {
+        expression: Some(&input.cron),
+        timezone: Some(&timezone),
+        message: Some(&input.message),
+    })?;
 
     let created = services
         .schedules()
@@ -161,15 +162,11 @@ pub(crate) async fn patch<D: Services>(
     let input: Patch = serde_json::from_slice(&body)
         .map_err(|_unreadable| Refusal::coded(error_code::INVALID_REQUEST, DETAIL_INVALID_BODY))?;
 
-    if let Some(cron) = input.cron.as_deref() {
-        checked(validate::cron(cron), DETAIL_INVALID_CRON)?;
-    }
-    if let Some(timezone) = input.timezone.as_deref() {
-        checked(validate::timezone(timezone), DETAIL_INVALID_TIMEZONE)?;
-    }
-    if let Some(message) = input.message.as_deref() {
-        checked(validate::message(message), DETAIL_INVALID_MESSAGE)?;
-    }
+    checked(validate::Fields {
+        expression: input.cron.as_deref(),
+        timezone: input.timezone.as_deref(),
+        message: input.message.as_deref(),
+    })?;
 
     let changed = services
         .schedules()

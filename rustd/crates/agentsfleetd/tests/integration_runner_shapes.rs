@@ -109,6 +109,8 @@ const MEMORY_SHAPE: &[&str] = &[
     "fleet_id",
     "created_at",
     "updated_at",
+    "workspace_id",
+    "workspace_visible",
 ];
 
 /// Dimension 7.2 — four tables, one scenario, four recorded shapes.

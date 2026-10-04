@@ -41,6 +41,9 @@
 
 pub mod struct_cursor;
 
+pub use afd_validate::Ceiling;
+use afd_validate::Limit;
+
 /// Where a page resumes from, as a caller spells it (RULE UFS).
 pub const QUERY_STARTING_AFTER: &str = "starting_after";
 
@@ -65,6 +68,12 @@ pub const DEFAULT_LIMIT: u32 = 50;
 
 /// The largest page any caller may ask for.
 pub const MAX_LIMIT: u32 = 100;
+
+/// The keyset lists' bound on `?limit`, for [`Page::parse`].
+///
+/// A route with a ceiling of its own builds one beside its handler; this is
+/// the one [`PagingRefusal::Limit`]'s sentence names.
+pub const CEILING: Ceiling = Ceiling::new(MAX_LIMIT, DEFAULT_LIMIT);
 
 /// The prefix marking a text-boundary cursor.
 const TEXT_FORM_PREFIX: &str = "s";
@@ -151,13 +160,17 @@ impl<S: SortOrder> Page<S> {
     /// `parameter` answers one query parameter — a closure rather than a
     /// concrete query type, so this is exercised without building an HTTP
     /// request and without this module knowing which query parser the handler
-    /// used.
+    /// used. `ceiling` is the route's bound on `?limit`; [`CEILING`] is the
+    /// keyset lists' one.
     ///
     /// # Errors
     /// Refuses a retired offset parameter, a limit outside its bounds, a sort
     /// outside the allowlist, and a cursor that is malformed OR issued under a
     /// different ordering — see [`PagingRefusal`].
-    pub fn parse<'a>(parameter: impl Fn(&str) -> Option<&'a str>) -> Result<Self, PagingRefusal> {
+    pub fn parse<'a>(
+        parameter: impl Fn(&str) -> Option<&'a str>,
+        ceiling: Ceiling,
+    ) -> Result<Self, PagingRefusal> {
         // Refused, not ignored. A caller still sending `page=2` believes it is
         // getting the second page; serving them the first silently is how a
         // client keeps that belief for months.
@@ -165,16 +178,8 @@ impl<S: SortOrder> Page<S> {
             return Err(PagingRefusal::OffsetParametersRetired);
         }
 
-        let limit = match parameter(QUERY_LIMIT) {
-            None => DEFAULT_LIMIT,
-            Some(raw) => {
-                let asked: u32 = raw.parse().map_err(|_digits| PagingRefusal::Limit)?;
-                if asked == 0 || asked > MAX_LIMIT {
-                    return Err(PagingRefusal::Limit);
-                }
-                asked
-            }
-        };
+        let limit =
+            Limit::parse(parameter(QUERY_LIMIT), ceiling).map_err(|_break| PagingRefusal::Limit)?;
 
         let sort = match parameter(QUERY_SORT) {
             None => S::DEFAULT,
@@ -213,7 +218,9 @@ impl<S: SortOrder> Page<S> {
 pub enum PagingRefusal {
     /// `page` or `page_size` — offset paging, retired.
     OffsetParametersRetired,
-    /// `limit` was not a number, was zero, or was above the ceiling.
+    /// `limit` was not digits, was zero, or was above the ceiling. The
+    /// sentence names [`CEILING`]; a route passing another maps this variant
+    /// to a sentence of its own.
     Limit,
     /// `sort` named an ordering this endpoint does not offer.
     Sort,

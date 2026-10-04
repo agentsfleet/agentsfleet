@@ -6,6 +6,7 @@
 //! ambiguity is resolved here, once, into a type that cannot hold it.
 
 use afd_fleet_lifecycle::{ConfigSource, Patch, Requested};
+use afd_validate::Sentences;
 use afd_wire::fleet::PatchFleetRequest;
 use axum::body::Bytes;
 
@@ -60,7 +61,8 @@ pub(super) fn read_patch(body: &Bytes, if_match: Option<String>) -> Result<Patch
         (Some(""), None) => return Err(Refusal::malformed(DETAIL_CONFIG_REQUIRED)),
         named => named,
     };
-    sent.validate().map_err(|report| detail_for(&report))?;
+    sent.validate()
+        .map_err(|report| Refusal::malformed(BOUNDS.pick(&report)))?;
 
     let config = match sources {
         (Some(json), None) => Some(ConfigSource::Json(json.to_owned())),
@@ -79,27 +81,16 @@ pub(super) fn read_patch(body: &Bytes, if_match: Option<String>) -> Result<Patch
     })
 }
 
-/// The sentence a caller is told, for the bound their body broke.
+/// The sentence a caller is told, keyed by the path of the bound their body
+/// broke.
 ///
 /// The BOUND lives on [`PatchFleetRequest`]; what stays here is which of the
 /// two sentences a break earns, because `trigger_markdown` and
-/// `source_markdown` share one cap and answer different copy. `garde` reports a
-/// PATH and a message — the path picks the wording, and the message is
-/// discarded, because these two sentences are a public contract and garde's are
-/// not.
-fn detail_for(report: &garde::Report) -> Refusal {
-    let detail = report
-        .iter()
-        .next()
-        .map_or(DETAIL_TRIGGER_BOUNDS, |(path, _message)| {
-            if path.to_string() == FIELD_SOURCE_MARKDOWN {
-                DETAIL_SOURCE_BOUNDS
-            } else {
-                DETAIL_TRIGGER_BOUNDS
-            }
-        });
-    Refusal::malformed(detail)
-}
+/// `source_markdown` share one cap and answer different copy.
+const BOUNDS: Sentences = Sentences::new(
+    &[(FIELD_SOURCE_MARKDOWN, DETAIL_SOURCE_BOUNDS)],
+    DETAIL_TRIGGER_BOUNDS,
+);
 
 /// The path `garde` reports a `source_markdown` break under.
 const FIELD_SOURCE_MARKDOWN: &str = "source_markdown";

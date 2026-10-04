@@ -48,6 +48,34 @@ fn a_tool_frame_names_its_call_within_the_bound() {
     assert!(foreign.is_err(), "any other unknown field is still refused");
 }
 
+/// Every tool frame bounds its call id on its own type, as a runner posts it:
+/// empty and 65 bytes are malformed, 64 bytes is a call.
+#[test]
+fn test_activity_frame_call_id_is_bounded() {
+    use super::CALL_ID_MAX_BYTES;
+    let frames = |call_id: &str| {
+        [
+            format!(
+                r#"{{"tool_call_started":{{"name":"shell","args_redacted":"{{}}","call_id":"{call_id}"}}}}"#
+            ),
+            format!(r#"{{"tool_call_completed":{{"name":"shell","ms":1,"call_id":"{call_id}"}}}}"#),
+            format!(
+                r#"{{"tool_call_progress":{{"name":"shell","elapsed_ms":1,"call_id":"{call_id}"}}}}"#
+            ),
+        ]
+    };
+    let usable = |call_id: &str| {
+        frames(call_id).map(|body| {
+            serde_json::from_str::<ActivityFrame<'_>>(&body)
+                .expect("a tool frame parses")
+                .call_id_usable()
+        })
+    };
+    assert_eq!(usable(""), [false; 3]);
+    assert_eq!(usable(&"c".repeat(CALL_ID_MAX_BYTES + 1)), [false; 3]);
+    assert_eq!(usable(&"c".repeat(CALL_ID_MAX_BYTES)), [true; 3]);
+}
+
 /// Each tool frame's published `call_id` description states the bound
 /// `call_id_usable` enforces, so the two cannot drift apart unnoticed.
 #[test]

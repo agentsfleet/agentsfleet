@@ -62,9 +62,10 @@ pub const ATTR_HTTP_RESPONSE_STATUS_CODE: &str = "http.response.status_code";
 
 /// The span a settled control-plane delivery is recorded under.
 ///
-/// A CUSTOM span, not a `GenAI` client span: the runner produces none and
-/// propagates no trace context, so this process cannot honestly claim to be one
-/// half of a distributed agent trace.
+/// A CUSTOM span, not a `GenAI` client span. The runner opens its own `GenAI`
+/// spans under [`RUNNER_SCOPE_NAME`], but no trace context crosses the wire
+/// between the two, so this process cannot honestly claim to be one half of a
+/// distributed agent trace.
 pub const SPAN_FLEET_DELIVERY: &str = "fleet.delivery";
 
 /// The operation this process observes: one sandboxed agent invocation.
@@ -135,6 +136,55 @@ pub const DELIVERY_SPAN_KEYS: &[&str] = &[
     ATTR_WORKSPACE_ID,
     ATTR_TENANT_ID,
     ATTR_EVENT_ID,
+];
+
+// ---------------------------------------------------------------------------
+// The runner's vocabulary
+// ---------------------------------------------------------------------------
+
+/// The service, and the instrumentation scope, everything a runner emits
+/// names: a span under it was opened on a runner host, never by the daemon.
+pub const RUNNER_SCOPE_NAME: &str = "agentsfleet-runner";
+
+/// The span one lease's work runs under; every runner span sits inside one.
+pub const SPAN_RUNNER_LEASE: &str = "runner.lease";
+
+/// Which runner a signal came from: the daemon's id for the runner's row, so
+/// each runner in a farm is told apart and joins its daemon record.
+pub const ATTR_RUNNER_ID: &str = "agentsfleet.runner.id";
+
+/// The host a runner reported itself on.
+pub const ATTR_RUNNER_HOST: &str = "agentsfleet.runner.host";
+
+/// The lease a runner span belongs to.
+pub const ATTR_LEASE_ID: &str = "agentsfleet.lease.id";
+
+/// One model turn.
+pub const OPERATION_CHAT: &str = "chat";
+
+/// One tool call.
+pub const OPERATION_EXECUTE_TOOL: &str = "execute_tool";
+
+/// The tool a call ran.
+pub const ATTR_TOOL_NAME: &str = "gen_ai.tool.name";
+
+/// The call's id within its run.
+pub const ATTR_TOOL_CALL_ID: &str = "gen_ai.tool.call.id";
+
+/// Every key the runner's spans carry: the lease span's identity, then the
+/// `GenAI` spans under it.
+pub const RUNNER_SPAN_KEYS: &[&str] = &[
+    ATTR_RUNNER_ID,
+    ATTR_RUNNER_HOST,
+    ATTR_LEASE_ID,
+    ATTR_AGENT_ID,
+    ATTR_OPERATION_NAME,
+    ATTR_PROVIDER_NAME,
+    ATTR_REQUEST_MODEL,
+    ATTR_USAGE_INPUT_TOKENS,
+    ATTR_USAGE_OUTPUT_TOKENS,
+    ATTR_TOOL_NAME,
+    ATTR_TOOL_CALL_ID,
 ];
 
 // ---------------------------------------------------------------------------

@@ -11,10 +11,17 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_fleet::memory::MAX_KEY_LEN;
-use afd_fleet::memory::page::View;
+use afd_core::id::Uuid7;
+use afd_core::paging::Cursor;
+use afd_memory::page::View;
+use afd_wire::memory::MAX_KEY_LEN;
 
-use super::{LIMIT_MAX, LIST_LIMIT_DEFAULT, RECALL_LIMIT_DEFAULT, Read, form_decode, memory_key};
+use super::{
+    LIMIT_MAX, LIST_LIMIT_DEFAULT, RECALL_LIMIT_DEFAULT, Read, form_decode, memory_key, row_id,
+};
+
+/// The fleet that wrote a cursor's boundary row.
+const WRITER: &str = "01990000-0000-7000-8000-0000000000d1";
 
 /// A page size far past what any page will serve.
 ///
@@ -112,22 +119,47 @@ fn should_refuse_a_limit_that_is_not_a_positive_integer() {
 /// A cursor this daemon issued resumes the walk; anything else is refused.
 #[test]
 fn should_resume_only_from_a_cursor_this_daemon_issued() {
-    let read = Read::parse("starting_after=1700000000000:goal:current")
-        .expect("a timestamp cursor is this walk's own");
+    let read = Read::parse(&format!(
+        "starting_after=1700000000000:{WRITER}:goal:current"
+    ))
+    .expect("a timestamp cursor is this walk's own");
     let after = read.after.expect("the boundary was parsed");
     assert_eq!(after.created_at_ms, 1_700_000_000_000);
-    // The key keeps its colons: the cursor splits ONCE, so a memory key
-    // containing the separator round-trips.
+    assert_eq!(after.fleet.as_str(), WRITER);
+    // The key keeps its colons: the writer ends at the FIRST one, so a memory
+    // key containing the separator round-trips.
     assert_eq!(after.key, "goal:current");
+}
+
+/// The row half [`row_id`] writes is the boundary [`Read::parse`] reads back:
+/// the writer travels with the key, so two fleets' entries under one key in
+/// one millisecond are two distinct boundaries.
+#[test]
+fn should_read_back_the_writer_and_key_a_cursor_was_issued_for() {
+    let writer = Uuid7::parse(WRITER).unwrap();
+    let issued = Cursor::Timestamp {
+        at_ms: 1_700_000_000_000,
+        id: row_id(&writer, "deploy:target"),
+    };
+    let read = Read::parse(&format!("starting_after={issued}")).unwrap();
+    let after = read.after.expect("the boundary was parsed");
+    assert_eq!(after.fleet, writer);
+    assert_eq!(after.key, "deploy:target");
 }
 
 /// A foreign or malformed continuation is refused, never read as page one.
 #[test]
 fn should_refuse_a_continuation_this_walk_did_not_issue() {
+    let no_key = format!("1700000000000:{WRITER}:");
     for token in [
         "not-a-cursor",
         "abc:key",
         "1700000000000:",
+        // The row half names no writer: the form this walk issued before the
+        // writer joined its keyset, which no longer names one row.
+        "1700000000000:goal:current",
+        "1700000000000:goal",
+        no_key.as_str(),
         // A text-boundary cursor names a sort this walk does not have.
         "s:cHJvZA:019abc",
     ] {

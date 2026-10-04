@@ -18,6 +18,10 @@ categories.workspace = true
 # types they guard, so a handler proves them by calling `validate` rather than
 # by re-spelling each cap as an `if`.
 garde.workspace = true
+# The custom rules garde lacks (NUL-free, digits, a charset), shared with every
+# crate that bounds untrusted input. A leaf on garde alone, so the wire types
+# still carry no daemon crate.
+afd_validate.workspace = true
 # Deliberately NOT afd_core. See the module documentation in src/lib.rs: wire
 # types carry primitives, and validating at parse would break byte parity.
 serde.workspace = true

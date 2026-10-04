@@ -1,0 +1,56 @@
+[package]
+name = "afd_memory"
+# One aggregated integration binary; see tests/memory_suite.rs.
+autotests = false
+description = "Fleet memory behind one store trait: the Postgres store, the workspace grants that let fleets share, and the flip that moves a workspace between stores."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the in-memory store the flip is proved against, the
+# refusal a stand-in store answers with, and a `Memories` built over any store,
+# so a suite reaches every decision here without a datastore.
+test-util = ["afd_db/test-util", "afd_crypto/test-util"]
+
+[dependencies]
+# Identifiers, the clock, the error hull and the registry codes.
+afd_core.workspace = true
+# The entropy a new entry's identifier is drawn from.
+afd_crypto.workspace = true
+# The pool the Postgres store and the grant reads run on.
+afd_db.workspace = true
+# The memory families a capture and a hydration window record.
+afd_observability.workspace = true
+# The entry shape, its bounds and every budget, declared once for daemon and runner.
+afd_wire.workspace = true
+# Which store each workspace's memory lives in, read on every call and swapped
+# only by a flip — without a lock.
+arc-swap.workspace = true
+# `MemoryStore` is `dyn`: the store is chosen per workspace at run time.
+async-trait.workspace = true
+# A pushed entry is checked against the bounds `afd_wire` declares on it.
+garde.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+afd_core = { workspace = true, features = ["test-util"] }
+afd_crypto = { workspace = true, features = ["test-util"] }
+# The integration suites create and drop their own database per test.
+afd_db = { workspace = true, features = ["test-util"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+
+[lints]
+workspace = true
+
+[[test]]
+name = "memory_suite"
+path = "tests/memory_suite.rs"

@@ -30,6 +30,8 @@ flate2.workspace = true
 # `afd_fleet_runtime::config::raw` made, so a bound is read where the field
 # is and a refusal names the exact path it refused.
 garde.workspace = true
+# The charset rule a URL segment and a skill name are bounded with.
+afd_validate.workspace = true
 futures-util.workspace = true
 headers.workspace = true
 hex.workspace = true

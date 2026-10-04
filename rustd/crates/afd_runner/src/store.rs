@@ -12,7 +12,7 @@ use crate::spelling::{policy_wire, render_list, tier_wire};
 use afd_auth::credential::CredentialKind;
 
 use crate::sql;
-use crate::validate::{HostId, assignment};
+use crate::validate::registration;
 use afd_auth::minted::Minted;
 
 /// Statement names, for the context a query failure carries.
@@ -107,16 +107,16 @@ impl Runners {
     /// a fail-OPEN window between minting a token and the first beat.
     ///
     /// # Errors
-    /// Refuses a `host_id` outside its bounds or a malformed registry
-    /// allowlist; reports a datastore that would not answer, and an entropy
-    /// source that could not produce a credential.
+    /// Refuses a `host_id` outside its bounds, labels past theirs, or a
+    /// malformed assignment; reports a datastore that would not answer, and an
+    /// entropy source that could not produce a credential.
     pub async fn register(
         &self,
         request: &RegisterRequest<'_>,
         now: UnixMillis,
     ) -> Result<Enrolled> {
-        let host_id = HostId::new(&request.host_id)?;
-        let stored = assignment(&request.assigned_policy)?;
+        let stored = registration(request)?;
+        let host_id: &str = &request.host_id;
         let worker_count = stored.worker_count.get();
 
         // Reconciled against the assignment AS STORED, so the verdict describes
@@ -137,7 +137,7 @@ impl Runners {
         let mut connection = self.database.acquire().await?;
         sql::runner::RegisterRow {
             runner_id: &runner_id,
-            host_id: host_id.as_str(),
+            host_id,
             token_digest: token.digest().as_str(),
             sandbox_tier: tier_wire(assigned.sandbox_tier),
             admin_state: sql::ADMIN_STATE_ACTIVE,
@@ -158,7 +158,7 @@ impl Runners {
         .map_err(query(CONTEXT_REGISTER))?;
 
         let id = runner_id.as_str();
-        let host = host_id.as_str();
+        let host = host_id;
         let degraded = verdict.is_degraded();
         tracing::debug!(
             runner_id = id,

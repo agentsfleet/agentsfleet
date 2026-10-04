@@ -3,6 +3,7 @@
 
 use std::borrow::Cow;
 
+use afd_validate::nul_free;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
@@ -26,7 +27,7 @@ pub struct SteerRequest<'a> {
     #[serde(borrow)]
     #[garde(
         length(bytes, min = 1, max = STEER_MESSAGE_MAX_BYTES),
-        custom(rules::message_free_of_nul)
+        custom(nul_free)
     )]
     pub message: Cow<'a, str>,
 
@@ -63,11 +64,8 @@ pub struct SteerRequest<'a> {
 /// column, which cannot hold it: accepted, it failed the insert as a 500.
 #[must_use]
 pub fn operation_id_usable(id: &str) -> bool {
-    (1..=OPERATION_ID_MAX_BYTES).contains(&id.len()) && !id.contains(NUL)
+    (1..=OPERATION_ID_MAX_BYTES).contains(&id.len()) && nul_free(id, &()).is_ok()
 }
-
-/// The one character Postgres cannot store in `text` or `jsonb`.
-const NUL: char = '\0';
 
 /// The garde rules a steer's fields name, under one lint expectation because
 /// garde fixes every custom validator's signature the same way.
@@ -76,7 +74,7 @@ const NUL: char = '\0';
     reason = "garde fixes the custom-validator signature at `fn(&T, &C) -> Result`; the `()` context arrives by reference because the derive passes it that way"
 )]
 mod rules {
-    use super::{NUL, operation_id_usable};
+    use super::operation_id_usable;
 
     /// The garde rule over [`operation_id_usable`].
     pub(super) fn usable_operation_id(id: &str, (): &()) -> garde::Result {
@@ -89,18 +87,6 @@ mod rules {
 
     /// What garde reports for an unusable operation id.
     const OPERATION_ID_UNUSABLE: &str = "operation id is empty, too long, or holds NUL";
-
-    /// The garde rule refusing a NUL in a steer's message.
-    pub(super) fn message_free_of_nul(message: &str, (): &()) -> garde::Result {
-        if message.contains(NUL) {
-            Err(garde::Error::new(MESSAGE_HOLDS_NUL))
-        } else {
-            Ok(())
-        }
-    }
-
-    /// What garde reports for a message holding NUL.
-    const MESSAGE_HOLDS_NUL: &str = "message holds NUL";
 }
 
 /// The longest client operation identity a steer may carry.

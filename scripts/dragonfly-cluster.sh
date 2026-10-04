@@ -311,10 +311,5 @@ case "${1:-serve}" in
 esac
 }
 
-# Sourced by scripts/dragonfly_cluster_test.sh for its pure functions;
-# executed as the container entrypoint and by `docker compose exec`. An `if`
-# rather than `&&` so a source returns 0 -- `set -e` is already on by then,
-# and a sourced file ending in a false list would abort the sourcing shell.
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-  main "$@"
-fi
+# Executed as the container entrypoint and by `docker compose exec`.
+main "$@"

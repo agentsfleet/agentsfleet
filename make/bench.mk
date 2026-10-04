@@ -175,8 +175,7 @@ bench-compare:  ## Delta between a result and its baseline (LANE=lease PROFILE=r
 bench-datastore:  ## Grade archived datastore evidence (CHECK=prototype|durability|retention|coordination|cluster [PROFILE=rig])
 	@CHECK="$(CHECK)" PROFILE="$(PROFILE)" python3 scripts/bench_datastore.py
 
-# Its own target as well as riding `lint-scripts`, so the grader can be proven
-# without waiting on the whole lint lane while its table is being edited.
+# Its own target, so the grader can be proven while its table is being edited.
 bench-datastore-self-test:  ## Run scripts/bench_datastore_test.py — the evidence grader's own tests
 	@PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -t scripts -p 'bench_datastore_test.py'
 	@echo "✓ [bench] Evidence grader self-tests passed"

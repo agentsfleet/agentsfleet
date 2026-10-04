@@ -15,6 +15,8 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
+# The span vocabulary every runner span is written in, beside the daemon's.
+afd_observability.workspace = true
 # Identifiers, the lease clock, worker-count clamps, the environment seam and
 # the registry codes a failure is logged under.
 afd_core.workspace = true
@@ -22,7 +24,14 @@ afd_core.workspace = true
 afd_wire.workspace = true
 afr_agent.workspace = true
 afr_executor.workspace = true
+# The memory seed a run starts from, and the recall seam past its window.
+afr_memory.workspace = true
 afr_sandbox.workspace = true
+# The runner token and every minted credential are held as one `Secret`.
+afr_secrets.workspace = true
+# The mint seam a lease's egress guard mints through, which the supervisor
+# implements over its control plane.
+afr_egress.workspace = true
 # `RunnerApi` is `dyn`: production holds the HTTP client, tests a fake.
 async-trait.workspace = true
 # Bounded exponential retry for the calls that may be retried, with a predicate
@@ -54,6 +63,17 @@ tracing.workspace = true
 futures-util.workspace = true
 
 [dev-dependencies]
+# The production connector the fake agent admits through, so a lease naming a
+# provider no wire speaks is refused by the real check.
+afr_providers.workspace = true
+# Stub handlers, so the lease suites admit through a real catalog: a
+# sandbox-side tool starts a sandbox, a supervisor-side one does not.
+afr_tools = { workspace = true, features = ["test-util"] }
+# The fake engine's `Behaviour::Break` answers an executor failure, and the
+# lift from `afr_executor::Error` into `afr_agent::Error` exists only under
+# this feature; named here so the tests build when this crate is selected
+# alone.
+afr_agent = { workspace = true, features = ["test-util"] }
 # The bundle tests' independent oracle for the digest.
 hex.workspace = true
 sha2.workspace = true

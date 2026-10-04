@@ -34,10 +34,7 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
   (the commit tier costs seconds, and reinstalling global tooling per commit
   is a surprise), prints both versions on failure, and names the install
   command for the manager the binary actually resolves under: bun-installed
-  and npm-installed orlys do not replace each other. It also rides
-  `lint-scripts`, so `make lint-all` — the declared `verify.lint`, and what
-  `orly gate pr` runs — catches the same drift on a clone whose hooks were
-  never armed.
+  and npm-installed orlys do not replace each other.
 - **The merge trap:** merging `origin/main` *into* a branch makes the pushed
   range include all of main's recent source files — pre-push then runs the full
   unit lanes for what was a docs-only intent, and `test-unit-agentsfleetd` **hangs if

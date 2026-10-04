@@ -11,13 +11,16 @@ use afd_wire::activity::ActivityFrame;
 use afd_wire::lease::LeasePayload;
 use afd_wire::memory::MemoryDelta;
 use afd_wire::report::ResultOutcome;
+use afr_egress::testing::CountingMint;
 use afr_executor::{
     Ending, Executor, FileContent, Listing, Process, ProcessEvent, ProcessId, Spawn, Stream,
 };
 use bytes::Bytes;
+use tokio_util::sync::CancellationToken;
 
 use super::{ScriptedEngine, Step};
-use crate::engine::{AgentEngine, AgentRun};
+use crate::engine::{AgentEngine, AgentRun, Meter};
+use crate::testing::Discard;
 
 /// A lease as the daemon spells one, trimmed to what a run reads.
 const LEASE: &str = include_str!("lease.json");
@@ -83,9 +86,13 @@ async fn drive(
     let output = engine
         .run(AgentRun {
             lease: &lease,
-            memory: &[],
+            memory: afr_memory::Seed::default(),
             executor,
+            mint: &CountingMint::never(),
+            checkpoint: &Discard,
             events: &sink,
+            meter: &Meter::default(),
+            stop: &CancellationToken::new(),
         })
         .await;
     drop(sink);
@@ -187,6 +194,7 @@ async fn remembered_items_are_handed_back_for_the_push() {
         key: Cow::Borrowed("k"),
         content: Cow::Borrowed("c"),
         category: Cow::Borrowed("core"),
+        visibility: afd_wire::memory::Visibility::Fleet,
     };
     let (output, frames) = drive(&ScriptedEngine::new([Step::Remember(delta.clone())]), None).await;
 
@@ -200,9 +208,13 @@ async fn a_run_debugs_without_the_leases_secrets() {
     let sink = |_frame: ActivityFrame<'static>| {};
     let run = AgentRun {
         lease: &lease,
-        memory: &[],
+        memory: afr_memory::Seed::default(),
         executor: None,
+        mint: &CountingMint::never(),
+        checkpoint: &Discard,
         events: &sink,
+        meter: &Meter::default(),
+        stop: &CancellationToken::new(),
     };
 
     let rendered = format!("{run:?}");
@@ -212,4 +224,14 @@ async fn a_run_debugs_without_the_leases_secrets() {
         !rendered.contains("\"k\""),
         "the api key must never render: {rendered}"
     );
+}
+
+#[test]
+fn a_script_needs_a_sandbox_only_when_it_runs_a_process() {
+    let lease: LeasePayload<'_> = serde_json::from_str(LEASE).unwrap();
+    let talks = ScriptedEngine::new([Step::Say("hi".to_owned())]);
+    let runs = ScriptedEngine::new([Step::Say("hi".to_owned()), echo()]);
+
+    assert!(!talks.admit(&lease.policy).unwrap().sandbox);
+    assert!(runs.admit(&lease.policy).unwrap().sandbox);
 }

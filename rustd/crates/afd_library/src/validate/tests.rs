@@ -190,6 +190,31 @@ fn documented_credential_shapes_and_substitutions_are_admitted() {
     }
 }
 
+/// The scan parses, so it reads only a body whose bounds held.
+///
+/// Each document is over its cap AND carries a credential marker. Before the
+/// scan left garde, its rule ran first and these answered the credential.
+#[test]
+fn an_oversized_document_answers_its_bound_before_the_scan_reads_it() {
+    let marker = b"op://vault/item\n";
+    let over = |cap: usize| marker.repeat(cap / marker.len() + 1);
+
+    let mut value = upload();
+    value.skill_markdown = over(MAX_MARKDOWN_LEN);
+    assert_eq!(body(&value), Err(InvalidBundle::SkillTooLarge));
+
+    value = upload();
+    value.trigger_markdown = Some(over(MAX_MARKDOWN_LEN));
+    assert_eq!(body(&value), Err(InvalidBundle::TriggerTooLarge));
+
+    value = upload();
+    value.support_files.push(SupportFile {
+        path: "notes.txt".to_owned(),
+        content: over(MAX_SUPPORT_FILE_LEN),
+    });
+    assert_eq!(body(&value), Err(InvalidBundle::SupportFileTooLarge));
+}
+
 /// Puts one body out of bounds, in exactly one way.
 type BreakRule = dyn Fn(&mut ImportBody);
 

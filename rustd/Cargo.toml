@@ -15,10 +15,10 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_mail", "crates/afd_observability", "crates/afd_outbound", "crates/afd_dragonfly", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/afr_agent", "crates/afr_executor", "crates/afr_sandbox", "crates/afr_supervisor", "crates/agentsfleet_runner", "crates/agentsfleetd"]
+members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_dragonfly", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_mail", "crates/afd_memory", "crates/afd_observability", "crates/afd_outbound", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_validate", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/afr_agent", "crates/afr_egress", "crates/afr_executor", "crates/afr_memory", "crates/afr_providers", "crates/afr_sandbox", "crates/afr_secrets", "crates/afr_supervisor", "crates/afr_tools", "crates/agentsfleet_runner", "crates/agentsfleetd"]
 
 [workspace.package]
-version = "0.51.1"
+version = "0.55.0"
 edition = "2024"
 # Equal to the pinned toolchain rather than trailing it (M-MSRV allows a lag for
 # published libraries; these crates have no external consumers and are built
@@ -37,6 +37,10 @@ categories = ["network-programming"]
 
 [workspace.dependencies]
 percent-encoding = "2.3.2"
+# Every known secret value replaced in one pass over a tool's output, a frame
+# or a reply: leftmost-longest multi-pattern matching, rather than one scan per
+# secret. Already in the graph through `regex`.
+aho-corasick = { version = "1.1.5", default-features = false, features = ["std", "perf-literal"] }
 # Intra-workspace members resolve through the workspace, never by direct sibling
 # path (M-CRATES-IN-WORKSPACE).
 afd_admin = { path = "crates/afd_admin" }
@@ -107,6 +111,10 @@ afd_library = { path = "crates/afd_library" }
 # crate so the transport, its TLS posture and the templates have one owner, and
 # the tenant store never links a mail client.
 afd_mail = { path = "crates/afd_mail" }
+# Fleet memory behind one store trait. Its own crate so the lease plane and both
+# route families reach memory through the trait, and a store for another vendor
+# is a new implementation rather than an edit to the runner plane.
+afd_memory = { path = "crates/afd_memory" }
 afd_observability = { path = "crates/afd_observability" }
 afd_outbound = { path = "crates/afd_outbound" }
 afd_dragonfly = { path = "crates/afd_dragonfly" }
@@ -121,6 +129,12 @@ afd_runner = { path = "crates/afd_runner" }
 afd_sse = { path = "crates/afd_sse" }
 afd_state = { path = "crates/afd_state" }
 afd_tenant = { path = "crates/afd_tenant" }
+# The bounds every crate declares on untrusted input and cannot get from garde
+# alone: the custom rules (finite, NUL-free, digits, a charset), a `?limit`
+# proved against its route's ceiling, and the table from a reported path to a
+# route's fixed sentence. A leaf beside `afd_core` rather than a module in it
+# (M-SMALLER-CRATES): it depends on garde and nothing of ours.
+afd_validate = { path = "crates/afd_validate" }
 # The workspace secret surface. Deliberately NOT folded into `afd_fleet`, whose
 # `vault` module is the RUNNER plane's reader — it opens a declared credential
 # for a lease, refuses to degrade a row, and never lists — nor into `afd_state`,
@@ -139,9 +153,14 @@ afd_wire = { path = "crates/afd_wire" }
 # on `afd_wire`, `afd_core` and `afd_observability` and on nothing else from the
 # daemon (`docs/architecture/runner_execution.md` §Crates).
 afr_agent = { path = "crates/afr_agent" }
+afr_egress = { path = "crates/afr_egress" }
 afr_executor = { path = "crates/afr_executor" }
+afr_memory = { path = "crates/afr_memory" }
+afr_providers = { path = "crates/afr_providers" }
 afr_sandbox = { path = "crates/afr_sandbox" }
+afr_secrets = { path = "crates/afr_secrets" }
 afr_supervisor = { path = "crates/afr_supervisor" }
+afr_tools = { path = "crates/afr_tools" }
 
 # `default-features = false` throughout, features named explicitly, so a member
 # cannot silently acquire a feature a sibling enabled (M-CARGO-WORKSPACE).
@@ -152,6 +171,9 @@ serde = { version = "1.0.229", default-features = false, features = ["derive", "
 # and every error it raises already carries the record and line it failed on.
 csv = "1.4.0"
 serde_json = { version = "1.0.151", default-features = false, features = ["std", "preserve_order", "raw_value"] }
+# A tool's parameters are the JSON Schema of the type its arguments parse into,
+# derived from that type so the two cannot drift. rig-core already builds it.
+schemars = { version = "1.2.2", default-features = false, features = ["derive", "std"] }
 # `raw_value` carries `RawValue`, which is how the activity verb splices a
 # runner's already-JSON tool arguments into a published frame WITHOUT parsing
 # them into a tree and re-encoding it. The Zig builds and drops a whole
@@ -175,6 +197,10 @@ async-trait = { version = "0.1.92", default-features = false }
 # each pull their own dependency and none of them is a shape this product
 # authors. Its `garde_derive` rides the syn 2.0.119 already in the lock.
 garde = { version = "0.23.0", default-features = false, features = ["derive"] }
+# A refusal sentence built from the bound it names, at compile time.
+# `Sentences` tables are `const` and std cannot format a number in a `const`,
+# so without it every sentence would spell the bound a second time.
+const_format = { version = "0.2.36", default-features = false }
 
 # The YAML frontmatter of an authored `TRIGGER.md`.
 #
@@ -398,7 +424,29 @@ moka = { version = "0.12.16", default-features = false, features = ["future"] }
 # provider-issued opaque bytes, where a `+` or an `&` that escapes its field
 # changes the SHAPE of the form at the token endpoint. That is not a place to
 # carry our own encoder.
-reqwest = { version = "0.13.4", default-features = false, features = ["form", "rustls", "stream"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["form", "rustls", "stream"] }
+# The credential placeholder grammar, `${secrets.NAME.FIELD}`, matched and
+# substituted in one pass by the egress guard (Indy, Oct 03: "Use regex").
+regex = { version = "1.13.1", default-features = false, features = ["std", "perf"] }
+# `web_fetch` reads a page's text, never its markup: scripts, styles and tags
+# go, links keep their target. A real HTML parser rather than the tag scanner
+# the Zig tool carried.
+html2text = { version = "0.17.1", default-features = false }
+
+# The model providers' wire: Anthropic Messages, OpenAI Responses and every
+# OpenAI-compatible chat dialect, streamed, with tool calls assembled, usage
+# split and reasoning carried across turns. IronClaw builds its provider layer
+# on the same library; the runner owns what rig does not: which providers a
+# lease may reach, the transport (one client, no redirect, `backon` retry), the
+# key's one header and the secret scrub. Pinned exactly: rig's minors break
+# their API (0.43 lists 40 breaking entries), so an upgrade is a reviewed
+# change. No default features: the transport is ours, so no HTTP stack, async
+# runtime or TLS comes with it.
+rig-core = { version = "=0.43.0", default-features = false }
+
+# A provider's `Retry-After` in its HTTP-date form (RFC 9110, `Retry-After`). Already in
+# the lock through hyper, which parses the same header family with it.
+httpdate = { version = "1.0.3", default-features = false }
 
 # Postgres. sqlx is the DRIVER here and nothing more: `migrate` and `macros` are
 # both off, because this workspace runs the Zig daemon's own ledger
@@ -429,7 +477,7 @@ sqlx = { version = "0.9.0", default-features = false, features = [
 # through redis and sqlx's own feature sets — naming it here makes three
 # existing call sites (`hub.rs`, `jwks/cache.rs`) depend on a stated feature
 # rather than on unification holding.
-tokio = { version = "1.53.1", default-features = false, features = ["rt", "sync", "time", "macros"] }
+tokio = { version = "1.53.2", default-features = false, features = ["rt", "sync", "time", "macros"] }
 # Redis. The crate replaces roughly three thousand lines of hand-rolled RESP
 # parsing, connection pooling and pub/sub plumbing under the retired Zig daemon's
 # `queue/`. `connection-manager` is the piece that earns it: one multiplexed
@@ -560,6 +608,13 @@ hyper-util = { version = "0.1.20", default-features = false, features = [
     "http1",
     "http2",
 ] }
+# The integration lane's HTTPS fakes, dev-only: rcgen issues a test CA and a
+# leaf for the upstream hosts a bundle names, and rustls serves them through
+# tokio-rustls. All three on aws-lc-rs, the provider rustls already builds
+# with here, so no second crypto backend arrives.
+rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
+rustls = { version = "0.23.45", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
+tokio-rustls = { version = "0.26.5", default-features = false, features = ["aws_lc_rs", "tls12"] }
 # The HTTP vocabulary types, shared with axum rather than re-exported through
 # it: `route_meta` names methods and statuses and has no business depending on
 # a web framework to do it.
@@ -595,6 +650,10 @@ crc16 = { version = "0.4.0", default-features = false }
 # act a per-key race needs. Where a map is keyed by something many tasks
 # touch at once, this is the shape, not `Mutex<HashMap>`.
 dashmap = { version = "6.1.0", default-features = false }
+# An `Arc` swapped atomically: readers load it without a lock and a writer
+# replaces it whole. Where a value is read on every request and changed almost
+# never — which store a workspace's memory lives in — this is the shape.
+arc-swap = { version = "1.9.2", default-features = false }
 
 # JWT semantics for the GitHub App mint: header and claims JSON, base64url
 # segments, and expiry validation. NOT a crypto backend — it sits on one, and

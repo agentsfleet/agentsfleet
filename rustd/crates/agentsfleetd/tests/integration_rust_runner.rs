@@ -235,6 +235,7 @@ fn scripted() -> afr_agent::scripted::ScriptedEngine {
             key: Cow::Borrowed(REMEMBERED_KEY),
             content: Cow::Borrowed(ANSWER),
             category: Cow::Borrowed("core"),
+            visibility: afd_wire::memory::Visibility::Fleet,
         }),
     ])
 }
