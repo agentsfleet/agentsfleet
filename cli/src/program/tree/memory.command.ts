@@ -4,7 +4,7 @@
 // memory plane is written by the Fleet and read by everyone else.
 
 import { Effect, Option } from "effect";
-import { Command } from "effect/unstable/cli";
+import { Command } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
 import {
   memoryListEffectFromFlags,

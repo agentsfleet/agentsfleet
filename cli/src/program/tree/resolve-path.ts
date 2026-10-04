@@ -11,7 +11,7 @@
 // deepest command that did resolve — the one whose help a person is about to
 // be shown.
 
-import { Param } from "effect/unstable/cli";
+import { Param } from "effect/cli";
 
 const FLAG_PREFIX = "--" as const;
 const SHORT_FLAG_PREFIX = "-" as const;

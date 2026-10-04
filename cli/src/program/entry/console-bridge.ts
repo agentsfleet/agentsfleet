@@ -1,6 +1,6 @@
 // The CLI library's writes, routed to the invocation's own streams.
 //
-// `effect/unstable/cli` renders help documents and parse-error text through
+// `effect/cli` renders help documents and parse-error text through
 // `Console`, not through this repository's `Output` service. Left alone that
 // reaches `globalThis.console` and therefore the real process streams, which
 // is wrong twice: a test that injects `io.stdout` sees an empty buffer while

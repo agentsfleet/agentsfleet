@@ -14,6 +14,8 @@ const COL_LIST = "m-0 flex flex-col gap-1 space-y-0";
 const EXTERNAL_TARGET = "_blank";
 const EXTERNAL_REL = "noopener noreferrer";
 const FOOTER_SURFACE = "footer";
+// Read once when the page loads: a render must not read the clock.
+const COPYRIGHT_YEAR = new Date().getFullYear();
 const FOOTER_TAGLINE =
   "AI teammates that investigate incidents and help prepare fixes. You control access and decide what ships.";
 
@@ -87,7 +89,7 @@ function FooterMeta() {
   return (
     <div className="wrap mt-12 pt-6 border-t border-border flex flex-wrap justify-between items-center gap-3">
       <span className="font-sans text-label text-text-subtle">
-        © {new Date().getFullYear()} {PRODUCT_NAME}. all rights reserved.
+        © {COPYRIGHT_YEAR} {PRODUCT_NAME}. all rights reserved.
       </span>
       <div className="flex flex-wrap gap-6">
         <a href={`mailto:${SUPPORT_EMAIL}`} className={COL_LINK}

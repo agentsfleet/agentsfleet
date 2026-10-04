@@ -12,7 +12,7 @@
 // through here rather than each file remembering.
 
 import { Effect } from "effect";
-import { Command } from "effect/unstable/cli";
+import { Command } from "effect/cli";
 import {
   guardGate,
   type CommandGuard,
