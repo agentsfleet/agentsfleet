@@ -181,3 +181,27 @@ fn should_release_a_completed_short_secret_once_the_stream_moves_past_it() {
 
     assert_eq!(format!("{first}{second}"), "token «secret:short» then more");
 }
+
+#[test]
+fn should_never_release_a_secret_whose_tail_starts_another() {
+    // "tok9g" ends with the byte "ghp_x" starts with, so the hold-back cut
+    // would land inside the first secret.
+    let scrub = Scrub::of([("a".to_owned(), "tok9g"), ("b".to_owned(), "ghp_x")]).unwrap();
+    let mut carry = Carry::default();
+
+    let first = carry.push(&scrub, "key tok9g");
+    let second = carry.push(&scrub, " done");
+
+    assert_eq!(format!("{first}{second}"), "key «secret:a» done");
+}
+
+#[test]
+fn should_never_release_a_secret_whose_last_byte_is_its_first() {
+    let scrub = Scrub::of([("k".to_owned(), "sk_live_abc_s")]).unwrap();
+    let mut carry = Carry::default();
+
+    let first = carry.push(&scrub, "echo sk_live_abc_s");
+    let second = carry.push(&scrub, " done");
+
+    assert_eq!(format!("{first}{second}"), "echo «secret:k» done");
+}
