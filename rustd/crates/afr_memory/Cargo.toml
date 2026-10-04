@@ -1,0 +1,33 @@
+[package]
+name = "afr_memory"
+description = "One run's memory: what the fleet remembered at lease start, and what the run stores, recalls and forgets before the push."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Recall's case-insensitive key match, with no copy of each key.
+aho-corasick.workspace = true
+# `MemoryBackend` is `dyn`: the backend is chosen per lease, at run time.
+async-trait.workspace = true
+# `error_shell!` and the registry codes a refused store carries.
+afd_core.workspace = true
+# The entry shape, its bounds and the push cap, declared once for daemon and runner.
+afd_wire.workspace = true
+# An entry is checked against the bounds `afd_wire` declares on it.
+garde.workspace = true
+thiserror.workspace = true
+# The one line a recall past the window leaves when the daemon does not answer.
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

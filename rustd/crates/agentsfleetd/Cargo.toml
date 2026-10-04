@@ -85,6 +85,8 @@ afd_sse.workspace = true
 afd_state.workspace = true
 # The runner control plane behind the `/v1/runners` verbs.
 afd_fleet.workspace = true
+# Fleet memory, held once and shared by the lease plane and both route families.
+afd_memory.workspace = true
 afd_gate.workspace = true
 # The signed-ingress plane the webhook and App ingress routes resolve through.
 afd_ingress.workspace = true
@@ -184,6 +186,16 @@ afr_agent = { workspace = true, features = ["test-util"] }
 afr_executor.workspace = true
 afr_sandbox.workspace = true
 afr_supervisor.workspace = true
+# Section 6's bundle suite: the real loop over the hosted catalog, a scripted
+# model behind the provider seam, and the egress client routed to HTTPS fakes
+# that rcgen's test CA signs and hyper serves.
+afr_egress = { workspace = true, features = ["test-util"] }
+afr_providers.workspace = true
+afr_tools.workspace = true
+futures-util.workspace = true
+rcgen.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
 # A storage home and a sandbox base the run leaves behind for the test to read.
 tempfile.workspace = true
 

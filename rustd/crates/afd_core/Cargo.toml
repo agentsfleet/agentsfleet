@@ -21,6 +21,9 @@ categories.workspace = true
 test-util = ["dep:tracing", "dep:tracing-subscriber"]
 
 [dependencies]
+# `paging::Page::parse` reads `?limit` through `afd_validate::Limit` with the
+# route's ceiling, the one spelling every list route shares.
+afd_validate.workspace = true
 serde.workspace = true
 # The strong `ETag` digest (`crate::etag`). A wire encoding rather than a
 # transport concern: a client cache may hold a tag the Zig daemon computed, and

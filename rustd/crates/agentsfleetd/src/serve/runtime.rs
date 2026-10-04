@@ -79,6 +79,10 @@ pub(super) async fn open_runtime(
         config.platform_admin_workspace(),
     )
     .await;
+    #[cfg(feature = "test-util")]
+    let broker = config
+        .exchanger()
+        .map_or(broker, crate::credentials::with_exchanger);
     let live = open_live(config.redis(), config.sse_max_streams()).await;
     let hub = live.hub().cloned();
     let observed = live.clone();

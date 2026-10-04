@@ -6,10 +6,10 @@ use std::time::Duration;
 use afd_core::clock::saturating_millis;
 use afd_wire::lease::LeasePayload;
 use afd_wire::report::{
-    ExecutionResult, FailureClass, Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry,
-    ResultOutcome,
+    ExecutionResult, Failure, FailureClass, Outcome, ReportCheckpoint, ReportRequest,
+    ReportTelemetry, ResultOutcome,
 };
-use afr_agent::RunOutput;
+use afr_agent::{Meter, RunOutput};
 
 /// How a lease's run ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,11 +32,40 @@ pub(crate) enum Ending {
     },
 }
 
-/// The report for `lease`, which ran for `wall`.
+impl Ending {
+    /// This ending, for a lease the daemon or the runner ended before the run
+    /// did: a run that handed back output keeps it, with `class` and `detail`
+    /// as its failure, so its tokens are billed and its memory pushed.
+    pub(crate) fn cut(self, class: FailureClass, detail: &'static str) -> Self {
+        match self {
+            Self::Ran {
+                mut output,
+                first_chunk,
+            } => {
+                output.result.outcome = ResultOutcome::Failed(Failure {
+                    class: Some(class),
+                    detail: detail.into(),
+                });
+                Self::Ran {
+                    output,
+                    first_chunk,
+                }
+            }
+            Self::Failed { .. } => Self::Failed { class, detail },
+        }
+    }
+}
+
+/// The report for `lease`, which ran for `wall`, carrying `trace`: the run's
+/// trace encoded, when it called a tool. Its tokens are the result's when the
+/// run handed one back, and otherwise what `meter` counted turn by turn, so a
+/// run that never finished still bills what it spent.
 pub(crate) fn report<'a>(
     lease: &'a LeasePayload<'a>,
     ending: &'a Ending,
+    meter: &Meter,
     wall: Duration,
+    trace: Option<&'a str>,
 ) -> ReportRequest<'a> {
     let (outcome, failure_reason, failure_detail) = verdict(ending);
     let (result, first_chunk) = match ending {
@@ -49,6 +78,18 @@ pub(crate) fn report<'a>(
     let response_text = result.map_or(Cow::Borrowed(""), |result| {
         Cow::Borrowed(result.content.as_ref())
     });
+    let spent = meter.read();
+    let (tokens, input, cached_input, output) = result.map_or(
+        (spent.total(), spent.input, spent.cached_input, spent.output),
+        |result| {
+            (
+                result.token_count,
+                result.input_tokens,
+                result.cached_input_tokens,
+                result.output_tokens,
+            )
+        },
+    );
     ReportRequest {
         lease_id: Cow::Borrowed(&lease.lease_id),
         event_id: Cow::Borrowed(&lease.event.event_id),
@@ -57,10 +98,10 @@ pub(crate) fn report<'a>(
         failure_reason,
         failure_detail,
         response_text: response_text.clone(),
-        tokens: result.map_or(0, |result| result.token_count),
-        input_tokens: narrow(result.map_or(0, |result| result.input_tokens)),
-        cached_input_tokens: narrow(result.map_or(0, |result| result.cached_input_tokens)),
-        output_tokens: narrow(result.map_or(0, |result| result.output_tokens)),
+        tokens,
+        input_tokens: narrow(input),
+        cached_input_tokens: narrow(cached_input),
+        output_tokens: narrow(output),
         telemetry: ReportTelemetry {
             time_to_first_token_ms: narrow(first_chunk.map_or(0, saturating_millis)),
             wall_ms: saturating_millis(wall),
@@ -69,7 +110,7 @@ pub(crate) fn report<'a>(
             last_event_id: Cow::Borrowed(&lease.event.event_id),
             last_response: response_text,
         },
-        tool_calls: None,
+        tool_calls: trace.and_then(|encoded| serde_json::from_str(encoded).ok()),
     }
 }
 
@@ -94,7 +135,7 @@ fn verdict(ending: &Ending) -> (Outcome, Option<FailureClass>, Cow<'_, str>) {
 }
 
 /// A count the wire carries in 32 bits, saturated rather than wrapped.
-fn narrow(count: u64) -> u32 {
+pub(crate) fn narrow(count: u64) -> u32 {
     u32::try_from(count).unwrap_or(u32::MAX)
 }
 

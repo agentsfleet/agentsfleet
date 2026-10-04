@@ -1,37 +1,56 @@
 //! Scoped, short-lived credentials a held lease may mint.
 //!
 //! The supervisor mints; a sandbox never asks the daemon for anything. A token
-//! minted here lives in the supervisor's memory and reaches a tool only through
-//! the call that needs it. The tool catalog is this module's caller: a hosted
-//! tool whose lease names a mintable integration asks for its token here.
+//! minted here lives in the lease's egress vault and reaches a request only in
+//! its `Authorization` header (`afr_egress`). [`LeaseMint`] is the seam the
+//! vault mints through: one held lease, over the control plane.
 
 use std::borrow::Cow;
 
+use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_wire::credentials::{MintCredentialRequest, MintCredentialResponse};
+use afr_egress::{Mint, Minted};
+use afr_secrets::Secret;
 
 use crate::client::ControlPlane;
-use crate::error::Result;
-use crate::secret::Secret;
+use crate::error::{Error, Result};
 
-/// A minted credential. Its `Debug` never prints the token.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Minted {
-    token: Secret,
-    expires_at_ms: i64,
+/// What a mint that never reached the daemon reads as.
+const UNREACHED: &str = "the daemon could not be reached to mint the credential";
+
+/// Mints for one held lease, over the control plane.
+#[derive(Debug)]
+pub(crate) struct LeaseMint<'a> {
+    plane: &'a ControlPlane,
+    lease_id: &'a Uuid7,
 }
 
-impl Minted {
-    /// The token, for the one call that presents it.
-    #[must_use]
-    pub fn expose(&self) -> &str {
-        self.token.expose()
+impl<'a> LeaseMint<'a> {
+    /// The mint of the lease `lease_id`, asking through `plane`.
+    pub(crate) const fn new(plane: &'a ControlPlane, lease_id: &'a Uuid7) -> Self {
+        Self { plane, lease_id }
     }
+}
 
-    /// When the daemon stops honouring it, in Unix milliseconds.
-    #[must_use]
-    pub const fn expires_at_ms(&self) -> i64 {
-        self.expires_at_ms
+#[async_trait::async_trait]
+impl Mint for LeaseMint<'_> {
+    async fn mint(&self, integration: &str) -> afr_egress::Result<Minted> {
+        mint(self.plane, self.lease_id, integration, None)
+            .await
+            .map_err(|refused| afr_egress::Error::mint_refused(refused.code(), detail(&refused)))
+    }
+}
+
+/// A refusal as the model reads it: the daemon's registry code first, so a
+/// bundle that reports a `UZ-REPAIR-` refusal verbatim can.
+fn detail(refused: &Error) -> String {
+    match (refused.refusal_code(), refused.refusal_status()) {
+        (Some(code), Some(status)) => {
+            format!("{}: the daemon refused the mint ({status})", code.as_str())
+        }
+        (None, Some(status)) => format!("the daemon refused the mint ({status})"),
+        (_, None) => UNREACHED.to_owned(),
     }
 }
 
@@ -40,7 +59,7 @@ impl Minted {
 /// # Errors
 /// A refusal — an ungranted integration, a lease no longer held — or a
 /// transport failure. Minting is not retried: the tool that asked decides.
-pub async fn mint(
+async fn mint(
     plane: &ControlPlane,
     lease_id: &Uuid7,
     integration: &str,
@@ -53,10 +72,10 @@ pub async fn mint(
     };
     let body = plane.mint(&request).await?;
     let minted: MintCredentialResponse<'_> = body.decode()?;
-    Ok(Minted {
-        token: Secret::new(minted.token.into_owned()),
-        expires_at_ms: minted.expires_at_ms,
-    })
+    Ok(Minted::new(
+        Secret::new(minted.token.into_owned()),
+        UnixMillis::from_millis(minted.expires_at_ms),
+    ))
 }
 
 #[cfg(test)]

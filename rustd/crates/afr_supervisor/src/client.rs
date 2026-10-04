@@ -15,7 +15,7 @@ use afd_core::error_code::{self, ErrorCode};
 use afd_core::id::Uuid7;
 use afd_wire::activity::ActivityRequest;
 use afd_wire::credentials::MintCredentialRequest;
-use afd_wire::memory::MemoryPushRequest;
+use afd_wire::memory::{MemoryPushRequest, MemoryRecallRequest};
 use afd_wire::paths;
 use afd_wire::report::{RenewRequest, RenewResponse};
 use afd_wire::runner::HeartbeatRequest;
@@ -57,16 +57,22 @@ pub(crate) enum Verb {
     Hydrate,
     /// A fleet's memory written back.
     Capture,
+    /// A search of a fleet's memory past the window.
+    Recall,
     /// A fleet bundle by content hash.
     Bundle,
     /// A scoped credential for a held lease.
     Mint,
+    /// Finished calls' full records for a held lease.
+    Records,
+    /// The runner's own row: which runner this is, as the daemon names it.
+    Me,
 }
 
 impl Verb {
     /// Whether this verb reads (`GET`) rather than reports (`POST`).
     pub(crate) const fn reads(self) -> bool {
-        matches!(self, Self::Hydrate | Self::Bundle)
+        matches!(self, Self::Hydrate | Self::Bundle | Self::Me)
     }
 
     /// The verb as a log line and an error name it.
@@ -79,8 +85,11 @@ impl Verb {
             Self::Report => "report",
             Self::Hydrate => "hydrate",
             Self::Capture => "capture",
+            Self::Recall => "recall",
             Self::Bundle => "bundle",
             Self::Mint => "mint",
+            Self::Records => "records",
+            Self::Me => "me",
         }
     }
 
@@ -88,13 +97,15 @@ impl Verb {
     pub(crate) const fn code(self) -> ErrorCode {
         match self {
             Self::Bundle => error_code::FLEET_BUNDLE_FETCH_FAILED,
-            Self::Hydrate | Self::Capture => error_code::MEM_UNAVAILABLE,
+            Self::Hydrate | Self::Capture | Self::Recall => error_code::MEM_UNAVAILABLE,
             Self::Heartbeat
             | Self::Lease
             | Self::Renew
             | Self::Activity
             | Self::Report
-            | Self::Mint => error_code::INTERNAL_OPERATION_FAILED,
+            | Self::Mint
+            | Self::Records
+            | Self::Me => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 }
@@ -169,14 +180,11 @@ impl ControlPlane {
         self.send(Verb::Lease, path, None).await
     }
 
-    /// Renews a held lease and returns its new expiry, in Unix milliseconds.
-    /// The token counts ride later work; this meters the run fee, which the
-    /// daemon owes either way.
-    pub(crate) async fn renew(&self, lease_id: &Uuid7) -> Result<i64> {
+    /// Renews a held lease with the run's cumulative tokens, and returns its
+    /// new expiry, in Unix milliseconds.
+    pub(crate) async fn renew(&self, lease_id: &Uuid7, spent: &RenewRequest) -> Result<i64> {
         let path = lease_path(lease_id, paths::LEASE_RENEW_SUFFIX);
-        let body = self
-            .post(Verb::Renew, path, &RenewRequest::default())
-            .await?;
+        let body = self.post(Verb::Renew, path, spent).await?;
         body.decode::<RenewResponse>()
             .map(|renewed| renewed.lease_expires_at)
     }
@@ -197,6 +205,12 @@ impl ControlPlane {
         self.send(Verb::Report, path, Some(report)).await.map(drop)
     }
 
+    /// Posts one body of finished calls' full records, already encoded.
+    pub(crate) async fn tool_calls(&self, lease_id: &Uuid7, body: Bytes) -> Result<()> {
+        let path = lease_path(lease_id, paths::LEASE_TOOL_CALLS_SUFFIX);
+        self.send(Verb::Records, path, Some(body)).await.map(drop)
+    }
+
     /// Reads a fleet's memory.
     pub(crate) async fn hydrate(&self, fleet_id: &Uuid7) -> Result<Body> {
         self.send(Verb::Hydrate, memory_path(fleet_id), None).await
@@ -213,10 +227,30 @@ impl ControlPlane {
             .map(drop)
     }
 
+    /// Searches a fleet's memory past the window, fenced by the lease's token.
+    pub(crate) async fn recall(
+        &self,
+        fleet_id: &Uuid7,
+        request: &MemoryRecallRequest<'_>,
+    ) -> Result<Body> {
+        let path = Cow::Owned(format!(
+            "{}/{}",
+            memory_path(fleet_id),
+            paths::RUNNER_MEMORY_RECALL_SUFFIX
+        ));
+        self.post(Verb::Recall, path, request).await
+    }
+
     /// Mints a scoped credential for a held lease.
     pub(crate) async fn mint(&self, request: &MintCredentialRequest<'_>) -> Result<Body> {
         let path = Cow::Borrowed(paths::RUNNER_CREDENTIALS_MINT);
         self.post(Verb::Mint, path, request).await
+    }
+
+    /// Reads this runner's own row.
+    pub(crate) async fn me(&self) -> Result<Body> {
+        self.send(Verb::Me, Cow::Borrowed(paths::RUNNER_SELF), None)
+            .await
     }
 
     /// Downloads a bundle's canonical tar.

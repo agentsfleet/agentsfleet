@@ -9,9 +9,9 @@
 //! nothing fails until somebody parks a megabyte in the queue.
 //!
 //! Here the bound is the TYPE. [`Sessions::approve`](super::Sessions::approve)
-//! takes an [`Approval`], and an `Approval` can only be built out of values
-//! that already passed, so a field added without a bound does not compile into
-//! one.
+//! takes an [`Approval`], and an `Approval` can only be built out of a request
+//! garde has proved, so a field added without a bound does not compile into
+//! one: garde's derive refuses a field with no attribute.
 //!
 //! # Every bound is a RELAY bound, not a cryptographic one
 //!
@@ -21,6 +21,9 @@
 //! a point on P-256 or whether a ciphertext authenticates — the questions are
 //! "is it there" and "is it small enough to keep for five minutes", which are
 //! the only two a relay is entitled to ask.
+
+use afd_validate::{PathTable, ascii_digits, charset};
+use garde::{Unvalidated, Valid, Validate};
 
 use crate::error::{self, SessionField};
 use crate::{Error, Result};
@@ -52,12 +55,39 @@ const NONCE_MAX: usize = 32;
 /// How many digits a verification code has.
 const CODE_DIGITS: usize = 6;
 
+/// The paths garde reports a broken field under — the request's own keys.
+const PATH_PUBLIC_KEY: &str = "public_key";
+/// See [`PATH_PUBLIC_KEY`].
+const PATH_TOKEN_NAME: &str = "token_name";
+/// See [`PATH_PUBLIC_KEY`].
+const PATH_CIPHERTEXT: &str = "ciphertext";
+/// See [`PATH_PUBLIC_KEY`].
+const PATH_NONCE: &str = "nonce";
+/// See [`PATH_PUBLIC_KEY`].
+const PATH_VERIFICATION_CODE: &str = "verification_code";
+
+/// Which field a broken bound names, and so which registry code it answers.
+///
+/// In request order, so a body breaking two bounds answers for the one it
+/// carries first — the order the hand-written checks this replaced ran in. A
+/// report naming none of these cannot come from the structs below; the
+/// public key, the first field of both, stands in for it.
+const FIELDS: PathTable<SessionField> = PathTable::new(
+    &[
+        (PATH_PUBLIC_KEY, SessionField::PublicKey),
+        (PATH_TOKEN_NAME, SessionField::TokenName),
+        (PATH_CIPHERTEXT, SessionField::Ciphertext),
+        (PATH_NONCE, SessionField::Nonce),
+        (PATH_VERIFICATION_CODE, SessionField::VerificationCode),
+    ],
+    SessionField::PublicKey,
+);
+
 /// A caller-supplied value that passed its field's bound.
 ///
-/// One newtype for all five fields, carrying WHICH field it is, because the
-/// five differ only in their bound and their refusal — and five near-identical
-/// newtypes would be five places for the borrow lifetimes to be written
-/// differently.
+/// One newtype for all four relayed fields: they differ only in their bound
+/// and their refusal, and both live on the request structs below. Built only
+/// from a value garde has proved, in this module.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Bounded<'a> {
     value: &'a str,
@@ -69,19 +99,45 @@ impl<'a> Bounded<'a> {
     pub const fn as_str(self) -> &'a str {
         self.value
     }
+}
 
-    /// Accepts a non-empty value no longer than `max`.
-    ///
-    /// # Errors
-    /// Refuses an empty value and one past the bound with the field's own
-    /// registry code — the two are one refusal because a caller corrects both
-    /// the same way, by sending what the field is documented to take.
-    fn within(value: &'a str, max: usize, field: SessionField) -> Result<Self> {
-        if value.is_empty() || value.len() > max {
-            return Err(error::session_field(field));
-        }
-        Ok(Self { value })
-    }
+/// An open request as the caller sent it, each bound beside its field.
+#[derive(Debug, Validate)]
+struct OpenSent<'a> {
+    #[garde(length(bytes, min = 1, max = PUBLIC_KEY_MAX))]
+    public_key: &'a str,
+    /// Printable ASCII is the DOCUMENTED rule — `UZ-AUTH-017`'s registry entry
+    /// says "1 to 64 characters from space through tilde", and the public
+    /// specification is the parity oracle this port grades against. The Zig
+    /// store bounds the length only, so a label carrying a newline is accepted
+    /// there and refused here; that divergence is recorded in the milestone's
+    /// Discovery log rather than left for a reader to find.
+    #[garde(length(bytes, min = 1, max = TOKEN_NAME_MAX), custom(charset(is_label_char)))]
+    token_name: &'a str,
+}
+
+/// An approve request as the caller sent it, each bound beside its field.
+#[derive(Debug, Validate)]
+struct ApprovalSent<'a> {
+    #[garde(length(bytes, min = 1, max = PUBLIC_KEY_MAX))]
+    public_key: &'a str,
+    #[garde(length(bytes, min = 1, max = CIPHERTEXT_MAX))]
+    ciphertext: &'a str,
+    #[garde(length(bytes, min = 1, max = NONCE_MAX))]
+    nonce: &'a str,
+    #[garde(dive)]
+    verification_code: Code<'a>,
+}
+
+/// Proves a request's bounds, answering the first broken field's own code.
+///
+/// An empty value and an oversized one are one refusal per field, because a
+/// caller corrects both the same way: by sending what the field is documented
+/// to take.
+fn proved<T: Validate<Context = ()>>(sent: T) -> Result<Valid<T>> {
+    Unvalidated::new(sent)
+        .validate()
+        .map_err(|report| error::session_field(FIELDS.pick(&report)))
 }
 
 /// What opening a login carries.
@@ -100,9 +156,17 @@ impl<'a> Opening<'a> {
     /// Refuses a public key that is absent or oversized, and a token name that
     /// is either of those or holds a character outside printable ASCII.
     pub fn parse(public_key: &'a str, token_name: &'a str) -> Result<Self> {
+        let sent = proved(OpenSent {
+            public_key,
+            token_name,
+        })?;
         Ok(Self {
-            public_key: Bounded::within(public_key, PUBLIC_KEY_MAX, SessionField::PublicKey)?,
-            token_name: token_name_of(token_name)?,
+            public_key: Bounded {
+                value: sent.public_key,
+            },
+            token_name: Bounded {
+                value: sent.token_name,
+            },
         })
     }
 }
@@ -136,15 +200,21 @@ impl<'a> Approval<'a> {
         nonce: &'a str,
         verification_code: &'a str,
     ) -> Result<Self> {
+        let sent = proved(ApprovalSent {
+            public_key: dashboard_public_key,
+            ciphertext,
+            nonce,
+            verification_code: Code(verification_code),
+        })?;
         Ok(Self {
-            dashboard_public_key: Bounded::within(
-                dashboard_public_key,
-                PUBLIC_KEY_MAX,
-                SessionField::PublicKey,
-            )?,
-            ciphertext: Bounded::within(ciphertext, CIPHERTEXT_MAX, SessionField::Ciphertext)?,
-            nonce: Bounded::within(nonce, NONCE_MAX, SessionField::Nonce)?,
-            verification_code: Code::parse(verification_code)?,
+            dashboard_public_key: Bounded {
+                value: sent.public_key,
+            },
+            ciphertext: Bounded {
+                value: sent.ciphertext,
+            },
+            nonce: Bounded { value: sent.nonce },
+            verification_code: sent.verification_code,
         })
     }
 }
@@ -155,17 +225,17 @@ impl<'a> Approval<'a> {
 /// check has to happen BEFORE the digest is computed: a code that cannot be
 /// right is refused without a message authentication code being taken over it,
 /// so a malformed guess costs an attacker nothing to make and learns them
-/// nothing either.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Code<'a> {
-    value: &'a str,
-}
+/// nothing either. ASCII digits, not `char::is_numeric`: the store's Lua
+/// compares bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Validate)]
+#[garde(transparent)]
+pub struct Code<'a>(#[garde(length(bytes, equal = CODE_DIGITS), custom(ascii_digits))] &'a str);
 
 impl<'a> Code<'a> {
     /// The digits, for the digest.
     #[must_use]
     pub const fn as_str(self) -> &'a str {
-        self.value
+        self.0
     }
 
     /// Accepts exactly six ASCII digits.
@@ -173,35 +243,16 @@ impl<'a> Code<'a> {
     /// # Errors
     /// Refuses any other length, and any non-digit character.
     pub fn parse(value: &'a str) -> Result<Self> {
-        let shaped = value.len() == CODE_DIGITS && value.bytes().all(|byte| byte.is_ascii_digit());
-        if shaped {
-            Ok(Self { value })
-        } else {
-            Err(error::session_field(SessionField::VerificationCode))
-        }
+        Unvalidated::new(Self(value))
+            .validate()
+            .map(Valid::into_inner)
+            .map_err(|_report| error::session_field(SessionField::VerificationCode))
     }
 }
 
-/// Accepts a credential label: printable ASCII, within its bound.
-///
-/// The printable-ASCII rule is the DOCUMENTED one — `UZ-AUTH-017`'s registry
-/// entry says "1 to 64 characters from space through tilde", and the public
-/// specification is the parity oracle this port grades against. The Zig store
-/// bounds the length only, so a label carrying a newline is accepted there and
-/// refused here; that is a deliberate divergence toward the documented shape
-/// and it is recorded in the milestone's Discovery log rather than left for a
-/// reader to find.
-fn token_name_of(value: &str) -> Result<Bounded<'_>> {
-    let bounded = Bounded::within(value, TOKEN_NAME_MAX, SessionField::TokenName)?;
-    if bounded
-        .as_str()
-        .bytes()
-        .all(|byte| byte.is_ascii_graphic() || byte == b' ')
-    {
-        Ok(bounded)
-    } else {
-        Err(error::session_field(SessionField::TokenName))
-    }
+/// A character a credential label may carry: space through tilde.
+const fn is_label_char(character: char) -> bool {
+    character.is_ascii_graphic() || character == ' '
 }
 
 /// The refusal a caller reads when a field will not parse.
@@ -211,87 +262,5 @@ fn token_name_of(value: &str) -> Result<Bounded<'_>> {
 pub type ParseError = Error;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use afd_core::error_code::{self, ErrorCode};
-
-    /// The code a refusal carries, or `None` when the value parsed.
-    ///
-    /// Written this way rather than with `expect_err` because the workspace
-    /// denies panicking helpers even in tests: an assertion that reads as a
-    /// comparison fails with both values printed, where an `expect` fails with
-    /// a message somebody wrote in advance.
-    fn refusal<T>(result: Result<T>) -> Option<ErrorCode> {
-        result.err().map(|error| error.code())
-    }
-
-    #[test]
-    fn an_empty_field_and_an_oversized_one_answer_one_code() {
-        let long = "k".repeat(PUBLIC_KEY_MAX + 1);
-        for value in ["", long.as_str()] {
-            assert_eq!(
-                refusal(Opening::parse(value, "laptop")),
-                Some(error_code::INVALID_PUBLIC_KEY),
-                "public key {:?}",
-                value.len()
-            );
-        }
-    }
-
-    #[test]
-    fn a_token_name_outside_printable_ascii_is_refused() {
-        assert_eq!(
-            refusal(Opening::parse("key", "lap\ntop")),
-            Some(error_code::INVALID_TOKEN_NAME)
-        );
-        assert_eq!(refusal(Opening::parse("key", "Indy's laptop ~ 2")), None);
-    }
-
-    #[test]
-    fn a_code_is_six_digits_and_nothing_else() {
-        assert_eq!(Code::parse("012345").map(Code::as_str).ok(), Some("012345"));
-        // The last is six Arabic-Indic digits: `char::is_numeric` would accept
-        // them, `is_ascii_digit` does not, and the store's Lua compares bytes.
-        for bad in ["", "12345", "1234567", "12345a", "12345 ", "١٢٣٤٥٦"] {
-            assert_eq!(
-                refusal(Code::parse(bad)),
-                Some(error_code::INVALID_VERIFICATION_CODE),
-                "code {bad:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn each_approval_field_answers_its_own_code() {
-        let over_ciphertext = "c".repeat(CIPHERTEXT_MAX + 1);
-        let over_nonce = "n".repeat(NONCE_MAX + 1);
-        let cases = [
-            ("", "c", "n", "012345", error_code::INVALID_PUBLIC_KEY),
-            ("k", "", "n", "012345", error_code::INVALID_CIPHERTEXT),
-            (
-                "k",
-                over_ciphertext.as_str(),
-                "n",
-                "012345",
-                error_code::INVALID_CIPHERTEXT,
-            ),
-            ("k", "c", "", "012345", error_code::INVALID_NONCE),
-            (
-                "k",
-                "c",
-                over_nonce.as_str(),
-                "012345",
-                error_code::INVALID_NONCE,
-            ),
-            ("k", "c", "n", "abc", error_code::INVALID_VERIFICATION_CODE),
-        ];
-        for (key, ciphertext, nonce, code, expected) in cases {
-            assert_eq!(
-                refusal(Approval::parse(key, ciphertext, nonce, code)),
-                Some(expected),
-                "approval with code {code:?}"
-            );
-        }
-        assert_eq!(refusal(Approval::parse("k", "c", "n", "012345")), None);
-    }
-}
+#[path = "input/tests.rs"]
+mod tests;

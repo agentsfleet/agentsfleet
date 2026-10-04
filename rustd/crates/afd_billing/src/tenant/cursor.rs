@@ -35,11 +35,16 @@ const SEPARATOR: char = ':';
 const ID_MAX_LEN: usize = 128;
 
 /// A decoded boundary: the last row the previous page showed.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// The identifier's bound is declared here and proved by [`parse`], so a
+/// boundary read from a token has always passed it.
+#[derive(Debug, Clone, PartialEq, Eq, garde::Validate)]
 pub struct Boundary {
     /// The boundary row's `created_at`.
+    #[garde(skip)]
     pub recorded_at: i64,
     /// The boundary row's identifier, breaking ties within one instant.
+    #[garde(length(bytes, min = 1, max = ID_MAX_LEN))]
     pub id: String,
 }
 
@@ -65,13 +70,13 @@ pub fn parse(token: &str) -> crate::Result<Boundary> {
     let recorded_at = instant
         .parse()
         .map_err(|_not_numeric| error::charges_cursor_invalid())?;
-    if id.is_empty() || id.len() > ID_MAX_LEN {
-        return Err(error::charges_cursor_invalid());
-    }
-    Ok(Boundary {
+    garde::Unvalidated::new(Boundary {
         recorded_at,
         id: id.to_owned(),
     })
+    .validate()
+    .map(garde::Valid::into_inner)
+    .map_err(|_out_of_bounds| error::charges_cursor_invalid())
 }
 
 #[cfg(test)]
@@ -80,7 +85,7 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use super::{parse, render};
+    use super::{ID_MAX_LEN, parse, render};
 
     #[test]
     fn a_rendered_token_round_trips() {
@@ -110,6 +115,26 @@ mod tests {
                 "{bad:?} is not a cursor this daemon issued"
             );
         }
+    }
+
+    #[test]
+    fn test_cursor_id_bound_stays_one_refusal() {
+        use base64::Engine as _;
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64;
+        // The id bound is garde's now; its refusal must still be the same one
+        // a token that is not base64 at all earns, or the parser would start
+        // describing its format to whoever probes it.
+        let refusal = |token: &str| {
+            parse(token)
+                .err()
+                .map(|error| (error.code(), error.detail()))
+        };
+        let malformed = refusal("!!not-valid-base64!!");
+        let past_cap = BASE64.encode(format!("1712924400000:{}", "a".repeat(ID_MAX_LEN + 1)));
+        assert!(malformed.is_some());
+        assert_eq!(refusal(&past_cap), malformed);
+        let at_cap = render(1, &"a".repeat(ID_MAX_LEN));
+        assert_eq!(refusal(&at_cap), None);
     }
 
     #[test]

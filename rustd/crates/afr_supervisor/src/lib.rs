@@ -26,21 +26,22 @@
 
 pub mod capability;
 pub mod config;
-pub mod credentials;
 pub mod error;
 
 mod activity;
 mod bundles;
 mod client;
+mod credentials;
 mod drainer;
 mod halt;
 mod heartbeat;
+mod identity;
 mod lease_loop;
 mod memory;
+mod records;
 mod renew;
 mod report;
 mod report_spool;
-mod secret;
 mod storage_home;
 mod turns;
 mod worker_pool;
@@ -60,7 +61,6 @@ use tokio_util::sync::CancellationToken;
 pub use self::client::ControlPlane;
 pub use self::config::Config;
 pub use self::error::{Error, Result};
-pub use self::secret::Secret;
 pub use self::storage_home::StorageHome;
 
 use self::bundles::BundleCache;
@@ -68,6 +68,7 @@ use self::client::HttpRunnerApi;
 use self::drainer::Drainer;
 use self::halt::Halt;
 use self::heartbeat::{Assignment, Heartbeat};
+use self::identity::Whoami;
 use self::lease_loop::Lessee;
 use self::report_spool::ReportSpool;
 
@@ -151,6 +152,7 @@ pub(crate) async fn serve(runner: Runner, shutdown: CancellationToken) -> Result
         clock,
         halt: Halt::new(shutdown),
         held: Notify::new(),
+        whoami: Whoami::default(),
     });
     let (assignment, watching) = watch::channel(Assignment::initial());
     let heartbeat = Heartbeat::new(&lessee.plane, &probe).keep_beating(&assignment, &lessee.halt);

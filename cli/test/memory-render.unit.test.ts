@@ -5,8 +5,47 @@
 // this file used to make about malformed, null and out-of-range instants.
 
 import { describe, test, expect } from "bun:test";
+import { Exit } from "effect";
 
-import { cleanCell, previewText } from "../src/commands/memory.ts";
+import { cleanCell, memoryListEffectFromFlags, previewText, sharedBy } from "../src/commands/memory.ts";
+import { httpLayerReturning, newCapture, runWith } from "./helpers-memory-layers.ts";
+
+const FLEET_ID = "01900000-0000-7000-8000-0000005e4e72";
+const WRITER_ID = "01900000-0000-7000-8000-0000005e4e73";
+
+describe("sharedBy — another fleet's entry names its writer", () => {
+  test("an entry this fleet wrote, or one naming no writer, leaves the cell empty", () => {
+    expect(sharedBy({ writer_fleet_id: FLEET_ID }, FLEET_ID)).toBe("");
+    expect(sharedBy({}, FLEET_ID)).toBe("");
+    expect(sharedBy({ writer_fleet_id: null }, FLEET_ID)).toBe("");
+    expect(sharedBy({ writer_fleet_id: "" }, FLEET_ID)).toBe("");
+  });
+
+  test("another fleet's entry carries the writer, its control bytes stripped", () => {
+    expect(sharedBy({ writer_fleet_id: WRITER_ID }, FLEET_ID)).toBe(WRITER_ID);
+    expect(sharedBy({ writer_fleet_id: `\u001b[31m${WRITER_ID}` }, FLEET_ID)).toBe(`[31m${WRITER_ID}`);
+  });
+
+  test("the list table marks only the shared entry", async () => {
+    const cap = newCapture();
+    const envelope = {
+      items: [
+        { key: "own", content: "a", category: "core", updated_at: 1765500300000, writer_fleet_id: FLEET_ID },
+        { key: "theirs", content: "b", category: "core", updated_at: 1765500200000, writer_fleet_id: WRITER_ID },
+      ],
+      total: 2,
+      next_cursor: null,
+    };
+    const exit = await runWith(memoryListEffectFromFlags({ fleetId: FLEET_ID }), {
+      http: httpLayerReturning(envelope, []),
+      cap,
+    });
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(cap.tables[0]?.columns.map((c) => c.label)).toContain("SHARED BY");
+    const rows = cap.tables[0]?.rows ?? [];
+    expect(rows.map((r) => r["shared_by"])).toEqual(["", WRITER_ID]);
+  });
+});
 
 describe("cleanCell — server content can't drive the operator's terminal", () => {
   test("strips ESC/BEL/CSI control bytes that carry ANSI and OSC sequences", () => {

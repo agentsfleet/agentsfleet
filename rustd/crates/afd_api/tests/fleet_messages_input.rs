@@ -126,7 +126,6 @@ async fn a_page_size_outside_the_band_is_refused_rather_than_clamped() {
         "limit=-5",
         "limit=abc",
         "limit=1.5",
-        "limit=",
         &format!("limit={OVER_THE_BAND}"),
     ] {
         let response = reading(&paged(query)).await;

@@ -6,14 +6,15 @@ What a fleet *learned* from prior events, so it behaves like a teammate who's be
 
 ---
 
-## 1. Scope — keyed by `fleet_id`, never workspace
+## 1. Scope — written by one fleet, shared with the workspace only by grant
 
-Every memory row belongs to **one fleet**, keyed by the column **`fleet_id`** (UUID). There is **no `workspace_id` column** in the memory store, and a fresh `fleet_id` starts with an empty namespace.
+Every memory row belongs to **one fleet**, its writer, and to that fleet's **workspace**: the identity is `(workspace_id, fleet_id, key)`, held by the unique `(key, fleet_id)` because a fleet has one workspace. A row is fleet-visible unless its writer held the publish grant and stored it with `visibility: workspace`; a fleet holding the read grant then hydrates and recalls it, naming the writer. No fleet overwrites or forgets another's row. Both grants are a workspace setting on the fleet, false by default ([`runner_fleet.md`](./runner_fleet.md) §"Memory backends and scope").
 
 | Fact | Where it's enforced |
 |---|---|
-| Store column is `fleet_id`; the upsert key is the unique index `(key, fleet_id)` | `schema/820_memory_entries.sql` (`fleet_id UUID NOT NULL REFERENCES core.fleets`; `idx_memory_entries_key_fleet_id`) |
-| Every read/write scopes `WHERE fleet_id = $1` (never a fetch-all + in-memory filter) | `rustd/crates/afd_fleet/src/memory/` — the only `INSERT`/cap/sweep/list path |
+| Store columns are `fleet_id`, `workspace_id` and `workspace_visible`; the upsert key is the unique index `(key, fleet_id)` | `schema/820_memory_entries.sql`, `schema/926_memory_entries_workspace_scope.sql` |
+| Every read and write goes through one trait, scoped `WHERE fleet_id = $1`, plus the workspace's shared rows only for a granted reader | `rustd/crates/afd_memory/` — `MemoryStore`, the Postgres store, the grants, and the flip |
+| The grants are read and set as the api role on `core.fleets`, never by the store | `schema/927_fleet_memory_access.sql`, `rustd/crates/afd_memory/src/access.rs` |
 | `fleet_id` is **server-derived from the lease**, never client-supplied (Insecure-Direct-Object-Reference guard) | `rustd/crates/afd_api_runner/src/handler/runner/memory.rs` (`lease.fleet_id == {fleet_id}`) |
 | Two fleets never share a namespace — Fleet A cannot read Fleet B's memory | role isolation (§2) + the `(key, fleet_id)` key |
 
@@ -28,16 +29,16 @@ Memory lives in its own `memory` schema behind the **`memory_runtime`** Postgres
 
 Two layers, deliberately split:
 
-- **Durable** — the `fleet_id`-keyed rows in `memory.memory_entries` (Postgres). This is what persists.
+- **Durable** — the `fleet_id`-keyed rows in `memory.memory_entries` (Postgres), the default backend. This is what persists. A workspace can later be flipped to another store, which migrates its memory ([`runner_fleet.md`](./runner_fleet.md) §"Memory backends and scope").
 - **Ephemeral** — the *compute*. Each run forks a fresh sandboxed child whose in-run store is **SQLite `:memory:`** (no disk file); it vanishes on child exit.
 
 Continuity is the hydrate/capture loop bridging the two: `GET /v1/runners/me/memory/{fleet_id}` seeds the child at run start; `POST` captures deltas back at run end (fencing-verified, like `/reports`). Transport detail: [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity".
 
-**The load-bearing consequence:** because the durable key is `fleet_id`, **a new fleet = a new `fleet_id` = an empty namespace.** Spinning a *new ephemeral fleet per event* gives each one nothing to hydrate — zero continuity. Memory continuity **requires reusing the same `fleet_id`** across events. The fleet (and its memory) is durable; only the run is ephemeral. "Workspace-shared memory across ephemeral fleets" is not possible — there is no workspace key.
+**The load-bearing consequence:** because the writer is in the key, **a new fleet = a new `fleet_id` = an empty namespace of its own.** Spinning a *new ephemeral fleet per event* gives each one nothing of its own to hydrate. Memory continuity **requires reusing the same `fleet_id`** across events, or granting the new fleet read on the workspace's shared memory, which seeds it with what publishing fleets learned.
 
 ## 4. The M106 channel pattern
 
-Because memory is `fleet_id`-keyed, **per-channel memory = a per-channel fleet.** The Slack-resident bot (M106) gives each channel a **durable resident fleet**. That bot shipped in the retired Zig daemon; the Rust daemon drops Slack mentions, and M206_002 restores the resident beside fleets that subscribe to a channel ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §4). The boundary itself needs no new code: a runner hydrates or captures only a fleet it holds a live lease on (`rustd/crates/afd_fleet/src/lease/memory.rs:45-50`). Every mention in any thread of that channel routes to the same `fleet_id`, so memory persists thread to thread. The thread is a delivery surface, not a memory key. Per-thread would forget across threads; per-workspace can't exist (no workspace key). Spec: `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`; scenario: [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md).
+Because memory is `fleet_id`-keyed, **per-channel memory = a per-channel fleet.** The Slack-resident bot (M106) gives each channel a **durable resident fleet**. That bot shipped in the retired Zig daemon; the Rust daemon drops Slack mentions, and M206_002 restores the resident beside fleets that subscribe to a channel ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §4). The boundary itself needs no new code: a runner hydrates or captures only a fleet it holds a live lease on (`rustd/crates/afd_fleet/src/lease/memory.rs:45-50`). Every mention in any thread of that channel routes to the same `fleet_id`, so memory persists thread to thread. The thread is a delivery surface, not a memory key. Per-thread would forget across threads; a resident stays private by holding no shared-memory grant. Spec: `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`; scenario: [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md).
 
 ## 5. Categories, selection, tools — see the topic docs
 
@@ -48,7 +49,7 @@ The four tools (`memory_store` / `memory_recall` / `memory_list` / `memory_forge
 | Concern | Path |
 |---|---|
 | Schema (table, `(key, fleet_id)` index, role grants, `fleet_id` foreign key + cascade) | `schema/820_memory_entries.sql` |
-| The only write/read adapter (`WHERE fleet_id = $1`, `ON CONFLICT (key, fleet_id)`) | `rustd/crates/afd_fleet/src/memory/` |
+| The only write/read adapter (`WHERE fleet_id = $1`, `ON CONFLICT (key, fleet_id)`) | `rustd/crates/afd_memory/src/postgres/`, its statements in `src/sql.rs` |
 | Runner hydrate/capture endpoints (lease-derived `fleet_id`, fencing) | `rustd/crates/afd_api_runner/src/handler/runner/memory.rs` |
 | Tenant read and forget (ownership-gated) | `rustd/crates/afd_api_tenant/src/handler/fleet/memory.rs` |
 | In-run store seeding (`:memory:` SQLite) | `src/runner/engine/inrun_memory.zig` |

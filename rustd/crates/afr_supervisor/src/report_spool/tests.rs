@@ -5,6 +5,7 @@
     reason = "test target: a fixture that cannot be built is a broken test"
 )]
 
+use afr_agent::Meter;
 use std::fs;
 use std::time::Duration;
 
@@ -28,7 +29,16 @@ fn report_bytes() -> Bytes {
         class: FailureClass::RunnerCrash,
         detail: "killed",
     };
-    Bytes::from(serde_json::to_vec(&report(&lease, &ending, Duration::ZERO)).unwrap())
+    Bytes::from(
+        serde_json::to_vec(&report(
+            &lease,
+            &ending,
+            &Meter::default(),
+            Duration::ZERO,
+            None,
+        ))
+        .unwrap(),
+    )
 }
 
 async fn spooled(home: &StorageHome) -> ReportSpool {

@@ -14,6 +14,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Instant;
 
+use afd_core::paging::QUERY_LIMIT;
 use afd_observability::metrics::label::library::{ReadOutcome, Stage, Surface};
 use afd_observability::producers::library;
 use afd_tenant::models::cursor::{self, Cursor};
@@ -26,24 +27,21 @@ use http::{HeaderMap, HeaderValue, StatusCode, header};
 use crate::auth::PersonIdentity;
 use crate::etag;
 use crate::handler::Refusal;
+use crate::handler::paging::catalogue_limit;
 use crate::services::{ModelCatalogue as _, Services};
 
 /// The scoped event this read's failures are logged under.
 const EVENT_CATALOGUE: &str = "model_catalogue_failed";
 
-/// The page a caller naming no `limit` gets, and the most it may ask for.
-const CATALOGUE_LIMIT_DEFAULT: u32 = 50;
-const CATALOGUE_LIMIT_MAX: u32 = 100;
-
-/// The most bytes a normalized `provider` filter may carry.
-const PROVIDER_MAX_BYTES: usize = 128;
-
 /// The refusal a `limit` outside `1..=100` — or not a number — earns.
 pub const DETAIL_CATALOGUE_LIMIT: &str = "limit must be an integer between 1 and 100";
 
 /// The refusal an oversized or unreadable `provider` filter earns.
+///
+/// The bound is the catalogue's own column, `afd_wire::admin::PROVIDER_MAX_BYTES`:
+/// a filter longer than any stored provider can match nothing.
 pub const DETAIL_PROVIDER_BOUNDS: &str =
-    "provider must be at most 128 bytes once normalized, and valid UTF-8";
+    "provider must be at most 64 bytes once normalized, and valid UTF-8";
 
 /// The refusal a query string this daemon cannot decode earns.
 pub const DETAIL_QUERY_UNREADABLE: &str = "Query string could not be parsed";
@@ -130,7 +128,7 @@ async fn read_catalogue<D: Services>(
     query: Option<String>,
 ) -> Result<Response, Refusal> {
     let query = query.unwrap_or_default();
-    let limit = input::parse_limit(input::decoded(&query, "limit")?)?;
+    let limit = catalogue_limit(input::decoded(&query, QUERY_LIMIT)?.as_deref())?;
     let provider = input::normalize_provider(input::decoded(&query, "provider")?)?;
     let after = input::parse_cursor(
         input::decoded(&query, "starting_after")?,

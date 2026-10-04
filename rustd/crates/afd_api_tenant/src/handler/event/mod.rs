@@ -43,6 +43,7 @@ use afd_wire::event::{EventDetail, EventsResponse};
 use axum::Json;
 use axum::extract::{Path, RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
+use const_format::concatcp;
 use serde::Deserialize;
 
 use crate::auth::WorkspaceContext;
@@ -60,7 +61,10 @@ const EVENT_DETAIL: &str = "fleet_event_detail_failed";
 const DETAIL_FLEET_ID: &str = "fleet_id must be a UUIDv7";
 
 /// The refusal an event segment this daemon will not look up earns.
-const DETAIL_EVENT_ID: &str = "event_id is required";
+///
+/// Names the bound rather than presence: an over-long identifier was sent,
+/// and telling its sender it is missing sends them looking for the wrong fix.
+const DETAIL_EVENT_ID: &str = concatcp!("event_id must be 1-", EVENT_ID_MAX_LEN, " bytes");
 
 /// The refusal an event this workspace and fleet do not hold earns.
 ///
@@ -83,12 +87,15 @@ pub(crate) struct FleetPath {
 }
 
 /// The segments the expanded read's template carries.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, garde::Validate)]
 pub(crate) struct EventPath {
     /// The fleet named in the path, still text.
+    // Parsed rather than bounded: an identifier has one length.
+    #[garde(skip)]
     pub fleet_id: String,
     /// The event named in the path. Free-form TEXT, never an identifier this
     /// daemon minted.
+    #[garde(length(bytes, min = 1, max = EVENT_ID_MAX_LEN))]
     pub event_id: String,
 }
 
@@ -225,22 +232,30 @@ pub(crate) async fn fleet_list<D: Services>(
 pub(crate) async fn detail<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
-    Path(EventPath { fleet_id, event_id }): Path<EventPath>,
+    Path(path): Path<EventPath>,
 ) -> Result<Response, Refusal> {
-    let fleet = parse_fleet(&fleet_id)?;
-    if event_id.is_empty() || event_id.len() > EVENT_ID_MAX_LEN {
-        return Err(Refusal::malformed(DETAIL_EVENT_ID));
-    }
+    let fleet = parse_fleet(&path.fleet_id)?;
+    let path = bounded_path(path)?;
 
     let found = services
         .events()
-        .one(&owned.workspace, &fleet, &event_id)
+        .one(&owned.workspace, &fleet, &path.event_id)
         .await
         .map_err(Refusal::at(EVENT_DETAIL))?;
 
     let event =
         found.ok_or_else(|| Refusal::coded(error_code::EVENT_NOT_FOUND, DETAIL_EVENT_NOT_FOUND))?;
     Ok(Json(expanded(&event)).into_response())
+}
+
+/// A path whose `event_id` its bound has proved, or the refusal naming it.
+///
+/// The bound is the only one either event path declares, so any report is
+/// that one; the store is never asked for an identifier it could not hold.
+fn bounded_path<P: garde::Validate<Context = ()>>(path: P) -> Result<garde::Valid<P>, Refusal> {
+    garde::Unvalidated::new(path)
+        .validate()
+        .map_err(|_report| Refusal::malformed(DETAIL_EVENT_ID))
 }
 
 /// The fleet the path names, or the refusal a non-identifier earns.

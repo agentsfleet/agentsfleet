@@ -1,0 +1,52 @@
+[package]
+name = "afr_egress"
+description = "The runner's outbound guard: a tool's request admitted against the lease's network policy before any connection, its credentials put in place at send time, and sent where no private address is reached."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# `error_shell!`, the registry codes, the clock a minted token expires against,
+# and the private ranges every resolved address is checked against.
+afd_core.workspace = true
+# The lease's policy: the allowlist, the origin rules, the mintable credentials.
+afd_wire.workspace = true
+# A minted token is a `Secret`; the lease's static credentials are read through
+# `StaticSecrets`; a minted token joins the one masker, `Scrub`.
+afr_secrets.workspace = true
+# `Mint` and `Transport` are `dyn`: production holds the daemon's verb and
+# reqwest, tests hold fakes.
+async-trait.workspace = true
+# The placeholder grammar, `${secrets.NAME.FIELD}`.
+regex.workspace = true
+# The one client every egress tool sends through, and its resolver seam.
+reqwest.workspace = true
+# Origin rules lock fields of a JSON body, read by a visitor that refuses a
+# repeated key.
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+# The resolver's lookup, which the guard checks before reqwest connects.
+tokio = { workspace = true, features = ["net"] }
+tracing.workspace = true
+# A URL's host, read as an address when the model wrote an IP literal.
+url.workspace = true
+
+[features]
+# M-TEST-UTIL. A counting mint and a recording transport, so the tool suites
+# prove what reaches the wire without a socket.
+test-util = ["afd_core/test-util", "tokio/sync"]
+
+[dev-dependencies]
+afd_core = { workspace = true, features = ["test-util"] }
+# `start_paused`, so a request that never hears back runs out its timeout at once.
+tokio = { workspace = true, features = ["macros", "net", "rt", "sync", "test-util", "time"] }

@@ -17,21 +17,12 @@
 //! rule that pins an exact value, and `/pulls` pins three.
 
 use afd_fleet_runtime::config::RepositoryBinding;
+use afd_wire::policy::repository::{
+    self, FIELD_BASE, FIELD_DRAFT, FIELD_HEAD, FIELD_REF, PULLS_PATH, REFS_HEADS, REFS_PATH,
+};
 use afd_wire::policy::{HttpJsonFieldRule, HttpMethod, HttpPathMatch, HttpRequestRule};
 
 use super::Misconfigured;
-
-/// The ref namespace a repair branch is created under.
-const REFS_HEADS: &str = "refs/heads/";
-
-/// The `git/refs` field naming the ref being created.
-const FIELD_REF: &str = "ref";
-/// The `pulls` field naming the branch a Pull Request opens FROM.
-const FIELD_HEAD: &str = "head";
-/// The `pulls` field naming the branch it opens INTO.
-const FIELD_BASE: &str = "base";
-/// The `pulls` field deciding whether it opens as a draft.
-const FIELD_DRAFT: &str = "draft";
 
 /// The endpoints a write binding may POST to with nothing locked.
 ///
@@ -39,12 +30,6 @@ const FIELD_DRAFT: &str = "draft";
 /// at it. What this list bounds is that the OPEN set is exactly these three — a
 /// fourth would be a boundary nobody decided.
 const OPEN_OBJECT_PATHS: [&str; 3] = ["/git/blobs", "/git/trees", "/git/commits"];
-
-/// The endpoint that publishes a branch.
-const REFS_PATH: &str = "/git/refs";
-
-/// The endpoint that opens a Pull Request.
-const PULLS_PATH: &str = "/pulls";
 
 /// The requests a write binding admits, beyond its reads.
 ///
@@ -102,7 +87,7 @@ fn exact_post<'a>(
 ) -> HttpRequestRule<'a> {
     HttpRequestRule {
         method: HttpMethod::Post,
-        path: format!("/repos/{repository}{suffix}").into(),
+        path: repository::path(repository, suffix).into(),
         path_match: HttpPathMatch::Exact,
         json_fields: fields,
     }

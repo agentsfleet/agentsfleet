@@ -70,12 +70,6 @@ use afd_vault::Directory;
 pub mod purge_statements {
     /// See `crate::sql::purge::ALLOW_GATE_PURGE`.
     pub const ALLOW_GATE_PURGE: &str = crate::sql::purge::ALLOW_GATE_PURGE;
-    /// See `crate::sql::purge::ASSUME_MEMORY_ROLE`.
-    pub const ASSUME_MEMORY_ROLE: &str = crate::sql::purge::ASSUME_MEMORY_ROLE;
-    /// See `crate::sql::purge::RELEASE_ROLE`.
-    pub const RELEASE_ROLE: &str = crate::sql::purge::RELEASE_ROLE;
-    /// See `crate::sql::purge::PURGE_MEMORY`.
-    pub const PURGE_MEMORY: &str = crate::sql::purge::PURGE_MEMORY;
     /// See `crate::sql::purge::PURGE_CHILDREN`.
     pub const PURGE_CHILDREN: &[&str] = crate::sql::purge::PURGE_CHILDREN;
 }

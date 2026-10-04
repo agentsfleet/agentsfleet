@@ -4,6 +4,7 @@
     reason = "a test asserts by panicking, and indexes the post it built"
 )]
 
+use garde::Validate as _;
 use serde_json::json;
 
 use super::{
@@ -130,7 +131,34 @@ fn the_answers_round_trip() {
 
     let sent = record(2, "x");
     let typed: ToolCallRecord<'_> = serde_json::from_str(&sent).expect("a record decodes typed");
-    assert_eq!(typed.validate(), Ok(()));
+    typed
+        .validate()
+        .expect("a well-formed record meets every bound");
+}
+
+/// A drop or a skip is logged under the reason it was logged under before
+/// the bounds moved onto the types, so an operator's query still finds it.
+#[test]
+fn test_trace_and_detail_rejections_keep_their_reasons() {
+    use crate::tool_trace::{RawToolTrace, TRACE_MAX_CALLS, TraceRejection};
+
+    let calls: Vec<_> = (1..=TRACE_MAX_CALLS + 1)
+        .map(|number| {
+            json!({"call_id": number.to_string(), "name": "file_read", "arguments": {},
+                   "status": "succeeded", "duration_ms": 1})
+        })
+        .collect();
+    let sent = json!({"calls": calls, "omitted_call_count": 0}).to_string();
+    let raw: RawToolTrace<'_> = serde_json::from_str(&sent).expect("any JSON is carried");
+    assert_eq!(
+        raw.narrow().map(|_kept| ()).map_err(TraceRejection::as_str),
+        Err("too_many_calls")
+    );
+
+    let reason = |sent: &str| narrowed(sent).map_err(DetailRejection::as_str);
+    let over = "a".repeat(DETAIL_FIELD_MAX_BYTES + 1);
+    assert_eq!(reason(&record(1, &over)), Err("too_large"));
+    assert_eq!(reason(&record(0, "x")), Err("malformed"));
 }
 
 #[test]

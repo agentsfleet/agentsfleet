@@ -1,9 +1,9 @@
 import { request } from "./client";
 import { walkList } from "./list-walk";
 import { QUERY_STARTING_AFTER } from "./runners";
-import type { MemoryEntry } from "../types";
+import type { MemoryAccess, MemoryEntry } from "../types";
 
-export type { MemoryEntry };
+export type { MemoryAccess, MemoryEntry };
 
 // The tenant memory surface — the console's dashboard caller of the memory
 // read (the CLI also lists memories). The read is `fleet:read` and pages by
@@ -69,6 +69,22 @@ export async function forgetMemory(
   await request<void>(
     `/v1/workspaces/${workspaceId}/fleets/${fleetId}/memories/${encodeURIComponent(key)}`,
     { method: "DELETE" },
+    token,
+  );
+}
+
+// PATCH …/fleets/{id}/memory-access — the fleet's two shared-memory grants,
+// under `fleet:write`. A grant the change leaves out keeps its value; the reply
+// is both grants as they now stand.
+export async function setMemoryAccess(
+  workspaceId: string,
+  fleetId: string,
+  change: Partial<MemoryAccess>,
+  token: string,
+): Promise<MemoryAccess> {
+  return request<MemoryAccess>(
+    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/memory-access`,
+    { method: "PATCH", body: JSON.stringify(change) },
     token,
   );
 }

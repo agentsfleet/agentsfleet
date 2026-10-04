@@ -1,0 +1,56 @@
+[package]
+name = "afr_tools"
+description = "The runner's tool catalog: every published tool, where it runs, and the handlers this runner hosts."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# `error_shell!`, `error_lifts!` and the registry code a refusal is logged under.
+afd_core.workspace = true
+# A memory entry's shape and its default category.
+afd_wire.workspace = true
+# The run's memory, which the memory tools read and write.
+afr_memory.workspace = true
+# A sandbox-side handler reaches `/workspace` through the lease's executor.
+afr_executor.workspace = true
+# The egress tools send through the lease's guard and the shared transport.
+afr_egress.workspace = true
+# The field a credential's token sits in, which `pushover` reads.
+afr_secrets.workspace = true
+# `web_fetch` reads a page's text, never its markup.
+html2text.workspace = true
+# `Tool` is `dyn`: the catalog holds production handlers, tests hold stubs.
+async-trait.workspace = true
+# A tool's parameters are the JSON Schema of the type its arguments parse into.
+schemars.workspace = true
+serde.workspace = true
+# A call's arguments are JSON.
+serde_json.workspace = true
+thiserror.workspace = true
+# A refused call logs `tool_refused` with its code.
+tracing.workspace = true
+
+[features]
+# M-TEST-UTIL. Stub handlers for any published tool, so the agent's and the
+# supervisor's suites prove routing and admission before every real handler
+# exists, and a lease whose guard admits nothing.
+test-util = ["afr_egress/test-util"]
+
+[dev-dependencies]
+# The counting mint and the recording transport the egress suites send through.
+afr_egress = { workspace = true, features = ["test-util"] }
+afd_core = { workspace = true, features = ["test-util"] }
+bytes.workspace = true
+# The parse error a refused URL carries, built by the refusal-code suite.
+url.workspace = true
+tokio = { workspace = true, features = ["macros", "rt"] }

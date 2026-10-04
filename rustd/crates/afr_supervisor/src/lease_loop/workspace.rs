@@ -1,10 +1,11 @@
-//! The lease's workspace before the turn: the bundle's support files land
-//! there, where the fleet's instructions find them.
+//! The lease's sandbox and its workspace: the sandbox is built, the bundle's
+//! support files land where the fleet's instructions find them, the turn runs,
+//! and the sandbox is destroyed exactly once.
 
-use afd_wire::memory::MemoryDelta;
 use afd_wire::report::FailureClass;
 use afr_executor::Executor;
-use afr_sandbox::Sandbox;
+use afr_memory::Seed;
+use afr_sandbox::{Sandbox, SandboxRequest};
 
 use super::{DETAIL_RENEWAL, LeaseRun, failed};
 use crate::activity::ActivitySink;
@@ -14,16 +15,53 @@ use crate::report::Ending;
 /// What a lease whose support files would not land reports.
 const DETAIL_LANDING: &str =
     "the fleet bundle's support files could not be written to the workspace";
+const DETAIL_SANDBOX: &str = "this host could not build a sandbox for the run";
 const EVENT_LANDING_FAILED: &str = "bundle_landing_failed";
+const EVENT_SANDBOX_REFUSED: &str = "sandbox_refused";
+const EVENT_DESTROY_FAILED: &str = "sandbox_destroy_failed";
 
 impl LeaseRun<'_> {
+    /// Builds the lease's sandbox, runs the turn in it, and destroys it. A
+    /// sandbox that cannot be built ends the lease at startup.
+    pub(super) async fn sandboxed(
+        &self,
+        memory: Seed<'_>,
+        bundle: Option<&Bundle>,
+        sink: ActivitySink,
+    ) -> Ending {
+        let lessee = self.lessee;
+        let request = SandboxRequest {
+            lease_id: self.ids.lease.as_str(),
+            limits: lessee.limits,
+        };
+        let sandbox = match lessee.engine.prepare(request).await {
+            Ok(sandbox) => sandbox,
+            Err(failure) => return self.refuse(&failure, EVENT_SANDBOX_REFUSED, DETAIL_SANDBOX),
+        };
+        let ending = self
+            .in_sandbox(memory, bundle, sandbox.as_ref(), sink)
+            .await;
+        if let Err(failure) = sandbox.destroy().await {
+            let code = failure.code().as_str();
+            let lease_id = self.ids.lease.as_str();
+            let event = EVENT_DESTROY_FAILED;
+            tracing::warn!(
+                error_code = code,
+                lease_id,
+                event,
+                "a sandbox did not tear down cleanly"
+            );
+        }
+        ending
+    }
+
     /// Lands the bundle's support files in the workspace, then runs the turn.
     /// A bundle that will not land is a startup failure before the model is
     /// invoked, as a missing one is; a lease that ends while it lands stops
     /// the landing there, so its worker and sandbox are freed at once.
-    pub(super) async fn in_sandbox(
+    async fn in_sandbox(
         &self,
-        memory: &[MemoryDelta<'_>],
+        memory: Seed<'_>,
         bundle: Option<&Bundle>,
         sandbox: &dyn Sandbox,
         sink: ActivitySink,
@@ -37,7 +75,7 @@ impl LeaseRun<'_> {
         if let Err(failure) = landed {
             return self.refuse(&failure, EVENT_LANDING_FAILED, DETAIL_LANDING);
         }
-        self.drive(memory, sandbox, sink).await
+        self.drive(memory, Some(sandbox.executor()), sink).await
     }
 }
 

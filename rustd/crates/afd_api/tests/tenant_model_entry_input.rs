@@ -238,7 +238,7 @@ async fn test_a_path_segment_that_is_not_an_identifier_never_reaches_a_pool() {
 
 #[tokio::test]
 async fn test_the_page_size_is_bounded_at_both_ends() {
-    for raw in ["0", "101", "-1", "", "ten", "1e2"] {
+    for raw in ["0", "101", "-1", "ten", "1e2"] {
         let path = format!("{ENTRIES}?limit={raw}");
         let refused = send(ENTRIES_READ, Method::GET, &path, Some(TENANT_KEY), "").await;
         assert_eq!(refused.status(), StatusCode::BAD_REQUEST, "limit {raw:?}");

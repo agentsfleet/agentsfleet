@@ -7,11 +7,13 @@ use afd_core::clock::Clock;
 use afd_core::error_code::{self, RUN_BUDGET_EXCEEDED};
 use afd_core::id::Uuid7;
 use afd_core::timing::{MAX_RUNTIME_MS, RENEWAL_TICK_MS};
-use afd_wire::report::FailureClass;
+use afd_wire::report::{FailureClass, RenewRequest};
+use afr_agent::Meter;
 use tokio::time::{Instant, MissedTickBehavior};
 
 use crate::client::ControlPlane;
 use crate::error::Error;
+use crate::report::narrow;
 
 /// How often a held lease is renewed: inside the renewal window, so one missed
 /// tick still lands before the lease lapses (`afd_core::timing`).
@@ -35,22 +37,26 @@ pub(crate) struct Renewal<'a> {
     lease_id: &'a Uuid7,
     expires_at: i64,
     clock: &'a dyn Clock,
+    meter: &'a Meter,
 }
 
 impl<'a> Renewal<'a> {
     /// Renews `lease_id`, granted until `expires_at` (Unix milliseconds), with
-    /// `clock` reading the wall time the daemon's deadlines are written in.
+    /// `clock` reading the wall time the daemon's deadlines are written in and
+    /// `meter` the tokens each renewal reports.
     pub(crate) const fn new(
         plane: &'a ControlPlane,
         lease_id: &'a Uuid7,
         expires_at: i64,
         clock: &'a dyn Clock,
+        meter: &'a Meter,
     ) -> Self {
         Self {
             plane,
             lease_id,
             expires_at,
             clock,
+            meter,
         }
     }
 
@@ -71,7 +77,7 @@ impl<'a> Renewal<'a> {
                 () = tokio::time::sleep_until(deadline) => return self.expired(),
                 renewed = async {
                     ticks.tick().await;
-                    self.plane.renew(self.lease_id).await
+                    self.plane.renew(self.lease_id, &self.spent()).await
                 } => renewed,
             };
             match renewed {
@@ -84,6 +90,17 @@ impl<'a> Renewal<'a> {
                 Err(failure) if failure.is_retryable() => self.kept(&failure),
                 Err(refusal) => return self.terminated(&refusal),
             }
+        }
+    }
+
+    /// The run's tokens so far, as the renewal reports them: cumulative, so
+    /// the daemon meters the difference since the last one.
+    fn spent(&self) -> RenewRequest {
+        let usage = self.meter.read();
+        RenewRequest {
+            input_tokens: narrow(usage.input),
+            cached_input_tokens: narrow(usage.cached_input),
+            output_tokens: narrow(usage.output),
         }
     }
 

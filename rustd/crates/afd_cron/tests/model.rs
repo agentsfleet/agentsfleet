@@ -227,8 +227,12 @@ fn only_an_active_schedule_fires() {
 /// would be rejected at the boundary that is supposed to be its default.
 #[test]
 fn the_default_timezone_is_one_this_daemon_would_accept() {
-    validate::timezone(DEFAULT_TIMEZONE)
-        .expect("the default zone must pass the check every other zone passes");
+    validate::Fields {
+        timezone: Some(DEFAULT_TIMEZONE),
+        ..validate::Fields::default()
+    }
+    .check()
+    .expect("the default zone must pass the check every other zone passes");
 }
 
 /// The ceiling is small enough that a fleet's schedules are a bounded read.

@@ -8,8 +8,7 @@ use super::{
     DETAIL_BUDGET_EXHAUSTED, DETAIL_BUNDLE_FETCH_FAILED, DETAIL_BUNDLE_NOT_FOUND,
     DETAIL_BUNDLE_STORAGE_UNAVAILABLE, DETAIL_DATABASE_ERROR, DETAIL_EVENT_MALFORMED,
     DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED,
-    DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND,
-    DETAIL_MEMORY_AGENTSFLEET_NOT_FOUND, DETAIL_MEMORY_ENTRY_NOT_FOUND, DETAIL_MINT_FAILED,
+    DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND, DETAIL_MINT_FAILED,
     DETAIL_MINT_UNCONFIGURED, DETAIL_RENEWAL_NO_CREDITS, DETAIL_STALE_FENCE,
     DETAIL_VAULT_DATA_INVALID, Error,
 };
@@ -55,16 +54,6 @@ fn lease_and_memory_refusals_have_stable_wire_classification() {
             super::budget_exhausted(),
             error_code::RUN_BUDGET_EXCEEDED,
             DETAIL_BUDGET_EXHAUSTED,
-        ),
-        expected(
-            super::memory_fleet_not_found(),
-            error_code::MEM_AGENTSFLEET_NOT_FOUND,
-            DETAIL_MEMORY_AGENTSFLEET_NOT_FOUND,
-        ),
-        expected(
-            super::memory_entry_not_found(),
-            error_code::MEM_ENTRY_NOT_FOUND,
-            DETAIL_MEMORY_ENTRY_NOT_FOUND,
         ),
     ];
 
@@ -136,7 +125,6 @@ fn credential_and_bundle_refusals_have_stable_wire_classification() {
 #[test]
 fn contextual_errors_retain_context_and_sources() -> Result<(), &'static str> {
     let rejected_detail = "workers must be positive";
-    let memory_detail = "could not search durable memory";
     let mut rejected = expected(
         super::rejected(rejected_detail),
         error_code::INVALID_REQUEST,
@@ -160,13 +148,6 @@ fn contextual_errors_retain_context_and_sources() -> Result<(), &'static str> {
         DETAIL_DATABASE_ERROR,
     );
     malformed.has_source = true;
-
-    let mut unavailable = expected(
-        super::memory_unavailable(memory_detail)(sqlx::Error::Protocol("fixture memory".into())),
-        error_code::MEM_UNAVAILABLE,
-        memory_detail,
-    );
-    unavailable.has_source = true;
 
     let mut storage = expected(
         super::bundle_storage(object_store::Error::Generic {
@@ -195,7 +176,6 @@ fn contextual_errors_retain_context_and_sources() -> Result<(), &'static str> {
         rejected,
         query,
         malformed,
-        unavailable,
         storage,
         expected(
             super::bundle_oversized(8_388_609),
@@ -297,6 +277,34 @@ fn foreign_datastore_queue_identifier_and_config_errors_lift_with_sources()
         assert!(failure.source().is_some());
         assert!(!failure.detail().is_empty());
         assert!(!failure.code().as_str().is_empty());
+    }
+    Ok(())
+}
+
+/// A memory-store failure answers with the code, the sentence and the outage
+/// class `afd_memory` decided; the lease plane restates none of them.
+#[test]
+fn a_memory_store_failure_keeps_the_memory_crates_classification() -> Result<(), &'static str> {
+    let outage = afd_db::error::one_of_each_kind()
+        .into_iter()
+        .find(|(kind, _error)| *kind == "datastore unavailable")
+        .map(|(_kind, error)| error)
+        .ok_or("database test utility has no outage kind")?;
+    let unreadable_writer = afd_core::id::Uuid7::parse("not-an-id")
+        .err()
+        .ok_or("fixture id unexpectedly parsed")?;
+
+    for (memory, unavailable) in [
+        (afd_memory::Error::from(outage), true),
+        (afd_memory::Error::from(unreadable_writer), false),
+    ] {
+        let (code, detail) = (memory.code(), memory.detail());
+        let lifted = Error::from(memory);
+
+        assert_eq!(lifted.code(), code);
+        assert_eq!(lifted.detail(), detail);
+        assert_eq!(lifted.is_datastore_unavailable(), unavailable);
+        assert!(lifted.source().is_some());
     }
     Ok(())
 }

@@ -8,10 +8,10 @@ use std::path::{Path, PathBuf};
 
 use afd_core::env::EnvSource;
 use afd_wire::paths::RUNNER_TOKEN_PREFIX;
+use afr_secrets::Secret;
 use url::Url;
 
 use crate::error::{self, Result};
-use crate::secret::Secret;
 
 /// The daemon's base address.
 pub const ENV_API_URL: &str = "AGENTSFLEET_API_URL";

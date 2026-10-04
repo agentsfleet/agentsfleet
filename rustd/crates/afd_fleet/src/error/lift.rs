@@ -78,6 +78,13 @@ impl From<afd_billing::Error> for Error {
     }
 }
 
+/// The memory store's failure, whose code and sentence `afd_memory` decides.
+impl From<afd_memory::Error> for Error {
+    fn from(source: afd_memory::Error) -> Self {
+        Self::new(ErrorKind::Memory { source })
+    }
+}
+
 /// A closing's row came back in a shape the event store cannot read.
 ///
 /// The store that owns `core.fleet_events` decodes what its own closing

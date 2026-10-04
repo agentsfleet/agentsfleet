@@ -42,12 +42,18 @@ afd_billing.workspace = true
 # The tenant's provider selection: the row the Models page reads and writes.
 afd_credential.workspace = true
 afd_core.workspace = true
+# A garde report answered with the route's own sentence (`Sentences`), and the
+# shared `?limit` bound.
+afd_validate.workspace = true
+const_format.workspace = true
 garde.workspace = true
 afd_events.workspace = true
 afd_fleet.workspace = true
 afd_fleet_lifecycle.workspace = true
 afd_fleet_runtime.workspace = true
 afd_http.workspace = true
+# The memory page's view, boundary and row, read by the memory routes.
+afd_memory.workspace = true
 afd_library.workspace = true
 # The invite email's types: what a send is given and what it comes to.
 afd_mail.workspace = true

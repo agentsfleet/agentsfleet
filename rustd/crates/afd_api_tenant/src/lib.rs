@@ -120,6 +120,7 @@ pub fn fleet_handler_for<D: Services>(verb: FleetRoute) -> Option<MethodRouter<A
         FleetRoute::Grant => Some(delete(handler::grant::revoke::<D>)),
         FleetRoute::Memories => Some(get(handler::fleet::memory::list::<D>)),
         FleetRoute::Memory => Some(delete(handler::fleet::memory::forget::<D>)),
+        FleetRoute::MemoryAccess => Some(patch(handler::fleet::memory_access::set::<D>)),
         FleetRoute::Messages => Some(
             get(handler::fleet::message::thread::<D>)
                 .post(handler::fleet::message_steer::steer::<D>),

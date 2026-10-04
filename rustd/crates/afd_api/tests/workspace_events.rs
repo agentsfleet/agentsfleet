@@ -263,7 +263,7 @@ async fn an_event_id_is_looked_up_up_to_the_length_bound_and_not_past_it() {
     assert_refusal(authorised(&at_bound).await, DATASTORE_DOWN, "256 bytes").await;
 
     let past_it = one_event(OWNED_WORKSPACE, FLEET, &"e".repeat(EVENT_ID_MAX_LEN + 1));
-    let expected = malformed("event_id is required");
+    let expected = malformed("event_id must be 1-256 bytes");
     assert_refusal(authorised(&past_it).await, expected, "257 bytes").await;
 }
 

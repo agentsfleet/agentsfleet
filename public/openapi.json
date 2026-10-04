@@ -290,10 +290,12 @@
           {
             "name": "id",
             "in": "path",
-            "description": "`UUIDv7` of the resource.",
+            "description": "The entry's catalog id: the bundle's name, 1 to 64 bytes.",
             "required": true,
             "schema": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1
             }
           }
         ],
@@ -389,10 +391,12 @@
           {
             "name": "id",
             "in": "path",
-            "description": "`UUIDv7` of the resource.",
+            "description": "The entry's catalog id: the bundle's name, 1 to 64 bytes.",
             "required": true,
             "schema": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1
             }
           },
           {
@@ -4881,7 +4885,7 @@
           "Runners"
         ],
         "summary": "Extend a live lease",
-        "description": "A run buying more time before its lease expires. The body is optional. A body that will not parse is refused rather than read as an empty one. A renewal asserts progress, and an unreadable assertion is not one. ",
+        "description": "A run buying more time before its lease expires. The body is optional and carries the run's cumulative token counts. A body that will not parse is read as asserting no tokens and logged as `renew_body_parse_failed`. The lease is still extended, so a counting mistake never ends a run. ",
         "operationId": "runner_renew_lease",
         "parameters": [
           {
@@ -5259,6 +5263,124 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MemoryCaptureResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/runners/me/memory/{fleet_id}/recall": {
+      "post": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Search what a fleet remembers",
+        "description": "Finds the fleet's entries whose key or content holds the query, ignoring case, key matches first. A fleet granted to read shared memory also gets the workspace's shared entries, each naming the fleet that wrote it. Fenced like a capture: a superseded holder is refused. ",
+        "operationId": "runner_recall_memory",
+        "parameters": [
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryRecallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryRecallResponse"
                 }
               }
             }
@@ -10971,6 +11093,143 @@
         ]
       }
     },
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memory-access": {
+      "patch": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Set who reads and publishes shared memory",
+        "description": "Sets the fleet's two shared-memory grants. `read` lets the fleet see entries other fleets in this workspace published, each naming its writer. `publish` lets the fleet store entries the workspace reads. Both start false. Omit a field to keep its value. The reply is both grants as they now stand, and the same body sent twice gives the same reply. ",
+        "operationId": "patch_fleet_memory_access",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "`UUIDv7` of the workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "`UUIDv7` of the fleet.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryAccessRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryAccess"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one this route does not accept",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such resource, or none this caller may see",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The instance is at its ceiling",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The daemon failed to answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency this route needs is unreachable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages": {
       "get": {
         "tags": [
@@ -14382,7 +14641,9 @@
           "stage_chunk_threshold": {
             "type": "number",
             "format": "float",
-            "description": "Fill fraction at which a stage chunks rather than growing."
+            "description": "Fill fraction at which a stage chunks rather than growing: 0 to 1 of\nthe context window.",
+            "maximum": 1,
+            "minimum": 0
           },
           "tool_window": {
             "type": "integer",
@@ -15097,7 +15358,8 @@
           "budget_used_nanos",
           "pending_approvals",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "memory_access"
         ],
         "properties": {
           "budget_used_nanos": {
@@ -15125,6 +15387,10 @@
           "id": {
             "type": "string",
             "description": "The fleet's identifier."
+          },
+          "memory_access": {
+            "$ref": "#/components/schemas/MemoryAccess",
+            "description": "Whether it reads and publishes the workspace's shared memory."
           },
           "name": {
             "type": "string",
@@ -15993,6 +16259,46 @@
         },
         "additionalProperties": false
       },
+      "MemoryAccess": {
+        "type": "object",
+        "description": "The two shared-memory grants a fleet holds, as the access route answers.",
+        "required": [
+          "read",
+          "publish"
+        ],
+        "properties": {
+          "publish": {
+            "type": "boolean",
+            "description": "Whether the fleet may publish an entry the workspace reads."
+          },
+          "read": {
+            "type": "boolean",
+            "description": "Whether the fleet reads what other fleets in the workspace published."
+          }
+        },
+        "additionalProperties": false
+      },
+      "MemoryAccessRequest": {
+        "type": "object",
+        "description": "`PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}/memory-access`.\n\nPresence-based like [`PatchFleetRequest`]: an absent grant keeps what the\nfleet holds, so a toggle sends only the grant it flips.",
+        "properties": {
+          "publish": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the fleet may publish an entry the workspace reads."
+          },
+          "read": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the fleet reads what other fleets in the workspace published."
+          }
+        },
+        "additionalProperties": false
+      },
       "MemoryCaptureResponse": {
         "type": "object",
         "description": "`POST /v1/runners/me/memory/{fleet_id}` reply — what the write did.",
@@ -16033,6 +16339,10 @@
           "key": {
             "type": "string",
             "description": "Stable key. A repeated key overwrites rather than accumulating."
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/Visibility",
+            "description": "Who reads it; absent means the writing fleet alone. Left off the wire\nat that default, so a delta that shares nothing reads as it always did."
           }
         }
       },
@@ -16043,7 +16353,8 @@
           "key",
           "content",
           "category",
-          "updated_at"
+          "updated_at",
+          "writer_fleet_id"
         ],
         "properties": {
           "category": {
@@ -16062,6 +16373,14 @@
             "type": "integer",
             "format": "int64",
             "description": "Epoch milliseconds, as a JSON NUMBER — never a decimal string."
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/Visibility",
+            "description": "Who reads it: `fleet` for its writer alone, `workspace` when shared."
+          },
+          "writer_fleet_id": {
+            "type": "string",
+            "description": "The fleet that wrote it. Another fleet's identifier marks a shared\nentry this fleet reads and cannot change or forget."
           }
         },
         "additionalProperties": false
@@ -16079,6 +16398,17 @@
               "$ref": "#/components/schemas/MemoryDelta"
             },
             "description": "The window's items."
+          },
+          "publish": {
+            "type": "boolean",
+            "description": "Whether this fleet may store an entry the workspace reads; left off\nthe wire when it may not."
+          },
+          "shared": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SharedMemory"
+            },
+            "description": "What other fleets in the workspace published, newest first. Empty, and\nleft off the wire, for a fleet without the read grant, so its reply is\nthe shape every runner parses."
           }
         }
       },
@@ -16110,6 +16440,62 @@
           }
         },
         "additionalProperties": false
+      },
+      "MemoryRecallRequest": {
+        "type": "object",
+        "description": "`POST /v1/runners/me/memory/{fleet_id}/recall` request.",
+        "required": [
+          "lease_id",
+          "fencing_token",
+          "query",
+          "limit"
+        ],
+        "properties": {
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Monotonic guard; a reclaimed holder is rejected.",
+            "minimum": 0
+          },
+          "lease_id": {
+            "type": "string",
+            "description": "The lease authorizing this read."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "The most entries of each kind to answer with.",
+            "maximum": 50,
+            "minimum": 1
+          },
+          "query": {
+            "type": "string",
+            "description": "Text to find in a key or content, ignoring case; empty matches all."
+          }
+        },
+        "additionalProperties": false
+      },
+      "MemoryRecallResponse": {
+        "type": "object",
+        "description": "`POST /v1/runners/me/memory/{fleet_id}/recall` reply: the fleet's own\nmatches and, for a granted reader, the workspace's shared ones.",
+        "required": [
+          "memory"
+        ],
+        "properties": {
+          "memory": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryDelta"
+            },
+            "description": "The fleet's own entries, key matches first."
+          },
+          "shared": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SharedMemory"
+            },
+            "description": "Other fleets' shared entries, key matches first."
+          }
+        }
       },
       "MintApiKeyRequest": {
         "type": "object",
@@ -18671,6 +19057,45 @@
         },
         "additionalProperties": false
       },
+      "SharedMemory": {
+        "type": "object",
+        "description": "An entry another fleet in the workspace published, and who wrote it.",
+        "required": [
+          "key",
+          "content",
+          "category",
+          "writer_fleet_id",
+          "writer_fleet_name",
+          "updated_at"
+        ],
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "The writer's retention category."
+          },
+          "content": {
+            "type": "string",
+            "description": "What its writer remembered."
+          },
+          "key": {
+            "type": "string",
+            "description": "The key its writer stored it under."
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Epoch milliseconds of its last write."
+          },
+          "writer_fleet_id": {
+            "type": "string",
+            "description": "The fleet that wrote it, and the only fleet that may change it."
+          },
+          "writer_fleet_name": {
+            "type": "string",
+            "description": "That fleet's name in the workspace."
+          }
+        }
+      },
       "SteerAccepted": {
         "type": "object",
         "description": "What a steer returns once agentsfleet accepts the request.\n\nThe response carries the id the run is found under. Filter the live event\ntail on `event_id` to follow the message you just sent.",
@@ -19358,6 +19783,14 @@
             "description": "When it was last changed."
           }
         }
+      },
+      "Visibility": {
+        "type": "string",
+        "description": "Who reads a stored entry: its own fleet, or every fleet in the workspace\ngranted to read shared memory.",
+        "enum": [
+          "fleet",
+          "workspace"
+        ]
       },
       "WaitingInvite": {
         "type": "object",

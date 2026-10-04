@@ -25,6 +25,8 @@ afd_http.workspace = true
 afd_observability.workspace = true
 afd_runner.workspace = true
 afd_wire.workspace = true
+# A recall body is checked against the bounds `afd_wire` declares on it.
+garde.workspace = true
 # The document generator, reachable only under `openapi`. Optional at every
 # member that names it, so the default resolve is unchanged.
 utoipa = { workspace = true, optional = true }

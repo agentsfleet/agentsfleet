@@ -29,12 +29,12 @@ x-agentsfleet:
     - github
     # Same shapes as the responder's (substituted at the request boundary).
     # github is the mintable integration — and for THIS bundle the daemon
-    # mints WRITE, which is why every event of this fleet parks at the
-    # approval gate before a run ever starts.
+    # mints WRITE, under the standing integration grant the install wrote.
+    # `agentsfleet grant delete` withdraws it before the next event runs.
 
   # Repository EGRESS binding — `write` is the entire point of this member,
-  # and the entire cost: declaring it makes every event of this fleet park
-  # behind a human approval card (the gate's repository-write kind), and the
+  # and the entire cost: the standing integration grant authorises every
+  # write this fleet makes, with no per-event human answer, and the
   # minted token carries `contents: write` + `pull_requests: write` for
   # exactly this repository, one hour, and NO `workflows` permission — GitHub
   # itself refuses a push into `.github/workflows/`.
@@ -63,7 +63,8 @@ x-agentsfleet:
 # Wake rule
 
 Wakes when the bound repository delivers a failed `workflow_run`, or when a
-human steers an incident to it directly. Every wake parks behind the
-repository-write approval card first — a human answers before any run starts.
+human steers an incident to it directly. The standing integration grant the
+install wrote authorises the write; deleting that grant stops the next wake
+before any run starts.
 A run that ships ends with exactly one branch and one draft Pull Request; a
 run that cannot fix confidently ends diagnosis-only.

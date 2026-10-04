@@ -12,11 +12,14 @@
 // `tests/` import, since those are separate crates it cannot see. Naming them
 // here is the lint's own documented remedy, and keeps the deny in force for
 // everything else. The first three belong to the end-to-end suite; the runner
-// crates and `tempfile` drive the Rust runner through a lease against it.
+// crates and `tempfile` drive the Rust runner through a lease against it; the
+// egress, provider and tool crates, `futures-util` and the three TLS crates
+// carry the bundle suite's real loop to its HTTPS fakes.
 #[cfg(test)]
 use {
-    afd_wire as _, afr_agent as _, afr_executor as _, afr_sandbox as _, afr_supervisor as _,
-    serde_json as _, sqlx as _, tempfile as _,
+    afd_wire as _, afr_agent as _, afr_egress as _, afr_executor as _, afr_providers as _,
+    afr_sandbox as _, afr_supervisor as _, afr_tools as _, futures_util as _, rcgen as _,
+    rustls as _, serde_json as _, sqlx as _, tempfile as _, tokio_rustls as _,
 };
 
 pub mod banner;

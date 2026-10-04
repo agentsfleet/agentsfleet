@@ -29,6 +29,12 @@
 //! `use super::*` and that path resolves against the directory of the file that
 //! declares it — which aggregation does not move.
 
+#[path = "support/bundle_install.rs"]
+mod bundle_install;
+#[path = "support/bundle_repair.rs"]
+mod bundle_repair;
+#[path = "support/bundle_run.rs"]
+mod bundle_run;
 #[path = "support/e2e.rs"]
 mod e2e;
 #[path = "support/e2e_db.rs"]
@@ -41,6 +47,10 @@ mod e2e_retire;
 mod e2e_seed;
 #[path = "support/e2e_seed_keys.rs"]
 mod e2e_seed_keys;
+#[path = "support/fake_model.rs"]
+mod fake_model;
+#[path = "support/https.rs"]
+mod https;
 #[path = "support/e2e_reads.rs"]
 mod reads;
 #[path = "support/mod.rs"]
@@ -74,6 +84,12 @@ mod integration_runner_e2e;
 mod integration_runner_shapes;
 #[path = "integration_rust_runner.rs"]
 mod integration_rust_runner;
+#[path = "integration_rust_runner_bundles.rs"]
+mod integration_rust_runner_bundles;
+#[path = "integration_rust_runner_repairs.rs"]
+mod integration_rust_runner_repairs;
+#[path = "integration_rust_runner_reviews.rs"]
+mod integration_rust_runner_reviews;
 #[path = "integration_serve.rs"]
 mod integration_serve;
 #[path = "integration_telemetry.rs"]

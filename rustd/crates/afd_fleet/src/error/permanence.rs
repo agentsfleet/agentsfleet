@@ -120,14 +120,11 @@ impl Error {
             | ErrorKind::ConnectorReconnectRequired
             | ErrorKind::ConnectorMintFailed
             | ErrorKind::GrantRequired
-            // The three memory operator refusals cannot reach the admission
-            // pass either: they are raised on the tenant plane, where a person
-            // is reading or forgetting what a fleet already learned, and no
-            // event is ever leased through it. A `true` on any of them would
-            // take a fleet out of service because somebody mistyped a key.
-            | ErrorKind::MemoryFleetNotFound
-            | ErrorKind::MemoryUnavailable { .. }
-            | ErrorKind::MemoryEntryNotFound
+            // A memory failure is never a fleet's document being wrong: it is
+            // a store that would not answer, or a person reading or forgetting
+            // what a fleet already learned. A `true` would take a fleet out of
+            // service because somebody mistyped a key.
+            | ErrorKind::Memory { .. }
             // The login family cannot reach the admission pass at all: it is
             // raised on the device-flow surface, which no event is ever leased
             // through. `false` is the honest answer for a question that never

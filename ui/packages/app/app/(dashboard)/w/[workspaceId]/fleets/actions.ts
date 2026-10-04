@@ -15,10 +15,11 @@ import {
   type FleetStatusUpdate,
 } from "@/lib/api/fleets";
 import { getFleetEvent as apiGetFleetEvent, type EventDetail } from "@/lib/api/events";
-import { forgetMemory as apiForgetMemory } from "@/lib/api/memory";
+import { forgetMemory as apiForgetMemory, setMemoryAccess as apiSetMemoryAccess } from "@/lib/api/memory";
 import type {
   InstallFleetRequest,
   InstallFleetResponse,
+  MemoryAccess,
   OnboardedLibraryEntry,
   OnboardLibraryEntryRequest,
 } from "@/lib/types";
@@ -94,6 +95,17 @@ export async function forgetMemoryAction(
   key: string,
 ): Promise<ActionResult<void>> {
   return withToken((t) => apiForgetMemory(workspaceId, fleetId, key, t));
+}
+
+// Sets the fleet's shared-memory grants. The route takes `fleet:write` and
+// refuses a token without it (403, `UZ-AUTH-022`); the reply is both grants as
+// they now stand, which the panel shows rather than its own guess.
+export async function setMemoryAccessAction(
+  workspaceId: string,
+  fleetId: string,
+  change: Partial<MemoryAccess>,
+): Promise<ActionResult<MemoryAccess>> {
+  return withToken((t) => apiSetMemoryAccess(workspaceId, fleetId, change, t));
 }
 
 export async function installFleetAction(

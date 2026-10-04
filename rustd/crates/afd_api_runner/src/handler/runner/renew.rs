@@ -44,9 +44,10 @@ const EVENT_BODY_INVALID: &str = "renew_body_parse_failed";
     summary = "Extend a live lease",
     description = concat!(
         "A run buying more time before its lease expires. The body is ",
-        "optional. A body that will not parse is refused rather than read ",
-        "as an empty one. A renewal asserts progress, and an unreadable ",
-        "assertion is not one. ",
+        "optional and carries the run's cumulative token counts. A body ",
+        "that will not parse is read as asserting no tokens and logged as ",
+        "`renew_body_parse_failed`. The lease is still extended, so a ",
+        "counting mistake never ends a run. ",
     ),
     request_body = Option<RenewRequest>,
     params(

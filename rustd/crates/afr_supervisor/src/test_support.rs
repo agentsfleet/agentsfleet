@@ -16,9 +16,16 @@ use std::time::Duration;
 use afd_wire::activity::{ActivityFrame, FleetResponseChunk};
 use afd_wire::lease::{BundleManifest, LeasePayload};
 use afd_wire::memory::MemoryDelta;
+use afd_wire::policy::ExecutionPolicy;
 use afd_wire::report::{Completed, ExecutionResult, ResultOutcome};
-use afr_agent::{AgentEngine, AgentRun, RunOutput};
+use afd_wire::tool_detail::ToolCallRecord;
+use afd_wire::tool_trace::{ToolCallStatus, ToolTrace, ToolTraceCall};
+use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_executor::{Executor, ProcessId, Spawn};
+use afr_providers::{Connect as _, Connector, Registry, Usage};
+use afr_tools::Catalog;
+use afr_tools::catalog::{FILE_READ, HTTP_REQUEST, UPDATE_PLAN};
+use afr_tools::stub::Stub;
 use bytes::Bytes;
 use serde::Serialize;
 use tokio::sync::mpsc;
@@ -38,6 +45,10 @@ pub(crate) const LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8057";
 pub(crate) const FLEET_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8058";
 /// The fencing token every fake lease carries.
 pub(crate) const FENCING: u64 = 504;
+/// The id the fake daemon names this runner by.
+pub(crate) const RUNNER_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8059";
+/// The host the fake daemon has this runner on.
+pub(crate) const RUNNER_HOST: &str = "host-7";
 /// When every fake lease is granted until, in Unix milliseconds: thirty
 /// seconds after the fixed clock's zero.
 pub(crate) const GRANTED_UNTIL: i64 = 30_000;
@@ -148,21 +159,33 @@ const LEASE_JSON: &str = include_str!("test_support/lease.json");
 pub(crate) enum Behaviour {
     /// Emits one chunk, drives the executor, and answers with one memory delta.
     Answer,
+    /// Answers as [`Behaviour::Answer`] does, with three calls' records and
+    /// their trace.
+    Calls,
     /// Fails as an engine.
     Break,
     /// Never finishes on its own.
     Hang,
+    /// Spends tokens, then hands back [`Behaviour::Answer`]'s output once
+    /// told to stop, as the real loop does.
+    Stops,
+    /// Spends tokens, then never finishes, so only the meter can bill the run.
+    Spends,
     /// Panics mid-run.
     Panic,
 }
 
-/// An agent engine that counts its runs and how many overlap.
+/// An agent engine that counts its runs and how many overlap, admitting
+/// through a catalog of stubs: `file_read` runs in the sandbox, `update_plan`
+/// and `http_request` in the supervisor, and nothing else is hosted.
 #[derive(Debug)]
 pub(crate) struct FakeAgent {
     pub(crate) behaviour: Behaviour,
     pub(crate) runs: Arc<AtomicUsize>,
     pub(crate) peak: Arc<AtomicUsize>,
     running: AtomicUsize,
+    catalog: Catalog,
+    connect: Connector,
 }
 
 impl FakeAgent {
@@ -172,12 +195,24 @@ impl FakeAgent {
             runs: Arc::default(),
             peak: Arc::default(),
             running: AtomicUsize::new(0),
+            catalog: Catalog::new(vec![
+                Stub::boxed(&FILE_READ),
+                Stub::boxed(&UPDATE_PLAN),
+                Stub::boxed(&HTTP_REQUEST),
+            ]),
+            connect: Connector::new(Registry::builtin().unwrap()).unwrap(),
         }
     }
 }
 
 #[async_trait::async_trait]
 impl AgentEngine for FakeAgent {
+    fn admit(&self, policy: &ExecutionPolicy<'_>) -> afr_agent::Result<Needs> {
+        self.connect.admit(policy)?;
+        let sandbox = self.catalog.select(&policy.tools)?.needs_sandbox();
+        Ok(Needs { sandbox })
+    }
+
     async fn run(&self, run: AgentRun<'_>) -> afr_agent::Result<RunOutput> {
         self.runs.fetch_add(1, Ordering::SeqCst);
         let overlapping = self.running.fetch_add(1, Ordering::SeqCst) + 1;
@@ -191,15 +226,27 @@ impl AgentEngine for FakeAgent {
                 stream_contiguous: false,
                 stream_seq: 0,
             }));
-        exercise(run.executor.unwrap()).await;
+        if let Some(executor) = run.executor {
+            exercise(executor).await;
+        }
         tokio::time::sleep(Duration::from_millis(50)).await;
         self.running.fetch_sub(1, Ordering::SeqCst);
         match self.behaviour {
             Behaviour::Answer => Ok(answer()),
+            Behaviour::Calls => Ok(with_calls(3)),
             Behaviour::Break => {
                 Err(afr_executor::Error::from(std::io::Error::other("engine broke")).into())
             }
             Behaviour::Hang => std::future::pending().await,
+            Behaviour::Stops => {
+                run.meter.add(SPENT);
+                run.stop.cancelled().await;
+                Ok(answer())
+            }
+            Behaviour::Spends => {
+                run.meter.add(SPENT);
+                std::future::pending().await
+            }
             Behaviour::Panic => panic!("the fake engine panics on purpose"),
         }
     }
@@ -216,13 +263,21 @@ async fn exercise(executor: &dyn Executor) {
     assert!(executor.list_dir("/").await.unwrap().entries.is_empty());
 }
 
+/// What [`Behaviour::Stops`] and [`Behaviour::Spends`] spend before the lease
+/// ends them: [`answer`]'s counts.
+pub(crate) const SPENT: Usage = Usage {
+    input: 3,
+    cached_input: 1,
+    output: 4,
+};
+
 /// The result a successful fake run answers with.
 pub(crate) fn answer() -> RunOutput {
     RunOutput {
         result: ExecutionResult {
             outcome: ResultOutcome::Completed(Completed {}),
             content: "done".into(),
-            token_count: 7,
+            token_count: 8,
             wall_seconds: 1,
             memory_peak_bytes: 0,
             cpu_throttled_ms: 0,
@@ -234,6 +289,44 @@ pub(crate) fn answer() -> RunOutput {
             key: "k".into(),
             content: "v".into(),
             category: "core".into(),
+            visibility: afd_wire::memory::Visibility::Fleet,
         }],
+        trace: None,
+        records: Vec::new(),
     }
+}
+
+/// What every call in [`with_calls`] returned.
+const CALL_OUTPUT: &str = "ok";
+
+/// [`answer`], having made `calls` calls: their records and their trace.
+pub(crate) fn with_calls(calls: u64) -> RunOutput {
+    let mut output = answer();
+    output.records = (1..=calls)
+        .map(|number| ToolCallRecord {
+            call_number: number,
+            arguments: serde_json::Map::new(),
+            truncated_arguments: false,
+            output: CALL_OUTPUT.into(),
+            output_line_count: 1,
+            truncated: false,
+        })
+        .collect();
+    output.trace = Some(ToolTrace {
+        calls: (1..=calls)
+            .map(|number| ToolTraceCall {
+                call_id: number.to_string().into(),
+                name: "update_plan".into(),
+                arguments: serde_json::Map::new(),
+                status: ToolCallStatus::Succeeded,
+                output_head: Some(CALL_OUTPUT.into()),
+                output_tail: None,
+                output_line_count: Some(1),
+                exit_code: None,
+                duration_ms: 1,
+            })
+            .collect(),
+        omitted_call_count: 0,
+    });
+    output
 }

@@ -44,7 +44,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Implementing agent — read these first
 
-1. `docs/v2/pending/M210_002_P1_API_INFRA_RUST_RUNNER_AGENT_LOOP_AND_HOSTED_TOOLS.md` §1–§2 — the loop a child reuses, the counter and trace it shares.
+1. `docs/v2/done/M210_002_P1_API_INFRA_RUST_RUNNER_AGENT_LOOP_AND_HOSTED_TOOLS.md` §1–§2 — the loop a child reuses, the counter and trace it shares.
 2. `docs/architecture/runner_execution.md` — §"Tool catalog", §Process model: where the loop lives and what a sandbox is to it.
 3. `rustd/crates/afd_wire/src/activity.rs`, `rustd/crates/afd_wire/src/report.rs` — the frames a child emits and the one report its usage sums into.
 4. https://github.com/openai/codex/tree/2e5fea64eefcaa19f48458b2386011b619f69c70/codex-rs — `core/src/tools/handlers/multi_agents_spec.rs` and `multi_agents.rs` (`spawn_agent`, `wait_agent`, `send_input`, `list_agents`, `interrupt_agent`, their arguments and the wait semantics).

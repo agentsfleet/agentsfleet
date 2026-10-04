@@ -10,7 +10,7 @@ use afd_core::id::Uuid7;
 use afd_wire::activity::ActivityRequest;
 use afd_wire::credentials::MintCredentialRequest;
 use afd_wire::memory::MemoryPushRequest;
-use afd_wire::report::RenewResponse;
+use afd_wire::report::{RenewRequest, RenewResponse};
 use afd_wire::runner::HeartbeatRequest;
 use axum::body::Bytes as AxumBytes;
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
@@ -60,9 +60,13 @@ async fn every_verb_goes_to_its_own_path() {
                 "/v1/runners/me/credentials/mint".to_owned(),
                 true
             ),
+            (Verb::Records, format!("{lease_root}/tool-calls"), true),
         ]
     );
 }
+
+/// A body whose content no fake daemon reads.
+const EMPTY_BODY: &[u8] = b"{}";
 
 /// Sends each verb once, in the order the routes assertion lists them.
 async fn send_every_verb(plane: &super::ControlPlane) {
@@ -80,7 +84,7 @@ async fn send_every_verb(plane: &super::ControlPlane) {
     plane.heartbeat(&heartbeat).await.unwrap();
     plane.lease().await.unwrap();
     assert_eq!(
-        plane.renew(&lease).await.unwrap(),
+        plane.renew(&lease, &RenewRequest::default()).await.unwrap(),
         7,
         "renewal returns its new expiry"
     );
@@ -88,7 +92,7 @@ async fn send_every_verb(plane: &super::ControlPlane) {
         .activity(&lease, &ActivityRequest { frames: Vec::new() })
         .await
         .unwrap();
-    plane.report(Bytes::from_static(b"{}")).await.unwrap();
+    plane.report(Bytes::from_static(EMPTY_BODY)).await.unwrap();
     plane.hydrate(&fleet).await.unwrap();
     plane.capture(&fleet, &push).await.unwrap();
     plane.bundle("ab").await.unwrap();
@@ -98,6 +102,10 @@ async fn send_every_verb(plane: &super::ControlPlane) {
         scope: None,
     };
     plane.mint(&mint).await.unwrap();
+    plane
+        .tool_calls(&lease, Bytes::from_static(EMPTY_BODY))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]

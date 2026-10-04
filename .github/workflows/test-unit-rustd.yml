@@ -1,0 +1,145 @@
+name: test-unit-rustd
+
+# The Rust workspace's lint and unit tests, as four jobs that run at once.
+#
+# It was one job in `test.yml` that ran `make lint-rustd` and then the whole
+# unit suite back to back. Here the unit suite runs as three shards, one runner
+# each, and lint runs beside them, so the lane takes as long as its slowest job
+# instead of their sum. A workflow of its own, as `test-integration-rustd.yml`
+# is, rather than more jobs in `test.yml`.
+#
+# One job per `test-unit-rustd-<shard>` target in make/test-unit.mk, which says
+# what each shard holds. Three named jobs rather than a matrix, so every target
+# this file runs is spelled out and `make check-gh-actions-valid` can resolve
+# it.
+#
+# `test-unit-rustd` is a required check on `main`, so the name stays the lane's
+# verdict: the last job below, green only when every job before it was.
+#
+# Every job restores `rust-cache` under its own key. `rust-cache` replaced a
+# hand-rolled `actions/cache` over `~/.cargo` + `rustd/target`, which never
+# re-saved on a hit and so froze `target/` at whatever the first run under a
+# `Cargo.lock` left, partial trees from failed jobs included. Prior art checked
+# before choosing it, per the operating model: the sibling
+# `e2e-observability-platform` runs the same pinned rustc under GitLab CI and
+# caches `.cargo/registry` + `.cargo/git` while refusing to cache `target/` —
+# "to avoid stale artifact/fingerprint mismatches across pipeline runs"
+# (`.gitlab/ci/quality-gates.yml`). `rust-cache` is that conclusion done
+# properly: it keeps dependency builds, PRUNES the workspace's own artifacts
+# before saving, keys on the lockfile, the rustc version and the enabled
+# features, and sets `CARGO_INCREMENTAL=0`. The sibling's other half, `sccache`
+# as a `RUSTC_WRAPPER`, is declined: it switches it back off for its unit job
+# over proc-macro cache corruption (mozilla/sccache#1924), and a cache that must
+# be disabled per job to stay correct is not one to adopt on that evidence.
+#
+# One key per job, because the four jobs build four different things. Actions
+# caches are immutable, so under one shared key whichever job reached its post
+# step first would save and the others would restore its artifacts, not their
+# own. Only `main` saves (`test.yml` explains why `main` rarely runs).
+#
+# `rust-cache` is pinned to the commit `v2` resolved to, not the tag. A tag is
+# mutable: retargeting it upstream changes the code that runs against this
+# checkout and the build cache, with no diff here to review. The trailing
+# comment is what a reader and Dependabot both bump.
+#
+# No toolchain input anywhere: rustd/rust-toolchain.toml is the single pin, and
+# rustup installs it on first use inside that directory.
+#
+# No coverage measurement here. These jobs run the unit tier only — the
+# integration tests are `#[ignore]`d and need Postgres and Dragonfly, which this
+# workflow deliberately does not have. `test-integration-rustd.yml` measures
+# both tiers in the runs that execute them.
+
+# No push-to-main trigger, by owner decision (Indy, Aug 2026): merges are not
+# squashed, so the merged tree is what the pull request already proved.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-unit-rustd-runner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Show the pinned toolchain
+        run: rustup show && rustc --version && cargo --version
+        working-directory: rustd
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: rustd
+          shared-key: rustd-unit-runner
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Test the runner's crates
+        run: make test-unit-rustd-runner
+
+  test-unit-rustd-daemon:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Show the pinned toolchain
+        run: rustup show && rustc --version && cargo --version
+        working-directory: rustd
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: rustd
+          shared-key: rustd-unit-daemon
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Test agentsfleetd
+        run: make test-unit-rustd-daemon
+
+  test-unit-rustd-daemon-libs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Show the pinned toolchain
+        run: rustup show && rustc --version && cargo --version
+        working-directory: rustd
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: rustd
+          shared-key: rustd-unit-daemon-libs
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Test the daemon's library crates
+        run: make test-unit-rustd-daemon-libs
+
+  lint-rustd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Show the pinned toolchain
+        run: rustup show && rustc --version && cargo --version
+        working-directory: rustd
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: rustd
+          shared-key: rustd-lint
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Lint the Rust workspace
+        run: make lint-rustd
+
+  # The lane's verdict under its required name. `if: !cancelled()` plus an
+  # explicit result check, as `test.yml`'s `test` aggregate does: a needs-only
+  # job is SKIPPED when a dependency fails, and branch protection treats a
+  # skipped required check as passing. Every job above still reports when one
+  # fails, because nothing above depends on another.
+  test-unit-rustd:
+    needs: [test-unit-rustd-runner, test-unit-rustd-daemon, test-unit-rustd-daemon-libs, lint-rustd]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail unless every needed job succeeded
+        run: |
+          results='${{ join(needs.*.result, ' ') }}'
+          echo "needed job results: $results"
+          for result in $results; do
+            [ "$result" = "success" ] || { echo "✗ a needed job finished '$result'"; exit 1; }
+          done
+          echo "Rust lint and every unit shard passed"

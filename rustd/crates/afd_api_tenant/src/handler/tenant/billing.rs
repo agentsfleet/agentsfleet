@@ -11,6 +11,8 @@ use std::sync::Arc;
 
 use afd_billing::tenant::cursor;
 use afd_billing::tenant::{CHARGES_LIMIT_DEFAULT, CHARGES_LIMIT_MAX, ChargeRow, Wallet};
+use afd_core::paging::{Ceiling, QUERY_LIMIT};
+use afd_validate::{Limit, LimitBreak};
 use afd_wire::tenant::{BillingResponse, ChargeSummary, ChargesResponse};
 use axum::Json;
 use axum::extract::{RawQuery, State};
@@ -110,7 +112,7 @@ pub(crate) async fn charges<D: Services>(
 ) -> Result<Response, Refusal> {
     let person = identity.person();
     let query = query.unwrap_or_default();
-    let limit = parse_limit(parameter(&query, "limit"))?;
+    let limit = charges_limit(parameter(&query, QUERY_LIMIT))?;
     // `?cursor=` with an empty value is the first page expressed verbosely,
     // not a malformed token — the Zig handler's rule, kept to the byte.
     let boundary = match parameter(&query, "cursor").filter(|token| !token.is_empty()) {
@@ -188,54 +190,59 @@ fn summary(row: &ChargeRow) -> ChargeSummary<'_> {
     }
 }
 
+/// The charges ledger's bound on `?limit`, the store's own two constants.
+const CHARGES_CEILING: Ceiling = Ceiling::new(CHARGES_LIMIT_MAX, CHARGES_LIMIT_DEFAULT);
+
 /// The page size the caller asked for, or the refusal their spelling earns.
 ///
-/// The port of `parseLimit`: absent means the default, a non-number is one
-/// sentence, and zero or past the cap is the other. `u32::from_str` refuses a
-/// sign the way Zig's unsigned `parseInt` does, so `-1` lands on the
-/// not-numeric sentence on both daemons.
-fn parse_limit(raw: Option<&str>) -> Result<u32, Refusal> {
-    let Some(raw) = raw else {
-        return Ok(CHARGES_LIMIT_DEFAULT);
-    };
-    let limit: u32 = raw
-        .parse()
-        .map_err(|_not_numeric| Refusal::malformed(DETAIL_LIMIT_NOT_NUMERIC))?;
-    if limit == 0 || limit > CHARGES_LIMIT_MAX {
-        return Err(Refusal::malformed(DETAIL_LIMIT_RANGE));
-    }
-    Ok(limit)
+/// The port of `parseLimit`: absent or empty means the default, a non-number
+/// is one sentence, and zero or past the cap is the other. A sign is not a
+/// digit, so `-1` lands on the not-numeric sentence as it does on the Zig
+/// daemon's unsigned `parseInt`.
+fn charges_limit(raw: Option<&str>) -> Result<u32, Refusal> {
+    Limit::parse(raw, CHARGES_CEILING).map_err(|limit_break| {
+        Refusal::malformed(match limit_break {
+            LimitBreak::NotDigits => DETAIL_LIMIT_NOT_NUMERIC,
+            LimitBreak::OutOfRange => DETAIL_LIMIT_RANGE,
+        })
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{CHARGES_LIMIT_DEFAULT, parse_limit};
+    use super::{CHARGES_LIMIT_DEFAULT, CHARGES_LIMIT_MAX, charges_limit};
 
     // `.ok()` throughout, because a `Refusal` is a rendered response and
     // deliberately not `Debug` — which side of the `Result` a spelling lands
-    // on is the whole assertion anyway.
+    // on is the whole assertion anyway. The sentence each break earns is
+    // pinned at the route, in `afd_api/tests/tenant_billing.rs`.
 
     #[test]
-    fn a_missing_limit_is_the_default_page_size() {
-        assert_eq!(parse_limit(None).ok(), Some(CHARGES_LIMIT_DEFAULT));
+    fn a_missing_or_blank_limit_is_the_default_page_size() {
+        assert_eq!(charges_limit(None).ok(), Some(CHARGES_LIMIT_DEFAULT));
+        assert_eq!(charges_limit(Some("")).ok(), Some(CHARGES_LIMIT_DEFAULT));
     }
 
     #[test]
     fn the_boundaries_are_part_of_the_range() {
-        // 1 and 200 pass; 0 and 201 do not. The edges are asserted because
-        // they are exactly where an off-by-one between the two daemons would
-        // live.
-        assert_eq!(parse_limit(Some("1")).ok(), Some(1));
-        assert_eq!(parse_limit(Some("200")).ok(), Some(200));
-        assert!(parse_limit(Some("0")).is_err(), "zero rows is not a page");
-        assert!(parse_limit(Some("201")).is_err(), "past the cap");
+        // 1 and the cap pass; 0 and one past it do not. The edges are
+        // asserted because they are exactly where an off-by-one between the
+        // two daemons would live.
+        let past_cap = (CHARGES_LIMIT_MAX + 1).to_string();
+        assert_eq!(charges_limit(Some("1")).ok(), Some(1));
+        assert_eq!(
+            charges_limit(Some(&CHARGES_LIMIT_MAX.to_string())).ok(),
+            Some(CHARGES_LIMIT_MAX)
+        );
+        assert!(charges_limit(Some("0")).is_err(), "zero rows is not a page");
+        assert!(charges_limit(Some(&past_cap)).is_err(), "past the cap");
     }
 
     #[test]
     fn everything_that_is_not_a_count_is_refused() {
-        for wrong in ["lots", "-1", "1.5", ""] {
+        for wrong in ["lots", "-1", "1.5"] {
             assert!(
-                parse_limit(Some(wrong)).is_err(),
+                charges_limit(Some(wrong)).is_err(),
                 "{wrong:?} is not a page size"
             );
         }

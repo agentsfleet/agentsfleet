@@ -27,12 +27,44 @@ use std::borrow::Cow;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_core::paging::Ceiling;
 use afd_events::{
     Cursor, DEFAULT_LIMIT, Filter, MAX_LIMIT, glob_to_like, parse_since, prefix_to_like,
 };
+use afd_validate::{Limit, Sentences};
+use const_format::concatcp;
+use garde::Validate as _;
 
 use super::DETAIL_FLEET_ID;
+use crate::handler::paging::store_ceiling;
 use crate::handler::{Refusal, decoded_parameter, parameter};
+
+/// The listings' bound on `?limit`: the event store's own page constants.
+const CEILING: Ceiling = store_ceiling(MAX_LIMIT, DEFAULT_LIMIT);
+
+/// The longest actor glob or prefix a filter may carry, decoded.
+///
+/// An actor is `webhook:github` or `user:<id>`, tens of bytes; the bound is
+/// generous for that and short enough that a filter cannot be a payload. It
+/// becomes a `LIKE` pattern, so an unbounded one is work the statement does
+/// per row for a pattern no stored actor could match.
+const MAX_ACTOR_FILTER_BYTES: usize = 256;
+
+/// The refusal an over-long `actor` glob earns.
+const DETAIL_ACTOR_BOUNDS: &str = concatcp!("actor", ACTOR_FILTER_BOUND);
+
+/// The refusal an over-long `actor_prefix` earns.
+const DETAIL_ACTOR_PREFIX_BOUNDS: &str = concatcp!("actor_prefix", ACTOR_FILTER_BOUND);
+
+/// The bound both actor filters share, as the tail of their two sentences.
+const ACTOR_FILTER_BOUND: &str = concatcp!(" must be at most ", MAX_ACTOR_FILTER_BYTES, " bytes");
+
+/// Which filter's bound a report names, keyed by the field, which is spelled
+/// as its parameter. Both cannot be present together, so one entry decides.
+const FILTER_BOUNDS: Sentences = Sentences::new(
+    &[(QUERY_ACTOR_PREFIX, DETAIL_ACTOR_PREFIX_BOUNDS)],
+    DETAIL_ACTOR_BOUNDS,
+);
 
 /// The parameter names, spelled once each (RULE UFS).
 const QUERY_LIMIT: &str = "limit";
@@ -124,13 +156,21 @@ impl WorkspaceListing {
 /// A separate step from resolving them because the exclusions are about which
 /// parameters are PRESENT — a check that cannot be made one parameter at a
 /// time, and that both listings make identically.
-#[derive(Debug)]
+#[derive(Debug, garde::Validate)]
 struct Params<'q> {
+    #[garde(skip)]
     limit: i64,
+    #[garde(skip)]
     cursor: Option<&'q str>,
+    #[garde(inner(length(bytes, max = MAX_ACTOR_FILTER_BYTES)))]
     actor: Option<Cow<'q, str>>,
+    #[garde(inner(length(bytes, max = MAX_ACTOR_FILTER_BYTES)))]
     actor_prefix: Option<Cow<'q, str>>,
+    // Parsed rather than bounded: `parse_since` reads a fixed grammar.
+    #[garde(skip)]
     since: Option<Cow<'q, str>>,
+    // Parsed rather than bounded: an identifier has one length.
+    #[garde(skip)]
     fleet_id: Option<&'q str>,
 }
 
@@ -149,7 +189,7 @@ impl<'q> Params<'q> {
     /// so an encoder cannot change them and reading them raw is honest.
     fn read(query: &'q str) -> Result<Self, Refusal> {
         let params = Self {
-            limit: parse_limit(parameter(query, QUERY_LIMIT))?,
+            limit: requested_limit(parameter(query, QUERY_LIMIT))?,
             cursor: parameter(query, QUERY_CURSOR),
             actor: decoded(query, QUERY_ACTOR)?,
             actor_prefix: decoded(query, QUERY_ACTOR_PREFIX)?,
@@ -162,6 +202,9 @@ impl<'q> Params<'q> {
         if present(query, QUERY_ACTOR) && present(query, QUERY_ACTOR_PREFIX) {
             return Err(Refusal::malformed(DETAIL_ACTOR_AMBIGUOUS));
         }
+        params
+            .validate()
+            .map_err(|report| Refusal::malformed(FILTER_BOUNDS.pick(&report)))?;
         Ok(params)
     }
 
@@ -225,15 +268,8 @@ fn present(query: &str, name: &str) -> bool {
 ///
 /// Zero is refused rather than clamped: a caller asking for no rows has made a
 /// mistake, and answering with an empty page would look like an empty history.
-fn parse_limit(raw: Option<&str>) -> Result<i64, Refusal> {
-    let Some(raw) = raw else {
-        return Ok(DEFAULT_LIMIT);
-    };
-    let requested: i64 = raw
-        .parse()
-        .map_err(|_digits| Refusal::malformed(DETAIL_LIMIT))?;
-    if !(1..=MAX_LIMIT).contains(&requested) {
-        return Err(Refusal::malformed(DETAIL_LIMIT));
-    }
-    Ok(requested)
+fn requested_limit(raw: Option<&str>) -> Result<i64, Refusal> {
+    Limit::parse(raw, CEILING)
+        .map(i64::from)
+        .map_err(|_break| Refusal::malformed(DETAIL_LIMIT))
 }

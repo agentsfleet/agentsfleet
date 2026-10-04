@@ -16,18 +16,19 @@
 //!
 //! # Statements, then the purge itself
 //!
-//! The first two tests drive the crate's own constants under `SET ROLE
-//! api_runtime`: one that the purge's statements all run, one that memory still
-//! refuses before the role is taken. Both prove the mechanism, and neither
-//! proves `Fleets::purge` uses it — they order the statements themselves, so a
-//! purge that dropped the role change would leave them green. That was true of
-//! this file when it was written, and it is the same shape of gap that let the
-//! bug ship.
+//! The purge runs no statement on memory: `fk_memory_entries_fleet_id` cascades
+//! from the fleet row (schema/820). The first two tests drive what it does run
+//! under `SET ROLE api_runtime`: one that its `core` deletes all run, one that
+//! memory refuses `api_runtime` outright, which is why the purge leaves memory
+//! to the cascade. Neither proves `Fleets::purge` works, because each runs the
+//! statements itself.
 //!
 //! So the last test calls the real `purge` through a pool authenticating as a
-//! login role holding only `api_runtime`. `api_runtime` is `NOLOGIN` and cannot
-//! be connected as, and `purge` acquires its own connection and cannot be handed
-//! one — a role of the test's own making is what closes that.
+//! login role holding only `api_runtime`, over a fleet holding a row in every
+//! child table, memory included, and counts each after. `api_runtime` is
+//! `NOLOGIN` and cannot be connected as, and `purge` acquires its own connection
+//! and cannot be handed one — a role of the test's own making is what closes
+//! that.
 //!
 //! `#[ignore]`d; `make test-integration-rustd` runs it.
 #![cfg(feature = "test-util")]
@@ -42,10 +43,13 @@ use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
+use afd_fleet_lifecycle::Fleets;
 use afd_fleet_lifecycle::purge_statements as statements;
-use afd_fleet_lifecycle::{Fleets, Patch, Requested};
 
 use crate::integration_patch_visibility::installed;
+use crate::integration_purge_ledger_identity::{
+    SEEDED, kill, rows_for, seed_everything_the_purge_destroys,
+};
 use crate::support::{Lane, mint};
 
 /// A login role holding `api_runtime` and nothing else, created by the test.
@@ -60,14 +64,8 @@ const PROBE: &str = "purge_probe";
 /// formed, and borrowing the lane's would mean widening its module for no gain.
 const PROBE_KEK: [u8; 32] = [0x4d; 32];
 
-/// A fleet id that matches nothing, so every statement below is a no-op.
-///
-/// The assertion is about the REFUSAL, not about rows — a delete entitled to run
-/// answers `DELETE 0` just as happily as `DELETE 3`, and seeding rows would only
-/// add a way for the test to fail for a reason it is not about.
-fn absent_fleet() -> String {
-    mint().as_str().to_owned()
-}
+/// A delete on memory, which `api_runtime` must be refused outright.
+const MEMORY_DELETE: &str = "DELETE FROM memory.memory_entries WHERE fleet_id = $1::uuid";
 
 /// Takes the runtime role, so what follows meets the grants a request meets.
 async fn as_api_runtime(connection: &mut sqlx::PgConnection) {
@@ -79,13 +77,15 @@ async fn as_api_runtime(connection: &mut sqlx::PgConnection) {
 
 /// The regression: the purge's own statements, in order, under the real role.
 ///
-/// Fails on the tree as it stood before schema/900 — at the memory delete for
-/// want of the role, and then at both `core` deletes for want of the grant.
+/// Fails on the tree as it stood before schema/900, at both `core` deletes for
+/// want of the grant.
 #[tokio::test]
 #[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn the_purge_statements_all_run_as_api_runtime() {
     let lane = Lane::create().await;
-    let fleet = absent_fleet();
+    // A fresh id matches nothing: the assertion is about the refusal, and a
+    // delete entitled to run answers `DELETE 0` as happily as `DELETE 3`.
+    let fleet = mint();
     let mut connection = lane.connection().await;
 
     sqlx::query("BEGIN")
@@ -99,25 +99,9 @@ async fn the_purge_statements_all_run_as_api_runtime() {
         .await
         .expect("api_runtime must be able to open the append-only guard");
 
-    sqlx::query(statements::ASSUME_MEMORY_ROLE)
-        .execute(&mut *connection)
-        .await
-        .expect("api_runtime must be able to assume memory_runtime");
-
-    sqlx::query(statements::PURGE_MEMORY)
-        .bind(&fleet)
-        .execute(&mut *connection)
-        .await
-        .expect("the memory delete must run once the role is held");
-
-    sqlx::query(statements::RELEASE_ROLE)
-        .execute(&mut *connection)
-        .await
-        .expect("the memory role must be releasable");
-
     for &statement in statements::PURGE_CHILDREN {
         let outcome = sqlx::query(statement)
-            .bind(&fleet)
+            .bind(fleet.as_str())
             .execute(&mut *connection)
             .await;
         assert!(
@@ -137,13 +121,13 @@ async fn the_purge_statements_all_run_as_api_runtime() {
 /// The fence itself, asserted in the refusing direction.
 ///
 /// Without this, a future `GRANT ... TO api_runtime` — or a login role handed
-/// `pg_write_all_data`, which is exactly what hid the bug above — would make the
-/// test before this one pass for the wrong reason and take the boundary with it.
+/// `pg_write_all_data`, which is exactly what hid the bug above — would let the
+/// last test pass without proving the cascade crosses the fence.
 #[tokio::test]
 #[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn memory_stays_out_of_reach_until_the_role_is_assumed() {
     let lane = Lane::create().await;
-    let fleet = absent_fleet();
+    let fleet = mint();
     let mut connection = lane.connection().await;
 
     sqlx::query("BEGIN")
@@ -152,8 +136,8 @@ async fn memory_stays_out_of_reach_until_the_role_is_assumed() {
         .expect("the probe transaction must open");
     as_api_runtime(&mut connection).await;
 
-    let refused = sqlx::query(statements::PURGE_MEMORY)
-        .bind(&fleet)
+    let refused = sqlx::query(MEMORY_DELETE)
+        .bind(fleet.as_str())
         .execute(&mut *connection)
         .await;
 
@@ -235,27 +219,18 @@ async fn restricted(lane: &Lane) -> Fleets {
 /// The regression, bound to the code that shipped it.
 ///
 /// The two tests above prove the statements and the fence; neither proves that
-/// `Fleets::purge` USES them, because both drive the constants themselves. This
-/// one calls the real purge through a pool that holds only `api_runtime`, so a
-/// purge that skipped the role — or a schema that withheld either DELETE — fails
-/// here and nowhere else.
+/// `Fleets::purge` empties every child, because both drive the statements
+/// themselves. This one calls the real purge through a pool that holds only
+/// `api_runtime`, over a row in every child table, so a schema that withheld
+/// either DELETE, or a memory cascade the fence stopped, fails here and nowhere
+/// else.
 #[tokio::test]
 #[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn the_purge_itself_runs_as_api_runtime() {
     let lane = Lane::create().await;
     let fleet = installed(&lane).await;
-    lane.fleets
-        .patch(
-            &lane.workspace,
-            &fleet.id,
-            &Patch {
-                status: Some(Requested::Killed),
-                ..Patch::default()
-            },
-            Lane::now(),
-        )
-        .await
-        .expect("active to killed is legal");
+    seed_everything_the_purge_destroys(&lane, &fleet.id).await;
+    kill(&lane, &fleet.id).await;
 
     restricted(&lane)
         .await
@@ -263,10 +238,17 @@ async fn the_purge_itself_runs_as_api_runtime() {
         .await
         .expect(
             "a pool holding only api_runtime must be able to purge: the memory \
-             rows need SET ROLE, and the gate and session rows need the DELETE \
-             grants schema/900 makes",
+             rows go by the fleet row's cascade, and the gate and session rows \
+             need the DELETE grants schema/900 makes",
         );
 
     assert_eq!(lane.fleet_count(&lane.workspace).await, 0);
+    for (table, _seeded) in SEEDED {
+        assert_eq!(
+            rows_for(&lane, table, &fleet.id).await,
+            0,
+            "a purge as api_runtime left rows in {table}"
+        );
+    }
     lane.cleanup().await;
 }

@@ -66,10 +66,7 @@ pub struct SupportFile {
     #[garde(custom(crate::validate::safe_path))]
     pub path: String,
     /// Untrusted file bytes.
-    #[garde(
-        length(max = MAX_SUPPORT_FILE_LEN),
-        custom(crate::validate::no_credential_bytes)
-    )]
+    #[garde(length(max = MAX_SUPPORT_FILE_LEN))]
     pub content: Vec<u8>,
 }
 
@@ -83,7 +80,7 @@ pub struct SupportFile {
 /// could not answer either. `crate::validate` maps each rule back to the
 /// [`crate::InvalidBundle`] variant that classification rides on.
 #[derive(Debug, Clone, PartialEq, Eq, Validate)]
-#[garde(custom(crate::validate::aggregate))]
+#[garde(custom(crate::validate::support_total))]
 pub struct ImportBody {
     /// Source category persisted as metadata.
     #[garde(skip)]
@@ -129,18 +126,37 @@ pub struct SupportManifest {
     pub sha256: String,
 }
 
+/// Most credentials a bundle may declare.
+const MAX_CREDENTIALS: usize = 32;
+/// Most tools a bundle may declare.
+const MAX_TOOLS: usize = 64;
+/// Most outbound hosts a bundle may declare.
+const MAX_HOSTS: usize = 64;
+/// Longest declared credential or tool name.
+const MAX_NAME_LEN: usize = 200;
+/// Longest declared host: a DNS name's own ceiling.
+const MAX_HOST_LEN: usize = 253;
+
 /// Names a workspace must satisfy before installing the bundle.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+///
+/// Bounded tighter than the trigger document that declared them, because these
+/// are stored on the library row and read back by every install.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Validate)]
 pub struct Requirements {
     /// Credential names only, never values.
+    #[garde(length(max = MAX_CREDENTIALS), inner(length(bytes, max = MAX_NAME_LEN)))]
     pub credentials: Vec<String>,
     /// Tool identifiers requested by the trigger.
+    #[garde(length(max = MAX_TOOLS), inner(length(bytes, max = MAX_NAME_LEN)))]
     pub tools: Vec<String>,
     /// Declared outbound-network hosts.
+    #[garde(length(max = MAX_HOSTS), inner(length(bytes, max = MAX_HOST_LEN)))]
     pub network_hosts: Vec<String>,
-    /// Validated support paths.
+    /// Validated support paths; bounded on [`ImportBody`] already.
+    #[garde(skip)]
     pub support_files: Vec<String>,
     /// Whether this bundle supplied a trigger document.
+    #[garde(skip)]
     pub trigger_present: bool,
 }
 

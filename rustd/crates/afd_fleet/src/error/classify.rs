@@ -20,8 +20,7 @@ use super::{
     DETAIL_CONNECTOR_RECONNECT, DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE,
     DETAIL_EVENT_MALFORMED, DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED,
     DETAIL_INTEGRATION_NOT_CONNECTED, DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME,
-    DETAIL_LEASE_NOT_FOUND, DETAIL_MEMORY_AGENTSFLEET_NOT_FOUND, DETAIL_MEMORY_ENTRY_NOT_FOUND,
-    DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED, DETAIL_QUEUE_UNAVAILABLE,
+    DETAIL_LEASE_NOT_FOUND, DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED, DETAIL_QUEUE_UNAVAILABLE,
     DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS, DETAIL_STALE_FENCE,
     DETAIL_VAULT_DATA_INVALID, Error, ErrorKind,
 };
@@ -39,6 +38,7 @@ impl Error {
         match self.inner.kind {
             ErrorKind::Datastore { .. } => true,
             ErrorKind::Admission { ref source } => source.is_datastore_unavailable(),
+            ErrorKind::Memory { ref source } => source.is_datastore_unavailable(),
             _ => false,
         }
     }
@@ -171,16 +171,8 @@ impl Error {
             // Three refusals, three codes, because the remedies differ: wait
             // for a human, re-raise the card against the reach the fleet now
             // declares, or answer a new approval.
-            // The memory operator surface's three, each with its own code
-            // because the remedies are three different things: name a fleet
-            // this workspace holds, come back when the store is up, or check
-            // the key. The unavailable one is deliberately NOT the
-            // `INTERNAL_DB_QUERY` a refused statement answers everywhere else
-            // — memory is the datastore this product degrades around, and a
-            // 503 is what tells a client the fleet is still running.
-            ErrorKind::MemoryFleetNotFound => error_code::MEM_AGENTSFLEET_NOT_FOUND,
-            ErrorKind::MemoryUnavailable { .. } => error_code::MEM_UNAVAILABLE,
-            ErrorKind::MemoryEntryNotFound => error_code::MEM_ENTRY_NOT_FOUND,
+            // Delegated: `afd_memory` owns the memory codes and decides them.
+            ErrorKind::Memory { ref source } => source.code(),
             // The login family. Each field answers its own code because the
             // command line renders a different prompt for each — a bad key is
             // the client's own bug, a bad code is the person's typing.
@@ -202,14 +194,12 @@ impl Error {
     #[must_use]
     pub fn detail(&self) -> &'static str {
         match self.inner.kind {
-            // The two kinds whose sentence the CALL SITE chose, and the only
-            // two: a rejection names the field it refused, and four operations
-            // answer `UZ-MEM-003` where which of them a 503 came from is the
-            // only fact its reader can act on (see
-            // [`super::report::memory_unavailable`]). Every other kind's
-            // sentence is decided here, so no handler can describe one failure
-            // two ways.
-            ErrorKind::Rejected { detail } | ErrorKind::MemoryUnavailable { detail, .. } => detail,
+            // The one kind whose sentence the CALL SITE chose: a rejection
+            // names the field it refused. Every other kind's sentence is
+            // decided here or by the crate it delegates to, so no handler can
+            // describe one failure two ways.
+            ErrorKind::Rejected { detail } => detail,
+            ErrorKind::Memory { ref source } => source.detail(),
             ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
             // A corrupt sequence joins the two row faults: all three are the
             // database holding something this daemon cannot use, and a caller
@@ -258,8 +248,6 @@ impl Error {
             ErrorKind::ConnectorReconnectRequired => DETAIL_CONNECTOR_RECONNECT,
             ErrorKind::ConnectorMintFailed => DETAIL_CONNECTOR_MINT_FAILED,
             ErrorKind::GrantRequired => DETAIL_GRANT_REQUIRED,
-            ErrorKind::MemoryFleetNotFound => DETAIL_MEMORY_AGENTSFLEET_NOT_FOUND,
-            ErrorKind::MemoryEntryNotFound => DETAIL_MEMORY_ENTRY_NOT_FOUND,
         }
     }
 }

@@ -21,7 +21,18 @@
 //! Those last two are the crate's bugs. The guard holds them until they are
 //! fixed upstream, and each is a check ON TOP of a successful parse — none of
 //! them re-implements one.
+//!
+//! # The bounds come first, and the type says so
+//!
+//! Each field is bounded before anything reads it: the parser's work and the
+//! timezone lookup's filesystem read are both keyed on caller text. garde runs
+//! every rule on a field with no short-circuit, so a parser declared beside a
+//! bound would still be handed an oversized value. The bounds therefore live on
+//! [`Fields`], and the three readers take `&garde::Valid<Fields>` — a value only
+//! a passed validation constructs.
 
+use afd_validate::PathTable;
+use garde::{Unvalidated, Valid};
 use jiff::tz::TimeZone;
 use philiprehberger_cron_parser::CronExpr;
 
@@ -39,17 +50,70 @@ pub const MAX_MESSAGE_LEN: usize = 8192;
 
 /// Why an input was refused.
 ///
-/// Three variants rather than one, because a person fixing a schedule needs to
-/// know WHICH field they got wrong — and the route renders each to its own
-/// sentence.
+/// One variant per repair, because a person fixing a schedule needs to know
+/// WHICH field they got wrong and what to do about it — and the route renders
+/// each to its own sentence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Invalid {
     /// The expression is not one this daemon will register.
     Cron,
     /// The zone is not a name this daemon will pass upstream.
     Timezone,
-    /// The message is absent, too long, or nothing but whitespace.
+    /// The message is absent or nothing but whitespace.
     Message,
+    /// The message is longer than [`MAX_MESSAGE_LEN`].
+    MessageTooLong,
+}
+
+/// A schedule's three authored fields, with the bound each must hold.
+///
+/// Every field is optional because a patch names only what it changes; an
+/// absent field is neither bounded nor read.
+#[derive(Debug, Clone, Copy, Default, garde::Validate)]
+pub struct Fields<'a> {
+    /// The expression it fires on.
+    #[garde(length(bytes, min = 1, max = MAX_CRON_LEN))]
+    pub expression: Option<&'a str>,
+    /// The zone that expression is read in.
+    #[garde(length(bytes, min = 1, max = MAX_TIMEZONE_LEN))]
+    pub timezone: Option<&'a str>,
+    /// What the fleet is asked to do. Only the cap is a bound: an empty or
+    /// blank message is [`message`]'s refusal, a different repair.
+    #[garde(length(bytes, max = MAX_MESSAGE_LEN))]
+    pub message: Option<&'a str>,
+}
+
+/// The path garde reports an expression break under.
+const PATH_EXPRESSION: &str = "expression";
+/// The path garde reports a zone break under.
+const PATH_TIMEZONE: &str = "timezone";
+/// The path garde reports a message break under.
+const PATH_MESSAGE: &str = "message";
+
+/// The refusal each bound answers, in the order the fields are read.
+const BOUNDS: PathTable<Invalid> = PathTable::new(
+    &[
+        (PATH_EXPRESSION, Invalid::Cron),
+        (PATH_TIMEZONE, Invalid::Timezone),
+        (PATH_MESSAGE, Invalid::MessageTooLong),
+    ],
+    Invalid::Cron,
+);
+
+impl Fields<'_> {
+    /// Proves every bound, then reads each field the schedule carries.
+    ///
+    /// # Errors
+    /// The [`Invalid`] of the first field, in declaration order, that breaks
+    /// its bound or that its reader refuses.
+    pub fn check(self) -> Result<(), Invalid> {
+        let proved = Unvalidated::new(self)
+            .validate()
+            .map_err(|report| BOUNDS.pick(&report))?;
+        cron(&proved)?;
+        timezone(&proved)?;
+        message(&proved)
+    }
 }
 
 /// The span of each field, in the order an expression writes them.
@@ -74,15 +138,16 @@ const RANGE_SEPARATOR: char = '-';
 /// The character a step is introduced by.
 const STEP_SEPARATOR: char = '/';
 
-/// Whether `expression` is one this daemon will register.
+/// Whether the expression, if the fields carry one, is one this daemon will
+/// register.
 ///
 /// # Errors
 /// [`Invalid::Cron`] for an expression the parser refuses, and for the three it
 /// accepts that this daemon does not — see the module note.
-pub fn cron(expression: &str) -> Result<(), Invalid> {
-    if expression.is_empty() || expression.len() > MAX_CRON_LEN {
-        return Err(Invalid::Cron);
-    }
+pub fn cron(fields: &Valid<Fields<'_>>) -> Result<(), Invalid> {
+    let Some(expression) = fields.expression else {
+        return Ok(());
+    };
 
     // The parser first: everything it refuses is refused, and the guard below
     // only ever narrows what it accepted.
@@ -92,38 +157,39 @@ pub fn cron(expression: &str) -> Result<(), Invalid> {
         return Err(Invalid::Cron);
     }
 
-    let fields = expression.split_whitespace();
-    for (field, span) in fields.zip(FIELD_SPANS) {
-        if !numeric_only(field) {
-            return Err(Invalid::Cron);
-        }
-        for item in field.split(LIST_SEPARATOR) {
-            if !step_within_span(item, span) || !range_is_ordered(item) {
-                return Err(Invalid::Cron);
-            }
-        }
+    let admissible = expression
+        .split_whitespace()
+        .zip(FIELD_SPANS)
+        .all(|(field, span)| {
+            numeric_only(field)
+                && field
+                    .split(LIST_SEPARATOR)
+                    .all(|item| step_within_span(item, span) && range_is_ordered(item))
+        });
+    if admissible {
+        Ok(())
+    } else {
+        Err(Invalid::Cron)
     }
-    Ok(())
 }
 
-/// Whether `value` names a zone the system timezone database knows.
+/// Whether the zone, if the fields carry one, names a zone the system
+/// timezone database knows.
 ///
 /// Resolved rather than pattern-matched. A shape check accepts `Foo/Bar` — it
 /// has the right characters and the right separator — and this daemon would
 /// then store it, register it upstream, and learn it was wrong from a vendor
 /// error nobody reads. `TimeZone::get` asks the database that actually defines
-/// the answer.
-///
-/// The length bound stays in front of it, because the lookup is a filesystem
-/// read keyed on the name and an unbounded one is an unbounded path.
+/// the answer. The lookup is a filesystem read keyed on the name, which is why
+/// it takes a proved value: [`MAX_TIMEZONE_LEN`] held before it runs.
 ///
 /// # Errors
-/// [`Invalid::Timezone`] for an empty name, one over [`MAX_TIMEZONE_LEN`], or
-/// one the timezone database does not define.
-pub fn timezone(value: &str) -> Result<(), Invalid> {
-    if value.is_empty() || value.len() > MAX_TIMEZONE_LEN {
-        return Err(Invalid::Timezone);
-    }
+/// [`Invalid::Timezone`] for a name carrying a traversal or one the timezone
+/// database does not define.
+pub fn timezone(fields: &Valid<Fields<'_>>) -> Result<(), Invalid> {
+    let Some(value) = fields.timezone else {
+        return Ok(());
+    };
     // A name carrying a separator the database would resolve through the
     // filesystem is refused before the lookup: `..` in a zone name is a path
     // traversal into whatever else that directory holds.
@@ -135,20 +201,17 @@ pub fn timezone(value: &str) -> Result<(), Invalid> {
         .map_err(|_unknown| Invalid::Timezone)
 }
 
-/// Whether `value` is a message worth waking a fleet with.
+/// Whether the message, if the fields carry one, is worth waking a fleet with.
 ///
 /// # Errors
-/// [`Invalid::Message`] for an empty message, one over [`MAX_MESSAGE_LEN`], or
-/// one that is nothing but whitespace — the last because a fleet woken with
-/// nothing to do spends a model to decide it has nothing to do.
-pub fn message(value: &str) -> Result<(), Invalid> {
-    if value.is_empty() || value.len() > MAX_MESSAGE_LEN {
-        return Err(Invalid::Message);
+/// [`Invalid::Message`] for an empty message or one that is nothing but
+/// whitespace — a fleet woken with nothing to do spends a model to decide it
+/// has nothing to do.
+pub fn message(fields: &Valid<Fields<'_>>) -> Result<(), Invalid> {
+    match fields.message {
+        Some(value) if value.chars().all(char::is_whitespace) => Err(Invalid::Message),
+        _absent_or_worded => Ok(()),
     }
-    if value.chars().all(char::is_whitespace) {
-        return Err(Invalid::Message);
-    }
-    Ok(())
 }
 
 /// Whether a field carries only digits and the punctuation cron gives meaning.

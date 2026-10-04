@@ -50,6 +50,15 @@ const POSTURE: &str = "platform";
 /// Any model name; nothing here prices it.
 const MODEL: &str = "claude-opus-5";
 
+/// Every table a purge empties, with the rows
+/// [`seed_everything_the_purge_destroys`] gives it.
+pub(crate) const SEEDED: [(&str, i64); 4] = [
+    ("memory.memory_entries", 1),
+    ("core.fleet_approval_gates", 2),
+    ("core.integration_grants", 1),
+    ("core.fleet_sessions", 1),
+];
+
 /// Writes one charge against a fleet, capturing the name the way the daemon does.
 ///
 /// `fleet_name` is read from the fleet row by subselect rather than bound, which
@@ -108,7 +117,7 @@ async fn ledger_identity(lane: &Lane, row: &Uuid7) -> Option<(Option<String>, Op
 /// Rows left in one table for one fleet.
 ///
 /// The table name is a literal from this file, never input.
-async fn rows_for(lane: &Lane, table: &str, fleet: &Uuid7) -> i64 {
+pub(crate) async fn rows_for(lane: &Lane, table: &str, fleet: &Uuid7) -> i64 {
     let statement = sqlx::AssertSqlSafe(format!(
         "SELECT count(*) FROM {table} WHERE fleet_id = $1::uuid"
     ));
@@ -126,14 +135,15 @@ async fn rows_for(lane: &Lane, table: &str, fleet: &Uuid7) -> i64 {
 /// Two gates rather than one: the append-only trigger fires per row, so a purge
 /// that opened its entitlement for the first and lost it for the second would
 /// leave exactly one behind — and a single-row fixture cannot see that.
-async fn seed_everything_the_purge_destroys(lane: &Lane, fleet: &Uuid7) {
+pub(crate) async fn seed_everything_the_purge_destroys(lane: &Lane, fleet: &Uuid7) {
     let at = Lane::now().as_millis();
     let mut connection = lane.connection().await;
 
     sqlx::query(
         "INSERT INTO memory.memory_entries
-           (id, key, content, category, fleet_id, created_at, updated_at)
-         VALUES ($1::uuid, 'note', 'remembered', 'fact', $2::uuid, $3, $3)",
+           (id, key, content, category, fleet_id, workspace_id, created_at, updated_at)
+         SELECT $1::uuid, 'note', 'remembered', 'fact', id, workspace_id, $3, $3
+         FROM core.fleets WHERE id = $2::uuid",
     )
     .bind(mint().as_str())
     .bind(fleet.as_str())
@@ -191,7 +201,7 @@ async fn seed_everything_the_purge_destroys(lane: &Lane, fleet: &Uuid7) {
 /// `Fleets::purge` probes the status first and answers `MustKillFirst` for
 /// anything else — deleting a fleet is two deliberate steps, not one, so an
 /// operator cannot erase a running fleet with a single call.
-async fn kill(lane: &Lane, fleet: &Uuid7) {
+pub(crate) async fn kill(lane: &Lane, fleet: &Uuid7) {
     lane.fleets
         .patch(
             &lane.workspace,
@@ -270,12 +280,7 @@ async fn test_m201_purge_destroys_no_less_than_before() {
     seed_everything_the_purge_destroys(&lane, &fleet.id).await;
     let row = charge(&lane, &fleet.id).await;
 
-    for (table, expected) in [
-        ("memory.memory_entries", 1),
-        ("core.fleet_approval_gates", 2),
-        ("core.integration_grants", 1),
-        ("core.fleet_sessions", 1),
-    ] {
+    for (table, expected) in SEEDED {
         assert_eq!(
             rows_for(&lane, table, &fleet.id).await,
             expected,
@@ -290,12 +295,7 @@ async fn test_m201_purge_destroys_no_less_than_before() {
         .await
         .expect("a killed fleet holding every child purges");
 
-    for table in [
-        "memory.memory_entries",
-        "core.fleet_approval_gates",
-        "core.integration_grants",
-        "core.fleet_sessions",
-    ] {
+    for (table, _seeded) in SEEDED {
         assert_eq!(
             rows_for(&lane, table, &fleet.id).await,
             0,

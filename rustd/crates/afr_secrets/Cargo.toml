@@ -1,0 +1,28 @@
+[package]
+name = "afr_secrets"
+description = "The runner's secrets: a token held in memory, a lease's static credentials, and the scrub that masks every known value before text leaves the run."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# `error_shell!` and the registry code a scrub that cannot be built is logged under.
+afd_core.workspace = true
+# The policy a lease's static credentials and provider key are read from.
+afd_wire.workspace = true
+# Every secret value masked in one pass over a frame, an output or a reply.
+aho-corasick.workspace = true
+# A call's arguments are JSON, and the scrub masks inside them.
+serde_json.workspace = true
+thiserror.workspace = true
+# A held token's bytes are overwritten when it drops.
+zeroize.workspace = true

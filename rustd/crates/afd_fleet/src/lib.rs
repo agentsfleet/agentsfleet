@@ -38,6 +38,5 @@
 pub mod bundle;
 pub mod error;
 pub mod lease;
-pub mod memory;
 
 pub use crate::error::{Error, Result};

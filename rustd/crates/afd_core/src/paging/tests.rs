@@ -96,7 +96,7 @@ fn a_cursor_that_is_not_one_is_refused_without_saying_why() {
 #[test]
 fn the_defaults_apply_when_the_caller_names_nothing() {
     assert_eq!(
-        Page::<ByName>::parse(query(&[])).ok(),
+        Page::<ByName>::parse(query(&[]), CEILING).ok(),
         Some(Page {
             cursor: None,
             limit: DEFAULT_LIMIT,
@@ -107,13 +107,15 @@ fn the_defaults_apply_when_the_caller_names_nothing() {
 
 #[test]
 fn the_limit_is_bounded_at_both_ends() {
-    for (raw, expected) in [("1", Ok(1)), ("100", Ok(100))] {
-        let page = Page::<ByName>::parse(query(&[(QUERY_LIMIT, raw)]));
+    // Empty is a form that left the field blank: the default, as on every
+    // list route that reads its limit through `afd_validate::Limit`.
+    for (raw, expected) in [("1", Ok(1)), ("100", Ok(100)), ("", Ok(DEFAULT_LIMIT))] {
+        let page = Page::<ByName>::parse(query(&[(QUERY_LIMIT, raw)]), CEILING);
         assert_eq!(page.map(|page| page.limit), expected, "limit {raw:?}");
     }
-    for raw in ["0", "101", "-1", "", "ten", "1e2"] {
+    for raw in ["0", "101", "-1", "+5", "ten", "1e2"] {
         assert_eq!(
-            Page::<ByName>::parse(query(&[(QUERY_LIMIT, raw)])).err(),
+            Page::<ByName>::parse(query(&[(QUERY_LIMIT, raw)]), CEILING).err(),
             Some(PagingRefusal::Limit),
             "limit {raw:?}"
         );
@@ -126,11 +128,15 @@ fn an_unknown_sort_is_refused_rather_than_coerced_to_the_default() {
     // silently getting `-created_at` pages through data they did not ask
     // for, and every page looks fine.
     assert_eq!(
-        Page::<ByName>::parse(query(&[(QUERY_SORT, "id")])).err(),
+        Page::<ByName>::parse(query(&[(QUERY_SORT, "id")]), CEILING).err(),
         Some(PagingRefusal::Sort)
     );
     assert_eq!(
-        Page::<ByName>::parse(query(&[(QUERY_SORT, "created_at DESC; DROP TABLE")])).err(),
+        Page::<ByName>::parse(
+            query(&[(QUERY_SORT, "created_at DESC; DROP TABLE")]),
+            CEILING
+        )
+        .err(),
         Some(PagingRefusal::Sort)
     );
 }
@@ -145,7 +151,7 @@ fn a_cursor_from_another_ordering_is_refused() {
         (QUERY_STARTING_AFTER, "1744000000000:019abc"),
     ]);
     assert_eq!(
-        Page::<ByName>::parse(timestamp_under_name).err(),
+        Page::<ByName>::parse(timestamp_under_name, CEILING).err(),
         Some(PagingRefusal::Cursor)
     );
 
@@ -154,7 +160,7 @@ fn a_cursor_from_another_ordering_is_refused() {
         (QUERY_STARTING_AFTER, "s:YTpi:019abc"),
     ]);
     assert_eq!(
-        Page::<ByName>::parse(text_under_timestamp).err(),
+        Page::<ByName>::parse(text_under_timestamp, CEILING).err(),
         Some(PagingRefusal::Cursor)
     );
 }
@@ -162,10 +168,13 @@ fn a_cursor_from_another_ordering_is_refused() {
 #[test]
 fn a_matching_cursor_is_taken() {
     assert_eq!(
-        Page::<ByName>::parse(query(&[
-            (QUERY_SORT, "key_name"),
-            (QUERY_STARTING_AFTER, "s:YTpi:019abc"),
-        ]))
+        Page::<ByName>::parse(
+            query(&[
+                (QUERY_SORT, "key_name"),
+                (QUERY_STARTING_AFTER, "s:YTpi:019abc"),
+            ]),
+            CEILING
+        )
         .ok(),
         Some(Page {
             cursor: Some(Cursor::Text {
@@ -182,7 +191,7 @@ fn a_matching_cursor_is_taken() {
 fn the_retired_offset_parameters_are_refused_not_ignored() {
     for retired in [QUERY_PAGE, QUERY_PAGE_SIZE] {
         assert_eq!(
-            Page::<ByName>::parse(query(&[(retired, "2")])).err(),
+            Page::<ByName>::parse(query(&[(retired, "2")]), CEILING).err(),
             Some(PagingRefusal::OffsetParametersRetired),
             "parameter {retired}"
         );

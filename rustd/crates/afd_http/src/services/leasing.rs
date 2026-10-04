@@ -5,10 +5,12 @@ use afd_core::id::Uuid7;
 use afd_credential::credential::Minted;
 use afd_fleet::lease::Plane;
 use afd_fleet::lease::report::Reconciled;
-use afd_fleet::memory::Captured;
+use afd_memory::Captured;
 use afd_wire::activity::ActivityFrame;
 use afd_wire::credentials::MintCredentialRequest;
-use afd_wire::memory::{MemoryDelta, MemoryPushRequest};
+use afd_wire::memory::{
+    MemoryHydrateResponse, MemoryPushRequest, MemoryRecallRequest, MemoryRecallResponse,
+};
 use afd_wire::report::{RenewRequest, ReportRequest};
 use afd_wire::tool_detail::{ToolCallRecordsRequest, ToolCallRecordsStored};
 
@@ -83,7 +85,7 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         runner_id: &Uuid7,
         fleet_id: &Uuid7,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<Vec<MemoryDelta<'static>>>> + Send;
+    ) -> impl Future<Output = afd_fleet::Result<MemoryHydrateResponse<'static>>> + Send;
 
     /// Persist what one run learned.
     ///
@@ -97,6 +99,18 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         request: &MemoryPushRequest<'_>,
         now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<Captured>> + Send;
+
+    /// Search a fleet's memory past the window a run was seeded with.
+    ///
+    /// # Errors
+    /// Refuses as [`Leasing::capture`] does, fenced the same way.
+    fn recall(
+        &self,
+        runner_id: &Uuid7,
+        fleet_id: &Uuid7,
+        request: &MemoryRecallRequest<'_>,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<MemoryRecallResponse<'static>>> + Send;
 
     /// Mint one short-lived credential for a running child.
     ///
@@ -194,8 +208,18 @@ impl Leasing for Plane {
         runner_id: &Uuid7,
         fleet_id: &Uuid7,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<Vec<MemoryDelta<'static>>>> + Send {
+    ) -> impl Future<Output = afd_fleet::Result<MemoryHydrateResponse<'static>>> + Send {
         Self::hydrate(self, runner_id, fleet_id, now)
+    }
+
+    fn recall(
+        &self,
+        runner_id: &Uuid7,
+        fleet_id: &Uuid7,
+        request: &MemoryRecallRequest<'_>,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<MemoryRecallResponse<'static>>> + Send {
+        Self::recall(self, runner_id, fleet_id, request, now)
     }
 
     fn mint(

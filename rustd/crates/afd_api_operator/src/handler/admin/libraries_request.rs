@@ -10,9 +10,11 @@ use std::borrow::Cow;
 
 use afd_core::error_code;
 use afd_library::{LibraryPatch, Repository, valid_revision};
+use afd_validate::Sentences;
 use afd_wire::admin::{
     AdminLibraryPatch, REASON_CREDENTIAL_MAX_BYTES, REASON_MAX_BYTES, REASONS_MAX,
 };
+use const_format::concatcp;
 use garde::Validate as _;
 
 const DETAIL_BODY_REQUIRED: &str = "A request body is required";
@@ -30,11 +32,36 @@ const DETAIL_REF_INVALID: &str =
 const DETAIL_REASONS_INVALID: &str =
     "required_credentials_reasons must be an object mapping credential names to strings";
 
-const DETAIL_REASONS_TOO_MANY: &str =
-    "required_credentials_reasons carries more entries than a fleet may declare credentials";
+/// The refusal reason copy past the install gate's caps earns.
+///
+/// One sentence naming all three caps: they are one rule on the wire type,
+/// and a caller who broke one fixes it by reading the numbers.
+const DETAIL_REASONS_BOUNDS: &str = concatcp!(
+    "required_credentials_reasons may carry at most ",
+    REASONS_MAX,
+    " entries, each name at most ",
+    REASON_CREDENTIAL_MAX_BYTES,
+    " bytes and each reason at most ",
+    REASON_MAX_BYTES,
+    " bytes"
+);
 
-const DETAIL_REASON_TOO_LONG: &str =
-    "A credential name, or its reason copy, is longer than the install gate accepts";
+/// The path `garde` reports a name-length break under.
+const FIELD_NAME: &str = "name";
+
+/// The path `garde` reports a reason-copy break under.
+const FIELD_REASONS: &str = "required_credentials_reasons";
+
+/// The sentence each bound on [`AdminLibraryPatch`] earns. The name is listed
+/// first, the order the two were refused in before the caps moved onto the
+/// wire type.
+const BOUNDS: Sentences = Sentences::new(
+    &[
+        (FIELD_NAME, DETAIL_NAME_INVALID),
+        (FIELD_REASONS, DETAIL_REASONS_BOUNDS),
+    ],
+    DETAIL_NAME_INVALID,
+);
 
 pub(super) fn patch_request(
     body: &[u8],
@@ -46,7 +73,7 @@ pub(super) fn patch_request(
         .map_err(|_error| (error_code::INVALID_REQUEST, DETAIL_MALFORMED_JSON))?;
     request
         .validate()
-        .map_err(|_report| (error_code::INVALID_REQUEST, DETAIL_NAME_INVALID))?;
+        .map_err(|report| (error_code::INVALID_REQUEST, BOUNDS.pick(&report)))?;
     if request
         .source_repo
         .as_deref()
@@ -61,7 +88,9 @@ pub(super) fn patch_request(
     {
         return Err((error_code::FLEET_BUNDLE_INVALID, DETAIL_REF_INVALID));
     }
-    validate_reasons(request.required_credentials_reasons.as_ref())?;
+    if !reasons_shaped(request.required_credentials_reasons.as_ref()) {
+        return Err((error_code::INVALID_REQUEST, DETAIL_REASONS_INVALID));
+    }
     Ok(LibraryPatch::new(
         request.name.map(Cow::into_owned),
         request.description.map(Cow::into_owned),
@@ -72,31 +101,31 @@ pub(super) fn patch_request(
     ))
 }
 
-fn validate_reasons(
-    reasons: Option<&serde_json::Value>,
-) -> Result<(), (error_code::ErrorCode, &'static str)> {
-    if let Some(reasons) = reasons {
-        let Some(reasons) = reasons.as_object() else {
-            return Err((error_code::INVALID_REQUEST, DETAIL_REASONS_INVALID));
-        };
-        if reasons.len() > REASONS_MAX {
-            return Err((error_code::INVALID_REQUEST, DETAIL_REASONS_TOO_MANY));
-        }
-        for (credential, reason) in reasons {
-            let Some(reason) = reason.as_str() else {
-                return Err((error_code::INVALID_REQUEST, DETAIL_REASONS_INVALID));
-            };
-            if credential.len() > REASON_CREDENTIAL_MAX_BYTES || reason.len() > REASON_MAX_BYTES {
-                return Err((error_code::INVALID_REQUEST, DETAIL_REASON_TOO_LONG));
-            }
-        }
-    }
-    Ok(())
+/// Whether the reason copy, when sent, is an object mapping names to strings.
+///
+/// Its SHAPE, which no bound can judge; the caps on it are the wire type's
+/// custom rule, proved by `validate` above.
+fn reasons_shaped(reasons: Option<&serde_json::Value>) -> bool {
+    reasons.is_none_or(|reasons| {
+        reasons
+            .as_object()
+            .is_some_and(|reasons| reasons.values().all(serde_json::Value::is_string))
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_reasons_sentence_names_each_bound_it_enforces() {
+        for bound in [REASONS_MAX, REASON_CREDENTIAL_MAX_BYTES, REASON_MAX_BYTES] {
+            assert!(
+                DETAIL_REASONS_BOUNDS.contains(&bound.to_string()),
+                "{bound} is missing from: {DETAIL_REASONS_BOUNDS}"
+            );
+        }
+    }
 
     #[test]
     fn patch_validation_covers_identity_and_reason_bounds() {
@@ -142,7 +171,7 @@ mod tests {
         );
         assert_eq!(
             patch_request(sentence_past_cap.as_bytes()),
-            Err((error_code::INVALID_REQUEST, DETAIL_REASON_TOO_LONG))
+            Err((error_code::INVALID_REQUEST, DETAIL_REASONS_BOUNDS))
         );
 
         let name_past_cap = format!(
@@ -151,7 +180,23 @@ mod tests {
         );
         assert_eq!(
             patch_request(name_past_cap.as_bytes()),
-            Err((error_code::INVALID_REQUEST, DETAIL_REASON_TOO_LONG))
+            Err((error_code::INVALID_REQUEST, DETAIL_REASONS_BOUNDS))
+        );
+    }
+
+    /// One entry past the most a library may explain earns the same sentence.
+    #[test]
+    fn reasons_past_the_entry_cap_are_refused() {
+        let entries: Vec<String> = (0..=REASONS_MAX)
+            .map(|index| format!(r#""c{index}":"why""#))
+            .collect();
+        let body = format!(
+            r#"{{"required_credentials_reasons":{{{}}}}}"#,
+            entries.join(",")
+        );
+        assert_eq!(
+            patch_request(body.as_bytes()),
+            Err((error_code::INVALID_REQUEST, DETAIL_REASONS_BOUNDS))
         );
     }
 }

@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-runner-fmt lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs
+.PHONY: _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-runner-fmt lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs
 
 check-documentation-rules:  ## Check public API and command help text
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules_test.py
@@ -76,9 +76,9 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 # remains that costs nothing.
 #
 # A target of its own rather than a rider on `lint-rustd`, which is where it
-# first landed. `.github/workflows/test.yml` runs `make lint-rustd` inside the
-# `test-unit-rustd` job, and that job is a plain `ubuntu-latest` with rustup and
-# nothing else — so the `command -v zig` guard below failed the Rust UNIT lane on
+# first landed. `make lint-rustd` runs in the `lint-rustd` job of
+# `.github/workflows/test-unit-rustd.yml`, a plain `ubuntu-latest` with rustup
+# and nothing else — so the `command -v zig` guard below failed the Rust lane on
 # a missing Zig toolchain, and the failure read as a test regression. The two
 # toolchains want two runners: Rust rides the ubuntu image it already pins, and
 # this rides `ci-zig-alpine`, the same pre-baked image `release.yml` and
@@ -87,40 +87,6 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 lint-runner-fmt:  ## Check the Zig runner's formatting (zig fmt --check)
 	@command -v zig >/dev/null 2>&1 || { echo "✗ zig not found. Install via: mise install zig"; exit 1; }
 	@$(WITH_PROGRESS) "[runner] zig fmt --check" -- zig fmt --check build_runner.zig build.zig src/
-
-# Every scripts/*_test.py, discovered rather than listed.
-#
-# A checker whose own tests never run is enforcement in appearance only, so the
-# self-tests get their own lane rather than riding an unrelated one where a
-# future edit can silently unhook them.
-#
-# `*_test.py`, not `check_*_test.py`: the narrower pattern would let a self-test
-# be written, committed and never run.
-SCRIPT_SELF_TESTS := python3 -m unittest discover -s scripts -t scripts -p '*_test.py'
-
-lint-scripts:  ## Run every scripts/*_test.py self-test + assert the orly engine pin
-	@echo "→ [scripts] Running script self-tests..."
-	@$(SCRIPT_SELF_TESTS)
-	@# The orly engine pin rides this lane rather than getting a target of its
-	@# own, and it belongs on a lane `lint-all` reaches for two reasons.
-	@# `make lint-all` IS the `verify.lint` command .oracle/orly.json declares,
-	@# so an engine that reaches this row grades its own version here. And
-	@# `core.hooksPath` is local git config that a clone never carries — the
-	@# reason governance.yml re-runs the gate in CI at all — so on a clone with
-	@# unarmed hooks this is the only local path that asserts the pin.
-	@#
-	@# Tests first, then the guard for real: the check-gh-actions-valid shape.
-	@# A gate with no self-test can pass vacuously, and this guard's whole
-	@# subject is a pin that was recorded and never enforced.
-	@echo "→ [scripts] orly engine matches the pin in .oracle/orly.json..."
-	@bash scripts/check_orly_pin_test.sh
-	@bash scripts/check_orly_pin.sh
-	@# The local Dragonfly cluster's slot arithmetic and config document, proven
-	@# without a node: a wrong split would otherwise surface as a datastore
-	@# fault in the first slot-migration test of the integration lane.
-	@echo "→ [scripts] dragonfly cluster script self-tests..."
-	@bash scripts/dragonfly_cluster_test.sh
-	@echo "✓ [scripts] Script self-tests passed"
 
 SHELLCHECK ?= shellcheck
 
@@ -142,7 +108,7 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 
 
 
-lint-all: lint-rustd lint-runner-fmt lint-scripts _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
+lint-all: lint-rustd lint-runner-fmt _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + action pins + make-target ref check

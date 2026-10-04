@@ -25,6 +25,38 @@ use crate::lease::store::Leases;
 /// Statement name, for the context a query failure carries.
 const CONTEXT_FENCE: &str = "live fence lookup";
 
+/// The fleet's live fencing sequence, if this runner holds a live lease on it.
+///
+/// `COALESCE(a.fencing_seq, l.fencing_token)` so a reclaim that bumped the
+/// sequence strands the old holder BELOW it — the affinity row is the live
+/// authority and the lease's own token is only the fallback for a fleet whose
+/// slot row is gone.
+///
+/// `$1` runner, `$2` fleet, `$3` the active status, `$4` now.
+const SELECT_LIVE_FENCE_BY_FLEET: &str = "\
+SELECT COALESCE(a.fencing_seq, l.fencing_token) AS live_seq
+FROM fleet.runner_leases l
+LEFT JOIN fleet.runner_affinity a ON a.fleet_id = l.fleet_id
+WHERE l.runner_id = $1::uuid AND l.fleet_id = $2::uuid
+  AND l.status = $3 AND l.lease_expires_at > $4
+ORDER BY l.created_at DESC
+LIMIT 1";
+
+/// The same fence, addressed by lease id when the caller already holds one.
+///
+/// Keyed by lease AND fleet, so a lease that exists but belongs to another
+/// fleet yields no row — the IDOR cross-check IS the `WHERE`, not a comparison
+/// the handler has to remember to make afterwards.
+///
+/// `$1` lease, `$2` runner, `$3` fleet, `$4` the active status, `$5` now.
+const SELECT_LIVE_FENCE_BY_LEASE: &str = "\
+SELECT COALESCE(a.fencing_seq, l.fencing_token) AS live_seq
+FROM fleet.runner_leases l
+LEFT JOIN fleet.runner_affinity a ON a.fleet_id = l.fleet_id
+WHERE l.id = $1::uuid AND l.runner_id = $2::uuid AND l.fleet_id = $3::uuid
+  AND l.status = $4 AND l.lease_expires_at > $5
+LIMIT 1";
+
 impl Leases {
     /// The fleet's live fencing sequence, if `runner_id` holds a live lease on it.
     ///
@@ -41,7 +73,7 @@ impl Leases {
         fleet_id: &Uuid7,
         now: UnixMillis,
     ) -> Result<Option<u64>> {
-        let found = sqlx::query(crate::memory::sql::SELECT_LIVE_FENCE_BY_FLEET)
+        let found = sqlx::query(SELECT_LIVE_FENCE_BY_FLEET)
             .bind(runner_id.as_str())
             .bind(fleet_id.as_str())
             .bind(sql::LEASE_STATUS_ACTIVE)
@@ -65,7 +97,7 @@ impl Leases {
         fleet_id: &Uuid7,
         now: UnixMillis,
     ) -> Result<Option<u64>> {
-        let found = sqlx::query(crate::memory::sql::SELECT_LIVE_FENCE_BY_LEASE)
+        let found = sqlx::query(SELECT_LIVE_FENCE_BY_LEASE)
             .bind(lease_id)
             .bind(runner_id.as_str())
             .bind(fleet_id.as_str())

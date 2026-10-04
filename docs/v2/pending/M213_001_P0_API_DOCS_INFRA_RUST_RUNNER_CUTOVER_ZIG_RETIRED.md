@@ -10,7 +10,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
   sequencing signal. A section that contradicts these rules loses — delete it.
 -->
 
-# M213_001: Cutover — the release builds and deploys the Rust runner with its toolbox, the Zig runner with its lanes and images is deleted, and nothing in the repository or the published docs describes Zig or NullClaw as current
+# M213_001: Cutover — the release builds and deploys the Rust runner with its signed toolbox, the Zig runner with its lanes and images is deleted, and nothing in the repository or the published docs describes Zig or NullClaw as current
 
 **Prototype:** v2.0.0
 **Milestone:** M213
@@ -24,7 +24,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Baseline revision:** pending — record the full comparison commit at CHORE(open)
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
-**Depends on:** M210_002 · M211_001 · M211_002 · M212_001 — everything the Zig runner serves today runs on Rust first; the sandbox allowlist workstream (unnumbered until it is specced) must also be on `main`, because today's sandboxed child reaches allow-listed hosts and the Rust sandbox cannot until then
+**Depends on:** M210_002 · M211_001 · M211_002 · M212_001 · M214_001 — everything the Zig runner serves today runs on Rust first; the Rust runner exports its own spans and metrics (M214_001, Indy: "Own spec, before cutover"); M211_001's spikes S2–S4 are recorded, because their results fix the artifact layout this release freezes; the sandbox allowlist workstream (unnumbered until it is specced) must also be on `main`, because today's sandboxed child reaches allow-listed hosts and the Rust sandbox cannot until then
 **Provenance:** LLM-drafted (Claude Fable 5.1, Oct 02, 2026) from an inventory on `main`: `src/`, `build.zig`, `build.zig.zon`, `build_runner.zig`, `make/*.mk`, `.github/workflows/*.yml`, 510 Rust files mentioning Zig or NullClaw, 12 architecture pages
 **Canonical architecture:** `docs/architecture/runner_execution.md` (the runner this deploys); `docs/architecture/runner_fleet.md` §"The split — two binaries, no sidecar"; `docs/architecture/testing.md` §"Public lanes"
 
@@ -32,9 +32,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** `test_no_zig_sources_remain` — after the cutover, `git ls-files '*.zig'` is empty, `build.zig`, `build.zig.zon` and `build_runner.zig` are gone, `make test-unit-all` and `make lint-all` pass on a machine with no `zig` on `PATH`, `make check-version` passes reading only `rustd/Cargo.toml` and `cli/package.json`, `grep -rci 'zig\|nullclaw' rustd/crates --include='*.rs'` sums to 0, the release workflow ships `agentsfleet-runner-linux-amd64` and the content-addressed toolbox image as static artifacts, and the dev lane's deployed runner registers with a capability report and runs the four reference bundles.
+**Goal (testable):** `test_no_zig_sources_remain` — after the cutover, `git ls-files '*.zig'` is empty, `build.zig`, `build.zig.zon` and `build_runner.zig` are gone, `make test-unit-all` and `make lint-all` pass on a machine with no `zig` on `PATH`, `make check-version` passes reading only `rustd/Cargo.toml` and `cli/package.json`, `grep -rci 'zig\|nullclaw' rustd/crates --include='*.rs'` sums to 0, the release workflow ships the static `agentsfleet-runner-linux-amd64`, the content-addressed toolbox image with its signed manifest and Software Bill of Materials (SBOM), and an offline bundle of both, and the dev lane's deployed runner registers with a capability report and runs the four reference bundles.
 **Problem:** The Zig runner is what `release.yml` builds (`compile-runner-amd64` on `ghcr.io/agentsfleet/ci-zig-alpine`), what `deploy-dev-build.yml` ships, what `deploy-dev-metal.yml` installs (`RUNNER_BINARY`), what `make test-unit-runner` and `lint-runner-fmt` test, and what `check-version` reads (`build.zig.zon`). 510 Rust files carry 1,684 lines naming Zig or NullClaw as the thing they mirror, and 12 architecture pages describe a NullClaw child as the workload. Indy's rule for the Rust runner is "none of the rust code will point to the zig", and the published tools page lists the Zig runner's tools.
-**Solution summary:** The release and dev workflows build the Rust binary static in the daemon's Alpine job shape and package the toolbox beside it; the metal deploy installs both and the systemd unit. Then the Zig tree, its build files, the NullClaw dependency, its make targets, its formatting job, its cache families and its images go. Comments and tests in `rustd` stop naming Zig or NullClaw; the three CLI comments point at Rust paths; the architecture pages describe the Rust runner as current and keep Zig only in dated Decisions and history rows. The published docs gain the full tool catalog, the three-artifact install, and a changelog entry on their own branch. The previous release's Zig artifact remains the rollback.
+**Solution summary:** The release and dev workflows build the Rust binary static in the daemon's Alpine job shape, and build the toolbox on a Debian builder where Syft writes its SBOM, Grype scans it and cosign signs its manifest; the image is published apart from the binary, with an offline bundle of both. The metal deploy stages them, and the runner admits the toolbox by descriptor (M211_001 §8). Then the Zig tree, its build files, the NullClaw dependency, its make targets, its formatting job, its cache families and its images go. Comments and tests in `rustd` stop naming Zig or NullClaw; the three CLI comments point at Rust paths; the architecture pages describe the Rust runner as current and keep Zig only in dated Decisions and history rows. The published docs gain the full tool catalog, the install of the binary and its signed toolbox, and a changelog entry on their own branch. The previous release's Zig artifact remains the rollback.
 
 ## PR Intent & comprehension handshake
 
@@ -49,13 +49,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 3. `make/build.mk`, `make/test-unit.mk`, `make/quality.mk`, `make/dev.mk`, `make/test.mk` — every Zig target, cache variable and version check to remove or rewrite.
 4. `docs/architecture/runner_fleet.md` §"Running one event (NullClaw)", §"The split — two binaries, no sidecar"; `docs/architecture/testing.md` §"The Zig daemon is frozen and unmeasured" — the pages that describe Zig as current.
 5. `docs/CHANGELOG_VOICE.md` and `dispatch/write_changelog.md` — the entry's voice; history stays.
+6. `docs/architecture/runner_execution.md` §Toolbox — what the release record pins, signing and scanning, eager distribution; `scripts/toolbox/build.sh` needs root and mmdebstrap, so the toolbox builds on a Debian builder, not in the Alpine job.
 
 ## Files Changed (blast radius)
 
 | File | Action | Why |
 |------|--------|-----|
 | `src/runner/`, `src/lib/`, `src/build/`, `build.zig`, `build.zig.zon`, `build_runner.zig` | DELETE | The Zig runner, its wire-type library, its build and the NullClaw dependency |
-| `.github/workflows/release.yml`, `.github/workflows/deploy-dev-build.yml`, `.github/workflows/deploy-dev-metal.yml` | EDIT | Build the binary static with cargo; package the toolbox; install both. Needs Indy's explicit approval (§Hard Safety) |
+| `.github/workflows/release.yml`, `.github/workflows/deploy-dev-build.yml`, `.github/workflows/deploy-dev-metal.yml` | EDIT | Build the binary static with cargo; build, scan and sign the toolbox on a Debian builder; publish the image, its manifest and signature, the SBOM and the offline bundle; stage both on metal. Needs Indy's explicit approval (§Hard Safety) |
 | `.github/workflows/lint.yml`, `.github/workflows/bench.yml`, `.github/workflows/cache-prune.yml`, `.github/workflows/deploy-dev.yml`, `.github/workflows/deploy-dev-verify.yml` | EDIT | The `zig fmt` job, the `ci-zig-ubuntu` bench image, the Zig cache families and the Zig comments go. Same approval |
 | `make/build.mk`, `make/test-unit.mk`, `make/quality.mk`, `make/dev.mk`, `make/test.mk`, `make/bench.mk`, `Makefile` | EDIT | `test-unit-runner`, `lint-runner-fmt`, `RUNNER_ZIG_VERSION`, Zig cache variables and `zig-out` cleanup go; `sync-version` and `check-version` read `rustd/Cargo.toml` and `cli/package.json` only; help text follows |
 | `.oracle/orly.json` | EDIT | `surfaces.user` drops `src/` |
@@ -66,6 +67,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/check-migrate-unprivileged.sh` | EDIT | Its Zig reference goes with the tree |
 | `VERSION`, `rustd/Cargo.toml`, `cli/package.json` | EDIT | The cutover is a release: one minor bump, synced |
 | `docs/architecture/runner_execution.md` | EDIT | Decisions row: the cutover date and the rollback artifact |
+| `rustd/crates/agentsfleet_runner/src/main.rs` | EDIT | The binary builds the agent loop and serves leases; `NO_AGENT_ENGINE` and its refusal leave (M210_002 review P1-7) |
+| `rustd/crates/afr_sandbox/src/toolbox/manifest.rs` | EDIT | `TOOLBOX_RELEASE_PUBLIC_KEY` becomes the release key's public half, replacing M211_001's fixture key |
 
 ## Applicable Rules
 
@@ -93,11 +96,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — The release ships two artifacts and the metal deploy installs them
 
-`compile-runner-amd64` builds `agentsfleet-runner` with cargo for `x86_64-unknown-linux-musl` in the daemon's Alpine job, verifies it static (zero `NEEDED`, no `INTERP`), runs `make toolbox-image`, and uploads `agentsfleet-runner-linux-amd64` and `toolbox-<sha256>.erofs`. `deploy-dev-build.yml` does the same from the branch. `deploy-dev-metal.yml` installs the two under the runner's directory and restarts the unit; the runner mounts the toolbox by its hash and reports its capabilities.
+`compile-runner-amd64` builds `agentsfleet-runner` with cargo for `x86_64-unknown-linux-musl` in the daemon's Alpine job and verifies it static (zero `NEEDED`, no `INTERP`). `build-toolbox-amd64` runs `make toolbox-image` on a Debian builder, which writes the image and its release manifest; Syft writes the SBOM, Grype scans it with Debian findings reconciled against Debian's security tracker, and cosign signs the manifest with the release key. A fixable Critical finding the tracker does not mark not-affected fails the job; the rest ship as the scan report. The release uploads the binary, `toolbox-<sha256>.erofs`, its manifest and signature, the SBOM, the scan report, and an offline bundle of them all. `deploy-dev-build.yml` does the same from the branch. `deploy-dev-metal.yml` copies the files into the runner's toolbox staging directory and restarts the unit; the runner verifies, publishes and admits the toolbox (M211_001 §8) and reports its capabilities.
 
-- **Dimension 1.1** — The binary is static and the toolbox is content-addressed in the release artifacts → Test `test_release_artifacts_are_static_and_addressed`
+- **Dimension 1.1** — The binary is static; the toolbox is content-addressed, its manifest verifies against the release public key, and the SBOM and offline bundle ship with it → Test `test_release_artifacts_are_static_and_addressed`
 - **Dimension 1.2** — The dev lane deploys the Rust runner; it registers and its capability report names `/dev/kvm` and the toolbox filesystem → Test `test_dev_runner_registers_with_capabilities`
 - **Dimension 1.3** — The four reference bundles run on the dev runner from their channels and webhooks → Test `test_reference_bundles_run_on_dev`
+- **Dimension 1.4** — The binary takes leases through `afr_agent::Loop` over the provider registry; `NO_AGENT_ENGINE` and its refusal are gone, which 1.2 and 1.3 rely on → Test `test_runner_binary_runs_a_lease`
 
 ### §2 — The Zig runner leaves, and the lanes do not miss it
 
@@ -118,7 +122,7 @@ Every Rust comment and test name that mirrors, ports or compares to Zig or NullC
 
 ### §4 — The published docs and the changelog say what shipped
 
-On `chore/m213-rust-runner-changelog` in `~/Projects/docs`: the tools page carries the full catalog with the names the harness added (`exec_command`, `write_stdin`, `apply_patch`, `update_plan`, `wait_agent`, `send_input`, `list_agents`, `interrupt_agent`) and drops none the runner still carries; the runner install page describes two artifacts, the toolbox mount and the `/dev/kvm` probe; `snippets/rates.mdx` stops naming a Zig file; a changelog `<Update>` states the cutover in the changelog's voice.
+On `chore/m213-rust-runner-changelog` in `~/Projects/docs`: the tools page carries the full catalog with the names the harness added (`exec_command`, `write_stdin`, `apply_patch`, `update_plan`, `wait_agent`, `send_input`, `list_agents`, `interrupt_agent`), drops `calculator`, which the Rust runner does not host (Indy, Oct 03: "Cut it now"), and drops none the runner still carries; the runner install page describes the binary, the signed toolbox and the offline bundle, the toolbox's admission and the `/dev/kvm` probe; `snippets/rates.mdx` stops naming a Zig file; a changelog `<Update>` states the cutover in the changelog's voice.
 
 - **Dimension 4.1** — The docs branch carries the four page changes and the entry, and their checks pass → Test `test_docs_branch_carries_cutover_pages`
 
@@ -131,8 +135,8 @@ The previous release's `agentsfleet-runner-linux-amd64` (Zig) stays on the relea
 ## Interfaces
 
 ```
-Release artifacts:  agentsfleet-runner-linux-amd64 · toolbox-<sha256>.erofs
-Metal install:      <runner dir>/agentsfleet-runner · <runner dir>/toolbox/<sha256>.erofs
+Release artifacts:  agentsfleet-runner-linux-amd64 · toolbox-<sha256>.erofs · its manifest + signature · SBOM · scan report · offline bundle
+Metal install:      <runner dir>/agentsfleet-runner · <runner dir>/toolbox/staging/ → the runner publishes <runner dir>/toolbox/<sha256>.erofs
 Lanes after:        make test-unit-all · make lint-all · make test-integration-rustd · make test-runner-kernel · make check-version
 Architecture check: no page describes a NullClaw child as the workload outside a Decisions or history row
 ```
@@ -144,6 +148,8 @@ Architecture check: no page describes a NullClaw child as the workload outside a
 | Rust runner misbehaves on dev | A bundle fails on dev metal | Fix on the branch; the Pull Request does not merge; nothing deleted yet reaches `main` |
 | Rust runner misbehaves after release | A fleet fails in production | Redeploy the previous release's Zig artifact (Dimension 5.1); the daemon accepts both |
 | Toolbox missing on a host | Deploy copied one of two | The runner's capability report says so; it refuses leases; the deploy job is red |
+| Toolbox signature does not verify | Wrong key, or the artifact changed after signing | The runner refuses to admit it; the capability report says no toolbox; the deploy job is red |
+| Grype finds a fixable Critical | A Debian package needs a newer snapshot | The toolbox job is red until the snapshot moves or Debian's tracker marks it not affected |
 | A lane still needs Zig | A missed make dependency | Dimension 2.2 fails in CI on a runner without Zig |
 | A comment reintroduces Zig | Review miss | Dimension 3.1's grep fails in the unit lane |
 | Docs branch out of step | Published page lists a tool the runner lacks | Dimension 4.1's docs checks fail on that branch |
@@ -164,9 +170,10 @@ Architecture check: no page describes a NullClaw child as the workload outside a
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | manual | `test_release_artifacts_are_static_and_addressed` | release run → verify step prints zero `NEEDED` for the binary; toolbox name equals its SHA-256; run URL in Session Notes |
+| 1.1 | manual | `test_release_artifacts_are_static_and_addressed` | release run → zero `NEEDED` for the binary; toolbox name equals its SHA-256; `cosign verify-blob` with the release public key passes; SBOM and bundle attached; run URL in Session Notes |
 | 1.2 | manual | `test_dev_runner_registers_with_capabilities` | dev deploy → `agentsfleet runners list` shows the runner with `kvm` and `toolbox_fs` fields; output pasted |
 | 1.3 | manual | `test_reference_bundles_run_on_dev` | one mention, one repairer line, one `pull_request`, one `workflow_run` → four settled threads; links pasted |
+| 1.4 | integration | `test_runner_binary_runs_a_lease` | the built binary against a fake daemon granting one lease → one settled report and no `run_refused` line |
 | 2.1 | unit | `test_no_zig_sources_remain` | `git ls-files '*.zig' build.zig build.zig.zon build_runner.zig` → empty |
 | 2.2 | integration | `test_lanes_need_no_zig` | `PATH` without `zig` → `make test-unit-all` and `make lint-all` exit 0 |
 | 2.3 | unit | `test_check_version_reads_two_manifests` | `make check-version` → exit 0; no `build.zig.zon` in its output |
@@ -184,7 +191,7 @@ Architecture check: no page describes a NullClaw child as the workload outside a
 | R1 | No Zig source, build file or reference remains (§2, §3) | `git ls-files '*.zig' build.zig build.zig.zon build_runner.zig \| wc -l; grep -rci 'zig\|nullclaw' rustd/crates --include='*.rs' \| grep -v ':0$' \| wc -l` | `0` and `0` | P0 | |
 | R2 | The lanes pass without Zig (§2) | `env PATH="$(echo "$PATH" \| tr ':' '\n' \| grep -v zig \| paste -sd: -)" make test-unit-all && make lint-all` | exit 0 | P0 | |
 | R3 | The architecture check guards the pages (§3) | `bash scripts/check_architecture_doc_test.sh && bash scripts/check_architecture_doc.sh` | exit 0 | P0 | |
-| R4 | Workflows approved and the release ships two static artifacts (§1) | manual — Indy approves each workflow edit by name; evidence: the release run URL and the verify step's output in Session Notes | approval quotes and a green run URL | P0 | |
+| R4 | Workflows approved and the release ships the static binary, the signed toolbox, its SBOM and the offline bundle (§1) | manual — Indy approves each workflow edit by name; evidence: the release run URL and the verify step's output in Session Notes | approval quotes and a green run URL | P0 | |
 | R5 | The dev runner serves the four bundles and the rollback drill passes (§1, §5) | manual — four thread links and two drill thread links in Session Notes | six links | P0 | |
 | R6 | Docs branch open with the cutover pages (§4) | manual — the docs Pull Request link in Session Notes | link, checks green | P0 | |
 | R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
@@ -215,6 +222,7 @@ Architecture check: no page describes a NullClaw child as the workload outside a
 
 - Firecracker, workspaces in R2, the outage toolkit — they ride the Rust runner after it is the only one.
 - Deleting the `ci-zig-alpine` and `ci-zig-ubuntu` images from the registry — an operator step, recorded in Session Notes when done.
+- Revoking a compromised toolbox — deferred (Discovery). The daily scan, weekly refresh and 24-hour emergency release `runner_execution.md` §Toolbox sets are run by an operator until a scheduled job is specced. An arm64 release, dm-verity and the Firecracker boot artifact wait on their own specs and M211_001's spikes.
 - Rewriting dated history: Decisions rows, changelog entries and done specs keep their quotes.
 
 ---
@@ -225,7 +233,7 @@ Architecture check: no page describes a NullClaw child as the workload outside a
 2. **Preserved user behaviour** — Every bundle keeps running; the daemon's verbs are unchanged; the previous release stays a one-command rollback.
 3. **Optimal-way check** — Deploy from the branch, prove on dev, delete in the same Pull Request, so the proof is never older than the deletion.
 4. **Rebuild-vs-iterate** — The deletion half of Indy's "fresh port".
-5. **What we build** — Two static artifacts, a two-file metal install, one architecture check, one docs branch, one changelog entry.
+5. **What we build** — A static binary and a signed, scanned toolbox with its offline bundle, a staged metal install, one architecture check, one docs branch, one changelog entry.
 6. **What we do NOT build** — New runner capability (see Out of Scope).
 7. **Fit with existing features** — The release and deploy pipelines keep their artifact names where they can, so the metal lane's shape survives.
 8. **Surface order** — Release first; docs branch in the same window.
@@ -241,7 +249,11 @@ Architecture check: no page describes a NullClaw child as the workload outside a
 ## Discovery (consult log)
 
 - **Consults** — Indy (in-session, Oct 02, 2026): "The port is a fresh port, since we always have the last binary with us and running."; "A second copy of the wire will not be existing, none of the rust code will point to the zig."; "the rust code is independent and follows our current rustd/ principles". The 510-file, 1,684-line count is from `grep -rli 'zig\|nullclaw' rustd/crates --include='*.rs'` on Oct 02, 2026.
+- **Toolbox review** — Tarzy reviewed the toolbox design on Oct 03, 2026; Indy chose "Approve as classified (Recommended)". This spec carries signing, the SBOM and scan, and eager distribution with an offline bundle; M211_001 carries the pinned build and admission (`runner_execution.md` §Toolbox, Decisions).
 - **Required human decisions** — Indy's explicit approval of each of the eight workflow edits (R4), and the release itself (`gh release create` is his).
+- **Credentials** — the toolbox release key pair: the private half a CI secret the signing step reads, the public half built into the runner as `TOOLBOX_RELEASE_PUBLIC_KEY`. Both exist and are named before §1 starts.
+- **Carried from M210_002** — review P1-7: `agentsfleet_runner/src/main.rs:134` refuses every lease, so M210_002's §1–§4 run nowhere in production until this spec switches the engine on. > Indy (2026-10-04 08:51): "Defer to M213 (Recommended)" — context: Dimension 1.4 here.
 - **Metrics review** — No analytics or funnel playbook update required.
 - **Skill-chain outcomes** — pending.
-- **Deferrals** — none.
+- **Deferrals** —
+  > Indy (2026-10-03 13:51): "I dont want to focus on revocation of a compromised toolbox, first is to get the toolbox working" — context: revoking a compromised toolbox digest, from Tarzy's review; left out of this spec and M211_001.
