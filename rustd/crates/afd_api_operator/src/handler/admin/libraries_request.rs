@@ -11,7 +11,10 @@ use std::borrow::Cow;
 use afd_core::error_code;
 use afd_library::{LibraryPatch, Repository, valid_revision};
 use afd_validate::Sentences;
-use afd_wire::admin::AdminLibraryPatch;
+use afd_wire::admin::{
+    AdminLibraryPatch, REASON_CREDENTIAL_MAX_BYTES, REASON_MAX_BYTES, REASONS_MAX,
+};
+use const_format::concatcp;
 use garde::Validate as _;
 
 const DETAIL_BODY_REQUIRED: &str = "A request body is required";
@@ -33,7 +36,15 @@ const DETAIL_REASONS_INVALID: &str =
 ///
 /// One sentence naming all three caps: they are one rule on the wire type,
 /// and a caller who broke one fixes it by reading the numbers.
-const DETAIL_REASONS_BOUNDS: &str = "required_credentials_reasons may carry at most 32 entries, each name at most 200 bytes and each reason at most 500 bytes";
+const DETAIL_REASONS_BOUNDS: &str = concatcp!(
+    "required_credentials_reasons may carry at most ",
+    REASONS_MAX,
+    " entries, each name at most ",
+    REASON_CREDENTIAL_MAX_BYTES,
+    " bytes and each reason at most ",
+    REASON_MAX_BYTES,
+    " bytes"
+);
 
 /// The path `garde` reports a name-length break under.
 const FIELD_NAME: &str = "name";
@@ -104,8 +115,6 @@ fn reasons_shaped(reasons: Option<&serde_json::Value>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use afd_wire::admin::{REASON_CREDENTIAL_MAX_BYTES, REASON_MAX_BYTES, REASONS_MAX};
-
     use super::*;
 
     #[test]
