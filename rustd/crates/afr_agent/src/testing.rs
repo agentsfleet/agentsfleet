@@ -16,7 +16,9 @@ pub struct Discard;
 
 #[async_trait::async_trait]
 impl Checkpoint for Discard {
-    async fn push(&self, _memory: Vec<MemoryDelta<'static>>) {}
+    async fn push(&self, _memory: Vec<MemoryDelta<'static>>) -> crate::Result<()> {
+        Ok(())
+    }
 }
 
 /// A checkpoint that hands each push to its receiver.
@@ -36,8 +38,9 @@ impl Recording {
 
 #[async_trait::async_trait]
 impl Checkpoint for Recording {
-    async fn push(&self, memory: Vec<MemoryDelta<'static>>) {
+    async fn push(&self, memory: Vec<MemoryDelta<'static>>) -> crate::Result<()> {
         // A suite that dropped its receiver asserts nothing about checkpoints.
         let _unread = self.pushed.send(memory);
+        Ok(())
     }
 }

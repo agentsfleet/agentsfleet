@@ -46,7 +46,11 @@ where
 #[async_trait::async_trait]
 pub trait Checkpoint: Send + Sync + fmt::Debug {
     /// Writes `memory` back.
-    async fn push(&self, memory: Vec<MemoryDelta<'static>>);
+    ///
+    /// # Errors
+    /// [`Error::checkpoint`](crate::Error::checkpoint): the write failed. The
+    /// run goes on; the push before the report carries every entry again.
+    async fn push(&self, memory: Vec<MemoryDelta<'static>>) -> crate::Result<()>;
 }
 
 /// Everything one run is given.

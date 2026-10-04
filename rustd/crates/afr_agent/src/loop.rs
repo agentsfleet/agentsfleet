@@ -28,6 +28,7 @@ use crate::spans;
 use crate::turn::{Turn, take};
 
 const EVENT_CAP_REACHED: &str = "context_cap_reached";
+const EVENT_CHECKPOINT_FAILED: &str = "memory_checkpoint_failed";
 const EVENT_TURN_STARTED: &str = "provider_turn_started";
 const EVENT_TURN_COMPLETED: &str = "provider_turn_completed";
 const EVENT_PROVIDER_FAILED: &str = "provider_turn_failed";
@@ -170,17 +171,25 @@ impl<'run> Harness<'run> {
     }
 
     /// Writes the memory stored so far back, when any is; a stopped lease
-    /// does not wait for it.
+    /// does not wait for it. A push that fails is logged and the run goes on:
+    /// the push before the report carries every entry again.
     async fn checkpoint(&self) {
         let pending: Vec<MemoryDelta<'static>> = (self.lease.memory.pending().into_iter())
             .map(MemoryDelta::into_owned)
             .collect();
-        if !pending.is_empty() {
-            tokio::select! {
-                biased;
-                () = self.stop.cancelled() => {}
-                () = self.checkpoint.push(pending) => {}
-            }
+        if pending.is_empty() {
+            return;
+        }
+        let pushed = tokio::select! {
+            biased;
+            () = self.stop.cancelled() => return,
+            pushed = self.checkpoint.push(pending) => pushed,
+        };
+        if let Err(failure) = pushed {
+            let error_code = failure.code().as_str();
+            let lease_id = self.lease_id;
+            let event = EVENT_CHECKPOINT_FAILED;
+            tracing::warn!(error_code, lease_id, event);
         }
     }
 
