@@ -290,10 +290,12 @@
           {
             "name": "id",
             "in": "path",
-            "description": "`UUIDv7` of the resource.",
+            "description": "The entry's catalog id: the bundle's name, 1 to 64 bytes.",
             "required": true,
             "schema": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1
             }
           }
         ],
@@ -389,10 +391,12 @@
           {
             "name": "id",
             "in": "path",
-            "description": "`UUIDv7` of the resource.",
+            "description": "The entry's catalog id: the bundle's name, 1 to 64 bytes.",
             "required": true,
             "schema": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1
             }
           },
           {
@@ -4881,7 +4885,7 @@
           "Runners"
         ],
         "summary": "Extend a live lease",
-        "description": "A run buying more time before its lease expires. The body is optional. A body that will not parse is refused rather than read as an empty one. A renewal asserts progress, and an unreadable assertion is not one. ",
+        "description": "A run buying more time before its lease expires. The body is optional and carries the run's cumulative token counts. A body that will not parse is read as asserting no tokens and logged as `renew_body_parse_failed`; the lease is still extended, so a counting mistake never ends a run. ",
         "operationId": "runner_renew_lease",
         "parameters": [
           {
@@ -14637,7 +14641,9 @@
           "stage_chunk_threshold": {
             "type": "number",
             "format": "float",
-            "description": "Fill fraction at which a stage chunks rather than growing."
+            "description": "Fill fraction at which a stage chunks rather than growing: 0 to 1 of\nthe context window.",
+            "maximum": 1,
+            "minimum": 0
           },
           "tool_window": {
             "type": "integer",

@@ -35,6 +35,14 @@ pub(crate) fn unhosted(provider: &str) -> Error {
     })
 }
 
+/// A policy naming `provider`, a `custom:` endpoint at an address this runner
+/// never dials.
+pub(crate) fn blocked_endpoint(provider: &str) -> Error {
+    Error::from(ErrorKind::BlockedEndpoint {
+        provider: provider.to_owned(),
+    })
+}
+
 /// The HTTP client could not be built, for `source`.
 pub(crate) fn client(source: reqwest::Error) -> Error {
     Error::from(ErrorKind::Client { source })

@@ -117,7 +117,8 @@ x-agentsfleet:
                                     # (bare YAML string) and 0 are equivalent
                                     # — both mean "let the runtime pick".
     memory_checkpoint_every: 5     # call memory_store every N tool calls
-    stage_chunk_threshold: 0.75    # % context fill that triggers chunking
+    stage_chunk_threshold: 0.75    # fraction (0 to 1) of the context window
+                                    # at which a stage chunks
     context_cap_tokens: 200000     # the active model's context window
                                     # (resolved at install time from the
                                     #  model library — see user_flow.md

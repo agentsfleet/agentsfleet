@@ -104,7 +104,10 @@ impl Error {
     pub fn unhosted(&self) -> Option<Unhosted<'_>> {
         match self.kind() {
             ErrorKind::Tools { source } => source.unhosted_tool().map(Unhosted::Tool),
-            ErrorKind::Provider { source } => source.unhosted_provider().map(Unhosted::Provider),
+            ErrorKind::Provider { source } => source
+                .unhosted_provider()
+                .map(Unhosted::Provider)
+                .or_else(|| source.blocked_endpoint().map(Unhosted::Endpoint)),
             ErrorKind::Checkpoint { .. } | ErrorKind::Scrub { .. } => None,
             #[cfg(feature = "test-util")]
             ErrorKind::Executor { .. } => None,
@@ -119,6 +122,8 @@ pub enum Unhosted<'a> {
     Tool(&'a str),
     /// A model provider with no wire.
     Provider(&'a str),
+    /// A `custom:` model endpoint at an address the runner never dials.
+    Endpoint(&'a str),
 }
 
 #[cfg(test)]

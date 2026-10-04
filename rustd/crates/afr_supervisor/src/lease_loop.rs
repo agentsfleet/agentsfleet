@@ -56,6 +56,8 @@ const DETAIL_MEMORY: &str = "the fleet's memory could not be read";
 const DETAIL_UNHOSTED: &str = "the fleet names a tool this runner cannot host";
 const DETAIL_UNHOSTED_PROVIDER: &str =
     "the fleet names a model provider this runner does not speak";
+const DETAIL_BLOCKED_ENDPOINT: &str =
+    "the fleet names a model endpoint at a private or reserved address";
 const DETAIL_RENEWAL: &str = "the daemon ended the lease while it ran";
 const DETAIL_STOPPED: &str = "this runner was told to stop while the run went on";
 const EVENT_ACQUIRED: &str = "lease_acquired";
@@ -297,6 +299,9 @@ impl LeaseRun<'_> {
                 DETAIL_UNHOSTED_PROVIDER,
                 Some(name),
             ),
+            Some(Unhosted::Endpoint(name)) => {
+                (EVENT_UNHOSTED_PROVIDER, DETAIL_BLOCKED_ENDPOINT, Some(name))
+            }
             Some(Unhosted::Tool(name)) => (EVENT_UNHOSTED, DETAIL_UNHOSTED, Some(name)),
             None => (EVENT_UNHOSTED, DETAIL_UNHOSTED, None),
         };
