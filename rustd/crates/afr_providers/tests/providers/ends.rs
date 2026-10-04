@@ -68,7 +68,7 @@ async fn a_turns_signed_thinking_goes_back_ahead_of_its_call() {
     assert_eq!(
         first_shown(&frames),
         Some((Some(StreamTextKind::Reasoning), THOUGHT)),
-        "the thought showed live as reasoning, ahead of everything else"
+        "the first chunk shown live is the thought, as reasoning"
     );
     let turn = last_turn(&fake.seen()[1].body);
     assert_eq!(turn[0]["type"], "thinking", "{turn:?}");
