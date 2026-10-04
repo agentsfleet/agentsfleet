@@ -27,7 +27,7 @@ const LIMIT: usize = 3;
 
 /// Asserts a refusal carries the daemon's code rather than one of its own.
 #[track_caller]
-fn assert_kept<C: PartialEq + std::fmt::Debug>(got: C, daemons: C) {
+fn assert_kept<C: PartialEq + std::fmt::Debug>(got: &C, daemons: &C) {
     assert_eq!(got, daemons, "the daemon's code, kept");
 }
 
@@ -122,7 +122,7 @@ async fn a_checkpoint_the_daemon_refuses_is_returned_once_and_never_retried() {
         "a checkpoint is one attempt"
     );
     let daemons = error::unavailable(Verb::Capture, 503).code();
-    assert_kept(refused.code(), daemons);
+    assert_kept(&refused.code(), &daemons);
 }
 
 #[tokio::test]
@@ -169,5 +169,5 @@ async fn a_recall_the_daemon_refuses_is_unanswered_under_its_code_and_never_retr
         "a recall is one attempt"
     );
     let daemons = error::unavailable(Verb::Recall, 503).code();
-    assert_kept(unanswered.code(), daemons);
+    assert_kept(&unanswered.code(), &daemons);
 }
