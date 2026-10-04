@@ -79,6 +79,14 @@ pub trait MemoryStore: Send + Sync + fmt::Debug {
     /// The store cannot answer.
     async fn forget(&self, owner: Owner<'_>, key: &str) -> Result<bool>;
 
+    /// Removes `owner.fleet`'s entry under `key` only while it is no newer
+    /// than `seen_ms`, answering whether it removed one: a flip's prune
+    /// deletes the version it read, never a write that replaced it since.
+    ///
+    /// # Errors
+    /// The store cannot answer.
+    async fn forget_stale(&self, owner: Owner<'_>, key: &str, seen_ms: i64) -> Result<bool>;
+
     /// Every entry of every fleet in `workspace`, for a flip's copy.
     ///
     /// # Errors

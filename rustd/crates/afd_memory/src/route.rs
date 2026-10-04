@@ -6,7 +6,9 @@
 //! ```
 //!
 //! A flipping write reaches the store being left first, so it reaches the
-//! store being filled only once the one being left holds it.
+//! store being filled only once the one being left holds it. A write that
+//! reached one and then failed on the other marks the route it went through,
+//! and the flip that installed it never switches.
 //!
 //! The table is one `HashMap` behind an [`ArcSwap`]: every call loads it
 //! without blocking, and only a flip — rare, and refused while another is
@@ -16,6 +18,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use afd_core::id::Uuid7;
 use arc_swap::{ArcSwap, Guard};
@@ -32,6 +35,10 @@ pub(crate) struct Route {
     /// a write the caller is told succeeded never sits only in the store
     /// being left.
     pub(crate) mirror: Option<Arc<dyn MemoryStore>>,
+    /// Whether a write through this route reached one store and failed on
+    /// another it had to reach. Read only while `mirror` is set: the flip that
+    /// installed the route refuses to switch once it is.
+    missed: AtomicBool,
 }
 
 impl Route {
@@ -40,7 +47,28 @@ impl Route {
         Self {
             store,
             mirror: None,
+            missed: AtomicBool::new(false),
         }
+    }
+
+    /// `store` answering reads while every write reaches `mirror` too.
+    pub(crate) const fn copying(store: Arc<dyn MemoryStore>, mirror: Arc<dyn MemoryStore>) -> Self {
+        Self {
+            store,
+            mirror: Some(mirror),
+            missed: AtomicBool::new(false),
+        }
+    }
+
+    /// Records that a write through this route reached one store and not
+    /// another.
+    pub(crate) fn miss(&self) {
+        self.missed.store(true, Ordering::SeqCst);
+    }
+
+    /// Whether a write through this route reached one store and not another.
+    pub(crate) fn missed(&self) -> bool {
+        self.missed.load(Ordering::SeqCst)
     }
 
     /// Every store a write must reach, in the order it reaches them: the

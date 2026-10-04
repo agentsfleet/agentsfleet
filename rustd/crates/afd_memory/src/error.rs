@@ -10,7 +10,9 @@ use afd_core::error_code::{self, ErrorCode};
 pub mod detail;
 mod raise;
 
-pub(crate) use self::raise::{entry_not_found, fleet_not_found, moving, query, unavailable};
+pub(crate) use self::raise::{
+    entry_not_found, fleet_not_found, missed_write, moving, query, unavailable,
+};
 
 /// The result every fallible function in this crate returns.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
@@ -70,6 +72,12 @@ pub(crate) enum ErrorKind {
     /// The workspace's memory is being copied to another store.
     #[error("the workspace's memory is moving to the {store} store")]
     Moving { store: &'static str },
+
+    /// A write reached the store being left and failed on the one a flip was
+    /// filling, so the flip did not switch. The write's own error went to its
+    /// caller; the flip holds no source to carry.
+    #[error("a write did not reach the {store} store, so the flip did not switch to it")]
+    MissedWrite { store: &'static str },
 }
 
 impl Error {
@@ -93,6 +101,7 @@ impl Error {
             #[cfg(feature = "test-util")]
             ErrorKind::Refused { .. } => (error_code::MEM_UNAVAILABLE, detail::STORE_REFUSED),
             ErrorKind::Moving { .. } => (error_code::MEM_UNAVAILABLE, detail::MOVING),
+            ErrorKind::MissedWrite { .. } => (error_code::MEM_UNAVAILABLE, detail::MISSED_WRITE),
             ErrorKind::FleetNotFound => (
                 error_code::MEM_AGENTSFLEET_NOT_FOUND,
                 detail::FLEET_NOT_FOUND,

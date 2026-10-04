@@ -4,8 +4,9 @@
 //! ```text
 //!   settled(from) ──► flipping(from → to) ──prune, then copy──► settled(to)
 //!                            │                    │
-//!                            │        prune or copy fails, or the
-//!                            │        flip is dropped before it switches
+//!                            │        prune or copy fails, a write
+//!                            │        missed `to`, or the flip is
+//!                            │        dropped before it switches
 //!                            ▼                    ▼
 //!                writes land in from, then to   settled(from), as it was
 //! ```
@@ -13,21 +14,33 @@
 //! While the flip runs, reads stay on `from` and every write lands in both:
 //! `from` first, so a write reaches `to` only once `from` holds it, and a
 //! write the caller is told succeeded never sits only in the store being left.
+//! A write that reached `from` and then failed on `to` marks the route, and the
+//! flip never switches to a store it knows missed a write: it puts the
+//! workspace back on `from`, which holds that write. A write whose `to` half
+//! fails while the flip switches is reported to its caller as failed, so no
+//! write the caller was told succeeded is lost.
 //!
 //! The flip first prunes `to` of every row `from` no longer holds, so an entry
 //! the fleet forgot cannot come back from a failed earlier copy or from a
-//! store the workspace lived in before. Only then does it copy. The copy's
-//! snapshot is read after the prune, so a write the prune deleted from `to`
-//! (one that landed between the prune's reads and its delete) already sat in
-//! `from` and is carried back; a write whose `from` half lands after the
-//! snapshot lands in `to` after the prune too. The copy never replaces a newer
-//! row, so no write is lost to it either.
+//! store the workspace lived in before. The prune deletes only the version it
+//! read: a row goes only while it is no newer than the `updated_at` the prune
+//! saw, so a rewrite after the prune's read carries a later instant and stays,
+//! even when `to` and `from` hold the same rows, as two store objects over one
+//! database do. One edge remains: a rewrite stamped no later than the version
+//! the prune read (in its very millisecond, or by a writer whose clock runs
+//! behind) goes with it. Between distinct stores the copy brings it back; over
+//! shared rows nothing does.
 //!
-//! A workspace already on `to` stays as it is, with nothing pruned or copied:
-//! a store pruned against itself loses a write that lands between the prune's
-//! reads, and a copy onto itself brings back a row removed mid-copy. `to` is
-//! recognised by identity, so the caller never hands `flip` a second store
-//! object over the workspace's own rows.
+//! Only then does the flip copy. The copy's snapshot is read after the prune,
+//! so between distinct stores it is the backstop that needs no clock: a write
+//! the prune deleted from `to` already sat in `from` and is carried back, and
+//! a write whose `from` half lands after the snapshot lands in `to` after the
+//! prune too. The copy never replaces a newer row, so no write is lost to it
+//! either.
+//!
+//! A workspace already on `to`, recognised by identity, stays as it is with
+//! nothing pruned or copied: a copy onto its own rows brings back a row
+//! removed mid-copy.
 //!
 //! A flip that ends without switching (refused, or dropped by a caller that
 //! stopped waiting) puts the workspace back on `from`: writes stop reaching
@@ -40,7 +53,7 @@ use std::sync::Arc;
 use afd_core::error_code::INTERNAL_OPERATION_FAILED;
 use afd_core::id::Uuid7;
 
-use crate::error::{Error, Result, moving};
+use crate::error::{Error, Result, missed_write, moving};
 use crate::memories::Memories;
 use crate::record::Owner;
 use crate::route::{Route, Routes};
@@ -71,10 +84,11 @@ impl Memories {
     /// already on `to` stays as it is, and the answer counts nothing.
     ///
     /// # Errors
-    /// Refuses a workspace already flipping, and reports a prune or a copy `to`
-    /// would not take — after which `workspace` is on the store it was on,
-    /// which holds every entry it held and every write made meanwhile. A flip
-    /// dropped before it answers leaves the workspace there too.
+    /// Refuses a workspace already flipping, reports a prune or a copy `to`
+    /// would not take, and refuses to switch to `to` once a write made
+    /// meanwhile failed on it — after each, `workspace` is on the store it was
+    /// on, which holds every entry it held and every write made meanwhile. A
+    /// flip dropped before it answers leaves the workspace there too.
     pub async fn flip(&self, workspace: &Uuid7, to: Arc<dyn MemoryStore>) -> Result<Flipped> {
         let Some(flipping) = Flipping::begin(self.routes(), workspace, &to)? else {
             return Ok(Flipped {
@@ -161,10 +175,7 @@ impl<'a> Flipping<'a> {
         if Arc::ptr_eq(&settled.store, to) {
             return Ok(None);
         }
-        let copying = Arc::new(Route {
-            store: Arc::clone(&settled.store),
-            mirror: Some(Arc::clone(to)),
-        });
+        let copying = Arc::new(Route::copying(Arc::clone(&settled.store), Arc::clone(to)));
         if !routes.swap(workspace, &settled, &copying) {
             return Err(moving(to.name()));
         }
@@ -183,16 +194,25 @@ impl<'a> Flipping<'a> {
     /// Makes `to` the workspace's store.
     ///
     /// # Errors
-    /// Refuses when the route moved under the flip; the route that replaced
-    /// the flip's stays.
+    /// Refuses once a write through the flip's route failed on `to`, so the
+    /// old store, which holds that write, goes back; and refuses when the
+    /// route moved under the flip, where the route that replaced the flip's
+    /// stays.
     fn switch(mut self, to: &Arc<dyn MemoryStore>) -> Result<()> {
         let switched = Arc::new(Route::settled(Arc::clone(to)));
-        if self.routes.swap(self.workspace, &self.copying, &switched) {
-            self.stage = Stage::Switched;
-            return Ok(());
-        }
-        self.stage = Stage::Refused;
-        Err(moving(to.name()))
+        let outcome = if self.copying.missed() {
+            Err(missed_write(to.name()))
+        } else if self.routes.swap(self.workspace, &self.copying, &switched) {
+            Ok(())
+        } else {
+            Err(moving(to.name()))
+        };
+        self.stage = if outcome.is_ok() {
+            Stage::Switched
+        } else {
+            Stage::Refused
+        };
+        outcome
     }
 
     /// Ends the flip on `refused`, which the caller logged; the route goes
@@ -243,9 +263,10 @@ async fn fill(from: &dyn MemoryStore, to: &dyn MemoryStore, workspace: &Uuid7) -
 /// answering how many it removed.
 ///
 /// `to` is read first. A row a write put in `to` reached `from` before it, so
-/// `from`'s later read holds it too and it stays. A row deleted here that a
-/// write put back meanwhile already sits in `from`, and the copy, whose
-/// snapshot is read after this returns, carries it back.
+/// `from`'s later read holds it too and it stays. Each row goes only while it
+/// is no newer than the version read here, so a write that replaced it since
+/// stays even when `to` and `from` share rows; between distinct stores, the
+/// copy, whose snapshot is read after this returns, is the backstop.
 async fn prune(from: &dyn MemoryStore, to: &dyn MemoryStore, workspace: &Uuid7) -> Result<usize> {
     let held = to.export(workspace).await?;
     let source = from.export(workspace).await?;
@@ -262,7 +283,8 @@ async fn prune(from: &dyn MemoryStore, to: &dyn MemoryStore, workspace: &Uuid7) 
             workspace,
             fleet: &row.fleet,
         };
-        pruned += usize::from(to.forget(owner, &row.key).await?);
+        let removed = to.forget_stale(owner, &row.key, row.updated_at_ms).await?;
+        pruned += usize::from(removed);
     }
     Ok(pruned)
 }

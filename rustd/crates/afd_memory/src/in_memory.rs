@@ -200,6 +200,22 @@ impl MemoryStore for InMemory {
         Ok(previous.contains_key(&id))
     }
 
+    async fn forget_stale(&self, owner: Owner<'_>, key: &str, seen_ms: i64) -> Result<bool> {
+        let id = (owner.fleet.clone(), key.to_owned());
+        let stale = |rows: &Rows| {
+            rows.get(&id)
+                .is_some_and(|row| row.record.updated_at_ms <= seen_ms)
+        };
+        let previous = self.rows.rcu(|rows| {
+            let mut next = Rows::clone(rows);
+            if stale(rows) {
+                next.remove(&id);
+            }
+            next
+        });
+        Ok(stale(&previous))
+    }
+
     async fn export(&self, workspace: &Uuid7) -> Result<Vec<Record>> {
         Ok(self.select(|row| &row.workspace == workspace, newest))
     }

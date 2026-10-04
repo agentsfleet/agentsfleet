@@ -37,3 +37,8 @@ pub(crate) fn entry_not_found() -> Error {
 pub(crate) fn moving(store: &'static str) -> Error {
     ErrorKind::Moving { store }.into()
 }
+
+/// Refuses a flip into `store` after a write reached the old store and not it.
+pub(crate) fn missed_write(store: &'static str) -> Error {
+    ErrorKind::MissedWrite { store }.into()
+}
