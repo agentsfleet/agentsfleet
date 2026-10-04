@@ -17,8 +17,8 @@ pub(crate) const ALLOW_GATE_PURGE: &str = "SET LOCAL fleet.allow_gate_purge = 'o
 
 /// The child rows no foreign key cascades, deleted before the parent.
 ///
-/// `core.fleet_events` and `core.integration_grants` are absent because both
-/// are `ON DELETE CASCADE`. `billing.usage_ledger` is absent for a different
+/// `core.fleet_events`, `core.integration_grants` and `memory.memory_entries`
+/// are absent because all three are `ON DELETE CASCADE`. `billing.usage_ledger` is absent for a different
 /// reason: nothing there references the fleet any more — schema/915 dropped
 /// that foreign key so a charge the wallet was already debited for outlives
 /// the fleet still naming which one it paid for. Erasing one would falsify the
