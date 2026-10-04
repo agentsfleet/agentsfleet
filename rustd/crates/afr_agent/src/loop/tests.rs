@@ -78,10 +78,6 @@ fn starts(frames: &[ActivityFrame<'_>]) -> Vec<String> {
 /// The argument a fetching call names its target by.
 const URL_ARG: &str = "url";
 
-fn plan_tool() -> Box<dyn Tool> {
-    Canned::boxed(&UPDATE_PLAN, "4")
-}
-
 #[tokio::test]
 async fn test_loop_runs_tool_calls_until_answer() {
     let script = Script::new([
@@ -99,7 +95,7 @@ async fn test_loop_runs_tool_calls_until_answer() {
         ],
         vec![say("the sum is 4")],
     ]);
-    let engine = engine(vec![plan_tool()], &script);
+    let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "4")], &script);
     let lease = lease(&[UPDATE_PLAN.name()], unbounded());
 
     let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
@@ -152,7 +148,7 @@ async fn test_loop_emits_one_start_one_end_per_call() {
         vec![call("c", UPDATE_PLAN.name(), serde_json::json!({}))],
         vec![say("done")],
     ]);
-    let engine = engine(vec![plan_tool()], &script);
+    let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "4")], &script);
 
     let (output, frames) = drive(
         &engine,
@@ -197,7 +193,13 @@ async fn test_run_end_interrupts_open_calls_once() {
             serde_json::json!({URL_ARG: "https://example.com"}),
         ),
     ]]);
-    let engine = engine(vec![plan_tool(), Canned::boxed(&HTTP_REQUEST, "")], &script);
+    let engine = engine(
+        vec![
+            Canned::boxed(&UPDATE_PLAN, "4"),
+            Canned::boxed(&HTTP_REQUEST, ""),
+        ],
+        &script,
+    );
     let lease = lease(&[UPDATE_PLAN.name(), "http_request"], unbounded());
     let stop = CancellationToken::new();
     let stopper = async {

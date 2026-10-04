@@ -14,13 +14,9 @@ use super::{BUILTIN, HTTPS, ProviderSpec, Registry, Wire};
 /// A self-hosted endpoint a `custom:` provider names.
 const CUSTOM_BASE: &str = "https://vllm.corp/v1";
 
-fn builtin_specs() -> Vec<ProviderSpec> {
-    serde_json::from_str(BUILTIN).unwrap()
-}
-
 #[test]
 fn should_ship_a_table_whose_every_name_is_unique_and_dialled_over_https() {
-    let specs = builtin_specs();
+    let specs: Vec<ProviderSpec> = serde_json::from_str(BUILTIN).unwrap();
     let mut seen = HashSet::new();
 
     for spec in &specs {
@@ -147,7 +143,7 @@ fn should_name_an_entry_whose_base_does_not_parse() {
 // entry (moonshot's `.cn`) speaks the global dialect at its own host.
 #[test]
 fn should_name_only_dialects_rig_knows_under_the_path_rig_joins_to() {
-    let specs = builtin_specs();
+    let specs: Vec<ProviderSpec> = serde_json::from_str(BUILTIN).unwrap();
     let named: Vec<&ProviderSpec> = specs.iter().filter(|spec| spec.dialect.is_some()).collect();
 
     for spec in &named {

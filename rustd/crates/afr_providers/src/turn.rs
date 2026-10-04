@@ -20,6 +20,7 @@ use std::fmt;
 use std::ops::ControlFlow;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use afd_wire::activity::StreamTextKind;
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream};
 use rig_core::DynModel;
@@ -202,8 +203,14 @@ impl Reading {
 /// The chunk one event is, when it is one the seam carries.
 fn chunk(turns: &Turns, event: StreamEvent) -> Option<Chunk> {
     match event {
-        StreamEvent::Text { text, .. } => Some(Chunk::answer(text)),
-        StreamEvent::Reasoning { text, .. } => Some(Chunk::reasoning(text)),
+        StreamEvent::Text { text, .. } => Some(Chunk::Text {
+            kind: StreamTextKind::Answer,
+            text,
+        }),
+        StreamEvent::Reasoning { text, .. } => Some(Chunk::Text {
+            kind: StreamTextKind::Reasoning,
+            text,
+        }),
         StreamEvent::End {
             content: AssistantContent::ToolCall(call),
             ..

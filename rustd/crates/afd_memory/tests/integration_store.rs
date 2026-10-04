@@ -25,7 +25,6 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
     let space = Workspace::create().await;
     let fleet = space.fleet("keeper", Grants::default()).await;
     let memories = &space.memories;
-    let at = |millis: i64| UnixMillis::from_millis(millis);
 
     // Upsert: three keys, then one of them again, holds three entries.
     let first = [
@@ -34,13 +33,13 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
         delta("scratch", DAILY, Visibility::Fleet),
     ];
     let stored = memories
-        .capture(&fleet, &first, at(START_AT))
+        .capture(&fleet, &first, UnixMillis::from_millis(START_AT))
         .await
         .expect("a capture");
     assert_eq!((stored.stored, stored.skipped, stored.swept), (3, 0, 0));
     let again = [delta("chat", CONVERSATION, Visibility::Fleet)];
     memories
-        .capture(&fleet, &again, at(START_AT + 1))
+        .capture(&fleet, &again, UnixMillis::from_millis(START_AT + 1))
         .await
         .expect("a re-capture");
     let hydrated = memories.hydrate(&fleet).await.expect("a hydrate");
@@ -66,7 +65,7 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
     );
 
     // Sweep: a capture past the retention removes the scratch note.
-    let later = at(START_AT + DAILY_RETENTION_MS + 2);
+    let later = UnixMillis::from_millis(START_AT + DAILY_RETENTION_MS + 2);
     let swept = memories
         .capture(&fleet, &[], later)
         .await
@@ -78,7 +77,11 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
         .map(|at| delta(&format!("f{at:04}"), CONVERSATION, Visibility::Fleet))
         .collect();
     let capped = memories
-        .capture(&fleet, &filler, at(START_AT + DAILY_RETENTION_MS + 3))
+        .capture(
+            &fleet,
+            &filler,
+            UnixMillis::from_millis(START_AT + DAILY_RETENTION_MS + 3),
+        )
         .await
         .expect("a capture to the cap");
     assert_eq!(

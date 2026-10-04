@@ -22,7 +22,7 @@ fn entry(key: &str, content: &str, category: &str) -> MemoryDelta<'static> {
     }
 }
 
-fn keys(entries: &[Recalled<'_>]) -> Vec<String> {
+pub(super) fn keys(entries: &[Recalled<'_>]) -> Vec<String> {
     entries.iter().map(|delta| delta.key.to_string()).collect()
 }
 

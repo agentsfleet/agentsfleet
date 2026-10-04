@@ -37,14 +37,10 @@ pub(crate) fn skill(markdown: &[u8]) -> Result<Skill> {
     Unvalidated::new(parsed)
         .validate()
         .ok()
-        .filter(version_parses)
+        // Only a skill whose bounds held has its version parsed.
+        .filter(|skill| afd_fleet_runtime::Version::parse(&skill.version).is_ok())
         .map(Valid::into_inner)
         .ok_or_else(|| InvalidBundle::InvalidSkill.into())
-}
-
-/// Whether a skill whose bounds held names a version this daemon reads.
-fn version_parses(skill: &Valid<Skill>) -> bool {
-    afd_fleet_runtime::Version::parse(&skill.version).is_ok()
 }
 
 /// Whether `character` may appear in a skill name: a kebab slug.

@@ -104,14 +104,6 @@ pub struct Window<'a> {
     pub dropped: Vec<MemoryDelta<'a>>,
 }
 
-impl Window<'_> {
-    /// The bytes that did not hydrate.
-    #[must_use]
-    pub fn dropped_bytes(&self) -> usize {
-        total_bytes(&self.dropped)
-    }
-}
-
 /// Split `entries` into the hydration window and the tail left behind.
 ///
 /// `entries` must arrive newest-first — the statement orders them, and the
@@ -122,7 +114,7 @@ pub fn select(entries: Vec<MemoryDelta<'_>>, budget: usize) -> Window<'_> {
     afd_observability::producers::memory::hydration_window(
         counted(window.kept.len()),
         counted(window.dropped.len()),
-        counted(window.dropped_bytes()),
+        counted(total_bytes(&window.dropped)),
     );
     window
 }
@@ -295,7 +287,11 @@ mod tests {
     fn test_an_empty_set_hydrates_nothing() {
         let window = select(Vec::new(), BUDGET);
         assert!(window.kept.is_empty(), "no entries, no window");
-        assert_eq!(window.dropped_bytes(), 0, "and nothing to account as lost");
+        assert_eq!(
+            super::total_bytes(&window.dropped),
+            0,
+            "and nothing to account as lost"
+        );
     }
 
     /// Every entry lands in exactly one half, so nothing is lost or duplicated.
@@ -318,7 +314,7 @@ mod tests {
             "every entry is kept or dropped, never both and never neither"
         );
         assert_eq!(
-            super::total_bytes(&window.kept) + window.dropped_bytes(),
+            super::total_bytes(&window.kept) + super::total_bytes(&window.dropped),
             total,
             "and the bytes account exactly, which is what the loss metric reports on"
         );

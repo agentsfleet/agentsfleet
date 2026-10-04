@@ -29,13 +29,9 @@ fn lease(provider: &str) -> LeasePayload<'static> {
     serde_json::from_str(text).unwrap()
 }
 
-fn connector() -> Connector {
-    Connector::new(Registry::builtin().unwrap()).unwrap()
-}
-
 #[test]
 fn should_admit_what_it_can_connect_and_nothing_else() {
-    let connector = connector();
+    let connector = Connector::new(Registry::builtin().unwrap()).unwrap();
 
     connector.admit(&lease("anthropic").policy).unwrap();
     connector.admit(&lease("groq").policy).unwrap();
@@ -49,7 +45,7 @@ fn should_admit_what_it_can_connect_and_nothing_else() {
 // that a connected provider names its wire and never its key.
 #[test]
 fn should_connect_each_wire_and_never_print_the_key() {
-    let connector = connector();
+    let connector = Connector::new(Registry::builtin().unwrap()).unwrap();
 
     let messages = format!("{:?}", connector.connect(&lease("anthropic")).unwrap());
     let chat = format!("{:?}", connector.connect(&lease("groq")).unwrap());

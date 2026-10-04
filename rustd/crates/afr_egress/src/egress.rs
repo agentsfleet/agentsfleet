@@ -105,8 +105,8 @@ impl<'run> Egress<'run> {
     async fn headers(&mut self, written: Vec<(String, String)>) -> Result<HeaderMap, Refusal> {
         let mut headers = HeaderMap::with_capacity(written.len());
         for (name, value) in written {
-            let header =
-                HeaderName::from_bytes(name.as_bytes()).map_err(|_invalid| unsendable(&name))?;
+            let header = HeaderName::from_bytes(name.as_bytes())
+                .map_err(|_invalid| Refusal::InvalidHeader { name: name.clone() })?;
             let sensitive = header == AUTHORIZATION;
             let mut sent = if sensitive {
                 let filled = self.vault.fill(self.admission, &value).await?;
@@ -114,17 +114,11 @@ impl<'run> Egress<'run> {
             } else {
                 HeaderValue::from_str(&value)
             }
-            .map_err(|_invalid| unsendable(&name))?;
+            .map_err(|_invalid| Refusal::InvalidHeader { name: name.clone() })?;
             sent.set_sensitive(sensitive);
             headers.append(header, sent);
         }
         Ok(headers)
-    }
-}
-
-fn unsendable(name: &str) -> Refusal {
-    Refusal::InvalidHeader {
-        name: name.to_owned(),
     }
 }
 
